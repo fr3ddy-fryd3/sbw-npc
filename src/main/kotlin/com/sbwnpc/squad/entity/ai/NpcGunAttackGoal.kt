@@ -16,19 +16,20 @@ import net.minecraft.world.entity.ai.goal.Goal
  * deliberately (management tooling, later phases), not rolled randomly.
  *
  * This goal instead just reads whatever [GunItem] is currently in the NPC's main hand and reuses
- * the same aim/shoot/reload tick logic. Tunables are hardcoded for now; they'll move to a
- * per-role config once the squad/role system exists.
+ * the same aim/shoot/reload tick logic. Aim time / spread / fire cadence come from the NPC's rank.
  */
 class NpcGunAttackGoal(private val mob: NpcEntity) : Goal() {
     private var aimTime = 0
     private val shootTimer = MillisTimer()
 
-    private val maxAimTime = 20
     private val clearAimTimeWhenLostSight = true
-    private val semiFireInterval = 250L
     private val shootDistance = 24.0
     private val zoom = false
-    private val spread = 1.5
+
+    // Driven by rank (recruits are slow and inaccurate, elites fast and precise).
+    private val maxAimTime get() = mob.npcRank.aimTimeTicks
+    private val semiFireInterval get() = mob.npcRank.semiFireIntervalMs
+    private val spread get() = mob.npcRank.spread
 
     private fun currentGunData(): GunData? {
         if (mob.mainHandItem.item !is GunItem) return null

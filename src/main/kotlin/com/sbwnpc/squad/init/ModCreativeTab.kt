@@ -12,5 +12,8 @@ object ModCreativeTab {
         if (event.tabKey == CreativeModeTabs.SPAWN_EGGS) {
             event.accept(ModItems.NPC_SPAWN_EGG.get())
         }
+        if (event.tabKey == CreativeModeTabs.COMBAT) {
+            event.accept(ModItems.SQUAD_TOOL.get())
+        }
     }
 }
