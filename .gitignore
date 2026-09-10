@@ -1,6 +1,7 @@
 # Upstream reference project (SuperbWarfare) — pulled separately, not part of this repo.
 # Still used on disk via includeBuild() in settings.gradle.kts.
 /SuperbWarfare/
+/SuperbWarfare.broken-backup/
 
 # Gradle
 .gradle/
