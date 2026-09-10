@@ -83,9 +83,10 @@ class NpcRenderer(renderManager: EntityRendererProvider.Context) : EntityRendere
 
         val boneIndex = instance.getIndex("right_arm")
         if (debugLog) {
+            val t = instance.getGlobalTransform(boneIndex).getTranslation(org.joml.Vector3f())
             SquadMod.LOGGER.warn(
-                "[render-debug] entity={} stack={} boneIndex={} boneCount={}",
-                pEntity.id, stack, boneIndex, instance.boneCount()
+                "[render-debug] entity={} stack={} boneIndex={} boneCount={} boneTranslation={}",
+                pEntity.id, stack, boneIndex, instance.boneCount(), t
             )
         }
         if (boneIndex < 0) return
@@ -93,10 +94,8 @@ class NpcRenderer(renderManager: EntityRendererProvider.Context) : EntityRendere
         pPoseStack.pushPose()
         try {
             instance.mulGlobalTransform(pPoseStack, boneIndex)
-            // right_arm's pivot is at the shoulder; the cube hangs ~12 bedrock units (0.75 block)
-            // below it down to roughly where the hand is.
-            pPoseStack.translate(0.0, -0.75, 0.0)
-            pPoseStack.mulPose(Axis.XP.rotationDegrees(-90f))
+            // No offset for now — logging the raw pivot position first to see where it actually
+            // lands before guessing another hand-tuned number.
 
             Minecraft.getInstance().itemRenderer.renderStatic(
                 stack,
