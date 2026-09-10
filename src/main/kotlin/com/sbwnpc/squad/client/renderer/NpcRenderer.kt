@@ -61,13 +61,13 @@ class NpcRenderer(renderManager: EntityRendererProvider.Context) : EntityRendere
         pPoseStack.popPose()
     }
 
-    // The model's right_arm is bedrock-identical to vanilla HumanoidModel.rightArm (same 4x12x4
-    // cube, same [-5, 22, 0] pivot) since it now uses the standard player-skin UV layout — so this
-    // reuses vanilla's own ItemInHandLayer.renderArmWithItem() transform sequence verbatim
-    // (net/minecraft/client/renderer/entity/layers/ItemInHandLayer.java) instead of guessing:
-    // translate to the arm pivot, rotate -90 X then 180 Y, then the same small (1/16, 0.125,
-    // -0.625) nudge vanilla uses to reach from shoulder to grip. Still a fixed position — doesn't
-    // yet follow arm-swing animation, that needs a real bone/locator attachment.
+    // Vanilla's ItemInHandLayer.renderArmWithItem numbers are tuned for the LivingEntityRenderer
+    // frame — Y/Z flipped via scale(-1,-1,1), origin lifted to the neck via translate(0,-1.501,0).
+    // The SBM body renders in a plain Y-up, feet-origin frame instead, so those numbers land wrong
+    // (weapon flew up behind the head). Recreate vanilla's exact frame locally around just the
+    // item, then apply vanilla's sequence verbatim: to rightArm's PartPose offset (-5, 2, 0),
+    // rotate -90 X / 180 Y, then vanilla's own (1/16, 0.125, -0.625) shoulder-to-grip nudge.
+    // Fixed position — doesn't follow arm-swing animation yet; that needs a real bone attachment.
     private fun renderHeldItem(
         pEntity: NpcEntity,
         pPoseStack: PoseStack,
@@ -79,7 +79,10 @@ class NpcRenderer(renderManager: EntityRendererProvider.Context) : EntityRendere
 
         pPoseStack.pushPose()
         try {
-            pPoseStack.translate(-5.0 / 16.0, 22.0 / 16.0, 0.0)
+            pPoseStack.scale(-1f, -1f, 1f)
+            pPoseStack.translate(0f, -1.501f, 0f)
+
+            pPoseStack.translate(-5.0 / 16.0, 2.0 / 16.0, 0.0)
             pPoseStack.mulPose(Axis.XP.rotationDegrees(-90f))
             pPoseStack.mulPose(Axis.YP.rotationDegrees(180f))
             pPoseStack.translate(1.0 / 16.0, 0.125, -0.625)
