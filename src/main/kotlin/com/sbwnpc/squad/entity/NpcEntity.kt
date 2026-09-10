@@ -5,6 +5,8 @@ import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.sbwnpc.squad.entity.ai.NpcGunAttackGoal
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
+import com.sbwnpc.squad.team.SquadTeams
+import net.minecraft.ChatFormatting
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.syncher.EntityDataAccessor
@@ -13,6 +15,7 @@ import net.minecraft.network.syncher.SynchedEntityData
 import net.minecraft.world.DifficultyInstance
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.EntityType
+import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.Mob
 import net.minecraft.world.entity.MobSpawnType
 import net.minecraft.world.entity.PathfinderMob
@@ -32,9 +35,9 @@ import net.minecraft.world.level.Level
 import net.minecraft.world.level.ServerLevelAccessor
 
 /**
- * Base squad-member entity. Role (class + rank) drives the loadout and combat tuning. There's no
- * squad/team system yet, so targeting still hits the nearest player on sight — Phase 3 replaces
- * that with scoreboard-team friend/foe.
+ * Base squad-member entity. Role (class + rank) drives the loadout and combat tuning. Friend/foe
+ * is by squad colour == vanilla scoreboard team (see [SquadTeams]); no team on either side means
+ * neutral.
  */
 open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : PathfinderMob(type, level) {
 
@@ -45,6 +48,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
     var npcRank: NpcRank
         get() = NpcRank.byOrdinal(entityData.get(DATA_RANK))
         set(value) = entityData.set(DATA_RANK, value.ordinal)
+
+    /** Colour to put the NPC on its scoreboard team; set before finalizeSpawn. null = leave unteamed. */
+    var spawnColor: ChatFormatting? = null
 
     override fun defineSynchedData(builder: SynchedEntityData.Builder) {
         super.defineSynchedData(builder)
@@ -61,7 +67,16 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
         this.goalSelector.addGoal(4, WaterAvoidingRandomStrollGoal(this, 0.8))
 
         this.targetSelector.addGoal(1, HurtByTargetGoal(this))
-        this.targetSelector.addGoal(2, NearestAttackableTargetGoal(this, Player::class.java, true))
+        this.targetSelector.addGoal(
+            2,
+            NearestAttackableTargetGoal(this, LivingEntity::class.java, 10, true, false) { this.isEnemy(it) }
+        )
+    }
+
+    private fun isEnemy(other: LivingEntity): Boolean {
+        if (other !is NpcEntity && other !is Player) return false
+        if (other is Player && (other.isCreative || other.isSpectator)) return false
+        return SquadTeams.isHostile(this, other)
     }
 
     // Squad members are always placed deliberately (spawn egg, deployer, recruitment) — never
@@ -77,6 +92,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
         spawnGroupData: SpawnGroupData?
     ): SpawnGroupData? {
         applyRole()
+        spawnColor?.let { SquadTeams.assign(this, it) }
         return super.finalizeSpawn(level, difficulty, spawnType, spawnGroupData)
     }
 

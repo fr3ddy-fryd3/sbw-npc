@@ -1,10 +1,10 @@
 package com.sbwnpc.squad.item
 
 import com.atsuishio.superbwarfare.tools.NBTTool
-import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModEntities
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
+import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.ChatFormatting
 import net.minecraft.network.chat.Component
 import net.minecraft.world.InteractionHand
@@ -21,19 +21,26 @@ import net.minecraft.world.level.Level
 import net.minecraft.world.level.ServerLevelAccessor
 
 /**
- * Garry's-Mod-multitool-style one item. For now only the "recruit" side exists:
- * - right-click a block → spawn an NPC there with the current config
- * - right-click air → cycle the class
- * - shift + right-click air → cycle the rank
+ * Garry's-Mod-multitool-style one item. Recruit side only for now:
+ * - right-click a block            → deploy an NPC with the current config
+ * - right-click air                → cycle class
+ * - shift + right-click air        → cycle rank
+ * - shift + right-click a block    → cycle squad colour (does NOT deploy)
  *
- * Config lives in the stack's CUSTOM_DATA (via SBW's NBTTool). Command mode (squad forming,
- * orders) and a proper config GUI land in Phase 3.
+ * Config lives in the stack's CUSTOM_DATA (via SBW's NBTTool). Command mode + a proper config GUI
+ * are the next Phase 3 step.
  */
 class SquadToolItem : Item(Properties().stacksTo(1)) {
 
-    private fun config(stack: ItemStack): Pair<NpcClass, NpcRank> {
+    private data class Config(val cls: NpcClass, val rank: NpcRank, val color: ChatFormatting)
+
+    private fun config(stack: ItemStack): Config {
         val tag = NBTTool.getTag(stack)
-        return NpcClass.byOrdinal(tag.getInt(KEY_CLASS)) to NpcRank.byOrdinal(tag.getInt(KEY_RANK))
+        return Config(
+            NpcClass.byOrdinal(tag.getInt(KEY_CLASS)),
+            NpcRank.byOrdinal(tag.getInt(KEY_RANK)),
+            SquadTeams.byOrdinal(tag.getInt(KEY_COLOR))
+        )
     }
 
     override fun useOn(context: UseOnContext): InteractionResult {
@@ -41,16 +48,25 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         val player = context.player ?: return InteractionResult.PASS
         if (level !is ServerLevelAccessor) return InteractionResult.SUCCESS
 
-        val (cls, rank) = config(context.itemInHand)
-        val pos = context.clickedPos.relative(context.clickedFace)
+        val cfg = config(context.itemInHand)
 
+        if (player.isShiftKeyDown) {
+            val next = SquadTeams.COLORS[(SquadTeams.ordinalOf(cfg.color) + 1) % SquadTeams.COLORS.size]
+            NBTTool.withTag(context.itemInHand) { it.putInt(KEY_COLOR, SquadTeams.ordinalOf(next)) }
+            player.displayClientMessage(
+                Component.literal("Colour: ").append(Component.literal(next.getName()).withStyle(next)), true
+            )
+            return InteractionResult.SUCCESS
+        }
+
+        val pos = context.clickedPos.relative(context.clickedFace)
         val npc = ModEntities.NPC.get().create(context.level) ?: return InteractionResult.FAIL
         npc.moveTo(pos.x + 0.5, pos.y.toDouble(), pos.z + 0.5, player.yRot + 180f, 0f)
-        npc.npcClass = cls
-        npc.npcRank = rank
+        npc.npcClass = cfg.cls
+        npc.npcRank = cfg.rank
+        npc.spawnColor = cfg.color
         npc.finalizeSpawn(level, context.level.getCurrentDifficultyAt(pos), MobSpawnType.SPAWN_EGG, null)
         context.level.addFreshEntity(npc)
-
         return InteractionResult.CONSUME
     }
 
@@ -62,15 +78,13 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
                 val rank = NpcRank.byOrdinal(tag.getInt(KEY_RANK)).next()
                 NBTTool.withTag(stack) { it.putInt(KEY_RANK, rank.ordinal) }
                 player.displayClientMessage(
-                    Component.literal("Rank: ").append(Component.literal(rank.name).withStyle(ChatFormatting.AQUA)),
-                    true
+                    Component.literal("Rank: ").append(Component.literal(rank.name).withStyle(ChatFormatting.AQUA)), true
                 )
             } else {
                 val cls = NpcClass.byOrdinal(tag.getInt(KEY_CLASS)).next()
                 NBTTool.withTag(stack) { it.putInt(KEY_CLASS, cls.ordinal) }
                 player.displayClientMessage(
-                    Component.literal("Class: ").append(Component.literal(cls.name).withStyle(ChatFormatting.GOLD)),
-                    true
+                    Component.literal("Class: ").append(Component.literal(cls.name).withStyle(ChatFormatting.GOLD)), true
                 )
             }
         }
@@ -83,15 +97,19 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         tooltip: MutableList<Component>,
         flag: TooltipFlag
     ) {
-        val (cls, rank) = config(stack)
-        tooltip.add(Component.literal("Class: ${cls.name}").withStyle(ChatFormatting.GOLD))
-        tooltip.add(Component.literal("Rank: ${rank.name}").withStyle(ChatFormatting.AQUA))
-        tooltip.add(Component.literal("R-click block: deploy  ·  R-click air: cycle class  ·  Shift: cycle rank")
-            .withStyle(ChatFormatting.DARK_GRAY))
+        val cfg = config(stack)
+        tooltip.add(Component.literal("Class: ${cfg.cls.name}").withStyle(ChatFormatting.GOLD))
+        tooltip.add(Component.literal("Rank: ${cfg.rank.name}").withStyle(ChatFormatting.AQUA))
+        tooltip.add(Component.literal("Colour: ${cfg.color.getName()}").withStyle(cfg.color))
+        tooltip.add(
+            Component.literal("air: class · shift+air: rank · shift+block: colour · block: deploy")
+                .withStyle(ChatFormatting.DARK_GRAY)
+        )
     }
 
     companion object {
         const val KEY_CLASS = "Class"
         const val KEY_RANK = "Rank"
+        const val KEY_COLOR = "Color"
     }
 }
