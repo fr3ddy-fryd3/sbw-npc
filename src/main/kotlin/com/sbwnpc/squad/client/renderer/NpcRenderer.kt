@@ -61,14 +61,13 @@ class NpcRenderer(renderManager: EntityRendererProvider.Context) : EntityRendere
         pPoseStack.popPose()
     }
 
-    // BakedModelInstance.mulGlobalTransform() turned out not to give a usable world-space bone
-    // position here (logged near-zero translation, and the item rendered at the model's feet) —
-    // its semantics don't match a simple "transform to this bone's pivot" the way I assumed.
-    // Sidestepping that entirely for now: this renders in the SAME raw model-space the body mesh
-    // itself uses (bedrock units / 16 = blocks), translated straight to right_arm's own pivot/cube
-    // numbers from npc_placeholder.geo.json (pivot [-5, 22, 0], cube runs down to y=10 — the hand).
-    // Fixed position, doesn't track arm-swing animation yet — proper bone/locator attachment is a
-    // later refinement.
+    // The model's right_arm is bedrock-identical to vanilla HumanoidModel.rightArm (same 4x12x4
+    // cube, same [-5, 22, 0] pivot) since it now uses the standard player-skin UV layout — so this
+    // reuses vanilla's own ItemInHandLayer.renderArmWithItem() transform sequence verbatim
+    // (net/minecraft/client/renderer/entity/layers/ItemInHandLayer.java) instead of guessing:
+    // translate to the arm pivot, rotate -90 X then 180 Y, then the same small (1/16, 0.125,
+    // -0.625) nudge vanilla uses to reach from shoulder to grip. Still a fixed position — doesn't
+    // yet follow arm-swing animation, that needs a real bone/locator attachment.
     private fun renderHeldItem(
         pEntity: NpcEntity,
         pPoseStack: PoseStack,
@@ -80,7 +79,10 @@ class NpcRenderer(renderManager: EntityRendererProvider.Context) : EntityRendere
 
         pPoseStack.pushPose()
         try {
-            pPoseStack.translate(-5.0 / 16.0, 10.0 / 16.0, 0.0)
+            pPoseStack.translate(-5.0 / 16.0, 22.0 / 16.0, 0.0)
+            pPoseStack.mulPose(Axis.XP.rotationDegrees(-90f))
+            pPoseStack.mulPose(Axis.YP.rotationDegrees(180f))
+            pPoseStack.translate(1.0 / 16.0, 0.125, -0.625)
 
             Minecraft.getInstance().itemRenderer.renderStatic(
                 stack,
