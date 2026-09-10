@@ -44,6 +44,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
         this.targetSelector.addGoal(2, NearestAttackableTargetGoal(this, Player::class.java, true))
     }
 
+    // Squad members are always placed deliberately (spawn egg, deployer, recruitment) — never
+    // ambient wildlife — so they must not despawn when the nearest player wanders off or dies and
+    // respawns far away. Same as iron golems / tamed pets.
+    override fun removeWhenFarAway(distanceToClosestPlayer: Double): Boolean = false
+
     @Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")
     override fun finalizeSpawn(
         level: ServerLevelAccessor,
