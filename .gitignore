@@ -1,0 +1,31 @@
+# Upstream reference project (SuperbWarfare) — pulled separately, not part of this repo.
+# Still used on disk via includeBuild() in settings.gradle.kts.
+/SuperbWarfare/
+
+# Gradle
+.gradle/
+build/
+out/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Generated resources (data generators)
+/src/generated/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+
+# Run/test client
+run/
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local overrides
+local.properties

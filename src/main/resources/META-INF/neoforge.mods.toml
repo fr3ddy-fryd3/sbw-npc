@@ -1,0 +1,31 @@
+modLoader = "kotlinforforge"
+loaderVersion = "[5.8.0,)"
+license = "All Rights Reserved"
+
+[[mods]]
+modId = "sbwnpc"
+version = "0.1.0-dev"
+displayName = "SBW Squads"
+authors = "fr3ddy"
+description = "NPC squads addon for SuperbWarfare"
+
+[[dependencies.sbwnpc]]
+modId = "neoforge"
+type = "required"
+versionRange = "[21.1.203,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.sbwnpc]]
+modId = "minecraft"
+type = "required"
+versionRange = "[1.21.1,1.22)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.sbwnpc]]
+modId = "superbwarfare"
+type = "required"
+versionRange = "[0.8.10,)"
+ordering = "AFTER"
+side = "BOTH"
