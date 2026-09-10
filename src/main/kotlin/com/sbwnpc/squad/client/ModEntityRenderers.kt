@@ -10,6 +10,11 @@ import net.neoforged.neoforge.client.event.EntityRenderersEvent
 @EventBusSubscriber(Dist.CLIENT)
 object ModEntityRenderers {
     @SubscribeEvent
+    fun registerLayerDefinitions(event: EntityRenderersEvent.RegisterLayerDefinitions) {
+        event.registerLayerDefinition(NpcModel.LAYER, NpcModel::createBodyLayer)
+    }
+
+    @SubscribeEvent
     fun registerEntityRenderers(event: EntityRenderersEvent.RegisterRenderers) {
         event.registerEntityRenderer(ModEntities.NPC.get(), ::NpcRenderer)
     }

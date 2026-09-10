@@ -2,9 +2,6 @@ package com.sbwnpc.squad.entity
 
 import com.atsuishio.superbwarfare.data.gun.GunData
 import com.atsuishio.superbwarfare.init.ModItems
-import com.atsuishio.superbwarfare.resource.model.EntityModelReloadListener
-import com.sbwnpc.squad.SquadMod.Companion.loc
-import com.sbwnpc.squad.client.animation.NpcAnimationInstance
 import com.sbwnpc.squad.entity.ai.NpcGunAttackGoal
 import net.minecraft.world.DifficultyInstance
 import net.minecraft.world.InteractionHand
@@ -34,9 +31,6 @@ import net.minecraft.world.level.ServerLevelAccessor
  * squad-role system exists.
  */
 open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : PathfinderMob(type, level) {
-    open val animationInstance: NpcAnimationInstance? =
-        if (this.level().isClientSide) NpcAnimationInstance(this) else null
-    open val modelInstance = EntityModelReloadListener.getModel(MODEL)?.createInstance()
 
     override fun registerGoals() {
         super.registerGoals()
@@ -70,8 +64,6 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
     }
 
     companion object {
-        val MODEL = loc("models/bedrock/entity/npc_placeholder.geo.json")
-
         @JvmStatic
         fun createAttributes(): AttributeSupplier.Builder {
             return Mob.createMobAttributes()
