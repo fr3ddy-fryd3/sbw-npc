@@ -19,6 +19,11 @@ repositories {
         url = uri("https://thedarkcolour.github.io/KotlinForForge/")
         content { includeGroup("thedarkcolour") }
     }
+    maven {
+        name = "jitpack"
+        url = uri("https://jitpack.io")
+        content { includeGroup("com.github.mcmodderanchor") }
+    }
 }
 
 base {
@@ -92,6 +97,17 @@ dependencies {
     // указанная здесь версия ни на что не влияет (Gradle подставит локальный проект).
     compileOnly("com.atsuishio.superbwarfare:superbwarfare:${project.property("superbwarfare_version")}")
     runtimeOnly("com.atsuishio.superbwarfare:superbwarfare:${project.property("superbwarfare_version")}")
+
+    // Both are jar-in-jar'd inside SuperbWarfare's own mod jar (present at runtime through it),
+    // but SBW depends on them as compileOnly/implementation, which isn't transitive — so we need
+    // our own compile-time-only dependency to reference their types (Bedrock model + MAE animation
+    // classes used by our NpcEntity's renderer, mirroring SBW's own SenpaiEntity/SenpaiRenderer).
+    compileOnly("com.github.mcmodderanchor:simplebedrockmodel:2.5.7-neoforge-mc1.21.1")
+    compileOnly("com.maydaymemory:mae:1.1.2") {
+        exclude("com.google.code.findbugs", "jsr305")
+        exclude("it.unimi.dsi", "fastutil")
+        exclude("org.joml", "joml")
+    }
 }
 
 tasks.withType<JavaCompile> {
