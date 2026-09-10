@@ -3,9 +3,13 @@ package com.sbwnpc.squad.entity
 import com.atsuishio.superbwarfare.data.gun.GunData
 import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.sbwnpc.squad.entity.ai.NpcGunAttackGoal
+import com.sbwnpc.squad.entity.ai.SquadOrderGoal
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
+import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.team.SquadTeams
+import net.minecraft.server.level.ServerLevel
+import java.util.UUID
 import net.minecraft.ChatFormatting
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.nbt.CompoundTag
@@ -52,6 +56,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
     /** Colour to put the NPC on its scoreboard team; set before finalizeSpawn. null = leave unteamed. */
     var spawnColor: ChatFormatting? = null
 
+    /** Command group this NPC belongs to, if any. Server-side; persisted. */
+    var squadId: UUID? = null
+
     override fun defineSynchedData(builder: SynchedEntityData.Builder) {
         super.defineSynchedData(builder)
         builder.define(DATA_CLASS, NpcClass.DEFAULT.ordinal)
@@ -63,8 +70,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
         this.goalSelector.addGoal(0, FloatGoal(this))
         this.goalSelector.addGoal(1, NpcGunAttackGoal(this))
         this.goalSelector.addGoal(2, MeleeAttackGoal(this, 1.2, false))
-        this.goalSelector.addGoal(3, RandomLookAroundGoal(this))
-        this.goalSelector.addGoal(4, WaterAvoidingRandomStrollGoal(this, 0.8))
+        this.goalSelector.addGoal(3, SquadOrderGoal(this))
+        this.goalSelector.addGoal(4, RandomLookAroundGoal(this))
+        this.goalSelector.addGoal(5, WaterAvoidingRandomStrollGoal(this, 0.8))
 
         this.targetSelector.addGoal(1, HurtByTargetGoal(this))
         this.targetSelector.addGoal(
@@ -118,12 +126,19 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
         super.addAdditionalSaveData(compound)
         compound.putString("NpcClass", npcClass.name)
         compound.putString("NpcRank", npcRank.name)
+        squadId?.let { compound.putUUID("SquadId", it) }
     }
 
     override fun readAdditionalSaveData(compound: CompoundTag) {
         super.readAdditionalSaveData(compound)
         runCatching { npcClass = NpcClass.valueOf(compound.getString("NpcClass")) }
         runCatching { npcRank = NpcRank.valueOf(compound.getString("NpcRank")) }
+        squadId = if (compound.hasUUID("SquadId")) compound.getUUID("SquadId") else null
+    }
+
+    override fun die(cause: net.minecraft.world.damagesource.DamageSource) {
+        (level() as? ServerLevel)?.let { SquadManager.get(it).removeMemberEverywhere(uuid) }
+        super.die(cause)
     }
 
     companion object {
