@@ -3,12 +3,15 @@ package com.sbwnpc.squad.entity
 import com.atsuishio.superbwarfare.data.gun.GunData
 import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.sbwnpc.squad.entity.ai.NpcGunAttackGoal
+import com.sbwnpc.squad.entity.ai.SquadFocusTargetGoal
 import com.sbwnpc.squad.entity.ai.SquadOrderGoal
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
+import com.sbwnpc.squad.squad.Squad
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.phys.Vec3
 import java.util.UUID
 import net.minecraft.ChatFormatting
 import net.minecraft.core.registries.BuiltInRegistries
@@ -59,6 +62,21 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
     /** Command group this NPC belongs to, if any. Server-side; persisted. */
     var squadId: UUID? = null
 
+    fun currentSquad(): Squad? {
+        val id = squadId ?: return null
+        val lvl = level() as? ServerLevel ?: return null
+        return SquadManager.get(lvl).get(id)
+    }
+
+    /** Where this NPC "belongs" per its squad: the guarded entity, else the objective point. */
+    fun homeCenter(): Vec3? {
+        val squad = currentSquad() ?: return null
+        squad.focusEntity?.let { fid ->
+            (level() as? ServerLevel)?.getEntity(fid)?.takeIf { it.isAlive }?.let { return it.position() }
+        }
+        return squad.objective?.let { Vec3(it.x + 0.5, it.y.toDouble(), it.z + 0.5) }
+    }
+
     override fun defineSynchedData(builder: SynchedEntityData.Builder) {
         super.defineSynchedData(builder)
         builder.define(DATA_CLASS, NpcClass.DEFAULT.ordinal)
@@ -74,9 +92,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
         this.goalSelector.addGoal(4, RandomLookAroundGoal(this))
         this.goalSelector.addGoal(5, WaterAvoidingRandomStrollGoal(this, 0.8))
 
-        this.targetSelector.addGoal(1, HurtByTargetGoal(this))
+        this.targetSelector.addGoal(1, SquadFocusTargetGoal(this))
+        this.targetSelector.addGoal(2, HurtByTargetGoal(this))
         this.targetSelector.addGoal(
-            2,
+            3,
             NearestAttackableTargetGoal(this, LivingEntity::class.java, 10, true, false) { this.isEnemy(it) }
         )
     }

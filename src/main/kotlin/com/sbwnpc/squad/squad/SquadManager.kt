@@ -14,7 +14,7 @@ import net.minecraft.world.level.saveddata.SavedData
 import java.util.UUID
 
 /**
- * Server-wide registry of squads (command groups). Squad membership does not change alliance —
+ * Server-wide registry of squads (command groups). Squad membership does not decide alliance —
  * that's the scoreboard team ([SquadTeams]) — but forming a squad puts every member on the
  * squad's colour team.
  */
@@ -27,14 +27,13 @@ class SquadManager : SavedData() {
     fun forOwner(owner: UUID): List<Squad> = squads.values.filter { it.owner == owner }
     fun squadOf(entity: UUID): Squad? = squads.values.firstOrNull { entity in it.members }
 
-    fun create(level: ServerLevel, owner: UUID, color: ChatFormatting, members: List<UUID>, commander: UUID?): Squad {
-        val name = nextName(owner)
-        val squad = Squad(UUID.randomUUID(), name, color, SquadOrder.FREE, commander ?: members.firstOrNull(),
-            members.toMutableList(), null, owner)
+    fun create(level: ServerLevel, owner: UUID, color: ChatFormatting, members: List<UUID>): Squad {
+        val squad = Squad(UUID.randomUUID(), nextName(owner), color, SquadOrder.FREE, members.toMutableList(), null, null, owner)
         squads[squad.id] = squad
         members.forEach { m ->
-            level.getEntity(m)?.let { SquadTeams.assign(it, color) }
-            (level.getEntity(m) as? NpcEntity)?.squadId = squad.id
+            val e = level.getEntity(m)
+            if (e != null) SquadTeams.assign(e, color)
+            (e as? NpcEntity)?.squadId = squad.id
         }
         setDirty()
         return squad
@@ -51,11 +50,19 @@ class SquadManager : SavedData() {
     }
 
     fun setObjective(id: UUID, pos: BlockPos?) {
-        squads[id]?.let { it.objective = pos; setDirty() }
+        squads[id]?.let { it.objective = pos; it.focusEntity = null; setDirty() }
+    }
+
+    fun setFocus(id: UUID, entity: UUID?) {
+        squads[id]?.let { it.focusEntity = entity; setDirty() }
+    }
+
+    fun rename(id: UUID, name: String) {
+        squads[id]?.let { it.name = name.take(24).ifBlank { it.name }; setDirty() }
     }
 
     fun removeMemberEverywhere(entity: UUID) {
-        squads.values.forEach { it.members.remove(entity); if (it.commander == entity) it.commander = it.members.firstOrNull() }
+        squads.values.forEach { it.members.remove(entity) }
         squads.entries.removeIf { it.value.members.isEmpty() }
         setDirty()
     }
@@ -66,7 +73,9 @@ class SquadManager : SavedData() {
     }
 
     override fun save(tag: CompoundTag, registries: HolderLookup.Provider): CompoundTag {
-        tag.put("Squads", ListTag().apply { squads.values.forEach { add(it.save()) } })
+        val list = ListTag()
+        squads.values.forEach { list.add(it.save()) }
+        tag.put("Squads", list)
         return tag
     }
 

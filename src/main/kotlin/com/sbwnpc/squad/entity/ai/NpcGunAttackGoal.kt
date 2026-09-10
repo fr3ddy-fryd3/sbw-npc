@@ -26,6 +26,11 @@ class NpcGunAttackGoal(private val mob: NpcEntity) : Goal() {
     private val shootDistance = 24.0
     private val zoom = false
 
+    companion object {
+        private const val DEFEND_LEASH = 14.0
+        private const val DEFEND_LEASH_DROP = 24.0
+    }
+
     // Driven by rank (recruits are slow and inaccurate, elites fast and precise).
     private val maxAimTime get() = mob.npcRank.aimTimeTicks
     private val semiFireInterval get() = mob.npcRank.semiFireIntervalMs
@@ -76,7 +81,23 @@ class NpcGunAttackGoal(private val mob: NpcEntity) : Goal() {
 
         mob.lookAt(target, 30f, 30f)
 
-        if (mob.distanceToSqr(target) > shootDistance * shootDistance) {
+        // DEFEND squads hold ground: don't chase far from home, and disengage entirely past the leash.
+        val defendHome = if (mob.currentSquad()?.order == com.sbwnpc.squad.squad.SquadOrder.DEFEND) mob.homeCenter() else null
+        if (defendHome != null) {
+            val fromHome = mob.position().distanceTo(defendHome)
+            if (fromHome > DEFEND_LEASH_DROP) {
+                mob.target = null
+                mob.navigation.moveTo(defendHome.x, defendHome.y, defendHome.z, 1.0)
+                return
+            }
+            if (fromHome > DEFEND_LEASH) {
+                mob.navigation.stop()
+            } else if (mob.distanceToSqr(target) > shootDistance * shootDistance) {
+                mob.navigation.moveTo(target, 1.0)
+            } else {
+                mob.navigation.stop()
+            }
+        } else if (mob.distanceToSqr(target) > shootDistance * shootDistance) {
             mob.navigation.moveTo(target, 1.0)
         } else {
             mob.navigation.stop()

@@ -15,8 +15,17 @@ import net.minecraft.world.scores.Team
 object SquadTeams {
     private const val PREFIX = "sbwnpc_"
 
-    /** The 16 vanilla text colours, in enum order. */
-    val COLORS: List<ChatFormatting> = ChatFormatting.entries.filter { it.isColor }
+    /** 8 distinct, easily-told-apart squad colours. */
+    val COLORS: List<ChatFormatting> = listOf(
+        ChatFormatting.RED,
+        ChatFormatting.BLUE,
+        ChatFormatting.GREEN,
+        ChatFormatting.YELLOW,
+        ChatFormatting.AQUA,
+        ChatFormatting.LIGHT_PURPLE,
+        ChatFormatting.GOLD,
+        ChatFormatting.WHITE,
+    )
 
     fun byOrdinal(i: Int): ChatFormatting = COLORS.getOrElse(i) { COLORS.first() }
 

@@ -4,12 +4,14 @@ import java.util.UUID
 
 /**
  * Transient, server-side "what does this player have selected with the squad tool" state.
- * - a loose set of NPCs not yet in a squad (for forming one), or
- * - a single existing squad (for commanding it).
+ * - a loose set of NPCs not yet in a squad (for forming one), and/or
+ * - a single existing squad (the one being commanded), and/or
+ * - a one-shot "next air-click sets this squad's objective" arm.
  */
 object SquadSelection {
     private val loose = HashMap<UUID, MutableSet<UUID>>()
     private val squad = HashMap<UUID, UUID>()
+    private val awaitingObjective = HashMap<UUID, UUID>()
 
     fun looseOf(player: UUID): Set<UUID> = loose[player].orEmpty()
     fun selectedSquad(player: UUID): UUID? = squad[player]
@@ -28,5 +30,13 @@ object SquadSelection {
     fun clear(player: UUID) {
         loose.remove(player)
         squad.remove(player)
+        awaitingObjective.remove(player)
     }
+
+    fun armObjective(player: UUID, squadId: UUID) {
+        awaitingObjective[player] = squadId
+    }
+
+    /** Consumes and returns the squad awaiting an objective, if any. */
+    fun takeObjectiveArm(player: UUID): UUID? = awaitingObjective.remove(player)
 }

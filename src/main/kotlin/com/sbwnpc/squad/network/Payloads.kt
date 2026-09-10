@@ -22,20 +22,24 @@ class ConfigureToolPayload(val cls: Int, val rank: Int, val color: Int) : Custom
     }
 }
 
-/** Client -> server: a command-mode squad action. action: 0=create from selection, 1=disband, 2=set order. */
-class SquadCmdPayload(val action: Int, val squad: String, val value: Int) : CustomPacketPayload {
+/** Client -> server: a command-mode squad action. */
+class SquadCmdPayload(val action: Int, val squad: String, val value: Int, val text: String) : CustomPacketPayload {
     override fun type() = TYPE
 
     companion object {
         const val CREATE = 0
         const val DISBAND = 1
         const val SET_ORDER = 2
+        const val RENAME = 3
+        const val ARM_OBJECTIVE = 4
+        const val SELECT = 5
 
         val TYPE = CustomPacketPayload.Type<SquadCmdPayload>(SquadMod.loc("squad_cmd"))
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, SquadCmdPayload> = StreamCodec.composite(
             ByteBufCodecs.VAR_INT, SquadCmdPayload::action,
             ByteBufCodecs.STRING_UTF8, SquadCmdPayload::squad,
             ByteBufCodecs.VAR_INT, SquadCmdPayload::value,
+            ByteBufCodecs.STRING_UTF8, SquadCmdPayload::text,
             ::SquadCmdPayload
         )
     }

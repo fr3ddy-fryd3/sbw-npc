@@ -4,6 +4,7 @@ import net.minecraft.ChatFormatting
 import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
+import net.minecraft.nbt.NbtUtils
 import net.minecraft.nbt.Tag
 import java.util.UUID
 
@@ -12,9 +13,10 @@ class Squad(
     var name: String,
     var color: ChatFormatting,
     var order: SquadOrder,
-    var commander: UUID?,
     val members: MutableList<UUID>,
     var objective: BlockPos?,
+    /** Entity the squad is focused on: attack it (ATTACK) or guard it (DEFEND). */
+    var focusEntity: UUID?,
     val owner: UUID
 ) {
     fun save(): CompoundTag {
@@ -23,11 +25,11 @@ class Squad(
         tag.putString("Name", name)
         tag.putString("Color", color.getName())
         tag.putInt("Order", order.ordinal)
-        commander?.let { tag.putUUID("Commander", it) }
         val list = ListTag()
-        members.forEach { list.add(net.minecraft.nbt.NbtUtils.createUUID(it)) }
+        members.forEach { list.add(NbtUtils.createUUID(it)) }
         tag.put("Members", list)
-        objective?.let { tag.put("Objective", net.minecraft.nbt.NbtUtils.writeBlockPos(it)) }
+        objective?.let { tag.put("Objective", NbtUtils.writeBlockPos(it)) }
+        focusEntity?.let { tag.putUUID("Focus", it) }
         tag.putUUID("Owner", owner)
         return tag
     }
@@ -35,16 +37,16 @@ class Squad(
     companion object {
         fun load(tag: CompoundTag): Squad {
             val members = mutableListOf<UUID>()
-            tag.getList("Members", Tag.TAG_INT_ARRAY.toInt()).forEach { members.add(net.minecraft.nbt.NbtUtils.loadUUID(it)) }
-            val color = ChatFormatting.getByName(tag.getString("Color")) ?: ChatFormatting.WHITE
+            tag.getList("Members", Tag.TAG_INT_ARRAY.toInt()).forEach { members.add(NbtUtils.loadUUID(it)) }
+            val color = ChatFormatting.getByName(tag.getString("Color"))?.takeIf { it.isColor } ?: ChatFormatting.WHITE
             return Squad(
                 id = tag.getUUID("Id"),
                 name = tag.getString("Name"),
-                color = if (color.isColor) color else ChatFormatting.WHITE,
+                color = color,
                 order = SquadOrder.byOrdinal(tag.getInt("Order")),
-                commander = if (tag.hasUUID("Commander")) tag.getUUID("Commander") else null,
                 members = members,
-                objective = if (tag.contains("Objective")) net.minecraft.nbt.NbtUtils.readBlockPos(tag, "Objective").orElse(null) else null,
+                objective = if (tag.contains("Objective")) NbtUtils.readBlockPos(tag, "Objective").orElse(null) else null,
+                focusEntity = if (tag.hasUUID("Focus")) tag.getUUID("Focus") else null,
                 owner = tag.getUUID("Owner")
             )
         }

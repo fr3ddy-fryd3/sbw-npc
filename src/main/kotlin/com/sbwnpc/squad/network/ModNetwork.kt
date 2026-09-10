@@ -56,19 +56,29 @@ object ModNetwork {
             val player = ctx.player() as? ServerPlayer ?: return@enqueueWork
             val level = player.level() as? ServerLevel ?: return@enqueueWork
             val mgr = SquadManager.get(level)
+            fun bar(msg: String) = player.displayClientMessage(net.minecraft.network.chat.Component.literal(msg), true)
+            fun sid() = runCatching { UUID.fromString(p.squad) }.getOrNull()
             when (p.action) {
                 SquadCmdPayload.CREATE -> {
                     val members = SquadSelection.looseOf(player.uuid).toList()
                     if (members.isEmpty()) return@enqueueWork
                     val color = SquadToolItem.readConfig(heldTool(player))?.color ?: SquadTeams.COLORS.first()
-                    val squad = mgr.create(level, player.uuid, color, members, members.first())
+                    val squad = mgr.create(level, player.uuid, color, members)
                     SquadSelection.clear(player.uuid)
                     SquadSelection.selectSquad(player.uuid, squad.id)
-                    player.displayClientMessage(net.minecraft.network.chat.Component.literal("Squad ${squad.name} formed"), true)
+                    bar("Squad ${squad.name} formed")
                 }
-                SquadCmdPayload.DISBAND -> runCatching { mgr.disband(level, UUID.fromString(p.squad)) }
-                SquadCmdPayload.SET_ORDER -> runCatching {
-                    mgr.setOrder(UUID.fromString(p.squad), SquadOrder.byOrdinal(p.value))
+                SquadCmdPayload.DISBAND -> sid()?.let { mgr.disband(level, it) }
+                SquadCmdPayload.SET_ORDER -> sid()?.let { mgr.setOrder(it, SquadOrder.byOrdinal(p.value)) }
+                SquadCmdPayload.RENAME -> sid()?.let { mgr.rename(it, p.text) }
+                SquadCmdPayload.SELECT -> sid()?.let {
+                    SquadSelection.selectSquad(player.uuid, it)
+                    bar("Commanding ${mgr.get(it)?.name ?: "squad"}")
+                }
+                SquadCmdPayload.ARM_OBJECTIVE -> sid()?.let {
+                    SquadSelection.selectSquad(player.uuid, it)
+                    SquadSelection.armObjective(player.uuid, it)
+                    bar("Aim and right-click to set ${mgr.get(it)?.name ?: "squad"}'s objective")
                 }
             }
         }
