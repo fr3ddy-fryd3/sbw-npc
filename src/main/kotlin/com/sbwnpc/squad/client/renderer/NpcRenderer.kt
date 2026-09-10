@@ -8,6 +8,7 @@ import com.maydaymemory.mae.blend.EulerAdditiveBlender
 import com.maydaymemory.mae.blend.SimpleEulerAdditiveBlender
 import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.math.Axis
+import com.sbwnpc.squad.SquadMod
 import com.sbwnpc.squad.SquadMod.Companion.loc
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.client.Minecraft
@@ -72,30 +73,46 @@ class NpcRenderer(renderManager: EntityRendererProvider.Context) : EntityRendere
         pBuffer: MultiBufferSource,
         pPackedLight: Int
     ) {
+        val debugLog = pEntity.tickCount % 60 == 0
+
         val stack = pEntity.mainHandItem
-        if (stack.isEmpty) return
+        if (stack.isEmpty) {
+            if (debugLog) SquadMod.LOGGER.warn("[render-debug] mainHandItem is EMPTY on entity {}", pEntity.id)
+            return
+        }
 
         val boneIndex = instance.getIndex("right_arm")
+        if (debugLog) {
+            SquadMod.LOGGER.warn(
+                "[render-debug] entity={} stack={} boneIndex={} boneCount={}",
+                pEntity.id, stack, boneIndex, instance.boneCount()
+            )
+        }
         if (boneIndex < 0) return
 
         pPoseStack.pushPose()
-        instance.mulGlobalTransform(pPoseStack, boneIndex)
-        // right_arm's pivot is at the shoulder; the cube hangs ~12 bedrock units (0.75 block)
-        // below it down to roughly where the hand is.
-        pPoseStack.translate(0.0, -0.75, 0.0)
-        pPoseStack.mulPose(Axis.XP.rotationDegrees(-90f))
+        try {
+            instance.mulGlobalTransform(pPoseStack, boneIndex)
+            // right_arm's pivot is at the shoulder; the cube hangs ~12 bedrock units (0.75 block)
+            // below it down to roughly where the hand is.
+            pPoseStack.translate(0.0, -0.75, 0.0)
+            pPoseStack.mulPose(Axis.XP.rotationDegrees(-90f))
 
-        Minecraft.getInstance().itemRenderer.renderStatic(
-            stack,
-            ItemDisplayContext.THIRD_PERSON_RIGHT_HAND,
-            pPackedLight,
-            OverlayTexture.NO_OVERLAY,
-            pPoseStack,
-            pBuffer,
-            pEntity.level(),
-            pEntity.id
-        )
-        pPoseStack.popPose()
+            Minecraft.getInstance().itemRenderer.renderStatic(
+                stack,
+                ItemDisplayContext.THIRD_PERSON_RIGHT_HAND,
+                pPackedLight,
+                OverlayTexture.NO_OVERLAY,
+                pPoseStack,
+                pBuffer,
+                pEntity.level(),
+                pEntity.id
+            )
+        } catch (e: Exception) {
+            SquadMod.LOGGER.error("[render-debug] renderHeldItem threw", e)
+        } finally {
+            pPoseStack.popPose()
+        }
     }
 
     companion object {
