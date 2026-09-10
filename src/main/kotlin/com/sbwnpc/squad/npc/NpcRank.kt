@@ -16,9 +16,9 @@ enum class NpcRank(
     val semiFireIntervalMs: Long
 ) {
     RECRUIT(0.7, 55, 7.0, 900),
-    REGULAR(0.9, 46, 5.5, 700),
-    VETERAN(1.1, 38, 4.0, 550),
-    ELITE(1.3, 32, 3.0, 450);
+    REGULAR(0.9, 35, 5.5, 700),
+    VETERAN(1.1, 24, 4.0, 550),
+    ELITE(1.3, 16, 3.0, 450);
 
     fun next(): NpcRank = entries[(ordinal + 1) % entries.size]
 
