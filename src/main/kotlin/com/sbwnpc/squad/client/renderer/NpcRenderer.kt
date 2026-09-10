@@ -1,7 +1,6 @@
 package com.sbwnpc.squad.client.renderer
 
 import com.github.mcmodderanchor.simplebedrockmodel.v1.client.renderer.BedrockModelRenderTypes
-import com.github.mcmodderanchor.simplebedrockmodel.v2.common.model.runtime.BakedModelInstance
 import com.maydaymemory.mae.basic.ArrayPoseBuilder
 import com.maydaymemory.mae.basic.ZYXBoneTransformFactory
 import com.maydaymemory.mae.blend.EulerAdditiveBlender
@@ -57,45 +56,31 @@ class NpcRenderer(renderManager: EntityRendererProvider.Context) : EntityRendere
             OverlayTexture.pack(0f, pEntity.hurtTime > 0 || pEntity.deathTime > 0)
         )
 
-        renderHeldItem(pEntity, instance, pPoseStack, pBuffer, pPackedLight)
+        renderHeldItem(pEntity, pPoseStack, pBuffer, pPackedLight)
 
         pPoseStack.popPose()
     }
 
-    // The SBM skeleton has no built-in hand attachment point (no locator defined in the geo.json
-    // yet), so this hangs the item off the right_arm bone's own transform with a hand-tuned local
-    // offset. Since this is a plain EntityRenderer (not LivingEntityRenderer), nothing renders the
-    // held item for us the way it would for a vanilla humanoid mob — has to be done by hand here.
+    // BakedModelInstance.mulGlobalTransform() turned out not to give a usable world-space bone
+    // position here (logged near-zero translation, and the item rendered at the model's feet) —
+    // its semantics don't match a simple "transform to this bone's pivot" the way I assumed.
+    // Sidestepping that entirely for now: this renders in the SAME raw model-space the body mesh
+    // itself uses (bedrock units / 16 = blocks), translated straight to right_arm's own pivot/cube
+    // numbers from npc_placeholder.geo.json (pivot [-5, 22, 0], cube runs down to y=10 — the hand).
+    // Fixed position, doesn't track arm-swing animation yet — proper bone/locator attachment is a
+    // later refinement.
     private fun renderHeldItem(
         pEntity: NpcEntity,
-        instance: BakedModelInstance,
         pPoseStack: PoseStack,
         pBuffer: MultiBufferSource,
         pPackedLight: Int
     ) {
-        val debugLog = pEntity.tickCount % 60 == 0
-
         val stack = pEntity.mainHandItem
-        if (stack.isEmpty) {
-            if (debugLog) SquadMod.LOGGER.warn("[render-debug] mainHandItem is EMPTY on entity {}", pEntity.id)
-            return
-        }
-
-        val boneIndex = instance.getIndex("right_arm")
-        if (debugLog) {
-            val t = instance.getGlobalTransform(boneIndex).getTranslation(org.joml.Vector3f())
-            SquadMod.LOGGER.warn(
-                "[render-debug] entity={} stack={} boneIndex={} boneCount={} boneTranslation={}",
-                pEntity.id, stack, boneIndex, instance.boneCount(), t
-            )
-        }
-        if (boneIndex < 0) return
+        if (stack.isEmpty) return
 
         pPoseStack.pushPose()
         try {
-            instance.mulGlobalTransform(pPoseStack, boneIndex)
-            // No offset for now — logging the raw pivot position first to see where it actually
-            // lands before guessing another hand-tuned number.
+            pPoseStack.translate(-5.0 / 16.0, 10.0 / 16.0, 0.0)
 
             Minecraft.getInstance().itemRenderer.renderStatic(
                 stack,
