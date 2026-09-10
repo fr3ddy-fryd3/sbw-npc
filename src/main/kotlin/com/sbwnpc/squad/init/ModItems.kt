@@ -10,7 +10,7 @@ object ModItems {
     val ITEMS: DeferredRegister<Item> = DeferredRegister.create(BuiltInRegistries.ITEM, SquadMod.MODID)
 
     @JvmField
-    val NPC_SPAWN_EGG = ITEMS.register("npc_spawn_egg") {
+    val NPC_SPAWN_EGG = ITEMS.register("npc_spawn_egg") { ->
         DeferredSpawnEggItem(ModEntities.NPC, 0x4b5335, 0x2c331e, Item.Properties())
     }
 }

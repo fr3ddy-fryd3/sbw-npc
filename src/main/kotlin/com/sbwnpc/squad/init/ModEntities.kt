@@ -16,7 +16,7 @@ object ModEntities {
     val REGISTRY: DeferredRegister<EntityType<*>> = DeferredRegister.create(BuiltInRegistries.ENTITY_TYPE, SquadMod.MODID)
 
     @JvmField
-    val NPC: DeferredHolder<EntityType<*>, EntityType<NpcEntity>> = REGISTRY.register("npc") {
+    val NPC: DeferredHolder<EntityType<*>, EntityType<NpcEntity>> = REGISTRY.register("npc") { ->
         EntityType.Builder.of(::NpcEntity, MobCategory.CREATURE)
             .sized(0.6f, 1.95f)
             .eyeHeight(1.74f)
