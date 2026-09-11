@@ -6,6 +6,7 @@ import com.atsuishio.superbwarfare.init.ModItems
 import com.atsuishio.superbwarfare.item.misc.FiringParametersItem
 import com.atsuishio.superbwarfare.item.misc.firingParameters
 import com.atsuishio.superbwarfare.tools.TrajectoryCalculator
+import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.Squad
@@ -138,15 +139,36 @@ class MortarOperatorGoal(private val mob: NpcEntity) : Goal() {
         return squad.objective
     }
 
+    /** No more blind radius scanning: a target is only usable if THIS mortar's own operator can
+     *  personally see it right now (also reports it — he's a spotter too, with binoculars, not
+     *  just a passive report recipient), OR the rest of the faction has relayed a fresh sighting
+     *  via [TeamAwareness] — never a target nobody has actually spotted (hiding in a building/
+     *  trench stays safe from indirect fire, as it should). */
     private fun scanForEnemy(): BlockPos? {
         if (mob.tickCount < nextScanTick) return lastScanResult
         nextScanTick = mob.tickCount + 20
         val level = mob.level() as? ServerLevel ?: return null
+        val tick = mob.tickCount.toLong()
+        val faction = SquadTeams.factionOf(mob)
         val radius = detectionRadius()
-        val enemy = level.getEntitiesOfClass(
+        val candidates = level.getEntitiesOfClass(
             LivingEntity::class.java, AABB.ofSize(mob.position(), radius * 2, radius * 2, radius * 2)
-        ).firstOrNull { (it is NpcEntity || it is Player) && SquadTeams.isHostile(mob, it) && it.isAlive }
-        lastScanResult = enemy?.let { BlockPos.containing(it.position()) }
+        ).filter { (it is NpcEntity || it is Player) && SquadTeams.isHostile(mob, it) && it.isAlive }
+
+        var selfSpotted: LivingEntity? = null
+        for (c in candidates) {
+            if (!mob.sensing.hasLineOfSight(c)) continue
+            if (faction != null) TeamAwareness.report(faction, c.uuid, tick)
+            if (selfSpotted == null) selfSpotted = c
+        }
+        if (selfSpotted != null) {
+            lastScanResult = BlockPos.containing(selfSpotted.position())
+            return lastScanResult
+        }
+
+        val relayed = faction?.let { TeamAwareness.relayedContacts(it, tick) } ?: emptyList()
+        val target = relayed.asSequence().mapNotNull { level.getEntity(it) as? LivingEntity }.firstOrNull { it.isAlive }
+        lastScanResult = target?.let { BlockPos.containing(it.position()) }
         return lastScanResult
     }
 

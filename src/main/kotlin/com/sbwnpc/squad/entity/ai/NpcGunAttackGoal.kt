@@ -5,7 +5,9 @@ import com.atsuishio.superbwarfare.data.gun.GunData
 import com.atsuishio.superbwarfare.data.gun.GunProp
 import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.atsuishio.superbwarfare.tools.MillisTimer
+import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.world.entity.ai.goal.Goal
 
 /**
@@ -73,6 +75,12 @@ class NpcGunAttackGoal(private val mob: NpcEntity) : Goal() {
         val gunData = currentGunData() ?: return
 
         val canSeeTarget = mob.sensing.hasLineOfSight(target)
+        if (canSeeTarget) {
+            // Feeds TeamAwareness for the whole faction (not just this squad) — chiefly so a
+            // separate mortar crew, which has no infantry of its own to spot anything, can be
+            // cued by whoever actually sees the enemy instead of hitting a blind radius.
+            SquadTeams.factionOf(mob)?.let { TeamAwareness.report(it, target.uuid, mob.tickCount.toLong()) }
+        }
         aimTime = if (canSeeTarget) {
             minOf(maxAimTime, aimTime + 1)
         } else if (clearAimTimeWhenLostSight) {
