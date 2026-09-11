@@ -88,7 +88,19 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         val serverLevel = level as? ServerLevel ?: return InteractionResult.SUCCESS
         val stack = context.itemInHand
 
-        if (mode(stack) == MODE_COMMAND) return InteractionResult.CONSUME  // command uses air-click, not blocks
+        if (mode(stack) == MODE_COMMAND) {
+            val squadId = SquadSelection.selectedSquad(player.uuid)
+            if (squadId != null) {
+                // Close-range: point straight at the ground where you're standing, no GUI round-trip.
+                SquadManager.get(serverLevel).setObjective(squadId, context.clickedPos)
+                val name = SquadManager.get(serverLevel).get(squadId)?.name ?: "Squad"
+                actionbar(player, "$name → objective (${context.clickedPos.x}, ${context.clickedPos.y}, ${context.clickedPos.z})", ChatFormatting.GRAY)
+            } else {
+                val snap = buildSquadSnapshot(SquadManager.get(serverLevel), player.uuid, SquadSelection.looseOf(player.uuid).size)
+                sendToClient(player, OpenCommandScreenPayload(snap))
+            }
+            return InteractionResult.CONSUME
+        }
 
         // RECRUIT: deploy
         val cfg = readConfig(stack) ?: Config(NpcClass.DEFAULT, NpcRank.DEFAULT, ChatFormatting.RED)
