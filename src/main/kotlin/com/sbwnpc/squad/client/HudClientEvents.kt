@@ -51,7 +51,7 @@ object HudClientEvents {
                     listOf("[0] Order ALL" to 0xAAAAAA)
             }
             HudOverlayState.Mode.ORDERS -> {
-                header = if (HudOverlayState.selectedAll) "ALL SQUADS (${HudOverlayState.rows.size})"
+                header = if (HudOverlayState.selectedAll) "ALL SQUADS (${HudOverlayState.allTargetRows.size})"
                 else HudOverlayState.selected?.name ?: return
                 lines = SquadOrder.entries.mapIndexed { i, order -> "${i + 1}. ${order.name}" to 0xFFFFFF }
             }

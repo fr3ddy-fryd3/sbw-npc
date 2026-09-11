@@ -37,6 +37,16 @@ object HudOverlayState {
         private set
     var selectedAll: Boolean = false
         private set
+    /** The player's own recorded default faction — used only to show an accurate "ALL SQUADS (N)"
+     *  count for [selectAll]; the server independently applies the same filter (ModNetwork.
+     *  onHudOrderAll) regardless of what the client shows. Null if not chosen yet (shouldn't
+     *  happen once squads exist, but no reason to crash on it). */
+    var defaultFaction: SquadFaction? = null
+        private set
+
+    /** Rows [selectAll] actually orders — those matching the player's own faction. A test/OPFOR
+     *  squad of a different faction under the same player is excluded, same as server-side. */
+    val allTargetRows: List<Row> get() = rows.filter { defaultFaction == null || it.faction == defaultFaction }
 
     fun toggle() {
         if (isOpen) close() else PacketDistributor.sendToServer(RequestHudPayload)
@@ -60,6 +70,7 @@ object HudOverlayState {
                 t.getInt("Members")
             )
         }
+        defaultFaction = if (data.contains("DefaultFaction")) SquadFaction.byOrdinal(data.getInt("DefaultFaction")) else null
         mode = Mode.SQUAD_LIST
         selected = null
         selectedAll = false
@@ -94,9 +105,10 @@ object HudOverlayState {
         }
     }
 
-    /** `0` pressed in the squad list — pick every owned squad at once instead of one. */
+    /** `0` pressed in the squad list — pick every squad of the player's own faction at once
+     *  instead of one (see [allTargetRows]). */
     fun selectAll() {
-        if (mode != Mode.SQUAD_LIST || rows.isEmpty()) return
+        if (mode != Mode.SQUAD_LIST || allTargetRows.isEmpty()) return
         selected = null
         selectedAll = true
         mode = Mode.ORDERS

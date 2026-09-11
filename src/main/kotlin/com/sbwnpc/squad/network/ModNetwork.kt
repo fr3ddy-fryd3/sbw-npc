@@ -144,6 +144,10 @@ object ModNetwork {
             val player = ctx.player() as? ServerPlayer ?: return@enqueueWork
             val level = player.level() as? ServerLevel ?: return@enqueueWork
             val snap = buildSquadSnapshot(SquadManager.get(level), player.uuid, 0)
+            // Lets the client show an accurate "ALL SQUADS (N)" count for the `0` key, which
+            // (see onHudOrderAll) only actually orders squads matching this — not every squad the
+            // player owns, since free-choice deploys mean those can now span multiple factions.
+            PlayerFactionRegistry.get(level).get(player.uuid)?.let { snap.putInt("DefaultFaction", it.ordinal) }
             sendToClient(player, OpenHudPayload(snap))
         }
     }
@@ -163,8 +167,10 @@ object ModNetwork {
         }
     }
 
-    /** Same as [onHudOrder] but for every squad the sender owns at once — one shared look-
-     *  direction raycast, applied as each squad's objective. */
+    /** Same as [onHudOrder] but for every squad the sender owns AND that matches their own
+     *  recorded default faction — one shared look-direction raycast, applied as each squad's
+     *  objective. Scoped to the player's own faction (not just ownership) so a test/OPFOR squad
+     *  of a different faction under the same player doesn't get swept up in "order everyone". */
     private fun onHudOrderAll(p: HudOrderAllPayload, ctx: IPayloadContext) {
         ctx.enqueueWork {
             val player = ctx.player() as? ServerPlayer ?: return@enqueueWork
@@ -172,10 +178,13 @@ object ModNetwork {
             val mgr = SquadManager.get(level)
             val order = SquadOrder.byOrdinal(p.order)
             val pos = lookedAtPos(player, level)
-            mgr.forOwner(player.uuid).forEach { squad ->
-                mgr.setOrder(squad.id, order)
-                mgr.setObjective(level, squad.id, pos)
-            }
+            val defaultFaction = PlayerFactionRegistry.get(level).get(player.uuid)
+            mgr.forOwner(player.uuid)
+                .filter { defaultFaction == null || it.faction == defaultFaction }
+                .forEach { squad ->
+                    mgr.setOrder(squad.id, order)
+                    mgr.setObjective(level, squad.id, pos)
+                }
         }
     }
 
