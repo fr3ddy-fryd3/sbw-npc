@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.client.screen
 
 import com.sbwnpc.squad.network.SquadCmdPayload
+import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.ChatFormatting
 import net.minecraft.client.Minecraft
@@ -14,14 +15,14 @@ import net.neoforged.neoforge.network.PacketDistributor
 
 class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads")) {
 
-    private data class Row(val id: String, val name: String, val color: ChatFormatting, val members: Int, var order: SquadOrder)
+    private data class Row(val id: String, val name: String, val faction: SquadFaction, val members: Int, var order: SquadOrder)
 
     private val loose = snapshot.getInt("Loose")
     private val rows = snapshot.getList("Squads", Tag.TAG_COMPOUND.toInt()).map {
         val t = it as CompoundTag
         Row(
             t.getString("Id"), t.getString("Name"),
-            ChatFormatting.getByName(t.getString("Color"))?.takeIf { c -> c.isColor } ?: ChatFormatting.WHITE,
+            runCatching { SquadFaction.valueOf(t.getString("Faction")) }.getOrDefault(SquadFaction.DEFAULT),
             t.getInt("Members"), SquadOrder.byOrdinal(t.getInt("Order"))
         )
     }
@@ -80,7 +81,7 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
             g.drawString(font, Component.literal("No squads — select NPCs, then Create"), x, listTop + 6, 0xAAAAAA)
         }
         rows.forEachIndexed { i, row ->
-            g.drawString(font, Component.literal("${row.name} (${row.members})").withStyle(row.color),
+            g.drawString(font, Component.literal("${row.name} (${row.members}) [${row.faction.label}]").withStyle(row.faction.accentColor),
                 x, listTop + 4 + i * 24 + 6, -1)
         }
     }

@@ -1,6 +1,6 @@
 package com.sbwnpc.squad.squad
 
-import net.minecraft.ChatFormatting
+import com.sbwnpc.squad.npc.SquadFaction
 import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
@@ -11,7 +11,7 @@ import java.util.UUID
 class Squad(
     val id: UUID,
     var name: String,
-    var color: ChatFormatting,
+    var faction: SquadFaction,
     var order: SquadOrder,
     val members: MutableList<UUID>,
     var objective: BlockPos?,
@@ -23,7 +23,7 @@ class Squad(
         val tag = CompoundTag()
         tag.putUUID("Id", id)
         tag.putString("Name", name)
-        tag.putString("Color", color.getName())
+        tag.putString("Faction", faction.name)
         tag.putInt("Order", order.ordinal)
         val list = ListTag()
         members.forEach { list.add(NbtUtils.createUUID(it)) }
@@ -38,11 +38,11 @@ class Squad(
         fun load(tag: CompoundTag): Squad {
             val members = mutableListOf<UUID>()
             tag.getList("Members", Tag.TAG_INT_ARRAY.toInt()).forEach { members.add(NbtUtils.loadUUID(it)) }
-            val color = ChatFormatting.getByName(tag.getString("Color"))?.takeIf { it.isColor } ?: ChatFormatting.WHITE
+            val faction = runCatching { SquadFaction.valueOf(tag.getString("Faction")) }.getOrNull() ?: SquadFaction.DEFAULT
             return Squad(
                 id = tag.getUUID("Id"),
                 name = tag.getString("Name"),
-                color = color,
+                faction = faction,
                 order = SquadOrder.byOrdinal(tag.getInt("Order")),
                 members = members,
                 objective = if (tag.contains("Objective")) NbtUtils.readBlockPos(tag, "Objective").orElse(null) else null,

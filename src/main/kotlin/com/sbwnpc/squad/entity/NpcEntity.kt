@@ -11,13 +11,13 @@ import com.sbwnpc.squad.entity.ai.SquadFocusTargetGoal
 import com.sbwnpc.squad.entity.ai.SquadOrderGoal
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
+import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.Squad
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
-import net.minecraft.ChatFormatting
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.syncher.EntityDataAccessor
@@ -47,8 +47,8 @@ import net.minecraft.world.level.ServerLevelAccessor
 
 /**
  * Base squad-member entity. Role (class + rank) drives the loadout and combat tuning. Friend/foe
- * is by squad colour == vanilla scoreboard team (see [SquadTeams]); no team on either side means
- * neutral.
+ * is by squad faction == vanilla scoreboard team (see [SquadTeams]); no team on either side means
+ * neutral. The faction also picks the NPC's skin ([com.sbwnpc.squad.client.renderer.NpcRenderer]).
  */
 open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : PathfinderMob(type, level) {
 
@@ -60,8 +60,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
         get() = NpcRank.byOrdinal(entityData.get(DATA_RANK))
         set(value) = entityData.set(DATA_RANK, value.ordinal)
 
-    /** Colour to put the NPC on its scoreboard team; set before finalizeSpawn. null = leave unteamed. */
-    var spawnColor: ChatFormatting? = null
+    /** Faction to put the NPC on its scoreboard team; set before finalizeSpawn. null = leave unteamed. */
+    var spawnFaction: SquadFaction? = null
 
     /** Command group this NPC belongs to, if any. Server-side; persisted. */
     var squadId: UUID? = null
@@ -126,7 +126,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
         spawnGroupData: SpawnGroupData?
     ): SpawnGroupData? {
         applyRole()
-        spawnColor?.let { SquadTeams.assign(this, it) }
+        spawnFaction?.let { SquadTeams.assign(this, it) }
         return super.finalizeSpawn(level, difficulty, spawnType, spawnGroupData)
     }
 

@@ -4,10 +4,10 @@ import com.sbwnpc.squad.client.ClientPayloadHandlers
 import com.sbwnpc.squad.item.SquadToolItem
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
+import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.squad.SquadSelection
-import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
@@ -53,7 +53,7 @@ object ModNetwork {
                         stack,
                         NpcClass.byOrdinal(p.cls),
                         NpcRank.byOrdinal(p.rank),
-                        SquadTeams.byOrdinal(p.color),
+                        SquadFaction.byOrdinal(p.faction),
                         com.sbwnpc.squad.npc.SquadPreset.byOrdinal(p.preset)
                     )
                 }
@@ -81,8 +81,8 @@ object ModNetwork {
                 SquadCmdPayload.CREATE -> {
                     val members = SquadSelection.looseOf(player.uuid).toList()
                     if (members.isEmpty()) return@enqueueWork
-                    val color = SquadToolItem.readConfig(heldTool(player))?.color ?: SquadTeams.COLORS.first()
-                    val squad = mgr.create(level, player.uuid, color, members)
+                    val faction = SquadToolItem.readConfig(heldTool(player))?.faction ?: SquadFaction.DEFAULT
+                    val squad = mgr.create(level, player.uuid, faction, members)
                     if (squad == null) {
                         bar("Squad limit (${SquadManager.MAX_SQUADS_PER_OWNER}) reached")
                         return@enqueueWork

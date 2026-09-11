@@ -1,8 +1,8 @@
 package com.sbwnpc.squad.squad
 
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.team.SquadTeams
-import net.minecraft.ChatFormatting
 import net.minecraft.core.BlockPos
 import net.minecraft.core.HolderLookup
 import net.minecraft.core.particles.DustParticleOptions
@@ -18,7 +18,7 @@ import java.util.UUID
 /**
  * Server-wide registry of squads (command groups). Squad membership does not decide alliance —
  * that's the scoreboard team ([SquadTeams]) — but forming a squad puts every member on the
- * squad's colour team.
+ * squad's faction team.
  */
 class SquadManager : SavedData() {
 
@@ -36,13 +36,13 @@ class SquadManager : SavedData() {
 
     /** Null if [owner] is already at the [MAX_SQUADS_PER_OWNER] cap — chosen to match the 1-9
      *  number keys the quick-command HUD selects squads with. */
-    fun create(level: ServerLevel, owner: UUID, color: ChatFormatting, members: List<UUID>): Squad? {
+    fun create(level: ServerLevel, owner: UUID, faction: SquadFaction, members: List<UUID>): Squad? {
         if (forOwner(owner).size >= MAX_SQUADS_PER_OWNER) return null
-        val squad = Squad(UUID.randomUUID(), nextName(owner), color, SquadOrder.FREE, members.toMutableList(), null, null, owner)
+        val squad = Squad(UUID.randomUUID(), nextName(owner), faction, SquadOrder.FREE, members.toMutableList(), null, null, owner)
         squads[squad.id] = squad
         members.forEach { m ->
             val e = level.getEntity(m)
-            if (e != null) SquadTeams.assign(e, color)
+            if (e != null) SquadTeams.assign(e, faction)
             (e as? NpcEntity)?.squadId = squad.id
         }
         setDirty()
@@ -72,7 +72,7 @@ class SquadManager : SavedData() {
 
     private fun spawnObjectiveMarker(level: ServerLevel, squad: Squad, pos: BlockPos) {
         val owner = level.server.playerList.getPlayer(squad.owner) ?: return
-        val color = Vec3.fromRGB24(squad.color.color ?: 0xFFFFFF).toVector3f()
+        val color = Vec3.fromRGB24(squad.faction.accentColor.color ?: 0xFFFFFF).toVector3f()
         val options = DustParticleOptions(color, 1.5f)
         val center = pos.center
         level.sendParticles(owner, options, true, center.x, center.y + 0.6, center.z, 40, 0.3, 0.7, 0.3, 0.02)

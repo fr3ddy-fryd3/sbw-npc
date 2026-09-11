@@ -2,8 +2,8 @@ package com.sbwnpc.squad.client
 
 import com.sbwnpc.squad.network.HudOrderPayload
 import com.sbwnpc.squad.network.RequestHudPayload
+import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.SquadOrder
-import net.minecraft.ChatFormatting
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.Tag
 import net.neoforged.neoforge.network.PacketDistributor
@@ -21,7 +21,7 @@ object HudOverlayState {
 
     enum class Mode { SQUAD_LIST, ORDERS }
 
-    data class Row(val id: String, val name: String, val color: ChatFormatting, val members: Int)
+    data class Row(val id: String, val name: String, val faction: SquadFaction, val members: Int)
 
     @JvmStatic
     var isOpen: Boolean = false
@@ -51,7 +51,7 @@ object HudOverlayState {
             val t = it as CompoundTag
             Row(
                 t.getString("Id"), t.getString("Name"),
-                ChatFormatting.getByName(t.getString("Color"))?.takeIf { c -> c.isColor } ?: ChatFormatting.WHITE,
+                runCatching { SquadFaction.valueOf(t.getString("Faction")) }.getOrDefault(SquadFaction.DEFAULT),
                 t.getInt("Members")
             )
         }

@@ -4,8 +4,8 @@ import com.sbwnpc.squad.item.SquadToolItem
 import com.sbwnpc.squad.network.ConfigureToolPayload
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
+import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.npc.SquadPreset
-import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.ChatFormatting
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.Button
@@ -17,11 +17,11 @@ import net.neoforged.neoforge.network.PacketDistributor
 class RecruitScreen(stack: ItemStack) : Screen(Component.literal("Deploy Config")) {
 
     private val cfg = SquadToolItem.readConfig(stack)
-        ?: SquadToolItem.Config(NpcClass.DEFAULT, NpcRank.DEFAULT, SquadTeams.COLORS.first(), SquadPreset.DEFAULT)
+        ?: SquadToolItem.Config(NpcClass.DEFAULT, NpcRank.DEFAULT, SquadFaction.DEFAULT, SquadPreset.DEFAULT)
     private var preset = cfg.preset
     private var cls = cfg.cls
     private var rank = cfg.rank
-    private var color = cfg.color
+    private var faction = cfg.faction
 
     private lateinit var classBtn: Button
 
@@ -48,9 +48,9 @@ class RecruitScreen(stack: ItemStack) : Screen(Component.literal("Deploy Config"
         }.bounds(cx - 100, y, 200, 20).build())
 
         y += 24
-        addRenderableWidget(Button.builder(colorLabel()) {
-            color = SquadTeams.COLORS[(SquadTeams.ordinalOf(color) + 1) % SquadTeams.COLORS.size]
-            it.message = colorLabel(); push()
+        addRenderableWidget(Button.builder(factionLabel()) {
+            faction = faction.next()
+            it.message = factionLabel(); push()
         }.bounds(cx - 100, y, 200, 20).build())
 
         y += 34
@@ -60,10 +60,10 @@ class RecruitScreen(stack: ItemStack) : Screen(Component.literal("Deploy Config"
     private fun presetLabel() = Component.literal("Deploy: ${preset.label}").withStyle(ChatFormatting.WHITE)
     private fun classLabel() = Component.literal("Class: ${cls.name}").withStyle(ChatFormatting.GOLD)
     private fun rankLabel() = Component.literal("Rank: ${rank.name}").withStyle(ChatFormatting.AQUA)
-    private fun colorLabel() = Component.literal("Colour: ${color.getName()}").withStyle(color)
+    private fun factionLabel() = Component.literal("Faction: ${faction.label}").withStyle(faction.accentColor)
 
     private fun push() {
-        PacketDistributor.sendToServer(ConfigureToolPayload(cls.ordinal, rank.ordinal, SquadTeams.ordinalOf(color), preset.ordinal))
+        PacketDistributor.sendToServer(ConfigureToolPayload(cls.ordinal, rank.ordinal, faction.ordinal, preset.ordinal))
     }
 
     override fun render(g: GuiGraphics, mouseX: Int, mouseY: Int, partial: Float) {

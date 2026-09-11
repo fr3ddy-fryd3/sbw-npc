@@ -44,7 +44,7 @@ object HudClientEvents {
         when (HudOverlayState.mode) {
             HudOverlayState.Mode.SQUAD_LIST -> {
                 header = "Squads"
-                lines = HudOverlayState.rows.mapIndexed { i, row -> "${i + 1}. ${row.name} (${row.members})" to argb(row.color) }
+                lines = HudOverlayState.rows.mapIndexed { i, row -> "${i + 1}. ${row.name} (${row.members}) [${row.faction.label}]" to argb(row.faction.accentColor) }
                 if (lines.isEmpty()) return
             }
             HudOverlayState.Mode.ORDERS -> {

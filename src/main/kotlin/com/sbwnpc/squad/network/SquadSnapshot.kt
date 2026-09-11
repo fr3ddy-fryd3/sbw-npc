@@ -20,7 +20,7 @@ fun buildSquadSnapshot(mgr: SquadManager, owner: UUID, looseCount: Int): Compoun
             add(CompoundTag().apply {
                 putString("Id", s.id.toString())
                 putString("Name", s.name)
-                putString("Color", s.color.getName())
+                putString("Faction", s.faction.name)
                 putInt("Members", s.members.size)
                 putInt("Order", s.order.ordinal)
             })
