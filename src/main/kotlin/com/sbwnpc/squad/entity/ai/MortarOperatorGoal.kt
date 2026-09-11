@@ -1,9 +1,11 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.atsuishio.superbwarfare.entity.vehicle.MortarEntity
+import com.atsuishio.superbwarfare.entity.vehicle.utils.VehicleVecUtils
 import com.atsuishio.superbwarfare.init.ModItems
 import com.atsuishio.superbwarfare.item.misc.FiringParametersItem
 import com.atsuishio.superbwarfare.item.misc.firingParameters
+import com.atsuishio.superbwarfare.tools.TrajectoryCalculator
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.Squad
@@ -33,6 +35,7 @@ class MortarOperatorGoal(private val mob: NpcEntity) : Goal() {
     private var mortar: MortarEntity? = null
     private var nextAimTick = 0
     private var nextScanTick = 0
+    private var nextFireTick = 0
 
     init {
         setFlags(EnumSet.of(Flag.MOVE))
@@ -76,6 +79,12 @@ class MortarOperatorGoal(private val mob: NpcEntity) : Goal() {
         mob.navigation.stop()
 
         if (target.distSqr(BlockPos.containing(m.position())) < MIN_RANGE_SQR) return
+        // The mortar's own aim solver fails silently (keeps its previous/default aim) when a
+        // target is out of ballistic range or beyond the turret's pitch limits. We used to fire
+        // regardless, launching shells at whatever stale aim was left over — looked like firing
+        // at max range into nothing. Ask the same solver ourselves first and just don't shoot
+        // this tick if it can't actually hit the point.
+        if (!canHitTarget(m, target)) return
         if (mob.currentSquad()?.let { friendlyNear(level, target) } == true) return
 
         if (mob.tickCount >= nextAimTick) {
@@ -84,7 +93,30 @@ class MortarOperatorGoal(private val mob: NpcEntity) : Goal() {
             m.setTarget(stack, mob, "Main")
             nextAimTick = mob.tickCount + 20
         }
-        m.vehicleShoot(mob, "Main", null)
+        if (mob.tickCount >= nextFireTick) {
+            m.vehicleShoot(mob, "Main", null)
+            nextFireTick = mob.tickCount + FIRE_COOLDOWN_TICKS
+        }
+    }
+
+    /** Mirrors the feasibility check `MortarEntity.setTarget` does internally (both a flat and a
+     *  lofted trajectory are computed; at least one must exist and fit the turret's pitch limits)
+     *  so we never fire at a target the solver actually rejected. */
+    private fun canHitTarget(m: MortarEntity, target: BlockPos): Boolean {
+        val v = m.getProjectileVelocity("Main").toDouble()
+        val g = m.getProjectileGravity("Main").toDouble()
+        val aimPoint = target.center.add(0.0, -1.0, 0.0)
+        val flat = TrajectoryCalculator.calculateLaunchVector(m.eyePosition, aimPoint, v, g, true)
+        val high = TrajectoryCalculator.calculateLaunchVector(m.eyePosition, aimPoint, v, g, false)
+        if (flat == null || high == null) return false
+        val angle = -VehicleVecUtils.getXRotFromVector(flat).toFloat()
+        val angle2 = -VehicleVecUtils.getXRotFromVector(high).toFloat()
+        val minPitch = m.turretMinPitch
+        val maxPitch = m.turretMaxPitch
+        if (angle < -maxPitch || angle > -minPitch) {
+            return angle2 > -maxPitch && angle2 < -minPitch
+        }
+        return true
     }
 
     /** Squad-commanded target first, else the nearest hostile within detection radius. */
@@ -142,7 +174,8 @@ class MortarOperatorGoal(private val mob: NpcEntity) : Goal() {
         private const val SAFE_RADIUS = 10.0
         private const val MIN_DETECTION = 80.0
         private const val MAX_DETECTION = 160.0
-        private const val MIN_SCATTER = 1.0
-        private const val MAX_SCATTER = 7.0
+        private const val MIN_SCATTER = 5.0
+        private const val MAX_SCATTER = 10.0
+        private const val FIRE_COOLDOWN_TICKS = 50
     }
 }
