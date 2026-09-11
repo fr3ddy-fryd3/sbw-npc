@@ -34,6 +34,7 @@ object ModNetwork {
         r.playToServer(SquadCmdPayload.TYPE, SquadCmdPayload.CODEC) { p, ctx -> onSquadCmd(p, ctx) }
         r.playToServer(RequestHudPayload.TYPE, RequestHudPayload.CODEC) { _, ctx -> onRequestHud(ctx) }
         r.playToServer(HudOrderPayload.TYPE, HudOrderPayload.CODEC) { p, ctx -> onHudOrder(p, ctx) }
+        r.playToServer(HudOrderAllPayload.TYPE, HudOrderAllPayload.CODEC) { p, ctx -> onHudOrderAll(p, ctx) }
 
         r.playToClient(OpenCommandScreenPayload.TYPE, OpenCommandScreenPayload.CODEC) { p, _ ->
             if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openCommandScreen(p.data)
@@ -133,6 +134,22 @@ object ModNetwork {
             if (!mgr.ownedBy(id, player.uuid)) return@enqueueWork
             mgr.setOrder(id, SquadOrder.byOrdinal(p.order))
             mgr.setObjective(level, id, lookedAtPos(player, level))
+        }
+    }
+
+    /** Same as [onHudOrder] but for every squad the sender owns at once — one shared look-
+     *  direction raycast, applied as each squad's objective. */
+    private fun onHudOrderAll(p: HudOrderAllPayload, ctx: IPayloadContext) {
+        ctx.enqueueWork {
+            val player = ctx.player() as? ServerPlayer ?: return@enqueueWork
+            val level = player.level() as? ServerLevel ?: return@enqueueWork
+            val mgr = SquadManager.get(level)
+            val order = SquadOrder.byOrdinal(p.order)
+            val pos = lookedAtPos(player, level)
+            mgr.forOwner(player.uuid).forEach { squad ->
+                mgr.setOrder(squad.id, order)
+                mgr.setObjective(level, squad.id, pos)
+            }
         }
     }
 

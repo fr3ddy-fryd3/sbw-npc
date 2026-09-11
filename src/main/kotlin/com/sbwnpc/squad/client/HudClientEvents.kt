@@ -23,9 +23,11 @@ object HudClientEvents {
             // Drain so a click made while closed can't carry over as a phantom slot-pick the
             // instant the overlay opens.
             HudKeys.SLOTS.forEach { it.consumeClick() }
+            HudKeys.SELECT_ALL.consumeClick()
             return
         }
         HudKeys.SLOTS.forEachIndexed { i, key -> if (key.consumeClick()) HudOverlayState.pickSlot(i) }
+        if (HudKeys.SELECT_ALL.consumeClick()) HudOverlayState.selectAll()
     }
 
     private const val PANEL_WIDTH = 150
@@ -43,12 +45,14 @@ object HudClientEvents {
         val lines: List<Pair<String, Int>>
         when (HudOverlayState.mode) {
             HudOverlayState.Mode.SQUAD_LIST -> {
+                if (HudOverlayState.rows.isEmpty()) return
                 header = "Squads"
-                lines = HudOverlayState.rows.mapIndexed { i, row -> "${i + 1}. ${row.name} (${row.members}) [${row.faction.label}]" to argb(row.faction.accentColor) }
-                if (lines.isEmpty()) return
+                lines = HudOverlayState.rows.mapIndexed { i, row -> "${i + 1}. ${row.name} (${row.members}) [${row.faction.label}]" to argb(row.faction.accentColor) } +
+                    listOf("[0] Order ALL" to 0xAAAAAA)
             }
             HudOverlayState.Mode.ORDERS -> {
-                header = HudOverlayState.selected?.name ?: return
+                header = if (HudOverlayState.selectedAll) "ALL SQUADS (${HudOverlayState.rows.size})"
+                else HudOverlayState.selected?.name ?: return
                 lines = SquadOrder.entries.mapIndexed { i, order -> "${i + 1}. ${order.name}" to 0xFFFFFF }
             }
         }

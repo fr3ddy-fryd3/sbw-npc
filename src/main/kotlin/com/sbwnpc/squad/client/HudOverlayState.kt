@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.client
 
+import com.sbwnpc.squad.network.HudOrderAllPayload
 import com.sbwnpc.squad.network.HudOrderPayload
 import com.sbwnpc.squad.network.RequestHudPayload
 import com.sbwnpc.squad.npc.SquadFaction
@@ -12,10 +13,11 @@ import net.neoforged.neoforge.network.PacketDistributor
  * Client-side, non-blocking quick-command overlay state (see [HudKeys], rendered by
  * [HudClientEvents]). Toggled with [HudKeys.TOGGLE]; while open, number keys 1-9
  * ([HudKeys.SLOTS]) first pick a squad, then — reusing the same keys — pick that squad's order.
+ * `0` ([HudKeys.SELECT_ALL]) picks every squad the player owns at once instead of a single one.
  * Picking an order sends it straight to the server, which also raycasts the player's current look
- * direction for the objective in the same action (see `ModNetwork.onHudOrder`), then the overlay
- * drops back to the squad list so several squads can be commanded in one sitting without
- * reopening.
+ * direction for the objective in the same action (see `ModNetwork.onHudOrder`/`onHudOrderAll`),
+ * then the overlay drops back to the squad list so several squads can be commanded in one sitting
+ * without reopening.
  */
 object HudOverlayState {
 
@@ -33,6 +35,8 @@ object HudOverlayState {
         private set
     var selected: Row? = null
         private set
+    var selectedAll: Boolean = false
+        private set
 
     fun toggle() {
         if (isOpen) close() else PacketDistributor.sendToServer(RequestHudPayload)
@@ -42,6 +46,7 @@ object HudOverlayState {
         isOpen = false
         mode = Mode.SQUAD_LIST
         selected = null
+        selectedAll = false
         rows = emptyList()
     }
 
@@ -57,6 +62,7 @@ object HudOverlayState {
         }
         mode = Mode.SQUAD_LIST
         selected = null
+        selectedAll = false
         isOpen = true
     }
 
@@ -69,11 +75,16 @@ object HudOverlayState {
                 mode = Mode.ORDERS
             }
             Mode.ORDERS -> {
-                val row = selected ?: return
                 val order = SquadOrder.entries.getOrNull(index) ?: return
-                PacketDistributor.sendToServer(HudOrderPayload(row.id, order.ordinal))
+                if (selectedAll) {
+                    PacketDistributor.sendToServer(HudOrderAllPayload(order.ordinal))
+                } else {
+                    val row = selected ?: return
+                    PacketDistributor.sendToServer(HudOrderPayload(row.id, order.ordinal))
+                }
                 mode = Mode.SQUAD_LIST
                 selected = null
+                selectedAll = false
                 // The squad list shown after this was fetched when the HUD was opened and never
                 // refreshed since — stale if a squad died/disbanded mid-session. Ask for a fresh
                 // one now; onSnapshot() will swap `rows` in when it arrives, keeping whatever's
@@ -81,5 +92,13 @@ object HudOverlayState {
                 PacketDistributor.sendToServer(RequestHudPayload)
             }
         }
+    }
+
+    /** `0` pressed in the squad list — pick every owned squad at once instead of one. */
+    fun selectAll() {
+        if (mode != Mode.SQUAD_LIST || rows.isEmpty()) return
+        selected = null
+        selectedAll = true
+        mode = Mode.ORDERS
     }
 }

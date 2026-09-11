@@ -99,3 +99,20 @@ class HudOrderPayload(val squad: String, val order: Int) : CustomPacketPayload {
         )
     }
 }
+
+/** Client -> server: quick-command HUD order pick for EVERY squad the sender owns at once (the
+ *  `0` key) — same order and the same single look-direction raycast applied to each of them. No
+ *  squad id needed: the server resolves "every squad I own" itself, which also means ownership
+ *  needs no separate check here (unlike [HudOrderPayload]/[SquadCmdPayload]) — the owner filter
+ *  IS the selection. */
+class HudOrderAllPayload(val order: Int) : CustomPacketPayload {
+    override fun type() = TYPE
+
+    companion object {
+        val TYPE = CustomPacketPayload.Type<HudOrderAllPayload>(SquadMod.loc("hud_order_all"))
+        val CODEC: StreamCodec<RegistryFriendlyByteBuf, HudOrderAllPayload> = StreamCodec.composite(
+            ByteBufCodecs.VAR_INT, HudOrderAllPayload::order,
+            ::HudOrderAllPayload
+        )
+    }
+}
