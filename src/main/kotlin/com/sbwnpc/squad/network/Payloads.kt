@@ -59,3 +59,43 @@ class OpenCommandScreenPayload(val data: CompoundTag) : CustomPacketPayload {
         )
     }
 }
+
+/** Client -> server: the quick-command HUD was opened, please send a fresh squad list. */
+class RequestHudPayload : CustomPacketPayload {
+    override fun type() = TYPE
+
+    companion object {
+        val TYPE = CustomPacketPayload.Type<RequestHudPayload>(SquadMod.loc("request_hud"))
+        val CODEC: StreamCodec<RegistryFriendlyByteBuf, RequestHudPayload> =
+            StreamCodec.unit(RequestHudPayload())
+    }
+}
+
+/** Server -> client: (re)populate the quick-command HUD's squad list. */
+class OpenHudPayload(val data: CompoundTag) : CustomPacketPayload {
+    override fun type() = TYPE
+
+    companion object {
+        val TYPE = CustomPacketPayload.Type<OpenHudPayload>(SquadMod.loc("open_hud"))
+        val CODEC: StreamCodec<RegistryFriendlyByteBuf, OpenHudPayload> = StreamCodec.composite(
+            ByteBufCodecs.COMPOUND_TAG, OpenHudPayload::data,
+            ::OpenHudPayload
+        )
+    }
+}
+
+/** Client -> server: quick-command HUD order pick — set [squad]'s order and, in the same action,
+ *  its objective to wherever the player is currently looking (raycast happens server-side, using
+ *  the player's synced look direction at the moment this is processed). */
+class HudOrderPayload(val squad: String, val order: Int) : CustomPacketPayload {
+    override fun type() = TYPE
+
+    companion object {
+        val TYPE = CustomPacketPayload.Type<HudOrderPayload>(SquadMod.loc("hud_order"))
+        val CODEC: StreamCodec<RegistryFriendlyByteBuf, HudOrderPayload> = StreamCodec.composite(
+            ByteBufCodecs.STRING_UTF8, HudOrderPayload::squad,
+            ByteBufCodecs.VAR_INT, HudOrderPayload::order,
+            ::HudOrderPayload
+        )
+    }
+}

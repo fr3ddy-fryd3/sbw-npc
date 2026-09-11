@@ -2,6 +2,9 @@ modLoader = "kotlinforforge"
 loaderVersion = "[5.8.0,)"
 license = "All Rights Reserved"
 
+[[mixins]]
+config = "mixins.sbwnpc.json"
+
 [[mods]]
 modId = "sbwnpc"
 version = "0.1.0-dev"

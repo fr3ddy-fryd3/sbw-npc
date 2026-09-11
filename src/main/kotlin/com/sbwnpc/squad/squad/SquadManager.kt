@@ -27,7 +27,10 @@ class SquadManager : SavedData() {
     fun forOwner(owner: UUID): List<Squad> = squads.values.filter { it.owner == owner }
     fun squadOf(entity: UUID): Squad? = squads.values.firstOrNull { entity in it.members }
 
-    fun create(level: ServerLevel, owner: UUID, color: ChatFormatting, members: List<UUID>): Squad {
+    /** Null if [owner] is already at the [MAX_SQUADS_PER_OWNER] cap — chosen to match the 1-9
+     *  number keys the quick-command HUD selects squads with. */
+    fun create(level: ServerLevel, owner: UUID, color: ChatFormatting, members: List<UUID>): Squad? {
+        if (forOwner(owner).size >= MAX_SQUADS_PER_OWNER) return null
         val squad = Squad(UUID.randomUUID(), nextName(owner), color, SquadOrder.FREE, members.toMutableList(), null, null, owner)
         squads[squad.id] = squad
         members.forEach { m ->
@@ -81,6 +84,7 @@ class SquadManager : SavedData() {
 
     companion object {
         private const val FILE = "sbwnpc_squads"
+        const val MAX_SQUADS_PER_OWNER = 9
         private val NAMES = listOf("Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel")
 
         private fun load(tag: CompoundTag, registries: HolderLookup.Provider): SquadManager {

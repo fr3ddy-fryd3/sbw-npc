@@ -19,4 +19,8 @@ object ClientPayloadHandlers {
     fun openCommandScreen(snapshot: CompoundTag) {
         net.minecraft.client.Minecraft.getInstance().setScreen(CommandScreen(snapshot))
     }
+
+    fun openHud(snapshot: CompoundTag) {
+        HudOverlayState.onSnapshot(snapshot)
+    }
 }

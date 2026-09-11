@@ -113,7 +113,11 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
 
         if (spawned.size > 1) {
             val squad = SquadManager.get(serverLevel).create(serverLevel, player.uuid, cfg.color, spawned.map { it.uuid })
-            actionbar(player, "Deployed ${squad.name} (${spawned.size})", cfg.color)
+            if (squad != null) {
+                actionbar(player, "Deployed ${squad.name} (${spawned.size})", cfg.color)
+            } else {
+                actionbar(player, "Deployed, but squad limit (${SquadManager.MAX_SQUADS_PER_OWNER}) reached — not grouped", ChatFormatting.RED)
+            }
         }
         return InteractionResult.CONSUME
     }

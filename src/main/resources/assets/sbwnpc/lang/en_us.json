@@ -1,5 +1,16 @@
 {
   "entity.sbwnpc.npc": "Squad Member",
   "item.sbwnpc.npc_spawn_egg": "Squad Member Spawn Egg",
-  "item.sbwnpc.squad_tool": "Squad Command Tool"
+  "item.sbwnpc.squad_tool": "Squad Command Tool",
+  "key.categories.sbwnpc": "SBW Squads",
+  "key.sbwnpc.hud_toggle": "Open/close squad command",
+  "key.sbwnpc.hud_slot_1": "Squad command: slot 1",
+  "key.sbwnpc.hud_slot_2": "Squad command: slot 2",
+  "key.sbwnpc.hud_slot_3": "Squad command: slot 3",
+  "key.sbwnpc.hud_slot_4": "Squad command: slot 4",
+  "key.sbwnpc.hud_slot_5": "Squad command: slot 5",
+  "key.sbwnpc.hud_slot_6": "Squad command: slot 6",
+  "key.sbwnpc.hud_slot_7": "Squad command: slot 7",
+  "key.sbwnpc.hud_slot_8": "Squad command: slot 8",
+  "key.sbwnpc.hud_slot_9": "Squad command: slot 9"
 }
