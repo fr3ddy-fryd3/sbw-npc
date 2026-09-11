@@ -2,6 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.atsuishio.superbwarfare.entity.projectile.HandGrenadeEntity
 import com.atsuishio.superbwarfare.tools.RangeTool.calculateFiringSolution
+import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import net.minecraft.server.level.ServerLevel
@@ -33,7 +34,11 @@ class GrenadeThrowGoal(private val mob: NpcEntity) : Goal() {
         val target = mob.target ?: return false
         if (!target.isAlive) return false
         val dist = mob.distanceTo(target)
-        return dist in MIN_RANGE..MAX_RANGE && mob.sensing.hasLineOfSight(target)
+        if (dist !in MIN_RANGE..MAX_RANGE || !mob.sensing.hasLineOfSight(target)) return false
+        // This goal has no MOVE flag (never sidesteps itself) — if an ally is in the way, just
+        // skip the throw this cycle; the main NpcGunAttackGoal running alongside it owns
+        // positioning and will already be trying to clear its own line of fire.
+        return FriendlyFireGuard.hasClearLineOfFire(mob, target.boundingBox.center)
     }
 
     override fun canContinueToUse() = false

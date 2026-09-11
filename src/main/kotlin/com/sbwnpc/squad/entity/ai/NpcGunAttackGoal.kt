@@ -5,6 +5,7 @@ import com.atsuishio.superbwarfare.data.gun.GunData
 import com.atsuishio.superbwarfare.data.gun.GunProp
 import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.atsuishio.superbwarfare.tools.MillisTimer
+import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.team.SquadTeams
@@ -27,10 +28,19 @@ class NpcGunAttackGoal(private val mob: NpcEntity) : Goal() {
     private val clearAimTimeWhenLostSight = true
     private val zoom = false
 
+    // Friendly-fire guard: rechecked periodically rather than every tick (cheap enough, but no
+    // need to be this precise every single tick), with a cap on sidestep attempts so a boxed-in
+    // shooter just holds fire and waits instead of dancing forever.
+    private var lineIsClear = true
+    private var nextFriendlyCheckTick = 0
+    private var sidestepAttempts = 0
+
     companion object {
         private const val BASE_SHOOT_DISTANCE = 24.0
         private const val DEFEND_LEASH = 14.0
         private const val DEFEND_LEASH_DROP = 24.0
+        private const val FRIENDLY_CHECK_INTERVAL = 5
+        private const val MAX_SIDESTEP_ATTEMPTS = 3
     }
 
     // Driven by rank (recruits are slow and inaccurate, elites fast and precise) and class
@@ -66,6 +76,9 @@ class NpcGunAttackGoal(private val mob: NpcEntity) : Goal() {
         mob.stopUsingItem()
         aimTime = 0
         shootTimer.stop()
+        lineIsClear = true
+        nextFriendlyCheckTick = 0
+        sidestepAttempts = 0
     }
 
     override fun requiresUpdateEveryTick() = true
@@ -113,6 +126,17 @@ class NpcGunAttackGoal(private val mob: NpcEntity) : Goal() {
             mob.navigation.stop()
         }
 
+        if (mob.tickCount >= nextFriendlyCheckTick) {
+            nextFriendlyCheckTick = mob.tickCount + FRIENDLY_CHECK_INTERVAL
+            lineIsClear = FriendlyFireGuard.hasClearLineOfFire(mob, target.eyePosition)
+            if (!lineIsClear && sidestepAttempts < MAX_SIDESTEP_ATTEMPTS) {
+                sidestepAttempts++
+                FriendlyFireGuard.sidestepAwayFromAllies(mob, target.eyePosition)
+            } else if (lineIsClear) {
+                sidestepAttempts = 0
+            }
+        }
+
         gunData.tick(mob, true)
 
         if (gunData.shouldStartReloading(mob)) {
@@ -122,7 +146,7 @@ class NpcGunAttackGoal(private val mob: NpcEntity) : Goal() {
             gunData.startBolt()
         }
 
-        if (gunData.canShoot(mob) && aimTime >= maxAimTime) {
+        if (lineIsClear && gunData.canShoot(mob) && aimTime >= maxAimTime) {
             val rps = gunData.get(GunProp.RPM).toDouble() / 60.0
             var cooldown = Math.round(1000 / rps)
 
