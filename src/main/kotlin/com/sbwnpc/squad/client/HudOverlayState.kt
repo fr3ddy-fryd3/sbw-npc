@@ -74,6 +74,11 @@ object HudOverlayState {
                 PacketDistributor.sendToServer(HudOrderPayload(row.id, order.ordinal))
                 mode = Mode.SQUAD_LIST
                 selected = null
+                // The squad list shown after this was fetched when the HUD was opened and never
+                // refreshed since — stale if a squad died/disbanded mid-session. Ask for a fresh
+                // one now; onSnapshot() will swap `rows` in when it arrives, keeping whatever's
+                // currently cached on screen in the meantime instead of flashing empty.
+                PacketDistributor.sendToServer(RequestHudPayload)
             }
         }
     }
