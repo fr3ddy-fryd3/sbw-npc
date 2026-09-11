@@ -1,8 +1,10 @@
 package com.sbwnpc.squad.squad
 
+import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.SquadFaction
 import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.nbt.IntTag
 import net.minecraft.nbt.ListTag
 import net.minecraft.nbt.NbtUtils
 import net.minecraft.nbt.Tag
@@ -17,7 +19,12 @@ class Squad(
     var objective: BlockPos?,
     /** Entity the squad is focused on: attack it (ATTACK) or guard it (DEFEND). */
     var focusEntity: UUID?,
-    val owner: UUID
+    val owner: UUID,
+    /** Barracks this squad resupplies from, if any — see BarracksEntity. */
+    var barracksId: UUID? = null,
+    /** Classes the squad was formed/last topped up with, in order — a barracks compares this
+     *  against current `members.size` to know what's missing and what class to spawn next. */
+    var originalComposition: List<NpcClass> = emptyList()
 ) {
     fun save(): CompoundTag {
         val tag = CompoundTag()
@@ -31,6 +38,10 @@ class Squad(
         objective?.let { tag.put("Objective", NbtUtils.writeBlockPos(it)) }
         focusEntity?.let { tag.putUUID("Focus", it) }
         tag.putUUID("Owner", owner)
+        barracksId?.let { tag.putUUID("BarracksId", it) }
+        val comp = ListTag()
+        originalComposition.forEach { comp.add(IntTag.valueOf(it.ordinal)) }
+        tag.put("OriginalComposition", comp)
         return tag
     }
 
@@ -39,6 +50,8 @@ class Squad(
             val members = mutableListOf<UUID>()
             tag.getList("Members", Tag.TAG_INT_ARRAY.toInt()).forEach { members.add(NbtUtils.loadUUID(it)) }
             val faction = runCatching { SquadFaction.valueOf(tag.getString("Faction")) }.getOrNull() ?: SquadFaction.DEFAULT
+            val originalComposition = tag.getList("OriginalComposition", Tag.TAG_INT.toInt())
+                .map { NpcClass.byOrdinal((it as IntTag).asInt) }
             return Squad(
                 id = tag.getUUID("Id"),
                 name = tag.getString("Name"),
@@ -47,7 +60,9 @@ class Squad(
                 members = members,
                 objective = if (tag.contains("Objective")) NbtUtils.readBlockPos(tag, "Objective").orElse(null) else null,
                 focusEntity = if (tag.hasUUID("Focus")) tag.getUUID("Focus") else null,
-                owner = tag.getUUID("Owner")
+                owner = tag.getUUID("Owner"),
+                barracksId = if (tag.hasUUID("BarracksId")) tag.getUUID("BarracksId") else null,
+                originalComposition = originalComposition
             )
         }
     }

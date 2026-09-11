@@ -1,6 +1,8 @@
 package com.sbwnpc.squad.squad
 
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.init.ModEntities
+import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.core.BlockPos
@@ -11,6 +13,7 @@ import net.minecraft.nbt.ListTag
 import net.minecraft.nbt.Tag
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.entity.MobSpawnType
 import net.minecraft.world.level.saveddata.SavedData
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
@@ -38,7 +41,13 @@ class SquadManager : SavedData() {
      *  number keys the quick-command HUD selects squads with. */
     fun create(level: ServerLevel, owner: UUID, faction: SquadFaction, members: List<UUID>): Squad? {
         if (forOwner(owner).size >= MAX_SQUADS_PER_OWNER) return null
-        val squad = Squad(UUID.randomUUID(), nextName(owner), faction, SquadOrder.FREE, members.toMutableList(), null, null, owner)
+        // Captured now so a future barracks assignment knows what "full strength" means for this
+        // squad — the actual classes it was formed/last topped up with, not a guess.
+        val composition = members.mapNotNull { (level.getEntity(it) as? NpcEntity)?.npcClass }
+        val squad = Squad(
+            UUID.randomUUID(), nextName(owner), faction, SquadOrder.FREE, members.toMutableList(),
+            null, null, owner, null, composition
+        )
         squads[squad.id] = squad
         members.forEach { m ->
             val e = level.getEntity(m)
@@ -88,8 +97,42 @@ class SquadManager : SavedData() {
 
     fun removeMemberEverywhere(entity: UUID) {
         squads.values.forEach { it.members.remove(entity) }
-        squads.entries.removeIf { it.value.members.isEmpty() }
+        // A squad tied to a barracks survives at 0 members — it's waiting on resupply, not
+        // abandoned. Only an unlinked empty squad gets cleaned up automatically.
+        squads.entries.removeIf { it.value.members.isEmpty() && it.value.barracksId == null }
         setDirty()
+    }
+
+    fun squadsAtBarracks(barracksId: UUID): List<Squad> = squads.values.filter { it.barracksId == barracksId }
+
+    fun assignBarracks(id: UUID, barracksId: UUID?) {
+        squads[id]?.let { it.barracksId = barracksId; setDirty() }
+    }
+
+    /** Called periodically by BarracksEntity itself (not on a separate scheduler) for every squad
+     *  currently assigned to it: spawns whatever's missing versus [Squad.originalComposition] at
+     *  [pos], scattered a little so reinforcements don't all stack on one block. */
+    fun respawnAtBarracks(level: ServerLevel, barracksId: UUID, pos: Vec3, faction: SquadFaction) {
+        val difficulty = level.getCurrentDifficultyAt(BlockPos.containing(pos))
+        var changed = false
+        squadsAtBarracks(barracksId).forEach { squad ->
+            val missing = squad.originalComposition.drop(squad.members.size)
+            missing.forEach { cls ->
+                val npc = ModEntities.NPC.get().create(level) ?: return@forEach
+                val offX = (level.random.nextDouble() - 0.5) * 3.0
+                val offZ = (level.random.nextDouble() - 0.5) * 3.0
+                npc.moveTo(pos.x + offX, pos.y, pos.z + offZ, level.random.nextFloat() * 360f, 0f)
+                npc.npcClass = cls
+                npc.npcRank = NpcRank.DEFAULT
+                npc.spawnFaction = faction
+                npc.finalizeSpawn(level, difficulty, MobSpawnType.SPAWN_EGG, null)
+                level.addFreshEntity(npc)
+                squad.members.add(npc.uuid)
+                npc.squadId = squad.id
+                changed = true
+            }
+        }
+        if (changed) setDirty()
     }
 
     private fun nextName(owner: UUID): String {
