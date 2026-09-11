@@ -42,7 +42,6 @@ import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.damagesource.DamageSource
-import net.minecraft.tags.DamageTypeTags
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
 import net.minecraft.world.level.Level
@@ -88,9 +87,27 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
         threatPos = threat
     }
 
+    /** Cover-seeking state machine driven entirely by [com.sbwnpc.squad.entity.ai.SeekCoverGoal] —
+     *  lives here (like suppression above) rather than inside the goal so combat goals can read it
+     *  without needing a reference to the goal instance. */
+    enum class CoverPhase { NONE, MOVING_TO_COVER, IN_COVER, PEEKING, RETURNING_TO_COVER }
+
+    var coverPhase: CoverPhase = CoverPhase.NONE
+
+    /** True while SeekCoverGoal must have the mob to itself for movement and combat goals should
+     *  stand down entirely — false during [CoverPhase.PEEKING], the deliberate window where the
+     *  mob steps out to return fire and NpcGunAttackGoal/GrenadeThrowGoal take back over. */
+    fun combatLockedByCover(): Boolean = coverPhase == CoverPhase.MOVING_TO_COVER ||
+        coverPhase == CoverPhase.IN_COVER || coverPhase == CoverPhase.RETURNING_TO_COVER
+
     override fun hurt(source: DamageSource, amount: Float): Boolean {
         val result = super.hurt(source, amount)
-        if (result && !level().isClientSide && source.`is`(DamageTypeTags.IS_PROJECTILE)) {
+        // NOT vanilla's DamageTypeTags.IS_PROJECTILE — SBW's gunfire damage types (GUN_FIRE,
+        // GUN_FIRE_HEADSHOT, the ones actually dealt by every rifle/MG/sniper hit) are never
+        // members of that vanilla tag. SBW tags them under its OWN
+        // ModTags.DamageTypes.PROJECTILE instead — using the vanilla tag here meant this branch
+        // was silently dead for ordinary gunfire and suppression only ever came from explosions.
+        if (result && !level().isClientSide && source.`is`(com.atsuishio.superbwarfare.init.ModTags.DamageTypes.PROJECTILE)) {
             suppress(source.sourcePosition ?: position())
         }
         return result

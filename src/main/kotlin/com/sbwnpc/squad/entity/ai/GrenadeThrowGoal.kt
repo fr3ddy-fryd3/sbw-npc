@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.entity.ai
 
+import com.atsuishio.superbwarfare.config.server.ExplosionConfig
 import com.atsuishio.superbwarfare.entity.projectile.HandGrenadeEntity
 import com.atsuishio.superbwarfare.tools.RangeTool.calculateFiringSolution
 import com.sbwnpc.squad.combat.FriendlyFireGuard
@@ -29,7 +30,7 @@ class GrenadeThrowGoal(private val mob: NpcEntity) : Goal() {
 
     override fun canUse(): Boolean {
         if (mob.npcClass != NpcClass.GRENADIER) return false
-        if (mob.isSuppressed()) return false // SeekCoverGoal owns the mob until this lapses
+        if (mob.combatLockedByCover()) return false // SeekCoverGoal owns the mob until this lapses
         if (mob.level() !is ServerLevel) return false
         if (mob.tickCount < nextThrowTick) return false
         val target = mob.target ?: return false
@@ -39,7 +40,11 @@ class GrenadeThrowGoal(private val mob: NpcEntity) : Goal() {
         // This goal has no MOVE flag (never sidesteps itself) — if an ally is in the way, just
         // skip the throw this cycle; the main NpcGunAttackGoal running alongside it owns
         // positioning and will already be trying to clear its own line of fire.
-        return FriendlyFireGuard.hasClearLineOfFire(mob, target.boundingBox.center)
+        if (!FriendlyFireGuard.hasClearLineOfFire(mob, target.boundingBox.center)) return false
+        // Separate check: even a clean throw can down an ally standing within the M67's own blast
+        // radius of where it lands — repositioning wouldn't fix this, so just skip the throw.
+        val radius = ExplosionConfig.M67_GRENADE_EXPLOSION_RADIUS.get().toDouble()
+        return FriendlyFireGuard.hasClearBlastRadius(mob, target.boundingBox.center, radius)
     }
 
     override fun canContinueToUse() = false

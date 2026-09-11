@@ -28,18 +28,20 @@ class NpcGunAttackGoal(private val mob: NpcEntity) : Goal() {
     private val clearAimTimeWhenLostSight = true
     private val zoom = false
 
-    // Friendly-fire guard: rechecked periodically rather than every tick (cheap enough, but no
-    // need to be this precise every single tick), with a cap on sidestep attempts so a boxed-in
-    // shooter just holds fire and waits instead of dancing forever.
+    // Friendly-fire guard: re-evaluated every tick (cheap bounded AABB query, and a stale "clear"
+    // flag between checks is itself a friendly-fire window). Sidestep MOVEMENT is still only
+    // reissued on its own cooldown — no need to reorder navigation every tick — with a cap on
+    // attempts so a boxed-in shooter just holds fire and waits instead of dancing forever.
     private var lineIsClear = true
-    private var nextFriendlyCheckTick = 0
+    private var blastClear = true
+    private var nextSidestepTick = 0
     private var sidestepAttempts = 0
 
     companion object {
         private const val BASE_SHOOT_DISTANCE = 24.0
         private const val DEFEND_LEASH = 14.0
         private const val DEFEND_LEASH_DROP = 24.0
-        private const val FRIENDLY_CHECK_INTERVAL = 5
+        private const val SIDESTEP_COOLDOWN = 5
         private const val MAX_SIDESTEP_ATTEMPTS = 3
     }
 
@@ -56,14 +58,14 @@ class NpcGunAttackGoal(private val mob: NpcEntity) : Goal() {
     }
 
     override fun canUse(): Boolean {
-        if (mob.isSuppressed()) return false // SeekCoverGoal owns the mob until this lapses
+        if (mob.combatLockedByCover()) return false // SeekCoverGoal owns the mob until this lapses
         val target = mob.target ?: return false
         val gunData = currentGunData() ?: return false
         return target.isAlive && (gunData.countBackupAmmo(mob) > 0 || gunData.hasEnoughAmmoToShoot(mob))
     }
 
     override fun canContinueToUse(): Boolean {
-        if (mob.isSuppressed()) return false
+        if (mob.combatLockedByCover()) return false
         val gunData = currentGunData() ?: return false
         return (canUse() || !mob.navigation.isDone) &&
                 (gunData.countBackupAmmo(mob) > 0 || gunData.hasEnoughAmmoToShoot(mob))
@@ -79,7 +81,8 @@ class NpcGunAttackGoal(private val mob: NpcEntity) : Goal() {
         aimTime = 0
         shootTimer.stop()
         lineIsClear = true
-        nextFriendlyCheckTick = 0
+        blastClear = true
+        nextSidestepTick = 0
         sidestepAttempts = 0
     }
 
@@ -128,15 +131,27 @@ class NpcGunAttackGoal(private val mob: NpcEntity) : Goal() {
             mob.navigation.stop()
         }
 
-        if (mob.tickCount >= nextFriendlyCheckTick) {
-            nextFriendlyCheckTick = mob.tickCount + FRIENDLY_CHECK_INTERVAL
-            lineIsClear = FriendlyFireGuard.hasClearLineOfFire(mob, target.eyePosition)
-            if (!lineIsClear && sidestepAttempts < MAX_SIDESTEP_ATTEMPTS) {
+        // Re-evaluated every tick: a stale "clear" flag from a few ticks ago is itself a
+        // friendly-fire window. hasClearLineOfFire models the actual firing cone (spread-based
+        // deviation), not just the idealised aim line — a shot can miss the direct line and still
+        // clip an ally standing near, not on, it. Explosive weapons (M79) additionally need a
+        // blast-radius check at the TARGET's position, independent of the firing cone — a clean
+        // shot can still down an ally standing next to what it hits.
+        lineIsClear = FriendlyFireGuard.hasClearLineOfFire(mob, target.eyePosition, spread)
+        val explosionRadius = gunData.get(GunProp.EXPLOSION_RADIUS)
+        blastClear = FriendlyFireGuard.hasClearBlastRadius(mob, target.position(), explosionRadius)
+
+        if (!lineIsClear) {
+            if (mob.tickCount >= nextSidestepTick && sidestepAttempts < MAX_SIDESTEP_ATTEMPTS) {
+                nextSidestepTick = mob.tickCount + SIDESTEP_COOLDOWN
                 sidestepAttempts++
+                // Repositioning the shooter can clear a blocked firing cone, but does nothing for
+                // a blast-radius block (the explosion still lands on the same target regardless of
+                // where the shooter stands) — only worth trying for the line-of-fire case.
                 FriendlyFireGuard.sidestepAwayFromAllies(mob, target.eyePosition)
-            } else if (lineIsClear) {
-                sidestepAttempts = 0
             }
+        } else {
+            sidestepAttempts = 0
         }
 
         gunData.tick(mob, true)
@@ -148,7 +163,7 @@ class NpcGunAttackGoal(private val mob: NpcEntity) : Goal() {
             gunData.startBolt()
         }
 
-        if (lineIsClear && gunData.canShoot(mob) && aimTime >= maxAimTime) {
+        if (lineIsClear && blastClear && gunData.canShoot(mob) && aimTime >= maxAimTime) {
             val rps = gunData.get(GunProp.RPM).toDouble() / 60.0
             var cooldown = Math.round(1000 / rps)
 
