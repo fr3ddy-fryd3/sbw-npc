@@ -10,7 +10,11 @@ enum class NpcClass(val weaponId: ResourceLocation) {
     RIFLEMAN(ResourceLocation.fromNamespaceAndPath("superbwarfare", "ak_12")),
     MACHINE_GUNNER(ResourceLocation.fromNamespaceAndPath("superbwarfare", "rpk")),
     SNIPER(ResourceLocation.fromNamespaceAndPath("superbwarfare", "svd")),
-    GRENADIER(ResourceLocation.fromNamespaceAndPath("superbwarfare", "m_79"));
+    GRENADIER(ResourceLocation.fromNamespaceAndPath("superbwarfare", "m_79")),
+
+    /** Carries a sidearm for self-defence; its real job (MortarOperatorGoal) is manning a nearby
+     *  placed MortarEntity, which must already be loaded with shells by the player. */
+    MORTAR_OPERATOR(ResourceLocation.fromNamespaceAndPath("superbwarfare", "m_1911"));
 
     fun next(): NpcClass = entries[(ordinal + 1) % entries.size]
 

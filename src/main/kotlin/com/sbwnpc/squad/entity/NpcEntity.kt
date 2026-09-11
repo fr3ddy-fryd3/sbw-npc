@@ -2,6 +2,9 @@ package com.sbwnpc.squad.entity
 
 import com.atsuishio.superbwarfare.data.gun.GunData
 import com.atsuishio.superbwarfare.item.gun.GunItem
+import com.sbwnpc.squad.entity.ai.GrenadeThrowGoal
+import com.sbwnpc.squad.entity.ai.MortarClaims
+import com.sbwnpc.squad.entity.ai.MortarOperatorGoal
 import com.sbwnpc.squad.entity.ai.NpcGunAttackGoal
 import com.sbwnpc.squad.entity.ai.SquadFocusTargetGoal
 import com.sbwnpc.squad.entity.ai.SquadOrderGoal
@@ -87,7 +90,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
         super.registerGoals()
         this.goalSelector.addGoal(0, FloatGoal(this))
         this.goalSelector.addGoal(1, NpcGunAttackGoal(this))
+        this.goalSelector.addGoal(1, MortarOperatorGoal(this))
         this.goalSelector.addGoal(2, MeleeAttackGoal(this, 1.2, false))
+        this.goalSelector.addGoal(2, GrenadeThrowGoal(this))
         this.goalSelector.addGoal(3, SquadOrderGoal(this))
         this.goalSelector.addGoal(4, RandomLookAroundGoal(this))
         this.goalSelector.addGoal(5, WaterAvoidingRandomStrollGoal(this, 0.8))
@@ -157,6 +162,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
 
     override fun die(cause: net.minecraft.world.damagesource.DamageSource) {
         (level() as? ServerLevel)?.let { SquadManager.get(it).removeMemberEverywhere(uuid) }
+        MortarClaims.release(uuid)
         super.die(cause)
     }
 

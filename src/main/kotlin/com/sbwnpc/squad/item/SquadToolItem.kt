@@ -95,7 +95,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
                 SquadManager.get(serverLevel).setObjective(squadId, context.clickedPos)
                 val name = SquadManager.get(serverLevel).get(squadId)?.name ?: "Squad"
                 actionbar(player, "$name → objective (${context.clickedPos.x}, ${context.clickedPos.y}, ${context.clickedPos.z})", ChatFormatting.GRAY)
-            } else {
+            } else if (player is net.minecraft.server.level.ServerPlayer) {
                 val snap = buildSquadSnapshot(SquadManager.get(serverLevel), player.uuid, SquadSelection.looseOf(player.uuid).size)
                 sendToClient(player, OpenCommandScreenPayload(snap))
             }
