@@ -48,10 +48,11 @@ class RecruitScreen(stack: ItemStack) : Screen(Component.literal("Deploy Config"
         }.bounds(cx - 100, y, 200, 20).build())
 
         y += 24
-        addRenderableWidget(Button.builder(factionLabel()) {
-            faction = faction.next()
-            it.message = factionLabel(); push()
-        }.bounds(cx - 100, y, 200, 20).build())
+        // Locked server-side (PlayerFactionRegistry) — not a cycle button, just a static readout.
+        // A future admin-override permission may re-enable picking here; not implemented yet.
+        val factionBtn = Button.builder(factionLabel()) {}.bounds(cx - 100, y, 200, 20).build()
+        factionBtn.active = false
+        addRenderableWidget(factionBtn)
 
         y += 34
         addRenderableWidget(Button.builder(Component.literal("Done")) { onClose() }.bounds(cx - 100, y, 200, 20).build())

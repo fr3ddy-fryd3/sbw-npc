@@ -1,16 +1,17 @@
 package com.sbwnpc.squad.item
 
 import com.atsuishio.superbwarfare.tools.NBTTool
-import com.sbwnpc.squad.client.ClientPayloadHandlers
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModEntities
 import com.sbwnpc.squad.network.OpenCommandScreenPayload
+import com.sbwnpc.squad.network.OpenRecruitScreenPayload
 import com.sbwnpc.squad.network.buildSquadSnapshot
 import com.sbwnpc.squad.network.sendToClient
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.npc.SquadPreset
+import com.sbwnpc.squad.squad.PlayerFactionRegistry
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.squad.SquadSelection
@@ -62,7 +63,15 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         }
 
         if (mode(stack) == MODE_RECRUIT) {
-            if (level.isClientSide) ClientPayloadHandlers.openRecruitScreen(stack)
+            // Round-trips through the server (same pattern as Command mode below) purely so the
+            // faction-lock check has somewhere to run before the GUI opens — the client can't
+            // know on its own whether this player has picked a faction yet.
+            if (!level.isClientSide && player is ServerPlayer) {
+                val serverLevel = player.level() as ServerLevel
+                if (PlayerFactionRegistry.get(serverLevel).requireOrPrompt(player) != null) {
+                    sendToClient(player, OpenRecruitScreenPayload)
+                }
+            }
             return InteractionResultHolder.sidedSuccess(stack, level.isClientSide)
         }
 
@@ -88,6 +97,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         val level = context.level
         if (level.isClientSide) return InteractionResult.SUCCESS
         val serverLevel = level as? ServerLevel ?: return InteractionResult.SUCCESS
+        val serverPlayer = player as? ServerPlayer ?: return InteractionResult.SUCCESS
         val stack = context.itemInHand
 
         if (mode(stack) == MODE_COMMAND) {
@@ -105,15 +115,18 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         }
 
         // RECRUIT: deploy — a single NPC, or a whole preset squad lined up abreast of the click point.
-        val cfg = readConfig(stack) ?: Config(NpcClass.DEFAULT, NpcRank.DEFAULT, SquadFaction.DEFAULT, SquadPreset.DEFAULT)
+        // Faction always comes from the lock, never from the tool's own NBT — belt-and-suspenders
+        // even though onConfigureTool already only ever writes the locked value there.
+        val faction = PlayerFactionRegistry.get(serverLevel).requireOrPrompt(serverPlayer) ?: return InteractionResult.CONSUME
+        val cfg = readConfig(stack) ?: Config(NpcClass.DEFAULT, NpcRank.DEFAULT, faction, SquadPreset.DEFAULT)
         val pos = context.clickedPos.relative(context.clickedFace)
         val composition = if (cfg.preset == SquadPreset.SINGLE) listOf(cfg.cls) else cfg.preset.composition
         val difficulty = level.getCurrentDifficultyAt(pos)
-        val spawned = deployLine(serverLevel, pos, player.yRot, composition, cfg.rank, cfg.faction, difficulty)
+        val spawned = deployLine(serverLevel, pos, player.yRot, composition, cfg.rank, faction, difficulty)
         if (spawned.isEmpty()) return InteractionResult.FAIL
 
         if (spawned.size > 1) {
-            val squad = SquadManager.get(serverLevel).create(serverLevel, player.uuid, cfg.faction, spawned.map { it.uuid })
+            val squad = SquadManager.get(serverLevel).create(serverLevel, player.uuid, faction, spawned.map { it.uuid })
             if (squad != null) {
                 actionbar(player, "Deployed ${squad.name} (${spawned.size})", cfg.faction.accentColor)
             } else {

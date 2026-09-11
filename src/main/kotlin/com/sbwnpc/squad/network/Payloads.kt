@@ -100,6 +100,41 @@ class HudOrderPayload(val squad: String, val order: Int) : CustomPacketPayload {
     }
 }
 
+/** Server -> client: this player hasn't picked their faction yet — force the mandatory picker.
+ *  Sent whenever a server-side entry point that would assign a faction finds no entry in
+ *  [com.sbwnpc.squad.squad.PlayerFactionRegistry] for the sender. A singleton for the same reason
+ *  [RequestHudPayload] is one. */
+object OpenFactionPickPayload : CustomPacketPayload {
+    override fun type() = TYPE
+
+    val TYPE = CustomPacketPayload.Type<OpenFactionPickPayload>(SquadMod.loc("open_faction_pick"))
+    val CODEC: StreamCodec<RegistryFriendlyByteBuf, OpenFactionPickPayload> = StreamCodec.unit(this)
+}
+
+/** Client -> server: the player's one-time faction pick. */
+class ChooseFactionPayload(val faction: Int) : CustomPacketPayload {
+    override fun type() = TYPE
+
+    companion object {
+        val TYPE = CustomPacketPayload.Type<ChooseFactionPayload>(SquadMod.loc("choose_faction"))
+        val CODEC: StreamCodec<RegistryFriendlyByteBuf, ChooseFactionPayload> = StreamCodec.composite(
+            ByteBufCodecs.VAR_INT, ChooseFactionPayload::faction,
+            ::ChooseFactionPayload
+        )
+    }
+}
+
+/** Server -> client: permission granted, open the Recruit GUI using the tool currently in hand.
+ *  Recruit-mode air-click now round-trips through the server (same pattern Command mode already
+ *  used) purely so the faction-lock check has somewhere server-side to happen before the GUI
+ *  opens — the GUI content itself still comes entirely from the client's own held item stack. */
+object OpenRecruitScreenPayload : CustomPacketPayload {
+    override fun type() = TYPE
+
+    val TYPE = CustomPacketPayload.Type<OpenRecruitScreenPayload>(SquadMod.loc("open_recruit_screen"))
+    val CODEC: StreamCodec<RegistryFriendlyByteBuf, OpenRecruitScreenPayload> = StreamCodec.unit(this)
+}
+
 /** Client -> server: quick-command HUD order pick for EVERY squad the sender owns at once (the
  *  `0` key) — same order and the same single look-direction raycast applied to each of them. No
  *  squad id needed: the server resolves "every squad I own" itself, which also means ownership

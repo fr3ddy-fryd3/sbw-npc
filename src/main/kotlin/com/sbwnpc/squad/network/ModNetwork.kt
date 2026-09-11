@@ -5,6 +5,7 @@ import com.sbwnpc.squad.item.SquadToolItem
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
+import com.sbwnpc.squad.squad.PlayerFactionRegistry
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.squad.SquadSelection
@@ -35,6 +36,7 @@ object ModNetwork {
         r.playToServer(RequestHudPayload.TYPE, RequestHudPayload.CODEC) { _, ctx -> onRequestHud(ctx) }
         r.playToServer(HudOrderPayload.TYPE, HudOrderPayload.CODEC) { p, ctx -> onHudOrder(p, ctx) }
         r.playToServer(HudOrderAllPayload.TYPE, HudOrderAllPayload.CODEC) { p, ctx -> onHudOrderAll(p, ctx) }
+        r.playToServer(ChooseFactionPayload.TYPE, ChooseFactionPayload.CODEC) { p, ctx -> onChooseFaction(p, ctx) }
 
         r.playToClient(OpenCommandScreenPayload.TYPE, OpenCommandScreenPayload.CODEC) { p, _ ->
             if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openCommandScreen(p.data)
@@ -42,11 +44,21 @@ object ModNetwork {
         r.playToClient(OpenHudPayload.TYPE, OpenHudPayload.CODEC) { p, _ ->
             if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openHud(p.data)
         }
+        r.playToClient(OpenFactionPickPayload.TYPE, OpenFactionPickPayload.CODEC) { _, _ ->
+            if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openFactionPick()
+        }
+        r.playToClient(OpenRecruitScreenPayload.TYPE, OpenRecruitScreenPayload.CODEC) { _, _ ->
+            if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openRecruitScreenFromHeldItem()
+        }
     }
 
     private fun onConfigureTool(p: ConfigureToolPayload, ctx: IPayloadContext) {
         ctx.enqueueWork {
             val player = ctx.player() as? ServerPlayer ?: return@enqueueWork
+            val level = player.level() as? ServerLevel ?: return@enqueueWork
+            // Never trust the client's faction ordinal — the player's locked faction (prompting
+            // the mandatory pick screen if they haven't chosen yet) always wins.
+            val faction = PlayerFactionRegistry.get(level).requireOrPrompt(player) ?: return@enqueueWork
             for (slot in listOf(EquipmentSlot.MAINHAND, EquipmentSlot.OFFHAND)) {
                 val stack = player.getItemBySlot(slot)
                 if (stack.item is SquadToolItem) {
@@ -54,11 +66,20 @@ object ModNetwork {
                         stack,
                         NpcClass.byOrdinal(p.cls),
                         NpcRank.byOrdinal(p.rank),
-                        SquadFaction.byOrdinal(p.faction),
+                        faction,
                         com.sbwnpc.squad.npc.SquadPreset.byOrdinal(p.preset)
                     )
                 }
             }
+        }
+    }
+
+    /** The player's one-time, permanent faction pick — idempotent, later attempts are ignored. */
+    private fun onChooseFaction(p: ChooseFactionPayload, ctx: IPayloadContext) {
+        ctx.enqueueWork {
+            val player = ctx.player() as? ServerPlayer ?: return@enqueueWork
+            val level = player.level() as? ServerLevel ?: return@enqueueWork
+            PlayerFactionRegistry.get(level).set(player.uuid, SquadFaction.byOrdinal(p.faction))
         }
     }
 
@@ -82,7 +103,7 @@ object ModNetwork {
                 SquadCmdPayload.CREATE -> {
                     val members = SquadSelection.looseOf(player.uuid).toList()
                     if (members.isEmpty()) return@enqueueWork
-                    val faction = SquadToolItem.readConfig(heldTool(player))?.faction ?: SquadFaction.DEFAULT
+                    val faction = PlayerFactionRegistry.get(level).requireOrPrompt(player) ?: return@enqueueWork
                     val squad = mgr.create(level, player.uuid, faction, members)
                     if (squad == null) {
                         bar("Squad limit (${SquadManager.MAX_SQUADS_PER_OWNER}) reached")
@@ -165,10 +186,4 @@ object ModNetwork {
         while (level.getBlockState(p).isAir && p.y > level.minBuildHeight && guard++ < 200) p = p.below()
         return p.above()
     }
-
-    private fun heldTool(player: ServerPlayer) =
-        listOf(EquipmentSlot.MAINHAND, EquipmentSlot.OFFHAND)
-            .map { player.getItemBySlot(it) }
-            .firstOrNull { it.item is SquadToolItem }
-            ?: net.minecraft.world.item.ItemStack.EMPTY
 }
