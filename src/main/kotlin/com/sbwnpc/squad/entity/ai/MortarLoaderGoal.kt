@@ -67,15 +67,17 @@ class MortarLoaderGoal(private val mob: NpcEntity) : Goal() {
         if (mob.tickCount < nextCheckTick) return
         nextCheckTick = mob.tickCount + 60
 
+        // The mortar's own container caps this slot at 1 shell (VehicleEntity.maxStackSize
+        // override), not a real stack — it holds exactly one round in the tube at a time. Only
+        // touch it when actually empty; re-setting a full slot every check just spams SBW's
+        // "exceeding max stack size" clamp warning for nothing.
         val loaded = m.getItems().firstOrNull()
-        if (loaded == null || loaded.item !is MortarShellItem || loaded.count < RESUPPLY_THRESHOLD) {
-            m.setItem(0, ItemStack(ModItems.MORTAR_SHELL.get(), RESUPPLY_STACK))
+        if (loaded == null || loaded.isEmpty || loaded.item !is MortarShellItem) {
+            m.setItem(0, ItemStack(ModItems.MORTAR_SHELL.get(), 1))
         }
     }
 
     companion object {
         private const val SEARCH_RANGE = 30.0
-        private const val RESUPPLY_THRESHOLD = 4
-        private const val RESUPPLY_STACK = 16
     }
 }
