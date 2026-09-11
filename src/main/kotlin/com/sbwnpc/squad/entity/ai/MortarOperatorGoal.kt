@@ -173,7 +173,7 @@ class MortarOperatorGoal(private val mob: NpcEntity) : Goal() {
 
     companion object {
         private const val SEARCH_RANGE = 30.0
-        private const val MIN_RANGE_SQR = 15.0 * 15.0
+        private const val MIN_RANGE_SQR = 25.0 * 25.0
         private const val SAFE_RADIUS = 10.0
         private const val MIN_DETECTION = 80.0
         private const val MAX_DETECTION = 160.0
