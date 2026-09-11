@@ -80,7 +80,7 @@ class MortarOperatorGoal(private val mob: NpcEntity) : Goal() {
 
         if (mob.tickCount >= nextAimTick) {
             val stack = ItemStack(ModItems.FIRING_PARAMETERS.get())
-            stack.firingParameters = FiringParametersItem.Parameters(target)
+            stack.firingParameters = FiringParametersItem.Parameters(target, scatterRadius(), false)
             m.setTarget(stack, mob, "Main")
             nextAimTick = mob.tickCount + 20
         }
@@ -122,6 +122,14 @@ class MortarOperatorGoal(private val mob: NpcEntity) : Goal() {
         return MIN_DETECTION + t * (MAX_DETECTION - MIN_DETECTION)
     }
 
+    /** Impact-point scatter radius (blocks), fed straight into SBW's own `ArtilleryEntity`
+     *  dispersion (`targetPos.center.randomPos(radius)`). Recruits scatter widest, elites
+     *  land almost dead-on. */
+    private fun scatterRadius(): Int {
+        val t = mob.npcRank.ordinal / (com.sbwnpc.squad.npc.NpcRank.entries.size - 1).toDouble()
+        return Math.round(MAX_SCATTER - t * (MAX_SCATTER - MIN_SCATTER)).toInt()
+    }
+
     private fun friendlyNear(level: ServerLevel, target: BlockPos): Boolean {
         val center = target.center
         return level.getEntitiesOfClass(NpcEntity::class.java, AABB.ofSize(center, SAFE_RADIUS * 2, SAFE_RADIUS * 2, SAFE_RADIUS * 2))
@@ -134,5 +142,7 @@ class MortarOperatorGoal(private val mob: NpcEntity) : Goal() {
         private const val SAFE_RADIUS = 10.0
         private const val MIN_DETECTION = 80.0
         private const val MAX_DETECTION = 160.0
+        private const val MIN_SCATTER = 1.0
+        private const val MAX_SCATTER = 7.0
     }
 }
