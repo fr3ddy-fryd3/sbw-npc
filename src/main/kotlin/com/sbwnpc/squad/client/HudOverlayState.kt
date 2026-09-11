@@ -35,7 +35,7 @@ object HudOverlayState {
         private set
 
     fun toggle() {
-        if (isOpen) close() else PacketDistributor.sendToServer(RequestHudPayload())
+        if (isOpen) close() else PacketDistributor.sendToServer(RequestHudPayload)
     }
 
     fun close() {

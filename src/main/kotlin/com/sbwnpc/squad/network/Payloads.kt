@@ -60,15 +60,15 @@ class OpenCommandScreenPayload(val data: CompoundTag) : CustomPacketPayload {
     }
 }
 
-/** Client -> server: the quick-command HUD was opened, please send a fresh squad list. */
-class RequestHudPayload : CustomPacketPayload {
+/** Client -> server: the quick-command HUD was opened, please send a fresh squad list.
+ *  A singleton (StreamCodec.unit requires encoding the exact same instance every time, not just
+ *  an equal one — a `class` re-instantiated per send fails that identity check and blows up the
+ *  connection). */
+object RequestHudPayload : CustomPacketPayload {
     override fun type() = TYPE
 
-    companion object {
-        val TYPE = CustomPacketPayload.Type<RequestHudPayload>(SquadMod.loc("request_hud"))
-        val CODEC: StreamCodec<RegistryFriendlyByteBuf, RequestHudPayload> =
-            StreamCodec.unit(RequestHudPayload())
-    }
+    val TYPE = CustomPacketPayload.Type<RequestHudPayload>(SquadMod.loc("request_hud"))
+    val CODEC: StreamCodec<RegistryFriendlyByteBuf, RequestHudPayload> = StreamCodec.unit(this)
 }
 
 /** Server -> client: (re)populate the quick-command HUD's squad list. */
