@@ -8,7 +8,7 @@ import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
 
 /** Client -> server: overwrite the held squad tool's config. */
-class ConfigureToolPayload(val cls: Int, val rank: Int, val color: Int) : CustomPacketPayload {
+class ConfigureToolPayload(val cls: Int, val rank: Int, val color: Int, val preset: Int) : CustomPacketPayload {
     override fun type() = TYPE
 
     companion object {
@@ -17,6 +17,7 @@ class ConfigureToolPayload(val cls: Int, val rank: Int, val color: Int) : Custom
             ByteBufCodecs.VAR_INT, ConfigureToolPayload::cls,
             ByteBufCodecs.VAR_INT, ConfigureToolPayload::rank,
             ByteBufCodecs.VAR_INT, ConfigureToolPayload::color,
+            ByteBufCodecs.VAR_INT, ConfigureToolPayload::preset,
             ::ConfigureToolPayload
         )
     }
@@ -33,6 +34,7 @@ class SquadCmdPayload(val action: Int, val squad: String, val value: Int, val te
         const val RENAME = 3
         const val ARM_OBJECTIVE = 4
         const val SELECT = 5
+        const val ARM_FOCUS = 6
 
         val TYPE = CustomPacketPayload.Type<SquadCmdPayload>(SquadMod.loc("squad_cmd"))
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, SquadCmdPayload> = StreamCodec.composite(

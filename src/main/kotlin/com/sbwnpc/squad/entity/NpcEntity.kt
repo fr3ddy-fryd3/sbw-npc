@@ -4,6 +4,7 @@ import com.atsuishio.superbwarfare.data.gun.GunData
 import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.sbwnpc.squad.entity.ai.GrenadeThrowGoal
 import com.sbwnpc.squad.entity.ai.MortarClaims
+import com.sbwnpc.squad.entity.ai.MortarLoaderGoal
 import com.sbwnpc.squad.entity.ai.MortarOperatorGoal
 import com.sbwnpc.squad.entity.ai.NpcGunAttackGoal
 import com.sbwnpc.squad.entity.ai.SquadFocusTargetGoal
@@ -91,6 +92,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
         this.goalSelector.addGoal(0, FloatGoal(this))
         this.goalSelector.addGoal(1, NpcGunAttackGoal(this))
         this.goalSelector.addGoal(1, MortarOperatorGoal(this))
+        this.goalSelector.addGoal(1, MortarLoaderGoal(this))
         this.goalSelector.addGoal(2, MeleeAttackGoal(this, 1.2, false))
         this.goalSelector.addGoal(2, GrenadeThrowGoal(this))
         this.goalSelector.addGoal(3, SquadOrderGoal(this))

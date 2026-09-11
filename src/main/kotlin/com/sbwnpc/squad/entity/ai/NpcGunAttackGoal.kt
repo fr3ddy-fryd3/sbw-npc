@@ -23,18 +23,20 @@ class NpcGunAttackGoal(private val mob: NpcEntity) : Goal() {
     private val shootTimer = MillisTimer()
 
     private val clearAimTimeWhenLostSight = true
-    private val shootDistance = 24.0
     private val zoom = false
 
     companion object {
+        private const val BASE_SHOOT_DISTANCE = 24.0
         private const val DEFEND_LEASH = 14.0
         private const val DEFEND_LEASH_DROP = 24.0
     }
 
-    // Driven by rank (recruits are slow and inaccurate, elites fast and precise).
+    // Driven by rank (recruits are slow and inaccurate, elites fast and precise) and class
+    // (snipers reach far and shoot straighter, machine-gunners/grenadiers reach a bit further).
     private val maxAimTime get() = mob.npcRank.aimTimeTicks
     private val semiFireInterval get() = mob.npcRank.semiFireIntervalMs
-    private val spread get() = mob.npcRank.spread
+    private val spread get() = mob.npcRank.spread * mob.npcClass.accuracyMultiplier
+    private val shootDistance get() = BASE_SHOOT_DISTANCE * mob.npcClass.shootDistanceMultiplier
 
     private fun currentGunData(): GunData? {
         if (mob.mainHandItem.item !is GunItem) return null

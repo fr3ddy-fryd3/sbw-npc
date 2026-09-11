@@ -12,6 +12,7 @@ object SquadSelection {
     private val loose = HashMap<UUID, MutableSet<UUID>>()
     private val squad = HashMap<UUID, UUID>()
     private val awaitingObjective = HashMap<UUID, UUID>()
+    private val awaitingFocus = HashMap<UUID, UUID>()
 
     fun looseOf(player: UUID): Set<UUID> = loose[player].orEmpty()
     fun selectedSquad(player: UUID): UUID? = squad[player]
@@ -31,6 +32,7 @@ object SquadSelection {
         loose.remove(player)
         squad.remove(player)
         awaitingObjective.remove(player)
+        awaitingFocus.remove(player)
     }
 
     fun armObjective(player: UUID, squadId: UUID) {
@@ -39,4 +41,11 @@ object SquadSelection {
 
     /** Consumes and returns the squad awaiting an objective, if any. */
     fun takeObjectiveArm(player: UUID): UUID? = awaitingObjective.remove(player)
+
+    fun armFocus(player: UUID, squadId: UUID) {
+        awaitingFocus[player] = squadId
+    }
+
+    /** Consumes and returns the squad awaiting a focus-entity pick, if any. */
+    fun takeFocusArm(player: UUID): UUID? = awaitingFocus.remove(player)
 }

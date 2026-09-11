@@ -9,6 +9,7 @@ import com.sbwnpc.squad.network.buildSquadSnapshot
 import com.sbwnpc.squad.network.sendToClient
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
+import com.sbwnpc.squad.npc.SquadPreset
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.squad.SquadSelection
@@ -102,17 +103,52 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             return InteractionResult.CONSUME
         }
 
-        // RECRUIT: deploy
-        val cfg = readConfig(stack) ?: Config(NpcClass.DEFAULT, NpcRank.DEFAULT, ChatFormatting.RED)
+        // RECRUIT: deploy — a single NPC, or a whole preset squad lined up abreast of the click point.
+        val cfg = readConfig(stack) ?: Config(NpcClass.DEFAULT, NpcRank.DEFAULT, ChatFormatting.RED, SquadPreset.DEFAULT)
         val pos = context.clickedPos.relative(context.clickedFace)
-        val npc = ModEntities.NPC.get().create(level) ?: return InteractionResult.FAIL
-        npc.moveTo(pos.x + 0.5, pos.y.toDouble(), pos.z + 0.5, player.yRot + 180f, 0f)
-        npc.npcClass = cfg.cls
-        npc.npcRank = cfg.rank
-        npc.spawnColor = cfg.color
-        npc.finalizeSpawn(serverLevel, level.getCurrentDifficultyAt(pos), MobSpawnType.SPAWN_EGG, null)
-        level.addFreshEntity(npc)
+        val composition = if (cfg.preset == SquadPreset.SINGLE) listOf(cfg.cls) else cfg.preset.composition
+        val difficulty = level.getCurrentDifficultyAt(pos)
+        val spawned = deployLine(serverLevel, pos, player.yRot, composition, cfg.rank, cfg.color, difficulty)
+        if (spawned.isEmpty()) return InteractionResult.FAIL
+
+        if (spawned.size > 1) {
+            val squad = SquadManager.get(serverLevel).create(serverLevel, player.uuid, cfg.color, spawned.map { it.uuid })
+            actionbar(player, "Deployed ${squad.name} (${spawned.size})", cfg.color)
+        }
         return InteractionResult.CONSUME
+    }
+
+    /** Spawns [composition] side by side, centred on [center] and facing the player, perpendicular
+     *  to the direction they're looking — a natural "line abreast" for a squad, and identical to a
+     *  single deploy when composition has one entry. */
+    private fun deployLine(
+        level: ServerLevel,
+        center: BlockPos,
+        facingYaw: Float,
+        composition: List<NpcClass>,
+        rank: NpcRank,
+        color: ChatFormatting,
+        difficulty: net.minecraft.world.DifficultyInstance
+    ): List<NpcEntity> {
+        val yawRad = Math.toRadians(facingYaw.toDouble())
+        val rightX = Math.cos(yawRad)
+        val rightZ = Math.sin(yawRad)
+        val n = composition.size
+        val spacing = 2.0
+
+        val result = mutableListOf<NpcEntity>()
+        for ((i, cls) in composition.withIndex()) {
+            val offset = (i - (n - 1) / 2.0) * spacing
+            val npc = ModEntities.NPC.get().create(level) ?: continue
+            npc.moveTo(center.x + 0.5 + rightX * offset, center.y.toDouble(), center.z + 0.5 + rightZ * offset, facingYaw + 180f, 0f)
+            npc.npcClass = cls
+            npc.npcRank = rank
+            npc.spawnColor = color
+            npc.finalizeSpawn(level, difficulty, MobSpawnType.SPAWN_EGG, null)
+            level.addFreshEntity(npc)
+            result.add(npc)
+        }
+        return result
     }
 
     override fun interactLivingEntity(stack: ItemStack, player: Player, target: LivingEntity, hand: InteractionHand): InteractionResult {
@@ -124,6 +160,17 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         if (player.isShiftKeyDown) {
             SquadSelection.clear(player.uuid)
             actionbar(player, "Selection cleared", ChatFormatting.GRAY)
+            return InteractionResult.SUCCESS
+        }
+
+        // Armed via the GUI's [Focus] button: this click sets the focus, full stop — takes
+        // priority over normal NPC selection so you CAN target/guard one of your own NPCs too.
+        val armedFocus = SquadSelection.takeFocusArm(player.uuid)
+        if (armedFocus != null) {
+            mgr.setFocus(armedFocus, target.uuid)
+            val squad = mgr.get(armedFocus)
+            val verb = if (squad?.order == SquadOrder.DEFEND) "will guard" else "will target"
+            actionbar(player, "${squad?.name ?: "Squad"} $verb ${target.name.string}", (squad?.color ?: ChatFormatting.GRAY))
             return InteractionResult.SUCCESS
         }
 
@@ -176,19 +223,21 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         val m = if (mode(stack) == MODE_COMMAND) "COMMAND" else "RECRUIT"
         tooltip.add(Component.literal("Mode: $m").withStyle(ChatFormatting.YELLOW))
         readConfig(stack)?.let { cfg ->
-            tooltip.add(Component.literal("Deploy: ${cfg.cls.name} / ${cfg.rank.name}").withStyle(ChatFormatting.GOLD))
+            val what = if (cfg.preset == SquadPreset.SINGLE) cfg.cls.name else cfg.preset.label
+            tooltip.add(Component.literal("Deploy: $what / ${cfg.rank.name}").withStyle(ChatFormatting.GOLD))
             tooltip.add(Component.literal("Colour: ${cfg.color.getName()}").withStyle(cfg.color))
         }
         tooltip.add(Component.literal("shift+air: switch mode · air: open GUI").withStyle(ChatFormatting.DARK_GRAY))
     }
 
-    data class Config(val cls: NpcClass, val rank: NpcRank, val color: ChatFormatting)
+    data class Config(val cls: NpcClass, val rank: NpcRank, val color: ChatFormatting, val preset: SquadPreset)
 
     companion object {
         const val KEY_CLASS = "Class"
         const val KEY_RANK = "Rank"
         const val KEY_COLOR = "Color"
         const val KEY_MODE = "Mode"
+        const val KEY_PRESET = "Preset"
         const val MODE_RECRUIT = 0
         const val MODE_COMMAND = 1
 
@@ -200,14 +249,16 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             return Config(
                 if (tag.contains(KEY_CLASS)) NpcClass.byOrdinal(tag.getInt(KEY_CLASS)) else NpcClass.DEFAULT,
                 if (tag.contains(KEY_RANK)) NpcRank.byOrdinal(tag.getInt(KEY_RANK)) else NpcRank.DEFAULT,
-                if (tag.contains(KEY_COLOR)) SquadTeams.byOrdinal(tag.getInt(KEY_COLOR)) else DEFAULT_COLOR
+                if (tag.contains(KEY_COLOR)) SquadTeams.byOrdinal(tag.getInt(KEY_COLOR)) else DEFAULT_COLOR,
+                if (tag.contains(KEY_PRESET)) SquadPreset.byOrdinal(tag.getInt(KEY_PRESET)) else SquadPreset.DEFAULT
             )
         }
 
-        fun writeConfig(stack: ItemStack, cls: NpcClass, rank: NpcRank, color: ChatFormatting) {
+        fun writeConfig(stack: ItemStack, cls: NpcClass, rank: NpcRank, color: ChatFormatting, preset: SquadPreset) {
             NBTTool.withTag(stack) {
                 it.putInt(KEY_CLASS, cls.ordinal)
                 it.putInt(KEY_RANK, rank.ordinal)
+                it.putInt(KEY_PRESET, preset.ordinal)
                 it.putInt(KEY_COLOR, SquadTeams.ordinalOf(color))
             }
         }

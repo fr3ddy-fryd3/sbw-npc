@@ -44,7 +44,8 @@ object ModNetwork {
                         stack,
                         NpcClass.byOrdinal(p.cls),
                         NpcRank.byOrdinal(p.rank),
-                        SquadTeams.byOrdinal(p.color)
+                        SquadTeams.byOrdinal(p.color),
+                        com.sbwnpc.squad.npc.SquadPreset.byOrdinal(p.preset)
                     )
                 }
             }
@@ -79,6 +80,11 @@ object ModNetwork {
                     SquadSelection.selectSquad(player.uuid, it)
                     SquadSelection.armObjective(player.uuid, it)
                     bar("Aim and right-click to set ${mgr.get(it)?.name ?: "squad"}'s objective")
+                }
+                SquadCmdPayload.ARM_FOCUS -> sid()?.let {
+                    SquadSelection.selectSquad(player.uuid, it)
+                    SquadSelection.armFocus(player.uuid, it)
+                    bar("Right-click anything (including your own NPCs) to focus ${mgr.get(it)?.name ?: "squad"} on it")
                 }
             }
         }

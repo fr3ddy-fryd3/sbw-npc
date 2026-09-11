@@ -54,7 +54,7 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
             }.bounds(x + 216, y, 66, 20).build())
 
             addRenderableWidget(Button.builder(Component.literal("Focus")) {
-                send(SquadCmdPayload.SELECT, row.id); onClose()
+                send(SquadCmdPayload.ARM_FOCUS, row.id); onClose()
             }.bounds(x + 286, y, 44, 20).build())
 
             addRenderableWidget(Button.builder(Component.literal("R")) {
