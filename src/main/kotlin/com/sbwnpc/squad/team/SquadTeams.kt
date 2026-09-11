@@ -65,13 +65,13 @@ object SquadTeams {
         return team.color.takeIf { it.isColor }
     }
 
-    /** Squad-colour friend/foe: different managed teams (or exactly one side teamed) are hostile;
-     *  both unteamed is neutral. */
+    /** Squad-colour friend/foe: both sides need an actual (different) squad colour to be hostile.
+     *  Anything colourless — the owning player included, since nothing ever puts a player on a
+     *  squad team — is neutral, never an autonomous target. */
     fun isHostile(a: Entity, b: Entity): Boolean {
         if (a === b) return false
-        val ta: Team? = a.team
-        val tb: Team? = b.team
-        if (ta == null && tb == null) return false
+        val ta: Team = a.team ?: return false
+        val tb: Team = b.team ?: return false
         return ta !== tb && !a.isAlliedTo(b)
     }
 }
