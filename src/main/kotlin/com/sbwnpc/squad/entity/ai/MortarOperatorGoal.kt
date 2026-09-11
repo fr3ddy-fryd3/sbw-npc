@@ -44,7 +44,13 @@ class MortarOperatorGoal(private val mob: NpcEntity) : Goal() {
 
     override fun canUse(): Boolean {
         if (mob.npcClass != NpcClass.MORTAR_OPERATOR) return false
-        if (mob.target != null) return false // don't abandon self-defence
+        // Genuine personal danger only (an enemy right on top of the operator) — NOT just "some
+        // goal set mob.target", which also happens from the generic 10-block-LOS
+        // NearestAttackableTargetGoal/HurtByTargetGoal every NpcEntity has regardless of class.
+        // Bailing out on ANY mob.target used to silently disable the whole mortar fire-mission /
+        // TeamAwareness path in ordinary combat conditions, not just real self-defense.
+        val personalThreat = mob.target?.takeIf { it.isAlive && mob.distanceToSqr(it) <= SELF_DEFENSE_RANGE_SQR }
+        if (personalThreat != null) return false
         if (fireTarget() == null) return false
 
         val current = mortar
@@ -197,6 +203,7 @@ class MortarOperatorGoal(private val mob: NpcEntity) : Goal() {
         private const val SEARCH_RANGE = 30.0
         private const val MIN_RANGE_SQR = 25.0 * 25.0
         private const val SAFE_RADIUS = 10.0
+        private const val SELF_DEFENSE_RANGE_SQR = 6.0 * 6.0
         private const val MIN_DETECTION = 80.0
         private const val MAX_DETECTION = 160.0
         private const val MIN_SCATTER = 5.0
