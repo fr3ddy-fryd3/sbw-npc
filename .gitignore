@@ -30,3 +30,7 @@ Thumbs.db
 
 # Local overrides
 local.properties
+
+# Working notes for the phase currently in progress — never committed, kept as a
+# personal reference alongside PLAN.md, deliberately out of git history.
+PHASE5_PLAN.md
