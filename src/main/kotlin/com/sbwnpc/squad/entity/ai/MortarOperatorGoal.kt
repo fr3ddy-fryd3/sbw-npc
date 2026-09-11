@@ -56,6 +56,9 @@ class MortarOperatorGoal(private val mob: NpcEntity) : Goal() {
 
         MortarClaims.claimOperator(found.uuid, mob.uuid)
         mortar = found
+        // See MortarLoaderGoal: non-"intelligent" mortars auto-fire on any inventory change, so
+        // make sure this is set even if we claim the mortar before a loader ever does.
+        found.intelligent = true
         return true
     }
 

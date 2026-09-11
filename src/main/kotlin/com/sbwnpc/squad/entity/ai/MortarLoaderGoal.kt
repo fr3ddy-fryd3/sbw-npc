@@ -38,6 +38,12 @@ class MortarLoaderGoal(private val mob: NpcEntity) : Goal() {
 
         MortarClaims.claimLoader(found.uuid, mob.uuid)
         mortar = found
+        // Non-"intelligent" mortars auto-fire on any inventory change (MortarEntity.setChanged),
+        // simulating a dumb mortar that discharges as soon as a shell is dropped in. We drive
+        // firing ourselves through MortarOperatorGoal's own aim/cooldown checks, so flip this on
+        // (same flag a player sets by binding a Monitor item) to stop setItem() below from
+        // triggering an uncontrolled shot every time we resupply.
+        found.intelligent = true
         return true
     }
 
