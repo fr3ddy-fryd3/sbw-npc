@@ -71,7 +71,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             val armed = SquadSelection.takeObjectiveArm(player.uuid)
             if (armed != null) {
                 val pos = lookedAtPos(player, serverLevel)
-                SquadManager.get(serverLevel).setObjective(armed, pos)
+                SquadManager.get(serverLevel).setObjective(serverLevel, armed, pos)
                 val name = SquadManager.get(serverLevel).get(armed)?.name ?: "Squad"
                 actionbar(player, "$name → objective (${pos.x}, ${pos.y}, ${pos.z})", ChatFormatting.GRAY)
             } else {
@@ -93,7 +93,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             val squadId = SquadSelection.selectedSquad(player.uuid)
             if (squadId != null) {
                 // Close-range: point straight at the ground where you're standing, no GUI round-trip.
-                SquadManager.get(serverLevel).setObjective(squadId, context.clickedPos)
+                SquadManager.get(serverLevel).setObjective(serverLevel, squadId, context.clickedPos)
                 val name = SquadManager.get(serverLevel).get(squadId)?.name ?: "Squad"
                 actionbar(player, "$name → objective (${context.clickedPos.x}, ${context.clickedPos.y}, ${context.clickedPos.z})", ChatFormatting.GRAY)
             } else if (player is net.minecraft.server.level.ServerPlayer) {

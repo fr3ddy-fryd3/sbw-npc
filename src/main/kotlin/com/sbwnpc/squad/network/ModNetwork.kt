@@ -122,7 +122,7 @@ object ModNetwork {
             val mgr = SquadManager.get(level)
             val id = runCatching { UUID.fromString(p.squad) }.getOrNull() ?: return@enqueueWork
             mgr.setOrder(id, SquadOrder.byOrdinal(p.order))
-            mgr.setObjective(id, lookedAtPos(player, level))
+            mgr.setObjective(level, id, lookedAtPos(player, level))
         }
     }
 

@@ -5,12 +5,14 @@ import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.ChatFormatting
 import net.minecraft.core.BlockPos
 import net.minecraft.core.HolderLookup
+import net.minecraft.core.particles.DustParticleOptions
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
 import net.minecraft.nbt.Tag
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.saveddata.SavedData
+import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
 /**
@@ -52,8 +54,23 @@ class SquadManager : SavedData() {
         squads[id]?.let { it.order = order; setDirty() }
     }
 
-    fun setObjective(id: UUID, pos: BlockPos?) {
-        squads[id]?.let { it.objective = pos; it.focusEntity = null; setDirty() }
+    /** Sets the objective and, if it's a real point, bursts a squad-coloured particle marker
+     *  visible only to the squad's owner — the only person who can act on where they just
+     *  pointed, and the only one who needs to see it. */
+    fun setObjective(level: ServerLevel, id: UUID, pos: BlockPos?) {
+        val squad = squads[id] ?: return
+        squad.objective = pos
+        squad.focusEntity = null
+        setDirty()
+        if (pos != null) spawnObjectiveMarker(level, squad, pos)
+    }
+
+    private fun spawnObjectiveMarker(level: ServerLevel, squad: Squad, pos: BlockPos) {
+        val owner = level.server.playerList.getPlayer(squad.owner) ?: return
+        val color = Vec3.fromRGB24(squad.color.color ?: 0xFFFFFF).toVector3f()
+        val options = DustParticleOptions(color, 1.5f)
+        val center = pos.center
+        level.sendParticles(owner, options, true, center.x, center.y + 0.6, center.z, 40, 0.3, 0.7, 0.3, 0.02)
     }
 
     fun setFocus(id: UUID, entity: UUID?) {
