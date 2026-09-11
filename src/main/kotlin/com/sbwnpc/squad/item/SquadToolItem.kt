@@ -169,6 +169,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
 
         // Armed via the GUI's [Focus] button: this click sets the focus, full stop — takes
         // priority over normal NPC selection so you CAN target/guard one of your own NPCs too.
+        // (armFocus itself already checked ownership of the commanding squad when it was armed.)
         val armedFocus = SquadSelection.takeFocusArm(player.uuid)
         if (armedFocus != null) {
             mgr.setFocus(armedFocus, target.uuid)
@@ -181,6 +182,10 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         if (target is NpcEntity) {
             val sid = target.squadId
             if (sid != null) {
+                if (!mgr.ownedBy(sid, player.uuid)) {
+                    actionbar(player, "Not your squad", ChatFormatting.RED)
+                    return InteractionResult.SUCCESS
+                }
                 SquadSelection.selectSquad(player.uuid, sid)
                 val s = mgr.get(sid)
                 actionbar(player, "Selected ${s?.name ?: "squad"} (${s?.members?.size ?: 0})", (s?.color ?: ChatFormatting.GRAY))

@@ -29,6 +29,11 @@ class SquadManager : SavedData() {
     fun forOwner(owner: UUID): List<Squad> = squads.values.filter { it.owner == owner }
     fun squadOf(entity: UUID): Squad? = squads.values.firstOrNull { entity in it.members }
 
+    /** Server-side authorization check — every network handler that acts on a squad by id (as
+     *  opposed to picking from the caller's own [forOwner] list) must gate on this before doing
+     *  anything, since a squad id in a packet is just a string a client chose to send. */
+    fun ownedBy(id: UUID, player: UUID): Boolean = get(id)?.owner == player
+
     /** Null if [owner] is already at the [MAX_SQUADS_PER_OWNER] cap — chosen to match the 1-9
      *  number keys the quick-command HUD selects squads with. */
     fun create(level: ServerLevel, owner: UUID, color: ChatFormatting, members: List<UUID>): Squad? {

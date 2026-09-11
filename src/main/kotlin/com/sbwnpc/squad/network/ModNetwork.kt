@@ -67,7 +67,16 @@ object ModNetwork {
             val level = player.level() as? ServerLevel ?: return@enqueueWork
             val mgr = SquadManager.get(level)
             fun bar(msg: String) = player.displayClientMessage(net.minecraft.network.chat.Component.literal(msg), true)
-            fun sid() = runCatching { UUID.fromString(p.squad) }.getOrNull()
+            // Only ever resolves to a squad the sender actually owns — a squad id in a packet is
+            // just a string the client chose to send, so this is the one place that matters.
+            fun ownedSid(): UUID? {
+                val id = runCatching { UUID.fromString(p.squad) }.getOrNull() ?: return null
+                if (!mgr.ownedBy(id, player.uuid)) {
+                    bar("Not your squad")
+                    return null
+                }
+                return id
+            }
             when (p.action) {
                 SquadCmdPayload.CREATE -> {
                     val members = SquadSelection.looseOf(player.uuid).toList()
@@ -82,19 +91,19 @@ object ModNetwork {
                     SquadSelection.selectSquad(player.uuid, squad.id)
                     bar("Squad ${squad.name} formed")
                 }
-                SquadCmdPayload.DISBAND -> sid()?.let { mgr.disband(level, it) }
-                SquadCmdPayload.SET_ORDER -> sid()?.let { mgr.setOrder(it, SquadOrder.byOrdinal(p.value)) }
-                SquadCmdPayload.RENAME -> sid()?.let { mgr.rename(it, p.text) }
-                SquadCmdPayload.SELECT -> sid()?.let {
+                SquadCmdPayload.DISBAND -> ownedSid()?.let { mgr.disband(level, it) }
+                SquadCmdPayload.SET_ORDER -> ownedSid()?.let { mgr.setOrder(it, SquadOrder.byOrdinal(p.value)) }
+                SquadCmdPayload.RENAME -> ownedSid()?.let { mgr.rename(it, p.text) }
+                SquadCmdPayload.SELECT -> ownedSid()?.let {
                     SquadSelection.selectSquad(player.uuid, it)
                     bar("Commanding ${mgr.get(it)?.name ?: "squad"}")
                 }
-                SquadCmdPayload.ARM_OBJECTIVE -> sid()?.let {
+                SquadCmdPayload.ARM_OBJECTIVE -> ownedSid()?.let {
                     SquadSelection.selectSquad(player.uuid, it)
                     SquadSelection.armObjective(player.uuid, it)
                     bar("Aim and right-click to set ${mgr.get(it)?.name ?: "squad"}'s objective")
                 }
-                SquadCmdPayload.ARM_FOCUS -> sid()?.let {
+                SquadCmdPayload.ARM_FOCUS -> ownedSid()?.let {
                     SquadSelection.selectSquad(player.uuid, it)
                     SquadSelection.armFocus(player.uuid, it)
                     bar("Right-click anything (including your own NPCs) to focus ${mgr.get(it)?.name ?: "squad"} on it")
@@ -121,6 +130,7 @@ object ModNetwork {
             val level = player.level() as? ServerLevel ?: return@enqueueWork
             val mgr = SquadManager.get(level)
             val id = runCatching { UUID.fromString(p.squad) }.getOrNull() ?: return@enqueueWork
+            if (!mgr.ownedBy(id, player.uuid)) return@enqueueWork
             mgr.setOrder(id, SquadOrder.byOrdinal(p.order))
             mgr.setObjective(level, id, lookedAtPos(player, level))
         }
