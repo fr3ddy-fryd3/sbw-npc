@@ -48,11 +48,14 @@ class RecruitScreen(stack: ItemStack) : Screen(Component.literal("Deploy Config"
         }.bounds(cx - 100, y, 200, 20).build())
 
         y += 24
-        // Locked server-side (PlayerFactionRegistry) — not a cycle button, just a static readout.
-        // A future admin-override permission may re-enable picking here; not implemented yet.
-        val factionBtn = Button.builder(factionLabel()) {}.bounds(cx - 100, y, 200, 20).build()
-        factionBtn.active = false
-        addRenderableWidget(factionBtn)
+        // Free choice of ANY faction stays available during development, per the user's explicit
+        // call — the mandatory one-time picker (PlayerFactionRegistry/ChooseFactionScreen) only
+        // records a default identity, it doesn't restrict this. Locking it down for real is a
+        // deferred future step (server-admin override permission), not implemented yet.
+        addRenderableWidget(Button.builder(factionLabel()) {
+            faction = faction.next()
+            it.message = factionLabel(); push()
+        }.bounds(cx - 100, y, 200, 20).build())
 
         y += 34
         addRenderableWidget(Button.builder(Component.literal("Done")) { onClose() }.bounds(cx - 100, y, 200, 20).build())

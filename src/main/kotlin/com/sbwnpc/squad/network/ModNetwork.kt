@@ -56,9 +56,10 @@ object ModNetwork {
         ctx.enqueueWork {
             val player = ctx.player() as? ServerPlayer ?: return@enqueueWork
             val level = player.level() as? ServerLevel ?: return@enqueueWork
-            // Never trust the client's faction ordinal — the player's locked faction (prompting
-            // the mandatory pick screen if they haven't chosen yet) always wins.
-            val faction = PlayerFactionRegistry.get(level).requireOrPrompt(player) ?: return@enqueueWork
+            // Gate on having picked a default once — but during development everyone may freely
+            // choose ANY faction per deploy after that (explicit user call: keep free choice for
+            // now, the lock is only meant to bite once an admin-override permission exists later).
+            PlayerFactionRegistry.get(level).requireOrPrompt(player) ?: return@enqueueWork
             for (slot in listOf(EquipmentSlot.MAINHAND, EquipmentSlot.OFFHAND)) {
                 val stack = player.getItemBySlot(slot)
                 if (stack.item is SquadToolItem) {
@@ -66,7 +67,7 @@ object ModNetwork {
                         stack,
                         NpcClass.byOrdinal(p.cls),
                         NpcRank.byOrdinal(p.rank),
-                        faction,
+                        SquadFaction.byOrdinal(p.faction),
                         com.sbwnpc.squad.npc.SquadPreset.byOrdinal(p.preset)
                     )
                 }
@@ -103,7 +104,11 @@ object ModNetwork {
                 SquadCmdPayload.CREATE -> {
                     val members = SquadSelection.looseOf(player.uuid).toList()
                     if (members.isEmpty()) return@enqueueWork
-                    val faction = PlayerFactionRegistry.get(level).requireOrPrompt(player) ?: return@enqueueWork
+                    // The selected NPCs already share one faction (enforced at loose-select time
+                    // in SquadToolItem.interactLivingEntity) — read it off them directly rather
+                    // than trusting whatever the tool's config happens to say right now.
+                    val faction = members.firstNotNullOfOrNull { level.getEntity(it) }
+                        ?.let { com.sbwnpc.squad.team.SquadTeams.factionOf(it) } ?: SquadFaction.DEFAULT
                     val squad = mgr.create(level, player.uuid, faction, members)
                     if (squad == null) {
                         bar("Squad limit (${SquadManager.MAX_SQUADS_PER_OWNER}) reached")

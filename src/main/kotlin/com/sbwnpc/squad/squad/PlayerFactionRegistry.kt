@@ -12,12 +12,16 @@ import net.minecraft.world.level.saveddata.SavedData
 import java.util.UUID
 
 /**
- * Per-world, per-player faction lock. Every player must pick a faction once — the first time they
- * try to actually DO anything with the squad tool (open Recruit, deploy, form a squad) — after
- * which the server always uses this value and never again trusts a client-sent faction ordinal.
- * Free choice of any of the 8 factions is still mechanically possible (deferred admin-override
- * design, not this), but it's now a one-time, deliberate pick instead of something that quietly
- * resets per squad.
+ * Per-world, per-player faction record. Every player must pick a faction once — the first time
+ * they try to actually DO anything with the squad tool (open Recruit, deploy, form a squad) —
+ * establishing a "default"/home identity for them.
+ *
+ * IMPORTANT — this is NOT currently an enforcement lock: per an explicit user decision, free
+ * choice of any of the 8 factions stays fully available during development (e.g. to deploy
+ * OPFOR/test squads of a different faction). [requireOrPrompt] only gates on the one-time pick
+ * having happened at all — it does not override whatever faction the tool/client is actually
+ * using for a given action. The future admin-override design (grant a specific player permission
+ * to bypass their own default, once real enforcement exists) is deferred, tracked in PLAN.md.
  */
 class PlayerFactionRegistry : SavedData() {
 
@@ -32,10 +36,10 @@ class PlayerFactionRegistry : SavedData() {
         setDirty()
     }
 
-    /** The locked faction, or null — and a mandatory pick screen sent to the client — if they
-     *  haven't chosen yet. Every server-side entry point that would assign a faction to something
-     *  new (deploy, squad creation, tool config) must go through this instead of trusting a
-     *  client-supplied ordinal. */
+    /** The player's recorded default faction, or null — and a mandatory pick screen sent to the
+     *  client — if they haven't chosen yet. Server-side entry points call this only to gate on
+     *  the one-time pick having happened; they should keep using the client/tool's own faction
+     *  value for the actual action (see class doc — this is not an enforcement lock right now). */
     fun requireOrPrompt(player: ServerPlayer): SquadFaction? {
         val existing = factions[player.uuid]
         if (existing != null) return existing

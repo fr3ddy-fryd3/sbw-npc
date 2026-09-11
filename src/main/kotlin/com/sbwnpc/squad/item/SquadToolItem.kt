@@ -115,18 +115,19 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         }
 
         // RECRUIT: deploy — a single NPC, or a whole preset squad lined up abreast of the click point.
-        // Faction always comes from the lock, never from the tool's own NBT — belt-and-suspenders
-        // even though onConfigureTool already only ever writes the locked value there.
-        val faction = PlayerFactionRegistry.get(serverLevel).requireOrPrompt(serverPlayer) ?: return InteractionResult.CONSUME
-        val cfg = readConfig(stack) ?: Config(NpcClass.DEFAULT, NpcRank.DEFAULT, faction, SquadPreset.DEFAULT)
+        // Gated on having picked a default once (mandatory first-interaction screen), but the
+        // faction actually used to deploy is whatever the tool is currently set to — free choice
+        // of ANY faction stays available during development, per explicit user call.
+        PlayerFactionRegistry.get(serverLevel).requireOrPrompt(serverPlayer) ?: return InteractionResult.CONSUME
+        val cfg = readConfig(stack) ?: Config(NpcClass.DEFAULT, NpcRank.DEFAULT, SquadFaction.DEFAULT, SquadPreset.DEFAULT)
         val pos = context.clickedPos.relative(context.clickedFace)
         val composition = if (cfg.preset == SquadPreset.SINGLE) listOf(cfg.cls) else cfg.preset.composition
         val difficulty = level.getCurrentDifficultyAt(pos)
-        val spawned = deployLine(serverLevel, pos, player.yRot, composition, cfg.rank, faction, difficulty)
+        val spawned = deployLine(serverLevel, pos, player.yRot, composition, cfg.rank, cfg.faction, difficulty)
         if (spawned.isEmpty()) return InteractionResult.FAIL
 
         if (spawned.size > 1) {
-            val squad = SquadManager.get(serverLevel).create(serverLevel, player.uuid, faction, spawned.map { it.uuid })
+            val squad = SquadManager.get(serverLevel).create(serverLevel, player.uuid, cfg.faction, spawned.map { it.uuid })
             if (squad != null) {
                 actionbar(player, "Deployed ${squad.name} (${spawned.size})", cfg.faction.accentColor)
             } else {
