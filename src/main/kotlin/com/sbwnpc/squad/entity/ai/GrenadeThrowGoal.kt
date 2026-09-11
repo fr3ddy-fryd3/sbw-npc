@@ -29,6 +29,7 @@ class GrenadeThrowGoal(private val mob: NpcEntity) : Goal() {
 
     override fun canUse(): Boolean {
         if (mob.npcClass != NpcClass.GRENADIER) return false
+        if (mob.isSuppressed()) return false // SeekCoverGoal owns the mob until this lapses
         if (mob.level() !is ServerLevel) return false
         if (mob.tickCount < nextThrowTick) return false
         val target = mob.target ?: return false

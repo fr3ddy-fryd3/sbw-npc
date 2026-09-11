@@ -56,12 +56,14 @@ class NpcGunAttackGoal(private val mob: NpcEntity) : Goal() {
     }
 
     override fun canUse(): Boolean {
+        if (mob.isSuppressed()) return false // SeekCoverGoal owns the mob until this lapses
         val target = mob.target ?: return false
         val gunData = currentGunData() ?: return false
         return target.isAlive && (gunData.countBackupAmmo(mob) > 0 || gunData.hasEnoughAmmoToShoot(mob))
     }
 
     override fun canContinueToUse(): Boolean {
+        if (mob.isSuppressed()) return false
         val gunData = currentGunData() ?: return false
         return (canUse() || !mob.navigation.isDone) &&
                 (gunData.countBackupAmmo(mob) > 0 || gunData.hasEnoughAmmoToShoot(mob))

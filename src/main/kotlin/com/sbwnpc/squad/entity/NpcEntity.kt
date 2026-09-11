@@ -7,6 +7,7 @@ import com.sbwnpc.squad.entity.ai.MortarClaims
 import com.sbwnpc.squad.entity.ai.MortarLoaderGoal
 import com.sbwnpc.squad.entity.ai.MortarOperatorGoal
 import com.sbwnpc.squad.entity.ai.NpcGunAttackGoal
+import com.sbwnpc.squad.entity.ai.SeekCoverGoal
 import com.sbwnpc.squad.entity.ai.SquadFocusTargetGoal
 import com.sbwnpc.squad.entity.ai.SquadOrderGoal
 import com.sbwnpc.squad.npc.NpcClass
@@ -40,6 +41,8 @@ import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal
 import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal
 import net.minecraft.world.entity.player.Player
+import net.minecraft.world.damagesource.DamageSource
+import net.minecraft.tags.DamageTypeTags
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
 import net.minecraft.world.level.Level
@@ -65,6 +68,33 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
 
     /** Command group this NPC belongs to, if any. Server-side; persisted. */
     var squadId: UUID? = null
+
+    // Suppression (see SeekCoverGoal): a temporary "duck and hold" state triggered by taking
+    // ranged damage (below, hurt()) or a nearby explosion (SuppressionEvents). Not persisted —
+    // always fine to reset to "not suppressed" on reload, it's a momentary combat reaction.
+    var suppressedUntilTick: Int = 0
+        private set
+    var threatPos: Vec3? = null
+        private set
+
+    fun isSuppressed(): Boolean = tickCount < suppressedUntilTick
+
+    /** Each trigger extends the timer (doesn't stack duration), capped so sustained fire doesn't
+     *  grant an indefinite "immune to squad orders" state. */
+    fun suppress(threat: Vec3) {
+        val extended = tickCount + SUPPRESSION_DURATION_TICKS
+        val cap = tickCount + SUPPRESSION_CAP_TICKS
+        suppressedUntilTick = maxOf(suppressedUntilTick, extended).coerceAtMost(cap)
+        threatPos = threat
+    }
+
+    override fun hurt(source: DamageSource, amount: Float): Boolean {
+        val result = super.hurt(source, amount)
+        if (result && !level().isClientSide && source.`is`(DamageTypeTags.IS_PROJECTILE)) {
+            suppress(source.sourcePosition ?: position())
+        }
+        return result
+    }
 
     fun currentSquad(): Squad? {
         val id = squadId ?: return null
@@ -95,9 +125,12 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
         this.goalSelector.addGoal(1, MortarLoaderGoal(this))
         this.goalSelector.addGoal(2, MeleeAttackGoal(this, 1.2, false))
         this.goalSelector.addGoal(2, GrenadeThrowGoal(this))
-        this.goalSelector.addGoal(3, SquadOrderGoal(this))
-        this.goalSelector.addGoal(4, RandomLookAroundGoal(this))
-        this.goalSelector.addGoal(5, WaterAvoidingRandomStrollGoal(this, 0.8))
+        // Below melee self-defense (2) — an enemy in your face still gets fought, not fled from —
+        // but above squad-order positioning (4), so suppression interrupts holding/patrolling.
+        this.goalSelector.addGoal(3, SeekCoverGoal(this))
+        this.goalSelector.addGoal(4, SquadOrderGoal(this))
+        this.goalSelector.addGoal(5, RandomLookAroundGoal(this))
+        this.goalSelector.addGoal(6, WaterAvoidingRandomStrollGoal(this, 0.8))
 
         this.targetSelector.addGoal(1, SquadFocusTargetGoal(this))
         this.targetSelector.addGoal(2, HurtByTargetGoal(this))
@@ -170,6 +203,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
 
     companion object {
         private const val BASE_HEALTH = 20.0
+        private const val SUPPRESSION_DURATION_TICKS = 100
+        private const val SUPPRESSION_CAP_TICKS = 200
 
         @JvmField
         val DATA_CLASS: EntityDataAccessor<Int> =
