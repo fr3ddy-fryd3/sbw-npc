@@ -88,7 +88,7 @@ class SquadOrderGoal(private val mob: NpcEntity) : Goal() {
 
     /** While holding a perimeter slot with nothing to shoot at, look away from the anchor instead
      *  of standing there facing an arbitrary direction — "guns pointing outward" per user feedback.
-     *  No-op once there's a real target: NpcGunAttackGoal's own lookAt (higher priority) takes over. */
+     *  No-op once there's a real target: GunAttackBehaviour's own lookAt (higher priority) takes over. */
     private fun faceOutward(anchor: Vec3) {
         val out = mob.position().subtract(anchor)
         if (out.lengthSqr() < 1.0e-6) return

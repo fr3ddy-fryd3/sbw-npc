@@ -15,7 +15,7 @@ import java.util.EnumSet
  * fire on its current target before ducking back in, repeating for as long as it stays suppressed.
  *
  * Drives [NpcEntity.coverPhase]. During [NpcEntity.CoverPhase.PEEKING],
- * [NpcEntity.combatLockedByCover] is false, so `NpcGunAttackGoal`/`GrenadeThrowGoal` take back over
+ * [NpcEntity.combatLockedByCover] is false, so `GunAttackBehaviour`/`GrenadeThrowGoal` take back over
  * movement/aim/fire for that window — no goal-flag conflict, since neither of those goals reserves
  * any [Flag] at all (confirmed against this codebase's actual goal wiring, not assumed). This goal
  * itself just steps the mob out toward its target for the peek and otherwise gets out of the way;
@@ -84,7 +84,7 @@ class SeekCoverGoal(private val mob: NpcEntity) : Goal() {
         if (target != null && target.isAlive) {
             mob.coverPhase = NpcEntity.CoverPhase.PEEKING
             phaseUntilTick = mob.tickCount + PEEK_TICKS
-            // Step toward the target — NpcGunAttackGoal (unlocked now, see combatLockedByCover)
+            // Step toward the target — GunAttackBehaviour (unlocked now, see combatLockedByCover)
             // takes over aiming/approach/fire from here; this is just enough of a nudge to clear
             // whatever's currently blocking sight from the cover point itself.
             mob.navigation.moveTo(target.x, target.y, target.z, 1.0)

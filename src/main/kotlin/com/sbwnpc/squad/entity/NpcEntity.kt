@@ -7,7 +7,6 @@ import com.sbwnpc.squad.entity.ai.InvestigateGoal
 import com.sbwnpc.squad.entity.ai.MortarClaims
 import com.sbwnpc.squad.entity.ai.MortarLoaderGoal
 import com.sbwnpc.squad.entity.ai.MortarOperatorGoal
-import com.sbwnpc.squad.entity.ai.NpcGunAttackGoal
 import com.sbwnpc.squad.entity.ai.SeekCoverGoal
 import com.sbwnpc.squad.entity.ai.SquadOrderGoal
 import com.sbwnpc.squad.npc.NpcClass
@@ -181,7 +180,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     override fun registerGoals() {
         super.registerGoals()
         this.goalSelector.addGoal(0, FloatGoal(this))
-        this.goalSelector.addGoal(1, NpcGunAttackGoal(this))
+        // Gun combat moved to SmartBrainLib's GunAttackBehaviour (see getFightTasks()) — migration
+        // step 5. Only runs while ATTACK_TARGET is set (SquadTargetSensor writes it), same effective
+        // gating as this goal's old `mob.target != null` check.
         this.goalSelector.addGoal(1, MortarOperatorGoal(this))
         this.goalSelector.addGoal(1, MortarLoaderGoal(this))
         this.goalSelector.addGoal(2, MeleeAttackGoal(this, 1.2, false))
@@ -232,8 +233,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         )
     override fun getIdleTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
         net.tslat.smartbrainlib.api.core.BrainActivityGroup.empty()
+    // Step 5: gun combat. Direct port of NpcGunAttackGoal — see registerGoals() above.
     override fun getFightTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
-        net.tslat.smartbrainlib.api.core.BrainActivityGroup.empty()
+        net.tslat.smartbrainlib.api.core.BrainActivityGroup.fightTasks(
+            com.sbwnpc.squad.entity.ai.GunAttackBehaviour()
+        )
 
     // Used by SquadTargetSensor (step 4 of the SmartBrain migration) too, hence internal not private.
     internal fun isEnemy(other: LivingEntity): Boolean {

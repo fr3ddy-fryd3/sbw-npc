@@ -11,7 +11,7 @@ import net.minecraft.world.entity.ai.goal.Goal
 import java.util.EnumSet
 
 /**
- * Supplements the grenadier's M79 (handled by NpcGunAttackGoal) with an occasional thrown grenade
+ * Supplements the grenadier's M79 (handled by GunAttackBehaviour) with an occasional thrown grenade
  * at medium range — mainly useful for flushing a target out of cover the launcher can't reach.
  * "Instant action" goal: throws once in start(), then immediately deactivates (canContinueToUse
  * always false) — the cooldown lives in nextThrowTick rather than needing per-tick ticking while
@@ -38,7 +38,7 @@ class GrenadeThrowGoal(private val mob: NpcEntity) : Goal() {
         val dist = mob.distanceTo(target)
         if (dist !in MIN_RANGE..MAX_RANGE || !mob.sensing.hasLineOfSight(target)) return false
         // This goal has no MOVE flag (never sidesteps itself) — if an ally is in the way, just
-        // skip the throw this cycle; the main NpcGunAttackGoal running alongside it owns
+        // skip the throw this cycle; the main GunAttackBehaviour running alongside it owns
         // positioning and will already be trying to clear its own line of fire.
         if (!FriendlyFireGuard.hasClearLineOfFire(mob, target.boundingBox.center)) return false
         // Separate check: even a clean throw can down an ally standing within the M67's own blast

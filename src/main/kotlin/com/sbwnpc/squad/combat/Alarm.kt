@@ -17,7 +17,7 @@ import net.minecraft.world.phys.Vec3
  * next to whichever squadmate fired, reported in-game as "why are they all running to stack on the
  * guy who spotted the enemy instead of doing something else".
  *
- * Two callers: [com.sbwnpc.squad.entity.ai.NpcGunAttackGoal] raises this every time it actually
+ * Two callers: [com.sbwnpc.squad.entity.ai.GunAttackBehaviour] raises this every time it actually
  * fires (hearOrigin = the shooter, investigatePos = the target it's shooting at), and
  * [NpcEntity.die] raises it at the death position for both (no better lead available) when the
  * killer can't be resolved into a proper [TeamAwareness] report.
