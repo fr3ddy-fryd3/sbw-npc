@@ -232,6 +232,12 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         // Clicking a placed Barracks always means "assign my selected squad to resupply here" —
         // never selection/focus, regardless of any other armed state.
         if (target is BarracksEntity) {
+            // PM review caught this: only squad ownership was checked, not barracks ownership —
+            // any player could link their squad to someone else's barracks. Both must match.
+            if (target.owner != player.uuid) {
+                actionbar(player, "Not your Barracks", ChatFormatting.RED)
+                return InteractionResult.SUCCESS
+            }
             val sid = SquadSelection.selectedSquad(player.uuid)
             if (sid == null) {
                 actionbar(player, "Select a squad first", ChatFormatting.RED)
