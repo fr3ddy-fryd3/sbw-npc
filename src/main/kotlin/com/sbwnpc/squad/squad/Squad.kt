@@ -20,8 +20,9 @@ class Squad(
     /** Entity the squad is focused on: attack it (ATTACK) or guard it (DEFEND). */
     var focusEntity: UUID?,
     val owner: UUID,
-    /** Barracks this squad resupplies from, if any — see BarracksEntity. */
-    var barracksId: UUID? = null,
+    /** Position of the Barracks block this squad resupplies from, if any — see BarracksBlockEntity.
+     *  A block's position IS its stable identity (unlike an entity, no UUID needed). */
+    var barracksPos: BlockPos? = null,
     /** Classes the squad was formed/last topped up with, in order — a barracks compares this
      *  against current `members.size` to know what's missing and what class to spawn next. */
     var originalComposition: List<NpcClass> = emptyList(),
@@ -40,7 +41,7 @@ class Squad(
         objective?.let { tag.put("Objective", NbtUtils.writeBlockPos(it)) }
         focusEntity?.let { tag.putUUID("Focus", it) }
         tag.putUUID("Owner", owner)
-        barracksId?.let { tag.putUUID("BarracksId", it) }
+        barracksPos?.let { tag.put("BarracksPos", NbtUtils.writeBlockPos(it)) }
         val comp = ListTag()
         originalComposition.forEach { comp.add(IntTag.valueOf(it.ordinal)) }
         tag.put("OriginalComposition", comp)
@@ -64,7 +65,7 @@ class Squad(
                 objective = if (tag.contains("Objective")) NbtUtils.readBlockPos(tag, "Objective").orElse(null) else null,
                 focusEntity = if (tag.hasUUID("Focus")) tag.getUUID("Focus") else null,
                 owner = tag.getUUID("Owner"),
-                barracksId = if (tag.hasUUID("BarracksId")) tag.getUUID("BarracksId") else null,
+                barracksPos = if (tag.contains("BarracksPos")) NbtUtils.readBlockPos(tag, "BarracksPos").orElse(null) else null,
                 originalComposition = originalComposition,
                 routeId = if (tag.hasUUID("RouteId")) tag.getUUID("RouteId") else null
             )

@@ -3,6 +3,7 @@ package com.sbwnpc.squad.init
 import com.sbwnpc.squad.SquadMod
 import com.sbwnpc.squad.item.SquadToolItem
 import net.minecraft.core.registries.BuiltInRegistries
+import net.minecraft.world.item.BlockItem
 import net.minecraft.world.item.Item
 import net.neoforged.neoforge.common.DeferredSpawnEggItem
 import net.neoforged.neoforge.registries.DeferredRegister
@@ -17,4 +18,7 @@ object ModItems {
 
     @JvmField
     val SQUAD_TOOL = ITEMS.register("squad_tool") { -> SquadToolItem() }
+
+    @JvmField
+    val BARRACKS = ITEMS.register("barracks") { -> BlockItem(ModBlocks.BARRACKS.get(), Item.Properties()) }
 }

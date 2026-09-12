@@ -99,27 +99,28 @@ class SquadManager : SavedData() {
         squads.values.forEach { it.members.remove(entity) }
         // A squad tied to a barracks survives at 0 members — it's waiting on resupply, not
         // abandoned. Only an unlinked empty squad gets cleaned up automatically.
-        squads.entries.removeIf { it.value.members.isEmpty() && it.value.barracksId == null }
+        squads.entries.removeIf { it.value.members.isEmpty() && it.value.barracksPos == null }
         setDirty()
     }
 
-    fun squadsAtBarracks(barracksId: UUID): List<Squad> = squads.values.filter { it.barracksId == barracksId }
+    fun squadsAtBarracks(barracksPos: BlockPos): List<Squad> = squads.values.filter { it.barracksPos == barracksPos }
 
-    fun assignBarracks(id: UUID, barracksId: UUID?) {
-        squads[id]?.let { it.barracksId = barracksId; setDirty() }
+    fun assignBarracks(id: UUID, barracksPos: BlockPos?) {
+        squads[id]?.let { it.barracksPos = barracksPos; setDirty() }
     }
 
     fun assignRoute(id: UUID, routeId: UUID?) {
         squads[id]?.let { it.routeId = routeId; setDirty() }
     }
 
-    /** Called periodically by BarracksEntity itself (not on a separate scheduler) for every squad
-     *  currently assigned to it: spawns whatever's missing versus [Squad.originalComposition] at
-     *  [pos], scattered a little so reinforcements don't all stack on one block. */
-    fun respawnAtBarracks(level: ServerLevel, barracksId: UUID, pos: Vec3, faction: SquadFaction) {
-        val difficulty = level.getCurrentDifficultyAt(BlockPos.containing(pos))
+    /** Called periodically by BarracksBlockEntity itself (not on a separate scheduler) for every
+     *  squad currently assigned to it: spawns whatever's missing versus [Squad.originalComposition]
+     *  at [barracksPos], scattered a little so reinforcements don't all stack on one block. */
+    fun respawnAtBarracks(level: ServerLevel, barracksPos: BlockPos, faction: SquadFaction) {
+        val pos = Vec3(barracksPos.x + 0.5, barracksPos.y.toDouble(), barracksPos.z + 0.5)
+        val difficulty = level.getCurrentDifficultyAt(barracksPos)
         var changed = false
-        squadsAtBarracks(barracksId).forEach { squad ->
+        squadsAtBarracks(barracksPos).forEach { squad ->
             val missing = squad.originalComposition.drop(squad.members.size)
             missing.forEach { cls ->
                 val npc = ModEntities.NPC.get().create(level) ?: return@forEach

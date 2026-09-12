@@ -2,6 +2,7 @@
   "entity.sbwnpc.npc": "Squad Member",
   "item.sbwnpc.npc_spawn_egg": "Squad Member Spawn Egg",
   "item.sbwnpc.squad_tool": "Squad Command Tool",
+  "block.sbwnpc.barracks": "Barracks",
   "key.categories.sbwnpc": "SBW Squads",
   "key.sbwnpc.hud_toggle": "Open/close squad command",
   "key.sbwnpc.hud_slot_1": "Squad command: slot 1",

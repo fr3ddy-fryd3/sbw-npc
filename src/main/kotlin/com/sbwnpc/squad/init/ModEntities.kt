@@ -1,7 +1,6 @@
 package com.sbwnpc.squad.init
 
 import com.sbwnpc.squad.SquadMod
-import com.sbwnpc.squad.entity.BarracksEntity
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.world.entity.EntityType
@@ -26,19 +25,8 @@ object ModEntities {
             .build("npc")
     }
 
-    @JvmField
-    val BARRACKS: DeferredHolder<EntityType<*>, EntityType<BarracksEntity>> = REGISTRY.register("barracks") { ->
-        EntityType.Builder.of(::BarracksEntity, MobCategory.MISC)
-            .sized(1.5f, 2.0f)
-            .setTrackingRange(64)
-            .setUpdateInterval(20)
-            .fireImmune()
-            .build("barracks")
-    }
-
     @SubscribeEvent
     fun registerAttributes(event: EntityAttributeCreationEvent) {
         event.put(NPC.get(), NpcEntity.createAttributes().build())
-        event.put(BARRACKS.get(), BarracksEntity.createAttributes().build())
     }
 }

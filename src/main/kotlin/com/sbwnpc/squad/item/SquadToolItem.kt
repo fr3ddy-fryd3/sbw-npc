@@ -1,7 +1,6 @@
 package com.sbwnpc.squad.item
 
 import com.atsuishio.superbwarfare.tools.NBTTool
-import com.sbwnpc.squad.entity.BarracksEntity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModEntities
 import com.sbwnpc.squad.network.OpenCommandScreenPayload
@@ -41,15 +40,17 @@ import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
 
 /**
- * One item, three modes (shift + right-click air cycles RECRUIT → COMMAND → BARRACKS → ...).
+ * One item, two modes (shift + right-click air cycles RECRUIT → COMMAND → ...).
  *
  * RECRUIT: right-click air → config GUI; right-click block → deploy.
  * COMMAND: right-click air → command GUI (or, if a "set objective" was just armed in the GUI,
  *          raycast where you're looking and set that squad's objective).
  *          right-click NPC → select it / its squad (shift → clear selection).
  *          right-click a hostile mob/player → focus the selected squad on it (hunt/guard by order).
- * BARRACKS: right-click block → place a Barracks (see [BarracksEntity]); right-click a placed
- *           Barracks in COMMAND mode with a squad selected assigns it (see [interactLivingEntity]).
+ *
+ * Barracks is now a plain placed block (`BarracksBlock`/`BarracksBlockEntity`) with its own
+ * BlockItem and its own bare-hand right-click interaction — it doesn't go through this tool at all
+ * (per explicit user call: no multitool should be required to place or use it).
  */
 class SquadToolItem : Item(Properties().stacksTo(1)) {
 
@@ -62,13 +63,11 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             if (!level.isClientSide) {
                 val next = when (mode(stack)) {
                     MODE_RECRUIT -> MODE_COMMAND
-                    MODE_COMMAND -> MODE_BARRACKS
                     else -> MODE_RECRUIT
                 }
                 NBTTool.withTag(stack) { it.putInt(KEY_MODE, next) }
                 val name = when (next) {
                     MODE_COMMAND -> "COMMAND"
-                    MODE_BARRACKS -> "BARRACKS"
                     else -> "RECRUIT"
                 }
                 actionbar(player, "Mode: $name", ChatFormatting.YELLOW)
@@ -80,11 +79,6 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         // tool happens to be in — same "armed state wins" precedent as ARM_OBJECTIVE/ARM_FOCUS.
         if (!level.isClientSide && player is ServerPlayer && RouteRecording.isRecording(player.uuid)) {
             sendToClient(player, OpenFinishRoutePayload(RouteRecording.pointCount(player.uuid)))
-            return InteractionResultHolder.sidedSuccess(stack, level.isClientSide)
-        }
-
-        if (mode(stack) == MODE_BARRACKS) {
-            if (!level.isClientSide) actionbar(player, "Right-click a block to place a Barracks", ChatFormatting.YELLOW)
             return InteractionResultHolder.sidedSuccess(stack, level.isClientSide)
         }
 
@@ -143,21 +137,6 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
                 val snap = buildSquadSnapshot(SquadManager.get(serverLevel), player.uuid, SquadSelection.looseOf(player.uuid).size)
                 sendToClient(player, OpenCommandScreenPayload(snap))
             }
-            return InteractionResult.CONSUME
-        }
-
-        if (mode(stack) == MODE_BARRACKS) {
-            PlayerFactionRegistry.get(serverLevel).requireOrPrompt(serverPlayer) ?: return InteractionResult.CONSUME
-            val cfg = readConfig(stack)
-            val faction = cfg?.faction ?: SquadFaction.DEFAULT
-            val pos = context.clickedPos.relative(context.clickedFace)
-            val barracks = ModEntities.BARRACKS.get().create(serverLevel) ?: return InteractionResult.FAIL
-            barracks.moveTo(pos.x + 0.5, pos.y.toDouble(), pos.z + 0.5, player.yRot, 0f)
-            barracks.owner = player.uuid
-            barracks.faction = faction
-            barracks.finalizeSpawn(serverLevel, level.getCurrentDifficultyAt(pos), MobSpawnType.SPAWN_EGG, null)
-            serverLevel.addFreshEntity(barracks)
-            actionbar(player, "Barracks placed (${faction.label}) — select a squad and right-click it to assign", faction.accentColor)
             return InteractionResult.CONSUME
         }
 
@@ -229,29 +208,6 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             return InteractionResult.SUCCESS
         }
 
-        // Clicking a placed Barracks always means "assign my selected squad to resupply here" —
-        // never selection/focus, regardless of any other armed state.
-        if (target is BarracksEntity) {
-            // PM review caught this: only squad ownership was checked, not barracks ownership —
-            // any player could link their squad to someone else's barracks. Both must match.
-            if (target.owner != player.uuid) {
-                actionbar(player, "Not your Barracks", ChatFormatting.RED)
-                return InteractionResult.SUCCESS
-            }
-            val sid = SquadSelection.selectedSquad(player.uuid)
-            if (sid == null) {
-                actionbar(player, "Select a squad first", ChatFormatting.RED)
-                return InteractionResult.SUCCESS
-            }
-            if (!mgr.ownedBy(sid, player.uuid)) {
-                actionbar(player, "Not your squad", ChatFormatting.RED)
-                return InteractionResult.SUCCESS
-            }
-            mgr.assignBarracks(sid, target.uuid)
-            actionbar(player, "${mgr.get(sid)?.name ?: "Squad"} now resupplies at this Barracks", ChatFormatting.GREEN)
-            return InteractionResult.SUCCESS
-        }
-
         // Armed via the GUI's [Focus] button: this click sets the focus, full stop — takes
         // priority over normal NPC selection so you CAN target/guard one of your own NPCs too.
         // (armFocus itself already checked ownership of the commanding squad when it was armed.)
@@ -316,7 +272,6 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
     override fun appendHoverText(stack: ItemStack, context: TooltipContext, tooltip: MutableList<Component>, flag: TooltipFlag) {
         val m = when (mode(stack)) {
             MODE_COMMAND -> "COMMAND"
-            MODE_BARRACKS -> "BARRACKS"
             else -> "RECRUIT"
         }
         tooltip.add(Component.literal("Mode: $m").withStyle(ChatFormatting.YELLOW))
@@ -338,7 +293,6 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         const val KEY_PRESET = "Preset"
         const val MODE_RECRUIT = 0
         const val MODE_COMMAND = 1
-        const val MODE_BARRACKS = 2
 
         fun readConfig(stack: ItemStack): Config? {
             if (stack.isEmpty || stack.item !is SquadToolItem) return null

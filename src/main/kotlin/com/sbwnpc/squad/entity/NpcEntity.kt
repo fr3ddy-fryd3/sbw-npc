@@ -8,6 +8,7 @@ import com.sbwnpc.squad.entity.ai.MortarLoaderGoal
 import com.sbwnpc.squad.entity.ai.MortarOperatorGoal
 import com.sbwnpc.squad.entity.ai.NpcGunAttackGoal
 import com.sbwnpc.squad.entity.ai.SeekCoverGoal
+import com.sbwnpc.squad.entity.ai.SquadAwarenessTargetGoal
 import com.sbwnpc.squad.entity.ai.SquadFocusTargetGoal
 import com.sbwnpc.squad.entity.ai.SquadOrderGoal
 import com.sbwnpc.squad.npc.NpcClass
@@ -85,6 +86,13 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
         val cap = tickCount + SUPPRESSION_CAP_TICKS
         suppressedUntilTick = maxOf(suppressedUntilTick, extended).coerceAtMost(cap)
         threatPos = threat
+        // TEMPORARY diagnostic (see PHASE5_PLAN.md "Диагностика укрытий перед фиксом") — remove
+        // once an in-game test confirms whether suppress() even fires reliably and whether
+        // SeekCoverGoal actually reaches IN_COVER/PEEKING, or whether what's visible is really
+        // FriendlyFireGuard.sidestepAwayFromAllies instead.
+        com.sbwnpc.squad.SquadMod.LOGGER.info(
+            "[cover-debug] {} suppressed at tick {} by threat near {}", uuid, tickCount, threat
+        )
     }
 
     /** Cover-seeking state machine driven entirely by [com.sbwnpc.squad.entity.ai.SeekCoverGoal] —
@@ -93,6 +101,13 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
     enum class CoverPhase { NONE, MOVING_TO_COVER, IN_COVER, PEEKING, RETURNING_TO_COVER }
 
     var coverPhase: CoverPhase = CoverPhase.NONE
+        set(value) {
+            // TEMPORARY diagnostic, same reason as suppress() above — remove once confirmed.
+            if (value != field) {
+                com.sbwnpc.squad.SquadMod.LOGGER.info("[cover-debug] {} coverPhase {} -> {}", uuid, field, value)
+            }
+            field = value
+        }
 
     /** True while SeekCoverGoal must have the mob to itself for movement and combat goals should
      *  stand down entirely — false during [CoverPhase.PEEKING], the deliberate window where the
@@ -151,8 +166,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
 
         this.targetSelector.addGoal(1, SquadFocusTargetGoal(this))
         this.targetSelector.addGoal(2, HurtByTargetGoal(this))
+        this.targetSelector.addGoal(3, SquadAwarenessTargetGoal(this))
         this.targetSelector.addGoal(
-            3,
+            4,
             NearestAttackableTargetGoal(this, LivingEntity::class.java, 10, true, false) { this.isEnemy(it) }
         )
     }

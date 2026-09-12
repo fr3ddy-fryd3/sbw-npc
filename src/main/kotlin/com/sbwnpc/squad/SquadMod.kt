@@ -1,5 +1,7 @@
 package com.sbwnpc.squad
 
+import com.sbwnpc.squad.init.ModBlockEntities
+import com.sbwnpc.squad.init.ModBlocks
 import com.sbwnpc.squad.init.ModEntities
 import com.sbwnpc.squad.init.ModItems
 import net.minecraft.resources.ResourceLocation
@@ -15,6 +17,8 @@ class SquadMod(bus: IEventBus, container: ModContainer) {
 
         ModEntities.REGISTRY.register(bus)
         ModItems.ITEMS.register(bus)
+        ModBlocks.REGISTRY.register(bus)
+        ModBlockEntities.REGISTRY.register(bus)
     }
 
     companion object {
