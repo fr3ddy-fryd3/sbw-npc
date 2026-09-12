@@ -133,7 +133,14 @@ class SquadManager : SavedData() {
                 val npc = ModEntities.NPC.get().create(level) ?: return@forEach
                 val offX = (level.random.nextDouble() - 0.5) * 3.0
                 val offZ = (level.random.nextDouble() - 0.5) * 3.0
-                npc.moveTo(pos.x + offX, pos.y, pos.z + offZ, level.random.nextFloat() * 360f, 0f)
+                // A barracks built into a slope/hillside means the ±3-block scatter can easily land
+                // on a spot where the terrain is higher than the barracks itself — without this, a
+                // reinforcement could spawn with its feet inside solid ground and suffocate on the
+                // very first tick.
+                val spawnX = pos.x + offX
+                val spawnZ = pos.z + offZ
+                val spawnY = SafeSpawn.findSafeY(level, spawnX, spawnZ, barracksPos.y, npc.getDimensions(net.minecraft.world.entity.Pose.STANDING))
+                npc.moveTo(spawnX, spawnY, spawnZ, level.random.nextFloat() * 360f, 0f)
                 npc.npcClass = cls
                 npc.npcRank = NpcRank.DEFAULT
                 npc.spawnFaction = squad.faction

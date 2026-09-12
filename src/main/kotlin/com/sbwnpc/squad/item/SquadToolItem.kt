@@ -14,6 +14,7 @@ import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.npc.SquadPreset
 import com.sbwnpc.squad.squad.PlayerFactionRegistry
 import com.sbwnpc.squad.squad.RouteRecording
+import com.sbwnpc.squad.squad.SafeSpawn
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.squad.SquadSelection
@@ -28,6 +29,7 @@ import net.minecraft.world.InteractionResult
 import net.minecraft.world.InteractionResultHolder
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.MobSpawnType
+import net.minecraft.world.entity.Pose
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.Item.TooltipContext
@@ -185,7 +187,13 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         for ((i, cls) in composition.withIndex()) {
             val offset = (i - (n - 1) / 2.0) * spacing
             val npc = ModEntities.NPC.get().create(level) ?: continue
-            npc.moveTo(center.x + 0.5 + rightX * offset, center.y.toDouble(), center.z + 0.5 + rightZ * offset, facingYaw + 180f, 0f)
+            val spawnX = center.x + 0.5 + rightX * offset
+            val spawnZ = center.z + 0.5 + rightZ * offset
+            // A line spread sideways from the click point can easily cross a step, overhang, or
+            // wall — without this, a member off to either side could spawn with its feet inside a
+            // solid block and suffocate before doing anything at all.
+            val spawnY = SafeSpawn.findSafeY(level, spawnX, spawnZ, center.y, npc.getDimensions(Pose.STANDING))
+            npc.moveTo(spawnX, spawnY, spawnZ, facingYaw + 180f, 0f)
             npc.npcClass = cls
             npc.npcRank = rank
             npc.spawnFaction = faction
