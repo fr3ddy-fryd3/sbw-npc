@@ -9,8 +9,6 @@ import com.sbwnpc.squad.entity.ai.MortarLoaderGoal
 import com.sbwnpc.squad.entity.ai.MortarOperatorGoal
 import com.sbwnpc.squad.entity.ai.NpcGunAttackGoal
 import com.sbwnpc.squad.entity.ai.SeekCoverGoal
-import com.sbwnpc.squad.entity.ai.SquadAwarenessTargetGoal
-import com.sbwnpc.squad.entity.ai.SquadFocusTargetGoal
 import com.sbwnpc.squad.entity.ai.SquadOrderGoal
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
@@ -40,8 +38,6 @@ import net.minecraft.world.entity.ai.goal.FloatGoal
 import net.minecraft.world.entity.ai.goal.MeleeAttackGoal
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal
 import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal
-import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal
-import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.damagesource.DamageSource
 import net.minecraft.world.item.ItemStack
@@ -204,13 +200,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         this.goalSelector.addGoal(6, RandomLookAroundGoal(this))
         this.goalSelector.addGoal(7, WaterAvoidingRandomStrollGoal(this, 0.8))
 
-        this.targetSelector.addGoal(1, SquadFocusTargetGoal(this))
-        this.targetSelector.addGoal(2, HurtByTargetGoal(this))
-        this.targetSelector.addGoal(3, SquadAwarenessTargetGoal(this))
-        this.targetSelector.addGoal(
-            4,
-            NearestAttackableTargetGoal(this, LivingEntity::class.java, 10, true, false) { this.isEnemy(it) }
-        )
+        // Target acquisition moved to SquadTargetSensor (see getSensors()) — migration step 4.
+        // Replaces SquadFocusTargetGoal, HurtByTargetGoal, SquadAwarenessTargetGoal, and
+        // NearestAttackableTargetGoal with one sensor evaluating the same priority chain in one
+        // place. It bridges to mob.target via BrainUtils.setTargetOfEntity so every not-yet-migrated
+        // goal above keeps working unmodified.
     }
 
     // --- SmartBrainOwner: step 2 of the migration (skeleton only) ---
@@ -228,7 +222,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         tickBrain(this)
     }
 
-    override fun getSensors(): List<net.tslat.smartbrainlib.api.core.sensor.ExtendedSensor<out NpcEntity>> = listOf()
+    // Step 4: target acquisition. See registerGoals() above for what this replaces.
+    override fun getSensors(): List<net.tslat.smartbrainlib.api.core.sensor.ExtendedSensor<out NpcEntity>> =
+        listOf(com.sbwnpc.squad.entity.ai.SquadTargetSensor())
     // Step 3: door interaction. Real behavioural upgrade, not just a port — see registerGoals().
     override fun getCoreTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
         net.tslat.smartbrainlib.api.core.BrainActivityGroup.coreTasks(
@@ -239,7 +235,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     override fun getFightTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
         net.tslat.smartbrainlib.api.core.BrainActivityGroup.empty()
 
-    private fun isEnemy(other: LivingEntity): Boolean {
+    // Used by SquadTargetSensor (step 4 of the SmartBrain migration) too, hence internal not private.
+    internal fun isEnemy(other: LivingEntity): Boolean {
         if (other !is NpcEntity && other !is Player) return false
         if (other is Player && (other.isCreative || other.isSpectator)) return false
         return SquadTeams.isHostile(this, other)
