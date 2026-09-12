@@ -53,7 +53,7 @@ class SquadOrderGoal(private val mob: NpcEntity) : Goal() {
         if (repathCooldown > 0) repathCooldown--
 
         when (order) {
-            SquadOrder.ATTACK -> approachSlot(home, arrived = dist <= 3.0)
+            SquadOrder.ATTACK -> approachSlot(home, arrived = dist <= SquadFormation.ARRIVAL_RADIUS)
             SquadOrder.DEFEND -> approachSlot(home, arrived = dist <= 8.0)
             SquadOrder.PATROL -> {
                 val points = squad.routeId

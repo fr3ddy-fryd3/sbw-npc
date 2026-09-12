@@ -31,6 +31,17 @@ object SquadFormation {
     private const val SLOT_SPACING = 2.5
     private const val RING_RADIUS = 3.5
 
+    /** Callers that decide "arrived, switch to RING" from raw distance to the anchor MUST use a
+     *  threshold at least this big — not RING_RADIUS itself, safely past it. Using anything smaller
+     *  (e.g. the ATTACK order's old flat `3.0`, less than RING_RADIUS's `3.5`) is a real bug, not a
+     *  tuning nit: a member can satisfy "arrived" while still short of its actual RING slot distance,
+     *  get assigned that farther-out RING point, walk toward it, immediately fail "arrived" again
+     *  (now farther than the threshold), flip back to the transit shape — whose index-0/leader slot
+     *  sits AT the anchor — and walk right back in, repeating forever. That oscillation is exactly
+     *  what was reported in-game as "they spread out a little then suddenly all rush right up to the
+     *  block, over and over". */
+    const val ARRIVAL_RADIUS = RING_RADIUS + 1.5
+
     private enum class Shape { WEDGE, LINE, COLUMN, RING }
 
     /** Transit shape depends on order (advance/hold/travel); once the squad has actually reached

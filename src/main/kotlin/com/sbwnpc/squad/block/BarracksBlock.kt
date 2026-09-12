@@ -2,8 +2,6 @@ package com.sbwnpc.squad.block
 
 import com.sbwnpc.squad.block.entity.BarracksBlockEntity
 import com.sbwnpc.squad.init.ModBlockEntities
-import com.sbwnpc.squad.npc.SquadFaction
-import com.sbwnpc.squad.squad.PlayerFactionRegistry
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadSelection
 import com.mojang.serialization.MapCodec
@@ -54,11 +52,9 @@ class BarracksBlock : BaseEntityBlock(
 
     override fun setPlacedBy(level: Level, pos: BlockPos, state: BlockState, placer: LivingEntity?, stack: ItemStack) {
         super.setPlacedBy(level, pos, state, placer, stack)
-        val serverLevel = level as? ServerLevel ?: return
-        if (placer == null) return
+        if (level.isClientSide || placer == null) return
         val be = level.getBlockEntity(pos) as? BarracksBlockEntity ?: return
         be.owner = placer.uuid
-        be.faction = PlayerFactionRegistry.get(serverLevel).get(placer.uuid) ?: SquadFaction.DEFAULT
         be.setChanged()
     }
 

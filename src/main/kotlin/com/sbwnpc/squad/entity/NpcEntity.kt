@@ -276,7 +276,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
         if (attacker != null && attacker.isAlive && com.sbwnpc.squad.team.SquadTeams.isHostile(this, attacker)) {
             com.sbwnpc.squad.combat.TeamAwareness.report(faction, attacker.uuid, tickCount.toLong())
         } else {
-            com.sbwnpc.squad.combat.Alarm.raise(this, position(), DEATH_ALARM_RADIUS)
+            com.sbwnpc.squad.combat.Alarm.raise(this, position(), position(), DEATH_ALARM_RADIUS)
         }
     }
 
@@ -285,7 +285,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
         private const val SUPPRESSION_DURATION_TICKS = 100
         private const val SUPPRESSION_CAP_TICKS = 200
         private const val ALERT_DURATION_TICKS = 200 // ~10s to reach/abandon an investigation lead
-        private const val DEATH_ALARM_RADIUS = 24.0
+        private const val DEATH_ALARM_RADIUS = 36.0 // detection range, x1.5 per user request (was 24)
 
         @JvmField
         val DATA_CLASS: EntityDataAccessor<Int> =
@@ -302,7 +302,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
                 .add(Attributes.MOVEMENT_SPEED, 0.25)
                 .add(Attributes.ATTACK_DAMAGE, 2.0)
                 .add(Attributes.ARMOR, 2.0)
-                .add(Attributes.FOLLOW_RANGE, 48.0)
+                .add(Attributes.FOLLOW_RANGE, 72.0) // detection range, x1.5 per user request (was 48)
         }
     }
 }

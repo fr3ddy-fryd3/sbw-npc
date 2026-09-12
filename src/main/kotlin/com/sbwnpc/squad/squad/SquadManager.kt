@@ -115,8 +115,15 @@ class SquadManager : SavedData() {
 
     /** Called periodically by BarracksBlockEntity itself (not on a separate scheduler) for every
      *  squad currently assigned to it: spawns whatever's missing versus [Squad.originalComposition]
-     *  at [barracksPos], scattered a little so reinforcements don't all stack on one block. */
-    fun respawnAtBarracks(level: ServerLevel, barracksPos: BlockPos, faction: SquadFaction) {
+     *  at [barracksPos], scattered a little so reinforcements don't all stack on one block.
+     *
+     *  Reinforcements spawn on the SQUAD's own faction, not whatever faction the barracks' owner
+     *  happens to have picked — a real bug fixed here: this used to take a single `faction` param
+     *  (the barracks owner's `PlayerFactionRegistry` default) and apply it to every squad linked to
+     *  that barracks, regardless of what faction each squad actually was. Since squads can be any
+     *  faction (free choice stays available during development), a player's own barracks could end
+     *  up respawning troops for someone else's-faction squad wearing the WRONG side's skin/team. */
+    fun respawnAtBarracks(level: ServerLevel, barracksPos: BlockPos) {
         val pos = Vec3(barracksPos.x + 0.5, barracksPos.y.toDouble(), barracksPos.z + 0.5)
         val difficulty = level.getCurrentDifficultyAt(barracksPos)
         var changed = false
@@ -129,7 +136,7 @@ class SquadManager : SavedData() {
                 npc.moveTo(pos.x + offX, pos.y, pos.z + offZ, level.random.nextFloat() * 360f, 0f)
                 npc.npcClass = cls
                 npc.npcRank = NpcRank.DEFAULT
-                npc.spawnFaction = faction
+                npc.spawnFaction = squad.faction
                 npc.finalizeSpawn(level, difficulty, MobSpawnType.SPAWN_EGG, null)
                 level.addFreshEntity(npc)
                 squad.members.add(npc.uuid)

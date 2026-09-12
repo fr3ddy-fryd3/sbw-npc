@@ -7,6 +7,7 @@ import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.atsuishio.superbwarfare.tools.MillisTimer
 import com.sbwnpc.squad.combat.Alarm
 import com.sbwnpc.squad.combat.FriendlyFireGuard
+import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.team.SquadTeams
@@ -59,7 +60,7 @@ class NpcGunAttackGoal(private val mob: NpcEntity) : Goal() {
         private const val SIDESTEP_BATCH_COOLDOWN = 40 // ~2s pause after a batch fails, then retry
         private const val BOUND_MOVE_TICKS = 25   // ~1.25s rush
         private const val BOUND_PAUSE_TICKS = 20  // ~1s pause between rushes
-        private const val GUNFIRE_HEARING_RADIUS = 20.0
+        private const val GUNFIRE_HEARING_RADIUS = 30.0 // detection range, x1.5 per user request (was 20)
     }
 
     // Driven by rank (recruits are slow and inaccurate, elites fast and precise) and class
@@ -127,14 +128,25 @@ class NpcGunAttackGoal(private val mob: NpcEntity) : Goal() {
             boundPhaseStarted = true
             bounding = true
             nextBoundToggleTick = mob.tickCount + BOUND_MOVE_TICKS
-            mob.navigation.moveTo(target, 1.0)
+            moveTowardFormationSlot(target)
             return
         }
         if (mob.tickCount >= nextBoundToggleTick) {
             bounding = !bounding
             nextBoundToggleTick = mob.tickCount + if (bounding) BOUND_MOVE_TICKS else BOUND_PAUSE_TICKS
-            if (bounding) mob.navigation.moveTo(target, 1.0) else mob.navigation.stop()
+            if (bounding) moveTowardFormationSlot(target) else mob.navigation.stop()
         }
+    }
+
+    /** Same "spread by formation slot instead of everyone converging on the identical coordinate"
+     *  fix as `SquadOrderGoal` — the target's own live position doubles as the anchor. Without this,
+     *  a squad that all spotted the same enemy at once (no explicit ATTACK order, just direct/relayed
+     *  detection) beelined the exact same point and produced the same "snake" the formation work was
+     *  supposed to have already fixed — reported in-game as still happening specifically on contact. */
+    private fun moveTowardFormationSlot(target: LivingEntity) {
+        val targetPos = target.position()
+        val slot = SquadFormation.slotTarget(mob, targetPos, targetPos.subtract(mob.position()), false)
+        mob.navigation.moveTo(slot.x, slot.y, slot.z, 1.0)
     }
 
     override fun requiresUpdateEveryTick() = true
@@ -242,7 +254,7 @@ class NpcGunAttackGoal(private val mob: NpcEntity) : Goal() {
                 // Auditory stimulus: nearby allies who didn't see this themselves still hear it and
                 // go investigate (see Alarm/InvestigateGoal) — a real "heard gunfire" reaction,
                 // distinct from TeamAwareness's "someone has direct LOS on a specific hostile".
-                Alarm.raise(mob, mob.position(), GUNFIRE_HEARING_RADIUS)
+                Alarm.raise(mob, mob.position(), target.position(), GUNFIRE_HEARING_RADIUS)
             }
         } else {
             shootTimer.stop()
