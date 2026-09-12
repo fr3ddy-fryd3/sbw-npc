@@ -65,15 +65,6 @@ import net.minecraft.world.level.ServerLevelAccessor
 open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     PathfinderMob(type, level), net.tslat.smartbrainlib.api.SmartBrainOwner<NpcEntity> {
 
-    init {
-        // Same wiring Villager uses (see its constructor) — GroundPathNavigation defaults
-        // canPassDoors=true (walk through an already-open door) but canOpenDoors=false, and
-        // DoorInteractGoal.canUse() hard-requires navigation.canOpenDoors() before it'll do
-        // anything, so registering OpenDoorGoal below without this line would silently never
-        // fire. A real gap — squad members had no way to open a closed door at all.
-        (navigation as? net.minecraft.world.entity.ai.navigation.GroundPathNavigation)?.setCanOpenDoors(true)
-    }
-
     var npcClass: NpcClass
         get() = NpcClass.byOrdinal(entityData.get(DATA_CLASS))
         set(value) = entityData.set(DATA_CLASS, value.ordinal)
@@ -199,10 +190,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         this.goalSelector.addGoal(1, MortarLoaderGoal(this))
         this.goalSelector.addGoal(2, MeleeAttackGoal(this, 1.2, false))
         this.goalSelector.addGoal(2, GrenadeThrowGoal(this))
-        // Holds no Goal.Flag at all (same as vanilla's own OpenDoorGoal/DoorInteractGoal), so it
-        // never contends with movement/combat goals for control — it just opens a door in the
-        // mob's path when it's stuck against one, same mechanism Villagers/Vindicators use.
-        this.goalSelector.addGoal(2, net.minecraft.world.entity.ai.goal.OpenDoorGoal(this, true))
+        // Door opening moved to SmartBrainLib's InteractWithDoor (see getCoreTasks()) — migration
+        // step 3. It's actually a step up, not just a port: it also holds a door open for OTHER
+        // squad members mid-transit, which the old vanilla-style OpenDoorGoal never did.
         // Below melee self-defense (2) — an enemy in your face still gets fought, not fled from —
         // but above squad-order positioning (4), so suppression interrupts holding/patrolling.
         this.goalSelector.addGoal(3, SeekCoverGoal(this))
@@ -239,8 +229,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     }
 
     override fun getSensors(): List<net.tslat.smartbrainlib.api.core.sensor.ExtendedSensor<out NpcEntity>> = listOf()
+    // Step 3: door interaction. Real behavioural upgrade, not just a port — see registerGoals().
     override fun getCoreTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
-        net.tslat.smartbrainlib.api.core.BrainActivityGroup.empty()
+        net.tslat.smartbrainlib.api.core.BrainActivityGroup.coreTasks(
+            net.tslat.smartbrainlib.api.core.behaviour.custom.move.InteractWithDoor<NpcEntity>()
+        )
     override fun getIdleTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
         net.tslat.smartbrainlib.api.core.BrainActivityGroup.empty()
     override fun getFightTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
