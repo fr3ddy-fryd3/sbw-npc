@@ -53,8 +53,17 @@ import net.minecraft.world.level.ServerLevelAccessor
  * Base squad-member entity. Role (class + rank) drives the loadout and combat tuning. Friend/foe
  * is by squad faction == vanilla scoreboard team (see [SquadTeams]); no team on either side means
  * neutral. The faction also picks the NPC's skin ([com.sbwnpc.squad.client.renderer.NpcRenderer]).
+ *
+ * MIGRATION IN PROGRESS to SmartBrainLib (see SMARTBRAIN_MIGRATION_PLAN.md, gitignored working
+ * doc) — [SmartBrainOwner] is now implemented, but only a subset of behaviour has actually moved
+ * over yet; everything not yet migrated still runs as an ordinary [net.minecraft.world.entity.ai.goal.Goal]
+ * in [registerGoals], reading `mob.target` exactly as before. The new Brain-side target sensor (once
+ * added) writes both stores via `BrainUtil.setTargetOfEntity` specifically so those not-yet-migrated
+ * goals keep working unmodified during the transition — this is a deliberate, temporary bridge, not
+ * a permanent design.
  */
-open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : PathfinderMob(type, level) {
+open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
+    PathfinderMob(type, level), net.tslat.smartbrainlib.api.SmartBrainOwner<NpcEntity> {
 
     init {
         // Same wiring Villager uses (see its constructor) — GroundPathNavigation defaults
@@ -213,6 +222,29 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
             NearestAttackableTargetGoal(this, LivingEntity::class.java, 10, true, false) { this.isEnemy(it) }
         )
     }
+
+    // --- SmartBrainOwner: step 2 of the migration (skeleton only) ---
+    // The actual published 1.16.11 jar's API does NOT match SmartBrainLib's git `master` branch
+    // (confirmed by decompiling the real dependency with javap, not trusting the cloned source) —
+    // no auto-wiring mixin exists in this version, so brainProvider()/tickBrain() are wired by hand
+    // below. Task groups are BrainActivityGroup (not raw Lists) in this version; getSensors() is the
+    // only abstract member, the three task-group getters have library defaults (empty groups) that
+    // are overridden here just so tasks 3-5 have an obvious place to fill in one subsystem at a time.
+    override fun brainProvider(): net.minecraft.world.entity.ai.Brain.Provider<NpcEntity> =
+        net.tslat.smartbrainlib.api.core.SmartBrainProvider(this)
+
+    override fun customServerAiStep() {
+        super.customServerAiStep()
+        tickBrain(this)
+    }
+
+    override fun getSensors(): List<net.tslat.smartbrainlib.api.core.sensor.ExtendedSensor<out NpcEntity>> = listOf()
+    override fun getCoreTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
+        net.tslat.smartbrainlib.api.core.BrainActivityGroup.empty()
+    override fun getIdleTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
+        net.tslat.smartbrainlib.api.core.BrainActivityGroup.empty()
+    override fun getFightTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
+        net.tslat.smartbrainlib.api.core.BrainActivityGroup.empty()
 
     private fun isEnemy(other: LivingEntity): Boolean {
         if (other !is NpcEntity && other !is Player) return false
