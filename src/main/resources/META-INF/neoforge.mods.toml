@@ -32,3 +32,10 @@ type = "required"
 versionRange = "[0.8.9.1,)"
 ordering = "AFTER"
 side = "BOTH"
+
+[[dependencies.sbwnpc]]
+modId = "smartbrainlib"
+type = "required"
+versionRange = "[1.16.11,)"
+ordering = "AFTER"
+side = "BOTH"

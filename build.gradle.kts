@@ -19,6 +19,13 @@ repositories {
         url = uri("https://thedarkcolour.github.io/KotlinForForge/")
         content { includeGroup("thedarkcolour") }
     }
+    maven {
+        // SmartBrainLib's own publishing target (verified by resolving the actual jar +
+        // maven-metadata.xml from this URL, not guessed) — MPL-2.0, modId "smartbrainlib".
+        name = "SmartBrainLib (Cloudsmith)"
+        url = uri("https://dl.cloudsmith.io/public/tslat/sbl/maven/")
+        content { includeGroup("net.tslat.smartbrainlib") }
+    }
 }
 
 base {
@@ -92,6 +99,8 @@ dependencies {
     // указанная здесь версия ни на что не влияет (Gradle подставит локальный проект).
     compileOnly("com.atsuishio.superbwarfare:superbwarfare:${project.property("superbwarfare_version")}")
     runtimeOnly("com.atsuishio.superbwarfare:superbwarfare:${project.property("superbwarfare_version")}")
+
+    implementation("net.tslat.smartbrainlib:SmartBrainLib-neoforge-1.21.1:${project.property("smartbrainlib_version")}")
 }
 
 tasks.withType<JavaCompile> {
