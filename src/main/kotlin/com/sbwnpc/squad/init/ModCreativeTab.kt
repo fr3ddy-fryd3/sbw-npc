@@ -15,5 +15,10 @@ object ModCreativeTab {
         if (event.tabKey == CreativeModeTabs.COMBAT) {
             event.accept(ModItems.SQUAD_TOOL.get())
         }
+        // Registered but never added here — the Barracks BlockItem was completely unreachable in
+        // survival/creative (no recipe either). Real bug, not a design choice.
+        if (event.tabKey == CreativeModeTabs.FUNCTIONAL_BLOCKS) {
+            event.accept(ModItems.BARRACKS.get())
+        }
     }
 }

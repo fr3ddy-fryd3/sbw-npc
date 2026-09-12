@@ -5,10 +5,12 @@ import com.atsuishio.superbwarfare.data.gun.GunData
 import com.atsuishio.superbwarfare.data.gun.GunProp
 import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.atsuishio.superbwarfare.tools.MillisTimer
+import com.sbwnpc.squad.combat.Alarm
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.team.SquadTeams
+import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.goal.Goal
 
 /**
@@ -30,12 +32,23 @@ class NpcGunAttackGoal(private val mob: NpcEntity) : Goal() {
 
     // Friendly-fire guard: re-evaluated every tick (cheap bounded AABB query, and a stale "clear"
     // flag between checks is itself a friendly-fire window). Sidestep MOVEMENT is still only
-    // reissued on its own cooldown — no need to reorder navigation every tick — with a cap on
-    // attempts so a boxed-in shooter just holds fire and waits instead of dancing forever.
+    // reissued on its own cooldown — no need to reorder navigation every tick. A batch of quick
+    // attempts, THEN a longer cooldown before trying again (not giving up permanently) — an earlier
+    // version stopped retrying entirely once MAX_SIDESTEP_ATTEMPTS was hit, which is exactly the
+    // "just stands there, doesn't step aside" reported after testing: any ally that stayed in the
+    // way past the first ~15 ticks left the shooter frozen for the rest of the engagement.
     private var lineIsClear = true
     private var blastClear = true
     private var nextSidestepTick = 0
     private var sidestepAttempts = 0
+
+    // Bounding advance: beyond shootDistance, move in short rushes with a pause between rather than
+    // one continuous sprint straight at the target — real infantry advance in bounds, not a flat-out
+    // charge, and standing still to look around between rushes is also what lets aimTime/LOS actually
+    // matter instead of the mob just closing distance as fast as possible every time.
+    private var bounding = true
+    private var boundPhaseStarted = false
+    private var nextBoundToggleTick = 0
 
     companion object {
         private const val BASE_SHOOT_DISTANCE = 24.0
@@ -43,6 +56,10 @@ class NpcGunAttackGoal(private val mob: NpcEntity) : Goal() {
         private const val DEFEND_LEASH_DROP = 24.0
         private const val SIDESTEP_COOLDOWN = 5
         private const val MAX_SIDESTEP_ATTEMPTS = 3
+        private const val SIDESTEP_BATCH_COOLDOWN = 40 // ~2s pause after a batch fails, then retry
+        private const val BOUND_MOVE_TICKS = 25   // ~1.25s rush
+        private const val BOUND_PAUSE_TICKS = 20  // ~1s pause between rushes
+        private const val GUNFIRE_HEARING_RADIUS = 20.0
     }
 
     // Driven by rank (recruits are slow and inaccurate, elites fast and precise) and class
@@ -84,6 +101,40 @@ class NpcGunAttackGoal(private val mob: NpcEntity) : Goal() {
         blastClear = true
         nextSidestepTick = 0
         sidestepAttempts = 0
+        bounding = true
+        boundPhaseStarted = false
+        nextBoundToggleTick = 0
+    }
+
+    /** Beyond shootDistance: bounding advance instead of a flat sprint (see field doc). Within
+     *  shootDistance: hold position — this is the "engage" range where NpcGunAttackGoal actually
+     *  stops and fights, distinct from however far out target acquisition happened (that's the
+     *  target-selector goals' and TeamAwareness's job, not this one's — see PHASE5_PLAN.md).
+     *
+     *  Subagent review caught a real bug in the first version: `bounding` started `true` with
+     *  `nextBoundToggleTick = 0`, so the very first call (`tickCount >= 0` is always true)
+     *  immediately flipped `bounding` to `false` and stopped — every fresh engagement against a
+     *  distant target began with a dead ~1s freeze instead of an immediate rush, every single time
+     *  the goal restarted. `boundPhaseStarted` fixes that: the first call always issues a rush. */
+    private fun advanceOrHold(target: LivingEntity) {
+        if (mob.distanceToSqr(target) <= shootDistance * shootDistance) {
+            mob.navigation.stop()
+            bounding = true
+            boundPhaseStarted = false // re-engaging a distant target later starts on a rush again
+            return
+        }
+        if (!boundPhaseStarted) {
+            boundPhaseStarted = true
+            bounding = true
+            nextBoundToggleTick = mob.tickCount + BOUND_MOVE_TICKS
+            mob.navigation.moveTo(target, 1.0)
+            return
+        }
+        if (mob.tickCount >= nextBoundToggleTick) {
+            bounding = !bounding
+            nextBoundToggleTick = mob.tickCount + if (bounding) BOUND_MOVE_TICKS else BOUND_PAUSE_TICKS
+            if (bounding) mob.navigation.moveTo(target, 1.0) else mob.navigation.stop()
+        }
     }
 
     override fun requiresUpdateEveryTick() = true
@@ -120,15 +171,11 @@ class NpcGunAttackGoal(private val mob: NpcEntity) : Goal() {
             }
             if (fromHome > DEFEND_LEASH) {
                 mob.navigation.stop()
-            } else if (mob.distanceToSqr(target) > shootDistance * shootDistance) {
-                mob.navigation.moveTo(target, 1.0)
             } else {
-                mob.navigation.stop()
+                advanceOrHold(target)
             }
-        } else if (mob.distanceToSqr(target) > shootDistance * shootDistance) {
-            mob.navigation.moveTo(target, 1.0)
         } else {
-            mob.navigation.stop()
+            advanceOrHold(target)
         }
 
         // Re-evaluated every tick: a stale "clear" flag from a few ticks ago is itself a
@@ -142,13 +189,21 @@ class NpcGunAttackGoal(private val mob: NpcEntity) : Goal() {
         blastClear = FriendlyFireGuard.hasClearBlastRadius(mob, target.position(), explosionRadius)
 
         if (!lineIsClear) {
-            if (mob.tickCount >= nextSidestepTick && sidestepAttempts < MAX_SIDESTEP_ATTEMPTS) {
-                nextSidestepTick = mob.tickCount + SIDESTEP_COOLDOWN
-                sidestepAttempts++
-                // Repositioning the shooter can clear a blocked firing cone, but does nothing for
-                // a blast-radius block (the explosion still lands on the same target regardless of
-                // where the shooter stands) — only worth trying for the line-of-fire case.
-                FriendlyFireGuard.sidestepAwayFromAllies(mob, target.eyePosition)
+            if (mob.tickCount >= nextSidestepTick) {
+                if (sidestepAttempts >= MAX_SIDESTEP_ATTEMPTS) {
+                    // Batch exhausted — pause instead of dancing every 5 ticks forever, but come
+                    // back and try a fresh batch shortly rather than freezing for the rest of the
+                    // engagement (the ally blocking the shot may well have moved on by then).
+                    sidestepAttempts = 0
+                    nextSidestepTick = mob.tickCount + SIDESTEP_BATCH_COOLDOWN
+                } else {
+                    nextSidestepTick = mob.tickCount + SIDESTEP_COOLDOWN
+                    sidestepAttempts++
+                    // Repositioning the shooter can clear a blocked firing cone, but does nothing
+                    // for a blast-radius block (the explosion still lands on the same target
+                    // regardless of where the shooter stands) — only worth trying for line-of-fire.
+                    FriendlyFireGuard.sidestepAwayFromAllies(mob, target.eyePosition)
+                }
             }
         } else {
             sidestepAttempts = 0
@@ -184,6 +239,10 @@ class NpcGunAttackGoal(private val mob: NpcEntity) : Goal() {
                     newProgress -= cooldown
                 } while (newProgress - cooldown > 0)
                 shootTimer.progress = newProgress
+                // Auditory stimulus: nearby allies who didn't see this themselves still hear it and
+                // go investigate (see Alarm/InvestigateGoal) — a real "heard gunfire" reaction,
+                // distinct from TeamAwareness's "someone has direct LOS on a specific hostile".
+                Alarm.raise(mob, mob.position(), GUNFIRE_HEARING_RADIUS)
             }
         } else {
             shootTimer.stop()

@@ -3,6 +3,7 @@ package com.sbwnpc.squad.entity
 import com.atsuishio.superbwarfare.data.gun.GunData
 import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.sbwnpc.squad.entity.ai.GrenadeThrowGoal
+import com.sbwnpc.squad.entity.ai.InvestigateGoal
 import com.sbwnpc.squad.entity.ai.MortarClaims
 import com.sbwnpc.squad.entity.ai.MortarLoaderGoal
 import com.sbwnpc.squad.entity.ai.MortarOperatorGoal
@@ -95,6 +96,29 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
         )
     }
 
+    // Alertness (see AlertGoal / Alarm): a real "heard something, go check it out" reaction,
+    // distinct from actually having a target. Two sources — NpcGunAttackGoal.tick() raises this on
+    // nearby allies whenever it fires (heard gunfire), and die() raises it on nearby squadmates when
+    // the killer can't be resolved as a direct TeamAwareness contact (see die() below). Not
+    // persisted — momentary, like suppression.
+    var alertUntilTick: Int = 0
+        private set
+    var alertPos: Vec3? = null
+        private set
+
+    fun isAlert(): Boolean = tickCount < alertUntilTick && alertPos != null
+
+    fun alert(pos: Vec3) {
+        alertUntilTick = maxOf(alertUntilTick, tickCount + ALERT_DURATION_TICKS)
+        alertPos = pos
+    }
+
+    /** Called by [com.sbwnpc.squad.entity.ai.InvestigateGoal] once it reaches the alert position (or
+     *  gives up navigating to it) — ends the investigation instead of waiting out the full timer. */
+    fun clearAlert() {
+        alertUntilTick = 0
+    }
+
     /** Cover-seeking state machine driven entirely by [com.sbwnpc.squad.entity.ai.SeekCoverGoal] —
      *  lives here (like suppression above) rather than inside the goal so combat goals can read it
      *  without needing a reference to the goal instance. */
@@ -160,9 +184,13 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
         // Below melee self-defense (2) — an enemy in your face still gets fought, not fled from —
         // but above squad-order positioning (4), so suppression interrupts holding/patrolling.
         this.goalSelector.addGoal(3, SeekCoverGoal(this))
-        this.goalSelector.addGoal(4, SquadOrderGoal(this))
-        this.goalSelector.addGoal(5, RandomLookAroundGoal(this))
-        this.goalSelector.addGoal(6, WaterAvoidingRandomStrollGoal(this, 0.8))
+        // Above squad-order positioning (5) — "go check that out" wins over routine patrol/hold
+        // while there's nothing to actually shoot at yet, same as a real soldier breaking formation
+        // briefly to investigate nearby gunfire or a downed squadmate.
+        this.goalSelector.addGoal(4, InvestigateGoal(this))
+        this.goalSelector.addGoal(5, SquadOrderGoal(this))
+        this.goalSelector.addGoal(6, RandomLookAroundGoal(this))
+        this.goalSelector.addGoal(7, WaterAvoidingRandomStrollGoal(this, 0.8))
 
         this.targetSelector.addGoal(1, SquadFocusTargetGoal(this))
         this.targetSelector.addGoal(2, HurtByTargetGoal(this))
@@ -230,14 +258,34 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
 
     override fun die(cause: net.minecraft.world.damagesource.DamageSource) {
         (level() as? ServerLevel)?.let { SquadManager.get(it).removeMemberEverywhere(uuid) }
+        alertAllies(cause)
         MortarClaims.release(uuid)
         super.die(cause)
+    }
+
+    /** A squadmate going down is itself an "invariant" every shooter-AI convention treats as a
+     *  strong signal (F.E.A.R./Half-Life-style squad escalation on a downed ally). When the killer
+     *  is resolvable, this is strictly better than a vague alert — feed it straight into
+     *  [TeamAwareness] as if someone had just spotted it directly, so [SquadAwarenessTargetGoal]
+     *  can act on it after the normal relay delay. Only when the killer can't be resolved (fell,
+     *  environmental, whatever) does this fall back to a plain [Alarm] at the death position. */
+    private fun alertAllies(cause: net.minecraft.world.damagesource.DamageSource) {
+        val faction = com.sbwnpc.squad.team.SquadTeams.factionOf(this) ?: return
+        if (level() !is ServerLevel) return
+        val attacker = cause.entity as? LivingEntity
+        if (attacker != null && attacker.isAlive && com.sbwnpc.squad.team.SquadTeams.isHostile(this, attacker)) {
+            com.sbwnpc.squad.combat.TeamAwareness.report(faction, attacker.uuid, tickCount.toLong())
+        } else {
+            com.sbwnpc.squad.combat.Alarm.raise(this, position(), DEATH_ALARM_RADIUS)
+        }
     }
 
     companion object {
         private const val BASE_HEALTH = 20.0
         private const val SUPPRESSION_DURATION_TICKS = 100
         private const val SUPPRESSION_CAP_TICKS = 200
+        private const val ALERT_DURATION_TICKS = 200 // ~10s to reach/abandon an investigation lead
+        private const val DEATH_ALARM_RADIUS = 24.0
 
         @JvmField
         val DATA_CLASS: EntityDataAccessor<Int> =

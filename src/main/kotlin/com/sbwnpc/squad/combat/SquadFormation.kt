@@ -2,6 +2,7 @@ package com.sbwnpc.squad.combat
 
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.squad.SquadOrder
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.phys.Vec3
 
 /**
@@ -16,12 +17,14 @@ import net.minecraft.world.phys.Vec3
  * real infantry doctrine roughly (wedge to advance into unclear contact / ATTACK, line abreast to
  * hold a wide front / DEFEND, staggered column to travel a route / PATROL) without needing new UI.
  *
- * Deliberately simple: each mob computes its own "facing" as the vector from its own current
- * position to the anchor, rather than sharing one heading across the whole squad (which would need
- * a squad-wide centroid/leader reference the code doesn't track). Squad members are normally
- * already clustered near each other when this runs, so their individual headings end up close
- * enough in practice for a recognizable wedge/line/column — this is not a perfectly rigid formation
- * and isn't trying to be one.
+ * All members rotate their slot offset by the SAME heading — member 0 (the squad's "leader" slot)
+ * position to the anchor — rather than each mob computing its own facing from its own current
+ * position. An earlier version did the latter ("deliberately simple", per its own comment) and it
+ * was wrong, not just approximate: with each member using a different heading, the formation had no
+ * single consistent orientation at all — every member's wedge/line pointed a slightly different way,
+ * which is indistinguishable from random noise once several members are moving at once (reported
+ * in-game as "doesn't look like a formation, are you just moving numbers around"). A shared leader
+ * heading is what actually makes the shape a shape.
  */
 object SquadFormation {
 
@@ -70,22 +73,37 @@ object SquadFormation {
     }
 
     /** World-space point [mob] should path toward instead of the bare [anchor] — offset by its
-     *  formation slot, rotated toward [facing] (ignored for RING, which is rotation-symmetric
-     *  anyway). [arrived] switches the shape to RING regardless of order — see [shapeFor]. Falls
-     *  back to [anchor] itself if [mob] isn't actually in a squad (shouldn't happen for real
-     *  callers, but cheap to guard) or [facing] is degenerate (mob standing exactly on the anchor
-     *  already, non-RING shapes only). */
-    fun slotTarget(mob: NpcEntity, anchor: Vec3, facing: Vec3, arrived: Boolean): Vec3 {
+     *  formation slot, rotated toward the squad's shared heading (ignored for RING, which is
+     *  rotation-symmetric anyway). [fallbackFacing] is only used when the leader itself can't supply
+     *  a heading (dead/unloaded, or IS the mob asking) — see [headingFor]. [arrived] switches the
+     *  shape to RING regardless of order — see [shapeFor]. Falls back to [anchor] itself if [mob]
+     *  isn't actually in a squad (shouldn't happen for real callers, but cheap to guard). */
+    fun slotTarget(mob: NpcEntity, anchor: Vec3, fallbackFacing: Vec3, arrived: Boolean): Vec3 {
         val squad = mob.currentSquad() ?: return anchor
         val index = squad.members.indexOf(mob.uuid)
         if (index < 0) return anchor
         val local = localOffset(shapeFor(squad.order, arrived), index, squad.members.size)
         if (local == Vec3.ZERO) return anchor
 
-        val flat = Vec3(facing.x, 0.0, facing.z)
+        val heading = headingFor(mob, anchor, fallbackFacing)
+        val flat = Vec3(heading.x, 0.0, heading.z)
         if (flat.lengthSqr() < 1.0e-6) return anchor.add(local)
         val fwd = flat.normalize()
         val right = Vec3(-fwd.z, 0.0, fwd.x)
         return anchor.add(fwd.scale(local.z)).add(right.scale(local.x))
+    }
+
+    /** One heading shared by every member of [mob]'s squad this tick: anchor minus the position of
+     *  squad member 0 (the leader slot), so the whole formation is consistently oriented no matter
+     *  which member is asking. Falls back to [fallbackFacing] (the caller's own anchor-relative
+     *  vector) if the leader is dead/unloaded, or if [mob] itself IS the leader (nothing else to
+     *  reference — its own approach vector is the best available heading in that case). */
+    private fun headingFor(mob: NpcEntity, anchor: Vec3, fallbackFacing: Vec3): Vec3 {
+        val squad = mob.currentSquad() ?: return fallbackFacing
+        val leaderId = squad.members.firstOrNull() ?: return fallbackFacing
+        if (leaderId == mob.uuid) return fallbackFacing
+        val leader = (mob.level() as? ServerLevel)?.getEntity(leaderId) ?: return fallbackFacing
+        if (!leader.isAlive) return fallbackFacing
+        return anchor.subtract(leader.position())
     }
 }
