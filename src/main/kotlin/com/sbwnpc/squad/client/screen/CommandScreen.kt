@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.client.screen
 
+import com.sbwnpc.squad.network.RouteCmdPayload
 import com.sbwnpc.squad.network.SquadCmdPayload
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.SquadOrder
@@ -70,7 +71,10 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
         }
 
         y += 12
-        addRenderableWidget(Button.builder(Component.literal("Close")) { onClose() }.bounds(x, y, 364, 20).build())
+        addRenderableWidget(Button.builder(Component.literal("Routes")) {
+            PacketDistributor.sendToServer(RouteCmdPayload(RouteCmdPayload.REQUEST_LIST, "", ""))
+        }.bounds(x, y, 176, 20).build())
+        addRenderableWidget(Button.builder(Component.literal("Close")) { onClose() }.bounds(x + 188, y, 176, 20).build())
     }
 
     override fun render(g: GuiGraphics, mouseX: Int, mouseY: Int, partial: Float) {

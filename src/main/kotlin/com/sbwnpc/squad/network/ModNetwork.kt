@@ -6,6 +6,8 @@ import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.PlayerFactionRegistry
+import com.sbwnpc.squad.squad.RouteManager
+import com.sbwnpc.squad.squad.RouteRecording
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.squad.SquadSelection
@@ -37,6 +39,7 @@ object ModNetwork {
         r.playToServer(HudOrderPayload.TYPE, HudOrderPayload.CODEC) { p, ctx -> onHudOrder(p, ctx) }
         r.playToServer(HudOrderAllPayload.TYPE, HudOrderAllPayload.CODEC) { p, ctx -> onHudOrderAll(p, ctx) }
         r.playToServer(ChooseFactionPayload.TYPE, ChooseFactionPayload.CODEC) { p, ctx -> onChooseFaction(p, ctx) }
+        r.playToServer(RouteCmdPayload.TYPE, RouteCmdPayload.CODEC) { p, ctx -> onRouteCmd(p, ctx) }
 
         r.playToClient(OpenCommandScreenPayload.TYPE, OpenCommandScreenPayload.CODEC) { p, _ ->
             if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openCommandScreen(p.data)
@@ -49,6 +52,12 @@ object ModNetwork {
         }
         r.playToClient(OpenRecruitScreenPayload.TYPE, OpenRecruitScreenPayload.CODEC) { _, _ ->
             if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openRecruitScreenFromHeldItem()
+        }
+        r.playToClient(OpenRoutesScreenPayload.TYPE, OpenRoutesScreenPayload.CODEC) { p, _ ->
+            if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openRoutesScreen(p.data)
+        }
+        r.playToClient(OpenFinishRoutePayload.TYPE, OpenFinishRoutePayload.CODEC) { p, _ ->
+            if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openFinishRoute(p.pointCount)
         }
     }
 
@@ -185,6 +194,51 @@ object ModNetwork {
                     mgr.setOrder(squad.id, order)
                     mgr.setObjective(level, squad.id, pos)
                 }
+        }
+    }
+
+    private fun onRouteCmd(p: RouteCmdPayload, ctx: IPayloadContext) {
+        ctx.enqueueWork {
+            val player = ctx.player() as? ServerPlayer ?: return@enqueueWork
+            val level = player.level() as? ServerLevel ?: return@enqueueWork
+            val routes = RouteManager.get(level)
+            val squads = SquadManager.get(level)
+            fun bar(msg: String) = player.displayClientMessage(net.minecraft.network.chat.Component.literal(msg), true)
+
+            when (p.action) {
+                RouteCmdPayload.START_RECORDING -> {
+                    RouteRecording.start(player.uuid)
+                    bar("Recording route — right-click blocks to add points, air-click to finish")
+                }
+                RouteCmdPayload.FINISH -> {
+                    val points = RouteRecording.finish(player.uuid)
+                    if (points.isNullOrEmpty()) {
+                        bar("No points recorded — route not saved")
+                    } else {
+                        val route = routes.create(player.uuid, p.text, points)
+                        bar("Route ${route.name} saved (${points.size} points)")
+                    }
+                }
+                RouteCmdPayload.CANCEL -> {
+                    RouteRecording.cancel(player.uuid)
+                    bar("Recording cancelled")
+                }
+                RouteCmdPayload.ASSIGN -> {
+                    val routeId = runCatching { UUID.fromString(p.route) }.getOrNull() ?: return@enqueueWork
+                    val squadId = runCatching { UUID.fromString(p.text) }.getOrNull() ?: return@enqueueWork
+                    if (!routes.ownedBy(routeId, player.uuid) || !squads.ownedBy(squadId, player.uuid)) return@enqueueWork
+                    squads.assignRoute(squadId, routeId)
+                    bar("${squads.get(squadId)?.name ?: "Squad"} now patrols ${routes.get(routeId)?.name ?: "route"}")
+                }
+                RouteCmdPayload.DELETE -> {
+                    val routeId = runCatching { UUID.fromString(p.route) }.getOrNull() ?: return@enqueueWork
+                    if (!routes.ownedBy(routeId, player.uuid)) return@enqueueWork
+                    routes.delete(routeId)
+                }
+                RouteCmdPayload.REQUEST_LIST -> {
+                    sendToClient(player, OpenRoutesScreenPayload(buildRouteSnapshot(routes, squads, player.uuid)))
+                }
+            }
         }
     }
 

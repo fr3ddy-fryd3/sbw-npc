@@ -109,6 +109,10 @@ class SquadManager : SavedData() {
         squads[id]?.let { it.barracksId = barracksId; setDirty() }
     }
 
+    fun assignRoute(id: UUID, routeId: UUID?) {
+        squads[id]?.let { it.routeId = routeId; setDirty() }
+    }
+
     /** Called periodically by BarracksEntity itself (not on a separate scheduler) for every squad
      *  currently assigned to it: spawns whatever's missing versus [Squad.originalComposition] at
      *  [pos], scattered a little so reinforcements don't all stack on one block. */

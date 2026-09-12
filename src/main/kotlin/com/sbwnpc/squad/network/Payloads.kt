@@ -151,3 +151,53 @@ class HudOrderAllPayload(val order: Int) : CustomPacketPayload {
         )
     }
 }
+
+/** Client -> server: a route-related action (Phase 5.6 waypoints). */
+class RouteCmdPayload(val action: Int, val route: String, val text: String) : CustomPacketPayload {
+    override fun type() = TYPE
+
+    companion object {
+        const val START_RECORDING = 0
+        const val FINISH = 1       // text = new route's name
+        const val CANCEL = 2
+        const val ASSIGN = 3       // route = route id, text = squad id
+        const val DELETE = 4       // route = route id
+        const val REQUEST_LIST = 5
+
+        val TYPE = CustomPacketPayload.Type<RouteCmdPayload>(SquadMod.loc("route_cmd"))
+        val CODEC: StreamCodec<RegistryFriendlyByteBuf, RouteCmdPayload> = StreamCodec.composite(
+            ByteBufCodecs.VAR_INT, RouteCmdPayload::action,
+            ByteBufCodecs.STRING_UTF8, RouteCmdPayload::route,
+            ByteBufCodecs.STRING_UTF8, RouteCmdPayload::text,
+            ::RouteCmdPayload
+        )
+    }
+}
+
+/** Server -> client: open/refresh the routes screen, carrying the player's routes and squads. */
+class OpenRoutesScreenPayload(val data: CompoundTag) : CustomPacketPayload {
+    override fun type() = TYPE
+
+    companion object {
+        val TYPE = CustomPacketPayload.Type<OpenRoutesScreenPayload>(SquadMod.loc("open_routes_screen"))
+        val CODEC: StreamCodec<RegistryFriendlyByteBuf, OpenRoutesScreenPayload> = StreamCodec.composite(
+            ByteBufCodecs.COMPOUND_TAG, OpenRoutesScreenPayload::data,
+            ::OpenRoutesScreenPayload
+        )
+    }
+}
+
+/** Server -> client: player air-clicked while recording a route — show the Finish/Cancel prompt
+ *  instead of the normal GUI (same "tool behavior changes by armed state" pattern as
+ *  ARM_OBJECTIVE/ARM_FOCUS). */
+class OpenFinishRoutePayload(val pointCount: Int) : CustomPacketPayload {
+    override fun type() = TYPE
+
+    companion object {
+        val TYPE = CustomPacketPayload.Type<OpenFinishRoutePayload>(SquadMod.loc("open_finish_route"))
+        val CODEC: StreamCodec<RegistryFriendlyByteBuf, OpenFinishRoutePayload> = StreamCodec.composite(
+            ByteBufCodecs.VAR_INT, OpenFinishRoutePayload::pointCount,
+            ::OpenFinishRoutePayload
+        )
+    }
+}

@@ -5,6 +5,7 @@ import com.sbwnpc.squad.entity.BarracksEntity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModEntities
 import com.sbwnpc.squad.network.OpenCommandScreenPayload
+import com.sbwnpc.squad.network.OpenFinishRoutePayload
 import com.sbwnpc.squad.network.OpenRecruitScreenPayload
 import com.sbwnpc.squad.network.buildSquadSnapshot
 import com.sbwnpc.squad.network.sendToClient
@@ -13,6 +14,7 @@ import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.npc.SquadPreset
 import com.sbwnpc.squad.squad.PlayerFactionRegistry
+import com.sbwnpc.squad.squad.RouteRecording
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.squad.SquadSelection
@@ -74,6 +76,13 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             return InteractionResultHolder.sidedSuccess(stack, level.isClientSide)
         }
 
+        // Recording a route overrides normal mode dispatch entirely, regardless of which mode the
+        // tool happens to be in — same "armed state wins" precedent as ARM_OBJECTIVE/ARM_FOCUS.
+        if (!level.isClientSide && player is ServerPlayer && RouteRecording.isRecording(player.uuid)) {
+            sendToClient(player, OpenFinishRoutePayload(RouteRecording.pointCount(player.uuid)))
+            return InteractionResultHolder.sidedSuccess(stack, level.isClientSide)
+        }
+
         if (mode(stack) == MODE_BARRACKS) {
             if (!level.isClientSide) actionbar(player, "Right-click a block to place a Barracks", ChatFormatting.YELLOW)
             return InteractionResultHolder.sidedSuccess(stack, level.isClientSide)
@@ -116,6 +125,12 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         val serverLevel = level as? ServerLevel ?: return InteractionResult.SUCCESS
         val serverPlayer = player as? ServerPlayer ?: return InteractionResult.SUCCESS
         val stack = context.itemInHand
+
+        if (RouteRecording.isRecording(serverPlayer.uuid)) {
+            val count = RouteRecording.addPoint(serverPlayer.uuid, context.clickedPos)
+            if (count != null) actionbar(player, "Waypoint $count added", ChatFormatting.GRAY)
+            return InteractionResult.CONSUME
+        }
 
         if (mode(stack) == MODE_COMMAND) {
             val squadId = SquadSelection.selectedSquad(player.uuid)

@@ -2,7 +2,9 @@ package com.sbwnpc.squad.client
 
 import com.sbwnpc.squad.client.screen.ChooseFactionScreen
 import com.sbwnpc.squad.client.screen.CommandScreen
+import com.sbwnpc.squad.client.screen.FinishRouteScreen
 import com.sbwnpc.squad.client.screen.RecruitScreen
+import com.sbwnpc.squad.client.screen.RoutesScreen
 import com.sbwnpc.squad.item.SquadToolItem
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.world.InteractionHand
@@ -40,5 +42,13 @@ object ClientPayloadHandlers {
 
     fun openHud(snapshot: CompoundTag) {
         HudOverlayState.onSnapshot(snapshot)
+    }
+
+    fun openRoutesScreen(snapshot: CompoundTag) {
+        net.minecraft.client.Minecraft.getInstance().setScreen(RoutesScreen(snapshot))
+    }
+
+    fun openFinishRoute(pointCount: Int) {
+        net.minecraft.client.Minecraft.getInstance().setScreen(FinishRouteScreen(pointCount))
     }
 }

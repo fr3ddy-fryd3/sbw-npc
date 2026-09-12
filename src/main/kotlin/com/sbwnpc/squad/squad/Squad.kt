@@ -24,7 +24,9 @@ class Squad(
     var barracksId: UUID? = null,
     /** Classes the squad was formed/last topped up with, in order — a barracks compares this
      *  against current `members.size` to know what's missing and what class to spawn next. */
-    var originalComposition: List<NpcClass> = emptyList()
+    var originalComposition: List<NpcClass> = emptyList(),
+    /** Patrol route this squad walks when on PATROL order, if any — see `Route`/`SquadOrderGoal`. */
+    var routeId: UUID? = null
 ) {
     fun save(): CompoundTag {
         val tag = CompoundTag()
@@ -42,6 +44,7 @@ class Squad(
         val comp = ListTag()
         originalComposition.forEach { comp.add(IntTag.valueOf(it.ordinal)) }
         tag.put("OriginalComposition", comp)
+        routeId?.let { tag.putUUID("RouteId", it) }
         return tag
     }
 
@@ -62,7 +65,8 @@ class Squad(
                 focusEntity = if (tag.hasUUID("Focus")) tag.getUUID("Focus") else null,
                 owner = tag.getUUID("Owner"),
                 barracksId = if (tag.hasUUID("BarracksId")) tag.getUUID("BarracksId") else null,
-                originalComposition = originalComposition
+                originalComposition = originalComposition,
+                routeId = if (tag.hasUUID("RouteId")) tag.getUUID("RouteId") else null
             )
         }
     }
