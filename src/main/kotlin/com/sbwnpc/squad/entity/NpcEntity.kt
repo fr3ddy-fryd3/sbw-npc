@@ -1,9 +1,11 @@
 package com.sbwnpc.squad.entity
 
 import com.atsuishio.superbwarfare.data.gun.GunData
+import com.atsuishio.superbwarfare.init.ModItems
 import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.sbwnpc.squad.entity.ai.GrenadeThrowBehaviour
 import com.sbwnpc.squad.entity.ai.InvestigateBehaviour
+import com.sbwnpc.squad.entity.ai.MedicHealBehaviour
 import com.sbwnpc.squad.entity.ai.MortarClaims
 import com.sbwnpc.squad.entity.ai.MortarLoaderBehaviour
 import com.sbwnpc.squad.entity.ai.MortarOperatorBehaviour
@@ -27,6 +29,7 @@ import net.minecraft.network.syncher.SynchedEntityData
 import net.minecraft.world.DifficultyInstance
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.EntityType
+import net.minecraft.world.entity.EquipmentSlot
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.Mob
 import net.minecraft.world.entity.MobSpawnType
@@ -122,6 +125,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      *  GrenadeThrowBehaviour take back over. Backed by [ModMemories.COVER_HOLD] (see its own doc
      *  comment) instead of a hand-rolled enum with a logging setter. */
     fun combatLockedByCover(): Boolean = BrainUtils.hasMemory(this, ModMemories.COVER_HOLD.get())
+
+    fun combatLockedByMedic(): Boolean = BrainUtils.hasMemory(this, ModMemories.MEDIC_HEALING.get())
 
     // Set by GunAttackBehaviour every time it actually fires (not just "has a target" — genuinely
     // pulled the trigger this tick). Used by SeekCoverBehaviour to verify an ally is really
@@ -253,7 +258,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             net.tslat.smartbrainlib.api.core.behaviour.custom.move.InteractWithDoor<NpcEntity>(),
             SeekCoverBehaviour(),
             MortarOperatorBehaviour(),
-            MortarLoaderBehaviour()
+            MortarLoaderBehaviour(),
+            MedicHealBehaviour()
         )
     // Idle: only relevant while there's no ATTACK_TARGET (Fight always outranks Idle). Order here
     // doesn't change behaviour — InvestigateBehaviour's and SquadOrderBehaviour's own eligibility
@@ -308,7 +314,15 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             health = maxHealth
         }
 
-        val gunItem = BuiltInRegistries.ITEM.getOptional(npcClass.weaponId).orElse(Items.AIR)
+        // Per-class multiplier on top of the shared base — createAttributes() only sets the raw
+        // base (BASE_SPEED) since it runs once at entity-type registration, before npcClass is even
+        // known; this is the real value, same pattern as MAX_HEALTH above.
+        getAttribute(Attributes.MOVEMENT_SPEED)?.baseValue = BASE_SPEED * npcClass.speedMultiplier
+
+        // One of 2 weapons per weapon category, picked once and kept for this NPC's whole life —
+        // pure visual variety across NPCs of the same class, per user request ("разношерстные").
+        val weaponId = npcClass.weaponPool[random.nextInt(npcClass.weaponPool.size)]
+        val gunItem = BuiltInRegistries.ITEM.getOptional(weaponId).orElse(Items.AIR)
         if (gunItem is GunItem) {
             val gunData = GunData.from(ItemStack(gunItem))
             gunData.virtualAmmo.set(120)
@@ -316,6 +330,19 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             gunData.save()
             setItemInHand(InteractionHand.MAIN_HAND, gunData.stack)
         }
+
+        // Green (RU) kit for CREEPER/CAT/PIG/COW, sand (US) kit for the other 4 factions — per user
+        // request, applies to every class without exception. spawnFaction (not
+        // SquadTeams.factionOf(this)) because finalizeSpawn() calls applyRole() BEFORE assigning the
+        // scoreboard team that factionOf() reads from — see finalizeSpawn().
+        val faction = spawnFaction ?: SquadFaction.DEFAULT
+        val (helmet, chest) = if (faction in GREEN_KIT_FACTIONS) {
+            ModItems.RU_HELMET_6B47.get() to ModItems.RU_CHEST_6B43.get()
+        } else {
+            ModItems.US_HELMET_PASGT.get() to ModItems.US_CHEST_IOTV.get()
+        }
+        setItemSlot(EquipmentSlot.HEAD, ItemStack(helmet))
+        setItemSlot(EquipmentSlot.CHEST, ItemStack(chest))
 
         // One reserve grenade per fighter, mortar crew excepted (they aren't a combat-suppression
         // role) — per user request. Tracked as a plain flag, NOT a visible offhand item — user
@@ -368,10 +395,16 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     companion object {
         private const val BASE_HEALTH = 20.0
+        private const val BASE_SPEED = 0.25
         private const val SUPPRESSION_DURATION_TICKS = 100
         private const val SUPPRESSION_CAP_TICKS = 200
         private const val ALERT_DURATION_TICKS = 200 // ~10s to reach/abandon an investigation lead
         private const val DEATH_ALARM_RADIUS = 36.0 // detection range, x1.5 per user request (was 24)
+
+        // Green (RU 6B47/6B43) vs sand (US PASGT/IOTV) armor kit — see applyRole(). Verified against
+        // the real SBW source, not guessed: both textures inspected directly (RU = green camo, US =
+        // tan/sand camo).
+        private val GREEN_KIT_FACTIONS = setOf(SquadFaction.CREEPER, SquadFaction.CAT, SquadFaction.PIG, SquadFaction.COW)
 
         @JvmField
         val DATA_CLASS: EntityDataAccessor<Int> =
@@ -385,7 +418,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         fun createAttributes(): AttributeSupplier.Builder {
             return Mob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, BASE_HEALTH)
-                .add(Attributes.MOVEMENT_SPEED, 0.25 * 1.4) // x1.4 per user feedback — felt too slow, tuned down from x1.5
+                .add(Attributes.MOVEMENT_SPEED, BASE_SPEED) // real per-class value is set in applyRole() — npcClass isn't known yet here
 
                 .add(Attributes.ATTACK_DAMAGE, 2.0)
                 .add(Attributes.ARMOR, 2.0)

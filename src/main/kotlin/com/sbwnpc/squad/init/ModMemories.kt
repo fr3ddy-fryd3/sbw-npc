@@ -32,5 +32,15 @@ object ModMemories {
     val ALERT_POSITION: Supplier<MemoryModuleType<Vec3>> =
         SBLConstants.SBL_LOADER.registerMemoryType("alert_position")
 
+    /** Same "hands off, I own the mob right now" idiom as [COVER_HOLD], owned by
+     *  [com.sbwnpc.squad.entity.ai.MedicHealBehaviour] instead: present while a medic is actively
+     *  moving to/treating a CRITICALLY wounded ally (the one case where healing must win over an
+     *  ongoing firefight, per user decision) — read by [com.sbwnpc.squad.entity.ai.GunAttackBehaviour]
+     *  the same way it already reads [COVER_HOLD]. Not set for the ordinary opportunistic heal (no
+     *  live target of its own) — nothing to lock out there, GunAttackBehaviour is already inactive
+     *  without a target. */
+    val MEDIC_HEALING: Supplier<MemoryModuleType<Boolean>> =
+        SBLConstants.SBL_LOADER.registerMemoryType("medic_healing")
+
     fun init() {}
 }

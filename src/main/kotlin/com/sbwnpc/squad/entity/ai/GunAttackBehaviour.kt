@@ -83,7 +83,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun canEngage(entity: NpcEntity): Boolean {
-        if (entity.combatLockedByCover()) return false
+        if (entity.combatLockedByCover() || entity.combatLockedByMedic()) return false
         val target = entity.target ?: return false
         val gunData = currentGunData(entity) ?: return false
         return target.isAlive && (gunData.countBackupAmmo(entity) > 0 || gunData.hasEnoughAmmoToShoot(entity))
@@ -92,7 +92,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = canEngage(entity)
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean {
-        if (entity.combatLockedByCover()) return false
+        if (entity.combatLockedByCover() || entity.combatLockedByMedic()) return false
         val gunData = currentGunData(entity) ?: return false
         return (canEngage(entity) || !entity.navigation.isDone) &&
                 (gunData.countBackupAmmo(entity) > 0 || gunData.hasEnoughAmmoToShoot(entity))
