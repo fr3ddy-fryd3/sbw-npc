@@ -2,6 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.FriendlyFireGuard
+import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.team.SquadTeams
@@ -12,9 +13,7 @@ import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.minecraft.world.entity.player.Player
-import net.minecraft.world.level.ClipContext
 import net.minecraft.world.phys.AABB
-import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 import net.tslat.smartbrainlib.util.BrainUtils
@@ -518,8 +517,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         for (step in PEEK_STEP_DISTANCES) {
             val candidate = base.add(dir.scale(step))
             val eye = candidate.add(0.0, 1.5, 0.0)
-            val hit = level.clip(ClipContext(eye, target.eyePosition, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, entity))
-            if (hit.type != HitResult.Type.BLOCK) return candidate
+            if (!Sightline.blocked(level, eye, target.eyePosition, entity)) return candidate
         }
         return target.position()
     }
@@ -639,10 +637,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  others it's hidden from. */
     private fun isHiddenFrom(level: ServerLevel, entity: NpcEntity, threats: List<Vec3>, candidate: BlockPos): Boolean {
         val to = Vec3(candidate.x + 0.5, candidate.y + 1.5, candidate.z + 0.5)
-        return threats.all { threat ->
-            val hit = level.clip(ClipContext(threat, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, entity))
-            hit.type == HitResult.Type.BLOCK
-        }
+        return threats.all { threat -> Sightline.blocked(level, threat, to, entity) }
     }
 
     /** Snaps to standable ground near [pos] — same heuristic shape as the groundAt() helpers used
