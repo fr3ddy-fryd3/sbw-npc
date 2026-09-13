@@ -26,7 +26,7 @@ class Squad(
     /** Classes the squad was formed/last topped up with, in order — a barracks compares this
      *  against current `members.size` to know what's missing and what class to spawn next. */
     var originalComposition: List<NpcClass> = emptyList(),
-    /** Patrol route this squad walks when on PATROL order, if any — see `Route`/`SquadOrderGoal`. */
+    /** Patrol route this squad walks when on PATROL order, if any — see `Route`/`SquadOrderBehaviour`. */
     var routeId: UUID? = null
 ) {
     fun save(): CompoundTag {

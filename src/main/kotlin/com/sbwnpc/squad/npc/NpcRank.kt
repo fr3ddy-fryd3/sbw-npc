@@ -2,7 +2,7 @@ package com.sbwnpc.squad.npc
 
 /**
  * Experience tier. Scales survivability and how quick/accurate the NPC is in a firefight.
- * These feed NpcGunAttackGoal (aimTime, spread, semi-fire cadence) and max health.
+ * These feed GunAttackBehaviour (aimTime, spread, semi-fire cadence) and max health.
  *
  * Deliberately not very lethal even at the top: ELITE sits roughly where a "competent but
  * beatable" opponent should, RECRUIT sprays wildly and is slow on the trigger.

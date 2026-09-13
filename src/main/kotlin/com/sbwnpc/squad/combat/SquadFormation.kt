@@ -7,7 +7,7 @@ import net.minecraft.world.phys.Vec3
 
 /**
  * Turns "every squad member walks toward the exact same point" (the literal `home`/route point
- * passed to `navigation.moveTo` in `SquadOrderGoal`) into "every squad member walks toward its own
+ * passed to `navigation.moveTo` in `SquadOrderBehaviour`) into "every squad member walks toward its own
  * slot around that point" — real formation-slot steering (see gdx-ai's Formation Motion, and RTS
  * flocking literature), not a full boids simulation. That single change is what was actually
  * causing both the "everyone piles onto one spot and shoves past each other" pileup and the
@@ -28,8 +28,13 @@ import net.minecraft.world.phys.Vec3
  */
 object SquadFormation {
 
-    private const val SLOT_SPACING = 2.5
-    private const val RING_RADIUS = 3.5
+    // Widened from 2.5/3.5 per user feedback: the old spacing was tight enough that a single
+    // mortar shell (SBW's MortarShellEntity.explosionRadiusValue = 8 blocks) could catch multiple
+    // squad members in one hit, and the wedge/line shapes read as a blob rather than a recognizable
+    // formation at a glance. Not widened all the way to 8 — that would make ATTACK/DEFEND slots
+    // routinely unreachable indoors (through doors, small rooms) where these NPCs also operate.
+    private const val SLOT_SPACING = 5.0
+    private const val RING_RADIUS = 6.0
 
     /** Callers that decide "arrived, switch to RING" from raw distance to the anchor MUST use a
      *  threshold at least this big — not RING_RADIUS itself, safely past it. Using anything smaller

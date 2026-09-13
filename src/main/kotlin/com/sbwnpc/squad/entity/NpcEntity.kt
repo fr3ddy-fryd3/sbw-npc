@@ -2,16 +2,14 @@ package com.sbwnpc.squad.entity
 
 import com.atsuishio.superbwarfare.data.gun.GunData
 import com.atsuishio.superbwarfare.item.gun.GunItem
-import com.sbwnpc.squad.entity.ai.GrenadeThrowGoal
-import com.sbwnpc.squad.entity.ai.InvestigateGoal
+import com.sbwnpc.squad.entity.ai.GrenadeThrowBehaviour
+import com.sbwnpc.squad.entity.ai.InvestigateBehaviour
 import com.sbwnpc.squad.entity.ai.MortarClaims
-import com.sbwnpc.squad.entity.ai.MortarLoaderGoal
-import com.sbwnpc.squad.entity.ai.MortarOperatorGoal
-import com.sbwnpc.squad.entity.ai.NpcGunAttackGoal
-import com.sbwnpc.squad.entity.ai.SeekCoverGoal
-import com.sbwnpc.squad.entity.ai.SquadAwarenessTargetGoal
-import com.sbwnpc.squad.entity.ai.SquadFocusTargetGoal
-import com.sbwnpc.squad.entity.ai.SquadOrderGoal
+import com.sbwnpc.squad.entity.ai.MortarLoaderBehaviour
+import com.sbwnpc.squad.entity.ai.MortarOperatorBehaviour
+import com.sbwnpc.squad.entity.ai.SeekCoverBehaviour
+import com.sbwnpc.squad.entity.ai.SquadOrderBehaviour
+import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
@@ -37,33 +35,30 @@ import net.minecraft.world.entity.SpawnGroupData
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier
 import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.entity.ai.goal.FloatGoal
-import net.minecraft.world.entity.ai.goal.MeleeAttackGoal
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal
 import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal
-import net.minecraft.world.entity.ai.goal.target.HurtByTargetGoal
-import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.damagesource.DamageSource
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
 import net.minecraft.world.level.Level
+import net.tslat.smartbrainlib.util.BrainUtils
 import net.minecraft.world.level.ServerLevelAccessor
 
 /**
  * Base squad-member entity. Role (class + rank) drives the loadout and combat tuning. Friend/foe
  * is by squad faction == vanilla scoreboard team (see [SquadTeams]); no team on either side means
  * neutral. The faction also picks the NPC's skin ([com.sbwnpc.squad.client.renderer.NpcRenderer]).
+ *
+ * MIGRATION TO SmartBrainLib (see SMARTBRAIN_MIGRATION_PLAN.md, gitignored working doc) — complete.
+ * [registerGoals] only registers three trivial, NPC-agnostic vanilla utility goals now (float/swim,
+ * random look, random wander) that never touched `mob.target` or any custom AI state and were never
+ * part of the migration's task list — no risk in leaving those as ordinary Goals indefinitely.
+ * Every subsystem that reads/writes combat state (targeting, gun combat, melee, grenades, mortar,
+ * cover/suppression, alarm/investigate, squad formations/patrol) is Brain-side.
  */
-open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : PathfinderMob(type, level) {
-
-    init {
-        // Same wiring Villager uses (see its constructor) — GroundPathNavigation defaults
-        // canPassDoors=true (walk through an already-open door) but canOpenDoors=false, and
-        // DoorInteractGoal.canUse() hard-requires navigation.canOpenDoors() before it'll do
-        // anything, so registering OpenDoorGoal below without this line would silently never
-        // fire. A real gap — squad members had no way to open a closed door at all.
-        (navigation as? net.minecraft.world.entity.ai.navigation.GroundPathNavigation)?.setCanOpenDoors(true)
-    }
+open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
+    PathfinderMob(type, level), net.tslat.smartbrainlib.api.SmartBrainOwner<NpcEntity> {
 
     var npcClass: NpcClass
         get() = NpcClass.byOrdinal(entityData.get(DATA_CLASS))
@@ -79,74 +74,54 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
     /** Command group this NPC belongs to, if any. Server-side; persisted. */
     var squadId: UUID? = null
 
-    // Suppression (see SeekCoverGoal): a temporary "duck and hold" state triggered by taking
-    // ranged damage (below, hurt()) or a nearby explosion (SuppressionEvents). Not persisted —
-    // always fine to reset to "not suppressed" on reload, it's a momentary combat reaction.
-    var suppressedUntilTick: Int = 0
-        private set
-    var threatPos: Vec3? = null
-        private set
-
-    fun isSuppressed(): Boolean = tickCount < suppressedUntilTick
+    // Suppression (see SeekCoverBehaviour): a temporary "duck and hold" state triggered by taking
+    // ranged damage (below, hurt()) or a nearby explosion (SuppressionEvents). Backed by a
+    // SmartBrainLib TTL memory (SmartBrain migration step 6) instead of a hand-rolled
+    // suppressedUntilTick/threatPos pair — expires on its own, no manual tick comparison, and
+    // visible via the brain's own memory (e.g. /data get entity <e> Brain) instead of debug logs.
+    fun isSuppressed(): Boolean = BrainUtils.hasMemory(this, ModMemories.SUPPRESSING_THREAT.get())
+    val threatPos: Vec3? get() = BrainUtils.getMemory(this, ModMemories.SUPPRESSING_THREAT.get())
 
     /** Each trigger extends the timer (doesn't stack duration), capped so sustained fire doesn't
-     *  grant an indefinite "immune to squad orders" state. */
+     *  grant an indefinite "immune to squad orders" state — same cap logic as before, just computed
+     *  against the memory's own remaining TTL instead of a local field. */
     fun suppress(threat: Vec3) {
-        val extended = tickCount + SUPPRESSION_DURATION_TICKS
-        val cap = tickCount + SUPPRESSION_CAP_TICKS
-        suppressedUntilTick = maxOf(suppressedUntilTick, extended).coerceAtMost(cap)
-        threatPos = threat
-        // TEMPORARY diagnostic (see PHASE5_PLAN.md "Диагностика укрытий перед фиксом") — remove
-        // once an in-game test confirms whether suppress() even fires reliably and whether
-        // SeekCoverGoal actually reaches IN_COVER/PEEKING, or whether what's visible is really
-        // FriendlyFireGuard.sidestepAwayFromAllies instead.
-        com.sbwnpc.squad.SquadMod.LOGGER.info(
-            "[cover-debug] {} suppressed at tick {} by threat near {}", uuid, tickCount, threat
-        )
+        val remaining = if (isSuppressed())
+            BrainUtils.getTimeUntilMemoryExpires(this, ModMemories.SUPPRESSING_THREAT.get())
+        else 0L
+        val ticks = maxOf(remaining, SUPPRESSION_DURATION_TICKS.toLong()).coerceAtMost(SUPPRESSION_CAP_TICKS.toLong())
+        BrainUtils.setForgettableMemory(this, ModMemories.SUPPRESSING_THREAT.get(), threat, ticks.toInt())
     }
 
-    // Alertness (see AlertGoal / Alarm): a real "heard something, go check it out" reaction,
-    // distinct from actually having a target. Two sources — NpcGunAttackGoal.tick() raises this on
-    // nearby allies whenever it fires (heard gunfire), and die() raises it on nearby squadmates when
-    // the killer can't be resolved as a direct TeamAwareness contact (see die() below). Not
-    // persisted — momentary, like suppression.
-    var alertUntilTick: Int = 0
-        private set
-    var alertPos: Vec3? = null
-        private set
-
-    fun isAlert(): Boolean = tickCount < alertUntilTick && alertPos != null
+    // Alertness (see InvestigateBehaviour / Alarm): a real "heard something, go check it out"
+    // reaction, distinct from actually having a target. Two sources — GunAttackBehaviour.tick()
+    // raises this on nearby allies whenever it fires (heard gunfire), and die() raises it on nearby
+    // squadmates when the killer can't be resolved as a direct TeamAwareness contact (see die()
+    // below). Backed by a SmartBrainLib TTL memory (SmartBrain migration step 7) instead of a
+    // hand-rolled alertUntilTick/alertPos pair.
+    fun isAlert(): Boolean = BrainUtils.hasMemory(this, ModMemories.ALERT_POSITION.get())
 
     fun alert(pos: Vec3) {
-        alertUntilTick = maxOf(alertUntilTick, tickCount + ALERT_DURATION_TICKS)
-        alertPos = pos
+        val remaining = if (isAlert())
+            BrainUtils.getTimeUntilMemoryExpires(this, ModMemories.ALERT_POSITION.get())
+        else 0L
+        val ticks = maxOf(remaining, ALERT_DURATION_TICKS.toLong())
+        BrainUtils.setForgettableMemory(this, ModMemories.ALERT_POSITION.get(), pos, ticks.toInt())
     }
 
-    /** Called by [com.sbwnpc.squad.entity.ai.InvestigateGoal] once it reaches the alert position (or
-     *  gives up navigating to it) — ends the investigation instead of waiting out the full timer. */
+    /** Called by [com.sbwnpc.squad.entity.ai.InvestigateBehaviour] once it reaches the alert
+     *  position (or gives up navigating to it) — ends the investigation instead of waiting out the
+     *  full timer. */
     fun clearAlert() {
-        alertUntilTick = 0
+        BrainUtils.clearMemory(this, ModMemories.ALERT_POSITION.get())
     }
 
-    /** Cover-seeking state machine driven entirely by [com.sbwnpc.squad.entity.ai.SeekCoverGoal] —
-     *  lives here (like suppression above) rather than inside the goal so combat goals can read it
-     *  without needing a reference to the goal instance. */
-    enum class CoverPhase { NONE, MOVING_TO_COVER, IN_COVER, PEEKING, RETURNING_TO_COVER }
-
-    var coverPhase: CoverPhase = CoverPhase.NONE
-        set(value) {
-            // TEMPORARY diagnostic, same reason as suppress() above — remove once confirmed.
-            if (value != field) {
-                com.sbwnpc.squad.SquadMod.LOGGER.info("[cover-debug] {} coverPhase {} -> {}", uuid, field, value)
-            }
-            field = value
-        }
-
-    /** True while SeekCoverGoal must have the mob to itself for movement and combat goals should
-     *  stand down entirely — false during [CoverPhase.PEEKING], the deliberate window where the
-     *  mob steps out to return fire and NpcGunAttackGoal/GrenadeThrowGoal take back over. */
-    fun combatLockedByCover(): Boolean = coverPhase == CoverPhase.MOVING_TO_COVER ||
-        coverPhase == CoverPhase.IN_COVER || coverPhase == CoverPhase.RETURNING_TO_COVER
+    /** True while [com.sbwnpc.squad.entity.ai.SeekCoverBehaviour] must have the mob to itself for
+     *  movement and combat goals should stand down entirely — false during its PEEKING phase, the
+     *  deliberate window where the mob steps out to return fire and GunAttackBehaviour/
+     *  GrenadeThrowBehaviour take back over. Backed by [ModMemories.COVER_HOLD] (see its own doc
+     *  comment) instead of a hand-rolled enum with a logging setter. */
+    fun combatLockedByCover(): Boolean = BrainUtils.hasMemory(this, ModMemories.COVER_HOLD.get())
 
     override fun hurt(source: DamageSource, amount: Float): Boolean {
         val result = super.hurt(source, amount)
@@ -182,39 +157,72 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) : Pathfinder
         builder.define(DATA_RANK, NpcRank.DEFAULT.ordinal)
     }
 
+    // Only trivial, NPC-agnostic vanilla utility goals left — none of them ever touched
+    // `mob.target`/ATTACK_TARGET or any custom AI state, so there's no Goal/Brain interop risk in
+    // leaving them here indefinitely (see the class doc comment above).
     override fun registerGoals() {
         super.registerGoals()
         this.goalSelector.addGoal(0, FloatGoal(this))
-        this.goalSelector.addGoal(1, NpcGunAttackGoal(this))
-        this.goalSelector.addGoal(1, MortarOperatorGoal(this))
-        this.goalSelector.addGoal(1, MortarLoaderGoal(this))
-        this.goalSelector.addGoal(2, MeleeAttackGoal(this, 1.2, false))
-        this.goalSelector.addGoal(2, GrenadeThrowGoal(this))
-        // Holds no Goal.Flag at all (same as vanilla's own OpenDoorGoal/DoorInteractGoal), so it
-        // never contends with movement/combat goals for control — it just opens a door in the
-        // mob's path when it's stuck against one, same mechanism Villagers/Vindicators use.
-        this.goalSelector.addGoal(2, net.minecraft.world.entity.ai.goal.OpenDoorGoal(this, true))
-        // Below melee self-defense (2) — an enemy in your face still gets fought, not fled from —
-        // but above squad-order positioning (4), so suppression interrupts holding/patrolling.
-        this.goalSelector.addGoal(3, SeekCoverGoal(this))
-        // Above squad-order positioning (5) — "go check that out" wins over routine patrol/hold
-        // while there's nothing to actually shoot at yet, same as a real soldier breaking formation
-        // briefly to investigate nearby gunfire or a downed squadmate.
-        this.goalSelector.addGoal(4, InvestigateGoal(this))
-        this.goalSelector.addGoal(5, SquadOrderGoal(this))
         this.goalSelector.addGoal(6, RandomLookAroundGoal(this))
         this.goalSelector.addGoal(7, WaterAvoidingRandomStrollGoal(this, 0.8))
-
-        this.targetSelector.addGoal(1, SquadFocusTargetGoal(this))
-        this.targetSelector.addGoal(2, HurtByTargetGoal(this))
-        this.targetSelector.addGoal(3, SquadAwarenessTargetGoal(this))
-        this.targetSelector.addGoal(
-            4,
-            NearestAttackableTargetGoal(this, LivingEntity::class.java, 10, true, false) { this.isEnemy(it) }
-        )
     }
 
-    private fun isEnemy(other: LivingEntity): Boolean {
+    // --- SmartBrainOwner: step 2 of the migration (skeleton only) ---
+    // The actual published 1.16.11 jar's API does NOT match SmartBrainLib's git `master` branch
+    // (confirmed by decompiling the real dependency with javap, not trusting the cloned source) —
+    // no auto-wiring mixin exists in this version, so brainProvider()/tickBrain() are wired by hand
+    // below. Task groups are BrainActivityGroup (not raw Lists) in this version; getSensors() is the
+    // only abstract member, the three task-group getters have library defaults (empty groups) that
+    // are overridden here just so tasks 3-5 have an obvious place to fill in one subsystem at a time.
+    override fun brainProvider(): net.minecraft.world.entity.ai.Brain.Provider<NpcEntity> =
+        net.tslat.smartbrainlib.api.core.SmartBrainProvider(this)
+
+    override fun customServerAiStep() {
+        super.customServerAiStep()
+        tickBrain(this)
+    }
+
+    // Target acquisition: replaces the old SquadFocusTargetGoal, HurtByTargetGoal,
+    // SquadAwarenessTargetGoal, and NearestAttackableTargetGoal with one sensor evaluating the same
+    // priority chain in one place. Bridges to mob.target via BrainUtils.setTargetOfEntity.
+    override fun getSensors(): List<net.tslat.smartbrainlib.api.core.sensor.ExtendedSensor<out NpcEntity>> =
+        listOf(com.sbwnpc.squad.entity.ai.SquadTargetSensor())
+    // Core: always ticks regardless of the current Fight/Idle activity — matches how the goals
+    // they replace ran too (door interaction and cover-seeking never competed for GoalSelector's
+    // Flag.MOVE with anything, so they always ran; the mortar crew goals reserved Flag.MOVE at
+    // priority 1, the highest of any goal, so they always won it too — same effective "always on"
+    // outcome, just achieved differently). InteractWithDoor is a genuine upgrade over the old
+    // OpenDoorGoal, not just a port — it also holds a door open for OTHER squad members mid-transit.
+    override fun getCoreTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
+        net.tslat.smartbrainlib.api.core.BrainActivityGroup.coreTasks(
+            net.tslat.smartbrainlib.api.core.behaviour.custom.move.InteractWithDoor<NpcEntity>(),
+            SeekCoverBehaviour(),
+            MortarOperatorBehaviour(),
+            MortarLoaderBehaviour()
+        )
+    // Idle: only relevant while there's no ATTACK_TARGET (Fight always outranks Idle). Order here
+    // doesn't change behaviour — InvestigateBehaviour's and SquadOrderBehaviour's own eligibility
+    // checks already exclude each other's cases (see each class's doc comment), reproducing the
+    // old goal-priority order (Investigate=4 beat SquadOrder=5) by hand since Idle behaviours have
+    // no automatic per-Flag exclusivity like GoalSelector did.
+    override fun getIdleTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
+        net.tslat.smartbrainlib.api.core.BrainActivityGroup.idleTasks(InvestigateBehaviour(), SquadOrderBehaviour())
+    // Fight: only while ATTACK_TARGET is set. GunAttackBehaviour is a direct port of the old
+    // NpcGunAttackGoal; AnimatableMeleeAttack is SmartBrainLib's own ready-made melee behaviour
+    // (only attacks when already within melee range + LOS — it does no chasing of its own, same as
+    // before: GunAttackBehaviour's own advance-to-shootDistance already closes the gap for every
+    // class, since every NpcClass carries a gun, so melee only ever needed to cover the
+    // already-adjacent case); GrenadeThrowBehaviour is a direct port of GrenadeThrowGoal. All three
+    // ran concurrently as unflagged Goals before — same here, just as Behaviours in one Activity.
+    override fun getFightTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
+        net.tslat.smartbrainlib.api.core.BrainActivityGroup.fightTasks(
+            com.sbwnpc.squad.entity.ai.GunAttackBehaviour(),
+            net.tslat.smartbrainlib.api.core.behaviour.custom.attack.AnimatableMeleeAttack<NpcEntity>(20),
+            GrenadeThrowBehaviour()
+        )
+
+    // Used by SquadTargetSensor (step 4 of the SmartBrain migration) too, hence internal not private.
+    internal fun isEnemy(other: LivingEntity): Boolean {
         if (other !is NpcEntity && other !is Player) return false
         if (other is Player && (other.isCreative || other.isSpectator)) return false
         return SquadTeams.isHostile(this, other)
