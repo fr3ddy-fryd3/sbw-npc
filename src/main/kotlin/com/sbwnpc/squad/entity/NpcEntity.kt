@@ -191,7 +191,12 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         super.registerGoals()
         this.goalSelector.addGoal(0, FloatGoal(this))
         this.goalSelector.addGoal(6, IdleLookAroundGoal(this))
-        this.goalSelector.addGoal(7, WaterAvoidingRandomStrollGoal(this, 0.8))
+        // Not the old 0.8 — FREE order has no SmartBrainLib movement of its own (SquadOrderBehaviour
+        // excludes it entirely), so this vanilla goal is FREE's only movement; shares
+        // SquadOrderBehaviour.WALK_SPEED_MODIFIER (rather than duplicating the literal) so FREE reads
+        // the same calm pace as DEFEND/PATROL, per user request (run only on ATTACK / actually
+        // engaging, not while just standing around).
+        this.goalSelector.addGoal(7, WaterAvoidingRandomStrollGoal(this, SquadOrderBehaviour.WALK_SPEED_MODIFIER))
     }
 
     // --- SmartBrainOwner: step 2 of the migration (skeleton only) ---

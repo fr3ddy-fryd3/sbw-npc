@@ -20,7 +20,7 @@ enum class NpcClass(
 ) {
     RIFLEMAN(listOf(loc("ak_47"), loc("ak_12")), shootDistanceMultiplier = 2.0),
     MACHINE_GUNNER(listOf(loc("rpk"), loc("m_60")), shootDistanceMultiplier = 1.5, speedMultiplier = 1.3),
-    SNIPER(listOf(loc("svd"), loc("awm")), shootDistanceMultiplier = 3.0, accuracyMultiplier = 1.0 / 1.2, speedMultiplier = 1.3),
+    SNIPER(listOf(loc("svd"), loc("awm")), shootDistanceMultiplier = 3.0, accuracyMultiplier = 1.0 / 1.4, speedMultiplier = 1.3), // a bit tighter spread per user request (was /1.2)
 
     /** Only ever spawned individually (`SquadPreset.SINGLE`) — removed from every squad-composition
      *  preset in favour of [MEDIC], per user decision. Still a fully valid class otherwise (weapon,
