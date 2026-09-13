@@ -115,6 +115,14 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = entity.isSuppressed()
 
     override fun start(entity: NpcEntity) {
+        // TEMPORARY diagnostic, round 3 — user reports the mob still re-enters fallback retreat
+        // even though suppression visibly gets refreshed. Verified via javap on the real
+        // SmartBrainLib jar that ONCE RUNNING, a behaviour can ONLY be stopped by
+        // shouldKeepRunning()==false (isSuppressed()) or an (unused, default-inert) stopCondition —
+        // getMemoryRequirements()/hasRequiredMemories() only gates the INITIAL start, never
+        // continuation — so on paper this start() should only fire once per genuinely fresh
+        // suppression episode. Logging every call to find out whether that's actually true.
+        com.sbwnpc.squad.SquadMod.LOGGER.info("[dig-debug] {} start() at tick {}", entity.uuid, entity.tickCount)
         phase = Phase.MOVING_TO_COVER
         coverTarget = null
         phaseUntilTick = 0
@@ -125,13 +133,11 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun stop(entity: NpcEntity) {
-        // TEMPORARY diagnostic, round 2 — theory: suppression (100-200 ticks / 5-10s) may be
-        // expiring before a slow-moving mob ever finishes walking to its fallback point, so it
-        // never reaches the dig-eligibility check at all — this would show up here as `phase`
-        // still MOVING_TO_COVER (never got as far as IN_COVER/DIGGING_IN) when this fires.
+        // TEMPORARY diagnostic, round 3 — same theory as before, now also logging the tick number
+        // to correlate precisely against the [dig-debug] refresh logs in startDigging()/enterCover().
         if (isFallbackRetreat) {
             com.sbwnpc.squad.SquadMod.LOGGER.info(
-                "[dig-debug] {} suppression ended in phase {} (fallback)", entity.uuid, phase
+                "[dig-debug] {} stop() at tick {} in phase {} (fallback)", entity.uuid, entity.tickCount, phase
             )
         }
         coverTarget = null
@@ -210,7 +216,16 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.navigation.stop()
         phase = Phase.IN_COVER
         phaseUntilTick = entity.tickCount + DWELL_TICKS + entity.random.nextInt(DWELL_JITTER)
-        if (refreshSuppression) entity.threatPos?.let { entity.suppress(it) }
+        if (refreshSuppression) {
+            entity.threatPos?.let { entity.suppress(it) }
+            // TEMPORARY diagnostic, round 3 — logs the tick number so it can be correlated exactly
+            // against a later stop()/start() pair, to settle whether the refresh is actually taking
+            // effect (isSuppressed() should read true continuously from here through phaseUntilTick).
+            com.sbwnpc.squad.SquadMod.LOGGER.info(
+                "[dig-debug] {} enterCover refreshed suppression at tick {}, isSuppressed={}, phaseUntilTick={}",
+                entity.uuid, entity.tickCount, entity.isSuppressed(), phaseUntilTick
+            )
+        }
     }
 
     private fun startDigging(entity: NpcEntity, level: ServerLevel, target: BlockPos) {
@@ -228,6 +243,11 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         // extends to at least its own fixed 100-tick minimum (see NpcEntity), comfortably covering
         // the dig plus initial settle — same mechanism a fresh hit would use, not a new one.
         entity.threatPos?.let { entity.suppress(it) }
+        // TEMPORARY diagnostic, round 3 — same reason as enterCover()'s log.
+        com.sbwnpc.squad.SquadMod.LOGGER.info(
+            "[dig-debug] {} startDigging refreshed suppression at tick {}, isSuppressed={}",
+            entity.uuid, entity.tickCount, entity.isSuppressed()
+        )
     }
 
     private fun tickDiggingIn(entity: NpcEntity, level: ServerLevel) {
