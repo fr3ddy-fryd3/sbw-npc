@@ -372,14 +372,19 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         return candidates.filter { isHiddenFrom(level, entity, threat, it) }.minByOrNull { it.distSqr(origin) }
     }
 
-    /** A solid block at body or head height on any of the 4 horizontal sides — cheap proxy for
-     *  "there's a wall/corner here", the same "not air = solid enough" heuristic [groundAt] already
-     *  uses. Doesn't need to know which side the threat is on: [isHiddenFrom]'s raycast is what
-     *  actually decides whether this particular wall blocks THIS particular threat. */
+    /** Cheap proxy for "there's a wall/corner here", biased two ways rather than just one — per
+     *  user request, a candidate standing AT the base of a rise counts (a solid block right beside
+     *  it at body/head height, same "not air = solid enough" heuristic [groundAt] already uses), but
+     *  so does a candidate sitting IN a natural depression/pit whose own rim is higher than the
+     *  candidate itself — a dip's edge blocks a ground-level threat's sightline just as well as a
+     *  standing wall does, even with nothing solid immediately at the candidate's own body height.
+     *  Doesn't need to know which side the threat is on: [isHiddenFrom]'s raycast is what actually
+     *  decides whether this particular wall/rim blocks THIS particular threat. */
     private fun hasAdjacentSolidWall(level: ServerLevel, pos: BlockPos): Boolean {
         return NEIGHBOR_OFFSETS.any { (nx, nz) ->
             val side = pos.offset(nx, 0, nz)
-            !level.getBlockState(side).isAir || !level.getBlockState(side.above()).isAir
+            (!level.getBlockState(side).isAir || !level.getBlockState(side.above()).isAir) ||
+                groundAt(level, side).y > pos.y
         }
     }
 
