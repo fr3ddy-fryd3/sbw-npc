@@ -291,6 +291,19 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun tickDiggingIn(entity: NpcEntity, level: ServerLevel) {
         val pos = digPos ?: return enterCover(entity) // shouldn't happen, but never get stuck mid-dig
+        // Digging takes ~3.5s (DIG_TICKS) — long enough that knockback (an explosion, a shove from
+        // another mob, getting hit) can push the mob well away from the exact spot it started
+        // digging at. Finishing anyway would break a block nobody's standing on/near anymore and
+        // then anchor DUG_IN_HOLDING at that same stale spot — reported in-game as the mob just
+        // standing exposed in the open with no hole under it after being shoved mid-dig. `coverTarget`
+        // was re-anchored to the real standing position in startDigging, so it doubles as the "am I
+        // still where I started digging" reference — same arrival-tolerance idiom (1.5) already used
+        // by tickMovingToCover/tickReturningToCover.
+        val anchor = coverTarget
+        if (anchor != null && !entity.position().closerThan(anchor.center, 1.5)) {
+            abortDigging(entity)
+            return
+        }
         digTicksRemaining--
         if (digTicksRemaining <= 0) {
             finishDigging(entity, level)
@@ -298,6 +311,18 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             val stage = (9 - 9 * digTicksRemaining / DIG_TICKS).coerceIn(0, 9)
             level.destroyBlockProgress(entity.id, pos, stage)
         }
+    }
+
+    /** Bails out of an in-progress dig without finishing it — see tickDiggingIn's displacement check.
+     *  Resets to MOVING_TO_COVER with coverTarget cleared so the next tick picks a fresh cover/fallback
+     *  spot from wherever the mob actually ended up, rather than trying to resume digging somewhere
+     *  it no longer stands. */
+    private fun abortDigging(entity: NpcEntity) {
+        clearDigProgress(entity)
+        digPos = null
+        digTicksRemaining = 0
+        phase = Phase.MOVING_TO_COVER
+        coverTarget = null
     }
 
     private fun finishDigging(entity: NpcEntity, level: ServerLevel) {
