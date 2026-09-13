@@ -142,6 +142,10 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             isFallbackRetreat = true
             coverTarget = it
             entity.navigation.moveTo(it.x + 0.5, it.y.toDouble(), it.z + 0.5, 1.0)
+            // TEMPORARY diagnostic, round 2 — user reports still nobody digging in after the
+            // covering-ally check was loosened. Confirms whether NPCs even reach the fallback path
+            // at all in this test (vs. findCover succeeding often enough that fallback is rare).
+            com.sbwnpc.squad.SquadMod.LOGGER.info("[dig-debug] {} entered fallback retreat", entity.uuid)
         }
     }
 
@@ -193,10 +197,20 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  Deliberately does NOT check depth of the resulting hole here — see [isFlatEnoughToDig] for
      *  the actual "this would be a real foxhole, not one block broken on a slope" guarantee. */
     private fun canDigIn(entity: NpcEntity, level: ServerLevel, pos: BlockPos): Boolean {
-        if (entity.health >= entity.maxHealth * DIG_HEALTH_FRACTION) return false
-        if (!level.getBlockState(pos.below()).`is`(BlockTags.DIRT)) return false
-        if (!isFlatEnoughToDig(level, pos)) return false
-        return hasCoveringAlly(entity, level)
+        val hurtEnough = entity.health < entity.maxHealth * DIG_HEALTH_FRACTION
+        val diggableGround = level.getBlockState(pos.below()).`is`(BlockTags.DIRT)
+        val flatEnough = isFlatEnoughToDig(level, pos)
+        val covered = hasCoveringAlly(entity, level)
+        // TEMPORARY diagnostic, round 2 (see the fallback-retreat log above) — round 1 fixed the
+        // covering-ally check based on this same log, but the user reports still nobody digging in.
+        // Also checked periodically now (tickInCover), not just once at arrival — see that method.
+        if (!(hurtEnough && diggableGround && flatEnough && covered)) {
+            com.sbwnpc.squad.SquadMod.LOGGER.info(
+                "[dig-debug] {} at {} hurtEnough={} diggableGround={} flatEnough={} covered={}",
+                entity.uuid, pos, hurtEnough, diggableGround, flatEnough, covered
+            )
+        }
+        return hurtEnough && diggableGround && flatEnough && covered
     }
 
     private fun hasCoveringAlly(entity: NpcEntity, level: ServerLevel): Boolean {
@@ -233,6 +247,19 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun tickInCover(entity: NpcEntity) {
         if (entity.tickCount < phaseUntilTick) return
+        // Re-check dig-in eligibility periodically while sitting at a fallback (not-real-cover)
+        // spot — canDigIn used to only ever get checked ONCE, at the exact tick of arrival. A mob
+        // that arrived still above the health threshold (or without a covering ally yet) would
+        // never dig in later even after taking more fire while just standing there exposed — this
+        // closes that gap, at the same cadence as the ordinary recheck/dwell cycle.
+        if (isFallbackRetreat) {
+            val level = entity.level() as? ServerLevel
+            val pos = coverTarget
+            if (level != null && pos != null && canDigIn(entity, level, pos)) {
+                startDigging(entity, pos)
+                return
+            }
+        }
         val target = entity.target
         if (target != null && target.isAlive) {
             phase = Phase.PEEKING
