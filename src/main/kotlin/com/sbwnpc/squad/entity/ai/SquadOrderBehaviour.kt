@@ -66,6 +66,12 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun eligible(entity: NpcEntity): Boolean {
         if (entity.target != null) return false
         if (entity.isAlert()) return false
+        // A dug-in mob clears COVER_HOLD for its whole holding duration (see
+        // SeekCoverBehaviour.enterDugInHolding) so GunAttackBehaviour can still fire from the hole —
+        // this behaviour never checked combatLockedByCover() in the first place (only target/alert/
+        // order), so without this a dug-in mob whose target happened to die/break LOS for even a
+        // moment would get marched off toward its DEFEND/PATROL slot, right out of its own hole.
+        if (entity.diggedIn) return false
         val squad = entity.currentSquad() ?: return false
         return squad.order != SquadOrder.FREE && entity.homeCenter() != null
     }
@@ -87,7 +93,10 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         when (order) {
             SquadOrder.ATTACK -> {
                 val arrived = dist <= SquadFormation.ARRIVAL_RADIUS
-                approachSlot(entity, home, arrived)
+                // Only ATTACK (taking a point) moves at RUN pace, same as actually being in combat
+                // (GunAttackBehaviour's own movement already uses this same 1.0 modifier) — per user
+                // request, FREE/DEFEND/PATROL should read as a calm hold/patrol, not a constant jog.
+                approachSlot(entity, home, arrived, RUN_SPEED_MODIFIER)
                 // Per user request: "attack a point" means take it, then hold it — not stand
                 // frozen in an assault wedge forever once there. Flips the squad's own order once
                 // EVERY member (not just this one) has actually reached it, so the squad doesn't
@@ -101,7 +110,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
             // widening RING_RADIUS again later can't silently reintroduce the arrived/oscillation
             // bug documented on ARRIVAL_RADIUS itself (this was a flat `8.0` before, which the old
             // 3.5 RING_RADIUS made safe by accident — no longer safe by accident against 6.0).
-            SquadOrder.DEFEND -> approachSlot(entity, home, arrived = dist <= SquadFormation.ARRIVAL_RADIUS + 4.5)
+            SquadOrder.DEFEND -> approachSlot(entity, home, dist <= SquadFormation.ARRIVAL_RADIUS + 4.5, WALK_SPEED_MODIFIER)
             SquadOrder.PATROL -> {
                 val points = squad.routeId
                     ?.let { (entity.level() as? ServerLevel)?.let { lvl -> RouteManager.get(lvl).get(it) } }
@@ -119,12 +128,13 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /** Walks toward [anchor]'s formation slot, switching to a held perimeter slot once [arrived].
      *  Shared by ATTACK/DEFEND — the only difference between them is the distance that counts as
-     *  "arrived" (passed in by the caller). */
-    private fun approachSlot(entity: NpcEntity, anchor: Vec3, arrived: Boolean) {
+     *  "arrived" and the pace ([speed], passed in by the caller — see [RUN_SPEED_MODIFIER]/
+     *  [WALK_SPEED_MODIFIER]). */
+    private fun approachSlot(entity: NpcEntity, anchor: Vec3, arrived: Boolean, speed: Double) {
         val slot = SquadFormation.slotTarget(entity, anchor, anchor.subtract(entity.position()), arrived)
         if (entity.position().distanceTo(slot) > 1.5) {
             if (repathCooldown == 0) {
-                entity.navigation.moveTo(slot.x, slot.y, slot.z, 1.0)
+                entity.navigation.moveTo(slot.x, slot.y, slot.z, speed)
                 repathCooldown = 20
             }
         } else {
@@ -160,7 +170,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         if (dwelling && entity.target == null) faceOutward(entity, center)
         if (entity.position().distanceTo(slot) > 1.5 && repathCooldown == 0) {
-            entity.navigation.moveTo(slot.x, slot.y, slot.z, 1.0)
+            entity.navigation.moveTo(slot.x, slot.y, slot.z, WALK_SPEED_MODIFIER)
             repathCooldown = 20
         }
     }
@@ -178,11 +188,25 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun wanderNear(entity: NpcEntity, center: Vec3) {
         val target = DefaultRandomPos.getPosTowards(entity, 12, 6, center, Math.PI / 2.0) ?: return
-        entity.navigation.moveTo(target.x, target.y, target.z, 0.9)
+        entity.navigation.moveTo(target.x, target.y, target.z, WALK_SPEED_MODIFIER)
     }
 
     companion object {
         private const val ROUTE_DWELL_TICKS = 40
         private const val ROUTE_DWELL_JITTER = 40
+
+        // Per user request: FREE/DEFEND/PATROL should read as a calm hold/patrol, not a constant
+        // jog — only actually taking a point (ATTACK) or engaging (GunAttackBehaviour, which already
+        // moves at a plain 1.0 modifier) should look urgent. Both are still just a navigation
+        // speedModifier multiplying the entity's own per-class MOVEMENT_SPEED attribute (tuned in
+        // NpcEntity.applyRole()) — this doesn't change how fast an NPC even CAN move, just how much
+        // of that speed idle movement actually uses. RUN_SPEED_MODIFIER matches what ATTACK/combat
+        // movement already used before this change (kept as a named constant here purely so both
+        // paces are visible together, not because ATTACK's pace itself changed).
+        // internal (not private) — NpcEntity.registerGoals() reuses this for FREE's own vanilla
+        // wander goal (SquadOrderBehaviour excludes FREE entirely, so that goal is FREE's only
+        // movement), so both stay in sync instead of duplicating the literal in two files.
+        internal const val WALK_SPEED_MODIFIER = 0.6
+        private const val RUN_SPEED_MODIFIER = 1.0
     }
 }

@@ -44,7 +44,14 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = MEMORIES
 
-    private fun eligible(entity: NpcEntity) = entity.target == null && !entity.combatLockedByCover()
+    // !entity.diggedIn too (not just !combatLockedByCover()): a dug-in mob deliberately clears
+    // COVER_HOLD for its whole holding duration (see SeekCoverBehaviour.enterDugInHolding) so
+    // GunAttackBehaviour can fire from the hole — but that means combatLockedByCover() alone no
+    // longer implies "don't touch this mob's movement" once dug in. Without this, a dug-in mob whose
+    // target happened to die/break LOS (leaving `target == null` for even a moment) would satisfy
+    // this eligibility and get walked off toward some alert position, out of its own hole — reported
+    // in-game as digging in not actually preventing the mob from running off once shot at again.
+    private fun eligible(entity: NpcEntity) = entity.target == null && !entity.combatLockedByCover() && !entity.diggedIn
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = eligible(entity)
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = eligible(entity) && entity.isAlert()

@@ -88,9 +88,14 @@ object SquadFormation {
             // Stable PER-SLOT pseudo-random point (same seed -> same angle/distance every tick, no
             // drift) rather than a neat evenly-spaced ring — "almost FREE, just bounded to a
             // radius" per user request, for a garrison holding ground rather than a hasty perimeter.
-            // Rotating this by the shared heading afterward (slotTarget) is a harmless no-op — a
-            // uniformly random angle rotated by anything is still uniformly random — same reason
-            // RING doesn't need to care about heading either.
+            // slotTarget() does NOT rotate this by the shared heading (nor RING's own angle above) —
+            // an earlier version of this comment claimed that rotation was merely a "harmless no-op"
+            // for both shapes since a full-circle distribution is rotation-symmetric either way, but
+            // that reasoning only holds for the SET of all slots, not for one specific slot tracked
+            // over time: rotating by an unstable heading (DEFEND's own "leader" slot is itself
+            // SCATTER-shaped and drifting, never fixed) made that slot's target point continuously
+            // orbit the anchor — reported in-game as a defending squad visibly circling its own
+            // point. See slotTarget()'s own comment for the actual fix.
             val rnd = java.util.Random(slotIndex.toLong() * 2654435761L)
             val angle = rnd.nextDouble() * Math.PI * 2
             val dist = DEFEND_SCATTER_MIN + rnd.nextDouble() * (DEFEND_SCATTER_MAX - DEFEND_SCATTER_MIN)
@@ -121,8 +126,23 @@ object SquadFormation {
         val squad = mob.currentSquad() ?: return anchor
         val index = squad.members.indexOf(mob.uuid)
         if (index < 0) return anchor
-        val local = localOffset(shapeFor(squad.order, arrived), index, squad.members.size)
+        val shape = shapeFor(squad.order, arrived)
+        val local = localOffset(shape, index, squad.members.size)
         if (local == Vec3.ZERO) return anchor
+
+        // The doc comment above already claimed this ("ignored for RING/SCATTER, both
+        // rotation-symmetric by construction"), but the code never actually skipped the rotation
+        // below for them — a real bug, not just a stale comment. RING/SCATTER already assign each
+        // slot its own angle across the FULL circle (see localOffset), so rotating that offset by
+        // a heading vector adds nothing to the overall distribution — but for one SPECIFIC slot
+        // tracked over time, it makes that slot's target point continuously rotate around the
+        // anchor whenever the heading itself isn't perfectly still. For DEFEND's SCATTER the
+        // heading never is: it's anchor-minus-leader's-position, and the "leader" reference member
+        // is itself scattered and drifting within its own 6-16 block band, never fixed. Every other
+        // member then chases a continuously rotating target — reported in-game as a defending
+        // squad "водит хоровод" (circling its own defend point) even with no target/no attack in
+        // progress at all.
+        if (shape == Shape.RING || shape == Shape.SCATTER) return anchor.add(local)
 
         val heading = headingFor(mob, anchor, fallbackFacing)
         val flat = Vec3(heading.x, 0.0, heading.z)

@@ -43,6 +43,10 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun eligible(entity: NpcEntity): Boolean {
         if (entity.npcClass != NpcClass.MORTAR_LOADER) return false
         if (entity.target != null) return false
+        // A dug-in loader (badly hurt, took cover) must stay put like everything else that respects
+        // NpcEntity.diggedIn (PM review finding — this was the one Core task that still didn't) —
+        // resupplying the mortar can wait until it's healed/no longer holding.
+        if (entity.diggedIn) return false
 
         val current = mortar
         if (current != null && current.isAlive && !MortarClaims.isLoaderClaimedByOther(current.uuid, entity.uuid)) return true

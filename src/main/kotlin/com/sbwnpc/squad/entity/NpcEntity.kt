@@ -1,9 +1,13 @@
 package com.sbwnpc.squad.entity
 
 import com.atsuishio.superbwarfare.data.gun.GunData
+import com.atsuishio.superbwarfare.init.ModItems
 import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.sbwnpc.squad.entity.ai.GrenadeThrowBehaviour
+import com.sbwnpc.squad.entity.ai.IdleLookAroundGoal
+import com.sbwnpc.squad.entity.ai.IdleWanderGoal
 import com.sbwnpc.squad.entity.ai.InvestigateBehaviour
+import com.sbwnpc.squad.entity.ai.MedicHealBehaviour
 import com.sbwnpc.squad.entity.ai.MortarClaims
 import com.sbwnpc.squad.entity.ai.MortarLoaderBehaviour
 import com.sbwnpc.squad.entity.ai.MortarOperatorBehaviour
@@ -27,6 +31,7 @@ import net.minecraft.network.syncher.SynchedEntityData
 import net.minecraft.world.DifficultyInstance
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.EntityType
+import net.minecraft.world.entity.EquipmentSlot
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.Mob
 import net.minecraft.world.entity.MobSpawnType
@@ -35,8 +40,6 @@ import net.minecraft.world.entity.SpawnGroupData
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier
 import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.entity.ai.goal.FloatGoal
-import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal
-import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.damagesource.DamageSource
 import net.minecraft.world.item.ItemStack
@@ -50,12 +53,14 @@ import net.minecraft.world.level.ServerLevelAccessor
  * is by squad faction == vanilla scoreboard team (see [SquadTeams]); no team on either side means
  * neutral. The faction also picks the NPC's skin ([com.sbwnpc.squad.client.renderer.NpcRenderer]).
  *
- * MIGRATION TO SmartBrainLib (see SMARTBRAIN_MIGRATION_PLAN.md, gitignored working doc) — complete.
- * [registerGoals] only registers three trivial, NPC-agnostic vanilla utility goals now (float/swim,
- * random look, random wander) that never touched `mob.target` or any custom AI state and were never
- * part of the migration's task list — no risk in leaving those as ordinary Goals indefinitely.
- * Every subsystem that reads/writes combat state (targeting, gun combat, melee, grenades, mortar,
- * cover/suppression, alarm/investigate, squad formations/patrol) is Brain-side.
+ * MIGRATION TO SmartBrainLib — complete. [registerGoals] only registers three trivial, NPC-agnostic
+ * vanilla utility goals now (float/swim, random look, random wander), none of which were part of the
+ * migration's task list — no risk in leaving those as ordinary Goals indefinitely. Every subsystem
+ * that reads/writes combat state (targeting, gun combat, melee, grenades, mortar, cover/suppression,
+ * alarm/investigate, squad formations/patrol) is Brain-side. One exception: the random-look goal is
+ * [IdleLookAroundGoal], not vanilla's bare `RandomLookAroundGoal` — see that class's doc comment for
+ * why it DOES need to check combat state (`mob.target`) despite the above, to fix a real bug
+ * (rendered head direction fighting `GunAttackBehaviour` for control mid-combat).
  */
 open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     PathfinderMob(type, level), net.tslat.smartbrainlib.api.SmartBrainOwner<NpcEntity> {
@@ -123,6 +128,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      *  comment) instead of a hand-rolled enum with a logging setter. */
     fun combatLockedByCover(): Boolean = BrainUtils.hasMemory(this, ModMemories.COVER_HOLD.get())
 
+    fun combatLockedByMedic(): Boolean = BrainUtils.hasMemory(this, ModMemories.MEDIC_HEALING.get())
+
     // Set by GunAttackBehaviour every time it actually fires (not just "has a target" — genuinely
     // pulled the trigger this tick). Used by SeekCoverBehaviour to verify an ally is really
     // providing covering fire before digging in, rather than just inferring it from having a
@@ -183,8 +190,13 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     override fun registerGoals() {
         super.registerGoals()
         this.goalSelector.addGoal(0, FloatGoal(this))
-        this.goalSelector.addGoal(6, RandomLookAroundGoal(this))
-        this.goalSelector.addGoal(7, WaterAvoidingRandomStrollGoal(this, 0.8))
+        this.goalSelector.addGoal(6, IdleLookAroundGoal(this))
+        // Not the old 0.8 — FREE order has no SmartBrainLib movement of its own (SquadOrderBehaviour
+        // excludes it entirely), so this vanilla goal is FREE's only movement; shares
+        // SquadOrderBehaviour.WALK_SPEED_MODIFIER (rather than duplicating the literal) so FREE reads
+        // the same calm pace as DEFEND/PATROL, per user request (run only on ATTACK / actually
+        // engaging, not while just standing around).
+        this.goalSelector.addGoal(7, IdleWanderGoal(this, SquadOrderBehaviour.WALK_SPEED_MODIFIER))
     }
 
     // --- SmartBrainOwner: step 2 of the migration (skeleton only) ---
@@ -197,43 +209,61 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     override fun brainProvider(): net.minecraft.world.entity.ai.Brain.Provider<NpcEntity> =
         net.tslat.smartbrainlib.api.core.SmartBrainProvider(this)
 
-    private var equipmentResynced = false
+    // Was a one-shot flag; widened to a few retries — see resyncEquipmentForNewlySpawnedNpc's doc
+    // comment for why one resync, one tick after spawn, still wasn't always enough (reported: weapon
+    // invisible even on a plain single spawn, not just batch bursts).
+    private var equipmentResyncTicksRemaining = 5
 
     override fun customServerAiStep() {
         super.customServerAiStep()
-        if (!equipmentResynced) {
-            equipmentResynced = true
-            resyncHeldItemForNewlySpawnedNpc()
+        if (equipmentResyncTicksRemaining > 0) {
+            equipmentResyncTicksRemaining--
+            resyncEquipmentForNewlySpawnedNpc()
         }
         tickBrain(this)
     }
 
     /**
-     * Fix for a bug reported after in-game testing: NPCs deployed in a batch (preset deploy,
-     * barracks reinforcement — several `finalizeSpawn`+`addFreshEntity` calls in the same server
-     * tick) sometimes spawn with no visibly held weapon for players already nearby, even though the
-     * item is genuinely equipped (confirmed functional — reload/fire/ammo all work). Confirmed by
-     * the user to happen specifically on batch spawns, not single recruits.
+     * Fix for a bug reported after in-game testing: NPCs sometimes spawn with no visibly held
+     * weapon for players already nearby, even though the item is genuinely equipped (confirmed
+     * functional — reload/fire/ammo all work). Originally reported on batch spawns specifically
+     * (preset deploy, barracks reinforcement — several `finalizeSpawn`+`addFreshEntity` calls in the
+     * same server tick); later also reported on plain single spawns, so this can no longer be a
+     * one-shot fix scoped to the burst case alone — see below.
      *
-     * The weapon is set in [applyRole] (called from [finalizeSpawn]), i.e. before this entity is
-     * even added to the level / starts being tracked by any player — relying on the tracking-pairing
-     * path (`ServerEntity.sendPairingData`, a full equipment resend to each newly-tracking player)
-     * to deliver it, rather than the ordinary per-tick delta path
+     * The weapon (and now armor — HEAD/CHEST, added for per-faction kits) is set in [applyRole]
+     * (called from [finalizeSpawn]), i.e. before this entity is even added to the level / starts
+     * being tracked by any player — relying on the tracking-pairing path
+     * (`ServerEntity.sendPairingData`, a full equipment resend to each newly-tracking player) to
+     * deliver it, rather than the ordinary per-tick delta path
      * (`LivingEntity.detectEquipmentUpdates`/`ItemStack.matches` against the last-broadcast stack).
      * Re-setting the identical stack later can't force that ordinary path to fire — `matches` is a
      * value comparison, an equal-value stack is never treated as "changed" — so this bypasses both
-     * paths entirely: one tick after spawn (once the entity is definitely already added and ticking,
-     * i.e. well past whatever pairing-time edge case a burst of several simultaneous new entities
-     * might be hitting), broadcast a fresh `ClientboundSetEquipmentPacket` directly to every player
-     * in the dimension. A handful of tiny packets once per NPC spawn, not per tick.
+     * paths entirely with a fresh `ClientboundSetEquipmentPacket` broadcast directly to every player
+     * in the dimension.
+     *
+     * A SINGLE resync one tick after spawn was enough to fix the originally-reported batch case, but
+     * NOT reliably enough for the single-spawn case reported later — rather than guess at the exact
+     * remaining race (a slower/laggier pairing handshake for a specific client is a plausible but
+     * unconfirmed cause), this retries for a handful of ticks after spawn instead of exactly once, at
+     * negligible cost (a few tiny packets, once per NPC, only in the first quarter-second of its
+     * life) — hedges against ANY remaining timing window rather than the one already disproven to be
+     * the sole cause.
      */
-    private fun resyncHeldItemForNewlySpawnedNpc() {
+    private fun resyncEquipmentForNewlySpawnedNpc() {
         val serverLevel = level() as? ServerLevel ?: return
-        val item = mainHandItem
-        if (item.isEmpty) return
-        val packet = net.minecraft.network.protocol.game.ClientboundSetEquipmentPacket(
-            id, listOf(com.mojang.datafixers.util.Pair.of(net.minecraft.world.entity.EquipmentSlot.MAINHAND, item))
-        )
+        val slots = listOf(
+            net.minecraft.world.entity.EquipmentSlot.MAINHAND,
+            net.minecraft.world.entity.EquipmentSlot.HEAD,
+            net.minecraft.world.entity.EquipmentSlot.CHEST
+        // .copy() — vanilla always does this before handing a stack to this exact packet
+        // (LivingEntity.detectEquipmentUpdates, ServerEntity.sendPairingData) rather than the live
+        // reference, since that reference can keep mutating (ammo count, durability, ...) after the
+        // packet object is built but before it's actually written to the network buffer (PM finding).
+        ).map { slot -> com.mojang.datafixers.util.Pair.of(slot, getItemBySlot(slot).copy()) }
+            .filter { !it.second.isEmpty }
+        if (slots.isEmpty()) return
+        val packet = net.minecraft.network.protocol.game.ClientboundSetEquipmentPacket(id, slots)
         serverLevel.server.playerList.broadcastAll(packet, serverLevel.dimension())
     }
 
@@ -253,7 +283,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             net.tslat.smartbrainlib.api.core.behaviour.custom.move.InteractWithDoor<NpcEntity>(),
             SeekCoverBehaviour(),
             MortarOperatorBehaviour(),
-            MortarLoaderBehaviour()
+            MortarLoaderBehaviour(),
+            MedicHealBehaviour()
         )
     // Idle: only relevant while there's no ATTACK_TARGET (Fight always outranks Idle). Order here
     // doesn't change behaviour — InvestigateBehaviour's and SquadOrderBehaviour's own eligibility
@@ -308,7 +339,15 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             health = maxHealth
         }
 
-        val gunItem = BuiltInRegistries.ITEM.getOptional(npcClass.weaponId).orElse(Items.AIR)
+        // Per-class multiplier on top of the shared base — createAttributes() only sets the raw
+        // base (BASE_SPEED) since it runs once at entity-type registration, before npcClass is even
+        // known; this is the real value, same pattern as MAX_HEALTH above.
+        getAttribute(Attributes.MOVEMENT_SPEED)?.baseValue = BASE_SPEED * npcClass.speedMultiplier
+
+        // One of 2 weapons per weapon category, picked once and kept for this NPC's whole life —
+        // pure visual variety across NPCs of the same class, per user request ("разношерстные").
+        val weaponId = npcClass.weaponPool[random.nextInt(npcClass.weaponPool.size)]
+        val gunItem = BuiltInRegistries.ITEM.getOptional(weaponId).orElse(Items.AIR)
         if (gunItem is GunItem) {
             val gunData = GunData.from(ItemStack(gunItem))
             gunData.virtualAmmo.set(120)
@@ -316,6 +355,19 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             gunData.save()
             setItemInHand(InteractionHand.MAIN_HAND, gunData.stack)
         }
+
+        // Green (RU) kit for CREEPER/CAT/PIG/COW, sand (US) kit for the other 4 factions — per user
+        // request, applies to every class without exception. spawnFaction (not
+        // SquadTeams.factionOf(this)) because finalizeSpawn() calls applyRole() BEFORE assigning the
+        // scoreboard team that factionOf() reads from — see finalizeSpawn().
+        val faction = spawnFaction ?: SquadFaction.DEFAULT
+        val (helmet, chest) = if (faction in GREEN_KIT_FACTIONS) {
+            ModItems.RU_HELMET_6B47.get() to ModItems.RU_CHEST_6B43.get()
+        } else {
+            ModItems.US_HELMET_PASGT.get() to ModItems.US_CHEST_IOTV.get()
+        }
+        setItemSlot(EquipmentSlot.HEAD, ItemStack(helmet))
+        setItemSlot(EquipmentSlot.CHEST, ItemStack(chest))
 
         // One reserve grenade per fighter, mortar crew excepted (they aren't a combat-suppression
         // role) — per user request. Tracked as a plain flag, NOT a visible offhand item — user
@@ -368,10 +420,19 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     companion object {
         private const val BASE_HEALTH = 20.0
+        // internal (not private) — MedicHealBehaviour reuses this to compute its temporary
+        // "sprinting to treat someone" speed on the same BASE_SPEED*multiplier basis as applyRole(),
+        // instead of hardcoding 0.25 a second time.
+        internal const val BASE_SPEED = 0.25
         private const val SUPPRESSION_DURATION_TICKS = 100
         private const val SUPPRESSION_CAP_TICKS = 200
         private const val ALERT_DURATION_TICKS = 200 // ~10s to reach/abandon an investigation lead
         private const val DEATH_ALARM_RADIUS = 36.0 // detection range, x1.5 per user request (was 24)
+
+        // Green (RU 6B47/6B43) vs sand (US PASGT/IOTV) armor kit — see applyRole(). Verified against
+        // the real SBW source, not guessed: both textures inspected directly (RU = green camo, US =
+        // tan/sand camo).
+        private val GREEN_KIT_FACTIONS = setOf(SquadFaction.CREEPER, SquadFaction.CAT, SquadFaction.PIG, SquadFaction.COW)
 
         @JvmField
         val DATA_CLASS: EntityDataAccessor<Int> =
@@ -385,7 +446,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         fun createAttributes(): AttributeSupplier.Builder {
             return Mob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, BASE_HEALTH)
-                .add(Attributes.MOVEMENT_SPEED, 0.25 * 1.4) // x1.4 per user feedback — felt too slow, tuned down from x1.5
+                .add(Attributes.MOVEMENT_SPEED, BASE_SPEED) // real per-class value is set in applyRole() — npcClass isn't known yet here
 
                 .add(Attributes.ATTACK_DAMAGE, 2.0)
                 .add(Attributes.ARMOR, 2.0)

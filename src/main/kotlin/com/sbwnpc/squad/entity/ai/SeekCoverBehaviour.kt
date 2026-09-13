@@ -1,18 +1,20 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
+import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.FriendlyFireGuard
+import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModMemories
+import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.tags.BlockTags
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
-import net.minecraft.world.level.ClipContext
+import net.minecraft.world.entity.player.Player
 import net.minecraft.world.phys.AABB
-import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 import net.tslat.smartbrainlib.util.BrainUtils
@@ -41,12 +43,15 @@ import net.tslat.smartbrainlib.util.BrainUtils
  * the way; it does not fight for control the way the old duck-and-hold-only version implicitly did
  * by never yielding at all.
  *
- * Digging in (feature/dig-in): if [findCover] finds no real cover and the mob has to fall back to
- * [fallbackAwayFrom] instead, once it arrives there it may dig itself a foxhole in place — see
- * [canDigIn] for the exact gating (badly hurt, a squadmate actually covering it, standable dirt,
- * flat enough ground) and [tickDiggingIn]/[finishDigging] for the dig itself. Deliberately gated
- * behind the fallback path only, per user instruction — a squad that found genuine cover has no
- * need to dig, and digging should never preempt or delay reaching real cover.
+ * Digging in (feature/dig-in): if [findCover] finds no real cover, the mob either digs itself a
+ * foxhole right where it's standing (if the ground allows — see [canDigIn] for the exact gating:
+ * badly hurt, a squadmate actually covering it, standable dirt/sand, flat enough ground) or, only
+ * when it has no live target at all (genuinely blind, nothing to fight from anywhere), retreats via
+ * [fallbackAwayFrom] instead — see [tickDiggingIn]/[finishDigging] for the dig itself. An engaged
+ * mob (has a target) that can't dig just holds its current spot ([enterHoldingOpen]) rather than
+ * fleeing across open ground away from a position it was already fighting from — per user request.
+ * A squad that found genuine cover has no need to dig, and digging should never preempt or delay
+ * reaching real cover, which is still always tried first.
  *
  * Peeking is a minimal-exposure lean, not a full walk-out (see [findPeekPoint]): tries a handful of
  * short steps toward the target (0.5 up to 3 blocks) and takes the first one with a clear line of
@@ -57,7 +62,13 @@ import net.tslat.smartbrainlib.util.BrainUtils
  */
 class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
 
-    private enum class Phase { MOVING_TO_COVER, DIGGING_IN, IN_COVER, PEEKING, RETURNING_TO_COVER, DUG_IN_HOLDING }
+    private enum class Phase {
+        MOVING_TO_COVER, DIGGING_IN, IN_COVER, PEEKING, RETURNING_TO_COVER, DUG_IN_HOLDING,
+        // HOLDING_OPEN: engaged (has a target) but no real cover and can't/won't dig further — per
+        // user request, hold the current spot and keep firing instead of fleeing across open ground.
+        // EXITING_HOLE: dug in, healed back up, trying to actually climb out — see beginExitingHole.
+        HOLDING_OPEN, EXITING_HOLE
+    }
 
     // ROOT CAUSE of the whole "digs in / settles into cover, then re-enters fallback retreat"
     // saga: ExtendedBehaviour has an UNDOCUMENTED-to-us default 60-tick runtime cap (runtimeProvider
@@ -75,16 +86,19 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var coverTarget: BlockPos? = null
     private var phaseUntilTick = 0
     private var isFallbackRetreat = false // coverTarget came from fallbackAwayFrom, not findCover
-    // Set once finishDigging() completes; guards tickInCover's periodic recheck from re-triggering
-    // canDigIn after the mob has already dug this episode — see that recheck's own comment for why
-    // this is needed (without it, the mob dug an endless vertical shaft straight down: falling into
-    // its own fresh hole drops its blockPosition() by one block, and at that new, one-block-deeper
-    // spot every canDigIn condition still holds — same health, same covering ally, and flatEnough
-    // actually passes with MORE margin since the untouched neighbor ground is now even higher above
-    // it — so it just dug again, and again, reported in-game as "уходят в цикл с закапыванием").
-    private var hasDugIn = false
+    // How many times this episode has actually dug (capped at MAX_DIGS — see that constant and
+    // tickDugInHolding's "one extra block, per user request" logic). Replaces a plain boolean: an
+    // endless vertical shaft (falling into a fresh hole drops blockPosition() by one, and at that
+    // new, deeper spot every canDigIn condition can still hold — same health, same covering ally,
+    // flatEnough even MORE easily since the untouched neighbor ground is now higher above it —
+    // reported in-game as "уходят в цикл с закапыванием") is exactly what the MAX_DIGS cap prevents;
+    // a boolean could only ever allow exactly one dig total, which is now one dig short of the
+    // explicitly-requested "one extra block if hit again" behaviour.
+    private var digsUsed = 0
     private var digTicksRemaining = 0
     private var digPos: BlockPos? = null // block being dug, tracked separately for the progress overlay
+    private var healthAtLastDigInCheck = 0f // DUG_IN_HOLDING only — detects a fresh hit for the one-shot extra dig
+    private var duggenSideExit = false // EXITING_HOLE only — whether the eye-level escape block has been broken yet
 
     companion object {
         private const val SAMPLE_COUNT = 20
@@ -105,9 +119,28 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         // terrain requires, not "walk all the way out into the open".
         private val PEEK_STEP_DISTANCES = listOf(0.5, 1.0, 1.5, 2.0, 2.5, 3.0)
 
-        private const val DIG_HEALTH_FRACTION = 0.5f  // only badly hurt NPCs bother digging in
+        private const val DIG_HEALTH_FRACTION = 0.25f // only badly hurt NPCs bother digging in (was 0.5, per user request)
         private const val DIG_TICKS = 70              // ~3.5s of "digging" before the hole is done
+        // One initial dig, plus at most one extra block deeper if hit again while dug in and still
+        // no real cover — per user request. NOT unlimited (see digsUsed's own doc comment for why).
+        private const val MAX_DIGS = 2
+        // ~3s to try a normal path out of the hole once healed before assuming it's actually stuck
+        // and digging an eye-level escape block instead (see beginExitingHole/tickExitingHole).
+        private const val EXIT_CHECK_TICKS = 60
         private const val COVERING_ALLY_RADIUS = 16.0
+
+        // Debug-visual colors (see markCoverChoice) — GREEN for a real found-cover spot, ORANGE for
+        // a blind fallback retreat, BROWN for an actually-started dig. Gated on DebugFlags.MARKERS_ENABLED.
+        private val GREEN = org.joml.Vector3f(0.2f, 1.0f, 0.2f)
+        private val ORANGE = org.joml.Vector3f(1.0f, 0.6f, 0.0f)
+        private val BROWN = org.joml.Vector3f(0.55f, 0.35f, 0.1f)
+
+        // How far out to look for OTHER hostiles a candidate cover point must also stay hidden from
+        // — see findCover's own comment. Roughly the rifleman/machine-gunner engagement range
+        // (BASE_SHOOT_DISTANCE 24 * up to 1.5-2x class multiplier, GunAttackBehaviour) rather than
+        // the sniper's full 3x/72 — a pragmatic bound, not "hidden from literally everything that
+        // could ever see this spot", to keep the per-candidate raycast cost from scaling unbounded.
+        private const val THREAT_SCAN_RADIUS = 40.0
         private const val COVERING_FIRE_WINDOW_TICKS = 40 // ~2s — covers gaps between shots, not just a single tick
 
         // See maybeThrowGrenadeOnceDugIn(). Same toss physics as GrenadeThrowBehaviour's own throw
@@ -115,12 +148,6 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val GRENADE_THROW_CHANCE = 0.2
         private const val GRENADE_THROW_SPEED = 1.0
         private const val GRENADE_GRAVITY = 0.05
-
-        // Debug-visual colors (see markCoverChoice) — GREEN for a real found-cover spot, ORANGE for
-        // a blind fallback retreat, BROWN for an actually-started dig.
-        private val GREEN = org.joml.Vector3f(0.2f, 1.0f, 0.2f)
-        private val ORANGE = org.joml.Vector3f(1.0f, 0.6f, 0.0f)
-        private val BROWN = org.joml.Vector3f(0.55f, 0.35f, 0.1f)
 
         private val NEIGHBOR_OFFSETS = listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1)
         // How far out (in block-widths, along each NEIGHBOR_OFFSETS direction) to look for a
@@ -147,10 +174,15 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean {
         // Dug in and rested back up past the same threshold that let it dig in the first place —
-        // stand down deliberately here rather than waiting for isSuppressed() to lapse on its own:
-        // see tickDugInHolding's doc comment for why suppression is kept alive by hand for as long as
-        // the mob is still hurt and still fighting, which would otherwise never let this end.
-        if (phase == Phase.DUG_IN_HOLDING && entity.health >= entity.maxHealth * DIG_HEALTH_FRACTION) return false
+        // don't stand down immediately: try to actually leave the hole first (see
+        // beginExitingHole/tickExitingHole — a MAX_DIGS-deep pit isn't always trivially climbable).
+        if (phase == Phase.DUG_IN_HOLDING && entity.health >= entity.maxHealth * DIG_HEALTH_FRACTION) {
+            beginExitingHole(entity)
+        }
+        if (phase == Phase.EXITING_HOLE) {
+            if (hasClimbedOut(entity)) return false // actually out — stop() runs, hands back control normally
+            return true
+        }
         return entity.isSuppressed()
     }
 
@@ -159,9 +191,10 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         coverTarget = null
         phaseUntilTick = 0
         isFallbackRetreat = false
-        hasDugIn = false
+        digsUsed = 0
         digTicksRemaining = 0
         digPos = null
+        duggenSideExit = false
         entity.diggedIn = false
         BrainUtils.setMemory(entity, ModMemories.COVER_HOLD.get(), true)
     }
@@ -175,24 +208,24 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun tick(entity: NpcEntity) {
-        // DUG_IN_HOLDING deliberately does NOT bail out on threatPos == null the way every other
-        // phase does below — a dug-in mob is meant to keep holding its hole based on its own health
-        // and current target, not on the threat-suppression memory that gates every other phase (see
-        // tickDugInHolding's own doc comment).
-        if (phase == Phase.DUG_IN_HOLDING) {
-            tickDugInHolding(entity)
-            return
+        val level = entity.level() as? ServerLevel ?: return
+        // DUG_IN_HOLDING/HOLDING_OPEN/EXITING_HOLE deliberately do NOT bail out on threatPos == null
+        // the way every other phase does below — none of them are gated by the threat-suppression
+        // memory the way MOVING_TO_COVER/IN_COVER/etc. are (see each one's own doc comment).
+        when (phase) {
+            Phase.DUG_IN_HOLDING -> return tickDugInHolding(entity)
+            Phase.HOLDING_OPEN -> return tickHoldingOpen(entity, level)
+            Phase.EXITING_HOLE -> return tickExitingHole(entity, level)
+            else -> Unit
         }
         val threat = entity.threatPos ?: return
-        val level = entity.level() as? ServerLevel ?: return
-
         when (phase) {
             Phase.MOVING_TO_COVER -> tickMovingToCover(entity, level, threat)
             Phase.DIGGING_IN -> tickDiggingIn(entity, level)
             Phase.IN_COVER -> tickInCover(entity, level)
             Phase.PEEKING -> tickPeeking(entity)
             Phase.RETURNING_TO_COVER -> tickReturningToCover(entity)
-            Phase.DUG_IN_HOLDING -> Unit // handled above
+            Phase.DUG_IN_HOLDING, Phase.HOLDING_OPEN, Phase.EXITING_HOLE -> Unit // handled above
         }
     }
 
@@ -205,12 +238,12 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
                 // the real standing position too (see startDigging's own doc comment) — checking the
                 // ground/flatness anywhere else could green-light a dig site different from the one
                 // that's actually used.
-                // !hasDugIn here too, purely for defense-in-depth: this phase can currently only be
-                // reached with hasDugIn == false (start() resets both together, and nothing else nulls
-                // coverTarget mid-episode), but that's an accident of today's control flow, not an
-                // explicit guarantee — keep both call sites of canDigIn consistent (PM review finding).
-                if (isFallbackRetreat && !hasDugIn && canDigIn(entity, level, entity.blockPosition())) {
-                    startDigging(entity, level)
+                // digsUsed < MAX_DIGS here too, purely for defense-in-depth: this phase can currently
+                // only be reached with digsUsed == 0 (start() resets both together, and nothing else
+                // nulls coverTarget mid-episode), but that's an accident of today's control flow, not
+                // an explicit guarantee — keep both call sites of canDigIn consistent (PM review finding).
+                if (isFallbackRetreat && digsUsed < MAX_DIGS && canDigIn(entity, level, entity.blockPosition())) {
+                    startDigging(entity)
                 } else {
                     enterCover(entity, refreshSuppression = true)
                 }
@@ -222,6 +255,20 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             coverTarget = it
             entity.navigation.moveTo(it.x + 0.5, it.y.toDouble(), it.z + 0.5, 1.0)
             markCoverChoice(level, it, GREEN)
+            return
+        }
+        // Per user request: actively engaged (a live target — near-certainly already holding a
+        // GunAttackBehaviour firing position, see item 7) and no real cover found nearby — don't
+        // flee across open ground to a blind fallback point. Dig in right where it's standing if
+        // possible, otherwise just hold this spot and keep firing (GunAttackBehaviour already finds
+        // the best nearby partial cover to shoot from on its own). Only the "no target at all,
+        // genuinely blind" case still falls back to fallbackAwayFrom below.
+        if (entity.target != null) {
+            if (digsUsed < MAX_DIGS && canDigIn(entity, level, entity.blockPosition())) {
+                startDigging(entity)
+            } else {
+                enterHoldingOpen(entity)
+            }
             return
         }
         fallbackAwayFrom(entity, threat)?.let {
@@ -236,13 +283,13 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
     }
 
-    /** Debug visual, per user request ("посмотреть что именно они выбирают укрытием") — a short
-     *  particle burst at the exact block chosen as cover, GREEN for a real [findCover] hit (a wall
-     *  the raycast actually verified blocks the threat), ORANGE for a [fallbackAwayFrom] retreat
-     *  (no real cover found nearby at all). Visible to every nearby player, not just the squad's
-     *  owner — this is a diagnostic aid, not a player-facing HUD marker like
-     *  `SquadManager.setObjective`'s particles. */
+    /** Player-facing visual, per user request — a short particle burst at the exact block chosen as
+     *  cover, GREEN for a real [findCover] hit (a wall the raycast actually verified blocks the
+     *  threat), ORANGE for a [fallbackAwayFrom] retreat (no real cover found nearby at all), BROWN
+     *  for an actually-started dig. Gated on [DebugFlags.MARKERS_ENABLED] — one place to toggle these
+     *  off, since the user expects to do that fairly often (e.g. playing with a friend). */
     private fun markCoverChoice(level: ServerLevel, pos: BlockPos, color: org.joml.Vector3f) {
+        if (!DebugFlags.MARKERS_ENABLED) return
         level.sendParticles(
             net.minecraft.core.particles.DustParticleOptions(color, 1.5f),
             pos.x + 0.5, pos.y + 0.5, pos.z + 0.5, 12, 0.3, 0.3, 0.3, 0.0
@@ -265,7 +312,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (refreshSuppression) entity.threatPos?.let { entity.suppress(it) }
     }
 
-    private fun startDigging(entity: NpcEntity, level: ServerLevel) {
+    private fun startDigging(entity: NpcEntity) {
         entity.navigation.stop()
         phase = Phase.DIGGING_IN
         digTicksRemaining = DIG_TICKS
@@ -281,7 +328,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         val standingPos = entity.blockPosition()
         digPos = standingPos.below()
         coverTarget = standingPos
-        markCoverChoice(level, standingPos, BROWN)
+        (entity.level() as? ServerLevel)?.let { markCoverChoice(it, standingPos, BROWN) }
         // Refresh suppression right as digging starts — a secondary safety net (the actual "digs
         // in, then immediately runs off" cause turned out to be ExtendedBehaviour's default 60-tick
         // timeout, see the class doc comment) for the independent, smaller risk that natural
@@ -297,10 +344,25 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         // then anchor DUG_IN_HOLDING at that same stale spot — reported in-game as the mob just
         // standing exposed in the open with no hole under it after being shoved mid-dig. `coverTarget`
         // was re-anchored to the real standing position in startDigging, so it doubles as the "am I
-        // still where I started digging" reference — same arrival-tolerance idiom (1.5) already used
-        // by tickMovingToCover/tickReturningToCover.
+        // still where I started digging" reference.
+        //
+        // Exact column (X/Z) equality, not a distance radius (this used to allow up to 1.5 blocks of
+        // drift before aborting): falling into the hole only works if the mob is still on the EXACT
+        // same 1x1 column when the block breaks — a fractional-block drift well inside any
+        // reasonable radius tolerance can still land the mob one column over, next to the hole
+        // instead of in it. Reported in-game as sometimes "almost" but not quite falling into a
+        // freshly-dug hole on otherwise flat ground, with no other obvious cause. Since this now
+        // only trips on an actual column change (not sub-block jitter within the same block), it
+        // stays rare — abortDigging's usual full re-evaluation (back to MOVING_TO_COVER) is fine for
+        // it.
+        //
+        // X/Z only, not full BlockPos (PM review finding): a badly-hurt mob taking another hit
+        // mid-dig — a likely moment, since digging requires being hurt in the first place — can get
+        // a small vertical knockback hop with zero horizontal drift; comparing Y too would abort a
+        // perfectly fine dig over a bounce that never actually left the column.
         val anchor = coverTarget
-        if (anchor != null && !entity.position().closerThan(anchor.center, 1.5)) {
+        val currentPos = entity.blockPosition()
+        if (anchor != null && (currentPos.x != anchor.x || currentPos.z != anchor.z)) {
             abortDigging(entity)
             return
         }
@@ -330,7 +392,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         clearDigProgress(entity)
         level.destroyBlock(pos, false, entity, 512)
         digPos = null
-        hasDugIn = true
+        digsUsed++
         maybeThrowGrenadeOnceDugIn(entity, level)
         enterDugInHolding(entity)
     }
@@ -350,6 +412,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.diggedIn = true
         BrainUtils.clearMemory(entity, ModMemories.COVER_HOLD.get())
         phaseUntilTick = entity.tickCount + RECHECK_TICKS
+        healthAtLastDigInCheck = entity.health
     }
 
     /** Holds the mob in its foxhole for as long as it's both still hurt (below [DIG_HEALTH_FRACTION],
@@ -367,6 +430,123 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.tickCount < phaseUntilTick) return
         phaseUntilTick = entity.tickCount + RECHECK_TICKS
         entity.threatPos?.let { entity.suppress(it) }
+
+        // Per user request: one extra block deeper if hit again while already dug in (health
+        // dropped since the last check — a fresh hit, not just the same old damage) and the ground
+        // still allows it — capped at MAX_DIGS total, never unlimited (see digsUsed's own doc
+        // comment). Real cover isn't re-checked here: even if some turned up, nothing currently
+        // moves a diggedIn mob out of its hole to use it, so there'd be no alternative action to
+        // take on that information anyway.
+        val tookFreshHit = entity.health < healthAtLastDigInCheck
+        healthAtLastDigInCheck = entity.health
+        if (tookFreshHit && digsUsed < MAX_DIGS) {
+            val level = entity.level() as? ServerLevel ?: return
+            if (canDigIn(entity, level, entity.blockPosition())) {
+                startDigging(entity)
+            }
+        }
+    }
+
+    /** Per user request: engaged (has a target) with no real cover nearby and unable/unwilling to
+     *  dig any further — hold the current spot and keep firing rather than fleeing across open
+     *  ground. Clears [ModMemories.COVER_HOLD] like [enterDugInHolding] so [GunAttackBehaviour] keeps
+     *  full control of aim/fire AND its own partial-cover positioning (`holdFiringPosition`) — unlike
+     *  actually digging in, [NpcEntity.diggedIn] is deliberately NOT set here, since there's no hole
+     *  to stay locked into; GunAttackBehaviour is free to reposition within its own small search
+     *  radius exactly as it would with no suppression involved at all. */
+    private fun enterHoldingOpen(entity: NpcEntity) {
+        entity.navigation.stop()
+        phase = Phase.HOLDING_OPEN
+        BrainUtils.clearMemory(entity, ModMemories.COVER_HOLD.get())
+        phaseUntilTick = entity.tickCount + RECHECK_TICKS
+    }
+
+    /** Periodically rechecks whether digging has since become viable (still hurt enough, an ally
+     *  starts actually covering) — otherwise just keeps suppression alive while there's still a live
+     *  target, same idiom as [tickDugInHolding]. No target for a while and this naturally lapses via
+     *  [shouldKeepRunning]'s plain `isSuppressed()` fallthrough, same as ordinary IN_COVER/PEEKING. */
+    private fun tickHoldingOpen(entity: NpcEntity, level: ServerLevel) {
+        val target = entity.target
+        if (target == null || !target.isAlive) return
+        if (entity.tickCount < phaseUntilTick) return
+        phaseUntilTick = entity.tickCount + RECHECK_TICKS
+        entity.threatPos?.let { entity.suppress(it) }
+        if (digsUsed < MAX_DIGS && canDigIn(entity, level, entity.blockPosition())) {
+            startDigging(entity)
+        }
+    }
+
+    /** Per user decision ("просто проверять попытку выйти"): healed up and ready to stand down, but
+     *  a [MAX_DIGS]-deep hole isn't always something a mob can just climb straight out of on its own
+     *  (vanilla pathfinding jump-assists one block, not two) — try a normal path out first, and only
+     *  if that doesn't actually work within [EXIT_CHECK_TICKS], dig a single escape block at roughly
+     *  eye level in [tickExitingHole] instead of leaving it stuck in a hole it can no longer justify
+     *  staying in. [shouldKeepRunning] keeps this behaviour alive (returns true) for the whole
+     *  attempt via [hasClimbedOut], regardless of suppression state — the mob is done being
+     *  suppressed here, it just still needs to physically get out. */
+    private fun beginExitingHole(entity: NpcEntity) {
+        phase = Phase.EXITING_HOLE
+        duggenSideExit = false
+        phaseUntilTick = entity.tickCount + EXIT_CHECK_TICKS
+        // Must clear BEFORE issuing the exit navigation below — every other system that reads
+        // NpcEntity.diggedIn (GunAttackBehaviour first among them) treats it as "hands off this
+        // mob's movement" and would otherwise call navigation.stop() on the very same/next tick,
+        // canceling the exit attempt before it could ever actually leave.
+        entity.diggedIn = false
+        val level = entity.level() as? ServerLevel
+        val hole = coverTarget
+        if (level != null && hole != null) {
+            val exitPoint = NEIGHBOR_OFFSETS.map { (dx, dz) -> groundAt(level, hole.offset(dx, 0, dz)) }
+                .minByOrNull { it.distSqr(hole) }
+            if (exitPoint != null) entity.navigation.moveTo(exitPoint.x + 0.5, exitPoint.y.toDouble(), exitPoint.z + 0.5, 1.0)
+        }
+    }
+
+    /** Risen above the dug bottom's own Y — actually out, regardless of exactly where it ended up. */
+    private fun hasClimbedOut(entity: NpcEntity): Boolean {
+        val hole = coverTarget ?: return true
+        return entity.blockPosition().y > hole.y
+    }
+
+    private fun tickExitingHole(entity: NpcEntity, level: ServerLevel) {
+        if (entity.tickCount < phaseUntilTick) return
+        if (duggenSideExit) return // already tried the escape — nothing more to actively do
+        val hole = coverTarget
+        // The normal exit path issued in beginExitingHole had its EXIT_CHECK_TICKS chance — if the
+        // navigator has already given up (the expected case for a genuinely MAX_DIGS-deep pit —
+        // vanilla mobs auto-step/jump one block, not two), dig through instead of leaving it stuck.
+        if (hole != null && entity.navigation.isDone) {
+            digSideExit(entity, level, hole)
+        }
+        duggenSideExit = true
+    }
+
+    /** Breaks through the pit wall and physically places the mob back at the surface — see
+     *  [hole]'s own two solid layers below. A single sideways block alone doesn't actually reach
+     *  daylight from a [MAX_DIGS]-deep pit (PM review finding): the untouched neighbor terrain is
+     *  ordinary continuous ground at the SAME depth as the shaft, not a path to the surface — a mob
+     *  that steps into a one-block notch punched in that wall is still exactly as deep underground
+     *  as before, just sideways. Rather than simulate a full staircase dig for what's meant to be a
+     *  simple last-resort escape (per user framing, "просто проверять попытку выйти"), break the
+     *  wall for visual/physical consistency with what was asked, then place the mob at the nearest
+     *  original-surface point beyond it directly — guarantees it never gets permanently wedged
+     *  in [Phase.EXITING_HOLE] (which is exactly what happened before this fix: the block broken
+     *  wasn't even a real wall, so [hasClimbedOut] could never trip). */
+    private fun digSideExit(entity: NpcEntity, level: ServerLevel, hole: BlockPos) {
+        val (dx, dz) = NEIGHBOR_OFFSETS.first()
+        // hole.y and hole.y - 1: the two solid layers actually enclosing the mob (hole.y + 1 would be
+        // the ORIGINAL surface opening it fell through in the first place — already open, nothing to
+        // break there).
+        level.destroyBlock(hole.offset(dx, 0, dz), false, entity, 512)
+        level.destroyBlock(hole.offset(dx, -1, dz), false, entity, 512)
+        // hole.y + 1, NOT a live groundAt() query (PM review finding): isFlatEnoughToDig already
+        // guaranteed this exact neighbor column's ground sits at or below hole.y when the last dig
+        // started (so its own open/walkable height is at or above hole.y + 1) — a real, pre-verified
+        // invariant. Querying groundAt() here instead would read back the two blocks just destroyed
+        // one line above, and/or (at distance 2) terrain that flatness never actually checked —
+        // either way risking landing the mob back down inside the breach rather than above it.
+        val exitPoint = hole.offset(dx, 1, dz)
+        entity.teleportTo(exitPoint.x + 0.5, exitPoint.y.toDouble(), exitPoint.z + 0.5)
     }
 
     private fun clearDigProgress(entity: NpcEntity) {
@@ -410,12 +590,14 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
      *      see [NpcEntity.lastShotTick]) but falling back to "has a live target it can currently see
      *      and isn't itself cover-locked" (clearly engaging, just between shots) if nothing fired
      *      that exact instant;
-     *   3. standable dirt-family ground ([BlockTags.DIRT]) directly underfoot.
+     *   3. standable dirt- or sand-family ground ([BlockTags.DIRT]/[BlockTags.SAND]) directly
+     *      underfoot — sand added per user request ("земля/песок").
      *  Deliberately does NOT check depth of the resulting hole here — see [isFlatEnoughToDig] for
      *  the actual "this would be a real foxhole, not one block broken on a slope" guarantee. */
     private fun canDigIn(entity: NpcEntity, level: ServerLevel, pos: BlockPos): Boolean {
         val hurtEnough = entity.health < entity.maxHealth * DIG_HEALTH_FRACTION
-        val diggableGround = level.getBlockState(pos.below()).`is`(BlockTags.DIRT)
+        val belowState = level.getBlockState(pos.below())
+        val diggableGround = belowState.`is`(BlockTags.DIRT) || belowState.`is`(BlockTags.SAND)
         val flatEnough = isFlatEnoughToDig(level, pos)
         val covered = hasCoveringAlly(entity, level)
         // TEMPORARY diagnostic, round 5 — now that the real bug (ExtendedBehaviour's 60-tick
@@ -472,11 +654,11 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         // closes that gap, at the same cadence as the ordinary recheck/dwell cycle.
         // Checked against the mob's actual current position (it's just standing at coverTarget by
         // now anyway, but see startDigging's doc comment for why this must match exactly).
-        // !hasDugIn: without this, digging one hole and falling into it (blockPosition() drops by
-        // one) re-passes every condition of canDigIn at the new, deeper spot — see hasDugIn's own
-        // doc comment for the endless-shaft bug this caused.
-        if (isFallbackRetreat && !hasDugIn && canDigIn(entity, level, entity.blockPosition())) {
-            startDigging(entity, level)
+        // digsUsed < MAX_DIGS: without this cap, digging one hole and falling into it
+        // (blockPosition() drops by one) re-passes every condition of canDigIn at the new, deeper
+        // spot — see digsUsed's own doc comment for the endless-shaft bug this caused.
+        if (isFallbackRetreat && digsUsed < MAX_DIGS && canDigIn(entity, level, entity.blockPosition())) {
+            startDigging(entity)
             return
         }
         val target = entity.target
@@ -509,8 +691,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         for (step in PEEK_STEP_DISTANCES) {
             val candidate = base.add(dir.scale(step))
             val eye = candidate.add(0.0, 1.5, 0.0)
-            val hit = level.clip(ClipContext(eye, target.eyePosition, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, entity))
-            if (hit.type != HitResult.Type.BLOCK) return candidate
+            if (!Sightline.blocked(level, eye, target.eyePosition, entity)) return candidate
         }
         return target.position()
     }
@@ -542,9 +723,9 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.navigation.moveTo(target.x + 0.5, target.y.toDouble(), target.z + 0.5, 1.0)
     }
 
-    /** Two candidate sources, both filtered down to points the threat's last known position can't
-     *  actually see (blocked by terrain) — the raycast in [isHiddenFrom] is the real gate, this is
-     *  just about generating candidates likely to pass it:
+    /** Two candidate sources, both filtered down to points hidden from EVERY nearby hostile (not
+     *  just the specific threat that triggered suppression — see [nearbyThreats]) — the raycast in
+     *  [isHiddenFrom] is the real gate, this is just about generating candidates likely to pass it:
      *   - a coarse grid scan biased toward spots with a solid block right next to them (an actual
      *     wall/rock/building corner) — genuine physical cover, not just "some open spot that
      *     happens to be hidden by a terrain bump".
@@ -578,7 +759,27 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             candidates += groundAt(level, origin.offset(Math.round(Math.cos(angle) * dist).toInt(), 0, Math.round(Math.sin(angle) * dist).toInt()))
         }
 
-        return candidates.filter { isHiddenFrom(level, entity, threat, it) }.minByOrNull { it.distSqr(origin) }
+        val threats = nearbyThreats(entity, level, threat)
+        return candidates.filter { isHiddenFrom(level, entity, threats, it) }.minByOrNull { it.distSqr(origin) }
+    }
+
+    /** Every currently-known hostile near [entity] (within [THREAT_SCAN_RADIUS]), as eye-height
+     *  points — not just [primary] (the specific enemy whose fire triggered suppression). Reported
+     *  in-game: the mob would duck out of view of that one attacker while stepping straight into
+     *  full view of the rest of the enemy squad standing right next to it. [primary] is always
+     *  included in ADDITION to the scan, never replaced by it — the attacker who actually triggered
+     *  suppression might be a sniper well outside [THREAT_SCAN_RADIUS], and dropping it just because
+     *  some other, closer hostile happened to be in range would silently un-hide the mob from the
+     *  one threat it's certain is real. Approximated at the same "+1.5 eye height" heuristic the old
+     *  single-threat check always used (threatPos is a stored position, not a live entity to read an
+     *  exact eyePosition from). Same hostile-detection idiom as
+     *  `MortarOperatorBehaviour.scanForEnemy` (NpcEntity/Player, [SquadTeams.isHostile], alive). */
+    private fun nearbyThreats(entity: NpcEntity, level: ServerLevel, primary: Vec3): List<Vec3> {
+        val box = AABB.ofSize(entity.position(), THREAT_SCAN_RADIUS * 2, THREAT_SCAN_RADIUS * 2, THREAT_SCAN_RADIUS * 2)
+        val seen = level.getEntitiesOfClass(LivingEntity::class.java, box)
+            .filter { (it is NpcEntity || it is Player) && it.isAlive && SquadTeams.isHostile(entity, it) }
+            .map { it.eyePosition }
+        return seen + primary.add(0.0, 1.5, 0.0)
     }
 
     /** Cheap proxy for "there's a wall/corner here", biased two ways rather than just one — per
@@ -605,11 +806,12 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
     }
 
-    private fun isHiddenFrom(level: ServerLevel, entity: NpcEntity, threat: Vec3, candidate: BlockPos): Boolean {
-        val from = threat.add(0.0, 1.5, 0.0)
+    /** [candidate] only counts as real cover if it's blocked from EVERY entry in [threats] — one
+     *  attacker with a clear line to it is enough to make it not-cover, regardless of how many
+     *  others it's hidden from. */
+    private fun isHiddenFrom(level: ServerLevel, entity: NpcEntity, threats: List<Vec3>, candidate: BlockPos): Boolean {
         val to = Vec3(candidate.x + 0.5, candidate.y + 1.5, candidate.z + 0.5)
-        val hit = level.clip(ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, entity))
-        return hit.type == HitResult.Type.BLOCK
+        return threats.all { threat -> Sightline.blocked(level, threat, to, entity) }
     }
 
     /** Snaps to standable ground near [pos] — same heuristic shape as the groundAt() helpers used

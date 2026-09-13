@@ -7,11 +7,11 @@ enum class SquadPreset(val label: String, val composition: List<NpcClass>) {
     SIX("6: Rifle+Sniper", List(4) { NpcClass.RIFLEMAN } + List(2) { NpcClass.SNIPER }),
     EIGHT(
         "8: Standard",
-        List(4) { NpcClass.RIFLEMAN } + List(2) { NpcClass.SNIPER } + NpcClass.GRENADIER + NpcClass.MACHINE_GUNNER
+        List(4) { NpcClass.RIFLEMAN } + List(2) { NpcClass.SNIPER } + NpcClass.MEDIC + NpcClass.MACHINE_GUNNER
     ),
     SIXTEEN(
         "16: Large",
-        List(10) { NpcClass.RIFLEMAN } + List(2) { NpcClass.SNIPER } + List(2) { NpcClass.MACHINE_GUNNER } + List(2) { NpcClass.GRENADIER }
+        List(10) { NpcClass.RIFLEMAN } + List(2) { NpcClass.SNIPER } + List(2) { NpcClass.MACHINE_GUNNER } + List(2) { NpcClass.MEDIC }
     ),
     MORTAR_CREW("Mortar Crew", listOf(NpcClass.MORTAR_OPERATOR, NpcClass.MORTAR_LOADER));
 
