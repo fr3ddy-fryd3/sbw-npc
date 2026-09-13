@@ -172,8 +172,13 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         val target = coverTarget
         if (target != null) {
             if (entity.position().closerThan(target.center, 1.5)) {
-                if (isFallbackRetreat && canDigIn(entity, level, target)) {
-                    startDigging(entity, level, target)
+                // canDigIn checked against the mob's ACTUAL current position, not `target` — arrival
+                // only guarantees being within 1.5 blocks of it, and digging itself now happens at
+                // the real standing position too (see startDigging's own doc comment) — checking the
+                // ground/flatness anywhere else could green-light a dig site different from the one
+                // that's actually used.
+                if (isFallbackRetreat && canDigIn(entity, level, entity.blockPosition())) {
+                    startDigging(entity, level)
                 } else {
                     enterCover(entity, refreshSuppression = true)
                 }
@@ -228,12 +233,23 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (refreshSuppression) entity.threatPos?.let { entity.suppress(it) }
     }
 
-    private fun startDigging(entity: NpcEntity, level: ServerLevel, target: BlockPos) {
+    private fun startDigging(entity: NpcEntity, level: ServerLevel) {
         entity.navigation.stop()
         phase = Phase.DIGGING_IN
         digTicksRemaining = DIG_TICKS
-        digPos = target.below()
-        markCoverChoice(level, target, BROWN)
+        // Dig the block the mob is ACTUALLY standing on right now, not `target` itself — arrival is
+        // only checked within 1.5 blocks of `target` (closerThan in tickMovingToCover), so the mob
+        // can legitimately be up to that far from target's exact column when digging starts.
+        // Digging target.below() dug a hole next to the mob instead of under its own feet whenever
+        // that gap was nonzero — reported in-game as "digs the hole, then just walks off" (it never
+        // actually fell in, since the removed block was never the one it was standing on). Also
+        // re-anchor coverTarget to this real position so the later peek/duck-back navigation
+        // (tickInCover/duckBackToCover/tickReturningToCover) returns to the ACTUAL hole, not the
+        // stale original approach point.
+        val standingPos = entity.blockPosition()
+        digPos = standingPos.below()
+        coverTarget = standingPos
+        markCoverChoice(level, standingPos, BROWN)
         // Refresh suppression right as digging starts — a secondary safety net (the actual "digs
         // in, then immediately runs off" cause turned out to be ExtendedBehaviour's default 60-tick
         // timeout, see the class doc comment) for the independent, smaller risk that natural
@@ -266,16 +282,18 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     /** Per user request: once actually dug in (not before) — a "so the enemy flinches while I catch
-     *  my breath" parting shot, not a pre-emptive one. Small [GRENADE_THROW_CHANCE] roll, needs the
-     *  single offhand grenade every non-mortar NpcClass now carries (see [NpcEntity.applyRole]) —
-     *  consumed on use, one-shot per NPC, unrelated to GRENADIER's own separate, unlimited
-     *  cooldown-based `GrenadeThrowBehaviour`. Thrown at [NpcEntity.threatPos] (the suppressing
-     *  threat, not necessarily the current `target`) since that's who this is meant to rattle. Same
+     *  my breath" parting shot, not a pre-emptive one. Small [GRENADE_THROW_CHANCE] roll, needs
+     *  [NpcEntity.hasReserveGrenade] (every non-mortar NpcClass starts with one, see
+     *  [NpcEntity.applyRole]) — a plain flag, not a visible held item (user feedback: a physical
+     *  offhand grenade looked wrong with a gun already in the main hand, and GRENADIER's own
+     *  separate, unlimited `GrenadeThrowBehaviour` never visibly holds one either, it just spawns
+     *  the entity directly — no precedent here for a held item in the first place). Consumed on
+     *  use, one-shot per NPC. Thrown at [NpcEntity.threatPos] (the suppressing threat, not
+     *  necessarily the current `target`) since that's who this is meant to rattle. Same
      *  friendly-fire gates as the ordinary grenade behaviour — skip silently rather than risk
      *  hitting an ally, the grenade just stays in reserve for next time. */
     private fun maybeThrowGrenadeOnceDugIn(entity: NpcEntity, level: ServerLevel) {
-        val offhand = entity.offhandItem
-        if (offhand.item !is com.atsuishio.superbwarfare.item.HandGrenade) return
+        if (!entity.hasReserveGrenade) return
         if (entity.random.nextDouble() >= GRENADE_THROW_CHANCE) return
         val threat = entity.threatPos ?: return
         val radius = com.atsuishio.superbwarfare.config.server.ExplosionConfig.M67_GRENADE_EXPLOSION_RADIUS.get().toDouble()
@@ -289,7 +307,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         val grenade = com.atsuishio.superbwarfare.entity.projectile.HandGrenadeEntity(entity, level)
         grenade.deltaMovement = solution
         level.addFreshEntity(grenade)
-        entity.setItemInHand(net.minecraft.world.InteractionHand.OFF_HAND, net.minecraft.world.item.ItemStack.EMPTY)
+        entity.hasReserveGrenade = false
     }
 
     /** Gates digging in to exactly the invariants the user asked for:
@@ -360,9 +378,10 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         // that arrived still above the health threshold (or without a covering ally yet) would
         // never dig in later even after taking more fire while just standing there exposed — this
         // closes that gap, at the same cadence as the ordinary recheck/dwell cycle.
-        val pos = coverTarget
-        if (isFallbackRetreat && pos != null && canDigIn(entity, level, pos)) {
-            startDigging(entity, level, pos)
+        // Checked against the mob's actual current position (it's just standing at coverTarget by
+        // now anyway, but see startDigging's doc comment for why this must match exactly).
+        if (isFallbackRetreat && canDigIn(entity, level, entity.blockPosition())) {
+            startDigging(entity, level)
             return
         }
         val target = entity.target
@@ -373,7 +392,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             // over aiming/approach/fire from here; this is just enough of a nudge to clear
             // whatever's currently blocking sight from the cover point itself.
             BrainUtils.clearMemory(entity, ModMemories.COVER_HOLD.get())
-            val peekPoint = pos?.let { findPeekPoint(entity, level, it, target) } ?: target.position()
+            val peekPoint = coverTarget?.let { findPeekPoint(entity, level, it, target) } ?: target.position()
             entity.navigation.moveTo(peekPoint.x, peekPoint.y, peekPoint.z, 1.0)
         } else {
             // Nothing to shoot at yet — stay down, recheck shortly rather than popping out blind.

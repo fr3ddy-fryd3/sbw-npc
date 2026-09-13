@@ -132,6 +132,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     fun firedRecently(withinTicks: Int): Boolean = tickCount - lastShotTick <= withinTicks
 
+    // Single-use "parting shot" grenade, tracked as a plain flag rather than a visible held item —
+    // see applyRole() for why. Consumed (set false) by SeekCoverBehaviour.maybeThrowGrenadeOnceDugIn.
+    var hasReserveGrenade: Boolean = false
+
     override fun hurt(source: DamageSource, amount: Float): Boolean {
         val result = super.hurt(source, amount)
         // NOT vanilla's DamageTypeTags.IS_PROJECTILE — SBW's gunfire damage types (GUN_FIRE,
@@ -306,14 +310,15 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             setItemInHand(InteractionHand.MAIN_HAND, gunData.stack)
         }
 
-        // One hand grenade per fighter, mortar crew excepted (they aren't a combat-suppression
-        // role) — per user request. Consumed by SeekCoverBehaviour's occasional POST-dig throw (see
-        // that class's maybeThrowGrenadeOnceDugIn — thrown once already dug in, not before);
-        // GRENADIER's own unlimited cooldown-based GrenadeThrowBehaviour is unrelated and
-        // unaffected, this is a separate, single-use "parting shot" for everyone else too.
-        if (npcClass != NpcClass.MORTAR_OPERATOR && npcClass != NpcClass.MORTAR_LOADER) {
-            setItemInHand(InteractionHand.OFF_HAND, ItemStack(com.atsuishio.superbwarfare.init.ModItems.HAND_GRENADE.get()))
-        }
+        // One reserve grenade per fighter, mortar crew excepted (they aren't a combat-suppression
+        // role) — per user request. Tracked as a plain flag, NOT a visible offhand item — user
+        // feedback: holding a physical grenade in the offhand looked wrong (both hands full), and
+        // GRENADIER's own unlimited GrenadeThrowBehaviour already throws without ever visibly
+        // holding a grenade either (it just spawns HandGrenadeEntity directly), so there's no
+        // established precedent here for a held item in the first place. Consumed by
+        // SeekCoverBehaviour's occasional POST-dig throw (see maybeThrowGrenadeOnceDugIn — thrown
+        // once already dug in, not before); entirely separate from GRENADIER's own mechanic.
+        hasReserveGrenade = npcClass != NpcClass.MORTAR_OPERATOR && npcClass != NpcClass.MORTAR_LOADER
     }
 
     override fun addAdditionalSaveData(compound: CompoundTag) {
