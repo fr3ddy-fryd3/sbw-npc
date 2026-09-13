@@ -74,6 +74,12 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val COVERING_ALLY_RADIUS = 16.0
         private const val COVERING_FIRE_WINDOW_TICKS = 40 // ~2s — covers gaps between shots, not just a single tick
 
+        // Debug-visual colors (see markCoverChoice) — GREEN for a real found-cover spot, ORANGE for
+        // a blind fallback retreat, BROWN for an actually-started dig.
+        private val GREEN = org.joml.Vector3f(0.2f, 1.0f, 0.2f)
+        private val ORANGE = org.joml.Vector3f(1.0f, 0.6f, 0.0f)
+        private val BROWN = org.joml.Vector3f(0.55f, 0.35f, 0.1f)
+
         private val NEIGHBOR_OFFSETS = listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1)
         // 8-directional (incl. diagonals) — used to confirm the ground is actually flat around the
         // dig site, not just "hidden", see isFlatEnoughToDig().
@@ -101,6 +107,15 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun stop(entity: NpcEntity) {
+        // TEMPORARY diagnostic, round 2 — theory: suppression (100-200 ticks / 5-10s) may be
+        // expiring before a slow-moving mob ever finishes walking to its fallback point, so it
+        // never reaches the dig-eligibility check at all — this would show up here as `phase`
+        // still MOVING_TO_COVER (never got as far as IN_COVER/DIGGING_IN) when this fires.
+        if (isFallbackRetreat) {
+            com.sbwnpc.squad.SquadMod.LOGGER.info(
+                "[dig-debug] {} suppression ended in phase {} (fallback)", entity.uuid, phase
+            )
+        }
         coverTarget = null
         entity.navigation.stop()
         digPos?.let { clearDigProgress(entity) }
@@ -125,7 +140,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (target != null) {
             if (entity.position().closerThan(target.center, 1.5)) {
                 if (isFallbackRetreat && canDigIn(entity, level, target)) {
-                    startDigging(entity, target)
+                    startDigging(entity, level, target)
                 } else {
                     enterCover(entity)
                 }
@@ -136,17 +151,32 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             isFallbackRetreat = false
             coverTarget = it
             entity.navigation.moveTo(it.x + 0.5, it.y.toDouble(), it.z + 0.5, 1.0)
+            markCoverChoice(level, it, GREEN)
             return
         }
         fallbackAwayFrom(entity, threat)?.let {
             isFallbackRetreat = true
             coverTarget = it
             entity.navigation.moveTo(it.x + 0.5, it.y.toDouble(), it.z + 0.5, 1.0)
+            markCoverChoice(level, it, ORANGE)
             // TEMPORARY diagnostic, round 2 — user reports still nobody digging in after the
             // covering-ally check was loosened. Confirms whether NPCs even reach the fallback path
             // at all in this test (vs. findCover succeeding often enough that fallback is rare).
             com.sbwnpc.squad.SquadMod.LOGGER.info("[dig-debug] {} entered fallback retreat", entity.uuid)
         }
+    }
+
+    /** Debug visual, per user request ("посмотреть что именно они выбирают укрытием") — a short
+     *  particle burst at the exact block chosen as cover, GREEN for a real [findCover] hit (a wall
+     *  the raycast actually verified blocks the threat), ORANGE for a [fallbackAwayFrom] retreat
+     *  (no real cover found nearby at all). Visible to every nearby player, not just the squad's
+     *  owner — this is a diagnostic aid, not a player-facing HUD marker like
+     *  `SquadManager.setObjective`'s particles. */
+    private fun markCoverChoice(level: ServerLevel, pos: BlockPos, color: org.joml.Vector3f) {
+        level.sendParticles(
+            net.minecraft.core.particles.DustParticleOptions(color, 1.5f),
+            pos.x + 0.5, pos.y + 0.5, pos.z + 0.5, 12, 0.3, 0.3, 0.3, 0.0
+        )
     }
 
     private fun enterCover(entity: NpcEntity) {
@@ -155,11 +185,12 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         phaseUntilTick = entity.tickCount + DWELL_TICKS + entity.random.nextInt(DWELL_JITTER)
     }
 
-    private fun startDigging(entity: NpcEntity, target: BlockPos) {
+    private fun startDigging(entity: NpcEntity, level: ServerLevel, target: BlockPos) {
         entity.navigation.stop()
         phase = Phase.DIGGING_IN
         digTicksRemaining = DIG_TICKS
         digPos = target.below()
+        markCoverChoice(level, target, BROWN)
     }
 
     private fun tickDiggingIn(entity: NpcEntity, level: ServerLevel) {
@@ -256,7 +287,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             val level = entity.level() as? ServerLevel
             val pos = coverTarget
             if (level != null && pos != null && canDigIn(entity, level, pos)) {
-                startDigging(entity, pos)
+                startDigging(entity, level, pos)
                 return
             }
         }
