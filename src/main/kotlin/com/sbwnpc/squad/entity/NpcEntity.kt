@@ -186,9 +186,44 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     override fun brainProvider(): net.minecraft.world.entity.ai.Brain.Provider<NpcEntity> =
         net.tslat.smartbrainlib.api.core.SmartBrainProvider(this)
 
+    private var equipmentResynced = false
+
     override fun customServerAiStep() {
         super.customServerAiStep()
+        if (!equipmentResynced) {
+            equipmentResynced = true
+            resyncHeldItemForNewlySpawnedNpc()
+        }
         tickBrain(this)
+    }
+
+    /**
+     * Fix for a bug reported after in-game testing: NPCs deployed in a batch (preset deploy,
+     * barracks reinforcement — several `finalizeSpawn`+`addFreshEntity` calls in the same server
+     * tick) sometimes spawn with no visibly held weapon for players already nearby, even though the
+     * item is genuinely equipped (confirmed functional — reload/fire/ammo all work). Confirmed by
+     * the user to happen specifically on batch spawns, not single recruits.
+     *
+     * The weapon is set in [applyRole] (called from [finalizeSpawn]), i.e. before this entity is
+     * even added to the level / starts being tracked by any player — relying on the tracking-pairing
+     * path (`ServerEntity.sendPairingData`, a full equipment resend to each newly-tracking player)
+     * to deliver it, rather than the ordinary per-tick delta path
+     * (`LivingEntity.detectEquipmentUpdates`/`ItemStack.matches` against the last-broadcast stack).
+     * Re-setting the identical stack later can't force that ordinary path to fire — `matches` is a
+     * value comparison, an equal-value stack is never treated as "changed" — so this bypasses both
+     * paths entirely: one tick after spawn (once the entity is definitely already added and ticking,
+     * i.e. well past whatever pairing-time edge case a burst of several simultaneous new entities
+     * might be hitting), broadcast a fresh `ClientboundSetEquipmentPacket` directly to every player
+     * in the dimension. A handful of tiny packets once per NPC spawn, not per tick.
+     */
+    private fun resyncHeldItemForNewlySpawnedNpc() {
+        val serverLevel = level() as? ServerLevel ?: return
+        val item = mainHandItem
+        if (item.isEmpty) return
+        val packet = net.minecraft.network.protocol.game.ClientboundSetEquipmentPacket(
+            id, listOf(com.mojang.datafixers.util.Pair.of(net.minecraft.world.entity.EquipmentSlot.MAINHAND, item))
+        )
+        serverLevel.server.playerList.broadcastAll(packet, serverLevel.dimension())
     }
 
     // Target acquisition: replaces the old SquadFocusTargetGoal, HurtByTargetGoal,
