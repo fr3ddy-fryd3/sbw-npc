@@ -46,6 +46,14 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
  */
 class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
+    // ExtendedBehaviour defaults to a 60-tick runtime cap (confirmed via javap — see
+    // SeekCoverBehaviour's doc comment for the full story); this needs to keep running for as long
+    // as it stays eligible, not get force-stopped/restarted (resetting repathCooldown etc.) every
+    // 3 seconds regardless of squad-order state.
+    init {
+        noTimeout()
+    }
+
     private var repathCooldown = 0
     private var routeIndex = 0
     private var routeWaitUntil = 0

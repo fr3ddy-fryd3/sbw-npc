@@ -59,6 +59,18 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private enum class Phase { MOVING_TO_COVER, DIGGING_IN, IN_COVER, PEEKING, RETURNING_TO_COVER }
 
+    // ROOT CAUSE of the whole "digs in / settles into cover, then re-enters fallback retreat"
+    // saga: ExtendedBehaviour has an UNDOCUMENTED-to-us default 60-tick runtime cap (runtimeProvider
+    // defaults to a constant 60, cooldownProvider to 0 — confirmed via javap on the real jar), which
+    // vanilla Behavior.timedOut() enforces completely independently of shouldKeepRunning(). Every
+    // start()/stop() pair in the [dig-debug] logs was EXACTLY 61 ticks apart no matter how much
+    // suppression time was actually left (proved with the rawRemaining logging added earlier) — none
+    // of the suppression-refresh work was ever the actual fix; it was this. noTimeout() sets the
+    // runtime cap to Integer.MAX_VALUE so only shouldKeepRunning()/stop() ever end this behaviour.
+    init {
+        noTimeout()
+    }
+
     private var phase = Phase.MOVING_TO_COVER
     private var coverTarget: BlockPos? = null
     private var phaseUntilTick = 0
@@ -127,14 +139,6 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = entity.isSuppressed()
 
     override fun start(entity: NpcEntity) {
-        // TEMPORARY diagnostic, round 3 — user reports the mob still re-enters fallback retreat
-        // even though suppression visibly gets refreshed. Verified via javap on the real
-        // SmartBrainLib jar that ONCE RUNNING, a behaviour can ONLY be stopped by
-        // shouldKeepRunning()==false (isSuppressed()) or an (unused, default-inert) stopCondition —
-        // getMemoryRequirements()/hasRequiredMemories() only gates the INITIAL start, never
-        // continuation — so on paper this start() should only fire once per genuinely fresh
-        // suppression episode. Logging every call to find out whether that's actually true.
-        com.sbwnpc.squad.SquadMod.LOGGER.info("[dig-debug] {} start() at tick {}", entity.uuid, entity.tickCount)
         phase = Phase.MOVING_TO_COVER
         coverTarget = null
         phaseUntilTick = 0
@@ -145,13 +149,6 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun stop(entity: NpcEntity) {
-        // TEMPORARY diagnostic, round 3 — same theory as before, now also logging the tick number
-        // to correlate precisely against the [dig-debug] refresh logs in startDigging()/enterCover().
-        if (isFallbackRetreat) {
-            com.sbwnpc.squad.SquadMod.LOGGER.info(
-                "[dig-debug] {} stop() at tick {} in phase {} (fallback)", entity.uuid, entity.tickCount, phase
-            )
-        }
         coverTarget = null
         entity.navigation.stop()
         digPos?.let { clearDigProgress(entity) }
@@ -195,10 +192,6 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             coverTarget = it
             entity.navigation.moveTo(it.x + 0.5, it.y.toDouble(), it.z + 0.5, 1.0)
             markCoverChoice(level, it, ORANGE)
-            // TEMPORARY diagnostic, round 2 — user reports still nobody digging in after the
-            // covering-ally check was loosened. Confirms whether NPCs even reach the fallback path
-            // at all in this test (vs. findCover succeeding often enough that fallback is rare).
-            com.sbwnpc.squad.SquadMod.LOGGER.info("[dig-debug] {} entered fallback retreat", entity.uuid)
         }
     }
 
@@ -228,20 +221,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.navigation.stop()
         phase = Phase.IN_COVER
         phaseUntilTick = entity.tickCount + DWELL_TICKS + entity.random.nextInt(DWELL_JITTER)
-        if (refreshSuppression) {
-            entity.threatPos?.let { entity.suppress(it) }
-            // TEMPORARY diagnostic, round 4 — round 3's log showed a refresh at tick 499
-            // (phaseUntilTick=530) followed by stop() at tick 539, only ~40 ticks later — nowhere
-            // near suppress()'s claimed 100-tick floor. Logging the actual raw remaining-tick value
-            // straight from BrainUtils right after the refresh, to see whether suppress() itself is
-            // computing a too-small number or whether the memory decays faster than expected
-            // afterward.
-            val rawRemaining = BrainUtils.getTimeUntilMemoryExpires(entity, ModMemories.SUPPRESSING_THREAT.get())
-            com.sbwnpc.squad.SquadMod.LOGGER.info(
-                "[dig-debug] {} enterCover refreshed suppression at tick {}, rawRemaining={}, isSuppressed={}, phaseUntilTick={}",
-                entity.uuid, entity.tickCount, rawRemaining, entity.isSuppressed(), phaseUntilTick
-            )
-        }
+        if (refreshSuppression) entity.threatPos?.let { entity.suppress(it) }
     }
 
     private fun startDigging(entity: NpcEntity, level: ServerLevel, target: BlockPos) {
@@ -250,21 +230,11 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         digTicksRemaining = DIG_TICKS
         digPos = target.below()
         markCoverChoice(level, target, BROWN)
-        // Refresh suppression right as digging starts — reported in-game as "digs in, then
-        // immediately runs off": DIG_TICKS (~3.5s) can eat most of a suppression window (5-10s)
-        // that was already partway through when digging began, so `isSuppressed()` could lapse
-        // right as/after the hole finishes, which stops this whole behaviour (see stop()) and
-        // clears COVER_HOLD — unlocking GunAttackBehaviour to immediately march the mob back out
-        // toward its target before it ever got to actually use the cover it just dug. `suppress()`
-        // extends to at least its own fixed 100-tick minimum (see NpcEntity), comfortably covering
-        // the dig plus initial settle — same mechanism a fresh hit would use, not a new one.
+        // Refresh suppression right as digging starts — a secondary safety net (the actual "digs
+        // in, then immediately runs off" cause turned out to be ExtendedBehaviour's default 60-tick
+        // timeout, see the class doc comment) for the independent, smaller risk that natural
+        // suppression genuinely runs out mid-dig if the mob doesn't get hit again for a while.
         entity.threatPos?.let { entity.suppress(it) }
-        // TEMPORARY diagnostic, round 4 — same reason as enterCover()'s log.
-        val rawRemaining = BrainUtils.getTimeUntilMemoryExpires(entity, ModMemories.SUPPRESSING_THREAT.get())
-        com.sbwnpc.squad.SquadMod.LOGGER.info(
-            "[dig-debug] {} startDigging refreshed suppression at tick {}, rawRemaining={}, isSuppressed={}",
-            entity.uuid, entity.tickCount, rawRemaining, entity.isSuppressed()
-        )
     }
 
     private fun tickDiggingIn(entity: NpcEntity, level: ServerLevel) {
@@ -334,15 +304,6 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         val diggableGround = level.getBlockState(pos.below()).`is`(BlockTags.DIRT)
         val flatEnough = isFlatEnoughToDig(level, pos)
         val covered = hasCoveringAlly(entity, level)
-        // TEMPORARY diagnostic, round 2 (see the fallback-retreat log above) — round 1 fixed the
-        // covering-ally check based on this same log, but the user reports still nobody digging in.
-        // Also checked periodically now (tickInCover), not just once at arrival — see that method.
-        if (!(hurtEnough && diggableGround && flatEnough && covered)) {
-            com.sbwnpc.squad.SquadMod.LOGGER.info(
-                "[dig-debug] {} at {} hurtEnough={} diggableGround={} flatEnough={} covered={}",
-                entity.uuid, pos, hurtEnough, diggableGround, flatEnough, covered
-            )
-        }
         return hurtEnough && diggableGround && flatEnough && covered
     }
 

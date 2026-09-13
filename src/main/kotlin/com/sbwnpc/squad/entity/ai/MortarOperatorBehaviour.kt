@@ -41,6 +41,13 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
  */
 class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
+    // ExtendedBehaviour defaults to a 60-tick runtime cap (confirmed via javap — see
+    // SeekCoverBehaviour's doc comment for the full story); manning a mortar post is meant to be
+    // indefinite, not force-interrupted and immediately re-evaluated every 3 seconds.
+    init {
+        noTimeout()
+    }
+
     private var mortar: MortarEntity? = null
     private var nextAimTick = 0
     private var nextScanTick = 0

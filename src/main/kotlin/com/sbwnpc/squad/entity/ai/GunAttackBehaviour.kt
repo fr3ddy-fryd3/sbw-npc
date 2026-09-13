@@ -32,6 +32,14 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
  * only the framework glue changed.
  */
 class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
+    // ExtendedBehaviour defaults to a 60-tick runtime cap (confirmed via javap — see
+    // SeekCoverBehaviour's doc comment for the full story of what this silently broke there); this
+    // behaviour is meant to keep running for as long as ATTACK_TARGET stays set, not get force-
+    // stopped and immediately restarted every 3 seconds regardless of combat state.
+    init {
+        noTimeout()
+    }
+
     private var aimTime = 0
     private val shootTimer = MillisTimer()
 
