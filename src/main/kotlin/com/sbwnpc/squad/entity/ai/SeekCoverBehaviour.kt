@@ -193,23 +193,10 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  Deliberately does NOT check depth of the resulting hole here — see [isFlatEnoughToDig] for
      *  the actual "this would be a real foxhole, not one block broken on a slope" guarantee. */
     private fun canDigIn(entity: NpcEntity, level: ServerLevel, pos: BlockPos): Boolean {
-        val hurtEnough = entity.health < entity.maxHealth * DIG_HEALTH_FRACTION
-        val diggableGround = level.getBlockState(pos.below()).`is`(BlockTags.DIRT)
-        val flatEnough = isFlatEnoughToDig(level, pos)
-        val covered = hasCoveringAlly(entity, level)
-        // TEMPORARY diagnostic (see PLAN.md "дай факт, не догадку" precedent from the old
-        // [cover-debug] logs) — user reported digging never triggering on a flat test world with no
-        // cover at all, where it was expected to fire reliably. Remove once a test pins which
-        // invariant is actually the bottleneck (candidates: no ally ever actively covers when the
-        // WHOLE squad is equally exposed and suppressed at once; the test world's flat surface isn't
-        // a BlockTags.DIRT block).
-        if (!(hurtEnough && diggableGround && flatEnough && covered)) {
-            com.sbwnpc.squad.SquadMod.LOGGER.info(
-                "[dig-debug] {} at {} hurtEnough={} diggableGround={} flatEnough={} covered={}",
-                entity.uuid, pos, hurtEnough, diggableGround, flatEnough, covered
-            )
-        }
-        return hurtEnough && diggableGround && flatEnough && covered
+        if (entity.health >= entity.maxHealth * DIG_HEALTH_FRACTION) return false
+        if (!level.getBlockState(pos.below()).`is`(BlockTags.DIRT)) return false
+        if (!isFlatEnoughToDig(level, pos)) return false
+        return hasCoveringAlly(entity, level)
     }
 
     private fun hasCoveringAlly(entity: NpcEntity, level: ServerLevel): Boolean {
@@ -220,10 +207,18 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
     }
 
+    /** Confirmed via a [dig-debug] log capture in-game: gating on "actively engaging right now" was
+     *  the real bottleneck, not health/ground/flatness (those passed every single time). In an open
+     *  fight with no cover for anyone, the whole squad tends to get suppressed together — by the
+     *  moment someone is hurt badly enough to actually want to dig in, every nearby ally is equally
+     *  pinned down too, so nobody ever had a live target + clear LOS at that exact instant. Added a
+     *  third, looser tier: an ally who ISN'T suppressed themselves is "in a position to help" even
+     *  without proof they're mid-shot right now — still prefers the stronger, verified signals first. */
     private fun isActuallyCovering(ally: NpcEntity): Boolean {
         if (ally.firedRecently(COVERING_FIRE_WINDOW_TICKS)) return true
         val target = ally.target
-        return target != null && target.isAlive && !ally.combatLockedByCover() && ally.sensing.hasLineOfSight(target)
+        if (target != null && target.isAlive && !ally.combatLockedByCover() && ally.sensing.hasLineOfSight(target)) return true
+        return !ally.isSuppressed()
     }
 
     /** [pos] only counts as a real dig-in site if the ground around it is at least as high as
