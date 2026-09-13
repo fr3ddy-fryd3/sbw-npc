@@ -21,7 +21,7 @@ import net.tslat.smartbrainlib.util.BrainUtils
  * have `stop()`/`start()` this behaviour every time `COVER_HOLD` toggles off/on for the peek, losing
  * `coverTarget`/`phase` right when they need to survive it. CORE has no such exclusivity (same as
  * the old goal, which reserved `Flag.MOVE` but was never challenged for it — `GunAttackBehaviour`/
- * `GrenadeThrowGoal` never reserved any flag either), so this keeps ticking continuously the whole
+ * `GrenadeThrowBehaviour` never reserved any flag either), so this keeps ticking continuously the whole
  * time the mob is suppressed, exactly like before.
  *
  * Full suppression response — not just duck-and-hold: while suppressed, the mob finds a point the
@@ -30,7 +30,7 @@ import net.tslat.smartbrainlib.util.BrainUtils
  *
  * Drives [ModMemories.COVER_HOLD] (replaces `NpcEntity.coverPhase`'s externally-visible half — see
  * that memory's own doc comment). While `COVER_HOLD` is absent (the PEEKING window),
- * `NpcEntity.combatLockedByCover()` is false, so `GunAttackBehaviour`/`GrenadeThrowGoal` take back
+ * `NpcEntity.combatLockedByCover()` is false, so `GunAttackBehaviour`/`GrenadeThrowBehaviour` take back
  * over movement/aim/fire for that window — no conflict, since neither of those reserves any
  * `Flag`/exclusivity of its own (confirmed against this codebase's actual wiring, not assumed). This
  * behaviour itself just steps the mob out toward its target for the peek and otherwise gets out of

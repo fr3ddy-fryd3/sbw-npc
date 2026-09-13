@@ -119,7 +119,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     /** True while [com.sbwnpc.squad.entity.ai.SeekCoverBehaviour] must have the mob to itself for
      *  movement and combat goals should stand down entirely — false during its PEEKING phase, the
      *  deliberate window where the mob steps out to return fire and GunAttackBehaviour/
-     *  GrenadeThrowGoal take back over. Backed by [ModMemories.COVER_HOLD] (see its own doc
+     *  GrenadeThrowBehaviour take back over. Backed by [ModMemories.COVER_HOLD] (see its own doc
      *  comment) instead of a hand-rolled enum with a logging setter. */
     fun combatLockedByCover(): Boolean = BrainUtils.hasMemory(this, ModMemories.COVER_HOLD.get())
 
