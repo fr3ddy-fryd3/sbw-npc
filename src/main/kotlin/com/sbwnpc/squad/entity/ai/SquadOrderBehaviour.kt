@@ -66,6 +66,12 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun eligible(entity: NpcEntity): Boolean {
         if (entity.target != null) return false
         if (entity.isAlert()) return false
+        // A dug-in mob clears COVER_HOLD for its whole holding duration (see
+        // SeekCoverBehaviour.enterDugInHolding) so GunAttackBehaviour can still fire from the hole —
+        // this behaviour never checked combatLockedByCover() in the first place (only target/alert/
+        // order), so without this a dug-in mob whose target happened to die/break LOS for even a
+        // moment would get marched off toward its DEFEND/PATROL slot, right out of its own hole.
+        if (entity.diggedIn) return false
         val squad = entity.currentSquad() ?: return false
         return squad.order != SquadOrder.FREE && entity.homeCenter() != null
     }

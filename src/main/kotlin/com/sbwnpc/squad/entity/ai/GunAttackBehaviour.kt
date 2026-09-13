@@ -90,9 +90,12 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val HOLD_JITTER_TICKS = 40
 
         // How far out to look for a better partial-cover firing spot once already in range — a
-        // small local shuffle, not a retreat search (contrast SeekCoverBehaviour's much larger
-        // MIN/MAX_RADIUS, which is for fleeing to real cover far from a threat).
-        private const val POSITION_SEARCH_RADIUS = 4.0
+        // local shuffle, not a retreat search (contrast SeekCoverBehaviour's much larger MIN/MAX_
+        // RADIUS, which is for fleeing to real cover far from a threat). Widened from 4.0 to 7.0 per
+        // user request; 0 (staying exactly put) is still always in range via bestFiringSpot's own
+        // baseline score for the entity's current position, so this only affects how far it's
+        // willing to reposition, never whether it's allowed to just hold where it already is.
+        private const val POSITION_SEARCH_RADIUS = 7.0
 
         // Priority order for holdFiringPosition's concealment scoring — highest first (a candidate
         // blocked at 1.5 hides more of the mob's body than one only blocked at 0.5). All sit below

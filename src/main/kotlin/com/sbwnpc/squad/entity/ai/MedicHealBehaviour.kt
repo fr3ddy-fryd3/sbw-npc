@@ -81,6 +81,11 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  the specific squad it was deployed with. */
     private fun candidate(entity: NpcEntity): NpcEntity? {
         if (entity.npcClass != NpcClass.MEDIC) return null
+        // A dug-in medic (badly hurt enough to take cover itself) must stay put like everything
+        // else that respects NpcEntity.diggedIn (PM review finding — this was one of two Core tasks
+        // that still didn't) — even a critically wounded ally doesn't get the medic to abandon its
+        // own hole; treating can wait until it's healed/no longer holding.
+        if (entity.diggedIn) return null
         val faction = SquadTeams.factionOf(entity) ?: return null
         val level = entity.level() as? ServerLevel ?: return null
         val box = AABB.ofSize(entity.position(), SCAN_RADIUS * 2, SCAN_RADIUS * 2, SCAN_RADIUS * 2)

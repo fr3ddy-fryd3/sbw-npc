@@ -5,6 +5,7 @@ import com.atsuishio.superbwarfare.init.ModItems
 import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.sbwnpc.squad.entity.ai.GrenadeThrowBehaviour
 import com.sbwnpc.squad.entity.ai.IdleLookAroundGoal
+import com.sbwnpc.squad.entity.ai.IdleWanderGoal
 import com.sbwnpc.squad.entity.ai.InvestigateBehaviour
 import com.sbwnpc.squad.entity.ai.MedicHealBehaviour
 import com.sbwnpc.squad.entity.ai.MortarClaims
@@ -39,7 +40,6 @@ import net.minecraft.world.entity.SpawnGroupData
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier
 import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.entity.ai.goal.FloatGoal
-import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.damagesource.DamageSource
 import net.minecraft.world.item.ItemStack
@@ -196,7 +196,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         // SquadOrderBehaviour.WALK_SPEED_MODIFIER (rather than duplicating the literal) so FREE reads
         // the same calm pace as DEFEND/PATROL, per user request (run only on ATTACK / actually
         // engaging, not while just standing around).
-        this.goalSelector.addGoal(7, WaterAvoidingRandomStrollGoal(this, SquadOrderBehaviour.WALK_SPEED_MODIFIER))
+        this.goalSelector.addGoal(7, IdleWanderGoal(this, SquadOrderBehaviour.WALK_SPEED_MODIFIER))
     }
 
     // --- SmartBrainOwner: step 2 of the migration (skeleton only) ---
