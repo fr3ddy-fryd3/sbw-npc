@@ -7,7 +7,7 @@ import net.minecraft.world.phys.Vec3
 
 /**
  * Turns "every squad member walks toward the exact same point" (the literal `home`/route point
- * passed to `navigation.moveTo` in `SquadOrderGoal`) into "every squad member walks toward its own
+ * passed to `navigation.moveTo` in `SquadOrderBehaviour`) into "every squad member walks toward its own
  * slot around that point" — real formation-slot steering (see gdx-ai's Formation Motion, and RTS
  * flocking literature), not a full boids simulation. That single change is what was actually
  * causing both the "everyone piles onto one spot and shoves past each other" pileup and the

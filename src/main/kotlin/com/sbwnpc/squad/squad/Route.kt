@@ -6,7 +6,7 @@ import net.minecraft.nbt.ListTag
 import net.minecraft.nbt.Tag
 import java.util.UUID
 
-/** A named, ordered list of points a squad on PATROL walks in sequence (see `SquadOrderGoal`). */
+/** A named, ordered list of points a squad on PATROL walks in sequence (see `SquadOrderBehaviour`). */
 class Route(val id: UUID, val owner: UUID, var name: String, val points: List<BlockPos>) {
     fun save(): CompoundTag {
         val tag = CompoundTag()

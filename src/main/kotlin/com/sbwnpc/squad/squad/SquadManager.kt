@@ -117,7 +117,7 @@ class SquadManager : SavedData() {
      *  focused on (ATTACK target or DEFEND ward) dies. `Squad.focusEntity` is a live UUID, not a
      *  fixed point — left stale, `NpcEntity.homeCenter()` resolves it to nothing (dead entity, no
      *  separate objective ever set for a pure focus-based order) and returns null FOREVER for that
-     *  squad, silently disabling `SquadOrderGoal` for good: members just coast to a stop wherever
+     *  squad, silently disabling `SquadOrderBehaviour` for good: members just coast to a stop wherever
      *  their last queued path was heading and never reposition or reform again. Reported in-game as
      *  "after killing the enemy they walk right up to its last spot and pile up there." Promoting
      *  the death position to a fixed objective gives the squad a real home to reform around. */
