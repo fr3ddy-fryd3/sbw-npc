@@ -7,6 +7,7 @@ import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.atsuishio.superbwarfare.tools.MillisTimer
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.Alarm
+import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.combat.SquadFormation
@@ -224,12 +225,14 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
     }
 
-    /** Debug visual, per user request — same idiom as SeekCoverBehaviour's now-removed
-     *  markCoverChoice (that feature's already been tested; this one hasn't yet). One burst each
-     *  time [holdFiringPosition] (re-)picks a spot, whether or not it's actually different from the
-     *  last one, so it's visible even for a squad member that keeps re-confirming its own current
-     *  position as still the best available. */
+    /** Player-facing visual, per user request — same idiom as SeekCoverBehaviour's own
+     *  markCoverChoice. One burst each time [holdFiringPosition] (re-)picks a spot, whether or not
+     *  it's actually different from the last one, so it's visible even for a squad member that keeps
+     *  re-confirming its own current position as still the best available. Gated on
+     *  [DebugFlags.MARKERS_ENABLED] — one place to toggle these off, since the user expects to do
+     *  that fairly often (e.g. playing with a friend). */
     private fun markFiringPosition(level: ServerLevel, pos: Vec3) {
+        if (!DebugFlags.MARKERS_ENABLED) return
         level.sendParticles(
             net.minecraft.core.particles.DustParticleOptions(FIRING_POSITION_COLOR, 1.5f),
             pos.x, pos.y + 0.5, pos.z, 12, 0.3, 0.3, 0.3, 0.0

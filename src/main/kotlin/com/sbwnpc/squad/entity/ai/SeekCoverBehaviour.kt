@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
+import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.entity.NpcEntity
@@ -128,6 +129,12 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val EXIT_CHECK_TICKS = 60
         private const val COVERING_ALLY_RADIUS = 16.0
 
+        // Debug-visual colors (see markCoverChoice) — GREEN for a real found-cover spot, ORANGE for
+        // a blind fallback retreat, BROWN for an actually-started dig. Gated on DebugFlags.MARKERS_ENABLED.
+        private val GREEN = org.joml.Vector3f(0.2f, 1.0f, 0.2f)
+        private val ORANGE = org.joml.Vector3f(1.0f, 0.6f, 0.0f)
+        private val BROWN = org.joml.Vector3f(0.55f, 0.35f, 0.1f)
+
         // How far out to look for OTHER hostiles a candidate cover point must also stay hidden from
         // — see findCover's own comment. Roughly the rifleman/machine-gunner engagement range
         // (BASE_SHOOT_DISTANCE 24 * up to 1.5-2x class multiplier, GunAttackBehaviour) rather than
@@ -247,6 +254,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             isFallbackRetreat = false
             coverTarget = it
             entity.navigation.moveTo(it.x + 0.5, it.y.toDouble(), it.z + 0.5, 1.0)
+            markCoverChoice(level, it, GREEN)
             return
         }
         // Per user request: actively engaged (a live target — near-certainly already holding a
@@ -267,11 +275,25 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             isFallbackRetreat = true
             coverTarget = it
             entity.navigation.moveTo(it.x + 0.5, it.y.toDouble(), it.z + 0.5, 1.0)
+            markCoverChoice(level, it, ORANGE)
             // TEMPORARY diagnostic, round 5 — pairs with canDigIn()'s log: tells apart "never even
             // reaches the fallback path" (findCover keeps succeeding now that episodes aren't reset
             // every 60 ticks anymore) from "reaches it but canDigIn always fails".
             com.sbwnpc.squad.SquadMod.LOGGER.info("[dig-debug] {} entered fallback retreat", entity.uuid)
         }
+    }
+
+    /** Player-facing visual, per user request — a short particle burst at the exact block chosen as
+     *  cover, GREEN for a real [findCover] hit (a wall the raycast actually verified blocks the
+     *  threat), ORANGE for a [fallbackAwayFrom] retreat (no real cover found nearby at all), BROWN
+     *  for an actually-started dig. Gated on [DebugFlags.MARKERS_ENABLED] — one place to toggle these
+     *  off, since the user expects to do that fairly often (e.g. playing with a friend). */
+    private fun markCoverChoice(level: ServerLevel, pos: BlockPos, color: org.joml.Vector3f) {
+        if (!DebugFlags.MARKERS_ENABLED) return
+        level.sendParticles(
+            net.minecraft.core.particles.DustParticleOptions(color, 1.5f),
+            pos.x + 0.5, pos.y + 0.5, pos.z + 0.5, 12, 0.3, 0.3, 0.3, 0.0
+        )
     }
 
     /** [refreshSuppression] must be true only for a mob's FIRST settle into cover this episode (a
@@ -306,6 +328,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         val standingPos = entity.blockPosition()
         digPos = standingPos.below()
         coverTarget = standingPos
+        (entity.level() as? ServerLevel)?.let { markCoverChoice(it, standingPos, BROWN) }
         // Refresh suppression right as digging starts — a secondary safety net (the actual "digs
         // in, then immediately runs off" cause turned out to be ExtendedBehaviour's default 60-tick
         // timeout, see the class doc comment) for the independent, smaller risk that natural
