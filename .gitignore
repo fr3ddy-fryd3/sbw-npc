@@ -32,5 +32,5 @@ Thumbs.db
 local.properties
 
 # Working notes for the phase currently in progress — never committed, kept as a
-# personal reference alongside PLAN.md, deliberately out of git history.
-PHASE_5_8_PLAN.md
+# personal reference alongside PLAN.md, deliberately out of git history. (No active
+# one right now — add the next phase's filename here when one starts.)
