@@ -6,6 +6,7 @@ import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.npc.NpcClass
+import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
@@ -20,8 +21,8 @@ import java.util.UUID
  * has a combat target of its own — a real Fight-activity behaviour would only ever run alongside
  * `ATTACK_TARGET`, which would rule out the "no target, heal opportunistically" case entirely.
  *
- * Per explicit user decision (confirmed during planning): a medic heals a CRITICALLY wounded
- * squadmate (health below [CRITICAL_HEALTH_FRACTION]) even while it has a live target and is
+ * Per explicit user decision (confirmed during planning): a medic heals a CRITICALLY wounded ally
+ * (health below [CRITICAL_HEALTH_FRACTION]) even while it has a live target and is
  * actively engaged — for that case it locks [GunAttackBehaviour] out via
  * [ModMemories.MEDIC_HEALING] (same "hands off, I own the mob right now" idiom as
  * `SeekCoverBehaviour`'s `COVER_HOLD`) for as long as treatment takes. A merely wounded ally (below
@@ -66,16 +67,21 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
         return fraction < CRITICAL_HEALTH_FRACTION || (entity.target == null && fraction < NEEDS_HEAL_FRACTION)
     }
 
-    /** Most-wounded eligible squadmate within range — same scan pattern as
+    /** Most-wounded eligible ally within range — same scan pattern as
      *  `SeekCoverBehaviour.hasCoveringAlly`. Deliberately re-run each time (not just checked against
-     *  the sticky [healTargetId]) so eligibility always reflects the CURRENT most urgent case. */
+     *  the sticky [healTargetId]) so eligibility always reflects the CURRENT most urgent case.
+     *
+     *  Faction-wide, not squad-only (per user request/confirmation after testing) — a medic tends
+     *  any wounded ally on its own side ([SquadTeams.factionOf] equality, the same "same scoreboard
+     *  team" notion `isHostile`/`isAlliedTo` already ride on elsewhere in this codebase), not just
+     *  the specific squad it was deployed with. */
     private fun candidate(entity: NpcEntity): NpcEntity? {
         if (entity.npcClass != NpcClass.MEDIC) return null
-        val squad = entity.currentSquad() ?: return null
+        val faction = SquadTeams.factionOf(entity) ?: return null
         val level = entity.level() as? ServerLevel ?: return null
         val box = AABB.ofSize(entity.position(), SCAN_RADIUS * 2, SCAN_RADIUS * 2, SCAN_RADIUS * 2)
         return level.getEntitiesOfClass(NpcEntity::class.java, box)
-            .filter { ally -> ally !== entity && ally.isAlive && squad.members.contains(ally.uuid) && needsHealing(entity, ally) }
+            .filter { ally -> ally !== entity && ally.isAlive && SquadTeams.factionOf(ally) == faction && needsHealing(entity, ally) }
             .minByOrNull { it.health / it.maxHealth }
     }
 
@@ -98,7 +104,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
         val level = entity.level() as? ServerLevel ?: return
         // Keep tending the same ally as long as it still genuinely needs it — re-picking a fresh
         // candidate every tick (even one that's merely alive but already healed up) would abandon a
-        // near-finished treatment for whichever squadmate happens to sort first.
+        // near-finished treatment for whichever ally happens to sort first.
         val sticky = healTargetId?.let { level.getEntity(it) as? NpcEntity }?.takeIf { it.isAlive && needsHealing(entity, it) }
         val ally = sticky ?: candidate(entity)?.also { healTargetId = it.uuid } ?: return
 

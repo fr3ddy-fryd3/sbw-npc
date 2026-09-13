@@ -4,12 +4,14 @@ import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModMemories
+import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.tags.BlockTags
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
+import net.minecraft.world.entity.player.Player
 import net.minecraft.world.level.ClipContext
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.HitResult
@@ -108,6 +110,13 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val DIG_HEALTH_FRACTION = 0.5f  // only badly hurt NPCs bother digging in
         private const val DIG_TICKS = 70              // ~3.5s of "digging" before the hole is done
         private const val COVERING_ALLY_RADIUS = 16.0
+
+        // How far out to look for OTHER hostiles a candidate cover point must also stay hidden from
+        // — see findCover's own comment. Roughly the rifleman/machine-gunner engagement range
+        // (BASE_SHOOT_DISTANCE 24 * up to 1.5-2x class multiplier, GunAttackBehaviour) rather than
+        // the sniper's full 3x/72 — a pragmatic bound, not "hidden from literally everything that
+        // could ever see this spot", to keep the per-candidate raycast cost from scaling unbounded.
+        private const val THREAT_SCAN_RADIUS = 40.0
         private const val COVERING_FIRE_WINDOW_TICKS = 40 // ~2s — covers gaps between shots, not just a single tick
 
         // See maybeThrowGrenadeOnceDugIn(). Same toss physics as GrenadeThrowBehaviour's own throw
@@ -542,9 +551,9 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.navigation.moveTo(target.x + 0.5, target.y.toDouble(), target.z + 0.5, 1.0)
     }
 
-    /** Two candidate sources, both filtered down to points the threat's last known position can't
-     *  actually see (blocked by terrain) — the raycast in [isHiddenFrom] is the real gate, this is
-     *  just about generating candidates likely to pass it:
+    /** Two candidate sources, both filtered down to points hidden from EVERY nearby hostile (not
+     *  just the specific threat that triggered suppression — see [nearbyThreats]) — the raycast in
+     *  [isHiddenFrom] is the real gate, this is just about generating candidates likely to pass it:
      *   - a coarse grid scan biased toward spots with a solid block right next to them (an actual
      *     wall/rock/building corner) — genuine physical cover, not just "some open spot that
      *     happens to be hidden by a terrain bump".
@@ -578,7 +587,27 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             candidates += groundAt(level, origin.offset(Math.round(Math.cos(angle) * dist).toInt(), 0, Math.round(Math.sin(angle) * dist).toInt()))
         }
 
-        return candidates.filter { isHiddenFrom(level, entity, threat, it) }.minByOrNull { it.distSqr(origin) }
+        val threats = nearbyThreats(entity, level, threat)
+        return candidates.filter { isHiddenFrom(level, entity, threats, it) }.minByOrNull { it.distSqr(origin) }
+    }
+
+    /** Every currently-known hostile near [entity] (within [THREAT_SCAN_RADIUS]), as eye-height
+     *  points — not just [primary] (the specific enemy whose fire triggered suppression). Reported
+     *  in-game: the mob would duck out of view of that one attacker while stepping straight into
+     *  full view of the rest of the enemy squad standing right next to it. [primary] is always
+     *  included in ADDITION to the scan, never replaced by it — the attacker who actually triggered
+     *  suppression might be a sniper well outside [THREAT_SCAN_RADIUS], and dropping it just because
+     *  some other, closer hostile happened to be in range would silently un-hide the mob from the
+     *  one threat it's certain is real. Approximated at the same "+1.5 eye height" heuristic the old
+     *  single-threat check always used (threatPos is a stored position, not a live entity to read an
+     *  exact eyePosition from). Same hostile-detection idiom as
+     *  `MortarOperatorBehaviour.scanForEnemy` (NpcEntity/Player, [SquadTeams.isHostile], alive). */
+    private fun nearbyThreats(entity: NpcEntity, level: ServerLevel, primary: Vec3): List<Vec3> {
+        val box = AABB.ofSize(entity.position(), THREAT_SCAN_RADIUS * 2, THREAT_SCAN_RADIUS * 2, THREAT_SCAN_RADIUS * 2)
+        val seen = level.getEntitiesOfClass(LivingEntity::class.java, box)
+            .filter { (it is NpcEntity || it is Player) && it.isAlive && SquadTeams.isHostile(entity, it) }
+            .map { it.eyePosition }
+        return seen + primary.add(0.0, 1.5, 0.0)
     }
 
     /** Cheap proxy for "there's a wall/corner here", biased two ways rather than just one — per
@@ -605,11 +634,15 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
     }
 
-    private fun isHiddenFrom(level: ServerLevel, entity: NpcEntity, threat: Vec3, candidate: BlockPos): Boolean {
-        val from = threat.add(0.0, 1.5, 0.0)
+    /** [candidate] only counts as real cover if it's blocked from EVERY entry in [threats] — one
+     *  attacker with a clear line to it is enough to make it not-cover, regardless of how many
+     *  others it's hidden from. */
+    private fun isHiddenFrom(level: ServerLevel, entity: NpcEntity, threats: List<Vec3>, candidate: BlockPos): Boolean {
         val to = Vec3(candidate.x + 0.5, candidate.y + 1.5, candidate.z + 0.5)
-        val hit = level.clip(ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, entity))
-        return hit.type == HitResult.Type.BLOCK
+        return threats.all { threat ->
+            val hit = level.clip(ClipContext(threat, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, entity))
+            hit.type == HitResult.Type.BLOCK
+        }
     }
 
     /** Snaps to standable ground near [pos] — same heuristic shape as the groundAt() helpers used
