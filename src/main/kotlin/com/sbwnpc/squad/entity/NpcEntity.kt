@@ -3,7 +3,7 @@ package com.sbwnpc.squad.entity
 import com.atsuishio.superbwarfare.data.gun.GunData
 import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.sbwnpc.squad.entity.ai.GrenadeThrowGoal
-import com.sbwnpc.squad.entity.ai.InvestigateGoal
+import com.sbwnpc.squad.entity.ai.InvestigateBehaviour
 import com.sbwnpc.squad.entity.ai.MortarClaims
 import com.sbwnpc.squad.entity.ai.MortarLoaderGoal
 import com.sbwnpc.squad.entity.ai.MortarOperatorGoal
@@ -95,27 +95,27 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         BrainUtils.setForgettableMemory(this, ModMemories.SUPPRESSING_THREAT.get(), threat, ticks.toInt())
     }
 
-    // Alertness (see AlertGoal / Alarm): a real "heard something, go check it out" reaction,
-    // distinct from actually having a target. Two sources — NpcGunAttackGoal.tick() raises this on
-    // nearby allies whenever it fires (heard gunfire), and die() raises it on nearby squadmates when
-    // the killer can't be resolved as a direct TeamAwareness contact (see die() below). Not
-    // persisted — momentary, like suppression.
-    var alertUntilTick: Int = 0
-        private set
-    var alertPos: Vec3? = null
-        private set
-
-    fun isAlert(): Boolean = tickCount < alertUntilTick && alertPos != null
+    // Alertness (see InvestigateBehaviour / Alarm): a real "heard something, go check it out"
+    // reaction, distinct from actually having a target. Two sources — GunAttackBehaviour.tick()
+    // raises this on nearby allies whenever it fires (heard gunfire), and die() raises it on nearby
+    // squadmates when the killer can't be resolved as a direct TeamAwareness contact (see die()
+    // below). Backed by a SmartBrainLib TTL memory (SmartBrain migration step 7) instead of a
+    // hand-rolled alertUntilTick/alertPos pair.
+    fun isAlert(): Boolean = BrainUtils.hasMemory(this, ModMemories.ALERT_POSITION.get())
 
     fun alert(pos: Vec3) {
-        alertUntilTick = maxOf(alertUntilTick, tickCount + ALERT_DURATION_TICKS)
-        alertPos = pos
+        val remaining = if (isAlert())
+            BrainUtils.getTimeUntilMemoryExpires(this, ModMemories.ALERT_POSITION.get())
+        else 0L
+        val ticks = maxOf(remaining, ALERT_DURATION_TICKS.toLong())
+        BrainUtils.setForgettableMemory(this, ModMemories.ALERT_POSITION.get(), pos, ticks.toInt())
     }
 
-    /** Called by [com.sbwnpc.squad.entity.ai.InvestigateGoal] once it reaches the alert position (or
-     *  gives up navigating to it) — ends the investigation instead of waiting out the full timer. */
+    /** Called by [com.sbwnpc.squad.entity.ai.InvestigateBehaviour] once it reaches the alert
+     *  position (or gives up navigating to it) — ends the investigation instead of waiting out the
+     *  full timer. */
     fun clearAlert() {
-        alertUntilTick = 0
+        BrainUtils.clearMemory(this, ModMemories.ALERT_POSITION.get())
     }
 
     /** True while [com.sbwnpc.squad.entity.ai.SeekCoverBehaviour] must have the mob to itself for
@@ -176,10 +176,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         // migration step 6. Same reason it lives in core tasks as InteractWithDoor: it must keep
         // ticking through every phase (including the peek window) without a framework-level
         // stop/start in between — see that class's own doc comment.
-        // Above squad-order positioning (5) — "go check that out" wins over routine patrol/hold
-        // while there's nothing to actually shoot at yet, same as a real soldier breaking formation
-        // briefly to investigate nearby gunfire or a downed squadmate.
-        this.goalSelector.addGoal(4, InvestigateGoal(this))
+        // Investigate/Alarm response moved to SmartBrainLib's InvestigateBehaviour (see
+        // getIdleTasks()) — migration step 7. "Go check that out" still wins over routine
+        // patrol/hold while there's nothing to actually shoot at yet — see that class's own doc
+        // comment for how Idle-activity precedence reproduces the old goal-priority ordering.
         this.goalSelector.addGoal(5, SquadOrderGoal(this))
         this.goalSelector.addGoal(6, RandomLookAroundGoal(this))
         this.goalSelector.addGoal(7, WaterAvoidingRandomStrollGoal(this, 0.8))
@@ -216,8 +216,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             net.tslat.smartbrainlib.api.core.behaviour.custom.move.InteractWithDoor<NpcEntity>(),
             SeekCoverBehaviour()
         )
+    // Step 7: investigate/alarm response. Direct port of InvestigateGoal — see registerGoals() above.
     override fun getIdleTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
-        net.tslat.smartbrainlib.api.core.BrainActivityGroup.empty()
+        net.tslat.smartbrainlib.api.core.BrainActivityGroup.idleTasks(InvestigateBehaviour())
     // Step 5: gun combat. Direct port of NpcGunAttackGoal — see registerGoals() above.
     override fun getFightTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
         net.tslat.smartbrainlib.api.core.BrainActivityGroup.fightTasks(
