@@ -81,6 +81,9 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         private val BROWN = org.joml.Vector3f(0.55f, 0.35f, 0.1f)
 
         private val NEIGHBOR_OFFSETS = listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1)
+        // How far out (in block-widths, along each NEIGHBOR_OFFSETS direction) to look for a
+        // depression's actual rim — see hasAdjacentSolidWall's doc comment.
+        private val DEPRESSION_CHECK_DISTANCES = 1..3
         // 8-directional (incl. diagonals) — used to confirm the ground is actually flat around the
         // dig site, not just "hidden", see isFlatEnoughToDig().
         private val DIG_NEIGHBOR_OFFSETS = listOf(
@@ -191,6 +194,15 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         digTicksRemaining = DIG_TICKS
         digPos = target.below()
         markCoverChoice(level, target, BROWN)
+        // Refresh suppression right as digging starts — reported in-game as "digs in, then
+        // immediately runs off": DIG_TICKS (~3.5s) can eat most of a suppression window (5-10s)
+        // that was already partway through when digging began, so `isSuppressed()` could lapse
+        // right as/after the hole finishes, which stops this whole behaviour (see stop()) and
+        // clears COVER_HOLD — unlocking GunAttackBehaviour to immediately march the mob back out
+        // toward its target before it ever got to actually use the cover it just dug. `suppress()`
+        // extends to at least its own fixed 100-tick minimum (see NpcEntity), comfortably covering
+        // the dig plus initial settle — same mechanism a fresh hit would use, not a new one.
+        entity.threatPos?.let { entity.suppress(it) }
     }
 
     private fun tickDiggingIn(entity: NpcEntity, level: ServerLevel) {
@@ -378,13 +390,21 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  so does a candidate sitting IN a natural depression/pit whose own rim is higher than the
      *  candidate itself — a dip's edge blocks a ground-level threat's sightline just as well as a
      *  standing wall does, even with nothing solid immediately at the candidate's own body height.
-     *  Doesn't need to know which side the threat is on: [isHiddenFrom]'s raycast is what actually
-     *  decides whether this particular wall/rim blocks THIS particular threat. */
+     *  The depression check scans out to [DEPRESSION_CHECK_DISTANCES] blocks, not just the
+     *  immediate neighbor — a real dip/trench is normally wider than 1 block, so its actual rim
+     *  sits further out than the candidate's own floor, which is still low ground at distance 1 and
+     *  never trips the immediate-neighbor check on its own (this was reported in-game as
+     *  depressions still not being recognized after the first attempt at this fix). Doesn't need to
+     *  know which side the threat is on: [isHiddenFrom]'s raycast is what actually decides whether
+     *  this particular wall/rim blocks THIS particular threat. */
     private fun hasAdjacentSolidWall(level: ServerLevel, pos: BlockPos): Boolean {
-        return NEIGHBOR_OFFSETS.any { (nx, nz) ->
+        val elevatedWallNearby = NEIGHBOR_OFFSETS.any { (nx, nz) ->
             val side = pos.offset(nx, 0, nz)
-            (!level.getBlockState(side).isAir || !level.getBlockState(side.above()).isAir) ||
-                groundAt(level, side).y > pos.y
+            !level.getBlockState(side).isAir || !level.getBlockState(side.above()).isAir
+        }
+        if (elevatedWallNearby) return true
+        return DEPRESSION_CHECK_DISTANCES.any { dist ->
+            NEIGHBOR_OFFSETS.any { (nx, nz) -> groundAt(level, pos.offset(nx * dist, 0, nz * dist)).y > pos.y }
         }
     }
 
