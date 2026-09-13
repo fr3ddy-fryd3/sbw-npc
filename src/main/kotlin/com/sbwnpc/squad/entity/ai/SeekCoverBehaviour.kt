@@ -124,12 +124,6 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val GRENADE_THROW_SPEED = 1.0
         private const val GRENADE_GRAVITY = 0.05
 
-        // Debug-visual colors (see markCoverChoice) — GREEN for a real found-cover spot, ORANGE for
-        // a blind fallback retreat, BROWN for an actually-started dig.
-        private val GREEN = org.joml.Vector3f(0.2f, 1.0f, 0.2f)
-        private val ORANGE = org.joml.Vector3f(1.0f, 0.6f, 0.0f)
-        private val BROWN = org.joml.Vector3f(0.55f, 0.35f, 0.1f)
-
         private val NEIGHBOR_OFFSETS = listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1)
         // How far out (in block-widths, along each NEIGHBOR_OFFSETS direction) to look for a
         // depression's actual rim — see hasAdjacentSolidWall's doc comment. 1..3 only ever found
@@ -218,7 +212,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
                 // coverTarget mid-episode), but that's an accident of today's control flow, not an
                 // explicit guarantee — keep both call sites of canDigIn consistent (PM review finding).
                 if (isFallbackRetreat && !hasDugIn && canDigIn(entity, level, entity.blockPosition())) {
-                    startDigging(entity, level)
+                    startDigging(entity)
                 } else {
                     enterCover(entity, refreshSuppression = true)
                 }
@@ -229,32 +223,17 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             isFallbackRetreat = false
             coverTarget = it
             entity.navigation.moveTo(it.x + 0.5, it.y.toDouble(), it.z + 0.5, 1.0)
-            markCoverChoice(level, it, GREEN)
             return
         }
         fallbackAwayFrom(entity, threat)?.let {
             isFallbackRetreat = true
             coverTarget = it
             entity.navigation.moveTo(it.x + 0.5, it.y.toDouble(), it.z + 0.5, 1.0)
-            markCoverChoice(level, it, ORANGE)
             // TEMPORARY diagnostic, round 5 — pairs with canDigIn()'s log: tells apart "never even
             // reaches the fallback path" (findCover keeps succeeding now that episodes aren't reset
             // every 60 ticks anymore) from "reaches it but canDigIn always fails".
             com.sbwnpc.squad.SquadMod.LOGGER.info("[dig-debug] {} entered fallback retreat", entity.uuid)
         }
-    }
-
-    /** Debug visual, per user request ("посмотреть что именно они выбирают укрытием") — a short
-     *  particle burst at the exact block chosen as cover, GREEN for a real [findCover] hit (a wall
-     *  the raycast actually verified blocks the threat), ORANGE for a [fallbackAwayFrom] retreat
-     *  (no real cover found nearby at all). Visible to every nearby player, not just the squad's
-     *  owner — this is a diagnostic aid, not a player-facing HUD marker like
-     *  `SquadManager.setObjective`'s particles. */
-    private fun markCoverChoice(level: ServerLevel, pos: BlockPos, color: org.joml.Vector3f) {
-        level.sendParticles(
-            net.minecraft.core.particles.DustParticleOptions(color, 1.5f),
-            pos.x + 0.5, pos.y + 0.5, pos.z + 0.5, 12, 0.3, 0.3, 0.3, 0.0
-        )
     }
 
     /** [refreshSuppression] must be true only for a mob's FIRST settle into cover this episode (a
@@ -273,7 +252,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (refreshSuppression) entity.threatPos?.let { entity.suppress(it) }
     }
 
-    private fun startDigging(entity: NpcEntity, level: ServerLevel) {
+    private fun startDigging(entity: NpcEntity) {
         entity.navigation.stop()
         phase = Phase.DIGGING_IN
         digTicksRemaining = DIG_TICKS
@@ -289,7 +268,6 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         val standingPos = entity.blockPosition()
         digPos = standingPos.below()
         coverTarget = standingPos
-        markCoverChoice(level, standingPos, BROWN)
         // Refresh suppression right as digging starts — a secondary safety net (the actual "digs
         // in, then immediately runs off" cause turned out to be ExtendedBehaviour's default 60-tick
         // timeout, see the class doc comment) for the independent, smaller risk that natural
@@ -484,7 +462,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         // one) re-passes every condition of canDigIn at the new, deeper spot — see hasDugIn's own
         // doc comment for the endless-shaft bug this caused.
         if (isFallbackRetreat && !hasDugIn && canDigIn(entity, level, entity.blockPosition())) {
-            startDigging(entity, level)
+            startDigging(entity)
             return
         }
         val target = entity.target

@@ -100,6 +100,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         // conflicts with the separate line-of-fire requirement (see concealmentScore's doc comment).
         private val CONCEALMENT_HEIGHTS = listOf(1.5, 1.0, 0.5)
 
+        // Sky blue — debug visual for holdFiringPosition's chosen spot, see markFiringPosition().
+        private val FIRING_POSITION_COLOR = org.joml.Vector3f(0.3f, 0.6f, 1.0f)
+
         private val MEMORIES: List<Pair<MemoryModuleType<*>, MemoryStatus>> =
             listOf(Pair.of(MemoryModuleType.ATTACK_TARGET, MemoryStatus.VALUE_PRESENT))
     }
@@ -170,7 +173,13 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (!boundPhaseStarted) {
             boundPhaseStarted = true
             bounding = true
-            nextBoundToggleTick = entity.tickCount + BOUND_MOVE_TICKS
+            // Jittered even for this very first move phase — a whole squad typically spots an
+            // enemy the same tick, so without this every member's first pause (and therefore every
+            // later one, since the cycle just alternates from there) landed at the same moment too:
+            // reported in-game as the squad visibly freezing in sync every ~100 ticks before even
+            // trading shots. The later pause-phase jitter alone only desyncs members gradually over
+            // several cycles, too slow to fix the very first, most noticeable freeze.
+            nextBoundToggleTick = entity.tickCount + BOUND_MOVE_TICKS + entity.random.nextInt(HOLD_JITTER_TICKS)
             moveTowardFormationSlot(entity, target)
             return
         }
@@ -204,11 +213,24 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         val level = entity.level() as? ServerLevel ?: return
         val chosen = bestFiringSpot(entity, level, target) ?: entity.position()
         firingPos = chosen
+        markFiringPosition(level, chosen)
         if (!entity.position().closerThan(chosen, 1.0)) {
             entity.navigation.moveTo(chosen.x, chosen.y, chosen.z, 1.0)
         } else {
             entity.navigation.stop()
         }
+    }
+
+    /** Debug visual, per user request — same idiom as SeekCoverBehaviour's now-removed
+     *  markCoverChoice (that feature's already been tested; this one hasn't yet). One burst each
+     *  time [holdFiringPosition] (re-)picks a spot, whether or not it's actually different from the
+     *  last one, so it's visible even for a squad member that keeps re-confirming its own current
+     *  position as still the best available. */
+    private fun markFiringPosition(level: ServerLevel, pos: Vec3) {
+        level.sendParticles(
+            net.minecraft.core.particles.DustParticleOptions(FIRING_POSITION_COLOR, 1.5f),
+            pos.x, pos.y + 0.5, pos.z, 12, 0.3, 0.3, 0.3, 0.0
+        )
     }
 
     /** Scans a small grid within [POSITION_SEARCH_RADIUS] of [entity]'s current position for the
