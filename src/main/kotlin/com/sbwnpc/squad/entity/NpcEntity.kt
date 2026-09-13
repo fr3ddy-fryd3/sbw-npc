@@ -364,7 +364,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         fun createAttributes(): AttributeSupplier.Builder {
             return Mob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, BASE_HEALTH)
-                .add(Attributes.MOVEMENT_SPEED, 0.25)
+                .add(Attributes.MOVEMENT_SPEED, 0.25 * 1.5) // x1.5 per user feedback — felt too slow
+
                 .add(Attributes.ATTACK_DAMAGE, 2.0)
                 .add(Attributes.ARMOR, 2.0)
                 .add(Attributes.FOLLOW_RANGE, 72.0) // detection range, x1.5 per user request (was 48)
