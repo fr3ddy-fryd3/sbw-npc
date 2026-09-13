@@ -307,9 +307,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         }
 
         // One hand grenade per fighter, mortar crew excepted (they aren't a combat-suppression
-        // role) — per user request. Consumed by SeekCoverBehaviour's occasional pre-dig throw (see
-        // that class); GRENADIER's own unlimited cooldown-based GrenadeThrowBehaviour is unrelated
-        // and unaffected, this is a separate, single-use "parting shot" for everyone else too.
+        // role) — per user request. Consumed by SeekCoverBehaviour's occasional POST-dig throw (see
+        // that class's maybeThrowGrenadeOnceDugIn — thrown once already dug in, not before);
+        // GRENADIER's own unlimited cooldown-based GrenadeThrowBehaviour is unrelated and
+        // unaffected, this is a separate, single-use "parting shot" for everyone else too.
         if (npcClass != NpcClass.MORTAR_OPERATOR && npcClass != NpcClass.MORTAR_LOADER) {
             setItemInHand(InteractionHand.OFF_HAND, ItemStack(com.atsuishio.superbwarfare.init.ModItems.HAND_GRENADE.get()))
         }
