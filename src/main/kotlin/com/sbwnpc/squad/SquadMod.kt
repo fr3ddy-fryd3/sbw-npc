@@ -4,6 +4,7 @@ import com.sbwnpc.squad.init.ModBlockEntities
 import com.sbwnpc.squad.init.ModBlocks
 import com.sbwnpc.squad.init.ModEntities
 import com.sbwnpc.squad.init.ModItems
+import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.init.ModSensors
 import net.minecraft.resources.ResourceLocation
 import net.neoforged.bus.api.IEventBus
@@ -20,10 +21,11 @@ class SquadMod(bus: IEventBus, container: ModContainer) {
         ModItems.ITEMS.register(bus)
         ModBlocks.REGISTRY.register(bus)
         ModBlockEntities.REGISTRY.register(bus)
-        // Forces ModSensors' static fields (and the SmartBrainLib sensor registration side-effect
-        // they trigger) to run now, before the registry closes — same trick the library's own
-        // SBLSensors/SBLMemoryTypes use themselves.
+        // Forces ModSensors'/ModMemories' static fields (and the SmartBrainLib sensor/memory
+        // registration side-effects they trigger) to run now, before the registry closes — same
+        // trick the library's own SBLSensors/SBLMemoryTypes use themselves.
         ModSensors.init()
+        ModMemories.init()
     }
 
     companion object {

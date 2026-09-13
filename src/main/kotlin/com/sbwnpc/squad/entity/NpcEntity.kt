@@ -7,8 +7,9 @@ import com.sbwnpc.squad.entity.ai.InvestigateGoal
 import com.sbwnpc.squad.entity.ai.MortarClaims
 import com.sbwnpc.squad.entity.ai.MortarLoaderGoal
 import com.sbwnpc.squad.entity.ai.MortarOperatorGoal
-import com.sbwnpc.squad.entity.ai.SeekCoverGoal
+import com.sbwnpc.squad.entity.ai.SeekCoverBehaviour
 import com.sbwnpc.squad.entity.ai.SquadOrderGoal
+import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
@@ -42,6 +43,7 @@ import net.minecraft.world.damagesource.DamageSource
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
 import net.minecraft.world.level.Level
+import net.tslat.smartbrainlib.util.BrainUtils
 import net.minecraft.world.level.ServerLevelAccessor
 
 /**
@@ -74,30 +76,23 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     /** Command group this NPC belongs to, if any. Server-side; persisted. */
     var squadId: UUID? = null
 
-    // Suppression (see SeekCoverGoal): a temporary "duck and hold" state triggered by taking
-    // ranged damage (below, hurt()) or a nearby explosion (SuppressionEvents). Not persisted —
-    // always fine to reset to "not suppressed" on reload, it's a momentary combat reaction.
-    var suppressedUntilTick: Int = 0
-        private set
-    var threatPos: Vec3? = null
-        private set
-
-    fun isSuppressed(): Boolean = tickCount < suppressedUntilTick
+    // Suppression (see SeekCoverBehaviour): a temporary "duck and hold" state triggered by taking
+    // ranged damage (below, hurt()) or a nearby explosion (SuppressionEvents). Backed by a
+    // SmartBrainLib TTL memory (SmartBrain migration step 6) instead of a hand-rolled
+    // suppressedUntilTick/threatPos pair — expires on its own, no manual tick comparison, and
+    // visible via the brain's own memory (e.g. /data get entity <e> Brain) instead of debug logs.
+    fun isSuppressed(): Boolean = BrainUtils.hasMemory(this, ModMemories.SUPPRESSING_THREAT.get())
+    val threatPos: Vec3? get() = BrainUtils.getMemory(this, ModMemories.SUPPRESSING_THREAT.get())
 
     /** Each trigger extends the timer (doesn't stack duration), capped so sustained fire doesn't
-     *  grant an indefinite "immune to squad orders" state. */
+     *  grant an indefinite "immune to squad orders" state — same cap logic as before, just computed
+     *  against the memory's own remaining TTL instead of a local field. */
     fun suppress(threat: Vec3) {
-        val extended = tickCount + SUPPRESSION_DURATION_TICKS
-        val cap = tickCount + SUPPRESSION_CAP_TICKS
-        suppressedUntilTick = maxOf(suppressedUntilTick, extended).coerceAtMost(cap)
-        threatPos = threat
-        // TEMPORARY diagnostic (see PHASE5_PLAN.md "Диагностика укрытий перед фиксом") — remove
-        // once an in-game test confirms whether suppress() even fires reliably and whether
-        // SeekCoverGoal actually reaches IN_COVER/PEEKING, or whether what's visible is really
-        // FriendlyFireGuard.sidestepAwayFromAllies instead.
-        com.sbwnpc.squad.SquadMod.LOGGER.info(
-            "[cover-debug] {} suppressed at tick {} by threat near {}", uuid, tickCount, threat
-        )
+        val remaining = if (isSuppressed())
+            BrainUtils.getTimeUntilMemoryExpires(this, ModMemories.SUPPRESSING_THREAT.get())
+        else 0L
+        val ticks = maxOf(remaining, SUPPRESSION_DURATION_TICKS.toLong()).coerceAtMost(SUPPRESSION_CAP_TICKS.toLong())
+        BrainUtils.setForgettableMemory(this, ModMemories.SUPPRESSING_THREAT.get(), threat, ticks.toInt())
     }
 
     // Alertness (see AlertGoal / Alarm): a real "heard something, go check it out" reaction,
@@ -123,25 +118,12 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         alertUntilTick = 0
     }
 
-    /** Cover-seeking state machine driven entirely by [com.sbwnpc.squad.entity.ai.SeekCoverGoal] —
-     *  lives here (like suppression above) rather than inside the goal so combat goals can read it
-     *  without needing a reference to the goal instance. */
-    enum class CoverPhase { NONE, MOVING_TO_COVER, IN_COVER, PEEKING, RETURNING_TO_COVER }
-
-    var coverPhase: CoverPhase = CoverPhase.NONE
-        set(value) {
-            // TEMPORARY diagnostic, same reason as suppress() above — remove once confirmed.
-            if (value != field) {
-                com.sbwnpc.squad.SquadMod.LOGGER.info("[cover-debug] {} coverPhase {} -> {}", uuid, field, value)
-            }
-            field = value
-        }
-
-    /** True while SeekCoverGoal must have the mob to itself for movement and combat goals should
-     *  stand down entirely — false during [CoverPhase.PEEKING], the deliberate window where the
-     *  mob steps out to return fire and NpcGunAttackGoal/GrenadeThrowGoal take back over. */
-    fun combatLockedByCover(): Boolean = coverPhase == CoverPhase.MOVING_TO_COVER ||
-        coverPhase == CoverPhase.IN_COVER || coverPhase == CoverPhase.RETURNING_TO_COVER
+    /** True while [com.sbwnpc.squad.entity.ai.SeekCoverBehaviour] must have the mob to itself for
+     *  movement and combat goals should stand down entirely — false during its PEEKING phase, the
+     *  deliberate window where the mob steps out to return fire and GunAttackBehaviour/
+     *  GrenadeThrowGoal take back over. Backed by [ModMemories.COVER_HOLD] (see its own doc
+     *  comment) instead of a hand-rolled enum with a logging setter. */
+    fun combatLockedByCover(): Boolean = BrainUtils.hasMemory(this, ModMemories.COVER_HOLD.get())
 
     override fun hurt(source: DamageSource, amount: Float): Boolean {
         val result = super.hurt(source, amount)
@@ -190,9 +172,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         // Door opening moved to SmartBrainLib's InteractWithDoor (see getCoreTasks()) — migration
         // step 3. It's actually a step up, not just a port: it also holds a door open for OTHER
         // squad members mid-transit, which the old vanilla-style OpenDoorGoal never did.
-        // Below melee self-defense (2) — an enemy in your face still gets fought, not fled from —
-        // but above squad-order positioning (4), so suppression interrupts holding/patrolling.
-        this.goalSelector.addGoal(3, SeekCoverGoal(this))
+        // Cover/suppression moved to SmartBrainLib's SeekCoverBehaviour (see getCoreTasks()) —
+        // migration step 6. Same reason it lives in core tasks as InteractWithDoor: it must keep
+        // ticking through every phase (including the peek window) without a framework-level
+        // stop/start in between — see that class's own doc comment.
         // Above squad-order positioning (5) — "go check that out" wins over routine patrol/hold
         // while there's nothing to actually shoot at yet, same as a real soldier breaking formation
         // briefly to investigate nearby gunfire or a downed squadmate.
@@ -227,9 +210,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     override fun getSensors(): List<net.tslat.smartbrainlib.api.core.sensor.ExtendedSensor<out NpcEntity>> =
         listOf(com.sbwnpc.squad.entity.ai.SquadTargetSensor())
     // Step 3: door interaction. Real behavioural upgrade, not just a port — see registerGoals().
+    // Step 6: cover/suppression. Direct port of SeekCoverGoal — see registerGoals() above.
     override fun getCoreTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
         net.tslat.smartbrainlib.api.core.BrainActivityGroup.coreTasks(
-            net.tslat.smartbrainlib.api.core.behaviour.custom.move.InteractWithDoor<NpcEntity>()
+            net.tslat.smartbrainlib.api.core.behaviour.custom.move.InteractWithDoor<NpcEntity>(),
+            SeekCoverBehaviour()
         )
     override fun getIdleTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
         net.tslat.smartbrainlib.api.core.BrainActivityGroup.empty()
