@@ -75,6 +75,14 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var coverTarget: BlockPos? = null
     private var phaseUntilTick = 0
     private var isFallbackRetreat = false // coverTarget came from fallbackAwayFrom, not findCover
+    // Set once finishDigging() completes; guards tickInCover's periodic recheck from re-triggering
+    // canDigIn after the mob has already dug this episode — see that recheck's own comment for why
+    // this is needed (without it, the mob dug an endless vertical shaft straight down: falling into
+    // its own fresh hole drops its blockPosition() by one block, and at that new, one-block-deeper
+    // spot every canDigIn condition still holds — same health, same covering ally, and flatEnough
+    // actually passes with MORE margin since the untouched neighbor ground is now even higher above
+    // it — so it just dug again, and again, reported in-game as "уходят в цикл с закапыванием").
+    private var hasDugIn = false
     private var digTicksRemaining = 0
     private var digPos: BlockPos? = null // block being dug, tracked separately for the progress overlay
 
@@ -143,6 +151,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         coverTarget = null
         phaseUntilTick = 0
         isFallbackRetreat = false
+        hasDugIn = false
         digTicksRemaining = 0
         digPos = null
         BrainUtils.setMemory(entity, ModMemories.COVER_HOLD.get(), true)
@@ -177,7 +186,11 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
                 // the real standing position too (see startDigging's own doc comment) — checking the
                 // ground/flatness anywhere else could green-light a dig site different from the one
                 // that's actually used.
-                if (isFallbackRetreat && canDigIn(entity, level, entity.blockPosition())) {
+                // !hasDugIn here too, purely for defense-in-depth: this phase can currently only be
+                // reached with hasDugIn == false (start() resets both together, and nothing else nulls
+                // coverTarget mid-episode), but that's an accident of today's control flow, not an
+                // explicit guarantee — keep both call sites of canDigIn consistent (PM review finding).
+                if (isFallbackRetreat && !hasDugIn && canDigIn(entity, level, entity.blockPosition())) {
                     startDigging(entity, level)
                 } else {
                     enterCover(entity, refreshSuppression = true)
@@ -273,6 +286,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         clearDigProgress(entity)
         level.destroyBlock(pos, false, entity, 512)
         digPos = null
+        hasDugIn = true
         maybeThrowGrenadeOnceDugIn(entity, level)
         enterCover(entity, refreshSuppression = true)
     }
@@ -380,7 +394,10 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         // closes that gap, at the same cadence as the ordinary recheck/dwell cycle.
         // Checked against the mob's actual current position (it's just standing at coverTarget by
         // now anyway, but see startDigging's doc comment for why this must match exactly).
-        if (isFallbackRetreat && canDigIn(entity, level, entity.blockPosition())) {
+        // !hasDugIn: without this, digging one hole and falling into it (blockPosition() drops by
+        // one) re-passes every condition of canDigIn at the new, deeper spot — see hasDugIn's own
+        // doc comment for the endless-shaft bug this caused.
+        if (isFallbackRetreat && !hasDugIn && canDigIn(entity, level, entity.blockPosition())) {
             startDigging(entity, level)
             return
         }
