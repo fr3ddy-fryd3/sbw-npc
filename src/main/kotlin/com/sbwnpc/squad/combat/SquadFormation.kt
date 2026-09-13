@@ -35,6 +35,7 @@ object SquadFormation {
     // routinely unreachable indoors (through doors, small rooms) where these NPCs also operate.
     private const val SLOT_SPACING = 5.0
     private const val RING_RADIUS = 6.0
+    private const val MIN_HEADING_LENGTH = 2.0
 
     /** Callers that decide "arrived, switch to RING" from raw distance to the anchor MUST use a
      *  threshold at least this big — not RING_RADIUS itself, safely past it. Using anything smaller
@@ -103,7 +104,16 @@ object SquadFormation {
 
         val heading = headingFor(mob, anchor, fallbackFacing)
         val flat = Vec3(heading.x, 0.0, heading.z)
-        if (flat.lengthSqr() < 1.0e-6) return anchor.add(local)
+        // Threshold is deliberately much bigger than "exactly zero": a leader settled within its own
+        // ~1.5-block "close enough, stop navigating" radius of the anchor (routine once arrived, or
+        // for the leader's own non-RING slot which sits AT the anchor while still in transit) still
+        // produces a heading vector short enough that ordinary per-tick position jitter swings its
+        // DIRECTION wildly — the follower(s) then chase that spinning direction, which is exactly
+        // what was reported in-game as small squads "circling" close together. A real terrain bump
+        // or pathing correction moves a settled mob by inches, not blocks, so a vector shorter than
+        // MIN_HEADING_LENGTH is noise, not a meaningful heading — fall back to the unrotated offset
+        // instead of rotating by direction that isn't actually stable tick to tick.
+        if (flat.lengthSqr() < MIN_HEADING_LENGTH * MIN_HEADING_LENGTH) return anchor.add(local)
         val fwd = flat.normalize()
         val right = Vec3(-fwd.z, 0.0, fwd.x)
         return anchor.add(fwd.scale(local.z)).add(right.scale(local.x))
