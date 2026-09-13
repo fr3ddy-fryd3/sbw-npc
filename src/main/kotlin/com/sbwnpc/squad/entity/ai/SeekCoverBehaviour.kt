@@ -283,10 +283,25 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         // then anchor DUG_IN_HOLDING at that same stale spot — reported in-game as the mob just
         // standing exposed in the open with no hole under it after being shoved mid-dig. `coverTarget`
         // was re-anchored to the real standing position in startDigging, so it doubles as the "am I
-        // still where I started digging" reference — same arrival-tolerance idiom (1.5) already used
-        // by tickMovingToCover/tickReturningToCover.
+        // still where I started digging" reference.
+        //
+        // Exact column (X/Z) equality, not a distance radius (this used to allow up to 1.5 blocks of
+        // drift before aborting): falling into the hole only works if the mob is still on the EXACT
+        // same 1x1 column when the block breaks — a fractional-block drift well inside any
+        // reasonable radius tolerance can still land the mob one column over, next to the hole
+        // instead of in it. Reported in-game as sometimes "almost" but not quite falling into a
+        // freshly-dug hole on otherwise flat ground, with no other obvious cause. Since this now
+        // only trips on an actual column change (not sub-block jitter within the same block), it
+        // stays rare — abortDigging's usual full re-evaluation (back to MOVING_TO_COVER) is fine for
+        // it.
+        //
+        // X/Z only, not full BlockPos (PM review finding): a badly-hurt mob taking another hit
+        // mid-dig — a likely moment, since digging requires being hurt in the first place — can get
+        // a small vertical knockback hop with zero horizontal drift; comparing Y too would abort a
+        // perfectly fine dig over a bounce that never actually left the column.
         val anchor = coverTarget
-        if (anchor != null && !entity.position().closerThan(anchor.center, 1.5)) {
+        val currentPos = entity.blockPosition()
+        if (anchor != null && (currentPos.x != anchor.x || currentPos.z != anchor.z)) {
             abortDigging(entity)
             return
         }
