@@ -192,6 +192,10 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             coverTarget = it
             entity.navigation.moveTo(it.x + 0.5, it.y.toDouble(), it.z + 0.5, 1.0)
             markCoverChoice(level, it, ORANGE)
+            // TEMPORARY diagnostic, round 5 — pairs with canDigIn()'s log: tells apart "never even
+            // reaches the fallback path" (findCover keeps succeeding now that episodes aren't reset
+            // every 60 ticks anymore) from "reaches it but canDigIn always fails".
+            com.sbwnpc.squad.SquadMod.LOGGER.info("[dig-debug] {} entered fallback retreat", entity.uuid)
         }
     }
 
@@ -304,6 +308,16 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         val diggableGround = level.getBlockState(pos.below()).`is`(BlockTags.DIRT)
         val flatEnough = isFlatEnoughToDig(level, pos)
         val covered = hasCoveringAlly(entity, level)
+        // TEMPORARY diagnostic, round 5 — now that the real bug (ExtendedBehaviour's 60-tick
+        // timeout) is fixed, the retreat loop is gone but so, apparently, is digging ever
+        // triggering at all. Removed too early last round; back specifically for this check (the
+        // start()/stop()/refresh mystery from before is solved, no need to re-trace that).
+        if (!(hurtEnough && diggableGround && flatEnough && covered)) {
+            com.sbwnpc.squad.SquadMod.LOGGER.info(
+                "[dig-debug] {} at {} hurtEnough={} diggableGround={} flatEnough={} covered={}",
+                entity.uuid, pos, hurtEnough, diggableGround, flatEnough, covered
+            )
+        }
         return hurtEnough && diggableGround && flatEnough && covered
     }
 
