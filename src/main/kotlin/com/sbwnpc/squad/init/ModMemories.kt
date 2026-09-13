@@ -22,7 +22,7 @@ object ModMemories {
      *  (not the phase enum itself, which stays private inside [com.sbwnpc.squad.entity.ai.SeekCoverBehaviour]
      *  — only the externally-read "hands off, I own the mob right now" flag needs to be visible
      *  outside that class, to [com.sbwnpc.squad.entity.ai.GunAttackBehaviour] and
-     *  [com.sbwnpc.squad.entity.ai.GrenadeThrowGoal]). Present while locked (moving to/holding/
+     *  [com.sbwnpc.squad.entity.ai.GrenadeThrowBehaviour]). Present while locked (moving to/holding/
      *  returning to cover), absent while peeking out to fire or not suppressed at all. */
     val COVER_HOLD: Supplier<MemoryModuleType<Boolean>> =
         SBLConstants.SBL_LOADER.registerMemoryType("cover_hold")

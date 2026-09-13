@@ -6,6 +6,7 @@ import com.atsuishio.superbwarfare.init.ModItems
 import com.atsuishio.superbwarfare.item.misc.FiringParametersItem
 import com.atsuishio.superbwarfare.item.misc.firingParameters
 import com.atsuishio.superbwarfare.tools.TrajectoryCalculator
+import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
@@ -15,15 +16,22 @@ import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity
-import net.minecraft.world.entity.ai.goal.Goal
+import net.minecraft.world.entity.ai.memory.MemoryModuleType
+import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.phys.AABB
-import java.util.EnumSet
+import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 
 /**
+ * SmartBrain migration (finishing the plan's "full migration, not partial" decision) — direct port
+ * of the old `MortarOperatorGoal` onto `ExtendedBehaviour`, placed in `NpcEntity.getCoreTasks()`
+ * (like `SeekCoverBehaviour`/`InteractWithDoor`): a mortar crew member mans its post regardless of
+ * whether the Fight/Idle activity is currently active — the old goal ran the same way (priority 1,
+ * `Flag.MOVE`, only ever stepping aside for a genuine personal threat, which it checks itself below).
+ *
  * Requires the mortar to actually have shells loaded (normally kept topped up by a squadmate
- * running [MortarLoaderGoal]). Two ways to get a fire mission:
+ * running [MortarLoaderBehaviour]). Two ways to get a fire mission:
  *  - commanded: squad order ATTACK with an objective/focus set (always wins).
  *  - autonomous: nearest hostile within the rank-scaled detection radius, even under
  *    DEFEND/PATROL/FREE — a mortar crew doesn't just sit idle while enemies close in.
@@ -31,62 +39,74 @@ import java.util.EnumSet
  * Minimum range / friendly-safety-radius are heuristics, not a faithful read of the mortar's own
  * internal aim-solver state — needs in-game tuning.
  */
-class MortarOperatorGoal(private val mob: NpcEntity) : Goal() {
+class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private var mortar: MortarEntity? = null
     private var nextAimTick = 0
     private var nextScanTick = 0
     private var nextFireTick = 0
+    private var lastScanResult: BlockPos? = null
 
-    init {
-        setFlags(EnumSet.of(Flag.MOVE))
+    companion object {
+        private const val SEARCH_RANGE = 30.0
+        private const val MIN_RANGE_SQR = 25.0 * 25.0
+        private const val SAFE_RADIUS = 10.0
+        private const val SELF_DEFENSE_RANGE_SQR = 6.0 * 6.0
+        private const val MIN_DETECTION = 80.0
+        private const val MAX_DETECTION = 160.0
+        private const val MIN_SCATTER = 5.0
+        private const val MAX_SCATTER = 10.0
+        private const val FIRE_COOLDOWN_TICKS = 50
     }
 
-    override fun canUse(): Boolean {
-        if (mob.npcClass != NpcClass.MORTAR_OPERATOR) return false
+    override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
+
+    private fun eligible(entity: NpcEntity): Boolean {
+        if (entity.npcClass != NpcClass.MORTAR_OPERATOR) return false
         // Genuine personal danger only (an enemy right on top of the operator) — NOT just "some
-        // goal set mob.target", which also happens from the generic 10-block-LOS
-        // NearestAttackableTargetGoal/HurtByTargetGoal every NpcEntity has regardless of class.
-        // Bailing out on ANY mob.target used to silently disable the whole mortar fire-mission /
-        // TeamAwareness path in ordinary combat conditions, not just real self-defense.
-        val personalThreat = mob.target?.takeIf { it.isAlive && mob.distanceToSqr(it) <= SELF_DEFENSE_RANGE_SQR }
+        // sensor set ATTACK_TARGET", which also happens from the generic squad-target sensor every
+        // NpcEntity has regardless of class. Bailing out on ANY target used to silently disable the
+        // whole mortar fire-mission/TeamAwareness path in ordinary combat conditions, not just real
+        // self-defense.
+        val personalThreat = entity.target?.takeIf { it.isAlive && entity.distanceToSqr(it) <= SELF_DEFENSE_RANGE_SQR }
         if (personalThreat != null) return false
-        if (fireTarget() == null) return false
+        if (fireTarget(entity) == null) return false
 
         val current = mortar
-        if (current != null && current.isAlive && !MortarClaims.isOperatorClaimedByOther(current.uuid, mob.uuid)) return true
+        if (current != null && current.isAlive && !MortarClaims.isOperatorClaimedByOther(current.uuid, entity.uuid)) return true
 
-        val level = mob.level() as? ServerLevel ?: return false
+        val level = entity.level() as? ServerLevel ?: return false
         val found = level.getEntitiesOfClass(
-            MortarEntity::class.java, AABB.ofSize(mob.position(), SEARCH_RANGE, SEARCH_RANGE, SEARCH_RANGE)
-        ).firstOrNull { !MortarClaims.isOperatorClaimedByOther(it.uuid, mob.uuid) } ?: return false
+            MortarEntity::class.java, AABB.ofSize(entity.position(), SEARCH_RANGE, SEARCH_RANGE, SEARCH_RANGE)
+        ).firstOrNull { !MortarClaims.isOperatorClaimedByOther(it.uuid, entity.uuid) } ?: return false
 
-        MortarClaims.claimOperator(found.uuid, mob.uuid)
+        MortarClaims.claimOperator(found.uuid, entity.uuid)
         mortar = found
-        // See MortarLoaderGoal: non-"intelligent" mortars auto-fire on any inventory change, so
+        // See MortarLoaderBehaviour: non-"intelligent" mortars auto-fire on any inventory change, so
         // make sure this is set even if we claim the mortar before a loader ever does.
         found.intelligent = true
         return true
     }
 
-    override fun canContinueToUse() = canUse()
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = eligible(entity)
+    override fun shouldKeepRunning(entity: NpcEntity): Boolean = eligible(entity)
 
-    override fun stop() {
-        MortarClaims.releaseOperator(mob.uuid)
+    override fun stop(entity: NpcEntity) {
+        MortarClaims.releaseOperator(entity.uuid)
         mortar = null
     }
 
-    override fun tick() {
+    override fun tick(entity: NpcEntity) {
         val m = mortar ?: return
-        val level = mob.level() as? ServerLevel ?: return
-        val target = fireTarget() ?: return
+        val level = entity.level() as? ServerLevel ?: return
+        val target = fireTarget(entity) ?: return
 
-        val dist = mob.position().distanceTo(m.position())
+        val dist = entity.position().distanceTo(m.position())
         if (dist > 2.5) {
-            mob.navigation.moveTo(m.x, m.y, m.z, 1.0)
+            entity.navigation.moveTo(m.x, m.y, m.z, 1.0)
             return
         }
-        mob.navigation.stop()
+        entity.navigation.stop()
 
         if (target.distSqr(BlockPos.containing(m.position())) < MIN_RANGE_SQR) return
         // The mortar's own aim solver fails silently (keeps its previous/default aim) when a
@@ -95,17 +115,17 @@ class MortarOperatorGoal(private val mob: NpcEntity) : Goal() {
         // at max range into nothing. Ask the same solver ourselves first and just don't shoot
         // this tick if it can't actually hit the point.
         if (!canHitTarget(m, target)) return
-        if (mob.currentSquad()?.let { friendlyNear(level, target) } == true) return
+        if (entity.currentSquad()?.let { friendlyNear(level, entity, target) } == true) return
 
-        if (mob.tickCount >= nextAimTick) {
+        if (entity.tickCount >= nextAimTick) {
             val stack = ItemStack(ModItems.FIRING_PARAMETERS.get())
-            stack.firingParameters = FiringParametersItem.Parameters(target, scatterRadius(), false)
-            m.setTarget(stack, mob, "Main")
-            nextAimTick = mob.tickCount + 20
+            stack.firingParameters = FiringParametersItem.Parameters(target, scatterRadius(entity), false)
+            m.setTarget(stack, entity, "Main")
+            nextAimTick = entity.tickCount + 20
         }
-        if (mob.tickCount >= nextFireTick) {
-            m.vehicleShoot(mob, "Main", null)
-            nextFireTick = mob.tickCount + FIRE_COOLDOWN_TICKS
+        if (entity.tickCount >= nextFireTick) {
+            m.vehicleShoot(entity, "Main", null)
+            nextFireTick = entity.tickCount + FIRE_COOLDOWN_TICKS
         }
     }
 
@@ -130,17 +150,17 @@ class MortarOperatorGoal(private val mob: NpcEntity) : Goal() {
     }
 
     /** Squad-commanded target first, else the nearest hostile within detection radius. */
-    private fun fireTarget(): BlockPos? {
-        val squad = mob.currentSquad()
+    private fun fireTarget(entity: NpcEntity): BlockPos? {
+        val squad = entity.currentSquad()
         if (squad != null && squad.order == SquadOrder.ATTACK) {
-            commandedTarget(squad)?.let { return it }
+            commandedTarget(entity, squad)?.let { return it }
         }
-        return scanForEnemy()
+        return scanForEnemy(entity)
     }
 
-    private fun commandedTarget(squad: Squad): BlockPos? {
+    private fun commandedTarget(entity: NpcEntity, squad: Squad): BlockPos? {
         squad.focusEntity?.let { fid ->
-            (mob.level() as? ServerLevel)?.getEntity(fid)?.takeIf { it.isAlive }?.let { return BlockPos.containing(it.position()) }
+            (entity.level() as? ServerLevel)?.getEntity(fid)?.takeIf { it.isAlive }?.let { return BlockPos.containing(it.position()) }
         }
         return squad.objective
     }
@@ -150,20 +170,20 @@ class MortarOperatorGoal(private val mob: NpcEntity) : Goal() {
      *  just a passive report recipient), OR the rest of the faction has relayed a fresh sighting
      *  via [TeamAwareness] — never a target nobody has actually spotted (hiding in a building/
      *  trench stays safe from indirect fire, as it should). */
-    private fun scanForEnemy(): BlockPos? {
-        if (mob.tickCount < nextScanTick) return lastScanResult
-        nextScanTick = mob.tickCount + 20
-        val level = mob.level() as? ServerLevel ?: return null
-        val tick = mob.tickCount.toLong()
-        val faction = SquadTeams.factionOf(mob)
-        val radius = detectionRadius()
+    private fun scanForEnemy(entity: NpcEntity): BlockPos? {
+        if (entity.tickCount < nextScanTick) return lastScanResult
+        nextScanTick = entity.tickCount + 20
+        val level = entity.level() as? ServerLevel ?: return null
+        val tick = entity.tickCount.toLong()
+        val faction = SquadTeams.factionOf(entity)
+        val radius = detectionRadius(entity)
         val candidates = level.getEntitiesOfClass(
-            LivingEntity::class.java, AABB.ofSize(mob.position(), radius * 2, radius * 2, radius * 2)
-        ).filter { (it is NpcEntity || it is Player) && SquadTeams.isHostile(mob, it) && it.isAlive }
+            LivingEntity::class.java, AABB.ofSize(entity.position(), radius * 2, radius * 2, radius * 2)
+        ).filter { (it is NpcEntity || it is Player) && SquadTeams.isHostile(entity, it) && it.isAlive }
 
         var selfSpotted: LivingEntity? = null
         for (c in candidates) {
-            if (!mob.sensing.hasLineOfSight(c)) continue
+            if (!entity.sensing.hasLineOfSight(c)) continue
             if (faction != null) TeamAwareness.report(faction, c.uuid, tick)
             if (selfSpotted == null) selfSpotted = c
         }
@@ -178,36 +198,22 @@ class MortarOperatorGoal(private val mob: NpcEntity) : Goal() {
         return lastScanResult
     }
 
-    private var lastScanResult: BlockPos? = null
-
-    private fun detectionRadius(): Double {
-        val t = mob.npcRank.ordinal / (com.sbwnpc.squad.npc.NpcRank.entries.size - 1).toDouble()
+    private fun detectionRadius(entity: NpcEntity): Double {
+        val t = entity.npcRank.ordinal / (com.sbwnpc.squad.npc.NpcRank.entries.size - 1).toDouble()
         return MIN_DETECTION + t * (MAX_DETECTION - MIN_DETECTION)
     }
 
     /** Impact-point scatter radius (blocks), fed straight into SBW's own `ArtilleryEntity`
      *  dispersion (`targetPos.center.randomPos(radius)`). Recruits scatter widest, elites
      *  land almost dead-on. */
-    private fun scatterRadius(): Int {
-        val t = mob.npcRank.ordinal / (com.sbwnpc.squad.npc.NpcRank.entries.size - 1).toDouble()
+    private fun scatterRadius(entity: NpcEntity): Int {
+        val t = entity.npcRank.ordinal / (com.sbwnpc.squad.npc.NpcRank.entries.size - 1).toDouble()
         return Math.round(MAX_SCATTER - t * (MAX_SCATTER - MIN_SCATTER)).toInt()
     }
 
-    private fun friendlyNear(level: ServerLevel, target: BlockPos): Boolean {
+    private fun friendlyNear(level: ServerLevel, entity: NpcEntity, target: BlockPos): Boolean {
         val center = target.center
         return level.getEntitiesOfClass(NpcEntity::class.java, AABB.ofSize(center, SAFE_RADIUS * 2, SAFE_RADIUS * 2, SAFE_RADIUS * 2))
-            .any { it.squadId != null && !SquadTeams.isHostile(mob, it) }
-    }
-
-    companion object {
-        private const val SEARCH_RANGE = 30.0
-        private const val MIN_RANGE_SQR = 25.0 * 25.0
-        private const val SAFE_RADIUS = 10.0
-        private const val SELF_DEFENSE_RANGE_SQR = 6.0 * 6.0
-        private const val MIN_DETECTION = 80.0
-        private const val MAX_DETECTION = 160.0
-        private const val MIN_SCATTER = 5.0
-        private const val MAX_SCATTER = 10.0
-        private const val FIRE_COOLDOWN_TICKS = 50
+            .any { it.squadId != null && !SquadTeams.isHostile(entity, it) }
     }
 }

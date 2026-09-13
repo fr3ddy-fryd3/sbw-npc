@@ -24,7 +24,7 @@ import net.tslat.smartbrainlib.util.BrainUtils
  *
  * Priority (highest first), unchanged from the old goals:
  * 1. Squad focus (ATTACK: hunt it; DEFEND: whoever last hurt the guarded focus) — skipped entirely
- *    for mortar crew, who have their own solver (see MortarOperatorGoal).
+ *    for mortar crew, who have their own solver (see MortarOperatorBehaviour).
  * 2. Whoever last hurt this NPC (vanilla HurtByTargetGoal equivalent).
  * 3. Faction-wide relayed contact via [TeamAwareness] — skipped for mortar crew too (same reason).
  * 4. Nearest directly-visible hostile within follow range (vanilla NearestAttackableTargetGoal

@@ -18,11 +18,11 @@ enum class NpcClass(
     SNIPER(loc("svd"), shootDistanceMultiplier = 3.0, accuracyMultiplier = 1.0 / 1.2),
     GRENADIER(loc("m_79"), shootDistanceMultiplier = 1.5),
 
-    /** Carries a sidearm for self-defence; its real job (MortarOperatorGoal) is manning a nearby
+    /** Carries a sidearm for self-defence; its real job (MortarOperatorBehaviour) is manning a nearby
      *  placed MortarEntity, which the MORTAR_LOADER on the same squad keeps supplied. */
     MORTAR_OPERATOR(loc("m_1911")),
 
-    /** Keeps its squad's manned mortar topped up with shells (MortarLoaderGoal) — no combat job. */
+    /** Keeps its squad's manned mortar topped up with shells (MortarLoaderBehaviour) — no combat job. */
     MORTAR_LOADER(loc("m_1911"));
 
     fun next(): NpcClass = entries[(ordinal + 1) % entries.size]

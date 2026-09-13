@@ -2,11 +2,11 @@ package com.sbwnpc.squad.entity
 
 import com.atsuishio.superbwarfare.data.gun.GunData
 import com.atsuishio.superbwarfare.item.gun.GunItem
-import com.sbwnpc.squad.entity.ai.GrenadeThrowGoal
+import com.sbwnpc.squad.entity.ai.GrenadeThrowBehaviour
 import com.sbwnpc.squad.entity.ai.InvestigateBehaviour
 import com.sbwnpc.squad.entity.ai.MortarClaims
-import com.sbwnpc.squad.entity.ai.MortarLoaderGoal
-import com.sbwnpc.squad.entity.ai.MortarOperatorGoal
+import com.sbwnpc.squad.entity.ai.MortarLoaderBehaviour
+import com.sbwnpc.squad.entity.ai.MortarOperatorBehaviour
 import com.sbwnpc.squad.entity.ai.SeekCoverBehaviour
 import com.sbwnpc.squad.entity.ai.SquadOrderBehaviour
 import com.sbwnpc.squad.init.ModMemories
@@ -35,7 +35,6 @@ import net.minecraft.world.entity.SpawnGroupData
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier
 import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.entity.ai.goal.FloatGoal
-import net.minecraft.world.entity.ai.goal.MeleeAttackGoal
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal
 import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal
 import net.minecraft.world.entity.player.Player
@@ -51,13 +50,12 @@ import net.minecraft.world.level.ServerLevelAccessor
  * is by squad faction == vanilla scoreboard team (see [SquadTeams]); no team on either side means
  * neutral. The faction also picks the NPC's skin ([com.sbwnpc.squad.client.renderer.NpcRenderer]).
  *
- * MIGRATION TO SmartBrainLib (see SMARTBRAIN_MIGRATION_PLAN.md, gitignored working doc) — steps
- * 1-8 are done: doors, targeting, gun combat, cover/suppression, alarm/investigate, and squad
- * formations/patrol are all Brain-side now. Only the mortar operator/loader, melee self-defense,
- * and grenade-throw Goals remain as ordinary [net.minecraft.world.entity.ai.goal.Goal]s in
- * [registerGoals] (never called out as their own migration task in the plan) — they still read
- * `mob.target`, kept in sync by `SquadTargetSensor` via `BrainUtils.setTargetOfEntity` specifically
- * so they keep working unmodified.
+ * MIGRATION TO SmartBrainLib (see SMARTBRAIN_MIGRATION_PLAN.md, gitignored working doc) — complete.
+ * [registerGoals] only registers three trivial, NPC-agnostic vanilla utility goals now (float/swim,
+ * random look, random wander) that never touched `mob.target` or any custom AI state and were never
+ * part of the migration's task list — no risk in leaving those as ordinary Goals indefinitely.
+ * Every subsystem that reads/writes combat state (targeting, gun combat, melee, grenades, mortar,
+ * cover/suppression, alarm/investigate, squad formations/patrol) is Brain-side.
  */
 open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     PathfinderMob(type, level), net.tslat.smartbrainlib.api.SmartBrainOwner<NpcEntity> {
@@ -159,37 +157,14 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         builder.define(DATA_RANK, NpcRank.DEFAULT.ordinal)
     }
 
+    // Only trivial, NPC-agnostic vanilla utility goals left — none of them ever touched
+    // `mob.target`/ATTACK_TARGET or any custom AI state, so there's no Goal/Brain interop risk in
+    // leaving them here indefinitely (see the class doc comment above).
     override fun registerGoals() {
         super.registerGoals()
         this.goalSelector.addGoal(0, FloatGoal(this))
-        // Gun combat moved to SmartBrainLib's GunAttackBehaviour (see getFightTasks()) — migration
-        // step 5. Only runs while ATTACK_TARGET is set (SquadTargetSensor writes it), same effective
-        // gating as this goal's old `mob.target != null` check.
-        this.goalSelector.addGoal(1, MortarOperatorGoal(this))
-        this.goalSelector.addGoal(1, MortarLoaderGoal(this))
-        this.goalSelector.addGoal(2, MeleeAttackGoal(this, 1.2, false))
-        this.goalSelector.addGoal(2, GrenadeThrowGoal(this))
-        // Door opening moved to SmartBrainLib's InteractWithDoor (see getCoreTasks()) — migration
-        // step 3. It's actually a step up, not just a port: it also holds a door open for OTHER
-        // squad members mid-transit, which the old vanilla-style OpenDoorGoal never did.
-        // Cover/suppression moved to SmartBrainLib's SeekCoverBehaviour (see getCoreTasks()) —
-        // migration step 6. Same reason it lives in core tasks as InteractWithDoor: it must keep
-        // ticking through every phase (including the peek window) without a framework-level
-        // stop/start in between — see that class's own doc comment.
-        // Investigate/Alarm response moved to SmartBrainLib's InvestigateBehaviour (see
-        // getIdleTasks()) — migration step 7. "Go check that out" still wins over routine
-        // patrol/hold while there's nothing to actually shoot at yet — see that class's own doc
-        // comment for how Idle-activity precedence reproduces the old goal-priority ordering.
-        // Formation/patrol movement moved to SmartBrainLib's SquadOrderBehaviour (see
-        // getIdleTasks()) — migration step 8. SquadFormation's slot math is unchanged.
         this.goalSelector.addGoal(6, RandomLookAroundGoal(this))
         this.goalSelector.addGoal(7, WaterAvoidingRandomStrollGoal(this, 0.8))
-
-        // Target acquisition moved to SquadTargetSensor (see getSensors()) — migration step 4.
-        // Replaces SquadFocusTargetGoal, HurtByTargetGoal, SquadAwarenessTargetGoal, and
-        // NearestAttackableTargetGoal with one sensor evaluating the same priority chain in one
-        // place. It bridges to mob.target via BrainUtils.setTargetOfEntity so every not-yet-migrated
-        // goal above keeps working unmodified.
     }
 
     // --- SmartBrainOwner: step 2 of the migration (skeleton only) ---
@@ -207,27 +182,43 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         tickBrain(this)
     }
 
-    // Step 4: target acquisition. See registerGoals() above for what this replaces.
+    // Target acquisition: replaces the old SquadFocusTargetGoal, HurtByTargetGoal,
+    // SquadAwarenessTargetGoal, and NearestAttackableTargetGoal with one sensor evaluating the same
+    // priority chain in one place. Bridges to mob.target via BrainUtils.setTargetOfEntity.
     override fun getSensors(): List<net.tslat.smartbrainlib.api.core.sensor.ExtendedSensor<out NpcEntity>> =
         listOf(com.sbwnpc.squad.entity.ai.SquadTargetSensor())
-    // Step 3: door interaction. Real behavioural upgrade, not just a port — see registerGoals().
-    // Step 6: cover/suppression. Direct port of SeekCoverGoal — see registerGoals() above.
+    // Core: always ticks regardless of the current Fight/Idle activity — matches how the goals
+    // they replace ran too (door interaction and cover-seeking never competed for GoalSelector's
+    // Flag.MOVE with anything, so they always ran; the mortar crew goals reserved Flag.MOVE at
+    // priority 1, the highest of any goal, so they always won it too — same effective "always on"
+    // outcome, just achieved differently). InteractWithDoor is a genuine upgrade over the old
+    // OpenDoorGoal, not just a port — it also holds a door open for OTHER squad members mid-transit.
     override fun getCoreTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
         net.tslat.smartbrainlib.api.core.BrainActivityGroup.coreTasks(
             net.tslat.smartbrainlib.api.core.behaviour.custom.move.InteractWithDoor<NpcEntity>(),
-            SeekCoverBehaviour()
+            SeekCoverBehaviour(),
+            MortarOperatorBehaviour(),
+            MortarLoaderBehaviour()
         )
-    // Step 7: investigate/alarm response. Step 8: formations/patrol. Direct ports of
-    // InvestigateGoal/SquadOrderGoal — see registerGoals() above. Order matters here the same way
-    // goal-priority numbers used to: InvestigateBehaviour's own eligibility check excludes
-    // SquadOrderBehaviour's cases and vice versa (see each class's doc comment), so which one is
-    // listed first doesn't actually change behaviour, only which gets evaluated first each tick.
+    // Idle: only relevant while there's no ATTACK_TARGET (Fight always outranks Idle). Order here
+    // doesn't change behaviour — InvestigateBehaviour's and SquadOrderBehaviour's own eligibility
+    // checks already exclude each other's cases (see each class's doc comment), reproducing the
+    // old goal-priority order (Investigate=4 beat SquadOrder=5) by hand since Idle behaviours have
+    // no automatic per-Flag exclusivity like GoalSelector did.
     override fun getIdleTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
         net.tslat.smartbrainlib.api.core.BrainActivityGroup.idleTasks(InvestigateBehaviour(), SquadOrderBehaviour())
-    // Step 5: gun combat. Direct port of NpcGunAttackGoal — see registerGoals() above.
+    // Fight: only while ATTACK_TARGET is set. GunAttackBehaviour is a direct port of the old
+    // NpcGunAttackGoal; AnimatableMeleeAttack is SmartBrainLib's own ready-made melee behaviour
+    // (only attacks when already within melee range + LOS — it does no chasing of its own, same as
+    // before: GunAttackBehaviour's own advance-to-shootDistance already closes the gap for every
+    // class, since every NpcClass carries a gun, so melee only ever needed to cover the
+    // already-adjacent case); GrenadeThrowBehaviour is a direct port of GrenadeThrowGoal. All three
+    // ran concurrently as unflagged Goals before — same here, just as Behaviours in one Activity.
     override fun getFightTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
         net.tslat.smartbrainlib.api.core.BrainActivityGroup.fightTasks(
-            com.sbwnpc.squad.entity.ai.GunAttackBehaviour()
+            com.sbwnpc.squad.entity.ai.GunAttackBehaviour(),
+            net.tslat.smartbrainlib.api.core.behaviour.custom.attack.AnimatableMeleeAttack<NpcEntity>(20),
+            GrenadeThrowBehaviour()
         )
 
     // Used by SquadTargetSensor (step 4 of the SmartBrain migration) too, hence internal not private.
