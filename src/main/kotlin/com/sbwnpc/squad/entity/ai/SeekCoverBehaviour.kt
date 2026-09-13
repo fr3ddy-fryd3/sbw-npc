@@ -68,7 +68,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     companion object {
         private const val SAMPLE_COUNT = 20
         private const val MIN_RADIUS = 5.0
-        private const val MAX_RADIUS = 14.0
+        private const val MAX_RADIUS = 28.0        // x2 per user request
         private const val WALL_SCAN_STEP = 2       // grid spacing (blocks) for the wall-adjacency scan
         private const val FALLBACK_DISTANCE = 6.0
         private const val FALLBACK_SPREAD_RADIANS = Math.PI / 3.0 // +/- 60 deg off dead-away-from-threat
@@ -218,12 +218,16 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         phaseUntilTick = entity.tickCount + DWELL_TICKS + entity.random.nextInt(DWELL_JITTER)
         if (refreshSuppression) {
             entity.threatPos?.let { entity.suppress(it) }
-            // TEMPORARY diagnostic, round 3 — logs the tick number so it can be correlated exactly
-            // against a later stop()/start() pair, to settle whether the refresh is actually taking
-            // effect (isSuppressed() should read true continuously from here through phaseUntilTick).
+            // TEMPORARY diagnostic, round 4 — round 3's log showed a refresh at tick 499
+            // (phaseUntilTick=530) followed by stop() at tick 539, only ~40 ticks later — nowhere
+            // near suppress()'s claimed 100-tick floor. Logging the actual raw remaining-tick value
+            // straight from BrainUtils right after the refresh, to see whether suppress() itself is
+            // computing a too-small number or whether the memory decays faster than expected
+            // afterward.
+            val rawRemaining = BrainUtils.getTimeUntilMemoryExpires(entity, ModMemories.SUPPRESSING_THREAT.get())
             com.sbwnpc.squad.SquadMod.LOGGER.info(
-                "[dig-debug] {} enterCover refreshed suppression at tick {}, isSuppressed={}, phaseUntilTick={}",
-                entity.uuid, entity.tickCount, entity.isSuppressed(), phaseUntilTick
+                "[dig-debug] {} enterCover refreshed suppression at tick {}, rawRemaining={}, isSuppressed={}, phaseUntilTick={}",
+                entity.uuid, entity.tickCount, rawRemaining, entity.isSuppressed(), phaseUntilTick
             )
         }
     }
@@ -243,10 +247,11 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         // extends to at least its own fixed 100-tick minimum (see NpcEntity), comfortably covering
         // the dig plus initial settle — same mechanism a fresh hit would use, not a new one.
         entity.threatPos?.let { entity.suppress(it) }
-        // TEMPORARY diagnostic, round 3 — same reason as enterCover()'s log.
+        // TEMPORARY diagnostic, round 4 — same reason as enterCover()'s log.
+        val rawRemaining = BrainUtils.getTimeUntilMemoryExpires(entity, ModMemories.SUPPRESSING_THREAT.get())
         com.sbwnpc.squad.SquadMod.LOGGER.info(
-            "[dig-debug] {} startDigging refreshed suppression at tick {}, isSuppressed={}",
-            entity.uuid, entity.tickCount, entity.isSuppressed()
+            "[dig-debug] {} startDigging refreshed suppression at tick {}, rawRemaining={}, isSuppressed={}",
+            entity.uuid, entity.tickCount, rawRemaining, entity.isSuppressed()
         )
     }
 
