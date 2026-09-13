@@ -26,7 +26,9 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
  * per-Flag exclusivity, so the old goal-priority order 4-vs-5 has to be reproduced by hand here,
  * same idiom as `combatLockedByCover()` already is elsewhere in this migration).
  *
- *  - DEFEND: return to within ~8 blocks of home (objective point / guarded entity), then hold.
+ *  - DEFEND: return to within `SquadFormation.ARRIVAL_RADIUS + 4.5` of home (objective point /
+ *    guarded entity — currently 12 blocks, but derived rather than hardcoded, see that line), then
+ *    hold.
  *  - PATROL: walk the squad's assigned Route in sequence if it has one (see RouteManager);
  *    otherwise wander within ~12 blocks of home as before.
  *  - ATTACK: advance to home.
