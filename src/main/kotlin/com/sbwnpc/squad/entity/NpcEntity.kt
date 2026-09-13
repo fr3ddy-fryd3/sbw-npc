@@ -8,7 +8,7 @@ import com.sbwnpc.squad.entity.ai.MortarClaims
 import com.sbwnpc.squad.entity.ai.MortarLoaderGoal
 import com.sbwnpc.squad.entity.ai.MortarOperatorGoal
 import com.sbwnpc.squad.entity.ai.SeekCoverBehaviour
-import com.sbwnpc.squad.entity.ai.SquadOrderGoal
+import com.sbwnpc.squad.entity.ai.SquadOrderBehaviour
 import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
@@ -51,13 +51,13 @@ import net.minecraft.world.level.ServerLevelAccessor
  * is by squad faction == vanilla scoreboard team (see [SquadTeams]); no team on either side means
  * neutral. The faction also picks the NPC's skin ([com.sbwnpc.squad.client.renderer.NpcRenderer]).
  *
- * MIGRATION IN PROGRESS to SmartBrainLib (see SMARTBRAIN_MIGRATION_PLAN.md, gitignored working
- * doc) — [SmartBrainOwner] is now implemented, but only a subset of behaviour has actually moved
- * over yet; everything not yet migrated still runs as an ordinary [net.minecraft.world.entity.ai.goal.Goal]
- * in [registerGoals], reading `mob.target` exactly as before. The new Brain-side target sensor (once
- * added) writes both stores via `BrainUtil.setTargetOfEntity` specifically so those not-yet-migrated
- * goals keep working unmodified during the transition — this is a deliberate, temporary bridge, not
- * a permanent design.
+ * MIGRATION TO SmartBrainLib (see SMARTBRAIN_MIGRATION_PLAN.md, gitignored working doc) — steps
+ * 1-8 are done: doors, targeting, gun combat, cover/suppression, alarm/investigate, and squad
+ * formations/patrol are all Brain-side now. Only the mortar operator/loader, melee self-defense,
+ * and grenade-throw Goals remain as ordinary [net.minecraft.world.entity.ai.goal.Goal]s in
+ * [registerGoals] (never called out as their own migration task in the plan) — they still read
+ * `mob.target`, kept in sync by `SquadTargetSensor` via `BrainUtils.setTargetOfEntity` specifically
+ * so they keep working unmodified.
  */
 open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     PathfinderMob(type, level), net.tslat.smartbrainlib.api.SmartBrainOwner<NpcEntity> {
@@ -180,7 +180,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         // getIdleTasks()) — migration step 7. "Go check that out" still wins over routine
         // patrol/hold while there's nothing to actually shoot at yet — see that class's own doc
         // comment for how Idle-activity precedence reproduces the old goal-priority ordering.
-        this.goalSelector.addGoal(5, SquadOrderGoal(this))
+        // Formation/patrol movement moved to SmartBrainLib's SquadOrderBehaviour (see
+        // getIdleTasks()) — migration step 8. SquadFormation's slot math is unchanged.
         this.goalSelector.addGoal(6, RandomLookAroundGoal(this))
         this.goalSelector.addGoal(7, WaterAvoidingRandomStrollGoal(this, 0.8))
 
@@ -216,9 +217,13 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             net.tslat.smartbrainlib.api.core.behaviour.custom.move.InteractWithDoor<NpcEntity>(),
             SeekCoverBehaviour()
         )
-    // Step 7: investigate/alarm response. Direct port of InvestigateGoal — see registerGoals() above.
+    // Step 7: investigate/alarm response. Step 8: formations/patrol. Direct ports of
+    // InvestigateGoal/SquadOrderGoal — see registerGoals() above. Order matters here the same way
+    // goal-priority numbers used to: InvestigateBehaviour's own eligibility check excludes
+    // SquadOrderBehaviour's cases and vice versa (see each class's doc comment), so which one is
+    // listed first doesn't actually change behaviour, only which gets evaluated first each tick.
     override fun getIdleTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
-        net.tslat.smartbrainlib.api.core.BrainActivityGroup.idleTasks(InvestigateBehaviour())
+        net.tslat.smartbrainlib.api.core.BrainActivityGroup.idleTasks(InvestigateBehaviour(), SquadOrderBehaviour())
     // Step 5: gun combat. Direct port of NpcGunAttackGoal — see registerGoals() above.
     override fun getFightTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
         net.tslat.smartbrainlib.api.core.BrainActivityGroup.fightTasks(
