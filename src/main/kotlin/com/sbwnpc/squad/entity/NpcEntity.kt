@@ -420,7 +420,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     companion object {
         private const val BASE_HEALTH = 20.0
-        private const val BASE_SPEED = 0.25
+        // internal (not private) — MedicHealBehaviour reuses this to compute its temporary
+        // "sprinting to treat someone" speed on the same BASE_SPEED*multiplier basis as applyRole(),
+        // instead of hardcoding 0.25 a second time.
+        internal const val BASE_SPEED = 0.25
         private const val SUPPRESSION_DURATION_TICKS = 100
         private const val SUPPRESSION_CAP_TICKS = 200
         private const val ALERT_DURATION_TICKS = 200 // ~10s to reach/abandon an investigation lead

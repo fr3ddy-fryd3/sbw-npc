@@ -29,8 +29,18 @@ enum class NpcClass(
 
     /** Support role: heals wounded squadmates (`MedicHealBehaviour`) between/instead of fighting
      *  with its own SMG — see that behaviour's doc comment for the shoot-vs-heal priority. Replaces
-     *  `GRENADIER`'s slot(s) in the squad-composition presets ("8: Standard", "16: Large"). */
-    MEDIC(listOf(loc("mp_5"), loc("vector")), speedMultiplier = 1.5),
+     *  `GRENADIER`'s slot(s) in the squad-composition presets ("8: Standard", "16: Large").
+     *
+     *  Per user request: paced/positioned like a SNIPER overall (speedMultiplier 1.3, same "normal"
+     *  pace) rather than up front — `shootDistanceMultiplier` matching SNIPER's 3.0 is what actually
+     *  keeps it in the rear: `GunAttackBehaviour.advanceOrHold` stops advancing as soon as a mob is
+     *  within its OWN `shootDistance`, independent of formation-slot depth, so a medic with a
+     *  short/default range would keep closing distance past riflemen/snipers who already stopped
+     *  farther out and end up physically ahead of them despite any formation-slot "rear rank".
+     *  MedicHealBehaviour itself temporarily overrides the 1.3 pace to
+     *  [com.sbwnpc.squad.entity.ai.MedicHealBehaviour] sprint speed while actually running to treat
+     *  someone — see that class. */
+    MEDIC(listOf(loc("mp_5"), loc("vector")), shootDistanceMultiplier = 3.0, speedMultiplier = 1.3),
 
     /** Carries a sidearm for self-defence; its real job (MortarOperatorBehaviour) is manning a nearby
      *  placed MortarEntity, which the MORTAR_LOADER on the same squad keeps supplied. */

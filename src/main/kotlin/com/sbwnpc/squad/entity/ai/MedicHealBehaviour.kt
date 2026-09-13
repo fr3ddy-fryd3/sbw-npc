@@ -8,6 +8,7 @@ import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.minecraft.world.phys.AABB
@@ -56,6 +57,9 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val HEAL_RANGE = 2.5
         private const val TREAT_COOLDOWN_TICKS = 100 // ~5s — don't immediately re-treat while Regeneration is still ticking
 
+        // Faster than NpcClass.MEDIC's normal 1.3 — see setSprinting()'s own doc comment.
+        private const val HEAL_SPRINT_SPEED_MULTIPLIER = 1.6
+
         // Light red — player-facing heal indicator for a treat() call, see markHeal().
         private val HEAL_COLOR = org.joml.Vector3f(1.0f, 0.45f, 0.45f)
     }
@@ -97,7 +101,21 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun stop(entity: NpcEntity) {
         healTargetId = null
         entity.navigation.stop()
+        setSprinting(entity, false)
         BrainUtils.clearMemory(entity, ModMemories.MEDIC_HEALING.get())
+    }
+
+    /** Per user request: a medic's normal pace is [NpcClass.speedMultiplier] (1.3, like SNIPER —
+     *  see that entry's own doc comment for why it also stays in the rear), but it should actually
+     *  hustle — [HEAL_SPRINT_SPEED_MULTIPLIER] (1.6) — while physically running to reach someone it
+     *  needs to treat. Toggled every tick based on current distance rather than tracked as separate
+     *  start/stop state — cheap (a plain attribute assignment) and self-correcting if the heal
+     *  target changes mid-approach. Always reverted in [stop] so an interrupted approach (ally died,
+     *  healed by someone else, combat lock lost) never leaves the medic permanently sprinting. */
+    private fun setSprinting(entity: NpcEntity, sprinting: Boolean) {
+        val attr = entity.getAttribute(Attributes.MOVEMENT_SPEED) ?: return
+        val multiplier = if (sprinting) HEAL_SPRINT_SPEED_MULTIPLIER else entity.npcClass.speedMultiplier
+        attr.baseValue = NpcEntity.BASE_SPEED * multiplier
     }
 
     override fun tick(entity: NpcEntity) {
@@ -116,9 +134,11 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         val dist = entity.position().distanceTo(ally.position())
         if (dist > HEAL_RANGE) {
+            setSprinting(entity, true)
             entity.navigation.moveTo(ally.x, ally.y, ally.z, 1.0)
             return
         }
+        setSprinting(entity, false)
         entity.navigation.stop()
         entity.lookAt(ally, 30f, 30f)
 
