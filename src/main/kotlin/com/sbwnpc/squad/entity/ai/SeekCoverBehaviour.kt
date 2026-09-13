@@ -6,6 +6,7 @@ import com.sbwnpc.squad.init.ModMemories
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.tags.BlockTags
+import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.minecraft.world.level.ClipContext
@@ -45,6 +46,13 @@ import net.tslat.smartbrainlib.util.BrainUtils
  * flat enough ground) and [tickDiggingIn]/[finishDigging] for the dig itself. Deliberately gated
  * behind the fallback path only, per user instruction — a squad that found genuine cover has no
  * need to dig, and digging should never preempt or delay reaching real cover.
+ *
+ * Peeking is a minimal-exposure lean, not a full walk-out (see [findPeekPoint]): tries a handful of
+ * short steps toward the target (0.5 up to 3 blocks) and takes the first one with a clear line of
+ * sight, rather than always closing all the way to the target's own position. This is the standard
+ * "smart cover point" idiom from tactical-shooter AI (F.E.A.R.'s cover/lean system is the usual
+ * reference: Jeff Orkin, "Three States and a Plan: The AI of F.E.A.R.", GDC 2006) — expose as
+ * little of yourself as the terrain actually requires to get a shot, then duck straight back.
  */
 class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
 
@@ -68,6 +76,13 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val DWELL_JITTER = 30        // + up to ~1.5s random, so a squad doesn't peek in lockstep
         private const val PEEK_TICKS = 50          // ~2.5s exposed before ducking back, unless target dies/breaks LOS first
         private const val RECHECK_TICKS = 15       // no target yet — check again soon rather than popping out blind
+
+        // Minimal-exposure peek distances (blocks), tried in order — first one with a clear
+        // raycast to the target wins. Lean-and-peek rather than a full walk-out to the target, per
+        // user request (and how tactical-shooter AI cover systems like F.E.A.R.'s generally do it —
+        // see this class's own doc comment for the research pointer): expose as little as the
+        // terrain requires, not "walk all the way out into the open".
+        private val PEEK_STEP_DISTANCES = listOf(0.5, 1.0, 1.5, 2.0, 2.5, 3.0)
 
         private const val DIG_HEALTH_FRACTION = 0.5f  // only badly hurt NPCs bother digging in
         private const val DIG_TICKS = 70              // ~3.5s of "digging" before the hole is done
@@ -132,7 +147,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         when (phase) {
             Phase.MOVING_TO_COVER -> tickMovingToCover(entity, level, threat)
             Phase.DIGGING_IN -> tickDiggingIn(entity, level)
-            Phase.IN_COVER -> tickInCover(entity)
+            Phase.IN_COVER -> tickInCover(entity, level)
             Phase.PEEKING -> tickPeeking(entity)
             Phase.RETURNING_TO_COVER -> tickReturningToCover(entity)
         }
@@ -186,6 +201,14 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.navigation.stop()
         phase = Phase.IN_COVER
         phaseUntilTick = entity.tickCount + DWELL_TICKS + entity.random.nextInt(DWELL_JITTER)
+        // Refresh suppression here too, not just in startDigging() — a PM review caught that the
+        // dig-start refresh alone doesn't reliably cover DIG_TICKS + DWELL_TICKS + worst-case
+        // DWELL_JITTER (70+20+29=119 ticks against suppress()'s 100-tick floor, so it could still
+        // lapse before phaseUntilTick and cause the same "dig then flee" bug in a majority of
+        // jitter rolls). Re-anchoring the 100-tick floor from THIS moment only needs to cover
+        // DWELL_TICKS+JITTER (<=49 ticks), comfortably inside it — applies equally to real
+        // (non-dug) cover, which had the same latent gap.
+        entity.threatPos?.let { entity.suppress(it) }
     }
 
     private fun startDigging(entity: NpcEntity, level: ServerLevel, target: BlockPos) {
@@ -288,20 +311,17 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         return DIG_NEIGHBOR_OFFSETS.all { (dx, dz) -> groundAt(level, pos.offset(dx, 0, dz)).y >= pos.y }
     }
 
-    private fun tickInCover(entity: NpcEntity) {
+    private fun tickInCover(entity: NpcEntity, level: ServerLevel) {
         if (entity.tickCount < phaseUntilTick) return
         // Re-check dig-in eligibility periodically while sitting at a fallback (not-real-cover)
         // spot — canDigIn used to only ever get checked ONCE, at the exact tick of arrival. A mob
         // that arrived still above the health threshold (or without a covering ally yet) would
         // never dig in later even after taking more fire while just standing there exposed — this
         // closes that gap, at the same cadence as the ordinary recheck/dwell cycle.
-        if (isFallbackRetreat) {
-            val level = entity.level() as? ServerLevel
-            val pos = coverTarget
-            if (level != null && pos != null && canDigIn(entity, level, pos)) {
-                startDigging(entity, level, pos)
-                return
-            }
+        val pos = coverTarget
+        if (isFallbackRetreat && pos != null && canDigIn(entity, level, pos)) {
+            startDigging(entity, level, pos)
+            return
         }
         val target = entity.target
         if (target != null && target.isAlive) {
@@ -311,11 +331,32 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             // over aiming/approach/fire from here; this is just enough of a nudge to clear
             // whatever's currently blocking sight from the cover point itself.
             BrainUtils.clearMemory(entity, ModMemories.COVER_HOLD.get())
-            entity.navigation.moveTo(target.x, target.y, target.z, 1.0)
+            val peekPoint = pos?.let { findPeekPoint(entity, level, it, target) } ?: target.position()
+            entity.navigation.moveTo(peekPoint.x, peekPoint.y, peekPoint.z, 1.0)
         } else {
             // Nothing to shoot at yet — stay down, recheck shortly rather than popping out blind.
             phaseUntilTick = entity.tickCount + RECHECK_TICKS
         }
+    }
+
+    /** Minimal-exposure peek point: steps from [cover] toward [target] by [PEEK_STEP_DISTANCES] in
+     *  order, taking the FIRST one with an actual clear raycast to the target's eyes — leaning out
+     *  just enough, not a full advance. Falls back to the target's own position (the old behaviour)
+     *  if nothing within the tried distances gets a clear shot — GunAttackBehaviour's own
+     *  bounding-advance takes over from there exactly as it already did before this change. */
+    private fun findPeekPoint(entity: NpcEntity, level: ServerLevel, cover: BlockPos, target: LivingEntity): Vec3 {
+        val base = Vec3(cover.x + 0.5, cover.y.toDouble(), cover.z + 0.5)
+        val toTarget = target.position().subtract(base)
+        val horiz = Vec3(toTarget.x, 0.0, toTarget.z)
+        if (horiz.lengthSqr() < 1.0e-6) return target.position()
+        val dir = horiz.normalize()
+        for (step in PEEK_STEP_DISTANCES) {
+            val candidate = base.add(dir.scale(step))
+            val eye = candidate.add(0.0, 1.5, 0.0)
+            val hit = level.clip(ClipContext(eye, target.eyePosition, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, entity))
+            if (hit.type != HitResult.Type.BLOCK) return candidate
+        }
+        return target.position()
     }
 
     private fun tickPeeking(entity: NpcEntity) {
