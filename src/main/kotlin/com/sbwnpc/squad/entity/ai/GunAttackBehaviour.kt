@@ -117,6 +117,14 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun advanceOrHold(entity: NpcEntity, target: LivingEntity) {
+        // Dug in: fight from the hole, never reposition to advance/bound toward the target — see
+        // NpcEntity.diggedIn's own doc comment. Aiming/firing below is completely unaffected.
+        if (entity.diggedIn) {
+            entity.navigation.stop()
+            bounding = true
+            boundPhaseStarted = false
+            return
+        }
         if (entity.distanceToSqr(target) <= entity.shootDistance * entity.shootDistance) {
             entity.navigation.stop()
             bounding = true
@@ -186,7 +194,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         val explosionRadius = gunData.get(GunProp.EXPLOSION_RADIUS)
         blastClear = FriendlyFireGuard.hasClearBlastRadius(entity, target.position(), explosionRadius)
 
-        if (!lineIsClear) {
+        if (!lineIsClear && !entity.diggedIn) {
+            // Dug in: hold fire rather than step out of the hole to clear an ally's line of fire —
+            // same reasoning as advanceOrHold's guard above.
             if (entity.tickCount >= nextSidestepTick) {
                 if (sidestepAttempts >= MAX_SIDESTEP_ATTEMPTS) {
                     sidestepAttempts = 0
@@ -197,7 +207,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                     FriendlyFireGuard.sidestepAwayFromAllies(entity, target.eyePosition)
                 }
             }
-        } else {
+        } else if (lineIsClear) {
             sidestepAttempts = 0
         }
 

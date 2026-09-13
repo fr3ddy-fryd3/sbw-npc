@@ -136,6 +136,13 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // see applyRole() for why. Consumed (set false) by SeekCoverBehaviour.maybeThrowGrenadeOnceDugIn.
     var hasReserveGrenade: Boolean = false
 
+    // Set/cleared only by SeekCoverBehaviour (enterDugInHolding/stop) while the mob is holding a
+    // foxhole it dug for itself. Read by GunAttackBehaviour to skip ALL repositioning (formation
+    // advance, bounding, friendly-fire sidestep) while still aiming and firing normally — a dug-in
+    // mob fights from the hole rather than leaving it, per explicit user decision (see
+    // SeekCoverBehaviour.enterDugInHolding's doc comment for the fuller reasoning/history).
+    var diggedIn: Boolean = false
+
     override fun hurt(source: DamageSource, amount: Float): Boolean {
         val result = super.hurt(source, amount)
         // NOT vanilla's DamageTypeTags.IS_PROJECTILE — SBW's gunfire damage types (GUN_FIRE,

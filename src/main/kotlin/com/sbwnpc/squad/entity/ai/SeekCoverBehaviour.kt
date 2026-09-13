@@ -57,7 +57,7 @@ import net.tslat.smartbrainlib.util.BrainUtils
  */
 class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
 
-    private enum class Phase { MOVING_TO_COVER, DIGGING_IN, IN_COVER, PEEKING, RETURNING_TO_COVER }
+    private enum class Phase { MOVING_TO_COVER, DIGGING_IN, IN_COVER, PEEKING, RETURNING_TO_COVER, DUG_IN_HOLDING }
 
     // ROOT CAUSE of the whole "digs in / settles into cover, then re-enters fallback retreat"
     // saga: ExtendedBehaviour has an UNDOCUMENTED-to-us default 60-tick runtime cap (runtimeProvider
@@ -144,7 +144,15 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = MEMORIES
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = entity.isSuppressed()
-    override fun shouldKeepRunning(entity: NpcEntity): Boolean = entity.isSuppressed()
+
+    override fun shouldKeepRunning(entity: NpcEntity): Boolean {
+        // Dug in and rested back up past the same threshold that let it dig in the first place —
+        // stand down deliberately here rather than waiting for isSuppressed() to lapse on its own:
+        // see tickDugInHolding's doc comment for why suppression is kept alive by hand for as long as
+        // the mob is still hurt and still fighting, which would otherwise never let this end.
+        if (phase == Phase.DUG_IN_HOLDING && entity.health >= entity.maxHealth * DIG_HEALTH_FRACTION) return false
+        return entity.isSuppressed()
+    }
 
     override fun start(entity: NpcEntity) {
         phase = Phase.MOVING_TO_COVER
@@ -154,6 +162,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         hasDugIn = false
         digTicksRemaining = 0
         digPos = null
+        entity.diggedIn = false
         BrainUtils.setMemory(entity, ModMemories.COVER_HOLD.get(), true)
     }
 
@@ -161,10 +170,19 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         coverTarget = null
         entity.navigation.stop()
         digPos?.let { clearDigProgress(entity) }
+        entity.diggedIn = false
         BrainUtils.clearMemory(entity, ModMemories.COVER_HOLD.get())
     }
 
     override fun tick(entity: NpcEntity) {
+        // DUG_IN_HOLDING deliberately does NOT bail out on threatPos == null the way every other
+        // phase does below — a dug-in mob is meant to keep holding its hole based on its own health
+        // and current target, not on the threat-suppression memory that gates every other phase (see
+        // tickDugInHolding's own doc comment).
+        if (phase == Phase.DUG_IN_HOLDING) {
+            tickDugInHolding(entity)
+            return
+        }
         val threat = entity.threatPos ?: return
         val level = entity.level() as? ServerLevel ?: return
 
@@ -174,6 +192,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             Phase.IN_COVER -> tickInCover(entity, level)
             Phase.PEEKING -> tickPeeking(entity)
             Phase.RETURNING_TO_COVER -> tickReturningToCover(entity)
+            Phase.DUG_IN_HOLDING -> Unit // handled above
         }
     }
 
@@ -288,7 +307,41 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         digPos = null
         hasDugIn = true
         maybeThrowGrenadeOnceDugIn(entity, level)
-        enterCover(entity, refreshSuppression = true)
+        enterDugInHolding(entity)
+    }
+
+    /** Per user decision: a dug-in mob fights FROM the hole rather than repeating the normal
+     *  peek-then-duck-back cycle ([enterCover]/[tickInCover]) — that cycle was built for genuine wall
+     *  cover, where popping out to trade shots and ducking back makes sense. Digging only ever
+     *  triggers mid-firefight (canDigIn requires an actively-covering ally), so the very next recheck
+     *  after finishing would almost always find a live target and immediately walk back out to peek
+     *  anyway — reported in-game as "выкопал яму и почти сразу её покинул". Clearing [ModMemories.COVER_HOLD]
+     *  immediately hands aiming/firing to [GunAttackBehaviour] as normal; [NpcEntity.diggedIn] is the
+     *  new signal that tells it to skip all repositioning (advance/bounding/sidestep) while still
+     *  aiming and shooting exactly as it would anywhere else — see that flag's own doc comment. */
+    private fun enterDugInHolding(entity: NpcEntity) {
+        entity.navigation.stop()
+        phase = Phase.DUG_IN_HOLDING
+        entity.diggedIn = true
+        BrainUtils.clearMemory(entity, ModMemories.COVER_HOLD.get())
+        phaseUntilTick = entity.tickCount + RECHECK_TICKS
+    }
+
+    /** Holds the mob in its foxhole for as long as it's both still hurt (below [DIG_HEALTH_FRACTION],
+     *  the same threshold that let it dig in the first place) and still actively fighting — see
+     *  [shouldKeepRunning] for the "healed back up" exit, and below for the "nothing left to fight"
+     *  exit. [GunAttackBehaviour] does all the actual aiming/shooting on its own once [ModMemories.COVER_HOLD]
+     *  is cleared (see [enterDugInHolding]); this just keeps the suppression memory (and therefore
+     *  this whole behaviour, and therefore [NpcEntity.diggedIn]) alive while there's still a live
+     *  target to hold position against. Once the target's gone, suppression is deliberately left to
+     *  lapse on its own instead of being force-refreshed forever — a mob with nothing shooting back
+     *  at it and nothing to shoot at has no reason to stay pinned in a hole. */
+    private fun tickDugInHolding(entity: NpcEntity) {
+        val target = entity.target
+        if (target == null || !target.isAlive) return
+        if (entity.tickCount < phaseUntilTick) return
+        phaseUntilTick = entity.tickCount + RECHECK_TICKS
+        entity.threatPos?.let { entity.suppress(it) }
     }
 
     private fun clearDigProgress(entity: NpcEntity) {
