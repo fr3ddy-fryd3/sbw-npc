@@ -55,7 +55,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val HEAL_RANGE = 2.5
         private const val TREAT_COOLDOWN_TICKS = 100 // ~5s — don't immediately re-treat while Regeneration is still ticking
 
-        // Light red — debug visual for a treat() call, see markHeal().
+        // Light red — player-facing heal indicator for a treat() call, see markHeal().
         private val HEAL_COLOR = org.joml.Vector3f(1.0f, 0.45f, 0.45f)
     }
 
@@ -122,8 +122,9 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
         markHeal(level, ally)
     }
 
-    /** Debug visual, per user request — same idiom as SeekCoverBehaviour.markCoverChoice: a short
-     *  particle burst at the treated ally, so healing is visible without watching health numbers. */
+    /** Player-facing visual feedback (release format, NOT a temporary debug aid, unlike
+     *  SeekCoverBehaviour.markCoverChoice's cover-choice particles) — a short particle burst at the
+     *  treated ally, so healing is visible without watching health numbers. */
     private fun markHeal(level: ServerLevel, ally: NpcEntity) {
         level.sendParticles(
             net.minecraft.core.particles.DustParticleOptions(HEAL_COLOR, 1.5f),
