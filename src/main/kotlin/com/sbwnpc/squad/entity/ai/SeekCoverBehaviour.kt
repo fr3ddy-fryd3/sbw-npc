@@ -160,7 +160,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
                 if (isFallbackRetreat && canDigIn(entity, level, target)) {
                     startDigging(entity, level, target)
                 } else {
-                    enterCover(entity)
+                    enterCover(entity, refreshSuppression = true)
                 }
             }
             return // still travelling this leg either way
@@ -197,18 +197,20 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         )
     }
 
-    private fun enterCover(entity: NpcEntity) {
+    /** [refreshSuppression] must be true only for a mob's FIRST settle into cover this episode (a
+     *  fresh [findCover] arrival, or right after [finishDigging]) — see those call sites — never for
+     *  the ordinary peek-then-duck-back cycle ([tickReturningToCover]'s call). A PM review caught
+     *  that refreshing unconditionally on every re-entry would keep `isSuppressed()` alive
+     *  indefinitely for as long as the mob keeps peeking at a live, visible target — quietly
+     *  redefining "suppressed" from "recently actually shot at" to "in a prolonged firefight",
+     *  which is a much bigger behavioural change than the bug this was meant to fix. Restricting the
+     *  refresh to first-settle-only still closes the real gap (suppression lapsing before the mob
+     *  ever gets its first dwell/peek check after arriving) without that drift. */
+    private fun enterCover(entity: NpcEntity, refreshSuppression: Boolean = false) {
         entity.navigation.stop()
         phase = Phase.IN_COVER
         phaseUntilTick = entity.tickCount + DWELL_TICKS + entity.random.nextInt(DWELL_JITTER)
-        // Refresh suppression here too, not just in startDigging() — a PM review caught that the
-        // dig-start refresh alone doesn't reliably cover DIG_TICKS + DWELL_TICKS + worst-case
-        // DWELL_JITTER (70+20+29=119 ticks against suppress()'s 100-tick floor, so it could still
-        // lapse before phaseUntilTick and cause the same "dig then flee" bug in a majority of
-        // jitter rolls). Re-anchoring the 100-tick floor from THIS moment only needs to cover
-        // DWELL_TICKS+JITTER (<=49 ticks), comfortably inside it — applies equally to real
-        // (non-dug) cover, which had the same latent gap.
-        entity.threatPos?.let { entity.suppress(it) }
+        if (refreshSuppression) entity.threatPos?.let { entity.suppress(it) }
     }
 
     private fun startDigging(entity: NpcEntity, level: ServerLevel, target: BlockPos) {
@@ -244,7 +246,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         clearDigProgress(entity)
         level.destroyBlock(pos, false, entity, 512)
         digPos = null
-        enterCover(entity)
+        enterCover(entity, refreshSuppression = true)
     }
 
     private fun clearDigProgress(entity: NpcEntity) {
