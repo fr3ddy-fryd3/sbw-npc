@@ -123,6 +123,26 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      *  comment) instead of a hand-rolled enum with a logging setter. */
     fun combatLockedByCover(): Boolean = BrainUtils.hasMemory(this, ModMemories.COVER_HOLD.get())
 
+    // Set by GunAttackBehaviour every time it actually fires (not just "has a target" — genuinely
+    // pulled the trigger this tick). Used by SeekCoverBehaviour to verify an ally is really
+    // providing covering fire before digging in, rather than just inferring it from having a
+    // target and line of sight. internal (not private) for the same cross-file reason isEnemy() is.
+    var lastShotTick: Int = Int.MIN_VALUE / 2
+        internal set
+
+    fun firedRecently(withinTicks: Int): Boolean = tickCount - lastShotTick <= withinTicks
+
+    // Single-use "parting shot" grenade, tracked as a plain flag rather than a visible held item —
+    // see applyRole() for why. Consumed (set false) by SeekCoverBehaviour.maybeThrowGrenadeOnceDugIn.
+    var hasReserveGrenade: Boolean = false
+
+    // Set/cleared only by SeekCoverBehaviour (enterDugInHolding/stop) while the mob is holding a
+    // foxhole it dug for itself. Read by GunAttackBehaviour to skip ALL repositioning (formation
+    // advance, bounding, friendly-fire sidestep) while still aiming and firing normally — a dug-in
+    // mob fights from the hole rather than leaving it, per explicit user decision (see
+    // SeekCoverBehaviour.enterDugInHolding's doc comment for the fuller reasoning/history).
+    var diggedIn: Boolean = false
+
     override fun hurt(source: DamageSource, amount: Float): Boolean {
         val result = super.hurt(source, amount)
         // NOT vanilla's DamageTypeTags.IS_PROJECTILE — SBW's gunfire damage types (GUN_FIRE,
@@ -177,9 +197,44 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     override fun brainProvider(): net.minecraft.world.entity.ai.Brain.Provider<NpcEntity> =
         net.tslat.smartbrainlib.api.core.SmartBrainProvider(this)
 
+    private var equipmentResynced = false
+
     override fun customServerAiStep() {
         super.customServerAiStep()
+        if (!equipmentResynced) {
+            equipmentResynced = true
+            resyncHeldItemForNewlySpawnedNpc()
+        }
         tickBrain(this)
+    }
+
+    /**
+     * Fix for a bug reported after in-game testing: NPCs deployed in a batch (preset deploy,
+     * barracks reinforcement — several `finalizeSpawn`+`addFreshEntity` calls in the same server
+     * tick) sometimes spawn with no visibly held weapon for players already nearby, even though the
+     * item is genuinely equipped (confirmed functional — reload/fire/ammo all work). Confirmed by
+     * the user to happen specifically on batch spawns, not single recruits.
+     *
+     * The weapon is set in [applyRole] (called from [finalizeSpawn]), i.e. before this entity is
+     * even added to the level / starts being tracked by any player — relying on the tracking-pairing
+     * path (`ServerEntity.sendPairingData`, a full equipment resend to each newly-tracking player)
+     * to deliver it, rather than the ordinary per-tick delta path
+     * (`LivingEntity.detectEquipmentUpdates`/`ItemStack.matches` against the last-broadcast stack).
+     * Re-setting the identical stack later can't force that ordinary path to fire — `matches` is a
+     * value comparison, an equal-value stack is never treated as "changed" — so this bypasses both
+     * paths entirely: one tick after spawn (once the entity is definitely already added and ticking,
+     * i.e. well past whatever pairing-time edge case a burst of several simultaneous new entities
+     * might be hitting), broadcast a fresh `ClientboundSetEquipmentPacket` directly to every player
+     * in the dimension. A handful of tiny packets once per NPC spawn, not per tick.
+     */
+    private fun resyncHeldItemForNewlySpawnedNpc() {
+        val serverLevel = level() as? ServerLevel ?: return
+        val item = mainHandItem
+        if (item.isEmpty) return
+        val packet = net.minecraft.network.protocol.game.ClientboundSetEquipmentPacket(
+            id, listOf(com.mojang.datafixers.util.Pair.of(net.minecraft.world.entity.EquipmentSlot.MAINHAND, item))
+        )
+        serverLevel.server.playerList.broadcastAll(packet, serverLevel.dimension())
     }
 
     // Target acquisition: replaces the old SquadFocusTargetGoal, HurtByTargetGoal,
@@ -261,6 +316,16 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             gunData.save()
             setItemInHand(InteractionHand.MAIN_HAND, gunData.stack)
         }
+
+        // One reserve grenade per fighter, mortar crew excepted (they aren't a combat-suppression
+        // role) — per user request. Tracked as a plain flag, NOT a visible offhand item — user
+        // feedback: holding a physical grenade in the offhand looked wrong (both hands full), and
+        // GRENADIER's own unlimited GrenadeThrowBehaviour already throws without ever visibly
+        // holding a grenade either (it just spawns HandGrenadeEntity directly), so there's no
+        // established precedent here for a held item in the first place. Consumed by
+        // SeekCoverBehaviour's occasional POST-dig throw (see maybeThrowGrenadeOnceDugIn — thrown
+        // once already dug in, not before); entirely separate from GRENADIER's own mechanic.
+        hasReserveGrenade = npcClass != NpcClass.MORTAR_OPERATOR && npcClass != NpcClass.MORTAR_LOADER
     }
 
     override fun addAdditionalSaveData(compound: CompoundTag) {
@@ -320,7 +385,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         fun createAttributes(): AttributeSupplier.Builder {
             return Mob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, BASE_HEALTH)
-                .add(Attributes.MOVEMENT_SPEED, 0.25)
+                .add(Attributes.MOVEMENT_SPEED, 0.25 * 1.4) // x1.4 per user feedback — felt too slow, tuned down from x1.5
+
                 .add(Attributes.ATTACK_DAMAGE, 2.0)
                 .add(Attributes.ARMOR, 2.0)
                 .add(Attributes.FOLLOW_RANGE, 72.0) // detection range, x1.5 per user request (was 48)

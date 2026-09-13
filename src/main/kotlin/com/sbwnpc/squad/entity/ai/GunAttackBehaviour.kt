@@ -32,6 +32,14 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
  * only the framework glue changed.
  */
 class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
+    // ExtendedBehaviour defaults to a 60-tick runtime cap (confirmed via javap — see
+    // SeekCoverBehaviour's doc comment for the full story of what this silently broke there); this
+    // behaviour is meant to keep running for as long as ATTACK_TARGET stays set, not get force-
+    // stopped and immediately restarted every 3 seconds regardless of combat state.
+    init {
+        noTimeout()
+    }
+
     private var aimTime = 0
     private val shootTimer = MillisTimer()
 
@@ -109,6 +117,14 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun advanceOrHold(entity: NpcEntity, target: LivingEntity) {
+        // Dug in: fight from the hole, never reposition to advance/bound toward the target — see
+        // NpcEntity.diggedIn's own doc comment. Aiming/firing below is completely unaffected.
+        if (entity.diggedIn) {
+            entity.navigation.stop()
+            bounding = true
+            boundPhaseStarted = false
+            return
+        }
         if (entity.distanceToSqr(target) <= entity.shootDistance * entity.shootDistance) {
             entity.navigation.stop()
             bounding = true
@@ -178,7 +194,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         val explosionRadius = gunData.get(GunProp.EXPLOSION_RADIUS)
         blastClear = FriendlyFireGuard.hasClearBlastRadius(entity, target.position(), explosionRadius)
 
-        if (!lineIsClear) {
+        if (!lineIsClear && !entity.diggedIn) {
+            // Dug in: hold fire rather than step out of the hole to clear an ally's line of fire —
+            // same reasoning as advanceOrHold's guard above.
             if (entity.tickCount >= nextSidestepTick) {
                 if (sidestepAttempts >= MAX_SIDESTEP_ATTEMPTS) {
                     sidestepAttempts = 0
@@ -189,7 +207,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                     FriendlyFireGuard.sidestepAwayFromAllies(entity, target.eyePosition)
                 }
             }
-        } else {
+        } else if (lineIsClear) {
             sidestepAttempts = 0
         }
 
@@ -223,6 +241,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                     newProgress -= cooldown
                 } while (newProgress - cooldown > 0)
                 shootTimer.progress = newProgress
+                entity.lastShotTick = entity.tickCount
                 Alarm.raise(entity, entity.position(), target.position(), GUNFIRE_HEARING_RADIUS)
             }
         } else {

@@ -27,6 +27,14 @@ import net.tslat.smartbrainlib.util.BrainUtils
  */
 class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
 
+    // ExtendedBehaviour defaults to a 60-tick runtime cap (confirmed via javap — see
+    // SeekCoverBehaviour's doc comment for the full story); the walk to the alert position can
+    // easily take longer than that, so without this it would get force-stopped and immediately
+    // restarted mid-walk regardless of ALERT_POSITION still being present.
+    init {
+        noTimeout()
+    }
+
     companion object {
         private const val ARRIVE_DISTANCE = 3.0
 
