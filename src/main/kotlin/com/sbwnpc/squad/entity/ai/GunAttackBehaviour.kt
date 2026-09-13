@@ -223,6 +223,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                     newProgress -= cooldown
                 } while (newProgress - cooldown > 0)
                 shootTimer.progress = newProgress
+                entity.lastShotTick = entity.tickCount
                 Alarm.raise(entity, entity.position(), target.position(), GUNFIRE_HEARING_RADIUS)
             }
         } else {

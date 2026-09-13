@@ -5,9 +5,11 @@ import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModMemories
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.tags.BlockTags
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.minecraft.world.level.ClipContext
+import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
@@ -36,14 +38,24 @@ import net.tslat.smartbrainlib.util.BrainUtils
  * behaviour itself just steps the mob out toward its target for the peek and otherwise gets out of
  * the way; it does not fight for control the way the old duck-and-hold-only version implicitly did
  * by never yielding at all.
+ *
+ * Digging in (feature/dig-in): if [findCover] finds no real cover and the mob has to fall back to
+ * [fallbackAwayFrom] instead, once it arrives there it may dig itself a foxhole in place — see
+ * [canDigIn] for the exact gating (badly hurt, a squadmate actually covering it, standable dirt,
+ * flat enough ground) and [tickDiggingIn]/[finishDigging] for the dig itself. Deliberately gated
+ * behind the fallback path only, per user instruction — a squad that found genuine cover has no
+ * need to dig, and digging should never preempt or delay reaching real cover.
  */
 class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
 
-    private enum class Phase { MOVING_TO_COVER, IN_COVER, PEEKING, RETURNING_TO_COVER }
+    private enum class Phase { MOVING_TO_COVER, DIGGING_IN, IN_COVER, PEEKING, RETURNING_TO_COVER }
 
     private var phase = Phase.MOVING_TO_COVER
     private var coverTarget: BlockPos? = null
     private var phaseUntilTick = 0
+    private var isFallbackRetreat = false // coverTarget came from fallbackAwayFrom, not findCover
+    private var digTicksRemaining = 0
+    private var digPos: BlockPos? = null // block being dug, tracked separately for the progress overlay
 
     companion object {
         private const val SAMPLE_COUNT = 20
@@ -57,7 +69,17 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val PEEK_TICKS = 50          // ~2.5s exposed before ducking back, unless target dies/breaks LOS first
         private const val RECHECK_TICKS = 15       // no target yet — check again soon rather than popping out blind
 
+        private const val DIG_HEALTH_FRACTION = 0.5f  // only badly hurt NPCs bother digging in
+        private const val DIG_TICKS = 70              // ~3.5s of "digging" before the hole is done
+        private const val COVERING_ALLY_RADIUS = 16.0
+        private const val COVERING_FIRE_WINDOW_TICKS = 40 // ~2s — covers gaps between shots, not just a single tick
+
         private val NEIGHBOR_OFFSETS = listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1)
+        // 8-directional (incl. diagonals) — used to confirm the ground is actually flat around the
+        // dig site, not just "hidden", see isFlatEnoughToDig().
+        private val DIG_NEIGHBOR_OFFSETS = listOf(
+            1 to 0, -1 to 0, 0 to 1, 0 to -1, 1 to 1, 1 to -1, -1 to 1, -1 to -1
+        )
 
         private val MEMORIES: List<Pair<MemoryModuleType<*>, MemoryStatus>> =
             listOf(Pair.of(ModMemories.SUPPRESSING_THREAT.get(), MemoryStatus.VALUE_PRESENT))
@@ -72,12 +94,16 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         phase = Phase.MOVING_TO_COVER
         coverTarget = null
         phaseUntilTick = 0
+        isFallbackRetreat = false
+        digTicksRemaining = 0
+        digPos = null
         BrainUtils.setMemory(entity, ModMemories.COVER_HOLD.get(), true)
     }
 
     override fun stop(entity: NpcEntity) {
         coverTarget = null
         entity.navigation.stop()
+        digPos?.let { clearDigProgress(entity) }
         BrainUtils.clearMemory(entity, ModMemories.COVER_HOLD.get())
     }
 
@@ -87,6 +113,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         when (phase) {
             Phase.MOVING_TO_COVER -> tickMovingToCover(entity, level, threat)
+            Phase.DIGGING_IN -> tickDiggingIn(entity, level)
             Phase.IN_COVER -> tickInCover(entity)
             Phase.PEEKING -> tickPeeking(entity)
             Phase.RETURNING_TO_COVER -> tickReturningToCover(entity)
@@ -96,13 +123,25 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun tickMovingToCover(entity: NpcEntity, level: ServerLevel, threat: Vec3) {
         val target = coverTarget
         if (target != null) {
-            if (entity.position().closerThan(target.center, 1.5)) enterCover(entity)
+            if (entity.position().closerThan(target.center, 1.5)) {
+                if (isFallbackRetreat && canDigIn(entity, level, target)) {
+                    startDigging(entity, target)
+                } else {
+                    enterCover(entity)
+                }
+            }
             return // still travelling this leg either way
         }
-        val candidate = findCover(entity, level, threat) ?: fallbackAwayFrom(entity, threat)
-        if (candidate != null) {
-            coverTarget = candidate
-            entity.navigation.moveTo(candidate.x + 0.5, candidate.y.toDouble(), candidate.z + 0.5, 1.0)
+        findCover(entity, level, threat)?.let {
+            isFallbackRetreat = false
+            coverTarget = it
+            entity.navigation.moveTo(it.x + 0.5, it.y.toDouble(), it.z + 0.5, 1.0)
+            return
+        }
+        fallbackAwayFrom(entity, threat)?.let {
+            isFallbackRetreat = true
+            coverTarget = it
+            entity.navigation.moveTo(it.x + 0.5, it.y.toDouble(), it.z + 0.5, 1.0)
         }
     }
 
@@ -110,6 +149,78 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.navigation.stop()
         phase = Phase.IN_COVER
         phaseUntilTick = entity.tickCount + DWELL_TICKS + entity.random.nextInt(DWELL_JITTER)
+    }
+
+    private fun startDigging(entity: NpcEntity, target: BlockPos) {
+        entity.navigation.stop()
+        phase = Phase.DIGGING_IN
+        digTicksRemaining = DIG_TICKS
+        digPos = target.below()
+    }
+
+    private fun tickDiggingIn(entity: NpcEntity, level: ServerLevel) {
+        val pos = digPos ?: return enterCover(entity) // shouldn't happen, but never get stuck mid-dig
+        digTicksRemaining--
+        if (digTicksRemaining <= 0) {
+            finishDigging(entity, level)
+        } else {
+            val stage = (9 - 9 * digTicksRemaining / DIG_TICKS).coerceIn(0, 9)
+            level.destroyBlockProgress(entity.id, pos, stage)
+        }
+    }
+
+    private fun finishDigging(entity: NpcEntity, level: ServerLevel) {
+        val pos = digPos ?: return
+        clearDigProgress(entity)
+        level.destroyBlock(pos, false, entity, 512)
+        digPos = null
+        enterCover(entity)
+    }
+
+    private fun clearDigProgress(entity: NpcEntity) {
+        (entity.level() as? ServerLevel)?.destroyBlockProgress(entity.id, digPos ?: return, -1)
+    }
+
+    /** Gates digging in to exactly the invariants the user asked for:
+     *   1. badly hurt (below [DIG_HEALTH_FRACTION] of max health) — not something a healthy NPC
+     *      bothers with;
+     *   2. a squadmate is actually covering: nearby and demonstrably engaging, preferring "fired a
+     *      shot in the last [COVERING_FIRE_WINDOW_TICKS] ticks" (real, verified suppressing fire —
+     *      see [NpcEntity.lastShotTick]) but falling back to "has a live target it can currently see
+     *      and isn't itself cover-locked" (clearly engaging, just between shots) if nothing fired
+     *      that exact instant;
+     *   3. standable dirt-family ground ([BlockTags.DIRT]) directly underfoot.
+     *  Deliberately does NOT check depth of the resulting hole here — see [isFlatEnoughToDig] for
+     *  the actual "this would be a real foxhole, not one block broken on a slope" guarantee. */
+    private fun canDigIn(entity: NpcEntity, level: ServerLevel, pos: BlockPos): Boolean {
+        if (entity.health >= entity.maxHealth * DIG_HEALTH_FRACTION) return false
+        if (!level.getBlockState(pos.below()).`is`(BlockTags.DIRT)) return false
+        if (!isFlatEnoughToDig(level, pos)) return false
+        return hasCoveringAlly(entity, level)
+    }
+
+    private fun hasCoveringAlly(entity: NpcEntity, level: ServerLevel): Boolean {
+        val squad = entity.currentSquad() ?: return false
+        val box = AABB.ofSize(entity.position(), COVERING_ALLY_RADIUS * 2, COVERING_ALLY_RADIUS * 2, COVERING_ALLY_RADIUS * 2)
+        return level.getEntitiesOfClass(NpcEntity::class.java, box).any { ally ->
+            ally !== entity && squad.members.contains(ally.uuid) && isActuallyCovering(ally)
+        }
+    }
+
+    private fun isActuallyCovering(ally: NpcEntity): Boolean {
+        if (ally.firedRecently(COVERING_FIRE_WINDOW_TICKS)) return true
+        val target = ally.target
+        return target != null && target.isAlive && !ally.combatLockedByCover() && ally.sensing.hasLineOfSight(target)
+    }
+
+    /** [pos] only counts as a real dig-in site if the ground around it is at least as high as
+     *  [pos] itself on every side (checked 8-directionally) — i.e. genuinely flat/level terrain, so
+     *  the resulting hole is enclosed by the ORIGINAL, undisturbed ground on every side once dug,
+     *  not a single block broken on a slope or at the edge of an existing depression (which
+     *  wouldn't actually block fire from the low side at all — the user's own example of what
+     *  "digging in" must NOT be). */
+    private fun isFlatEnoughToDig(level: ServerLevel, pos: BlockPos): Boolean {
+        return DIG_NEIGHBOR_OFFSETS.all { (dx, dz) -> groundAt(level, pos.offset(dx, 0, dz)).y >= pos.y }
     }
 
     private fun tickInCover(entity: NpcEntity) {

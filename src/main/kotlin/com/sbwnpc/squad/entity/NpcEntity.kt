@@ -123,6 +123,15 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      *  comment) instead of a hand-rolled enum with a logging setter. */
     fun combatLockedByCover(): Boolean = BrainUtils.hasMemory(this, ModMemories.COVER_HOLD.get())
 
+    // Set by GunAttackBehaviour every time it actually fires (not just "has a target" — genuinely
+    // pulled the trigger this tick). Used by SeekCoverBehaviour to verify an ally is really
+    // providing covering fire before digging in, rather than just inferring it from having a
+    // target and line of sight. internal (not private) for the same cross-file reason isEnemy() is.
+    var lastShotTick: Int = Int.MIN_VALUE / 2
+        internal set
+
+    fun firedRecently(withinTicks: Int): Boolean = tickCount - lastShotTick <= withinTicks
+
     override fun hurt(source: DamageSource, amount: Float): Boolean {
         val result = super.hurt(source, amount)
         // NOT vanilla's DamageTypeTags.IS_PROJECTILE — SBW's gunfire damage types (GUN_FIRE,
