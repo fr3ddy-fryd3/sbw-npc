@@ -37,6 +37,14 @@ object SquadFormation {
     private const val RING_RADIUS = 6.0
     private const val MIN_HEADING_LENGTH = 2.0
 
+    // DEFEND, once arrived, is deliberately looser than a held RING perimeter — "almost FREE, just
+    // bounded to a radius" per user request: a garrison holding a position doesn't stand in a neat
+    // circle, but shouldn't wander unbounded either. MIN keeps members no closer than the old RING
+    // radius; MAX matches SeekCoverBehaviour's own "nearby ally" radius already used elsewhere in
+    // this codebase, not an arbitrary new number.
+    private const val DEFEND_SCATTER_MIN = RING_RADIUS
+    private const val DEFEND_SCATTER_MAX = 16.0
+
     /** Callers that decide "arrived, switch to RING" from raw distance to the anchor MUST use a
      *  threshold at least this big — not RING_RADIUS itself, safely past it. Using anything smaller
      *  (e.g. the ATTACK order's old flat `3.0`, less than RING_RADIUS's `3.5`) is a real bug, not a
@@ -48,14 +56,15 @@ object SquadFormation {
      *  block, over and over". */
     const val ARRIVAL_RADIUS = RING_RADIUS + 1.5
 
-    private enum class Shape { WEDGE, LINE, COLUMN, RING }
+    private enum class Shape { WEDGE, LINE, COLUMN, RING, SCATTER }
 
     /** Transit shape depends on order (advance/hold/travel); once the squad has actually reached
      *  where it's going, [arrived] forces a perimeter instead — a squad standing still in a wedge
      *  or line looks wrong (per user feedback), real held positions look like a ring with everyone
-     *  facing outward, not a marching formation frozen in place. */
+     *  facing outward, not a marching formation frozen in place. DEFEND is the one exception once
+     *  arrived: SCATTER instead of RING — see that shape's own doc note in [localOffset]. */
     private fun shapeFor(order: SquadOrder, arrived: Boolean): Shape {
-        if (arrived) return Shape.RING
+        if (arrived) return if (order == SquadOrder.DEFEND) Shape.SCATTER else Shape.RING
         return when (order) {
             SquadOrder.ATTACK -> Shape.WEDGE
             SquadOrder.DEFEND -> Shape.LINE
@@ -66,13 +75,26 @@ object SquadFormation {
 
     /** Local (unrotated, +Z = forward/toward anchor) offset for the [slotIndex]-th member out of
      *  [squadSize]. For the transit shapes, index 0 is the point/leader slot and sits right on the
-     *  anchor, the rest alternate left/right at increasing rank. RING ignores the leader distinction
-     *  entirely — every member (including 0) gets an even slice of the perimeter. */
+     *  anchor, the rest alternate left/right at increasing rank. RING and SCATTER both ignore the
+     *  leader distinction entirely — every member (including 0) gets its own point, not a fixed spot
+     *  on the anchor. */
     private fun localOffset(shape: Shape, slotIndex: Int, squadSize: Int): Vec3 {
         if (shape == Shape.RING) {
             val count = squadSize.coerceAtLeast(1)
             val angle = 2.0 * Math.PI * slotIndex / count
             return Vec3(kotlin.math.sin(angle) * RING_RADIUS, 0.0, kotlin.math.cos(angle) * RING_RADIUS)
+        }
+        if (shape == Shape.SCATTER) {
+            // Stable PER-SLOT pseudo-random point (same seed -> same angle/distance every tick, no
+            // drift) rather than a neat evenly-spaced ring — "almost FREE, just bounded to a
+            // radius" per user request, for a garrison holding ground rather than a hasty perimeter.
+            // Rotating this by the shared heading afterward (slotTarget) is a harmless no-op — a
+            // uniformly random angle rotated by anything is still uniformly random — same reason
+            // RING doesn't need to care about heading either.
+            val rnd = java.util.Random(slotIndex.toLong() * 2654435761L)
+            val angle = rnd.nextDouble() * Math.PI * 2
+            val dist = DEFEND_SCATTER_MIN + rnd.nextDouble() * (DEFEND_SCATTER_MAX - DEFEND_SCATTER_MIN)
+            return Vec3(kotlin.math.sin(angle) * dist, 0.0, kotlin.math.cos(angle) * dist)
         }
         if (slotIndex <= 0) return Vec3.ZERO
         val rank = (slotIndex + 1) / 2
@@ -85,13 +107,13 @@ object SquadFormation {
             // Mostly single-file, alternating slightly left/right (staggered column) rather than
             // dead in the last member's footsteps.
             Shape.COLUMN -> Vec3(side * SLOT_SPACING * 0.4, 0.0, -rank * SLOT_SPACING)
-            Shape.RING -> Vec3.ZERO // unreachable, handled above
+            Shape.RING, Shape.SCATTER -> Vec3.ZERO // unreachable, handled above
         }
     }
 
     /** World-space point [mob] should path toward instead of the bare [anchor] — offset by its
-     *  formation slot, rotated toward the squad's shared heading (ignored for RING, which is
-     *  rotation-symmetric anyway). [fallbackFacing] is only used when the leader itself can't supply
+     *  formation slot, rotated toward the squad's shared heading (ignored for RING/SCATTER, both
+     *  rotation-symmetric by construction). [fallbackFacing] is only used when the leader itself can't supply
      *  a heading (dead/unloaded, or IS the mob asking) — see [headingFor]. [arrived] switches the
      *  shape to RING regardless of order — see [shapeFor]. Falls back to [anchor] itself if [mob]
      *  isn't actually in a squad (shouldn't happen for real callers, but cheap to guard). */

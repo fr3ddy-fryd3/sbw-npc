@@ -3,6 +3,7 @@ package com.sbwnpc.squad.entity.ai
 import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.squad.RouteManager
+import com.sbwnpc.squad.squad.Squad
 import com.sbwnpc.squad.squad.SquadOrder
 import com.mojang.datafixers.util.Pair
 import net.minecraft.core.BlockPos
@@ -28,10 +29,13 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
  *
  *  - DEFEND: return to within `SquadFormation.ARRIVAL_RADIUS + 4.5` of home (objective point /
  *    guarded entity — currently 12 blocks, but derived rather than hardcoded, see that line), then
- *    hold.
+ *    hold in a loose SCATTER (see [SquadFormation] — deliberately not a tight ring, "almost FREE,
+ *    just bounded to a radius" per user request).
  *  - PATROL: walk the squad's assigned Route in sequence if it has one (see RouteManager);
  *    otherwise wander within ~12 blocks of home as before.
- *  - ATTACK: advance to home.
+ *  - ATTACK: advance to home; once EVERY member has actually arrived, the squad's own order flips
+ *    to DEFEND automatically (see [allSquadArrived]) — taking a point means holding it next, not
+ *    standing frozen in an assault wedge forever.
  *  - FREE / no squad / no home: inactive.
  *
  * Destination points go through [SquadFormation.slotTarget] instead of the bare anchor — every
@@ -73,7 +77,17 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (repathCooldown > 0) repathCooldown--
 
         when (order) {
-            SquadOrder.ATTACK -> approachSlot(entity, home, arrived = dist <= SquadFormation.ARRIVAL_RADIUS)
+            SquadOrder.ATTACK -> {
+                val arrived = dist <= SquadFormation.ARRIVAL_RADIUS
+                approachSlot(entity, home, arrived)
+                // Per user request: "attack a point" means take it, then hold it — not stand
+                // frozen in an assault wedge forever once there. Flips the squad's own order once
+                // EVERY member (not just this one) has actually reached it, so the squad doesn't
+                // start dispersing into DEFEND's looser SCATTER while stragglers are still catching
+                // up. Checked only from this ATTACK branch, so it can never re-fire once already
+                // DEFEND; harmless if two members both flip it the same tick (same value, idempotent).
+                if (arrived && allSquadArrived(entity, squad, home)) squad.order = SquadOrder.DEFEND
+            }
             // Own threshold (not SquadFormation.ARRIVAL_RADIUS) — DEFEND holds a wider perimeter
             // than ATTACK. Derived from ARRIVAL_RADIUS rather than a second hardcoded constant so
             // widening RING_RADIUS again later can't silently reintroduce the arrived/oscillation
@@ -140,6 +154,17 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.position().distanceTo(slot) > 1.5 && repathCooldown == 0) {
             entity.navigation.moveTo(slot.x, slot.y, slot.z, 1.0)
             repathCooldown = 20
+        }
+    }
+
+    /** Resolves every squad member (not just this one) and checks it's within ARRIVAL_RADIUS of
+     *  [home] — an unloaded/dead-but-not-yet-cleaned-up member counts as "not arrived" (conservative:
+     *  better to keep waiting than switch the whole squad to DEFEND while unsure). */
+    private fun allSquadArrived(entity: NpcEntity, squad: Squad, home: Vec3): Boolean {
+        val level = entity.level() as? ServerLevel ?: return false
+        return squad.members.all { id ->
+            val member = level.getEntity(id) as? NpcEntity ?: return@all false
+            member.position().distanceTo(home) <= SquadFormation.ARRIVAL_RADIUS
         }
     }
 
