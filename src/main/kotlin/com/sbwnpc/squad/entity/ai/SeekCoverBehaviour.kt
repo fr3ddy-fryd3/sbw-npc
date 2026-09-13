@@ -193,10 +193,23 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  Deliberately does NOT check depth of the resulting hole here — see [isFlatEnoughToDig] for
      *  the actual "this would be a real foxhole, not one block broken on a slope" guarantee. */
     private fun canDigIn(entity: NpcEntity, level: ServerLevel, pos: BlockPos): Boolean {
-        if (entity.health >= entity.maxHealth * DIG_HEALTH_FRACTION) return false
-        if (!level.getBlockState(pos.below()).`is`(BlockTags.DIRT)) return false
-        if (!isFlatEnoughToDig(level, pos)) return false
-        return hasCoveringAlly(entity, level)
+        val hurtEnough = entity.health < entity.maxHealth * DIG_HEALTH_FRACTION
+        val diggableGround = level.getBlockState(pos.below()).`is`(BlockTags.DIRT)
+        val flatEnough = isFlatEnoughToDig(level, pos)
+        val covered = hasCoveringAlly(entity, level)
+        // TEMPORARY diagnostic (see PLAN.md "дай факт, не догадку" precedent from the old
+        // [cover-debug] logs) — user reported digging never triggering on a flat test world with no
+        // cover at all, where it was expected to fire reliably. Remove once a test pins which
+        // invariant is actually the bottleneck (candidates: no ally ever actively covers when the
+        // WHOLE squad is equally exposed and suppressed at once; the test world's flat surface isn't
+        // a BlockTags.DIRT block).
+        if (!(hurtEnough && diggableGround && flatEnough && covered)) {
+            com.sbwnpc.squad.SquadMod.LOGGER.info(
+                "[dig-debug] {} at {} hurtEnough={} diggableGround={} flatEnough={} covered={}",
+                entity.uuid, pos, hurtEnough, diggableGround, flatEnough, covered
+            )
+        }
+        return hurtEnough && diggableGround && flatEnough && covered
     }
 
     private fun hasCoveringAlly(entity: NpcEntity, level: ServerLevel): Boolean {
