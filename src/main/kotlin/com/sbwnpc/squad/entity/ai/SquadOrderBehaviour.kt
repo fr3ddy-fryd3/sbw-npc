@@ -72,7 +72,12 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         when (order) {
             SquadOrder.ATTACK -> approachSlot(entity, home, arrived = dist <= SquadFormation.ARRIVAL_RADIUS)
-            SquadOrder.DEFEND -> approachSlot(entity, home, arrived = dist <= 8.0)
+            // Own threshold (not SquadFormation.ARRIVAL_RADIUS) — DEFEND holds a wider perimeter
+            // than ATTACK. Derived from ARRIVAL_RADIUS rather than a second hardcoded constant so
+            // widening RING_RADIUS again later can't silently reintroduce the arrived/oscillation
+            // bug documented on ARRIVAL_RADIUS itself (this was a flat `8.0` before, which the old
+            // 3.5 RING_RADIUS made safe by accident — no longer safe by accident against 6.0).
+            SquadOrder.DEFEND -> approachSlot(entity, home, arrived = dist <= SquadFormation.ARRIVAL_RADIUS + 4.5)
             SquadOrder.PATROL -> {
                 val points = squad.routeId
                     ?.let { (entity.level() as? ServerLevel)?.let { lvl -> RouteManager.get(lvl).get(it) } }

@@ -46,14 +46,18 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var phaseUntilTick = 0
 
     companion object {
-        private const val SAMPLE_COUNT = 12
-        private const val MIN_RADIUS = 4.0
-        private const val MAX_RADIUS = 8.0
-        private const val FALLBACK_DISTANCE = 3.0
+        private const val SAMPLE_COUNT = 20
+        private const val MIN_RADIUS = 5.0
+        private const val MAX_RADIUS = 14.0
+        private const val WALL_SCAN_STEP = 2       // grid spacing (blocks) for the wall-adjacency scan
+        private const val FALLBACK_DISTANCE = 6.0
+        private const val FALLBACK_SPREAD_RADIANS = Math.PI / 3.0 // +/- 60 deg off dead-away-from-threat
         private const val DWELL_TICKS = 20        // ~1s minimum before the first peek
         private const val DWELL_JITTER = 30        // + up to ~1.5s random, so a squad doesn't peek in lockstep
         private const val PEEK_TICKS = 50          // ~2.5s exposed before ducking back, unless target dies/breaks LOS first
         private const val RECHECK_TICKS = 15       // no target yet — check again soon rather than popping out blind
+
+        private val NEIGHBOR_OFFSETS = listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1)
 
         private val MEMORIES: List<Pair<MemoryModuleType<*>, MemoryStatus>> =
             listOf(Pair.of(ModMemories.SUPPRESSING_THREAT.get(), MemoryStatus.VALUE_PRESENT))
@@ -152,16 +156,54 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.navigation.moveTo(target.x + 0.5, target.y.toDouble(), target.z + 0.5, 1.0)
     }
 
-    /** Samples points around the mob and keeps the nearest one the threat's last known position
-     *  can't actually see (blocked by terrain), rather than just "anywhere N blocks away". */
+    /** Two candidate sources, both filtered down to points the threat's last known position can't
+     *  actually see (blocked by terrain) — the raycast in [isHiddenFrom] is the real gate, this is
+     *  just about generating candidates likely to pass it:
+     *   - a coarse grid scan biased toward spots with a solid block right next to them (an actual
+     *     wall/rock/building corner) — genuine physical cover, not just "some open spot that
+     *     happens to be hidden by a terrain bump".
+     *   - random angle/distance samples (same as before) — still useful in open/rubble terrain
+     *     where there's no single obvious wall to hug.
+     *  Grid-scan-only would miss legitimate cover in uneven open terrain; random-only was what
+     *  actually shipped before and, per user feedback in-game, mostly just resulted in NPCs backing
+     *  straight away from the threat ([fallbackAwayFrom]) instead of finding real cover — because
+     *  purely random points rarely land next to a wall by chance within a small sample. */
     private fun findCover(entity: NpcEntity, level: ServerLevel, threat: Vec3): BlockPos? {
         val origin = entity.blockPosition()
-        val candidates = (1..SAMPLE_COUNT).map {
+        val candidates = ArrayList<BlockPos>(64)
+
+        var dx = -MAX_RADIUS.toInt()
+        while (dx <= MAX_RADIUS.toInt()) {
+            var dz = -MAX_RADIUS.toInt()
+            while (dz <= MAX_RADIUS.toInt()) {
+                val distSq = (dx * dx + dz * dz).toDouble()
+                if (distSq in (MIN_RADIUS * MIN_RADIUS)..(MAX_RADIUS * MAX_RADIUS)) {
+                    val ground = groundAt(level, origin.offset(dx, 0, dz))
+                    if (hasAdjacentSolidWall(level, ground)) candidates += ground
+                }
+                dz += WALL_SCAN_STEP
+            }
+            dx += WALL_SCAN_STEP
+        }
+
+        repeat(SAMPLE_COUNT) {
             val angle = entity.random.nextDouble() * Math.PI * 2
             val dist = MIN_RADIUS + entity.random.nextDouble() * (MAX_RADIUS - MIN_RADIUS)
-            groundAt(level, origin.offset(Math.round(Math.cos(angle) * dist).toInt(), 0, Math.round(Math.sin(angle) * dist).toInt()))
+            candidates += groundAt(level, origin.offset(Math.round(Math.cos(angle) * dist).toInt(), 0, Math.round(Math.sin(angle) * dist).toInt()))
         }
+
         return candidates.filter { isHiddenFrom(level, entity, threat, it) }.minByOrNull { it.distSqr(origin) }
+    }
+
+    /** A solid block at body or head height on any of the 4 horizontal sides — cheap proxy for
+     *  "there's a wall/corner here", the same "not air = solid enough" heuristic [groundAt] already
+     *  uses. Doesn't need to know which side the threat is on: [isHiddenFrom]'s raycast is what
+     *  actually decides whether this particular wall blocks THIS particular threat. */
+    private fun hasAdjacentSolidWall(level: ServerLevel, pos: BlockPos): Boolean {
+        return NEIGHBOR_OFFSETS.any { (nx, nz) ->
+            val side = pos.offset(nx, 0, nz)
+            !level.getBlockState(side).isAir || !level.getBlockState(side.above()).isAir
+        }
     }
 
     private fun isHiddenFrom(level: ServerLevel, entity: NpcEntity, threat: Vec3, candidate: BlockPos): Boolean {
@@ -182,12 +224,17 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         return p
     }
 
-    /** No reachable cover found — just put a few blocks between the mob and the threat instead of
-     *  standing still under fire. */
+    /** No reachable cover found — put real distance between the mob and the threat instead of
+     *  standing still under fire, angled off dead-away by a random spread so several suppressed
+     *  squadmates retreating at once don't all bunch up on the same line behind the threat (which
+     *  would just recreate the "everyone stacks together" problem this whole feature exists to
+     *  avoid, one step removed). */
     private fun fallbackAwayFrom(entity: NpcEntity, threat: Vec3): BlockPos? {
         val away = entity.position().subtract(threat)
         if (away.lengthSqr() < 1.0e-6) return null
-        val dir = away.normalize()
+        val baseAngle = Math.atan2(away.z, away.x)
+        val angle = baseAngle + (entity.random.nextDouble() * 2.0 - 1.0) * FALLBACK_SPREAD_RADIANS
+        val dir = Vec3(Math.cos(angle), 0.0, Math.sin(angle))
         return BlockPos.containing(entity.position().add(dir.x * FALLBACK_DISTANCE, 0.0, dir.z * FALLBACK_DISTANCE))
     }
 }
