@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
+import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModMemories
 import net.minecraft.core.BlockPos
@@ -68,7 +69,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     companion object {
         private const val SAMPLE_COUNT = 20
         private const val MIN_RADIUS = 5.0
-        private const val MAX_RADIUS = 28.0        // x2 per user request
+        private const val MAX_RADIUS = 14.0        // reverted back from 28 per user request
         private const val WALL_SCAN_STEP = 2       // grid spacing (blocks) for the wall-adjacency scan
         private const val FALLBACK_DISTANCE = 6.0
         private const val FALLBACK_SPREAD_RADIANS = Math.PI / 3.0 // +/- 60 deg off dead-away-from-threat
@@ -89,6 +90,12 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val COVERING_ALLY_RADIUS = 16.0
         private const val COVERING_FIRE_WINDOW_TICKS = 40 // ~2s — covers gaps between shots, not just a single tick
 
+        // See maybeThrowGrenadeOnceDugIn(). Same toss physics as GrenadeThrowBehaviour's own throw
+        // (placeholder constants there too — needs the same in-game visual tuning eventually).
+        private const val GRENADE_THROW_CHANCE = 0.2
+        private const val GRENADE_THROW_SPEED = 1.0
+        private const val GRENADE_GRAVITY = 0.05
+
         // Debug-visual colors (see markCoverChoice) — GREEN for a real found-cover spot, ORANGE for
         // a blind fallback retreat, BROWN for an actually-started dig.
         private val GREEN = org.joml.Vector3f(0.2f, 1.0f, 0.2f)
@@ -97,8 +104,13 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         private val NEIGHBOR_OFFSETS = listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1)
         // How far out (in block-widths, along each NEIGHBOR_OFFSETS direction) to look for a
-        // depression's actual rim — see hasAdjacentSolidWall's doc comment.
-        private val DEPRESSION_CHECK_DISTANCES = 1..3
+        // depression's actual rim — see hasAdjacentSolidWall's doc comment. 1..3 only ever found
+        // depressions narrower than ~6 blocks total (rim within 3 of any interior point); a real
+        // depression/valley is often wider than that, so a candidate deep inside one never saw its
+        // own rim (reported in-game as depression-cover only ever working "right up close"). Widened
+        // to 1..7 — this only feeds isHiddenFrom() more CANDIDATES to try, it doesn't grant cover on
+        // its own, so widening it further has no downside beyond a bit more scanning work.
+        private val DEPRESSION_CHECK_DISTANCES = 1..7
         // 8-directional (incl. diagonals) — used to confirm the ground is actually flat around the
         // dig site, not just "hidden", see isFlatEnoughToDig().
         private val DIG_NEIGHBOR_OFFSETS = listOf(
@@ -271,11 +283,39 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         clearDigProgress(entity)
         level.destroyBlock(pos, false, entity, 512)
         digPos = null
+        maybeThrowGrenadeOnceDugIn(entity, level)
         enterCover(entity, refreshSuppression = true)
     }
 
     private fun clearDigProgress(entity: NpcEntity) {
         (entity.level() as? ServerLevel)?.destroyBlockProgress(entity.id, digPos ?: return, -1)
+    }
+
+    /** Per user request: once actually dug in (not before) — a "so the enemy flinches while I catch
+     *  my breath" parting shot, not a pre-emptive one. Small [GRENADE_THROW_CHANCE] roll, needs the
+     *  single offhand grenade every non-mortar NpcClass now carries (see [NpcEntity.applyRole]) —
+     *  consumed on use, one-shot per NPC, unrelated to GRENADIER's own separate, unlimited
+     *  cooldown-based `GrenadeThrowBehaviour`. Thrown at [NpcEntity.threatPos] (the suppressing
+     *  threat, not necessarily the current `target`) since that's who this is meant to rattle. Same
+     *  friendly-fire gates as the ordinary grenade behaviour — skip silently rather than risk
+     *  hitting an ally, the grenade just stays in reserve for next time. */
+    private fun maybeThrowGrenadeOnceDugIn(entity: NpcEntity, level: ServerLevel) {
+        val offhand = entity.offhandItem
+        if (offhand.item !is com.atsuishio.superbwarfare.item.HandGrenade) return
+        if (entity.random.nextDouble() >= GRENADE_THROW_CHANCE) return
+        val threat = entity.threatPos ?: return
+        val radius = com.atsuishio.superbwarfare.config.server.ExplosionConfig.M67_GRENADE_EXPLOSION_RADIUS.get().toDouble()
+        if (!FriendlyFireGuard.hasClearLineOfFire(entity, threat)) return
+        if (!FriendlyFireGuard.hasClearBlastRadius(entity, threat, radius)) return
+
+        val launchPos = entity.eyePosition
+        val solution = com.atsuishio.superbwarfare.tools.RangeTool.calculateFiringSolution(
+            launchPos, threat, Vec3.ZERO, GRENADE_THROW_SPEED, GRENADE_GRAVITY
+        )
+        val grenade = com.atsuishio.superbwarfare.entity.projectile.HandGrenadeEntity(entity, level)
+        grenade.deltaMovement = solution
+        level.addFreshEntity(grenade)
+        entity.setItemInHand(net.minecraft.world.InteractionHand.OFF_HAND, net.minecraft.world.item.ItemStack.EMPTY)
     }
 
     /** Gates digging in to exactly the invariants the user asked for:
