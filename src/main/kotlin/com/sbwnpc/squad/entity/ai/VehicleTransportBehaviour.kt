@@ -60,6 +60,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var nextSeekTick = 0
     private var seekingStartTick = 0
     private var lastNoCandidateLogTick = 0
+    private var lastEligibilityLogTick = -ELIGIBILITY_LOG_INTERVAL_TICKS
 
     // Route the driver follows instead of a straight line to home — see class doc comment.
     private var route: List<BlockPos> = emptyList()
@@ -81,23 +82,44 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun eligible(entity: NpcEntity): Boolean {
         if (entity.vehicle != null) return true // already mounted: DRIVING/RIDING keep going regardless
-        if (combatInterrupted(entity)) return false
-        if (entity.diggedIn) return false
-        val squad = entity.currentSquad() ?: return false
-        if (squad.order == SquadOrder.FREE) return false
-        val home = entity.homeCenter() ?: return false
-        if (entity.position().distanceTo(home) <= TRANSPORT_DISTANCE_THRESHOLD) return false
-        // No vehicle to claim/join anywhere nearby — rather than sit frozen in SEEKING forever
-        // (which would also keep blocking SquadOrderBehaviour via vehicleTransport), give up and
-        // let this behaviour stop so the NPC falls back to its normal walk.
-        if (phase == Phase.SEEKING && entity.tickCount - seekingStartTick > SEEK_GIVEUP_TICKS) {
-            com.sbwnpc.squad.SquadMod.LOGGER.info(
-                "[vehicle-debug] {} giving up seeking a vehicle after {} ticks, falling back to walking",
-                entity.uuid, SEEK_GIVEUP_TICKS
-            )
-            return false
+
+        val reason: String
+        val result: Boolean
+        val squad = entity.currentSquad()
+        val home = squad?.let { entity.homeCenter() }
+        val dist = home?.let { entity.position().distanceTo(it) }
+
+        if (combatInterrupted(entity)) {
+            reason = "combat interrupted (target=${entity.target != null} alert=${entity.isAlert()} suppressed=${entity.isSuppressed()})"
+            result = false
+        } else if (entity.diggedIn) {
+            reason = "dug in"
+            result = false
+        } else if (squad == null) {
+            reason = "no squad"
+            result = false
+        } else if (squad.order == SquadOrder.FREE) {
+            reason = "order is FREE"
+            result = false
+        } else if (home == null) {
+            reason = "no home/objective"
+            result = false
+        } else if (dist!! <= TRANSPORT_DISTANCE_THRESHOLD) {
+            reason = "home is only $dist blocks away (threshold $TRANSPORT_DISTANCE_THRESHOLD)"
+            result = false
+        } else if (phase == Phase.SEEKING && entity.tickCount - seekingStartTick > SEEK_GIVEUP_TICKS) {
+            reason = "gave up seeking a vehicle after $SEEK_GIVEUP_TICKS ticks, falling back to walking"
+            result = false
+        } else {
+            reason = "eligible, home=$home dist=$dist"
+            result = true
         }
-        return true
+
+        if (entity.tickCount - lastEligibilityLogTick >= ELIGIBILITY_LOG_INTERVAL_TICKS) {
+            lastEligibilityLogTick = entity.tickCount
+            com.sbwnpc.squad.SquadMod.LOGGER.info("[vehicle-debug] {} eligible={} : {}", entity.uuid, result, reason)
+        }
+        return result
     }
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = eligible(entity)
@@ -401,6 +423,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val SEEK_INTERVAL_TICKS = 20
         private const val SEEK_GIVEUP_TICKS = 200 // ~10s of scanning before falling back to walking
         private const val NO_CANDIDATE_LOG_INTERVAL_TICKS = 100
+        private const val ELIGIBILITY_LOG_INTERVAL_TICKS = 60 // 3s between eligibility trace lines
         private const val REPATH_INTERVAL_TICKS = 20
         private const val TURN_DEADZONE_DEGREES = 6.0
         private const val RUN_SPEED_MODIFIER = 1.0
