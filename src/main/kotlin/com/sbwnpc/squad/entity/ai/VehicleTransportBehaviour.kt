@@ -380,15 +380,20 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     /** (Re)computes a route to [home] with the driver's own pathfinder, throttled to once every
-     *  [ROUTE_RECOMPUTE_TICKS] (or immediately after a stuck-recovery episode, via [nextRouteTick]
-     *  being force-reset). Falls back to an empty route (steer straight at [home]) if the pathfinder
-     *  can't find anything, rather than getting stuck on a route that no longer exists. */
+     *  [ROUTE_RECOMPUTE_TICKS] (or immediately after a stuck-recovery episode, or after exhausting the
+     *  current route short of home — see below — via [nextRouteTick] being force-reset). Falls back to
+     *  an empty route (steer straight at [home]) if the pathfinder can't find anything, rather than
+     *  getting stuck on a route that no longer exists. */
     private fun currentWaypoint(entity: NpcEntity, home: Vec3): Vec3 {
         if (route.isEmpty() || entity.tickCount >= nextRouteTick) {
             nextRouteTick = entity.tickCount + ROUTE_RECOMPUTE_TICKS
             val path = entity.navigation.createPath(BlockPos.containing(home), 0)
             route = if (path != null) (0 until path.nodeCount).map { path.getNodePos(it) } else emptyList()
             routeIndex = 0
+            com.sbwnpc.squad.SquadMod.LOGGER.info(
+                "[vehicle-debug] {} recomputed route: {} nodes, canReach={}, dist-to-home={}",
+                entity.uuid, route.size, path?.canReach(), entity.position().distanceTo(home)
+            )
         }
         if (route.isEmpty()) return home
 
@@ -396,6 +401,21 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         while (routeIndex < route.size - 1 && entity.position().distanceTo(target) < WAYPOINT_RADIUS) {
             routeIndex++
             target = route[routeIndex].center
+        }
+
+        // Vanilla pathfinding caps how far it will search at the mob's own FOLLOW_RANGE attribute
+        // (confirmed in PathNavigation.createPath: search region sized to followRange+8, followRange
+        // itself passed as the pathfinder's own max distance) — 72 blocks for NpcEntity, well short of
+        // the 100+ block trips this behaviour triggers for. A route to a distant home is therefore
+        // routinely a PARTIAL one that stops well short of the actual target. Reaching the LAST node of
+        // such a route isn't arrival: without forcing an immediate recompute here, the vehicle would
+        // keep steering at that same now-passed dead-end point for up to ROUTE_RECOMPUTE_TICKS (5s),
+        // overshooting and turning back onto it every tick — reported in-game as the vehicle circling
+        // right where the route ran out. Forcing the next tick's currentWaypoint call to recompute
+        // (same idiom already used to force a fresh route right after stuck-recovery) turns each
+        // exhausted partial route into "immediately path another ~70 blocks toward home" instead.
+        if (routeIndex == route.size - 1 && entity.position().distanceTo(target) < WAYPOINT_RADIUS) {
+            nextRouteTick = entity.tickCount
         }
         return target
     }
