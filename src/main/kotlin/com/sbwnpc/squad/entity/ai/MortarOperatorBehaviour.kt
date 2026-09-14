@@ -74,6 +74,7 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         // respects NpcEntity.diggedIn (PM review finding — this was one of two Core tasks that
         // still didn't) — manning the mortar can wait until it's healed/no longer holding.
         if (entity.diggedIn) return false
+        if (entity.vehicleTransport) return false
         // Genuine personal danger only (an enemy right on top of the operator) — NOT just "some
         // sensor set ATTACK_TARGET", which also happens from the generic squad-target sensor every
         // NpcEntity has regardless of class. Bailing out on ANY target used to silently disable the

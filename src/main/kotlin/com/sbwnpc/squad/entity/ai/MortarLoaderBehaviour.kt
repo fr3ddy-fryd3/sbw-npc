@@ -47,6 +47,7 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
         // NpcEntity.diggedIn (PM review finding — this was the one Core task that still didn't) —
         // resupplying the mortar can wait until it's healed/no longer holding.
         if (entity.diggedIn) return false
+        if (entity.vehicleTransport) return false
 
         val current = mortar
         if (current != null && current.isAlive && !MortarClaims.isLoaderClaimedByOther(current.uuid, entity.uuid)) return true

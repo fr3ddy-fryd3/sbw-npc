@@ -72,6 +72,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         // order), so without this a dug-in mob whose target happened to die/break LOS for even a
         // moment would get marched off toward its DEFEND/PATROL slot, right out of its own hole.
         if (entity.diggedIn) return false
+        if (entity.vehicleTransport) return false
         val squad = entity.currentSquad() ?: return false
         return squad.order != SquadOrder.FREE && entity.homeCenter() != null
     }

@@ -150,6 +150,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // SeekCoverBehaviour.enterDugInHolding's doc comment for the fuller reasoning/history).
     var diggedIn: Boolean = false
 
+    // Set/cleared only by VehicleTransportBehaviour while the mob is seeking/boarding/driving/
+    // riding a vehicle to cover long squad-transit distances. Same "hands off this mob" contract as
+    // diggedIn — every other movement/role behaviour must stand down while this is true.
+    var vehicleTransport: Boolean = false
+
     override fun hurt(source: DamageSource, amount: Float): Boolean {
         val result = super.hurt(source, amount)
         // NOT vanilla's DamageTypeTags.IS_PROJECTILE — SBW's gunfire damage types (GUN_FIRE,
@@ -291,8 +296,14 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // checks already exclude each other's cases (see each class's doc comment), reproducing the
     // old goal-priority order (Investigate=4 beat SquadOrder=5) by hand since Idle behaviours have
     // no automatic per-Flag exclusivity like GoalSelector did.
+    // VehicleTransportBehaviour sits between them: eligible under the same base conditions as
+    // SquadOrderBehaviour (no target, not alert, has a squad+home) plus "home is far enough to
+    // drive instead of walk" — so it wins over SquadOrderBehaviour whenever both would otherwise
+    // apply, and steps aside for SquadOrderBehaviour once close enough / after arrival.
     override fun getIdleTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
-        net.tslat.smartbrainlib.api.core.BrainActivityGroup.idleTasks(InvestigateBehaviour(), SquadOrderBehaviour())
+        net.tslat.smartbrainlib.api.core.BrainActivityGroup.idleTasks(
+            InvestigateBehaviour(), com.sbwnpc.squad.entity.ai.VehicleTransportBehaviour(), SquadOrderBehaviour()
+        )
     // Fight: only while ATTACK_TARGET is set. GunAttackBehaviour is a direct port of the old
     // NpcGunAttackGoal; AnimatableMeleeAttack is SmartBrainLib's own ready-made melee behaviour
     // (only attacks when already within melee range + LOS — it does no chasing of its own, same as

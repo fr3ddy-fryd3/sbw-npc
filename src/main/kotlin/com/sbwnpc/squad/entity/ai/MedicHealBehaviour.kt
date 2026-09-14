@@ -86,6 +86,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
         // that still didn't) — even a critically wounded ally doesn't get the medic to abandon its
         // own hole; treating can wait until it's healed/no longer holding.
         if (entity.diggedIn) return null
+        if (entity.vehicleTransport) return null
         val faction = SquadTeams.factionOf(entity) ?: return null
         val level = entity.level() as? ServerLevel ?: return null
         val box = AABB.ofSize(entity.position(), SCAN_RADIUS * 2, SCAN_RADIUS * 2, SCAN_RADIUS * 2)
