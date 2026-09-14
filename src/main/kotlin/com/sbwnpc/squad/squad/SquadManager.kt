@@ -151,16 +151,24 @@ class SquadManager : SavedData() {
             val missing = squad.originalComposition.drop(squad.members.size)
             missing.forEach { cls ->
                 val npc = ModEntities.NPC.get().create(level) ?: return@forEach
-                val offX = (level.random.nextDouble() - 0.5) * 3.0
-                val offZ = (level.random.nextDouble() - 0.5) * 3.0
+                val dimensions = npc.getDimensions(net.minecraft.world.entity.Pose.STANDING)
                 // A barracks built into a slope/hillside means the ±3-block scatter can easily land
-                // on a spot where the terrain is higher than the barracks itself — without this, a
-                // reinforcement could spawn with its feet inside solid ground and suffocate on the
-                // very first tick.
-                val spawnX = pos.x + offX
-                val spawnZ = pos.z + offZ
-                val spawnY = SafeSpawn.findSafeY(level, spawnX, spawnZ, barracksPos.y, npc.getDimensions(net.minecraft.world.entity.Pose.STANDING))
-                npc.moveTo(spawnX, spawnY, spawnZ, level.random.nextFloat() * 360f, 0f)
+                // on a spot where the terrain has no safe footing in range at all — try a few
+                // scatter offsets before falling back to the barracks' own spot, which is guaranteed
+                // to stand on solid ground since the block itself is placed there.
+                var spawnX = pos.x
+                var spawnZ = pos.z
+                var spawnY: Double? = null
+                for (attempt in 0 until 5) {
+                    val tryX = if (attempt == 0) pos.x else pos.x + (level.random.nextDouble() - 0.5) * 3.0
+                    val tryZ = if (attempt == 0) pos.z else pos.z + (level.random.nextDouble() - 0.5) * 3.0
+                    val tryY = SafeSpawn.findSafeY(level, tryX, tryZ, barracksPos.y, dimensions)
+                    if (tryY != null) {
+                        spawnX = tryX; spawnZ = tryZ; spawnY = tryY
+                        break
+                    }
+                }
+                npc.moveTo(spawnX, spawnY ?: (barracksPos.y + 1.0), spawnZ, level.random.nextFloat() * 360f, 0f)
                 npc.npcClass = cls
                 npc.npcRank = NpcRank.DEFAULT
                 npc.spawnFaction = squad.faction

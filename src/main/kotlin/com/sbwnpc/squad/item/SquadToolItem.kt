@@ -192,7 +192,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             // A line spread sideways from the click point can easily cross a step, overhang, or
             // wall — without this, a member off to either side could spawn with its feet inside a
             // solid block and suffocate before doing anything at all.
-            val spawnY = SafeSpawn.findSafeY(level, spawnX, spawnZ, center.y, npc.getDimensions(Pose.STANDING))
+            val spawnY = SafeSpawn.findSafeY(level, spawnX, spawnZ, center.y, npc.getDimensions(Pose.STANDING)) ?: center.y.toDouble()
             npc.moveTo(spawnX, spawnY, spawnZ, facingYaw + 180f, 0f)
             npc.npcClass = cls
             npc.npcRank = rank
