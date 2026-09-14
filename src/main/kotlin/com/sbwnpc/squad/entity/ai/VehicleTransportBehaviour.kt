@@ -84,7 +84,16 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun combatInterrupted(entity: NpcEntity) =
         entity.target != null || entity.isAlert() || entity.isSuppressed()
 
-    private fun eligible(entity: NpcEntity): Boolean {
+    /** [checkGiveup] must be false when called from [checkExtraStartConditions] (deciding whether to
+     *  START a brand new episode) and true from [shouldKeepRunning] (deciding whether an ALREADY
+     *  RUNNING seeking episode has taken too long). Both used to share one giveup check keyed off
+     *  [seekingStartTick] — but that timestamp is only meaningful once [start] has actually run for
+     *  THIS episode. Confirmed via [vehicle-debug]: a squad that had already finished one transport,
+     *  sat idle near the objective for ~10+ real seconds, then got a fresh distant order had its very
+     *  first eligibility check already read as "given up" — `stop()`'s own reset of
+     *  [seekingStartTick] (at the EARLIER arrival) was already stale by the time a NEW episode's
+     *  first start check ran, so it never got a chance to actually search at all. */
+    private fun eligible(entity: NpcEntity, checkGiveup: Boolean): Boolean {
         if (entity.vehicle != null) return true // already mounted: DRIVING/RIDING keep going regardless
 
         val reason: String
@@ -111,7 +120,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         } else if (dist!! <= TRANSPORT_DISTANCE_THRESHOLD) {
             reason = "home is only $dist blocks away (threshold $TRANSPORT_DISTANCE_THRESHOLD)"
             result = false
-        } else if (phase == Phase.SEEKING && entity.tickCount - seekingStartTick > SEEK_GIVEUP_TICKS) {
+        } else if (checkGiveup && phase == Phase.SEEKING && entity.tickCount - seekingStartTick > SEEK_GIVEUP_TICKS) {
             reason = "gave up seeking a vehicle after $SEEK_GIVEUP_TICKS ticks, falling back to walking"
             result = false
         } else {
@@ -126,10 +135,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         return result
     }
 
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = eligible(entity)
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
+        eligible(entity, checkGiveup = false)
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean =
-        if (entity.vehicle != null) true else eligible(entity)
+        if (entity.vehicle != null) true else eligible(entity, checkGiveup = true)
 
     override fun start(entity: NpcEntity) {
         phase = Phase.SEEKING
