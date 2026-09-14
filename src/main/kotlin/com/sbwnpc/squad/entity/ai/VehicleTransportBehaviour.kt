@@ -233,7 +233,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             return
         }
 
-        if (entity.distanceToSqr(vehicle) > BOARD_DISTANCE * BOARD_DISTANCE) {
+        // Distance to the vehicle's actual hull, not its origin — a multi-block vehicle's origin can
+        // sit well over BOARD_DISTANCE away from anywhere an NPC can actually stand next to it, which
+        // left NPCs permanently stuck just outside boarding range, right next to a vehicle they could
+        // never get "close enough" to by this check's own (wrong) measure.
+        if (vehicle.boundingBox.distanceToSqr(entity.position()) > BOARD_DISTANCE * BOARD_DISTANCE) {
             if (repathCooldown == 0) {
                 entity.navigation.moveTo(vehicle.x, vehicle.y, vehicle.z, RUN_SPEED_MODIFIER)
                 repathCooldown = REPATH_INTERVAL_TICKS
@@ -244,7 +248,13 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.navigation.stop()
         // Not force=true: lets VehicleEntity.canAddPassenger's own real seat-capacity check apply as
         // a final backstop, instead of only trusting the app-level claim registry.
-        if (!entity.startRiding(vehicle, false)) return
+        if (!entity.startRiding(vehicle, false)) {
+            com.sbwnpc.squad.SquadMod.LOGGER.info(
+                "[vehicle-debug] {} in range of {} but startRiding refused", entity.uuid, vehicle.uuid
+            )
+            return
+        }
+        com.sbwnpc.squad.SquadMod.LOGGER.info("[vehicle-debug] {} boarded {}", entity.uuid, vehicle.uuid)
 
         entity.currentSquad()?.faction?.let { SquadTeams.assign(vehicle, it) }
 
