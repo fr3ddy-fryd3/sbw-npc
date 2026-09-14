@@ -477,7 +477,15 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             diff > TURN_ENGAGE_DEGREES -> { turningRight = true; turningLeft = false }
             diff < -TURN_ENGAGE_DEGREES -> { turningLeft = true; turningRight = false }
             Math.abs(diff) < TURN_RELEASE_DEGREES -> { turningRight = false; turningLeft = false }
-            // else: within the hysteresis band — keep whatever turn state was already active
+            // Inside the hysteresis band, normally just keep whatever turn was already active — but if
+            // diff has actually crossed to the OPPOSITE sign of the active turn (overshot past
+            // dead-on, now needs the other way) without yet reaching the release band, holding the old
+            // direction is actively wrong, not just imprecise. Left unhandled, a vehicle whose own
+            // steering lags/overshoots (SBW wheeled vehicles accumulate a separate rudderRot "steering
+            // wheel" state with real inertia, unlike a simple instant-turn model) can get held turning
+            // the wrong way indefinitely once its heading starts oscillating within this band.
+            turningRight && diff < 0 -> turningRight = false
+            turningLeft && diff > 0 -> turningLeft = false
         }
 
         vehicle.forwardInputDown = true
@@ -518,6 +526,13 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val RECOVERY_TICKS = 30 // ~1.5s reverse-and-turn before retrying
         private const val MAX_TRANSIT_TICKS = 2400 // ~2 min hard cap before giving up and walking
         private const val ROUTE_RECOMPUTE_TICKS = 100 // 5s between route refreshes
-        private const val WAYPOINT_RADIUS = 3.0
+        // Deliberately much larger than SquadOrderBehaviour's walking-mob waypoint radius (3 blocks) —
+        // a walking mob can turn on the spot, a vehicle cannot. A waypoint inside the vehicle's own
+        // minimum turning radius is a target it is physically unable to point at: it just orbits that
+        // spot forever, always curving the same way, unable to close the heading gap no matter how
+        // hard it turns — reported in-game as the vehicle endlessly circling to one side while still
+        // driving forward. Advancing to the next waypoint well before getting that close avoids ever
+        // asking the vehicle to hit a target tighter than it can physically steer around.
+        private const val WAYPOINT_RADIUS = 15.0
     }
 }
