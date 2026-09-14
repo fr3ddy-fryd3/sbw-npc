@@ -332,7 +332,21 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             !member.isAlive || member.vehicle != null || member.target != null || member.isAlert()
         }
         val timedOut = entity.tickCount - waitStartTick > WAIT_TIMEOUT_TICKS
-        if (allAccountedFor || timedOut) phase = Phase.DRIVING
+        if (allAccountedFor || timedOut) {
+            // Stuck-detection's baseline (lastStuckCheckTick/lastStuckCheckPos) was last set back at
+            // boarding time, in tickBoarding — it was never touched during the wait. The vehicle has
+            // been sitting dead still for the whole WAITING_FOR_SQUAD stretch (up to WAIT_TIMEOUT_TICKS
+            // = 20s), so on DRIVING's very first stuck-check tick, "haven't moved since lastStuckCheckPos"
+            // is trivially true even though nothing was ever actually stuck — it was deliberately
+            // parked. That fired an immediate bogus recovery (blind reverse + turn) right at the
+            // waiting spot, and since the vehicle barely moves during a single recovery burst, the next
+            // check could refire the same way — this, not the pathfinding range, is what was actually
+            // showing up in-game as the vehicle spinning in tight circles right where the squad boarded.
+            lastStuckCheckTick = entity.tickCount
+            lastStuckCheckPos = null
+            recoveryUntilTick = 0
+            phase = Phase.DRIVING
+        }
     }
 
     private fun tickDriving(entity: NpcEntity) {
