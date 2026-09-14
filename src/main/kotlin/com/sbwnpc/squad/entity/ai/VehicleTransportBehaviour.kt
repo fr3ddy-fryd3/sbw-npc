@@ -59,6 +59,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var repathCooldown = 0
     private var nextSeekTick = 0
     private var seekingStartTick = 0
+    private var giveupCooldownUntilTick = 0
     private var lastNoCandidateLogTick = 0
     private var lastEligibilityLogTick = -ELIGIBILITY_LOG_INTERVAL_TICKS
 
@@ -86,51 +87,53 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /** [checkGiveup] must be false when called from [checkExtraStartConditions] (deciding whether to
      *  START a brand new episode) and true from [shouldKeepRunning] (deciding whether an ALREADY
-     *  RUNNING seeking episode has taken too long). Both used to share one giveup check keyed off
-     *  [seekingStartTick] — but that timestamp is only meaningful once [start] has actually run for
-     *  THIS episode. Confirmed via [vehicle-debug]: a squad that had already finished one transport,
-     *  sat idle near the objective for ~10+ real seconds, then got a fresh distant order had its very
-     *  first eligibility check already read as "given up" — `stop()`'s own reset of
-     *  [seekingStartTick] (at the EARLIER arrival) was already stale by the time a NEW episode's
-     *  first start check ran, so it never got a chance to actually search at all. */
+     *  RUNNING seeking episode has taken too long) — only [shouldKeepRunning] may actually TRIGGER a
+     *  giveup (setting [giveupCooldownUntilTick]); [checkExtraStartConditions] only ever reads it.
+     *
+     *  The giveup itself is an absolute-time cooldown, not an episode-scoped flag: a first attempt at
+     *  this (resetting a per-episode timestamp in `stop()`) still let the behaviour restart on the
+     *  very next tick after giving up — nothing ever blocked `checkExtraStartConditions` from seeing
+     *  a freshly-reset timer and immediately starting a new episode, so it never actually handed
+     *  control to SquadOrderBehaviour's walking fallback, just spun restart→giveup→restart. A
+     *  standing cooldown independent of phase/episode state is what actually keeps it stopped for a
+     *  while. It still doesn't block a genuinely fresh distant order from working (that's the
+     *  original bug this replaced): cooldown only gets set by an actual giveup, never by mere elapsed
+     *  idle time, so an order arriving long after the last episode ended starts with no cooldown at
+     *  all. Cheap checks (combat/dug-in/cooldown) run before the squad/home/distance lookups, and the
+     *  log line's reason is only formatted when actually about to be logged. */
     private fun eligible(entity: NpcEntity, checkGiveup: Boolean): Boolean {
         if (entity.vehicle != null) return true // already mounted: DRIVING/RIDING keep going regardless
 
-        val reason: String
-        val result: Boolean
-        val squad = entity.currentSquad()
-        val home = squad?.let { entity.homeCenter() }
-        val dist = home?.let { entity.position().distanceTo(it) }
-
         if (combatInterrupted(entity)) {
-            reason = "combat interrupted (target=${entity.target != null} alert=${entity.isAlert()} suppressed=${entity.isSuppressed()})"
-            result = false
-        } else if (entity.diggedIn) {
-            reason = "dug in"
-            result = false
-        } else if (squad == null) {
-            reason = "no squad"
-            result = false
-        } else if (squad.order == SquadOrder.FREE) {
-            reason = "order is FREE"
-            result = false
-        } else if (home == null) {
-            reason = "no home/objective"
-            result = false
-        } else if (dist!! <= TRANSPORT_DISTANCE_THRESHOLD) {
-            reason = "home is only $dist blocks away (threshold $TRANSPORT_DISTANCE_THRESHOLD)"
-            result = false
-        } else if (checkGiveup && phase == Phase.SEEKING && entity.tickCount - seekingStartTick > SEEK_GIVEUP_TICKS) {
-            reason = "gave up seeking a vehicle after $SEEK_GIVEUP_TICKS ticks, falling back to walking"
-            result = false
-        } else {
-            reason = "eligible, home=$home dist=$dist"
-            result = true
+            return logEligibility(entity, false) {
+                "combat interrupted (target=${entity.target != null} alert=${entity.isAlert()} suppressed=${entity.isSuppressed()})"
+            }
+        }
+        if (entity.diggedIn) return logEligibility(entity, false) { "dug in" }
+        if (entity.tickCount < giveupCooldownUntilTick) {
+            return logEligibility(entity, false) { "cooling down after a recent giveup (${giveupCooldownUntilTick - entity.tickCount} ticks left)" }
         }
 
+        val squad = entity.currentSquad() ?: return logEligibility(entity, false) { "no squad" }
+        if (squad.order == SquadOrder.FREE) return logEligibility(entity, false) { "order is FREE" }
+        val home = entity.homeCenter() ?: return logEligibility(entity, false) { "no home/objective" }
+        val dist = entity.position().distanceTo(home)
+        if (dist <= TRANSPORT_DISTANCE_THRESHOLD) {
+            return logEligibility(entity, false) { "home is only $dist blocks away (threshold $TRANSPORT_DISTANCE_THRESHOLD)" }
+        }
+        if (checkGiveup && phase == Phase.SEEKING && entity.tickCount - seekingStartTick > SEEK_GIVEUP_TICKS) {
+            giveupCooldownUntilTick = entity.tickCount + GIVEUP_COOLDOWN_TICKS
+            return logEligibility(entity, false) {
+                "gave up seeking a vehicle after $SEEK_GIVEUP_TICKS ticks, cooling down for $GIVEUP_COOLDOWN_TICKS ticks"
+            }
+        }
+        return logEligibility(entity, true) { "eligible, home=$home dist=$dist" }
+    }
+
+    private fun logEligibility(entity: NpcEntity, result: Boolean, reason: () -> String): Boolean {
         if (entity.tickCount - lastEligibilityLogTick >= ELIGIBILITY_LOG_INTERVAL_TICKS) {
             lastEligibilityLogTick = entity.tickCount
-            com.sbwnpc.squad.SquadMod.LOGGER.info("[vehicle-debug] {} eligible={} : {}", entity.uuid, result, reason)
+            com.sbwnpc.squad.SquadMod.LOGGER.info("[vehicle-debug] {} eligible={} : {}", entity.uuid, result, reason())
         }
         return result
     }
@@ -469,6 +472,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val WAIT_TIMEOUT_TICKS = 400 // ~20s
         private const val SEEK_INTERVAL_TICKS = 20
         private const val SEEK_GIVEUP_TICKS = 200 // ~10s of scanning before falling back to walking
+        private const val GIVEUP_COOLDOWN_TICKS = 400 // ~20s before trying again after a giveup
         private const val NO_CANDIDATE_LOG_INTERVAL_TICKS = 100
         private const val ELIGIBILITY_LOG_INTERVAL_TICKS = 60 // 3s between eligibility trace lines
         private const val REPATH_INTERVAL_TICKS = 20
