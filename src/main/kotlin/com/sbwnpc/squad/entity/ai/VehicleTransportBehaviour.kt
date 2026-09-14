@@ -75,6 +75,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var recoveryUntilTick = 0
     private var recoveryTurnLeft = false
 
+    // Hysteresis state for steerToward — see its own doc comment.
+    private var turningLeft = false
+    private var turningRight = false
+
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
     private fun combatInterrupted(entity: NpcEntity) =
@@ -137,6 +141,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         recoveryUntilTick = 0
         route = emptyList()
         nextRouteTick = 0
+        turningLeft = false
+        turningRight = false
         entity.vehicleTransport = true
         com.sbwnpc.squad.SquadMod.LOGGER.info(
             "[vehicle-debug] {} starting vehicle transport, home={} dist={}",
@@ -149,6 +155,14 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.vehicleTransport = false
         phase = Phase.SEEKING
         targetVehicleId = null
+        // Without this, a stale seekingStartTick from a previous (long-finished) transport episode
+        // survives into the next one — checkExtraStartConditions re-evaluates eligible() the very
+        // next tick this NPC becomes eligible again (e.g. a fresh far-away order), sees
+        // tickCount - seekingStartTick already far past SEEK_GIVEUP_TICKS from minutes ago, and
+        // gives up before ever actually starting. Confirmed via [vehicle-debug]: a squad that had
+        // already used a vehicle once, arrived, then got a new distant order walked the whole way
+        // on foot — every one of them logged an instant "gave up" instead of "starting".
+        seekingStartTick = entity.tickCount
     }
 
     override fun tick(entity: NpcEntity) {
@@ -400,16 +414,29 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  Sign of the turn inputs is derived from VehicleEngineUtils' own steering math (rightInputDown
      *  increases yRot, leftInputDown decreases it). VehicleVecUtils.getYRotFromVector's raw output is
      *  the negation of yRot's own convention — every other call site in SuperbWarfare that compares
-     *  it against yRot negates it first (e.g. VehicleEntity.updateRotation) — so it's negated here too. */
+     *  it against yRot negates it first (e.g. VehicleEntity.updateRotation) — so it's negated here too.
+     *
+     *  Hysteresis, not a single deadzone: a plain "turn right if diff > X else left if diff < -X"
+     *  bang-bang controller oscillates right at the boundary (reported in-game as the vehicle
+     *  "snaking" down a straight line) because the vehicle's own momentum/turning carries yRot past
+     *  the threshold and immediately back every tick. Engaging a turn needs a bigger heading gap than
+     *  releasing one, so the input holds steady through the small corrections around dead-on. */
     private fun steerToward(vehicle: VehicleEntity, target: Vec3) {
         val toTarget = target.subtract(vehicle.position())
         val desiredYaw: Double = -VehicleVecUtils.getYRotFromVector(toTarget)
         val diff = Mth.wrapDegrees(desiredYaw - vehicle.yRot.toDouble())
 
+        when {
+            diff > TURN_ENGAGE_DEGREES -> { turningRight = true; turningLeft = false }
+            diff < -TURN_ENGAGE_DEGREES -> { turningLeft = true; turningRight = false }
+            Math.abs(diff) < TURN_RELEASE_DEGREES -> { turningRight = false; turningLeft = false }
+            // else: within the hysteresis band — keep whatever turn state was already active
+        }
+
         vehicle.forwardInputDown = true
         vehicle.backInputDown = false
-        vehicle.rightInputDown = diff > TURN_DEADZONE_DEGREES
-        vehicle.leftInputDown = diff < -TURN_DEADZONE_DEGREES
+        vehicle.rightInputDown = turningRight
+        vehicle.leftInputDown = turningLeft
     }
 
     /** Never claim/board a vehicle a real player is riding — the claim registry only tracks our own
@@ -435,7 +462,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val NO_CANDIDATE_LOG_INTERVAL_TICKS = 100
         private const val ELIGIBILITY_LOG_INTERVAL_TICKS = 60 // 3s between eligibility trace lines
         private const val REPATH_INTERVAL_TICKS = 20
-        private const val TURN_DEADZONE_DEGREES = 6.0
+        private const val TURN_ENGAGE_DEGREES = 10.0
+        private const val TURN_RELEASE_DEGREES = 3.0
         private const val RUN_SPEED_MODIFIER = 1.0
         private const val STUCK_CHECK_INTERVAL_TICKS = 40 // 2s between progress checks
         private const val STUCK_DISTANCE_SQR = 1.0 // moved less than 1 block in that window
