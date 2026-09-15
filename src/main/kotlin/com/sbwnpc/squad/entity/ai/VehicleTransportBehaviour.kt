@@ -76,9 +76,26 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var recoveryUntilTick = 0
     private var recoveryTurnLeft = false
 
-    // Hysteresis state for steerToward — see its own doc comment.
-    private var turningLeft = false
-    private var turningRight = false
+    // Last logged turn state for steerToward — purely for change-detection in the debug log, not
+    // control state (the actual control state, rudderRot, lives on the vehicle itself — see
+    // steerToward's doc comment).
+    private var lastLoggedRight = false
+    private var lastLoggedLeft = false
+    private var lastFullLogTick = 0
+
+    // -1 = not currently waiting to arrive; set the moment waitToStopThenDismount first gets called,
+    // so a timeout can eventually force a dismount even if the vehicle never fully stops.
+    private var arrivalWaitStartTick = -1
+
+    // Snapshot of entity.homeCenter() taken once at boarding (see tickBoarding), then used for every
+    // driving/arrival decision for the rest of the trip instead of re-reading the live value each
+    // tick. entity.homeCenter() is combat-aim semantics, not navigation semantics: when a squad has a
+    // focusEntity set (from an ATTACK order), it resolves to that entity's LIVE, continuously-updating
+    // position — fine for aiming a gun, but chasing it with a vehicle means the destination itself
+    // drifts every tick, so DRIVING/RIDING lock it in once instead. Eligibility (should this NPC even
+    // be seeking/using a vehicle right now) still reads the live entity.homeCenter() every tick, which
+    // is correct there — only the actual driving target is locked in once committed.
+    private var tripDestination: Vec3? = null
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
@@ -90,17 +107,15 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  RUNNING seeking episode has taken too long) — only [shouldKeepRunning] may actually TRIGGER a
      *  giveup (setting [giveupCooldownUntilTick]); [checkExtraStartConditions] only ever reads it.
      *
-     *  The giveup itself is an absolute-time cooldown, not an episode-scoped flag: a first attempt at
-     *  this (resetting a per-episode timestamp in `stop()`) still let the behaviour restart on the
-     *  very next tick after giving up — nothing ever blocked `checkExtraStartConditions` from seeing
-     *  a freshly-reset timer and immediately starting a new episode, so it never actually handed
-     *  control to SquadOrderBehaviour's walking fallback, just spun restart→giveup→restart. A
-     *  standing cooldown independent of phase/episode state is what actually keeps it stopped for a
-     *  while. It still doesn't block a genuinely fresh distant order from working (that's the
-     *  original bug this replaced): cooldown only gets set by an actual giveup, never by mere elapsed
-     *  idle time, so an order arriving long after the last episode ended starts with no cooldown at
-     *  all. Cheap checks (combat/dug-in/cooldown) run before the squad/home/distance lookups, and the
-     *  log line's reason is only formatted when actually about to be logged. */
+     *  The giveup is an absolute-time cooldown, not an episode-scoped flag: only a standing cooldown
+     *  independent of phase/episode state actually keeps the behaviour stopped for a while and hands
+     *  control to SquadOrderBehaviour's walking fallback — an episode-scoped reset (cleared in
+     *  `stop()`) would let `checkExtraStartConditions` see a freshly-reset timer and restart
+     *  immediately. It still doesn't block a genuinely fresh distant order: cooldown only gets set by
+     *  an actual giveup, never by mere elapsed idle time, so an order arriving long after the last
+     *  episode ended starts with no cooldown at all. Cheap checks (combat/dug-in/cooldown) run before
+     *  the squad/home/distance lookups, and the log line's reason is only formatted when actually
+     *  about to be logged. */
     private fun eligible(entity: NpcEntity, checkGiveup: Boolean): Boolean {
         if (entity.vehicle != null) return true // already mounted: DRIVING/RIDING keep going regardless
 
@@ -154,8 +169,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         recoveryUntilTick = 0
         route = emptyList()
         nextRouteTick = 0
-        turningLeft = false
-        turningRight = false
+        lastLoggedRight = false
+        lastLoggedLeft = false
+        lastFullLogTick = 0
+        arrivalWaitStartTick = -1
+        tripDestination = null
         entity.vehicleTransport = true
         com.sbwnpc.squad.SquadMod.LOGGER.info(
             "[vehicle-debug] {} starting vehicle transport, home={} dist={}",
@@ -168,13 +186,12 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.vehicleTransport = false
         phase = Phase.SEEKING
         targetVehicleId = null
+        tripDestination = null
         // Without this, a stale seekingStartTick from a previous (long-finished) transport episode
         // survives into the next one — checkExtraStartConditions re-evaluates eligible() the very
         // next tick this NPC becomes eligible again (e.g. a fresh far-away order), sees
         // tickCount - seekingStartTick already far past SEEK_GIVEUP_TICKS from minutes ago, and
-        // gives up before ever actually starting. Confirmed via [vehicle-debug]: a squad that had
-        // already used a vehicle once, arrived, then got a new distant order walked the whole way
-        // on foot — every one of them logged an instant "gave up" instead of "starting".
+        // gives up before ever actually starting.
         seekingStartTick = entity.tickCount
     }
 
@@ -285,6 +302,13 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         entity.currentSquad()?.faction?.let { SquadTeams.assign(vehicle, it) }
 
+        // Snapshot the destination HERE, once, rather than letting DRIVING/RIDING re-read
+        // entity.homeCenter() live every tick — see the class doc comment on tripDestination's field.
+        // If it's already gone (squad disbanded, order changed to FREE mid-walk-over) there's nothing
+        // to drive to; stay mounted but idle rather than steering at a stale/absent target — the
+        // eligibility check will unmount this NPC on its own on the next tick.
+        tripDestination = entity.homeCenter()
+
         boardTick = entity.tickCount
         // Reset stuck-detection state — it must not carry over from a previous vehicle (e.g. after
         // an abort-and-reseek cycle), which would compare the new vehicle's position against a
@@ -351,24 +375,21 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun tickDriving(entity: NpcEntity) {
         val vehicle = mountOrAbort(entity) ?: return
-        val home = entity.homeCenter()
+        val home = tripDestination
         if (home == null) {
-            stopVehicle(vehicle)
-            entity.stopRiding()
+            waitToStopThenDismount(entity, vehicle, isDriver = true)
             return
         }
 
         if (vehicle.position().distanceTo(home) <= ARRIVAL_RADIUS) {
-            stopVehicle(vehicle)
-            entity.stopRiding()
+            waitToStopThenDismount(entity, vehicle, isDriver = true)
             return
         }
 
         // Hard cap: recovery below isn't guaranteed to work (e.g. genuinely boxed in) — give up and
         // let the driver walk the rest rather than sit there forever retrying.
         if (entity.tickCount - boardTick > MAX_TRANSIT_TICKS) {
-            stopVehicle(vehicle)
-            entity.stopRiding()
+            waitToStopThenDismount(entity, vehicle, isDriver = true)
             return
         }
 
@@ -424,10 +445,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // routinely a PARTIAL one that stops well short of the actual target. Reaching the LAST node of
         // such a route isn't arrival: without forcing an immediate recompute here, the vehicle would
         // keep steering at that same now-passed dead-end point for up to ROUTE_RECOMPUTE_TICKS (5s),
-        // overshooting and turning back onto it every tick — reported in-game as the vehicle circling
-        // right where the route ran out. Forcing the next tick's currentWaypoint call to recompute
-        // (same idiom already used to force a fresh route right after stuck-recovery) turns each
-        // exhausted partial route into "immediately path another ~70 blocks toward home" instead.
+        // overshooting and turning back onto it every tick — i.e. circling in place right where the
+        // route ran out. Forcing the next tick's currentWaypoint call to recompute (mirrors the same
+        // force-reset used after stuck-recovery) turns each exhausted partial route into "immediately
+        // path another ~70 blocks toward home" instead.
         if (routeIndex == route.size - 1 && entity.position().distanceTo(target) < WAYPOINT_RADIUS) {
             nextRouteTick = entity.tickCount
         }
@@ -449,49 +470,100 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  the vehicle stranded with nobody driving it. */
     private fun tickRiding(entity: NpcEntity) {
         val vehicle = mountOrAbort(entity) ?: return
-        val home = entity.homeCenter() ?: run { entity.stopRiding(); return }
+        val home = tripDestination ?: run { waitToStopThenDismount(entity, vehicle, isDriver = false); return }
         if (vehicle.position().distanceTo(home) <= ARRIVAL_RADIUS) {
-            entity.stopRiding()
+            waitToStopThenDismount(entity, vehicle, isDriver = false)
             return
         }
-        if (entity.tickCount - boardTick > MAX_TRANSIT_TICKS) entity.stopRiding()
+        if (entity.tickCount - boardTick > MAX_TRANSIT_TICKS) {
+            waitToStopThenDismount(entity, vehicle, isDriver = false)
+        }
     }
 
-    /** Simple steer-toward-point: always throttle forward, turn left/right to close the heading gap.
-     *  Sign of the turn inputs is derived from VehicleEngineUtils' own steering math (rightInputDown
-     *  increases yRot, leftInputDown decreases it). VehicleVecUtils.getYRotFromVector's raw output is
-     *  the negation of yRot's own convention — every other call site in SuperbWarfare that compares
-     *  it against yRot negates it first (e.g. VehicleEntity.updateRotation) — so it's negated here too.
+    /** entity.stopRiding() drops the rider at the vehicle's CURRENT position without transferring its
+     *  velocity — dismounting while still moving flings the NPC into whatever's around it. Waits for
+     *  the vehicle to actually slow down before ejecting anyone (driver only cuts the throttle — a
+     *  passenger doesn't control the vehicle), with a timeout fallback in case it never fully stops.
      *
-     *  Hysteresis, not a single deadzone: a plain "turn right if diff > X else left if diff < -X"
-     *  bang-bang controller oscillates right at the boundary (reported in-game as the vehicle
-     *  "snaking" down a straight line) because the vehicle's own momentum/turning carries yRot past
-     *  the threshold and immediately back every tick. Engaging a turn needs a bigger heading gap than
-     *  releasing one, so the input holds steady through the small corrections around dead-on. */
+     *  Releasing forwardInputDown/backInputDown alone does not slow a wheeled vehicle down fast enough:
+     *  per VehicleEngineUtils.wheelEngine, `power` (throttle) only decays 3%/tick when idle and keeps
+     *  adding forward thrust every tick proportional to itself regardless of input state. Zeroing
+     *  `power` directly (a public synced field) removes that thrust immediately; ground friction
+     *  (wheelEngine's f0, ~30-50% velocity loss/tick) then kills actual speed within a handful of ticks. */
+    private fun waitToStopThenDismount(entity: NpcEntity, vehicle: VehicleEntity, isDriver: Boolean) {
+        if (isDriver) {
+            stopVehicle(vehicle)
+            vehicle.power = 0f
+        }
+        if (arrivalWaitStartTick < 0) arrivalWaitStartTick = entity.tickCount
+        val speedSqr = vehicle.deltaMovement.horizontalDistanceSqr()
+        val slowEnough = speedSqr < ARRIVAL_STOP_SPEED_SQR
+        val waitedTooLong = entity.tickCount - arrivalWaitStartTick > ARRIVAL_STOP_TIMEOUT_TICKS
+        if (slowEnough || waitedTooLong) {
+            // Diagnostic for the reported "dismounted still moving, died" — logged every time so the
+            // next test tells us the actual speed/health at the exact moment of dismount instead of
+            // guessing again: was it the slow-enough check firing on a real stop, or the timeout
+            // firing early while still going, and was the NPC already hurt going into it.
+            com.sbwnpc.squad.SquadMod.LOGGER.info(
+                "[vehicle-debug] {} dismounting: speed={} slowEnough={} waitedTooLong={} health={}/{} pos={}",
+                entity.uuid, kotlin.math.sqrt(speedSqr), slowEnough, waitedTooLong,
+                entity.health, entity.maxHealth, vehicle.position()
+            )
+            entity.stopRiding()
+            arrivalWaitStartTick = -1
+        }
+    }
+
+    /** Steer-toward-point: always throttle forward, turn left/right to close the heading gap.
+     *
+     *  Targets [VehicleEntity.rudderRot] directly — SBW's own "steering wheel" state
+     *  (VehicleEngineUtils.wheelEngine) — rather than reacting to raw heading error with
+     *  hysteresis/timers: rightInputDown drives rudderRot negative, leftInputDown drives it positive,
+     *  and it decays 25%/tick UNCONDITIONALLY (even while held), so [MAX_RUDDER_MAGNITUDE] targets well
+     *  under the hard ±0.8 clamp rather than up against it (see its own comment). yRot's rate of change
+     *  per tick is `-12 * speed * rudderRot * sign(power)`.
+     *
+     *  `targetRudder = clamp(-diff / RUDDER_FULL_LOCK_DEGREES, -1, 1) * MAX_RUDDER_MAGNITUDE` (negative
+     *  because turning right — wanted when diff > 0 — drives rudderRot negative). Hold whichever input
+     *  direction closes the gap between actual rudderRot and that target; release within
+     *  [RUDDER_DEADBAND] of it. Holding one direction at speed both rotates and translates the vehicle,
+     *  so a fixed hold duration risks a stable circular orbit; targeting a shrinking rudderRot avoids
+     *  that structurally, since the commanded turn backs off as the vehicle actually straightens out
+     *  rather than staying locked in until a timer expires. */
     private fun steerToward(vehicle: VehicleEntity, target: Vec3) {
         val toTarget = target.subtract(vehicle.position())
+        // VehicleVecUtils.getYRotFromVector's raw output is the negation of yRot's own convention —
+        // every other call site in SuperbWarfare that compares it against yRot negates it first (e.g.
+        // VehicleEntity.updateRotation) — so it's negated here too.
         val desiredYaw: Double = -VehicleVecUtils.getYRotFromVector(toTarget)
         val diff = Mth.wrapDegrees(desiredYaw - vehicle.yRot.toDouble())
 
-        when {
-            diff > TURN_ENGAGE_DEGREES -> { turningRight = true; turningLeft = false }
-            diff < -TURN_ENGAGE_DEGREES -> { turningLeft = true; turningRight = false }
-            Math.abs(diff) < TURN_RELEASE_DEGREES -> { turningRight = false; turningLeft = false }
-            // Inside the hysteresis band, normally just keep whatever turn was already active — but if
-            // diff has actually crossed to the OPPOSITE sign of the active turn (overshot past
-            // dead-on, now needs the other way) without yet reaching the release band, holding the old
-            // direction is actively wrong, not just imprecise. Left unhandled, a vehicle whose own
-            // steering lags/overshoots (SBW wheeled vehicles accumulate a separate rudderRot "steering
-            // wheel" state with real inertia, unlike a simple instant-turn model) can get held turning
-            // the wrong way indefinitely once its heading starts oscillating within this band.
-            turningRight && diff < 0 -> turningRight = false
-            turningLeft && diff > 0 -> turningLeft = false
+        val targetRudder = Mth.clamp((-diff / RUDDER_FULL_LOCK_DEGREES).toFloat(), -1f, 1f) * MAX_RUDDER_MAGNITUDE
+        val rudderError = vehicle.rudderRot - targetRudder
+        val right = rudderError > RUDDER_DEADBAND
+        val left = rudderError < -RUDDER_DEADBAND
+
+        // Logged on every turn-state change, plus an unconditional full snapshot every
+        // FULL_STATE_LOG_INTERVAL_TICKS regardless of whether anything changed — a state-change-only
+        // log stays silent for an entire trip if the controller gets stuck holding steady, which is
+        // exactly what hid prior bugs here (long stretches of zero log lines while something was
+        // quietly wrong), so this is the one place that always shows what's actually happening.
+        val dueForFullLog = vehicle.tickCount - lastFullLogTick >= FULL_STATE_LOG_INTERVAL_TICKS
+        if (right != lastLoggedRight || left != lastLoggedLeft || dueForFullLog) {
+            if (dueForFullLog) lastFullLogTick = vehicle.tickCount
+            lastLoggedRight = right
+            lastLoggedLeft = left
+            com.sbwnpc.squad.SquadMod.LOGGER.info(
+                "[vehicle-debug] steer: pos={} yRot={} desiredYaw={} diff={} rudderRot={} targetRudder={} -> right={} left={} speed={}",
+                vehicle.position(), vehicle.yRot, desiredYaw, diff, vehicle.rudderRot, targetRudder, right, left,
+                vehicle.deltaMovement.horizontalDistance()
+            )
         }
 
         vehicle.forwardInputDown = true
         vehicle.backInputDown = false
-        vehicle.rightInputDown = turningRight
-        vehicle.leftInputDown = turningLeft
+        vehicle.rightInputDown = right
+        vehicle.leftInputDown = left
     }
 
     /** Never claim/board a vehicle a real player is riding — the claim registry only tracks our own
@@ -511,6 +583,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val SEARCH_RADIUS = 60.0
         private const val BOARD_DISTANCE = 3.0
         private const val ARRIVAL_RADIUS = 20.0
+        private const val ARRIVAL_STOP_SPEED_SQR = 0.0004 // ~0.02 blocks/tick — "stopped" next to a multi-block vehicle
+        private const val ARRIVAL_STOP_TIMEOUT_TICKS = 60 // ~3s fallback if it never fully stops
         private const val WAIT_TIMEOUT_TICKS = 400 // ~20s
         private const val SEEK_INTERVAL_TICKS = 20
         private const val SEEK_GIVEUP_TICKS = 200 // ~10s of scanning before falling back to walking
@@ -518,8 +592,24 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val NO_CANDIDATE_LOG_INTERVAL_TICKS = 100
         private const val ELIGIBILITY_LOG_INTERVAL_TICKS = 60 // 3s between eligibility trace lines
         private const val REPATH_INTERVAL_TICKS = 20
-        private const val TURN_ENGAGE_DEGREES = 10.0
-        private const val TURN_RELEASE_DEGREES = 3.0
+        // Heading error (degrees) at/beyond which steerToward commands full steering lock
+        // (MAX_RUDDER_MAGNITUDE) — see steerToward's doc comment for the proportional-to-rudderRot
+        // design this feeds. Smaller = more aggressive (reaches full lock at a gentler heading error);
+        // 45° means anything from a moderate correction to a near-reversal all command close to full
+        // lock, while small corrections near the target heading get proportionally gentle steering.
+        private const val RUDDER_FULL_LOCK_DEGREES = 45.0
+        // Below the vehicle's hard rudderRot clamp (±0.8 in VehicleEngineUtils.wheelEngine) on purpose:
+        // rudderRot's *0.75 decay applies every tick even while an input is held, so continuous
+        // single-direction holding only settles at ~0.3-0.6 depending on speed (lower at cruising
+        // speed, since deltaRot's own decay also scales with speed) — well under the hard clamp.
+        // Targeting within that achievable range keeps steerToward's proportional response effective
+        // across most of a turn, not just its final stretch.
+        private const val MAX_RUDDER_MAGNITUDE = 0.4f
+        // How close actual rudderRot must get to the target before releasing input — too small and
+        // float noise/the engine's own per-tick rudderRot changes chatter the input on/off every tick;
+        // too large and steering stays visibly short of what was actually commanded.
+        private const val RUDDER_DEADBAND = 0.05f
+        private const val FULL_STATE_LOG_INTERVAL_TICKS = 10 // unconditional steer snapshot, ~0.5s
         private const val RUN_SPEED_MODIFIER = 1.0
         private const val STUCK_CHECK_INTERVAL_TICKS = 40 // 2s between progress checks
         private const val STUCK_DISTANCE_SQR = 1.0 // moved less than 1 block in that window
@@ -528,11 +618,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val ROUTE_RECOMPUTE_TICKS = 100 // 5s between route refreshes
         // Deliberately much larger than SquadOrderBehaviour's walking-mob waypoint radius (3 blocks) —
         // a walking mob can turn on the spot, a vehicle cannot. A waypoint inside the vehicle's own
-        // minimum turning radius is a target it is physically unable to point at: it just orbits that
-        // spot forever, always curving the same way, unable to close the heading gap no matter how
-        // hard it turns — reported in-game as the vehicle endlessly circling to one side while still
-        // driving forward. Advancing to the next waypoint well before getting that close avoids ever
-        // asking the vehicle to hit a target tighter than it can physically steer around.
+        // minimum turning radius is physically unpointable at: the vehicle just orbits that spot,
+        // unable to close the heading gap no matter how hard it turns. Advancing to the next waypoint
+        // well before getting that close avoids ever asking the vehicle to hit a target tighter than it
+        // can physically steer around.
         private const val WAYPOINT_RADIUS = 15.0
     }
 }
