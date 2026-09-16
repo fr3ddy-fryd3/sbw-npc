@@ -2,7 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
-import com.sbwnpc.squad.combat.FriendlyFireGuard
+import com.sbwnpc.squad.combat.GrenadeThrower
 import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModMemories
@@ -104,7 +104,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val SAMPLE_COUNT = 20
         private const val MIN_RADIUS = 5.0
         private const val MAX_RADIUS = 14.0        // reverted back from 28 per user request
-        private const val WALL_SCAN_STEP = 2       // grid spacing (blocks) for the wall-adjacency scan
+        private const val WALL_SCAN_STEP = 4       // 8x8 candidate grid across the 28-block search diameter
         private const val FALLBACK_DISTANCE = 6.0
         private const val FALLBACK_SPREAD_RADIANS = Math.PI / 3.0 // +/- 60 deg off dead-away-from-threat
         private const val DWELL_TICKS = 20        // ~1s minimum before the first peek
@@ -533,7 +533,10 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  in [Phase.EXITING_HOLE] (which is exactly what happened before this fix: the block broken
      *  wasn't even a real wall, so [hasClimbedOut] could never trip). */
     private fun digSideExit(entity: NpcEntity, level: ServerLevel, hole: BlockPos) {
-        val (dx, dz) = NEIGHBOR_OFFSETS.first()
+        val (dx, dz) = NEIGHBOR_OFFSETS.firstOrNull { (ox, oz) ->
+            val exit = hole.offset(ox, 1, oz)
+            level.getBlockState(exit).isAir && level.getBlockState(exit.above()).isAir
+        } ?: NEIGHBOR_OFFSETS.first()
         // hole.y and hole.y - 1: the two solid layers actually enclosing the mob (hole.y + 1 would be
         // the ORIGINAL surface opening it fell through in the first place — already open, nothing to
         // break there).
@@ -568,17 +571,8 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (!entity.hasReserveGrenade) return
         if (entity.random.nextDouble() >= GRENADE_THROW_CHANCE) return
         val threat = entity.threatPos ?: return
-        val radius = com.atsuishio.superbwarfare.config.server.ExplosionConfig.M67_GRENADE_EXPLOSION_RADIUS.get().toDouble()
-        if (!FriendlyFireGuard.hasClearLineOfFire(entity, threat)) return
-        if (!FriendlyFireGuard.hasClearBlastRadius(entity, threat, radius)) return
-
-        val launchPos = entity.eyePosition
-        val solution = com.atsuishio.superbwarfare.tools.RangeTool.calculateFiringSolution(
-            launchPos, threat, Vec3.ZERO, GRENADE_THROW_SPEED, GRENADE_GRAVITY
-        )
-        val grenade = com.atsuishio.superbwarfare.entity.projectile.HandGrenadeEntity(entity, level)
-        grenade.deltaMovement = solution
-        level.addFreshEntity(grenade)
+        if (!GrenadeThrower.isSafeToThrow(entity, threat)) return
+        GrenadeThrower.throwAt(entity, level, threat)
         entity.hasReserveGrenade = false
     }
 
@@ -604,8 +598,8 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         // timeout) is fixed, the retreat loop is gone but so, apparently, is digging ever
         // triggering at all. Removed too early last round; back specifically for this check (the
         // start()/stop()/refresh mystery from before is solved, no need to re-trace that).
-        if (!(hurtEnough && diggableGround && flatEnough && covered)) {
-            com.sbwnpc.squad.SquadMod.LOGGER.info(
+        if (!(hurtEnough && diggableGround && flatEnough && covered) && com.sbwnpc.squad.SquadMod.LOGGER.isDebugEnabled) {
+            com.sbwnpc.squad.SquadMod.LOGGER.debug(
                 "[dig-debug] {} at {} hurtEnough={} diggableGround={} flatEnough={} covered={}",
                 entity.uuid, pos, hurtEnough, diggableGround, flatEnough, covered
             )
@@ -760,7 +754,10 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
 
         val threats = nearbyThreats(entity, level, threat)
-        return candidates.filter { isHiddenFrom(level, entity, threats, it) }.minByOrNull { it.distSqr(origin) }
+        return candidates.asSequence()
+            .distinct()
+            .sortedBy { it.distSqr(origin) }
+            .firstOrNull { isHiddenFrom(level, entity, threats, it) }
     }
 
     /** Every currently-known hostile near [entity] (within [THREAT_SCAN_RADIUS]), as eye-height
@@ -784,7 +781,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /** Cheap proxy for "there's a wall/corner here", biased two ways rather than just one — per
      *  user request, a candidate standing AT the base of a rise counts (a solid block right beside
-     *  it at body/head height, same "not air = solid enough" heuristic [groundAt] already uses), but
+     *  it at body/head height, but
      *  so does a candidate sitting IN a natural depression/pit whose own rim is higher than the
      *  candidate itself — a dip's edge blocks a ground-level threat's sightline just as well as a
      *  standing wall does, even with nothing solid immediately at the candidate's own body height.
@@ -798,13 +795,16 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun hasAdjacentSolidWall(level: ServerLevel, pos: BlockPos): Boolean {
         val elevatedWallNearby = NEIGHBOR_OFFSETS.any { (nx, nz) ->
             val side = pos.offset(nx, 0, nz)
-            !level.getBlockState(side).isAir || !level.getBlockState(side.above()).isAir
+            hasCollision(level, side) || hasCollision(level, side.above())
         }
         if (elevatedWallNearby) return true
         return DEPRESSION_CHECK_DISTANCES.any { dist ->
             NEIGHBOR_OFFSETS.any { (nx, nz) -> groundAt(level, pos.offset(nx * dist, 0, nz * dist)).y > pos.y }
         }
     }
+
+    private fun hasCollision(level: ServerLevel, pos: BlockPos): Boolean =
+        !level.getBlockState(pos).getCollisionShape(level, pos).isEmpty
 
     /** [candidate] only counts as real cover if it's blocked from EVERY entry in [threats] — one
      *  attacker with a clear line to it is enough to make it not-cover, regardless of how many

@@ -1,25 +1,29 @@
 package com.sbwnpc.squad.entity.ai
 
+import com.atsuishio.superbwarfare.data.vehicle.subdata.EngineType
+import com.atsuishio.superbwarfare.entity.vehicle.MortarEntity
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.atsuishio.superbwarfare.entity.vehicle.utils.VehicleVecUtils
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
 import com.mojang.datafixers.util.Pair
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.util.Mth
+import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
+import net.tslat.smartbrainlib.util.BrainUtils
 
 /**
  * Squad-transit-by-vehicle: when a squad's objective is far enough away that walking is silly, NPCs
- * seek out nearby vehicles instead of hoofing it. No autonomy beyond that yet — no faction ownership
- * tool, no combat while mounted, no reaction to the vehicle taking fire; those are deliberately
- * follow-up work. See PLAN.md Этап 9.
+ * seek out nearby vehicles instead of hoofing it. NPCs never fight while mounted; hostile fire only
+ * interrupts non-ATTACK transport after a controlled stop. See PLAN.md Этап 9.
  *
  * Squad-level coordination is fully decentralized: each member independently consults
  * [VehicleTransportClaims], which is why this scales to several vehicles per squad without any
@@ -41,6 +45,8 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
  *    driver gives up and dismounts to walk if that doesn't clear it within a hard cap either.
  *  - RIDING (passenger only): just waiting for the vehicle to arrive; dismounts itself once close
  *    enough, independently of the driver.
+ *  - COMBAT_DISMOUNT: stops after hostile fire under a non-ATTACK order; the assigned gunner stays
+ *    in an armed seat until the threat clears.
  */
 class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
@@ -50,7 +56,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         noTimeout()
     }
 
-    private enum class Phase { SEEKING, BOARDING, WAITING_FOR_SQUAD, DRIVING, RIDING }
+    private enum class Phase { SEEKING, BOARDING, WAITING_FOR_SQUAD, DRIVING, HOLDING, RIDING, COMBAT_DISMOUNT }
+
+    private data class VehicleChoice(val vehicle: VehicleEntity, val isDriver: Boolean)
 
     private var phase = Phase.SEEKING
     private var targetVehicleId: java.util.UUID? = null
@@ -88,14 +96,16 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var arrivalWaitStartTick = -1
 
     // Snapshot of entity.homeCenter() taken once at boarding (see tickBoarding), then used for every
-    // driving/arrival decision for the rest of the trip instead of re-reading the live value each
-    // tick. entity.homeCenter() is combat-aim semantics, not navigation semantics: when a squad has a
+    // driving/arrival decision for the rest of the trip. MOVE is the exception: its objective is a
+    // fixed point, so a newly issued MOVE order can replace it mid-trip. entity.homeCenter() is
+    // combat-aim semantics for other orders: when a squad has a
     // focusEntity set (from an ATTACK order), it resolves to that entity's LIVE, continuously-updating
     // position — fine for aiming a gun, but chasing it with a vehicle means the destination itself
     // drifts every tick, so DRIVING/RIDING lock it in once instead. Eligibility (should this NPC even
     // be seeking/using a vehicle right now) still reads the live entity.homeCenter() every tick, which
     // is correct there — only the actual driving target is locked in once committed.
     private var tripDestination: Vec3? = null
+    private var observedDamageStamp = 0L
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
@@ -117,6 +127,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  the squad/home/distance lookups, and the log line's reason is only formatted when actually
      *  about to be logged. */
     private fun eligible(entity: NpcEntity, checkGiveup: Boolean): Boolean {
+        // A permanent crew member is driven by this behaviour only while in its own vehicle;
+        // VehicleCrewBehaviour handles getting it back aboard if it is ever ejected.
+        entity.assignedVehicleId?.let { assigned -> return entity.vehicle?.uuid == assigned }
         if (entity.vehicle != null) return true // already mounted: DRIVING/RIDING keep going regardless
 
         if (combatInterrupted(entity)) {
@@ -130,8 +143,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
 
         val squad = entity.currentSquad() ?: return logEligibility(entity, false) { "no squad" }
-        if (squad.order == SquadOrder.FREE) return logEligibility(entity, false) { "order is FREE" }
         val home = entity.homeCenter() ?: return logEligibility(entity, false) { "no home/objective" }
+        if (shouldPrioritizeMortar(entity, squad.order)) {
+            return logEligibility(entity, false) { "mortar duty takes priority for ATTACK" }
+        }
         val dist = entity.position().distanceTo(home)
         if (dist <= TRANSPORT_DISTANCE_THRESHOLD) {
             return logEligibility(entity, false) { "home is only $dist blocks away (threshold $TRANSPORT_DISTANCE_THRESHOLD)" }
@@ -160,6 +175,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.vehicle != null) true else eligible(entity, checkGiveup = true)
 
     override fun start(entity: NpcEntity) {
+        val mounted = entity.vehicle as? VehicleEntity
+        if (mounted != null) {
+            startMounted(entity, mounted)
+            return
+        }
         phase = Phase.SEEKING
         targetVehicleId = null
         repathCooldown = 0
@@ -174,11 +194,38 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         lastFullLogTick = 0
         arrivalWaitStartTick = -1
         tripDestination = null
+        observedDamageStamp = 0L
         entity.vehicleTransport = true
         com.sbwnpc.squad.SquadMod.LOGGER.info(
             "[vehicle-debug] {} starting vehicle transport, home={} dist={}",
             entity.uuid, entity.homeCenter(), entity.homeCenter()?.let { entity.position().distanceTo(it) }
         )
+    }
+
+    /** Spawned vehicle crews begin seated, so initialise their transport state without making them
+     *  search for and attempt to board the vehicle they already occupy. */
+    private fun startMounted(entity: NpcEntity, vehicle: VehicleEntity) {
+        targetVehicleId = vehicle.uuid
+        repathCooldown = 0
+        boardTick = entity.tickCount
+        waitStartTick = entity.tickCount
+        tripDestination = entity.homeCenter()
+        observedDamageStamp = vehicle.lastDamageStamp
+        lastStuckCheckTick = entity.tickCount
+        lastStuckCheckPos = null
+        recoveryUntilTick = 0
+        route = emptyList()
+        nextRouteTick = 0
+        arrivalWaitStartTick = -1
+        entity.vehicleTransport = true
+
+        if (vehicle.getSeatIndex(entity) == 0) {
+            VehicleTransportClaims.claimDriver(vehicle.uuid, entity.uuid)
+            phase = Phase.WAITING_FOR_SQUAD
+        } else {
+            VehicleTransportClaims.claimPassenger(vehicle.uuid, entity.uuid, vehicle.maxPassengers)
+            phase = Phase.RIDING
+        }
     }
 
     override fun stop(entity: NpcEntity) {
@@ -204,48 +251,40 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             Phase.BOARDING -> tickBoarding(entity, level)
             Phase.WAITING_FOR_SQUAD -> tickWaiting(entity, level)
             Phase.DRIVING -> tickDriving(entity)
+            Phase.HOLDING -> tickHolding(entity)
             Phase.RIDING -> tickRiding(entity)
+            Phase.COMBAT_DISMOUNT -> tickCombatDismount(entity)
         }
     }
 
-    /** Priority 1: join a vehicle a squadmate already claimed, if it still has a free seat.
-     *  Priority 2: claim a fresh, empty vehicle nearby as driver. */
     private fun tickSeeking(entity: NpcEntity, level: ServerLevel) {
         if (entity.tickCount < nextSeekTick) return
         nextSeekTick = entity.tickCount + SEEK_INTERVAL_TICKS
 
         val squad = entity.currentSquad() ?: return
-
-        val joinable = squad.members.asSequence()
-            .filter { it != entity.uuid }
-            .mapNotNull { VehicleTransportClaims.vehicleOf(it) }
-            .distinct()
-            .mapNotNull { level.getEntity(it) as? VehicleEntity }
-            .filter { it.isAlive && VehicleTransportClaims.claimedSeats(it.uuid) < it.maxPassengers && !hasPlayerAboard(it) }
-            .filter { entity.distanceToSqr(it) <= SEARCH_RADIUS * SEARCH_RADIUS }
-            .minByOrNull { entity.distanceToSqr(it) }
-
-        if (joinable != null) {
-            if (VehicleTransportClaims.claimPassenger(joinable.uuid, entity.uuid, joinable.maxPassengers)) {
-                targetVehicleId = joinable.uuid
-                phase = Phase.BOARDING
-                com.sbwnpc.squad.SquadMod.LOGGER.info(
-                    "[vehicle-debug] {} claimed passenger seat in {}", entity.uuid, joinable.uuid
-                )
-            }
-            return
-        }
-
         val nearby = level.getEntitiesOfClass(
             VehicleEntity::class.java,
             AABB.ofSize(entity.position(), SEARCH_RADIUS * 2, SEARCH_RADIUS * 2, SEARCH_RADIUS * 2)
         )
-        val candidate = nearby.filter {
-            it.isAlive && it.maxPassengers > 0 && VehicleTransportClaims.claimedSeats(it.uuid) == 0 &&
-                it.passengers.isEmpty()
-        }.minByOrNull { entity.distanceToSqr(it) }
+        val choice = nearby.asSequence()
+            .filter { entity.distanceToSqr(it) <= SEARCH_RADIUS * SEARCH_RADIUS }
+            .filter(::isUsableGroundVehicle)
+            .mapNotNull { vehicle ->
+                val claimedBySquad = squad.members.any { VehicleTransportClaims.vehicleOf(it) == vehicle.uuid }
+                when {
+                    claimedBySquad && VehicleTransportClaims.claimedSeats(vehicle.uuid) < vehicle.maxPassengers ->
+                        VehicleChoice(vehicle, isDriver = false)
+                    VehicleTransportClaims.claimedSeats(vehicle.uuid) == 0 && vehicle.passengers.isEmpty() ->
+                        VehicleChoice(vehicle, isDriver = true)
+                    else -> null
+                }
+            }
+            .minWithOrNull(
+                compareByDescending<VehicleChoice> { it.vehicle.maxPassengers }
+                    .thenBy { entity.distanceToSqr(it.vehicle) }
+            )
 
-        if (candidate == null) {
+        if (choice == null) {
             if (entity.tickCount - lastNoCandidateLogTick > NO_CANDIDATE_LOG_INTERVAL_TICKS) {
                 lastNoCandidateLogTick = entity.tickCount
                 com.sbwnpc.squad.SquadMod.LOGGER.info(
@@ -256,11 +295,18 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             return
         }
 
-        if (VehicleTransportClaims.claimDriver(candidate.uuid, entity.uuid)) {
-            targetVehicleId = candidate.uuid
+        val claimed = if (choice.isDriver) {
+            VehicleTransportClaims.claimDriver(choice.vehicle.uuid, entity.uuid)
+        } else {
+            VehicleTransportClaims.claimPassenger(choice.vehicle.uuid, entity.uuid, choice.vehicle.maxPassengers)
+        }
+        if (claimed) {
+            targetVehicleId = choice.vehicle.uuid
             phase = Phase.BOARDING
             com.sbwnpc.squad.SquadMod.LOGGER.info(
-                "[vehicle-debug] {} claimed driver seat of {}", entity.uuid, candidate.uuid
+                "[vehicle-debug] {} claimed {} seat of {} (capacity={})",
+                entity.uuid, if (choice.isDriver) "driver" else "passenger", choice.vehicle.uuid,
+                choice.vehicle.maxPassengers
             )
         }
     }
@@ -283,7 +329,12 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // never get "close enough" to by this check's own (wrong) measure.
         if (vehicle.boundingBox.distanceToSqr(entity.position()) > BOARD_DISTANCE * BOARD_DISTANCE) {
             if (repathCooldown == 0) {
-                entity.navigation.moveTo(vehicle.x, vehicle.y, vehicle.z, RUN_SPEED_MODIFIER)
+                val speed = if (entity.currentSquad()?.order == SquadOrder.MOVE) {
+                    SquadOrderBehaviour.WALK_SPEED_MODIFIER
+                } else {
+                    RUN_SPEED_MODIFIER
+                }
+                entity.navigation.moveTo(vehicle.x, vehicle.y, vehicle.z, speed)
                 repathCooldown = REPATH_INTERVAL_TICKS
             }
             return
@@ -296,6 +347,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             com.sbwnpc.squad.SquadMod.LOGGER.info(
                 "[vehicle-debug] {} in range of {} but startRiding refused", entity.uuid, vehicle.uuid
             )
+            VehicleTransportClaims.release(entity.uuid)
+            targetVehicleId = null
+            phase = Phase.SEEKING
+            seekingStartTick = entity.tickCount
             return
         }
         com.sbwnpc.squad.SquadMod.LOGGER.info("[vehicle-debug] {} boarded {}", entity.uuid, vehicle.uuid)
@@ -304,10 +359,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         // Snapshot the destination HERE, once, rather than letting DRIVING/RIDING re-read
         // entity.homeCenter() live every tick — see the class doc comment on tripDestination's field.
-        // If it's already gone (squad disbanded, order changed to FREE mid-walk-over) there's nothing
+        // If it's already gone (squad disbanded, order changed mid-walk-over) there's nothing
         // to drive to; stay mounted but idle rather than steering at a stale/absent target — the
         // eligibility check will unmount this NPC on its own on the next tick.
         tripDestination = entity.homeCenter()
+        observedDamageStamp = vehicle.lastDamageStamp
 
         boardTick = entity.tickCount
         // Reset stuck-detection state — it must not carry over from a previous vehicle (e.g. after
@@ -347,7 +403,15 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  occupied (fighting), or the wait has simply run too long. */
     private fun tickWaiting(entity: NpcEntity, level: ServerLevel) {
         val vehicle = mountOrAbort(entity) ?: return
+        if (reactToVehicleFire(entity, vehicle) || engageVehicleThreat(entity, vehicle)) {
+            tickCombatDismount(entity, vehicle)
+            return
+        }
         stopVehicle(vehicle)
+
+        // A deliberately spawned crew holds its vehicle until it receives an objective instead of
+        // immediately dismounting from the parked T-90.
+        if (resolveTripDestination(entity) == null) return
 
         val squad = entity.currentSquad()
         val allAccountedFor = squad == null || squad.members.all { id ->
@@ -375,13 +439,22 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun tickDriving(entity: NpcEntity) {
         val vehicle = mountOrAbort(entity) ?: return
-        val home = tripDestination
+        if (reactToVehicleFire(entity, vehicle) || engageVehicleThreat(entity, vehicle)) {
+            tickCombatDismount(entity, vehicle)
+            return
+        }
+        val home = resolveTripDestination(entity)
         if (home == null) {
             waitToStopThenDismount(entity, vehicle, isDriver = true)
             return
         }
 
         if (vehicle.position().distanceTo(home) <= ARRIVAL_RADIUS) {
+            if (isPermanentCrew(entity, vehicle)) {
+                holdVehicle(vehicle)
+                phase = Phase.HOLDING
+                return
+            }
             waitToStopThenDismount(entity, vehicle, isDriver = true)
             return
         }
@@ -389,12 +462,17 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // Hard cap: recovery below isn't guaranteed to work (e.g. genuinely boxed in) — give up and
         // let the driver walk the rest rather than sit there forever retrying.
         if (entity.tickCount - boardTick > MAX_TRANSIT_TICKS) {
+            if (isPermanentCrew(entity, vehicle)) {
+                holdVehicle(vehicle)
+                phase = Phase.HOLDING
+                return
+            }
             waitToStopThenDismount(entity, vehicle, isDriver = true)
             return
         }
 
         if (entity.tickCount < recoveryUntilTick) {
-            performRecovery(vehicle)
+            performRecovery(entity, vehicle)
             return
         }
 
@@ -406,12 +484,34 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 recoveryUntilTick = entity.tickCount + RECOVERY_TICKS
                 recoveryTurnLeft = entity.random.nextBoolean()
                 nextRouteTick = entity.tickCount // force a fresh route once recovery ends
-                performRecovery(vehicle)
+                performRecovery(entity, vehicle)
                 return
             }
         }
 
+        if (alliedNpcBlocksTravel(entity, vehicle, forwardDirection(vehicle))) {
+            stopVehicle(vehicle)
+            vehicle.power = 0f
+            nextRouteTick = entity.tickCount
+            return
+        }
         steerToward(vehicle, currentWaypoint(entity, home))
+    }
+
+    /** A permanent crew holds at the last MOVE objective. A changed MOVE objective resumes driving
+     *  without ejecting the driver. */
+    private fun tickHolding(entity: NpcEntity) {
+        val vehicle = mountOrAbort(entity) ?: return
+        holdVehicle(vehicle)
+        val home = resolveTripDestination(entity) ?: return
+        if (vehicle.position().distanceTo(home) > ARRIVAL_RADIUS) {
+            route = emptyList()
+            routeIndex = 0
+            nextRouteTick = entity.tickCount
+            lastStuckCheckTick = entity.tickCount
+            lastStuckCheckPos = null
+            phase = Phase.DRIVING
+        }
     }
 
     /** (Re)computes a route to [home] with the driver's own pathfinder, throttled to once every
@@ -455,9 +555,12 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         return target
     }
 
-    /** Back up and turn away, blind to what's actually in the way — there's no sensing here, just
-     *  "whatever stopped it, reversing and picking a different heading tends to clear it". */
-    private fun performRecovery(vehicle: VehicleEntity) {
+    private fun performRecovery(entity: NpcEntity, vehicle: VehicleEntity) {
+        if (alliedNpcBlocksTravel(entity, vehicle, forwardDirection(vehicle).scale(-1.0))) {
+            stopVehicle(vehicle)
+            vehicle.power = 0f
+            return
+        }
         vehicle.forwardInputDown = false
         vehicle.backInputDown = true
         vehicle.leftInputDown = recoveryTurnLeft
@@ -470,7 +573,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  the vehicle stranded with nobody driving it. */
     private fun tickRiding(entity: NpcEntity) {
         val vehicle = mountOrAbort(entity) ?: return
-        val home = tripDestination ?: run { waitToStopThenDismount(entity, vehicle, isDriver = false); return }
+        if (reactToVehicleFire(entity, vehicle) || engageVehicleThreat(entity, vehicle)) {
+            tickCombatDismount(entity, vehicle)
+            return
+        }
+        val home = resolveTripDestination(entity) ?: return
         if (vehicle.position().distanceTo(home) <= ARRIVAL_RADIUS) {
             waitToStopThenDismount(entity, vehicle, isDriver = false)
             return
@@ -478,6 +585,16 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.tickCount - boardTick > MAX_TRANSIT_TICKS) {
             waitToStopThenDismount(entity, vehicle, isDriver = false)
         }
+    }
+
+    private fun tickCombatDismount(entity: NpcEntity, mountedVehicle: VehicleEntity? = null) {
+        val vehicle = mountedVehicle ?: mountOrAbort(entity) ?: return
+        if (VehicleTransportClaims.combatGunnerOf(vehicle.uuid) == entity.uuid && threatActive(entity)) {
+            stopVehicle(vehicle)
+            vehicle.power = 0f
+            return
+        }
+        waitToStopThenDismount(entity, vehicle, VehicleTransportClaims.driverOf(vehicle.uuid) == entity.uuid)
     }
 
     /** entity.stopRiding() drops the rider at the vehicle's CURRENT position without transferring its
@@ -491,6 +608,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  `power` directly (a public synced field) removes that thrust immediately; ground friction
      *  (wheelEngine's f0, ~30-50% velocity loss/tick) then kills actual speed within a handful of ticks. */
     private fun waitToStopThenDismount(entity: NpcEntity, vehicle: VehicleEntity, isDriver: Boolean) {
+        if (isPermanentCrew(entity, vehicle)) {
+            holdVehicle(vehicle)
+            phase = Phase.HOLDING
+            return
+        }
         if (isDriver) {
             stopVehicle(vehicle)
             vehicle.power = 0f
@@ -510,9 +632,123 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 entity.health, entity.maxHealth, vehicle.position()
             )
             entity.stopRiding()
+            releaseVehicleTeamIfLastAboard(vehicle, entity)
             arrivalWaitStartTick = -1
         }
     }
+
+    private fun resolveTripDestination(entity: NpcEntity): Vec3? {
+        if (entity.currentSquad()?.order != SquadOrder.MOVE) return tripDestination
+        val destination = entity.homeCenter()
+        if (destination != tripDestination) {
+            tripDestination = destination
+            route = emptyList()
+            routeIndex = 0
+            nextRouteTick = entity.tickCount
+        }
+        return tripDestination
+    }
+
+    private fun reactToVehicleFire(entity: NpcEntity, vehicle: VehicleEntity): Boolean {
+        if (vehicle.lastDamageStamp <= observedDamageStamp) return false
+        observedDamageStamp = vehicle.lastDamageStamp
+
+        val attacker = (vehicle.lastDamageSource?.entity as? LivingEntity)
+            ?: (vehicle.lastAttacker as? LivingEntity)
+            ?: return false
+        if (!attacker.isAlive || !SquadTeams.isHostile(entity, attacker)) return false
+
+        entity.rememberVehicleAttacker(attacker)
+        BrainUtils.setTargetOfEntity(entity, attacker)
+        if (isPermanentCrew(entity, vehicle)) return false
+        if (entity.currentSquad()?.order == SquadOrder.ATTACK) return false
+        return engageVehicleThreat(entity, vehicle, attacker)
+    }
+
+    private fun isPermanentCrew(entity: NpcEntity, vehicle: VehicleEntity): Boolean =
+        entity.assignedVehicleId == vehicle.uuid
+
+    private fun engageVehicleThreat(entity: NpcEntity, vehicle: VehicleEntity): Boolean {
+        val threat = entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) } ?: return false
+        return engageVehicleThreat(entity, vehicle, threat)
+    }
+
+    private fun engageVehicleThreat(entity: NpcEntity, vehicle: VehicleEntity, threat: LivingEntity): Boolean {
+        if (entity.currentSquad()?.order == SquadOrder.ATTACK) return false
+
+        assignCombatGunner(vehicle)?.let { gunner ->
+            gunner.rememberVehicleAttacker(threat)
+            BrainUtils.setTargetOfEntity(gunner, threat)
+        }
+        phase = Phase.COMBAT_DISMOUNT
+        com.sbwnpc.squad.SquadMod.LOGGER.info(
+            "[vehicle-debug] {} stopping {} for combat against {}",
+            entity.uuid, vehicle.uuid, threat.uuid
+        )
+        return true
+    }
+
+    private fun assignCombatGunner(vehicle: VehicleEntity): NpcEntity? {
+        VehicleTransportClaims.combatGunnerOf(vehicle.uuid)?.let { id ->
+            return vehicle.passengers.filterIsInstance<NpcEntity>().firstOrNull { it.uuid == id }
+        }
+        val gunner = vehicle.passengers.asSequence()
+            .filterIsInstance<NpcEntity>()
+            .firstOrNull { vehicle.canShoot(it) }
+            ?: return null
+        return gunner.takeIf { VehicleTransportClaims.claimCombatGunner(vehicle.uuid, it.uuid) }
+    }
+
+    private fun threatActive(entity: NpcEntity): Boolean =
+        entity.target?.isAlive == true || entity.isAlert() || entity.isSuppressed()
+
+    private fun shouldPrioritizeMortar(entity: NpcEntity, order: SquadOrder): Boolean {
+        if (order != SquadOrder.ATTACK || entity.homeCenter() == null) return false
+        val claimable: (MortarEntity) -> Boolean = when (entity.npcClass) {
+            NpcClass.MORTAR_OPERATOR -> { mortar -> !MortarClaims.isOperatorClaimedByOther(mortar.uuid, entity.uuid) }
+            NpcClass.MORTAR_LOADER -> { mortar -> !MortarClaims.isLoaderClaimedByOther(mortar.uuid, entity.uuid) }
+            else -> return false
+        }
+        val level = entity.level() as? ServerLevel ?: return false
+        return level.getEntitiesOfClass(
+            MortarEntity::class.java,
+            AABB.ofSize(entity.position(), MORTAR_SEARCH_RADIUS * 2, MORTAR_SEARCH_RADIUS * 2, MORTAR_SEARCH_RADIUS * 2)
+        ).any {
+            it.isAlive && !it.isWreck && entity.distanceToSqr(it) <= MORTAR_SEARCH_RADIUS * MORTAR_SEARCH_RADIUS && claimable(it)
+        }
+    }
+
+    private fun isUsableGroundVehicle(vehicle: VehicleEntity): Boolean =
+        vehicle.isAlive && !vehicle.isWreck && !vehicle.locked && vehicle.maxPassengers > 0 &&
+            vehicle.computed().engineType in GROUND_ENGINE_TYPES && !hasPlayerAboard(vehicle)
+
+    private fun forwardDirection(vehicle: VehicleEntity): Vec3 {
+        val movement = vehicle.deltaMovement
+        if (movement.horizontalDistanceSqr() > 0.0025) {
+            return Vec3(movement.x, 0.0, movement.z).normalize()
+        }
+        val view = vehicle.getViewVector(1f)
+        return Vec3(view.x, 0.0, view.z).normalize()
+    }
+
+    private fun alliedNpcBlocksTravel(entity: NpcEntity, vehicle: VehicleEntity, direction: Vec3): Boolean {
+        if (direction.lengthSqr() < 1.0e-6) return false
+        val lookahead = maxOf(MIN_ALLY_LOOKAHEAD, vehicle.deltaMovement.horizontalDistance() * ALLY_BRAKE_LOOKAHEAD_TICKS)
+        val offset = direction.normalize().scale(lookahead)
+        val corridor = vehicle.getCombinedAABB().expandTowards(offset.x, offset.y, offset.z).inflate(ALLY_CLEARANCE)
+        val faction = SquadTeams.factionOf(entity) ?: return false
+        val allies = (entity.level() as? ServerLevel)?.getEntitiesOfClass(NpcEntity::class.java, corridor) { other ->
+            other !== entity && other.vehicle !== vehicle && other.isAlive && SquadTeams.factionOf(other) == faction
+        } ?: return false
+        val samples = kotlin.math.ceil(lookahead / ALLY_SWEEP_STEP).toInt().coerceIn(1, MAX_ALLY_SWEEP_SAMPLES)
+        return allies.any { ally ->
+            (1..samples).any { step -> vehicleOverlaps(vehicle, ally, offset.scale(step.toDouble() / samples)) }
+        }
+    }
+
+    private fun vehicleOverlaps(vehicle: VehicleEntity, entity: NpcEntity, offset: Vec3): Boolean =
+        if (vehicle.enableAABB()) vehicle.boundingBox.move(offset).intersects(entity.boundingBox)
+        else vehicle.isInObb(entity, offset)
 
     /** Steer-toward-point: always throttle forward, turn left/right to close the heading gap.
      *
@@ -571,6 +807,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun hasPlayerAboard(vehicle: VehicleEntity) =
         vehicle.passengers.any { it is net.minecraft.world.entity.player.Player }
 
+    private fun holdVehicle(vehicle: VehicleEntity) {
+        stopVehicle(vehicle)
+        vehicle.power = 0f
+    }
+
     private fun stopVehicle(vehicle: VehicleEntity) {
         vehicle.forwardInputDown = false
         vehicle.backInputDown = false
@@ -611,6 +852,13 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val RUDDER_DEADBAND = 0.05f
         private const val FULL_STATE_LOG_INTERVAL_TICKS = 10 // unconditional steer snapshot, ~0.5s
         private const val RUN_SPEED_MODIFIER = 1.0
+        private const val MORTAR_SEARCH_RADIUS = 30.0
+        private val GROUND_ENGINE_TYPES = setOf(EngineType.WHEEL, EngineType.TRACK, EngineType.WHEELCHAIR)
+        private const val MIN_ALLY_LOOKAHEAD = 2.0
+        private const val ALLY_BRAKE_LOOKAHEAD_TICKS = 3.0
+        private const val ALLY_CLEARANCE = 0.3
+        private const val ALLY_SWEEP_STEP = 0.5
+        private const val MAX_ALLY_SWEEP_SAMPLES = 12
         private const val STUCK_CHECK_INTERVAL_TICKS = 40 // 2s between progress checks
         private const val STUCK_DISTANCE_SQR = 1.0 // moved less than 1 block in that window
         private const val RECOVERY_TICKS = 30 // ~1.5s reverse-and-turn before retrying
@@ -623,5 +871,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // well before getting that close avoids ever asking the vehicle to hit a target tighter than it
         // can physically steer around.
         private const val WAYPOINT_RADIUS = 15.0
+
+        /** Clears the temporary squad team after the final NPC leaves or dies in the vehicle. */
+        fun releaseVehicleTeamIfLastAboard(vehicle: VehicleEntity, leaving: NpcEntity) {
+            if (vehicle.passengers.any { it is NpcEntity && it !== leaving }) return
+            SquadTeams.clear(vehicle)
+        }
     }
 }

@@ -29,20 +29,19 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
  *
  *  - DEFEND: return to within `SquadFormation.ARRIVAL_RADIUS + 4.5` of home (objective point /
  *    guarded entity — currently 12 blocks, but derived rather than hardcoded, see that line), then
- *    hold in a loose SCATTER (see [SquadFormation] — deliberately not a tight ring, "almost FREE,
- *    just bounded to a radius" per user request).
+ *    hold in a loose SCATTER (see [SquadFormation] — deliberately not a tight ring).
  *  - PATROL: walk the squad's assigned Route in sequence if it has one (see RouteManager);
  *    otherwise wander within ~12 blocks of home as before.
  *  - ATTACK: advance to home; once EVERY member has actually arrived, the squad's own order flips
  *    to DEFEND automatically (see [allSquadArrived]) — taking a point means holding it next, not
  *    standing frozen in an assault wedge forever.
- *  - FREE / no squad / no home: inactive.
+ *  - MOVE: walk calmly to the objective and hold the assigned infantry-grid slot.
  *
  * Destination points go through [SquadFormation.slotTarget] instead of the bare anchor — every
  * member walking toward the literal same coordinate was what actually caused the pileup/"snake"
  * (they'd shove past each other via vanilla collision avoidance the whole way in). Once a member is
- * actually at its objective ([approachSlot]'s `arrived`), the formation switches to a stationary
- * perimeter (ring, facing outward) instead of staying frozen in a marching wedge/line.
+ * actually at its objective ([approachSlot]'s `arrived`), ATTACK and DEFEND switch to a stationary
+ * perimeter. MOVE deliberately keeps its infantry grid.
  */
 class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
@@ -57,6 +56,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var repathCooldown = 0
     private var routeIndex = 0
     private var routeWaitUntil = 0
+    private var moveAnchor: BlockPos? = null
 
     // No memory gate needed — eligibility is purely squad/order/target state, same as the old goal's
     // canUse(). Unlike GunAttackBehaviour/SeekCoverBehaviour/InvestigateBehaviour, nothing here is
@@ -74,7 +74,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.diggedIn) return false
         if (entity.vehicleTransport) return false
         val squad = entity.currentSquad() ?: return false
-        return squad.order != SquadOrder.FREE && entity.homeCenter() != null
+        return entity.homeCenter() != null
     }
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = eligible(entity)
@@ -82,6 +82,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun start(entity: NpcEntity) {
         repathCooldown = 0
+        moveAnchor = null
     }
 
     override fun tick(entity: NpcEntity) {
@@ -96,7 +97,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
                 val arrived = dist <= SquadFormation.ARRIVAL_RADIUS
                 // Only ATTACK (taking a point) moves at RUN pace, same as actually being in combat
                 // (GunAttackBehaviour's own movement already uses this same 1.0 modifier) — per user
-                // request, FREE/DEFEND/PATROL should read as a calm hold/patrol, not a constant jog.
+                // request, MOVE/DEFEND/PATROL should read as a calm hold/patrol, not a constant jog.
                 approachSlot(entity, home, arrived, RUN_SPEED_MODIFIER)
                 // Per user request: "attack a point" means take it, then hold it — not stand
                 // frozen in an assault wedge forever once there. Flips the squad's own order once
@@ -123,7 +124,50 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
                     repathCooldown = 40 + entity.random.nextInt(40)
                 }
             }
-            SquadOrder.FREE -> {}
+            SquadOrder.MOVE -> tickMove(entity, home)
+        }
+    }
+
+    private fun tickMove(entity: NpcEntity, home: Vec3) {
+        val squad = entity.currentSquad() ?: return
+        val assembly = squad.moveAssembly?.center ?: home
+        val anchor = BlockPos.containing(home)
+        if (moveAnchor != anchor) {
+            moveAnchor = anchor
+            repathCooldown = 0
+            entity.navigation.stop()
+        }
+
+        val heading = home.subtract(assembly)
+        if (!squad.moveFormationReady) {
+            val rallySlot = SquadFormation.moveSlotTarget(entity, assembly, heading)
+            moveToSlot(entity, rallySlot)
+            if (allMoveMembersInSlots(entity, squad, assembly, heading)) {
+                squad.moveFormationReady = true
+            }
+            return
+        }
+
+        val slot = SquadFormation.moveSlotTarget(entity, home, heading)
+        moveToSlot(entity, slot)
+    }
+
+    private fun moveToSlot(entity: NpcEntity, slot: Vec3) {
+        if (entity.position().distanceTo(slot) > 1.5) {
+            if (repathCooldown == 0) {
+                entity.navigation.moveTo(slot.x, slot.y, slot.z, WALK_SPEED_MODIFIER)
+                repathCooldown = 20
+            }
+        } else {
+            entity.navigation.stop()
+        }
+    }
+
+    private fun allMoveMembersInSlots(entity: NpcEntity, squad: Squad, anchor: Vec3, heading: Vec3): Boolean {
+        val level = entity.level() as? ServerLevel ?: return false
+        return squad.members.all { id ->
+            val member = level.getEntity(id) as? NpcEntity ?: return@all false
+            member.position().distanceTo(SquadFormation.moveSlotTarget(member, anchor, heading)) <= MOVE_SLOT_RADIUS
         }
     }
 
@@ -187,16 +231,21 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
     }
 
-    private fun wanderNear(entity: NpcEntity, center: Vec3) {
-        val target = DefaultRandomPos.getPosTowards(entity, 12, 6, center, Math.PI / 2.0) ?: return
-        entity.navigation.moveTo(target.x, target.y, target.z, WALK_SPEED_MODIFIER)
+    private fun wanderNear(entity: NpcEntity, center: Vec3, range: Int = 12, maxDistance: Double = Double.POSITIVE_INFINITY) {
+        repeat(4) {
+            val target = DefaultRandomPos.getPosTowards(entity, range, 6, center, Math.PI / 2.0) ?: return
+            if (target.distanceToSqr(center) <= maxDistance * maxDistance) {
+                entity.navigation.moveTo(target.x, target.y, target.z, WALK_SPEED_MODIFIER)
+                return
+            }
+        }
     }
 
     companion object {
         private const val ROUTE_DWELL_TICKS = 40
         private const val ROUTE_DWELL_JITTER = 40
-
-        // Per user request: FREE/DEFEND/PATROL should read as a calm hold/patrol, not a constant
+        private const val MOVE_SLOT_RADIUS = 2.0
+        // Per user request: MOVE/DEFEND/PATROL should read as a calm hold/patrol, not a constant
         // jog — only actually taking a point (ATTACK) or engaging (GunAttackBehaviour, which already
         // moves at a plain 1.0 modifier) should look urgent. Both are still just a navigation
         // speedModifier multiplying the entity's own per-class MOVEMENT_SPEED attribute (tuned in
@@ -204,9 +253,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         // of that speed idle movement actually uses. RUN_SPEED_MODIFIER matches what ATTACK/combat
         // movement already used before this change (kept as a named constant here purely so both
         // paces are visible together, not because ATTACK's pace itself changed).
-        // internal (not private) — NpcEntity.registerGoals() reuses this for FREE's own vanilla
-        // wander goal (SquadOrderBehaviour excludes FREE entirely, so that goal is FREE's only
-        // movement), so both stay in sync instead of duplicating the literal in two files.
+        // internal (not private) — NpcEntity.registerGoals() reuses this for vanilla idle wandering.
         internal const val WALK_SPEED_MODIFIER = 0.6
         private const val RUN_SPEED_MODIFIER = 1.0
     }

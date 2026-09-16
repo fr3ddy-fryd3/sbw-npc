@@ -10,12 +10,12 @@ enum class SquadOrder {
     /** Advance to the objective, engaging hostiles on the way. */
     ATTACK,
 
-    /** No coordination — each member just fights and wanders on its own. */
-    FREE;
+    /** Move calmly to the objective, then wander nearby. */
+    MOVE;
 
     fun next(): SquadOrder = entries[(ordinal + 1) % entries.size]
 
     companion object {
-        fun byOrdinal(i: Int): SquadOrder = entries.getOrElse(i) { FREE }
+        fun byOrdinal(i: Int): SquadOrder = entries.getOrElse(i) { MOVE }
     }
 }

@@ -24,11 +24,13 @@ object TeamAwareness {
 
     private class Contact(val firstSeenTick: Long, var lastSeenTick: Long)
 
-    private const val ALERT_DELAY_TICKS = 60L   // ~3s before non-spotters can act on it
-    private const val RECENT_WINDOW_TICKS = 40L // ~2s since the last confirmed sighting by anyone
-    private const val FORGET_TICKS = 200L       // ~10s untouched -> drop entirely
+    const val ALERT_DELAY_TICKS = 60L   // ~3s before non-spotters can act on it
+    const val RECENT_WINDOW_TICKS = 40L // ~2s since the last confirmed sighting by anyone
+    const val FORGET_TICKS = 200L       // ~10s untouched -> drop entirely
+    private const val SWEEP_INTERVAL_TICKS = 100L
 
     private val byFaction = HashMap<SquadFaction, MutableMap<UUID, Contact>>()
+    private var lastSweepTick = -SWEEP_INTERVAL_TICKS
 
     /** Called by any unit of [faction] that currently has direct line of sight to [target]. */
     fun report(faction: SquadFaction, target: UUID, tick: Long) {
@@ -39,8 +41,7 @@ object TeamAwareness {
         } else {
             existing.lastSeenTick = tick
         }
-        // Cheap opportunistic housekeeping instead of a separate scheduled task.
-        if (tick % 100L == 0L) contacts.entries.removeIf { tick - it.value.lastSeenTick > FORGET_TICKS }
+        sweep(tick)
     }
 
     /** Contacts of [faction] that are fresh AND past the relay delay — actionable for a unit that
@@ -52,5 +53,18 @@ object TeamAwareness {
         return contacts.entries
             .filter { tick - it.value.lastSeenTick <= RECENT_WINDOW_TICKS && tick - it.value.firstSeenTick >= ALERT_DELAY_TICKS }
             .map { it.key }
+    }
+
+    /** [tick] must be ServerLevel.gameTime: entity tick counts are not comparable across NPCs. */
+    private fun sweep(tick: Long) {
+        if (tick - lastSweepTick < SWEEP_INTERVAL_TICKS) return
+        lastSweepTick = tick
+        byFaction.values.forEach { it.entries.removeIf { contact -> tick - contact.value.lastSeenTick > FORGET_TICKS } }
+        byFaction.entries.removeIf { it.value.isEmpty() }
+    }
+
+    fun clearAll() {
+        byFaction.clear()
+        lastSweepTick = -SWEEP_INTERVAL_TICKS
     }
 }

@@ -11,7 +11,7 @@ import com.sbwnpc.squad.squad.RouteRecording
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.squad.SquadSelection
-import net.minecraft.core.BlockPos
+import com.sbwnpc.squad.util.Terrain
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.entity.EquipmentSlot
@@ -28,6 +28,8 @@ import java.util.UUID
 
 @EventBusSubscriber
 object ModNetwork {
+
+    private const val OBJECTIVE_RAYCAST_RANGE = 1024.0
 
     @SubscribeEvent
     fun register(event: RegisterPayloadHandlersEvent) {
@@ -144,6 +146,17 @@ object ModNetwork {
                     SquadSelection.armFocus(player.uuid, it)
                     bar("Right-click anything (including your own NPCs) to focus ${mgr.get(it)?.name ?: "squad"} on it")
                 }
+                SquadCmdPayload.DELETE_SQUAD -> ownedSid()?.let { id ->
+                    val members = mgr.get(id)?.members?.toList() ?: return@let
+                    val assignedVehicles = members.mapNotNull {
+                        (level.getEntity(it) as? com.sbwnpc.squad.entity.NpcEntity)?.assignedVehicleId
+                    }.toSet()
+                    mgr.disband(level, id)
+                    members.forEach { member -> level.getEntity(member)?.discard() }
+                    assignedVehicles.forEach { vehicle -> level.getEntity(vehicle)?.discard() }
+                    SquadSelection.clear(player.uuid)
+                    bar("Squad deleted")
+                }
             }
         }
     }
@@ -172,7 +185,7 @@ object ModNetwork {
             val id = runCatching { UUID.fromString(p.squad) }.getOrNull() ?: return@enqueueWork
             if (!mgr.ownedBy(id, player.uuid)) return@enqueueWork
             mgr.setOrder(id, SquadOrder.byOrdinal(p.order))
-            mgr.setObjective(level, id, lookedAtPos(player, level))
+            mgr.setObjective(level, id, Terrain.lookedAtPos(player, level, OBJECTIVE_RAYCAST_RANGE))
         }
     }
 
@@ -186,7 +199,7 @@ object ModNetwork {
             val level = player.level() as? ServerLevel ?: return@enqueueWork
             val mgr = SquadManager.get(level)
             val order = SquadOrder.byOrdinal(p.order)
-            val pos = lookedAtPos(player, level)
+            val pos = Terrain.lookedAtPos(player, level, OBJECTIVE_RAYCAST_RANGE)
             val defaultFaction = PlayerFactionRegistry.get(level).get(player.uuid)
             mgr.forOwner(player.uuid)
                 .filter { defaultFaction == null || it.faction == defaultFaction }
@@ -242,16 +255,4 @@ object ModNetwork {
         }
     }
 
-    private fun lookedAtPos(player: ServerPlayer, level: ServerLevel): BlockPos {
-        val hit = player.pick(220.0, 1.0f, false)
-        if (hit.type == HitResult.Type.BLOCK) return (hit as BlockHitResult).blockPos
-        return groundAt(level, hit.location)
-    }
-
-    private fun groundAt(level: ServerLevel, loc: Vec3): BlockPos {
-        var p = BlockPos.containing(loc)
-        var guard = 0
-        while (level.getBlockState(p).isAir && p.y > level.minBuildHeight && guard++ < 200) p = p.below()
-        return p.above()
-    }
 }

@@ -1,10 +1,7 @@
 package com.sbwnpc.squad.entity.ai
 
-import com.atsuishio.superbwarfare.config.server.ExplosionConfig
-import com.atsuishio.superbwarfare.entity.projectile.HandGrenadeEntity
-import com.atsuishio.superbwarfare.tools.RangeTool.calculateFiringSolution
 import com.mojang.datafixers.util.Pair
-import com.sbwnpc.squad.combat.FriendlyFireGuard
+import com.sbwnpc.squad.combat.GrenadeThrower
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import net.minecraft.server.level.ServerLevel
@@ -34,8 +31,6 @@ class GrenadeThrowBehaviour : ExtendedBehaviour<NpcEntity>() {
     companion object {
         private const val MIN_RANGE = 5.0
         private const val MAX_RANGE = 16.0
-        private const val THROW_SPEED = 1.0
-        private const val GRAVITY = 0.05
         private const val COOLDOWN_TICKS = 100
         private const val COOLDOWN_JITTER = 60
 
@@ -54,14 +49,7 @@ class GrenadeThrowBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (!target.isAlive) return false
         val dist = entity.distanceTo(target)
         if (dist !in MIN_RANGE..MAX_RANGE || !entity.sensing.hasLineOfSight(target)) return false
-        // No positioning of its own (never sidesteps itself) — if an ally is in the way, just skip
-        // the throw this cycle; GunAttackBehaviour running alongside it owns positioning and will
-        // already be trying to clear its own line of fire.
-        if (!FriendlyFireGuard.hasClearLineOfFire(entity, target.boundingBox.center)) return false
-        // Separate check: even a clean throw can down an ally standing within the M67's own blast
-        // radius of where it lands — repositioning wouldn't fix this, so just skip the throw.
-        val radius = ExplosionConfig.M67_GRENADE_EXPLOSION_RADIUS.get().toDouble()
-        return FriendlyFireGuard.hasClearBlastRadius(entity, target.boundingBox.center, radius)
+        return GrenadeThrower.isSafeToThrow(entity, target.boundingBox.center)
     }
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = false
@@ -70,13 +58,7 @@ class GrenadeThrowBehaviour : ExtendedBehaviour<NpcEntity>() {
         val target = entity.target ?: return
         val level = entity.level() as? ServerLevel ?: return
 
-        val launchPos = entity.eyePosition
-        val targetPos = target.boundingBox.center
-        val solution = calculateFiringSolution(launchPos, targetPos, target.deltaMovement, THROW_SPEED, GRAVITY)
-
-        val grenade = HandGrenadeEntity(entity, level)
-        grenade.deltaMovement = solution
-        level.addFreshEntity(grenade)
+        GrenadeThrower.throwAt(entity, level, target.boundingBox.center, target.deltaMovement)
 
         nextThrowTick = entity.tickCount + COOLDOWN_TICKS + entity.random.nextInt(COOLDOWN_JITTER)
     }

@@ -27,4 +27,8 @@ object RouteRecording {
     fun cancel(player: UUID) {
         buffers.remove(player)
     }
+
+    fun clearAll() {
+        buffers.clear()
+    }
 }

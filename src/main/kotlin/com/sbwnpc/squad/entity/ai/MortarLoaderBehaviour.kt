@@ -36,13 +36,15 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     companion object {
         private const val SEARCH_RANGE = 30.0
+        private const val SELF_DEFENSE_RANGE_SQR = 6.0 * 6.0
     }
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
     private fun eligible(entity: NpcEntity): Boolean {
         if (entity.npcClass != NpcClass.MORTAR_LOADER) return false
-        if (entity.target != null) return false
+        val personalThreat = entity.target?.takeIf { it.isAlive && entity.distanceToSqr(it) <= SELF_DEFENSE_RANGE_SQR }
+        if (personalThreat != null) return false
         // A dug-in loader (badly hurt, took cover) must stay put like everything else that respects
         // NpcEntity.diggedIn (PM review finding — this was the one Core task that still didn't) —
         // resupplying the mortar can wait until it's healed/no longer holding.
@@ -50,12 +52,15 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.vehicleTransport) return false
 
         val current = mortar
-        if (current != null && current.isAlive && !MortarClaims.isLoaderClaimedByOther(current.uuid, entity.uuid)) return true
+        if (current != null && current.isAlive && !current.isWreck && !MortarClaims.isLoaderClaimedByOther(current.uuid, entity.uuid)) return true
 
         val level = entity.level() as? ServerLevel ?: return false
         val found = level.getEntitiesOfClass(
-            MortarEntity::class.java, AABB.ofSize(entity.position(), SEARCH_RANGE, SEARCH_RANGE, SEARCH_RANGE)
-        ).firstOrNull { !MortarClaims.isLoaderClaimedByOther(it.uuid, entity.uuid) } ?: return false
+            MortarEntity::class.java, AABB.ofSize(entity.position(), SEARCH_RANGE * 2, SEARCH_RANGE * 2, SEARCH_RANGE * 2)
+        ).firstOrNull {
+            it.isAlive && !it.isWreck && entity.distanceToSqr(it) <= SEARCH_RANGE * SEARCH_RANGE &&
+                !MortarClaims.isLoaderClaimedByOther(it.uuid, entity.uuid)
+        } ?: return false
 
         MortarClaims.claimLoader(found.uuid, entity.uuid)
         mortar = found

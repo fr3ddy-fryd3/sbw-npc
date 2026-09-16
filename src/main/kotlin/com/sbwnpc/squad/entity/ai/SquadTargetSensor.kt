@@ -1,6 +1,9 @@
 package com.sbwnpc.squad.entity.ai
 
+import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.sbwnpc.squad.combat.TeamAwareness
+import com.sbwnpc.squad.combat.T90WeaponSelection
+import com.sbwnpc.squad.combat.VehicleTargeting
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModSensors
 import com.sbwnpc.squad.npc.NpcClass
@@ -42,11 +45,21 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     override fun memoriesUsed(): List<MemoryModuleType<*>> = MEMORIES
 
     override fun doTick(level: ServerLevel, entity: NpcEntity) {
-        BrainUtils.setTargetOfEntity(entity, computeDesired(entity, level))
+        val target = computeDesired(entity, level)
+        BrainUtils.setTargetOfEntity(entity, target)
+        if (target != null) T90WeaponSelection.update(entity, target)
     }
 
     private fun computeDesired(mob: NpcEntity, level: ServerLevel): LivingEntity? {
+        mob.vehicleAttacker()?.let { return it }
         val isMortarCrew = mob.npcClass == NpcClass.MORTAR_OPERATOR || mob.npcClass == NpcClass.MORTAR_LOADER
+        val followRange = mob.getAttribute(Attributes.FOLLOW_RANGE)?.value ?: 48.0
+
+        // SBW aims at the vehicle when its passenger is the gunner's target. Give armed vehicle
+        // crews that passenger first, so armour is engaged before nearby dismounted infantry.
+        if (mob.vehicle is VehicleEntity && (mob.vehicle as VehicleEntity).getGunData(mob) != null) {
+            VehicleTargeting.closestVisibleHostileVehicleOccupant(mob, level, followRange)?.let { return it }
+        }
 
         if (!isMortarCrew) {
             squadFocusTarget(mob, level)?.let { return it }
@@ -78,7 +91,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     private fun relayedTarget(mob: NpcEntity, level: ServerLevel): LivingEntity? {
         val faction = SquadTeams.factionOf(mob) ?: return null
         val followRangeSqr = (mob.getAttribute(Attributes.FOLLOW_RANGE)?.value ?: 48.0).let { it * it }
-        return TeamAwareness.relayedContacts(faction, mob.tickCount.toLong())
+        return TeamAwareness.relayedContacts(faction, level.gameTime)
             .asSequence()
             .mapNotNull { level.getEntity(it) as? LivingEntity }
             .filter { it.isAlive && it !== mob && SquadTeams.isHostile(mob, it) && mob.distanceToSqr(it) <= followRangeSqr }
@@ -89,7 +102,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         val followRange = mob.getAttribute(Attributes.FOLLOW_RANGE)?.value ?: 48.0
         val box = mob.boundingBox.inflate(followRange)
         return level.getEntitiesOfClass(LivingEntity::class.java, box) { candidate ->
-            candidate !== mob && mob.isEnemy(candidate) && mob.sensing.hasLineOfSight(candidate)
+            candidate !== mob && SquadTeams.isHostile(mob, candidate) && mob.sensing.hasLineOfSight(candidate)
         }.minByOrNull { mob.distanceToSqr(it) }
     }
 

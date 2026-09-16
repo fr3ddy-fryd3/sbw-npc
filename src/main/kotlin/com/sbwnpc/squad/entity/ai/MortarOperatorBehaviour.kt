@@ -34,7 +34,7 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
  * running [MortarLoaderBehaviour]). Two ways to get a fire mission:
  *  - commanded: squad order ATTACK with an objective/focus set (always wins).
  *  - autonomous: nearest hostile within the rank-scaled detection radius, even under
- *    DEFEND/PATROL/FREE — a mortar crew doesn't just sit idle while enemies close in.
+ *    DEFEND/PATROL/MOVE — a mortar crew doesn't just sit idle while enemies close in.
  *
  * Minimum range / friendly-safety-radius are heuristics, not a faithful read of the mortar's own
  * internal aim-solver state — needs in-game tuning.
@@ -85,12 +85,15 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (fireTarget(entity) == null) return false
 
         val current = mortar
-        if (current != null && current.isAlive && !MortarClaims.isOperatorClaimedByOther(current.uuid, entity.uuid)) return true
+        if (current != null && current.isAlive && !current.isWreck && !MortarClaims.isOperatorClaimedByOther(current.uuid, entity.uuid)) return true
 
         val level = entity.level() as? ServerLevel ?: return false
         val found = level.getEntitiesOfClass(
-            MortarEntity::class.java, AABB.ofSize(entity.position(), SEARCH_RANGE, SEARCH_RANGE, SEARCH_RANGE)
-        ).firstOrNull { !MortarClaims.isOperatorClaimedByOther(it.uuid, entity.uuid) } ?: return false
+            MortarEntity::class.java, AABB.ofSize(entity.position(), SEARCH_RANGE * 2, SEARCH_RANGE * 2, SEARCH_RANGE * 2)
+        ).firstOrNull {
+            it.isAlive && !it.isWreck && entity.distanceToSqr(it) <= SEARCH_RANGE * SEARCH_RANGE &&
+                !MortarClaims.isOperatorClaimedByOther(it.uuid, entity.uuid)
+        } ?: return false
 
         MortarClaims.claimOperator(found.uuid, entity.uuid)
         mortar = found
@@ -186,7 +189,7 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.tickCount < nextScanTick) return lastScanResult
         nextScanTick = entity.tickCount + 20
         val level = entity.level() as? ServerLevel ?: return null
-        val tick = entity.tickCount.toLong()
+        val tick = level.gameTime
         val faction = SquadTeams.factionOf(entity)
         val radius = detectionRadius(entity)
         val candidates = level.getEntitiesOfClass(
@@ -225,7 +228,10 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun friendlyNear(level: ServerLevel, entity: NpcEntity, target: BlockPos): Boolean {
         val center = target.center
-        return level.getEntitiesOfClass(NpcEntity::class.java, AABB.ofSize(center, SAFE_RADIUS * 2, SAFE_RADIUS * 2, SAFE_RADIUS * 2))
-            .any { it.squadId != null && !SquadTeams.isHostile(entity, it) }
+        return level.getEntitiesOfClass(LivingEntity::class.java, AABB.ofSize(center, SAFE_RADIUS * 2, SAFE_RADIUS * 2, SAFE_RADIUS * 2))
+            .any { other ->
+                val protected = (other is NpcEntity && other.squadId != null) || other is Player
+                protected && other !== entity && !SquadTeams.isHostile(entity, other)
+            }
     }
 }

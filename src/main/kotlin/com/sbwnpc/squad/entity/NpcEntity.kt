@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.entity
 
 import com.atsuishio.superbwarfare.data.gun.GunData
+import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.atsuishio.superbwarfare.init.ModItems
 import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.sbwnpc.squad.entity.ai.GrenadeThrowBehaviour
@@ -13,12 +14,17 @@ import com.sbwnpc.squad.entity.ai.MortarLoaderBehaviour
 import com.sbwnpc.squad.entity.ai.MortarOperatorBehaviour
 import com.sbwnpc.squad.entity.ai.SeekCoverBehaviour
 import com.sbwnpc.squad.entity.ai.SquadOrderBehaviour
+import com.sbwnpc.squad.entity.ai.VehicleCombatSupportBehaviour
+import com.sbwnpc.squad.entity.ai.VehicleCrewBehaviour
+import com.sbwnpc.squad.entity.ai.VehicleTransportBehaviour
+import com.sbwnpc.squad.entity.ai.VehicleTransportClaims
 import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.Squad
 import com.sbwnpc.squad.squad.SquadManager
+import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.phys.Vec3
@@ -150,10 +156,35 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // SeekCoverBehaviour.enterDugInHolding's doc comment for the fuller reasoning/history).
     var diggedIn: Boolean = false
 
-    // Set/cleared only by VehicleTransportBehaviour while the mob is seeking/boarding/driving/
+    // Set/cleared by vehicle behaviours while the mob is seeking/boarding/driving/
     // riding a vehicle to cover long squad-transit distances. Same "hands off this mob" contract as
     // diggedIn — every other movement/role behaviour must stand down while this is true.
     var vehicleTransport: Boolean = false
+
+    /** The vehicle this NPC permanently crews. It remounts while the vehicle remains operational. */
+    var assignedVehicleId: UUID? = null
+
+    private var vehicleAttackerId: UUID? = null
+    private var vehicleAttackerUntilTick = 0
+
+    fun rememberVehicleAttacker(attacker: LivingEntity) {
+        vehicleAttackerId = attacker.uuid
+        vehicleAttackerUntilTick = tickCount + VEHICLE_ATTACKER_MEMORY_TICKS
+    }
+
+    internal fun vehicleAttacker(): LivingEntity? {
+        val id = vehicleAttackerId ?: return null
+        if (tickCount >= vehicleAttackerUntilTick) {
+            vehicleAttackerId = null
+            return null
+        }
+        val attacker = (level() as? ServerLevel)?.getEntity(id) as? LivingEntity
+        if (attacker == null || !attacker.isAlive || !SquadTeams.isHostile(this, attacker)) {
+            vehicleAttackerId = null
+            return null
+        }
+        return attacker
+    }
 
     override fun hurt(source: DamageSource, amount: Float): Boolean {
         val result = super.hurt(source, amount)
@@ -177,6 +208,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     /** Where this NPC "belongs" per its squad: the guarded entity, else the objective point. */
     fun homeCenter(): Vec3? {
         val squad = currentSquad() ?: return null
+        if (squad.order == SquadOrder.MOVE) {
+            return squad.objective?.let { Vec3(it.x + 0.5, it.y.toDouble(), it.z + 0.5) }
+        }
         squad.focusEntity?.let { fid ->
             (level() as? ServerLevel)?.getEntity(fid)?.takeIf { it.isAlive }?.let { return it.position() }
         }
@@ -196,11 +230,6 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         super.registerGoals()
         this.goalSelector.addGoal(0, FloatGoal(this))
         this.goalSelector.addGoal(6, IdleLookAroundGoal(this))
-        // Not the old 0.8 — FREE order has no SmartBrainLib movement of its own (SquadOrderBehaviour
-        // excludes it entirely), so this vanilla goal is FREE's only movement; shares
-        // SquadOrderBehaviour.WALK_SPEED_MODIFIER (rather than duplicating the literal) so FREE reads
-        // the same calm pace as DEFEND/PATROL, per user request (run only on ATTACK / actually
-        // engaging, not while just standing around).
         this.goalSelector.addGoal(7, IdleWanderGoal(this, SquadOrderBehaviour.WALK_SPEED_MODIFIER))
     }
 
@@ -289,6 +318,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             SeekCoverBehaviour(),
             MortarOperatorBehaviour(),
             MortarLoaderBehaviour(),
+            VehicleCrewBehaviour(),
+            VehicleCombatSupportBehaviour(),
             MedicHealBehaviour()
         )
     // Idle: only relevant while there's no ATTACK_TARGET (Fight always outranks Idle). Order here
@@ -388,7 +419,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         // established precedent here for a held item in the first place. Consumed by
         // SeekCoverBehaviour's occasional POST-dig throw (see maybeThrowGrenadeOnceDugIn — thrown
         // once already dug in, not before); entirely separate from GRENADIER's own mechanic.
-        hasReserveGrenade = npcClass != NpcClass.MORTAR_OPERATOR && npcClass != NpcClass.MORTAR_LOADER
+        hasReserveGrenade = npcClass != NpcClass.MORTAR_OPERATOR && npcClass != NpcClass.MORTAR_LOADER &&
+            npcClass != NpcClass.TANK_CREW
     }
 
     override fun addAdditionalSaveData(compound: CompoundTag) {
@@ -396,6 +428,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         compound.putString("NpcClass", npcClass.name)
         compound.putString("NpcRank", npcRank.name)
         squadId?.let { compound.putUUID("SquadId", it) }
+        assignedVehicleId?.let { compound.putUUID("AssignedVehicle", it) }
+        compound.putBoolean("ReserveGrenade", hasReserveGrenade)
     }
 
     override fun readAdditionalSaveData(compound: CompoundTag) {
@@ -403,12 +437,17 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         runCatching { npcClass = NpcClass.valueOf(compound.getString("NpcClass")) }
         runCatching { npcRank = NpcRank.valueOf(compound.getString("NpcRank")) }
         squadId = if (compound.hasUUID("SquadId")) compound.getUUID("SquadId") else null
+        assignedVehicleId = if (compound.hasUUID("AssignedVehicle")) compound.getUUID("AssignedVehicle") else null
+        hasReserveGrenade = if (compound.contains("ReserveGrenade")) compound.getBoolean("ReserveGrenade") else
+            npcClass != NpcClass.MORTAR_OPERATOR && npcClass != NpcClass.MORTAR_LOADER && npcClass != NpcClass.TANK_CREW
     }
 
     override fun die(cause: net.minecraft.world.damagesource.DamageSource) {
         (level() as? ServerLevel)?.let { SquadManager.get(it).removeMemberEverywhere(uuid) }
         alertAllies(cause)
         MortarClaims.release(uuid)
+        VehicleTransportClaims.release(uuid)
+        (vehicle as? VehicleEntity)?.let { VehicleTransportBehaviour.releaseVehicleTeamIfLastAboard(it, this) }
         super.die(cause)
     }
 
@@ -420,10 +459,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      *  environmental, whatever) does this fall back to a plain [Alarm] at the death position. */
     private fun alertAllies(cause: net.minecraft.world.damagesource.DamageSource) {
         val faction = com.sbwnpc.squad.team.SquadTeams.factionOf(this) ?: return
-        if (level() !is ServerLevel) return
+        val level = level() as? ServerLevel ?: return
         val attacker = cause.entity as? LivingEntity
         if (attacker != null && attacker.isAlive && com.sbwnpc.squad.team.SquadTeams.isHostile(this, attacker)) {
-            com.sbwnpc.squad.combat.TeamAwareness.report(faction, attacker.uuid, tickCount.toLong())
+            com.sbwnpc.squad.combat.TeamAwareness.report(faction, attacker.uuid, level.gameTime)
         } else {
             com.sbwnpc.squad.combat.Alarm.raise(this, position(), position(), DEATH_ALARM_RADIUS)
         }
@@ -431,6 +470,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     companion object {
         private const val BASE_HEALTH = 20.0
+        private const val VEHICLE_ATTACKER_MEMORY_TICKS = 200
         // internal (not private) — MedicHealBehaviour reuses this to compute its temporary
         // "sprinting to treat someone" speed on the same BASE_SPEED*multiplier basis as applyRole(),
         // instead of hardcoding 0.25 a second time.

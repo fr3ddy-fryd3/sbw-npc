@@ -37,8 +37,8 @@ object SquadFormation {
     private const val RING_RADIUS = 6.0
     private const val MIN_HEADING_LENGTH = 2.0
 
-    // DEFEND, once arrived, is deliberately looser than a held RING perimeter — "almost FREE, just
-    // bounded to a radius" per user request: a garrison holding a position doesn't stand in a neat
+    // DEFEND, once arrived, is deliberately looser than a held RING perimeter: a garrison holding a
+    // position doesn't stand in a neat
     // circle, but shouldn't wander unbounded either. MIN keeps members no closer than the old RING
     // radius; MAX matches SeekCoverBehaviour's own "nearby ally" radius already used elsewhere in
     // this codebase, not an arbitrary new number.
@@ -56,28 +56,27 @@ object SquadFormation {
      *  block, over and over". */
     const val ARRIVAL_RADIUS = RING_RADIUS + 1.5
 
-    private enum class Shape { WEDGE, LINE, COLUMN, RING, SCATTER }
+    private enum class Shape { WEDGE, LINE, COLUMN, GRID, RING, SCATTER }
 
-    /** Transit shape depends on order (advance/hold/travel); once the squad has actually reached
-     *  where it's going, [arrived] forces a perimeter instead — a squad standing still in a wedge
-     *  or line looks wrong (per user feedback), real held positions look like a ring with everyone
-     *  facing outward, not a marching formation frozen in place. DEFEND is the one exception once
-     *  arrived: SCATTER instead of RING — see that shape's own doc note in [localOffset]. */
+    /** Transit shape depends on order. MOVE is the exception to the arrival perimeter: it keeps its
+     *  ordered infantry grid at the destination. DEFEND arrives into SCATTER rather than RING — see
+     *  that shape's own doc note in [localOffset]. */
     private fun shapeFor(order: SquadOrder, arrived: Boolean): Shape {
+        // A MOVE command is a formation movement command, including after the destination is
+        // reached. Infantry presets map directly to 2x2, 2x4, and 4x4 grids.
+        if (order == SquadOrder.MOVE) return Shape.GRID
         if (arrived) return if (order == SquadOrder.DEFEND) Shape.SCATTER else Shape.RING
         return when (order) {
             SquadOrder.ATTACK -> Shape.WEDGE
             SquadOrder.DEFEND -> Shape.LINE
             SquadOrder.PATROL -> Shape.COLUMN
-            SquadOrder.FREE -> Shape.COLUMN
+            SquadOrder.MOVE -> Shape.GRID
         }
     }
 
     /** Local (unrotated, +Z = forward/toward anchor) offset for the [slotIndex]-th member out of
-     *  [squadSize]. For the transit shapes, index 0 is the point/leader slot and sits right on the
-     *  anchor, the rest alternate left/right at increasing rank. RING and SCATTER both ignore the
-     *  leader distinction entirely — every member (including 0) gets its own point, not a fixed spot
-     *  on the anchor. */
+     *  [squadSize]. WEDGE, LINE, and COLUMN use a point/leader slot at the anchor. GRID, RING, and
+     *  SCATTER give every member its own point. */
     private fun localOffset(shape: Shape, slotIndex: Int, squadSize: Int): Vec3 {
         if (shape == Shape.RING) {
             val count = squadSize.coerceAtLeast(1)
@@ -86,8 +85,8 @@ object SquadFormation {
         }
         if (shape == Shape.SCATTER) {
             // Stable PER-SLOT pseudo-random point (same seed -> same angle/distance every tick, no
-            // drift) rather than a neat evenly-spaced ring — "almost FREE, just bounded to a
-            // radius" per user request, for a garrison holding ground rather than a hasty perimeter.
+            // drift) rather than a neat evenly-spaced ring for a garrison holding ground rather
+            // than a hasty perimeter.
             // slotTarget() does NOT rotate this by the shared heading (nor RING's own angle above) —
             // an earlier version of this comment claimed that rotation was merely a "harmless no-op"
             // for both shapes since a full-circle distribution is rotation-symmetric either way, but
@@ -101,6 +100,20 @@ object SquadFormation {
             val dist = DEFEND_SCATTER_MIN + rnd.nextDouble() * (DEFEND_SCATTER_MAX - DEFEND_SCATTER_MIN)
             return Vec3(kotlin.math.sin(angle) * dist, 0.0, kotlin.math.cos(angle) * dist)
         }
+        if (shape == Shape.GRID) {
+            val (columns, rows) = when {
+                squadSize <= 4 -> 2 to 2
+                squadSize <= 8 -> 2 to 4
+                else -> 4 to 4
+            }
+            val column = slotIndex % columns
+            val row = slotIndex / columns
+            return Vec3(
+                (column - (columns - 1) / 2.0) * SLOT_SPACING,
+                0.0,
+                ((rows - 1) / 2.0 - row) * SLOT_SPACING
+            )
+        }
         if (slotIndex <= 0) return Vec3.ZERO
         val rank = (slotIndex + 1) / 2
         val side = if (slotIndex % 2 == 1) -1.0 else 1.0
@@ -112,7 +125,7 @@ object SquadFormation {
             // Mostly single-file, alternating slightly left/right (staggered column) rather than
             // dead in the last member's footsteps.
             Shape.COLUMN -> Vec3(side * SLOT_SPACING * 0.4, 0.0, -rank * SLOT_SPACING)
-            Shape.RING, Shape.SCATTER -> Vec3.ZERO // unreachable, handled above
+            Shape.GRID, Shape.RING, Shape.SCATTER -> Vec3.ZERO // unreachable, handled above
         }
     }
 
@@ -159,6 +172,20 @@ object SquadFormation {
         val fwd = flat.normalize()
         val right = Vec3(-fwd.z, 0.0, fwd.x)
         return anchor.add(fwd.scale(local.z)).add(right.scale(local.x))
+    }
+
+    /** Stable MOVE-grid slot with a caller-supplied heading. Unlike [slotTarget], this never derives
+     *  its direction from a settling leader, so rallying and holding a grid cannot rotate in place. */
+    fun moveSlotTarget(mob: NpcEntity, anchor: Vec3, heading: Vec3): Vec3 {
+        val squad = mob.currentSquad() ?: return anchor
+        val index = squad.members.indexOf(mob.uuid)
+        if (index < 0) return anchor
+        val local = localOffset(Shape.GRID, index, squad.members.size)
+        val flat = Vec3(heading.x, 0.0, heading.z)
+        if (flat.lengthSqr() < MIN_HEADING_LENGTH * MIN_HEADING_LENGTH) return anchor.add(local)
+        val forward = flat.normalize()
+        val right = Vec3(-forward.z, 0.0, forward.x)
+        return anchor.add(forward.scale(local.z)).add(right.scale(local.x))
     }
 
     /** One heading shared by every member of [mob]'s squad this tick: anchor minus the position of

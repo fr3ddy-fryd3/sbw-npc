@@ -86,11 +86,19 @@ neoForge {
             sourceSet(sourceSets.main.get())
         }
     }
+
+    unitTest {
+        enable()
+        testedMod.set(mods.named(project.property("mod_id") as String))
+    }
 }
 
 sourceSets.main.get().resources {
     srcDir("src/generated/resources")
 }
+
+val gameRuntimeOnly: Configuration by configurations.creating
+configurations.named("runtimeClasspath") { extendsFrom(gameRuntimeOnly) }
 
 dependencies {
     implementation("thedarkcolour:kotlinforforge-neoforge:${project.property("kotlinforforge_version")}")
@@ -98,9 +106,19 @@ dependencies {
     // Резолвится через includeBuild("SuperbWarfare") + dependencySubstitution в settings.gradle.kts —
     // указанная здесь версия ни на что не влияет (Gradle подставит локальный проект).
     compileOnly("com.atsuishio.superbwarfare:superbwarfare:${project.property("superbwarfare_version")}")
-    runtimeOnly("com.atsuishio.superbwarfare:superbwarfare:${project.property("superbwarfare_version")}")
+    gameRuntimeOnly("com.atsuishio.superbwarfare:superbwarfare:${project.property("superbwarfare_version")}")
+    testRuntimeOnly("com.atsuishio.superbwarfare:superbwarfare:${project.property("superbwarfare_version")}") {
+        isTransitive = false
+    }
 
     implementation("net.tslat.smartbrainlib:SmartBrainLib-neoforge-1.21.1:${project.property("smartbrainlib_version")}")
+
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+tasks.withType<Test> {
+    useJUnitPlatform()
 }
 
 tasks.withType<JavaCompile> {

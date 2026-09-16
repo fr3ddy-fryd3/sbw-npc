@@ -3,12 +3,14 @@ package com.sbwnpc.squad.entity.ai
 import com.atsuishio.superbwarfare.init.ModItems
 import com.atsuishio.superbwarfare.item.misc.MedicalKitItem
 import com.mojang.datafixers.util.Pair
+import com.sbwnpc.squad.SquadMod
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.ai.attributes.Attributes
+import net.minecraft.world.entity.ai.attributes.AttributeModifier
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.minecraft.world.phys.AABB
@@ -49,6 +51,8 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private var healTargetId: UUID? = null
     private var nextTreatTick = 0
+    private var candidateTick = Int.MIN_VALUE
+    private var candidateCache: NpcEntity? = null
 
     companion object {
         private const val SCAN_RADIUS = 16.0
@@ -59,6 +63,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         // Faster than NpcClass.MEDIC's normal 1.3 — see setSprinting()'s own doc comment.
         private const val HEAL_SPRINT_SPEED_MULTIPLIER = 1.6
+        private val SPRINT_MODIFIER_ID = SquadMod.loc("medic_sprint")
 
         // Light red — player-facing heal indicator for a treat() call, see markHeal().
         private val HEAL_COLOR = org.joml.Vector3f(1.0f, 0.45f, 0.45f)
@@ -80,6 +85,13 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  team" notion `isHostile`/`isAlliedTo` already ride on elsewhere in this codebase), not just
      *  the specific squad it was deployed with. */
     private fun candidate(entity: NpcEntity): NpcEntity? {
+        if (candidateTick == entity.tickCount) return candidateCache
+        candidateTick = entity.tickCount
+        candidateCache = scanCandidate(entity)
+        return candidateCache
+    }
+
+    private fun scanCandidate(entity: NpcEntity): NpcEntity? {
         if (entity.npcClass != NpcClass.MEDIC) return null
         // A dug-in medic (badly hurt enough to take cover itself) must stay put like everything
         // else that respects NpcEntity.diggedIn (PM review finding — this was one of two Core tasks
@@ -120,8 +132,12 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  healed by someone else, combat lock lost) never leaves the medic permanently sprinting. */
     private fun setSprinting(entity: NpcEntity, sprinting: Boolean) {
         val attr = entity.getAttribute(Attributes.MOVEMENT_SPEED) ?: return
-        val multiplier = if (sprinting) HEAL_SPRINT_SPEED_MULTIPLIER else entity.npcClass.speedMultiplier
-        attr.baseValue = NpcEntity.BASE_SPEED * multiplier
+        if (!sprinting) {
+            attr.removeModifier(SPRINT_MODIFIER_ID)
+            return
+        }
+        val amount = HEAL_SPRINT_SPEED_MULTIPLIER / entity.npcClass.speedMultiplier - 1.0
+        attr.addOrUpdateTransientModifier(AttributeModifier(SPRINT_MODIFIER_ID, amount, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL))
     }
 
     override fun tick(entity: NpcEntity) {

@@ -21,6 +21,11 @@ object MortarClaims {
         release(loaders, npc)
     }
 
+    fun clearAll() {
+        operators.clear()
+        loaders.clear()
+    }
+
     private fun claim(map: HashMap<UUID, UUID>, mortar: UUID, npc: UUID): Boolean {
         val holder = map[mortar]
         if (holder != null && holder != npc) return false

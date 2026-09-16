@@ -47,7 +47,10 @@ enum class NpcClass(
     MORTAR_OPERATOR(listOf(loc("glock_18"), loc("mp_443"))),
 
     /** Keeps its squad's manned mortar topped up with shells (MortarLoaderBehaviour) — no combat job. */
-    MORTAR_LOADER(listOf(loc("glock_18"), loc("mp_443")));
+    MORTAR_LOADER(listOf(loc("glock_18"), loc("mp_443"))),
+
+    /** Permanent vehicle crewman. Its sidearm is only for the brief period after its vehicle is destroyed. */
+    TANK_CREW(listOf(loc("glock_18"), loc("mp_443")));
 
     fun next(): NpcClass = entries[(ordinal + 1) % entries.size]
 

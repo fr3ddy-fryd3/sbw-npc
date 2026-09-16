@@ -35,6 +35,13 @@ object SquadSelection {
         awaitingFocus.remove(player)
     }
 
+    fun clearAll() {
+        loose.clear()
+        squad.clear()
+        awaitingObjective.clear()
+        awaitingFocus.clear()
+    }
+
     fun armObjective(player: UUID, squadId: UUID) {
         awaitingObjective[player] = squadId
     }
@@ -48,4 +55,5 @@ object SquadSelection {
 
     /** Consumes and returns the squad awaiting a focus-entity pick, if any. */
     fun takeFocusArm(player: UUID): UUID? = awaitingFocus.remove(player)
+
 }

@@ -2,6 +2,7 @@ package com.sbwnpc.squad.block
 
 import com.sbwnpc.squad.block.entity.BarracksBlockEntity
 import com.sbwnpc.squad.init.ModBlockEntities
+import com.sbwnpc.squad.squad.BarracksRef
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadSelection
 import com.mojang.serialization.MapCodec
@@ -64,7 +65,7 @@ class BarracksBlock : BaseEntityBlock(
         if (!level.isClientSide && !state.`is`(newState.block)) {
             val serverLevel = level as ServerLevel
             val mgr = SquadManager.get(serverLevel)
-            mgr.squadsAtBarracks(pos.immutable()).forEach { mgr.assignBarracks(it.id, null) }
+            mgr.clearBarracks(BarracksRef(serverLevel.dimension(), pos.immutable()))
         }
         super.onRemove(state, level, pos, newState, movedByPiston)
     }
@@ -87,7 +88,7 @@ class BarracksBlock : BaseEntityBlock(
             actionbar(player, "Not your squad", ChatFormatting.RED)
             return InteractionResult.SUCCESS
         }
-        mgr.assignBarracks(sid, pos.immutable())
+        mgr.assignBarracks(sid, BarracksRef(serverLevel.dimension(), pos.immutable()))
         actionbar(player, "${mgr.get(sid)?.name ?: "Squad"} now resupplies at this Barracks", ChatFormatting.GREEN)
         return InteractionResult.SUCCESS
     }

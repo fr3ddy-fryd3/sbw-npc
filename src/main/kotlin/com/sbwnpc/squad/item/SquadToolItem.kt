@@ -1,6 +1,9 @@
 package com.sbwnpc.squad.item
 
 import com.atsuishio.superbwarfare.tools.NBTTool
+import com.atsuishio.superbwarfare.entity.vehicle.MortarEntity
+import com.atsuishio.superbwarfare.init.ModEntities as SbwEntities
+import com.atsuishio.superbwarfare.init.ModItems
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModEntities
 import com.sbwnpc.squad.network.OpenCommandScreenPayload
@@ -19,8 +22,11 @@ import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.squad.SquadSelection
 import com.sbwnpc.squad.team.SquadTeams
+import com.sbwnpc.squad.util.Terrain
 import net.minecraft.ChatFormatting
 import net.minecraft.core.BlockPos
+import net.minecraft.nbt.CompoundTag
+import net.minecraft.nbt.Tag
 import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
@@ -102,7 +108,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             val serverLevel = player.level() as ServerLevel
             val armed = SquadSelection.takeObjectiveArm(player.uuid)
             if (armed != null) {
-                val pos = lookedAtPos(player, serverLevel)
+                val pos = Terrain.lookedAtPos(player, serverLevel, 220.0)
                 SquadManager.get(serverLevel).setObjective(serverLevel, armed, pos)
                 val name = SquadManager.get(serverLevel).get(armed)?.name ?: "Squad"
                 actionbar(player, "$name → objective (${pos.x}, ${pos.y}, ${pos.z})", ChatFormatting.GRAY)
@@ -154,7 +160,13 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         val spawned = deployLine(serverLevel, pos, player.yRot, composition, cfg.rank, cfg.faction, difficulty)
         if (spawned.isEmpty()) return InteractionResult.FAIL
 
-        if (spawned.size > 1) {
+        when (cfg.preset) {
+            SquadPreset.MORTAR_CREW -> spawnMortar(serverLevel, pos, player.yRot, cfg.faction)
+            SquadPreset.T90_CREW -> spawnT90(serverLevel, pos, player.yRot, cfg.faction, spawned)
+            else -> Unit
+        }
+
+        if (spawned.size > 1 || cfg.preset == SquadPreset.T90_CREW) {
             val squad = SquadManager.get(serverLevel).create(serverLevel, player.uuid, cfg.faction, spawned.map { it.uuid })
             if (squad != null) {
                 actionbar(player, "Deployed ${squad.name} (${spawned.size})", cfg.faction.accentColor)
@@ -202,6 +214,41 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             result.add(npc)
         }
         return result
+    }
+
+    private fun spawnMortar(level: ServerLevel, center: BlockPos, yaw: Float, faction: SquadFaction) {
+        val mortar = MortarEntity(level, yaw + 180f)
+        val y = SafeSpawn.findSafeY(level, center.x + 0.5, center.z + 0.5, center.y, mortar.getDimensions(Pose.STANDING))
+            ?: center.y.toDouble()
+        mortar.moveTo(center.x + 0.5, y, center.z + 0.5, yaw + 180f, 0f)
+        mortar.intelligent = true
+        level.addFreshEntity(mortar)
+        SquadTeams.assign(mortar, faction)
+    }
+
+    private fun spawnT90(
+        level: ServerLevel,
+        center: BlockPos,
+        yaw: Float,
+        faction: SquadFaction,
+        crew: List<NpcEntity>
+    ) {
+        val tank = SbwEntities.T_90A.get().create(level) ?: return
+        val y = SafeSpawn.findSafeY(level, center.x + 0.5, center.z + 0.5, center.y, tank.getDimensions(Pose.STANDING))
+            ?: center.y.toDouble()
+        tank.moveTo(center.x + 0.5, y, center.z + 0.5, yaw + 180f, 0f)
+        level.addFreshEntity(tank)
+        tank.energy = tank.maxEnergy
+        tank.setItem(0, ItemStack(ModItems.LARGE_SHELL_AP.get(), 64))
+        tank.setItem(1, ItemStack(ModItems.LARGE_SHELL_HE.get(), 64))
+        tank.setItem(2, ItemStack(ModItems.RIFLE_AMMO.get(), 64))
+        tank.setItem(3, ItemStack(ModItems.HEAVY_AMMO.get(), 64))
+        SquadTeams.assign(tank, faction)
+        crew.singleOrNull()?.let { crewman ->
+            if (crewman.startRiding(tank, false)) {
+                crewman.assignedVehicleId = tank.uuid
+            }
+        }
     }
 
     override fun interactLivingEntity(stack: ItemStack, player: Player, target: LivingEntity, hand: InteractionHand): InteractionResult {
@@ -261,19 +308,6 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         return InteractionResult.SUCCESS
     }
 
-    private fun lookedAtPos(player: ServerPlayer, level: ServerLevel): BlockPos {
-        val hit = player.pick(220.0, 1.0f, false)
-        if (hit.type == HitResult.Type.BLOCK) return (hit as BlockHitResult).blockPos
-        return groundAt(level, hit.location)
-    }
-
-    private fun groundAt(level: ServerLevel, loc: Vec3): BlockPos {
-        var p = BlockPos.containing(loc)
-        var guard = 0
-        while (level.getBlockState(p).isAir && p.y > level.minBuildHeight && guard++ < 200) p = p.below()
-        return p.above()
-    }
-
     private fun actionbar(player: Player, msg: String, color: ChatFormatting) =
         player.displayClientMessage(Component.literal(msg).withStyle(color), true)
 
@@ -304,22 +338,31 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
 
         fun readConfig(stack: ItemStack): Config? {
             if (stack.isEmpty || stack.item !is SquadToolItem) return null
-            val tag = NBTTool.getTag(stack)
-            return Config(
-                if (tag.contains(KEY_CLASS)) NpcClass.byOrdinal(tag.getInt(KEY_CLASS)) else NpcClass.DEFAULT,
-                if (tag.contains(KEY_RANK)) NpcRank.byOrdinal(tag.getInt(KEY_RANK)) else NpcRank.DEFAULT,
-                if (tag.contains(KEY_FACTION)) SquadFaction.byOrdinal(tag.getInt(KEY_FACTION)) else SquadFaction.DEFAULT,
-                if (tag.contains(KEY_PRESET)) SquadPreset.byOrdinal(tag.getInt(KEY_PRESET)) else SquadPreset.DEFAULT
-            )
+            return readConfig(NBTTool.getTag(stack))
+        }
+
+        fun readConfig(tag: CompoundTag): Config = Config(
+            readEnum(tag, KEY_CLASS, NpcClass.DEFAULT, { NpcClass.valueOf(it) }, { NpcClass.byOrdinal(it) }),
+            readEnum(tag, KEY_RANK, NpcRank.DEFAULT, { NpcRank.valueOf(it) }, { NpcRank.byOrdinal(it) }),
+            readEnum(tag, KEY_FACTION, SquadFaction.DEFAULT, { SquadFaction.valueOf(it) }, { SquadFaction.byOrdinal(it) }),
+            readEnum(tag, KEY_PRESET, SquadPreset.DEFAULT, { SquadPreset.valueOf(it) }, { SquadPreset.byOrdinal(it) })
+        )
+
+        private inline fun <T> readEnum(tag: CompoundTag, key: String, default: T, byName: (String) -> T, byOrdinal: (Int) -> T): T = when {
+            tag.contains(key, Tag.TAG_STRING.toInt()) -> runCatching { byName(tag.getString(key)) }.getOrDefault(default)
+            tag.contains(key, Tag.TAG_INT.toInt()) -> byOrdinal(tag.getInt(key))
+            else -> default
         }
 
         fun writeConfig(stack: ItemStack, cls: NpcClass, rank: NpcRank, faction: SquadFaction, preset: SquadPreset) {
-            NBTTool.withTag(stack) {
-                it.putInt(KEY_CLASS, cls.ordinal)
-                it.putInt(KEY_RANK, rank.ordinal)
-                it.putInt(KEY_PRESET, preset.ordinal)
-                it.putInt(KEY_FACTION, faction.ordinal)
-            }
+            NBTTool.withTag(stack) { writeConfig(it, Config(cls, rank, faction, preset)) }
+        }
+
+        fun writeConfig(tag: CompoundTag, cfg: Config) {
+            tag.putString(KEY_CLASS, cfg.cls.name)
+            tag.putString(KEY_RANK, cfg.rank.name)
+            tag.putString(KEY_PRESET, cfg.preset.name)
+            tag.putString(KEY_FACTION, cfg.faction.name)
         }
     }
 }

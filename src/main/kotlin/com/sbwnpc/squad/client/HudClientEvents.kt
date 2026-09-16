@@ -28,6 +28,7 @@ object HudClientEvents {
         }
         HudKeys.SLOTS.forEachIndexed { i, key -> if (key.consumeClick()) HudOverlayState.pickSlot(i) }
         if (HudKeys.SELECT_ALL.consumeClick()) HudOverlayState.selectAll()
+        HudOverlayState.refreshIfDue()
     }
 
     private const val PANEL_WIDTH = 150
@@ -53,7 +54,7 @@ object HudClientEvents {
             HudOverlayState.Mode.ORDERS -> {
                 header = if (HudOverlayState.selectedAll) "ALL SQUADS (${HudOverlayState.allTargetRows.size})"
                 else HudOverlayState.selected?.name ?: return
-                lines = SquadOrder.entries.mapIndexed { i, order -> "${i + 1}. ${order.name}" to 0xFFFFFF }
+                lines = HudOverlayState.availableOrders().mapIndexed { i, order -> "${i + 1}. ${order.name}" to 0xFFFFFF }
             }
         }
 

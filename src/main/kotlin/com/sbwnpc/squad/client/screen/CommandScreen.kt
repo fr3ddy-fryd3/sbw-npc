@@ -16,7 +16,14 @@ import net.neoforged.neoforge.network.PacketDistributor
 
 class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads")) {
 
-    private data class Row(val id: String, val name: String, val faction: SquadFaction, val members: Int, var order: SquadOrder)
+    private data class Row(
+        val id: String,
+        val name: String,
+        val faction: SquadFaction,
+        val members: Int,
+        var order: SquadOrder,
+        val tank: Boolean
+    )
 
     private val loose = snapshot.getInt("Loose")
     private val rows = snapshot.getList("Squads", Tag.TAG_COMPOUND.toInt()).map {
@@ -24,7 +31,7 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
         Row(
             t.getString("Id"), t.getString("Name"),
             runCatching { SquadFaction.valueOf(t.getString("Faction")) }.getOrDefault(SquadFaction.DEFAULT),
-            t.getInt("Members"), SquadOrder.byOrdinal(t.getInt("Order"))
+            t.getInt("Members"), SquadOrder.byOrdinal(t.getInt("Order")), t.getBoolean("Tank")
         )
     }
     private var listTop = 0
@@ -49,23 +56,27 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
                 row.order = row.order.next()
                 it.message = Component.literal("Order: ${row.order.name}")
                 send(SquadCmdPayload.SET_ORDER, row.id, row.order.ordinal)
-            }.bounds(x + 108, y, 104, 20).build())
+            }.bounds(x + 92, y, 90, 20).build())
 
             addRenderableWidget(Button.builder(Component.literal("Objective")) {
                 send(SquadCmdPayload.ARM_OBJECTIVE, row.id); onClose()
-            }.bounds(x + 216, y, 66, 20).build())
+            }.bounds(x + 186, y, 58, 20).build())
 
             addRenderableWidget(Button.builder(Component.literal("Focus")) {
                 send(SquadCmdPayload.ARM_FOCUS, row.id); onClose()
-            }.bounds(x + 286, y, 44, 20).build())
+            }.bounds(x + 248, y, 44, 20).build())
 
             addRenderableWidget(Button.builder(Component.literal("R")) {
                 Minecraft.getInstance().setScreen(RenameScreen(row.id, row.name))
-            }.bounds(x + 334, y, 14, 20).build())
+            }.bounds(x + 296, y, 14, 20).build())
 
             addRenderableWidget(Button.builder(Component.literal("X").withStyle(ChatFormatting.RED)) {
                 send(SquadCmdPayload.DISBAND, row.id); onClose()
-            }.bounds(x + 350, y, 14, 20).build())
+            }.bounds(x + 314, y, 14, 20).build())
+
+            addRenderableWidget(Button.builder(Component.literal("DEL").withStyle(ChatFormatting.DARK_RED)) {
+                send(SquadCmdPayload.DELETE_SQUAD, row.id); onClose()
+            }.bounds(x + 332, y, 32, 20).build())
 
             y += 24
         }

@@ -35,6 +35,7 @@ class SquadCmdPayload(val action: Int, val squad: String, val value: Int, val te
         const val ARM_OBJECTIVE = 4
         const val SELECT = 5
         const val ARM_FOCUS = 6
+        const val DELETE_SQUAD = 7
 
         val TYPE = CustomPacketPayload.Type<SquadCmdPayload>(SquadMod.loc("squad_cmd"))
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, SquadCmdPayload> = StreamCodec.composite(

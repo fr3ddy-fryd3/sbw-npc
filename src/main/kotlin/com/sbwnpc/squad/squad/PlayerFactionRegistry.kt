@@ -5,6 +5,7 @@ import com.sbwnpc.squad.network.sendToClient
 import com.sbwnpc.squad.npc.SquadFaction
 import net.minecraft.core.HolderLookup
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.nbt.Tag
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
@@ -48,7 +49,7 @@ class PlayerFactionRegistry : SavedData() {
     }
 
     override fun save(tag: CompoundTag, registries: HolderLookup.Provider): CompoundTag {
-        factions.forEach { (uuid, faction) -> tag.putInt(uuid.toString(), faction.ordinal) }
+        factions.forEach { (uuid, faction) -> tag.putString(uuid.toString(), faction.name) }
         return tag
     }
 
@@ -59,9 +60,15 @@ class PlayerFactionRegistry : SavedData() {
             val reg = PlayerFactionRegistry()
             for (key in tag.allKeys) {
                 val uuid = runCatching { UUID.fromString(key) }.getOrNull() ?: continue
-                reg.factions[uuid] = SquadFaction.byOrdinal(tag.getInt(key))
+                readFaction(tag, key)?.let { reg.factions[uuid] = it }
             }
             return reg
+        }
+
+        private fun readFaction(tag: CompoundTag, key: String): SquadFaction? = when {
+            tag.contains(key, Tag.TAG_STRING.toInt()) -> runCatching { SquadFaction.valueOf(tag.getString(key)) }.getOrNull()
+            tag.contains(key, Tag.TAG_INT.toInt()) -> SquadFaction.byOrdinal(tag.getInt(key))
+            else -> null
         }
 
         fun get(server: MinecraftServer): PlayerFactionRegistry =

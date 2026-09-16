@@ -15,7 +15,7 @@ import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
-import net.minecraft.core.BlockPos
+import com.sbwnpc.squad.util.Terrain
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
@@ -97,6 +97,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         // baseline score for the entity's current position, so this only affects how far it's
         // willing to reposition, never whether it's allowed to just hold where it already is.
         private const val POSITION_SEARCH_RADIUS = 7.0
+        private const val POSITION_GRID_STEP = 2
 
         // Priority order for holdFiringPosition's concealment scoring — highest first (a candidate
         // blocked at 1.5 hides more of the mob's body than one only blocked at 0.5). All sit below
@@ -251,12 +252,11 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         var bestPos: Vec3? = null
 
         val radius = POSITION_SEARCH_RADIUS.toInt()
-        for (dx in -radius..radius) {
-            for (dz in -radius..radius) {
-                if (dx == 0 && dz == 0) continue
+        for (dx in -radius..radius step POSITION_GRID_STEP) {
+            for (dz in -radius..radius step POSITION_GRID_STEP) {
                 val distSq = (dx * dx + dz * dz).toDouble()
                 if (distSq > POSITION_SEARCH_RADIUS * POSITION_SEARCH_RADIUS) continue
-                val ground = groundNear(level, origin.x + dx, origin.y, origin.z + dz) ?: continue
+                val ground = Terrain.standableOrNull(level, origin.x + dx, origin.y, origin.z + dz) ?: continue
                 val score = concealmentScore(level, entity, target, ground, eyeHeight) ?: continue
                 if (score > bestScore) {
                     bestScore = score
@@ -290,20 +290,6 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         return 0.0
     }
 
-    /** Snaps to standable ground at ([x], [z]) near the entity's own Y — same heuristic shape as the
-     *  groundAt() helpers used elsewhere in this codebase (SeekCoverBehaviour, ModNetwork,
-     *  SquadToolItem), just returning null instead of a best-effort guess when nothing standable is
-     *  found nearby (a cliff edge/pit): an uncertain candidate is worse than no candidate here, since
-     *  concealment scoring depends on precisely which block the mob would actually stand on. */
-    private fun groundNear(level: ServerLevel, x: Double, y: Double, z: Double): Vec3? {
-        var pos = BlockPos.containing(x, y, z)
-        var guard = 0
-        while (level.getBlockState(pos).isAir && pos.y > level.minBuildHeight && guard++ < 6) pos = pos.below()
-        while (!level.getBlockState(pos).isAir && guard++ < 6) pos = pos.above()
-        if (level.getBlockState(pos.below()).isAir) return null // no solid ground within the small search window
-        return Vec3(pos.x + 0.5, pos.y.toDouble(), pos.z + 0.5)
-    }
-
     private fun moveTowardFormationSlot(entity: NpcEntity, target: LivingEntity) {
         val targetPos = target.position()
         val slot = SquadFormation.slotTarget(entity, targetPos, targetPos.subtract(entity.position()), false)
@@ -320,7 +306,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             // sighting (SquadTargetSensor's own nearestDirectTarget only CONSUMES relayed contacts,
             // it doesn't report). Without this, faction-wide awareness would never receive anything
             // regardless of how the current target was acquired (focus/hurt-by/relay/direct).
-            SquadTeams.factionOf(entity)?.let { TeamAwareness.report(it, target.uuid, entity.tickCount.toLong()) }
+            SquadTeams.factionOf(entity)?.let { TeamAwareness.report(it, target.uuid, entity.level().gameTime) }
         }
         aimTime = if (canSeeTarget) {
             minOf(entity.maxAimTime, aimTime + 1)

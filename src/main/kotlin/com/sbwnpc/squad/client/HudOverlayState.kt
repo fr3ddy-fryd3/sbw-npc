@@ -23,7 +23,14 @@ object HudOverlayState {
 
     enum class Mode { SQUAD_LIST, ORDERS }
 
-    data class Row(val id: String, val name: String, val faction: SquadFaction, val members: Int)
+    data class Row(
+        val id: String,
+        val name: String,
+        val faction: SquadFaction,
+        val members: Int,
+        val tank: Boolean,
+        val mortar: Boolean
+    )
 
     @JvmStatic
     var isOpen: Boolean = false
@@ -43,13 +50,19 @@ object HudOverlayState {
      *  happen once squads exist, but no reason to crash on it). */
     var defaultFaction: SquadFaction? = null
         private set
+    private var refreshTicks = 0
 
     /** Rows [selectAll] actually orders — those matching the player's own faction. A test/OPFOR
      *  squad of a different faction under the same player is excluded, same as server-side. */
     val allTargetRows: List<Row> get() = rows.filter { defaultFaction == null || it.faction == defaultFaction }
 
     fun toggle() {
-        if (isOpen) close() else PacketDistributor.sendToServer(RequestHudPayload)
+        if (isOpen) {
+            close()
+        } else {
+            refreshTicks = REFRESH_INTERVAL_TICKS
+            PacketDistributor.sendToServer(RequestHudPayload)
+        }
     }
 
     fun close() {
@@ -58,23 +71,33 @@ object HudOverlayState {
         selected = null
         selectedAll = false
         rows = emptyList()
+        refreshTicks = 0
     }
 
     /** Server replied to the open request with a fresh squad list. */
     fun onSnapshot(data: CompoundTag) {
+        val selectedId = selected?.id
         rows = data.getList("Squads", Tag.TAG_COMPOUND.toInt()).map {
             val t = it as CompoundTag
             Row(
                 t.getString("Id"), t.getString("Name"),
                 runCatching { SquadFaction.valueOf(t.getString("Faction")) }.getOrDefault(SquadFaction.DEFAULT),
-                t.getInt("Members")
+                t.getInt("Members"), t.getBoolean("Tank"), t.getBoolean("Mortar")
             )
         }
         defaultFaction = if (data.contains("DefaultFaction")) SquadFaction.byOrdinal(data.getInt("DefaultFaction")) else null
-        mode = Mode.SQUAD_LIST
-        selected = null
-        selectedAll = false
+        if (mode == Mode.ORDERS && !selectedAll) {
+            selected = rows.firstOrNull { it.id == selectedId }
+            if (selected == null) mode = Mode.SQUAD_LIST
+        }
         isOpen = true
+    }
+
+    /** Refreshes roster counts and newly created/deleted squads without interrupting order selection. */
+    fun refreshIfDue() {
+        if (--refreshTicks > 0) return
+        refreshTicks = REFRESH_INTERVAL_TICKS
+        PacketDistributor.sendToServer(RequestHudPayload)
     }
 
     /** 0-indexed slot pick (slot key 1 -> index 0, ... slot key 9 -> index 8). */
@@ -86,7 +109,7 @@ object HudOverlayState {
                 mode = Mode.ORDERS
             }
             Mode.ORDERS -> {
-                val order = SquadOrder.entries.getOrNull(index) ?: return
+                val order = availableOrders().getOrNull(index) ?: return
                 if (selectedAll) {
                     PacketDistributor.sendToServer(HudOrderAllPayload(order.ordinal))
                 } else {
@@ -113,4 +136,14 @@ object HudOverlayState {
         selectedAll = true
         mode = Mode.ORDERS
     }
+
+    /** Orders displayed for the selected squad. Tank crews only navigate; mortar crews hold or fire. */
+    fun availableOrders(): List<SquadOrder> = when {
+        selectedAll -> SquadOrder.entries
+        selected?.tank == true -> listOf(SquadOrder.MOVE)
+        selected?.mortar == true -> listOf(SquadOrder.ATTACK, SquadOrder.DEFEND)
+        else -> SquadOrder.entries
+    }
+
+    private const val REFRESH_INTERVAL_TICKS = 40
 }
