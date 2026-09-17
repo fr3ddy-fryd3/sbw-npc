@@ -340,6 +340,42 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         if (brainTickInterval == 1 || (tickCount + id) % brainTickInterval == 0) tickBrain(this)
     }
 
+    // --- Equipment sync ---
+    // Vanilla re-compares every equipment slot against its last-broadcast copy each tick
+    // (LivingEntity.detectEquipmentUpdates → equipmentHasChanged → ItemStack.matches, a deep
+    // compare of the stack's components — for an SBW gun that's its whole ~1 KB CUSTOM_DATA tag),
+    // and broadcasts a ClientboundSetEquipmentPacket with the full stack to every tracker whenever
+    // they differ. An SBW gun's tag differs almost every tick it's in use: ammo, heat and the
+    // post-shot timers all live in it (GunData.persist rewrites CUSTOM_DATA when anything mutated).
+    // None of that is visible on an NPC: third-person guns render through renderByItem — static
+    // model + attachments — the animation instance that reads reload/bolt state only exists for
+    // the local player's first-person view (confirmed in SBW's GeoGunRenderer /
+    // simplebedrockmodel's AbstractGeoItemRendererV2). So for the held gun, only a change of item
+    // or of the "Attachments" sub-tag counts as a visible change; everything else is compared and
+    // synced exactly as before. Spawn-time full syncs (resyncEquipmentForNewlySpawnedNpc) are
+    // unaffected — they bypass this path.
+    override fun equipmentHasChanged(oldItem: ItemStack, newItem: ItemStack): Boolean {
+        if (oldItem.item is GunItem && newItem.item === oldItem.item && oldItem.count == newItem.count) {
+            return attachmentsTag(oldItem) != attachmentsTag(newItem)
+        }
+        return super.equipmentHasChanged(oldItem, newItem)
+    }
+
+    private fun attachmentsTag(stack: ItemStack): CompoundTag? =
+        stack.get(net.minecraft.core.component.DataComponents.CUSTOM_DATA)?.unsafe?.let { tag ->
+            // GunData.KEY_ATTACHMENTS ("Attachments") — private in SBW, mirrored here.
+            if (tag.contains("Attachments", net.minecraft.nbt.Tag.TAG_COMPOUND.toInt())) tag.getCompound("Attachments") else null
+        }
+
+    // Vanilla runs an entity query around every mob every tick just to shove neighbours apart.
+    // Formations deliberately put NPCs close together, so every one of those queries has work to
+    // do. Away from players and out of combat (brain LOD > 1) it's done on alternate ticks instead
+    // — the same separation, one tick later; never skipped outright so two NPCs can't end up
+    // sharing a block unnoticed.
+    override fun pushEntities() {
+        if (brainTickInterval == 1 || (tickCount + id) % 2 == 0) super.pushEntities()
+    }
+
     // --- Repath gate ---
     // Several behaviours call navigation.moveTo(x, y, z) every tick while approaching something.
     // Vanilla reuses the current path only while it's still in progress AND aimed at the same
