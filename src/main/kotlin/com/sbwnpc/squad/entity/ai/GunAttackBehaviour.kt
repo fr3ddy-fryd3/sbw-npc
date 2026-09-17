@@ -9,9 +9,11 @@ import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.Alarm
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.FriendlyFireGuard
+import com.sbwnpc.squad.combat.OffscreenFire
 import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.combat.TeamAwareness
+import com.sbwnpc.squad.combat.TickBudget
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
@@ -73,6 +75,18 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var firingPos: Vec3? = null
     private var nextPositionCheckTick = 0
 
+    private var nextFriendlyFireCheckTick = 0
+    private var nextAlarmTick = 0
+
+    // See OffscreenFire — re-checked every WITNESS_CHECK_INTERVAL ticks, not per shot.
+    private var nextWitnessCheckTick = 0
+    private var witnessed = true
+
+    // Sustained-fire pacing for AUTO weapons — see the shoot block in tick().
+    private var roundsInBurst = 0
+    private var burstLimit = MAX_BURST_ROUNDS
+    private var burstPauseUntilTick = 0
+
     companion object {
         private const val BASE_SHOOT_DISTANCE = 24.0
         private const val DEFEND_LEASH = 14.0
@@ -82,6 +96,29 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val SIDESTEP_BATCH_COOLDOWN = 40
         private const val BOUND_MOVE_TICKS = 25
         private const val GUNFIRE_HEARING_RADIUS = 30.0
+
+        // Friendly-fire assessment used to be two entity queries EVERY tick for every shooter (line
+        // of fire + blast radius). Now one combined pass every few ticks — an ally can't cross a
+        // firing lane in under a fifth of a second, and the cached answer is what gates the shot.
+        private const val FRIENDLY_FIRE_CHECK_INTERVAL = 4
+
+        // Alarm.raise used to fire on EVERY shot (an MG at 600 RPM = 10 ally scans per second per
+        // shooter). The alert it raises lasts 200 ticks and re-raising only extends the timer, so
+        // once a second is indistinguishable in effect.
+        private const val ALARM_INTERVAL_TICKS = 20
+        private const val WITNESS_CHECK_INTERVAL = 20
+
+        // Sustained-fire pacing for AUTO fire mode only (SEMI/BURST are already paced by
+        // semiFireInterval / the gun's own burst count): after MAX_BURST_ROUNDS(+jitter)
+        // consecutive rounds, hold fire for BURST_PAUSE_TICKS(+jitter). Each round is a live SBW
+        // projectile entity with its own physics + network sync, and a big fight was sustaining
+        // hundreds of them at once — this is the single largest external cost of many NPCs. Also
+        // reads more like real fire discipline than a never-ending trigger pull. Tune or set
+        // MAX_BURST_ROUNDS very high to effectively disable.
+        private const val MAX_BURST_ROUNDS = 8
+        private const val BURST_ROUNDS_JITTER = 6
+        private const val BURST_PAUSE_TICKS = 10
+        private const val BURST_PAUSE_JITTER = 15
 
         // Was a flat 20 ticks (~1s) — per user request, a firing pause (whether between advance
         // bounds, or holding a chosen partial-cover spot — see holdFiringPosition) should last long
@@ -159,6 +196,11 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         nextBoundToggleTick = 0
         firingPos = null
         nextPositionCheckTick = 0
+        nextFriendlyFireCheckTick = 0
+        nextWitnessCheckTick = 0
+        witnessed = true
+        roundsInBurst = 0
+        burstPauseUntilTick = 0
     }
 
     private fun advanceOrHold(entity: NpcEntity, target: LivingEntity) {
@@ -211,12 +253,21 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             if (entity.position().closerThan(pos, 1.0)) {
                 entity.navigation.stop()
             } else {
-                entity.navigation.moveTo(pos.x, pos.y, pos.z, 1.0)
+                entity.navigateTo(pos, 1.0)
             }
             return
         }
-        nextPositionCheckTick = entity.tickCount + HOLD_MIN_TICKS + entity.random.nextInt(HOLD_JITTER_TICKS)
         val level = entity.level() as? ServerLevel ?: return
+        // Global raycast budget (TickBudget): a whole squad reaches shoot range on the same tick,
+        // and each search is up to ~64 candidates x 4 raycasts. If this tick is already spent,
+        // keep holding whatever we have and try again in a tick or two — the searches then spread
+        // themselves across ticks instead of all landing on one.
+        if (!TickBudget.hasRaycasts(level)) {
+            nextPositionCheckTick = entity.tickCount + 1 + entity.random.nextInt(3)
+            if (pos == null) entity.navigation.stop()
+            return
+        }
+        nextPositionCheckTick = entity.tickCount + HOLD_MIN_TICKS + entity.random.nextInt(HOLD_JITTER_TICKS)
         val chosen = bestFiringSpot(entity, level, target) ?: entity.position()
         firingPos = chosen
         markFiringPosition(level, chosen)
@@ -318,7 +369,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         entity.lookAt(target, 30f, 30f)
 
-        val defendHome = if (entity.currentSquad()?.order == SquadOrder.DEFEND) entity.homeCenter() else null
+        val squad = entity.currentSquad()
+        val defendHome = if (squad?.order == SquadOrder.DEFEND) entity.homeCenter() else null
         if (defendHome != null) {
             val fromHome = entity.position().distanceTo(defendHome)
             if (fromHome > DEFEND_LEASH_DROP) {
@@ -339,9 +391,15 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             advanceOrHold(entity, target)
         }
 
-        lineIsClear = FriendlyFireGuard.hasClearLineOfFire(entity, target.eyePosition, entity.spread)
-        val explosionRadius = gunData.get(GunProp.EXPLOSION_RADIUS)
-        blastClear = FriendlyFireGuard.hasClearBlastRadius(entity, target.position(), explosionRadius)
+        if (entity.tickCount >= nextFriendlyFireCheckTick) {
+            nextFriendlyFireCheckTick = entity.tickCount + FRIENDLY_FIRE_CHECK_INTERVAL
+            val explosionRadius = gunData.get(GunProp.EXPLOSION_RADIUS)
+            val assessment = FriendlyFireGuard.assess(
+                entity, target.eyePosition, entity.spread, target.position(), explosionRadius
+            )
+            lineIsClear = assessment.lineClear
+            blastClear = assessment.blastClear
+        }
 
         if (!lineIsClear && !entity.diggedIn) {
             // Dug in: hold fire rather than step out of the hole to clear an ally's line of fire —
@@ -369,7 +427,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             gunData.startBolt()
         }
 
-        if (lineIsClear && blastClear && gunData.canShoot(entity) && aimTime >= entity.maxAimTime) {
+        val pausedBetweenBursts = entity.tickCount < burstPauseUntilTick
+        if (!pausedBetweenBursts && lineIsClear && blastClear && gunData.canShoot(entity) && aimTime >= entity.maxAimTime) {
             val rps = gunData.get(GunProp.RPM).toDouble() / 60.0
             var cooldown = Math.round(1000 / rps)
 
@@ -384,17 +443,37 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
 
             if (shootTimer.progress >= cooldown) {
+                if (entity.tickCount >= nextWitnessCheckTick) {
+                    nextWitnessCheckTick = entity.tickCount + WITNESS_CHECK_INTERVAL
+                    val level = entity.level() as ServerLevel
+                    witnessed = OffscreenFire.hasWitness(level, entity, target)
+                }
+                val simulate = !witnessed && OffscreenFire.canSimulate(gunData)
                 var newProgress = shootTimer.progress
                 do {
-                    gunData.shoot(entity, entity.spread, zoom, target.uuid)
+                    if (simulate) {
+                        OffscreenFire.fire(entity.level() as ServerLevel, entity, gunData, target, entity.spread)
+                    } else {
+                        gunData.shoot(entity, entity.spread, zoom, target.uuid)
+                    }
                     newProgress -= cooldown
+                    roundsInBurst++
                 } while (newProgress - cooldown > 0)
                 shootTimer.progress = newProgress
                 entity.lastShotTick = entity.tickCount
-                Alarm.raise(entity, entity.position(), target.position(), GUNFIRE_HEARING_RADIUS)
+                if (entity.tickCount >= nextAlarmTick) {
+                    nextAlarmTick = entity.tickCount + ALARM_INTERVAL_TICKS
+                    Alarm.raise(entity, entity.position(), target.position(), GUNFIRE_HEARING_RADIUS)
+                }
+                if (fireMode == FireMode.AUTO && roundsInBurst >= burstLimit) {
+                    roundsInBurst = 0
+                    burstLimit = MAX_BURST_ROUNDS + entity.random.nextInt(BURST_ROUNDS_JITTER)
+                    burstPauseUntilTick = entity.tickCount + BURST_PAUSE_TICKS + entity.random.nextInt(BURST_PAUSE_JITTER)
+                }
             }
         } else {
             shootTimer.stop()
+            if (!pausedBetweenBursts) roundsInBurst = 0
         }
     }
 }

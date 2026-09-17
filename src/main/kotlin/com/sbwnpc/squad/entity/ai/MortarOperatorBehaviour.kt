@@ -9,6 +9,7 @@ import com.atsuishio.superbwarfare.tools.TrajectoryCalculator
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.Squad
 import com.sbwnpc.squad.squad.SquadOrder
@@ -18,7 +19,6 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
-import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.phys.AABB
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
@@ -64,7 +64,21 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val MIN_SCATTER = 5.0
         private const val MAX_SCATTER = 10.0
         private const val FIRE_COOLDOWN_TICKS = 50
+        // With no mortar in range, eligible() used to run the MortarEntity box query every single
+        // tick for the rest of the operator's life (SmartBrainLib re-checks stopped behaviours'
+        // start conditions each tick). A mortar doesn't appear faster than this.
+        private const val MORTAR_SEARCH_INTERVAL_TICKS = 40
+        // The friendly-near-target check ran every tick while manning the mortar; the aim itself is
+        // only refreshed every 20 ticks, so checking at the same cadence loses nothing.
+        private const val FRIENDLY_CHECK_INTERVAL_TICKS = 20
+        private const val MAX_LOS_CHECKS = 8
+        private const val START_CHECK_INTERVAL_TICKS = 5
     }
+
+    private var nextMortarSearchTick = 0
+    private var friendlyCheckTick = Int.MIN_VALUE
+    private var friendlyCheckTarget: BlockPos? = null
+    private var friendlyCheckResult = false
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
@@ -88,6 +102,8 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (current != null && current.isAlive && !current.isWreck && !MortarClaims.isOperatorClaimedByOther(current.uuid, entity.uuid)) return true
 
         val level = entity.level() as? ServerLevel ?: return false
+        if (entity.tickCount < nextMortarSearchTick) return false
+        nextMortarSearchTick = entity.tickCount + MORTAR_SEARCH_INTERVAL_TICKS
         val found = level.getEntitiesOfClass(
             MortarEntity::class.java, AABB.ofSize(entity.position(), SEARCH_RANGE * 2, SEARCH_RANGE * 2, SEARCH_RANGE * 2)
         ).firstOrNull {
@@ -103,10 +119,13 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         return true
     }
 
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = eligible(entity)
+    private val startCheck = StartCheckThrottle(START_CHECK_INTERVAL_TICKS)
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
+        startCheck.check(entity) { eligible(entity) }
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = eligible(entity)
 
     override fun stop(entity: NpcEntity) {
+        startCheck.reset()
         MortarClaims.releaseOperator(entity.uuid)
         mortar = null
     }
@@ -118,7 +137,7 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         val dist = entity.position().distanceTo(m.position())
         if (dist > 2.5) {
-            entity.navigation.moveTo(m.x, m.y, m.z, 1.0)
+            entity.navigateTo(m.x, m.y, m.z, 1.0)
             return
         }
         entity.navigation.stop()
@@ -130,7 +149,7 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         // at max range into nothing. Ask the same solver ourselves first and just don't shoot
         // this tick if it can't actually hit the point.
         if (!canHitTarget(m, target)) return
-        if (entity.currentSquad()?.let { friendlyNear(level, entity, target) } == true) return
+        if (entity.currentSquad() != null && friendlyNearCached(level, entity, target)) return
 
         if (entity.tickCount >= nextAimTick) {
             val stack = ItemStack(ModItems.FIRING_PARAMETERS.get())
@@ -192,12 +211,25 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         val tick = level.gameTime
         val faction = SquadTeams.factionOf(entity)
         val radius = detectionRadius(entity)
-        val candidates = level.getEntitiesOfClass(
-            LivingEntity::class.java, AABB.ofSize(entity.position(), radius * 2, radius * 2, radius * 2)
-        ).filter { (it is NpcEntity || it is Player) && SquadTeams.isHostile(entity, it) && it.isAlive }
+        // Was a LivingEntity query over a box up to 320 blocks on a side (thousands of chunk
+        // sections), then a raycast against EVERY hostile in it. Now: hostiles from the NPC
+        // registry + player list, nearest first, and at most MAX_LOS_CHECKS raycasts — the nearest
+        // visible one is the fire target either way; the rest only fed TeamAwareness, which the
+        // infantry actually engaging them already does.
+        val candidates = ArrayList<LivingEntity>()
+        NpcRegistry.forEachWithin(level, entity.position(), radius, exclude = entity) {
+            if (it.isAlive && SquadTeams.isHostile(entity, it)) candidates += it
+        }
+        val r2 = radius * radius
+        for (player in level.players()) {
+            if (player.isAlive && player.distanceToSqr(entity) <= r2 && SquadTeams.isHostile(entity, player)) candidates += player
+        }
+        candidates.sortBy { entity.distanceToSqr(it) }
 
         var selfSpotted: LivingEntity? = null
+        var losChecks = 0
         for (c in candidates) {
+            if (losChecks++ >= MAX_LOS_CHECKS) break
             if (!entity.sensing.hasLineOfSight(c)) continue
             if (faction != null) TeamAwareness.report(faction, c.uuid, tick)
             if (selfSpotted == null) selfSpotted = c
@@ -226,12 +258,27 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         return Math.round(MAX_SCATTER - t * (MAX_SCATTER - MIN_SCATTER)).toInt()
     }
 
+    private fun friendlyNearCached(level: ServerLevel, entity: NpcEntity, target: BlockPos): Boolean {
+        if (target == friendlyCheckTarget && entity.tickCount - friendlyCheckTick < FRIENDLY_CHECK_INTERVAL_TICKS) {
+            return friendlyCheckResult
+        }
+        friendlyCheckTick = entity.tickCount
+        friendlyCheckTarget = target
+        friendlyCheckResult = friendlyNear(level, entity, target)
+        return friendlyCheckResult
+    }
+
+    // Squad NPCs from the registry + players from the level list — same population the old
+    // LivingEntity box query filtered down to, minus the chunk-section walk.
     private fun friendlyNear(level: ServerLevel, entity: NpcEntity, target: BlockPos): Boolean {
         val center = target.center
-        return level.getEntitiesOfClass(LivingEntity::class.java, AABB.ofSize(center, SAFE_RADIUS * 2, SAFE_RADIUS * 2, SAFE_RADIUS * 2))
-            .any { other ->
-                val protected = (other is NpcEntity && other.squadId != null) || other is Player
-                protected && other !== entity && !SquadTeams.isHostile(entity, other)
-            }
+        NpcRegistry.forEachWithin(level, center, SAFE_RADIUS, exclude = entity) { other ->
+            if (other.squadId != null && !SquadTeams.isHostile(entity, other)) return true
+        }
+        val r2 = SAFE_RADIUS * SAFE_RADIUS
+        for (player in level.players()) {
+            if (player.distanceToSqr(center) <= r2 && !SquadTeams.isHostile(entity, player)) return true
+        }
+        return false
     }
 }

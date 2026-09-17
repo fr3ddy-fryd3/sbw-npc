@@ -46,9 +46,28 @@ object SquadTeams {
      *  — no extra synced entity data needed for e.g. the renderer to pick a skin. */
     fun factionOf(entity: Entity): SquadFaction? {
         val team = entity.team as? PlayerTeam ?: return null
-        if (!team.name.startsWith(PREFIX)) return null
-        return runCatching { SquadFaction.valueOf(team.name.removePrefix(PREFIX).uppercase()) }.getOrNull()
+        return factionOfTeamName(team.name)
     }
+
+    // Team name -> faction, memoised. This used to be removePrefix + uppercase + valueOf inside a
+    // runCatching on EVERY call — and it's called per candidate in every ally scan, per tick from
+    // GunAttackBehaviour, and per FRAME per NPC from NpcRenderer.getTextureLocation on the client.
+    // Non-faction team names are cached (as NONE) too, so a world full of vanilla-teamed entities
+    // doesn't keep re-parsing them either. Bounded by the number of distinct team names seen.
+    // ConcurrentHashMap because in singleplayer the client render thread and the integrated server
+    // thread both go through here; it can't hold null, hence the sentinel.
+    private val NONE = Any()
+    private val factionByTeamName = java.util.concurrent.ConcurrentHashMap<String, Any>()
+
+    private fun factionOfTeamName(name: String): SquadFaction? {
+        val hit = factionByTeamName.computeIfAbsent(name) {
+            if (!name.startsWith(PREFIX)) NONE
+            else runCatching { SquadFaction.valueOf(name.removePrefix(PREFIX).uppercase()) }.getOrNull() ?: NONE
+        }
+        return hit as? SquadFaction
+    }
+
+    fun clearCache() = factionByTeamName.clear()
 
     /** Squad friend/foe: both sides need an actual (different) squad faction to be hostile.
      *  Anything teamless — the owning player included, since nothing ever puts a player on a

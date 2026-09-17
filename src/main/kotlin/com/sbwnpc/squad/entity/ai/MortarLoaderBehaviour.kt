@@ -33,9 +33,12 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private var mortar: MortarEntity? = null
     private var nextCheckTick = 0
+    private var nextMortarSearchTick = 0
 
     companion object {
         private const val SEARCH_RANGE = 30.0
+        private const val MORTAR_SEARCH_INTERVAL_TICKS = 40
+        private const val START_CHECK_INTERVAL_TICKS = 5
         private const val SELF_DEFENSE_RANGE_SQR = 6.0 * 6.0
     }
 
@@ -55,6 +58,9 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (current != null && current.isAlive && !current.isWreck && !MortarClaims.isLoaderClaimedByOther(current.uuid, entity.uuid)) return true
 
         val level = entity.level() as? ServerLevel ?: return false
+        // Same every-tick-search problem as MortarOperatorBehaviour — see its MORTAR_SEARCH_INTERVAL_TICKS.
+        if (entity.tickCount < nextMortarSearchTick) return false
+        nextMortarSearchTick = entity.tickCount + MORTAR_SEARCH_INTERVAL_TICKS
         val found = level.getEntitiesOfClass(
             MortarEntity::class.java, AABB.ofSize(entity.position(), SEARCH_RANGE * 2, SEARCH_RANGE * 2, SEARCH_RANGE * 2)
         ).firstOrNull {
@@ -73,10 +79,13 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
         return true
     }
 
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = eligible(entity)
+    private val startCheck = StartCheckThrottle(START_CHECK_INTERVAL_TICKS)
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
+        startCheck.check(entity) { eligible(entity) }
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = eligible(entity)
 
     override fun stop(entity: NpcEntity) {
+        startCheck.reset()
         MortarClaims.releaseLoader(entity.uuid)
         mortar = null
     }
@@ -85,7 +94,7 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
         val m = mortar ?: return
         val dist = entity.position().distanceTo(m.position())
         if (dist > 2.5) {
-            entity.navigation.moveTo(m.x, m.y, m.z, 1.0)
+            entity.navigateTo(m.x, m.y, m.z, 1.0)
             return
         }
         entity.navigation.stop()

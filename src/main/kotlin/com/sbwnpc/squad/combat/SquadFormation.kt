@@ -137,7 +137,7 @@ object SquadFormation {
      *  isn't actually in a squad (shouldn't happen for real callers, but cheap to guard). */
     fun slotTarget(mob: NpcEntity, anchor: Vec3, fallbackFacing: Vec3, arrived: Boolean): Vec3 {
         val squad = mob.currentSquad() ?: return anchor
-        val index = squad.members.indexOf(mob.uuid)
+        val index = mob.slotIndex(squad)
         if (index < 0) return anchor
         val shape = shapeFor(squad.order, arrived)
         val local = localOffset(shape, index, squad.members.size)
@@ -178,7 +178,7 @@ object SquadFormation {
      *  its direction from a settling leader, so rallying and holding a grid cannot rotate in place. */
     fun moveSlotTarget(mob: NpcEntity, anchor: Vec3, heading: Vec3): Vec3 {
         val squad = mob.currentSquad() ?: return anchor
-        val index = squad.members.indexOf(mob.uuid)
+        val index = mob.slotIndex(squad)
         if (index < 0) return anchor
         val local = localOffset(Shape.GRID, index, squad.members.size)
         val flat = Vec3(heading.x, 0.0, heading.z)

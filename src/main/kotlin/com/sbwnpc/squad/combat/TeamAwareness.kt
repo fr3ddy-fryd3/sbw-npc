@@ -50,9 +50,15 @@ object TeamAwareness {
      *  whoever just found it themself) — this only covers what's been relayed from elsewhere. */
     fun relayedContacts(faction: SquadFaction, tick: Long): List<UUID> {
         val contacts = byFaction[faction] ?: return emptyList()
-        return contacts.entries
-            .filter { tick - it.value.lastSeenTick <= RECENT_WINDOW_TICKS && tick - it.value.firstSeenTick >= ALERT_DELAY_TICKS }
-            .map { it.key }
+        if (contacts.isEmpty()) return emptyList()
+        // Called per NPC per sensor scan — one pass, one (usually empty) list, not filter + map.
+        var result: MutableList<UUID>? = null
+        for ((id, contact) in contacts) {
+            if (tick - contact.lastSeenTick <= RECENT_WINDOW_TICKS && tick - contact.firstSeenTick >= ALERT_DELAY_TICKS) {
+                (result ?: ArrayList<UUID>(4).also { result = it }).add(id)
+            }
+        }
+        return result ?: emptyList()
     }
 
     /** [tick] must be ServerLevel.gameTime: entity tick counts are not comparable across NPCs. */

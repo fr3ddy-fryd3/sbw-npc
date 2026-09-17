@@ -173,6 +173,9 @@ class SquadManager : SavedData() {
      *  "after killing the enemy they walk right up to its last spot and pile up there." Promoting
      *  the death position to a fixed objective gives the squad a real home to reform around. */
     fun clearDeadFocus(deadEntity: UUID, deathPos: BlockPos) {
+        // Fires for EVERY living death in the world (cows, zombies...) — the common case is that no
+        // squad is focused on anything, so answer that without touching the entries below.
+        if (squads.values.none { it.focusEntity != null }) return
         var changed = false
         squads.values.forEach { squad ->
             if (squad.focusEntity == deadEntity) {
@@ -264,14 +267,31 @@ class SquadManager : SavedData() {
             return mgr
         }
 
-        fun get(server: MinecraftServer): SquadManager =
-            server.overworld().dataStorage.computeIfAbsent(
+        // The SavedData instance is stable for the whole server run (DimensionDataStorage caches it
+        // by name), but `computeIfAbsent` still allocates a fresh Factory + two lambdas and does a
+        // map lookup on every call — and this is called several times per NPC per tick (every
+        // currentSquad()/homeCenter() from every behaviour's start-check). Cached here per server;
+        // ServerLifecycle drops it on ServerStopped so a new/reloaded world never sees the old one.
+        private var cached: SquadManager? = null
+        private var cachedServer: MinecraftServer? = null
+
+        fun get(server: MinecraftServer): SquadManager {
+            cached?.let { if (cachedServer === server) return it }
+            val mgr = server.overworld().dataStorage.computeIfAbsent(
                 SavedData.Factory({ SquadManager() }, ::load, null), FILE
             )
+            cached = mgr
+            cachedServer = server
+            return mgr
+        }
+
+        fun clearCache() {
+            cached = null
+            cachedServer = null
+        }
 
         fun get(level: ServerLevel): SquadManager = get(level.server)
-    }
-}
+
         /** Composition minus classes of resolved members. Unloaded members reserve one missing slot. */
         fun missingClasses(composition: List<NpcClass>, present: List<NpcClass?>): List<NpcClass> {
             val remaining = present.filterNotNull().toMutableList()
@@ -283,3 +303,5 @@ class SquadManager : SavedData() {
             for (level in server.allLevels) level.getEntity(uuid)?.let { return it }
             return null
         }
+    }
+}

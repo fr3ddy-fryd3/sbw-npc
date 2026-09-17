@@ -1,8 +1,9 @@
 package com.sbwnpc.squad.combat
 
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.NpcRegistry
+import net.minecraft.server.level.ServerLevel
 import com.sbwnpc.squad.team.SquadTeams
-import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 
 /**
@@ -24,8 +25,9 @@ import net.minecraft.world.phys.Vec3
  */
 object Alarm {
     fun raise(source: NpcEntity, hearOrigin: Vec3, investigatePos: Vec3, radius: Double) {
-        val box = AABB(hearOrigin, hearOrigin).inflate(radius)
-        source.level().getEntitiesOfClass(NpcEntity::class.java, box) { it !== source && !SquadTeams.isHostile(source, it) }
-            .forEach { it.alert(investigatePos) }
+        val level = source.level() as? ServerLevel ?: return
+        NpcRegistry.forEachWithin(level, hearOrigin, radius, exclude = source) {
+            if (!SquadTeams.isHostile(source, it)) it.alert(investigatePos)
+        }
     }
 }

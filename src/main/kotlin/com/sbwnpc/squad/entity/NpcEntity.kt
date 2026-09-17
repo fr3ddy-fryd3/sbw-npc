@@ -29,6 +29,7 @@ import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
+import net.minecraft.core.BlockPos
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.syncher.EntityDataAccessor
@@ -199,10 +200,50 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         return result
     }
 
+    // Resolved at most once per server tick: with SmartBrainLib's every-tick start checks, a single
+    // NPC asks for its squad half a dozen times per tick (every Idle/Core behaviour's eligibility,
+    // SquadOrderBehaviour.tick, SquadFormation.slotTarget/headingFor, GunAttackBehaviour.tick...).
+    // A Squad object is stable for the tick — squads are only created/disbanded/re-membered from
+    // network handlers and death, never mid-brain-tick — so a same-tick cache can't go stale.
+    private var squadCacheTick = Int.MIN_VALUE
+    private var squadCache: Squad? = null
+
     fun currentSquad(): Squad? {
         val id = squadId ?: return null
+        if (squadCacheTick == tickCount) return squadCache?.takeIf { it.id == id }
         val lvl = level() as? ServerLevel ?: return null
-        return SquadManager.get(lvl).get(id)
+        val squad = SquadManager.get(lvl).get(id)
+        squadCacheTick = tickCount
+        squadCache = squad
+        return squad
+    }
+
+    // Formation slot = position in squad.members. indexOf is a linear UUID scan and
+    // SquadFormation asks for it on every tick of every moving member; the cached index is
+    // validated with one O(1) list read, so membership changes (deaths, reinforcements) are
+    // picked up immediately without any invalidation hooks.
+    private var slotIndexCache = -1
+
+    fun slotIndex(squad: Squad): Int {
+        val members = squad.members
+        val cached = slotIndexCache
+        if (cached in members.indices && members[cached] == uuid) return cached
+        val index = members.indexOf(uuid)
+        slotIndexCache = index
+        return index
+    }
+
+    // NpcRegistry bookkeeping — see that object. NeoForge's lifecycle hooks, so this covers every
+    // add/remove path (spawn, chunk load/unload, death, /kill, dimension change) without needing a
+    // separate event subscriber.
+    override fun onAddedToLevel() {
+        super.onAddedToLevel()
+        NpcRegistry.add(this)
+    }
+
+    override fun onRemovedFromLevel() {
+        NpcRegistry.remove(this)
+        super.onRemovedFromLevel()
     }
 
     /** Where this NPC "belongs" per its squad: the guarded entity, else the objective point. */
@@ -248,14 +289,81 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // invisible even on a plain single spawn, not just batch bursts).
     private var equipmentResyncTicksRemaining = 5
 
+    // --- AI level-of-detail ---
+    // The brain (sensors + every behaviour's start check + running behaviours) is the bulk of an
+    // NPC's per-tick cost, and most of it is invisible when no player is anywhere near: a patrol
+    // 200 blocks away doesn't need 20 decisions a second. Re-evaluated every LOD_RECHECK_TICKS;
+    // anything combat-related (target, suppressed, alert) always stays at full rate so fights over
+    // the horizon still resolve at the same speed. Vanilla movement/navigation/look control keep
+    // ticking every tick regardless — only the decision layer is throttled, so nothing stutters.
+    // Behaviour timers are all tickCount-based and tickCount still advances every tick, so a
+    // throttled brain just sees them expire on its next visit.
+    private var lodRecheckTick = 0
+    private var brainTickInterval = 1
+
+    private fun inCombatState(): Boolean = target != null || isSuppressed() || isAlert()
+
+    private fun refreshAiLod() {
+        brainTickInterval = when {
+            inCombatState() -> 1
+            else -> {
+                val nearest = level().getNearestPlayer(this, -1.0)
+                val distSqr = nearest?.distanceToSqr(this) ?: Double.MAX_VALUE
+                when {
+                    distSqr <= LOD_NEAR_RANGE * LOD_NEAR_RANGE -> 1
+                    distSqr <= LOD_FAR_RANGE * LOD_FAR_RANGE -> 2
+                    else -> 4
+                }
+            }
+        }
+        // Idle pathing doesn't need a perfect route — half the A* node budget is plenty for
+        // walking to a patrol point; combat gets the full budget back for chasing/repositioning.
+        if (inCombatState()) navigation.resetMaxVisitedNodesMultiplier()
+        else navigation.setMaxVisitedNodesMultiplier(IDLE_PATH_NODE_MULTIPLIER)
+    }
+
     override fun customServerAiStep() {
         super.customServerAiStep()
         if (equipmentResyncTicksRemaining > 0) {
             equipmentResyncTicksRemaining--
             resyncEquipmentForNewlySpawnedNpc()
         }
-        tickBrain(this)
+        if (tickCount >= lodRecheckTick) {
+            lodRecheckTick = tickCount + LOD_RECHECK_TICKS
+            refreshAiLod()
+        } else if (brainTickInterval > 1 && inCombatState()) {
+            // Don't wait for the next recheck to react to being shot at / spotting something.
+            brainTickInterval = 1
+            navigation.resetMaxVisitedNodesMultiplier()
+        }
+        // Offset by entity id so throttled NPCs don't all take their turn on the same tick.
+        if (brainTickInterval == 1 || (tickCount + id) % brainTickInterval == 0) tickBrain(this)
     }
+
+    // --- Repath gate ---
+    // Several behaviours call navigation.moveTo(x, y, z) every tick while approaching something.
+    // Vanilla reuses the current path only while it's still in progress AND aimed at the same
+    // block; the moment it finishes (arrived-but-not-close-enough, unreachable, blocked by an
+    // ally) every further call is a full A* search — per tick. This funnels those callers through
+    // one place that (a) does nothing while already en route to that block and (b) otherwise rate
+    // limits recomputation. Returns whether a (re)path was issued this call.
+    private var nextRepathTick = 0
+
+    fun navigateTo(x: Double, y: Double, z: Double, speed: Double, repathIntervalTicks: Int = REPATH_INTERVAL_TICKS): Boolean {
+        val nav = navigation
+        val targetBlock = BlockPos.containing(x, y, z)
+        if (!nav.isDone && nav.targetPos == targetBlock) {
+            nav.setSpeedModifier(speed)
+            return false
+        }
+        if (tickCount < nextRepathTick) return false
+        nextRepathTick = tickCount + repathIntervalTicks
+        nav.moveTo(x, y, z, speed)
+        return true
+    }
+
+    fun navigateTo(pos: Vec3, speed: Double, repathIntervalTicks: Int = REPATH_INTERVAL_TICKS): Boolean =
+        navigateTo(pos.x, pos.y, pos.z, speed, repathIntervalTicks)
 
     /**
      * Fix for a bug reported after in-game testing: NPCs sometimes spawn with no visibly held
@@ -298,7 +406,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             .filter { !it.second.isEmpty }
         if (slots.isEmpty()) return
         val packet = net.minecraft.network.protocol.game.ClientboundSetEquipmentPacket(id, slots)
-        serverLevel.server.playerList.broadcastAll(packet, serverLevel.dimension())
+        // Only the players actually tracking this entity — a dimension-wide broadcast sent 5
+        // packets per NPC to every player on the server, including ones who couldn't see it.
+        serverLevel.chunkSource.broadcast(this, packet)
     }
 
     // Target acquisition: replaces the old SquadFocusTargetGoal, HurtByTargetGoal,
@@ -479,6 +589,18 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         private const val SUPPRESSION_CAP_TICKS = 200
         private const val ALERT_DURATION_TICKS = 200 // ~10s to reach/abandon an investigation lead
         private const val DEATH_ALARM_RADIUS = 36.0 // detection range, x1.5 per user request (was 24)
+        // How far an NPC can spot / act on relayed contacts — see the FOLLOW_RANGE note in
+        // createAttributes() for why this is a constant of its own rather than that attribute.
+        const val DETECTION_RANGE = 72.0
+
+        // AI level-of-detail — see refreshAiLod(). Player distances at which the brain drops to
+        // every-2nd / every-4th tick when not in combat.
+        private const val LOD_RECHECK_TICKS = 20
+        private const val LOD_NEAR_RANGE = 96.0
+        private const val LOD_FAR_RANGE = 192.0
+        private const val IDLE_PATH_NODE_MULTIPLIER = 0.5f
+        // See navigateTo().
+        const val REPATH_INTERVAL_TICKS = 10
 
         // Green (RU 6B47/6B43) vs sand (US PASGT/IOTV) armor kit — see applyRole(). Verified against
         // the real SBW source, not guessed: both textures inspected directly (RU = green camo, US =
@@ -501,7 +623,13 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
                 .add(Attributes.ATTACK_DAMAGE, 2.0)
                 .add(Attributes.ARMOR, 2.0)
-                .add(Attributes.FOLLOW_RANGE, 72.0) // detection range, x1.5 per user request (was 48)
+                // NOT the detection range any more — that's DETECTION_RANGE (still 72, x1.5 per
+                // user request), read by SquadTargetSensor directly. This attribute also sizes the
+                // vanilla pathfinder at construction (maxVisitedNodes = FOLLOW_RANGE * 16, so 72 was
+                // 1152 A* nodes per path search vs 768 at 48) and caps createPath's max distance;
+                // neither needs to grow with detection range, and both scale every repath every
+                // NPC makes. Back to vanilla-ish 48 for the pathing side only.
+                .add(Attributes.FOLLOW_RANGE, 48.0)
         }
     }
 }

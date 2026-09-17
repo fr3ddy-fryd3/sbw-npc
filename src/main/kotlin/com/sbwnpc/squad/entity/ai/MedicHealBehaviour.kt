@@ -5,6 +5,7 @@ import com.atsuishio.superbwarfare.item.misc.MedicalKitItem
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.SquadMod
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.team.SquadTeams
@@ -13,7 +14,6 @@ import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.entity.ai.attributes.AttributeModifier
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
-import net.minecraft.world.phys.AABB
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 import net.tslat.smartbrainlib.util.BrainUtils
 import java.util.UUID
@@ -53,9 +53,16 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var nextTreatTick = 0
     private var candidateTick = Int.MIN_VALUE
     private var candidateCache: NpcEntity? = null
+    private var nextRepathTick = 0
 
     companion object {
         private const val SCAN_RADIUS = 16.0
+        // The ally scan used to run once per tick per medic (SmartBrainLib re-checks a stopped
+        // behaviour's start condition every tick). A wounded ally doesn't appear/vanish faster than
+        // this; the cached pick is still re-validated (alive + still needs healing) on every read.
+        private const val CANDIDATE_RESCAN_TICKS = 10
+        // navigation.moveTo to a MOVING ally re-runs A* every tick the ally crosses a block edge.
+        private const val REPATH_INTERVAL_TICKS = 10
         private const val CRITICAL_HEALTH_FRACTION = 0.3f
         private const val NEEDS_HEAL_FRACTION = 0.7f
         private const val HEAL_RANGE = 2.5
@@ -85,7 +92,10 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  team" notion `isHostile`/`isAlliedTo` already ride on elsewhere in this codebase), not just
      *  the specific squad it was deployed with. */
     private fun candidate(entity: NpcEntity): NpcEntity? {
-        if (candidateTick == entity.tickCount) return candidateCache
+        if (entity.tickCount - candidateTick < CANDIDATE_RESCAN_TICKS) {
+            val cached = candidateCache
+            if (cached == null || (cached.isAlive && needsHealing(entity, cached))) return cached
+        }
         candidateTick = entity.tickCount
         candidateCache = scanCandidate(entity)
         return candidateCache
@@ -101,10 +111,18 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.vehicleTransport) return null
         val faction = SquadTeams.factionOf(entity) ?: return null
         val level = entity.level() as? ServerLevel ?: return null
-        val box = AABB.ofSize(entity.position(), SCAN_RADIUS * 2, SCAN_RADIUS * 2, SCAN_RADIUS * 2)
-        return level.getEntitiesOfClass(NpcEntity::class.java, box)
-            .filter { ally -> ally !== entity && ally.isAlive && SquadTeams.factionOf(ally) == faction && needsHealing(entity, ally) }
-            .minByOrNull { it.health / it.maxHealth }
+        var best: NpcEntity? = null
+        var bestFraction = Float.MAX_VALUE
+        NpcRegistry.forEachWithin(level, entity.position(), SCAN_RADIUS, exclude = entity) { ally ->
+            if (ally.isAlive && SquadTeams.factionOf(ally) == faction && needsHealing(entity, ally)) {
+                val fraction = ally.health / ally.maxHealth
+                if (fraction < bestFraction) {
+                    bestFraction = fraction
+                    best = ally
+                }
+            }
+        }
+        return best
     }
 
     private fun eligible(entity: NpcEntity): Boolean = candidate(entity) != null
@@ -157,7 +175,10 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
         val dist = entity.position().distanceTo(ally.position())
         if (dist > HEAL_RANGE) {
             setSprinting(entity, true)
-            entity.navigation.moveTo(ally.x, ally.y, ally.z, 1.0)
+            if (entity.tickCount >= nextRepathTick) {
+                nextRepathTick = entity.tickCount + REPATH_INTERVAL_TICKS
+                entity.navigation.moveTo(ally.x, ally.y, ally.z, 1.0)
+            }
             return
         }
         setSprinting(entity, false)

@@ -4,7 +4,9 @@ import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.GrenadeThrower
 import com.sbwnpc.squad.combat.Sightline
+import com.sbwnpc.squad.combat.TickBudget
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.core.BlockPos
@@ -13,8 +15,6 @@ import net.minecraft.tags.BlockTags
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
-import net.minecraft.world.entity.player.Player
-import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 import net.tslat.smartbrainlib.util.BrainUtils
@@ -250,6 +250,11 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
             return // still travelling this leg either way
         }
+        // Global raycast budget (TickBudget): one mortar shell suppresses a whole squad on the
+        // same tick, and each cover search is a grid of candidates each raycast against every
+        // nearby threat. If this tick is spent, just try again next tick — the mob is suppressed
+        // and standing still either way, one tick of delay is invisible.
+        if (!TickBudget.hasRaycasts(level)) return
         findCover(entity, level, threat)?.let {
             isFallbackRetreat = false
             coverTarget = it
@@ -279,7 +284,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             // TEMPORARY diagnostic, round 5 — pairs with canDigIn()'s log: tells apart "never even
             // reaches the fallback path" (findCover keeps succeeding now that episodes aren't reset
             // every 60 ticks anymore) from "reaches it but canDigIn always fails".
-            com.sbwnpc.squad.SquadMod.LOGGER.info("[dig-debug] {} entered fallback retreat", entity.uuid)
+            DebugFlags.log("[dig-debug] {} entered fallback retreat", entity.uuid)
         }
     }
 
@@ -598,8 +603,8 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         // timeout) is fixed, the retreat loop is gone but so, apparently, is digging ever
         // triggering at all. Removed too early last round; back specifically for this check (the
         // start()/stop()/refresh mystery from before is solved, no need to re-trace that).
-        if (!(hurtEnough && diggableGround && flatEnough && covered) && com.sbwnpc.squad.SquadMod.LOGGER.isDebugEnabled) {
-            com.sbwnpc.squad.SquadMod.LOGGER.debug(
+        if (!(hurtEnough && diggableGround && flatEnough && covered)) {
+            DebugFlags.log(
                 "[dig-debug] {} at {} hurtEnough={} diggableGround={} flatEnough={} covered={}",
                 entity.uuid, pos, hurtEnough, diggableGround, flatEnough, covered
             )
@@ -609,10 +614,10 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun hasCoveringAlly(entity: NpcEntity, level: ServerLevel): Boolean {
         val squad = entity.currentSquad() ?: return false
-        val box = AABB.ofSize(entity.position(), COVERING_ALLY_RADIUS * 2, COVERING_ALLY_RADIUS * 2, COVERING_ALLY_RADIUS * 2)
-        return level.getEntitiesOfClass(NpcEntity::class.java, box).any { ally ->
-            ally !== entity && squad.members.contains(ally.uuid) && isActuallyCovering(ally)
+        NpcRegistry.forEachWithin(level, entity.position(), COVERING_ALLY_RADIUS, exclude = entity) { ally ->
+            if (squad.members.contains(ally.uuid) && isActuallyCovering(ally)) return true
         }
+        return false
     }
 
     /** Confirmed via a [dig-debug] log capture in-game: gating on "actively engaging right now" was
@@ -707,7 +712,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             enterCover(entity)
             return
         }
-        entity.navigation.moveTo(target.x + 0.5, target.y.toDouble(), target.z + 0.5, 1.0)
+        entity.navigateTo(target.x + 0.5, target.y.toDouble(), target.z + 0.5, 1.0)
     }
 
     private fun duckBackToCover(entity: NpcEntity) {
@@ -772,11 +777,19 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  exact eyePosition from). Same hostile-detection idiom as
      *  `MortarOperatorBehaviour.scanForEnemy` (NpcEntity/Player, [SquadTeams.isHostile], alive). */
     private fun nearbyThreats(entity: NpcEntity, level: ServerLevel, primary: Vec3): List<Vec3> {
-        val box = AABB.ofSize(entity.position(), THREAT_SCAN_RADIUS * 2, THREAT_SCAN_RADIUS * 2, THREAT_SCAN_RADIUS * 2)
-        val seen = level.getEntitiesOfClass(LivingEntity::class.java, box)
-            .filter { (it is NpcEntity || it is Player) && it.isAlive && SquadTeams.isHostile(entity, it) }
-            .map { it.eyePosition }
-        return seen + primary.add(0.0, 1.5, 0.0)
+        // NPCs from the registry, players from the level's own list — same population as the old
+        // `getEntitiesOfClass(LivingEntity) { NpcEntity || Player }` over an 80-block box, without
+        // walking that box's chunk sections.
+        val threats = ArrayList<Vec3>()
+        val r2 = THREAT_SCAN_RADIUS * THREAT_SCAN_RADIUS
+        NpcRegistry.forEachWithin(level, entity.position(), THREAT_SCAN_RADIUS, exclude = entity) {
+            if (it.isAlive && SquadTeams.isHostile(entity, it)) threats += it.eyePosition
+        }
+        for (player in level.players()) {
+            if (player.isAlive && player.distanceToSqr(entity) <= r2 && SquadTeams.isHostile(entity, player)) threats += player.eyePosition
+        }
+        threats += primary.add(0.0, 1.5, 0.0)
+        return threats
     }
 
     /** Cheap proxy for "there's a wall/corner here", biased two ways rather than just one — per

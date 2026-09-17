@@ -13,9 +13,12 @@ import net.minecraft.world.phys.Vec3
  * `GunAttackBehaviour`'s partial-cover firing-position logic (a candidate's concealment score is how
  * high up a raycast from the target gets blocked) need the exact same block-collider raycast.
  * Pulled out once both needed it, instead of duplicating the `ClipContext` call a second time.
+ *
+ * Every call is charged against [TickBudget] so the bulk searches can pace themselves.
  */
 object Sightline {
     fun blocked(level: ServerLevel, from: Vec3, to: Vec3, passer: Entity): Boolean {
+        TickBudget.chargeRaycast(level)
         val hit = level.clip(ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, passer))
         return hit.type == HitResult.Type.BLOCK
     }

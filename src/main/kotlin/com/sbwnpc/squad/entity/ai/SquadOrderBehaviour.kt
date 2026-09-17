@@ -57,6 +57,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var routeIndex = 0
     private var routeWaitUntil = 0
     private var moveAnchor: BlockPos? = null
+    private var nextArrivalCheckTick = 0
 
     // No memory gate needed — eligibility is purely squad/order/target state, same as the old goal's
     // canUse(). Unlike GunAttackBehaviour/SeekCoverBehaviour/InvestigateBehaviour, nothing here is
@@ -77,8 +78,14 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         return entity.homeCenter() != null
     }
 
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = eligible(entity)
+    private val startCheck = StartCheckThrottle(START_CHECK_INTERVAL_TICKS)
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
+        startCheck.check(entity) { eligible(entity) }
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = eligible(entity)
+
+    override fun stop(entity: NpcEntity) {
+        startCheck.reset()
+    }
 
     override fun start(entity: NpcEntity) {
         repathCooldown = 0
@@ -105,7 +112,13 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
                 // start dispersing into DEFEND's looser SCATTER while stragglers are still catching
                 // up. Checked only from this ATTACK branch, so it can never re-fire once already
                 // DEFEND; harmless if two members both flip it the same tick (same value, idempotent).
-                if (arrived && allSquadArrived(entity, squad, home)) squad.order = SquadOrder.DEFEND
+                // Throttled: this resolves every member by UUID each call, and once arrived it
+                // used to run every tick for every arrived member until the last straggler showed
+                // up. A one-second delay before the flip is invisible in-game.
+                if (arrived && entity.tickCount >= nextArrivalCheckTick) {
+                    nextArrivalCheckTick = entity.tickCount + ARRIVAL_CHECK_INTERVAL_TICKS
+                    if (allSquadArrived(entity, squad, home)) squad.order = SquadOrder.DEFEND
+                }
             }
             // Own threshold (not SquadFormation.ARRIVAL_RADIUS) — DEFEND holds a wider perimeter
             // than ATTACK. Derived from ARRIVAL_RADIUS rather than a second hardcoded constant so
@@ -243,6 +256,8 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     companion object {
         private const val ROUTE_DWELL_TICKS = 40
+        private const val ARRIVAL_CHECK_INTERVAL_TICKS = 20
+        private const val START_CHECK_INTERVAL_TICKS = 5
         private const val ROUTE_DWELL_JITTER = 40
         private const val MOVE_SLOT_RADIUS = 2.0
         // Per user request: MOVE/DEFEND/PATROL should read as a calm hold/patrol, not a constant

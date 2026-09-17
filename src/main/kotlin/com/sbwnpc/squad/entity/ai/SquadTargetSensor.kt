@@ -11,7 +11,6 @@ import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity
-import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.sensing.SensorType
 import net.tslat.smartbrainlib.api.core.sensor.ExtendedSensor
@@ -40,6 +39,15 @@ import net.tslat.smartbrainlib.util.BrainUtils
  */
 class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
 
+    // ExtendedSensor's default is a flat 20 ticks with NO initial offset (nextTickTime starts at 0
+    // — confirmed via javap), so every NPC deployed in the same tick (a whole preset squad, a
+    // barracks reinforcement wave) scans on the very same tick forever after: N entity queries +
+    // N raycasts in one tick, nothing on the other 19. Randomising the interval per scan
+    // decorrelates them within a few cycles. Average is still ~20 ticks.
+    init {
+        setScanRate { entity -> SCAN_RATE_MIN + entity.random.nextInt(SCAN_RATE_JITTER) }
+    }
+
     override fun type(): SensorType<out ExtendedSensor<*>> = ModSensors.SQUAD_TARGET.get()
 
     override fun memoriesUsed(): List<MemoryModuleType<*>> = MEMORIES
@@ -53,12 +61,11 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     private fun computeDesired(mob: NpcEntity, level: ServerLevel): LivingEntity? {
         mob.vehicleAttacker()?.let { return it }
         val isMortarCrew = mob.npcClass == NpcClass.MORTAR_OPERATOR || mob.npcClass == NpcClass.MORTAR_LOADER
-        val followRange = mob.getAttribute(Attributes.FOLLOW_RANGE)?.value ?: 48.0
 
         // SBW aims at the vehicle when its passenger is the gunner's target. Give armed vehicle
         // crews that passenger first, so armour is engaged before nearby dismounted infantry.
         if (mob.vehicle is VehicleEntity && (mob.vehicle as VehicleEntity).getGunData(mob) != null) {
-            VehicleTargeting.closestVisibleHostileVehicleOccupant(mob, level, followRange)?.let { return it }
+            VehicleTargeting.closestVisibleHostileVehicleOccupant(mob, level, NpcEntity.DETECTION_RANGE)?.let { return it }
         }
 
         if (!isMortarCrew) {
@@ -90,7 +97,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
 
     private fun relayedTarget(mob: NpcEntity, level: ServerLevel): LivingEntity? {
         val faction = SquadTeams.factionOf(mob) ?: return null
-        val followRangeSqr = (mob.getAttribute(Attributes.FOLLOW_RANGE)?.value ?: 48.0).let { it * it }
+        val followRangeSqr = NpcEntity.DETECTION_RANGE * NpcEntity.DETECTION_RANGE
         return TeamAwareness.relayedContacts(faction, level.gameTime)
             .asSequence()
             .mapNotNull { level.getEntity(it) as? LivingEntity }
@@ -98,15 +105,32 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             .minByOrNull { mob.distanceToSqr(it) }
     }
 
+    // Two cost fixes versus the naive "filter by LOS, then take the nearest" version:
+    //  - the box is DETECTION_RANGE wide but only DETECTION_HEIGHT tall — infantry lives on the
+    //    ground, and a full 144-block-tall column meant walking ~10x the chunk sections for nothing;
+    //  - hostiles are sorted by distance FIRST and raycast in that order, stopping at the first one
+    //    visible — the result is identical (nearest visible hostile) but it's typically 1-3
+    //    raycasts instead of one per hostile in range (dozens, in a big fight, per NPC per scan).
     private fun nearestDirectTarget(mob: NpcEntity, level: ServerLevel): LivingEntity? {
-        val followRange = mob.getAttribute(Attributes.FOLLOW_RANGE)?.value ?: 48.0
-        val box = mob.boundingBox.inflate(followRange)
-        return level.getEntitiesOfClass(LivingEntity::class.java, box) { candidate ->
-            candidate !== mob && SquadTeams.isHostile(mob, candidate) && mob.sensing.hasLineOfSight(candidate)
-        }.minByOrNull { mob.distanceToSqr(it) }
+        val box = mob.boundingBox.inflate(NpcEntity.DETECTION_RANGE, DETECTION_HEIGHT, NpcEntity.DETECTION_RANGE)
+        val hostiles = level.getEntitiesOfClass(LivingEntity::class.java, box) { candidate ->
+            candidate !== mob && candidate.isAlive && SquadTeams.isHostile(mob, candidate)
+        }
+        if (hostiles.isEmpty()) return null
+        val rangeSqr = NpcEntity.DETECTION_RANGE * NpcEntity.DETECTION_RANGE
+        hostiles.sortBy { mob.distanceToSqr(it) }
+        for (candidate in hostiles) {
+            if (mob.distanceToSqr(candidate) > rangeSqr) break // box corners reach past the sphere
+            if (mob.sensing.hasLineOfSight(candidate)) return candidate
+        }
+        return null
     }
 
     companion object {
+        private const val SCAN_RATE_MIN = 15
+        private const val SCAN_RATE_JITTER = 11 // 15..25 ticks, mean 20 — same average as before
+        private const val DETECTION_HEIGHT = 24.0
+
         private val MEMORIES: List<MemoryModuleType<*>> = listOf(MemoryModuleType.ATTACK_TARGET)
     }
 }

@@ -20,9 +20,15 @@ class VehicleCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
+    private var nextRecoverySearchTick = 0
+
     private fun assignedVehicle(entity: NpcEntity): VehicleEntity? {
         val level = entity.level() as? ServerLevel ?: return null
-        if (entity.assignedVehicleId == null && entity.npcClass == NpcClass.TANK_CREW) {
+        if (entity.assignedVehicleId == null && entity.npcClass == NpcClass.TANK_CREW &&
+            entity.tickCount >= nextRecoverySearchTick
+        ) {
+            // A TANK_CREW whose tank is gone would otherwise run this box query every tick forever.
+            nextRecoverySearchTick = entity.tickCount + RECOVERY_SEARCH_INTERVAL_TICKS
             // Repairs crews spawned by the earlier T-90 preset, which seated them but failed to
             // persist the assignment. Only a same-faction T-90 can become their vehicle.
             val current = entity.vehicle as? VehicleEntity
@@ -46,7 +52,9 @@ class VehicleCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun isT90(vehicle: VehicleEntity): Boolean = vehicle.type == ModEntities.T_90A.get()
 
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = assignedVehicle(entity) != null
+    private val startCheck = StartCheckThrottle(START_CHECK_INTERVAL_TICKS)
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
+        startCheck.check(entity) { assignedVehicle(entity) != null }
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = assignedVehicle(entity) != null
 
     override fun start(entity: NpcEntity) {
@@ -54,6 +62,7 @@ class VehicleCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun stop(entity: NpcEntity) {
+        startCheck.reset()
         entity.vehicleTransport = false
         entity.navigation.stop()
     }
@@ -71,7 +80,7 @@ class VehicleCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         if (vehicle.boundingBox.distanceToSqr(entity.position()) > BOARD_DISTANCE_SQR) {
             val hull = vehicle.boundingBox
-            entity.navigation.moveTo(
+            entity.navigateTo(
                 entity.x.coerceIn(hull.minX, hull.maxX),
                 entity.y.coerceIn(hull.minY, hull.maxY),
                 entity.z.coerceIn(hull.minZ, hull.maxZ),
@@ -87,5 +96,7 @@ class VehicleCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
         const val BOARD_DISTANCE_SQR = 2.5 * 2.5
         const val BOARD_SPEED = 1.0
         const val RECOVERY_RANGE = 32.0
+        const val RECOVERY_SEARCH_INTERVAL_TICKS = 40
+        const val START_CHECK_INTERVAL_TICKS = 5
     }
 }

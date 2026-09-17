@@ -1,9 +1,10 @@
 package com.sbwnpc.squad.combat
 
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.NpcRegistry
+import net.minecraft.server.level.ServerLevel
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.world.entity.LivingEntity
-import net.minecraft.world.entity.player.Player
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import kotlin.math.acos
@@ -39,46 +40,79 @@ object FriendlyFireGuard {
      *  random angular deviation (radians) applied to the fired projectile's direction. */
     private const val SPREAD_RADIANS_PER_UNIT = 0.0172275
 
-    /** True if no ally sits inside the actual firing cone toward [aimPoint] at the given [spread]
-     *  (SBW's gun-spread units — pass 0.0 for an unspread/lobbed throw, which collapses this to a
-     *  thin-line check plus each ally's own body-radius margin). */
-    fun hasClearLineOfFire(shooter: NpcEntity, aimPoint: Vec3, spread: Double = 0.0): Boolean {
+    /** Result of one combined [assess] pass — both answers from a single walk over the allies. */
+    class Assessment(val lineClear: Boolean, val blastClear: Boolean)
+
+    /** Every non-hostile NPC and player in the level except [shooter] — the "allies" all three
+     *  checks below filter against. Walks [NpcRegistry] + `level.players()` instead of an AABB
+     *  entity query: a linear pass over the (hundred-odd) NPCs is cheaper than walking the chunk
+     *  sections of a shooter→target box, and it's the same for every box size. Same population as
+     *  the old `getEntitiesOfClass(LivingEntity) { NpcEntity || Player }` filter. */
+    private inline fun forEachAlly(shooter: NpcEntity, action: (LivingEntity) -> Unit) {
+        val level = shooter.level() as? ServerLevel ?: return
+        for (npc in NpcRegistry.all(level)) {
+            if (npc !== shooter && !SquadTeams.isHostile(shooter, npc)) action(npc)
+        }
+        for (player in level.players()) {
+            if (!SquadTeams.isHostile(shooter, player)) action(player)
+        }
+    }
+
+    /** One pass answering both "is the firing cone toward [aimPoint] clear" and "is the blast
+     *  radius around [impactPoint] clear" — GunAttackBehaviour needs both every time it evaluates a
+     *  shot, and they used to be two separate entity queries per tick per shooter. */
+    fun assess(shooter: NpcEntity, aimPoint: Vec3, spread: Double, impactPoint: Vec3, blastRadius: Double): Assessment {
         val from = shooter.eyePosition
         val toAim = aimPoint.subtract(from)
         val aimDist = toAim.length()
-        if (aimDist < 1.0e-6) return true
-        val aimDir = toAim.scale(1.0 / aimDist)
+        val aimDir = if (aimDist < 1.0e-6) null else toAim.scale(1.0 / aimDist)
         val maxAngle = SPREAD_RADIANS_PER_UNIT * spread
+        // Cheap pre-filter for the cone test: anything outside the shooter→aim box (plus slack)
+        // can't be in the cone. Same box the old query used.
+        val coneBox = AABB(from, aimPoint).inflate(ALLY_RADIUS + 2.0)
+        val checkBlast = blastRadius > 0.0
 
-        val box = AABB(from, aimPoint).inflate(ALLY_RADIUS + 2.0)
-        val allies = shooter.level().getEntitiesOfClass(LivingEntity::class.java, box) { candidate ->
-            candidate !== shooter && (candidate is NpcEntity || candidate is Player) && !SquadTeams.isHostile(shooter, candidate)
+        var lineClear = true
+        var blastClear = true
+        forEachAlly(shooter) { ally ->
+            if (lineClear && aimDir != null && coneBox.intersects(ally.boundingBox) &&
+                inFiringCone(ally, from, aimDir, aimDist, maxAngle)
+            ) lineClear = false
+            if (blastClear && checkBlast && ally.position().distanceTo(impactPoint) <= blastRadius) blastClear = false
+            if (!lineClear && !blastClear) return Assessment(false, false)
         }
-        for (ally in allies) {
-            val toAlly = ally.boundingBox.center.subtract(from)
-            val allyDist = toAlly.length()
-            // Beyond the target's own distance (plus a little slack for its body), the round
-            // would already have reached the target first — not actually in the way.
-            if (allyDist < 1.0e-6 || allyDist > aimDist + ALLY_RADIUS) continue
-            val cos = (toAlly.dot(aimDir) / allyDist).coerceIn(-1.0, 1.0)
-            val angleToAlly = acos(cos)
-            // The ally's own body isn't a point — widen the cone by its apparent angular radius
-            // at its distance so a wide target right at the edge of the cone still counts.
-            val angularMargin = atan(ALLY_RADIUS / allyDist)
-            if (angleToAlly <= maxAngle + angularMargin) return false
-        }
-        return true
+        return Assessment(lineClear, blastClear)
     }
+
+    private fun inFiringCone(ally: LivingEntity, from: Vec3, aimDir: Vec3, aimDist: Double, maxAngle: Double): Boolean {
+        val toAlly = ally.boundingBox.center.subtract(from)
+        val allyDist = toAlly.length()
+        // Beyond the target's own distance (plus a little slack for its body), the round
+        // would already have reached the target first — not actually in the way.
+        if (allyDist < 1.0e-6 || allyDist > aimDist + ALLY_RADIUS) return false
+        val cos = (toAlly.dot(aimDir) / allyDist).coerceIn(-1.0, 1.0)
+        val angleToAlly = acos(cos)
+        // The ally's own body isn't a point — widen the cone by its apparent angular radius
+        // at its distance so a wide target right at the edge of the cone still counts.
+        val angularMargin = atan(ALLY_RADIUS / allyDist)
+        return angleToAlly <= maxAngle + angularMargin
+    }
+
+    /** True if no ally sits inside the actual firing cone toward [aimPoint] at the given [spread]
+     *  (SBW's gun-spread units — pass 0.0 for an unspread/lobbed throw, which collapses this to a
+     *  thin-line check plus each ally's own body-radius margin). */
+    fun hasClearLineOfFire(shooter: NpcEntity, aimPoint: Vec3, spread: Double = 0.0): Boolean =
+        assess(shooter, aimPoint, spread, aimPoint, 0.0).lineClear
 
     /** True if no ally sits within [blastRadius] of [impactPoint] — a separate check from the
      *  firing cone above, for weapons that damage an area at the target rather than just along
      *  the shot's path (M79 grenade rounds, thrown M67). */
     fun hasClearBlastRadius(shooter: NpcEntity, impactPoint: Vec3, blastRadius: Double): Boolean {
         if (blastRadius <= 0.0) return true
-        val box = AABB(impactPoint, impactPoint).inflate(blastRadius)
-        return shooter.level().getEntitiesOfClass(LivingEntity::class.java, box) { candidate ->
-            candidate !== shooter && (candidate is NpcEntity || candidate is Player) && !SquadTeams.isHostile(shooter, candidate)
-        }.none { it.position().distanceTo(impactPoint) <= blastRadius }
+        forEachAlly(shooter) { ally ->
+            if (ally.position().distanceTo(impactPoint) <= blastRadius) return false
+        }
+        return true
     }
 
     /** Steps [shooter] a short distance perpendicular to the shooter->[aimPoint] line, trying for
@@ -97,9 +131,12 @@ object FriendlyFireGuard {
         val optionA = from.add(perp.scale(SIDESTEP_DISTANCE))
         val optionB = from.add(perp.scale(-SIDESTEP_DISTANCE))
 
-        fun crowding(p: Vec3) = shooter.level().getEntitiesOfClass(
-            LivingEntity::class.java, AABB(p, p).inflate(SIDESTEP_CHECK_RADIUS)
-        ) { it !== shooter && (it is NpcEntity || it is Player) && !SquadTeams.isHostile(shooter, it) }.size
+        fun crowding(p: Vec3): Int {
+            var n = 0
+            val r2 = SIDESTEP_CHECK_RADIUS * SIDESTEP_CHECK_RADIUS
+            forEachAlly(shooter) { if (it.position().distanceToSqr(p) <= r2) n++ }
+            return n
+        }
 
         val chosen = if (crowding(optionA) <= crowding(optionB)) optionA else optionB
         shooter.navigation.moveTo(chosen.x, chosen.y, chosen.z, 1.0)

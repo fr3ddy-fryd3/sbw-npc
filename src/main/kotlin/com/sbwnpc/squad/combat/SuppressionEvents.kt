@@ -1,8 +1,7 @@
 package com.sbwnpc.squad.combat
 
-import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.NpcRegistry
 import net.minecraft.server.level.ServerLevel
-import net.minecraft.world.phys.AABB
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.neoforge.event.level.ExplosionEvent
@@ -19,7 +18,6 @@ object SuppressionEvents {
     fun onExplosion(event: ExplosionEvent.Detonate) {
         val level = event.level as? ServerLevel ?: return
         val pos = event.explosion.center()
-        level.getEntitiesOfClass(NpcEntity::class.java, AABB.ofSize(pos, RADIUS * 2, RADIUS * 2, RADIUS * 2))
-            .forEach { it.suppress(pos) }
+        NpcRegistry.forEachWithin(level, pos, RADIUS) { it.suppress(pos) }
     }
 }

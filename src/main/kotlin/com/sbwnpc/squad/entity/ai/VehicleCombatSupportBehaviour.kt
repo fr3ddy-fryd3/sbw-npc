@@ -2,6 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.mojang.datafixers.util.Pair
+import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.T90WeaponSelection
 import com.sbwnpc.squad.combat.VehicleTargeting
 import com.sbwnpc.squad.entity.NpcEntity
@@ -53,7 +54,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         targetId = target.uuid
         phase = Phase.APPROACHING
         entity.vehicleTransport = true
-        com.sbwnpc.squad.SquadMod.LOGGER.info(
+        DebugFlags.log(
             "[vehicle-debug] {} claimed combat support vehicle {} for target {}",
             entity.uuid, vehicle.uuid, target.uuid
         )
@@ -92,7 +93,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
             Phase.APPROACHING -> {
                 if (vehicle.boundingBox.distanceToSqr(entity.position()) > BOARD_DISTANCE_SQR) {
                     val hull = vehicle.boundingBox
-                    entity.navigation.moveTo(
+                    entity.navigateTo(
                         entity.x.coerceIn(hull.minX, hull.maxX),
                         entity.y.coerceIn(hull.minY, hull.maxY),
                         entity.z.coerceIn(hull.minZ, hull.maxZ),
@@ -107,7 +108,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 }
                 entity.navigation.stop()
                 phase = Phase.FIRING
-                com.sbwnpc.squad.SquadMod.LOGGER.info(
+                DebugFlags.log(
                     "[vehicle-debug] {} boarded combat support vehicle {} in seat {} for target {}",
                     entity.uuid, vehicle.uuid, vehicle.getSeatIndex(entity), target.uuid
                 )
@@ -135,13 +136,28 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
             entity.npcClass != NpcClass.MORTAR_OPERATOR && entity.npcClass != NpcClass.MORTAR_LOADER &&
             threat(entity) != null
 
+    // The hostile-vehicle scan (an entity query + raycasts) used to run from this behaviour's
+    // start check EVERY tick for EVERY non-mortar NPC on the map, whether or not anything armoured
+    // was anywhere near — by far the most expensive per-tick idle work in the brain. Cached for a
+    // few ticks; a cached hit is still re-validated (alive, hostile, still mounted) on every read.
+    private var threatScanTick = Int.MIN_VALUE
+    private var threatCache: LivingEntity? = null
+    private var nextVehicleSearchTick = 0
+
     private fun threat(entity: NpcEntity): LivingEntity? {
-        val level = entity.level() as? ServerLevel
-        if (level != null) {
-            VehicleTargeting.closestVisibleHostileVehicleOccupant(entity, level, TARGET_SEARCH_RADIUS)?.let { return it }
+        if (entity.tickCount - threatScanTick < THREAT_RESCAN_TICKS) {
+            val cached = threatCache
+            if (cached == null) return fallbackThreat(entity)
+            if (cached.isAlive && cached.vehicle is VehicleEntity && SquadTeams.isHostile(entity, cached)) return cached
         }
-        return entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) }
+        threatScanTick = entity.tickCount
+        val level = entity.level() as? ServerLevel
+        threatCache = level?.let { VehicleTargeting.closestVisibleHostileVehicleOccupant(entity, it, TARGET_SEARCH_RADIUS) }
+        return threatCache ?: fallbackThreat(entity)
     }
+
+    private fun fallbackThreat(entity: NpcEntity): LivingEntity? =
+        entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) }
 
     /** `VehicleEntity.canShoot` is false while SBW reloads or cools a weapon. Keep the gunner
      *  seated for those transient states; only leave when the selected weapon has no ammo at all. */
@@ -187,12 +203,17 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun findSupportVehicle(entity: NpcEntity, level: ServerLevel): VehicleEntity? {
+        // Only reached with a live threat; while there's simply no free armed vehicle around, don't
+        // re-run the box query every tick — a "none" answer is good for a second.
+        if (entity.tickCount < nextVehicleSearchTick) return null
         val box = AABB.ofSize(entity.position(), SEARCH_RADIUS * 2, SEARCH_RADIUS * 2, SEARCH_RADIUS * 2)
-        return level.getEntitiesOfClass(VehicleEntity::class.java, box)
+        val found = level.getEntitiesOfClass(VehicleEntity::class.java, box)
             .asSequence()
             .filter { entity.distanceToSqr(it) <= SEARCH_RADIUS_SQR }
             .filter(::isSupportVehicle)
             .minByOrNull { entity.distanceToSqr(it) }
+        if (found == null) nextVehicleSearchTick = entity.tickCount + VEHICLE_SEARCH_INTERVAL_TICKS
+        return found
     }
 
     private fun isSupportVehicle(vehicle: VehicleEntity): Boolean {
@@ -208,6 +229,8 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         const val SEARCH_RADIUS = 20.0
         const val SEARCH_RADIUS_SQR = SEARCH_RADIUS * SEARCH_RADIUS
         const val TARGET_SEARCH_RADIUS = 48.0
+        const val THREAT_RESCAN_TICKS = 10
+        const val VEHICLE_SEARCH_INTERVAL_TICKS = 20
         const val BOARD_DISTANCE_SQR = 2.5 * 2.5
         const val BOARD_SPEED = 1.0
     }

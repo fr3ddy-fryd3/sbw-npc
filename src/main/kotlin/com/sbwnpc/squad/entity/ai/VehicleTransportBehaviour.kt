@@ -5,10 +5,12 @@ import com.atsuishio.superbwarfare.entity.vehicle.MortarEntity
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.atsuishio.superbwarfare.entity.vehicle.utils.VehicleVecUtils
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
 import com.mojang.datafixers.util.Pair
+import com.sbwnpc.squad.combat.DebugFlags
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.util.Mth
@@ -163,13 +165,14 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun logEligibility(entity: NpcEntity, result: Boolean, reason: () -> String): Boolean {
         if (entity.tickCount - lastEligibilityLogTick >= ELIGIBILITY_LOG_INTERVAL_TICKS) {
             lastEligibilityLogTick = entity.tickCount
-            com.sbwnpc.squad.SquadMod.LOGGER.info("[vehicle-debug] {} eligible={} : {}", entity.uuid, result, reason())
+            DebugFlags.log("[vehicle-debug] {} eligible={} : {}", entity.uuid, result, reason())
         }
         return result
     }
 
+    private val startCheck = StartCheckThrottle(START_CHECK_INTERVAL_TICKS)
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
-        eligible(entity, checkGiveup = false)
+        startCheck.check(entity) { eligible(entity, checkGiveup = false) }
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean =
         if (entity.vehicle != null) true else eligible(entity, checkGiveup = true)
@@ -196,7 +199,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         tripDestination = null
         observedDamageStamp = 0L
         entity.vehicleTransport = true
-        com.sbwnpc.squad.SquadMod.LOGGER.info(
+        DebugFlags.log(
             "[vehicle-debug] {} starting vehicle transport, home={} dist={}",
             entity.uuid, entity.homeCenter(), entity.homeCenter()?.let { entity.position().distanceTo(it) }
         )
@@ -229,6 +232,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun stop(entity: NpcEntity) {
+        startCheck.reset()
         VehicleTransportClaims.release(entity.uuid)
         entity.vehicleTransport = false
         phase = Phase.SEEKING
@@ -287,7 +291,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (choice == null) {
             if (entity.tickCount - lastNoCandidateLogTick > NO_CANDIDATE_LOG_INTERVAL_TICKS) {
                 lastNoCandidateLogTick = entity.tickCount
-                com.sbwnpc.squad.SquadMod.LOGGER.info(
+                DebugFlags.log(
                     "[vehicle-debug] {} found no claimable vehicle within {} blocks ({} VehicleEntity total nearby)",
                     entity.uuid, SEARCH_RADIUS, nearby.size
                 )
@@ -303,7 +307,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (claimed) {
             targetVehicleId = choice.vehicle.uuid
             phase = Phase.BOARDING
-            com.sbwnpc.squad.SquadMod.LOGGER.info(
+            DebugFlags.log(
                 "[vehicle-debug] {} claimed {} seat of {} (capacity={})",
                 entity.uuid, if (choice.isDriver) "driver" else "passenger", choice.vehicle.uuid,
                 choice.vehicle.maxPassengers
@@ -344,7 +348,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // Not force=true: lets VehicleEntity.canAddPassenger's own real seat-capacity check apply as
         // a final backstop, instead of only trusting the app-level claim registry.
         if (!entity.startRiding(vehicle, false)) {
-            com.sbwnpc.squad.SquadMod.LOGGER.info(
+            DebugFlags.log(
                 "[vehicle-debug] {} in range of {} but startRiding refused", entity.uuid, vehicle.uuid
             )
             VehicleTransportClaims.release(entity.uuid)
@@ -353,7 +357,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             seekingStartTick = entity.tickCount
             return
         }
-        com.sbwnpc.squad.SquadMod.LOGGER.info("[vehicle-debug] {} boarded {}", entity.uuid, vehicle.uuid)
+        DebugFlags.log("[vehicle-debug] {} boarded {}", entity.uuid, vehicle.uuid)
 
         entity.currentSquad()?.faction?.let { SquadTeams.assign(vehicle, it) }
 
@@ -525,7 +529,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             val path = entity.navigation.createPath(BlockPos.containing(home), 0)
             route = if (path != null) (0 until path.nodeCount).map { path.getNodePos(it) } else emptyList()
             routeIndex = 0
-            com.sbwnpc.squad.SquadMod.LOGGER.info(
+            DebugFlags.log(
                 "[vehicle-debug] {} recomputed route: {} nodes, canReach={}, dist-to-home={}",
                 entity.uuid, route.size, path?.canReach(), entity.position().distanceTo(home)
             )
@@ -626,7 +630,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             // next test tells us the actual speed/health at the exact moment of dismount instead of
             // guessing again: was it the slow-enough check firing on a real stop, or the timeout
             // firing early while still going, and was the NPC already hurt going into it.
-            com.sbwnpc.squad.SquadMod.LOGGER.info(
+            DebugFlags.log(
                 "[vehicle-debug] {} dismounting: speed={} slowEnough={} waitedTooLong={} health={}/{} pos={}",
                 entity.uuid, kotlin.math.sqrt(speedSqr), slowEnough, waitedTooLong,
                 entity.health, entity.maxHealth, vehicle.position()
@@ -681,7 +685,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             BrainUtils.setTargetOfEntity(gunner, threat)
         }
         phase = Phase.COMBAT_DISMOUNT
-        com.sbwnpc.squad.SquadMod.LOGGER.info(
+        DebugFlags.log(
             "[vehicle-debug] {} stopping {} for combat against {}",
             entity.uuid, vehicle.uuid, threat.uuid
         )
@@ -710,13 +714,20 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             else -> return false
         }
         val level = entity.level() as? ServerLevel ?: return false
-        return level.getEntitiesOfClass(
+        // Reached from eligible() every tick for mortar crew under ATTACK — cache the box query.
+        if (entity.tickCount - mortarPriorityCheckTick < MORTAR_PRIORITY_CHECK_INTERVAL_TICKS) return mortarPriorityCached
+        mortarPriorityCheckTick = entity.tickCount
+        mortarPriorityCached = level.getEntitiesOfClass(
             MortarEntity::class.java,
             AABB.ofSize(entity.position(), MORTAR_SEARCH_RADIUS * 2, MORTAR_SEARCH_RADIUS * 2, MORTAR_SEARCH_RADIUS * 2)
         ).any {
             it.isAlive && !it.isWreck && entity.distanceToSqr(it) <= MORTAR_SEARCH_RADIUS * MORTAR_SEARCH_RADIUS && claimable(it)
         }
+        return mortarPriorityCached
     }
+
+    private var mortarPriorityCheckTick = Int.MIN_VALUE
+    private var mortarPriorityCached = false
 
     private fun isUsableGroundVehicle(vehicle: VehicleEntity): Boolean =
         vehicle.isAlive && !vehicle.isWreck && !vehicle.locked && vehicle.maxPassengers > 0 &&
@@ -737,13 +748,15 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         val offset = direction.normalize().scale(lookahead)
         val corridor = vehicle.getCombinedAABB().expandTowards(offset.x, offset.y, offset.z).inflate(ALLY_CLEARANCE)
         val faction = SquadTeams.factionOf(entity) ?: return false
-        val allies = (entity.level() as? ServerLevel)?.getEntitiesOfClass(NpcEntity::class.java, corridor) { other ->
-            other !== entity && other.vehicle !== vehicle && other.isAlive && SquadTeams.factionOf(other) == faction
-        } ?: return false
+        val level = entity.level() as? ServerLevel ?: return false
         val samples = kotlin.math.ceil(lookahead / ALLY_SWEEP_STEP).toInt().coerceIn(1, MAX_ALLY_SWEEP_SAMPLES)
-        return allies.any { ally ->
-            (1..samples).any { step -> vehicleOverlaps(vehicle, ally, offset.scale(step.toDouble() / samples)) }
+        // Runs every tick while driving — NpcRegistry instead of a corridor box entity query.
+        NpcRegistry.forEachIn(level, corridor, exclude = entity) { ally ->
+            if (ally.vehicle !== vehicle && ally.isAlive && SquadTeams.factionOf(ally) == faction &&
+                (1..samples).any { step -> vehicleOverlaps(vehicle, ally, offset.scale(step.toDouble() / samples)) }
+            ) return true
         }
+        return false
     }
 
     private fun vehicleOverlaps(vehicle: VehicleEntity, entity: NpcEntity, offset: Vec3): Boolean =
@@ -789,7 +802,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             if (dueForFullLog) lastFullLogTick = vehicle.tickCount
             lastLoggedRight = right
             lastLoggedLeft = left
-            com.sbwnpc.squad.SquadMod.LOGGER.info(
+            DebugFlags.log(
                 "[vehicle-debug] steer: pos={} yRot={} desiredYaw={} diff={} rudderRot={} targetRudder={} -> right={} left={} speed={}",
                 vehicle.position(), vehicle.yRot, desiredYaw, diff, vehicle.rudderRot, targetRudder, right, left,
                 vehicle.deltaMovement.horizontalDistance()
@@ -852,6 +865,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val RUDDER_DEADBAND = 0.05f
         private const val FULL_STATE_LOG_INTERVAL_TICKS = 10 // unconditional steer snapshot, ~0.5s
         private const val RUN_SPEED_MODIFIER = 1.0
+        private const val MORTAR_PRIORITY_CHECK_INTERVAL_TICKS = 40
+        private const val START_CHECK_INTERVAL_TICKS = 5
         private const val MORTAR_SEARCH_RADIUS = 30.0
         private val GROUND_ENGINE_TYPES = setOf(EngineType.WHEEL, EngineType.TRACK, EngineType.WHEELCHAIR)
         private const val MIN_ALLY_LOOKAHEAD = 2.0

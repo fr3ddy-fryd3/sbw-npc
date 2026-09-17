@@ -20,7 +20,12 @@ object ModEntities {
         EntityType.Builder.of(::NpcEntity, MobCategory.CREATURE)
             .sized(0.6f, 1.95f)
             .eyeHeight(1.74f)
-            .setTrackingRange(48)
+            // In CHUNKS, not blocks (vanilla multiplies by 16): 48 meant "track from 768 blocks",
+            // i.e. effectively "every NPC within the server view distance is synced to every player
+            // in it". 8 chunks (128 blocks) is what vanilla uses for monsters, and matches
+            // OffscreenFire.WITNESS_RADIUS — beyond that nobody sees the NPC, so nobody needs its
+            // position/rotation/equipment packets 6-7 times a second.
+            .setTrackingRange(8)
             .setUpdateInterval(3)
             .build("npc")
     }
