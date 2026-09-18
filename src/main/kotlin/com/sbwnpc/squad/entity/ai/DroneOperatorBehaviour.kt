@@ -15,6 +15,8 @@ import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
+import net.minecraft.core.registries.BuiltInRegistries
+import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.EntityType
@@ -33,15 +35,22 @@ import java.util.UUID
  * SBW kamikaze drone at it and fly it there from the server, no Monitor/player needed. Core task
  * like the mortar crew — it must keep flying regardless of Fight/Idle activity.
  *
- * Flying: SBW's `DroneEntity` moves from its public input flags (see [DroneFlightController] for
- * what each one really does); we write them every tick and set `yRot` directly, since without a
+ * The drone: with the SBW Drone Warfare addon installed, its FPV drone (`sbwdroneconfig:
+ * cubed_fpv_drone`, "the drone itself is the weapon") — spawned by registry id, so the addon is
+ * an optional runtime dependency, not a compile one. The addon's `DroneEntityCrashExplosionMixin`
+ * explodes ANY drone on `destroy()` unless SBW's kamikaze flag is set, so we set no flag and mount
+ * no payload: detonating at the target is just `destroy()`, and being shot down or crashing
+ * explodes it exactly as a player-flown one would (its config, sounds, particles). Without the
+ * addon: SBW's bare drone with a kamikaze attachment and our own `CustomExplosion` from the
+ * attachment's datapack entry, because SBW's `kamikazeExplosion` silently does nothing without a
+ * player controller — on impact and when shot down alike.
+ *
+ * Flying: `DroneEntity` moves from its public input flags (see [DroneFlightController] for what
+ * each one really does); we write them every tick and set `yRot` directly, since without a
  * player at the monitor nothing else turns the drone. `Controller` stays unset — every
  * `controller != null` branch in `DroneEntity` is a player convenience (monitor position sync,
- * unlink, messages), and the one that matters, `kamikazeExplosion`, silently does NOTHING without a
- * player — both on impact and when shot down. So the warhead is ours: [detonate] reads the
- * attachment's explosion damage/radius from SBW's own `drone_attachments` datapack entry and fires
- * SBW's `CustomExplosion` with the operator as attacker (kills credit the NPC, `NpcEntity.hurt`
- * suppression reacts as to any explosion).
+ * unlink, messages). The addon's FPV input replay (`CubedFpvInputState.applyRecentInput`) only
+ * touches drones a player has sent input for, so it never fights ours.
  *
  * Phases: LAUNCH (climb to clearance over the operator) -> CRUISE (heightmap look-ahead keeps it
  * above trees/roofs, closes on the target's live position) -> ATTACK (dive on the target's body,
@@ -75,6 +84,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var holdUntilTick = 0
     private var clearance = CRUISE_CLEARANCE_MIN
     private var detonated = false
+    private var usesAddonBlast = false
 
     private var nextScanTick = 0
     private var lastScanResult: StrikeTarget? = null
@@ -197,11 +207,19 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     // --- launch / recover ---
 
     private fun launch(entity: NpcEntity, level: ServerLevel, target: StrikeTarget) {
-        val drone = DroneEntity(SbwEntities.DRONE.get(), level)
+        // Preferred: the Drone Warfare addon's FPV drone — "the drone itself is the weapon". Its
+        // crash-explosion mixin fires on destroy() for any drone WITHOUT SBW's kamikaze flag, so
+        // no payload and no explosion code of ours: detonating is just destroying it, and being
+        // shot down / falling into water explodes it exactly like a player's would. Spawned by
+        // registry id so the addon stays an optional runtime dependency. Fallback without the
+        // addon: SBW's bare drone with a kamikaze attachment and our own blast (see detonate).
+        val addonDrone = addonFpvDroneType()?.create(level) as? DroneEntity
+        val drone = addonDrone ?: DroneEntity(SbwEntities.DRONE.get(), level)
+        usesAddonBlast = addonDrone != null
         val forward = Vec3.directionFromRotation(0f, entity.yRot)
         val spawn = entity.position().add(forward.scale(1.5)).add(0.0, 0.5, 0.0)
         drone.moveTo(spawn.x, spawn.y, spawn.z, entity.yRot, 0f)
-        armWarhead(drone)
+        if (!usesAddonBlast) armWarhead(drone)
         // Same scoreboard team as the operator: SBW turrets / hostile vehicles treat it as an enemy
         // vehicle, allies leave it alone.
         SquadTeams.factionOf(entity)?.let { SquadTeams.assign(drone, it) }
@@ -290,8 +308,9 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         val id = droneId ?: return
         val drone = level.getEntity(id) as? DroneEntity
         if (drone == null || !drone.isAlive || drone.isWreck || drone.health <= 0f) {
-            // Shot down (SBW's own kamikaze blast needs a player controller — see class doc).
-            if (!detonated) lastDronePos?.let { detonate(level, entity, drone, it) }
+            // Shot down. Addon drone: its destroy() already blew up. Bare SBW drone: SBW's own
+            // kamikaze blast needs a player controller (see class doc), so it's on us.
+            if (!detonated && !usesAddonBlast) lastDronePos?.let { detonate(level, entity, drone, it) }
             cleanup(entity)
             return
         }
@@ -450,13 +469,19 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     // --- warhead ---
 
     private fun warheadRadius(): Double =
-        CustomData.DRONE_ATTACHMENT[DroneEntity.getItemId(ItemStack(WARHEAD_ITEM.get()))]?.explosionRadius?.toDouble() ?: 0.0
+        if (usesAddonBlast) ADDON_FPV_BLAST_RADIUS
+        else CustomData.DRONE_ATTACHMENT[DroneEntity.getItemId(ItemStack(WARHEAD_ITEM.get()))]?.explosionRadius?.toDouble() ?: 0.0
 
-    /** Our stand-in for SBW's `kamikazeExplosion` (which needs a player controller): same
-     *  datapack-driven damage/radius, same `CustomExplosion`, attacker = the operator. */
+    /** Addon drone: destroy() -> the addon's crash explosion. Bare SBW drone: our stand-in for
+     *  SBW's `kamikazeExplosion` (which needs a player controller) — same datapack-driven
+     *  damage/radius, same `CustomExplosion`, attacker = the operator. */
     private fun detonate(level: ServerLevel, operator: NpcEntity, drone: DroneEntity?, at: Vec3) {
         if (detonated) return
         detonated = true
+        if (usesAddonBlast) {
+            Companion.crashAddonDrone(drone)
+            return
+        }
         Companion.explodeWarhead(level, operator, drone, at)
         drone?.discard()
     }
@@ -497,16 +522,40 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val RECOVER_RADIUS = 4.0
         private const val RECOVER_HEIGHT = 6.0
 
-        /** Warhead — any SBW `drone_attachments` entry with IsKamikaze. RPG TBG: 150 dmg / r 11. */
+        /** Fallback warhead (no addon) — any SBW `drone_attachments` entry with IsKamikaze.
+         *  RPG TBG: 150 dmg / r 11. */
         private val WARHEAD_ITEM = ModItems.RPG_ROCKET_TBG
+
+        /** Drone Warfare addon's FPV drone ("cubed_fpv_drone"). A DroneEntity subclass, so
+         *  everything above flies it unchanged. Null when the addon isn't installed. */
+        private val ADDON_FPV_DRONE_ID = ResourceLocation.fromNamespaceAndPath("sbwdroneconfig", "cubed_fpv_drone")
+        // DroneCrashExplosionSystem.FPV_CRASH_EXPLOSION_POWER = 5.8 (vanilla explosion power;
+        // damage reaches ~2x that) — only used for the "allies in the blast" hold check.
+        private const val ADDON_FPV_BLAST_RADIUS = 12.0
+
+        private fun addonFpvDroneType(): EntityType<*>? =
+            BuiltInRegistries.ENTITY_TYPE.getOptional(ADDON_FPV_DRONE_ID).orElse(null)
+
+        private fun isAddonDrone(drone: DroneEntity): Boolean = drone.type !== SbwEntities.DRONE.get()
+
+        /** destroy() is what the addon's crash-explosion mixin hooks; it discards the entity itself. */
+        private fun crashAddonDrone(drone: DroneEntity?) {
+            if (drone == null || !drone.isAlive) return
+            drone.isWreck = true
+            drone.destroy()
+        }
 
         /** [NpcEntity.die] hook: the operator's drone crashes the moment its operator does. */
         fun onOperatorDied(operator: NpcEntity) {
             val level = operator.level() as? ServerLevel ?: return
             val droneId = DroneLinks.unlink(operator.uuid) ?: return
             val drone = level.getEntity(droneId) as? DroneEntity ?: return
-            explodeWarhead(level, operator, drone, drone.position())
-            drone.discard()
+            if (isAddonDrone(drone)) {
+                crashAddonDrone(drone)
+            } else {
+                explodeWarhead(level, operator, drone, drone.position())
+                drone.discard()
+            }
             // Loot should be the gun, not the monitor.
             if (!operator.stowedWeapon.isEmpty) {
                 operator.setItemInHand(InteractionHand.MAIN_HAND, operator.stowedWeapon)
