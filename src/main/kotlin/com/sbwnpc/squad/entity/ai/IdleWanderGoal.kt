@@ -22,7 +22,7 @@ import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal
 class IdleWanderGoal(private val npc: NpcEntity, speedModifier: Double) :
     WaterAvoidingRandomStrollGoal(npc, speedModifier) {
     private fun eligible(): Boolean {
-        if (npc.target != null || npc.diggedIn || npc.vehicleTransport || npc.operatingDrone) return false
+        if (npc.target != null || npc.diggedIn || npc.vehicleTransport || npc.operatingDrone || npc.antiDroneEngaged) return false
         return npc.homeCenter() == null
     }
     override fun canUse(): Boolean = eligible() && super.canUse()

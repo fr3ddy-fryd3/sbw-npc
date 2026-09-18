@@ -141,6 +141,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         if (entity.diggedIn) return logEligibility(entity, false) { "dug in" }
         if (entity.operatingDrone) return logEligibility(entity, false) { "flying a drone" }
+        if (entity.antiDroneEngaged) return logEligibility(entity, false) { "dealing with a hostile drone" }
         if (entity.tickCount < giveupCooldownUntilTick) {
             return logEligibility(entity, false) { "cooling down after a recent giveup (${giveupCooldownUntilTick - entity.tickCount} ticks left)" }
         }

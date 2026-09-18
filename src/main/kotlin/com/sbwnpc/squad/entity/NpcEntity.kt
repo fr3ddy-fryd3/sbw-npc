@@ -168,6 +168,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // brain tick, so throttling the operator would throttle the drone.
     var operatingDrone: Boolean = false
 
+    // Set/cleared only by AntiDroneBehaviour while this mob is dealing with a hostile drone
+    // (shooting at it or running from it) — same "hands off" contract as the two above.
+    var antiDroneEngaged: Boolean = false
+
     /** Kamikaze drones this operator still carries; refilled at a barracks (SquadManager.
      *  respawnAtBarracks). Persisted. Meaningless for other classes. */
     var dronesLeft: Int = 0
@@ -316,7 +320,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     private var lodRecheckTick = 0
     private var brainTickInterval = 1
 
-    private fun inCombatState(): Boolean = target != null || isSuppressed() || isAlert() || operatingDrone
+    private fun inCombatState(): Boolean =
+        target != null || isSuppressed() || isAlert() || operatingDrone || antiDroneEngaged
 
     private fun refreshAiLod() {
         brainTickInterval = when {
@@ -480,6 +485,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             MortarOperatorBehaviour(),
             MortarLoaderBehaviour(),
             com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour(),
+            com.sbwnpc.squad.entity.ai.AntiDroneBehaviour(),
             VehicleCrewBehaviour(),
             VehicleCombatSupportBehaviour(),
             MedicHealBehaviour()

@@ -52,7 +52,7 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
     // this eligibility and get walked off toward some alert position, out of its own hole — reported
     // in-game as digging in not actually preventing the mob from running off once shot at again.
     private fun eligible(entity: NpcEntity) =
-        entity.target == null && !entity.combatLockedByCover() && !entity.diggedIn && !entity.vehicleTransport && !entity.operatingDrone
+        entity.target == null && !entity.combatLockedByCover() && !entity.diggedIn && !entity.vehicleTransport && !entity.operatingDrone && !entity.antiDroneEngaged
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = eligible(entity)
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = eligible(entity) && entity.isAlert()

@@ -1,6 +1,7 @@
 package com.sbwnpc.squad
 
 import com.sbwnpc.squad.combat.TeamAwareness
+import com.sbwnpc.squad.entity.DroneRegistry
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.entity.ai.DroneLinks
 import com.sbwnpc.squad.entity.ai.MortarClaims
@@ -27,6 +28,7 @@ object ServerLifecycle {
         RouteRecording.clearAll()
         SquadManager.clearCache()
         NpcRegistry.clearAll()
+        DroneRegistry.clearAll()
         SquadTeams.clearCache()
     }
 

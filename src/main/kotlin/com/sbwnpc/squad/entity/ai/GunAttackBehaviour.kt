@@ -162,7 +162,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun canEngage(entity: NpcEntity): Boolean {
-        if (entity.vehicleTransport || entity.operatingDrone) return false
+        if (entity.vehicleTransport || entity.operatingDrone || entity.antiDroneEngaged) return false
         if (entity.combatLockedByCover() || entity.combatLockedByMedic()) return false
         val target = entity.target ?: return false
         val gunData = currentGunData(entity) ?: return false
@@ -173,6 +173,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean {
         if (entity.combatLockedByCover() || entity.combatLockedByMedic()) return false
+        // AntiDroneBehaviour owns the gun (and the mob's feet) while a hostile drone is inbound.
+        if (entity.antiDroneEngaged) return false
         val gunData = currentGunData(entity) ?: return false
         return (canEngage(entity) || !entity.navigation.isDone) &&
                 (gunData.countBackupAmmo(entity) > 0 || gunData.hasEnoughAmmoToShoot(entity))

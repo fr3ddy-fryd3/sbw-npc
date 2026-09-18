@@ -42,5 +42,10 @@ object ModMemories {
     val MEDIC_HEALING: Supplier<MemoryModuleType<Boolean>> =
         SBLConstants.SBL_LOADER.registerMemoryType("medic_healing")
 
+    /** UUID of a hostile drone this NPC (or a squadmate who shouted) knows is in the air nearby —
+     *  see AntiDroneBehaviour. TTL memory: forgotten a few seconds after the last sighting. */
+    val DRONE_THREAT: Supplier<MemoryModuleType<java.util.UUID>> =
+        SBLConstants.SBL_LOADER.registerMemoryType("drone_threat")
+
     fun init() {}
 }
