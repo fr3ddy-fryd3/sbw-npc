@@ -20,6 +20,14 @@ repositories {
         content { includeGroup("thedarkcolour") }
     }
     maven {
+        // GeckoLib — compile-time only, and only because Kotlin needs the full supertype chain of
+        // SBW's Geo*Entity classes (DroneEntity extends GeoVehicleEntity implements GeoEntity) to
+        // resolve members declared on them. Same version SBW jar-in-jars, never shipped by us.
+        name = "GeckoLib (Cloudsmith)"
+        url = uri("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/")
+        content { includeGroup("software.bernie.geckolib") }
+    }
+    maven {
         // SmartBrainLib's own publishing target (verified by resolving the actual jar +
         // maven-metadata.xml from this URL, not guessed) — MPL-2.0, modId "smartbrainlib".
         name = "SmartBrainLib (Cloudsmith)"
@@ -112,6 +120,8 @@ dependencies {
     }
 
     implementation("net.tslat.smartbrainlib:SmartBrainLib-neoforge-1.21.1:${project.property("smartbrainlib_version")}")
+    // See the GeckoLib repository comment above. SBW bundles 4.7.5 (jijImplement in its build).
+    compileOnly("software.bernie.geckolib:geckolib-neoforge-1.21.1:4.7.5")
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

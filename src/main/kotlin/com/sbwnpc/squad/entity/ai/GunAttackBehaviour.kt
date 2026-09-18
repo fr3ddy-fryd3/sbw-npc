@@ -162,7 +162,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun canEngage(entity: NpcEntity): Boolean {
-        if (entity.vehicleTransport) return false
+        if (entity.vehicleTransport || entity.operatingDrone) return false
         if (entity.combatLockedByCover() || entity.combatLockedByMedic()) return false
         val target = entity.target ?: return false
         val gunData = currentGunData(entity) ?: return false

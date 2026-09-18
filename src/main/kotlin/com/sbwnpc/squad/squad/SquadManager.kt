@@ -203,7 +203,14 @@ class SquadManager : SavedData() {
         val difficulty = level.getCurrentDifficultyAt(barracksPos)
         var changed = false
         squadsAtBarracks(barracks).forEach { squad ->
-            val present = squad.members.map { findEntity(level.server, it) as? NpcEntity }.map { it?.npcClass }
+            val members = squad.members.map { findEntity(level.server, it) as? NpcEntity }
+            // Resupply: drone operators standing near their barracks get their drones back.
+            members.forEach { npc ->
+                if (npc != null && npc.npcClass == NpcClass.DRONE_OPERATOR && npc.isAlive &&
+                    npc.position().distanceToSqr(pos) <= RESUPPLY_RADIUS * RESUPPLY_RADIUS
+                ) npc.dronesLeft = com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES
+            }
+            val present = members.map { it?.npcClass }
             val missing = missingClasses(squad.originalComposition, present)
             missing.forEach { cls ->
                 val npc = ModEntities.NPC.get().create(level) ?: return@forEach
@@ -255,6 +262,7 @@ class SquadManager : SavedData() {
     companion object {
         private const val FILE = "sbwnpc_squads"
         const val MAX_SQUADS_PER_OWNER = 9
+        private const val RESUPPLY_RADIUS = 16.0
         const val MAX_NAME_LENGTH = 24
         private val NAMES = listOf("Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel")
 

@@ -2,6 +2,7 @@ package com.sbwnpc.squad
 
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.entity.NpcRegistry
+import com.sbwnpc.squad.entity.ai.DroneLinks
 import com.sbwnpc.squad.entity.ai.MortarClaims
 import com.sbwnpc.squad.entity.ai.VehicleTransportClaims
 import com.sbwnpc.squad.squad.RouteRecording
@@ -20,6 +21,7 @@ object ServerLifecycle {
     fun onServerStopped(event: ServerStoppedEvent) {
         TeamAwareness.clearAll()
         MortarClaims.clearAll()
+        DroneLinks.clearAll()
         VehicleTransportClaims.clearAll()
         SquadSelection.clearAll()
         RouteRecording.clearAll()

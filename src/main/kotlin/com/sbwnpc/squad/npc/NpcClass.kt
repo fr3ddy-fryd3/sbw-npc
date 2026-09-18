@@ -50,7 +50,11 @@ enum class NpcClass(
     MORTAR_LOADER(listOf(loc("glock_18"), loc("mp_443"))),
 
     /** Permanent vehicle crewman. Its sidearm is only for the brief period after its vehicle is destroyed. */
-    TANK_CREW(listOf(loc("glock_18"), loc("mp_443")));
+    TANK_CREW(listOf(loc("glock_18"), loc("mp_443"))),
+    // Flies kamikaze drones at targets 80-150 blocks out (by rank) — see DroneOperatorBehaviour.
+    // Same rifles as RIFLEMAN (per user request): once the drones are spent it fights on as an
+    // ordinary rifleman rather than plinking with a sidearm.
+    DRONE_OPERATOR(listOf(loc("ak_47"), loc("ak_12")), shootDistanceMultiplier = 2.0, speedMultiplier = 1.3);
 
     fun next(): NpcClass = entries[(ordinal + 1) % entries.size]
 

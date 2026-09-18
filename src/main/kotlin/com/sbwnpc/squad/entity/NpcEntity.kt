@@ -162,6 +162,21 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // diggedIn — every other movement/role behaviour must stand down while this is true.
     var vehicleTransport: Boolean = false
 
+    // Set/cleared only by DroneOperatorBehaviour while a DRONE_OPERATOR has a drone in the air —
+    // same "hands off this mob" contract as vehicleTransport (no shooting, no squad movement, no
+    // investigating), plus it keeps the AI LOD at full rate: the drone is flown from this mob's
+    // brain tick, so throttling the operator would throttle the drone.
+    var operatingDrone: Boolean = false
+
+    /** Kamikaze drones this operator still carries; refilled at a barracks (SquadManager.
+     *  respawnAtBarracks). Persisted. Meaningless for other classes. */
+    var dronesLeft: Int = 0
+
+    /** The gun stowed while the operator holds the drone monitor — persisted so a world save
+     *  mid-flight doesn't leave the operator with a monitor and no weapon (see
+     *  DroneOperatorBehaviour.holdMonitor/restoreWeapon). */
+    var stowedWeapon: ItemStack = ItemStack.EMPTY
+
     /** The vehicle this NPC permanently crews. It remounts while the vehicle remains operational. */
     var assignedVehicleId: UUID? = null
 
@@ -301,7 +316,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     private var lodRecheckTick = 0
     private var brainTickInterval = 1
 
-    private fun inCombatState(): Boolean = target != null || isSuppressed() || isAlert()
+    private fun inCombatState(): Boolean = target != null || isSuppressed() || isAlert() || operatingDrone
 
     private fun refreshAiLod() {
         brainTickInterval = when {
@@ -464,6 +479,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             SeekCoverBehaviour(),
             MortarOperatorBehaviour(),
             MortarLoaderBehaviour(),
+            com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour(),
             VehicleCrewBehaviour(),
             VehicleCombatSupportBehaviour(),
             MedicHealBehaviour()
@@ -566,7 +582,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         // SeekCoverBehaviour's occasional POST-dig throw (see maybeThrowGrenadeOnceDugIn — thrown
         // once already dug in, not before); entirely separate from GRENADIER's own mechanic.
         hasReserveGrenade = npcClass != NpcClass.MORTAR_OPERATOR && npcClass != NpcClass.MORTAR_LOADER &&
-            npcClass != NpcClass.TANK_CREW
+            npcClass != NpcClass.TANK_CREW && npcClass != NpcClass.DRONE_OPERATOR
+        if (npcClass == NpcClass.DRONE_OPERATOR) dronesLeft = com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES
     }
 
     override fun addAdditionalSaveData(compound: CompoundTag) {
@@ -576,6 +593,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         squadId?.let { compound.putUUID("SquadId", it) }
         assignedVehicleId?.let { compound.putUUID("AssignedVehicle", it) }
         compound.putBoolean("ReserveGrenade", hasReserveGrenade)
+        compound.putInt("DronesLeft", dronesLeft)
+        if (!stowedWeapon.isEmpty) compound.put("StowedWeapon", stowedWeapon.save(registryAccess()))
     }
 
     override fun readAdditionalSaveData(compound: CompoundTag) {
@@ -586,6 +605,16 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         assignedVehicleId = if (compound.hasUUID("AssignedVehicle")) compound.getUUID("AssignedVehicle") else null
         hasReserveGrenade = if (compound.contains("ReserveGrenade")) compound.getBoolean("ReserveGrenade") else
             npcClass != NpcClass.MORTAR_OPERATOR && npcClass != NpcClass.MORTAR_LOADER && npcClass != NpcClass.TANK_CREW
+        dronesLeft = if (compound.contains("DronesLeft")) compound.getInt("DronesLeft")
+            else if (npcClass == NpcClass.DRONE_OPERATOR) com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES else 0
+        stowedWeapon = if (compound.contains("StowedWeapon"))
+            ItemStack.parseOptional(registryAccess(), compound.getCompound("StowedWeapon")) else ItemStack.EMPTY
+        // Saved mid-flight: the drone itself doesn't survive the reload as "ours" (the behaviour's
+        // state is transient), so just give the gun back right away.
+        if (!stowedWeapon.isEmpty) {
+            setItemInHand(InteractionHand.MAIN_HAND, stowedWeapon)
+            stowedWeapon = ItemStack.EMPTY
+        }
     }
 
     override fun die(cause: net.minecraft.world.damagesource.DamageSource) {
@@ -594,6 +623,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         MortarClaims.release(uuid)
         VehicleTransportClaims.release(uuid)
         (vehicle as? VehicleEntity)?.let { VehicleTransportBehaviour.releaseVehicleTeamIfLastAboard(it, this) }
+        // Operator down -> signal lost: its drone crashes where it is (DroneOperatorBehaviour.stop
+        // would do this too once the brain notices the death, but the entity may already be gone
+        // from the level by then). Drop the gun, not the monitor, as loot.
+        com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.onOperatorDied(this)
         super.die(cause)
     }
 
