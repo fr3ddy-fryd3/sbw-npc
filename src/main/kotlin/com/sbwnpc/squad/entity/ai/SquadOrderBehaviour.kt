@@ -192,6 +192,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  of standing there facing an arbitrary direction — "guns pointing outward" per user feedback.
      *  No-op once there's a real target: GunAttackBehaviour's own lookAt (higher priority) takes over. */
     private fun faceOutward(entity: NpcEntity, anchor: Vec3) {
+        if (entity.aimingAtDrone) return
         val out = entity.position().subtract(anchor)
         if (out.lengthSqr() < 1.0e-6) return
         val dir = out.normalize()

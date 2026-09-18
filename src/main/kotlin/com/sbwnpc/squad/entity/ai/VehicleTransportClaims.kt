@@ -20,6 +20,13 @@ object VehicleTransportClaims {
 
     fun claimedSeats(vehicle: UUID): Int = (if (drivers.containsKey(vehicle)) 1 else 0) + (passengers[vehicle]?.size ?: 0)
 
+    /** Players and other unclaimed riders still occupy real seats; mounted claimants count once. */
+    fun occupiedOrClaimedSeats(vehicle: UUID, occupants: Collection<UUID>): Int =
+        occupants.toMutableSet().apply {
+            drivers[vehicle]?.let(::add)
+            passengers[vehicle]?.let(::addAll)
+        }.size
+
     fun claimDriver(vehicle: UUID, npc: UUID): Boolean {
         val existing = drivers[vehicle]
         if (existing != null && existing != npc) return false
@@ -29,10 +36,10 @@ object VehicleTransportClaims {
         return true
     }
 
-    fun claimPassenger(vehicle: UUID, npc: UUID, maxSeats: Int): Boolean {
+    fun claimPassenger(vehicle: UUID, npc: UUID, maxSeats: Int, occupants: Collection<UUID> = emptyList()): Boolean {
         val set = passengers[vehicle]
         if (set?.contains(npc) == true) return true
-        if (claimedSeats(vehicle) >= maxSeats) return false
+        if (npc !in occupants && occupiedOrClaimedSeats(vehicle, occupants) >= maxSeats) return false
         release(npc)
         passengers.getOrPut(vehicle) { mutableSetOf() }.add(npc)
         claimedVehicle[npc] = vehicle

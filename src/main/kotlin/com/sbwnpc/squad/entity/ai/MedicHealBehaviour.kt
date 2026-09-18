@@ -128,7 +128,8 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  hustle — [HEAL_SPRINT_SPEED_MULTIPLIER] (1.6) — while physically running to reach someone it
      *  needs to treat. Toggled every tick based on current distance rather than tracked as separate
      *  start/stop state — cheap (a plain attribute assignment) and self-correcting if the heal
-     *  target changes mid-approach. Always reverted in [stop] so an interrupted approach (ally died,
+     *  target changes mid-approach. An unchanged modifier is retained to avoid dirtying/syncing the
+     *  speed attribute every tick. Always reverted in [stop] so an interrupted approach (ally died,
      *  healed by someone else, combat lock lost) never leaves the medic permanently sprinting. */
     private fun setSprinting(entity: NpcEntity, sprinting: Boolean) {
         val attr = entity.getAttribute(Attributes.MOVEMENT_SPEED) ?: return
@@ -137,6 +138,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
             return
         }
         val amount = HEAL_SPRINT_SPEED_MULTIPLIER / entity.npcClass.speedMultiplier - 1.0
+        if (attr.getModifier(SPRINT_MODIFIER_ID)?.amount() == amount) return
         attr.addOrUpdateTransientModifier(AttributeModifier(SPRINT_MODIFIER_ID, amount, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL))
     }
 

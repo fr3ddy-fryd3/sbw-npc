@@ -279,7 +279,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             // TEMPORARY diagnostic, round 5 — pairs with canDigIn()'s log: tells apart "never even
             // reaches the fallback path" (findCover keeps succeeding now that episodes aren't reset
             // every 60 ticks anymore) from "reaches it but canDigIn always fails".
-            com.sbwnpc.squad.SquadMod.LOGGER.info("[dig-debug] {} entered fallback retreat", entity.uuid)
+            com.sbwnpc.squad.SquadMod.LOGGER.debug("[dig-debug] {} entered fallback retreat", entity.uuid)
         }
     }
 

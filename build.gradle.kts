@@ -15,6 +15,11 @@ repositories {
     mavenLocal()
     mavenCentral()
     maven {
+        name = "GeckoLib"
+        url = uri("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/")
+        content { includeGroup("software.bernie.geckolib") }
+    }
+    maven {
         name = "Kotlin for Forge"
         url = uri("https://thedarkcolour.github.io/KotlinForForge/")
         content { includeGroup("thedarkcolour") }
@@ -106,6 +111,9 @@ dependencies {
     // Резолвится через includeBuild("SuperbWarfare") + dependencySubstitution в settings.gradle.kts —
     // указанная здесь версия ни на что не влияет (Gradle подставит локальный проект).
     compileOnly("com.atsuishio.superbwarfare:superbwarfare:${project.property("superbwarfare_version")}")
+    // SBW's DroneEntity still extends GeoEntity; needed to resolve its controller API at compile
+    // time. SBW already bundles GeckoLib at runtime, so do not package a second copy here.
+    compileOnly("software.bernie.geckolib:geckolib-neoforge-1.21.1:4.7.5")
     gameRuntimeOnly("com.atsuishio.superbwarfare:superbwarfare:${project.property("superbwarfare_version")}")
     testRuntimeOnly("com.atsuishio.superbwarfare:superbwarfare:${project.property("superbwarfare_version")}") {
         isTransitive = false

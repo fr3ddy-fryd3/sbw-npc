@@ -8,8 +8,10 @@ import com.atsuishio.superbwarfare.tools.MillisTimer
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.Alarm
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.DroneCombat
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.Sightline
+import com.sbwnpc.squad.combat.ShotBudget
 import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.entity.NpcEntity
@@ -339,7 +341,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             advanceOrHold(entity, target)
         }
 
-        lineIsClear = FriendlyFireGuard.hasClearLineOfFire(entity, target.eyePosition, entity.spread)
+        val shotSpread = DroneCombat.spreadForTarget(entity.spread, target)
+        lineIsClear = FriendlyFireGuard.hasClearLineOfFire(entity, target.eyePosition, shotSpread)
         val explosionRadius = gunData.get(GunProp.EXPLOSION_RADIUS)
         blastClear = FriendlyFireGuard.hasClearBlastRadius(entity, target.position(), explosionRadius)
 
@@ -371,7 +374,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         if (lineIsClear && blastClear && gunData.canShoot(entity) && aimTime >= entity.maxAimTime) {
             val rps = gunData.get(GunProp.RPM).toDouble() / 60.0
-            var cooldown = Math.round(1000 / rps)
+            var cooldown = Math.round(1000 / rps).coerceAtLeast(1)
 
             val fireMode = gunData.selectedFireModeInfo().mode
             if (fireMode == FireMode.SEMI || (fireMode == FireMode.BURST && gunData.burstAmount.get() == 0)) {
@@ -384,12 +387,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
 
             if (shootTimer.progress >= cooldown) {
-                var newProgress = shootTimer.progress
-                do {
-                    gunData.shoot(entity, entity.spread, zoom, target.uuid)
-                    newProgress -= cooldown
-                } while (newProgress - cooldown > 0)
-                shootTimer.progress = newProgress
+                shootTimer.progress = ShotBudget.fire(shootTimer.progress, cooldown) {
+                    gunData.shoot(entity, shotSpread, zoom, target.uuid)
+                }
                 entity.lastShotTick = entity.tickCount
                 Alarm.raise(entity, entity.position(), target.position(), GUNFIRE_HEARING_RADIUS)
             }

@@ -5,6 +5,7 @@ import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.atsuishio.superbwarfare.init.ModItems
 import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.sbwnpc.squad.entity.ai.GrenadeThrowBehaviour
+import com.sbwnpc.squad.entity.ai.DroneAttackBehaviour
 import com.sbwnpc.squad.entity.ai.IdleLookAroundGoal
 import com.sbwnpc.squad.entity.ai.IdleWanderGoal
 import com.sbwnpc.squad.entity.ai.InvestigateBehaviour
@@ -143,6 +144,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     var lastShotTick: Int = Int.MIN_VALUE / 2
         internal set
 
+    /** Transient look-control ownership for drone combat, whose target cannot enter ATTACK_TARGET. */
+    internal var aimingAtDrone = false
+
     fun firedRecently(withinTicks: Int): Boolean = tickCount - lastShotTick <= withinTicks
 
     // Single-use "parting shot" grenade, tracked as a plain flag rather than a visible held item —
@@ -274,7 +278,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      * Re-setting the identical stack later can't force that ordinary path to fire — `matches` is a
      * value comparison, an equal-value stack is never treated as "changed" — so this bypasses both
      * paths entirely with a fresh `ClientboundSetEquipmentPacket` broadcast directly to every player
-     * in the dimension.
+     * currently tracking this NPC. Players outside tracking range receive equipment through the
+     * normal pairing packet when they approach.
      *
      * A SINGLE resync one tick after spawn was enough to fix the originally-reported batch case, but
      * NOT reliably enough for the single-spawn case reported later — rather than guess at the exact
@@ -298,7 +303,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             .filter { !it.second.isEmpty }
         if (slots.isEmpty()) return
         val packet = net.minecraft.network.protocol.game.ClientboundSetEquipmentPacket(id, slots)
-        serverLevel.server.playerList.broadcastAll(packet, serverLevel.dimension())
+        serverLevel.chunkSource.broadcast(this, packet)
     }
 
     // Target acquisition: replaces the old SquadFocusTargetGoal, HurtByTargetGoal,
@@ -320,7 +325,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             MortarLoaderBehaviour(),
             VehicleCrewBehaviour(),
             VehicleCombatSupportBehaviour(),
-            MedicHealBehaviour()
+            MedicHealBehaviour(),
+            DroneAttackBehaviour()
         )
     // Idle: only relevant while there's no ATTACK_TARGET (Fight always outranks Idle). Order here
     // doesn't change behaviour — InvestigateBehaviour's and SquadOrderBehaviour's own eligibility
@@ -434,6 +440,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     override fun readAdditionalSaveData(compound: CompoundTag) {
         super.readAdditionalSaveData(compound)
+        aimingAtDrone = false
         runCatching { npcClass = NpcClass.valueOf(compound.getString("NpcClass")) }
         runCatching { npcRank = NpcRank.valueOf(compound.getString("NpcRank")) }
         squadId = if (compound.hasUUID("SquadId")) compound.getUUID("SquadId") else null
@@ -443,6 +450,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     }
 
     override fun die(cause: net.minecraft.world.damagesource.DamageSource) {
+        aimingAtDrone = false
         (level() as? ServerLevel)?.let { SquadManager.get(it).removeMemberEverywhere(uuid) }
         alertAllies(cause)
         MortarClaims.release(uuid)

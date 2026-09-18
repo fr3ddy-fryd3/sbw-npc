@@ -52,6 +52,7 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var nextAimTick = 0
     private var nextScanTick = 0
     private var nextFireTick = 0
+    private var nextSearchTick = 0
     private var lastScanResult: BlockPos? = null
 
     companion object {
@@ -86,6 +87,9 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         val current = mortar
         if (current != null && current.isAlive && !current.isWreck && !MortarClaims.isOperatorClaimedByOther(current.uuid, entity.uuid)) return true
+
+        if (entity.tickCount < nextSearchTick) return false
+        nextSearchTick = entity.tickCount + 20
 
         val level = entity.level() as? ServerLevel ?: return false
         val found = level.getEntitiesOfClass(
@@ -124,6 +128,9 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.navigation.stop()
 
         if (target.distSqr(BlockPos.containing(m.position())) < MIN_RANGE_SQR) return
+        // Both actions are on cooldown; no trajectory solve or friendly-area scan is needed yet.
+        // These checks still run on the actual aim/fire tick, so safety never uses a stale result.
+        if (entity.tickCount < nextAimTick && entity.tickCount < nextFireTick) return
         // The mortar's own aim solver fails silently (keeps its previous/default aim) when a
         // target is out of ballistic range or beyond the turret's pitch limits. We used to fire
         // regardless, launching shells at whatever stale aim was left over — looked like firing

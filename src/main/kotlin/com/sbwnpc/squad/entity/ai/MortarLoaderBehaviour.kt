@@ -33,6 +33,7 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private var mortar: MortarEntity? = null
     private var nextCheckTick = 0
+    private var nextSearchTick = 0
 
     companion object {
         private const val SEARCH_RANGE = 30.0
@@ -53,6 +54,9 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         val current = mortar
         if (current != null && current.isAlive && !current.isWreck && !MortarClaims.isLoaderClaimedByOther(current.uuid, entity.uuid)) return true
+
+        if (entity.tickCount < nextSearchTick) return false
+        nextSearchTick = entity.tickCount + 20
 
         val level = entity.level() as? ServerLevel ?: return false
         val found = level.getEntitiesOfClass(

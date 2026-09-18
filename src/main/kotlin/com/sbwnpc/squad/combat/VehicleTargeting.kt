@@ -15,11 +15,12 @@ object VehicleTargeting {
         range: Double
     ): LivingEntity? {
         val box = AABB.ofSize(entity.position(), range * 2, range * 2, range * 2)
-        return level.getEntitiesOfClass(LivingEntity::class.java, box)
-            .asSequence()
-            .filter { it.isAlive && SquadTeams.isHostile(entity, it) }
-            .filter { it.vehicle is VehicleEntity && it.vehicle !== entity.vehicle }
-            .filter { entity.sensing.hasLineOfSight(it.vehicle!!) }
-            .minByOrNull { entity.distanceToSqr(it) }
+        val candidates = level.getEntitiesOfClass(LivingEntity::class.java, box) {
+            it.isAlive && SquadTeams.isHostile(entity, it) &&
+                it.vehicle is VehicleEntity && it.vehicle !== entity.vehicle
+        }
+        return TargetSelection.nearestVisible(candidates, { entity.distanceToSqr(it) }) {
+            entity.sensing.hasLineOfSight(it.vehicle!!)
+        }
     }
 }

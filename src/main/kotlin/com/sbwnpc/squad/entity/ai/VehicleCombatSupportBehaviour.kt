@@ -23,6 +23,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var phase = Phase.APPROACHING
     private var vehicleId: UUID? = null
     private var targetId: UUID? = null
+    private var nextSearchTick = 0
 
     init {
         noTimeout()
@@ -30,8 +31,11 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
-        eligible(entity) && findSupportVehicle(entity, level) != null
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean {
+        if (entity.tickCount < nextSearchTick) return false
+        nextSearchTick = entity.tickCount + 10
+        return eligible(entity) && findSupportVehicle(entity, level) != null
+    }
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean {
         val vehicle = vehicleId?.let { (entity.level() as? ServerLevel)?.getEntity(it) as? VehicleEntity }
@@ -53,7 +57,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         targetId = target.uuid
         phase = Phase.APPROACHING
         entity.vehicleTransport = true
-        com.sbwnpc.squad.SquadMod.LOGGER.info(
+        com.sbwnpc.squad.SquadMod.LOGGER.debug(
             "[vehicle-debug] {} claimed combat support vehicle {} for target {}",
             entity.uuid, vehicle.uuid, target.uuid
         )
@@ -107,7 +111,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 }
                 entity.navigation.stop()
                 phase = Phase.FIRING
-                com.sbwnpc.squad.SquadMod.LOGGER.info(
+                com.sbwnpc.squad.SquadMod.LOGGER.debug(
                     "[vehicle-debug] {} boarded combat support vehicle {} in seat {} for target {}",
                     entity.uuid, vehicle.uuid, vehicle.getSeatIndex(entity), target.uuid
                 )

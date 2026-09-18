@@ -2,6 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.sbwnpc.squad.combat.TeamAwareness
+import com.sbwnpc.squad.combat.TargetSelection
 import com.sbwnpc.squad.combat.T90WeaponSelection
 import com.sbwnpc.squad.combat.VehicleTargeting
 import com.sbwnpc.squad.entity.NpcEntity
@@ -101,9 +102,12 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     private fun nearestDirectTarget(mob: NpcEntity, level: ServerLevel): LivingEntity? {
         val followRange = mob.getAttribute(Attributes.FOLLOW_RANGE)?.value ?: 48.0
         val box = mob.boundingBox.inflate(followRange)
-        return level.getEntitiesOfClass(LivingEntity::class.java, box) { candidate ->
-            candidate !== mob && SquadTeams.isHostile(mob, candidate) && mob.sensing.hasLineOfSight(candidate)
-        }.minByOrNull { mob.distanceToSqr(it) }
+        val candidates = level.getEntitiesOfClass(LivingEntity::class.java, box) { candidate ->
+            candidate !== mob && SquadTeams.isHostile(mob, candidate)
+        }
+        return TargetSelection.nearestVisible(candidates, { mob.distanceToSqr(it) }) {
+            mob.sensing.hasLineOfSight(it)
+        }
     }
 
     companion object {

@@ -14,6 +14,7 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 
 /** Keeps a spawned vehicle crewman with its assigned vehicle until that vehicle is wrecked. */
 class VehicleCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
+    private var nextRecoverySearchTick = 0
     init {
         noTimeout()
     }
@@ -23,6 +24,8 @@ class VehicleCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun assignedVehicle(entity: NpcEntity): VehicleEntity? {
         val level = entity.level() as? ServerLevel ?: return null
         if (entity.assignedVehicleId == null && entity.npcClass == NpcClass.TANK_CREW) {
+            if (entity.tickCount < nextRecoverySearchTick) return null
+            nextRecoverySearchTick = entity.tickCount + 20
             // Repairs crews spawned by the earlier T-90 preset, which seated them but failed to
             // persist the assignment. Only a same-faction T-90 can become their vehicle.
             val current = entity.vehicle as? VehicleEntity

@@ -7,6 +7,11 @@
   "injectors": {
     "defaultRequire": 1
   },
+  "mixins": [
+    "VehicleBoardingMixin",
+    "VehicleGunDataMixin",
+    "AutoAimableEntityMixin"
+  ],
   "client": [
     "KeyMappingMixin"
   ]
