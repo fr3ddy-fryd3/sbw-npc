@@ -16,7 +16,7 @@ enum class SquadPreset(val label: String, val composition: List<NpcClass>) {
     ),
     MORTAR_CREW("Mortar Crew", listOf(NpcClass.MORTAR_OPERATOR, NpcClass.MORTAR_LOADER)),
     T90_CREW("T-90 Crew", listOf(NpcClass.TANK_CREW)),
-    DRONE_TEAM("Drone Team", listOf(NpcClass.DRONE_OPERATOR, NpcClass.RIFLEMAN, NpcClass.RIFLEMAN));
+    DRONE_TEAM("Drone Team", listOf(NpcClass.DRONE_OPERATOR));
 
     fun next(): SquadPreset {
         var next = entries[(ordinal + 1) % entries.size]

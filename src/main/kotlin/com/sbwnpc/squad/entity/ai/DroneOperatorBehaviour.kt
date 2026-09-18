@@ -54,7 +54,7 @@ import java.util.UUID
  *
  * Phases: LAUNCH (climb to clearance over the operator) -> CRUISE (heightmap look-ahead keeps it
  * above trees/roofs, closes on the target's live position) -> ATTACK (dive on the target's body,
- * detonate within [DETONATE_RANGE]) — with HOLD (circle at altitude while allies are inside the
+ * detonate within [DETONATE_RANGE] or on impact with ground/blocks) — with HOLD (circle at altitude while allies are inside the
  * blast radius) and RETURN (target gone: fly home, land, refund the drone). Shot down / timed out
  * -> blast where it is. Operator killed -> [onOperatorDied]: same, "signal lost".
  *
@@ -325,6 +325,17 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             return
         }
 
+        // Impact fuze: touching ground, a wall or a tree while under way is a hit (or a crash) —
+        // either way the warhead goes off. Not while lifting off the ground or landing to recover.
+        if (phase != Phase.LAUNCH && phase != Phase.RETURN &&
+            (drone.onGround() || drone.horizontalCollision || drone.verticalCollision)
+        ) {
+            DebugFlags.log("[drone-debug] {} drone impact at {}", entity.uuid, drone.position())
+            detonate(level, entity, drone, drone.position())
+            cleanup(entity)
+            return
+        }
+
         if (!refreshTarget(entity, level, drone)) phase = Phase.RETURN
 
         when (phase) {
@@ -487,7 +498,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     companion object {
-        const val MAX_DRONES = 3
+        const val MAX_DRONES = 10
 
         // Launch envelope: 80 blocks for a RECRUIT up to 150 for ELITE (per user request), never
         // closer than MIN_RANGE — at that distance the SMG is the answer, not a 6-second flight.
