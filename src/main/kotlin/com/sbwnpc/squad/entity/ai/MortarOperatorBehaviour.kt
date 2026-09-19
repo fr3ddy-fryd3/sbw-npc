@@ -51,6 +51,8 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var mortar: MortarEntity? = null
     private var nextAimTick = 0
     private var nextScanTick = 0
+    private var nextBarrageShiftTick = 0
+    private var barrageAim: BlockPos? = null
     private var nextFireTick = 0
     private var lastScanResult: BlockPos? = null
 
@@ -59,6 +61,10 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val MIN_RANGE_SQR = 25.0 * 25.0
         private const val SAFE_RADIUS = 10.0
         private const val SELF_DEFENSE_RANGE_SQR = 6.0 * 6.0
+        /** Radius of the area a BARRAGE order shells, per the command's description. */
+        private const val BARRAGE_RADIUS = 40.0
+        /** How long one aim point inside that area is held before walking the fire elsewhere. */
+        private const val BARRAGE_SHIFT_TICKS = 100
         private const val MIN_DETECTION = 80.0
         private const val MAX_DETECTION = 160.0
         private const val MIN_SCATTER = 5.0
@@ -186,10 +192,36 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** Squad-commanded target first, else the nearest hostile within detection radius. */
     private fun fireTarget(entity: NpcEntity): BlockPos? {
         val squad = entity.currentSquad()
+        if (squad != null && squad.order == SquadOrder.BARRAGE) {
+            squad.objective?.let { return barrageAimPoint(entity, it) }
+        }
         if (squad != null && squad.order == SquadOrder.ATTACK) {
             commandedTarget(entity, squad)?.let { return it }
         }
         return scanForEnemy(entity)
+    }
+
+    /**
+     * A point somewhere inside the beaten zone around the objective, held for a few shots before
+     * moving on. Re-rolling it every tick would never let the aim solver settle, and walking it
+     * shot by shot is what makes a barrage read as shelling an area rather than as bad aim — the
+     * per-shell scatter from [scatterRadius] still applies on top of wherever this lands.
+     */
+    private fun barrageAimPoint(entity: NpcEntity, objective: BlockPos): BlockPos {
+        if (entity.tickCount >= nextBarrageShiftTick || barrageAim == null) {
+            nextBarrageShiftTick = entity.tickCount + BARRAGE_SHIFT_TICKS
+            val angle = entity.random.nextDouble() * Math.PI * 2
+            // Square-rooted so the points spread evenly over the disc instead of clustering in
+            // the middle.
+            val radius = Math.sqrt(entity.random.nextDouble()) * BARRAGE_RADIUS
+            val x = objective.x + Math.round(Math.cos(angle) * radius).toInt()
+            val z = objective.z + Math.round(Math.sin(angle) * radius).toInt()
+            val level = entity.level() as? ServerLevel
+            val y = level?.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, x, z)
+                ?: objective.y
+            barrageAim = BlockPos(x, y, z)
+        }
+        return barrageAim ?: objective
     }
 
     private fun commandedTarget(entity: NpcEntity, squad: Squad): BlockPos? {

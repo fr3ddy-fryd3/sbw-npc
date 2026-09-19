@@ -125,7 +125,10 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
             // widening RING_RADIUS again later can't silently reintroduce the arrived/oscillation
             // bug documented on ARRIVAL_RADIUS itself (this was a flat `8.0` before, which the old
             // 3.5 RING_RADIUS made safe by accident — no longer safe by accident against 6.0).
-            SquadOrder.DEFEND -> approachSlot(entity, home, dist <= SquadFormation.ARRIVAL_RADIUS + 4.5, WALK_SPEED_MODIFIER)
+            // A barraging mortar crew stays put by its tube exactly like DEFEND; only the aim
+            // point differs, and that is MortarOperatorBehaviour's business.
+            SquadOrder.DEFEND, SquadOrder.BARRAGE ->
+                approachSlot(entity, home, dist <= SquadFormation.ARRIVAL_RADIUS + 4.5, WALK_SPEED_MODIFIER)
             SquadOrder.PATROL -> {
                 val points = squad.routeId
                     ?.let { (entity.level() as? ServerLevel)?.let { lvl -> RouteManager.get(lvl).get(it) } }

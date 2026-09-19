@@ -79,10 +79,11 @@ class SquadManager : SavedData() {
 
     fun setOrder(id: UUID, order: SquadOrder) {
         squads[id]?.let {
+            val available = SquadOrder.availableFor(isTankSquad(it), isMortarSquad(it))
             it.order = when {
+                order in available -> order
                 isTankSquad(it) -> SquadOrder.MOVE
-                isMortarSquad(it) && order != SquadOrder.ATTACK && order != SquadOrder.DEFEND -> SquadOrder.DEFEND
-                else -> order
+                else -> SquadOrder.DEFEND
             }
             setDirty()
         }

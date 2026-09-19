@@ -65,10 +65,10 @@ object SquadFormation {
         // A MOVE command is a formation movement command, including after the destination is
         // reached. Infantry presets map directly to 2x2, 2x4, and 4x4 grids.
         if (order == SquadOrder.MOVE) return Shape.GRID
-        if (arrived) return if (order == SquadOrder.DEFEND) Shape.SCATTER else Shape.RING
+        if (arrived) return if (order == SquadOrder.DEFEND || order == SquadOrder.BARRAGE) Shape.SCATTER else Shape.RING
         return when (order) {
             SquadOrder.ATTACK -> Shape.WEDGE
-            SquadOrder.DEFEND -> Shape.LINE
+            SquadOrder.DEFEND, SquadOrder.BARRAGE -> Shape.LINE
             SquadOrder.PATROL -> Shape.COLUMN
             SquadOrder.MOVE -> Shape.GRID
         }

@@ -22,7 +22,8 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
         val faction: SquadFaction,
         val members: Int,
         var order: SquadOrder,
-        val tank: Boolean
+        val tank: Boolean,
+        val mortar: Boolean
     )
 
     private val loose = snapshot.getInt("Loose")
@@ -31,7 +32,8 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
         Row(
             t.getString("Id"), t.getString("Name"),
             runCatching { SquadFaction.valueOf(t.getString("Faction")) }.getOrDefault(SquadFaction.DEFAULT),
-            t.getInt("Members"), SquadOrder.byOrdinal(t.getInt("Order")), t.getBoolean("Tank")
+            t.getInt("Members"), SquadOrder.byOrdinal(t.getInt("Order")),
+            t.getBoolean("Tank"), t.getBoolean("Mortar")
         )
     }
     private var listTop = 0
@@ -53,7 +55,7 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
         listTop = y - 2
         for (row in rows) {
             addRenderableWidget(Button.builder(Component.literal("Order: ${row.order.name}")) {
-                row.order = row.order.next()
+                row.order = row.order.next(SquadOrder.availableFor(row.tank, row.mortar))
                 it.message = Component.literal("Order: ${row.order.name}")
                 send(SquadCmdPayload.SET_ORDER, row.id, row.order.ordinal)
             }.bounds(x + 92, y, 90, 20).build())

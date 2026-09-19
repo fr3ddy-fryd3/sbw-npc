@@ -139,10 +139,10 @@ object HudOverlayState {
 
     /** Orders displayed for the selected squad. Tank crews only navigate; mortar crews hold or fire. */
     fun availableOrders(): List<SquadOrder> = when {
-        selectedAll -> SquadOrder.entries
-        selected?.tank == true -> listOf(SquadOrder.MOVE)
-        selected?.mortar == true -> listOf(SquadOrder.ATTACK, SquadOrder.DEFEND)
-        else -> SquadOrder.entries
+        // "All squads" can be any mix, so offer what suits an ordinary one; the server clamps each
+        // squad to its own list anyway.
+        selectedAll -> SquadOrder.availableFor(tank = false, mortar = false)
+        else -> SquadOrder.availableFor(selected?.tank == true, selected?.mortar == true)
     }
 
     private const val REFRESH_INTERVAL_TICKS = 40
