@@ -37,9 +37,12 @@ tested" as two different claims; see Workflow below.
 
 - **Never commit or push a fix on the strength of "it should work" or "it compiles."** Build,
   deploy, and wait for the user to confirm it works in-game before committing.
-- Only commit/push when the user actually asks for it for that specific change. Permission given
-  for one change doesn't carry over to the next, unrelated one, even later in the same
-  conversation — ask again rather than assuming it still applies.
+- **Pushing** needs the user's say-so for that specific push. Permission given for one push doesn't
+  carry over to the next, unrelated one, even later in the same conversation — ask again rather
+  than assuming it still applies.
+- Committing is not pushing. Committing finished, verified work is fine; it is the publishing step
+  that is gated.
+- Prefer several small commits over one large one, split by what each change actually does.
 - Don't bundle unrelated doc-only changes into a commit unless the user explicitly asked for the
   doc change too.
 - Commit messages: concise, and start with a Conventional Commits prefix (`feat:`, `fix:`,
