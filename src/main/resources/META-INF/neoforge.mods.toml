@@ -1,14 +1,14 @@
 modLoader = "kotlinforforge"
 loaderVersion = "[5.8.0,)"
-license = "All Rights Reserved"
+license = "GPL-3.0"
 
 [[mixins]]
 config = "mixins.sbwnpc.json"
 
 [[mods]]
 modId = "sbwnpc"
-version = "0.1.0-dev"
-displayName = "SBW Squads"
+version = "0.3.1-dev"
+displayName = "[SBW] NPC Squads"
 authors = "fr3ddy"
 description = "NPC squads addon for SuperbWarfare"
 

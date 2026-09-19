@@ -1,13 +1,13 @@
 <div align="center">
 
-# SBW Squads
+# [SBW] NPC Squads
 
 **An NPC squad addon for [SuperbWarfare](https://github.com/Mercurows/SuperbWarfare)** — recruit, deploy,
 and command your own AI-driven infantry, mortar, tank, and drone squads.
 
 ![NeoForge](https://img.shields.io/badge/NeoForge-1.21.1-orange)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Jetbrains-7F52FF?logo=kotlin&logoColor=white)
-![License](https://img.shields.io/badge/license-All%20Rights%20Reserved-lightgrey)
+![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 ![Status](https://img.shields.io/badge/status-active%20dev-yellow)
 
 [English](#english) · [Русский](#русский)
@@ -20,7 +20,7 @@ and command your own AI-driven infantry, mortar, tank, and drone squads.
 
 ### What is this
 
-SBW Squads lets you recruit NPCs with a single tool, form them into squads, and command them like
+[SBW] NPC Squads lets you recruit NPCs with a single tool, form them into squads, and command them like
 a small AI-controlled army: riflemen, medics, snipers, machine gunners, grenadiers, mortar crews,
 tank crews, and kamikaze-drone operators. Squads take cover, dig in under fire, avoid shooting
 their own side, relay spotted enemies to the rest of their faction, ride and crew vehicles, and
@@ -67,17 +67,11 @@ clicking.
 ### How this mod was made
 
 This is a hobby project, built purely for fun. The entire codebase was written by an AI (Claude
-Code) — architecture, features, bug fixes, all of it — with actual humans ("meatbags") doing the
-playtesting, including multiplayer sessions, and reporting back what broke.
+Code) — architecture, features, bug fixes, all of it — while the meatbags did the actual
+playtesting, including multiplayer sessions, and sent back bug reports on whatever broke.
 
 Pull requests and issues are welcome and will be looked at whenever there's free time — no
 guaranteed response time.
-
-### Known limitations
-
-- A squad's faction is currently shared server-wide rather than bound per player: two players who
-  pick the same faction will automatically be allied. A per-player default with an admin override
-  is planned but not built yet — worth knowing if you're testing with friends.
 
 ### Skins
 
@@ -91,8 +85,7 @@ the generation notes.
 
 ### License
 
-All rights reserved (see `mod_license` in `gradle.properties`). Source is public for reference;
-no reuse or redistribution license is granted.
+[GNU GPL v3.0](LICENSE) — see the `LICENSE` file for the full text.
 
 ---
 
@@ -100,7 +93,7 @@ no reuse or redistribution license is granted.
 
 ### Что это
 
-SBW Squads позволяет одним инструментом вербовать NPC, собирать их в отряды и командовать ими,
+[SBW] NPC Squads позволяет одним инструментом вербовать NPC, собирать их в отряды и командовать ими,
 как небольшой армией под управлением ИИ: автоматчики, медики, снайперы, пулемётчики, гренадёры,
 миномётные и танковые расчёты, операторы дронов-камикадзе. Отряды прячутся в укрытия, окапываются
 под огнём, не стреляют по своим, передают информацию о замеченных врагах остальной фракции, ездят
@@ -153,12 +146,6 @@ SBW Squads позволяет одним инструментом вербова
 
 PR и issue приветствуются и будут рассмотрены в свободное время — без гарантий по срокам.
 
-### Известные ограничения
-
-- Фракция отряда сейчас общая на весь сервер, а не привязана к конкретному игроку: два игрока,
-  выбравшие одну фракцию, автоматически станут союзниками. Привязка фракции к игроку с
-  админ-переопределением задумана, но пока не реализована — важно знать при тестах с друзьями.
-
 ### Скины
 
 Все восемь фракционных скинов переоформлены в оригинальной военной форме с сохранением исходной
@@ -171,5 +158,4 @@ PR и issue приветствуются и будут рассмотрены в
 
 ### Лицензия
 
-Все права защищены (см. `mod_license` в `gradle.properties`). Исходники публичны для ознакомления;
-лицензии на повторное использование или распространение не предоставляется.
+[GNU GPL v3.0](LICENSE) — полный текст в файле `LICENSE`.

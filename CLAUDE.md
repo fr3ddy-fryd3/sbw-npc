@@ -4,7 +4,7 @@ Working notes for Claude Code (or any AI assistant) picking up this repository. 
 
 ## What this is
 
-SBW Squads (`sbwnpc`) — an NPC squad addon for the SuperbWarfare weapons/vehicles mod, built on
+[SBW] NPC Squads (`sbwnpc`) — an NPC squad addon for the SuperbWarfare weapons/vehicles mod, built on
 NeoForge 1.21.1 / Kotlin. Players recruit, deploy, and command squads of AI-driven NPCs
 (riflemen, medics, snipers, machine gunners, mortar crews, tank crews, drone operators...) that
 fight, take cover, ride vehicles, and follow orders (Attack/Defend/Patrol/Move).
@@ -15,7 +15,11 @@ tested" as two different claims; see Workflow below.
 
 ## Build, test, deploy
 
-- Build: `./gradlew build`
+- Build: `./gradlew build` — same as `buildProduction` below (`DebugFlags` off).
+- For local testing with verbose trace logs / debug particle markers on: `./gradlew buildDevelop`.
+  `./gradlew buildProduction` is the explicit opposite, identical to plain `build`. The flag is
+  baked into the jar at build time by the generated `BuildFlags` object (see
+  `generateBuildFlags` in `build.gradle.kts`) — it's not something to pass at runtime.
 - Tests only: `./gradlew test`
 - Compiling (`compileKotlin`) is **not** a testable artifact — a real jar requires `build`.
 - Deploy for in-game testing: copy the built jar into the **flat** `~/.minecraft/mods/` folder:
@@ -33,10 +37,13 @@ tested" as two different claims; see Workflow below.
 
 - **Never commit or push a fix on the strength of "it should work" or "it compiles."** Build,
   deploy, and wait for the user to confirm it works in-game before committing.
-- Only commit/push when the user actually asks for it (or has given standing permission earlier
-  in the current conversation) — don't take initiative to commit on your own.
+- Only commit/push when the user actually asks for it for that specific change. Permission given
+  for one change doesn't carry over to the next, unrelated one, even later in the same
+  conversation — ask again rather than assuming it still applies.
 - Don't bundle unrelated doc-only changes into a commit unless the user explicitly asked for the
   doc change too.
+- Commit messages: concise, and start with a Conventional Commits prefix (`feat:`, `fix:`,
+  `docs:`, `refactor:`, `perf:`, `test:`, `chore:`, ...) matching what the commit actually is.
 - When the user says to slow down ("не торопись") or similar, actually stop and wait — don't
   keep proposing or making the next change.
 - Prefer reusing an existing vanilla/NeoForge/SuperbWarfare class or mechanism over inventing a
