@@ -131,6 +131,14 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  the squad/home/distance lookups, and the log line's reason is only formatted when actually
      *  about to be logged. */
     private fun eligible(entity: NpcEntity, checkGiveup: Boolean): Boolean {
+        // Never take the controls of something that isn't a ground vehicle. A helicopter reads
+        // forwardInputDown as its collective and the left/right pedals as roll, so "driving" one
+        // spins the rotor up and rolls it onto its back; HelicopterPilotBehaviour owns those.
+        (entity.vehicle as? VehicleEntity)?.let { mounted ->
+            if (mounted.computed().engineType !in GROUND_ENGINE_TYPES) {
+                return logEligibility(entity, false) { "mounted in a non-ground vehicle" }
+            }
+        }
         // A permanent crew member is driven by this behaviour only while in its own vehicle;
         // VehicleCrewBehaviour handles getting it back aboard if it is ever ejected.
         entity.assignedVehicleId?.let { assigned -> return entity.vehicle?.uuid == assigned }
