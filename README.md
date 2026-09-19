@@ -54,15 +54,34 @@ clicking.
 ### Requirements
 
 - Minecraft 1.21.1 + NeoForge
+- Kotlin for Forge (NeoForge build) — this mod is written in Kotlin and loads through it
 - [SuperbWarfare](https://github.com/Mercurows/SuperbWarfare) — this addon builds directly on its
   weapons, vehicles, and combat systems and won't do anything without it
+- SmartBrainLib — the behavior-tree AI framework every NPC's combat/movement logic runs on
 - Optional: the SBW Drone Warfare addon, for the drone operator class to use its FPV drone model
 
 ### Installation
 
-1. Install NeoForge and SuperbWarfare first.
+1. Install NeoForge, Kotlin for Forge, SuperbWarfare, and SmartBrainLib first.
 2. Grab the latest jar from the [Releases](../../releases) page.
 3. Drop it into your `mods/` folder.
+
+### Quick start
+
+1. Get the Squad Command Tool — there's no survival recipe yet, so grab it from Creative mode
+   (Combat tab) or run `/give @s sbwnpc:squad_tool`.
+2. First use asks you to pick a faction once; that's just your personal default, you can still
+   deploy any faction afterward.
+3. **Recruit mode** (default): right-click air to open the recruit GUI and pick class, rank,
+   faction and squad preset; right-click a block to deploy it there.
+4. **Ctrl+right-click** switches to **Command mode**: right-click an NPC to select it (or its
+   whole squad, if it already has one — Shift+right-click clears your pick); right-click air with
+   NPCs selected to open the command GUI and form/name/order the squad; right-click a hostile to
+   set the selected squad's focus target.
+5. Quick orders without opening a menu: press `B` for the HUD, a number key (1-9) to pick a squad,
+   then a number key for an order — or `0` to order every squad you own at once.
+6. Place a Barracks block (Creative-only for now too) as a squad's rally point; it slowly
+   restocks that squad's losses over time.
 
 ### How this mod was made
 
@@ -128,15 +147,35 @@ the generation notes.
 ### Требования
 
 - Minecraft 1.21.1 + NeoForge
+- Kotlin for Forge (сборка для NeoForge) — мод написан на Kotlin и грузится через него
 - [SuperbWarfare](https://github.com/Mercurows/SuperbWarfare) — аддон построен прямо поверх его
   оружия, техники и боевой системы и без него не работает
+- SmartBrainLib — фреймворк поведенческих деревьев, на котором держится весь боевой/навигационный
+  AI NPC
 - Опционально: аддон SBW Drone Warfare — чтобы оператор дрона использовал его модель FPV-дрона
 
 ### Установка
 
-1. Сначала установи NeoForge и SuperbWarfare.
+1. Сначала установи NeoForge, Kotlin for Forge, SuperbWarfare и SmartBrainLib.
 2. Скачай последний jar со страницы [Releases](../../releases).
 3. Положи его в папку `mods/`.
+
+### Быстрый старт
+
+1. Получи Squad Command Tool — крафта пока нет, бери из креатива (вкладка Combat) или команду
+   `/give @s sbwnpc:squad_tool`.
+2. При первом использовании инструмент попросит один раз выбрать фракцию — это просто твой
+   дефолт, деплоить другие фракции можно и дальше свободно.
+3. **Режим «Вербовка»** (по умолчанию): ПКМ по воздуху открывает GUI выбора класса, ранга,
+   фракции и пресета отряда; ПКМ по блоку — деплой на этом месте.
+4. **Ctrl + ПКМ** переключает в **режим «Командование»**: ПКМ по NPC выделяет его (или весь его
+   отряд, если он уже в отряде — Shift + ПКМ сбрасывает выбор); ПКМ по воздуху с выделенными NPC
+   открывает GUI командования, где отряд формируется, называется и получает приказ; ПКМ по врагу
+   ставит его фокус-целью выбранного отряда.
+5. Быстрые приказы без меню: клавиша `B` — HUD, цифра (1-9) — выбор отряда, следующая цифра —
+   приказ; `0` — приказ сразу всем своим отрядам.
+6. Поставь блок Barracks (тоже пока только из креатива) как точку сбора отряда — он постепенно
+   восполняет потери отряда.
 
 ### Как это сделано
 
