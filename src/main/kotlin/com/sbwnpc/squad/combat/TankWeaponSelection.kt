@@ -15,21 +15,10 @@ object TankWeaponSelection {
     }
     private const val GUNNER_SEAT = 0
     private const val CANNON_WEAPON = 0
-    private const val AP_AMMO = 0
-    private const val HE_AMMO = 1
 
     fun update(gunner: NpcEntity, target: LivingEntity) {
         val vehicle = gunner.vehicle as? VehicleEntity ?: return
         if (vehicle.type !in TANK_TYPES || vehicle.getSeatIndex(gunner) != GUNNER_SEAT) return
-
-        val ammo = if (target.vehicle is VehicleEntity) AP_AMMO else HE_AMMO
-        if (vehicle.getWeaponIndex(GUNNER_SEAT) != CANNON_WEAPON) {
-            vehicle.setWeaponIndex(GUNNER_SEAT, CANNON_WEAPON)
-        }
-        vehicle.modifyGunData(GUNNER_SEAT, CANNON_WEAPON) { gun ->
-            if (gun.selectedAmmoType.get() != ammo) {
-                gun.changeAmmoConsumer(ammo, vehicle.ammoSupplier)
-            }
-        }
+        VehicleCannonAmmo.select(vehicle, GUNNER_SEAT, CANNON_WEAPON, target)
     }
 }
