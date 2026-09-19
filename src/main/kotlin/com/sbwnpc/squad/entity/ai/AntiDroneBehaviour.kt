@@ -7,6 +7,7 @@ import com.atsuishio.superbwarfare.entity.vehicle.DroneEntity
 import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.DroneAccuracy
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.entity.DroneRegistry
 import com.sbwnpc.squad.entity.NpcEntity
@@ -218,9 +219,12 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         if (dist > SHOOT_RANGE || !entity.sensing.hasLineOfSight(drone)) return
         if (entity.tickCount < nextShotTick || !gunData.canShoot(entity)) return
-        if (!FriendlyFireGuard.hasClearLineOfFire(entity, aim, entity.npcRank.spread * entity.npcClass.accuracyMultiplier)) return
+        // A drone is a small, fast, evasive target — the same aim a rifleman holds on a person
+        // shouldn't land on it as reliably.
+        val spread = DroneAccuracy.adjustSpread(entity.npcRank.spread * entity.npcClass.accuracyMultiplier, true)
+        if (!FriendlyFireGuard.hasClearLineOfFire(entity, aim, spread)) return
 
-        gunData.shoot(entity, entity.npcRank.spread * entity.npcClass.accuracyMultiplier, false, null, aim)
+        gunData.shoot(entity, spread, false, null, aim)
         entity.lastShotTick = entity.tickCount
 
         var cooldownTicks = (1200.0 / gunData.get(GunProp.RPM).toDouble().coerceAtLeast(1.0)).roundToInt().coerceAtLeast(1)

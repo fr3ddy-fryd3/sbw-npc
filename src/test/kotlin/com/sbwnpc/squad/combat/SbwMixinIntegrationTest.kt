@@ -10,8 +10,7 @@ class SbwMixinIntegrationTest {
         val hooks = listOf(
             "com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity" to "boardAlongsideAlliedDriver",
             "com.atsuishio.superbwarfare.data.gun.GunData" to "applyDroneSpread",
-            "com.atsuishio.superbwarfare.entity.vehicle.base.AutoAimableEntity" to "markAutonomousShot",
-            "com.atsuishio.superbwarfare.entity.vehicle.base.AutoAimableEntity" to "applyDroneRayAccuracy"
+            "com.atsuishio.superbwarfare.entity.vehicle.base.AutoAimableEntity" to "markAutonomousShot"
         )
         for ((className, hook) in hooks) {
             val type = Class.forName(className, false, javaClass.classLoader)

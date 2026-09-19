@@ -29,10 +29,23 @@ object VehicleTransportClaims {
         return true
     }
 
-    fun claimPassenger(vehicle: UUID, npc: UUID, maxSeats: Int): Boolean {
+    /** Union of claimed seats and whoever [aboard] (a vehicle's real passenger list) actually is —
+     *  a real player never goes through the claim registry, so counting claims alone undercounts a
+     *  vehicle a player already shares with our driver. [npc] itself, claimed or aboard or both,
+     *  counts once. */
+    fun occupiedOrClaimedSeats(vehicle: UUID, aboard: List<UUID>): Int {
+        val occupants = HashSet<UUID>(aboard)
+        drivers[vehicle]?.let { occupants += it }
+        passengers[vehicle]?.let { occupants += it }
+        return occupants.size
+    }
+
+    fun claimPassenger(vehicle: UUID, npc: UUID, maxSeats: Int, aboard: List<UUID> = emptyList()): Boolean {
         val set = passengers[vehicle]
         if (set?.contains(npc) == true) return true
-        if (claimedSeats(vehicle) >= maxSeats) return false
+        // Excluding npc from the occupancy count lets a crewman already aboard (its own seat, not
+        // a new one) restore its claim in an otherwise-full vehicle.
+        if (occupiedOrClaimedSeats(vehicle, aboard.filter { it != npc }) >= maxSeats) return false
         release(npc)
         passengers.getOrPut(vehicle) { mutableSetOf() }.add(npc)
         claimedVehicle[npc] = vehicle

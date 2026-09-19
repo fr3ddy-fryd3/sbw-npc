@@ -9,14 +9,14 @@ import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import kotlin.math.acos
 import kotlin.math.atan
+import kotlin.math.sin
 
 /**
  * Shared "don't shoot your own side" check for every ranged NPC goal.
  *
  * [hasClearLineOfFire] models the actual firing CONE, not an idealised zero-width ray — a shot
- * fired at [aimPoint] doesn't travel a perfectly straight line, SBW's `GunItem.shoot` applies a
- * random deviation of `0.0172275 * spread` radians around the aim direction (same constant used
- * both in the vanilla-`Projectile.shoot` path and the manual fallback path there). A first version
+ * fired at [aimPoint] doesn't travel a perfectly straight line: SBW's `ProjectileSpreadTool`
+ * treats spread as a cone angle in degrees around the aim direction. A first version
  * of this guard checked only the ideal line and let plenty of stray rounds through to allies
  * standing near, but not exactly on, that line — this checks the actual cone the round can end up
  * in instead.
@@ -36,9 +36,8 @@ object FriendlyFireGuard {
     private const val SIDESTEP_DISTANCE = 2.5
     private const val SIDESTEP_CHECK_RADIUS = 1.5
 
-    /** Same constant SBW's `GunItem.shoot` uses to turn a gun's `spread` prop into an actual
-     *  random angular deviation (radians) applied to the fired projectile's direction. */
-    private const val SPREAD_RADIANS_PER_UNIT = 0.0172275
+    /** SBW uses degrees; this also conservatively covers its older 0.0172275-radian conversion. */
+    private const val SPREAD_RADIANS_PER_UNIT = Math.PI / 180.0
 
     /** Result of one combined [assess] pass — both answers from a single walk over the allies. */
     class Assessment(val lineClear: Boolean, val blastClear: Boolean)
@@ -68,8 +67,11 @@ object FriendlyFireGuard {
         val aimDir = if (aimDist < 1.0e-6) null else toAim.scale(1.0 / aimDist)
         val maxAngle = SPREAD_RADIANS_PER_UNIT * spread
         // Cheap pre-filter for the cone test: anything outside the shooter→aim box (plus slack)
-        // can't be in the cone. Same box the old query used.
-        val coneBox = AABB(from, aimPoint).inflate(ALLY_RADIUS + 2.0)
+        // can't be in the cone. A fixed 2-block margin missed allies near the edge of wide cones
+        // (drone targets get a much wider spread — see DroneCombat.spreadForTarget); the margin
+        // now scales with how far the cone can actually fan out at this range.
+        val coneRadius = (aimDist + ALLY_RADIUS) * sin(maxAngle.coerceIn(0.0, Math.PI / 2.0))
+        val coneBox = AABB(from, aimPoint).inflate(ALLY_RADIUS + maxOf(2.0, coneRadius))
         val checkBlast = blastRadius > 0.0
 
         var lineClear = true

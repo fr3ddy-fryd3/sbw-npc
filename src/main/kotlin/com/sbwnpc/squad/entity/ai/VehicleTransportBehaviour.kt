@@ -9,6 +9,7 @@ import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
+import com.sbwnpc.squad.vehicle.AlliedVehicleBoarding
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
 import net.minecraft.core.BlockPos
@@ -77,6 +78,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var route: List<BlockPos> = emptyList()
     private var routeIndex = 0
     private var nextRouteTick = 0
+    private var lastRouteSearchTick = Int.MIN_VALUE / 2
 
     // Stuck detection while DRIVING — a vehicle's own physics has no pathfinding of its own (just
     // raw input flags), and the route above is only a walking-mob-shaped guide, not a guarantee, so
@@ -228,7 +230,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             VehicleTransportClaims.claimDriver(vehicle.uuid, entity.uuid)
             phase = Phase.WAITING_FOR_SQUAD
         } else {
-            VehicleTransportClaims.claimPassenger(vehicle.uuid, entity.uuid, vehicle.maxPassengers)
+            VehicleTransportClaims.claimPassenger(
+                vehicle.uuid, entity.uuid, vehicle.maxPassengers, vehicle.passengers.map { it.uuid }
+            )
             phase = Phase.RIDING
         }
     }
@@ -274,11 +278,13 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         )
         val choice = nearby.asSequence()
             .filter { entity.distanceToSqr(it) <= SEARCH_RADIUS * SEARCH_RADIUS }
-            .filter(::isUsableGroundVehicle)
+            .filter { isUsableGroundVehicle(it, entity) }
             .mapNotNull { vehicle ->
                 val claimedBySquad = squad.members.any { VehicleTransportClaims.vehicleOf(it) == vehicle.uuid }
                 when {
-                    claimedBySquad && VehicleTransportClaims.claimedSeats(vehicle.uuid) < vehicle.maxPassengers ->
+                    claimedBySquad && VehicleTransportClaims.occupiedOrClaimedSeats(
+                        vehicle.uuid, vehicle.passengers.map { it.uuid }
+                    ) < vehicle.maxPassengers ->
                         VehicleChoice(vehicle, isDriver = false)
                     VehicleTransportClaims.claimedSeats(vehicle.uuid) == 0 && vehicle.passengers.isEmpty() ->
                         VehicleChoice(vehicle, isDriver = true)
@@ -304,7 +310,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         val claimed = if (choice.isDriver) {
             VehicleTransportClaims.claimDriver(choice.vehicle.uuid, entity.uuid)
         } else {
-            VehicleTransportClaims.claimPassenger(choice.vehicle.uuid, entity.uuid, choice.vehicle.maxPassengers)
+            VehicleTransportClaims.claimPassenger(
+                choice.vehicle.uuid, entity.uuid, choice.vehicle.maxPassengers,
+                choice.vehicle.passengers.map { it.uuid }
+            )
         }
         if (claimed) {
             targetVehicleId = choice.vehicle.uuid
@@ -321,7 +330,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         val vehicle = targetVehicleId?.let { level.getEntity(it) as? VehicleEntity }
         // Re-verified here, not just at claim time in tickSeeking — a player can board/park in the
         // vehicle during the walk over, which the app-level claim registry has no way to see.
-        if (vehicle == null || !vehicle.isAlive || hasPlayerAboard(vehicle)) {
+        if (vehicle == null || !vehicle.isAlive || vehicle.isWreck || vehicle.locked ||
+            hasBlockingPlayerAboard(vehicle, entity) || vehicle.passengers.size >= vehicle.maxPassengers
+        ) {
             VehicleTransportClaims.release(entity.uuid)
             targetVehicleId = null
             phase = Phase.SEEKING
@@ -526,7 +537,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  an empty route (steer straight at [home]) if the pathfinder can't find anything, rather than
      *  getting stuck on a route that no longer exists. */
     private fun currentWaypoint(entity: NpcEntity, home: Vec3): Vec3 {
-        if (route.isEmpty() || entity.tickCount >= nextRouteTick) {
+        // A failed search is still a search: retry only when due, not every tick on an empty path.
+        if (entity.tickCount >= nextRouteTick) {
+            lastRouteSearchTick = entity.tickCount
             nextRouteTick = entity.tickCount + ROUTE_RECOMPUTE_TICKS
             val path = entity.navigation.createPath(BlockPos.containing(home), 0)
             route = if (path != null) (0 until path.nodeCount).map { path.getNodePos(it) } else emptyList()
@@ -552,11 +565,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // such a route isn't arrival: without forcing an immediate recompute here, the vehicle would
         // keep steering at that same now-passed dead-end point for up to ROUTE_RECOMPUTE_TICKS (5s),
         // overshooting and turning back onto it every tick — i.e. circling in place right where the
-        // route ran out. Forcing the next tick's currentWaypoint call to recompute (mirrors the same
-        // force-reset used after stuck-recovery) turns each exhausted partial route into "immediately
-        // path another ~70 blocks toward home" instead.
+        // route ran out. Schedule another partial route, with a minimum 10 ticks between searches
+        // so a one-node path cannot create an A* retry loop.
         if (routeIndex == route.size - 1 && entity.position().distanceTo(target) < WAYPOINT_RADIUS) {
-            nextRouteTick = entity.tickCount
+            // Degenerate/one-node partial paths must not trigger A* every tick either.
+            nextRouteTick = maxOf(entity.tickCount, lastRouteSearchTick + 10)
         }
         return target
     }
@@ -731,9 +744,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var mortarPriorityCheckTick = Int.MIN_VALUE
     private var mortarPriorityCached = false
 
-    private fun isUsableGroundVehicle(vehicle: VehicleEntity): Boolean =
+    private fun isUsableGroundVehicle(vehicle: VehicleEntity, entity: NpcEntity): Boolean =
         vehicle.isAlive && !vehicle.isWreck && !vehicle.locked && vehicle.maxPassengers > 0 &&
-            vehicle.computed().engineType in GROUND_ENGINE_TYPES && !hasPlayerAboard(vehicle)
+            vehicle.computed().engineType in GROUND_ENGINE_TYPES && !hasBlockingPlayerAboard(vehicle, entity)
 
     private fun forwardDirection(vehicle: VehicleEntity): Vec3 {
         val movement = vehicle.deltaMovement
@@ -817,10 +830,15 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         vehicle.leftInputDown = left
     }
 
-    /** Never claim/board a vehicle a real player is riding — the claim registry only tracks our own
-     *  NPCs, so a player boarding through the ordinary interact path is otherwise invisible to it. */
-    private fun hasPlayerAboard(vehicle: VehicleEntity) =
-        vehicle.passengers.any { it is net.minecraft.world.entity.player.Player }
+    /** A player may ride with our NPC driver, but NPCs must never take over a player's vehicle. */
+    private fun hasBlockingPlayerAboard(vehicle: VehicleEntity, entity: NpcEntity): Boolean {
+        val players = vehicle.passengers.filterIsInstance<net.minecraft.world.entity.player.Player>()
+        if (players.isEmpty()) return false
+        val driver = vehicle.firstPassenger as? NpcEntity ?: return true
+        val faction = SquadTeams.factionOf(entity) ?: return true
+        if (SquadTeams.factionOf(driver) != faction) return true
+        return players.any { !AlliedVehicleBoarding.isAlliedDriver(it, driver) }
+    }
 
     private fun holdVehicle(vehicle: VehicleEntity) {
         stopVehicle(vehicle)
