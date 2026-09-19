@@ -1,11 +1,12 @@
 package com.sbwnpc.squad.team
 
 import com.sbwnpc.squad.npc.SquadFaction
+import com.sbwnpc.squad.squad.PlayerFactionRegistry
 import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
+import net.minecraft.world.entity.player.Player
 import net.minecraft.world.scores.PlayerTeam
-import net.minecraft.world.scores.Team
 
 /**
  * Squad faction == a vanilla scoreboard team. One managed `PlayerTeam` per faction, created
@@ -70,12 +71,24 @@ object SquadTeams {
     fun clearCache() = factionByTeamName.clear()
 
     /** Squad friend/foe: both sides need an actual (different) squad faction to be hostile.
-     *  Anything teamless — the owning player included, since nothing ever puts a player on a
-     *  squad team — is neutral, never an autonomous target. */
+     *  Nothing ever puts a player on the scoreboard team itself — a teamless player resolves
+     *  through their own chosen faction ([PlayerFactionRegistry]) instead. Anything with no
+     *  faction either way (vanilla mobs, a player who never picked one) is neutral, never an
+     *  autonomous target. */
     fun isHostile(a: Entity, b: Entity): Boolean {
         if (a === b) return false
-        val ta: Team = a.team ?: return false
-        val tb: Team = b.team ?: return false
-        return ta !== tb && !a.isAlliedTo(b)
+        val fa = hostilityFaction(a) ?: return false
+        val fb = hostilityFaction(b) ?: return false
+        return fa != fb
+    }
+
+    private fun hostilityFaction(entity: Entity): SquadFaction? {
+        factionOf(entity)?.let { return it }
+        val player = entity as? Player ?: return null
+        // A creative player is observing/building, not part of the fight — never an autonomous
+        // target regardless of whatever faction they'd picked.
+        if (player.isCreative) return null
+        val level = player.level() as? ServerLevel ?: return null
+        return PlayerFactionRegistry.get(level).get(player.uuid)
     }
 }

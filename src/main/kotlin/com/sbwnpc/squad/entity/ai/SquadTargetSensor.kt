@@ -2,7 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.sbwnpc.squad.combat.TeamAwareness
-import com.sbwnpc.squad.combat.T90WeaponSelection
+import com.sbwnpc.squad.combat.TankWeaponSelection
 import com.sbwnpc.squad.combat.VehicleTargeting
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModSensors
@@ -55,7 +55,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     override fun doTick(level: ServerLevel, entity: NpcEntity) {
         val target = computeDesired(entity, level)
         BrainUtils.setTargetOfEntity(entity, target)
-        if (target != null) T90WeaponSelection.update(entity, target)
+        if (target != null) TankWeaponSelection.update(entity, target)
     }
 
     private fun computeDesired(mob: NpcEntity, level: ServerLevel): LivingEntity? {

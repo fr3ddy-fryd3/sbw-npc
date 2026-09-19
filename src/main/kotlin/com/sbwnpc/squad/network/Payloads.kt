@@ -7,18 +7,55 @@ import net.minecraft.network.codec.ByteBufCodecs
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
 
+/** Client -> server: ctrl+air-click on the squad tool — cycle RECRUIT/COMMAND mode. Triggered from
+ *  [com.sbwnpc.squad.client.ToolInputEvents] (a raw ctrl-modifier isn't part of synced player input
+ *  the way sneaking is, so the client has to detect it and tell the server what happened) rather
+ *  than from [com.sbwnpc.squad.item.SquadToolItem.use] itself. A singleton for the same reason
+ *  [RequestHudPayload] is one. */
+object ToggleToolModePayload : CustomPacketPayload {
+    override fun type() = TYPE
+
+    val TYPE = CustomPacketPayload.Type<ToggleToolModePayload>(SquadMod.loc("toggle_tool_mode"))
+    val CODEC: StreamCodec<RegistryFriendlyByteBuf, ToggleToolModePayload> = StreamCodec.unit(this)
+}
+
 /** Client -> server: overwrite the held squad tool's config. */
-class ConfigureToolPayload(val cls: Int, val rank: Int, val faction: Int, val preset: Int) : CustomPacketPayload {
+class ConfigureToolPayload(
+    val cls: Int,
+    val rank: Int,
+    val faction: Int,
+    val preset: Int,
+    val vehicle: Boolean,
+    val vehicleModel: Int,
+    val tankModel: Int
+) : CustomPacketPayload {
     override fun type() = TYPE
 
     companion object {
         val TYPE = CustomPacketPayload.Type<ConfigureToolPayload>(SquadMod.loc("configure_tool"))
-        val CODEC: StreamCodec<RegistryFriendlyByteBuf, ConfigureToolPayload> = StreamCodec.composite(
-            ByteBufCodecs.VAR_INT, ConfigureToolPayload::cls,
-            ByteBufCodecs.VAR_INT, ConfigureToolPayload::rank,
-            ByteBufCodecs.VAR_INT, ConfigureToolPayload::faction,
-            ByteBufCodecs.VAR_INT, ConfigureToolPayload::preset,
-            ::ConfigureToolPayload
+        // 7 fields — one more than StreamCodec.composite's max arity (6), so this is wired by hand
+        // instead of the usual composite(...) call.
+        val CODEC: StreamCodec<RegistryFriendlyByteBuf, ConfigureToolPayload> = StreamCodec.of(
+            { buf, p ->
+                ByteBufCodecs.VAR_INT.encode(buf, p.cls)
+                ByteBufCodecs.VAR_INT.encode(buf, p.rank)
+                ByteBufCodecs.VAR_INT.encode(buf, p.faction)
+                ByteBufCodecs.VAR_INT.encode(buf, p.preset)
+                ByteBufCodecs.BOOL.encode(buf, p.vehicle)
+                ByteBufCodecs.VAR_INT.encode(buf, p.vehicleModel)
+                ByteBufCodecs.VAR_INT.encode(buf, p.tankModel)
+            },
+            { buf ->
+                ConfigureToolPayload(
+                    ByteBufCodecs.VAR_INT.decode(buf),
+                    ByteBufCodecs.VAR_INT.decode(buf),
+                    ByteBufCodecs.VAR_INT.decode(buf),
+                    ByteBufCodecs.VAR_INT.decode(buf),
+                    ByteBufCodecs.BOOL.decode(buf),
+                    ByteBufCodecs.VAR_INT.decode(buf),
+                    ByteBufCodecs.VAR_INT.decode(buf)
+                )
+            }
         )
     }
 }

@@ -1,22 +1,28 @@
 package com.sbwnpc.squad.npc
 
-/** What the recruit tool deploys in one click: a single NPC, or a whole pre-built squad. */
-enum class SquadPreset(val label: String, val composition: List<NpcClass>) {
+/** What the recruit tool deploys in one click: a single NPC, or a whole pre-built squad.
+ *  [spacing] is the sideways gap `SquadToolItem.deployLine` puts between adjacent members — plain
+ *  infantry line abreast at the usual 2 blocks, but [DRONE_TEAM] widens it: a drone shot down
+ *  during launch (still climbing right over the operator) blasts where it is, and 2 blocks puts
+ *  every other operator inside that radius. */
+enum class SquadPreset(val label: String, val composition: List<NpcClass>, val spacing: Double = 2.0) {
     SINGLE("Single", emptyList()),
-    FOUR("4: Riflemen", List(4) { NpcClass.RIFLEMAN }),
+    FIVE("5: Riflemen", List(4) { NpcClass.RIFLEMAN } + NpcClass.MEDIC),
     // Keep the removed preset's ordinal reserved: recruit-tool configurations persist ordinals.
     REMOVED_SIX("", emptyList()),
-    EIGHT(
-        "8: Standard",
-        List(4) { NpcClass.RIFLEMAN } + List(2) { NpcClass.SNIPER } + NpcClass.MEDIC + NpcClass.MACHINE_GUNNER
+    SEVEN(
+        "7: Standard",
+        List(4) { NpcClass.RIFLEMAN } + NpcClass.SNIPER + NpcClass.MACHINE_GUNNER + NpcClass.MEDIC
     ),
     SIXTEEN(
         "16: Large",
         List(10) { NpcClass.RIFLEMAN } + List(2) { NpcClass.SNIPER } + List(2) { NpcClass.MACHINE_GUNNER } + List(2) { NpcClass.MEDIC }
     ),
     MORTAR_CREW("Mortar Crew", listOf(NpcClass.MORTAR_OPERATOR, NpcClass.MORTAR_LOADER)),
-    T90_CREW("T-90 Crew", listOf(NpcClass.TANK_CREW)),
-    DRONE_TEAM("Drone Team", listOf(NpcClass.DRONE_OPERATOR));
+    // Label stayed generic ("Tank Crew") once TankModel let the GUI pick which of the three
+    // models the crew actually rides; the enum name is kept as-is, only ordinal position matters.
+    T90_CREW("Tank Crew", listOf(NpcClass.TANK_CREW)),
+    DRONE_TEAM("Drone Team", List(4) { NpcClass.DRONE_OPERATOR }, spacing = 10.0);
 
     fun next(): SquadPreset {
         var next = entries[(ordinal + 1) % entries.size]
@@ -26,11 +32,19 @@ enum class SquadPreset(val label: String, val composition: List<NpcClass>) {
         return next
     }
 
+    fun previous(): SquadPreset {
+        var prev = entries[(ordinal - 1 + entries.size) % entries.size]
+        while (prev == REMOVED_SIX) {
+            prev = entries[(prev.ordinal - 1 + entries.size) % entries.size]
+        }
+        return prev
+    }
+
     companion object {
         val DEFAULT = SINGLE
-        // Existing tool configurations that selected the removed six-NPC option now use EIGHT.
+        // Existing tool configurations that selected the removed six-NPC option now use SEVEN.
         fun byOrdinal(i: Int): SquadPreset = entries.getOrElse(i) { DEFAULT }.let {
-            if (it == REMOVED_SIX) EIGHT else it
+            if (it == REMOVED_SIX) SEVEN else it
         }
     }
 }

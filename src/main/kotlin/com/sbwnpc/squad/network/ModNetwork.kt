@@ -36,6 +36,7 @@ object ModNetwork {
         val r = event.registrar("1")
 
         r.playToServer(ConfigureToolPayload.TYPE, ConfigureToolPayload.CODEC) { p, ctx -> onConfigureTool(p, ctx) }
+        r.playToServer(ToggleToolModePayload.TYPE, ToggleToolModePayload.CODEC) { _, ctx -> onToggleToolMode(ctx) }
         r.playToServer(SquadCmdPayload.TYPE, SquadCmdPayload.CODEC) { p, ctx -> onSquadCmd(p, ctx) }
         r.playToServer(RequestHudPayload.TYPE, RequestHudPayload.CODEC) { _, ctx -> onRequestHud(ctx) }
         r.playToServer(HudOrderPayload.TYPE, HudOrderPayload.CODEC) { p, ctx -> onHudOrder(p, ctx) }
@@ -76,12 +77,34 @@ object ModNetwork {
                 if (stack.item is SquadToolItem) {
                     SquadToolItem.writeConfig(
                         stack,
-                        NpcClass.byOrdinal(p.cls),
-                        NpcRank.byOrdinal(p.rank),
-                        SquadFaction.byOrdinal(p.faction),
-                        com.sbwnpc.squad.npc.SquadPreset.byOrdinal(p.preset)
+                        SquadToolItem.Config(
+                            NpcClass.byOrdinal(p.cls),
+                            NpcRank.byOrdinal(p.rank),
+                            SquadFaction.byOrdinal(p.faction),
+                            com.sbwnpc.squad.npc.SquadPreset.byOrdinal(p.preset),
+                            p.vehicle,
+                            com.sbwnpc.squad.npc.TransportVehicle.byOrdinal(p.vehicleModel),
+                            com.sbwnpc.squad.npc.TankModel.byOrdinal(p.tankModel)
+                        )
                     )
                 }
+            }
+        }
+    }
+
+    private fun onToggleToolMode(ctx: IPayloadContext) {
+        ctx.enqueueWork {
+            val player = ctx.player() as? ServerPlayer ?: return@enqueueWork
+            for (slot in listOf(EquipmentSlot.MAINHAND, EquipmentSlot.OFFHAND)) {
+                val stack = player.getItemBySlot(slot)
+                if (stack.item !is SquadToolItem) continue
+                val next = if (SquadToolItem.mode(stack) == SquadToolItem.MODE_RECRUIT) SquadToolItem.MODE_COMMAND else SquadToolItem.MODE_RECRUIT
+                com.atsuishio.superbwarfare.tools.NBTTool.withTag(stack) { it.putInt(SquadToolItem.KEY_MODE, next) }
+                val name = if (next == SquadToolItem.MODE_COMMAND) "COMMAND" else "RECRUIT"
+                player.displayClientMessage(
+                    net.minecraft.network.chat.Component.literal("Mode: $name").withStyle(net.minecraft.ChatFormatting.YELLOW), true
+                )
+                return@enqueueWork
             }
         }
     }

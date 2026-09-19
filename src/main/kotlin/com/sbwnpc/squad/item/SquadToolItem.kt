@@ -15,6 +15,8 @@ import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.npc.SquadPreset
+import com.sbwnpc.squad.npc.TankModel
+import com.sbwnpc.squad.npc.TransportVehicle
 import com.sbwnpc.squad.squad.PlayerFactionRegistry
 import com.sbwnpc.squad.squad.RouteRecording
 import com.sbwnpc.squad.squad.SafeSpawn
@@ -48,7 +50,9 @@ import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
 
 /**
- * One item, two modes (shift + right-click air cycles RECRUIT → COMMAND → ...).
+ * One item, two modes (ctrl + right-click air cycles RECRUIT → COMMAND → ...; caught client-side
+ * in [com.sbwnpc.squad.client.ToolInputEvents] since ctrl isn't synced player state the way
+ * sneaking is, so it can never reach here as `player.isShiftKeyDown` did before).
  *
  * RECRUIT: right-click air → config GUI; right-click block → deploy.
  * COMMAND: right-click air → command GUI (or, if a "set objective" was just armed in the GUI,
@@ -62,26 +66,8 @@ import net.minecraft.world.phys.Vec3
  */
 class SquadToolItem : Item(Properties().stacksTo(1)) {
 
-    private fun mode(stack: ItemStack) = NBTTool.getTag(stack).getInt(KEY_MODE)
-
     override fun use(level: Level, player: Player, hand: InteractionHand): InteractionResultHolder<ItemStack> {
         val stack = player.getItemInHand(hand)
-
-        if (player.isShiftKeyDown) {
-            if (!level.isClientSide) {
-                val next = when (mode(stack)) {
-                    MODE_RECRUIT -> MODE_COMMAND
-                    else -> MODE_RECRUIT
-                }
-                NBTTool.withTag(stack) { it.putInt(KEY_MODE, next) }
-                val name = when (next) {
-                    MODE_COMMAND -> "COMMAND"
-                    else -> "RECRUIT"
-                }
-                actionbar(player, "Mode: $name", ChatFormatting.YELLOW)
-            }
-            return InteractionResultHolder.sidedSuccess(stack, level.isClientSide)
-        }
 
         // Recording a route overrides normal mode dispatch entirely, regardless of which mode the
         // tool happens to be in — same "armed state wins" precedent as ARM_OBJECTIVE/ARM_FOCUS.
@@ -157,18 +143,25 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         val pos = context.clickedPos.relative(context.clickedFace)
         val composition = if (cfg.preset == SquadPreset.SINGLE) listOf(cfg.cls) else cfg.preset.composition
         val difficulty = level.getCurrentDifficultyAt(pos)
-        val spawned = deployLine(serverLevel, pos, player.yRot, composition, cfg.rank, cfg.faction, difficulty)
+        val spawned = deployLine(serverLevel, pos, player.yRot, composition, cfg.rank, cfg.faction, difficulty, cfg.preset.spacing)
         if (spawned.isEmpty()) return InteractionResult.FAIL
 
         when (cfg.preset) {
             SquadPreset.MORTAR_CREW -> spawnMortar(serverLevel, pos, player.yRot, cfg.faction)
-            SquadPreset.T90_CREW -> spawnT90(serverLevel, pos, player.yRot, cfg.faction, spawned)
+            SquadPreset.T90_CREW -> spawnTankCrew(serverLevel, pos, player.yRot, cfg.faction, spawned, cfg.tankModel)
+            // Unmanned — left for the squad's own vehicle-transport/combat-support AI to claim,
+            // same as any vehicle it finds parked in the world.
+            SquadPreset.FIVE -> if (cfg.vehicle) spawnTransport(serverLevel, pos, player.yRot, cfg.faction, cfg.vehicleModel)
+            SquadPreset.SEVEN -> if (cfg.vehicle) spawnTransport(serverLevel, pos, player.yRot, cfg.faction, TransportVehicle.BMP_2)
             else -> Unit
         }
 
         if (spawned.size > 1 || cfg.preset == SquadPreset.T90_CREW) {
             val squad = SquadManager.get(serverLevel).create(serverLevel, player.uuid, cfg.faction, spawned.map { it.uuid })
             if (squad != null) {
+                // Defend right where it was deployed by default — see SquadManager.create's
+                // initialOrder — rather than a DEFEND with nothing to actually guard.
+                SquadManager.get(serverLevel).setObjective(serverLevel, squad.id, pos)
                 actionbar(player, "Deployed ${squad.name} (${spawned.size})", cfg.faction.accentColor)
             } else {
                 actionbar(player, "Deployed, but squad limit (${SquadManager.MAX_SQUADS_PER_OWNER}) reached — not grouped", ChatFormatting.RED)
@@ -187,13 +180,13 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         composition: List<NpcClass>,
         rank: NpcRank,
         faction: SquadFaction,
-        difficulty: net.minecraft.world.DifficultyInstance
+        difficulty: net.minecraft.world.DifficultyInstance,
+        spacing: Double = 2.0
     ): List<NpcEntity> {
         val yawRad = Math.toRadians(facingYaw.toDouble())
         val rightX = Math.cos(yawRad)
         val rightZ = Math.sin(yawRad)
         val n = composition.size
-        val spacing = 2.0
 
         val result = mutableListOf<NpcEntity>()
         for ((i, cls) in composition.withIndex()) {
@@ -226,19 +219,33 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         SquadTeams.assign(mortar, faction)
     }
 
-    private fun spawnT90(
+    private fun spawnTankCrew(
         level: ServerLevel,
         center: BlockPos,
         yaw: Float,
         faction: SquadFaction,
-        crew: List<NpcEntity>
+        crew: List<NpcEntity>,
+        model: TankModel
     ) {
-        val tank = SbwEntities.T_90A.get().create(level) ?: return
-        val y = SafeSpawn.findSafeY(level, center.x + 0.5, center.z + 0.5, center.y, tank.getDimensions(Pose.STANDING))
+        val type = when (model) {
+            TankModel.ZTZ_99A -> SbwEntities.ZTZ_99A
+            TankModel.T_90A -> SbwEntities.T_90A
+            TankModel.M1A2 -> SbwEntities.M_1A_2
+        }
+        val tank = type.get().create(level) ?: return
+        // Off the deploy point, not on it — spawned right where the player clicked, a tank this
+        // size drops/lands right on top of them.
+        val standoff = 8.0
+        val yawRad = Math.toRadians(yaw.toDouble())
+        val tx = center.x + 0.5 - Math.sin(yawRad) * standoff
+        val tz = center.z + 0.5 + Math.cos(yawRad) * standoff
+        val y = SafeSpawn.findSafeY(level, tx, tz, center.y, tank.getDimensions(Pose.STANDING))
             ?: center.y.toDouble()
-        tank.moveTo(center.x + 0.5, y, center.z + 0.5, yaw + 180f, 0f)
+        tank.moveTo(tx, y, tz, yaw + 180f, 0f)
         level.addFreshEntity(tank)
         tank.energy = tank.maxEnergy
+        // Same main-gun AP/HE + coax rifle ammo + .50cal passenger ammo loadout for all three —
+        // verified against each model's own sbw/vehicles/*.json: same four weapon/ammo slots.
         tank.setItem(0, ItemStack(ModItems.LARGE_SHELL_AP.get(), 64))
         tank.setItem(1, ItemStack(ModItems.LARGE_SHELL_HE.get(), 64))
         tank.setItem(2, ItemStack(ModItems.RIFLE_AMMO.get(), 64))
@@ -249,6 +256,34 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
                 crewman.assignedVehicleId = tank.uuid
             }
         }
+    }
+
+    /** Unmanned transport for a [SquadPreset.FIVE]/[SquadPreset.SEVEN] squad — the squad's own
+     *  VehicleTransportBehaviour/VehicleCombatSupportBehaviour finds and boards it like any other
+     *  vehicle parked nearby; no crew is seated here. */
+    private fun spawnTransport(level: ServerLevel, center: BlockPos, yaw: Float, faction: SquadFaction, model: TransportVehicle) {
+        val type = when (model) {
+            TransportVehicle.LAV_25 -> SbwEntities.LAV_25
+            TransportVehicle.LAV_150 -> SbwEntities.LAV_150
+            TransportVehicle.BMP_2 -> SbwEntities.BMP_2
+        }
+        val vehicle = type.get().create(level) ?: return
+        // Off the squad's own spawn line (perpendicular to it), not at its center — FIVE/SEVEN are
+        // both odd-sized, so a member always lands exactly on center and the vehicle would spawn
+        // on top of them.
+        val standoff = 6.0
+        val yawRad = Math.toRadians(yaw.toDouble())
+        val forwardX = -Math.sin(yawRad)
+        val forwardZ = Math.cos(yawRad)
+        val vx = center.x + 0.5 + forwardX * standoff
+        val vz = center.z + 0.5 + forwardZ * standoff
+        val y = SafeSpawn.findSafeY(level, vx, vz, center.y, vehicle.getDimensions(Pose.STANDING)) ?: center.y.toDouble()
+        vehicle.moveTo(vx, y, vz, yaw + 180f, 0f)
+        level.addFreshEntity(vehicle)
+        vehicle.energy = vehicle.maxEnergy
+        // Small-caliber AP only, per user call — a short stack, not the full loadout the tanks get.
+        vehicle.setItem(0, ItemStack(ModItems.SMALL_SHELL_AP.get(), 4))
+        SquadTeams.assign(vehicle, faction)
     }
 
     override fun interactLivingEntity(stack: ItemStack, player: Player, target: LivingEntity, hand: InteractionHand): InteractionResult {
@@ -278,6 +313,13 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         if (target is NpcEntity) {
             val sid = target.squadId
             if (sid != null) {
+                // Mid loose-pick (building a new squad from unsquadded NPCs) — clicking one that's
+                // already in a squad shouldn't wipe that in-progress selection or silently jump to
+                // commanding a different squad instead. Ignored, not an error.
+                if (SquadSelection.looseOf(player.uuid).isNotEmpty()) {
+                    actionbar(player, "That NPC is already in a squad", ChatFormatting.GRAY)
+                    return InteractionResult.SUCCESS
+                }
                 if (!mgr.ownedBy(sid, player.uuid)) {
                     actionbar(player, "Not your squad", ChatFormatting.RED)
                     return InteractionResult.SUCCESS
@@ -322,10 +364,18 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             tooltip.add(Component.literal("Deploy: $what / ${cfg.rank.name}").withStyle(ChatFormatting.GOLD))
             tooltip.add(Component.literal("Faction: ${cfg.faction.label}").withStyle(cfg.faction.accentColor))
         }
-        tooltip.add(Component.literal("shift+air: switch mode · air: open GUI").withStyle(ChatFormatting.DARK_GRAY))
+        tooltip.add(Component.literal("ctrl+air: switch mode · air: open GUI").withStyle(ChatFormatting.DARK_GRAY))
     }
 
-    data class Config(val cls: NpcClass, val rank: NpcRank, val faction: SquadFaction, val preset: SquadPreset)
+    data class Config(
+        val cls: NpcClass,
+        val rank: NpcRank,
+        val faction: SquadFaction,
+        val preset: SquadPreset,
+        val vehicle: Boolean = false,
+        val vehicleModel: TransportVehicle = TransportVehicle.DEFAULT,
+        val tankModel: TankModel = TankModel.DEFAULT
+    )
 
     companion object {
         const val KEY_CLASS = "Class"
@@ -333,8 +383,13 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         const val KEY_FACTION = "Faction"
         const val KEY_MODE = "Mode"
         const val KEY_PRESET = "Preset"
+        const val KEY_VEHICLE = "Vehicle"
+        const val KEY_VEHICLE_MODEL = "VehicleModel"
+        const val KEY_TANK_MODEL = "TankModel"
         const val MODE_RECRUIT = 0
         const val MODE_COMMAND = 1
+
+        fun mode(stack: ItemStack) = NBTTool.getTag(stack).getInt(KEY_MODE)
 
         fun readConfig(stack: ItemStack): Config? {
             if (stack.isEmpty || stack.item !is SquadToolItem) return null
@@ -345,7 +400,10 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             readEnum(tag, KEY_CLASS, NpcClass.DEFAULT, { NpcClass.valueOf(it) }, { NpcClass.byOrdinal(it) }),
             readEnum(tag, KEY_RANK, NpcRank.DEFAULT, { NpcRank.valueOf(it) }, { NpcRank.byOrdinal(it) }),
             readEnum(tag, KEY_FACTION, SquadFaction.DEFAULT, { SquadFaction.valueOf(it) }, { SquadFaction.byOrdinal(it) }),
-            readEnum(tag, KEY_PRESET, SquadPreset.DEFAULT, { SquadPreset.valueOf(it) }, { SquadPreset.byOrdinal(it) })
+            readEnum(tag, KEY_PRESET, SquadPreset.DEFAULT, { SquadPreset.valueOf(it) }, { SquadPreset.byOrdinal(it) }),
+            tag.getBoolean(KEY_VEHICLE),
+            readEnum(tag, KEY_VEHICLE_MODEL, TransportVehicle.DEFAULT, { TransportVehicle.valueOf(it) }, { TransportVehicle.byOrdinal(it) }),
+            readEnum(tag, KEY_TANK_MODEL, TankModel.DEFAULT, { TankModel.valueOf(it) }, { TankModel.byOrdinal(it) })
         )
 
         private inline fun <T> readEnum(tag: CompoundTag, key: String, default: T, byName: (String) -> T, byOrdinal: (Int) -> T): T = when {
@@ -354,8 +412,8 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             else -> default
         }
 
-        fun writeConfig(stack: ItemStack, cls: NpcClass, rank: NpcRank, faction: SquadFaction, preset: SquadPreset) {
-            NBTTool.withTag(stack) { writeConfig(it, Config(cls, rank, faction, preset)) }
+        fun writeConfig(stack: ItemStack, cfg: Config) {
+            NBTTool.withTag(stack) { writeConfig(it, cfg) }
         }
 
         fun writeConfig(tag: CompoundTag, cfg: Config) {
@@ -363,6 +421,9 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             tag.putString(KEY_RANK, cfg.rank.name)
             tag.putString(KEY_PRESET, cfg.preset.name)
             tag.putString(KEY_FACTION, cfg.faction.name)
+            tag.putBoolean(KEY_VEHICLE, cfg.vehicle)
+            tag.putString(KEY_VEHICLE_MODEL, cfg.vehicleModel.name)
+            tag.putString(KEY_TANK_MODEL, cfg.tankModel.name)
         }
     }
 }

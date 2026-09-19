@@ -8,6 +8,7 @@ import com.atsuishio.superbwarfare.tools.MillisTimer
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.Alarm
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.DroneCombat
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.OffscreenFire
 import com.sbwnpc.squad.combat.Sightline
@@ -63,6 +64,10 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private var lineIsClear = true
     private var blastClear = true
+    // Spread actually used for the current target — wider than entity.spread when the target is
+    // a drone (or riding one), see DroneCombat.spreadForTarget. Cached alongside the friendly-fire
+    // check so both use the same value a shot will actually be fired with.
+    private var shotSpread = 0.0
     private var nextSidestepTick = 0
     private var sidestepAttempts = 0
 
@@ -370,6 +375,13 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
 
         entity.lookAt(target, 30f, 30f)
+        // lookAt above only sets xRot/yRot (the actual aim SBW fires along) — it never touches
+        // yHeadRot/yBodyRot, the RENDERED head/body. Those are driven separately by lookControl,
+        // which nothing here was calling: while advancing, BodyRotationControl's "moving" branch
+        // snapped the body to match as a side effect, but a target already in range from the very
+        // first tick (no approach needed) left the model frozen facing spawn-in direction while
+        // still shooting correctly. Same call AntiDroneBehaviour already makes for the same reason.
+        entity.lookControl.setLookAt(target.x, target.eyeY, target.z)
 
         val squad = entity.currentSquad()
         val defendHome = if (squad?.order == SquadOrder.DEFEND) entity.homeCenter() else null
@@ -396,8 +408,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.tickCount >= nextFriendlyFireCheckTick) {
             nextFriendlyFireCheckTick = entity.tickCount + FRIENDLY_FIRE_CHECK_INTERVAL
             val explosionRadius = gunData.get(GunProp.EXPLOSION_RADIUS)
+            shotSpread = DroneCombat.spreadForTarget(entity.spread, target)
             val assessment = FriendlyFireGuard.assess(
-                entity, target.eyePosition, entity.spread, target.position(), explosionRadius
+                entity, target.eyePosition, shotSpread, target.position(), explosionRadius
             )
             lineIsClear = assessment.lineClear
             blastClear = assessment.blastClear
@@ -432,7 +445,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         val pausedBetweenBursts = entity.tickCount < burstPauseUntilTick
         if (!pausedBetweenBursts && lineIsClear && blastClear && gunData.canShoot(entity) && aimTime >= entity.maxAimTime) {
             val rps = gunData.get(GunProp.RPM).toDouble() / 60.0
-            var cooldown = Math.round(1000 / rps)
+            var cooldown = Math.round(1000 / rps).coerceAtLeast(1)
 
             val fireMode = gunData.selectedFireModeInfo().mode
             if (fireMode == FireMode.SEMI || (fireMode == FireMode.BURST && gunData.burstAmount.get() == 0)) {
@@ -454,9 +467,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                 var newProgress = shootTimer.progress
                 do {
                     if (simulate) {
-                        OffscreenFire.fire(entity.level() as ServerLevel, entity, gunData, target, entity.spread)
+                        OffscreenFire.fire(entity.level() as ServerLevel, entity, gunData, target, shotSpread)
                     } else {
-                        gunData.shoot(entity, entity.spread, zoom, target.uuid)
+                        gunData.shoot(entity, shotSpread, zoom, target.uuid)
                     }
                     newProgress -= cooldown
                     roundsInBurst++

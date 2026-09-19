@@ -3,7 +3,7 @@ package com.sbwnpc.squad.entity.ai
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
-import com.sbwnpc.squad.combat.T90WeaponSelection
+import com.sbwnpc.squad.combat.TankWeaponSelection
 import com.sbwnpc.squad.combat.VehicleTargeting
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
@@ -121,7 +121,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 if (entity.target !== target) {
                     BrainUtils.setTargetOfEntity(entity, target)
                 }
-                T90WeaponSelection.update(entity, target)
+                TankWeaponSelection.update(entity, target)
                 setAutoAimTarget(vehicle, entity, target)
                 vehicle.forwardInputDown = false
                 vehicle.backInputDown = false

@@ -50,12 +50,12 @@ class SquadManager : SavedData() {
         val composition = npcs.map { it.npcClass }
         val rank = npcs.firstOrNull()?.npcRank ?: NpcRank.DEFAULT
         val tank = composition.contains(NpcClass.TANK_CREW)
-        val mortar = composition.any { it == NpcClass.MORTAR_OPERATOR || it == NpcClass.MORTAR_LOADER }
         val prefix = if (tank) "Tank " else ""
         val initialOrder = when {
+            // Tank crews structurally can't run anything but MOVE — setOrder forces it right back
+            // the instant anyone tries to change it, so starting there avoids a one-tick mismatch.
             tank -> SquadOrder.MOVE
-            mortar -> SquadOrder.DEFEND
-            else -> SquadOrder.MOVE
+            else -> SquadOrder.DEFEND
         }
         val squad = Squad(
             UUID.randomUUID(), nextName(owner, prefix), faction, initialOrder, members.toMutableList(),
