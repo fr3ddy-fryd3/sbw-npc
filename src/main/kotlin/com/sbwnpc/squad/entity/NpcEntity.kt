@@ -487,6 +487,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour(),
             com.sbwnpc.squad.entity.ai.AntiDroneBehaviour(),
             VehicleCrewBehaviour(),
+            com.sbwnpc.squad.entity.ai.HelicopterPilotBehaviour(),
+            com.sbwnpc.squad.entity.ai.HelicopterGunnerBehaviour(),
             VehicleCombatSupportBehaviour(),
             MedicHealBehaviour()
         )

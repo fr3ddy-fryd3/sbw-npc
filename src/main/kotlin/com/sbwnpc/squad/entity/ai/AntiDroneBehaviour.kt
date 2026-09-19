@@ -93,7 +93,10 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun isShooter(entity: NpcEntity): Boolean = when (entity.npcClass) {
         NpcClass.RIFLEMAN, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.TANK_CREW, NpcClass.DRONE_OPERATOR -> true
-        NpcClass.MEDIC, NpcClass.GRENADIER, NpcClass.MORTAR_OPERATOR, NpcClass.MORTAR_LOADER -> false
+        // Helicopter crew carry a sidearm and are strapped into an aircraft; the gunship's own
+        // turret is what deals with a drone, through the ordinary targeting path.
+        NpcClass.MEDIC, NpcClass.GRENADIER, NpcClass.MORTAR_OPERATOR, NpcClass.MORTAR_LOADER,
+        NpcClass.HELICOPTER_PILOT, NpcClass.HELICOPTER_GUNNER -> false
     }
 
     /** The drone this mob should be dealing with right now: the remembered one if still a live,

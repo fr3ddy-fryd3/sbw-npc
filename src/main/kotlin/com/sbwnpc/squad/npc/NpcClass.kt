@@ -51,6 +51,13 @@ enum class NpcClass(
 
     /** Permanent vehicle crewman. Its sidearm is only for the brief period after its vehicle is destroyed. */
     TANK_CREW(listOf(loc("glock_18"), loc("mp_443"))),
+
+    /** Flies its squad's helicopter from seat 0 — see HelicopterPilotBehaviour. Sidearm only, and
+     *  only relevant once it is back on the ground without an aircraft. */
+    HELICOPTER_PILOT(listOf(loc("glock_18"), loc("mp_443"))),
+
+    /** Works the gunship turret from seat 1 (HelicopterGunnerBehaviour); same sidearm caveat. */
+    HELICOPTER_GUNNER(listOf(loc("glock_18"), loc("mp_443"))),
     // Flies kamikaze drones at targets 80-150 blocks out (by rank) — see DroneOperatorBehaviour.
     // Same rifles as RIFLEMAN (per user request): once the drones are spent it fights on as an
     // ordinary rifleman rather than plinking with a sidearm.

@@ -2,6 +2,7 @@ package com.sbwnpc.squad.item
 
 import com.atsuishio.superbwarfare.tools.NBTTool
 import com.atsuishio.superbwarfare.entity.vehicle.MortarEntity
+import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.atsuishio.superbwarfare.init.ModEntities as SbwEntities
 import com.atsuishio.superbwarfare.init.ModItems
 import com.sbwnpc.squad.entity.NpcEntity
@@ -25,6 +26,7 @@ import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.squad.SquadSelection
 import com.sbwnpc.squad.team.SquadTeams
 import com.sbwnpc.squad.util.Terrain
+import com.sbwnpc.squad.vehicle.Helicopters
 import net.minecraft.ChatFormatting
 import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
@@ -149,6 +151,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         when (cfg.preset) {
             SquadPreset.MORTAR_CREW -> spawnMortar(serverLevel, pos, player.yRot, cfg.faction)
             SquadPreset.T90_CREW -> spawnTankCrew(serverLevel, pos, player.yRot, cfg.faction, spawned, cfg.tankModel)
+            SquadPreset.HELI_CREW -> spawnHeliCrew(serverLevel, pos, player.yRot, cfg.faction, spawned)
             // Unmanned — left for the squad's own vehicle-transport/combat-support AI to claim,
             // same as any vehicle it finds parked in the world.
             SquadPreset.FIVE -> if (cfg.vehicle) spawnTransport(serverLevel, pos, player.yRot, cfg.faction, cfg.vehicleModel)
@@ -254,6 +257,47 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         crew.singleOrNull()?.let { crewman ->
             if (crewman.startRiding(tank, false)) {
                 crewman.assignedVehicleId = tank.uuid
+            }
+        }
+    }
+
+    /**
+     * Mi-28 plus its two-man crew. Unlike every other vehicle here it is seated immediately and
+     * deliberately: an SBW helicopter with no first passenger has its controls zeroed and its rotor
+     * bled off every tick, so an unmanned one would just settle back onto the ground.
+     */
+    private fun spawnHeliCrew(
+        level: ServerLevel,
+        center: BlockPos,
+        yaw: Float,
+        faction: SquadFaction,
+        crew: List<NpcEntity>
+    ) {
+        val heli = Helicopters.GUNSHIP.create(level) as? VehicleEntity ?: return
+        // Well off the deploy point, and high enough that the rotor isn't inside the canopy the
+        // player happened to be standing under.
+        val standoff = 12.0
+        val yawRad = Math.toRadians(yaw.toDouble())
+        val hx = center.x + 0.5 - Math.sin(yawRad) * standoff
+        val hz = center.z + 0.5 + Math.cos(yawRad) * standoff
+        val ground = Helicopters.groundY(level, hx, hz)
+        val hy = Helicopters.clearSpawnY(level, hx, hz, maxOf(ground, center.y))
+        heli.moveTo(hx, hy, hz, yaw + 180f, 0f)
+        level.addFreshEntity(heli)
+        heli.energy = heli.maxEnergy
+        // 30mm turret rounds (AP first, HE second — the order VehicleCannonAmmo assumes) plus a
+        // load of rockets for the pilot's own pods.
+        heli.setItem(0, ItemStack(ModItems.SMALL_SHELL_AP.get(), 64))
+        heli.setItem(1, ItemStack(ModItems.SMALL_SHELL_HE.get(), 64))
+        heli.setItem(2, ItemStack(ModItems.SMALL_ROCKET.get(), 16))
+        SquadTeams.assign(heli, faction)
+
+        // Pilot first so it takes seat 0; the gunner then lands in the turret seat.
+        val pilot = crew.firstOrNull { it.npcClass == NpcClass.HELICOPTER_PILOT }
+        val gunner = crew.firstOrNull { it.npcClass == NpcClass.HELICOPTER_GUNNER }
+        for (member in listOfNotNull(pilot, gunner)) {
+            if (member.startRiding(heli, false)) {
+                member.assignedVehicleId = heli.uuid
             }
         }
     }

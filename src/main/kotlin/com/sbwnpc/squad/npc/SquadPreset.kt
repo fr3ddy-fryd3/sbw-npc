@@ -22,7 +22,12 @@ enum class SquadPreset(val label: String, val composition: List<NpcClass>, val s
     // Label stayed generic ("Tank Crew") once TankModel let the GUI pick which of the three
     // models the crew actually rides; the enum name is kept as-is, only ordinal position matters.
     T90_CREW("Tank Crew", listOf(NpcClass.TANK_CREW)),
-    DRONE_TEAM("Drone Team", List(4) { NpcClass.DRONE_OPERATOR }, spacing = 10.0);
+    DRONE_TEAM("Drone Team", List(4) { NpcClass.DRONE_OPERATOR }, spacing = 10.0),
+
+    /** Mi-28 crew: pilot in seat 0, gunner on the turret in seat 1. The pilot MUST be first — SBW
+     *  treats a helicopter's first passenger as the one flying it, and zeroes every control input
+     *  on an aircraft that has none. */
+    HELI_CREW("Heli Crew", listOf(NpcClass.HELICOPTER_PILOT, NpcClass.HELICOPTER_GUNNER));
 
     fun next(): SquadPreset {
         var next = entries[(ordinal + 1) % entries.size]
