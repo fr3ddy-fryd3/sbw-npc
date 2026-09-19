@@ -1,0 +1,175 @@
+<div align="center">
+
+# SBW Squads
+
+**An NPC squad addon for [SuperbWarfare](https://github.com/Mercurows/SuperbWarfare)** — recruit, deploy,
+and command your own AI-driven infantry, mortar, tank, and drone squads.
+
+![NeoForge](https://img.shields.io/badge/NeoForge-1.21.1-orange)
+![Kotlin](https://img.shields.io/badge/Kotlin-Jetbrains-7F52FF?logo=kotlin&logoColor=white)
+![License](https://img.shields.io/badge/license-All%20Rights%20Reserved-lightgrey)
+![Status](https://img.shields.io/badge/status-active%20dev-yellow)
+
+[English](#english) · [Русский](#русский)
+
+</div>
+
+---
+
+## English
+
+### What is this
+
+SBW Squads lets you recruit NPCs with a single tool, form them into squads, and command them like
+a small AI-controlled army: riflemen, medics, snipers, machine gunners, grenadiers, mortar crews,
+tank crews, and kamikaze-drone operators. Squads take cover, dig in under fire, avoid shooting
+their own side, relay spotted enemies to the rest of their faction, ride and crew vehicles, and
+follow orders — Attack, Defend, Patrol, Move — from a quick-command HUD or by pointing and
+clicking.
+
+### Features
+
+- **One tool, two modes** — Recruit mode opens a GUI to pick class, rank, faction and squad
+  preset and deploy it; Command mode selects squads and issues orders. Ctrl+right-click switches
+  between them.
+- **Squad presets** — Single, 5 (riflemen + medic), 7 (riflemen, sniper, machine gunner, medic),
+  16 (large mixed squad), Mortar Crew, Tank Crew, Drone Team. 5 and 7 can deploy with a support
+  vehicle; the tank crew preset lets you pick the model (ZTZ-99A / T-90A / M1A2).
+- **8 factions**, each with its own uniform, team, and color — pick freely, including OPFOR
+  test squads.
+- **Combat AI** — cover-seeking, suppression, digging in as a last resort, partial-cover firing
+  positions, friendly-fire avoidance modeled on the actual firing cone (not just a straight line),
+  and faction-wide relayed contact awareness.
+- **Vehicles** — NPC crews drive, escort, and gun for their squad; a squad far from its objective
+  will commandeer nearby vehicles on its own. Players can now ride along in a seat next to an
+  allied NPC driver instead of bumping them out.
+- **Drone operators** — fly a kamikaze FPV drone at a spotted target (uses the SBW Drone Warfare
+  addon's drone if installed, falls back to a stock SBW drone otherwise); other NPCs will shoot
+  down or take cover from a hostile drone and alert the squad.
+- **Barracks** — a placeable respawn/reinforcement point that restocks a squad's losses over
+  time.
+- **Quick-command HUD** — a lightweight panel (default key `B`) to pick a squad and an order
+  without opening a menu.
+
+### Requirements
+
+- Minecraft 1.21.1 + NeoForge
+- [SuperbWarfare](https://github.com/Mercurows/SuperbWarfare) — this addon builds directly on its
+  weapons, vehicles, and combat systems and won't do anything without it
+- Optional: the SBW Drone Warfare addon, for the drone operator class to use its FPV drone model
+
+### Installation
+
+1. Install NeoForge and SuperbWarfare first.
+2. Grab the latest jar from the [Releases](../../releases) page.
+3. Drop it into your `mods/` folder.
+
+### How this mod was made
+
+This is a hobby project, built purely for fun. The entire codebase was written by an AI (Claude
+Code) — architecture, features, bug fixes, all of it — with actual humans ("meatbags") doing the
+playtesting, including multiplayer sessions, and reporting back what broke.
+
+Pull requests and issues are welcome and will be looked at whenever there's free time — no
+guaranteed response time.
+
+### Known limitations
+
+- A squad's faction is currently shared server-wide rather than bound per player: two players who
+  pick the same faction will automatically be allied. A per-player default with an admin override
+  is planned but not built yet — worth knowing if you're testing with friends.
+
+### Skins
+
+All eight faction skins were redesigned with original military uniforms while keeping each mob's
+head pixel-identical, so they stay instantly recognizable. See [`docs/skins/`](docs/skins/) for
+the generation notes.
+
+![Skin preview](docs/skins/preview.png)
+
+*Gameplay screenshots are still needed — if you'd like to contribute some, open an issue or a PR.*
+
+### License
+
+All rights reserved (see `mod_license` in `gradle.properties`). Source is public for reference;
+no reuse or redistribution license is granted.
+
+---
+
+## Русский
+
+### Что это
+
+SBW Squads позволяет одним инструментом вербовать NPC, собирать их в отряды и командовать ими,
+как небольшой армией под управлением ИИ: автоматчики, медики, снайперы, пулемётчики, гренадёры,
+миномётные и танковые расчёты, операторы дронов-камикадзе. Отряды прячутся в укрытия, окапываются
+под огнём, не стреляют по своим, передают информацию о замеченных врагах остальной фракции, ездят
+и воюют в технике, выполняют приказы — Атака, Оборона, Патруль, Марш — через быструю HUD-панель
+или простым наведением и кликом.
+
+### Возможности
+
+- **Один инструмент, два режима** — режим «Вербовка» открывает GUI выбора класса, ранга, фракции
+  и пресета отряда и деплоит его; режим «Командование» выделяет отряды и отдаёт приказы.
+  Переключение — Ctrl + ПКМ.
+- **Пресеты отрядов** — Single, 5 (автоматчики + медик), 7 (автоматчики, снайпер, пулемётчик,
+  медик), 16 (большой смешанный отряд), Mortar Crew, Tank Crew, Drone Team. Пресеты 5 и 7 можно
+  задеплоить вместе с техникой поддержки; танковый расчёт — с выбором модели (ZTZ-99A / T-90A /
+  M1A2).
+- **8 фракций**, у каждой своя форма, команда и цвет — выбор свободный, в том числе для тестовых
+  отрядов противника.
+- **Боевой ИИ** — поиск укрытий, подавление, окапывание как последний рубеж, позиции с частичным
+  укрытием тела при стрельбе, защита от дружественного огня по реальному конусу разброса выстрела
+  (а не по прямой линии), и осведомлённость всей фракции о замеченных врагах.
+- **Техника** — экипажи NPC водят, сопровождают и стреляют за свой отряд; отряд, которому далеко
+  до цели, сам реквизирует ближайшую технику. Игрок теперь может подсесть пассажиром к союзному
+  NPC-водителю, а не выкидывать его при посадке.
+- **Операторы дронов** — запускают дрон-камикадзе по замеченной цели (использует дрон аддона SBW
+  Drone Warfare, если он установлен, иначе — обычный дрон SBW); остальные NPC сбивают вражеский
+  дрон или прячутся от него и поднимают тревогу в отряде.
+- **Казарма** — устанавливаемая точка возрождения/пополнения, которая со временем восстанавливает
+  потери отряда.
+- **Быстрое командование через HUD** — лёгкая панель (по умолчанию клавиша `B`) для выбора отряда
+  и приказа без открытия меню.
+
+### Требования
+
+- Minecraft 1.21.1 + NeoForge
+- [SuperbWarfare](https://github.com/Mercurows/SuperbWarfare) — аддон построен прямо поверх его
+  оружия, техники и боевой системы и без него не работает
+- Опционально: аддон SBW Drone Warfare — чтобы оператор дрона использовал его модель FPV-дрона
+
+### Установка
+
+1. Сначала установи NeoForge и SuperbWarfare.
+2. Скачай последний jar со страницы [Releases](../../releases).
+3. Положи его в папку `mods/`.
+
+### Как это сделано
+
+Это хобби-проект, сделанный просто ради развлечения. Весь код написан ИИ (Claude Code) —
+архитектура, фичи, багфиксы, всё — а тестированием (в т.ч. в мультиплеере) занимаются кожаные
+мешки, которые потом присылают баг-репорты о том, что сломалось.
+
+PR и issue приветствуются и будут рассмотрены в свободное время — без гарантий по срокам.
+
+### Известные ограничения
+
+- Фракция отряда сейчас общая на весь сервер, а не привязана к конкретному игроку: два игрока,
+  выбравшие одну фракцию, автоматически станут союзниками. Привязка фракции к игроку с
+  админ-переопределением задумана, но пока не реализована — важно знать при тестах с друзьями.
+
+### Скины
+
+Все восемь фракционных скинов переоформлены в оригинальной военной форме с сохранением исходной
+головы каждого моба пиксель-в-пиксель, чтобы они оставались мгновенно узнаваемыми. Подробности
+генерации — в [`docs/skins/`](docs/skins/).
+
+![Превью скинов](docs/skins/preview.png)
+
+*Скриншотов геймплея пока нет — если хочешь помочь, открой issue или PR.*
+
+### Лицензия
+
+Все права защищены (см. `mod_license` в `gradle.properties`). Исходники публичны для ознакомления;
+лицензии на повторное использование или распространение не предоставляется.

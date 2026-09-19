@@ -26,7 +26,7 @@ import net.tslat.smartbrainlib.util.BrainUtils
 /**
  * Squad-transit-by-vehicle: when a squad's objective is far enough away that walking is silly, NPCs
  * seek out nearby vehicles instead of hoofing it. NPCs never fight while mounted; hostile fire only
- * interrupts non-ATTACK transport after a controlled stop. See PLAN.md Этап 9.
+ * interrupts non-ATTACK transport after a controlled stop.
  *
  * Squad-level coordination is fully decentralized: each member independently consults
  * [VehicleTransportClaims], which is why this scales to several vehicles per squad without any

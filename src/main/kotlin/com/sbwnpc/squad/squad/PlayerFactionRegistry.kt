@@ -22,7 +22,7 @@ import java.util.UUID
  * OPFOR/test squads of a different faction). [requireOrPrompt] only gates on the one-time pick
  * having happened at all — it does not override whatever faction the tool/client is actually
  * using for a given action. The future admin-override design (grant a specific player permission
- * to bypass their own default, once real enforcement exists) is deferred, tracked in PLAN.md.
+ * to bypass their own default, once real enforcement exists) is deferred, not yet built.
  */
 class PlayerFactionRegistry : SavedData() {
 
