@@ -23,6 +23,7 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
+import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 
@@ -138,7 +139,13 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         // user request; 0 (staying exactly put) is still always in range via bestFiringSpot's own
         // baseline score for the entity's current position, so this only affects how far it's
         // willing to reposition, never whether it's allowed to just hold where it already is.
+        /** Slack around the shooter-to-target line when looking for vehicles on it. */
+        private const val VEHICLE_LANE_MARGIN = 2.0
         private const val POSITION_SEARCH_RADIUS = 7.0
+        /** Used only when there is no shot at all from where the mob stands — a vehicle hull is
+         *  longer than the ordinary search is wide. */
+        private const val STUCK_SEARCH_RADIUS = 14.0
+        private const val STUCK_GRID_STEP = 3
         private const val POSITION_GRID_STEP = 2
 
         // Priority order for holdFiringPosition's concealment scoring — highest first (a candidate
@@ -306,16 +313,49 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun bestFiringSpot(entity: NpcEntity, level: ServerLevel, target: LivingEntity): Vec3? {
         val origin = entity.position()
         val eyeHeight = entity.eyeHeight.toDouble()
-        var bestScore = concealmentScore(level, entity, target, origin, eyeHeight) ?: -1.0
-        var bestPos: Vec3? = null
+        // Fetched once for the whole grid: the candidates below are all tested against the same
+        // handful of hulls, and an entity query per candidate would be far more than this search
+        // can afford.
+        val area = AABB(origin, target.position())
+            .inflate(STUCK_SEARCH_RADIUS + VEHICLE_LANE_MARGIN)
+        val hulls = Sightline.vehicleHulls(level, area, entity, target)
+        val here = concealmentScore(level, entity, target, origin, eyeHeight, hulls)
 
-        val radius = POSITION_SEARCH_RADIUS.toInt()
-        for (dx in -radius..radius step POSITION_GRID_STEP) {
-            for (dz in -radius..radius step POSITION_GRID_STEP) {
+        sweep(level, entity, target, origin, eyeHeight, hulls, POSITION_SEARCH_RADIUS, POSITION_GRID_STEP, here ?: -1.0)
+            ?.let { return it }
+        // Nothing nearby works AND there is no shot from where we stand — which is what being
+        // parked behind a vehicle looks like, since a hull is longer than the ordinary search is
+        // wide. Standing still is the one thing that definitely doesn't help, so look further out
+        // with a coarser grid rather than hold a position that can never fire.
+        if (here == null) {
+            return sweep(
+                level, entity, target, origin, eyeHeight, hulls,
+                STUCK_SEARCH_RADIUS, STUCK_GRID_STEP, -1.0
+            )
+        }
+        return null
+    }
+
+    private fun sweep(
+        level: ServerLevel,
+        entity: NpcEntity,
+        target: LivingEntity,
+        origin: Vec3,
+        eyeHeight: Double,
+        hulls: List<AABB>,
+        radius: Double,
+        step: Int,
+        startingScore: Double
+    ): Vec3? {
+        var bestScore = startingScore
+        var bestPos: Vec3? = null
+        val r = radius.toInt()
+        for (dx in -r..r step step) {
+            for (dz in -r..r step step) {
                 val distSq = (dx * dx + dz * dz).toDouble()
-                if (distSq > POSITION_SEARCH_RADIUS * POSITION_SEARCH_RADIUS) continue
+                if (distSq > radius * radius) continue
                 val ground = Terrain.standableOrNull(level, origin.x + dx, origin.y, origin.z + dz) ?: continue
-                val score = concealmentScore(level, entity, target, ground, eyeHeight) ?: continue
+                val score = concealmentScore(level, entity, target, ground, eyeHeight, hulls) ?: continue
                 if (score > bestScore) {
                     bestScore = score
                     bestPos = ground
@@ -337,10 +377,16 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity: NpcEntity,
         target: LivingEntity,
         pos: Vec3,
-        eyeHeight: Double
+        eyeHeight: Double,
+        vehicleHulls: List<AABB>
     ): Double? {
         val myEye = Vec3(pos.x, pos.y + eyeHeight, pos.z)
         if (Sightline.blocked(level, target.eyePosition, myEye, entity)) return null
+        // Standing behind armour is cover from the enemy, but it is not a firing position.
+        if (Sightline.crosses(vehicleHulls, myEye, target.eyePosition, entity.spread)) return null
+        // Nor is standing ON one. Vehicles have collision, so a mob that walks into a hull rides up
+        // onto it, and a spot inside the box is a spot on the roof of an APC.
+        if (vehicleHulls.any { it.contains(Vec3(pos.x, pos.y + 0.5, pos.z)) }) return null
         for (height in CONCEALMENT_HEIGHTS) {
             val point = Vec3(pos.x, pos.y + height, pos.z)
             if (Sightline.blocked(level, target.eyePosition, point, entity)) return height
@@ -412,7 +458,21 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             val assessment = FriendlyFireGuard.assess(
                 entity, target.eyePosition, shotSpread, target.position(), explosionRadius
             )
-            lineIsClear = assessment.lineClear
+            // A vehicle in the way counts as "line not clear" too, which routes it into the
+            // sidestep below — the NPC shuffles until it has a real shot instead of shooting the
+            // hull it is standing behind.
+            val level = entity.level() as ServerLevel
+            val lane = AABB(entity.eyePosition, target.eyePosition).inflate(VEHICLE_LANE_MARGIN)
+            val hulls = Sightline.vehicleHulls(level, lane, entity, target)
+            val hullInTheWay =
+                Sightline.crosses(hulls, entity.eyePosition, target.eyePosition, shotSpread)
+            lineIsClear = assessment.lineClear && !hullInTheWay
+            if (DebugFlags.LOGGING_ENABLED && hulls.isNotEmpty()) {
+                DebugFlags.log(
+                    "[fire-debug] {} vehicles on lane={} crossing={} allyClear={} -> lineIsClear={}",
+                    entity.uuid, hulls.size, hullInTheWay, assessment.lineClear, lineIsClear
+                )
+            }
             blastClear = assessment.blastClear
         }
 

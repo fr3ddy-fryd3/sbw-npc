@@ -15,6 +15,7 @@ import net.minecraft.tags.BlockTags
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
+import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 import net.tslat.smartbrainlib.util.BrainUtils
@@ -687,10 +688,15 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         val horiz = Vec3(toTarget.x, 0.0, toTarget.z)
         if (horiz.lengthSqr() < 1.0e-6) return target.position()
         val dir = horiz.normalize()
+        // A peek is only a peek if it can actually shoot from there — leaning out into the side of
+        // a parked vehicle is the same dead end as the cover itself.
+        val hulls = Sightline.vehicleHulls(
+            level, AABB(base, target.eyePosition).inflate(2.0), entity, target
+        )
         for (step in PEEK_STEP_DISTANCES) {
             val candidate = base.add(dir.scale(step))
             val eye = candidate.add(0.0, 1.5, 0.0)
-            if (!Sightline.blocked(level, eye, target.eyePosition, entity)) return candidate
+            if (!Sightline.blockedBy(level, eye, target.eyePosition, entity, hulls, entity.npcRank.spread * entity.npcClass.accuracyMultiplier)) return candidate
         }
         return target.position()
     }
@@ -759,10 +765,16 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
 
         val threats = nearbyThreats(entity, level, threat)
+        // One query for the whole search: an APC is cover in every practical sense, and the grid
+        // above only ever proposes candidates next to a solid *block*, so without this the mob
+        // would never recognise the one piece of hard cover actually standing next to it.
+        val hulls = Sightline.vehicleHulls(
+            level, entity.boundingBox.inflate(MAX_RADIUS + 4.0), entity, null
+        )
         return candidates.asSequence()
             .distinct()
             .sortedBy { it.distSqr(origin) }
-            .firstOrNull { isHiddenFrom(level, entity, threats, it) }
+            .firstOrNull { isHiddenFrom(level, entity, threats, it, hulls) }
     }
 
     /** Every currently-known hostile near [entity] (within [THREAT_SCAN_RADIUS]), as eye-height
@@ -822,9 +834,19 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** [candidate] only counts as real cover if it's blocked from EVERY entry in [threats] — one
      *  attacker with a clear line to it is enough to make it not-cover, regardless of how many
      *  others it's hidden from. */
-    private fun isHiddenFrom(level: ServerLevel, entity: NpcEntity, threats: List<Vec3>, candidate: BlockPos): Boolean {
+    private fun isHiddenFrom(
+        level: ServerLevel,
+        entity: NpcEntity,
+        threats: List<Vec3>,
+        candidate: BlockPos,
+        hulls: List<AABB>
+    ): Boolean {
         val to = Vec3(candidate.x + 0.5, candidate.y + 1.5, candidate.z + 0.5)
-        return threats.all { threat -> Sightline.blocked(level, threat, to, entity) }
+        // A vehicle has collision, so walking at one rides the mob up onto it. Somewhere inside a
+        // hull is the roof of an APC, not a piece of cover.
+        val feet = Vec3(candidate.x + 0.5, candidate.y + 0.5, candidate.z + 0.5)
+        if (hulls.any { it.contains(feet) }) return false
+        return threats.all { threat -> Sightline.blockedBy(level, threat, to, entity, hulls) }
     }
 
     /** Snaps to standable ground near [pos] — same heuristic shape as the groundAt() helpers used
