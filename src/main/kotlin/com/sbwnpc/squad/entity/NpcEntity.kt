@@ -286,6 +286,12 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // Only trivial, NPC-agnostic vanilla utility goals left — none of them ever touched
     // `mob.target`/ATTACK_TARGET or any custom AI state, so there's no Goal/Brain interop risk in
     // leaving them here indefinitely (see the class doc comment above).
+    /** Vehicles are not obstacles to vanilla pathfinding, so routes are plotted straight through
+     *  them and the mob ends up shoved against a hull or standing on its roof. See
+     *  [com.sbwnpc.squad.entity.ai.VehicleAwareNavigation]. */
+    override fun createNavigation(level: Level): net.minecraft.world.entity.ai.navigation.PathNavigation =
+        com.sbwnpc.squad.entity.ai.VehicleAwareNavigation(this, level)
+
     override fun registerGoals() {
         super.registerGoals()
         this.goalSelector.addGoal(0, FloatGoal(this))
@@ -489,6 +495,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             VehicleCrewBehaviour(),
             com.sbwnpc.squad.entity.ai.HelicopterPilotBehaviour(),
             com.sbwnpc.squad.entity.ai.HelicopterGunnerBehaviour(),
+            com.sbwnpc.squad.entity.ai.HelicopterRideBehaviour(),
             VehicleCombatSupportBehaviour(),
             MedicHealBehaviour()
         )
