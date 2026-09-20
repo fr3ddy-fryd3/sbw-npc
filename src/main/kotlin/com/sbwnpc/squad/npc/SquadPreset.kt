@@ -27,7 +27,9 @@ enum class SquadPreset(val label: String, val composition: List<NpcClass>, val s
     /** Mi-28 crew: pilot in seat 0, gunner on the turret in seat 1. The pilot MUST be first — SBW
      *  treats a helicopter's first passenger as the one flying it, and zeroes every control input
      *  on an aircraft that has none. */
-    HELI_CREW("Heli Crew", listOf(NpcClass.HELICOPTER_PILOT, NpcClass.HELICOPTER_GUNNER));
+    /** Who actually deploys depends on the airframe picked in the GUI — see [HelicopterModel.crew],
+     *  which is what the recruit tool uses instead of this list. */
+    HELI_CREW("Heli Crew", HelicopterModel.DEFAULT.crew);
 
     fun next(): SquadPreset {
         var next = entries[(ordinal + 1) % entries.size]

@@ -84,7 +84,8 @@ object ModNetwork {
                             com.sbwnpc.squad.npc.SquadPreset.byOrdinal(p.preset),
                             p.vehicle,
                             com.sbwnpc.squad.npc.TransportVehicle.byOrdinal(p.vehicleModel),
-                            com.sbwnpc.squad.npc.TankModel.byOrdinal(p.tankModel)
+                            com.sbwnpc.squad.npc.TankModel.byOrdinal(p.tankModel),
+                            com.sbwnpc.squad.npc.HelicopterModel.byOrdinal(p.heliModel)
                         )
                     )
                 }

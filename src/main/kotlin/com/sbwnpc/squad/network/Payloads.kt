@@ -27,14 +27,15 @@ class ConfigureToolPayload(
     val preset: Int,
     val vehicle: Boolean,
     val vehicleModel: Int,
-    val tankModel: Int
+    val tankModel: Int,
+    val heliModel: Int
 ) : CustomPacketPayload {
     override fun type() = TYPE
 
     companion object {
         val TYPE = CustomPacketPayload.Type<ConfigureToolPayload>(SquadMod.loc("configure_tool"))
-        // 7 fields — one more than StreamCodec.composite's max arity (6), so this is wired by hand
-        // instead of the usual composite(...) call.
+        // Past StreamCodec.composite's max arity of 6, so this is wired by hand instead of the
+        // usual composite(...) call.
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, ConfigureToolPayload> = StreamCodec.of(
             { buf, p ->
                 ByteBufCodecs.VAR_INT.encode(buf, p.cls)
@@ -44,6 +45,7 @@ class ConfigureToolPayload(
                 ByteBufCodecs.BOOL.encode(buf, p.vehicle)
                 ByteBufCodecs.VAR_INT.encode(buf, p.vehicleModel)
                 ByteBufCodecs.VAR_INT.encode(buf, p.tankModel)
+                ByteBufCodecs.VAR_INT.encode(buf, p.heliModel)
             },
             { buf ->
                 ConfigureToolPayload(
@@ -52,6 +54,7 @@ class ConfigureToolPayload(
                     ByteBufCodecs.VAR_INT.decode(buf),
                     ByteBufCodecs.VAR_INT.decode(buf),
                     ByteBufCodecs.BOOL.decode(buf),
+                    ByteBufCodecs.VAR_INT.decode(buf),
                     ByteBufCodecs.VAR_INT.decode(buf),
                     ByteBufCodecs.VAR_INT.decode(buf)
                 )

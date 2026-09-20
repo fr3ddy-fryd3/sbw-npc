@@ -16,6 +16,7 @@ import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.npc.SquadPreset
+import com.sbwnpc.squad.npc.HelicopterModel
 import com.sbwnpc.squad.npc.TankModel
 import com.sbwnpc.squad.npc.TransportVehicle
 import com.sbwnpc.squad.squad.PlayerFactionRegistry
@@ -143,7 +144,12 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         PlayerFactionRegistry.get(serverLevel).requireOrPrompt(serverPlayer) ?: return InteractionResult.CONSUME
         val cfg = readConfig(stack) ?: Config(NpcClass.DEFAULT, NpcRank.DEFAULT, SquadFaction.DEFAULT, SquadPreset.DEFAULT)
         val pos = context.clickedPos.relative(context.clickedFace)
-        val composition = if (cfg.preset == SquadPreset.SINGLE) listOf(cfg.cls) else cfg.preset.composition
+        val composition = when (cfg.preset) {
+            SquadPreset.SINGLE -> listOf(cfg.cls)
+            // Who flies out depends on which airframe was picked, not on the preset alone.
+            SquadPreset.HELI_CREW -> cfg.heliModel.crew
+            else -> cfg.preset.composition
+        }
         val difficulty = level.getCurrentDifficultyAt(pos)
         val spawned = deployLine(serverLevel, pos, player.yRot, composition, cfg.rank, cfg.faction, difficulty, cfg.preset.spacing)
         if (spawned.isEmpty()) return InteractionResult.FAIL
@@ -151,7 +157,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         when (cfg.preset) {
             SquadPreset.MORTAR_CREW -> spawnMortar(serverLevel, pos, player.yRot, cfg.faction)
             SquadPreset.T90_CREW -> spawnTankCrew(serverLevel, pos, player.yRot, cfg.faction, spawned, cfg.tankModel)
-            SquadPreset.HELI_CREW -> spawnHeliCrew(serverLevel, pos, player.yRot, cfg.faction, spawned)
+            SquadPreset.HELI_CREW -> spawnHeliCrew(serverLevel, pos, player.yRot, cfg.faction, spawned, cfg.heliModel)
             // Unmanned — left for the squad's own vehicle-transport/combat-support AI to claim,
             // same as any vehicle it finds parked in the world.
             SquadPreset.FIVE -> if (cfg.vehicle) spawnTransport(serverLevel, pos, player.yRot, cfg.faction, cfg.vehicleModel)
@@ -271,9 +277,14 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         center: BlockPos,
         yaw: Float,
         faction: SquadFaction,
-        crew: List<NpcEntity>
+        crew: List<NpcEntity>,
+        model: HelicopterModel
     ) {
-        val heli = Helicopters.GUNSHIP.create(level) as? VehicleEntity ?: return
+        val type = when (model) {
+            HelicopterModel.MI_28 -> Helicopters.GUNSHIP
+            HelicopterModel.AH_6 -> Helicopters.TRANSPORT
+        }
+        val heli = type.create(level) as? VehicleEntity ?: return
         // Well off the deploy point, and high enough that the rotor isn't inside the canopy the
         // player happened to be standing under.
         val standoff = 12.0
@@ -285,14 +296,21 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         heli.moveTo(hx, hy, hz, yaw + 180f, 0f)
         level.addFreshEntity(heli)
         heli.energy = heli.maxEnergy
-        // 30mm turret rounds (AP first, HE second — the order VehicleCannonAmmo assumes) plus a
-        // load of rockets for the pilot's own pods.
-        heli.setItem(0, ItemStack(ModItems.SMALL_SHELL_AP.get(), 64))
-        heli.setItem(1, ItemStack(ModItems.SMALL_SHELL_HE.get(), 64))
-        heli.setItem(2, ItemStack(ModItems.SMALL_ROCKET.get(), 16))
+        // Cannon rounds with AP first and HE second — the order VehicleCannonAmmo assumes — plus
+        // rockets. The AH-6's 20mm only takes HE, so it gets no AP stack.
+        if (model == HelicopterModel.MI_28) {
+            heli.setItem(0, ItemStack(ModItems.SMALL_SHELL_AP.get(), 64))
+            heli.setItem(1, ItemStack(ModItems.SMALL_SHELL_HE.get(), 64))
+            heli.setItem(2, ItemStack(ModItems.SMALL_ROCKET.get(), 16))
+        } else {
+            heli.setItem(0, ItemStack(ModItems.SMALL_SHELL_HE.get(), 64))
+            heli.setItem(1, ItemStack(ModItems.SMALL_ROCKET.get(), 16))
+        }
         SquadTeams.assign(heli, faction)
 
-        // Pilot first so it takes seat 0; the gunner then lands in the turret seat.
+        // Pilot first so it takes seat 0 — SBW treats the first passenger as the one flying. The
+        // gunship's gunner goes straight into the turret seat; the transport's riflemen walk
+        // aboard themselves when the squad is actually sent somewhere (HelicopterRideBehaviour).
         val pilot = crew.firstOrNull { it.npcClass == NpcClass.HELICOPTER_PILOT }
         val gunner = crew.firstOrNull { it.npcClass == NpcClass.HELICOPTER_GUNNER }
         for (member in listOfNotNull(pilot, gunner)) {
@@ -418,7 +436,8 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         val preset: SquadPreset,
         val vehicle: Boolean = false,
         val vehicleModel: TransportVehicle = TransportVehicle.DEFAULT,
-        val tankModel: TankModel = TankModel.DEFAULT
+        val tankModel: TankModel = TankModel.DEFAULT,
+        val heliModel: HelicopterModel = HelicopterModel.DEFAULT
     )
 
     companion object {
@@ -430,6 +449,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         const val KEY_VEHICLE = "Vehicle"
         const val KEY_VEHICLE_MODEL = "VehicleModel"
         const val KEY_TANK_MODEL = "TankModel"
+        const val KEY_HELI_MODEL = "HeliModel"
         const val MODE_RECRUIT = 0
         const val MODE_COMMAND = 1
 
@@ -447,7 +467,8 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             readEnum(tag, KEY_PRESET, SquadPreset.DEFAULT, { SquadPreset.valueOf(it) }, { SquadPreset.byOrdinal(it) }),
             tag.getBoolean(KEY_VEHICLE),
             readEnum(tag, KEY_VEHICLE_MODEL, TransportVehicle.DEFAULT, { TransportVehicle.valueOf(it) }, { TransportVehicle.byOrdinal(it) }),
-            readEnum(tag, KEY_TANK_MODEL, TankModel.DEFAULT, { TankModel.valueOf(it) }, { TankModel.byOrdinal(it) })
+            readEnum(tag, KEY_TANK_MODEL, TankModel.DEFAULT, { TankModel.valueOf(it) }, { TankModel.byOrdinal(it) }),
+            readEnum(tag, KEY_HELI_MODEL, HelicopterModel.DEFAULT, { HelicopterModel.valueOf(it) }, { HelicopterModel.byOrdinal(it) })
         )
 
         private inline fun <T> readEnum(tag: CompoundTag, key: String, default: T, byName: (String) -> T, byOrdinal: (Int) -> T): T = when {
@@ -468,6 +489,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             tag.putBoolean(KEY_VEHICLE, cfg.vehicle)
             tag.putString(KEY_VEHICLE_MODEL, cfg.vehicleModel.name)
             tag.putString(KEY_TANK_MODEL, cfg.tankModel.name)
+            tag.putString(KEY_HELI_MODEL, cfg.heliModel.name)
         }
     }
 }

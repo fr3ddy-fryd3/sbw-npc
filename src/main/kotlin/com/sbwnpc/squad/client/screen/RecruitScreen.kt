@@ -28,6 +28,7 @@ class RecruitScreen(stack: ItemStack) : Screen(Component.literal("Deploy Config"
     private var vehicle = cfg.vehicle
     private var vehicleModel = cfg.vehicleModel
     private var tankModel = cfg.tankModel
+    private var heliModel = cfg.heliModel
 
     private lateinit var classBtn: Button
     private var presetRowY = 0
@@ -85,6 +86,14 @@ class RecruitScreen(stack: ItemStack) : Screen(Component.literal("Deploy Config"
                 }.bounds(cx - 100, y, 200, 20).build())
                 y += 24
             }
+            // The airframe also decides who deploys with it — gunship plus gunner, or transport
+            // plus the riflemen it carries — so the screen rebuilds to show the new crew.
+            SquadPreset.HELI_CREW -> {
+                addRenderableWidget(Button.builder(heliModelLabel()) {
+                    heliModel = heliModel.next(); push(); rebuildWidgets()
+                }.bounds(cx - 100, y, 200, 20).build())
+                y += 24
+            }
             else -> Unit
         }
 
@@ -120,11 +129,14 @@ class RecruitScreen(stack: ItemStack) : Screen(Component.literal("Deploy Config"
     private fun vehicleModelLabel() = Component.literal("Vehicle: ${vehicleModel.label}").withStyle(ChatFormatting.GOLD)
     private fun tankModelLabel() = Component.literal("Tank: ${tankModel.label}").withStyle(ChatFormatting.GOLD)
 
+    private fun heliModelLabel() =
+        Component.literal("Helicopter: ${heliModel.label}").withStyle(ChatFormatting.GOLD)
+
     private fun push() {
         PacketDistributor.sendToServer(
             ConfigureToolPayload(
                 cls.ordinal, rank.ordinal, faction.ordinal, preset.ordinal,
-                vehicle, vehicleModel.ordinal, tankModel.ordinal
+                vehicle, vehicleModel.ordinal, tankModel.ordinal, heliModel.ordinal
             )
         )
     }

@@ -33,3 +33,25 @@ enum class TankModel(val label: String) {
         fun byOrdinal(i: Int): TankModel = entries.getOrElse(i) { DEFAULT }
     }
 }
+
+/**
+ * Airframe spawned by [SquadPreset.HELI_CREW]. The two fly for completely different reasons, so
+ * the choice also decides who is aboard:
+ *
+ *  - Mi-28 is a gunship with a real auto-aimable turret in seat 1, so it carries a gunner and goes
+ *    hunting.
+ *  - AH-6 has no turret — its guns are bolted to the airframe — but it has three bench seats, so
+ *    it carries machine gunners and flies them where the squad is ordered, firing their own
+ *    weapons from the benches on the way.
+ */
+enum class HelicopterModel(val label: String, val crew: List<NpcClass>) {
+    MI_28("Mi-28", listOf(NpcClass.HELICOPTER_PILOT, NpcClass.HELICOPTER_GUNNER)),
+    AH_6("AH-6", listOf(NpcClass.HELICOPTER_PILOT) + List(3) { NpcClass.MACHINE_GUNNER });
+
+    fun next(): HelicopterModel = entries[(ordinal + 1) % entries.size]
+
+    companion object {
+        val DEFAULT = MI_28
+        fun byOrdinal(i: Int): HelicopterModel = entries.getOrElse(i) { DEFAULT }
+    }
+}
