@@ -29,7 +29,9 @@ object HudOverlayState {
         val faction: SquadFaction,
         val members: Int,
         val tank: Boolean,
-        val mortar: Boolean
+        val mortar: Boolean,
+        val gunship: Boolean,
+        val transport: Boolean
     )
 
     @JvmStatic
@@ -82,7 +84,8 @@ object HudOverlayState {
             Row(
                 t.getString("Id"), t.getString("Name"),
                 runCatching { SquadFaction.valueOf(t.getString("Faction")) }.getOrDefault(SquadFaction.DEFAULT),
-                t.getInt("Members"), t.getBoolean("Tank"), t.getBoolean("Mortar")
+                t.getInt("Members"), t.getBoolean("Tank"), t.getBoolean("Mortar"),
+                t.getBoolean("Gunship"), t.getBoolean("Transport")
             )
         }
         defaultFaction = if (data.contains("DefaultFaction")) SquadFaction.byOrdinal(data.getInt("DefaultFaction")) else null
@@ -142,7 +145,10 @@ object HudOverlayState {
         // "All squads" can be any mix, so offer what suits an ordinary one; the server clamps each
         // squad to its own list anyway.
         selectedAll -> SquadOrder.availableFor(tank = false, mortar = false)
-        else -> SquadOrder.availableFor(selected?.tank == true, selected?.mortar == true)
+        else -> SquadOrder.availableFor(
+            selected?.tank == true, selected?.mortar == true,
+            selected?.gunship == true, selected?.transport == true
+        )
     }
 
     private const val REFRESH_INTERVAL_TICKS = 40

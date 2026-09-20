@@ -79,7 +79,9 @@ class SquadManager : SavedData() {
 
     fun setOrder(id: UUID, order: SquadOrder) {
         squads[id]?.let {
-            val available = SquadOrder.availableFor(isTankSquad(it), isMortarSquad(it))
+            val available = SquadOrder.availableFor(
+                isTankSquad(it), isMortarSquad(it), isGunshipSquad(it), isTransportSquad(it)
+            )
             it.order = when {
                 order in available -> order
                 isTankSquad(it) -> SquadOrder.MOVE
@@ -91,6 +93,13 @@ class SquadManager : SavedData() {
 
     fun isTankSquad(squad: Squad): Boolean =
         squad.originalComposition.contains(NpcClass.TANK_CREW) || squad.name.startsWith("Tank ")
+
+    /** A gunship squad brought a turret gunner; a transport squad is a pilot without one. */
+    fun isGunshipSquad(squad: Squad): Boolean =
+        squad.originalComposition.contains(NpcClass.HELICOPTER_GUNNER)
+
+    fun isTransportSquad(squad: Squad): Boolean =
+        squad.originalComposition.contains(NpcClass.HELICOPTER_PILOT) && !isGunshipSquad(squad)
 
     fun isMortarSquad(squad: Squad): Boolean = squad.originalComposition.any {
         it == NpcClass.MORTAR_OPERATOR || it == NpcClass.MORTAR_LOADER

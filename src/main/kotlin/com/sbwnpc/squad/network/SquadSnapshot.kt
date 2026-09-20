@@ -25,6 +25,8 @@ fun buildSquadSnapshot(mgr: SquadManager, owner: UUID, looseCount: Int): Compoun
                 putInt("Order", s.order.ordinal)
                 putBoolean("Tank", mgr.isTankSquad(s))
                 putBoolean("Mortar", mgr.isMortarSquad(s))
+                putBoolean("Gunship", mgr.isGunshipSquad(s))
+                putBoolean("Transport", mgr.isTransportSquad(s))
             })
         }
     })

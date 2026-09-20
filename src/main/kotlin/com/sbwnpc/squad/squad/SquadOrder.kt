@@ -33,9 +33,18 @@ enum class SquadOrder {
          * What a squad of this shape can be ordered to do. One list, used by the command screen,
          * the quick-command HUD and the server's own validation, so the three cannot disagree.
          */
-        fun availableFor(tank: Boolean, mortar: Boolean): List<SquadOrder> = when {
+        fun availableFor(
+            tank: Boolean,
+            mortar: Boolean,
+            gunship: Boolean = false,
+            transport: Boolean = false
+        ): List<SquadOrder> = when {
             tank -> listOf(MOVE)
             mortar -> listOf(ATTACK, DEFEND, BARRAGE)
+            // A gunship is sent hunting, holds an area, or repositions.
+            gunship -> listOf(ATTACK, DEFEND, MOVE)
+            // A transport has nothing to attack with; it patrols with its gunners or relocates.
+            transport -> listOf(DEFEND, MOVE)
             else -> entries.filter { it != BARRAGE }
         }
     }
