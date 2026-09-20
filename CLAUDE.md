@@ -43,6 +43,9 @@ tested" as two different claims; see Workflow below.
 - Committing is not pushing. Committing finished, verified work is fine; it is the publishing step
   that is gated.
 - Prefer several small commits over one large one, split by what each change actually does.
+- Commit as the work lands, not in a batch at the end: one feature finished, the user confirms it
+  works in-game, commit it. A session's worth of unrelated work sitting uncommitted is what forces
+  the batching in the first place.
 - Don't bundle unrelated doc-only changes into a commit unless the user explicitly asked for the
   doc change too.
 - Commit messages: concise, and start with a Conventional Commits prefix (`feat:`, `fix:`,
