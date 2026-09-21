@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.network
 
+import com.sbwnpc.squad.block.entity.BarracksBlockEntity
 import com.sbwnpc.squad.client.ClientPayloadHandlers
 import com.sbwnpc.squad.item.SquadToolItem
 import com.sbwnpc.squad.npc.NpcClass
@@ -30,6 +31,8 @@ import java.util.UUID
 object ModNetwork {
 
     private const val OBJECTIVE_RAYCAST_RANGE = 1024.0
+    /** Generous, but bounded — a config packet has to come from someone standing at the block. */
+    private const val BARRACKS_REACH_SQR = 64.0 * 64.0
 
     @SubscribeEvent
     fun register(event: RegisterPayloadHandlersEvent) {
@@ -43,6 +46,7 @@ object ModNetwork {
         r.playToServer(HudOrderAllPayload.TYPE, HudOrderAllPayload.CODEC) { p, ctx -> onHudOrderAll(p, ctx) }
         r.playToServer(ChooseFactionPayload.TYPE, ChooseFactionPayload.CODEC) { p, ctx -> onChooseFaction(p, ctx) }
         r.playToServer(RouteCmdPayload.TYPE, RouteCmdPayload.CODEC) { p, ctx -> onRouteCmd(p, ctx) }
+        r.playToServer(ConfigureBarracksPayload.TYPE, ConfigureBarracksPayload.CODEC) { p, ctx -> onConfigureBarracks(p, ctx) }
 
         r.playToClient(OpenCommandScreenPayload.TYPE, OpenCommandScreenPayload.CODEC) { p, _ ->
             if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openCommandScreen(p.data)
@@ -61,6 +65,9 @@ object ModNetwork {
         }
         r.playToClient(OpenFinishRoutePayload.TYPE, OpenFinishRoutePayload.CODEC) { p, _ ->
             if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openFinishRoute(p.pointCount)
+        }
+        r.playToClient(OpenBarracksScreenPayload.TYPE, OpenBarracksScreenPayload.CODEC) { p, _ ->
+            if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openBarracksScreen(p.pos, p.config)
         }
     }
 
@@ -116,6 +123,25 @@ object ModNetwork {
             val player = ctx.player() as? ServerPlayer ?: return@enqueueWork
             val level = player.level() as? ServerLevel ?: return@enqueueWork
             PlayerFactionRegistry.get(level).set(player.uuid, SquadFaction.byOrdinal(p.faction))
+        }
+    }
+
+    /**
+     * Sets what a Barracks garrisons. Ownership is re-checked here rather than trusted from the
+     * screen: a block position in a packet is just three numbers a client chose to send.
+     *
+     * Range-checked too, because unlike a squad id there is nothing about a position that ties it
+     * to the sender — without it, a player could configure any Barracks whose owner they happened
+     * to be.
+     */
+    private fun onConfigureBarracks(p: ConfigureBarracksPayload, ctx: IPayloadContext) {
+        ctx.enqueueWork {
+            val player = ctx.player() as? ServerPlayer ?: return@enqueueWork
+            val level = player.level() as? ServerLevel ?: return@enqueueWork
+            if (player.distanceToSqr(Vec3.atCenterOf(p.pos)) > BARRACKS_REACH_SQR) return@enqueueWork
+            val be = level.getBlockEntity(p.pos) as? BarracksBlockEntity ?: return@enqueueWork
+            if (be.owner != player.uuid) return@enqueueWork
+            be.configure(level, SquadToolItem.readConfig(p.config))
         }
     }
 

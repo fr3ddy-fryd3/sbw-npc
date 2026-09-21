@@ -6,6 +6,7 @@ import com.sbwnpc.squad.client.screen.FinishRouteScreen
 import com.sbwnpc.squad.client.screen.RecruitScreen
 import com.sbwnpc.squad.client.screen.RoutesScreen
 import com.sbwnpc.squad.item.SquadToolItem
+import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.item.ItemStack
@@ -18,7 +19,14 @@ import net.minecraft.world.item.ItemStack
 object ClientPayloadHandlers {
 
     fun openRecruitScreen(stack: ItemStack) {
-        net.minecraft.client.Minecraft.getInstance().setScreen(RecruitScreen(stack))
+        net.minecraft.client.Minecraft.getInstance().setScreen(RecruitScreen.forTool(stack))
+    }
+
+    /** The Barracks' garrison config — the same screen, sent back to the block instead of the tool. */
+    fun openBarracksScreen(pos: BlockPos, config: CompoundTag) {
+        net.minecraft.client.Minecraft.getInstance().setScreen(
+            RecruitScreen.forBarracks(pos, SquadToolItem.readConfig(config))
+        )
     }
 
     /** Recruit-mode air-click round-trips through the server first (faction-lock check); this

@@ -1,12 +1,7 @@
 package com.sbwnpc.squad.item
 
 import com.atsuishio.superbwarfare.tools.NBTTool
-import com.atsuishio.superbwarfare.entity.vehicle.MortarEntity
-import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
-import com.atsuishio.superbwarfare.init.ModEntities as SbwEntities
-import com.atsuishio.superbwarfare.init.ModItems
 import com.sbwnpc.squad.entity.NpcEntity
-import com.sbwnpc.squad.init.ModEntities
 import com.sbwnpc.squad.network.OpenCommandScreenPayload
 import com.sbwnpc.squad.network.OpenFinishRoutePayload
 import com.sbwnpc.squad.network.OpenRecruitScreenPayload
@@ -21,13 +16,12 @@ import com.sbwnpc.squad.npc.TankModel
 import com.sbwnpc.squad.npc.TransportVehicle
 import com.sbwnpc.squad.squad.PlayerFactionRegistry
 import com.sbwnpc.squad.squad.RouteRecording
-import com.sbwnpc.squad.squad.SafeSpawn
+import com.sbwnpc.squad.squad.SquadDeployment
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.squad.SquadSelection
 import com.sbwnpc.squad.team.SquadTeams
 import com.sbwnpc.squad.util.Terrain
-import com.sbwnpc.squad.vehicle.Helicopters
 import net.minecraft.ChatFormatting
 import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
@@ -39,8 +33,6 @@ import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.InteractionResultHolder
 import net.minecraft.world.entity.LivingEntity
-import net.minecraft.world.entity.MobSpawnType
-import net.minecraft.world.entity.Pose
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.Item.TooltipContext
@@ -144,204 +136,16 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         PlayerFactionRegistry.get(serverLevel).requireOrPrompt(serverPlayer) ?: return InteractionResult.CONSUME
         val cfg = readConfig(stack) ?: Config(NpcClass.DEFAULT, NpcRank.DEFAULT, SquadFaction.DEFAULT, SquadPreset.DEFAULT)
         val pos = context.clickedPos.relative(context.clickedFace)
-        val composition = when (cfg.preset) {
-            SquadPreset.SINGLE -> listOf(cfg.cls)
-            // Who flies out depends on which airframe was picked, not on the preset alone.
-            SquadPreset.HELI_CREW -> cfg.heliModel.crew
-            else -> cfg.preset.composition
-        }
-        val difficulty = level.getCurrentDifficultyAt(pos)
-        val spawned = deployLine(serverLevel, pos, player.yRot, composition, cfg.rank, cfg.faction, difficulty, cfg.preset.spacing)
-        if (spawned.isEmpty()) return InteractionResult.FAIL
-
-        when (cfg.preset) {
-            SquadPreset.MORTAR_CREW -> spawnMortar(serverLevel, pos, player.yRot, cfg.faction)
-            SquadPreset.T90_CREW -> spawnTankCrew(serverLevel, pos, player.yRot, cfg.faction, spawned, cfg.tankModel)
-            SquadPreset.HELI_CREW -> spawnHeliCrew(serverLevel, pos, player.yRot, cfg.faction, spawned, cfg.heliModel)
-            // Unmanned — left for the squad's own vehicle-transport/combat-support AI to claim,
-            // same as any vehicle it finds parked in the world.
-            SquadPreset.FIVE -> if (cfg.vehicle) spawnTransport(serverLevel, pos, player.yRot, cfg.faction, cfg.vehicleModel)
-            SquadPreset.SEVEN -> if (cfg.vehicle) spawnTransport(serverLevel, pos, player.yRot, cfg.faction, TransportVehicle.BMP_2)
-            else -> Unit
-        }
-
-        if (spawned.size > 1 || cfg.preset == SquadPreset.T90_CREW) {
-            val squad = SquadManager.get(serverLevel).create(serverLevel, player.uuid, cfg.faction, spawned.map { it.uuid })
-            // Defend right where it was deployed by default — see SquadManager.create's
-            // initialOrder — rather than a DEFEND with nothing to actually guard.
-            SquadManager.get(serverLevel).setObjective(serverLevel, squad.id, pos)
-            actionbar(player, "Deployed ${squad.name} (${spawned.size})", cfg.faction.accentColor)
+        val deployed = SquadDeployment.deploy(serverLevel, pos, player.yRot, cfg, player.uuid)
+            ?: return InteractionResult.FAIL
+        if (deployed.vehicleBlocked) {
+            actionbar(player, "No room for the vehicle here — deployed on foot", ChatFormatting.RED)
+        } else {
+            deployed.squad?.let {
+                actionbar(player, "Deployed ${it.name} (${deployed.members.size})", cfg.faction.accentColor)
+            }
         }
         return InteractionResult.CONSUME
-    }
-
-    /** Spawns [composition] side by side, centred on [center] and facing the player, perpendicular
-     *  to the direction they're looking — a natural "line abreast" for a squad, and identical to a
-     *  single deploy when composition has one entry. */
-    private fun deployLine(
-        level: ServerLevel,
-        center: BlockPos,
-        facingYaw: Float,
-        composition: List<NpcClass>,
-        rank: NpcRank,
-        faction: SquadFaction,
-        difficulty: net.minecraft.world.DifficultyInstance,
-        spacing: Double = 2.0
-    ): List<NpcEntity> {
-        val yawRad = Math.toRadians(facingYaw.toDouble())
-        val rightX = Math.cos(yawRad)
-        val rightZ = Math.sin(yawRad)
-        val n = composition.size
-
-        val result = mutableListOf<NpcEntity>()
-        for ((i, cls) in composition.withIndex()) {
-            val offset = (i - (n - 1) / 2.0) * spacing
-            val npc = ModEntities.NPC.get().create(level) ?: continue
-            val spawnX = center.x + 0.5 + rightX * offset
-            val spawnZ = center.z + 0.5 + rightZ * offset
-            // A line spread sideways from the click point can easily cross a step, overhang, or
-            // wall — without this, a member off to either side could spawn with its feet inside a
-            // solid block and suffocate before doing anything at all.
-            val spawnY = SafeSpawn.findSafeY(level, spawnX, spawnZ, center.y, npc.getDimensions(Pose.STANDING)) ?: center.y.toDouble()
-            npc.moveTo(spawnX, spawnY, spawnZ, facingYaw + 180f, 0f)
-            npc.npcClass = cls
-            npc.npcRank = rank
-            npc.spawnFaction = faction
-            npc.finalizeSpawn(level, difficulty, MobSpawnType.SPAWN_EGG, null)
-            level.addFreshEntity(npc)
-            result.add(npc)
-        }
-        return result
-    }
-
-    private fun spawnMortar(level: ServerLevel, center: BlockPos, yaw: Float, faction: SquadFaction) {
-        val mortar = MortarEntity(level, yaw + 180f)
-        val y = SafeSpawn.findSafeY(level, center.x + 0.5, center.z + 0.5, center.y, mortar.getDimensions(Pose.STANDING))
-            ?: center.y.toDouble()
-        mortar.moveTo(center.x + 0.5, y, center.z + 0.5, yaw + 180f, 0f)
-        mortar.intelligent = true
-        level.addFreshEntity(mortar)
-        SquadTeams.assign(mortar, faction)
-    }
-
-    private fun spawnTankCrew(
-        level: ServerLevel,
-        center: BlockPos,
-        yaw: Float,
-        faction: SquadFaction,
-        crew: List<NpcEntity>,
-        model: TankModel
-    ) {
-        val type = when (model) {
-            TankModel.ZTZ_99A -> SbwEntities.ZTZ_99A
-            TankModel.T_90A -> SbwEntities.T_90A
-            TankModel.M1A2 -> SbwEntities.M_1A_2
-        }
-        val tank = type.get().create(level) ?: return
-        // Off the deploy point, not on it — spawned right where the player clicked, a tank this
-        // size drops/lands right on top of them.
-        val standoff = 8.0
-        val yawRad = Math.toRadians(yaw.toDouble())
-        val tx = center.x + 0.5 - Math.sin(yawRad) * standoff
-        val tz = center.z + 0.5 + Math.cos(yawRad) * standoff
-        val y = SafeSpawn.findSafeY(level, tx, tz, center.y, tank.getDimensions(Pose.STANDING))
-            ?: center.y.toDouble()
-        tank.moveTo(tx, y, tz, yaw + 180f, 0f)
-        level.addFreshEntity(tank)
-        tank.energy = tank.maxEnergy
-        // Same main-gun AP/HE + coax rifle ammo + .50cal passenger ammo loadout for all three —
-        // verified against each model's own sbw/vehicles/*.json: same four weapon/ammo slots.
-        tank.setItem(0, ItemStack(ModItems.LARGE_SHELL_AP.get(), 64))
-        tank.setItem(1, ItemStack(ModItems.LARGE_SHELL_HE.get(), 64))
-        tank.setItem(2, ItemStack(ModItems.RIFLE_AMMO.get(), 64))
-        tank.setItem(3, ItemStack(ModItems.HEAVY_AMMO.get(), 64))
-        SquadTeams.assign(tank, faction)
-        crew.singleOrNull()?.let { crewman ->
-            if (crewman.startRiding(tank, false)) {
-                crewman.assignedVehicleId = tank.uuid
-            }
-        }
-    }
-
-    /**
-     * Mi-28 plus its two-man crew. Unlike every other vehicle here it is seated immediately and
-     * deliberately: an SBW helicopter with no first passenger has its controls zeroed and its rotor
-     * bled off every tick, so an unmanned one would just settle back onto the ground.
-     */
-    private fun spawnHeliCrew(
-        level: ServerLevel,
-        center: BlockPos,
-        yaw: Float,
-        faction: SquadFaction,
-        crew: List<NpcEntity>,
-        model: HelicopterModel
-    ) {
-        val type = when (model) {
-            HelicopterModel.MI_28 -> Helicopters.GUNSHIP
-            HelicopterModel.AH_6 -> Helicopters.TRANSPORT
-        }
-        val heli = type.create(level) as? VehicleEntity ?: return
-        // Well off the deploy point, and high enough that the rotor isn't inside the canopy the
-        // player happened to be standing under.
-        val standoff = 12.0
-        val yawRad = Math.toRadians(yaw.toDouble())
-        val hx = center.x + 0.5 - Math.sin(yawRad) * standoff
-        val hz = center.z + 0.5 + Math.cos(yawRad) * standoff
-        val ground = Helicopters.groundY(level, hx, hz)
-        val hy = Helicopters.clearSpawnY(level, hx, hz, maxOf(ground, center.y))
-        heli.moveTo(hx, hy, hz, yaw + 180f, 0f)
-        level.addFreshEntity(heli)
-        heli.energy = heli.maxEnergy
-        // Cannon rounds with AP first and HE second — the order VehicleCannonAmmo assumes — plus
-        // rockets. The AH-6's 20mm only takes HE, so it gets no AP stack.
-        if (model == HelicopterModel.MI_28) {
-            heli.setItem(0, ItemStack(ModItems.SMALL_SHELL_AP.get(), 64))
-            heli.setItem(1, ItemStack(ModItems.SMALL_SHELL_HE.get(), 64))
-            heli.setItem(2, ItemStack(ModItems.SMALL_ROCKET.get(), 16))
-        } else {
-            heli.setItem(0, ItemStack(ModItems.SMALL_SHELL_HE.get(), 64))
-            heli.setItem(1, ItemStack(ModItems.SMALL_ROCKET.get(), 16))
-        }
-        SquadTeams.assign(heli, faction)
-
-        // Pilot first so it takes seat 0 — SBW treats the first passenger as the one flying. The
-        // gunship's gunner goes straight into the turret seat; the transport's riflemen walk
-        // aboard themselves when the squad is actually sent somewhere (HelicopterRideBehaviour).
-        val pilot = crew.firstOrNull { it.npcClass == NpcClass.HELICOPTER_PILOT }
-        val gunner = crew.firstOrNull { it.npcClass == NpcClass.HELICOPTER_GUNNER }
-        for (member in listOfNotNull(pilot, gunner)) {
-            if (member.startRiding(heli, false)) {
-                member.assignedVehicleId = heli.uuid
-            }
-        }
-    }
-
-    /** Unmanned transport for a [SquadPreset.FIVE]/[SquadPreset.SEVEN] squad — the squad's own
-     *  VehicleTransportBehaviour/VehicleCombatSupportBehaviour finds and boards it like any other
-     *  vehicle parked nearby; no crew is seated here. */
-    private fun spawnTransport(level: ServerLevel, center: BlockPos, yaw: Float, faction: SquadFaction, model: TransportVehicle) {
-        val type = when (model) {
-            TransportVehicle.LAV_25 -> SbwEntities.LAV_25
-            TransportVehicle.LAV_150 -> SbwEntities.LAV_150
-            TransportVehicle.BMP_2 -> SbwEntities.BMP_2
-        }
-        val vehicle = type.get().create(level) ?: return
-        // Off the squad's own spawn line (perpendicular to it), not at its center — FIVE/SEVEN are
-        // both odd-sized, so a member always lands exactly on center and the vehicle would spawn
-        // on top of them.
-        val standoff = 6.0
-        val yawRad = Math.toRadians(yaw.toDouble())
-        val forwardX = -Math.sin(yawRad)
-        val forwardZ = Math.cos(yawRad)
-        val vx = center.x + 0.5 + forwardX * standoff
-        val vz = center.z + 0.5 + forwardZ * standoff
-        val y = SafeSpawn.findSafeY(level, vx, vz, center.y, vehicle.getDimensions(Pose.STANDING)) ?: center.y.toDouble()
-        vehicle.moveTo(vx, y, vz, yaw + 180f, 0f)
-        level.addFreshEntity(vehicle)
-        vehicle.energy = vehicle.maxEnergy
-        // Small-caliber AP only, per user call — a short stack, not the full loadout the tanks get.
-        vehicle.setItem(0, ItemStack(ModItems.SMALL_SHELL_AP.get(), 4))
-        SquadTeams.assign(vehicle, faction)
     }
 
     override fun interactLivingEntity(stack: ItemStack, player: Player, target: LivingEntity, hand: InteractionHand): InteractionResult {
@@ -472,6 +276,10 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             tag.contains(key, Tag.TAG_INT.toInt()) -> byOrdinal(tag.getInt(key))
             else -> default
         }
+
+        /** The same NBT shape [writeConfig] stores on the tool, as a standalone tag — what the
+         *  Barracks persists and what its config packets carry. */
+        fun configTag(cfg: Config): CompoundTag = CompoundTag().also { writeConfig(it, cfg) }
 
         fun writeConfig(stack: ItemStack, cfg: Config) {
             NBTTool.withTag(stack) { writeConfig(it, cfg) }

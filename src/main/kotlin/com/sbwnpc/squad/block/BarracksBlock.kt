@@ -2,14 +2,17 @@ package com.sbwnpc.squad.block
 
 import com.sbwnpc.squad.block.entity.BarracksBlockEntity
 import com.sbwnpc.squad.init.ModBlockEntities
+import com.sbwnpc.squad.item.SquadToolItem
+import com.sbwnpc.squad.network.OpenBarracksScreenPayload
+import com.sbwnpc.squad.network.sendToClient
 import com.sbwnpc.squad.squad.BarracksRef
 import com.sbwnpc.squad.squad.SquadManager
-import com.sbwnpc.squad.squad.SquadSelection
 import com.mojang.serialization.MapCodec
 import net.minecraft.ChatFormatting
 import net.minecraft.core.BlockPos
 import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.player.Player
@@ -70,6 +73,9 @@ class BarracksBlock : BaseEntityBlock(
         super.onRemove(state, level, pos, newState, movedByPiston)
     }
 
+    /** Opens the same deployment config the squad tool uses — the Barracks garrisons and reinforces
+     *  whatever is set there. No squad selection and no tool required, which is the whole point of
+     *  the change: a placed Barracks is usable on its own. */
     override fun useWithoutItem(state: BlockState, level: Level, pos: BlockPos, player: Player, hitResult: BlockHitResult): InteractionResult {
         if (level.isClientSide) return InteractionResult.SUCCESS
         val be = level.getBlockEntity(pos) as? BarracksBlockEntity ?: return InteractionResult.PASS
@@ -77,19 +83,8 @@ class BarracksBlock : BaseEntityBlock(
             actionbar(player, "Not your Barracks", ChatFormatting.RED)
             return InteractionResult.SUCCESS
         }
-        val serverLevel = level as ServerLevel
-        val mgr = SquadManager.get(serverLevel)
-        val sid = SquadSelection.selectedSquad(player.uuid)
-        if (sid == null) {
-            actionbar(player, "Select a squad first", ChatFormatting.RED)
-            return InteractionResult.SUCCESS
-        }
-        if (!mgr.ownedBy(sid, player.uuid)) {
-            actionbar(player, "Not your squad", ChatFormatting.RED)
-            return InteractionResult.SUCCESS
-        }
-        mgr.assignBarracks(sid, BarracksRef(serverLevel.dimension(), pos.immutable()))
-        actionbar(player, "${mgr.get(sid)?.name ?: "Squad"} now resupplies at this Barracks", ChatFormatting.GREEN)
+        val serverPlayer = player as? ServerPlayer ?: return InteractionResult.SUCCESS
+        sendToClient(serverPlayer, OpenBarracksScreenPayload(pos.immutable(), SquadToolItem.configTag(be.configOrDefault())))
         return InteractionResult.SUCCESS
     }
 

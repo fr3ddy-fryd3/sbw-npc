@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.network
 
 import com.sbwnpc.squad.SquadMod
+import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.ByteBufCodecs
@@ -239,6 +240,36 @@ class OpenFinishRoutePayload(val pointCount: Int) : CustomPacketPayload {
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, OpenFinishRoutePayload> = StreamCodec.composite(
             ByteBufCodecs.VAR_INT, OpenFinishRoutePayload::pointCount,
             ::OpenFinishRoutePayload
+        )
+    }
+}
+
+/** Server -> client: open the Barracks' garrison config, carrying what it is currently set to.
+ *  The same [com.sbwnpc.squad.client.screen.RecruitScreen] the squad tool uses — a Barracks
+ *  describes a deployment exactly the way the tool does. */
+class OpenBarracksScreenPayload(val pos: BlockPos, val config: CompoundTag) : CustomPacketPayload {
+    override fun type() = TYPE
+
+    companion object {
+        val TYPE = CustomPacketPayload.Type<OpenBarracksScreenPayload>(SquadMod.loc("open_barracks_screen"))
+        val CODEC: StreamCodec<RegistryFriendlyByteBuf, OpenBarracksScreenPayload> = StreamCodec.composite(
+            BlockPos.STREAM_CODEC, OpenBarracksScreenPayload::pos,
+            ByteBufCodecs.COMPOUND_TAG, OpenBarracksScreenPayload::config,
+            ::OpenBarracksScreenPayload
+        )
+    }
+}
+
+/** Client -> server: set what the Barracks at [pos] garrisons. */
+class ConfigureBarracksPayload(val pos: BlockPos, val config: CompoundTag) : CustomPacketPayload {
+    override fun type() = TYPE
+
+    companion object {
+        val TYPE = CustomPacketPayload.Type<ConfigureBarracksPayload>(SquadMod.loc("configure_barracks"))
+        val CODEC: StreamCodec<RegistryFriendlyByteBuf, ConfigureBarracksPayload> = StreamCodec.composite(
+            BlockPos.STREAM_CODEC, ConfigureBarracksPayload::pos,
+            ByteBufCodecs.COMPOUND_TAG, ConfigureBarracksPayload::config,
+            ::ConfigureBarracksPayload
         )
     }
 }
