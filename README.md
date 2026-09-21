@@ -46,8 +46,10 @@ clicking.
 - **Drone operators** — fly a kamikaze FPV drone at a spotted target (uses the SBW Drone Warfare
   addon's drone if installed, falls back to a stock SBW drone otherwise); other NPCs will shoot
   down or take cover from a hostile drone and alert the squad.
-- **Barracks** — a placeable respawn/reinforcement point that restocks a squad's losses over
-  time.
+- **Helicopters** — NPC pilots fly a Mi-28 gunship or an AH-6 that carries the squad, takes off,
+  picks a landing zone and puts them down.
+- **Barracks** — a placeable garrison point, configured like the deploy tool, that deploys a squad
+  and restocks its losses over time.
 - **Quick-command HUD** — a lightweight panel (default key `B`) to pick a squad and an order
   without opening a menu.
 
@@ -66,22 +68,89 @@ clicking.
 2. Grab the latest jar from the [Releases](../../releases) page.
 3. Drop it into your `mods/` folder.
 
-### Quick start
+Recommended alongside: [GeckolibBetterFPS](https://www.curseforge.com/minecraft/mc-mods/geckolibbetterfps)
+— noticeably better frame rate when a lot of NPCs are on screen.
 
-1. Get the Squad Command Tool — there's no survival recipe yet, so grab it from Creative mode
-   (Combat tab) or run `/give @s sbwnpc:squad_tool`.
-2. First use asks you to pick a faction once; that's just your personal default, you can still
-   deploy any faction afterward.
-3. **Recruit mode** (default): right-click air to open the recruit GUI and pick class, rank,
-   faction and squad preset; right-click a block to deploy it there.
-4. **Ctrl+right-click** switches to **Command mode**: right-click an NPC to select it (or its
-   whole squad, if it already has one — Shift+right-click clears your pick); right-click air with
-   NPCs selected to open the command GUI and form/name/order the squad; right-click a hostile to
-   set the selected squad's focus target.
-5. Quick orders without opening a menu: press `B` for the HUD, a number key (1-9) to pick a squad,
-   then a number key for an order — or `0` to order every squad you own at once.
-6. Place a Barracks block (Creative-only for now too) as a squad's rally point; it slowly
-   restocks that squad's losses over time.
+### Where everything is
+
+| Thing | Where to get it | What it does |
+|---|---|---|
+| **Squad Command Tool** (`sbwnpc:squad_tool`) | Creative, *Superb Warfare Items* tab — or `/give @s sbwnpc:squad_tool` | Deploys NPCs and commands squads. No survival recipe yet. |
+| **Barracks** (`sbwnpc:barracks`) | Same tab — or `/give @s sbwnpc:barracks` | A placed block that garrisons a squad and keeps it at strength. |
+| **Quick-command HUD** | Key `B`, rebindable under controls category *SBW NPC Squads* | Pick a squad and an order without opening a menu. |
+
+On first use the tool asks you to pick a faction once. That is only your own default — you can
+still deploy any of the eight afterwards, including hostile ones to fight against.
+
+### Using the tool
+
+Two modes, switched with **Ctrl + right-click on air**. The current one is on the item tooltip.
+
+**Recruit mode — what gets deployed**
+
+- **Right-click air** opens the deploy config: preset, class (Single only), rank, faction, and the
+  vehicle or airframe where the preset has one.
+- **Right-click a block** deploys it there, lined up abreast and facing you.
+- Presets: `Single`, `5: Riflemen`, `7: Standard`, `16: Large`, `Mortar Crew`, `Tank Crew`
+  (ZTZ-99A / T-90A / M1A2), `Drone Team`, `Heli Crew` — Mi-28 gunship or AH-6 transport, and the
+  airframe decides which crew comes with it. `5` and `7` can bring a LAV-25 / LAV-150 / BMP-2.
+- Ranks go `RECRUIT → REGULAR → VETERAN → ELITE`: more health, tighter spread, quicker reactions.
+- Anything bigger than a single NPC is formed into a squad automatically, holding where it landed.
+
+**Command mode — what they do**
+
+- **Right-click an NPC** selects it; one that is already in a squad selects the whole squad.
+  Shift + right-click clears the selection.
+- **Right-click air** opens the squad screen.
+- **Right-click a block** with a squad selected sets that squad's objective.
+- **Right-click a hostile** focuses the selected squad on it — hunted under Attack, guarded
+  against under Defend.
+
+### The squad screen
+
+One row per squad, scrollable, with the footer buttons under the list:
+
+- **Order** cycles through the orders that squad can actually carry out.
+- **Objective** arms a click: the next block you right-click is where the squad works from.
+- **Focus** arms the same thing on an entity instead.
+- **R** renames · **X** disbands (the NPCs stay, the squad doesn't) · **DEL** deletes the squad
+  and everything in it, vehicles included.
+- **Routes** opens patrol routes: add one, right-click blocks to drop waypoints, finish, then
+  assign it to a squad. A squad with a route walks it under Patrol.
+
+There is no limit on how many squads you run. The HUD's number keys reach the first nine;
+disbanding one moves the rest up into the freed numbers.
+
+### Orders
+
+| Order | What it means | Who can be given it |
+|---|---|---|
+| **Defend** | Hold near the objective, don't chase far | Everyone except tank crews |
+| **Patrol** | Wander the area, or walk the assigned route | Infantry |
+| **Attack** | Advance on the objective, fight through what's in the way | Everyone except transports and tank crews |
+| **Move** | Walk there calmly, then hold | Everyone |
+| **Barrage** | Shell a 40-block area around the objective instead of one point | Mortar crews |
+
+Tank crews only take **Move** — they fight from the tank by themselves. A Mi-28 gunship takes
+Attack / Defend / Move and holds a standoff hover 20 blocks off its target; an AH-6 transport
+takes Defend (patrols low with its door gunners, and calls contacts in to the whole faction) and
+Move (flies the squad there and lands).
+
+### The Barracks
+
+Right-click a Barracks you placed to configure it the same way the tool is configured, then press
+**Deploy garrison**. It deploys that squad and keeps it at strength, replacing losses over time.
+Re-deploying replaces the garrison standing there. Only whoever placed it can configure it.
+
+### Worth knowing
+
+- Squads take cover, dig in when badly hurt, and won't fire through a squadmate — or through a
+  parked vehicle.
+- A squad with a distant objective commandeers a vehicle nearby and drives. You can ride along in
+  a free seat without bumping the NPC driver out.
+- Mortar crews only shell what their own side has actually seen. Out of reach of the target, they
+  break the mortar down, carry it closer and set it back up.
+- Each piece of an NPC's kit drops with a 30% chance when a player kills it.
 
 ### How this mod was made
 
@@ -139,8 +208,10 @@ the generation notes.
 - **Операторы дронов** — запускают дрон-камикадзе по замеченной цели (использует дрон аддона SBW
   Drone Warfare, если он установлен, иначе — обычный дрон SBW); остальные NPC сбивают вражеский
   дрон или прячутся от него и поднимают тревогу в отряде.
-- **Казарма** — устанавливаемая точка возрождения/пополнения, которая со временем восстанавливает
-  потери отряда.
+- **Вертолёты** — NPC-пилоты водят Ми-28 или AH-6: взлетают, возят отряд, выбирают площадку и
+  высаживают.
+- **Казарма** — устанавливаемая точка гарнизона с теми же настройками, что и у инструмента:
+  разворачивает отряд и со временем восстанавливает его потери.
 - **Быстрое командование через HUD** — лёгкая панель (по умолчанию клавиша `B`) для выбора отряда
   и приказа без открытия меню.
 
@@ -160,22 +231,90 @@ the generation notes.
 2. Скачай последний jar со страницы [Releases](../../releases).
 3. Положи его в папку `mods/`.
 
-### Быстрый старт
+Рекомендуется рядом: [GeckolibBetterFPS](https://www.curseforge.com/minecraft/mc-mods/geckolibbetterfps)
+— заметно поднимает FPS, когда на экране много NPC.
 
-1. Получи Squad Command Tool — крафта пока нет, бери из креатива (вкладка Combat) или команду
-   `/give @s sbwnpc:squad_tool`.
-2. При первом использовании инструмент попросит один раз выбрать фракцию — это просто твой
-   дефолт, деплоить другие фракции можно и дальше свободно.
-3. **Режим «Вербовка»** (по умолчанию): ПКМ по воздуху открывает GUI выбора класса, ранга,
-   фракции и пресета отряда; ПКМ по блоку — деплой на этом месте.
-4. **Ctrl + ПКМ** переключает в **режим «Командование»**: ПКМ по NPC выделяет его (или весь его
-   отряд, если он уже в отряде — Shift + ПКМ сбрасывает выбор); ПКМ по воздуху с выделенными NPC
-   открывает GUI командования, где отряд формируется, называется и получает приказ; ПКМ по врагу
-   ставит его фокус-целью выбранного отряда.
-5. Быстрые приказы без меню: клавиша `B` — HUD, цифра (1-9) — выбор отряда, следующая цифра —
-   приказ; `0` — приказ сразу всем своим отрядам.
-6. Поставь блок Barracks (тоже пока только из креатива) как точку сбора отряда — он постепенно
-   восполняет потери отряда.
+### Что где лежит
+
+| Что | Где взять | Зачем |
+|---|---|---|
+| **Squad Command Tool** (`sbwnpc:squad_tool`) | Креатив, вкладка *Superb Warfare Items* — или `/give @s sbwnpc:squad_tool` | Деплоит NPC и командует отрядами. Крафта пока нет. |
+| **Barracks** (`sbwnpc:barracks`) | Та же вкладка — или `/give @s sbwnpc:barracks` | Ставится блоком, держит гарнизон и восполняет его потери. |
+| **HUD быстрых команд** | Клавиша `B`, переназначается в категории *SBW NPC Squads* | Выбрать отряд и приказ, не открывая меню. |
+
+При первом использовании инструмент один раз попросит выбрать фракцию. Это только твой дефолт —
+деплоить дальше можно любую из восьми, в том числе враждебную, чтобы было с кем воевать.
+
+### Инструмент
+
+Два режима, переключаются **Ctrl + ПКМ по воздуху**. Текущий написан в подсказке предмета.
+
+**Режим «Вербовка» — что деплоится**
+
+- **ПКМ по воздуху** открывает конфиг: пресет, класс (только для Single), ранг, фракция и техника
+  или тип вертолёта — там, где пресет это поддерживает.
+- **ПКМ по блоку** деплоит на это место, шеренгой, лицом к тебе.
+- Пресеты: `Single`, `5: Riflemen`, `7: Standard`, `16: Large`, `Mortar Crew`, `Tank Crew`
+  (ZTZ-99A / T-90A / M1A2), `Drone Team`, `Heli Crew` — Ми-28 или AH-6, и выбранный борт
+  определяет, какой экипаж с ним выйдет. С пресетами `5` и `7` можно выдать LAV-25 / LAV-150 /
+  БМП-2.
+- Ранги идут `RECRUIT → REGULAR → VETERAN → ELITE`: больше здоровья, меньше разброс, быстрее
+  реакция.
+- Всё, что больше одного NPC, автоматически собирается в отряд и остаётся оборонять точку высадки.
+
+**Режим «Командование» — что они делают**
+
+- **ПКМ по NPC** выделяет его; если он уже в отряде — выделяется весь отряд. Shift + ПКМ сбрасывает
+  выделение.
+- **ПКМ по воздуху** открывает экран отрядов.
+- **ПКМ по блоку** с выделенным отрядом ставит ему цель.
+- **ПКМ по врагу** назначает его фокус-целью: при «Атаке» отряд его преследует, при «Обороне» —
+  сторожит.
+
+### Экран отрядов
+
+По строке на отряд, со скроллом; кнопки внизу — под списком.
+
+- **Order** переключает приказы, доступные именно этому отряду.
+- **Objective** взводит клик: следующий ПКМ по блоку станет точкой, от которой отряд работает.
+- **Focus** — то же самое, но по существу.
+- **R** переименовать · **X** расформировать (NPC остаются, отряда нет) · **DEL** удалить отряд
+  вместе со всеми, включая технику.
+- **Routes** — маршруты патрулирования: добавить, ПКМ по блокам расставить точки, завершить и
+  назначить отряду. Отряд с маршрутом ходит по нему на приказе «Патруль».
+
+Лимита на количество отрядов нет. Цифровые клавиши HUD достают до первых девяти; при
+расформировании одного остальные подтягиваются на освободившиеся номера.
+
+### Приказы
+
+| Приказ | Что значит | Кому можно дать |
+|---|---|---|
+| **Defend** | Держаться у точки, далеко не гоняться | Всем, кроме танковых экипажей |
+| **Patrol** | Ходить по округе или по назначенному маршруту | Пехоте |
+| **Attack** | Наступать на точку, пробиваясь через то, что мешает | Всем, кроме транспорта и танковых экипажей |
+| **Move** | Спокойно дойти и встать | Всем |
+| **Barrage** | Обрабатывать площадь радиусом 40 блоков вокруг точки, а не одну точку | Миномётным расчётам |
+
+Танковый экипаж принимает только **Move** — дальше он воюет из танка сам. Ми-28 берёт
+Attack / Defend / Move и висит в 20 блоках от цели, а не над ней; AH-6 берёт Defend (патрулирует
+низко со стрелками на скамьях и раздаёт контакты всей фракции) и Move (везёт отряд и садится).
+
+### Казарма
+
+ПКМ по поставленной казарме открывает тот же конфиг, что и у инструмента, дальше — **Deploy
+garrison**. Казарма разворачивает отряд и держит его в составе, восполняя потери со временем.
+Повторный деплой заменяет стоящий гарнизон. Настраивать может только тот, кто её поставил.
+
+### Что стоит знать
+
+- Отряды занимают укрытия, окапываются при тяжёлых ранениях и не стреляют сквозь своих — и сквозь
+  стоящую технику тоже.
+- Отряд с далёкой целью сам реквизирует ближайшую технику и поедет. Подсесть в свободное место
+  можно, не выкидывая NPC-водителя.
+- Миномётчики бьют только по тому, что их сторона реально видела. Если до цели не достают —
+  собирают миномёт, подходят ближе и разворачиваются заново.
+- С убитого игроком NPC каждый предмет снаряжения падает с шансом 30%.
 
 ### Как это сделано
 
