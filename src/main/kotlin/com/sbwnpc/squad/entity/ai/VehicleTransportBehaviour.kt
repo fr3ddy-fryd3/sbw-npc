@@ -10,6 +10,7 @@ import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
 import com.sbwnpc.squad.vehicle.AlliedVehicleBoarding
+import com.sbwnpc.squad.vehicle.VehiclePower
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
 import net.minecraft.core.BlockPos
@@ -468,6 +469,18 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             tickCombatDismount(entity, vehicle)
             return
         }
+        // Ran the battery down on the way. Nothing here can move it, so walk the rest — a
+        // permanent crew stays with its vehicle as usual and just holds.
+        if (!VehiclePower.hasReserve(vehicle, STRANDED_RESERVE_TICKS)) {
+            stopVehicle(vehicle)
+            if (isPermanentCrew(entity, vehicle)) {
+                holdVehicle(vehicle)
+                phase = Phase.HOLDING
+            } else {
+                waitToStopThenDismount(entity, vehicle, isDriver = true)
+            }
+            return
+        }
         val home = resolveTripDestination(entity)
         if (home == null) {
             waitToStopThenDismount(entity, vehicle, isDriver = true)
@@ -754,7 +767,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun isUsableGroundVehicle(vehicle: VehicleEntity, entity: NpcEntity): Boolean =
         vehicle.isAlive && !vehicle.isWreck && !vehicle.locked && vehicle.maxPassengers > 0 &&
-            vehicle.computed().engineType in GROUND_ENGINE_TYPES && !hasBlockingPlayerAboard(vehicle, entity)
+            vehicle.computed().engineType in GROUND_ENGINE_TYPES && VehiclePower.hasReserve(vehicle) &&
+            !hasBlockingPlayerAboard(vehicle, entity)
 
     private fun forwardDirection(vehicle: VehicleEntity): Vec3 {
         val movement = vehicle.deltaMovement
@@ -870,6 +884,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val WAIT_TIMEOUT_TICKS = 400 // ~20s
         private const val SEEK_INTERVAL_TICKS = 20
         private const val SEEK_GIVEUP_TICKS = 200 // ~10s of scanning before falling back to walking
+        /** Looser than the reserve demanded before boarding: a trip already under way is worth
+         *  finishing on the last of the battery rather than abandoning halfway. */
+        private const val STRANDED_RESERVE_TICKS = 40.0
         private const val GIVEUP_COOLDOWN_TICKS = 400 // ~20s before trying again after a giveup
         private const val NO_CANDIDATE_LOG_INTERVAL_TICKS = 100
         private const val ELIGIBILITY_LOG_INTERVAL_TICKS = 60 // 3s between eligibility trace lines
