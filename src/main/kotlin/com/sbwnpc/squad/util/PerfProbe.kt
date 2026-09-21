@@ -68,8 +68,17 @@ object PerfProbe {
     @EventBusSubscriber(Dist.CLIENT)
     object Client {
         private var rendered = 0
+        private var weapons = 0
         private var frames = 0
         private var lastReport = 0L
+
+        /** Counted by [com.sbwnpc.squad.client.renderer.NpcItemInHandLayer] for every NPC close
+         *  enough to still have its weapon drawn. Without it, "NPCs rendered" alone cannot tell a
+         *  crowd in the distance from the same crowd walked up to, which is the difference that
+         *  actually costs anything. */
+        fun countWeaponDrawn() {
+            if (DebugFlags.LOGGING_ENABLED) weapons++
+        }
 
         @SubscribeEvent
         fun onRenderNpc(event: RenderLivingEvent.Pre<*, *>) {
@@ -88,14 +97,17 @@ object PerfProbe {
             }
             val elapsed = now - lastReport
             if (elapsed < REPORT_INTERVAL_MS) return
+            val perFrame = frames.coerceAtLeast(1).toDouble()
             DebugFlags.log(
-                "[perf] client: {} fps, {} NPC renders per frame",
+                "[perf] client: {} fps, {} NPC renders per frame ({} with weapons)",
                 "%.1f".format(frames * 1000.0 / elapsed),
-                "%.1f".format(rendered.toDouble() / frames.coerceAtLeast(1))
+                "%.1f".format(rendered / perFrame),
+                "%.1f".format(weapons / perFrame)
             )
             lastReport = now
             frames = 0
             rendered = 0
+            weapons = 0
         }
     }
 }

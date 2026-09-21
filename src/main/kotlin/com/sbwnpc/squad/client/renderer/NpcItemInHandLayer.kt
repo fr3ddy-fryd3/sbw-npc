@@ -3,6 +3,7 @@ package com.sbwnpc.squad.client.renderer
 import com.mojang.blaze3d.vertex.PoseStack
 import com.sbwnpc.squad.client.NpcModel
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.util.PerfProbe
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.ItemInHandRenderer
 import net.minecraft.client.renderer.MultiBufferSource
@@ -44,6 +45,7 @@ class NpcItemInHandLayer(
         // person camera, the player is not where the view is.
         val camera = Minecraft.getInstance().gameRenderer.mainCamera.position
         if (entity.distanceToSqr(camera.x, camera.y, camera.z) > RENDER_DISTANCE * RENDER_DISTANCE) return
+        PerfProbe.Client.countWeaponDrawn()
         super.render(poseStack, buffer, packedLight, entity, limbSwing, limbSwingAmount, partialTicks, ageInTicks, netHeadYaw, headPitch)
     }
 
