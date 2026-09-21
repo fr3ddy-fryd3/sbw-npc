@@ -645,6 +645,34 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         super.die(cause)
     }
 
+    /**
+     * Switches vanilla's own equipment drop off, for every NPC including ones loaded from a save
+     * that predates [dropCustomDeathLoot] below — which is why this is an override rather than a
+     * `setDropChance` call in [applyRole], which only ever runs at spawn.
+     */
+    override fun getEquipmentDropChance(slot: EquipmentSlot): Float =
+        if (slot in LOOTABLE_SLOTS) 0f else super.getEquipmentDropChance(slot)
+
+    /**
+     * Loot: each piece of the NPC's kit drops with a flat [LOOT_DROP_CHANCE], rolled per slot, and
+     * drops exactly as it was carried — a gun keeps the ammo in its magazine.
+     *
+     * Rolled here rather than through vanilla's per-slot drop chance because vanilla damages
+     * whatever it drops when the chance is below 1.0, which would hand the player a near-broken
+     * rifle. `recentlyHit` is vanilla's "a player did this" flag: mines, fall damage and friendly
+     * fire leave nothing behind, same as for any other mob.
+     */
+    override fun dropCustomDeathLoot(level: ServerLevel, damageSource: DamageSource, recentlyHit: Boolean) {
+        super.dropCustomDeathLoot(level, damageSource, recentlyHit)
+        if (!recentlyHit) return
+        for (slot in LOOTABLE_SLOTS) {
+            val stack = getItemBySlot(slot)
+            if (stack.isEmpty || random.nextFloat() >= LOOT_DROP_CHANCE) continue
+            spawnAtLocation(stack.copy())
+            setItemSlot(slot, ItemStack.EMPTY)
+        }
+    }
+
     /** A squadmate going down is itself an "invariant" every shooter-AI convention treats as a
      *  strong signal (F.E.A.R./Half-Life-style squad escalation on a downed ally). When the killer
      *  is resolvable, this is strictly better than a vague alert — feed it straight into
@@ -663,6 +691,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     }
 
     companion object {
+        /** Per-slot chance that a piece of an NPC's kit survives its death — see
+         *  [dropCustomDeathLoot]. */
+        private const val LOOT_DROP_CHANCE = 0.30f
+        private val LOOTABLE_SLOTS = listOf(EquipmentSlot.MAINHAND, EquipmentSlot.HEAD, EquipmentSlot.CHEST)
         private const val BASE_HEALTH = 20.0
         private const val VEHICLE_ATTACKER_MEMORY_TICKS = 200
         // internal (not private) — MedicHealBehaviour reuses this to compute its temporary
