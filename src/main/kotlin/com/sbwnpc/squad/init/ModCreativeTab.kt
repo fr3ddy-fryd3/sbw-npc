@@ -1,24 +1,23 @@
 package com.sbwnpc.squad.init
 
+import com.atsuishio.superbwarfare.init.ModTabs
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent
-import net.minecraft.world.item.CreativeModeTabs
 
+/**
+ * Everything goes into SuperbWarfare's own *Items* tab rather than the vanilla ones: this is an
+ * SBW addon, and a player looking for the squad terminal looks where the rest of SBW's kit is,
+ * not in vanilla Combat and Functional Blocks two tabs apart.
+ */
 @EventBusSubscriber
 object ModCreativeTab {
     @SubscribeEvent
     fun onBuildContents(event: BuildCreativeModeTabContentsEvent) {
-        if (event.tabKey == CreativeModeTabs.SPAWN_EGGS) {
-            event.accept(ModItems.NPC_SPAWN_EGG.get())
-        }
-        if (event.tabKey == CreativeModeTabs.COMBAT) {
+        if (event.tabKey == ModTabs.ITEM_TAB.key) {
             event.accept(ModItems.SQUAD_TOOL.get())
-        }
-        // Registered but never added here — the Barracks BlockItem was completely unreachable in
-        // survival/creative (no recipe either). Real bug, not a design choice.
-        if (event.tabKey == CreativeModeTabs.FUNCTIONAL_BLOCKS) {
             event.accept(ModItems.BARRACKS.get())
+            event.accept(ModItems.SUPPLY.get())
         }
     }
 }
