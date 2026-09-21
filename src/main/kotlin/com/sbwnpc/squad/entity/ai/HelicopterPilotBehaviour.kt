@@ -9,6 +9,7 @@ import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
+import com.sbwnpc.squad.vehicle.Airspace
 import com.sbwnpc.squad.vehicle.Helicopters
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity
@@ -49,6 +50,11 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var loiterAngle = 0.0
     private var boardingSince = Int.MIN_VALUE / 2
     private var nextScoutTick = 0
+    /** Other helicopters near enough to matter, refreshed on an interval rather than per tick —
+     *  see [refreshTraffic]. */
+    private var trafficPositions: List<Vec3> = emptyList()
+    private var trafficIds: List<java.util.UUID> = emptyList()
+    private var nextTrafficTick = 0
 
     init {
         noTimeout()
@@ -96,7 +102,11 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         val home = entity.homeCenter() ?: heli.position()
         val airworthy = healthy(heli) && heli.energy > MIN_RESERVE_ENERGY
         val mission = decideMission(entity, heli, target, home, airworthy)
-        val station = mission.station
+        // Two aircraft on the same job compute the same station, so hold it apart from whoever
+        // else is up here and fly it in its own altitude band.
+        refreshTraffic(entity, heli, level)
+        val station = Airspace.separate(heli.position(), mission.station, trafficPositions)
+        val clearance = mission.clearance + Airspace.clearanceFor(heli.uuid, trafficIds)
         val facing = mission.facing
 
         // The one invariant that matters: cyclic input tilts the lift vector, so commanding it
@@ -154,7 +164,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
                     return
                 }
                 // Straight up first: translating at rooftop height is how you fly into a hill.
-                val safeY = groundY(level, heli.x, heli.z) + mission.clearance
+                val safeY = groundY(level, heli.x, heli.z) + clearance
                 climbStraight(heli, safeY, rollRate)
                 if (heli.y >= safeY - 1.0) {
                     phase = Phase.TRANSIT
@@ -162,14 +172,14 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
                 }
             }
             Phase.TRANSIT -> {
-                fly(level, heli, station, facing, mission.speed, rollRate, mission.clearance)
+                fly(level, heli, station, facing, mission.speed, rollRate, clearance)
                 if (HelicopterFlightController.horizontalDistance(heli.position(), station) <= ON_STATION_RADIUS) {
                     onStationReached(mission)
                     phase = if (mission.landOnArrival) Phase.LANDING else Phase.STATION
                 }
             }
             Phase.STATION -> {
-                fly(level, heli, station, facing, minOf(mission.speed, HOLD_SPEED), rollRate, mission.clearance)
+                fly(level, heli, station, facing, minOf(mission.speed, HOLD_SPEED), rollRate, clearance)
                 if (mission.landOnArrival) {
                     phase = Phase.LANDING
                 } else if (HelicopterFlightController.horizontalDistance(heli.position(), station) > OFF_STATION_RADIUS) {
@@ -308,6 +318,24 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
             if (!entity.sensing.hasLineOfSight(hostile)) continue
             TeamAwareness.report(faction, hostile.uuid, level.gameTime)
         }
+    }
+
+    /**
+     * Who else is flying nearby. Kept as a snapshot refreshed every [TRAFFIC_INTERVAL_TICKS]
+     * rather than a query per tick: helicopters are few, but this runs for every pilot, every
+     * tick, for as long as it is airborne.
+     *
+     * Wrecks and the aircraft under this pilot are excluded; anything else with rotors counts,
+     * including a hostile one — nobody wants to be flown into either.
+     */
+    private fun refreshTraffic(entity: NpcEntity, heli: VehicleEntity, level: ServerLevel) {
+        if (entity.tickCount < nextTrafficTick) return
+        nextTrafficTick = entity.tickCount + TRAFFIC_INTERVAL_TICKS
+        val others = level.getEntitiesOfClass(VehicleEntity::class.java, heli.boundingBox.inflate(Airspace.AWARENESS_RANGE)) {
+            it !== heli && it.isAlive && !it.isWreck && Helicopters.isHelicopter(it)
+        }
+        trafficPositions = others.map { it.position() }
+        trafficIds = others.map { it.uuid }
     }
 
     /** Contact is held for a while after the last confirmed target so a sensor gap or a broken
@@ -449,8 +477,12 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         heli.hoverMode = false
     }
 
+    /** `computed().engineInfo` is the raw JSON the vehicle data was loaded from — casting it to an
+     *  [EngineInfo] silently yields null and leaves the controller on its 1.0 defaults. The
+     *  deserialized one lives on the entity, and only appears once the engine has ticked at least
+     *  once, which is why the fallbacks below are real rather than defensive. */
     private fun tuningOf(heli: VehicleEntity): HelicopterFlightController.Tuning {
-        val engine = heli.computed().engineInfo as? EngineInfo.Helicopter
+        val engine = heli.engineInfo as? EngineInfo.Helicopter
         return HelicopterFlightController.Tuning(
             authority = heli.synchedPropellerRot,
             yawSpeed = engine?.yawSpeed ?: 1f,
@@ -478,6 +510,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         const val MIN_TRANSLATE_HEIGHT = 6.0
         const val ON_DECK_HEIGHT = 0.6
         const val TELEMETRY_INTERVAL = 20
+        const val TRAFFIC_INTERVAL_TICKS = 10
         const val CRUISE_SPEED = 0.85
         const val HOLD_SPEED = 0.15
         /** Close enough for the turret to do real work, far enough not to be parked overhead. */
