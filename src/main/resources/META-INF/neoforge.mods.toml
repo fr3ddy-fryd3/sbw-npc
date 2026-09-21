@@ -7,7 +7,7 @@ config = "mixins.sbwnpc.json"
 
 [[mods]]
 modId = "sbwnpc"
-version = "0.4.1-dev"
+version = "0.4.1"
 displayName = "[SBW] NPC Squads"
 authors = "fr3ddy"
 description = "NPC squads addon for SuperbWarfare"
