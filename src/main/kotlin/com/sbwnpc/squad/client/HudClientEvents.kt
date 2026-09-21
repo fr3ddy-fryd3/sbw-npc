@@ -48,7 +48,13 @@ object HudClientEvents {
             HudOverlayState.Mode.SQUAD_LIST -> {
                 if (HudOverlayState.rows.isEmpty()) return
                 header = "Squads"
-                lines = HudOverlayState.rows.mapIndexed { i, row -> "${i + 1}. ${row.name} (${row.members}) [${row.faction.label}]" to argb(row.faction.accentColor) } +
+                // Only the first nine have a key to press. The rest are still listed — a player
+                // with a dozen squads needs to see the ones the HUD can't reach exist at all —
+                // but unnumbered, and commanded from the squad screen instead.
+                val keyed = HudOverlayState.rows.take(HudOverlayState.SLOT_COUNT)
+                val rest = HudOverlayState.rows.drop(HudOverlayState.SLOT_COUNT)
+                lines = keyed.mapIndexed { i, row -> "${i + 1}. ${label(row)}" to argb(row.faction.accentColor) } +
+                    rest.map { row -> "   ${label(row)}" to argb(row.faction.accentColor) } +
                     listOf("[0] Order ALL" to 0xAAAAAA)
             }
             HudOverlayState.Mode.ORDERS -> {
@@ -68,6 +74,8 @@ object HudClientEvents {
             g.drawString(font, text, x + PADDING, y + PADDING + (i + 1) * lineHeight, color)
         }
     }
+
+    private fun label(row: HudOverlayState.Row) = "${row.name} (${row.members}) [${row.faction.label}]"
 
     private fun argb(color: ChatFormatting): Int = 0xFF000000.toInt() or (color.color ?: 0xFFFFFF)
 }

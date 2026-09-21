@@ -125,6 +125,8 @@ object ModNetwork {
             val level = player.level() as? ServerLevel ?: return@enqueueWork
             val mgr = SquadManager.get(level)
             fun bar(msg: String) = player.displayClientMessage(net.minecraft.network.chat.Component.literal(msg), true)
+            // Set by the actions that change which squads exist — see the end of this handler.
+            var reopen = false
             // Only ever resolves to a squad the sender actually owns — a squad id in a packet is
             // just a string the client chose to send, so this is the one place that matters.
             fun ownedSid(): UUID? {
@@ -145,15 +147,11 @@ object ModNetwork {
                     val faction = members.firstNotNullOfOrNull { level.getEntity(it) }
                         ?.let { com.sbwnpc.squad.team.SquadTeams.factionOf(it) } ?: SquadFaction.DEFAULT
                     val squad = mgr.create(level, player.uuid, faction, members)
-                    if (squad == null) {
-                        bar("Squad limit (${SquadManager.MAX_SQUADS_PER_OWNER}) reached")
-                        return@enqueueWork
-                    }
                     SquadSelection.clear(player.uuid)
                     SquadSelection.selectSquad(player.uuid, squad.id)
                     bar("Squad ${squad.name} formed")
                 }
-                SquadCmdPayload.DISBAND -> ownedSid()?.let { mgr.disband(level, it) }
+                SquadCmdPayload.DISBAND -> ownedSid()?.let { mgr.disband(level, it); reopen = true }
                 SquadCmdPayload.SET_ORDER -> ownedSid()?.let { mgr.setOrder(it, SquadOrder.byOrdinal(p.value)) }
                 SquadCmdPayload.RENAME -> ownedSid()?.let { mgr.rename(it, p.text) }
                 SquadCmdPayload.SELECT -> ownedSid()?.let {
@@ -171,16 +169,18 @@ object ModNetwork {
                     bar("Right-click anything (including your own NPCs) to focus ${mgr.get(it)?.name ?: "squad"} on it")
                 }
                 SquadCmdPayload.DELETE_SQUAD -> ownedSid()?.let { id ->
-                    val members = mgr.get(id)?.members?.toList() ?: return@let
-                    val assignedVehicles = members.mapNotNull {
-                        (level.getEntity(it) as? com.sbwnpc.squad.entity.NpcEntity)?.assignedVehicleId
-                    }.toSet()
-                    mgr.disband(level, id)
-                    members.forEach { member -> level.getEntity(member)?.discard() }
-                    assignedVehicles.forEach { vehicle -> level.getEntity(vehicle)?.discard() }
+                    mgr.deleteSquad(level, id)
                     SquadSelection.clear(player.uuid)
                     bar("Squad deleted")
+                    reopen = true
                 }
+            }
+            // Removing a squad leaves the player looking at a list that still has it in — and
+            // closing the screen for them means reopening it for every squad they wanted gone.
+            // Send the fresh list instead; the client swaps the screen out under them.
+            if (reopen) {
+                val snap = buildSquadSnapshot(mgr, player.uuid, SquadSelection.looseOf(player.uuid).size)
+                sendToClient(player, OpenCommandScreenPayload(snap))
             }
         }
     }

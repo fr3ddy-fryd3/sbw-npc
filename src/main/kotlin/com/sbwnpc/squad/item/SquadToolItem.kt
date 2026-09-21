@@ -167,14 +167,10 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
 
         if (spawned.size > 1 || cfg.preset == SquadPreset.T90_CREW) {
             val squad = SquadManager.get(serverLevel).create(serverLevel, player.uuid, cfg.faction, spawned.map { it.uuid })
-            if (squad != null) {
-                // Defend right where it was deployed by default — see SquadManager.create's
-                // initialOrder — rather than a DEFEND with nothing to actually guard.
-                SquadManager.get(serverLevel).setObjective(serverLevel, squad.id, pos)
-                actionbar(player, "Deployed ${squad.name} (${spawned.size})", cfg.faction.accentColor)
-            } else {
-                actionbar(player, "Deployed, but squad limit (${SquadManager.MAX_SQUADS_PER_OWNER}) reached — not grouped", ChatFormatting.RED)
-            }
+            // Defend right where it was deployed by default — see SquadManager.create's
+            // initialOrder — rather than a DEFEND with nothing to actually guard.
+            SquadManager.get(serverLevel).setObjective(serverLevel, squad.id, pos)
+            actionbar(player, "Deployed ${squad.name} (${spawned.size})", cfg.faction.accentColor)
         }
         return InteractionResult.CONSUME
     }

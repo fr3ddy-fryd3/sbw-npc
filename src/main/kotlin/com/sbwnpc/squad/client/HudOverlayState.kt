@@ -151,5 +151,9 @@ object HudOverlayState {
         )
     }
 
+    /** How many squads the number keys reach — [HudKeys.SLOTS]' own size, mirrored here so the
+     *  renderer doesn't have to reach into the key mappings to lay the list out. */
+    const val SLOT_COUNT = 9
+
     private const val REFRESH_INTERVAL_TICKS = 40
 }

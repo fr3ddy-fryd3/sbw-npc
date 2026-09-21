@@ -40,10 +40,10 @@ class SquadManager : SavedData() {
      *  anything, since a squad id in a packet is just a string a client chose to send. */
     fun ownedBy(id: UUID, player: UUID): Boolean = get(id)?.owner == player
 
-    /** Null if [owner] is already at the [MAX_SQUADS_PER_OWNER] cap — chosen to match the 1-9
-     *  number keys the quick-command HUD selects squads with. */
-    fun create(level: ServerLevel, owner: UUID, faction: SquadFaction, members: List<UUID>): Squad? {
-        if (forOwner(owner).size >= MAX_SQUADS_PER_OWNER) return null
+    /** No cap on how many squads one player runs. The quick-command HUD's number keys only reach
+     *  the first [HUD_SLOTS] of them ([forOwner] is in creation order, so disbanding one moves the
+     *  rest up into the freed numbers); everything past that is commanded from the squad screen. */
+    fun create(level: ServerLevel, owner: UUID, faction: SquadFaction, members: List<UUID>): Squad {
         // Captured now so a future barracks assignment knows what "full strength" means for this
         // squad — the actual classes it was formed/last topped up with, not a guess.
         val npcs = members.mapNotNull { findEntity(level.server, it) as? NpcEntity }
@@ -69,6 +69,23 @@ class SquadManager : SavedData() {
         }
         setDirty()
         return squad
+    }
+
+    /**
+     * Removes a squad and everything in it — members and whatever vehicles they were assigned.
+     *
+     * Distinct from [disband], which only dissolves the grouping and leaves the NPCs standing.
+     * Shared by the squad screen's DEL button and by a Barracks being given a new garrison, so the
+     * two cannot drift apart on what "delete" means.
+     */
+    fun deleteSquad(level: ServerLevel, id: UUID) {
+        val members = get(id)?.members?.toList() ?: return
+        val assignedVehicles = members.mapNotNull {
+            (level.getEntity(it) as? NpcEntity)?.assignedVehicleId
+        }.toSet()
+        disband(level, id)
+        members.forEach { member -> level.getEntity(member)?.discard() }
+        assignedVehicles.forEach { vehicle -> level.getEntity(vehicle)?.discard() }
     }
 
     fun disband(level: ServerLevel, id: UUID) {
@@ -257,9 +274,13 @@ class SquadManager : SavedData() {
 
     private fun nextName(owner: UUID, prefix: String = ""): String {
         val used = forOwner(owner).map { it.name }.toSet()
-        return NAMES.firstOrNull { prefix + it !in used }
-            ?.let { prefix + it }
-            ?: (prefix + "Squad " + (forOwner(owner).size + 1))
+        NAMES.firstOrNull { prefix + it !in used }?.let { return prefix + it }
+        // Past the phonetic names, count up to the first free number rather than off the squad
+        // count — with no cap on squads, deleting one from the middle otherwise hands the next
+        // squad a name that is already taken.
+        var n = NAMES.size + 1
+        while ("${'$'}prefix" + "Squad " + n in used) n++
+        return prefix + "Squad " + n
     }
 
     override fun save(tag: CompoundTag, registries: HolderLookup.Provider): CompoundTag {
@@ -271,7 +292,9 @@ class SquadManager : SavedData() {
 
     companion object {
         private const val FILE = "sbwnpc_squads"
-        const val MAX_SQUADS_PER_OWNER = 9
+        /** How many squads the 1-9 quick-command keys can address — a keyboard limit, not a cap
+         *  on how many a player may have. */
+        const val HUD_SLOTS = 9
         private const val RESUPPLY_RADIUS = 16.0
         const val MAX_NAME_LENGTH = 24
         private val NAMES = listOf("Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel")
