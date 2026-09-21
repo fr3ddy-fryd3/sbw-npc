@@ -55,6 +55,8 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var barrageAim: BlockPos? = null
     private var nextFireTick = 0
     private var lastScanResult: BlockPos? = null
+    /** Consecutive ticks the fire mission has been out of reach — see [outOfReach]. */
+    private var unreachableTicks = 0
 
     companion object {
         private const val SEARCH_RANGE = 30.0
@@ -79,6 +81,16 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val FRIENDLY_CHECK_INTERVAL_TICKS = 20
         private const val MAX_LOS_CHECKS = 8
         private const val START_CHECK_INTERVAL_TICKS = 5
+        /** Past this, a commanded fire mission counts as out of reach whatever the ballistics say
+         *  — a crew shelling from the far end of the map is not supporting anybody. */
+        private const val MAX_ENGAGE_RANGE = 300.0
+        /** Close enough to set the tube back up. Well inside [MAX_ENGAGE_RANGE] so a target that
+         *  drifts a little doesn't have the crew packing up again the moment they arrive. */
+        private const val REDEPLOY_RANGE = 200.0
+        /** How long the mission has to stay out of reach before breaking the mortar down. Long
+         *  enough that a target dipping behind a hill for a moment isn't reason to move. */
+        private const val DISPLACE_AFTER_TICKS = 100
+        private const val DISPLACE_SPEED = 1.0
     }
 
     private var nextMortarSearchTick = 0
@@ -102,6 +114,10 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         // self-defense.
         val personalThreat = entity.target?.takeIf { it.isAlive && entity.distanceToSqr(it) <= SELF_DEFENSE_RANGE_SQR }
         if (personalThreat != null) return false
+        // Mid-displacement there is no mortar to find or claim — the crew is the mortar. Checked
+        // before the fire mission, because a crew whose target has just died still has to put the
+        // tube down somewhere; bailing out here would leave it carrying it forever.
+        if (entity.carryingMortar) return true
         if (fireTarget(entity) == null) return false
 
         val current = mortar
@@ -137,8 +153,12 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun tick(entity: NpcEntity) {
-        val m = mortar ?: return
         val level = entity.level() as? ServerLevel ?: return
+        if (entity.carryingMortar) {
+            tickDisplacing(entity, level)
+            return
+        }
+        val m = mortar ?: return
         val target = fireTarget(entity) ?: return
 
         val dist = entity.position().distanceTo(m.position())
@@ -147,6 +167,18 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             return
         }
         entity.navigation.stop()
+
+        // Can't reach the fire mission from here: pick the tube up and walk it closer rather than
+        // standing over it lobbing shells that fall short.
+        if (outOfReach(m, target)) {
+            if (++unreachableTicks >= DISPLACE_AFTER_TICKS) {
+                unreachableTicks = 0
+                MortarDeployment.pack(m, entity)
+                mortar = null
+            }
+            return
+        }
+        unreachableTicks = 0
 
         if (target.distSqr(BlockPos.containing(m.position())) < MIN_RANGE_SQR) return
         // The mortar's own aim solver fails silently (keeps its previous/default aim) when a
@@ -167,6 +199,39 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             m.vehicleShoot(entity, "Main", null)
             nextFireTick = entity.tickCount + FIRE_COOLDOWN_TICKS
         }
+    }
+
+    /**
+     * Whether the mortar simply cannot serve this fire mission from where it stands — either
+     * further out than a mortar has any business shooting, or a point its own solver rejects
+     * (out of ballistic range, or past the pitch the tube can be laid to).
+     */
+    private fun outOfReach(m: MortarEntity, target: BlockPos): Boolean {
+        if (m.position().distanceTo(target.center) > MAX_ENGAGE_RANGE) return true
+        // A target too CLOSE is a different problem with a different answer (hold fire, handled by
+        // MIN_RANGE_SQR) — walking towards it would only make that worse.
+        if (target.distSqr(BlockPos.containing(m.position())) < MIN_RANGE_SQR) return false
+        return !canHitTarget(m, target)
+    }
+
+    /**
+     * Carrying the tube towards the fire mission. Sets it back up once close enough — or straight
+     * away if there is no longer anything to shoot at, so a crew never ends up wandering with a
+     * mortar on its back.
+     */
+    private fun tickDisplacing(entity: NpcEntity, level: ServerLevel) {
+        val target = fireTarget(entity)
+        if (target == null) {
+            MortarDeployment.deploy(level, entity, null)
+            return
+        }
+        val aim = target.center
+        if (entity.position().distanceTo(aim) <= REDEPLOY_RANGE) {
+            entity.navigation.stop()
+            if (MortarDeployment.deploy(level, entity, aim) != null) return
+            // Nowhere to set up on this spot — keep walking and try again further on.
+        }
+        entity.navigateTo(aim.x, aim.y, aim.z, DISPLACE_SPEED)
     }
 
     /** Mirrors the feasibility check `MortarEntity.setTarget` does internally (both a flat and a

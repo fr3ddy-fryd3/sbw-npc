@@ -34,12 +34,17 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var mortar: MortarEntity? = null
     private var nextCheckTick = 0
     private var nextMortarSearchTick = 0
+    /** The squadmate currently carrying the crew's mortar, if it is being displaced. */
+    private var carrier: NpcEntity? = null
 
     companion object {
         private const val SEARCH_RANGE = 30.0
         private const val MORTAR_SEARCH_INTERVAL_TICKS = 40
         private const val START_CHECK_INTERVAL_TICKS = 5
         private const val SELF_DEFENSE_RANGE_SQR = 6.0 * 6.0
+        /** How close the loader keeps to an operator carrying the mortar. */
+        private const val FOLLOW_DISTANCE_SQR = 5.0 * 5.0
+        private const val FOLLOW_SPEED = 1.0
     }
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
@@ -53,6 +58,12 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
         // resupplying the mortar can wait until it's healed/no longer holding.
         if (entity.diggedIn) return false
         if (entity.vehicleTransport) return false
+
+        // The crew is displacing (MortarOperatorBehaviour broke the tube down): stay with the
+        // operator rather than falling back to the squad's own movement, which would walk the
+        // loader all the way to the objective and leave the mortar unsupplied behind it.
+        carrier = carryingSquadmate(entity)
+        if (carrier != null) return true
 
         val current = mortar
         if (current != null && current.isAlive && !current.isWreck && !MortarClaims.isLoaderClaimedByOther(current.uuid, entity.uuid)) return true
@@ -84,13 +95,32 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
         startCheck.check(entity) { eligible(entity) }
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = eligible(entity)
 
+    /** A squadmate with the mortar on its back. Only ever a handful of members to check, and only
+     *  when there is no mortar in range to claim. */
+    private fun carryingSquadmate(entity: NpcEntity): NpcEntity? {
+        val level = entity.level() as? ServerLevel ?: return null
+        val members = entity.currentSquad()?.members ?: return null
+        return members.asSequence()
+            .mapNotNull { level.getEntity(it) as? NpcEntity }
+            .firstOrNull { it !== entity && it.isAlive && it.carryingMortar }
+    }
+
     override fun stop(entity: NpcEntity) {
         startCheck.reset()
         MortarClaims.releaseLoader(entity.uuid)
         mortar = null
+        carrier = null
     }
 
     override fun tick(entity: NpcEntity) {
+        carrier?.takeIf { it.isAlive && it.carryingMortar }?.let { with ->
+            if (entity.distanceToSqr(with) > FOLLOW_DISTANCE_SQR) {
+                entity.navigateTo(with.x, with.y, with.z, FOLLOW_SPEED)
+            } else {
+                entity.navigation.stop()
+            }
+            return
+        }
         val m = mortar ?: return
         val dist = entity.position().distanceTo(m.position())
         if (dist > 2.5) {

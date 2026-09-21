@@ -176,6 +176,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      *  respawnAtBarracks). Persisted. Meaningless for other classes. */
     var dronesLeft: Int = 0
 
+    /** True while a mortar operator has broken its mortar down and is carrying it to a new
+     *  position — see [com.sbwnpc.squad.entity.ai.MortarDeployment]. Persisted, and put back on
+     *  the ground if the carrier dies, so a displacing crew can never simply lose its mortar. */
+    var carryingMortar: Boolean = false
+
     /** The gun stowed while the operator holds the drone monitor — persisted so a world save
      *  mid-flight doesn't leave the operator with a monitor and no weapon (see
      *  DroneOperatorBehaviour.holdMonitor/restoreWeapon). */
@@ -608,6 +613,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         squadId?.let { compound.putUUID("SquadId", it) }
         assignedVehicleId?.let { compound.putUUID("AssignedVehicle", it) }
         compound.putBoolean("ReserveGrenade", hasReserveGrenade)
+        if (carryingMortar) compound.putBoolean("CarryingMortar", true)
         compound.putInt("DronesLeft", dronesLeft)
         if (!stowedWeapon.isEmpty) compound.put("StowedWeapon", stowedWeapon.save(registryAccess()))
     }
@@ -620,6 +626,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         assignedVehicleId = if (compound.hasUUID("AssignedVehicle")) compound.getUUID("AssignedVehicle") else null
         hasReserveGrenade = if (compound.contains("ReserveGrenade")) compound.getBoolean("ReserveGrenade") else
             npcClass != NpcClass.MORTAR_OPERATOR && npcClass != NpcClass.MORTAR_LOADER && npcClass != NpcClass.TANK_CREW
+        carryingMortar = compound.getBoolean("CarryingMortar")
         dronesLeft = if (compound.contains("DronesLeft")) compound.getInt("DronesLeft")
             else if (npcClass == NpcClass.DRONE_OPERATOR) com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES else 0
         stowedWeapon = if (compound.contains("StowedWeapon"))
@@ -637,6 +644,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         alertAllies(cause)
         MortarClaims.release(uuid)
         VehicleTransportClaims.release(uuid)
+        // Carried kit goes down where its carrier did, rather than out of the world with it.
+        (level() as? ServerLevel)?.let { com.sbwnpc.squad.entity.ai.MortarDeployment.dropOnDeath(it, this) }
         (vehicle as? VehicleEntity)?.let { VehicleTransportBehaviour.releaseVehicleTeamIfLastAboard(it, this) }
         // Operator down -> signal lost: its drone crashes where it is (DroneOperatorBehaviour.stop
         // would do this too once the brain notices the death, but the entity may already be gone
