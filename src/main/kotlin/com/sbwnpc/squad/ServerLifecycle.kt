@@ -1,5 +1,6 @@
 package com.sbwnpc.squad
 
+import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.entity.DroneRegistry
 import com.sbwnpc.squad.entity.NpcRegistry
@@ -8,6 +9,7 @@ import com.sbwnpc.squad.entity.ai.MortarClaims
 import com.sbwnpc.squad.entity.ai.VehicleTransportClaims
 import com.sbwnpc.squad.squad.RouteRecording
 import com.sbwnpc.squad.squad.SquadManager
+import com.sbwnpc.squad.vehicle.PilotlessHelicopters
 import com.sbwnpc.squad.squad.SquadSelection
 import com.sbwnpc.squad.team.SquadTeams
 import net.neoforged.bus.api.SubscribeEvent
@@ -28,6 +30,8 @@ object ServerLifecycle {
         RouteRecording.clearAll()
         SquadManager.clearCache()
         NpcRegistry.clearAll()
+        PilotlessHelicopters.clear()
+        FiringSpots.clearAll()
         DroneRegistry.clearAll()
         SquadTeams.clearCache()
     }

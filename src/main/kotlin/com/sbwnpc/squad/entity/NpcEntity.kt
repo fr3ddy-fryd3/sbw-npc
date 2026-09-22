@@ -664,6 +664,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         (level() as? ServerLevel)?.let { SquadManager.get(it).removeMemberEverywhere(uuid) }
         alertAllies(cause)
         MortarClaims.release(uuid)
+        com.sbwnpc.squad.combat.FiringSpots.release(uuid)
         VehicleTransportClaims.release(uuid)
         // Carried kit goes down where its carrier did, rather than out of the world with it.
         (level() as? ServerLevel)?.let { com.sbwnpc.squad.entity.ai.MortarDeployment.dropOnDeath(it, this) }

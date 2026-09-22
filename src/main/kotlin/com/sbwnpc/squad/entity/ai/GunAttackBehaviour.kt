@@ -10,6 +10,7 @@ import com.sbwnpc.squad.combat.Alarm
 import com.sbwnpc.squad.combat.AntiArmourKit
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.DroneCombat
+import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.OffscreenFire
 import com.sbwnpc.squad.combat.Sightline
@@ -65,6 +66,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     private val zoom = false
 
     private var lineIsClear = true
+    /** Why [lineIsClear] is false, when it is: a vehicle hull rather than a squadmate. The two ask
+     *  for opposite responses — see the block in [tick]. */
+    private var hullBlocked = false
     private var blastClear = true
     // Spread actually used for the current target — wider than entity.spread when the target is
     // a drone (or riding one), see DroneCombat.spreadForTarget. Cached alongside the friendly-fire
@@ -212,11 +216,16 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun stop(entity: NpcEntity) {
+        // The fight is over; a gunner left holding a launcher would meet the next rifleman with it.
+        AntiArmourKit.wield(entity, launcher = false)
+        FiringSpots.release(entity.uuid)
+        entity.blockedSightSince = null
         entity.isAggressive = false
         entity.stopUsingItem()
         aimTime = 0
         shootTimer.stop()
         lineIsClear = true
+        hullBlocked = false
         blastClear = true
         nextSidestepTick = 0
         sidestepAttempts = 0
@@ -299,6 +308,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         nextPositionCheckTick = entity.tickCount + HOLD_MIN_TICKS + entity.random.nextInt(HOLD_JITTER_TICKS)
         val chosen = bestFiringSpot(entity, level, target) ?: entity.position()
         firingPos = chosen
+        FiringSpots.claim(entity.uuid, chosen)
         markFiringPosition(level, chosen)
         if (!entity.position().closerThan(chosen, 1.0)) {
             entity.navigation.moveTo(chosen.x, chosen.y, chosen.z, 1.0)
@@ -334,9 +344,11 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         val area = AABB(origin, target.position())
             .inflate(STUCK_SEARCH_RADIUS + VEHICLE_LANE_MARGIN)
         val hulls = Sightline.vehicleHulls(level, area, entity, target)
+        // Walked once for the whole search rather than per candidate — see FiringSpots.nearby.
+        val taken = FiringSpots.nearby(origin, STUCK_SEARCH_RADIUS, entity.uuid)
         val here = concealmentScore(level, entity, target, origin, eyeHeight, hulls)
 
-        sweep(level, entity, target, origin, eyeHeight, hulls, POSITION_SEARCH_RADIUS, POSITION_GRID_STEP, here ?: -1.0)
+        sweep(level, entity, target, origin, eyeHeight, hulls, taken, POSITION_SEARCH_RADIUS, POSITION_GRID_STEP, here ?: -1.0)
             ?.let { return it }
         // Nothing nearby works AND there is no shot from where we stand — which is what being
         // parked behind a vehicle looks like, since a hull is longer than the ordinary search is
@@ -344,7 +356,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         // with a coarser grid rather than hold a position that can never fire.
         if (here == null) {
             return sweep(
-                level, entity, target, origin, eyeHeight, hulls,
+                level, entity, target, origin, eyeHeight, hulls, taken,
                 STUCK_SEARCH_RADIUS, STUCK_GRID_STEP, -1.0
             )
         }
@@ -358,6 +370,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         origin: Vec3,
         eyeHeight: Double,
         hulls: List<AABB>,
+        taken: List<Vec3>,
         radius: Double,
         step: Int,
         startingScore: Double
@@ -370,6 +383,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                 val distSq = (dx * dx + dz * dz).toDouble()
                 if (distSq > radius * radius) continue
                 val ground = Terrain.standableOrNull(level, origin.x + dx, origin.y, origin.z + dz) ?: continue
+                // Somebody else is already going there. Checked before the raycasts, which is also
+                // the cheap order.
+                if (FiringSpots.crowded(ground, taken)) continue
                 val score = concealmentScore(level, entity, target, ground, eyeHeight, hulls) ?: continue
                 if (score > bestScore) {
                     bestScore = score
@@ -480,19 +496,20 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             val assessment = FriendlyFireGuard.assess(
                 entity, target.eyePosition, shotSpread, target.position(), explosionRadius
             )
-            // A vehicle in the way counts as "line not clear" too, which routes it into the
-            // sidestep below — the NPC shuffles until it has a real shot instead of shooting the
-            // hull it is standing behind.
+            // A vehicle in the way counts as "line not clear" too, but it is answered differently
+            // from an ally in the way — see the block further down.
             val level = entity.level() as ServerLevel
             val lane = AABB(entity.eyePosition, target.eyePosition).inflate(VEHICLE_LANE_MARGIN)
             val hulls = Sightline.vehicleHulls(level, lane, entity, target)
             val hullInTheWay =
                 Sightline.crosses(hulls, entity.eyePosition, target.eyePosition, shotSpread)
             lineIsClear = assessment.lineClear && !hullInTheWay
+            hullBlocked = hullInTheWay
             if (DebugFlags.LOGGING_ENABLED && hulls.isNotEmpty()) {
                 DebugFlags.log(
-                    "[fire-debug] {} vehicles on lane={} crossing={} allyClear={} -> lineIsClear={}",
-                    entity.uuid, hulls.size, hullInTheWay, assessment.lineClear, lineIsClear
+                    "[fire-debug] {} vehicles on lane={} crossing={} allyClear={} -> lineIsClear={} answer={}",
+                    entity.uuid, hulls.size, hullInTheWay, assessment.lineClear, lineIsClear,
+                    if (lineIsClear) "fire" else if (hullInTheWay) "reposition" else "sidestep"
                 )
             }
             blastClear = assessment.blastClear
@@ -501,7 +518,16 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (!lineIsClear && !entity.diggedIn) {
             // Dug in: hold fire rather than step out of the hole to clear an ally's line of fire —
             // same reasoning as advanceOrHold's guard above.
-            if (entity.tickCount >= nextSidestepTick) {
+            if (hullBlocked) {
+                // A hull is not something to shuffle out from behind: sidestepAwayFromAllies steers
+                // by where the ALLIES are, knows nothing about the vehicle, and — worse — issues its
+                // own navigation.moveTo, which overwrites the path to the firing position that was
+                // just chosen. That is the loop that had a squad standing beside its own helicopter
+                // never firing: pick a good spot, get shoved sideways, never arrive, repeat.
+                // The answer to a hull is a different position, so ask for one now instead of
+                // waiting out the hold timer.
+                nextPositionCheckTick = 0
+            } else if (entity.tickCount >= nextSidestepTick) {
                 if (sidestepAttempts >= MAX_SIDESTEP_ATTEMPTS) {
                     sidestepAttempts = 0
                     nextSidestepTick = entity.tickCount + SIDESTEP_BATCH_COOLDOWN
