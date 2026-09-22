@@ -429,6 +429,10 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             // it doesn't report). Without this, faction-wide awareness would never receive anything
             // regardless of how the current target was acquired (focus/hurt-by/relay/direct).
             SquadTeams.factionOf(entity)?.let { TeamAwareness.report(it, target.uuid, entity.level().gameTime) }
+            entity.blockedSightSince = null
+        } else if (entity.blockedSightSince == null) {
+            // Stamped once, on the tick sight was lost — GrenadeUseBehaviour measures from here.
+            entity.blockedSightSince = entity.tickCount
         }
         aimTime = if (canSeeTarget) {
             minOf(entity.maxAimTime, aimTime + 1)

@@ -168,6 +168,12 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // brain tick, so throttling the operator would throttle the drone.
     var operatingDrone: Boolean = false
 
+    /** Tick at which this NPC last lost sight of its target, or null while it can see it. Stamped
+     *  by [com.sbwnpc.squad.entity.ai.GunAttackBehaviour], read by
+     *  [com.sbwnpc.squad.entity.ai.GrenadeUseBehaviour] to tell "behind cover" from "behind a tree
+     *  for a moment". Combat-moment state, not persisted. */
+    var blockedSightSince: Int? = null
+
     // Set/cleared only by AntiDroneBehaviour while this mob is dealing with a hostile drone
     // (shooting at it or running from it) — same "hands off" contract as the two above.
     var antiDroneEngaged: Boolean = false
@@ -533,7 +539,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         net.tslat.smartbrainlib.api.core.BrainActivityGroup.fightTasks(
             com.sbwnpc.squad.entity.ai.GunAttackBehaviour(),
             net.tslat.smartbrainlib.api.core.behaviour.custom.attack.AnimatableMeleeAttack<NpcEntity>(20),
-            GrenadeThrowBehaviour()
+            GrenadeThrowBehaviour(),
+            com.sbwnpc.squad.entity.ai.GrenadeUseBehaviour()
         )
 
     // Used by SquadTargetSensor (step 4 of the SmartBrain migration) too, hence internal not private.
