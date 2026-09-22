@@ -41,9 +41,15 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
     private var garrison: UUID? = null
     private var ticksUntilRespawn = RESPAWN_INTERVAL_TICKS
 
-    fun configOrDefault(): SquadToolItem.Config =
+    /**
+     * What the config screen opens on. A Barracks nobody has configured yet starts on the opening
+     * player's own faction rather than the global default — the screen is otherwise reset every
+     * time it is opened (nothing is stored until Deploy), so defaulting to someone else's side
+     * meant re-picking the faction on every single visit.
+     */
+    fun configOrDefault(ownFaction: SquadFaction): SquadToolItem.Config =
         config?.let { SquadToolItem.readConfig(it) }
-            ?: SquadToolItem.Config(NpcClass.DEFAULT, NpcRank.DEFAULT, SquadFaction.DEFAULT, SquadPreset.DEFAULT)
+            ?: SquadToolItem.Config(NpcClass.DEFAULT, NpcRank.DEFAULT, ownFaction, SquadPreset.DEFAULT)
 
     /**
      * Accepts a new garrison order, replacing whatever is standing here.

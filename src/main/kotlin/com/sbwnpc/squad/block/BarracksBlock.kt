@@ -6,6 +6,7 @@ import com.sbwnpc.squad.item.SquadToolItem
 import com.sbwnpc.squad.network.OpenBarracksScreenPayload
 import com.sbwnpc.squad.network.sendToClient
 import com.sbwnpc.squad.squad.BarracksRef
+import com.sbwnpc.squad.squad.PlayerFactionRegistry
 import com.sbwnpc.squad.squad.SquadManager
 import com.mojang.serialization.MapCodec
 import net.minecraft.ChatFormatting
@@ -84,7 +85,11 @@ class BarracksBlock : BaseEntityBlock(
             return InteractionResult.SUCCESS
         }
         val serverPlayer = player as? ServerPlayer ?: return InteractionResult.SUCCESS
-        sendToClient(serverPlayer, OpenBarracksScreenPayload(pos.immutable(), SquadToolItem.configTag(be.configOrDefault())))
+        // Same one-time gate the deploy tool has: picking a side is what everything else keys off,
+        // and the Barracks is a second way into deploying, so it cannot skip it.
+        val own = PlayerFactionRegistry.get(level as ServerLevel).requireOrPrompt(serverPlayer)
+            ?: return InteractionResult.SUCCESS
+        sendToClient(serverPlayer, OpenBarracksScreenPayload(pos.immutable(), SquadToolItem.configTag(be.configOrDefault(own))))
         return InteractionResult.SUCCESS
     }
 
