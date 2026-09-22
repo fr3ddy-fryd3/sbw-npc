@@ -1,6 +1,12 @@
 {
-  "parent": "minecraft:block/cube_all",
+  "parent": "minecraft:block/cube",
   "textures": {
-    "all": "superbwarfare:block/sandbag"
+    "particle": "sbwnpc:block/barracks/front",
+    "down": "sbwnpc:block/barracks/bottom",
+    "up": "sbwnpc:block/barracks/top",
+    "north": "sbwnpc:block/barracks/front",
+    "south": "sbwnpc:block/barracks/back",
+    "west": "sbwnpc:block/barracks/left",
+    "east": "sbwnpc:block/barracks/right"
   }
 }

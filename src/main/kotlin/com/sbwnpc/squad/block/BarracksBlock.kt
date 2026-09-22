@@ -11,6 +11,7 @@ import com.sbwnpc.squad.squad.SquadManager
 import com.mojang.serialization.MapCodec
 import net.minecraft.ChatFormatting
 import net.minecraft.core.BlockPos
+import net.minecraft.core.Direction
 import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
@@ -18,14 +19,20 @@ import net.minecraft.world.InteractionResult
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.context.BlockPlaceContext
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.BaseEntityBlock
+import net.minecraft.world.level.block.Block
+import net.minecraft.world.level.block.Mirror
 import net.minecraft.world.level.block.RenderShape
+import net.minecraft.world.level.block.Rotation
 import net.minecraft.world.level.block.SoundType
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.entity.BlockEntityTicker
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.level.block.state.StateDefinition
+import net.minecraft.world.level.block.state.properties.BlockStateProperties
 import net.minecraft.world.level.material.MapColor
 import net.minecraft.world.phys.BlockHitResult
 
@@ -44,9 +51,29 @@ import net.minecraft.world.phys.BlockHitResult
 class BarracksBlock : BaseEntityBlock(
     Properties.of().mapColor(MapColor.COLOR_GRAY).strength(6.0f, 12.0f).sound(SoundType.WOOD).noOcclusion()
 ) {
+    init {
+        // Its faces are not interchangeable — front, back and two sides are distinct textures, so
+        // the block has to remember which way it was put down.
+        registerDefaultState(stateDefinition.any().setValue(FACING, Direction.NORTH))
+    }
+
     override fun codec(): MapCodec<BarracksBlock> = CODEC
 
     override fun getRenderShape(state: BlockState) = RenderShape.MODEL
+
+    override fun createBlockStateDefinition(builder: StateDefinition.Builder<Block, BlockState>) {
+        builder.add(FACING)
+    }
+
+    /** Placed facing the player, the way every vanilla fronted block does it. */
+    override fun getStateForPlacement(context: BlockPlaceContext): BlockState =
+        defaultBlockState().setValue(FACING, context.horizontalDirection.opposite)
+
+    override fun rotate(state: BlockState, rotation: Rotation): BlockState =
+        state.setValue(FACING, rotation.rotate(state.getValue(FACING)))
+
+    override fun mirror(state: BlockState, mirror: Mirror): BlockState =
+        state.rotate(mirror.getRotation(state.getValue(FACING)))
 
     override fun newBlockEntity(pos: BlockPos, state: BlockState): BlockEntity = BarracksBlockEntity(pos, state)
 
@@ -97,6 +124,7 @@ class BarracksBlock : BaseEntityBlock(
         player.displayClientMessage(Component.literal(msg).withStyle(color), true)
 
     companion object {
+        val FACING = BlockStateProperties.HORIZONTAL_FACING
         val CODEC: MapCodec<BarracksBlock> = simpleCodec { BarracksBlock() }
     }
 }

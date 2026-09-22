@@ -1,5 +1,8 @@
 {
   "variants": {
-    "": { "model": "sbwnpc:block/barracks" }
+    "facing=north": { "model": "sbwnpc:block/barracks" },
+    "facing=east": { "model": "sbwnpc:block/barracks", "y": 90 },
+    "facing=south": { "model": "sbwnpc:block/barracks", "y": 180 },
+    "facing=west": { "model": "sbwnpc:block/barracks", "y": 270 }
   }
 }

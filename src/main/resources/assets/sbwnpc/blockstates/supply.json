@@ -1,7 +1,8 @@
 {
   "variants": {
-    "": {
-      "model": "sbwnpc:block/supply"
-    }
+    "facing=north": { "model": "sbwnpc:block/supply" },
+    "facing=east": { "model": "sbwnpc:block/supply", "y": 90 },
+    "facing=south": { "model": "sbwnpc:block/supply", "y": 180 },
+    "facing=west": { "model": "sbwnpc:block/supply", "y": 270 }
   }
 }

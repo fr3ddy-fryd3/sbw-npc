@@ -1,8 +1,12 @@
 {
-  "parent": "minecraft:block/cube_bottom_top",
+  "parent": "minecraft:block/cube",
   "textures": {
-    "top": "superbwarfare:block/charging_station_top",
-    "bottom": "superbwarfare:block/charging_station_bottom",
-    "side": "superbwarfare:block/charging_station_side"
+    "particle": "sbwnpc:block/supply/front",
+    "down": "sbwnpc:block/supply/bottom",
+    "up": "sbwnpc:block/supply/top",
+    "north": "sbwnpc:block/supply/front",
+    "south": "sbwnpc:block/supply/back",
+    "west": "sbwnpc:block/supply/side",
+    "east": "sbwnpc:block/supply/side"
   }
 }

@@ -1,6 +1,6 @@
 {
   "parent": "minecraft:item/generated",
   "textures": {
-    "layer0": "superbwarfare:item/tactical_terminal"
+    "layer0": "sbwnpc:item/squad_terminal"
   }
 }
