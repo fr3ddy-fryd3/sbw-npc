@@ -29,6 +29,9 @@ object VehicleTargeting {
         occupants.sortBy { entity.distanceToSqr(it) }
         for (occupant in occupants) {
             if (entity.distanceToSqr(occupant) > rangeSqr) break
+            // Same arc the naked eye gets in SquadTargetSensor — a tank behind you is no more
+            // visible than a rifleman behind you.
+            if (!Vision.inCone(entity.position(), entity.yHeadRot, occupant.position())) continue
             if (entity.sensing.hasLineOfSight(occupant.vehicle!!)) return occupant
         }
         return null

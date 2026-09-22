@@ -2,6 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.sbwnpc.squad.combat.TeamAwareness
+import com.sbwnpc.squad.combat.Vision
 import com.sbwnpc.squad.combat.TankWeaponSelection
 import com.sbwnpc.squad.combat.VehicleTargeting
 import com.sbwnpc.squad.entity.NpcEntity
@@ -121,6 +122,9 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         hostiles.sortBy { mob.distanceToSqr(it) }
         for (candidate in hostiles) {
             if (mob.distanceToSqr(candidate) > rangeSqr) break // box corners reach past the sphere
+            // Cheaper than the raycast and rejects more, so it goes first. Head rotation, not body
+            // yaw: an NPC scanning around while it walks is looking where its head points.
+            if (!Vision.inCone(mob.position(), mob.yHeadRot, candidate.position())) continue
             if (mob.sensing.hasLineOfSight(candidate)) return candidate
         }
         return null
