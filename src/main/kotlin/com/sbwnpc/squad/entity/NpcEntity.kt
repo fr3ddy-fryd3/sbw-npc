@@ -181,6 +181,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      *  the ground if the carrier dies, so a displacing crew can never simply lose its mortar. */
     var carryingMortar: Boolean = false
 
+    /** A machine gunner's launcher while the machine gun is in its hands, and the machine gun
+     *  while the launcher is — see [com.sbwnpc.squad.combat.AntiArmourKit]. Persisted; empty for
+     *  every class that carries no second weapon. */
+    var antiArmourWeapon: ItemStack = ItemStack.EMPTY
+
     /** The gun stowed while the operator holds the drone monitor — persisted so a world save
      *  mid-flight doesn't leave the operator with a monitor and no weapon (see
      *  DroneOperatorBehaviour.holdMonitor/restoreWeapon). */
@@ -604,6 +609,12 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         hasReserveGrenade = npcClass != NpcClass.MORTAR_OPERATOR && npcClass != NpcClass.MORTAR_LOADER &&
             npcClass != NpcClass.TANK_CREW && npcClass != NpcClass.DRONE_OPERATOR
         if (npcClass == NpcClass.DRONE_OPERATOR) dronesLeft = com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES
+
+        // A belt-fed gun does nothing to a tank, and the machine gunner is the one member of an
+        // ordinary squad with a free hand for something that does.
+        if (npcClass == NpcClass.MACHINE_GUNNER) {
+            antiArmourWeapon = com.sbwnpc.squad.combat.AntiArmourKit.issue(this)
+        }
     }
 
     override fun addAdditionalSaveData(compound: CompoundTag) {
@@ -616,6 +627,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         if (carryingMortar) compound.putBoolean("CarryingMortar", true)
         compound.putInt("DronesLeft", dronesLeft)
         if (!stowedWeapon.isEmpty) compound.put("StowedWeapon", stowedWeapon.save(registryAccess()))
+        if (!antiArmourWeapon.isEmpty) compound.put("AntiArmourWeapon", antiArmourWeapon.save(registryAccess()))
     }
 
     override fun readAdditionalSaveData(compound: CompoundTag) {
@@ -631,6 +643,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             else if (npcClass == NpcClass.DRONE_OPERATOR) com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES else 0
         stowedWeapon = if (compound.contains("StowedWeapon"))
             ItemStack.parseOptional(registryAccess(), compound.getCompound("StowedWeapon")) else ItemStack.EMPTY
+        antiArmourWeapon = if (compound.contains("AntiArmourWeapon"))
+            ItemStack.parseOptional(registryAccess(), compound.getCompound("AntiArmourWeapon")) else ItemStack.EMPTY
         // Saved mid-flight: the drone itself doesn't survive the reload as "ours" (the behaviour's
         // state is transient), so just give the gun back right away.
         if (!stowedWeapon.isEmpty) {

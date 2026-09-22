@@ -7,6 +7,7 @@ import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.atsuishio.superbwarfare.tools.MillisTimer
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.Alarm
+import com.sbwnpc.squad.combat.AntiArmourKit
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.DroneCombat
 import com.sbwnpc.squad.combat.FriendlyFireGuard
@@ -167,6 +168,20 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     private val NpcEntity.semiFireInterval get() = npcRank.semiFireIntervalMs
     private val NpcEntity.spread get() = npcRank.spread * npcClass.accuracyMultiplier
     private val NpcEntity.shootDistance get() = BASE_SHOOT_DISTANCE * npcClass.shootDistanceMultiplier
+
+    /**
+     * Swaps a machine gunner onto its launcher for an armoured target and back off it again.
+     *
+     * Everything downstream — aim time, line of fire, friendly-fire checks, the burst pacing — is
+     * written against whatever is in the main hand, so putting the launcher there is the whole
+     * implementation. Running dry is not special-cased either: [AntiArmourKit.loaded] stops
+     * returning true and the gunner is swapped back for good.
+     */
+    private fun chooseWeapon(entity: NpcEntity, target: LivingEntity) {
+        if (entity.antiArmourWeapon.isEmpty && !AntiArmourKit.isLauncher(entity.mainHandItem)) return
+        val wantLauncher = AntiArmourKit.worthARocket(entity, target) && AntiArmourKit.loaded(entity)
+        AntiArmourKit.wield(entity, wantLauncher)
+    }
 
     private fun currentGunData(entity: NpcEntity): GunData? {
         if (entity.mainHandItem.item !is GunItem) return null
@@ -402,6 +417,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun tick(entity: NpcEntity) {
         val target = entity.target ?: return
+        // Decided before the gun data is read, so the rest of this tick aims and fires whatever
+        // the swap left in the gunner's hands.
+        chooseWeapon(entity, target)
         val gunData = currentGunData(entity) ?: return
 
         val canSeeTarget = entity.sensing.hasLineOfSight(target)
