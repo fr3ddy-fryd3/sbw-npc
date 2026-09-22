@@ -53,7 +53,8 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** Other helicopters near enough to matter, refreshed on an interval rather than per tick —
      *  see [refreshTraffic]. */
     private var trafficPositions: List<Vec3> = emptyList()
-    private var trafficIds: List<java.util.UUID> = emptyList()
+    /** Only the aircraft actually flying nearby — what the altitude bands are computed against. */
+    private var layerIds: List<java.util.UUID> = emptyList()
     private var nextTrafficTick = 0
 
     init {
@@ -106,7 +107,10 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         // else is up here and fly it in its own altitude band.
         refreshTraffic(entity, heli, level)
         val station = Airspace.separate(heli.position(), mission.station, trafficPositions)
-        val clearance = mission.clearance + Airspace.clearanceFor(heli.uuid, trafficIds)
+        // A patrol is flown low on purpose — that was the whole point of PATROL_CLEARANCE — so it
+        // never gets stacked. Everything else takes its band.
+        val clearance = mission.clearance +
+            if (mission.patrol) 0.0 else Airspace.clearanceFor(heli.uuid, layerIds)
         val facing = mission.facing
 
         // The one invariant that matters: cyclic input tilts the lift vector, so commanding it
@@ -334,8 +338,16 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         val others = level.getEntitiesOfClass(VehicleEntity::class.java, heli.boundingBox.inflate(Airspace.AWARENESS_RANGE)) {
             it !== heli && it.isAlive && !it.isWreck && Helicopters.isHelicopter(it)
         }
+        // Everything nearby counts for lateral separation, parked machines included — hovering
+        // over one is no better than hovering over a flying one.
         trafficPositions = others.map { it.position() }
-        trafficIds = others.map { it.uuid }
+        // Altitude bands are a different question, and answering it with this same list is what
+        // sent a single gunship three bands up because three of its squadmates were parked on the
+        // pad below it.
+        layerIds = others
+            .filter { !Helicopters.isGrounded(level, it) }
+            .filter { it.distanceToSqr(heli) <= Airspace.LAYER_RANGE * Airspace.LAYER_RANGE }
+            .map { it.uuid }
     }
 
     /** Contact is held for a while after the last confirmed target so a sensor gap or a broken
