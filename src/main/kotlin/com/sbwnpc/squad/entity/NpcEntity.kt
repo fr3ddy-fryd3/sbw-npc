@@ -646,7 +646,13 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         VehicleTransportClaims.release(uuid)
         // Carried kit goes down where its carrier did, rather than out of the world with it.
         (level() as? ServerLevel)?.let { com.sbwnpc.squad.entity.ai.MortarDeployment.dropOnDeath(it, this) }
-        (vehicle as? VehicleEntity)?.let { VehicleTransportBehaviour.releaseVehicleTeamIfLastAboard(it, this) }
+        (vehicle as? VehicleEntity)?.let { ride ->
+            VehicleTransportBehaviour.releaseVehicleTeamIfLastAboard(ride, this)
+            // Flying it when it died: start the countdown for somebody else to take the controls.
+            if (ride.firstPassenger === this) {
+                (level() as? ServerLevel)?.let { com.sbwnpc.squad.vehicle.PilotlessHelicopters.pilotDown(it, ride) }
+            }
+        }
         // Operator down -> signal lost: its drone crashes where it is (DroneOperatorBehaviour.stop
         // would do this too once the brain notices the death, but the entity may already be gone
         // from the level by then). Drop the gun, not the monitor, as loot.
