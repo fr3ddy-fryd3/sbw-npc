@@ -33,13 +33,14 @@ clicking.
   preset and deploy it; Command mode selects squads and issues orders. Ctrl+right-click switches
   between them.
 - **Squad presets** — Single, 5 (riflemen + medic), 7 (riflemen, sniper, machine gunner, medic),
-  16 (large mixed squad), Mortar Crew, Tank Crew, Drone Team. 5 and 7 can deploy with a support
-  vehicle; the tank crew preset lets you pick the model (ZTZ-99A / T-90A / M1A2).
+  16 (large mixed squad), Mortar Crew, Tank Crew, Drone Team, Heli Crew. 5 and 7 can deploy with a
+  support vehicle; the tank crew preset lets you pick the model (ZTZ-99A / T-90A / M1A2), and the
+  heli crew the airframe (Mi-28 gunship or AH-6 transport).
 - **8 factions**, each with its own uniform, team, and color — pick freely, including OPFOR
   test squads.
-- **Combat AI** — cover-seeking, suppression, digging in as a last resort, partial-cover firing
-  positions, friendly-fire avoidance modeled on the actual firing cone (not just a straight line),
-  and faction-wide relayed contact awareness.
+- **Combat AI** — a 150° field of view you can flank them out of, cover-seeking, suppression,
+  digging in as a last resort, partial-cover firing positions, friendly-fire avoidance modeled on
+  the actual firing cone (not just a straight line), and faction-wide relayed contact awareness.
 - **Vehicles** — NPC crews drive, escort, and gun for their squad; a squad far from its objective
   will commandeer nearby vehicles on its own. Players can now ride along in a seat next to an
   allied NPC driver instead of bumping them out.
@@ -47,7 +48,8 @@ clicking.
   addon's drone if installed, falls back to a stock SBW drone otherwise); other NPCs will shoot
   down or take cover from a hostile drone and alert the squad.
 - **Helicopters** — NPC pilots fly a Mi-28 gunship or an AH-6 that carries the squad, takes off,
-  picks a landing zone and puts them down.
+  picks a landing zone and puts them down. Kill the pilot and the crew has a few seconds to take
+  the controls before the aircraft comes down with it.
 - **Barracks** — a placeable garrison point, configured like the deploy tool, that deploys a squad
   and restocks its losses over time.
 - **Quick-command HUD** — a lightweight panel (default key `B`) to pick a squad and an order
@@ -77,6 +79,7 @@ Recommended alongside: [GeckolibBetterFPS](https://www.curseforge.com/minecraft/
 |---|---|---|
 | **Squad Command Tool** (`sbwnpc:squad_tool`) | Creative, *Superb Warfare Items* tab — or `/give @s sbwnpc:squad_tool` | Deploys NPCs and commands squads. No survival recipe yet. |
 | **Barracks** (`sbwnpc:barracks`) | Same tab — or `/give @s sbwnpc:barracks` | A placed block that garrisons a squad and keeps it at strength. |
+| **Supply Point** (`sbwnpc:supply`) | Same tab — or `/give @s sbwnpc:supply` | Groundwork for squad logistics. Places, breaks, does nothing else yet. |
 | **Quick-command HUD** | Key `B`, rebindable under controls category *SBW NPC Squads* | Pick a squad and an order without opening a menu. |
 
 On first use the tool asks you to pick a faction once. That is only your own default — you can
@@ -139,8 +142,13 @@ Move (flies the squad there and lands).
 ### The Barracks
 
 Right-click a Barracks you placed to configure it the same way the tool is configured, then press
-**Deploy garrison**. It deploys that squad and keeps it at strength, replacing losses over time.
-Re-deploying replaces the garrison standing there. Only whoever placed it can configure it.
+**Deploy garrison**. It deploys that squad and then keeps it at the strength it went out with:
+replacements walk out every half a minute or so, and drone operators standing near it get their
+drones back. Re-deploying replaces the garrison standing there, and only whoever placed it can
+configure it — it asks for your faction pick the same way the tool does.
+
+It is an ordinary block otherwise: mine it or blow it up and it's gone. The squad stays where it
+is, with nobody left to replace its losses.
 
 ### Worth knowing
 
@@ -148,6 +156,12 @@ Re-deploying replaces the garrison standing there. Only whoever placed it can co
   parked vehicle.
 - A squad with a distant objective commandeers a vehicle nearby and drives. You can ride along in
   a free seat without bumping the NPC driver out.
+- They only see what is in front of them, so they can be flanked — but a shot at them, or a
+  contact their own side calls in, turns them around.
+- Machine gunners carry a launcher on the side for anything riding a vehicle; infantry stays the
+  machine gun's job.
+- Grenades are thrown to flush a target that will not come out of cover and to answer fire that has
+  the squad pinned, rationed so an ambush draws an answer rather than a volley.
 - Mortar crews only shell what their own side has actually seen. Out of reach of the target, they
   break the mortar down, carry it closer and set it back up.
 - Each piece of an NPC's kit drops with a 30% chance when a player kills it.
@@ -194,14 +208,15 @@ the generation notes.
   и пресета отряда и деплоит его; режим «Командование» выделяет отряды и отдаёт приказы.
   Переключение — Ctrl + ПКМ.
 - **Пресеты отрядов** — Single, 5 (автоматчики + медик), 7 (автоматчики, снайпер, пулемётчик,
-  медик), 16 (большой смешанный отряд), Mortar Crew, Tank Crew, Drone Team. Пресеты 5 и 7 можно
-  задеплоить вместе с техникой поддержки; танковый расчёт — с выбором модели (ZTZ-99A / T-90A /
-  M1A2).
+  медик), 16 (большой смешанный отряд), Mortar Crew, Tank Crew, Drone Team, Heli Crew. Пресеты 5 и
+  7 можно задеплоить вместе с техникой поддержки; танковый расчёт — с выбором модели (ZTZ-99A /
+  T-90A / M1A2), вертолётный — с выбором борта (Ми-28 или AH-6).
 - **8 фракций**, у каждой своя форма, команда и цвет — выбор свободный, в том числе для тестовых
   отрядов противника.
-- **Боевой ИИ** — поиск укрытий, подавление, окапывание как последний рубеж, позиции с частичным
-  укрытием тела при стрельбе, защита от дружественного огня по реальному конусу разброса выстрела
-  (а не по прямой линии), и осведомлённость всей фракции о замеченных врагах.
+- **Боевой ИИ** — конус зрения в 150°, из-за которого их можно обойти с фланга, поиск укрытий,
+  подавление, окапывание как последний рубеж, позиции с частичным укрытием тела при стрельбе,
+  защита от дружественного огня по реальному конусу разброса выстрела (а не по прямой линии), и
+  осведомлённость всей фракции о замеченных врагах.
 - **Техника** — экипажи NPC водят, сопровождают и стреляют за свой отряд; отряд, которому далеко
   до цели, сам реквизирует ближайшую технику. Игрок теперь может подсесть пассажиром к союзному
   NPC-водителю, а не выкидывать его при посадке.
@@ -209,7 +224,8 @@ the generation notes.
   Drone Warfare, если он установлен, иначе — обычный дрон SBW); остальные NPC сбивают вражеский
   дрон или прячутся от него и поднимают тревогу в отряде.
 - **Вертолёты** — NPC-пилоты водят Ми-28 или AH-6: взлетают, возят отряд, выбирают площадку и
-  высаживают.
+  высаживают. Убей пилота — у экипажа есть несколько секунд, чтобы сесть за управление, иначе
+  борт падает вместе с ним.
 - **Казарма** — устанавливаемая точка гарнизона с теми же настройками, что и у инструмента:
   разворачивает отряд и со временем восстанавливает его потери.
 - **Быстрое командование через HUD** — лёгкая панель (по умолчанию клавиша `B`) для выбора отряда
@@ -240,6 +256,7 @@ the generation notes.
 |---|---|---|
 | **Squad Command Tool** (`sbwnpc:squad_tool`) | Креатив, вкладка *Superb Warfare Items* — или `/give @s sbwnpc:squad_tool` | Деплоит NPC и командует отрядами. Крафта пока нет. |
 | **Barracks** (`sbwnpc:barracks`) | Та же вкладка — или `/give @s sbwnpc:barracks` | Ставится блоком, держит гарнизон и восполняет его потери. |
+| **Supply Point** (`sbwnpc:supply`) | Та же вкладка — или `/give @s sbwnpc:supply` | Задел под логистику отрядов. Ставится и ломается, больше пока ничего. |
 | **HUD быстрых команд** | Клавиша `B`, переназначается в категории *SBW NPC Squads* | Выбрать отряд и приказ, не открывая меню. |
 
 При первом использовании инструмент один раз попросит выбрать фракцию. Это только твой дефолт —
@@ -303,8 +320,13 @@ Attack / Defend / Move и висит в 20 блоках от цели, а не �
 ### Казарма
 
 ПКМ по поставленной казарме открывает тот же конфиг, что и у инструмента, дальше — **Deploy
-garrison**. Казарма разворачивает отряд и держит его в составе, восполняя потери со временем.
-Повторный деплой заменяет стоящий гарнизон. Настраивать может только тот, кто её поставил.
+garrison**. Казарма разворачивает отряд и дальше держит его в том составе, с которым он вышел:
+замена потерям выходит примерно раз в полминуты, а операторы дронов рядом с ней пополняют запас
+дронов. Повторный деплой заменяет стоящий гарнизон, настраивать может только тот, кто её поставил,
+и фракцию она спрашивает так же, как инструмент.
+
+В остальном это обычный блок: его можно выкопать или взорвать. Отряд при этом остаётся на месте,
+но восполнять его потери больше некому.
 
 ### Что стоит знать
 
@@ -312,6 +334,12 @@ garrison**. Казарма разворачивает отряд и держит
   стоящую технику тоже.
 - Отряд с далёкой целью сам реквизирует ближайшую технику и поедет. Подсесть в свободное место
   можно, не выкидывая NPC-водителя.
+- Видят только то, что перед ними, поэтому их можно обойти с фланга — но выстрел по ним или
+  контакт, который передала своя сторона, разворачивает их.
+- Пулемётчики носят с собой гранатомёт на всё, что сидит в технике; пехота остаётся работой
+  пулемёта.
+- Гранаты идут в ход, чтобы выкурить цель, которая не вылезает из укрытия, и чтобы ответить на
+  огонь, который прижал отряд, — с ограничением, чтобы на засаду летела одна граната, а не залп.
 - Миномётчики бьют только по тому, что их сторона реально видела. Если до цели не достают —
   собирают миномёт, подходят ближе и разворачиваются заново.
 - С убитого игроком NPC каждый предмет снаряжения падает с шансом 30%.
