@@ -4,6 +4,7 @@ import com.sbwnpc.squad.combat.DeathSites
 import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.entity.DroneRegistry
+import com.sbwnpc.squad.entity.GrenadeRegistry
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.entity.ai.DroneLinks
 import com.sbwnpc.squad.entity.ai.MortarClaims
@@ -35,6 +36,7 @@ object ServerLifecycle {
         PilotlessHelicopters.clear()
         FiringSpots.clearAll()
         DroneRegistry.clearAll()
+        GrenadeRegistry.clearAll()
         SquadTeams.clearCache()
     }
 

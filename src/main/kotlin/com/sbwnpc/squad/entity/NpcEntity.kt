@@ -133,7 +133,12 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      *  deliberate window where the mob steps out to return fire and GunAttackBehaviour/
      *  GrenadeThrowBehaviour take back over. Backed by [ModMemories.COVER_HOLD] (see its own doc
      *  comment) instead of a hand-rolled enum with a logging setter. */
-    fun combatLockedByCover(): Boolean = BrainUtils.hasMemory(this, ModMemories.COVER_HOLD.get())
+    fun combatLockedByCover(): Boolean =
+        BrainUtils.hasMemory(this, ModMemories.COVER_HOLD.get()) || evadingGrenade()
+
+    /** Running from a live grenade (GrenadeEvadeBehaviour). Part of [combatLockedByCover]; exposed
+     *  on its own for the movers that don't read that lock. */
+    fun evadingGrenade(): Boolean = BrainUtils.hasMemory(this, ModMemories.GRENADE_EVADE.get())
 
     fun combatLockedByMedic(): Boolean = BrainUtils.hasMemory(this, ModMemories.MEDIC_HEALING.get())
 
@@ -513,7 +518,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             com.sbwnpc.squad.entity.ai.HelicopterGunnerBehaviour(),
             com.sbwnpc.squad.entity.ai.HelicopterRideBehaviour(),
             VehicleCombatSupportBehaviour(),
-            MedicHealBehaviour()
+            MedicHealBehaviour(),
+            // Last: it has to override whatever the behaviours above did with the navigation.
+            com.sbwnpc.squad.entity.ai.GrenadeEvadeBehaviour()
         )
     // Idle: only relevant while there's no ATTACK_TARGET (Fight always outranks Idle). Order here
     // doesn't change behaviour — InvestigateBehaviour's and SquadOrderBehaviour's own eligibility

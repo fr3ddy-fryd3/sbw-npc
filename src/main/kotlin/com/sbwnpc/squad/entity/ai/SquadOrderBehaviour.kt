@@ -74,6 +74,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         // moment would get marched off toward its DEFEND/PATROL slot, right out of its own hole.
         if (entity.diggedIn) return false
         if (entity.vehicleTransport || entity.operatingDrone || entity.antiDroneEngaged) return false
+        if (entity.evadingGrenade()) return false
         val squad = entity.currentSquad() ?: return false
         return entity.homeCenter() != null
     }

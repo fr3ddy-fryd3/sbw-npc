@@ -42,6 +42,12 @@ object ModMemories {
     val MEDIC_HEALING: Supplier<MemoryModuleType<Boolean>> =
         SBLConstants.SBL_LOADER.registerMemoryType("medic_healing")
 
+    /** Present while [com.sbwnpc.squad.entity.ai.GrenadeEvadeBehaviour] is running the NPC away
+     *  from a live grenade — the same "hands off" idiom as [COVER_HOLD], and folded into
+     *  `NpcEntity.combatLockedByCover()` so everything that already respects cover respects this. */
+    val GRENADE_EVADE: Supplier<MemoryModuleType<Boolean>> =
+        SBLConstants.SBL_LOADER.registerMemoryType("grenade_evade")
+
     /** UUID of a hostile drone this NPC (or a squadmate who shouted) knows is in the air nearby —
      *  see AntiDroneBehaviour. TTL memory: forgotten a few seconds after the last sighting. */
     val DRONE_THREAT: Supplier<MemoryModuleType<java.util.UUID>> =

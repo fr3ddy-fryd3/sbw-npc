@@ -127,7 +127,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
         return best
     }
 
-    private fun eligible(entity: NpcEntity): Boolean = candidate(entity) != null
+    private fun eligible(entity: NpcEntity): Boolean = !entity.evadingGrenade() && candidate(entity) != null
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = eligible(entity)
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = eligible(entity)

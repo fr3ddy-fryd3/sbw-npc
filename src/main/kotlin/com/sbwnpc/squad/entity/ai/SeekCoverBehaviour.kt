@@ -210,6 +210,8 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun tick(entity: NpcEntity) {
         val level = entity.level() as? ServerLevel ?: return
+        // A live grenade outranks cover — GrenadeEvadeBehaviour has the legs until it's clear.
+        if (entity.evadingGrenade()) return
         // DUG_IN_HOLDING/HOLDING_OPEN/EXITING_HOLE deliberately do NOT bail out on threatPos == null
         // the way every other phase does below — none of them are gated by the threat-suppression
         // memory the way MOVING_TO_COVER/IN_COVER/etc. are (see each one's own doc comment).
