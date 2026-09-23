@@ -51,7 +51,9 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private var healTargetId: UUID? = null
     private var nextTreatTick = 0
-    private var candidateTick = Int.MIN_VALUE
+    // MIN_VALUE / 2, not MIN_VALUE: `tickCount - MIN_VALUE` overflows to a negative number, which
+    // read as "rescanned a moment ago" forever — the medic never looked for anyone to treat.
+    private var candidateTick = Int.MIN_VALUE / 2
     private var candidateCache: NpcEntity? = null
     private var nextRepathTick = 0
 

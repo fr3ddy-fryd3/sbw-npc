@@ -94,7 +94,7 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private var nextMortarSearchTick = 0
-    private var friendlyCheckTick = Int.MIN_VALUE
+    private var friendlyCheckTick = Int.MIN_VALUE / 2 // not MIN_VALUE: `tickCount - MIN_VALUE` overflows
     private var friendlyCheckTarget: BlockPos? = null
     private var friendlyCheckResult = false
 

@@ -762,7 +762,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         return mortarPriorityCached
     }
 
-    private var mortarPriorityCheckTick = Int.MIN_VALUE
+    private var mortarPriorityCheckTick = Int.MIN_VALUE / 2 // not MIN_VALUE: `tickCount - MIN_VALUE` overflows
     private var mortarPriorityCached = false
 
     private fun isUsableGroundVehicle(vehicle: VehicleEntity, entity: NpcEntity): Boolean =

@@ -140,7 +140,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     // start check EVERY tick for EVERY non-mortar NPC on the map, whether or not anything armoured
     // was anywhere near — by far the most expensive per-tick idle work in the brain. Cached for a
     // few ticks; a cached hit is still re-validated (alive, hostile, still mounted) on every read.
-    private var threatScanTick = Int.MIN_VALUE
+    private var threatScanTick = Int.MIN_VALUE / 2 // not MIN_VALUE: `tickCount - MIN_VALUE` overflows
     private var threatCache: LivingEntity? = null
     private var nextVehicleSearchTick = 0
 
