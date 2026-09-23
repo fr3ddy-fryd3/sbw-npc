@@ -109,12 +109,17 @@ object FriendlyFireGuard {
     /** True if no ally sits within [blastRadius] of [impactPoint] — a separate check from the
      *  firing cone above, for weapons that damage an area at the target rather than just along
      *  the shot's path (M79 grenade rounds, thrown M67). */
-    fun hasClearBlastRadius(shooter: NpcEntity, impactPoint: Vec3, blastRadius: Double): Boolean {
-        if (blastRadius <= 0.0) return true
+    fun hasClearBlastRadius(shooter: NpcEntity, impactPoint: Vec3, blastRadius: Double): Boolean =
+        allyInBlast(shooter, impactPoint, blastRadius) == null
+
+    /** The first ally within [blastRadius] of [impactPoint], or null — [hasClearBlastRadius] with
+     *  the answer to "who, then?" for callers that report why they held fire. */
+    fun allyInBlast(shooter: NpcEntity, impactPoint: Vec3, blastRadius: Double): LivingEntity? {
+        if (blastRadius <= 0.0) return null
         forEachAlly(shooter) { ally ->
-            if (ally.position().distanceTo(impactPoint) <= blastRadius) return false
+            if (ally.position().distanceTo(impactPoint) <= blastRadius) return ally
         }
-        return true
+        return null
     }
 
     /** Steps [shooter] a short distance perpendicular to the shooter->[aimPoint] line, trying for

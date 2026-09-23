@@ -85,6 +85,12 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var clearance = CRUISE_CLEARANCE_MIN
     private var detonated = false
     private var usesAddonBlast = false
+    /** Targets this flight has given up on (allies kept standing in the blast), so a retarget
+     *  doesn't pick the same one straight back up and hold over it again. */
+    private val rejected = HashSet<UUID>()
+    private var nextRetargetTick = 0
+    /** When the returning drone first came within [APPROACH_RADIUS] of home, or null. */
+    private var approachSinceTick: Int? = null
 
     private var nextScanTick = 0
     private var lastScanResult: StrikeTarget? = null
@@ -233,6 +239,9 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         launchTick = entity.tickCount
         holdUntilTick = 0
         detonated = false
+        rejected.clear()
+        nextRetargetTick = 0
+        approachSinceTick = null
         clearance = CRUISE_CLEARANCE_MIN + entity.random.nextDouble() * (CRUISE_CLEARANCE_MAX - CRUISE_CLEARANCE_MIN)
         phase = Phase.LAUNCH
 
@@ -357,26 +366,48 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             targetPos = target.position()
             return true
         }
-        // Target died / stopped being hostile: anything else hostile near the drone? (The drone's
-        // camera can see it — no operator line of sight required here.)
+        DebugFlags.log("[drone-debug] {} lost its target {} (alive={}, hostile={})",
+            entity.uuid, tid, target?.isAlive, target?.let { SquadTeams.isHostile(entity, it) })
+        return retarget(entity, level, drone)
+    }
+
+    /**
+     * A new target for a drone already in the air: whatever hostile is nearest the drone (its
+     * camera sees it — no operator line of sight needed), else anything the faction has reported
+     * within the operator's reach. Only targets it could actually strike — nothing with an ally
+     * inside the blast — and never one this flight already gave up on. False = nothing to go for.
+     */
+    private fun retarget(entity: NpcEntity, level: ServerLevel, drone: DroneEntity): Boolean {
+        val radius = warheadRadius()
         var best: LivingEntity? = null
-        var bestD2 = RETARGET_RADIUS * RETARGET_RADIUS
-        NpcRegistry.forEachWithin(level, drone.position(), RETARGET_RADIUS) { npc ->
-            if (npc.isAlive && SquadTeams.isHostile(entity, npc)) {
-                val d2 = npc.distanceToSqr(drone)
-                if (d2 < bestD2) { bestD2 = d2; best = npc }
-            }
+        var bestD2 = Double.MAX_VALUE
+        fun consider(c: LivingEntity) {
+            if (!c.isAlive || c.uuid in rejected || !SquadTeams.isHostile(entity, c)) return
+            val d2 = c.distanceToSqr(drone)
+            if (d2 >= bestD2) return
+            // The ally check skips the operator itself, and a drone on its way home is close to it.
+            if (c.distanceTo(entity) <= radius) return
+            if (!FriendlyFireGuard.hasClearBlastRadius(entity, c.position(), radius)) return
+            best = c
+            bestD2 = d2
         }
-        for (player in level.players()) {
-            if (player.isAlive && SquadTeams.isHostile(entity, player)) {
-                val d2 = player.distanceToSqr(drone)
-                if (d2 < bestD2) { bestD2 = d2; best = player }
+        NpcRegistry.forEachWithin(level, drone.position(), RETARGET_RADIUS) { consider(it) }
+        val r2 = RETARGET_RADIUS * RETARGET_RADIUS
+        for (player in level.players()) if (player.distanceToSqr(drone) <= r2) consider(player)
+        if (best == null) {
+            val faction = SquadTeams.factionOf(entity)
+            faction?.let { TeamAwareness.relayedContacts(it, level.gameTime) }?.forEach { id ->
+                (level.getEntity(id) as? LivingEntity)
+                    ?.takeIf { inLaunchRange(entity, it.position()) }
+                    ?.let { consider(it) }
             }
         }
         val next = best ?: return false
         targetEntityId = next.uuid
         targetPos = next.position()
-        if (phase == Phase.ATTACK) phase = Phase.CRUISE
+        approachSinceTick = null
+        if (phase != Phase.LAUNCH) phase = Phase.CRUISE
+        DebugFlags.log("[drone-debug] {} retargeted to {} ({})", entity.uuid, next.uuid, next.type.descriptionId)
         return true
     }
 
@@ -445,8 +476,24 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (blastClear(entity)) {
             phase = Phase.ATTACK
         } else if (entity.tickCount >= holdUntilTick) {
-            phase = Phase.RETURN
+            val blocker = FriendlyFireGuard.allyInBlast(entity, targetPos, warheadRadius())
+            DebugFlags.log("[drone-debug] {} gave up on {}: {} ({}) is {} blocks from it",
+                entity.uuid, targetEntityId, blocker?.uuid, blocker?.let { describe(it) },
+                blocker?.position()?.distanceTo(targetPos))
+            targetEntityId?.let { rejected += it }
+            if (!retarget(entity, level, drone)) {
+                DebugFlags.log("[drone-debug] {} nothing else to strike, heading home", entity.uuid)
+                phase = Phase.RETURN
+            }
         }
+    }
+
+    /** What an ally in the blast actually is — the log line that says why a drone held off. */
+    private fun describe(e: LivingEntity): String = when (e) {
+        is NpcEntity -> "${e.npcClass} ${SquadTeams.factionOf(e)}"
+        is net.minecraft.world.entity.player.Player ->
+            "player ${if (e.isCreative) "creative" else "survival"} faction=${SquadTeams.factionOf(e)}"
+        else -> e.type.descriptionId
     }
 
     private fun tickAttack(entity: NpcEntity, level: ServerLevel, drone: DroneEntity) {
@@ -464,6 +511,15 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         apply(drone, DroneFlightController.steer(drone.position(), drone.yRot, drone.deltaMovement.horizontalDistance(), aim, aim.y, DIVE_SPEED))
     }
 
+    /**
+     * Flying home. It used to arrive at full cruise speed and full cruise height and only start
+     * descending inside the 4-block recovery circle — which it crossed in a few ticks, climbed
+     * back to cruise height outside of, turned around and crossed again. It circled the operator
+     * like that until the battery ran out and it came down on its own crew.
+     *
+     * So now it slows with distance, starts down well before it's overhead, and — if it still
+     * can't settle (a roof or a tree over the operator) — is picked up anyway after a while.
+     */
     private fun tickReturn(entity: NpcEntity, level: ServerLevel, drone: DroneEntity) {
         val home = entity.position()
         val dist = horizontalDistance(drone.position(), home)
@@ -471,10 +527,41 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             recover(entity, drone)
             return
         }
-        val desiredY = if (dist <= RECOVER_RADIUS) home.y + 1.0
+        if (dist <= APPROACH_RADIUS) {
+            val since = approachSinceTick ?: entity.tickCount.also { approachSinceTick = it }
+            if (entity.tickCount - since > APPROACH_MAX_TICKS) {
+                DebugFlags.log("[drone-debug] {} drone couldn't settle, picked up anyway", entity.uuid)
+                recover(entity, drone)
+                return
+            }
+        }
+        // Something new to go for on the way back beats going home.
+        if (entity.tickCount >= nextRetargetTick) {
+            nextRetargetTick = entity.tickCount + SCAN_INTERVAL_TICKS
+            if (retarget(entity, level, drone)) return
+        }
+        val desiredY = if (dist <= APPROACH_RADIUS) maxOf(home.y + 1.0, terrainBefore(level, drone, home, dist) + 2.0)
             else DroneFlightController.cruiseAltitude(terrainAhead(level, drone, home), clearance, drone.y)
-        val cmd = DroneFlightController.steer(drone.position(), drone.yRot, drone.deltaMovement.horizontalDistance(), home, desiredY, CRUISE_SPEED)
+        val speed = (dist * ARRIVAL_SPEED_PER_BLOCK).coerceIn(MIN_ARRIVAL_SPEED, CRUISE_SPEED)
+        val cmd = DroneFlightController.steer(drone.position(), drone.yRot, drone.deltaMovement.horizontalDistance(), home, desiredY, speed)
         apply(drone, if (dist <= RECOVER_RADIUS) DroneFlightController.Command(false, cmd.back, cmd.up, cmd.down, cmd.yaw) else cmd)
+    }
+
+    /** Highest terrain between the drone and home, short of home itself — what the descent has to
+     *  clear. Home's own column is left out: a tree over the operator shouldn't hold the drone at
+     *  treetop height when the recovery safety net can pick it up there anyway. */
+    private fun terrainBefore(level: ServerLevel, drone: DroneEntity, home: Vec3, dist: Double): Int {
+        val pos = drone.position()
+        var highest = groundY(level, pos.x, pos.z)
+        if (dist < 1e-3) return highest
+        val dx = (home.x - pos.x) / dist
+        val dz = (home.z - pos.z) / dist
+        var d = 2.0
+        while (d < dist - RECOVER_RADIUS) {
+            highest = maxOf(highest, groundY(level, pos.x + dx * d, pos.z + dz * d))
+            d += 2.0
+        }
+        return highest
     }
 
     // --- warhead ---
@@ -532,6 +619,13 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val HOLD_HOVER_RADIUS = 6.0
         private const val RECOVER_RADIUS = 4.0
         private const val RECOVER_HEIGHT = 6.0
+        /** Inside this, a returning drone descends instead of holding cruise height. */
+        private const val APPROACH_RADIUS = 16.0
+        /** How long a returning drone may spend near home before it's picked up where it is. */
+        private const val APPROACH_MAX_TICKS = 200
+        /** Returning speed falls off with distance: full cruise from ~15 blocks, a crawl at the end. */
+        private const val ARRIVAL_SPEED_PER_BLOCK = 0.06
+        private const val MIN_ARRIVAL_SPEED = 0.15
 
         /** Fallback warhead (no addon) — any SBW `drone_attachments` entry with IsKamikaze.
          *  RPG TBG: 150 dmg / r 11. */
