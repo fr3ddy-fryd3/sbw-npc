@@ -723,7 +723,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         if (attacker != null && attacker.isAlive && com.sbwnpc.squad.team.SquadTeams.isHostile(this, attacker)) {
             com.sbwnpc.squad.combat.TeamAwareness.report(faction, attacker.uuid, level.gameTime)
         } else {
-            com.sbwnpc.squad.combat.Alarm.raise(this, position(), position(), DEATH_ALARM_RADIUS)
+            com.sbwnpc.squad.combat.Alarm.raiseDeath(this, DEATH_ALARM_RADIUS)
         }
     }
 

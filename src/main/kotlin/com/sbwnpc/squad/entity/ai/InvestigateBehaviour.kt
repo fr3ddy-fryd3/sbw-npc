@@ -1,7 +1,10 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
+import com.sbwnpc.squad.combat.DeathSites
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.team.SquadTeams
+import net.minecraft.world.phys.Vec3
 import com.sbwnpc.squad.init.ModMemories
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
@@ -37,6 +40,8 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     companion object {
         private const val ARRIVE_DISTANCE = 3.0
+        /** The look at a death site is a raycast — twice a second is plenty. */
+        private const val DEATH_SITE_CHECK_INTERVAL = 10
 
         private val MEMORIES: List<Pair<MemoryModuleType<*>, MemoryStatus>> =
             listOf(Pair.of(ModMemories.ALERT_POSITION.get(), MemoryStatus.VALUE_PRESENT))
@@ -67,6 +72,21 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
         val pos = BrainUtils.getMemory(entity, ModMemories.ALERT_POSITION.get()) ?: return
         if (entity.position().closerThan(pos, ARRIVE_DISTANCE) || entity.navigation.isDone) {
             entity.clearAlert()
+            return
         }
+        if (entity.tickCount % DEATH_SITE_CHECK_INTERVAL == 0 && deathSiteSettled(entity, pos)) {
+            entity.clearAlert()
+            entity.navigation.stop()
+        }
+    }
+
+    /** Headed for a fallen ally's body: done if someone has already looked and found nothing,
+     *  or if this NPC can now see the spot itself — see [DeathSites]. */
+    private fun deathSiteSettled(entity: NpcEntity, pos: Vec3): Boolean {
+        val level = entity.level() as? ServerLevel ?: return false
+        val faction = SquadTeams.factionOf(entity) ?: return false
+        val site = DeathSites.at(faction, pos, level.gameTime) ?: return false
+        if (!site.checked && DeathSites.canConfirm(entity, pos)) site.checked = true
+        return site.checked
     }
 }

@@ -24,6 +24,29 @@ import net.minecraft.world.phys.Vec3
  * killer can't be resolved into a proper [TeamAwareness] report.
  */
 object Alarm {
+    /**
+     * [source] went down to something nobody could name. Unlike [raise], this can end on the spot:
+     * if an ally already has the body in plain view and nothing hostile in its sights, it has seen
+     * all there is to see, and nobody else is sent to look — see [DeathSites].
+     */
+    fun raiseDeath(source: NpcEntity, radius: Double) {
+        val level = source.level() as? ServerLevel ?: return
+        val pos = source.position()
+        val faction = SquadTeams.factionOf(source) ?: return raise(source, pos, pos, radius)
+        val tick = level.gameTime
+        val site = DeathSites.open(faction, pos, tick)
+        if (site.checked) return
+        var seen = false
+        NpcRegistry.forEachWithin(level, pos, DeathSites.CONFIRM_RANGE, exclude = source) {
+            if (!seen && !SquadTeams.isHostile(source, it) && DeathSites.canConfirm(it, pos)) seen = true
+        }
+        if (seen) {
+            site.checked = true
+            return
+        }
+        raise(source, pos, pos, radius)
+    }
+
     fun raise(source: NpcEntity, hearOrigin: Vec3, investigatePos: Vec3, radius: Double) {
         val level = source.level() as? ServerLevel ?: return
         NpcRegistry.forEachWithin(level, hearOrigin, radius, exclude = source) {

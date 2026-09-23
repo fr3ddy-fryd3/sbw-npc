@@ -1,5 +1,6 @@
 package com.sbwnpc.squad
 
+import com.sbwnpc.squad.combat.DeathSites
 import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.entity.DroneRegistry
@@ -23,6 +24,7 @@ object ServerLifecycle {
     @SubscribeEvent
     fun onServerStopped(event: ServerStoppedEvent) {
         TeamAwareness.clearAll()
+        DeathSites.clearAll()
         MortarClaims.clearAll()
         DroneLinks.clearAll()
         VehicleTransportClaims.clearAll()
