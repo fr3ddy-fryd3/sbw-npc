@@ -5,6 +5,7 @@ import com.sbwnpc.squad.entity.NpcRegistry
 import net.minecraft.server.level.ServerLevel
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.world.entity.LivingEntity
+import net.minecraft.world.entity.player.Player
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import kotlin.math.acos
@@ -80,7 +81,7 @@ object FriendlyFireGuard {
             if (lineClear && aimDir != null && coneBox.intersects(ally.boundingBox) &&
                 inFiringCone(ally, from, aimDir, aimDist, maxAngle)
             ) lineClear = false
-            if (blastClear && checkBlast && ally.position().distanceTo(impactPoint) <= blastRadius) blastClear = false
+            if (blastClear && checkBlast && canBeHurt(ally) && ally.position().distanceTo(impactPoint) <= blastRadius) blastClear = false
             if (!lineClear && !blastClear) return Assessment(false, false)
         }
         return Assessment(lineClear, blastClear)
@@ -117,10 +118,16 @@ object FriendlyFireGuard {
     fun allyInBlast(shooter: NpcEntity, impactPoint: Vec3, blastRadius: Double): LivingEntity? {
         if (blastRadius <= 0.0) return null
         forEachAlly(shooter) { ally ->
-            if (ally.position().distanceTo(impactPoint) <= blastRadius) return ally
+            if (canBeHurt(ally) && ally.position().distanceTo(impactPoint) <= blastRadius) return ally
         }
         return null
     }
+
+    /** A creative or spectating player takes no blast damage, so holding an explosive for one is
+     *  holding it for nobody — and the one watching a fight up close is usually the tester. It
+     *  still counts for the firing cone: a round stops on a creative player's body all the same. */
+    private fun canBeHurt(ally: LivingEntity): Boolean =
+        ally !is Player || (!ally.isCreative && !ally.isSpectator)
 
     /** Steps [shooter] a short distance perpendicular to the shooter->[aimPoint] line, trying for
      *  an angle clear of whatever ally is currently in the way. Picks whichever side is currently
