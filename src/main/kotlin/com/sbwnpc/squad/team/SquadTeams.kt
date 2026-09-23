@@ -82,6 +82,11 @@ object SquadTeams {
         return fa != fb
     }
 
+    /** Whose side [entity] is on for friend-or-foe purposes: an NPC's team, or a player's own pick
+     *  ([PlayerFactionRegistry]) — null for anything outside the fight, a creative player included.
+     *  [factionOf] alone never answers for a player, since players are never put on a team. */
+    fun sideOf(entity: Entity): SquadFaction? = hostilityFaction(entity)
+
     private fun hostilityFaction(entity: Entity): SquadFaction? {
         factionOf(entity)?.let { return it }
         val player = entity as? Player ?: return null

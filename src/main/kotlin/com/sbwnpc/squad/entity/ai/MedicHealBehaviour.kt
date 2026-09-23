@@ -10,6 +10,7 @@ import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.entity.ai.attributes.AttributeModifier
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
@@ -54,8 +55,9 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
     // MIN_VALUE / 2, not MIN_VALUE: `tickCount - MIN_VALUE` overflows to a negative number, which
     // read as "rescanned a moment ago" forever — the medic never looked for anyone to treat.
     private var candidateTick = Int.MIN_VALUE / 2
-    private var candidateCache: NpcEntity? = null
+    private var candidateCache: LivingEntity? = null
     private var nextRepathTick = 0
+    private var nextPlayerLogTick = 0
 
     companion object {
         private const val SCAN_RADIUS = 16.0
@@ -68,6 +70,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val CRITICAL_HEALTH_FRACTION = 0.3f
         private const val NEEDS_HEAL_FRACTION = 0.7f
         private const val HEAL_RANGE = 2.5
+        private const val PLAYER_LOG_INTERVAL_TICKS = 40
         private const val TREAT_COOLDOWN_TICKS = 100 // ~5s — don't immediately re-treat while Regeneration is still ticking
 
         // Faster than NpcClass.MEDIC's normal 1.3 — see setSprinting()'s own doc comment.
@@ -80,7 +83,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
-    private fun needsHealing(entity: NpcEntity, ally: NpcEntity): Boolean {
+    private fun needsHealing(entity: NpcEntity, ally: LivingEntity): Boolean {
         val fraction = ally.health / ally.maxHealth
         return fraction < CRITICAL_HEALTH_FRACTION || (entity.target == null && fraction < NEEDS_HEAL_FRACTION)
     }
@@ -93,7 +96,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  any wounded ally on its own side ([SquadTeams.factionOf] equality, the same "same scoreboard
      *  team" notion `isHostile`/`isAlliedTo` already ride on elsewhere in this codebase), not just
      *  the specific squad it was deployed with. */
-    private fun candidate(entity: NpcEntity): NpcEntity? {
+    private fun candidate(entity: NpcEntity): LivingEntity? {
         if (entity.tickCount - candidateTick < CANDIDATE_RESCAN_TICKS) {
             val cached = candidateCache
             if (cached == null || (cached.isAlive && needsHealing(entity, cached))) return cached
@@ -103,7 +106,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
         return candidateCache
     }
 
-    private fun scanCandidate(entity: NpcEntity): NpcEntity? {
+    private fun scanCandidate(entity: NpcEntity): LivingEntity? {
         if (entity.npcClass != NpcClass.MEDIC) return null
         // A dug-in medic (badly hurt enough to take cover itself) must stay put like everything
         // else that respects NpcEntity.diggedIn (PM review finding — this was one of two Core tasks
@@ -113,18 +116,45 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.vehicleTransport) return null
         val faction = SquadTeams.factionOf(entity) ?: return null
         val level = entity.level() as? ServerLevel ?: return null
-        var best: NpcEntity? = null
+        var best: LivingEntity? = null
         var bestFraction = Float.MAX_VALUE
-        NpcRegistry.forEachWithin(level, entity.position(), SCAN_RADIUS, exclude = entity) { ally ->
-            if (ally.isAlive && SquadTeams.factionOf(ally) == faction && needsHealing(entity, ally)) {
-                val fraction = ally.health / ally.maxHealth
-                if (fraction < bestFraction) {
-                    bestFraction = fraction
-                    best = ally
-                }
+        fun consider(ally: LivingEntity) {
+            if (!ally.isAlive || !needsHealing(entity, ally)) return
+            val fraction = ally.health / ally.maxHealth
+            if (fraction < bestFraction) {
+                bestFraction = fraction
+                best = ally
             }
         }
+        NpcRegistry.forEachWithin(level, entity.position(), SCAN_RADIUS, exclude = entity) { ally ->
+            if (SquadTeams.factionOf(ally) == faction) consider(ally)
+        }
+        // Players of the same side too. sideOf() already leaves out creative players, who can't
+        // be hurt in the first place; spectators neither.
+        val r2 = SCAN_RADIUS * SCAN_RADIUS
+        for (player in level.players()) {
+            if (player.isSpectator || player.distanceToSqr(entity) > r2) continue
+            val side = SquadTeams.sideOf(player)
+            if (side == faction) consider(player)
+            logPlayerCheck(entity, player, side, faction)
+        }
         return best
+    }
+
+    /** Debug builds only: why a medic did or didn't take on a player in range — faction, health,
+     *  and whether its own fight has raised the bar to critical. At most every 2 s per medic. */
+    private fun logPlayerCheck(entity: NpcEntity, player: net.minecraft.world.entity.player.Player, side: com.sbwnpc.squad.npc.SquadFaction?, mine: com.sbwnpc.squad.npc.SquadFaction) {
+        if (!com.sbwnpc.squad.combat.DebugFlags.LOGGING_ENABLED || entity.tickCount < nextPlayerLogTick) return
+        nextPlayerLogTick = entity.tickCount + PLAYER_LOG_INTERVAL_TICKS
+        val verdict = when {
+            side != mine -> "other side"
+            needsHealing(entity, player) -> "heal"
+            entity.target != null -> "in a fight, only below ${(CRITICAL_HEALTH_FRACTION * 100).toInt()}%"
+            else -> "not hurt enough"
+        }
+        com.sbwnpc.squad.combat.DebugFlags.log("[medic-debug] {} sees {} side={} mine={} hp={}/{} creative={} target={} -> {}",
+            entity.uuid, player.name.string, side, mine, "%.1f".format(player.health), player.maxHealth,
+            player.isCreative, entity.target?.type?.descriptionId, verdict)
     }
 
     private fun eligible(entity: NpcEntity): Boolean = !entity.evadingGrenade() && candidate(entity) != null
@@ -165,7 +195,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
         // Keep tending the same ally as long as it still genuinely needs it — re-picking a fresh
         // candidate every tick (even one that's merely alive but already healed up) would abandon a
         // near-finished treatment for whichever ally happens to sort first.
-        val sticky = healTargetId?.let { level.getEntity(it) as? NpcEntity }?.takeIf { it.isAlive && needsHealing(entity, it) }
+        val sticky = healTargetId?.let { level.getEntity(it) as? LivingEntity }?.takeIf { it.isAlive && needsHealing(entity, it) }
         val ally = sticky ?: candidate(entity)?.also { healTargetId = it.uuid } ?: return
 
         if (ally.health / ally.maxHealth < CRITICAL_HEALTH_FRACTION) {
@@ -196,7 +226,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** Player-facing visual feedback (release format, NOT a temporary debug aid, unlike
      *  SeekCoverBehaviour.markCoverChoice's cover-choice particles) — a short particle burst at the
      *  treated ally, so healing is visible without watching health numbers. */
-    private fun markHeal(level: ServerLevel, ally: NpcEntity) {
+    private fun markHeal(level: ServerLevel, ally: LivingEntity) {
         level.sendParticles(
             net.minecraft.core.particles.DustParticleOptions(HEAL_COLOR, 1.5f),
             ally.x, ally.y + 1.0, ally.z, 12, 0.3, 0.5, 0.3, 0.0
