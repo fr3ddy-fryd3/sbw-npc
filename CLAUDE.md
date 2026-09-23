@@ -35,17 +35,18 @@ tested" as two different claims; see Workflow below.
 
 ## Workflow requirements
 
-- **Never commit or push a fix on the strength of "it should work" or "it compiles."** Build,
-  deploy, and wait for the user to confirm it works in-game before committing.
+- **Never push a fix on the strength of "it should work" or "it compiles."** Build, deploy, and
+  wait for the user to confirm it works in-game before it leaves the machine.
 - **Pushing** needs the user's say-so for that specific push. Permission given for one push doesn't
   carry over to the next, unrelated one, even later in the same conversation — ask again rather
   than assuming it still applies.
-- Committing is not pushing. Committing finished, verified work is fine; it is the publishing step
-  that is gated.
+- Committing is not pushing. Committing is local and happens as you work; it is the publishing
+  step that is gated.
 - Prefer several small commits over one large one, split by what each change actually does.
-- Commit as the work lands, not in a batch at the end: one feature finished, the user confirms it
-  works in-game, commit it. A session's worth of unrelated work sitting uncommitted is what forces
-  the batching in the first place.
+- Commit as the work lands, not in a batch at the end: one feature finished, compiling and passing
+  tests, commit it — before the in-game check, not after. If that check shows a commit was wrong,
+  fix it with a follow-up commit or rework the unpushed commits locally before pushing. A
+  session's worth of unrelated work sitting uncommitted is what forces splitting it after the fact.
 - Don't bundle unrelated doc-only changes into a commit unless the user explicitly asked for the
   doc change too.
 - Commit messages: concise, and start with a Conventional Commits prefix (`feat:`, `fix:`,
