@@ -272,16 +272,8 @@ class SquadManager : SavedData() {
         if (changed) setDirty()
     }
 
-    private fun nextName(owner: UUID, prefix: String = ""): String {
-        val used = forOwner(owner).map { it.name }.toSet()
-        NAMES.firstOrNull { prefix + it !in used }?.let { return prefix + it }
-        // Past the phonetic names, count up to the first free number rather than off the squad
-        // count — with no cap on squads, deleting one from the middle otherwise hands the next
-        // squad a name that is already taken.
-        var n = NAMES.size + 1
-        while ("${'$'}prefix" + "Squad " + n in used) n++
-        return prefix + "Squad " + n
-    }
+    private fun nextName(owner: UUID, prefix: String = ""): String =
+        firstFreeName(forOwner(owner).map { it.name }.toSet(), prefix)
 
     override fun save(tag: CompoundTag, registries: HolderLookup.Provider): CompoundTag {
         val list = ListTag()
@@ -298,6 +290,20 @@ class SquadManager : SavedData() {
         private const val RESUPPLY_RADIUS = 16.0
         const val MAX_NAME_LENGTH = 24
         private val NAMES = listOf("Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel")
+
+        /**
+         * The name a new squad gets, given the names already in use.
+         *
+         * Past the phonetic names it counts up to the first free number rather than off the squad
+         * count — with no cap on squads, deleting one from the middle otherwise hands the next squad
+         * a name that is already taken.
+         */
+        internal fun firstFreeName(used: Set<String>, prefix: String): String {
+            NAMES.firstOrNull { prefix + it !in used }?.let { return prefix + it }
+            var n = NAMES.size + 1
+            while ("${prefix}Squad $n" in used) n++
+            return "${prefix}Squad $n"
+        }
 
         private fun load(tag: CompoundTag, registries: HolderLookup.Provider): SquadManager {
             val mgr = SquadManager()
