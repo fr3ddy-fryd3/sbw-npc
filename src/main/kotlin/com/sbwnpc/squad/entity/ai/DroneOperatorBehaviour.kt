@@ -190,8 +190,10 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         var spotted: LivingEntity? = null
         var losChecks = 0
         for (c in candidates) {
-            if (losChecks++ >= MAX_LOS_CHECKS) break
+            // Range first: candidates are sorted nearest-first, and everything inside MIN_RANGE
+            // used to spend the raycast budget before a single launchable target got looked at.
             if (!inLaunchRange(entity, c.position())) continue
+            if (losChecks++ >= MAX_LOS_CHECKS) break
             if (!entity.sensing.hasLineOfSight(c)) continue
             if (faction != null) TeamAwareness.report(faction, c.uuid, tick)
             if (spotted == null) spotted = c
