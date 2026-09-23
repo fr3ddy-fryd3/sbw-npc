@@ -27,6 +27,7 @@ fun buildSquadSnapshot(mgr: SquadManager, owner: UUID, looseCount: Int): Compoun
                 putBoolean("Mortar", mgr.isMortarSquad(s))
                 putBoolean("Gunship", mgr.isGunshipSquad(s))
                 putBoolean("Transport", mgr.isTransportSquad(s))
+                s.barracks?.let { putLong("Barracks", it.pos.asLong()) }
             })
         }
     })

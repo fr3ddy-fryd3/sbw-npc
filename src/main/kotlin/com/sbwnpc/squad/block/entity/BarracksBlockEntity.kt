@@ -76,6 +76,13 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
         garrison = null
     }
 
+    /** Back to an unconfigured Barracks: nothing deployed, nothing to deploy. */
+    private fun standDown() {
+        config = null
+        garrison = null
+        setChanged()
+    }
+
     private fun ref(level: ServerLevel) = BarracksRef(level.dimension(), blockPos.immutable())
 
     /** Deploys the configured squad, or tops up the one already deployed. */
@@ -83,9 +90,16 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
         val cfg = config?.let { SquadToolItem.readConfig(it) } ?: return
         val owner = owner ?: return
         val mgr = SquadManager.get(level)
-        val existing = garrison?.let { mgr.get(it) }
-        if (existing != null) {
-            mgr.respawnAtBarracks(level, blockPos.immutable())
+        garrison?.let { id ->
+            if (mgr.get(id) != null) {
+                mgr.respawnAtBarracks(level, blockPos.immutable())
+            } else {
+                // A garrison squad outlives its last member (SquadManager keeps an empty squad that
+                // still has a Barracks), so the only way it disappears is the player deleting or
+                // disbanding it from the squad screen. That is the player ending this garrison — the
+                // Barracks used to read it as "nothing deployed yet" and put a fresh squad out.
+                standDown()
+            }
             return
         }
         // Spawned a block up so a squad doesn't deploy inside the Barracks itself, and facing away

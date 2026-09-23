@@ -8,7 +8,9 @@ import net.minecraft.ChatFormatting
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.Button
+import net.minecraft.client.gui.components.Tooltip
 import net.minecraft.client.gui.screens.Screen
+import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.Tag
 import net.minecraft.network.chat.Component
@@ -34,7 +36,9 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
         val tank: Boolean,
         val mortar: Boolean,
         val gunship: Boolean,
-        val transport: Boolean
+        val transport: Boolean,
+        /** Where the Barracks keeping this squad up stands, or null for an ordinary squad. */
+        val barracks: BlockPos?
     )
 
     private val loose = snapshot.getInt("Loose")
@@ -45,7 +49,8 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
             runCatching { SquadFaction.valueOf(t.getString("Faction")) }.getOrDefault(SquadFaction.DEFAULT),
             t.getInt("Members"), SquadOrder.byOrdinal(t.getInt("Order")),
             t.getBoolean("Tank"), t.getBoolean("Mortar"),
-            t.getBoolean("Gunship"), t.getBoolean("Transport")
+            t.getBoolean("Gunship"), t.getBoolean("Transport"),
+            if (t.contains("Barracks")) BlockPos.of(t.getLong("Barracks")) else null
         )
     }
 
@@ -97,13 +102,16 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
             }.bounds(x + 296, y, 14, 20).build())
 
             // Disband/Delete keep the screen up — the server re-sends the list (see class doc).
+            val garrisonNote = if (row.barracks != null) "\nIts Barracks stops deploying." else ""
             addRenderableWidget(Button.builder(Component.literal("X").withStyle(ChatFormatting.RED)) {
                 send(SquadCmdPayload.DISBAND, row.id)
-            }.bounds(x + 314, y, 14, 20).build())
+            }.bounds(x + 314, y, 14, 20)
+                .tooltip(Tooltip.create(Component.literal("Disband — the NPCs stay$garrisonNote"))).build())
 
             addRenderableWidget(Button.builder(Component.literal("DEL").withStyle(ChatFormatting.DARK_RED)) {
                 send(SquadCmdPayload.DELETE_SQUAD, row.id)
-            }.bounds(x + 332, y, 32, 20).build())
+            }.bounds(x + 332, y, 32, 20)
+                .tooltip(Tooltip.create(Component.literal("Delete the squad and its NPCs$garrisonNote"))).build())
 
             y += ROW_HEIGHT
         }
@@ -140,11 +148,20 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
             g.drawString(font, Component.literal(shown), listX, top - 12, 0xAAAAAA)
         }
         rows.drop(scroll).take(visibleRows).forEachIndexed { i, row ->
-            g.drawString(
-                font,
-                Component.literal("${row.name} (${row.members}) [${row.faction.label}]").withStyle(row.faction.accentColor),
-                listX, listTop + 4 + i * ROW_HEIGHT + 6, -1
-            )
+            val y = listTop + 4 + i * ROW_HEIGHT + 6
+            val label = "${if (row.barracks != null) GARRISON_MARK else ""}${row.name} (${row.members}) [${row.faction.label}]"
+            // The label shares its line with the Order button — cut it rather than draw under it,
+            // and put the whole thing in a tooltip.
+            val fitted = font.plainSubstrByWidth(label, LABEL_WIDTH)
+            g.drawString(font, Component.literal(fitted).withStyle(row.faction.accentColor), listX, y, -1)
+            if (mouseX in listX until listX + LABEL_WIDTH && mouseY in y - 6 until y + ROW_HEIGHT - 6) {
+                val lines = mutableListOf<Component>(Component.literal(label))
+                row.barracks?.let {
+                    lines += Component.literal("Garrison of the Barracks at ${it.x} ${it.y} ${it.z}")
+                        .withStyle(ChatFormatting.GOLD)
+                }
+                g.renderComponentTooltip(font, lines, mouseX, mouseY)
+            }
         }
     }
 
@@ -159,6 +176,10 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
         const val MAX_VISIBLE_ROWS = 12
         /** Title, Create row, footer and a margin — what the rows cannot use. */
         const val VERTICAL_CHROME = 110
+        /** Room left of the Order button for the squad's name. */
+        const val LABEL_WIDTH = 88
+        /** Marks a squad a Barracks keeps up. */
+        const val GARRISON_MARK = "\u2302 "
 
         /** Survives the screen being replaced by a fresh snapshot after a delete/disband, so the
          *  list doesn't jump back to the top under the player's cursor. */
