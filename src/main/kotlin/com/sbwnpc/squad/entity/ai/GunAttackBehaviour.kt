@@ -1,10 +1,5 @@
 package com.sbwnpc.squad.entity.ai
 
-import com.atsuishio.superbwarfare.data.gun.FireMode
-import com.atsuishio.superbwarfare.data.gun.GunData
-import com.atsuishio.superbwarfare.data.gun.GunProp
-import com.atsuishio.superbwarfare.item.gun.GunItem
-import com.atsuishio.superbwarfare.tools.MillisTimer
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.Alarm
 import com.sbwnpc.squad.combat.AntiArmourKit
@@ -17,9 +12,13 @@ import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.combat.TickBudget
+import com.sbwnpc.squad.domain.port.HandGun
+import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.domain.port.TriggerMode
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
+import com.sbwnpc.squad.util.MillisTimer
 import com.sbwnpc.squad.util.Terrain
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity
@@ -187,17 +186,14 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         AntiArmourKit.wield(entity, wantLauncher)
     }
 
-    private fun currentGunData(entity: NpcEntity): GunData? {
-        if (entity.mainHandItem.item !is GunItem) return null
-        return GunData.from(entity.mainHandItem)
-    }
+    private fun currentGun(entity: NpcEntity): HandGun? = Ports.guns.inHand(entity)
 
     private fun canEngage(entity: NpcEntity): Boolean {
         if (entity.vehicleTransport || entity.operatingDrone || entity.antiDroneEngaged) return false
         if (entity.combatLockedByCover() || entity.combatLockedByMedic()) return false
         val target = entity.target ?: return false
-        val gunData = currentGunData(entity) ?: return false
-        return target.isAlive && (gunData.countBackupAmmo(entity) > 0 || gunData.hasEnoughAmmoToShoot(entity))
+        val gun = currentGun(entity) ?: return false
+        return target.isAlive && gun.hasAmmo()
     }
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = canEngage(entity)
@@ -206,9 +202,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.combatLockedByCover() || entity.combatLockedByMedic()) return false
         // AntiDroneBehaviour owns the gun (and the mob's feet) while a hostile drone is inbound.
         if (entity.antiDroneEngaged) return false
-        val gunData = currentGunData(entity) ?: return false
-        return (canEngage(entity) || !entity.navigation.isDone) &&
-                (gunData.countBackupAmmo(entity) > 0 || gunData.hasEnoughAmmoToShoot(entity))
+        val gun = currentGun(entity) ?: return false
+        return (canEngage(entity) || !entity.navigation.isDone) && gun.hasAmmo()
     }
 
     override fun start(entity: NpcEntity) {
@@ -436,7 +431,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         // Decided before the gun data is read, so the rest of this tick aims and fires whatever
         // the swap left in the gunner's hands.
         chooseWeapon(entity, target)
-        val gunData = currentGunData(entity) ?: return
+        val gun = currentGun(entity) ?: return
 
         val canSeeTarget = entity.sensing.hasLineOfSight(target)
         if (canSeeTarget) {
@@ -491,7 +486,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         if (entity.tickCount >= nextFriendlyFireCheckTick) {
             nextFriendlyFireCheckTick = entity.tickCount + FRIENDLY_FIRE_CHECK_INTERVAL
-            val explosionRadius = gunData.get(GunProp.EXPLOSION_RADIUS)
+            val explosionRadius = gun.explosionRadius
             shotSpread = DroneCombat.spreadForTarget(entity.spread, target)
             val assessment = FriendlyFireGuard.assess(
                 entity, target.eyePosition, shotSpread, target.position(), explosionRadius
@@ -541,22 +536,15 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             sidestepAttempts = 0
         }
 
-        gunData.tick(entity, true)
-
-        if (gunData.shouldStartReloading(entity)) {
-            gunData.startReload()
-        }
-        if (gunData.shouldStartBolt()) {
-            gunData.startBolt()
-        }
+        gun.operate()
 
         val pausedBetweenBursts = entity.tickCount < burstPauseUntilTick
-        if (!pausedBetweenBursts && lineIsClear && blastClear && gunData.canShoot(entity) && aimTime >= entity.maxAimTime) {
-            val rps = gunData.get(GunProp.RPM).toDouble() / 60.0
+        if (!pausedBetweenBursts && lineIsClear && blastClear && gun.canShoot() && aimTime >= entity.maxAimTime) {
+            val rps = gun.roundsPerMinute / 60.0
             var cooldown = Math.round(1000 / rps).coerceAtLeast(1)
 
-            val fireMode = gunData.selectedFireModeInfo().mode
-            if (fireMode == FireMode.SEMI || (fireMode == FireMode.BURST && gunData.burstAmount.get() == 0)) {
+            val fireMode = gun.triggerMode
+            if (gun.needsTriggerReset) {
                 cooldown += entity.semiFireInterval
             }
 
@@ -571,13 +559,13 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                     val level = entity.level() as ServerLevel
                     witnessed = OffscreenFire.hasWitness(level, entity, target)
                 }
-                val simulate = !witnessed && OffscreenFire.canSimulate(gunData)
+                val simulate = !witnessed && OffscreenFire.canSimulate(gun)
                 var newProgress = shootTimer.progress
                 do {
                     if (simulate) {
-                        OffscreenFire.fire(entity.level() as ServerLevel, entity, gunData, target, shotSpread)
+                        OffscreenFire.fire(entity, gun, target, shotSpread)
                     } else {
-                        gunData.shoot(entity, shotSpread, zoom, target.uuid)
+                        gun.shootAt(shotSpread, zoom, target.uuid)
                     }
                     newProgress -= cooldown
                     roundsInBurst++
@@ -588,7 +576,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                     nextAlarmTick = entity.tickCount + ALARM_INTERVAL_TICKS
                     Alarm.raise(entity, entity.position(), target.position(), GUNFIRE_HEARING_RADIUS)
                 }
-                if (fireMode == FireMode.AUTO && roundsInBurst >= burstLimit) {
+                if (fireMode == TriggerMode.AUTO && roundsInBurst >= burstLimit) {
                     roundsInBurst = 0
                     burstLimit = MAX_BURST_ROUNDS + entity.random.nextInt(BURST_ROUNDS_JITTER)
                     burstPauseUntilTick = entity.tickCount + BURST_PAUSE_TICKS + entity.random.nextInt(BURST_PAUSE_JITTER)

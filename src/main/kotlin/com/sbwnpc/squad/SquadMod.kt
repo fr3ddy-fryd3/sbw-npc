@@ -1,11 +1,13 @@
 package com.sbwnpc.squad
 
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.init.ModBlockEntities
 import com.sbwnpc.squad.init.ModBlocks
 import com.sbwnpc.squad.init.ModEntities
 import com.sbwnpc.squad.init.ModItems
 import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.init.ModSensors
+import com.sbwnpc.squad.integration.sbw.SbwGuns
 import net.minecraft.resources.ResourceLocation
 import net.neoforged.bus.api.IEventBus
 import net.neoforged.fml.ModContainer
@@ -16,6 +18,8 @@ import org.apache.logging.log4j.LogManager
 class SquadMod(bus: IEventBus, container: ModContainer) {
     init {
         LOGGER.info("SBW Squads initializing")
+
+        Ports.guns = SbwGuns
 
         ModEntities.REGISTRY.register(bus)
         ModItems.ITEMS.register(bus)

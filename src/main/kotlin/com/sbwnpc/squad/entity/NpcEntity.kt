@@ -1,9 +1,8 @@
 package com.sbwnpc.squad.entity
 
-import com.atsuishio.superbwarfare.data.gun.GunData
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.atsuishio.superbwarfare.init.ModItems
-import com.atsuishio.superbwarfare.item.gun.GunItem
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.ai.GrenadeThrowBehaviour
 import com.sbwnpc.squad.entity.ai.IdleLookAroundGoal
 import com.sbwnpc.squad.entity.ai.IdleWanderGoal
@@ -30,7 +29,6 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
 import net.minecraft.core.BlockPos
-import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.syncher.EntityDataAccessor
 import net.minecraft.network.syncher.EntityDataSerializers
@@ -50,7 +48,6 @@ import net.minecraft.world.entity.ai.goal.FloatGoal
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.damagesource.DamageSource
 import net.minecraft.world.item.ItemStack
-import net.minecraft.world.item.Items
 import net.minecraft.world.level.Level
 import net.tslat.smartbrainlib.util.BrainUtils
 import net.minecraft.world.level.ServerLevelAccessor
@@ -402,17 +399,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // synced exactly as before. Spawn-time full syncs (resyncEquipmentForNewlySpawnedNpc) are
     // unaffected — they bypass this path.
     override fun equipmentHasChanged(oldItem: ItemStack, newItem: ItemStack): Boolean {
-        if (oldItem.item is GunItem && newItem.item === oldItem.item && oldItem.count == newItem.count) {
-            return attachmentsTag(oldItem) != attachmentsTag(newItem)
+        if (Ports.guns.isGun(oldItem) && newItem.item === oldItem.item && oldItem.count == newItem.count) {
+            return Ports.guns.looks(oldItem) != Ports.guns.looks(newItem)
         }
         return super.equipmentHasChanged(oldItem, newItem)
     }
-
-    private fun attachmentsTag(stack: ItemStack): CompoundTag? =
-        stack.get(net.minecraft.core.component.DataComponents.CUSTOM_DATA)?.unsafe?.let { tag ->
-            // GunData.KEY_ATTACHMENTS ("Attachments") — private in SBW, mirrored here.
-            if (tag.contains("Attachments", net.minecraft.nbt.Tag.TAG_COMPOUND.toInt())) tag.getCompound("Attachments") else null
-        }
 
     // Vanilla runs an entity query around every mob every tick just to shove neighbours apart.
     // Formations deliberately put NPCs close together, so every one of those queries has work to
@@ -590,14 +581,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         // One of 2 weapons per weapon category, picked once and kept for this NPC's whole life —
         // pure visual variety across NPCs of the same class, per user request ("разношерстные").
         val weaponId = npcClass.weaponPool[random.nextInt(npcClass.weaponPool.size)]
-        val gunItem = BuiltInRegistries.ITEM.getOptional(weaponId).orElse(Items.AIR)
-        if (gunItem is GunItem) {
-            val gunData = GunData.from(ItemStack(gunItem))
-            gunData.virtualAmmo.set(120)
-            gunData.reloadAmmo(this)
-            gunData.save()
-            setItemInHand(InteractionHand.MAIN_HAND, gunData.stack)
-        }
+        val gun = Ports.guns.issue(weaponId, this, STARTING_RESERVE_ROUNDS)
+        if (!gun.isEmpty) setItemInHand(InteractionHand.MAIN_HAND, gun)
 
         // Green (RU) kit for CREEPER/CAT/PIG/COW, sand (US) kit for the other 4 factions — per user
         // request, applies to every class without exception. spawnFaction (not
@@ -740,6 +725,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         private const val LOOT_DROP_CHANCE = 0.30f
         private val LOOTABLE_SLOTS = listOf(EquipmentSlot.MAINHAND, EquipmentSlot.HEAD, EquipmentSlot.CHEST)
         private const val BASE_HEALTH = 20.0
+        /** Rounds carried behind the first magazine. */
+        private const val STARTING_RESERVE_ROUNDS = 120
         private const val VEHICLE_ATTACKER_MEMORY_TICKS = 200
         // internal (not private) — MedicHealBehaviour reuses this to compute its temporary
         // "sprinting to treat someone" speed on the same BASE_SPEED*multiplier basis as applyRole(),

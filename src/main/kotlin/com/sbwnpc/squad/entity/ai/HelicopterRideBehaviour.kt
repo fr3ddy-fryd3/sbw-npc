@@ -1,15 +1,12 @@
 package com.sbwnpc.squad.entity.ai
 
-import com.atsuishio.superbwarfare.data.gun.FireMode
-import com.atsuishio.superbwarfare.data.gun.GunData
-import com.atsuishio.superbwarfare.data.gun.GunProp
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
-import com.atsuishio.superbwarfare.item.gun.GunItem
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.DroneCombat
 import com.sbwnpc.squad.combat.FriendlyFireGuard
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.team.SquadTeams
@@ -156,27 +153,22 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun fireFromBench(entity: NpcEntity, heli: VehicleEntity) {
         if (heli.getSeatIndex(entity) < FIRST_BENCH_SEAT) return
         val target = entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) } ?: return
-        if (entity.mainHandItem.item !is GunItem) return
-        val gun = GunData.from(entity.mainHandItem)
-
-        gun.tick(entity, true)
-        if (gun.shouldStartReloading(entity)) gun.startReload()
-        if (gun.shouldStartBolt()) gun.startBolt()
+        val gun = Ports.guns.inHand(entity) ?: return
+        gun.operate()
 
         val aim = target.position().add(0.0, target.bbHeight * 0.5, 0.0)
         entity.lookAt(EntityAnchorArgument.Anchor.EYES, aim)
         if (entity.distanceTo(target) > BENCH_RANGE) return
         if (!entity.sensing.hasLineOfSight(target)) return
-        if (entity.tickCount < nextShotTick || !gun.canShoot(entity)) return
+        if (entity.tickCount < nextShotTick || !gun.canShoot()) return
 
         val spread = DroneCombat.spreadForTarget(entity.npcRank.spread * entity.npcClass.accuracyMultiplier, target)
         if (!FriendlyFireGuard.hasClearLineOfFire(entity, aim, spread)) return
 
-        gun.shoot(entity, spread, false, null, aim)
+        gun.shootAt(spread, aim)
         entity.lastShotTick = entity.tickCount
-        var cooldown = (1200.0 / gun.get(GunProp.RPM).toDouble().coerceAtLeast(1.0)).roundToInt().coerceAtLeast(1)
-        val mode = gun.selectedFireModeInfo().mode
-        if (mode == FireMode.SEMI || (mode == FireMode.BURST && gun.burstAmount.get() == 0)) {
+        var cooldown = (1200.0 / gun.roundsPerMinute.coerceAtLeast(1.0)).roundToInt().coerceAtLeast(1)
+        if (gun.needsTriggerReset) {
             cooldown += (entity.npcRank.semiFireIntervalMs / 50).toInt()
         }
         nextShotTick = entity.tickCount + cooldown

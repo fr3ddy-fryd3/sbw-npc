@@ -1,8 +1,7 @@
 package com.sbwnpc.squad.combat
 
-import com.atsuishio.superbwarfare.data.gun.GunData
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
-import com.atsuishio.superbwarfare.item.gun.GunItem
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.resources.ResourceLocation
@@ -28,14 +27,7 @@ object AntiArmourKit {
 
     /** A loaded launcher, or empty if SuperbWarfare has no such item (it always does — this is a
      *  registry lookup, not a guess about the mod being present). */
-    fun issue(npc: NpcEntity): ItemStack {
-        val item = BuiltInRegistries.ITEM.getOptional(RPG).orElse(null) as? GunItem ?: return ItemStack.EMPTY
-        val data = GunData.from(ItemStack(item))
-        data.virtualAmmo.set(ROCKETS)
-        data.reloadAmmo(npc)
-        data.save()
-        return data.stack
-    }
+    fun issue(npc: NpcEntity): ItemStack = Ports.guns.issue(RPG, npc, ROCKETS)
 
     fun isLauncher(stack: ItemStack): Boolean =
         !stack.isEmpty && BuiltInRegistries.ITEM.getKey(stack.item) == RPG
@@ -43,9 +35,7 @@ object AntiArmourKit {
     /** Whether there is anything left to fire. */
     fun loaded(npc: NpcEntity): Boolean {
         val stack = if (isLauncher(npc.mainHandItem)) npc.mainHandItem else npc.antiArmourWeapon
-        if (!isLauncher(stack)) return false
-        val data = GunData.from(stack)
-        return data.ammo.get() > 0 || data.virtualAmmo.get() > 0
+        return isLauncher(stack) && Ports.guns.roundsLeft(stack) > 0
     }
 
     /**

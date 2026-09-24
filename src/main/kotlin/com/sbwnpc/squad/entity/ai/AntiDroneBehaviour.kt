@@ -1,15 +1,12 @@
 package com.sbwnpc.squad.entity.ai
 
-import com.atsuishio.superbwarfare.data.gun.FireMode
-import com.atsuishio.superbwarfare.data.gun.GunData
-import com.atsuishio.superbwarfare.data.gun.GunProp
 import com.atsuishio.superbwarfare.entity.vehicle.DroneEntity
-import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.DroneAccuracy
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.entity.DroneRegistry
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.init.ModMemories
@@ -201,38 +198,30 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
         return true
     }
 
-    private fun currentGunData(entity: NpcEntity): GunData? {
-        if (entity.mainHandItem.item !is GunItem) return null
-        return GunData.from(entity.mainHandItem)
-    }
-
     private fun shoot(entity: NpcEntity, level: ServerLevel, drone: DroneEntity, dist: Double) {
         entity.navigation.stop()
-        val gunData = currentGunData(entity) ?: return
+        val gun = Ports.guns.inHand(entity) ?: return
 
         // Lead: where the drone will be when the round gets there (VELOCITY is blocks/tick).
-        val velocity = gunData.get(GunProp.VELOCITY).toDouble().coerceAtLeast(1.0)
+        val velocity = gun.muzzleVelocity.coerceAtLeast(1.0)
         val aim = drone.position().add(0.0, drone.bbHeight * 0.5, 0.0).add(drone.deltaMovement.scale(dist / velocity))
         entity.lookAt(EntityAnchorArgument.Anchor.EYES, aim)
         entity.lookControl.setLookAt(aim.x, aim.y, aim.z)
 
-        gunData.tick(entity, true)
-        if (gunData.shouldStartReloading(entity)) gunData.startReload()
-        if (gunData.shouldStartBolt()) gunData.startBolt()
+        gun.operate()
 
         if (dist > SHOOT_RANGE || !entity.sensing.hasLineOfSight(drone)) return
-        if (entity.tickCount < nextShotTick || !gunData.canShoot(entity)) return
+        if (entity.tickCount < nextShotTick || !gun.canShoot()) return
         // A drone is a small, fast, evasive target — the same aim a rifleman holds on a person
         // shouldn't land on it as reliably.
         val spread = DroneAccuracy.adjustSpread(entity.npcRank.spread * entity.npcClass.accuracyMultiplier, true)
         if (!FriendlyFireGuard.hasClearLineOfFire(entity, aim, spread)) return
 
-        gunData.shoot(entity, spread, false, null, aim)
+        gun.shootAt(spread, aim)
         entity.lastShotTick = entity.tickCount
 
-        var cooldownTicks = (1200.0 / gunData.get(GunProp.RPM).toDouble().coerceAtLeast(1.0)).roundToInt().coerceAtLeast(1)
-        val mode = gunData.selectedFireModeInfo().mode
-        if (mode == FireMode.SEMI || (mode == FireMode.BURST && gunData.burstAmount.get() == 0)) {
+        var cooldownTicks = (1200.0 / gun.roundsPerMinute.coerceAtLeast(1.0)).roundToInt().coerceAtLeast(1)
+        if (gun.needsTriggerReset) {
             cooldownTicks += (entity.npcRank.semiFireIntervalMs / 50).toInt()
         }
         nextShotTick = entity.tickCount + cooldownTicks

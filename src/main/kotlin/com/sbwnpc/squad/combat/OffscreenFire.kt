@@ -1,9 +1,6 @@
 package com.sbwnpc.squad.combat
 
-import com.atsuishio.superbwarfare.data.gun.FireMode
-import com.atsuishio.superbwarfare.data.gun.GunData
-import com.atsuishio.superbwarfare.data.gun.GunProp
-import com.atsuishio.superbwarfare.init.ModDamageTypes
+import com.sbwnpc.squad.domain.port.HandGun
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity
@@ -18,7 +15,7 @@ import kotlin.math.exp
  * within [WITNESS_RADIUS] has no audience: no tracer to see, no impact to hear, no one to be hit
  * by a stray round. For those, the shot is resolved right here as a probability roll and a direct
  * `hurt()` — same damage type (so `NpcEntity.hurt`'s suppression reaction still fires exactly as
- * for a real bullet), same ammo/burst bookkeeping as `GunItem.afterShoot`/`shootInternal`, no
+ * for a real bullet), same ammo/burst bookkeeping as a real shot ([HandGun.spendShot]), no
  * entity, no sound.
  *
  * Only for direct-fire, non-explosive guns ([canSimulate]) — a grenade launcher's splash and
@@ -44,7 +41,7 @@ object OffscreenFire {
         level.getNearestPlayer(shooter.x, shooter.y, shooter.z, WITNESS_RADIUS, false) != null ||
             level.getNearestPlayer(target.x, target.y, target.z, WITNESS_RADIUS, false) != null
 
-    fun canSimulate(gunData: GunData): Boolean = gunData.get(GunProp.EXPLOSION_RADIUS) <= 0.0
+    fun canSimulate(gun: HandGun): Boolean = gun.explosionRadius <= 0.0
 
     fun hitChance(distance: Double, spread: Double): Double {
         val chance = BASE_HIT_CHANCE * exp(-distance / DISTANCE_FALLOFF) / (1.0 + spread / SPREAD_DIVISOR)
@@ -52,32 +49,17 @@ object OffscreenFire {
     }
 
     /** Resolves one trigger pull. Caller has already checked aim time, line of fire and
-     *  `gunData.canShoot` — this re-checks the latter only as a guard. */
-    fun fire(level: ServerLevel, shooter: NpcEntity, gunData: GunData, target: LivingEntity, spread: Double) {
-        if (!gunData.canShoot(shooter)) return
+     *  `canShoot` — this re-checks the latter only as a guard. */
+    fun fire(shooter: NpcEntity, gun: HandGun, target: LivingEntity, spread: Double) {
+        if (!gun.canShoot()) return
 
-        val pellets = gunData.get(GunProp.PROJECTILE_AMOUNT).coerceAtLeast(1)
+        val pellets = gun.pellets.coerceAtLeast(1)
         val chance = hitChance(shooter.distanceTo(target).toDouble(), spread)
         var hits = 0
         repeat(pellets) { if (shooter.random.nextDouble() < chance) hits++ }
         if (hits > 0) {
-            val damage = (gunData.get(GunProp.DAMAGE) * hits).toFloat()
-            target.hurt(ModDamageTypes.causeGunFireDamage(level.registryAccess(), shooter, shooter), damage)
+            gun.inflictHit(target, (gun.damage * hits).toFloat())
         }
-
-        // Bookkeeping mirrored from GunItem.shootInternal/afterShoot so the magazine, burst
-        // counter and reload logic behave identically to a real shot.
-        if (gunData.selectedFireModeInfo().mode == FireMode.BURST) {
-            val amount = gunData.burstAmount.get()
-            gunData.burstAmount.set(if (amount == 0) gunData.get(GunProp.BURST_AMOUNT) - 1 else maxOf(0, amount - 1))
-        }
-        val cost = gunData.get(GunProp.AMMO_COST_PER_SHOOT)
-        if (!gunData.useBackpackAmmo()) {
-            gunData.ammo.set(gunData.ammo.get() - cost)
-        } else {
-            gunData.consumeBackupAmmo(shooter, cost)
-        }
-        if (!gunData.hasEnoughAmmoToShoot(shooter)) gunData.burstAmount.reset()
-        gunData.save()
+        gun.spendShot()
     }
 }
