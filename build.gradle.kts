@@ -166,6 +166,8 @@ dependencies {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    // NeoForge runs tests from its run directory; source-scanning tests need the real root.
+    systemProperty("sbwnpc.projectDir", projectDir.absolutePath)
 }
 
 tasks.withType<JavaCompile> {
