@@ -102,7 +102,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
             lastContactPos = target.position()
         }
         val home = entity.homeCenter() ?: heli.position()
-        val airworthy = healthy(heli) && Ports.vehicles.storedPower(heli) > MIN_RESERVE_ENERGY
+        val airworthy = Helicopters.canFly(heli)
         val mission = decideMission(entity, heli, target, home, airworthy)
         // Two aircraft on the same job compute the same station, so hold it apart from whoever
         // else is up here and fly it in its own altitude band.
@@ -119,6 +119,16 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         // over the terrain decides that, never onGround().
         val height = heli.y - groundY(level, heli.x, heli.z)
         val airborne = height >= MIN_TRANSLATE_HEIGHT
+
+        // Stuck on the ground with the enemy about: a sitting aircraft is a coffin, so get out and
+        // fight on foot. VehicleCrewBehaviour keeps the pilot from climbing back in until the
+        // contact is over.
+        if (!airworthy && !airborne && target != null) {
+            DebugFlags.log("[heli-debug] {} bailing out of a grounded, unflyable helicopter", entity.uuid)
+            cutControls(heli)
+            entity.stopRiding()
+            return
+        }
 
         // An order to be somewhere else is reason enough to fly, not just an enemy to shoot at —
         // otherwise a squad told to move leaves its helicopter sitting on the pad. Already airborne
@@ -392,9 +402,6 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         return vehicle
     }
 
-    private fun healthy(heli: Entity): Boolean =
-        Ports.vehicles.healthFraction(heli) > RETREAT_HEALTH_FRACTION
-
     private fun engagementTarget(entity: NpcEntity): LivingEntity? =
         entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) }
 
@@ -529,9 +536,6 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         const val ON_STATION_RADIUS = 8.0
         const val OFF_STATION_RADIUS = 20.0
         const val DESCENT_RATE = 0.22
-        /** Break off far above SBW's 10% "controls gone" threshold. */
-        const val RETREAT_HEALTH_FRACTION = 0.35f
-        const val MIN_RESERVE_ENERGY = 200_000
         val LOOKAHEAD_DISTANCES = listOf(12.0, 24.0, 40.0, 60.0)
     }
 }

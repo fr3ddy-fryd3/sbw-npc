@@ -34,6 +34,12 @@ object Helicopters {
 
     fun isHelicopter(vehicle: Entity): Boolean = Ports.vehicles.modelOf(vehicle) is HelicopterModel
 
+    /** Healthy and charged enough to be worth flying. Breaks off far above SBW's 10% health, where
+     *  it takes the controls away for good. */
+    fun canFly(vehicle: Entity): Boolean =
+        Ports.vehicles.healthFraction(vehicle) > RETREAT_HEALTH_FRACTION &&
+            Ports.vehicles.storedPower(vehicle) > MIN_RESERVE_ENERGY
+
     fun hasTurret(vehicle: Entity): Boolean = Ports.vehicles.modelOf(vehicle) == HelicopterModel.MI_28
 
     /**
@@ -116,6 +122,8 @@ object Helicopters {
         level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, x.toInt(), z.toInt())
 
     private const val ROTOR_CLEARANCE = 6
+    private const val RETREAT_HEALTH_FRACTION = 0.35f
+    private const val MIN_RESERVE_ENERGY = 200_000
     private const val MAX_LIFT = 24
     private const val LZ_SEARCH_RADIUS = 24
     private const val LZ_STEP = 6

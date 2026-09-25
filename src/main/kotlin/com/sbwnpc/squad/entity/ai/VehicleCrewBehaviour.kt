@@ -6,6 +6,7 @@ import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.TankModel
 import com.sbwnpc.squad.team.SquadTeams
+import com.sbwnpc.squad.vehicle.Helicopters
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
@@ -47,6 +48,12 @@ class VehicleCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
             entity.assignedVehicleId = null
             return null
         }
+        // A pilot who bailed out of a helicopter that can't fly stays out while there's a fight —
+        // climbing back into a grounded aircraft under fire is the one thing that won't help.
+        // Still assigned: once it's quiet the crew goes back to it.
+        if (vehicle != null && entity.vehicle !== vehicle && entity.target != null &&
+            Helicopters.isHelicopter(vehicle) && !Helicopters.canFly(vehicle)
+        ) return null
         return vehicle
     }
 

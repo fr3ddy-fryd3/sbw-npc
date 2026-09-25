@@ -16,6 +16,7 @@ import com.sbwnpc.squad.domain.port.HandGun
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.domain.port.TriggerMode
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
 import com.sbwnpc.squad.util.MillisTimer
@@ -24,6 +25,7 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
+import net.minecraft.world.entity.ai.util.DefaultRandomPos
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
@@ -86,6 +88,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var nextPositionCheckTick = 0
 
     private var nextFriendlyFireCheckTick = 0
+    private var nextFallBackTick = 0
     private var nextAlarmTick = 0
 
     // See OffscreenFire — re-checked every WITNESS_CHECK_INTERVAL ticks, not per shot.
@@ -106,6 +109,14 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val SIDESTEP_BATCH_COOLDOWN = 40
         private const val BOUND_MOVE_TICKS = 25
         private const val GUNFIRE_HEARING_RADIUS = 30.0
+
+        /** A downed pilot with a sidearm has no business closing in: it backs off to this far,
+         *  shooting as it goes. */
+        private const val KEEP_AWAY_DISTANCE = 40.0
+        private const val FALL_BACK_STEP = 16
+        private const val FALL_BACK_VERTICAL = 7
+        private const val FALL_BACK_REPATH_TICKS = 30
+        private const val FALL_BACK_SPEED = 1.4
 
         // Friendly-fire assessment used to be two entity queries EVERY tick for every shooter (line
         // of fire + blast radius). Now one combined pass every few ticks — an ally can't cross a
@@ -230,6 +241,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         firingPos = null
         nextPositionCheckTick = 0
         nextFriendlyFireCheckTick = 0
+        nextFallBackTick = 0
         nextWitnessCheckTick = 0
         witnessed = true
         roundsInBurst = 0
@@ -243,6 +255,10 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             entity.navigation.stop()
             bounding = true
             boundPhaseStarted = false
+            return
+        }
+        if (keepsAway(entity) && entity.distanceToSqr(target) < KEEP_AWAY_DISTANCE * KEEP_AWAY_DISTANCE) {
+            fallBack(entity, target)
             return
         }
         if (entity.distanceToSqr(target) <= entity.shootDistance * entity.shootDistance) {
@@ -270,6 +286,21 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                 if (bounding) BOUND_MOVE_TICKS else HOLD_MIN_TICKS + entity.random.nextInt(HOLD_JITTER_TICKS)
             if (bounding) moveTowardFormationSlot(entity, target) else entity.navigation.stop()
         }
+    }
+
+    /** Aircrew on foot — a pilot out of a helicopter that can't fly. */
+    private fun keepsAway(entity: NpcEntity): Boolean =
+        entity.npcClass == NpcClass.HELICOPTER_PILOT && entity.vehicle == null
+
+    private fun fallBack(entity: NpcEntity, target: LivingEntity) {
+        bounding = true
+        boundPhaseStarted = false
+        firingPos = null
+        FiringSpots.release(entity.uuid)
+        if (entity.tickCount < nextFallBackTick && !entity.navigation.isDone) return
+        nextFallBackTick = entity.tickCount + FALL_BACK_REPATH_TICKS
+        val away = DefaultRandomPos.getPosAway(entity, FALL_BACK_STEP, FALL_BACK_VERTICAL, target.position()) ?: return
+        entity.navigation.moveTo(away.x, away.y, away.z, FALL_BACK_SPEED)
     }
 
     /** Once close enough to fight without needing to advance further, prefer a nearby spot that
