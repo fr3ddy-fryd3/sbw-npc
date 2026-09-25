@@ -303,6 +303,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun atSpot(entity: NpcEntity, pos: Vec3): Boolean =
         horizontalDistance(entity.position(), pos) <= ARRIVE_DISTANCE && Math.abs(entity.y - pos.y) < 1.5
 
+    private fun rocketAimPoint(target: LivingEntity): Vec3 =
+        target.vehicle?.boundingBox?.center ?: target.position().add(0.0, target.bbHeight * 0.3, 0.0)
+
     /** Aircrew on foot — a pilot out of a helicopter that can't fly. */
     private fun keepsAway(entity: NpcEntity): Boolean =
         entity.npcClass == NpcClass.HELICOPTER_PILOT && entity.vehicle == null
@@ -529,7 +532,10 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         // still shooting correctly. Same call AntiDroneBehaviour already makes for the same reason.
         entity.lookControl.setLookAt(target.x, target.eyeY, target.z)
         // A rocket drops on its way; SBW fires along xRot, so lob it rather than point at the target.
-        gun.arcPitch(entity.eyePosition, target.eyePosition)?.let { entity.xRot = it }
+        // Aimed at the hull, or low on a man: the eyes are what lookAt uses, and on a vehicle's
+        // occupant that is the top of the turret — the drop used to carry a rocket from there down
+        // onto the armour, and taking the drop out without lowering the aim sent it over the top.
+        gun.arcPitch(entity.eyePosition, rocketAimPoint(target))?.let { entity.xRot = it }
 
         val squad = entity.currentSquad()
         val defendHome = if (squad?.order == SquadOrder.DEFEND) entity.homeCenter() else null
