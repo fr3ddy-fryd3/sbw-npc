@@ -2,6 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.GrenadeHazard
 import com.sbwnpc.squad.combat.GrenadeThrower
 import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.combat.TickBudget
@@ -775,6 +776,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         )
         return candidates.asSequence()
             .distinct()
+            .filterNot { GrenadeHazard.threatens(level, it) }
             .sortedBy { it.distSqr(origin) }
             .firstOrNull { isHiddenFrom(level, entity, threats, it, hulls) }
     }

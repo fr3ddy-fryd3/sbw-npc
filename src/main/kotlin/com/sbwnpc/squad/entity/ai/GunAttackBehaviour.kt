@@ -7,6 +7,7 @@ import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.DroneCombat
 import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.FriendlyFireGuard
+import com.sbwnpc.squad.combat.GrenadeHazard
 import com.sbwnpc.squad.combat.OffscreenFire
 import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.combat.SquadFormation
@@ -312,6 +313,10 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  Aiming/firing in [tick] runs completely unconditionally regardless of what this picks or
      *  whether the mob is still walking the last few steps toward it. */
     private fun holdFiringPosition(entity: NpcEntity, target: LivingEntity) {
+        val level0 = entity.level() as? ServerLevel ?: return
+        // A grenade has come down by the spot being held: pick another now rather than walk
+        // into it and get chased back out by GrenadeEvadeBehaviour.
+        if (firingPos?.let { GrenadeHazard.threatens(level0, it) } == true) nextPositionCheckTick = 0
         val pos = firingPos
         if (pos != null && entity.tickCount < nextPositionCheckTick) {
             if (entity.position().closerThan(pos, 1.0)) {
@@ -372,7 +377,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         val hulls = Sightline.vehicleHulls(level, area, entity, target)
         // Walked once for the whole search rather than per candidate — see FiringSpots.nearby.
         val taken = FiringSpots.nearby(origin, STUCK_SEARCH_RADIUS, entity.uuid)
-        val here = concealmentScore(level, entity, target, origin, eyeHeight, hulls)
+        // Standing in a grenade's blast is never the best spot, however good the view.
+        val here = if (GrenadeHazard.threatens(level, origin)) null
+            else concealmentScore(level, entity, target, origin, eyeHeight, hulls)
 
         sweep(level, entity, target, origin, eyeHeight, hulls, taken, POSITION_SEARCH_RADIUS, POSITION_GRID_STEP, here ?: -1.0)
             ?.let { return it }
@@ -412,6 +419,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                 // Somebody else is already going there. Checked before the raycasts, which is also
                 // the cheap order.
                 if (FiringSpots.crowded(ground, taken)) continue
+                if (GrenadeHazard.threatens(level, ground)) continue
                 val score = concealmentScore(level, entity, target, ground, eyeHeight, hulls) ?: continue
                 if (score > bestScore) {
                     bestScore = score

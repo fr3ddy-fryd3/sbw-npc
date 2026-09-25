@@ -2,7 +2,8 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
-import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.combat.FiringSpots
+import com.sbwnpc.squad.combat.GrenadeHazard
 import com.sbwnpc.squad.entity.GrenadeRegistry
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModMemories
@@ -45,10 +46,12 @@ class GrenadeEvadeBehaviour : ExtendedBehaviour<NpcEntity>() {
         return true
     }
 
+    // Held until the grenade is gone, not just until the mob is out of range: stopping at the
+    // edge handed it straight back to whatever had it walking toward the grenade in the first
+    // place — its firing position, its formation slot — and it walked back in.
     override fun shouldKeepRunning(entity: NpcEntity): Boolean {
         val g = grenade ?: return false
-        if (!g.isAlive || entity.isPassenger || entity.tickCount >= giveUpTick) return false
-        return entity.distanceToSqr(g) <= dangerRadius().let { it * it }
+        return g.isAlive && !entity.isPassenger && entity.tickCount < giveUpTick
     }
 
     override fun start(entity: NpcEntity) {
@@ -57,12 +60,19 @@ class GrenadeEvadeBehaviour : ExtendedBehaviour<NpcEntity>() {
         fleeTo = fleePoint(entity, g.position())
         BrainUtils.setForgettableMemory(entity, ModMemories.GRENADE_EVADE.get(), true, MAX_EVADE_TICKS)
         fleeTo?.let { entity.navigation.moveTo(it.x, it.y, it.z, SPRINT_SPEED) }
+        // The old spot is inside the blast; whatever was headed there has to pick again after.
+        FiringSpots.release(entity.uuid)
         DebugFlags.log("[grenade-debug] {} ({}) running from a grenade {} blocks away",
             entity.uuid, entity.npcClass, "%.1f".format(entity.distanceTo(g)))
     }
 
     override fun tick(entity: NpcEntity) {
         val to = fleeTo ?: return
+        // Out and clear: stand still until it goes off.
+        if (entity.position().closerThan(to, ARRIVED_DISTANCE)) {
+            entity.navigation.stop()
+            return
+        }
         // Something else stopped or redirected the navigation this tick — take it back.
         val current = entity.navigation.targetPos
         if (entity.navigation.isDone || current == null || current.distToCenterSqr(to.x, to.y, to.z) > 4.0) {
@@ -87,23 +97,30 @@ class GrenadeEvadeBehaviour : ExtendedBehaviour<NpcEntity>() {
             .minByOrNull { it.distanceToSqr(entity) }
     }
 
-    /** A reachable spot away from the grenade; a straight line away if the random search finds
-     *  nothing (in a corridor, say). */
+    /** A reachable spot well clear of the grenade — and of any other one lying about; a straight
+     *  line away if the random search finds nothing (in a corridor, say). */
     private fun fleePoint(entity: NpcEntity, from: Vec3): Vec3 {
-        DefaultRandomPos.getPosAway(entity, FLEE_DISTANCE, FLEE_VERTICAL, from)?.let { return it }
+        val level = entity.level() as? ServerLevel
+        val clear = dangerRadius() + FLEE_MARGIN
+        repeat(FLEE_ATTEMPTS) {
+            val pos = DefaultRandomPos.getPosAway(entity, FLEE_DISTANCE, FLEE_VERTICAL, from) ?: return@repeat
+            if (pos.distanceTo(from) >= clear && (level == null || !GrenadeHazard.threatens(level, pos))) return pos
+        }
         val away = entity.position().subtract(from).multiply(1.0, 0.0, 1.0)
         val dir = if (away.lengthSqr() < 1e-4) Vec3(1.0, 0.0, 0.0) else away.normalize()
-        return entity.position().add(dir.scale(FLEE_DISTANCE.toDouble()))
+        return Vec3(from.x, entity.y, from.z).add(dir.scale(clear))
     }
 
-    private fun dangerRadius(): Double =
-        Ports.grenades.blastRadius + SAFETY_MARGIN
+    private fun dangerRadius(): Double = GrenadeHazard.dangerRadius
 
     private companion object {
-        const val SAFETY_MARGIN = 2.0
+        /** How far past the danger radius to run: the edge of it is where the fragments still land. */
+        const val FLEE_MARGIN = 4.0
+        const val FLEE_ATTEMPTS = 6
+        const val ARRIVED_DISTANCE = 1.5
         /** (blocks/tick)^2 below which a grenade counts as having landed. */
         const val SETTLED_SPEED_SQR = 0.3 * 0.3
-        const val FLEE_DISTANCE = 10
+        const val FLEE_DISTANCE = 14
         const val FLEE_VERTICAL = 4
         const val SPRINT_SPEED = 1.4
         /** Well past any fuse — if it hasn't gone off by then, it isn't going to matter. */
