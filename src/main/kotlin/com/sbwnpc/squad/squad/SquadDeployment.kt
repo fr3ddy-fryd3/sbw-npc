@@ -1,6 +1,5 @@
 package com.sbwnpc.squad.squad
 
-import com.atsuishio.superbwarfare.entity.vehicle.MortarEntity
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModEntities
@@ -111,12 +110,11 @@ object SquadDeployment {
     }
 
     private fun spawnMortar(level: ServerLevel, center: BlockPos, yaw: Float, faction: SquadFaction): Boolean {
-        val mortar = MortarEntity(level, yaw + 180f)
+        val mortar = Ports.mortars.create(level, yaw + 180f)
         val spot = SafeSpawn.findClearSpot(
             level, center.x + 0.5, center.z + 0.5, center.y, mortar.getDimensions(Pose.STANDING)
         ) ?: return false
         mortar.moveTo(spot.x, spot.y, spot.z, yaw + 180f, 0f)
-        mortar.intelligent = true
         level.addFreshEntity(mortar)
         SquadTeams.assign(mortar, faction)
         return true

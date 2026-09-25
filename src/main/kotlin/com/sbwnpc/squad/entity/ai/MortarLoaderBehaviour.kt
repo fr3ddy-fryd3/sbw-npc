@@ -1,15 +1,13 @@
 package com.sbwnpc.squad.entity.ai
 
-import com.atsuishio.superbwarfare.entity.vehicle.MortarEntity
-import com.atsuishio.superbwarfare.init.ModItems
-import com.atsuishio.superbwarfare.item.projectile.MortarShellItem
 import com.mojang.datafixers.util.Pair
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
-import net.minecraft.world.item.ItemStack
 import net.minecraft.world.phys.AABB
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 
@@ -31,7 +29,7 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
         noTimeout()
     }
 
-    private var mortar: MortarEntity? = null
+    private var mortar: Entity? = null
     private var nextCheckTick = 0
     private var nextMortarSearchTick = 0
     /** The squadmate currently carrying the crew's mortar, if it is being displaced. */
@@ -66,27 +64,24 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (carrier != null) return true
 
         val current = mortar
-        if (current != null && current.isAlive && !current.isWreck && !MortarClaims.isLoaderClaimedByOther(current.uuid, entity.uuid)) return true
+        if (current != null && Ports.vehicles.isOperational(current) && !MortarClaims.isLoaderClaimedByOther(current.uuid, entity.uuid)) return true
 
         val level = entity.level() as? ServerLevel ?: return false
         // Same every-tick-search problem as MortarOperatorBehaviour — see its MORTAR_SEARCH_INTERVAL_TICKS.
         if (entity.tickCount < nextMortarSearchTick) return false
         nextMortarSearchTick = entity.tickCount + MORTAR_SEARCH_INTERVAL_TICKS
-        val found = level.getEntitiesOfClass(
-            MortarEntity::class.java, AABB.ofSize(entity.position(), SEARCH_RANGE * 2, SEARCH_RANGE * 2, SEARCH_RANGE * 2)
+        val found = Ports.mortars.within(
+            level, AABB.ofSize(entity.position(), SEARCH_RANGE * 2, SEARCH_RANGE * 2, SEARCH_RANGE * 2)
         ).firstOrNull {
-            it.isAlive && !it.isWreck && entity.distanceToSqr(it) <= SEARCH_RANGE * SEARCH_RANGE &&
+            Ports.vehicles.isOperational(it) && entity.distanceToSqr(it) <= SEARCH_RANGE * SEARCH_RANGE &&
                 !MortarClaims.isLoaderClaimedByOther(it.uuid, entity.uuid)
         } ?: return false
 
         MortarClaims.claimLoader(found.uuid, entity.uuid)
         mortar = found
-        // Non-"intelligent" mortars auto-fire on any inventory change (MortarEntity.setChanged),
-        // simulating a dumb mortar that discharges as soon as a shell is dropped in. We drive
-        // firing ourselves through MortarOperatorBehaviour's own aim/cooldown checks, so flip this
-        // on (same flag a player sets by binding a Monitor item) to stop setItem() below from
-        // triggering an uncontrolled shot every time we resupply.
-        found.intelligent = true
+        // We drive firing ourselves through MortarOperatorBehaviour's own aim/cooldown checks, so a
+        // shell going in below must not trigger an uncontrolled shot every time we resupply.
+        Ports.mortars.takeControl(found)
         return true
     }
 
@@ -133,13 +128,8 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.tickCount < nextCheckTick) return
         nextCheckTick = entity.tickCount + 60
 
-        // The mortar's own container caps this slot at 1 shell (VehicleEntity.maxStackSize
-        // override), not a real stack — it holds exactly one round in the tube at a time. Only
-        // touch it when actually empty; re-setting a full slot every check just spams SBW's
+        // Only touch it when actually empty; re-loading a full tube every check just spams SBW's
         // "exceeding max stack size" clamp warning for nothing.
-        val loaded = m.getItems().firstOrNull()
-        if (loaded == null || loaded.isEmpty || loaded.item !is MortarShellItem) {
-            m.setItem(0, ItemStack(ModItems.MORTAR_SHELL.get(), 1))
-        }
+        if (!Ports.mortars.hasShell(m)) Ports.mortars.loadShell(m)
     }
 }

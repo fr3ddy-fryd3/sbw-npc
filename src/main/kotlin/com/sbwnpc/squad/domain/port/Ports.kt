@@ -4,4 +4,5 @@ package com.sbwnpc.squad.domain.port
 object Ports {
     lateinit var guns: Guns
     lateinit var vehicles: Vehicles
+    lateinit var mortars: Mortars
 }

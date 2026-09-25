@@ -48,17 +48,12 @@ class SbwBoundaryTest {
             "entity/ai/DroneOperatorBehaviour.kt",
             "entity/ai/GrenadeEvadeBehaviour.kt",
             "entity/ai/MedicHealBehaviour.kt",
-            "entity/ai/MortarDeployment.kt",
-            "entity/ai/MortarLoaderBehaviour.kt",
-            "entity/ai/MortarOperatorBehaviour.kt",
-            "entity/ai/VehicleTransportBehaviour.kt",
             "entity/DroneRegistry.kt",
             "entity/GrenadeRegistry.kt",
             "entity/NpcEntity.kt",
             "init/ModCreativeTab.kt",
             "item/SquadToolItem.kt",
             "network/ModNetwork.kt",
-            "squad/SquadDeployment.kt",
         )
     }
 }

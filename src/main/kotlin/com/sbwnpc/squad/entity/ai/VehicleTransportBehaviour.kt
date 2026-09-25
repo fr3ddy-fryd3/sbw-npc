@@ -1,6 +1,5 @@
 package com.sbwnpc.squad.entity.ai
 
-import com.atsuishio.superbwarfare.entity.vehicle.MortarEntity
 import com.sbwnpc.squad.domain.port.Mobility
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
@@ -737,7 +736,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun shouldPrioritizeMortar(entity: NpcEntity, order: SquadOrder): Boolean {
         if (order != SquadOrder.ATTACK || entity.homeCenter() == null) return false
-        val claimable: (MortarEntity) -> Boolean = when (entity.npcClass) {
+        val claimable: (Entity) -> Boolean = when (entity.npcClass) {
             NpcClass.MORTAR_OPERATOR -> { mortar -> !MortarClaims.isOperatorClaimedByOther(mortar.uuid, entity.uuid) }
             NpcClass.MORTAR_LOADER -> { mortar -> !MortarClaims.isLoaderClaimedByOther(mortar.uuid, entity.uuid) }
             else -> return false
@@ -746,11 +745,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // Reached from eligible() every tick for mortar crew under ATTACK — cache the box query.
         if (entity.tickCount - mortarPriorityCheckTick < MORTAR_PRIORITY_CHECK_INTERVAL_TICKS) return mortarPriorityCached
         mortarPriorityCheckTick = entity.tickCount
-        mortarPriorityCached = level.getEntitiesOfClass(
-            MortarEntity::class.java,
+        mortarPriorityCached = Ports.mortars.within(
+            level,
             AABB.ofSize(entity.position(), MORTAR_SEARCH_RADIUS * 2, MORTAR_SEARCH_RADIUS * 2, MORTAR_SEARCH_RADIUS * 2)
         ).any {
-            it.isAlive && !it.isWreck && entity.distanceToSqr(it) <= MORTAR_SEARCH_RADIUS * MORTAR_SEARCH_RADIUS && claimable(it)
+            Ports.vehicles.isOperational(it) && entity.distanceToSqr(it) <= MORTAR_SEARCH_RADIUS * MORTAR_SEARCH_RADIUS && claimable(it)
         }
         return mortarPriorityCached
     }

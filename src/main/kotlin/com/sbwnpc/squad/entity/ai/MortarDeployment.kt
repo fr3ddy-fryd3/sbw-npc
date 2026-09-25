@@ -1,10 +1,11 @@
 package com.sbwnpc.squad.entity.ai
 
-import com.atsuishio.superbwarfare.entity.vehicle.MortarEntity
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.squad.SafeSpawn
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.Pose
 import net.minecraft.world.phys.Vec3
 
@@ -23,7 +24,7 @@ object MortarDeployment {
     private const val PLACE_OFFSET = 2.0
 
     /** Breaks [mortar] down. The operator carries it from here until [deploy]. */
-    fun pack(mortar: MortarEntity, carrier: NpcEntity) {
+    fun pack(mortar: Entity, carrier: NpcEntity) {
         MortarClaims.release(carrier.uuid)
         mortar.discard()
         carrier.carryingMortar = true
@@ -34,7 +35,7 @@ object MortarDeployment {
      * it is not a neutral object anyone can use. Returns null (and keeps the mortar packed) if
      * there is nowhere alongside the operator it could stand.
      */
-    fun deploy(level: ServerLevel, carrier: NpcEntity, facing: Vec3?): MortarEntity? {
+    fun deploy(level: ServerLevel, carrier: NpcEntity, facing: Vec3?): Entity? {
         if (!carrier.carryingMortar) return null
         val yaw = facing?.let { aim ->
             val dx = aim.x - carrier.x
@@ -47,11 +48,10 @@ object MortarDeployment {
         val x = carrier.x + Math.cos(sideways) * PLACE_OFFSET
         val z = carrier.z + Math.sin(sideways) * PLACE_OFFSET
 
-        val mortar = MortarEntity(level, yaw)
+        val mortar = Ports.mortars.create(level, yaw)
         val y = SafeSpawn.findSafeY(level, x, z, carrier.blockY, mortar.getDimensions(Pose.STANDING))
             ?: return null
         mortar.moveTo(x, y, z, yaw, 0f)
-        mortar.intelligent = true
         level.addFreshEntity(mortar)
         SquadTeams.factionOf(carrier)?.let { SquadTeams.assign(mortar, it) }
         carrier.carryingMortar = false
@@ -62,9 +62,8 @@ object MortarDeployment {
     fun dropOnDeath(level: ServerLevel, carrier: NpcEntity) {
         if (!carrier.carryingMortar) return
         // Straight down where it fell — no side offset, and no safe-spot search worth failing on.
-        val mortar = MortarEntity(level, carrier.yRot)
+        val mortar = Ports.mortars.create(level, carrier.yRot)
         mortar.moveTo(carrier.x, carrier.y, carrier.z, carrier.yRot, 0f)
-        mortar.intelligent = true
         level.addFreshEntity(mortar)
         SquadTeams.factionOf(carrier)?.let { SquadTeams.assign(mortar, it) }
         carrier.carryingMortar = false

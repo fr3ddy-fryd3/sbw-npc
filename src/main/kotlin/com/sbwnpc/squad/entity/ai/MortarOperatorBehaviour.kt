@@ -1,13 +1,8 @@
 package com.sbwnpc.squad.entity.ai
 
-import com.atsuishio.superbwarfare.entity.vehicle.MortarEntity
-import com.atsuishio.superbwarfare.entity.vehicle.utils.VehicleVecUtils
-import com.atsuishio.superbwarfare.init.ModItems
-import com.atsuishio.superbwarfare.item.misc.FiringParametersItem
-import com.atsuishio.superbwarfare.item.misc.firingParameters
-import com.atsuishio.superbwarfare.tools.TrajectoryCalculator
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.TeamAwareness
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.npc.NpcClass
@@ -16,10 +11,10 @@ import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
-import net.minecraft.world.item.ItemStack
 import net.minecraft.world.phys.AABB
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 
@@ -48,7 +43,7 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         noTimeout()
     }
 
-    private var mortar: MortarEntity? = null
+    private var mortar: Entity? = null
     private var nextAimTick = 0
     private var nextScanTick = 0
     private var nextBarrageShiftTick = 0
@@ -72,7 +67,7 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val MIN_SCATTER = 5.0
         private const val MAX_SCATTER = 10.0
         private const val FIRE_COOLDOWN_TICKS = 50
-        // With no mortar in range, eligible() used to run the MortarEntity box query every single
+        // With no mortar in range, eligible() used to run the mortar box query every single
         // tick for the rest of the operator's life (SmartBrainLib re-checks stopped behaviours'
         // start conditions each tick). A mortar doesn't appear faster than this.
         private const val MORTAR_SEARCH_INTERVAL_TICKS = 40
@@ -121,23 +116,23 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (fireTarget(entity) == null) return false
 
         val current = mortar
-        if (current != null && current.isAlive && !current.isWreck && !MortarClaims.isOperatorClaimedByOther(current.uuid, entity.uuid)) return true
+        if (current != null && Ports.vehicles.isOperational(current) && !MortarClaims.isOperatorClaimedByOther(current.uuid, entity.uuid)) return true
 
         val level = entity.level() as? ServerLevel ?: return false
         if (entity.tickCount < nextMortarSearchTick) return false
         nextMortarSearchTick = entity.tickCount + MORTAR_SEARCH_INTERVAL_TICKS
-        val found = level.getEntitiesOfClass(
-            MortarEntity::class.java, AABB.ofSize(entity.position(), SEARCH_RANGE * 2, SEARCH_RANGE * 2, SEARCH_RANGE * 2)
+        val found = Ports.mortars.within(
+            level, AABB.ofSize(entity.position(), SEARCH_RANGE * 2, SEARCH_RANGE * 2, SEARCH_RANGE * 2)
         ).firstOrNull {
-            it.isAlive && !it.isWreck && entity.distanceToSqr(it) <= SEARCH_RANGE * SEARCH_RANGE &&
+            Ports.vehicles.isOperational(it) && entity.distanceToSqr(it) <= SEARCH_RANGE * SEARCH_RANGE &&
                 !MortarClaims.isOperatorClaimedByOther(it.uuid, entity.uuid)
         } ?: return false
 
         MortarClaims.claimOperator(found.uuid, entity.uuid)
         mortar = found
-        // See MortarLoaderBehaviour: non-"intelligent" mortars auto-fire on any inventory change, so
-        // make sure this is set even if we claim the mortar before a loader ever does.
-        found.intelligent = true
+        // See MortarLoaderBehaviour: a loaded shell must not fire by itself, even if we claim the
+        // mortar before a loader ever does.
+        Ports.mortars.takeControl(found)
         return true
     }
 
@@ -190,13 +185,11 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.currentSquad() != null && friendlyNearCached(level, entity, target)) return
 
         if (entity.tickCount >= nextAimTick) {
-            val stack = ItemStack(ModItems.FIRING_PARAMETERS.get())
-            stack.firingParameters = FiringParametersItem.Parameters(target, scatterRadius(entity), false)
-            m.setTarget(stack, entity, "Main")
+            Ports.mortars.lay(m, target, scatterRadius(entity), entity)
             nextAimTick = entity.tickCount + 20
         }
         if (entity.tickCount >= nextFireTick) {
-            m.vehicleShoot(entity, "Main", null)
+            Ports.mortars.fire(m, entity)
             nextFireTick = entity.tickCount + FIRE_COOLDOWN_TICKS
         }
     }
@@ -206,7 +199,7 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
      * further out than a mortar has any business shooting, or a point its own solver rejects
      * (out of ballistic range, or past the pitch the tube can be laid to).
      */
-    private fun outOfReach(m: MortarEntity, target: BlockPos): Boolean {
+    private fun outOfReach(m: Entity, target: BlockPos): Boolean {
         if (m.position().distanceTo(target.center) > MAX_ENGAGE_RANGE) return true
         // A target too CLOSE is a different problem with a different answer (hold fire, handled by
         // MIN_RANGE_SQR) — walking towards it would only make that worse.
@@ -234,25 +227,7 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.navigateTo(aim.x, aim.y, aim.z, DISPLACE_SPEED)
     }
 
-    /** Mirrors the feasibility check `MortarEntity.setTarget` does internally (both a flat and a
-     *  lofted trajectory are computed; at least one must exist and fit the turret's pitch limits)
-     *  so we never fire at a target the solver actually rejected. */
-    private fun canHitTarget(m: MortarEntity, target: BlockPos): Boolean {
-        val v = m.getProjectileVelocity("Main").toDouble()
-        val g = m.getProjectileGravity("Main").toDouble()
-        val aimPoint = target.center.add(0.0, -1.0, 0.0)
-        val flat = TrajectoryCalculator.calculateLaunchVector(m.eyePosition, aimPoint, v, g, true)
-        val high = TrajectoryCalculator.calculateLaunchVector(m.eyePosition, aimPoint, v, g, false)
-        if (flat == null || high == null) return false
-        val angle = -VehicleVecUtils.getXRotFromVector(flat).toFloat()
-        val angle2 = -VehicleVecUtils.getXRotFromVector(high).toFloat()
-        val minPitch = m.turretMinPitch
-        val maxPitch = m.turretMaxPitch
-        if (angle < -maxPitch || angle > -minPitch) {
-            return angle2 > -maxPitch && angle2 < -minPitch
-        }
-        return true
-    }
+    private fun canHitTarget(m: Entity, target: BlockPos): Boolean = Ports.mortars.canReach(m, target)
 
     /** Squad-commanded target first, else the nearest hostile within detection radius. */
     private fun fireTarget(entity: NpcEntity): BlockPos? {
