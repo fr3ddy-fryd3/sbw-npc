@@ -1,8 +1,6 @@
 package com.sbwnpc.squad.combat
 
-import com.atsuishio.superbwarfare.entity.projectile.SwarmDroneEntity
-import com.atsuishio.superbwarfare.entity.vehicle.DroneEntity
-import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.core.registries.Registries
@@ -20,7 +18,7 @@ object DroneCombat {
 
     @JvmStatic
     fun isDrone(target: Entity): Boolean =
-        target is DroneEntity || target is SwarmDroneEntity || target.type.`is`(DRONE_TARGETS)
+        Ports.drones.isDrone(target) || target.type.`is`(DRONE_TARGETS)
 
     @JvmStatic
     fun spreadForTarget(baseSpread: Double, target: Entity?): Double =
@@ -28,14 +26,14 @@ object DroneCombat {
 
     fun isHostileDrone(shooter: NpcEntity, target: Entity): Boolean {
         if (!isDrone(target) || !target.isAlive || target.isSpectator) return false
-        if (target is VehicleEntity && target.isWreck) return false
+        if (Ports.vehicles.isWreck(target)) return false
         // An explicit drone faction wins. Remote-controlled drones normally have no scoreboard
         // team; resolve their actual controller/owner instead of treating all drones as enemies.
         if (target.team != null) return SquadTeams.isHostile(shooter, target)
-        val operator = when (target) {
-            is DroneEntity -> target.getController()
-            is Projectile -> target.owner
-            is OwnableEntity -> target.owner
+        val operator = when {
+            Ports.drones.isPiloted(target) -> Ports.drones.controllerOf(target)
+            target is Projectile -> target.owner
+            target is OwnableEntity -> target.owner
             else -> null
         } ?: return false
         return SquadTeams.isHostile(shooter, operator)

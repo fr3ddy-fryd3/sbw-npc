@@ -1,6 +1,5 @@
 package com.sbwnpc.squad.entity.ai
 
-import com.atsuishio.superbwarfare.entity.vehicle.DroneEntity
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.DroneAccuracy
@@ -14,6 +13,7 @@ import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.commands.arguments.EntityAnchorArgument
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.minecraft.world.phys.Vec3
@@ -23,7 +23,7 @@ import java.util.UUID
 import kotlin.math.roundToInt
 
 /**
- * How infantry reacts to a hostile drone (SBW `DroneEntity` or any Drone Warfare addon subclass —
+ * How infantry reacts to a hostile drone (SBW's own drone or any Drone Warfare addon one —
  * a player's, or another squad's operator's). Core task: it must preempt an ongoing firefight,
  * since an FPV drone that gets close ends the firefight for everyone in a 12-block radius.
  *
@@ -98,9 +98,9 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /** The drone this mob should be dealing with right now: the remembered one if still a live,
      *  hostile, in-range threat; otherwise a fresh detection (rate limited). */
-    private fun threat(entity: NpcEntity, level: ServerLevel): DroneEntity? {
+    private fun threat(entity: NpcEntity, level: ServerLevel): Entity? {
         BrainUtils.getMemory(entity, ModMemories.DRONE_THREAT.get())?.let { id ->
-            val drone = level.getEntity(id) as? DroneEntity
+            val drone = level.getEntity(id)?.takeIf(Ports.drones::isPiloted)
             if (drone != null && isLiveThreat(entity, drone, TRACK_RANGE)) return drone
         }
         if (entity.tickCount < nextDetectTick) return null
@@ -112,18 +112,18 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
         return found
     }
 
-    private fun isLiveThreat(entity: NpcEntity, drone: DroneEntity, range: Double): Boolean =
-        drone.isAlive && !drone.isWreck && SquadTeams.isHostile(entity, drone) &&
+    private fun isLiveThreat(entity: NpcEntity, drone: Entity, range: Double): Boolean =
+        Ports.vehicles.isOperational(drone) && SquadTeams.isHostile(entity, drone) &&
             entity.distanceToSqr(drone) <= range * range
 
-    private fun detect(entity: NpcEntity, level: ServerLevel): DroneEntity? {
-        var best: DroneEntity? = null
+    private fun detect(entity: NpcEntity, level: ServerLevel): Entity? {
+        var best: Entity? = null
         var bestD2 = Double.MAX_VALUE
         for (drone in DroneRegistry.all(level)) {
             if (!isLiveThreat(entity, drone, SIGHT_RANGE)) continue
             val d2 = entity.distanceToSqr(drone)
             if (d2 >= bestD2) continue
-            val heard = d2 <= HEARING_RANGE * HEARING_RANGE && drone.engineRunning()
+            val heard = d2 <= HEARING_RANGE * HEARING_RANGE && Ports.vehicles.engineRunning(drone)
             if (heard || entity.sensing.hasLineOfSight(drone)) {
                 best = drone
                 bestD2 = d2
@@ -132,13 +132,13 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
         return best
     }
 
-    private fun remember(npc: NpcEntity, drone: DroneEntity) {
+    private fun remember(npc: NpcEntity, drone: Entity) {
         BrainUtils.setForgettableMemory(npc, ModMemories.DRONE_THREAT.get(), drone.uuid, THREAT_TTL_TICKS)
     }
 
     /** "Drone!" — hand the sighting to every ally in earshot. They get it as a memory, so their
      *  own AntiDroneBehaviour starts on its next tick without needing to see it themselves. */
-    private fun shout(entity: NpcEntity, level: ServerLevel, drone: DroneEntity) {
+    private fun shout(entity: NpcEntity, level: ServerLevel, drone: Entity) {
         NpcRegistry.forEachWithin(level, entity.position(), ALERT_RADIUS, exclude = entity) { ally ->
             if (!SquadTeams.isHostile(entity, ally) && !BrainUtils.hasMemory(ally, ModMemories.DRONE_THREAT.get())) {
                 remember(ally, drone)
@@ -174,7 +174,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     /** Sprint a few blocks directly away from the drone; re-planned once the burst is over. */
-    private fun evade(entity: NpcEntity, drone: DroneEntity) {
+    private fun evade(entity: NpcEntity, drone: Entity) {
         if (entity.tickCount < evadeUntilTick && evadeTarget != null) return
         val away = entity.position().subtract(drone.position()).let { Vec3(it.x, 0.0, it.z) }
         val dir = if (away.lengthSqr() < 1.0e-6) Vec3(1.0, 0.0, 0.0) else away.normalize()
@@ -198,7 +198,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
         return true
     }
 
-    private fun shoot(entity: NpcEntity, level: ServerLevel, drone: DroneEntity, dist: Double) {
+    private fun shoot(entity: NpcEntity, level: ServerLevel, drone: Entity, dist: Double) {
         entity.navigation.stop()
         val gun = Ports.guns.inHand(entity) ?: return
 

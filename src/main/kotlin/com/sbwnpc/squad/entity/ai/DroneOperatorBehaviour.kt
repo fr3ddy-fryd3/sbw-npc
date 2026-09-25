@@ -1,25 +1,19 @@
 package com.sbwnpc.squad.entity.ai
 
-import com.atsuishio.superbwarfare.data.CustomData
-import com.atsuishio.superbwarfare.entity.vehicle.DroneEntity
-import com.atsuishio.superbwarfare.init.ModItems
-import com.atsuishio.superbwarfare.init.ModEntities as SbwEntities
-import com.atsuishio.superbwarfare.tools.CustomExplosion
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.TeamAwareness
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
-import net.minecraft.core.registries.BuiltInRegistries
-import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.InteractionHand
-import net.minecraft.world.entity.EntityType
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
@@ -130,7 +124,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         startCheck.reset()
         // Still airborne (operator dug in / boarded / died): signal lost, the drone comes down hard.
         val level = entity.level() as? ServerLevel
-        val drone = droneId?.let { level?.getEntity(it) as? DroneEntity }
+        val drone = droneId?.let { level?.getEntity(it)?.takeIf(Ports.drones::isPiloted) }
         if (drone != null && !detonated) {
             detonate(level!!, entity, drone, drone.position())
         }
@@ -215,19 +209,12 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     // --- launch / recover ---
 
     private fun launch(entity: NpcEntity, level: ServerLevel, target: StrikeTarget) {
-        // Preferred: the Drone Warfare addon's FPV drone — "the drone itself is the weapon". Its
-        // crash-explosion mixin fires on destroy() for any drone WITHOUT SBW's kamikaze flag, so
-        // no payload and no explosion code of ours: detonating is just destroying it, and being
-        // shot down / falling into water explodes it exactly like a player's would. Spawned by
-        // registry id so the addon stays an optional runtime dependency. Fallback without the
-        // addon: SBW's bare drone with a kamikaze attachment and our own blast (see detonate).
-        val addonDrone = addonFpvDroneType()?.create(level) as? DroneEntity
-        val drone = addonDrone ?: DroneEntity(SbwEntities.DRONE.get(), level)
-        usesAddonBlast = addonDrone != null
+        // Which drone, and whose explosion — see the Drones adapter.
+        val drone = Ports.drones.createKamikaze(level)
+        usesAddonBlast = Ports.drones.blowsUpOnCrash(drone)
         val forward = Vec3.directionFromRotation(0f, entity.yRot)
         val spawn = entity.position().add(forward.scale(1.5)).add(0.0, 0.5, 0.0)
         drone.moveTo(spawn.x, spawn.y, spawn.z, entity.yRot, 0f)
-        if (!usesAddonBlast) armWarhead(drone)
         // Same scoreboard team as the operator: SBW turrets / hostile vehicles treat it as an enemy
         // vehicle, allies leave it alone.
         SquadTeams.factionOf(entity)?.let { SquadTeams.assign(drone, it) }
@@ -254,33 +241,10 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         DebugFlags.log("[drone-debug] {} launched drone {} at {} ({} left)", entity.uuid, drone.uuid, target.pos, entity.dronesLeft)
     }
 
-    /** Mirrors the player-side `DroneEntity.interact` attach branch for a kamikaze payload. */
-    private fun armWarhead(drone: DroneEntity) {
-        val payload = ItemStack(WARHEAD_ITEM.get())
-        val data = CustomData.DRONE_ATTACHMENT[DroneEntity.getItemId(payload)] ?: return
-        drone.currentItem = payload
-        drone.entityData.set(DroneEntity.DISPLAY_ENTITY, data.displayEntity())
-        drone.entityData.set(DroneEntity.IS_KAMIKAZE, true)
-        drone.entityData.set(DroneEntity.MAX_AMMO, 1)
-        drone.setAmmo(1)
-        val scale = data.scale()
-        val offset = data.offset()
-        val rotation = data.rotation()
-        drone.entityData.set(
-            DroneEntity.DISPLAY_DATA, listOf(
-                scale[0], scale[1], scale[2],
-                offset[0], offset[1], offset[2],
-                rotation[0], rotation[1], rotation[2],
-                data.xLength, data.zLength,
-                data.tickCount.toFloat()
-            )
-        )
-    }
-
     private fun holdMonitor(entity: NpcEntity) {
-        if (entity.mainHandItem.`is`(ModItems.MONITOR.get())) return
+        if (Ports.drones.isMonitor(entity.mainHandItem)) return
         entity.stowedWeapon = entity.mainHandItem.copy()
-        entity.setItemInHand(InteractionHand.MAIN_HAND, ItemStack(ModItems.MONITOR.get()))
+        entity.setItemInHand(InteractionHand.MAIN_HAND, Ports.drones.monitor())
     }
 
     private fun restoreWeapon(entity: NpcEntity) {
@@ -304,7 +268,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     /** Drone back over the operator: pick it up again, no explosion. */
-    private fun recover(entity: NpcEntity, drone: DroneEntity) {
+    private fun recover(entity: NpcEntity, drone: Entity) {
         drone.discard()
         entity.dronesLeft++
         detonated = true // nothing left to blow up
@@ -317,8 +281,8 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun tick(entity: NpcEntity) {
         val level = entity.level() as? ServerLevel ?: return
         val id = droneId ?: return
-        val drone = level.getEntity(id) as? DroneEntity
-        if (drone == null || !drone.isAlive || drone.isWreck || drone.health <= 0f) {
+        val drone = level.getEntity(id)?.takeIf(Ports.drones::isPiloted)
+        if (drone == null || !Ports.vehicles.isOperational(drone) || Ports.vehicles.healthFraction(drone) <= 0f) {
             // Shot down. Addon drone: its destroy() already blew up. Bare SBW drone: SBW's own
             // kamikaze blast needs a player controller (see class doc), so it's on us.
             if (!detonated && !usesAddonBlast) lastDronePos?.let { detonate(level, entity, drone, it) }
@@ -360,7 +324,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /** Keeps [targetPos] on the live target; re-targets around the drone if it died. False = nothing
      *  left to strike. */
-    private fun refreshTarget(entity: NpcEntity, level: ServerLevel, drone: DroneEntity): Boolean {
+    private fun refreshTarget(entity: NpcEntity, level: ServerLevel, drone: Entity): Boolean {
         if (phase == Phase.RETURN) return true
         val tid = targetEntityId ?: return true // fixed point (ATTACK objective) — always valid
         val target = level.getEntity(tid) as? LivingEntity
@@ -379,7 +343,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
      * within the operator's reach. Only targets it could actually strike — nothing with an ally
      * inside the blast — and never one this flight already gave up on. False = nothing to go for.
      */
-    private fun retarget(entity: NpcEntity, level: ServerLevel, drone: DroneEntity): Boolean {
+    private fun retarget(entity: NpcEntity, level: ServerLevel, drone: Entity): Boolean {
         val radius = warheadRadius()
         var best: LivingEntity? = null
         var bestD2 = Double.MAX_VALUE
@@ -413,13 +377,8 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         return true
     }
 
-    private fun apply(drone: DroneEntity, cmd: DroneFlightController.Command) {
-        drone.forwardInputDown = cmd.forward
-        drone.backInputDown = cmd.back
-        drone.upInputDown = cmd.up
-        drone.downInputDown = cmd.down
-        drone.leftInputDown = false
-        drone.rightInputDown = false
+    private fun apply(drone: Entity, cmd: DroneFlightController.Command) {
+        Ports.drones.setInputs(drone, cmd.forward, cmd.back, cmd.up, cmd.down)
         drone.yRot = cmd.yaw
     }
 
@@ -428,7 +387,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /** Heightmap samples under the drone and along the next [LOOKAHEAD_DISTANCES] blocks toward
      *  [toward] — cheap (no block reads), and MOTION_BLOCKING includes trees/roofs. */
-    private fun terrainAhead(level: ServerLevel, drone: DroneEntity, toward: Vec3): List<Int> {
+    private fun terrainAhead(level: ServerLevel, drone: Entity, toward: Vec3): List<Int> {
         val pos = drone.position()
         val dir = Vec3(toward.x - pos.x, 0.0, toward.z - pos.z).let { if (it.lengthSqr() < 1e-6) it else it.normalize() }
         val samples = ArrayList<Int>(LOOKAHEAD_DISTANCES.size + 1)
@@ -437,7 +396,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         return samples
     }
 
-    private fun tickLaunch(level: ServerLevel, drone: DroneEntity) {
+    private fun tickLaunch(level: ServerLevel, drone: Entity) {
         val desiredY = groundY(level, drone.x, drone.z) + clearance
         val cmd = DroneFlightController.steer(drone.position(), drone.yRot, 0.0, targetPos, desiredY, 0.0)
         // Climb straight up first — no thrust until at altitude, only the turn toward the target.
@@ -451,7 +410,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         return kotlin.math.sqrt(dx * dx + dz * dz)
     }
 
-    private fun tickCruise(entity: NpcEntity, level: ServerLevel, drone: DroneEntity) {
+    private fun tickCruise(entity: NpcEntity, level: ServerLevel, drone: Entity) {
         val desiredY = DroneFlightController.cruiseAltitude(terrainAhead(level, drone, targetPos), clearance, drone.y)
         apply(drone, DroneFlightController.steer(drone.position(), drone.yRot, drone.deltaMovement.horizontalDistance(), targetPos, desiredY, CRUISE_SPEED))
         if (horizontalDistance(drone.position(), targetPos) <= ATTACK_RANGE) {
@@ -469,7 +428,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /** Allies inside the blast radius: loiter at altitude above the target until they clear or the
      *  hold times out (then go home rather than blow up the squad). */
-    private fun tickHold(entity: NpcEntity, level: ServerLevel, drone: DroneEntity) {
+    private fun tickHold(entity: NpcEntity, level: ServerLevel, drone: Entity) {
         val desiredY = DroneFlightController.cruiseAltitude(terrainAhead(level, drone, targetPos), clearance, drone.y)
         val dist = horizontalDistance(drone.position(), targetPos)
         val cmd = DroneFlightController.steer(drone.position(), drone.yRot, drone.deltaMovement.horizontalDistance(), targetPos, desiredY, HOLD_SPEED)
@@ -498,7 +457,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         else -> e.type.descriptionId
     }
 
-    private fun tickAttack(entity: NpcEntity, level: ServerLevel, drone: DroneEntity) {
+    private fun tickAttack(entity: NpcEntity, level: ServerLevel, drone: Entity) {
         val aim = targetPos.add(0.0, 1.0, 0.0)
         if (drone.position().distanceTo(aim) <= DETONATE_RANGE) {
             detonate(level, entity, drone, drone.position())
@@ -522,7 +481,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
      * So now it slows with distance, starts down well before it's overhead, and — if it still
      * can't settle (a roof or a tree over the operator) — is picked up anyway after a while.
      */
-    private fun tickReturn(entity: NpcEntity, level: ServerLevel, drone: DroneEntity) {
+    private fun tickReturn(entity: NpcEntity, level: ServerLevel, drone: Entity) {
         val home = entity.position()
         val dist = horizontalDistance(drone.position(), home)
         if (dist <= RECOVER_RADIUS && drone.y - home.y <= RECOVER_HEIGHT) {
@@ -552,7 +511,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** Highest terrain between the drone and home, short of home itself — what the descent has to
      *  clear. Home's own column is left out: a tree over the operator shouldn't hold the drone at
      *  treetop height when the recovery safety net can pick it up there anyway. */
-    private fun terrainBefore(level: ServerLevel, drone: DroneEntity, home: Vec3, dist: Double): Int {
+    private fun terrainBefore(level: ServerLevel, drone: Entity, home: Vec3, dist: Double): Int {
         val pos = drone.position()
         var highest = groundY(level, pos.x, pos.z)
         if (dist < 1e-3) return highest
@@ -568,21 +527,17 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     // --- warhead ---
 
-    private fun warheadRadius(): Double =
-        if (usesAddonBlast) ADDON_FPV_BLAST_RADIUS
-        else CustomData.DRONE_ATTACHMENT[DroneEntity.getItemId(ItemStack(WARHEAD_ITEM.get()))]?.explosionRadius?.toDouble() ?: 0.0
+    private fun warheadRadius(): Double = Ports.drones.warheadRadius(usesAddonBlast)
 
-    /** Addon drone: destroy() -> the addon's crash explosion. Bare SBW drone: our stand-in for
-     *  SBW's `kamikazeExplosion` (which needs a player controller) — same datapack-driven
-     *  damage/radius, same `CustomExplosion`, attacker = the operator. */
-    private fun detonate(level: ServerLevel, operator: NpcEntity, drone: DroneEntity?, at: Vec3) {
+    /** Addon drone: its own crash explosion. Bare SBW drone: our warhead, attacker = the operator. */
+    private fun detonate(level: ServerLevel, operator: NpcEntity, drone: Entity?, at: Vec3) {
         if (detonated) return
         detonated = true
         if (usesAddonBlast) {
-            Companion.crashAddonDrone(drone)
+            drone?.let(Ports.drones::crash)
             return
         }
-        Companion.explodeWarhead(level, operator, drone, at)
+        Ports.drones.explodeWarhead(level, operator, drone, at)
         drone?.discard()
     }
 
@@ -629,38 +584,15 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val ARRIVAL_SPEED_PER_BLOCK = 0.06
         private const val MIN_ARRIVAL_SPEED = 0.15
 
-        /** Fallback warhead (no addon) — any SBW `drone_attachments` entry with IsKamikaze.
-         *  RPG TBG: 150 dmg / r 11. */
-        private val WARHEAD_ITEM = ModItems.RPG_ROCKET_TBG
-
-        /** Drone Warfare addon's FPV drone ("cubed_fpv_drone"). A DroneEntity subclass, so
-         *  everything above flies it unchanged. Null when the addon isn't installed. */
-        private val ADDON_FPV_DRONE_ID = ResourceLocation.fromNamespaceAndPath("sbwdroneconfig", "cubed_fpv_drone")
-        // DroneCrashExplosionSystem.FPV_CRASH_EXPLOSION_POWER = 5.8 (vanilla explosion power;
-        // damage reaches ~2x that) — only used for the "allies in the blast" hold check.
-        private const val ADDON_FPV_BLAST_RADIUS = 12.0
-
-        private fun addonFpvDroneType(): EntityType<*>? =
-            BuiltInRegistries.ENTITY_TYPE.getOptional(ADDON_FPV_DRONE_ID).orElse(null)
-
-        private fun isAddonDrone(drone: DroneEntity): Boolean = drone.type !== SbwEntities.DRONE.get()
-
-        /** destroy() is what the addon's crash-explosion mixin hooks; it discards the entity itself. */
-        private fun crashAddonDrone(drone: DroneEntity?) {
-            if (drone == null || !drone.isAlive) return
-            drone.isWreck = true
-            drone.destroy()
-        }
-
         /** [NpcEntity.die] hook: the operator's drone crashes the moment its operator does. */
         fun onOperatorDied(operator: NpcEntity) {
             val level = operator.level() as? ServerLevel ?: return
             val droneId = DroneLinks.unlink(operator.uuid) ?: return
-            val drone = level.getEntity(droneId) as? DroneEntity ?: return
-            if (isAddonDrone(drone)) {
-                crashAddonDrone(drone)
+            val drone = level.getEntity(droneId)?.takeIf(Ports.drones::isPiloted) ?: return
+            if (Ports.drones.blowsUpOnCrash(drone)) {
+                Ports.drones.crash(drone)
             } else {
-                explodeWarhead(level, operator, drone, drone.position())
+                Ports.drones.explodeWarhead(level, operator, drone, drone.position())
                 drone.discard()
             }
             // Loot should be the gun, not the monitor.
@@ -668,21 +600,6 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
                 operator.setItemInHand(InteractionHand.MAIN_HAND, operator.stowedWeapon)
                 operator.stowedWeapon = ItemStack.EMPTY
             }
-        }
-
-        private fun explodeWarhead(level: ServerLevel, operator: NpcEntity, drone: DroneEntity?, at: Vec3) {
-            val payload = drone?.currentItem?.takeIf { !it.isEmpty } ?: ItemStack(WARHEAD_ITEM.get())
-            val data = CustomData.DRONE_ATTACHMENT[DroneEntity.getItemId(payload)] ?: return
-            val bomb = EntityType.byString(data.displayEntity()).map { it.create(level) }.orElse(null)
-            val direct = drone ?: operator
-            CustomExplosion.Builder(direct)
-                .source(bomb ?: direct)
-                .attacker(operator)
-                .damage(data.explosionDamage)
-                .radius(data.explosionRadius)
-                .position(at)
-                .explode()
-            DebugFlags.log("[drone-debug] {} warhead detonated at {}", operator.uuid, at)
         }
     }
 }

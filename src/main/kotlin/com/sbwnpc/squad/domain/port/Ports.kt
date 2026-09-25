@@ -6,4 +6,5 @@ object Ports {
     lateinit var vehicles: Vehicles
     lateinit var mortars: Mortars
     lateinit var grenades: Grenades
+    lateinit var drones: Drones
 }

@@ -114,6 +114,9 @@ interface Vehicles {
 
     // --- Condition ---
 
+    /** Audible from a distance. */
+    fun engineRunning(vehicle: Entity): Boolean
+
     /** Stored power in the vehicle's own units; zero for anything with no battery. */
     fun storedPower(vehicle: Entity): Int
 

@@ -266,6 +266,8 @@ object SbwVehicles : Vehicles {
 
     // --- Condition ---
 
+    override fun engineRunning(vehicle: Entity): Boolean = (vehicle as? VehicleEntity)?.engineRunning() == true
+
     override fun storedPower(vehicle: Entity): Int = (vehicle as? VehicleEntity)?.energy ?: 0
 
     override fun healthFraction(vehicle: Entity): Float {
