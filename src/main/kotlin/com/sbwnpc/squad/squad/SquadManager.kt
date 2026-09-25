@@ -244,19 +244,23 @@ class SquadManager : SavedData() {
             }
             val present = members.map { it?.npcClass }
             val missing = missingClasses(squad.originalComposition, present)
-            missing.forEach { cls ->
-                val npc = ModEntities.NPC.get().create(level) ?: return@forEach
+            // Each recruit of a wave gets its own bearing round the barracks, so a whole wave
+            // doesn't come out of one spot in a heap.
+            val firstBearing = level.random.nextDouble() * Math.PI * 2
+            missing.forEachIndexed { index, cls ->
+                val npc = ModEntities.NPC.get().create(level) ?: return@forEachIndexed
                 val dimensions = npc.getDimensions(Pose.STANDING)
-                // A barracks built into a slope/hillside means the ±3-block scatter can easily land
-                // on a spot where the terrain has no safe footing in range at all — try a few
-                // scatter offsets before falling back to the barracks' own spot, which is guaranteed
-                // to stand on solid ground since the block itself is placed there.
+                // A barracks built into a slope/hillside can leave a scattered spot with no safe
+                // footing at all — try a few before falling back to the barracks' own spot, which is
+                // guaranteed to stand on solid ground since the block itself is placed there.
                 var spawnX = pos.x
                 var spawnZ = pos.z
                 var spawnY: Double? = null
-                for (attempt in 0 until 5) {
-                    val tryX = if (attempt == 0) pos.x else pos.x + (level.random.nextDouble() - 0.5) * 3.0
-                    val tryZ = if (attempt == 0) pos.z else pos.z + (level.random.nextDouble() - 0.5) * 3.0
+                for (attempt in 0 until SPAWN_ATTEMPTS) {
+                    val bearing = firstBearing + index * GOLDEN_ANGLE + attempt * (Math.PI / 3)
+                    val radius = SPAWN_MIN_RADIUS + level.random.nextDouble() * (SPAWN_MAX_RADIUS - SPAWN_MIN_RADIUS)
+                    val tryX = pos.x + Math.cos(bearing) * radius
+                    val tryZ = pos.z + Math.sin(bearing) * radius
                     val tryY = SafeSpawn.findSafeY(level, tryX, tryZ, barracksPos.y, dimensions)
                     if (tryY != null) {
                         spawnX = tryX; spawnZ = tryZ; spawnY = tryY
@@ -289,6 +293,11 @@ class SquadManager : SavedData() {
 
     companion object {
         private const val FILE = "sbwnpc_squads"
+        private const val SPAWN_ATTEMPTS = 8
+        private const val SPAWN_MIN_RADIUS = 2.0
+        private const val SPAWN_MAX_RADIUS = 5.0
+        /** Spreads successive bearings evenly however many recruits a wave has. */
+        private const val GOLDEN_ANGLE = 2.399963
         /** How many squads the 1-9 quick-command keys can address — a keyboard limit, not a cap
          *  on how many a player may have. */
         const val HUD_SLOTS = 9
