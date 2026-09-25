@@ -228,6 +228,43 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         return attacker
     }
 
+    /**
+     * SBW puts a rider down at its seat's exit point, which only has to be clear of blocks: it is
+     * routinely still inside the vehicle's own box. Stuck in there the NPC can't path anywhere, and
+     * every enemy line of fire at it runs into the hull first, so they kept hunting for a firing
+     * position that doesn't exist. Step out beside the hull instead.
+     */
+    override fun stopRiding() {
+        val vehicle = this.vehicle
+        super.stopRiding()
+        if (vehicle == null || this.vehicle != null) return
+        if (level().isClientSide || !isAlive || !Ports.vehicles.isVehicle(vehicle)) return
+        val hull = Ports.vehicles.hull(vehicle)
+        if (!hull.intersects(boundingBox)) return
+        clearSpotBeside(hull)?.let { teleportTo(it.x, it.y, it.z) }
+    }
+
+    /** Nearest standable, unobstructed spot just outside [hull], searched round its edge. */
+    private fun clearSpotBeside(hull: net.minecraft.world.phys.AABB): Vec3? {
+        val margin = bbWidth / 2.0 + DISMOUNT_CLEARANCE
+        val box = hull.inflate(margin, 0.0, margin)
+        val candidates = ArrayList<Vec3>()
+        var t = 0.0
+        while (t < 1.0) {
+            candidates += Vec3(box.minX + (box.maxX - box.minX) * t, 0.0, box.minZ)
+            candidates += Vec3(box.minX + (box.maxX - box.minX) * t, 0.0, box.maxZ)
+            candidates += Vec3(box.minX, 0.0, box.minZ + (box.maxZ - box.minZ) * t)
+            candidates += Vec3(box.maxX, 0.0, box.minZ + (box.maxZ - box.minZ) * t)
+            t += DISMOUNT_SAMPLE_STEP
+        }
+        return candidates.sortedBy { it.distanceToSqr(x, 0.0, z) }.firstNotNullOfOrNull { c ->
+            val ground = com.sbwnpc.squad.util.Terrain.standableOrNull(level(), c.x, y + 1.0, c.z) ?: return@firstNotNullOfOrNull null
+            val at = Vec3(c.x, ground.y, c.z)
+            val body = getDimensions(pose).makeBoundingBox(at)
+            at.takeIf { !body.intersects(hull) && level().noCollision(this, body) }
+        }
+    }
+
     override fun hurt(source: DamageSource, amount: Float): Boolean {
         val result = super.hurt(source, amount)
         // Not vanilla's DamageTypeTags.IS_PROJECTILE: SBW's gunfire isn't in it, so that tag left
@@ -757,6 +794,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         // AI level-of-detail — see refreshAiLod(). Player distances at which the brain drops to
         // every-2nd / every-4th tick when not in combat.
         private const val LOD_RECHECK_TICKS = 20
+        private const val DISMOUNT_CLEARANCE = 0.3
+        private const val DISMOUNT_SAMPLE_STEP = 0.125
         private const val LOD_NEAR_RANGE = 96.0
         private const val LOD_FAR_RANGE = 192.0
         private const val IDLE_PATH_NODE_MULTIPLIER = 0.5f

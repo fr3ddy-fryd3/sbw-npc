@@ -63,9 +63,14 @@ object Sightline {
     fun vehicleHulls(level: ServerLevel, area: AABB, shooter: Entity, target: Entity?): List<AABB> {
         val ridden = shooter.vehicle
         val targetRide = target?.vehicle
+        // Nor a hull the target is standing in — just dismounted and still inside the box, say.
+        // Every line to it enters that hull first, so counting it meant no firing position
+        // anywhere would ever do.
+        val targetBody = target?.boundingBox
         return Ports.vehicles.within(level, area) { vehicle ->
             Ports.vehicles.isOperational(vehicle) &&
-                vehicle !== ridden && vehicle !== targetRide && vehicle !== target
+                vehicle !== ridden && vehicle !== targetRide && vehicle !== target &&
+                (targetBody == null || !vehicle.boundingBox.intersects(targetBody))
         }.map { it.boundingBox }
     }
 
