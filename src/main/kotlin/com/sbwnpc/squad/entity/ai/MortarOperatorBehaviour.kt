@@ -145,11 +145,13 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         startCheck.reset()
         MortarClaims.releaseOperator(entity.uuid)
         mortar = null
+        entity.servingMortar = false
     }
 
     override fun tick(entity: NpcEntity) {
         val level = entity.level() as? ServerLevel ?: return
         if (entity.carryingMortar) {
+            entity.servingMortar = false
             tickDisplacing(entity, level)
             return
         }
@@ -158,9 +160,11 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         val dist = entity.position().distanceTo(m.position())
         if (dist > 2.5) {
+            entity.servingMortar = false
             entity.navigateTo(m.x, m.y, m.z, 1.0)
             return
         }
+        entity.servingMortar = true
         entity.navigation.stop()
 
         // Can't reach the fire mission from here: pick the tube up and walk it closer rather than

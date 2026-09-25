@@ -168,6 +168,12 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // brain tick, so throttling the operator would throttle the drone.
     var operatingDrone: Boolean = false
 
+    /** At a mortar as its operator or loader. Same "hands off" contract as [operatingDrone] for
+     *  the rifle and the squad's own movement: a crewman pulled toward the enemy by one behaviour
+     *  and back to the tube by another spins on the spot. An enemy close enough to be a personal
+     *  threat ends it (see the mortar behaviours). */
+    var servingMortar: Boolean = false
+
     /** Tick at which this NPC last lost sight of its target, or null while it can see it. Stamped
      *  by [com.sbwnpc.squad.entity.ai.GunAttackBehaviour], read by
      *  [com.sbwnpc.squad.entity.ai.GrenadeUseBehaviour] to tell "behind cover" from "behind a tree

@@ -4,11 +4,13 @@ import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
+import com.sbwnpc.squad.util.Terrain
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.minecraft.world.phys.AABB
+import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 
 /**
@@ -34,6 +36,9 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var nextMortarSearchTick = 0
     /** The squadmate currently carrying the crew's mortar, if it is being displaced. */
     private var carrier: NpcEntity? = null
+    /** Picked once per mortar: the tube turns as it is laid, and a post that turned with it would
+     *  have the loader walking circles round it. */
+    private var postOf: kotlin.Pair<Entity, Vec3>? = null
 
     companion object {
         private const val SEARCH_RANGE = 30.0
@@ -43,6 +48,10 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
         /** How close the loader keeps to an operator carrying the mortar. */
         private const val FOLLOW_DISTANCE_SQR = 5.0 * 5.0
         private const val FOLLOW_SPEED = 1.0
+        /** The loader's place beside the tube. The operator takes the tube itself; two men walking
+         *  to the same point shove each other off it and both keep walking back. */
+        private const val POST_OFFSET = 1.8
+        private const val POST_TOLERANCE = 1.2
     }
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
@@ -105,10 +114,24 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
         MortarClaims.releaseLoader(entity.uuid)
         mortar = null
         carrier = null
+        postOf = null
+        entity.servingMortar = false
+    }
+
+    /** Beside the tube, square to where it points. */
+    private fun post(entity: NpcEntity, m: Entity): Vec3 {
+        postOf?.takeIf { it.first === m }?.let { return it.second }
+        val yaw = Math.toRadians(m.yRot.toDouble())
+        val x = m.x + Math.cos(yaw) * POST_OFFSET
+        val z = m.z + Math.sin(yaw) * POST_OFFSET
+        val post = Terrain.standableOrNull(entity.level(), x, m.y + 1.0, z) ?: m.position()
+        postOf = kotlin.Pair(m, post)
+        return post
     }
 
     override fun tick(entity: NpcEntity) {
         carrier?.takeIf { it.isAlive && it.carryingMortar }?.let { with ->
+            entity.servingMortar = false
             if (entity.distanceToSqr(with) > FOLLOW_DISTANCE_SQR) {
                 entity.navigateTo(with.x, with.y, with.z, FOLLOW_SPEED)
             } else {
@@ -117,13 +140,15 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
             return
         }
         val m = mortar ?: return
-        val dist = entity.position().distanceTo(m.position())
-        if (dist > 2.5) {
-            entity.navigateTo(m.x, m.y, m.z, 1.0)
+        val post = post(entity, m)
+        if (entity.position().distanceTo(post) > POST_TOLERANCE) {
+            entity.servingMortar = false
+            entity.navigateTo(post, 1.0)
             return
         }
+        entity.servingMortar = true
         entity.navigation.stop()
-        entity.lookAt(m, 30f, 30f)
+        entity.lookControl.setLookAt(m.x, m.y + 0.5, m.z)
 
         if (entity.tickCount < nextCheckTick) return
         nextCheckTick = entity.tickCount + 60

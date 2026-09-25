@@ -36,7 +36,7 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
         // The grenadier has its own, unlimited mechanic; this is the ordinary fighter's single one.
         if (entity.npcClass == NpcClass.GRENADIER) return false
         if (!entity.hasReserveGrenade) return false
-        if (entity.vehicleTransport || entity.operatingDrone || entity.antiDroneEngaged) return false
+        if (entity.vehicleTransport || entity.operatingDrone || entity.servingMortar || entity.antiDroneEngaged) return false
         if (entity.tickCount < nextThrowTick) return false
         if (!squadMayThrow(entity)) return false
 
