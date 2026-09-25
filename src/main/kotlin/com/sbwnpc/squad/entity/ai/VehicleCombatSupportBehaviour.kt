@@ -25,6 +25,8 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var phase = Phase.APPROACHING
     private var vehicleId: UUID? = null
     private var targetId: UUID? = null
+    /** Last tick the target was in sight — see [engagementTarget]. */
+    private var sawTargetTick = 0
 
     init {
         noTimeout()
@@ -32,8 +34,13 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
+    /** Out of a vehicle having lost the target: not straight back into the same one. */
+    private var nextBoardTick = 0
+
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
-        eligible(entity) && findSupportVehicle(entity, level) != null
+        entity.tickCount >= nextBoardTick && eligible(entity) &&
+            threat(entity)?.let { entity.sensing.hasLineOfSight(it) } == true &&
+            findSupportVehicle(entity, level) != null
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean {
         val vehicle = vehicleId?.let { (entity.level() as? ServerLevel)?.getEntity(it)?.takeIf(Ports.vehicles::isVehicle) }
@@ -53,6 +60,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (!VehicleTransportClaims.claimPassenger(vehicle.uuid, entity.uuid, Ports.vehicles.seatCount(vehicle))) return
         vehicleId = vehicle.uuid
         targetId = target.uuid
+        sawTargetTick = entity.tickCount
         phase = Phase.APPROACHING
         entity.vehicleTransport = true
         DebugFlags.log(
@@ -73,6 +81,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         vehicleId = null
         targetId = null
         phase = Phase.APPROACHING
+        nextBoardTick = entity.tickCount + REBOARD_COOLDOWN_TICKS
     }
 
     override fun tick(entity: NpcEntity) {
@@ -172,14 +181,23 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.navigation.stop()
     }
 
-    /** Keeps a pre-boarding target through sensor gaps caused by the vehicle's own collision hull. */
+    /** Keeps a pre-boarding target through sensor gaps caused by the vehicle's own collision hull —
+     *  but only gaps: once it has been out of sight for [LOST_SIGHT_TICKS] the gunner lets it go and
+     *  gets out, rather than sitting alone in the vehicle for as long as that enemy lives. */
     private fun engagementTarget(entity: NpcEntity): LivingEntity? {
         val level = entity.level() as? ServerLevel ?: return threat(entity)
         targetId?.let { id ->
             val target = level.getEntity(id) as? LivingEntity
-            if (target != null && target.isAlive && SquadTeams.isHostile(entity, target)) return target
+            if (target != null && target.isAlive && SquadTeams.isHostile(entity, target)) {
+                if (entity.sensing.hasLineOfSight(target)) sawTargetTick = entity.tickCount
+                if (entity.tickCount - sawTargetTick < LOST_SIGHT_TICKS) return target
+            }
+            targetId = null
         }
-        return threat(entity)?.also { targetId = it.uuid }
+        return threat(entity)?.takeIf { entity.sensing.hasLineOfSight(it) }?.also {
+            targetId = it.uuid
+            sawTargetTick = entity.tickCount
+        }
     }
 
     private fun findSupportVehicle(entity: NpcEntity, level: ServerLevel): Entity? {
@@ -213,5 +231,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         const val VEHICLE_SEARCH_INTERVAL_TICKS = 20
         const val BOARD_DISTANCE_SQR = 2.5 * 2.5
         const val BOARD_SPEED = 1.0
+        const val LOST_SIGHT_TICKS = 200
+        const val REBOARD_COOLDOWN_TICKS = 200
     }
 }

@@ -111,6 +111,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     // is correct there — only the actual driving target is locked in once committed.
     private var tripDestination: Vec3? = null
     private var observedDamageStamp = 0L
+    /** Last tick the combat gunner could see its target — see [gunnerStillEngaged]. */
+    private var gunnerSawThreatTick = 0
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
@@ -637,7 +639,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun tickCombatDismount(entity: NpcEntity, mountedVehicle: Entity? = null) {
         val vehicle = mountedVehicle ?: mountOrAbort(entity) ?: return
-        if (VehicleTransportClaims.combatGunnerOf(vehicle.uuid) == entity.uuid && threatActive(entity)) {
+        if (VehicleTransportClaims.combatGunnerOf(vehicle.uuid) == entity.uuid && gunnerStillEngaged(entity)) {
             stopVehicle(vehicle)
             Ports.vehicles.cutPower(vehicle)
             return
@@ -727,6 +729,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             BrainUtils.setTargetOfEntity(gunner, threat)
         }
         phase = Phase.COMBAT_DISMOUNT
+        gunnerSawThreatTick = entity.tickCount
         DebugFlags.log(
             "[vehicle-debug] {} stopping {} for combat against {}",
             entity.uuid, vehicle.uuid, threat.uuid
@@ -743,6 +746,17 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             .firstOrNull { Ports.vehicles.canFire(vehicle, it) }
             ?: return null
         return gunner.takeIf { VehicleTransportClaims.claimCombatGunner(vehicle.uuid, it.uuid) }
+    }
+
+    /**
+     * The gunner stays on the gun while it has something to shoot at. A live target somewhere it
+     * can no longer see is not that: the rest have long since dismounted, and it sat alone in the
+     * turret for as long as that enemy lived, anywhere on the map.
+     */
+    private fun gunnerStillEngaged(entity: NpcEntity): Boolean {
+        val target = entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) } ?: return false
+        if (entity.sensing.hasLineOfSight(target)) gunnerSawThreatTick = entity.tickCount
+        return entity.tickCount - gunnerSawThreatTick < GUNNER_LOST_SIGHT_TICKS
     }
 
     private fun threatActive(entity: NpcEntity): Boolean =
@@ -880,6 +894,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // well before getting that close avoids ever asking the vehicle to hit a target tighter than it
         // can physically steer around.
         private const val WAYPOINT_RADIUS = 15.0
+        private const val GUNNER_LOST_SIGHT_TICKS = 200
         private const val AVOIDANCE_INTERVAL_TICKS = 5
 
         /** Clears the temporary squad team after the final NPC leaves or dies in the vehicle. */
