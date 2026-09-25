@@ -31,6 +31,9 @@ object SbwVehicles : Vehicles {
      *  actually draw (64 for a LAV, 128 for a T-90). */
     private const val ASSUMED_COST_RATE = 96.0
 
+    /** Starting ammunition, as a multiple of one full stack of each kind (per user call). */
+    private const val AMMO_SCALE = 4
+
     private val types: Map<VehicleModel, () -> EntityType<*>> = mapOf(
         TankModel.ZTZ_99A to { ModEntities.ZTZ_99A.get() },
         TankModel.T_90A to { ModEntities.T_90A.get() },
@@ -84,29 +87,44 @@ object SbwVehicles : Vehicles {
     override fun fuelAndArm(vehicle: Entity, model: VehicleModel) {
         if (vehicle !is VehicleEntity) return
         vehicle.energy = vehicle.maxEnergy
+        val hold = Hold(vehicle)
         when (model) {
             // Same main-gun AP/HE + coax rifle ammo + .50cal passenger ammo loadout for all three —
             // verified against each model's own sbw/vehicles/*.json: same four weapon/ammo slots.
             is TankModel -> {
-                vehicle.setItem(0, ItemStack(ModItems.LARGE_SHELL_AP.get(), 64))
-                vehicle.setItem(1, ItemStack(ModItems.LARGE_SHELL_HE.get(), 64))
-                vehicle.setItem(2, ItemStack(ModItems.RIFLE_AMMO.get(), 64))
-                vehicle.setItem(3, ItemStack(ModItems.HEAVY_AMMO.get(), 64))
+                hold.stow(ModItems.LARGE_SHELL_AP.get(), 64 * AMMO_SCALE)
+                hold.stow(ModItems.LARGE_SHELL_HE.get(), 64 * AMMO_SCALE)
+                hold.stow(ModItems.RIFLE_AMMO.get(), 64 * AMMO_SCALE)
+                hold.stow(ModItems.HEAVY_AMMO.get(), 64 * AMMO_SCALE)
             }
-            // Cannon rounds with AP first and HE second — the order VehicleCannonAmmo assumes — plus
-            // rockets. The AH-6's 20mm only takes HE, so it gets no AP stack.
+            // Which round a cannon fires is its selected ammo type, not a slot (see loadRound), so
+            // the stacks can go anywhere. The AH-6's 20mm only takes HE, so it gets no AP.
             HelicopterModel.MI_28 -> {
-                vehicle.setItem(0, ItemStack(ModItems.SMALL_SHELL_AP.get(), 64))
-                vehicle.setItem(1, ItemStack(ModItems.SMALL_SHELL_HE.get(), 64))
-                vehicle.setItem(2, ItemStack(ModItems.SMALL_ROCKET.get(), 16))
+                hold.stow(ModItems.SMALL_SHELL_AP.get(), 64 * AMMO_SCALE)
+                hold.stow(ModItems.SMALL_SHELL_HE.get(), 64 * AMMO_SCALE)
+                hold.stow(ModItems.SMALL_ROCKET.get(), 16 * AMMO_SCALE)
             }
             HelicopterModel.AH_6 -> {
-                vehicle.setItem(0, ItemStack(ModItems.SMALL_SHELL_HE.get(), 64))
-                vehicle.setItem(1, ItemStack(ModItems.SMALL_ROCKET.get(), 16))
+                hold.stow(ModItems.SMALL_SHELL_HE.get(), 64 * AMMO_SCALE)
+                hold.stow(ModItems.SMALL_ROCKET.get(), 16 * AMMO_SCALE)
             }
-            // Small-caliber AP only, per user call — a short stack, not the full loadout the tanks get.
-            is TransportVehicle -> vehicle.setItem(0, ItemStack(ModItems.SMALL_SHELL_AP.get(), 4))
+            // Small-caliber AP only, per user call — a short supply, not the full loadout the tanks get.
+            is TransportVehicle -> hold.stow(ModItems.SMALL_SHELL_AP.get(), 4 * AMMO_SCALE)
             else -> {}
+        }
+    }
+
+    /** Fills a vehicle's container from the first slot on, a full stack at a time. */
+    private class Hold(private val vehicle: VehicleEntity) {
+        private var slot = 0
+
+        fun stow(item: net.minecraft.world.item.Item, count: Int) {
+            var left = count
+            while (left > 0 && slot < vehicle.getContainerSize()) {
+                val stack = ItemStack(item, minOf(left, item.defaultMaxStackSize))
+                vehicle.setItem(slot++, stack)
+                left -= stack.count
+            }
         }
     }
 
