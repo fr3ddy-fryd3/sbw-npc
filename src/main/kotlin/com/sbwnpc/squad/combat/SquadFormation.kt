@@ -28,13 +28,10 @@ import net.minecraft.world.phys.Vec3
  */
 object SquadFormation {
 
-    // Widened from 2.5/3.5 per user feedback: the old spacing was tight enough that a single
-    // mortar shell (SBW's MortarShellEntity.explosionRadiusValue = 8 blocks) could catch multiple
-    // squad members in one hit, and the wedge/line shapes read as a blob rather than a recognizable
-    // formation at a glance. Not widened all the way to 8 — that would make ATTACK/DEFEND slots
-    // routinely unreachable indoors (through doors, small rooms) where these NPCs also operate.
-    private const val SLOT_SPACING = 5.0
-    private const val RING_RADIUS = 6.0
+    // 2.5/3.5 read as a blob, 5/6 as a crowd that had lost each other; per user feedback the
+    // squad should look like it moves together, so this sits between the two.
+    private const val SLOT_SPACING = 3.0
+    private const val RING_RADIUS = 4.0
     private const val MIN_HEADING_LENGTH = 2.0
 
     // DEFEND, once arrived, is deliberately looser than a held RING perimeter: a garrison holding a
@@ -43,7 +40,9 @@ object SquadFormation {
     // radius; MAX matches SeekCoverBehaviour's own "nearby ally" radius already used elsewhere in
     // this codebase, not an arbitrary new number.
     private const val DEFEND_SCATTER_MIN = RING_RADIUS
-    private const val DEFEND_SCATTER_MAX = 16.0
+    // Inside DEFEND's own arrival radius (ARRIVAL_RADIUS + 4.5), or a member standing on its slot
+    // reads as "not arrived" and walks back in.
+    private const val DEFEND_SCATTER_MAX = 8.0
 
     /** Callers that decide "arrived, switch to RING" from raw distance to the anchor MUST use a
      *  threshold at least this big — not RING_RADIUS itself, safely past it. Using anything smaller

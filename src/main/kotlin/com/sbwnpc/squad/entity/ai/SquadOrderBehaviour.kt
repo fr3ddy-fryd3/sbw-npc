@@ -171,8 +171,9 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun moveToSlot(entity: NpcEntity, slot: Vec3) {
         if (entity.position().distanceTo(slot) > 1.5) {
+            val pace = paceTo(entity, slot, WALK_SPEED_MODIFIER)
             if (repathCooldown == 0) {
-                entity.navigation.moveTo(slot.x, slot.y, slot.z, WALK_SPEED_MODIFIER)
+                entity.navigation.moveTo(slot.x, slot.y, slot.z, pace)
                 repathCooldown = 20
             }
         } else {
@@ -195,8 +196,9 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun approachSlot(entity: NpcEntity, anchor: Vec3, arrived: Boolean, speed: Double) {
         val slot = SquadFormation.slotTarget(entity, anchor, anchor.subtract(entity.position()), arrived)
         if (entity.position().distanceTo(slot) > 1.5) {
+            val pace = paceTo(entity, slot, speed)
             if (repathCooldown == 0) {
-                entity.navigation.moveTo(slot.x, slot.y, slot.z, speed)
+                entity.navigation.moveTo(slot.x, slot.y, slot.z, pace)
                 repathCooldown = 20
             }
         } else {
@@ -231,10 +233,22 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
             return
         }
         if (dwelling && entity.target == null) faceOutward(entity, center)
-        if (entity.position().distanceTo(slot) > 1.5 && repathCooldown == 0) {
-            entity.navigation.moveTo(slot.x, slot.y, slot.z, WALK_SPEED_MODIFIER)
-            repathCooldown = 20
+        if (entity.position().distanceTo(slot) > 1.5) {
+            val pace = paceTo(entity, slot, WALK_SPEED_MODIFIER)
+            if (repathCooldown == 0) {
+                entity.navigation.moveTo(slot.x, slot.y, slot.z, pace)
+                repathCooldown = 20
+            }
         }
+    }
+
+    /** [base] once in formation; a run while still catching up to it, so the squad closes up
+     *  quickly instead of strolling into place. Applied to a path already under way too, so a
+     *  member that falls in drops to a walk without waiting for its next repath. */
+    private fun paceTo(entity: NpcEntity, slot: Vec3, base: Double): Double {
+        val pace = if (entity.position().distanceTo(slot) > FALL_IN_DISTANCE) maxOf(base, FALL_IN_SPEED_MODIFIER) else base
+        if (!entity.navigation.isDone) entity.navigation.setSpeedModifier(pace)
+        return pace
     }
 
     /** Resolves every squad member (not just this one) and checks it's within ARRIVAL_RADIUS of
@@ -275,5 +289,8 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         // internal (not private) — NpcEntity.registerGoals() reuses this for vanilla idle wandering.
         internal const val WALK_SPEED_MODIFIER = 0.6
         private const val RUN_SPEED_MODIFIER = 1.0
+        /** Out of formation by more than this, a member runs to its place. */
+        private const val FALL_IN_DISTANCE = 4.0
+        private const val FALL_IN_SPEED_MODIFIER = 1.3
     }
 }
