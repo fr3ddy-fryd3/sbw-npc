@@ -1,7 +1,7 @@
 package com.sbwnpc.squad.mixin;
 
 import com.atsuishio.superbwarfare.entity.vehicle.base.AutoAimableEntity;
-import com.sbwnpc.squad.combat.VehicleDroneAccuracy;
+import com.sbwnpc.squad.integration.sbw.VehicleDroneAccuracy;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;

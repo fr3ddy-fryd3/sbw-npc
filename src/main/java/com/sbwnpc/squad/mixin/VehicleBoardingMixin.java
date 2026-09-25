@@ -1,7 +1,7 @@
 package com.sbwnpc.squad.mixin;
 
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity;
-import com.sbwnpc.squad.vehicle.AlliedVehicleBoarding;
+import com.sbwnpc.squad.integration.sbw.AlliedVehicleBoarding;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;

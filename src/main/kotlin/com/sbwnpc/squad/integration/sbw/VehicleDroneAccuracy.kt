@@ -1,9 +1,12 @@
-package com.sbwnpc.squad.combat
+package com.sbwnpc.squad.integration.sbw
 
 import com.atsuishio.superbwarfare.data.gun.ShootParameters
 import com.atsuishio.superbwarfare.entity.vehicle.base.AutoAimableEntity
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.atsuishio.superbwarfare.tools.EntityFindUtil
+import com.sbwnpc.squad.combat.AutonomousShotTarget
+import com.sbwnpc.squad.combat.DroneAccuracy
+import com.sbwnpc.squad.combat.DroneCombat
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.phys.Vec3

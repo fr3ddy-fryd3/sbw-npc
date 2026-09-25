@@ -9,7 +9,7 @@ import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
-import com.sbwnpc.squad.vehicle.AlliedVehicleBoarding
+import com.sbwnpc.squad.vehicle.DriverAllegiance
 import com.sbwnpc.squad.vehicle.VehiclePower
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
@@ -859,7 +859,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         val driver = vehicle.firstPassenger as? NpcEntity ?: return true
         val faction = SquadTeams.factionOf(entity) ?: return true
         if (SquadTeams.factionOf(driver) != faction) return true
-        return players.any { !AlliedVehicleBoarding.isAlliedDriver(it, driver) }
+        return players.any { !DriverAllegiance.isAlliedDriver(it, driver) }
     }
 
     private fun holdVehicle(vehicle: VehicleEntity) {
