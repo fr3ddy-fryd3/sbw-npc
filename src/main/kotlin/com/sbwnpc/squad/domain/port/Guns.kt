@@ -36,6 +36,11 @@ interface HandGun {
 
     fun canShoot(): Boolean
 
+    /** Pitch (Minecraft `xRot`, degrees, negative is up) that drops this gun's round onto [to]
+     *  when fired from [from], for rounds slow and heavy enough for the drop to matter. Null when
+     *  a straight aim is good enough, or when the round can't reach [to] at all. */
+    fun arcPitch(from: Vec3, to: Vec3): Float?
+
     fun shootAt(spread: Double, zoom: Boolean, target: UUID)
 
     fun shootAt(spread: Double, point: Vec3)

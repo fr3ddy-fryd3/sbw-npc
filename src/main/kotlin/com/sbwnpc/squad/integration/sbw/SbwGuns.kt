@@ -51,6 +51,11 @@ object SbwGuns : Guns {
     }
 }
 
+private const val TBG_ROCKET = "superbwarfare:rpg_rocket_tbg"
+private const val TBG_BOOST = 1.03
+private const val MAX_ARC_DEGREES = 45.0
+private const val ARC_SEARCH_STEPS = 16
+
 private class SbwHandGun(private val holder: LivingEntity, private val data: GunData) : HandGun {
     override val roundsPerMinute: Double get() = data.get(GunProp.RPM).toDouble()
     override val muzzleVelocity: Double get() = data.get(GunProp.VELOCITY).toDouble()
@@ -82,6 +87,53 @@ private class SbwHandGun(private val holder: LivingEntity, private val data: Gun
     }
 
     override fun canShoot(): Boolean = data.canShoot(holder)
+
+    // Flies the round the way FastThrowableProjectile does — move, then gravity — plus the TBG
+    // rocket's own 3% a tick boost, and searches for the elevation whose path passes [to].
+    // Bullets drop too little over a fight's distances to be worth it; only explosive rounds
+    // (launchers) are slow and heavy enough.
+    override fun arcPitch(from: Vec3, to: Vec3): Float? {
+        if (explosionRadius <= 0.0) return null
+        val gravity = data.get(GunProp.GRAVITY)
+        if (gravity <= 0.0) return null
+        val boost = if (data.get(GunProp.PROJECTILE).itemId.trim() == TBG_ROCKET) TBG_BOOST else 1.0
+        val life = data.get(GunProp.PROJECTILE_LIFE)
+        val dx = to.x - from.x
+        val dz = to.z - from.z
+        val range = Math.sqrt(dx * dx + dz * dz)
+        val rise = to.y - from.y
+        if (range < 1.0) return null
+
+        // Height of the path where it crosses [range], or null if it never gets there.
+        fun heightAt(elevationDeg: Double): Double? {
+            val rad = Math.toRadians(elevationDeg)
+            var vh = Math.cos(rad) * muzzleVelocity
+            var vy = Math.sin(rad) * muzzleVelocity
+            var h = 0.0
+            var y = 0.0
+            for (tick in 1..life) {
+                val nh = h + vh
+                if (nh >= range) return y + vy * (range - h) / vh
+                h = nh
+                y += vy
+                vy -= gravity
+                if (tick > 2) { vh *= boost; vy *= boost }
+            }
+            return null
+        }
+
+        // The low arc: height at the target grows with elevation up to the flat-fire maximum.
+        var low = -MAX_ARC_DEGREES
+        var high = MAX_ARC_DEGREES
+        val top = heightAt(high) ?: return null
+        if (top < rise) return null
+        repeat(ARC_SEARCH_STEPS) {
+            val mid = (low + high) / 2
+            val y = heightAt(mid)
+            if (y != null && y >= rise) high = mid else low = mid
+        }
+        return (-high).toFloat()
+    }
 
     override fun shootAt(spread: Double, zoom: Boolean, target: UUID) = data.shoot(holder, spread, zoom, target)
 

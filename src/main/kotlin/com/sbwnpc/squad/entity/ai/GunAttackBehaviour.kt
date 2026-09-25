@@ -461,6 +461,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         // first tick (no approach needed) left the model frozen facing spawn-in direction while
         // still shooting correctly. Same call AntiDroneBehaviour already makes for the same reason.
         entity.lookControl.setLookAt(target.x, target.eyeY, target.z)
+        // A rocket drops on its way; SBW fires along xRot, so lob it rather than point at the target.
+        gun.arcPitch(entity.eyePosition, target.eyePosition)?.let { entity.xRot = it }
 
         val squad = entity.currentSquad()
         val defendHome = if (squad?.order == SquadOrder.DEFEND) entity.homeCenter() else null
