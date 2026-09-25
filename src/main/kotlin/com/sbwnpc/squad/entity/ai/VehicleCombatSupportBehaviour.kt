@@ -1,14 +1,15 @@
 package com.sbwnpc.squad.entity.ai
 
-import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.TankWeaponSelection
 import com.sbwnpc.squad.combat.VehicleTargeting
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
@@ -35,21 +36,21 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         eligible(entity) && findSupportVehicle(entity, level) != null
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean {
-        val vehicle = vehicleId?.let { (entity.level() as? ServerLevel)?.getEntity(it) as? VehicleEntity }
+        val vehicle = vehicleId?.let { (entity.level() as? ServerLevel)?.getEntity(it)?.takeIf(Ports.vehicles::isVehicle) }
             ?: return false
-        if (!vehicle.isAlive || vehicle.isWreck || engagementTarget(entity) == null) return false
+        if (!Ports.vehicles.isOperational(vehicle) || engagementTarget(entity) == null) return false
         // A vehicle's hull is the gunner's cover. Once claimed, reach and keep it despite sensor
         // line-of-sight gaps or suppression; these are not reasons to abandon an armoured seat.
         if (entity.vehicle === vehicle) return true
         return entity.vehicle == null && VehicleTransportClaims.vehicleOf(entity.uuid) == vehicle.uuid &&
-            !vehicle.locked && !hasPlayerAboard(vehicle)
+            !Ports.vehicles.isLocked(vehicle) && !hasPlayerAboard(vehicle)
     }
 
     override fun start(entity: NpcEntity) {
         val level = entity.level() as? ServerLevel ?: return
         val target = threat(entity) ?: return
         val vehicle = findSupportVehicle(entity, level) ?: return
-        if (!VehicleTransportClaims.claimPassenger(vehicle.uuid, entity.uuid, vehicle.maxPassengers)) return
+        if (!VehicleTransportClaims.claimPassenger(vehicle.uuid, entity.uuid, Ports.vehicles.seatCount(vehicle))) return
         vehicleId = vehicle.uuid
         targetId = target.uuid
         phase = Phase.APPROACHING
@@ -61,9 +62,9 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun stop(entity: NpcEntity) {
-        val vehicle = vehicleId?.let { (entity.level() as? ServerLevel)?.getEntity(it) as? VehicleEntity }
+        val vehicle = vehicleId?.let { (entity.level() as? ServerLevel)?.getEntity(it)?.takeIf(Ports.vehicles::isVehicle) }
         if (vehicle != null && entity.vehicle === vehicle) {
-            setAutoAimTarget(vehicle, entity, null)
+            Ports.vehicles.aimAt(vehicle, entity, null)
             entity.stopRiding()
         }
         VehicleTransportClaims.release(entity.uuid)
@@ -75,7 +76,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun tick(entity: NpcEntity) {
-        val vehicle = vehicleId?.let { (entity.level() as? ServerLevel)?.getEntity(it) as? VehicleEntity }
+        val vehicle = vehicleId?.let { (entity.level() as? ServerLevel)?.getEntity(it)?.takeIf(Ports.vehicles::isVehicle) }
             ?: run {
                 abort(entity)
                 return
@@ -101,7 +102,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
                     )
                     return
                 }
-                if (!entity.startRiding(vehicle, false) || !hasAmmo(vehicle, entity)) {
+                if (!entity.startRiding(vehicle, false) || !Ports.vehicles.seatHasAmmo(vehicle, entity)) {
                     if (entity.vehicle === vehicle) entity.stopRiding()
                     abort(entity)
                     return
@@ -110,11 +111,11 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 phase = Phase.FIRING
                 DebugFlags.log(
                     "[vehicle-debug] {} boarded combat support vehicle {} in seat {} for target {}",
-                    entity.uuid, vehicle.uuid, vehicle.getSeatIndex(entity), target.uuid
+                    entity.uuid, vehicle.uuid, Ports.vehicles.seatOf(vehicle, entity), target.uuid
                 )
             }
             Phase.FIRING -> {
-                if (!hasAmmo(vehicle, entity)) {
+                if (!Ports.vehicles.seatHasAmmo(vehicle, entity)) {
                     abort(entity)
                     return
                 }
@@ -122,10 +123,9 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
                     BrainUtils.setTargetOfEntity(entity, target)
                 }
                 TankWeaponSelection.update(entity, target)
-                setAutoAimTarget(vehicle, entity, target)
-                vehicle.forwardInputDown = false
-                vehicle.backInputDown = false
-                vehicle.power = 0f
+                Ports.vehicles.aimAt(vehicle, entity, target)
+                Ports.vehicles.release(vehicle)
+                Ports.vehicles.cutPower(vehicle)
                 entity.navigation.stop()
             }
         }
@@ -148,7 +148,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.tickCount - threatScanTick < THREAT_RESCAN_TICKS) {
             val cached = threatCache
             if (cached == null) return fallbackThreat(entity)
-            if (cached.isAlive && cached.vehicle is VehicleEntity && SquadTeams.isHostile(entity, cached)) return cached
+            if (cached.isAlive && Ports.vehicles.isVehicle(cached.vehicle) && SquadTeams.isHostile(entity, cached)) return cached
         }
         threatScanTick = entity.tickCount
         val level = entity.level() as? ServerLevel
@@ -159,18 +159,10 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun fallbackThreat(entity: NpcEntity): LivingEntity? =
         entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) }
 
-    /** `VehicleEntity.canShoot` is false while SBW reloads or cools a weapon. Keep the gunner
-     *  seated for those transient states; only leave when the selected weapon has no ammo at all. */
-    private fun hasAmmo(vehicle: VehicleEntity, entity: NpcEntity): Boolean {
-        val gunData = vehicle.getGunData(entity) ?: return false
-        return gunData.hasEnoughAmmoToShoot(vehicle.ammoSupplier) ||
-            gunData.countBackupAmmo(vehicle.ammoSupplier) > 0
-    }
-
     private fun abort(entity: NpcEntity) {
-        val vehicle = vehicleId?.let { (entity.level() as? ServerLevel)?.getEntity(it) as? VehicleEntity }
+        val vehicle = vehicleId?.let { (entity.level() as? ServerLevel)?.getEntity(it)?.takeIf(Ports.vehicles::isVehicle) }
         if (vehicle != null && entity.vehicle === vehicle) {
-            setAutoAimTarget(vehicle, entity, null)
+            Ports.vehicles.aimAt(vehicle, entity, null)
             entity.stopRiding()
         }
         VehicleTransportClaims.release(entity.uuid)
@@ -190,24 +182,12 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         return threat(entity)?.also { targetId = it.uuid }
     }
 
-    /** SBW receives target-change events before this NPC boards, so it otherwise never gets an
-     *  auto-aim UUID for a target it already had while approaching the vehicle. */
-    private fun setAutoAimTarget(vehicle: VehicleEntity, entity: NpcEntity, target: LivingEntity?) {
-        val targetId = target?.stringUUID ?: "undefined"
-        if (entity === vehicle.getNthEntity(vehicle.turretControllerIndex)) {
-            vehicle.aiTurretTargetUUID = targetId
-        }
-        if (entity === vehicle.getNthEntity(vehicle.passengerWeaponStationControllerIndex)) {
-            vehicle.aiPassengerWeaponTargetUUID = targetId
-        }
-    }
-
-    private fun findSupportVehicle(entity: NpcEntity, level: ServerLevel): VehicleEntity? {
+    private fun findSupportVehicle(entity: NpcEntity, level: ServerLevel): Entity? {
         // Only reached with a live threat; while there's simply no free armed vehicle around, don't
         // re-run the box query every tick — a "none" answer is good for a second.
         if (entity.tickCount < nextVehicleSearchTick) return null
         val box = AABB.ofSize(entity.position(), SEARCH_RADIUS * 2, SEARCH_RADIUS * 2, SEARCH_RADIUS * 2)
-        val found = level.getEntitiesOfClass(VehicleEntity::class.java, box)
+        val found = Ports.vehicles.within(level, box)
             .asSequence()
             .filter { entity.distanceToSqr(it) <= SEARCH_RADIUS_SQR }
             .filter(::isSupportVehicle)
@@ -216,14 +196,14 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         return found
     }
 
-    private fun isSupportVehicle(vehicle: VehicleEntity): Boolean {
-        if (!vehicle.isAlive || vehicle.isWreck || vehicle.locked || vehicle.passengers.isNotEmpty()) return false
+    private fun isSupportVehicle(vehicle: Entity): Boolean {
+        if (!Ports.vehicles.isOperational(vehicle) || Ports.vehicles.isLocked(vehicle) || vehicle.passengers.isNotEmpty()) return false
         if (hasPlayerAboard(vehicle) || VehicleTransportClaims.claimedSeats(vehicle.uuid) != 0) return false
-        val seat = vehicle.getOrderedPassengers().indexOfFirst { it == null }
-        return seat >= 0 && vehicle.getGunData(seat)?.canShoot(vehicle.ammoSupplier) == true
+        val seat = Ports.vehicles.seating(vehicle).indexOfFirst { it == null }
+        return seat >= 0 && Ports.vehicles.seatReady(vehicle, seat)
     }
 
-    private fun hasPlayerAboard(vehicle: VehicleEntity): Boolean = vehicle.passengers.any { it is Player }
+    private fun hasPlayerAboard(vehicle: Entity): Boolean = vehicle.passengers.any { it is Player }
 
     private companion object {
         const val SEARCH_RADIUS = 20.0

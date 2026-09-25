@@ -1,9 +1,8 @@
 package com.sbwnpc.squad.entity.ai
 
-import com.atsuishio.superbwarfare.data.vehicle.subdata.EngineType
 import com.atsuishio.superbwarfare.entity.vehicle.MortarEntity
-import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
-import com.atsuishio.superbwarfare.entity.vehicle.utils.VehicleVecUtils
+import com.sbwnpc.squad.domain.port.Mobility
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.npc.NpcClass
@@ -15,7 +14,6 @@ import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
-import net.minecraft.util.Mth
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
@@ -63,7 +61,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private enum class Phase { SEEKING, BOARDING, WAITING_FOR_SQUAD, DRIVING, HOLDING, RIDING, COMBAT_DISMOUNT }
 
-    private data class VehicleChoice(val vehicle: VehicleEntity, val isDriver: Boolean)
+    private data class VehicleChoice(val vehicle: Entity, val isDriver: Boolean)
 
     private var phase = Phase.SEEKING
     private var targetVehicleId: java.util.UUID? = null
@@ -91,8 +89,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var recoveryTurnLeft = false
 
     // Last logged turn state for steerToward — purely for change-detection in the debug log, not
-    // control state (the actual control state, rudderRot, lives on the vehicle itself — see
-    // steerToward's doc comment).
+    // control state (the actual steering state lives on the vehicle itself).
     private var lastLoggedRight = false
     private var lastLoggedLeft = false
     private var lastFullLogTick = 0
@@ -136,8 +133,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // Never take the controls of something that isn't a ground vehicle. A helicopter reads
         // forwardInputDown as its collective and the left/right pedals as roll, so "driving" one
         // spins the rotor up and rolls it onto its back; HelicopterPilotBehaviour owns those.
-        (entity.vehicle as? VehicleEntity)?.let { mounted ->
-            if (mounted.computed().engineType !in GROUND_ENGINE_TYPES) {
+        entity.vehicle?.takeIf(Ports.vehicles::isVehicle)?.let { mounted ->
+            if (Ports.vehicles.mobility(mounted) != Mobility.GROUND) {
                 return logEligibility(entity, false) { "mounted in a non-ground vehicle" }
             }
         }
@@ -192,7 +189,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.vehicle != null) true else eligible(entity, checkGiveup = true)
 
     override fun start(entity: NpcEntity) {
-        val mounted = entity.vehicle as? VehicleEntity
+        val mounted = entity.vehicle?.takeIf(Ports.vehicles::isVehicle)
         if (mounted != null) {
             startMounted(entity, mounted)
             return
@@ -221,13 +218,13 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /** Spawned vehicle crews begin seated, so initialise their transport state without making them
      *  search for and attempt to board the vehicle they already occupy. */
-    private fun startMounted(entity: NpcEntity, vehicle: VehicleEntity) {
+    private fun startMounted(entity: NpcEntity, vehicle: Entity) {
         targetVehicleId = vehicle.uuid
         repathCooldown = 0
         boardTick = entity.tickCount
         waitStartTick = entity.tickCount
         tripDestination = entity.homeCenter()
-        observedDamageStamp = vehicle.lastDamageStamp
+        observedDamageStamp = Ports.vehicles.lastHitTime(vehicle)
         lastStuckCheckTick = entity.tickCount
         lastStuckCheckPos = null
         recoveryUntilTick = 0
@@ -236,12 +233,12 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         arrivalWaitStartTick = -1
         entity.vehicleTransport = true
 
-        if (vehicle.getSeatIndex(entity) == 0) {
+        if (Ports.vehicles.seatOf(vehicle, entity) == 0) {
             VehicleTransportClaims.claimDriver(vehicle.uuid, entity.uuid)
             phase = Phase.WAITING_FOR_SQUAD
         } else {
             VehicleTransportClaims.claimPassenger(
-                vehicle.uuid, entity.uuid, vehicle.maxPassengers, vehicle.passengers.map { it.uuid }
+                vehicle.uuid, entity.uuid, Ports.vehicles.seatCount(vehicle), vehicle.passengers.map { it.uuid }
             )
             phase = Phase.RIDING
         }
@@ -282,8 +279,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         nextSeekTick = entity.tickCount + SEEK_INTERVAL_TICKS
 
         val squad = entity.currentSquad() ?: return
-        val nearby = level.getEntitiesOfClass(
-            VehicleEntity::class.java,
+        val nearby = Ports.vehicles.within(
+            level,
             AABB.ofSize(entity.position(), SEARCH_RADIUS * 2, SEARCH_RADIUS * 2, SEARCH_RADIUS * 2)
         )
         val choice = nearby.asSequence()
@@ -294,7 +291,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 when {
                     claimedBySquad && VehicleTransportClaims.occupiedOrClaimedSeats(
                         vehicle.uuid, vehicle.passengers.map { it.uuid }
-                    ) < vehicle.maxPassengers ->
+                    ) < Ports.vehicles.seatCount(vehicle) ->
                         VehicleChoice(vehicle, isDriver = false)
                     VehicleTransportClaims.claimedSeats(vehicle.uuid) == 0 && vehicle.passengers.isEmpty() ->
                         VehicleChoice(vehicle, isDriver = true)
@@ -302,7 +299,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 }
             }
             .minWithOrNull(
-                compareByDescending<VehicleChoice> { it.vehicle.maxPassengers }
+                compareByDescending<VehicleChoice> { Ports.vehicles.seatCount(it.vehicle) }
                     .thenBy { entity.distanceToSqr(it.vehicle) }
             )
 
@@ -310,7 +307,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             if (entity.tickCount - lastNoCandidateLogTick > NO_CANDIDATE_LOG_INTERVAL_TICKS) {
                 lastNoCandidateLogTick = entity.tickCount
                 DebugFlags.log(
-                    "[vehicle-debug] {} found no claimable vehicle within {} blocks ({} VehicleEntity total nearby)",
+                    "[vehicle-debug] {} found no claimable vehicle within {} blocks ({} vehicles total nearby)",
                     entity.uuid, SEARCH_RADIUS, nearby.size
                 )
             }
@@ -321,7 +318,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             VehicleTransportClaims.claimDriver(choice.vehicle.uuid, entity.uuid)
         } else {
             VehicleTransportClaims.claimPassenger(
-                choice.vehicle.uuid, entity.uuid, choice.vehicle.maxPassengers,
+                choice.vehicle.uuid, entity.uuid, Ports.vehicles.seatCount(choice.vehicle),
                 choice.vehicle.passengers.map { it.uuid }
             )
         }
@@ -331,17 +328,17 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             DebugFlags.log(
                 "[vehicle-debug] {} claimed {} seat of {} (capacity={})",
                 entity.uuid, if (choice.isDriver) "driver" else "passenger", choice.vehicle.uuid,
-                choice.vehicle.maxPassengers
+                Ports.vehicles.seatCount(choice.vehicle)
             )
         }
     }
 
     private fun tickBoarding(entity: NpcEntity, level: ServerLevel) {
-        val vehicle = targetVehicleId?.let { level.getEntity(it) as? VehicleEntity }
+        val vehicle = targetVehicleId?.let { level.getEntity(it)?.takeIf(Ports.vehicles::isVehicle) }
         // Re-verified here, not just at claim time in tickSeeking — a player can board/park in the
         // vehicle during the walk over, which the app-level claim registry has no way to see.
-        if (vehicle == null || !vehicle.isAlive || vehicle.isWreck || vehicle.locked ||
-            hasBlockingPlayerAboard(vehicle, entity) || vehicle.passengers.size >= vehicle.maxPassengers
+        if (vehicle == null || !Ports.vehicles.isOperational(vehicle) || Ports.vehicles.isLocked(vehicle) ||
+            hasBlockingPlayerAboard(vehicle, entity) || vehicle.passengers.size >= Ports.vehicles.seatCount(vehicle)
         ) {
             VehicleTransportClaims.release(entity.uuid)
             targetVehicleId = null
@@ -390,7 +387,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // to drive to; stay mounted but idle rather than steering at a stale/absent target — the
         // eligibility check will unmount this NPC on its own on the next tick.
         tripDestination = entity.homeCenter()
-        observedDamageStamp = vehicle.lastDamageStamp
+        observedDamageStamp = Ports.vehicles.lastHitTime(vehicle)
 
         boardTick = entity.tickCount
         // Reset stuck-detection state — it must not carry over from a previous vehicle (e.g. after
@@ -415,8 +412,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  nothing else ever calls `stop()` either, permanently stranding vehicleTransport=true (every
      *  other behaviour stays locked out forever). Resetting to SEEKING lets the next tick's normal
      *  eligibility check decide whether to look for another vehicle or stand down entirely. */
-    private fun mountOrAbort(entity: NpcEntity): VehicleEntity? {
-        val vehicle = entity.vehicle as? VehicleEntity
+    private fun mountOrAbort(entity: NpcEntity): Entity? {
+        val vehicle = entity.vehicle?.takeIf(Ports.vehicles::isVehicle)
         if (vehicle == null) {
             VehicleTransportClaims.release(entity.uuid)
             targetVehicleId = null
@@ -530,7 +527,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         if (alliedNpcBlocksTravel(entity, vehicle, forwardDirection(vehicle))) {
             stopVehicle(vehicle)
-            vehicle.power = 0f
+            Ports.vehicles.cutPower(vehicle)
             nextRouteTick = entity.tickCount
             return
         }
@@ -596,16 +593,13 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         return target
     }
 
-    private fun performRecovery(entity: NpcEntity, vehicle: VehicleEntity) {
+    private fun performRecovery(entity: NpcEntity, vehicle: Entity) {
         if (alliedNpcBlocksTravel(entity, vehicle, forwardDirection(vehicle).scale(-1.0))) {
             stopVehicle(vehicle)
-            vehicle.power = 0f
+            Ports.vehicles.cutPower(vehicle)
             return
         }
-        vehicle.forwardInputDown = false
-        vehicle.backInputDown = true
-        vehicle.leftInputDown = recoveryTurnLeft
-        vehicle.rightInputDown = !recoveryTurnLeft
+        Ports.vehicles.reverse(vehicle, recoveryTurnLeft)
     }
 
     /** Passenger only: no driving of its own — just watches for the vehicle actually getting close
@@ -628,11 +622,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
     }
 
-    private fun tickCombatDismount(entity: NpcEntity, mountedVehicle: VehicleEntity? = null) {
+    private fun tickCombatDismount(entity: NpcEntity, mountedVehicle: Entity? = null) {
         val vehicle = mountedVehicle ?: mountOrAbort(entity) ?: return
         if (VehicleTransportClaims.combatGunnerOf(vehicle.uuid) == entity.uuid && threatActive(entity)) {
             stopVehicle(vehicle)
-            vehicle.power = 0f
+            Ports.vehicles.cutPower(vehicle)
             return
         }
         waitToStopThenDismount(entity, vehicle, VehicleTransportClaims.driverOf(vehicle.uuid) == entity.uuid)
@@ -648,7 +642,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  adding forward thrust every tick proportional to itself regardless of input state. Zeroing
      *  `power` directly (a public synced field) removes that thrust immediately; ground friction
      *  (wheelEngine's f0, ~30-50% velocity loss/tick) then kills actual speed within a handful of ticks. */
-    private fun waitToStopThenDismount(entity: NpcEntity, vehicle: VehicleEntity, isDriver: Boolean) {
+    private fun waitToStopThenDismount(entity: NpcEntity, vehicle: Entity, isDriver: Boolean) {
         if (isPermanentCrew(entity, vehicle)) {
             holdVehicle(vehicle)
             phase = Phase.HOLDING
@@ -656,7 +650,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         if (isDriver) {
             stopVehicle(vehicle)
-            vehicle.power = 0f
+            Ports.vehicles.cutPower(vehicle)
         }
         if (arrivalWaitStartTick < 0) arrivalWaitStartTick = entity.tickCount
         val speedSqr = vehicle.deltaMovement.horizontalDistanceSqr()
@@ -690,13 +684,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         return tripDestination
     }
 
-    private fun reactToVehicleFire(entity: NpcEntity, vehicle: VehicleEntity): Boolean {
-        if (vehicle.lastDamageStamp <= observedDamageStamp) return false
-        observedDamageStamp = vehicle.lastDamageStamp
+    private fun reactToVehicleFire(entity: NpcEntity, vehicle: Entity): Boolean {
+        if (Ports.vehicles.lastHitTime(vehicle) <= observedDamageStamp) return false
+        observedDamageStamp = Ports.vehicles.lastHitTime(vehicle)
 
-        val attacker = (vehicle.lastDamageSource?.entity as? LivingEntity)
-            ?: (vehicle.lastAttacker as? LivingEntity)
-            ?: return false
+        val attacker = Ports.vehicles.lastAttacker(vehicle) as? LivingEntity ?: return false
         if (!attacker.isAlive || !SquadTeams.isHostile(entity, attacker)) return false
 
         entity.rememberVehicleAttacker(attacker)
@@ -706,15 +698,15 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         return engageVehicleThreat(entity, vehicle, attacker)
     }
 
-    private fun isPermanentCrew(entity: NpcEntity, vehicle: VehicleEntity): Boolean =
+    private fun isPermanentCrew(entity: NpcEntity, vehicle: Entity): Boolean =
         entity.assignedVehicleId == vehicle.uuid
 
-    private fun engageVehicleThreat(entity: NpcEntity, vehicle: VehicleEntity): Boolean {
+    private fun engageVehicleThreat(entity: NpcEntity, vehicle: Entity): Boolean {
         val threat = entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) } ?: return false
         return engageVehicleThreat(entity, vehicle, threat)
     }
 
-    private fun engageVehicleThreat(entity: NpcEntity, vehicle: VehicleEntity, threat: LivingEntity): Boolean {
+    private fun engageVehicleThreat(entity: NpcEntity, vehicle: Entity, threat: LivingEntity): Boolean {
         if (entity.currentSquad()?.order == SquadOrder.ATTACK) return false
 
         assignCombatGunner(vehicle)?.let { gunner ->
@@ -729,13 +721,13 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         return true
     }
 
-    private fun assignCombatGunner(vehicle: VehicleEntity): NpcEntity? {
+    private fun assignCombatGunner(vehicle: Entity): NpcEntity? {
         VehicleTransportClaims.combatGunnerOf(vehicle.uuid)?.let { id ->
             return vehicle.passengers.filterIsInstance<NpcEntity>().firstOrNull { it.uuid == id }
         }
         val gunner = vehicle.passengers.asSequence()
             .filterIsInstance<NpcEntity>()
-            .firstOrNull { vehicle.canShoot(it) }
+            .firstOrNull { Ports.vehicles.canFire(vehicle, it) }
             ?: return null
         return gunner.takeIf { VehicleTransportClaims.claimCombatGunner(vehicle.uuid, it.uuid) }
     }
@@ -766,12 +758,12 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var mortarPriorityCheckTick = Int.MIN_VALUE / 2 // not MIN_VALUE: `tickCount - MIN_VALUE` overflows
     private var mortarPriorityCached = false
 
-    private fun isUsableGroundVehicle(vehicle: VehicleEntity, entity: NpcEntity): Boolean =
-        vehicle.isAlive && !vehicle.isWreck && !vehicle.locked && vehicle.maxPassengers > 0 &&
-            vehicle.computed().engineType in GROUND_ENGINE_TYPES && VehiclePower.hasReserve(vehicle) &&
+    private fun isUsableGroundVehicle(vehicle: Entity, entity: NpcEntity): Boolean =
+        Ports.vehicles.isOperational(vehicle) && !Ports.vehicles.isLocked(vehicle) && Ports.vehicles.seatCount(vehicle) > 0 &&
+            Ports.vehicles.mobility(vehicle) == Mobility.GROUND && VehiclePower.hasReserve(vehicle) &&
             !hasBlockingPlayerAboard(vehicle, entity)
 
-    private fun forwardDirection(vehicle: VehicleEntity): Vec3 {
+    private fun forwardDirection(vehicle: Entity): Vec3 {
         val movement = vehicle.deltaMovement
         if (movement.horizontalDistanceSqr() > 0.0025) {
             return Vec3(movement.x, 0.0, movement.z).normalize()
@@ -780,11 +772,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         return Vec3(view.x, 0.0, view.z).normalize()
     }
 
-    private fun alliedNpcBlocksTravel(entity: NpcEntity, vehicle: VehicleEntity, direction: Vec3): Boolean {
+    private fun alliedNpcBlocksTravel(entity: NpcEntity, vehicle: Entity, direction: Vec3): Boolean {
         if (direction.lengthSqr() < 1.0e-6) return false
         val lookahead = maxOf(MIN_ALLY_LOOKAHEAD, vehicle.deltaMovement.horizontalDistance() * ALLY_BRAKE_LOOKAHEAD_TICKS)
         val offset = direction.normalize().scale(lookahead)
-        val corridor = vehicle.getCombinedAABB().expandTowards(offset.x, offset.y, offset.z).inflate(ALLY_CLEARANCE)
+        val corridor = Ports.vehicles.hull(vehicle).expandTowards(offset.x, offset.y, offset.z).inflate(ALLY_CLEARANCE)
         val faction = SquadTeams.factionOf(entity) ?: return false
         val level = entity.level() as? ServerLevel ?: return false
         val samples = kotlin.math.ceil(lookahead / ALLY_SWEEP_STEP).toInt().coerceIn(1, MAX_ALLY_SWEEP_SAMPLES)
@@ -797,64 +789,30 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         return false
     }
 
-    private fun vehicleOverlaps(vehicle: VehicleEntity, entity: NpcEntity, offset: Vec3): Boolean =
-        if (vehicle.enableAABB()) vehicle.boundingBox.move(offset).intersects(entity.boundingBox)
-        else vehicle.isInObb(entity, offset)
+    private fun vehicleOverlaps(vehicle: Entity, entity: NpcEntity, offset: Vec3): Boolean =
+        Ports.vehicles.wouldHit(vehicle, entity, offset)
 
-    /** Steer-toward-point: always throttle forward, turn left/right to close the heading gap.
-     *
-     *  Targets [VehicleEntity.rudderRot] directly — SBW's own "steering wheel" state
-     *  (VehicleEngineUtils.wheelEngine) — rather than reacting to raw heading error with
-     *  hysteresis/timers: rightInputDown drives rudderRot negative, leftInputDown drives it positive,
-     *  and it decays 25%/tick UNCONDITIONALLY (even while held), so [MAX_RUDDER_MAGNITUDE] targets well
-     *  under the hard ±0.8 clamp rather than up against it (see its own comment). yRot's rate of change
-     *  per tick is `-12 * speed * rudderRot * sign(power)`.
-     *
-     *  `targetRudder = clamp(-diff / RUDDER_FULL_LOCK_DEGREES, -1, 1) * MAX_RUDDER_MAGNITUDE` (negative
-     *  because turning right — wanted when diff > 0 — drives rudderRot negative). Hold whichever input
-     *  direction closes the gap between actual rudderRot and that target; release within
-     *  [RUDDER_DEADBAND] of it. Holding one direction at speed both rotates and translates the vehicle,
-     *  so a fixed hold duration risks a stable circular orbit; targeting a shrinking rudderRot avoids
-     *  that structurally, since the commanded turn backs off as the vehicle actually straightens out
-     *  rather than staying locked in until a timer expires. */
-    private fun steerToward(vehicle: VehicleEntity, target: Vec3) {
-        val toTarget = target.subtract(vehicle.position())
-        // VehicleVecUtils.getYRotFromVector's raw output is the negation of yRot's own convention —
-        // every other call site in SuperbWarfare that compares it against yRot negates it first (e.g.
-        // VehicleEntity.updateRotation) — so it's negated here too.
-        val desiredYaw: Double = -VehicleVecUtils.getYRotFromVector(toTarget)
-        val diff = Mth.wrapDegrees(desiredYaw - vehicle.yRot.toDouble())
-
-        val targetRudder = Mth.clamp((-diff / RUDDER_FULL_LOCK_DEGREES).toFloat(), -1f, 1f) * MAX_RUDDER_MAGNITUDE
-        val rudderError = vehicle.rudderRot - targetRudder
-        val right = rudderError > RUDDER_DEADBAND
-        val left = rudderError < -RUDDER_DEADBAND
-
+    /** Throttle forward and steer at [target] — see the Vehicles adapter for how. */
+    private fun steerToward(vehicle: Entity, target: Vec3) {
+        val steering = Ports.vehicles.driveToward(vehicle, target)
         // Logged on every turn-state change, plus an unconditional full snapshot every
         // FULL_STATE_LOG_INTERVAL_TICKS regardless of whether anything changed — a state-change-only
         // log stays silent for an entire trip if the controller gets stuck holding steady, which is
         // exactly what hid prior bugs here (long stretches of zero log lines while something was
         // quietly wrong), so this is the one place that always shows what's actually happening.
         val dueForFullLog = vehicle.tickCount - lastFullLogTick >= FULL_STATE_LOG_INTERVAL_TICKS
-        if (right != lastLoggedRight || left != lastLoggedLeft || dueForFullLog) {
+        if (steering.right != lastLoggedRight || steering.left != lastLoggedLeft || dueForFullLog) {
             if (dueForFullLog) lastFullLogTick = vehicle.tickCount
-            lastLoggedRight = right
-            lastLoggedLeft = left
+            lastLoggedRight = steering.right
+            lastLoggedLeft = steering.left
             DebugFlags.log(
-                "[vehicle-debug] steer: pos={} yRot={} desiredYaw={} diff={} rudderRot={} targetRudder={} -> right={} left={} speed={}",
-                vehicle.position(), vehicle.yRot, desiredYaw, diff, vehicle.rudderRot, targetRudder, right, left,
-                vehicle.deltaMovement.horizontalDistance()
+                "[vehicle-debug] steer: {} -> right={} left={}", steering.detail, steering.right, steering.left
             )
         }
-
-        vehicle.forwardInputDown = true
-        vehicle.backInputDown = false
-        vehicle.rightInputDown = right
-        vehicle.leftInputDown = left
     }
 
     /** A player may ride with our NPC driver, but NPCs must never take over a player's vehicle. */
-    private fun hasBlockingPlayerAboard(vehicle: VehicleEntity, entity: NpcEntity): Boolean {
+    private fun hasBlockingPlayerAboard(vehicle: Entity, entity: NpcEntity): Boolean {
         val players = vehicle.passengers.filterIsInstance<net.minecraft.world.entity.player.Player>()
         if (players.isEmpty()) return false
         val driver = vehicle.firstPassenger as? NpcEntity ?: return true
@@ -863,17 +821,12 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         return players.any { !DriverAllegiance.isAlliedDriver(it, driver) }
     }
 
-    private fun holdVehicle(vehicle: VehicleEntity) {
+    private fun holdVehicle(vehicle: Entity) {
         stopVehicle(vehicle)
-        vehicle.power = 0f
+        Ports.vehicles.cutPower(vehicle)
     }
 
-    private fun stopVehicle(vehicle: VehicleEntity) {
-        vehicle.forwardInputDown = false
-        vehicle.backInputDown = false
-        vehicle.leftInputDown = false
-        vehicle.rightInputDown = false
-    }
+    private fun stopVehicle(vehicle: Entity) = Ports.vehicles.release(vehicle)
 
     companion object {
         private const val TRANSPORT_DISTANCE_THRESHOLD = 100.0
@@ -892,29 +845,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val NO_CANDIDATE_LOG_INTERVAL_TICKS = 100
         private const val ELIGIBILITY_LOG_INTERVAL_TICKS = 60 // 3s between eligibility trace lines
         private const val REPATH_INTERVAL_TICKS = 20
-        // Heading error (degrees) at/beyond which steerToward commands full steering lock
-        // (MAX_RUDDER_MAGNITUDE) — see steerToward's doc comment for the proportional-to-rudderRot
-        // design this feeds. Smaller = more aggressive (reaches full lock at a gentler heading error);
-        // 45° means anything from a moderate correction to a near-reversal all command close to full
-        // lock, while small corrections near the target heading get proportionally gentle steering.
-        private const val RUDDER_FULL_LOCK_DEGREES = 45.0
-        // Below the vehicle's hard rudderRot clamp (±0.8 in VehicleEngineUtils.wheelEngine) on purpose:
-        // rudderRot's *0.75 decay applies every tick even while an input is held, so continuous
-        // single-direction holding only settles at ~0.3-0.6 depending on speed (lower at cruising
-        // speed, since deltaRot's own decay also scales with speed) — well under the hard clamp.
-        // Targeting within that achievable range keeps steerToward's proportional response effective
-        // across most of a turn, not just its final stretch.
-        private const val MAX_RUDDER_MAGNITUDE = 0.4f
-        // How close actual rudderRot must get to the target before releasing input — too small and
-        // float noise/the engine's own per-tick rudderRot changes chatter the input on/off every tick;
-        // too large and steering stays visibly short of what was actually commanded.
-        private const val RUDDER_DEADBAND = 0.05f
         private const val FULL_STATE_LOG_INTERVAL_TICKS = 10 // unconditional steer snapshot, ~0.5s
         private const val RUN_SPEED_MODIFIER = 1.0
         private const val MORTAR_PRIORITY_CHECK_INTERVAL_TICKS = 40
         private const val START_CHECK_INTERVAL_TICKS = 5
         private const val MORTAR_SEARCH_RADIUS = 30.0
-        private val GROUND_ENGINE_TYPES = setOf(EngineType.WHEEL, EngineType.TRACK, EngineType.WHEELCHAIR)
         private const val MIN_ALLY_LOOKAHEAD = 2.0
         private const val ALLY_BRAKE_LOOKAHEAD_TICKS = 3.0
         private const val ALLY_CLEARANCE = 0.3

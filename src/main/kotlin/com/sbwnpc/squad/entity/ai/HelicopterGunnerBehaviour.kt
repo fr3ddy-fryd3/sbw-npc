@@ -1,15 +1,15 @@
 package com.sbwnpc.squad.entity.ai
 
-import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.VehicleCannonAmmo
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.team.SquadTeams
 import com.sbwnpc.squad.vehicle.Helicopters
 import net.minecraft.server.level.ServerLevel
-import net.minecraft.world.entity.LivingEntity
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.minecraft.world.phys.AABB
@@ -57,7 +57,7 @@ class HelicopterGunnerBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun stop(entity: NpcEntity) {
-        (entity.vehicle as? VehicleEntity)?.let { setAutoAimTarget(it, entity, null) }
+        entity.vehicle?.let { Ports.vehicles.aimAt(it, entity, null) }
         entity.vehicleTransport = false
     }
 
@@ -70,11 +70,11 @@ class HelicopterGunnerBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.navigation.stop()
         val target = entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) }
         if (target == null) {
-            setAutoAimTarget(gunship, entity, null)
+            Ports.vehicles.aimAt(gunship, entity, null)
             return
         }
         VehicleCannonAmmo.select(gunship, Helicopters.GUNNER_SEAT, CANNON_WEAPON, target)
-        setAutoAimTarget(gunship, entity, target)
+        Ports.vehicles.aimAt(gunship, entity, target)
     }
 
     /**
@@ -83,26 +83,26 @@ class HelicopterGunnerBehaviour : ExtendedBehaviour<NpcEntity>() {
      * takes the seat. Only ever a landed one — there is no way to climb into a helicopter in the
      * air, and the pilot shuts down on the pad, which is exactly when this can happen.
      */
-    private fun openTurretSeat(entity: NpcEntity, level: ServerLevel): VehicleEntity? {
+    private fun openTurretSeat(entity: NpcEntity, level: ServerLevel): Entity? {
         if (entity.vehicle != null) return null
         if (entity.tickCount < nextSearchTick) return null
         nextSearchTick = entity.tickCount + SEARCH_INTERVAL_TICKS
         val box = AABB.ofSize(entity.position(), SEARCH_RANGE * 2, SEARCH_RANGE * 2, SEARCH_RANGE * 2)
-        return level.getEntitiesOfClass(VehicleEntity::class.java, box)
+        return Ports.vehicles.within(level, box)
             .asSequence()
-            .filter { Helicopters.hasTurret(it) && it.isAlive && !it.isWreck && !it.locked }
+            .filter { Helicopters.hasTurret(it) && Ports.vehicles.isOperational(it) && !Ports.vehicles.isLocked(it) }
             .filter { it.onGround() }
             .filter { SquadTeams.factionOf(it) == SquadTeams.factionOf(entity) }
-            .filter { it.getOrderedPassengers().getOrNull(Helicopters.GUNNER_SEAT) == null }
+            .filter { Ports.vehicles.seating(it).getOrNull(Helicopters.GUNNER_SEAT) == null }
             .minByOrNull { entity.distanceToSqr(it) }
     }
 
     private fun boardVacantTurret(entity: NpcEntity) {
         val level = entity.level() as? ServerLevel ?: return
-        val gunship = seatTarget?.let { level.getEntity(it) as? VehicleEntity }
+        val gunship = seatTarget?.let { level.getEntity(it)?.takeIf(Ports.vehicles::isVehicle) }
             ?: openTurretSeat(entity, level)?.also { seatTarget = it.uuid }
             ?: return
-        if (gunship.getOrderedPassengers().getOrNull(Helicopters.GUNNER_SEAT) != null || !gunship.onGround()) {
+        if (Ports.vehicles.seating(gunship).getOrNull(Helicopters.GUNNER_SEAT) != null || !gunship.onGround()) {
             seatTarget = null
             return
         }
@@ -124,22 +124,10 @@ class HelicopterGunnerBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
     }
 
-    private fun turret(entity: NpcEntity): VehicleEntity? {
-        val vehicle = entity.vehicle as? VehicleEntity ?: return null
-        if (!Helicopters.hasTurret(vehicle) || !vehicle.isAlive || vehicle.isWreck) return null
-        if (vehicle.getSeatIndex(entity) != Helicopters.GUNNER_SEAT) return null
+    private fun turret(entity: NpcEntity): Entity? {
+        val vehicle = entity.vehicle ?: return null
+        if (!Helicopters.hasTurret(vehicle) || !Ports.vehicles.isOperational(vehicle)) return null
+        if (Ports.vehicles.seatOf(vehicle, entity) != Helicopters.GUNNER_SEAT) return null
         return vehicle
-    }
-
-    /** Same hand-off [VehicleCombatSupportBehaviour] uses: SBW only learns about a target it did
-     *  not see acquired itself through these UUIDs. */
-    private fun setAutoAimTarget(vehicle: VehicleEntity, entity: NpcEntity, target: LivingEntity?) {
-        val targetId = target?.stringUUID ?: "undefined"
-        if (entity === vehicle.getNthEntity(vehicle.turretControllerIndex)) {
-            vehicle.aiTurretTargetUUID = targetId
-        }
-        if (entity === vehicle.getNthEntity(vehicle.passengerWeaponStationControllerIndex)) {
-            vehicle.aiPassengerWeaponTargetUUID = targetId
-        }
     }
 }
