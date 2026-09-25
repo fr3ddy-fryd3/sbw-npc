@@ -2,6 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.GrenadeThrower
+import com.sbwnpc.squad.combat.VehicleTargeting
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import net.minecraft.server.level.ServerLevel
@@ -47,6 +48,8 @@ class GrenadeThrowBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.tickCount < nextThrowTick) return false
         val target = entity.target ?: return false
         if (!target.isAlive) return false
+        // Nothing thrown by hand reaches a helicopter.
+        if (VehicleTargeting.isAircrew(target)) return false
         val dist = entity.distanceTo(target)
         if (dist !in MIN_RANGE..MAX_RANGE || !entity.sensing.hasLineOfSight(target)) return false
         return GrenadeThrower.isSafeToThrow(entity, target.boundingBox.center)

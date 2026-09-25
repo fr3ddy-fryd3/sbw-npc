@@ -2,6 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.GrenadeThrower
+import com.sbwnpc.squad.combat.VehicleTargeting
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import net.minecraft.server.level.ServerLevel
@@ -67,6 +68,8 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun flushPoint(entity: NpcEntity): Vec3? {
         val target = entity.target ?: return null
         if (!target.isAlive) return null
+        // Out of sight up in a helicopter is not something a grenade flushes out.
+        if (VehicleTargeting.isAircrew(target)) return null
         val since = entity.blockedSightSince ?: return null
         if (entity.tickCount - since < BLOCKED_TICKS) return null
         return target.position()
@@ -75,7 +78,11 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** Pinned down, and the memory of where the fire is coming from is still live. */
     private fun suppressionPoint(entity: NpcEntity): Vec3? {
         if (!entity.isSuppressed()) return null
-        return entity.threatPos
+        // Pinned down from the air: the fire comes from somewhere a grenade can't go.
+        val from = entity.threatPos ?: return null
+        if (from.y - entity.y > AIR_THREAT_HEIGHT) return null
+        entity.target?.takeIf { VehicleTargeting.isAircrew(it) }?.let { return null }
+        return from
     }
 
     private fun inRange(entity: NpcEntity, point: Vec3): Boolean {
@@ -102,6 +109,8 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
         const val BLOCKED_TICKS = 60
         const val SELF_COOLDOWN_TICKS = 200
         const val SQUAD_COOLDOWN_TICKS = 120L
+        /** Fire from this far overhead is coming from the air. */
+        const val AIR_THREAT_HEIGHT = 8.0
 
         /** Keyed by squad, not by NPC — see [squadMayThrow]. Entries are stale-but-harmless for
          *  disbanded squads: the value is only ever compared against the current game time. */
