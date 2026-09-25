@@ -1,6 +1,5 @@
 package com.sbwnpc.squad.entity
 
-import com.atsuishio.superbwarfare.init.ModItems
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.ai.GrenadeThrowBehaviour
 import com.sbwnpc.squad.entity.ai.IdleLookAroundGoal
@@ -225,12 +224,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     override fun hurt(source: DamageSource, amount: Float): Boolean {
         val result = super.hurt(source, amount)
-        // NOT vanilla's DamageTypeTags.IS_PROJECTILE — SBW's gunfire damage types (GUN_FIRE,
-        // GUN_FIRE_HEADSHOT, the ones actually dealt by every rifle/MG/sniper hit) are never
-        // members of that vanilla tag. SBW tags them under its OWN
-        // ModTags.DamageTypes.PROJECTILE instead — using the vanilla tag here meant this branch
-        // was silently dead for ordinary gunfire and suppression only ever came from explosions.
-        if (result && !level().isClientSide && source.`is`(com.atsuishio.superbwarfare.init.ModTags.DamageTypes.PROJECTILE)) {
+        // Not vanilla's DamageTypeTags.IS_PROJECTILE: SBW's gunfire isn't in it, so that tag left
+        // suppression coming only from explosions — see the Gear adapter.
+        if (result && !level().isClientSide && Ports.gear.isBulletDamage(source)) {
             suppress(source.sourcePosition ?: position())
         }
         return result
@@ -588,13 +584,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         // SquadTeams.factionOf(this)) because finalizeSpawn() calls applyRole() BEFORE assigning the
         // scoreboard team that factionOf() reads from — see finalizeSpawn().
         val faction = spawnFaction ?: SquadFaction.DEFAULT
-        val (helmet, chest) = if (faction in GREEN_KIT_FACTIONS) {
-            ModItems.RU_HELMET_6B47.get() to ModItems.RU_CHEST_6B43.get()
-        } else {
-            ModItems.US_HELMET_PASGT.get() to ModItems.US_CHEST_IOTV.get()
-        }
-        setItemSlot(EquipmentSlot.HEAD, ItemStack(helmet))
-        setItemSlot(EquipmentSlot.CHEST, ItemStack(chest))
+        val (helmet, chest) = Ports.gear.uniform(green = faction in GREEN_KIT_FACTIONS)
+        setItemSlot(EquipmentSlot.HEAD, helmet)
+        setItemSlot(EquipmentSlot.CHEST, chest)
 
         // One reserve grenade per fighter, mortar crew excepted (they aren't a combat-suppression
         // role) — per user request. Tracked as a plain flag, NOT a visible offhand item — user

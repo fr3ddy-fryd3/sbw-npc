@@ -1,6 +1,5 @@
 package com.sbwnpc.squad.item
 
-import com.atsuishio.superbwarfare.tools.NBTTool
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.network.OpenCommandScreenPayload
 import com.sbwnpc.squad.network.OpenFinishRoutePayload
@@ -21,6 +20,7 @@ import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.squad.SquadSelection
 import com.sbwnpc.squad.team.SquadTeams
+import com.sbwnpc.squad.util.StackData
 import com.sbwnpc.squad.util.Terrain
 import net.minecraft.ChatFormatting
 import net.minecraft.core.BlockPos
@@ -253,11 +253,11 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         const val MODE_RECRUIT = 0
         const val MODE_COMMAND = 1
 
-        fun mode(stack: ItemStack) = NBTTool.getTag(stack).getInt(KEY_MODE)
+        fun mode(stack: ItemStack) = StackData.read(stack).getInt(KEY_MODE)
 
         fun readConfig(stack: ItemStack): Config? {
             if (stack.isEmpty || stack.item !is SquadToolItem) return null
-            return readConfig(NBTTool.getTag(stack))
+            return readConfig(StackData.read(stack))
         }
 
         fun readConfig(tag: CompoundTag): Config = Config(
@@ -282,7 +282,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         fun configTag(cfg: Config): CompoundTag = CompoundTag().also { writeConfig(it, cfg) }
 
         fun writeConfig(stack: ItemStack, cfg: Config) {
-            NBTTool.withTag(stack) { writeConfig(it, cfg) }
+            StackData.update(stack) { writeConfig(it, cfg) }
         }
 
         fun writeConfig(tag: CompoundTag, cfg: Config) {

@@ -1,21 +1,17 @@
 package com.sbwnpc.squad.client
 
-import com.atsuishio.superbwarfare.client.PoseTool
-import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.sbwnpc.squad.SquadMod
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.client.model.HumanoidModel
 import net.minecraft.client.model.geom.ModelLayerLocation
 import net.minecraft.client.model.geom.ModelPart
 import net.minecraft.client.model.geom.builders.CubeDeformation
 import net.minecraft.client.model.geom.builders.LayerDefinition
-import net.minecraft.world.InteractionHand
 
 /**
  * Plain vanilla humanoid (standard 64x64 player-skin proportions). The only custom bit is the
- * arm pose: SuperbWarfare only wires its gun `ArmPose` (`PoseTool.pose` -> BOW_AND_ARROW /
- * CROSSBOW_CHARGE) into the *player* renderer, not arbitrary mobs, so we set it here — reusing
- * SBW's own PoseTool rather than authoring poses. Everything else (walk/idle/swing/death,
+ * arm pose with a gun, borrowed from the weapons mod rather than authored here (see [Ports.gunPoses]). Everything else (walk/idle/swing/death,
  * ItemInHandLayer, head/armor layers) comes from HumanoidModel / HumanoidMobRenderer.
  */
 class NpcModel(root: ModelPart) : HumanoidModel<NpcEntity>(root) {
@@ -29,11 +25,7 @@ class NpcModel(root: ModelPart) : HumanoidModel<NpcEntity>(root) {
         headPitch: Float
     ) {
         val stack = entity.mainHandItem
-        val pose = if (stack.item is GunItem) {
-            PoseTool.pose(entity, InteractionHand.MAIN_HAND, stack)
-        } else {
-            ArmPose.EMPTY
-        }
+        val pose = Ports.gunPoses.armPose(entity, stack) ?: ArmPose.EMPTY
         this.rightArmPose = pose
         this.leftArmPose = pose
 

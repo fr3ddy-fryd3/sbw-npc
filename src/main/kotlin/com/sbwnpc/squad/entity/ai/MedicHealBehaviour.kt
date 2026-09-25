@@ -1,9 +1,8 @@
 package com.sbwnpc.squad.entity.ai
 
-import com.atsuishio.superbwarfare.init.ModItems
-import com.atsuishio.superbwarfare.item.misc.MedicalKitItem
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.SquadMod
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.init.ModMemories
@@ -219,7 +218,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         if (entity.tickCount < nextTreatTick) return
         nextTreatTick = entity.tickCount + TREAT_COOLDOWN_TICKS
-        (ModItems.MEDICAL_KIT.get() as MedicalKitItem).treat(ally)
+        Ports.gear.treat(ally)
         markHeal(level, ally)
     }
 

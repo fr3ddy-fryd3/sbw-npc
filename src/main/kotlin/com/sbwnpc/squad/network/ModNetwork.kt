@@ -12,6 +12,7 @@ import com.sbwnpc.squad.squad.RouteRecording
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.squad.SquadSelection
+import com.sbwnpc.squad.util.StackData
 import com.sbwnpc.squad.util.Terrain
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
@@ -107,7 +108,7 @@ object ModNetwork {
                 val stack = player.getItemBySlot(slot)
                 if (stack.item !is SquadToolItem) continue
                 val next = if (SquadToolItem.mode(stack) == SquadToolItem.MODE_RECRUIT) SquadToolItem.MODE_COMMAND else SquadToolItem.MODE_RECRUIT
-                com.atsuishio.superbwarfare.tools.NBTTool.withTag(stack) { it.putInt(SquadToolItem.KEY_MODE, next) }
+                StackData.update(stack) { it.putInt(SquadToolItem.KEY_MODE, next) }
                 val name = if (next == SquadToolItem.MODE_COMMAND) "COMMAND" else "RECRUIT"
                 player.displayClientMessage(
                     net.minecraft.network.chat.Component.literal("Mode: $name").withStyle(net.minecraft.ChatFormatting.YELLOW), true

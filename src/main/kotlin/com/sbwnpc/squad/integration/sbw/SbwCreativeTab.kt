@@ -1,6 +1,7 @@
-package com.sbwnpc.squad.init
+package com.sbwnpc.squad.integration.sbw
 
 import com.atsuishio.superbwarfare.init.ModTabs
+import com.sbwnpc.squad.init.ModItems
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent
@@ -11,7 +12,7 @@ import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent
  * not in vanilla Combat and Functional Blocks two tabs apart.
  */
 @EventBusSubscriber
-object ModCreativeTab {
+object SbwCreativeTab {
     @SubscribeEvent
     fun onBuildContents(event: BuildCreativeModeTabContentsEvent) {
         if (event.tabKey == ModTabs.ITEM_TAB.key) {

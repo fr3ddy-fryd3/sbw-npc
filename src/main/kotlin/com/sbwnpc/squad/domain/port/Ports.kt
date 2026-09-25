@@ -7,4 +7,8 @@ object Ports {
     lateinit var mortars: Mortars
     lateinit var grenades: Grenades
     lateinit var drones: Drones
+    lateinit var gear: Gear
+
+    /** Client only. */
+    lateinit var gunPoses: GunPoses
 }
