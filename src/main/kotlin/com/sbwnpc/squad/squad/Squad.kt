@@ -42,6 +42,13 @@ class Squad(
     /** True once every member has reached its slot at [moveAssembly]. */
     var moveFormationReady: Boolean = false
 ) {
+    /** Bumped on every new order or objective, so members can tell a fresh command from the one
+     *  they're already carrying out. Not saved: a reload is a fresh start anyway. */
+    var orderStamp: Int = 0
+
+    /** Game time the current MOVE rally started — see `SquadOrderBehaviour.tickMove`. Not saved. */
+    var moveRallySince: Long = 0L
+
     fun save(): CompoundTag {
         val tag = CompoundTag()
         tag.putUUID("Id", id)

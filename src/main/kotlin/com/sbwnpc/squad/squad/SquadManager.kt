@@ -109,6 +109,7 @@ class SquadManager : SavedData() {
                 isTankSquad(it) -> SquadOrder.MOVE
                 else -> SquadOrder.DEFEND
             }
+            it.orderStamp++
             setDirty()
         }
     }
@@ -137,7 +138,9 @@ class SquadManager : SavedData() {
         if (squad.order == SquadOrder.MOVE) {
             squad.moveAssembly = moveAssemblyPoint(level, squad)
             squad.moveFormationReady = false
+            squad.moveRallySince = level.gameTime
         }
+        squad.orderStamp++
         setDirty()
         if (pos != null) spawnObjectiveMarker(level, squad, pos)
     }

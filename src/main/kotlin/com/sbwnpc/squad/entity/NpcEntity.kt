@@ -367,8 +367,25 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         else navigation.setMaxVisitedNodesMultiplier(IDLE_PATH_NODE_MULTIPLIER)
     }
 
+    private var seenOrderStamp = 0
+
+    /** A new command beats whatever the NPC was idly busy with: an alarm it was going to
+     *  investigate held the squad's orders off for up to ten seconds, and a path to the old
+     *  objective kept being walked until its next repath. */
+    private fun takeNewOrders() {
+        val stamp = currentSquad()?.orderStamp ?: return
+        if (stamp == seenOrderStamp) return
+        seenOrderStamp = stamp
+        if (target == null) {
+            clearAlert()
+            navigation.stop()
+        }
+        brainTickInterval = 1
+    }
+
     override fun customServerAiStep() {
         super.customServerAiStep()
+        takeNewOrders()
         if (equipmentResyncTicksRemaining > 0) {
             equipmentResyncTicksRemaining--
             resyncEquipmentForNewlySpawnedNpc()

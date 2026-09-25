@@ -58,6 +58,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var routeWaitUntil = 0
     private var moveAnchor: BlockPos? = null
     private var nextArrivalCheckTick = 0
+    private var orderStamp = -1
 
     // No memory gate needed — eligibility is purely squad/order/target state, same as the old goal's
     // canUse(). Unlike GunAttackBehaviour/SeekCoverBehaviour/InvestigateBehaviour, nothing here is
@@ -98,6 +99,11 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         val order = squad.order
         val home = entity.homeCenter() ?: return
         val dist = entity.position().distanceTo(home)
+        if (squad.orderStamp != orderStamp) {
+            // Fresh command: path to it now, not after the cooldown left over from the last one.
+            orderStamp = squad.orderStamp
+            repathCooldown = 0
+        }
         if (repathCooldown > 0) repathCooldown--
 
         when (order) {
@@ -159,7 +165,14 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (!squad.moveFormationReady) {
             val rallySlot = SquadFormation.moveSlotTarget(entity, assembly, heading)
             moveToSlot(entity, rallySlot)
-            if (allMoveMembersInSlots(entity, squad, assembly, heading)) {
+            // The rally is for looks; it must never hold the order up. It used to wait for every
+            // member, so one man in a fight, at a mortar or stuck behind a wall kept the whole
+            // squad standing at the rally point indefinitely.
+            val level = entity.level()
+            if (squad.moveRallySince == 0L) squad.moveRallySince = level.gameTime
+            if (level.gameTime - squad.moveRallySince >= MOVE_RALLY_TIMEOUT_TICKS ||
+                allMoveMembersInSlots(entity, squad, assembly, heading)
+            ) {
                 squad.moveFormationReady = true
             }
             return
@@ -184,7 +197,11 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun allMoveMembersInSlots(entity: NpcEntity, squad: Squad, anchor: Vec3, heading: Vec3): Boolean {
         val level = entity.level() as? ServerLevel ?: return false
         return squad.members.all { id ->
-            val member = level.getEntity(id) as? NpcEntity ?: return@all false
+            val member = level.getEntity(id) as? NpcEntity ?: return@all true
+            // Busy elsewhere: not coming to the rally, so not worth waiting for.
+            if (member.target != null || member.vehicle != null || member.vehicleTransport ||
+                member.servingMortar || member.operatingDrone || member.diggedIn
+            ) return@all true
             member.position().distanceTo(SquadFormation.moveSlotTarget(member, anchor, heading)) <= MOVE_SLOT_RADIUS
         }
     }
@@ -278,6 +295,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val START_CHECK_INTERVAL_TICKS = 5
         private const val ROUTE_DWELL_JITTER = 40
         private const val MOVE_SLOT_RADIUS = 2.0
+        private const val MOVE_RALLY_TIMEOUT_TICKS = 100L
         // Per user request: MOVE/DEFEND/PATROL should read as a calm hold/patrol, not a constant
         // jog — only actually taking a point (ATTACK) or engaging (GunAttackBehaviour, which already
         // moves at a plain 1.0 modifier) should look urgent. Both are still just a navigation
