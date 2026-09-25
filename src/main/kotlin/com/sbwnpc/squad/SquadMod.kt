@@ -7,6 +7,7 @@ import com.sbwnpc.squad.init.ModEntities
 import com.sbwnpc.squad.init.ModItems
 import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.init.ModSensors
+import com.sbwnpc.squad.integration.sbw.SbwGrenades
 import com.sbwnpc.squad.integration.sbw.SbwGuns
 import com.sbwnpc.squad.integration.sbw.SbwMortars
 import com.sbwnpc.squad.integration.sbw.SbwVehicles
@@ -24,6 +25,7 @@ class SquadMod(bus: IEventBus, container: ModContainer) {
         Ports.guns = SbwGuns
         Ports.vehicles = SbwVehicles
         Ports.mortars = SbwMortars
+        Ports.grenades = SbwGrenades
 
         ModEntities.REGISTRY.register(bus)
         ModItems.ITEMS.register(bus)

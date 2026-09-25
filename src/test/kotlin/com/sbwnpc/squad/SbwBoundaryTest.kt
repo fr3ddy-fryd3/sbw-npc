@@ -43,13 +43,10 @@ class SbwBoundaryTest {
         val LEGACY = setOf(
             "client/NpcModel.kt",
             "combat/DroneCombat.kt",
-            "combat/GrenadeThrower.kt",
             "entity/ai/AntiDroneBehaviour.kt",
             "entity/ai/DroneOperatorBehaviour.kt",
-            "entity/ai/GrenadeEvadeBehaviour.kt",
             "entity/ai/MedicHealBehaviour.kt",
             "entity/DroneRegistry.kt",
-            "entity/GrenadeRegistry.kt",
             "entity/NpcEntity.kt",
             "init/ModCreativeTab.kt",
             "item/SquadToolItem.kt",

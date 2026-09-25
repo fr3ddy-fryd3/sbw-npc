@@ -1,13 +1,13 @@
 package com.sbwnpc.squad.entity.ai
 
-import com.atsuishio.superbwarfare.config.server.ExplosionConfig
-import com.atsuishio.superbwarfare.entity.projectile.HandGrenadeEntity
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.GrenadeRegistry
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModMemories
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.minecraft.world.entity.ai.util.DefaultRandomPos
@@ -32,7 +32,7 @@ class GrenadeEvadeBehaviour : ExtendedBehaviour<NpcEntity>() {
         noTimeout()
     }
 
-    private var grenade: HandGrenadeEntity? = null
+    private var grenade: Entity? = null
     private var fleeTo: Vec3? = null
     private var giveUpTick = 0
 
@@ -76,7 +76,7 @@ class GrenadeEvadeBehaviour : ExtendedBehaviour<NpcEntity>() {
         fleeTo = null
     }
 
-    private fun nearestThreat(level: ServerLevel, entity: NpcEntity): HandGrenadeEntity? {
+    private fun nearestThreat(level: ServerLevel, entity: NpcEntity): Entity? {
         val grenades = GrenadeRegistry.all(level)
         if (grenades.isEmpty()) return null
         val r2 = dangerRadius().let { it * it }
@@ -97,7 +97,7 @@ class GrenadeEvadeBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun dangerRadius(): Double =
-        ExplosionConfig.M67_GRENADE_EXPLOSION_RADIUS.get().toDouble() + SAFETY_MARGIN
+        Ports.grenades.blastRadius + SAFETY_MARGIN
 
     private companion object {
         const val SAFETY_MARGIN = 2.0
