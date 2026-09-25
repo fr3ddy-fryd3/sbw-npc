@@ -3,6 +3,7 @@ package com.sbwnpc.squad.entity.ai
 import com.sbwnpc.squad.domain.port.Mobility
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.vehicle.TreeAvoidance
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.SquadOrder
@@ -86,6 +87,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var lastStuckCheckPos: Vec3? = null
     private var recoveryUntilTick = 0
     private var recoveryTurnLeft = false
+    private var avoidancePoint: Vec3? = null
+    private var nextAvoidanceTick = 0
 
     // Last logged turn state for steerToward — purely for change-detection in the debug log, not
     // control state (the actual steering state lives on the vehicle itself).
@@ -530,7 +533,18 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             nextRouteTick = entity.tickCount
             return
         }
-        steerToward(vehicle, currentWaypoint(entity, home))
+        steerToward(vehicle, aroundTrees(entity, vehicle, currentWaypoint(entity, home)))
+    }
+
+    /** [TreeAvoidance] is a few hundred block lookups, so its answer is kept for a few ticks. */
+    private fun aroundTrees(entity: NpcEntity, vehicle: Entity, waypoint: Vec3): Vec3 {
+        if (entity.tickCount >= nextAvoidanceTick || avoidancePoint == null) {
+            nextAvoidanceTick = entity.tickCount + AVOIDANCE_INTERVAL_TICKS
+            val point = TreeAvoidance.steerPoint(entity.level(), vehicle, waypoint)
+            avoidancePoint = if (point == waypoint) null else point
+            if (avoidancePoint != null) DebugFlags.log("[vehicle-debug] {} steering round a tree to {}", entity.uuid, point)
+        }
+        return avoidancePoint ?: waypoint
     }
 
     /** A permanent crew holds at the last MOVE objective. A changed MOVE objective resumes driving
@@ -866,6 +880,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // well before getting that close avoids ever asking the vehicle to hit a target tighter than it
         // can physically steer around.
         private const val WAYPOINT_RADIUS = 15.0
+        private const val AVOIDANCE_INTERVAL_TICKS = 5
 
         /** Clears the temporary squad team after the final NPC leaves or dies in the vehicle. */
         fun releaseVehicleTeamIfLastAboard(vehicle: Entity, leaving: NpcEntity) {
