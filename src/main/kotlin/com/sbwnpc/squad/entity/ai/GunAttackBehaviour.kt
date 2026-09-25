@@ -163,6 +163,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val STUCK_SEARCH_RADIUS = 14.0
         private const val STUCK_GRID_STEP = 3
         private const val POSITION_GRID_STEP = 2
+        private const val ARRIVE_DISTANCE = 1.0
+        /** A finished path that stopped this close to the spot counts as having got there. */
+        private const val SETTLE_DISTANCE = 2.5
 
         // Priority order for holdFiringPosition's concealment scoring — highest first (a candidate
         // blocked at 1.5 hides more of the mob's body than one only blocked at 0.5). All sit below
@@ -289,6 +292,17 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
     }
 
+    private fun horizontalDistance(a: Vec3, b: Vec3): Double {
+        val dx = a.x - b.x
+        val dz = a.z - b.z
+        return Math.sqrt(dx * dx + dz * dz)
+    }
+
+    /** Close enough to call it there. Horizontal only: a spot on a slab or a step reads half a
+     *  block off in height, and a 3D check then never quite arrives. */
+    private fun atSpot(entity: NpcEntity, pos: Vec3): Boolean =
+        horizontalDistance(entity.position(), pos) <= ARRIVE_DISTANCE && Math.abs(entity.y - pos.y) < 1.5
+
     /** Aircrew on foot — a pilot out of a helicopter that can't fly. */
     private fun keepsAway(entity: NpcEntity): Boolean =
         entity.npcClass == NpcClass.HELICOPTER_PILOT && entity.vehicle == null
@@ -319,7 +333,15 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (firingPos?.let { GrenadeHazard.threatens(level0, it) } == true) nextPositionCheckTick = 0
         val pos = firingPos
         if (pos != null && entity.tickCount < nextPositionCheckTick) {
-            if (entity.position().closerThan(pos, 1.0)) {
+            if (atSpot(entity, pos)) {
+                entity.navigation.stop()
+            } else if (entity.navigation.isDone && horizontalDistance(entity.position(), pos) <= SETTLE_DISTANCE) {
+                // The path ended a block or so short — the spot itself can't be stood on exactly.
+                // Asking again only gets the same path back, and the mob turns on the spot
+                // re-walking it until the next position check. Where it stands will do.
+                val here = entity.position()
+                firingPos = here
+                FiringSpots.claim(entity.uuid, here)
                 entity.navigation.stop()
             } else {
                 entity.navigateTo(pos, 1.0)
@@ -341,7 +363,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         firingPos = chosen
         FiringSpots.claim(entity.uuid, chosen)
         markFiringPosition(level, chosen)
-        if (!entity.position().closerThan(chosen, 1.0)) {
+        if (!atSpot(entity, chosen)) {
             entity.navigation.moveTo(chosen.x, chosen.y, chosen.z, 1.0)
         } else {
             entity.navigation.stop()

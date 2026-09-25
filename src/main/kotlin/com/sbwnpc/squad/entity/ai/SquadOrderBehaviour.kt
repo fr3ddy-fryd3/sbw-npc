@@ -212,7 +212,10 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  [WALK_SPEED_MODIFIER]). */
     private fun approachSlot(entity: NpcEntity, anchor: Vec3, arrived: Boolean, speed: Double) {
         val slot = SquadFormation.slotTarget(entity, anchor, anchor.subtract(entity.position()), arrived)
-        if (entity.position().distanceTo(slot) > 1.5) {
+        // Held and the path already ended close by: the slot can't be stood on exactly, and asking
+        // for it again every second had the mob turning on the spot.
+        val settled = arrived && entity.navigation.isDone && entity.position().distanceTo(slot) <= SLOT_SETTLE_DISTANCE
+        if (!settled && entity.position().distanceTo(slot) > 1.5) {
             val pace = paceTo(entity, slot, speed)
             if (repathCooldown == 0) {
                 entity.navigation.moveTo(slot.x, slot.y, slot.z, pace)
@@ -295,6 +298,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val START_CHECK_INTERVAL_TICKS = 5
         private const val ROUTE_DWELL_JITTER = 40
         private const val MOVE_SLOT_RADIUS = 2.0
+        private const val SLOT_SETTLE_DISTANCE = 3.0
         private const val MOVE_RALLY_TIMEOUT_TICKS = 100L
         // Per user request: MOVE/DEFEND/PATROL should read as a calm hold/patrol, not a constant
         // jog — only actually taking a point (ATTACK) or engaging (GunAttackBehaviour, which already
