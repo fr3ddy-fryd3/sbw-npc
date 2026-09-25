@@ -2,6 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.GrenadeHazard
 import com.sbwnpc.squad.combat.GrenadeThrower
 import com.sbwnpc.squad.combat.Sightline
@@ -203,6 +204,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun stop(entity: NpcEntity) {
         coverTarget = null
+        FiringSpots.release(entity.uuid)
         entity.navigation.stop()
         digPos?.let { clearDigProgress(entity) }
         entity.diggedIn = false
@@ -262,6 +264,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         findCover(entity, level, threat)?.let {
             isFallbackRetreat = false
             coverTarget = it
+            FiringSpots.claim(entity.uuid, it.bottomCenter)
             entity.navigation.moveTo(it.x + 0.5, it.y.toDouble(), it.z + 0.5, 1.0)
             markCoverChoice(level, it, GREEN)
             return
@@ -774,9 +777,13 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         val hulls = Sightline.vehicleHulls(
             level, entity.boundingBox.inflate(MAX_RADIUS + 4.0), entity, null
         )
+        // Nearest cover that nobody else is already behind — the nearest cover, full stop, put a
+        // whole suppressed squad behind the same wall.
+        val taken = FiringSpots.nearbyWithBodies(level, entity, MAX_RADIUS)
         return candidates.asSequence()
             .distinct()
             .filterNot { GrenadeHazard.threatens(level, it) }
+            .filterNot { FiringSpots.crowded(it.bottomCenter, taken) }
             .sortedBy { it.distSqr(origin) }
             .firstOrNull { isHiddenFrom(level, entity, threats, it, hulls) }
     }

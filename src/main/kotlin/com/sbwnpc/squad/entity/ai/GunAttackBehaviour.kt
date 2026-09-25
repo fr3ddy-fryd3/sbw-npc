@@ -376,12 +376,15 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             .inflate(STUCK_SEARCH_RADIUS + VEHICLE_LANE_MARGIN)
         val hulls = Sightline.vehicleHulls(level, area, entity, target)
         // Walked once for the whole search rather than per candidate — see FiringSpots.nearby.
-        val taken = FiringSpots.nearby(origin, STUCK_SEARCH_RADIUS, entity.uuid)
+        val taken = FiringSpots.nearbyWithBodies(level, entity, STUCK_SEARCH_RADIUS)
         // Standing in a grenade's blast is never the best spot, however good the view.
         val here = if (GrenadeHazard.threatens(level, origin)) null
             else concealmentScore(level, entity, target, origin, eyeHeight, hulls)
+        // Shoulder to shoulder with a squadmate is not a spot worth keeping: any free spot in
+        // reach beats it. Still kept if nothing else will do — that's the null return below.
+        val baseline = if (here == null || FiringSpots.crowded(origin, taken)) -1.0 else here
 
-        sweep(level, entity, target, origin, eyeHeight, hulls, taken, POSITION_SEARCH_RADIUS, POSITION_GRID_STEP, here ?: -1.0)
+        sweep(level, entity, target, origin, eyeHeight, hulls, taken, POSITION_SEARCH_RADIUS, POSITION_GRID_STEP, baseline)
             ?.let { return it }
         // Nothing nearby works AND there is no shot from where we stand — which is what being
         // parked behind a vehicle looks like, since a hull is longer than the ordinary search is
@@ -461,7 +464,10 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun moveTowardFormationSlot(entity: NpcEntity, target: LivingEntity) {
         val targetPos = target.position()
-        val slot = SquadFormation.slotTarget(entity, targetPos, targetPos.subtract(entity.position()), false)
+        // Opened out under fire: the marching interval puts the whole squad in one burst.
+        val slot = SquadFormation.slotTarget(
+            entity, targetPos, targetPos.subtract(entity.position()), false, SquadFormation.COMBAT_SPACING
+        )
         entity.navigation.moveTo(slot.x, slot.y, slot.z, 1.0)
     }
 

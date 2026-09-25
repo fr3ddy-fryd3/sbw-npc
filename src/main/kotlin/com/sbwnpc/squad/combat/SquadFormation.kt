@@ -31,6 +31,8 @@ object SquadFormation {
     // 2.5/3.5 read as a blob, 5/6 as a crowd that had lost each other; per user feedback the
     // squad should look like it moves together, so this sits between the two.
     private const val SLOT_SPACING = 3.0
+    /** Interval for a squad advancing on an enemy — see GunAttackBehaviour. */
+    const val COMBAT_SPACING = 6.0
     private const val RING_RADIUS = 4.0
     private const val MIN_HEADING_LENGTH = 2.0
 
@@ -76,7 +78,7 @@ object SquadFormation {
     /** Local (unrotated, +Z = forward/toward anchor) offset for the [slotIndex]-th member out of
      *  [squadSize]. WEDGE, LINE, and COLUMN use a point/leader slot at the anchor. GRID, RING, and
      *  SCATTER give every member its own point. */
-    private fun localOffset(shape: Shape, slotIndex: Int, squadSize: Int): Vec3 {
+    private fun localOffset(shape: Shape, slotIndex: Int, squadSize: Int, spacing: Double = SLOT_SPACING): Vec3 {
         if (shape == Shape.RING) {
             val count = squadSize.coerceAtLeast(1)
             val angle = 2.0 * Math.PI * slotIndex / count
@@ -108,9 +110,9 @@ object SquadFormation {
             val column = slotIndex % columns
             val row = slotIndex / columns
             return Vec3(
-                (column - (columns - 1) / 2.0) * SLOT_SPACING,
+                (column - (columns - 1) / 2.0) * spacing,
                 0.0,
-                ((rows - 1) / 2.0 - row) * SLOT_SPACING
+                ((rows - 1) / 2.0 - row) * spacing
             )
         }
         if (slotIndex <= 0) return Vec3.ZERO
@@ -118,12 +120,12 @@ object SquadFormation {
         val side = if (slotIndex % 2 == 1) -1.0 else 1.0
         return when (shape) {
             // Spreads out sideways AND drops back per rank — the classic V/wedge shape.
-            Shape.WEDGE -> Vec3(side * rank * SLOT_SPACING, 0.0, -rank * SLOT_SPACING)
+            Shape.WEDGE -> Vec3(side * rank * spacing, 0.0, -rank * spacing)
             // Spreads sideways only, same depth as the leader — a wide front.
-            Shape.LINE -> Vec3(side * rank * SLOT_SPACING, 0.0, 0.0)
+            Shape.LINE -> Vec3(side * rank * spacing, 0.0, 0.0)
             // Mostly single-file, alternating slightly left/right (staggered column) rather than
             // dead in the last member's footsteps.
-            Shape.COLUMN -> Vec3(side * SLOT_SPACING * 0.4, 0.0, -rank * SLOT_SPACING)
+            Shape.COLUMN -> Vec3(side * spacing * 0.4, 0.0, -rank * spacing)
             Shape.GRID, Shape.RING, Shape.SCATTER -> Vec3.ZERO // unreachable, handled above
         }
     }
@@ -134,12 +136,14 @@ object SquadFormation {
      *  a heading (dead/unloaded, or IS the mob asking) — see [headingFor]. [arrived] switches the
      *  shape to RING regardless of order — see [shapeFor]. Falls back to [anchor] itself if [mob]
      *  isn't actually in a squad (shouldn't happen for real callers, but cheap to guard). */
-    fun slotTarget(mob: NpcEntity, anchor: Vec3, fallbackFacing: Vec3, arrived: Boolean): Vec3 {
+    fun slotTarget(
+        mob: NpcEntity, anchor: Vec3, fallbackFacing: Vec3, arrived: Boolean, spacing: Double = SLOT_SPACING
+    ): Vec3 {
         val squad = mob.currentSquad() ?: return anchor
         val index = mob.slotIndex(squad)
         if (index < 0) return anchor
         val shape = shapeFor(squad.order, arrived)
-        val local = localOffset(shape, index, squad.members.size)
+        val local = localOffset(shape, index, squad.members.size, spacing)
         if (local == Vec3.ZERO) return anchor
 
         // The doc comment above already claimed this ("ignored for RING/SCATTER, both

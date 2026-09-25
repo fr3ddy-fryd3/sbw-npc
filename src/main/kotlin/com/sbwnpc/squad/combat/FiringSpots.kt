@@ -1,5 +1,9 @@
 package com.sbwnpc.squad.combat
 
+import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.NpcRegistry
+import com.sbwnpc.squad.team.SquadTeams
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
@@ -47,6 +51,19 @@ object FiringSpots {
         for ((id, pos) in claims) {
             if (id == except) continue
             if (pos.distanceToSqr(origin) <= reachSqr) result += pos
+        }
+        return result
+    }
+
+    /**
+     * [nearby] plus where the other friendly NPCs around are actually standing. A claim only
+     * exists for a shooter that has picked a firing spot; a squadmate in cover, one still walking
+     * up or one that just decided to stay put has none, and the spot next to it looked free.
+     */
+    fun nearbyWithBodies(level: ServerLevel, shooter: NpcEntity, radius: Double): List<Vec3> {
+        val result = ArrayList(nearby(shooter.position(), radius, shooter.uuid))
+        NpcRegistry.forEachWithin(level, shooter.position(), radius + MIN_SPACING, exclude = shooter) {
+            if (it.isAlive && !SquadTeams.isHostile(shooter, it) && claims[it.uuid] == null) result += it.position()
         }
         return result
     }
