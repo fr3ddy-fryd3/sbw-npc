@@ -16,6 +16,9 @@ enum class Mobility { GROUND, AIR, WATER, FIXED }
 /** A cannon round: armour-piercing for vehicles, high-explosive for everything else. */
 enum class CannonRound { ARMOUR_PIERCING, HIGH_EXPLOSIVE }
 
+/** How fast a rotorcraft's airframe answers the cyclic, per axis; 1.0 is SBW's baseline. */
+data class TurnRates(val yaw: Float, val pitch: Float)
+
 /** The steering input chosen on one tick of [Vehicles.driveToward]; [detail] is for the trace log. */
 data class Steering(val right: Boolean, val left: Boolean, val detail: String)
 
@@ -108,4 +111,42 @@ interface Vehicles {
 
     /** Selects [weapon] at [seat] and loads it with [round]. */
     fun loadRound(vehicle: Entity, seat: Int, weapon: Int, round: CannonRound)
+
+    // --- Condition ---
+
+    /** Stored power in the vehicle's own units; zero for anything with no battery. */
+    fun storedPower(vehicle: Entity): Int
+
+    /** Health left, 0..1. */
+    fun healthFraction(vehicle: Entity): Float
+
+    // --- Rotorcraft (the pilot is whoever holds seat 0) ---
+
+    fun roll(heli: Entity): Float
+
+    /** Rotor speed: how much authority the controls have right now, 0 on the ground. */
+    fun rotorSpeed(heli: Entity): Float
+
+    fun throttle(heli: Entity): Float
+
+    /** Null until the engine has run at least once. */
+    fun turnRates(heli: Entity): TurnRates?
+
+    /** Collective: [climb], [sinkSlow] and [sinkFast] are separate inputs; all false holds. */
+    fun setCollective(heli: Entity, climb: Boolean, sinkSlow: Boolean, sinkFast: Boolean)
+
+    /** Cyclic stick deflection, the same units a player's mouse gives it. */
+    fun setCyclic(heli: Entity, x: Float, y: Float)
+
+    /** Hover mode keeps the airframe level and kills drift. */
+    fun setHover(heli: Entity, on: Boolean)
+
+    /** The pedals, which roll the airframe. */
+    fun setRollInputs(heli: Entity, left: Boolean, right: Boolean)
+
+    /** Every rotorcraft control to neutral. */
+    fun neutralControls(heli: Entity)
+
+    /** Stops the engine rather than leaving it idling. */
+    fun shutDownEngine(heli: Entity)
 }

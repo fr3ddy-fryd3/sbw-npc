@@ -47,7 +47,6 @@ class SbwBoundaryTest {
             "entity/ai/AntiDroneBehaviour.kt",
             "entity/ai/DroneOperatorBehaviour.kt",
             "entity/ai/GrenadeEvadeBehaviour.kt",
-            "entity/ai/HelicopterPilotBehaviour.kt",
             "entity/ai/MedicHealBehaviour.kt",
             "entity/ai/MortarDeployment.kt",
             "entity/ai/MortarLoaderBehaviour.kt",

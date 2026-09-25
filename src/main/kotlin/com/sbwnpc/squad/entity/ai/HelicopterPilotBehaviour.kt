@@ -1,10 +1,9 @@
 package com.sbwnpc.squad.entity.ai
 
-import com.atsuishio.superbwarfare.data.vehicle.subdata.EngineInfo
-import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.TeamAwareness
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.SquadOrder
@@ -12,6 +11,7 @@ import com.sbwnpc.squad.team.SquadTeams
 import com.sbwnpc.squad.vehicle.Airspace
 import com.sbwnpc.squad.vehicle.Helicopters
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
@@ -68,9 +68,10 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = flyable(entity) != null
 
-    private fun rollRate(heli: VehicleEntity): Float {
-        val rate = heli.roll - lastRoll
-        lastRoll = heli.roll
+    private fun rollRate(heli: Entity): Float {
+        val roll = Ports.vehicles.roll(heli)
+        val rate = roll - lastRoll
+        lastRoll = roll
         return rate
     }
 
@@ -83,7 +84,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun stop(entity: NpcEntity) {
-        (entity.vehicle as? VehicleEntity)?.let(::cutControls)
+        entity.vehicle?.takeIf(Ports.vehicles::isVehicle)?.let(::cutControls)
         entity.vehicleTransport = false
     }
 
@@ -101,7 +102,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
             lastContactPos = target.position()
         }
         val home = entity.homeCenter() ?: heli.position()
-        val airworthy = healthy(heli) && heli.energy > MIN_RESERVE_ENERGY
+        val airworthy = healthy(heli) && Ports.vehicles.storedPower(heli) > MIN_RESERVE_ENERGY
         val mission = decideMission(entity, heli, target, home, airworthy)
         // Two aircraft on the same job compute the same station, so hold it apart from whoever
         // else is up here and fly it in its own altitude band.
@@ -152,12 +153,12 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
             DebugFlags.log(
                 "[heli-debug] {} phase={} h={} y={} power={} rotor={} pitch={} roll={} vy={} spd={} target={} reloc={} toHome={} boarding={} seats={}",
                 entity.uuid, phase, "%.1f".format(height), "%.1f".format(heli.y),
-                "%.4f".format(heli.power), "%.4f".format(heli.synchedPropellerRot),
-                "%.1f".format(heli.xRot), "%.1f".format(heli.roll),
+                "%.4f".format(Ports.vehicles.throttle(heli)), "%.4f".format(Ports.vehicles.rotorSpeed(heli)),
+                "%.1f".format(heli.xRot), "%.1f".format(Ports.vehicles.roll(heli)),
                 "%.3f".format(heli.deltaMovement.y), "%.3f".format(heli.deltaMovement.horizontalDistance()),
                 target?.name?.string ?: "none", relocating,
                 "%.1f".format(HelicopterFlightController.horizontalDistance(heli.position(), home)),
-                boarding, "${heli.getOrderedPassengers().count { it != null }}/${heli.getOrderedPassengers().size}"
+                boarding, "${Ports.vehicles.seating(heli).count { it != null }}/${Ports.vehicles.seating(heli).size}"
             )
         }
 
@@ -238,7 +239,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
      */
     private fun decideMission(
         entity: NpcEntity,
-        heli: VehicleEntity,
+        heli: Entity,
         target: LivingEntity?,
         home: Vec3,
         airworthy: Boolean
@@ -281,11 +282,11 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
      * so one straggler who can't path to the aircraft — or is pinned down fighting — doesn't keep
      * the whole lift on the ground indefinitely.
      */
-    private fun waitingForPassengers(entity: NpcEntity, heli: VehicleEntity): Boolean {
+    private fun waitingForPassengers(entity: NpcEntity, heli: Entity): Boolean {
         if (Helicopters.hasTurret(heli)) return false
         if (boardingSince == Int.MIN_VALUE / 2) boardingSince = entity.tickCount
         if (entity.tickCount - boardingSince > BOARDING_TIMEOUT_TICKS) return false
-        if (heli.getOrderedPassengers().none { it == null }) return false
+        if (Ports.vehicles.seating(heli).none { it == null }) return false
 
         val level = entity.level() as? ServerLevel ?: return false
         val squad = entity.currentSquad() ?: return false
@@ -332,11 +333,11 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
      * Wrecks and the aircraft under this pilot are excluded; anything else with rotors counts,
      * including a hostile one — nobody wants to be flown into either.
      */
-    private fun refreshTraffic(entity: NpcEntity, heli: VehicleEntity, level: ServerLevel) {
+    private fun refreshTraffic(entity: NpcEntity, heli: Entity, level: ServerLevel) {
         if (entity.tickCount < nextTrafficTick) return
         nextTrafficTick = entity.tickCount + TRAFFIC_INTERVAL_TICKS
-        val others = level.getEntitiesOfClass(VehicleEntity::class.java, heli.boundingBox.inflate(Airspace.AWARENESS_RANGE)) {
-            it !== heli && it.isAlive && !it.isWreck && Helicopters.isHelicopter(it)
+        val others = Ports.vehicles.within(level, heli.boundingBox.inflate(Airspace.AWARENESS_RANGE)) {
+            it !== heli && Ports.vehicles.isOperational(it) && Helicopters.isHelicopter(it)
         }
         // Everything nearby counts for lateral separation, parked machines included — hovering
         // over one is no better than hovering over a flying one.
@@ -384,128 +385,108 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /** The helicopter this NPC is actually flying: it must be aboard, in seat 0, and the airframe
      *  must still be a going concern. */
-    private fun flyable(entity: NpcEntity): VehicleEntity? {
-        val vehicle = entity.vehicle as? VehicleEntity ?: return null
-        if (!Helicopters.isHelicopter(vehicle) || !vehicle.isAlive || vehicle.isWreck) return null
+    private fun flyable(entity: NpcEntity): Entity? {
+        val vehicle = entity.vehicle ?: return null
+        if (!Helicopters.isHelicopter(vehicle) || !Ports.vehicles.isOperational(vehicle)) return null
         if (vehicle.firstPassenger !== entity) return null
         return vehicle
     }
 
-    private fun healthy(heli: VehicleEntity): Boolean =
-        heli.health > RETREAT_HEALTH_FRACTION * heli.getMaxHealth()
+    private fun healthy(heli: Entity): Boolean =
+        Ports.vehicles.healthFraction(heli) > RETREAT_HEALTH_FRACTION
 
     private fun engagementTarget(entity: NpcEntity): LivingEntity? =
         entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) }
 
     /** Nearest point on the standoff ring around [target] — recomputed every tick, so the aircraft
      *  closes to gun range and then simply stops rather than orbiting or overflying. */
-    private fun standoffPoint(heli: VehicleEntity, from: Vec3): Vec3 {
+    private fun standoffPoint(heli: Entity, from: Vec3): Vec3 {
         val away = Vec3(heli.x - from.x, 0.0, heli.z - from.z)
         val dir = if (away.lengthSqr() < 1e-4) Vec3(0.0, 0.0, 1.0) else away.normalize()
         return from.add(dir.scale(STANDOFF_RANGE))
     }
 
     private fun fly(
-        level: ServerLevel, heli: VehicleEntity, station: Vec3, facing: Vec3?, speed: Double,
+        level: ServerLevel, heli: Entity, station: Vec3, facing: Vec3?, speed: Double,
         rollRate: Float, clearance: Double
     ) {
         val desiredY = DroneFlightController.cruiseAltitude(
             terrainAhead(level, heli, station), clearance, heli.y
         )
         val cmd = HelicopterFlightController.steer(
-            heli.position(), heli.yRot, heli.xRot, heli.roll, rollRate, heli.deltaMovement,
+            heli.position(), heli.yRot, heli.xRot, Ports.vehicles.roll(heli), rollRate, heli.deltaMovement,
             station, desiredY, speed, tuningOf(heli), facing
         )
         apply(heli, cmd)
     }
 
-    private fun climbStraight(heli: VehicleEntity, desiredY: Double, rollRate: Float) {
+    private fun climbStraight(heli: Entity, desiredY: Double, rollRate: Float) {
         applyCollective(heli, HelicopterFlightController.collectiveFor(heli.y, desiredY))
         // No cyclic at all on the way up: stick input while the rotor is still spooling snaps the
         // airframe over as soon as authority arrives, and any tilt down here just drags it along
         // the ground. Wings still get trimmed — roll has no restoring force of its own.
-        heli.mouseMoveSpeedX = 0f
-        heli.mouseMoveSpeedY = 0f
-        heli.hoverMode = false
+        Ports.vehicles.setCyclic(heli, 0f, 0f)
+        Ports.vehicles.setHover(heli, false)
         trimWings(heli, rollRate)
     }
 
-    private fun land(level: ServerLevel, heli: VehicleEntity, height: Double, rollRate: Float) {
+    private fun land(level: ServerLevel, heli: Entity, height: Double, rollRate: Float) {
         applyCollective(heli, HelicopterFlightController.landingCollective(height, heli.deltaMovement.y, DESCENT_RATE))
-        heli.mouseMoveSpeedX = 0f
-        heli.mouseMoveSpeedY = 0f
+        Ports.vehicles.setCyclic(heli, 0f, 0f)
         // Hover mode keeps it level and kills the drift that would otherwise put a skid into a wall.
-        heli.hoverMode = true
+        Ports.vehicles.setHover(heli, true)
         trimWings(heli, rollRate)
     }
 
-    private fun apply(heli: VehicleEntity, cmd: HelicopterFlightController.Command) {
+    private fun apply(heli: Entity, cmd: HelicopterFlightController.Command) {
         applyCollective(heli, cmd.collective)
-        heli.mouseMoveSpeedX = cmd.mouseX
-        heli.mouseMoveSpeedY = cmd.mouseY
-        heli.hoverMode = cmd.hoverMode
-        heli.leftInputDown = cmd.rollLeft
-        heli.rightInputDown = cmd.rollRight
+        Ports.vehicles.setCyclic(heli, cmd.mouseX, cmd.mouseY)
+        Ports.vehicles.setHover(heli, cmd.hoverMode)
+        Ports.vehicles.setRollInputs(heli, cmd.rollLeft, cmd.rollRight)
     }
 
     /** Pedals are pure roll in this engine — yaw only ever comes from the cyclic. */
-    private fun trimWings(heli: VehicleEntity, rollRate: Float) {
-        val (left, right) = HelicopterFlightController.rollTrim(heli.roll, rollRate)
-        heli.leftInputDown = left
-        heli.rightInputDown = right
+    private fun trimWings(heli: Entity, rollRate: Float) {
+        val (left, right) = HelicopterFlightController.rollTrim(Ports.vehicles.roll(heli), rollRate)
+        Ports.vehicles.setRollInputs(heli, left, right)
     }
 
-    /** Never writes `upInputDown` — SBW reads it as "toggle hover mode" and self-clears it. */
-    private fun applyCollective(heli: VehicleEntity, collective: HelicopterFlightController.Collective) {
-        heli.forwardInputDown = collective == HelicopterFlightController.Collective.CLIMB
-        heli.backInputDown = collective == HelicopterFlightController.Collective.SINK_SLOW
-        heli.downInputDown = collective == HelicopterFlightController.Collective.SINK_FAST
+    private fun applyCollective(heli: Entity, collective: HelicopterFlightController.Collective) {
+        Ports.vehicles.setCollective(
+            heli,
+            climb = collective == HelicopterFlightController.Collective.CLIMB,
+            sinkSlow = collective == HelicopterFlightController.Collective.SINK_SLOW,
+            sinkFast = collective == HelicopterFlightController.Collective.SINK_FAST
+        )
     }
 
     /** Sat on the pad with nothing to do: controls neutral, but keep trimming the wings level so
      *  it doesn't sit there slowly tipping over from whatever roll the last flight left behind. */
-    private fun idleOnPad(heli: VehicleEntity, rollRate: Float) {
+    private fun idleOnPad(heli: Entity, rollRate: Float) {
         cutControls(heli)
         trimWings(heli, rollRate)
-        // Actually shut down rather than idle. There is no "engine off" input: with engineStart
-        // still set, the engine pushes power back up to 0.045 whenever it drops below 0.04, so a
-        // parked helicopter would spin its rotor and drain the battery forever. These are the same
-        // public fields the engine itself drives.
-        if (heli.engineStart || heli.power > 0f) {
-            heli.engineStart = false
-            heli.engineStartOver = false
-            heli.power = 0f
-        }
+        // Actually shut down rather than idle, or a parked helicopter spins its rotor and drains the
+        // battery forever.
+        Ports.vehicles.shutDownEngine(heli)
     }
 
-    private fun cutControls(heli: VehicleEntity) {
-        heli.forwardInputDown = false
-        heli.backInputDown = false
-        heli.downInputDown = false
-        heli.leftInputDown = false
-        heli.rightInputDown = false
-        heli.mouseMoveSpeedX = 0f
-        heli.mouseMoveSpeedY = 0f
-        heli.hoverMode = false
-    }
+    private fun cutControls(heli: Entity) = Ports.vehicles.neutralControls(heli)
 
-    /** `computed().engineInfo` is the raw JSON the vehicle data was loaded from — casting it to an
-     *  [EngineInfo] silently yields null and leaves the controller on its 1.0 defaults. The
-     *  deserialized one lives on the entity, and only appears once the engine has ticked at least
-     *  once, which is why the fallbacks below are real rather than defensive. */
-    private fun tuningOf(heli: VehicleEntity): HelicopterFlightController.Tuning {
-        val engine = heli.engineInfo as? EngineInfo.Helicopter
+    /** The turn rates only appear once the engine has run at least once, which is why the
+     *  fallbacks below are real rather than defensive. */
+    private fun tuningOf(heli: Entity): HelicopterFlightController.Tuning {
+        val rates = Ports.vehicles.turnRates(heli)
         return HelicopterFlightController.Tuning(
-            authority = heli.synchedPropellerRot,
-            yawSpeed = engine?.yawSpeed ?: 1f,
-            pitchSpeed = engine?.pitchSpeed ?: 1f
+            authority = Ports.vehicles.rotorSpeed(heli),
+            yawSpeed = rates?.yaw ?: 1f,
+            pitchSpeed = rates?.pitch ?: 1f
         )
     }
 
     private fun groundY(level: ServerLevel, x: Double, z: Double): Int =
         level.getHeight(Heightmap.Types.MOTION_BLOCKING, x.toInt(), z.toInt())
 
-    private fun terrainAhead(level: ServerLevel, heli: VehicleEntity, toward: Vec3): List<Int> {
+    private fun terrainAhead(level: ServerLevel, heli: Entity, toward: Vec3): List<Int> {
         val pos = heli.position()
         val dir = Vec3(toward.x - pos.x, 0.0, toward.z - pos.z)
             .let { if (it.lengthSqr() < 1e-6) it else it.normalize() }

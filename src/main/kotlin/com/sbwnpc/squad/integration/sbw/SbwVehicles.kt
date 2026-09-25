@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.integration.sbw
 
+import com.atsuishio.superbwarfare.data.vehicle.subdata.EngineInfo
 import com.atsuishio.superbwarfare.data.vehicle.subdata.EngineType
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.atsuishio.superbwarfare.entity.vehicle.utils.VehicleVecUtils
@@ -8,6 +9,7 @@ import com.atsuishio.superbwarfare.init.ModItems
 import com.sbwnpc.squad.domain.port.CannonRound
 import com.sbwnpc.squad.domain.port.Mobility
 import com.sbwnpc.squad.domain.port.Steering
+import com.sbwnpc.squad.domain.port.TurnRates
 import com.sbwnpc.squad.domain.port.VehicleModel
 import com.sbwnpc.squad.domain.port.Vehicles
 import com.sbwnpc.squad.npc.HelicopterModel
@@ -259,6 +261,81 @@ object SbwVehicles : Vehicles {
             if (gun.selectedAmmoType.get() != ammo) {
                 gun.changeAmmoConsumer(ammo, vehicle.ammoSupplier)
             }
+        }
+    }
+
+    // --- Condition ---
+
+    override fun storedPower(vehicle: Entity): Int = (vehicle as? VehicleEntity)?.energy ?: 0
+
+    override fun healthFraction(vehicle: Entity): Float {
+        if (vehicle !is VehicleEntity) return 0f
+        return vehicle.health / vehicle.getMaxHealth()
+    }
+
+    // --- Rotorcraft ---
+    // The collective is `forwardInputDown`; `upInputDown` is a hover TOGGLE SBW self-clears and must
+    // never be written; attitude comes from the cyclic (`mouseMoveSpeedX`/`Y`), and the pedals are
+    // pure roll — yaw only ever comes from the cyclic.
+
+    override fun roll(heli: Entity): Float = (heli as? VehicleEntity)?.roll ?: 0f
+
+    override fun rotorSpeed(heli: Entity): Float = (heli as? VehicleEntity)?.synchedPropellerRot ?: 0f
+
+    override fun throttle(heli: Entity): Float = (heli as? VehicleEntity)?.power ?: 0f
+
+    // `computed().engineInfo` is the raw JSON the vehicle data was loaded from — casting it to an
+    // EngineInfo silently yields null. The deserialized one lives on the entity, and only appears
+    // once the engine has ticked at least once.
+    override fun turnRates(heli: Entity): TurnRates? {
+        val engine = (heli as? VehicleEntity)?.engineInfo as? EngineInfo.Helicopter ?: return null
+        return TurnRates(engine.yawSpeed, engine.pitchSpeed)
+    }
+
+    override fun setCollective(heli: Entity, climb: Boolean, sinkSlow: Boolean, sinkFast: Boolean) {
+        if (heli !is VehicleEntity) return
+        heli.forwardInputDown = climb
+        heli.backInputDown = sinkSlow
+        heli.downInputDown = sinkFast
+    }
+
+    override fun setCyclic(heli: Entity, x: Float, y: Float) {
+        if (heli !is VehicleEntity) return
+        heli.mouseMoveSpeedX = x
+        heli.mouseMoveSpeedY = y
+    }
+
+    override fun setHover(heli: Entity, on: Boolean) {
+        (heli as? VehicleEntity)?.hoverMode = on
+    }
+
+    override fun setRollInputs(heli: Entity, left: Boolean, right: Boolean) {
+        if (heli !is VehicleEntity) return
+        heli.leftInputDown = left
+        heli.rightInputDown = right
+    }
+
+    override fun neutralControls(heli: Entity) {
+        if (heli !is VehicleEntity) return
+        heli.forwardInputDown = false
+        heli.backInputDown = false
+        heli.downInputDown = false
+        heli.leftInputDown = false
+        heli.rightInputDown = false
+        heli.mouseMoveSpeedX = 0f
+        heli.mouseMoveSpeedY = 0f
+        heli.hoverMode = false
+    }
+
+    // There is no "engine off" input: with engineStart still set, the engine pushes power back up to
+    // 0.045 whenever it drops below 0.04, so a parked helicopter would spin its rotor and drain the
+    // battery forever. These are the same public fields the engine itself drives.
+    override fun shutDownEngine(heli: Entity) {
+        if (heli !is VehicleEntity) return
+        if (heli.engineStart || heli.power > 0f) {
+            heli.engineStart = false
+            heli.engineStartOver = false
+            heli.power = 0f
         }
     }
 
