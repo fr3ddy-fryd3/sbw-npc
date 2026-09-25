@@ -1,6 +1,5 @@
 package com.sbwnpc.squad.combat
 
-import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.core.registries.BuiltInRegistries
@@ -44,8 +43,8 @@ object AntiArmourKit {
      * the machine gun.
      */
     fun worthARocket(npc: NpcEntity, target: LivingEntity?): Boolean {
-        val ride = target?.vehicle as? VehicleEntity ?: return false
-        return ride.isAlive && !ride.isWreck && ride !== npc.vehicle
+        val ride = target?.vehicle ?: return false
+        return Ports.vehicles.isOperational(ride) && ride !== npc.vehicle
     }
 
     /** True once the gunner is holding what it should be holding. */

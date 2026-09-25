@@ -1,6 +1,5 @@
 package com.sbwnpc.squad.entity
 
-import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.atsuishio.superbwarfare.init.ModItems
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.ai.GrenadeThrowBehaviour
@@ -660,7 +659,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         VehicleTransportClaims.release(uuid)
         // Carried kit goes down where its carrier did, rather than out of the world with it.
         (level() as? ServerLevel)?.let { com.sbwnpc.squad.entity.ai.MortarDeployment.dropOnDeath(it, this) }
-        (vehicle as? VehicleEntity)?.let { ride ->
+        vehicle?.takeIf { Ports.vehicles.isVehicle(it) }?.let { ride ->
             VehicleTransportBehaviour.releaseVehicleTeamIfLastAboard(ride, this)
             // Flying it when it died: start the countdown for somebody else to take the controls.
             if (ride.firstPassenger === this) {

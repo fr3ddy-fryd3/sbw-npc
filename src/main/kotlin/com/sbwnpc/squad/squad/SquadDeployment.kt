@@ -1,9 +1,7 @@
 package com.sbwnpc.squad.squad
 
 import com.atsuishio.superbwarfare.entity.vehicle.MortarEntity
-import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
-import com.atsuishio.superbwarfare.init.ModEntities as SbwEntities
-import com.atsuishio.superbwarfare.init.ModItems
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModEntities
 import com.sbwnpc.squad.item.SquadToolItem
@@ -20,7 +18,6 @@ import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.MobSpawnType
 import net.minecraft.world.entity.Pose
-import net.minecraft.world.item.ItemStack
 import java.util.UUID
 
 /**
@@ -133,12 +130,7 @@ object SquadDeployment {
         crew: List<NpcEntity>,
         model: TankModel
     ): Boolean {
-        val type = when (model) {
-            TankModel.ZTZ_99A -> SbwEntities.ZTZ_99A
-            TankModel.T_90A -> SbwEntities.T_90A
-            TankModel.M1A2 -> SbwEntities.M_1A_2
-        }
-        val tank = type.get().create(level) ?: return false
+        val tank = Ports.vehicles.create(level, model) ?: return false
         // Off the deploy point, not on it — spawned right where the player clicked, a tank this
         // size drops/lands right on top of them. A tank's footprint is far wider than the block it
         // is placed on, so the spot has to be searched for rather than assumed.
@@ -150,13 +142,7 @@ object SquadDeployment {
             ?: return false
         tank.moveTo(spot.x, spot.y, spot.z, yaw + 180f, 0f)
         level.addFreshEntity(tank)
-        tank.energy = tank.maxEnergy
-        // Same main-gun AP/HE + coax rifle ammo + .50cal passenger ammo loadout for all three —
-        // verified against each model's own sbw/vehicles/*.json: same four weapon/ammo slots.
-        tank.setItem(0, ItemStack(ModItems.LARGE_SHELL_AP.get(), 64))
-        tank.setItem(1, ItemStack(ModItems.LARGE_SHELL_HE.get(), 64))
-        tank.setItem(2, ItemStack(ModItems.RIFLE_AMMO.get(), 64))
-        tank.setItem(3, ItemStack(ModItems.HEAVY_AMMO.get(), 64))
+        Ports.vehicles.fuelAndArm(tank, model)
         SquadTeams.assign(tank, faction)
         crew.singleOrNull()?.let { crewman ->
             if (crewman.startRiding(tank, false)) {
@@ -179,11 +165,7 @@ object SquadDeployment {
         crew: List<NpcEntity>,
         model: HelicopterModel
     ): Boolean {
-        val type = when (model) {
-            HelicopterModel.MI_28 -> Helicopters.GUNSHIP
-            HelicopterModel.AH_6 -> Helicopters.TRANSPORT
-        }
-        val heli = type.create(level) as? VehicleEntity ?: return false
+        val heli = Ports.vehicles.create(level, model) ?: return false
         // Well off the deploy point, and high enough that the rotor isn't inside the canopy the
         // player happened to be standing under.
         val standoff = 12.0
@@ -198,17 +180,7 @@ object SquadDeployment {
         val hy = Helicopters.clearSpawnY(level, spot.x, spot.z, maxOf(ground, spot.y.toInt()))
         heli.moveTo(spot.x, hy, spot.z, yaw + 180f, 0f)
         level.addFreshEntity(heli)
-        heli.energy = heli.maxEnergy
-        // Cannon rounds with AP first and HE second — the order VehicleCannonAmmo assumes — plus
-        // rockets. The AH-6's 20mm only takes HE, so it gets no AP stack.
-        if (model == HelicopterModel.MI_28) {
-            heli.setItem(0, ItemStack(ModItems.SMALL_SHELL_AP.get(), 64))
-            heli.setItem(1, ItemStack(ModItems.SMALL_SHELL_HE.get(), 64))
-            heli.setItem(2, ItemStack(ModItems.SMALL_ROCKET.get(), 16))
-        } else {
-            heli.setItem(0, ItemStack(ModItems.SMALL_SHELL_HE.get(), 64))
-            heli.setItem(1, ItemStack(ModItems.SMALL_ROCKET.get(), 16))
-        }
+        Ports.vehicles.fuelAndArm(heli, model)
         SquadTeams.assign(heli, faction)
 
         // Pilot first so it takes seat 0 — SBW treats the first passenger as the one flying. The
@@ -228,12 +200,7 @@ object SquadDeployment {
      *  VehicleTransportBehaviour/VehicleCombatSupportBehaviour finds and boards it like any other
      *  vehicle parked nearby; no crew is seated here. */
     private fun spawnTransport(level: ServerLevel, center: BlockPos, yaw: Float, faction: SquadFaction, model: TransportVehicle): Boolean {
-        val type = when (model) {
-            TransportVehicle.LAV_25 -> SbwEntities.LAV_25
-            TransportVehicle.LAV_150 -> SbwEntities.LAV_150
-            TransportVehicle.BMP_2 -> SbwEntities.BMP_2
-        }
-        val vehicle = type.get().create(level) ?: return false
+        val vehicle = Ports.vehicles.create(level, model) ?: return false
         // Off the squad's own spawn line (perpendicular to it), not at its center — FIVE/SEVEN are
         // both odd-sized, so a member always lands exactly on center and the vehicle would spawn
         // on top of them.
@@ -247,9 +214,7 @@ object SquadDeployment {
             ?: return false
         vehicle.moveTo(spot.x, spot.y, spot.z, yaw + 180f, 0f)
         level.addFreshEntity(vehicle)
-        vehicle.energy = vehicle.maxEnergy
-        // Small-caliber AP only, per user call — a short stack, not the full loadout the tanks get.
-        vehicle.setItem(0, ItemStack(ModItems.SMALL_SHELL_AP.get(), 4))
+        Ports.vehicles.fuelAndArm(vehicle, model)
         SquadTeams.assign(vehicle, faction)
         return true
     }

@@ -1,6 +1,6 @@
 package com.sbwnpc.squad.combat
 
-import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
@@ -22,7 +22,7 @@ object VehicleTargeting {
         // Vehicle-borne hostiles only, cheapest filters first; the raycast is done last and only
         // until the first (nearest) visible one — not for every candidate.
         val occupants = level.getEntitiesOfClass(LivingEntity::class.java, box) {
-            it.isAlive && it.vehicle is VehicleEntity && it.vehicle !== entity.vehicle && SquadTeams.isHostile(entity, it)
+            it.isAlive && Ports.vehicles.isVehicle(it.vehicle) && it.vehicle !== entity.vehicle && SquadTeams.isHostile(entity, it)
         }
         if (occupants.isEmpty()) return null
         val rangeSqr = range * range

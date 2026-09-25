@@ -1,9 +1,10 @@
 package com.sbwnpc.squad.vehicle
 
-import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.domain.port.Ports
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.entity.Entity
 import java.util.UUID
 
 /**
@@ -28,8 +29,8 @@ object PilotlessHelicopters {
     private val deadlines = HashMap<UUID, Long>()
 
     /** Called from the pilot's own death. */
-    fun pilotDown(level: ServerLevel, heli: VehicleEntity) {
-        if (!Helicopters.isHelicopter(heli) || heli.isWreck) return
+    fun pilotDown(level: ServerLevel, heli: Entity) {
+        if (!Helicopters.isHelicopter(heli) || Ports.vehicles.isWreck(heli)) return
         if (Helicopters.isGrounded(level, heli)) return // already down; nothing to fall
         deadlines.putIfAbsent(heli.uuid, level.gameTime + GRACE_TICKS)
         DebugFlags.log("[heli-debug] {} lost its pilot, {} ticks to recover", heli.uuid, GRACE_TICKS)
@@ -43,7 +44,7 @@ object PilotlessHelicopters {
         while (iterator.hasNext()) {
             val (id, deadline) = iterator.next()
             val heli = find(server, id)
-            if (heli == null || heli.isWreck) {
+            if (heli == null || Ports.vehicles.isWreck(heli)) {
                 iterator.remove()
                 continue
             }
@@ -57,13 +58,13 @@ object PilotlessHelicopters {
             iterator.remove()
             DebugFlags.log("[heli-debug] {} nobody took the controls, writing it off", heli.uuid)
             // SBW turns this into a wreck on its next tick and detonates it where it lands.
-            heli.health = 0f
+            Ports.vehicles.writeOff(heli)
         }
     }
 
-    private fun find(server: MinecraftServer, id: UUID): VehicleEntity? {
+    private fun find(server: MinecraftServer, id: UUID): Entity? {
         for (level in server.allLevels) {
-            (level.getEntity(id) as? VehicleEntity)?.let { return it }
+            level.getEntity(id)?.takeIf { Ports.vehicles.isVehicle(it) }?.let { return it }
         }
         return null
     }

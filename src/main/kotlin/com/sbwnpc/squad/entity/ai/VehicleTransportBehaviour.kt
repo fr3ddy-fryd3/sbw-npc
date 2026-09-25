@@ -16,6 +16,7 @@ import com.sbwnpc.squad.combat.DebugFlags
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.util.Mth
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
@@ -933,7 +934,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val WAYPOINT_RADIUS = 15.0
 
         /** Clears the temporary squad team after the final NPC leaves or dies in the vehicle. */
-        fun releaseVehicleTeamIfLastAboard(vehicle: VehicleEntity, leaving: NpcEntity) {
+        fun releaseVehicleTeamIfLastAboard(vehicle: Entity, leaving: NpcEntity) {
             if (vehicle.passengers.any { it is NpcEntity && it !== leaving }) return
             SquadTeams.clear(vehicle)
         }

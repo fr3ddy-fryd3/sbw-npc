@@ -1,10 +1,10 @@
 package com.sbwnpc.squad.entity.ai
 
-import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.combat.Vision
 import com.sbwnpc.squad.combat.TankWeaponSelection
 import com.sbwnpc.squad.combat.VehicleTargeting
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModSensors
 import com.sbwnpc.squad.npc.NpcClass
@@ -65,7 +65,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
 
         // SBW aims at the vehicle when its passenger is the gunner's target. Give armed vehicle
         // crews that passenger first, so armour is engaged before nearby dismounted infantry.
-        if (mob.vehicle is VehicleEntity && (mob.vehicle as VehicleEntity).getGunData(mob) != null) {
+        if (mob.vehicle?.let { Ports.vehicles.hasWeaponAt(it, mob) } == true) {
             VehicleTargeting.closestVisibleHostileVehicleOccupant(mob, level, NpcEntity.DETECTION_RANGE)?.let { return it }
         }
 

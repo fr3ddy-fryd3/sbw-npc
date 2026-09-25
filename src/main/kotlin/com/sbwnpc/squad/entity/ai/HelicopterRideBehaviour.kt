@@ -1,6 +1,5 @@
 package com.sbwnpc.squad.entity.ai
 
-import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
@@ -13,6 +12,7 @@ import com.sbwnpc.squad.team.SquadTeams
 import com.sbwnpc.squad.vehicle.Helicopters
 import net.minecraft.commands.arguments.EntityAnchorArgument
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.minecraft.world.phys.AABB
@@ -82,7 +82,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         board(entity, level)
     }
 
-    private fun ride(entity: NpcEntity, heli: VehicleEntity) {
+    private fun ride(entity: NpcEntity, heli: Entity) {
         entity.vehicleTransport = true
         entity.navigation.stop()
         rideId = heli.uuid
@@ -96,7 +96,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
             groundedSince = Int.MIN_VALUE / 2
             return
         }
-        if (!heli.isAlive || heli.isWreck) {
+        if (!Ports.vehicles.isOperational(heli)) {
             entity.stopRiding()
             entity.vehicleTransport = false
             return
@@ -150,8 +150,8 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
      * [GunAttackBehaviour] can't do it for them: riding sets `vehicleTransport`, which is exactly
      * what tells it to stand down, and it would also try to walk them into a firing position.
      */
-    private fun fireFromBench(entity: NpcEntity, heli: VehicleEntity) {
-        if (heli.getSeatIndex(entity) < FIRST_BENCH_SEAT) return
+    private fun fireFromBench(entity: NpcEntity, heli: Entity) {
+        if (Ports.vehicles.seatOf(heli, entity) < FIRST_BENCH_SEAT) return
         val target = entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) } ?: return
         val gun = Ports.guns.inHand(entity) ?: return
         gun.operate()
@@ -174,8 +174,8 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         nextShotTick = entity.tickCount + cooldown
     }
 
-    private fun aboard(entity: NpcEntity): VehicleEntity? =
-        (entity.vehicle as? VehicleEntity)?.takeIf { Helicopters.isHelicopter(it) && it.getSeatIndex(entity) != PILOT_SEAT }
+    private fun aboard(entity: NpcEntity): Entity? =
+        entity.vehicle?.takeIf { Helicopters.isHelicopter(it) && Ports.vehicles.seatOf(it, entity) != PILOT_SEAT }
 
     /** Ordinary infantry only: every other class has a post of its own to man. */
     private fun canRide(entity: NpcEntity): Boolean = when (entity.npcClass) {
@@ -184,20 +184,20 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         NpcClass.HELICOPTER_PILOT, NpcClass.HELICOPTER_GUNNER, NpcClass.DRONE_OPERATOR -> false
     }
 
-    private fun boardable(heli: VehicleEntity, entity: NpcEntity): Boolean = reject(heli, entity) == null
+    private fun boardable(heli: Entity, entity: NpcEntity): Boolean = reject(heli, entity) == null
 
     /** Why this aircraft is no good, or null if it will do. Phrased as the reason rather than a
      *  bare boolean so a transport that nobody boards can say so in the log. */
-    private fun reject(heli: VehicleEntity, entity: NpcEntity): String? {
+    private fun reject(heli: Entity, entity: NpcEntity): String? {
         val level = entity.level() as? ServerLevel ?: return "no level"
-        if (!Helicopters.isHelicopter(heli) || !heli.isAlive || heli.isWreck) return "not a live helicopter"
-        if (heli.locked) return "locked"
+        if (!Helicopters.isHelicopter(heli) || !Ports.vehicles.isOperational(heli)) return "not a live helicopter"
+        if (Ports.vehicles.isLocked(heli)) return "locked"
         // Transports only. The gunship's one spare seat is its turret, and a rifleman sitting in it
         // is a rifleman keeping the gunner out of it.
         if (Helicopters.hasTurret(heli)) return "gunship"
         if (!Helicopters.isGrounded(level, heli)) return "still airborne"
         if (SquadTeams.factionOf(heli) != SquadTeams.factionOf(entity)) return "wrong faction"
-        val seats = heli.getOrderedPassengers()
+        val seats = Ports.vehicles.seating(heli)
         // A pilot must already hold seat 0 — see the class doc.
         if (seats.getOrNull(PILOT_SEAT) == null) return "no pilot aboard"
         if (seats.drop(1).none { it == null }) return "full"
@@ -224,7 +224,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
      * leg got a throttled null, so the behaviour started and stopped every couple of seconds
      * without ever taking a step.
      */
-    private fun lift(entity: NpcEntity, level: ServerLevel): VehicleEntity? {
+    private fun lift(entity: NpcEntity, level: ServerLevel): Entity? {
         // Asked before the remembered aircraft, not after. The other way round, a squad dropped at
         // its objective still had a perfectly boardable transport parked next to it, so the ride
         // kept hold of them — and this behaviour running is what tells the squad's ordinary orders
@@ -234,7 +234,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
             return null
         }
         rideId?.let { id ->
-            val known = level.getEntity(id) as? VehicleEntity
+            val known = level.getEntity(id)
             if (known != null && boardable(known, entity)) return known
             rideId = null
         }
@@ -242,8 +242,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         nextSearchTick = entity.tickCount + SEARCH_INTERVAL_TICKS
 
         val box = AABB.ofSize(entity.position(), SEARCH_RANGE * 2, SEARCH_RANGE * 2, SEARCH_RANGE * 2)
-        val nearby = level.getEntitiesOfClass(VehicleEntity::class.java, box)
-            .filter { Helicopters.isHelicopter(it) }
+        val nearby = Ports.vehicles.within(level, box) { Helicopters.isHelicopter(it) }
             .sortedBy { entity.distanceToSqr(it) }
         val chosen = nearby.firstOrNull { boardable(it, entity) }
         if (chosen == null) {

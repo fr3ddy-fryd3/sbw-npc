@@ -1,12 +1,13 @@
 package com.sbwnpc.squad.entity.ai
 
-import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
-import com.atsuishio.superbwarfare.init.ModEntities
 import com.mojang.datafixers.util.Pair
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
+import com.sbwnpc.squad.npc.TankModel
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.minecraft.world.phys.AABB
@@ -22,7 +23,7 @@ class VehicleCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private var nextRecoverySearchTick = 0
 
-    private fun assignedVehicle(entity: NpcEntity): VehicleEntity? {
+    private fun assignedVehicle(entity: NpcEntity): Entity? {
         val level = entity.level() as? ServerLevel ?: return null
         if (entity.assignedVehicleId == null && entity.npcClass == NpcClass.TANK_CREW &&
             entity.tickCount >= nextRecoverySearchTick
@@ -31,10 +32,9 @@ class VehicleCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
             nextRecoverySearchTick = entity.tickCount + RECOVERY_SEARCH_INTERVAL_TICKS
             // Repairs crews spawned by the earlier T-90 preset, which seated them but failed to
             // persist the assignment. Only a same-faction T-90 can become their vehicle.
-            val current = entity.vehicle as? VehicleEntity
-            val vehicle = current?.takeIf(::isT90)
-                ?: level.getEntitiesOfClass(
-                    VehicleEntity::class.java,
+            val vehicle = entity.vehicle?.takeIf(::isT90)
+                ?: Ports.vehicles.within(
+                    level,
                     AABB.ofSize(entity.position(), RECOVERY_RANGE * 2, RECOVERY_RANGE * 2, RECOVERY_RANGE * 2)
                 ).filter(::isT90)
                     .filter { SquadTeams.factionOf(it) == SquadTeams.factionOf(entity) }
@@ -42,15 +42,15 @@ class VehicleCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
             entity.assignedVehicleId = vehicle?.uuid
         }
         val id = entity.assignedVehicleId ?: return null
-        val vehicle = level.getEntity(id) as? VehicleEntity
-        if (vehicle == null || !vehicle.isAlive || vehicle.isWreck) {
+        val vehicle = level.getEntity(id)
+        if (!Ports.vehicles.isOperational(vehicle)) {
             entity.assignedVehicleId = null
             return null
         }
         return vehicle
     }
 
-    private fun isT90(vehicle: VehicleEntity): Boolean = vehicle.type == ModEntities.T_90A.get()
+    private fun isT90(vehicle: Entity): Boolean = Ports.vehicles.modelOf(vehicle) == TankModel.T_90A
 
     private val startCheck = StartCheckThrottle(START_CHECK_INTERVAL_TICKS)
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =

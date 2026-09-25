@@ -1,7 +1,7 @@
 package com.sbwnpc.squad.combat
 
+import com.sbwnpc.squad.domain.port.Ports
 import net.minecraft.server.level.ServerLevel
-import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.level.ClipContext
 import net.minecraft.world.phys.HitResult
@@ -63,8 +63,8 @@ object Sightline {
     fun vehicleHulls(level: ServerLevel, area: AABB, shooter: Entity, target: Entity?): List<AABB> {
         val ridden = shooter.vehicle
         val targetRide = target?.vehicle
-        return level.getEntitiesOfClass(VehicleEntity::class.java, area) { vehicle ->
-            vehicle.isAlive && !vehicle.isWreck &&
+        return Ports.vehicles.within(level, area) { vehicle ->
+            Ports.vehicles.isOperational(vehicle) &&
                 vehicle !== ridden && vehicle !== targetRide && vehicle !== target
         }.map { it.boundingBox }
     }

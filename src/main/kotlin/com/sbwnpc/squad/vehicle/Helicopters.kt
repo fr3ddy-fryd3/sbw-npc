@@ -1,17 +1,17 @@
 package com.sbwnpc.squad.vehicle
 
-import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
-import com.atsuishio.superbwarfare.init.ModEntities
-import net.minecraft.world.entity.EntityType
-import net.minecraft.world.level.BlockGetter
-import net.minecraft.world.phys.Vec3
+import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.npc.HelicopterModel
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.entity.Entity
+import net.minecraft.world.level.BlockGetter
+import net.minecraft.world.phys.Vec3
 
 /**
  * The SBW helicopters NPC crews can operate, and what their seats mean.
  *
- * Both are plain data-driven [VehicleEntity]s with no subclass of their own, so they can only be
+ * Both are plain data-driven SBW vehicles with no subclass of their own, so they can only be
  * told apart by entity type. The seat layouts differ in the way that matters most for an AI crew:
  *
  *  - Mi-28 has two seats and declares `TurretControllerIndex: 1`, so seat 1 is a real auto-aimable
@@ -21,9 +21,6 @@ import net.minecraft.server.level.ServerLevel
  *    It is therefore a transport here, not a gunship.
  */
 object Helicopters {
-    val GUNSHIP: EntityType<*> get() = ModEntities.MI_28.get()
-    val TRANSPORT: EntityType<*> get() = ModEntities.AH_6.get()
-
     /** Seat that owns the auto-aimable turret on the gunship; AH-6 has no equivalent. */
     const val GUNNER_SEAT = 1
 
@@ -35,10 +32,9 @@ object Helicopters {
      */
     const val AIR_TRANSPORT_DISTANCE = 80.0
 
-    fun isHelicopter(vehicle: VehicleEntity): Boolean =
-        vehicle.type == GUNSHIP || vehicle.type == TRANSPORT
+    fun isHelicopter(vehicle: Entity): Boolean = Ports.vehicles.modelOf(vehicle) is HelicopterModel
 
-    fun hasTurret(vehicle: VehicleEntity): Boolean = vehicle.type == GUNSHIP
+    fun hasTurret(vehicle: Entity): Boolean = Ports.vehicles.modelOf(vehicle) == HelicopterModel.MI_28
 
     /**
      * Lowest Y at or above [startY] with [needed] blocks of clear air above it, searched up to
@@ -109,7 +105,7 @@ object Helicopters {
      * flare, which is emphatically not the moment to let passengers out, so it has to have stopped
      * moving vertically too.
      */
-    fun isGrounded(level: ServerLevel, vehicle: VehicleEntity): Boolean {
+    fun isGrounded(level: ServerLevel, vehicle: Entity): Boolean {
         if (vehicle.onGround()) return true
         val height = vehicle.y - groundY(level, vehicle.x, vehicle.z)
         return height <= ON_DECK_HEIGHT && Math.abs(vehicle.deltaMovement.y) < SETTLED_VERTICAL_SPEED

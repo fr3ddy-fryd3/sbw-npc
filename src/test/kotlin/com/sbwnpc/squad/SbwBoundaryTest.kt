@@ -42,27 +42,20 @@ class SbwBoundaryTest {
 
         val LEGACY = setOf(
             "client/NpcModel.kt",
-            "combat/AntiArmourKit.kt",
             "combat/DroneCombat.kt",
             "combat/GrenadeThrower.kt",
-            "combat/Sightline.kt",
             "combat/TankWeaponSelection.kt",
             "combat/VehicleCannonAmmo.kt",
-            "combat/VehicleTargeting.kt",
             "entity/ai/AntiDroneBehaviour.kt",
             "entity/ai/DroneOperatorBehaviour.kt",
             "entity/ai/GrenadeEvadeBehaviour.kt",
             "entity/ai/HelicopterGunnerBehaviour.kt",
             "entity/ai/HelicopterPilotBehaviour.kt",
-            "entity/ai/HelicopterRideBehaviour.kt",
             "entity/ai/MedicHealBehaviour.kt",
             "entity/ai/MortarDeployment.kt",
             "entity/ai/MortarLoaderBehaviour.kt",
             "entity/ai/MortarOperatorBehaviour.kt",
-            "entity/ai/SquadTargetSensor.kt",
-            "entity/ai/VehicleAwareNavigation.kt",
             "entity/ai/VehicleCombatSupportBehaviour.kt",
-            "entity/ai/VehicleCrewBehaviour.kt",
             "entity/ai/VehicleTransportBehaviour.kt",
             "entity/DroneRegistry.kt",
             "entity/GrenadeRegistry.kt",
@@ -71,9 +64,6 @@ class SbwBoundaryTest {
             "item/SquadToolItem.kt",
             "network/ModNetwork.kt",
             "squad/SquadDeployment.kt",
-            "vehicle/Helicopters.kt",
-            "vehicle/PilotlessHelicopters.kt",
-            "vehicle/VehiclePower.kt",
         )
     }
 }

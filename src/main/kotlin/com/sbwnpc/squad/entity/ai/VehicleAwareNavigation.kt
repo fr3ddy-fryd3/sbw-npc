@@ -1,6 +1,6 @@
 package com.sbwnpc.squad.entity.ai
 
-import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
+import com.sbwnpc.squad.domain.port.Ports
 import net.minecraft.core.BlockPos
 import net.minecraft.world.entity.Mob
 import net.minecraft.world.entity.ai.navigation.GroundPathNavigation
@@ -46,9 +46,9 @@ private class VehicleAwareNodeEvaluator : WalkNodeEvaluator() {
     override fun prepare(level: PathNavigationRegion, mob: Mob) {
         super.prepare(level, mob)
         val ridden = mob.vehicle
-        hulls = mob.level()
-            .getEntitiesOfClass(VehicleEntity::class.java, mob.boundingBox.inflate(SEARCH_RADIUS)) { vehicle ->
-                vehicle.isAlive && !vehicle.isWreck && vehicle !== ridden
+        hulls = Ports.vehicles
+            .within(mob.level(), mob.boundingBox.inflate(SEARCH_RADIUS)) { vehicle ->
+                Ports.vehicles.isOperational(vehicle) && vehicle !== ridden
             }
             .map { it.boundingBox.inflate(CLEARANCE) }
         // Whatever the mob is standing in stays passable. Blocking it would leave the path with no

@@ -8,6 +8,7 @@ import com.sbwnpc.squad.init.ModItems
 import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.init.ModSensors
 import com.sbwnpc.squad.integration.sbw.SbwGuns
+import com.sbwnpc.squad.integration.sbw.SbwVehicles
 import net.minecraft.resources.ResourceLocation
 import net.neoforged.bus.api.IEventBus
 import net.neoforged.fml.ModContainer
@@ -20,6 +21,7 @@ class SquadMod(bus: IEventBus, container: ModContainer) {
         LOGGER.info("SBW Squads initializing")
 
         Ports.guns = SbwGuns
+        Ports.vehicles = SbwVehicles
 
         ModEntities.REGISTRY.register(bus)
         ModItems.ITEMS.register(bus)
