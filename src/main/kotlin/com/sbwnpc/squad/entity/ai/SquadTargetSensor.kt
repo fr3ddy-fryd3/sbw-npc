@@ -67,6 +67,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         // crews that passenger first, so armour is engaged before nearby dismounted infantry.
         if (mob.vehicle?.let { Ports.vehicles.hasWeaponAt(it, mob) } == true) {
             VehicleTargeting.closestVisibleHostileVehicleOccupant(mob, level, NpcEntity.DETECTION_RANGE)?.let { return it }
+            VehicleTargeting.closestVisibleHostileAircrew(mob, level, NpcEntity.DETECTION_RANGE)?.let { return it }
         }
 
         if (!isMortarCrew) {
@@ -98,11 +99,13 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
 
     private fun relayedTarget(mob: NpcEntity, level: ServerLevel): LivingEntity? {
         val faction = SquadTeams.factionOf(mob) ?: return null
-        val followRangeSqr = NpcEntity.DETECTION_RANGE * NpcEntity.DETECTION_RANGE
         return TeamAwareness.relayedContacts(faction, level.gameTime)
             .asSequence()
             .mapNotNull { level.getEntity(it) as? LivingEntity }
-            .filter { it.isAlive && it !== mob && SquadTeams.isHostile(mob, it) && mob.distanceToSqr(it) <= followRangeSqr }
+            .filter {
+                val range = VehicleTargeting.rangeFor(it, NpcEntity.DETECTION_RANGE)
+                it.isAlive && it !== mob && SquadTeams.isHostile(mob, it) && mob.distanceToSqr(it) <= range * range
+            }
             .minByOrNull { mob.distanceToSqr(it) }
     }
 
@@ -113,6 +116,13 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     //    visible — the result is identical (nearest visible hostile) but it's typically 1-3
     //    raycasts instead of one per hostile in range (dozens, in a big fight, per NPC per scan).
     private fun nearestDirectTarget(mob: NpcEntity, level: ServerLevel): LivingEntity? {
+        val ground = nearestGroundTarget(mob, level)
+        val air = VehicleTargeting.closestVisibleHostileAircrew(mob, level, NpcEntity.DETECTION_RANGE)
+        if (ground == null || air == null) return ground ?: air
+        return if (mob.distanceToSqr(air.vehicle ?: air) < mob.distanceToSqr(ground)) air else ground
+    }
+
+    private fun nearestGroundTarget(mob: NpcEntity, level: ServerLevel): LivingEntity? {
         val box = mob.boundingBox.inflate(NpcEntity.DETECTION_RANGE, DETECTION_HEIGHT, NpcEntity.DETECTION_RANGE)
         val hostiles = level.getEntitiesOfClass(LivingEntity::class.java, box) { candidate ->
             candidate !== mob && candidate.isAlive && SquadTeams.isHostile(mob, candidate)
