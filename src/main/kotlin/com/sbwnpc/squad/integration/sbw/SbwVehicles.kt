@@ -31,7 +31,8 @@ object SbwVehicles : Vehicles {
      *  actually draw (64 for a LAV, 128 for a T-90). */
     private const val ASSUMED_COST_RATE = 96.0
 
-    /** Starting ammunition, as a multiple of one full stack of each kind (per user call). */
+    /** Starting small-arms and autocannon ammunition, as a multiple of one full stack of each
+     *  kind (per user call). Tank main-gun shells are not scaled. */
     private const val AMMO_SCALE = 4
 
     private val types: Map<VehicleModel, () -> EntityType<*>> = mapOf(
@@ -92,8 +93,9 @@ object SbwVehicles : Vehicles {
             // Same main-gun AP/HE + coax rifle ammo + .50cal passenger ammo loadout for all three —
             // verified against each model's own sbw/vehicles/*.json: same four weapon/ammo slots.
             is TankModel -> {
-                hold.stow(ModItems.LARGE_SHELL_AP.get(), 64 * AMMO_SCALE)
-                hold.stow(ModItems.LARGE_SHELL_HE.get(), 64 * AMMO_SCALE)
+                // Main-gun shells stay at a stack each; the scale is for small arms and autocannons.
+                hold.stow(ModItems.LARGE_SHELL_AP.get(), 64)
+                hold.stow(ModItems.LARGE_SHELL_HE.get(), 64)
                 hold.stow(ModItems.RIFLE_AMMO.get(), 64 * AMMO_SCALE)
                 hold.stow(ModItems.HEAVY_AMMO.get(), 64 * AMMO_SCALE)
             }
