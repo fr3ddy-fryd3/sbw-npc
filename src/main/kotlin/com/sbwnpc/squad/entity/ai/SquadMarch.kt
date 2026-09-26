@@ -46,6 +46,8 @@ object SquadMarch {
         var route: List<BlockPos> = emptyList()
         var plannedAt = Long.MIN_VALUE
         var failures = 0
+        /** Legs that got nowhere, all told — past [GIVE_UP] the goal has no way to it on foot. */
+        var misses = 0
         /** The route's last node is the goal's own column — no further legs needed. */
         var complete = false
     }
@@ -110,7 +112,11 @@ object SquadMarch {
         val angle = Math.toRadians(sign * turns * TURN_DEGREES)
         val ux = (dx / len) * Math.cos(angle) - (dz / len) * Math.sin(angle)
         val uz = (dx / len) * Math.sin(angle) + (dz / len) * Math.cos(angle)
-        val target = surfaceToward(level, npc, ux, uz, if (march.failures == 0) minOf(len, LEG) else LEG) ?: return
+        // A turned leg still goes a fair way out, or a goal thirty blocks off would only ever be
+        // tried from thirty blocks round the same hillside.
+        val straight = march.failures == 0
+        val reach = if (straight) minOf(len, LEG) else minOf(LEG, maxOf(len, TURNED_LEG_MIN))
+        val target = surfaceToward(level, npc, ux, uz, reach) ?: return
 
         val from = npc.blockPosition()
         val r = SEARCH_RANGE.toInt() + 8
@@ -120,19 +126,30 @@ object SquadMarch {
         val route = path?.let { p -> (0 until p.nodeCount).map { p.getNode(it).asBlockPos() } }.orEmpty()
         val end = route.lastOrNull()
         val progressed = end != null && Math.sqrt(end.distSqr(from)) >= NO_PROGRESS
+        val reached = path?.canReach() == true
         if (progressed) {
             march.route = route
             march.failures = 0
-            march.complete = end!!.closerThan(march.goal, GOAL_REACH)
+            // Done once a straight leg found its way right to the goal; from there the ordinary
+            // search takes each man to his own place.
+            march.complete = straight && reached && len <= LEG
         } else {
             march.failures++
+            march.misses++
         }
         DebugFlags.log(
-            "[march-debug] {} leg from {} toward {} (turn {}): {} nodes, reached={}, end={}, {} ms",
-            squadName, from, target, march.failures.takeIf { !progressed } ?: 0,
-            route.size, path?.canReach(), end, "%.1f".format((System.nanoTime() - started) / 1.0e6)
+            "[march-debug] {} leg from {} toward {} (goal {}, {} blocks, turn {}): {} nodes, reached={}, end={}, {} ms",
+            squadName, from, target, march.goal, len.toInt(), if (straight) 0 else march.failures,
+            route.size, reached, end, "%.1f".format((System.nanoTime() - started) / 1.0e6)
         )
+        if (march.misses >= GIVE_UP) {
+            march.complete = true
+            DebugFlags.log("[march-debug] {} found no way on foot to {}, holding where it got to", squadName, march.goal)
+        }
     }
+
+    private const val TURNED_LEG_MIN = 48.0
+    private const val GIVE_UP = 6
 
     /** Close enough to the goal that the ordinary search takes the squad the rest of the way. */
     private const val GOAL_REACH = 24.0

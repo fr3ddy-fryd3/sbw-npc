@@ -56,13 +56,20 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         val dx = pos.x + 0.5 - mob.x
         val dz = pos.z + 0.5 - mob.z
         val len = Math.sqrt(dx * dx + dz * dz)
+        val npc = mob as? com.sbwnpc.squad.entity.NpcEntity
         if (len <= NEAR_RANGE && level.chunkSource.getChunkNow(pos.x shr 4, pos.z shr 4) != null) {
             farGoal = null
-            return super.createPath(pos, accuracy)
+            val near = super.createPath(pos, accuracy)
+            // Close, but the short search can't get there — a hill in the way, most likely. Out of
+            // a fight, the squad's big search looks for the way round.
+            if (near != null && !near.canReach() && near.distToTarget > SHORT_OF_GOAL && npc != null && npc.target == null) {
+                SquadMarch.waypointFor(npc, pos)?.let { return super.createPath(it, accuracy) }
+            }
+            return near
         }
         // In a squad: its shared route, walked with the ordinary short search.
-        (mob as? com.sbwnpc.squad.entity.NpcEntity)?.let { npc ->
-            SquadMarch.waypointFor(npc, pos)?.let { waypoint ->
+        npc?.let {
+            SquadMarch.waypointFor(it, pos)?.let { waypoint ->
                 farGoal = null
                 return super.createPath(waypoint, accuracy)
             }
@@ -120,6 +127,8 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         const val FAR_NODE_MULTIPLIER = 3f
         const val MIN_LEG = 8.0
         const val GOAL_DRIFT = 4.0
+        /** A path ending nearer its goal than this just can't stand on the exact block. */
+        const val SHORT_OF_GOAL = 4f
     }
 }
 
