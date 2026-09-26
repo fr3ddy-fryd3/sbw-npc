@@ -42,8 +42,9 @@ import java.awt.geom.Point2D
  *   player's side has seen them or not; our NPCs are taken off it and drawn from the feed instead.
  * - Left-click one of your squads' squares to select it (a ring marks it, and it becomes the
  *   squad the command tool and quick-command HUD work on too); Shift+click adds or removes squads
- *   for a group. Right-click anywhere on the map — squares included — then gives "Move / Attack /
- *   Defend / Retreat here" for everything selected. A list of squads in the menu would have to scroll past a
+ *   for a group. Right-click anywhere on the map then gives "Move / Attack / Defend / Retreat
+ *   here" for everything selected. Right-click on the square itself
+ *   changes its order in place. A list of squads in the menu would have to scroll past a
  *   handful, and JourneyMap's menus don't.
  *
  * Only ever loaded by JourneyMap itself, so nothing else in the mod may refer to this class.
@@ -167,13 +168,7 @@ class SquadMapPlugin : IClientPlugin {
 
     // --- Orders ---
 
-    /** The last menu orders were added to: one right-click can reach both the square's menu and
-     *  the map's, and the orders belong in it once. */
-    private var filledMenu: ModPopupMenu? = null
-
     private fun addOrderMenu(menu: ModPopupMenu) {
-        if (menu === filledMenu) return
-        filledMenu = menu
         // A squad missing from the feed is not gone — its men are just out of loaded range right
         // now. Dropping it from the selection for that left the menu empty once the player came
         // back, with nothing to say why. The server takes orders for unloaded squads too, and
@@ -222,12 +217,12 @@ class SquadMapPlugin : IClientPlugin {
             return false
         }
 
-        // A squad standing where the player clicks is under the cursor, and JourneyMap then opens
-        // this square's menu instead of the map's. It used to offer "change order, keep the
-        // objective" here, so an order given next to a loaded squad kept it at its old point —
-        // the same point orders as the map's own menu belong here instead.
         override fun onOverlayMenuPopup(state: UIState, mouse: Point2D.Double, pos: BlockPos, menu: ModPopupMenu) {
-            addOrderMenu(menu)
+            for (order in listOf(SquadOrder.ATTACK, SquadOrder.DEFEND, SquadOrder.PATROL, SquadOrder.MOVE, SquadOrder.RETREAT)) {
+                menu.addMenuItem("Order: ${order.name.lowercase().replaceFirstChar { it.uppercase() }}") {
+                    PacketDistributor.sendToServer(SquadCmdPayload(SquadCmdPayload.SET_ORDER, squad, order.ordinal, ""))
+                }
+            }
         }
     }
 
