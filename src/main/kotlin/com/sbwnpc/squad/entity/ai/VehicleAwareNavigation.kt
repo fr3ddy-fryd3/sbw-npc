@@ -36,37 +36,82 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
     }
 
     /**
-     * A destination in a chunk that isn't loaded gets a step toward it instead of no path at all.
+     * A far destination gets one long leg at a time, planned with room to find a way round.
      *
-     * Vanilla ground navigation gives up outright on such a target (`getChunkNow` is null, the
-     * path is null) — so a squad ordered from the map to a point hundreds of blocks off, with the
-     * player standing next to it, never took a step. Callers ask again every second or so, and
-     * each time the step starts from wherever the mob has got to.
+     * Vanilla ground navigation gives up outright on a target in a chunk that isn't loaded (no
+     * path at all — a squad ordered from the map to a point hundreds of blocks off never took a
+     * step), and otherwise searches only the mob's follow range (48) with a node budget halved
+     * while it isn't fighting. A leg that short, planned straight at the goal, ended at the foot of
+     * whatever hill was in the way, and the squad stood pressed against the slope asking for the
+     * same dead end every second.
+     *
+     * So past [NEAR_RANGE] the leg aims up to [FAR_RANGE] blocks toward the goal (as far as loaded
+     * ground goes), is searched over that whole range with [FAR_NODE_MULTIPLIER] times the nodes,
+     * and is walked to its end before the next one is planned — callers ask again every second,
+     * and re-planning a search this size that often for every man in a squad would cost far more
+     * than the walk needs.
      */
     override fun createPath(pos: BlockPos, accuracy: Int): Path? {
-        if (level.chunkSource.getChunkNow(pos.x shr 4, pos.z shr 4) != null) return super.createPath(pos, accuracy)
         val dx = pos.x + 0.5 - mob.x
         val dz = pos.z + 0.5 - mob.z
         val len = Math.sqrt(dx * dx + dz * dz)
-        if (len < 1.0) return null
-        var step = FAR_STEP
-        while (step >= MIN_FAR_STEP) {
-            val x = Math.floor(mob.x + dx / len * step).toInt()
-            val z = Math.floor(mob.z + dz / len * step).toInt()
+        if (len <= NEAR_RANGE && level.chunkSource.getChunkNow(pos.x shr 4, pos.z shr 4) != null) {
+            farGoal = null
+            return super.createPath(pos, accuracy)
+        }
+        val current = path
+        val goal = farGoal
+        if (current != null && !current.isDone && goal != null && goal.closerThan(pos, GOAL_DRIFT)) return current
+        farGoal = pos
+        val leg = legToward(dx, dz, len) ?: return null
+        val saved = nodeMultiplier
+        super.setMaxVisitedNodesMultiplier(FAR_NODE_MULTIPLIER)
+        try {
+            return createPath(setOf(leg), 8, false, accuracy, FAR_RANGE.toFloat())
+        } finally {
+            super.setMaxVisitedNodesMultiplier(saved)
+        }
+    }
+
+    /** The farthest point on loaded ground up to [FAR_RANGE] toward the goal, on the surface. */
+    private fun legToward(dx: Double, dz: Double, len: Double): BlockPos? {
+        var reach = minOf(len, FAR_RANGE - 8.0)
+        while (reach >= MIN_LEG) {
+            val x = Math.floor(mob.x + dx / len * reach).toInt()
+            val z = Math.floor(mob.z + dz / len * reach).toInt()
             val chunk = level.chunkSource.getChunkNow(x shr 4, z shr 4)
             if (chunk != null) {
                 val y = chunk.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x and 15, z and 15) + 1
-                return super.createPath(BlockPos(x, y, z), accuracy)
+                return BlockPos(x, y, z)
             }
-            step -= 8.0
+            reach -= 8.0
         }
         return null
     }
 
+    /** The goal of the leg being walked; a new one within [GOAL_DRIFT] of it is the same goal. */
+    private var farGoal: BlockPos? = null
+    /** What the owner last set the node budget to — restored after a long leg's bigger search. */
+    private var nodeMultiplier = 1f
+
+    override fun setMaxVisitedNodesMultiplier(multiplier: Float) {
+        nodeMultiplier = multiplier
+        super.setMaxVisitedNodesMultiplier(multiplier)
+    }
+
+    override fun resetMaxVisitedNodesMultiplier() {
+        nodeMultiplier = 1f
+        super.resetMaxVisitedNodesMultiplier()
+    }
+
     private companion object {
-        /** Inside the NPC's own follow range (48), so the step is one ordinary path. */
-        const val FAR_STEP = 40.0
-        const val MIN_FAR_STEP = 8.0
+        /** The NPC's own follow range: nearer than this, vanilla's own search is enough. */
+        const val NEAR_RANGE = 48.0
+        const val FAR_RANGE = 100.0
+        /** 768 nodes at follow range 48 — three times that for a search twice as far. */
+        const val FAR_NODE_MULTIPLIER = 3f
+        const val MIN_LEG = 8.0
+        const val GOAL_DRIFT = 4.0
     }
 }
 
