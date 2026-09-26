@@ -124,9 +124,12 @@ class SquadMapPlugin : IClientPlugin {
     private fun marker(
         dim: ResourceKey<Level>, at: BlockPos, shape: MapShapes, color: Int, size: Double, opacity: Float
     ): MarkerOverlay {
+        // centerAnchors() centres on the size set so far, so it has to come after the resize —
+        // before it, every symbol sat half a full-size texture up and left of its point.
         val image = MapImage(shape.location, MapShapes.SIZE, MapShapes.SIZE)
-            .setColor(color).setOpacity(opacity).centerAnchors()
+            .setColor(color).setOpacity(opacity)
             .setDisplayWidth(size).setDisplayHeight(size)
+            .centerAnchors()
         return MarkerOverlay(modId, at, image).also { it.setDimension(dim) }
     }
 
