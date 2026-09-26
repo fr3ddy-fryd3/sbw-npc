@@ -3,6 +3,8 @@ package com.sbwnpc.squad.entity.ai
 import com.sbwnpc.squad.domain.port.Ports
 import net.minecraft.core.BlockPos
 import net.minecraft.world.entity.Mob
+import net.minecraft.world.level.pathfinder.Path
+import net.minecraft.world.level.levelgen.Heightmap
 import net.minecraft.world.entity.ai.navigation.GroundPathNavigation
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.PathNavigationRegion
@@ -31,6 +33,40 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         evaluator.setCanPassDoors(true)
         this.nodeEvaluator = evaluator
         return PathFinder(evaluator, maxVisitedNodes)
+    }
+
+    /**
+     * A destination in a chunk that isn't loaded gets a step toward it instead of no path at all.
+     *
+     * Vanilla ground navigation gives up outright on such a target (`getChunkNow` is null, the
+     * path is null) — so a squad ordered from the map to a point hundreds of blocks off, with the
+     * player standing next to it, never took a step. Callers ask again every second or so, and
+     * each time the step starts from wherever the mob has got to.
+     */
+    override fun createPath(pos: BlockPos, accuracy: Int): Path? {
+        if (level.chunkSource.getChunkNow(pos.x shr 4, pos.z shr 4) != null) return super.createPath(pos, accuracy)
+        val dx = pos.x + 0.5 - mob.x
+        val dz = pos.z + 0.5 - mob.z
+        val len = Math.sqrt(dx * dx + dz * dz)
+        if (len < 1.0) return null
+        var step = FAR_STEP
+        while (step >= MIN_FAR_STEP) {
+            val x = Math.floor(mob.x + dx / len * step).toInt()
+            val z = Math.floor(mob.z + dz / len * step).toInt()
+            val chunk = level.chunkSource.getChunkNow(x shr 4, z shr 4)
+            if (chunk != null) {
+                val y = chunk.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x and 15, z and 15) + 1
+                return super.createPath(BlockPos(x, y, z), accuracy)
+            }
+            step -= 8.0
+        }
+        return null
+    }
+
+    private companion object {
+        /** Inside the NPC's own follow range (48), so the step is one ordinary path. */
+        const val FAR_STEP = 40.0
+        const val MIN_FAR_STEP = 8.0
     }
 }
 
