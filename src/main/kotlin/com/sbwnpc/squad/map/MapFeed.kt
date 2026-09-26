@@ -39,6 +39,7 @@ object MapFeed {
 
     fun subscribe(player: ServerPlayer) {
         subscribers += player.uuid
+        com.sbwnpc.squad.combat.DebugFlags.log("[map-debug] {} subscribed to the map feed", player.gameProfile.name)
     }
 
     fun unsubscribe(player: UUID) {

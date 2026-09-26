@@ -2,13 +2,14 @@ package com.sbwnpc.squad.integration.journeymap
 
 import com.sbwnpc.squad.SquadMod
 import com.sbwnpc.squad.client.MapState
+import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.network.SquadCmdPayload
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.SquadOrder
 import journeymap.api.v2.client.IClientAPI
 import journeymap.api.v2.client.IClientPlugin
-import journeymap.api.v2.client.JourneyMapPlugin
+import journeymap.api.v2.common.JourneyMapPlugin
 import journeymap.api.v2.client.display.IOverlayListener
 import journeymap.api.v2.client.display.MarkerOverlay
 import journeymap.api.v2.client.display.PolygonOverlay
@@ -65,7 +66,10 @@ class SquadMapPlugin : IClientPlugin {
     private fun redraw(feed: CompoundTag) {
         api.removeAll(modId)
         if (!feed.contains("Dim")) return
-        MapShapes.ensureRegistered()
+        DebugFlags.log(
+            "[map-debug] feed: squads={} loose={} vehicles={} enemies={}",
+            list(feed, "Squads").size, list(feed, "Loose").size, list(feed, "Vehicles").size, list(feed, "Enemies").size
+        )
         val dim = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(feed.getString("Dim")))
 
         for (t in list(feed, "Squads")) {
@@ -118,7 +122,7 @@ class SquadMapPlugin : IClientPlugin {
     }
 
     private fun show(overlay: journeymap.api.v2.client.display.Displayable) {
-        runCatching { api.show(overlay) }.onFailure { SquadMod.LOGGER.debug("JourneyMap refused an overlay", it) }
+        runCatching { api.show(overlay) }.onFailure { SquadMod.LOGGER.warn("JourneyMap refused an overlay: {}", it.toString()) }
     }
 
     private fun marker(
