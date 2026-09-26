@@ -45,7 +45,8 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
      * whatever hill was in the way, and the squad stood pressed against the slope asking for the
      * same dead end every second.
      *
-     * So past [NEAR_RANGE] the leg aims up to [FAR_RANGE] blocks toward the goal (as far as loaded
+     * A squad member follows its squad's route ([SquadMarch]). Anyone else — or a member before
+     * the route is planned — past [NEAR_RANGE] gets a leg that aims up to [FAR_RANGE] blocks toward the goal (as far as loaded
      * ground goes), is searched over that whole range with [FAR_NODE_MULTIPLIER] times the nodes,
      * and is walked to its end before the next one is planned — callers ask again every second,
      * and re-planning a search this size that often for every man in a squad would cost far more
@@ -58,6 +59,13 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         if (len <= NEAR_RANGE && level.chunkSource.getChunkNow(pos.x shr 4, pos.z shr 4) != null) {
             farGoal = null
             return super.createPath(pos, accuracy)
+        }
+        // In a squad: its shared route, walked with the ordinary short search.
+        (mob as? com.sbwnpc.squad.entity.NpcEntity)?.let { npc ->
+            SquadMarch.waypointFor(npc, pos)?.let { waypoint ->
+                farGoal = null
+                return super.createPath(waypoint, accuracy)
+            }
         }
         val current = path
         val goal = farGoal
