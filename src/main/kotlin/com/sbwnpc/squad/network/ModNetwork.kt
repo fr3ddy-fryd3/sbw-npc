@@ -190,6 +190,17 @@ object ModNetwork {
                 }
                 SquadCmdPayload.DISBAND -> ownedSid()?.let { mgr.disband(level, it); reopen = true }
                 SquadCmdPayload.SET_ORDER -> ownedSid()?.let { mgr.setOrder(it, SquadOrder.byOrdinal(p.value)) }
+                SquadCmdPayload.MAP_ORDER -> ownedSid()?.let { id ->
+                    val (x, z) = p.text.split(' ').mapNotNull { it.toIntOrNull() }.takeIf { it.size == 2 }
+                        ?: return@enqueueWork
+                    // The map knows the column, not the height: stand it on the ground there.
+                    val y = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z)
+                    mgr.setOrder(id, SquadOrder.byOrdinal(p.value))
+                    mgr.setObjective(level, id, net.minecraft.core.BlockPos(x, y, z))
+                    mgr.setFocus(id, null)
+                    val squad = mgr.get(id)
+                    bar("${squad?.name ?: "Squad"}: ${squad?.order?.name ?: ""} at $x, $z")
+                }
                 SquadCmdPayload.RENAME -> ownedSid()?.let { mgr.rename(it, p.text) }
                 SquadCmdPayload.SELECT -> ownedSid()?.let {
                     SquadSelection.selectSquad(player.uuid, it)
