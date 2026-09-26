@@ -46,14 +46,22 @@ object GroupOrders {
             val (px, pz) = if (placement == Placement.LINE) spots.getValue(squad.id) else x.toDouble() to z.toDouble()
             val bx = Math.floor(px).toInt()
             val bz = Math.floor(pz).toInt()
-            // The map knows the column, not the height: stand it on the ground there.
-            val by = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, bx, bz)
+            val by = groundY(level, bx, bz)
             mgr.setOrder(squad.id, given)
             mgr.setObjective(level, squad.id, BlockPos(bx, by, bz))
             mgr.setFocus(squad.id, null)
             "${squad.name}: ${squad.order.name.lowercase()}"
         }
     }
+
+    /**
+     * Ground level at a column the map pointed at. The map sends only X and Z, and the point is
+     * usually far off in chunks nobody has loaded — where `Level.getHeight` answers the bottom of
+     * the world. Every map order was being sent to y = -64: no path leads there, so squads stood
+     * still, and one that did get close never counted as arrived. The chunk is loaded to read it.
+     */
+    private fun groundY(level: ServerLevel, x: Int, z: Int): Int =
+        level.getChunk(x shr 4, z shr 4).getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x and 15, z and 15) + 1
 
     private fun kindOf(mgr: SquadManager, squad: Squad): Kind = when {
         mgr.isTankSquad(squad) -> Kind.TANK
