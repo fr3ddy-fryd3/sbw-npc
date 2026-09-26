@@ -104,7 +104,6 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     companion object {
         private const val BASE_SHOOT_DISTANCE = 24.0
-        private const val DEFEND_LEASH = 14.0
         private const val DEFEND_LEASH_DROP = 24.0
         private const val SIDESTEP_COOLDOWN = 5
         private const val MAX_SIDESTEP_ATTEMPTS = 3
@@ -350,11 +349,20 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  and fire for a few seconds — real stationary aiming, not endless micro-shuffling every tick.
      *  Aiming/firing in [tick] runs completely unconditionally regardless of what this picks or
      *  whether the mob is still walking the last few steps toward it. */
-    private fun holdFiringPosition(entity: NpcEntity, target: LivingEntity) {
+    private fun holdFiringPosition(entity: NpcEntity, target: LivingEntity, defending: Boolean = false) {
         val level0 = entity.level() as? ServerLevel ?: return
         // A grenade has come down by the spot being held: pick another now rather than walk
         // into it and get chased back out by GrenadeEvadeBehaviour.
         if (firingPos?.let { GrenadeHazard.threatens(level0, it) } == true) nextPositionCheckTick = 0
+        // A defender keeps a position that still has a shot at the target — it has taken it and
+        // holds it, rather than shuffling to a slightly better one every few seconds.
+        val held = firingPos
+        if (defending && held != null && entity.tickCount >= nextPositionCheckTick &&
+            atSpot(entity, held) && !GrenadeHazard.threatens(level0, held) && TickBudget.hasRaycasts(level0) &&
+            concealmentScore(level0, entity, target, held, entity.eyeHeight.toDouble(), emptyList()) != null
+        ) {
+            nextPositionCheckTick = entity.tickCount + HOLD_MIN_TICKS + entity.random.nextInt(HOLD_JITTER_TICKS)
+        }
         val pos = firingPos
         if (pos != null && entity.tickCount < nextPositionCheckTick) {
             if (atSpot(entity, pos)) {
@@ -572,15 +580,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                 entity.navigation.moveTo(defendHome.x, defendHome.y, defendHome.z, 1.0)
                 return
             }
-            if (fromHome > DEFEND_LEASH) {
-                // Pinned near the leash edge (won't chase the target further from home) — still
-                // shouldn't just freeze in the open (PM review finding): same partial-cover logic
-                // as advanceOrHold's own "already in range" branch, just without the bound-toggle
-                // bookkeeping that only matters for that other code path.
-                holdFiringPosition(entity, target)
-            } else {
-                advanceOrHold(entity, target)
-            }
+            // Defending means holding: take a firing position and fight from it, never advance on
+            // the enemy the way an attacking squad bounds forward.
+            holdFiringPosition(entity, target, defending = true)
         } else {
             advanceOrHold(entity, target)
         }
