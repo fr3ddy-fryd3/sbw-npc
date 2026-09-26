@@ -67,7 +67,9 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun eligible(entity: NpcEntity): Boolean {
         if (entity.target != null) return false
-        if (entity.isAlert()) return false
+        // An alarm sends a mob to look — except while falling back, when looking is the one thing
+        // it must not do.
+        if (entity.isAlert() && entity.retreatPoint() == null) return false
         // A dug-in mob clears COVER_HOLD for its whole holding duration (see
         // SeekCoverBehaviour.enterDugInHolding) so GunAttackBehaviour can still fire from the hole —
         // this behaviour never checked combatLockedByCover() in the first place (only target/alert/

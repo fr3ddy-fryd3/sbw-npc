@@ -14,14 +14,21 @@ import java.util.UUID
  * positions (or a bound has plainly stalled) do the halves swap. Each bound is short, so the half
  * that is running is never far from the half covering it — the whole point of the covering fire.
  *
- * Earlier each member flipped between running and firing on its own timer, so the "covering" half
- * was covering nothing: the runners were long gone, strung out across the field.
+ * Positions are fixed when a bound starts and laid out along the line of retreat itself: a line
+ * across it, every man straight back from the enemy. Borrowing the squad formation for this went
+ * wrong both ways — its facing follows the lead slot, so with the lead in the other half the line
+ * could turn along the axis and put men metres toward the enemy, and recomputing it every tick from
+ * a moving lead had them chasing a point that kept shifting.
  */
 object Withdrawal {
     /** How far one half runs before stopping to cover the other. */
     private const val BOUND_DISTANCE = 12.0
+    /** Gap between men in a bound's line. */
+    private const val LATERAL_SPACING = 4.0
     /** Close enough to a bound position to count as having made it. */
-    private const val ARRIVED = 2.5
+    private const val ARRIVED = 3.0
+    /** A path that ended this near counts too: the exact spot may not be standable. */
+    private const val SETTLED = 6.0
     /** A bound that takes longer than this has stalled — someone is stuck; swap anyway. */
     private const val MAX_BOUND_TICKS = 160L
 
@@ -29,12 +36,13 @@ object Withdrawal {
         /** Which half (slot parity) is running. */
         var moving = 0
         var boundStart = 0L
-        /** Where the running half is headed this bound. */
-        var anchor: Vec3? = null
+        /** Each runner's position for the current bound. Empty between bounds. */
+        val targets = HashMap<UUID, Vec3>()
         var updatedTick = -1L
         /** Anyone in the squad has an enemy to shoot at. Without contact there is nothing to
          *  cover against, and everyone simply runs. */
         var inContact = false
+        var members: List<NpcEntity> = emptyList()
     }
 
     private val bySquad = HashMap<UUID, State>()
@@ -53,41 +61,62 @@ object Withdrawal {
             update(level, squad, state)
         }
         if (!state.inContact) {
-            return SquadFormation.slotTarget(member, point, point.subtract(member.position()), false, SquadFormation.COMBAT_SPACING)
+            // Nothing to cover against: everyone to the point, spread across the line of retreat.
+            val order = state.members.indexOf(member).coerceAtLeast(0)
+            return lineSpot(point, point.subtract(member.position()), order, state.members.size)
         }
-        val index = member.slotIndex(squad).coerceAtLeast(0)
-        if (index % 2 != state.moving) return null
-        val anchor = state.anchor ?: return null
-        return SquadFormation.slotTarget(member, anchor, point.subtract(anchor), false, SquadFormation.COMBAT_SPACING)
+        return state.targets[member.uuid]
     }
+
+    private fun half(member: NpcEntity, squad: Squad) = member.slotIndex(squad).coerceAtLeast(0) % 2
 
     private fun update(level: ServerLevel, squad: Squad, state: State) {
         val members = squad.members.mapNotNull { level.getEntity(it) as? NpcEntity }.filter { it.isAlive }
+        state.members = members
         if (members.isEmpty()) return
         state.inContact = members.any { it.target?.isAlive == true }
         if (!state.inContact) {
-            state.anchor = null
+            state.targets.clear()
             return
         }
-        val runners = members.filter { it.slotIndex(squad).coerceAtLeast(0) % 2 == state.moving }
-        val anchor = state.anchor
-        val boundDone = anchor != null && runners.all { m ->
-            m.position().distanceTo(
-                SquadFormation.slotTarget(m, anchor, state.point.subtract(anchor), false, SquadFormation.COMBAT_SPACING)
-            ) <= ARRIVED || m.position().distanceTo(state.point) <= SquadFormation.ARRIVAL_RADIUS
+        val runners = members.filter { half(it, squad) == state.moving }
+        val boundDone = state.targets.isNotEmpty() && runners.all { m ->
+            val spot = state.targets[m.uuid] ?: return@all true
+            val d = m.position().distanceTo(spot)
+            d <= ARRIVED || (m.navigation.isDone && d <= SETTLED) ||
+                m.position().distanceTo(state.point) <= SquadFormation.ARRIVAL_RADIUS
         }
         val stalled = level.gameTime - state.boundStart > MAX_BOUND_TICKS
-        if (anchor == null || boundDone || stalled) {
-            if (anchor != null) state.moving = 1 - state.moving
-            state.boundStart = level.gameTime
-            // The next bound starts from where the other half — now the runners — actually is.
-            val next = members.filter { it.slotIndex(squad).coerceAtLeast(0) % 2 == state.moving }
-                .ifEmpty { members }
-            val from = Vec3(next.sumOf { it.x } / next.size, next.sumOf { it.y } / next.size, next.sumOf { it.z } / next.size)
-            val toPoint = state.point.subtract(from)
-            val length = toPoint.horizontalDistance()
-            // Leapfrog: past the covering half, but never more than one bound.
-            state.anchor = if (length <= BOUND_DISTANCE) state.point else from.add(toPoint.scale(BOUND_DISTANCE / length))
+        if (state.targets.isEmpty() || boundDone || stalled) {
+            if (state.targets.isNotEmpty()) state.moving = 1 - state.moving
+            startBound(level, squad, state, members)
         }
+    }
+
+    private fun startBound(level: ServerLevel, squad: Squad, state: State, members: List<NpcEntity>) {
+        state.boundStart = level.gameTime
+        state.targets.clear()
+        val runners = members.filter { half(it, squad) == state.moving }.ifEmpty { members }
+            .sortedBy { it.slotIndex(squad) }
+        val from = Vec3(
+            runners.sumOf { it.x } / runners.size, runners.sumOf { it.y } / runners.size, runners.sumOf { it.z } / runners.size
+        )
+        val toPoint = state.point.subtract(from)
+        val length = toPoint.horizontalDistance()
+        val anchor = if (length <= BOUND_DISTANCE) state.point else from.add(toPoint.scale(BOUND_DISTANCE / length))
+        runners.forEachIndexed { i, m -> state.targets[m.uuid] = lineSpot(anchor, toPoint, i, runners.size) }
+        DebugFlags.log(
+            "[retreat-debug] squad {} half {} bounds {} blocks toward {} ({} men)",
+            squad.name, state.moving, "%.1f".format(minOf(length, BOUND_DISTANCE)), state.point, runners.size
+        )
+    }
+
+    /** The [i]-th of [n] spots in a line across [direction], centred on [anchor]. */
+    private fun lineSpot(anchor: Vec3, direction: Vec3, i: Int, n: Int): Vec3 {
+        val flat = Vec3(direction.x, 0.0, direction.z)
+        if (flat.lengthSqr() < 1.0e-4 || n <= 1) return anchor
+        val dir = flat.normalize()
+        val right = Vec3(-dir.z, 0.0, dir.x)
+        return anchor.add(right.scale((i - (n - 1) / 2.0) * LATERAL_SPACING))
     }
 }
