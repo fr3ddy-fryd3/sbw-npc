@@ -49,6 +49,11 @@ class Squad(
     /** Game time the current MOVE rally started — see `SquadOrderBehaviour.tickMove`. Not saved. */
     var moveRallySince: Long = 0L
 
+    /** Where the squad's middle was the last time its men were loaded — what the map shows and
+     *  where `SquadChunkLoader` wakes it, while they're out of loaded range. */
+    var lastSeen: BlockPos? = null
+    var lastSeenDim: ResourceKey<Level>? = null
+
     fun save(): CompoundTag {
         val tag = CompoundTag()
         tag.putUUID("Id", id)
@@ -72,6 +77,8 @@ class Squad(
         routeId?.let { tag.putUUID("RouteId", it) }
         moveAssembly?.let { tag.put("MoveAssembly", NbtUtils.writeBlockPos(it)) }
         tag.putBoolean("MoveFormationReady", moveFormationReady)
+        lastSeen?.let { tag.put("LastSeen", NbtUtils.writeBlockPos(it)) }
+        lastSeenDim?.let { tag.putString("LastSeenDim", it.location().toString()) }
         return tag
     }
 
@@ -88,7 +95,7 @@ class Squad(
                     BarracksRef(dimension, pos)
                 }
             } else null
-            return Squad(
+            val squad = Squad(
                 id = tag.getUUID("Id"),
                 name = tag.getString("Name"),
                 faction = faction,
@@ -104,6 +111,11 @@ class Squad(
                 moveAssembly = if (tag.contains("MoveAssembly")) NbtUtils.readBlockPos(tag, "MoveAssembly").orElse(null) else null,
                 moveFormationReady = tag.getBoolean("MoveFormationReady")
             )
+            if (tag.contains("LastSeen")) squad.lastSeen = NbtUtils.readBlockPos(tag, "LastSeen").orElse(null)
+            if (tag.contains("LastSeenDim", Tag.TAG_STRING.toInt())) {
+                squad.lastSeenDim = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(tag.getString("LastSeenDim")))
+            }
+            return squad
         }
 
         private fun loadOrder(tag: CompoundTag): SquadOrder = when {
