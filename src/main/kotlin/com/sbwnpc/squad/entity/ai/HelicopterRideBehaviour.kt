@@ -151,19 +151,35 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
      * what tells it to stand down, and it would also try to walk them into a firing position.
      */
     private fun fireFromBench(entity: NpcEntity, heli: Entity) {
-        if (Ports.vehicles.seatOf(heli, entity) < FIRST_BENCH_SEAT) return
-        val target = entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) } ?: return
-        val gun = Ports.guns.inHand(entity) ?: return
+        val held = benchHoldReason(entity, heli) ?: return
+        if (DebugFlags.LOGGING_ENABLED && entity.tickCount - lastBenchLogTick >= BENCH_LOG_TICKS) {
+            lastBenchLogTick = entity.tickCount
+            DebugFlags.log("[heli-debug] {} on the bench not firing: {}", entity.uuid, held)
+        }
+    }
+
+    private var lastBenchLogTick = Int.MIN_VALUE / 2
+
+    /** Fires if it can; otherwise says why not (null once a shot is away or it's just cycling). */
+    private fun benchHoldReason(entity: NpcEntity, heli: Entity): String? {
+        val seat = Ports.vehicles.seatOf(heli, entity)
+        if (seat < FIRST_BENCH_SEAT) return "seat $seat is not a bench seat"
+        val target = entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) } ?: return "no target"
+        val gun = Ports.guns.inHand(entity) ?: return "no gun in hand"
         gun.operate()
 
         val aim = target.position().add(0.0, target.bbHeight * 0.5, 0.0)
         entity.lookAt(EntityAnchorArgument.Anchor.EYES, aim)
-        if (entity.distanceTo(target) > BENCH_RANGE) return
-        if (!entity.sensing.hasLineOfSight(target)) return
-        if (entity.tickCount < nextShotTick || !gun.canShoot()) return
+        val dist = entity.distanceTo(target)
+        if (dist > BENCH_RANGE) return "target ${dist.toInt()} blocks off (range ${BENCH_RANGE.toInt()})"
+        // Not hasLineOfSight: vanilla gives up past 128 blocks, and from cruising height that is
+        // most of the ground a passenger can see.
+        val level = entity.level() as? ServerLevel ?: return null
+        if (com.sbwnpc.squad.combat.Sightline.blocked(level, entity.eyePosition, aim, entity)) return "no sightline"
+        if (entity.tickCount < nextShotTick || !gun.canShoot()) return null
 
         val spread = DroneCombat.spreadForTarget(entity.npcRank.spread * entity.npcClass.accuracyMultiplier, target)
-        if (!FriendlyFireGuard.hasClearLineOfFire(entity, aim, spread)) return
+        if (!FriendlyFireGuard.hasClearLineOfFire(entity, aim, spread)) return "friendly in the line of fire"
 
         gun.shootAt(spread, aim)
         entity.lastShotTick = entity.tickCount
@@ -172,6 +188,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
             cooldown += (entity.npcRank.semiFireIntervalMs / 50).toInt()
         }
         nextShotTick = entity.tickCount + cooldown
+        return null
     }
 
     private fun aboard(entity: NpcEntity): Entity? =
@@ -271,6 +288,9 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         const val REBOARD_COOLDOWN_TICKS = 200
         /** Seats 0 and 1 are the cockpit; the side benches start here. */
         const val FIRST_BENCH_SEAT = 2
-        const val BENCH_RANGE = 48.0
+        /** As far as aircrew spot the ground (VehicleTargeting): 48 was less than the height a
+         *  transport cruises at, so a passenger never had anything in range. */
+        const val BENCH_LOG_TICKS = 40
+        const val BENCH_RANGE = NpcEntity.DETECTION_RANGE * com.sbwnpc.squad.combat.VehicleTargeting.AIR_RANGE_FACTOR
     }
 }
