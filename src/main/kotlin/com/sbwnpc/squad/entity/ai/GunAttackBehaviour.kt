@@ -13,6 +13,7 @@ import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.combat.TickBudget
+import com.sbwnpc.squad.combat.Withdrawal
 import com.sbwnpc.squad.domain.port.HandGun
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.domain.port.TriggerMode
@@ -118,8 +119,6 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val FALL_BACK_VERTICAL = 7
         private const val FALL_BACK_REPATH_TICKS = 30
         private const val FALL_BACK_SPEED = 1.4
-        /** How long each half of a withdrawing squad runs, or covers, before they swap. */
-        private const val WITHDRAW_BOUND_TICKS = 60L
         private const val WITHDRAW_SPEED = 1.3
 
         // Friendly-fire assessment used to be two entity queries EVERY tick for every shooter (line
@@ -310,26 +309,22 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         target.vehicle?.boundingBox?.center ?: target.position().add(0.0, target.bbHeight * 0.3, 0.0)
 
     /**
-     * A fighting withdrawal to [point]. The squad works in two halves by slot: one runs for the
-     * rally point while the other stands and fires, and every [WITHDRAW_BOUND_TICKS] they swap.
-     * Everyone keeps shooting whenever the target is in sight — the moving half just doesn't stop
-     * to do it.
+     * A fighting withdrawal to [point], directed for the squad as a whole by [Withdrawal]: this
+     * member either runs its half's bound or holds and covers. Everyone keeps shooting whenever
+     * the target is in sight — a runner just doesn't stop to do it.
      */
     private fun withdraw(entity: NpcEntity, point: Vec3) {
         bounding = true
         boundPhaseStarted = false
         firingPos = null
         FiringSpots.release(entity.uuid)
-        val index = entity.currentSquad()?.let { entity.slotIndex(it) }?.coerceAtLeast(0) ?: 0
-        val moving = (entity.level().gameTime / WITHDRAW_BOUND_TICKS + index) % 2 == 0L
-        if (!moving) {
+        val squad = entity.currentSquad()
+        val to = if (squad == null) point else Withdrawal.positionFor(entity, squad, point)
+        if (to == null) {
             entity.navigation.stop()
             return
         }
-        val slot = SquadFormation.slotTarget(
-            entity, point, point.subtract(entity.position()), false, SquadFormation.COMBAT_SPACING
-        )
-        entity.navigateTo(slot, WITHDRAW_SPEED)
+        entity.navigateTo(to, WITHDRAW_SPEED)
     }
 
     /** Aircrew on foot — a pilot out of a helicopter that can't fly. */

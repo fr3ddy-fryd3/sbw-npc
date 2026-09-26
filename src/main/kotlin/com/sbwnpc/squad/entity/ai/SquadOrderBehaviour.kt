@@ -152,7 +152,11 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
             // and makes it a fighting withdrawal.
             SquadOrder.RETREAT -> {
                 val arrived = dist <= SquadFormation.ARRIVAL_RADIUS
-                approachSlot(entity, home, arrived, RUN_SPEED_MODIFIER)
+                // A squadmate is in a fight: this one's half may be the one holding to cover it.
+                val bound = if (arrived) null else com.sbwnpc.squad.combat.Withdrawal.positionFor(entity, squad, home)
+                if (!arrived && bound == null) entity.navigation.stop()
+                else if (bound != null) moveToSlot(entity, bound, RUN_SPEED_MODIFIER)
+                else approachSlot(entity, home, true, RUN_SPEED_MODIFIER)
                 if (arrived && entity.tickCount >= nextArrivalCheckTick) {
                     nextArrivalCheckTick = entity.tickCount + ARRIVAL_CHECK_INTERVAL_TICKS
                     if (allSquadArrived(entity, squad, home)) squad.order = SquadOrder.DEFEND
@@ -192,9 +196,9 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         moveToSlot(entity, slot)
     }
 
-    private fun moveToSlot(entity: NpcEntity, slot: Vec3) {
+    private fun moveToSlot(entity: NpcEntity, slot: Vec3, speed: Double = WALK_SPEED_MODIFIER) {
         if (entity.position().distanceTo(slot) > 1.5) {
-            val pace = paceTo(entity, slot, WALK_SPEED_MODIFIER)
+            val pace = paceTo(entity, slot, speed)
             if (repathCooldown == 0) {
                 entity.navigation.moveTo(slot.x, slot.y, slot.z, pace)
                 repathCooldown = 20

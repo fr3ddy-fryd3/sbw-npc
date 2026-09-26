@@ -31,6 +31,7 @@ object ServerLifecycle {
     fun onServerStopped(event: ServerStoppedEvent) {
         com.sbwnpc.squad.team.Diplomacy.detach()
         com.sbwnpc.squad.map.MapFeed.clearAll()
+        com.sbwnpc.squad.combat.Withdrawal.clearAll()
         TeamAwareness.clearAll()
         DeathSites.clearAll()
         MortarClaims.clearAll()
