@@ -31,8 +31,6 @@ object Withdrawal {
     private const val SETTLED = 6.0
     /** A bound that takes longer than this has stalled — someone is stuck; swap anyway. */
     private const val MAX_BOUND_TICKS = 100L
-    /** Everyone this close to the rally point: the squad is there, and holds it. */
-    private const val ARRIVED_AT_POINT = SquadFormation.ARRIVAL_RADIUS + 4.0
 
     private class State(val point: Vec3) {
         /** Which half (slot parity) is running. */
@@ -79,7 +77,7 @@ object Withdrawal {
         // There: hold it. SquadOrderBehaviour makes the same switch, but only for members with
         // nobody to shoot at — under fire it never ran, and the squad stayed "retreating" forever.
         // Three in four is "there": one man pinned in a ditch shouldn't keep the rest running.
-        val there = members.count { it.position().distanceTo(state.point) <= ARRIVED_AT_POINT }
+        val there = members.count { SquadFormation.reachedPoint(it, state.point, squad.members.size) }
         if (there * 4 >= members.size * 3) {
             squad.order = com.sbwnpc.squad.squad.SquadOrder.DEFEND
             bySquad.remove(squad.id)

@@ -57,6 +57,20 @@ object SquadFormation {
      *  block, over and over". */
     const val ARRIVAL_RADIUS = RING_RADIUS + 1.5
 
+    /** Close enough to a point to count as there, whatever the squad's size. */
+    private const val NEAR_POINT = ARRIVAL_RADIUS + 4.0
+
+    /**
+     * Whether [member] of a squad of [squadSize] has reached [point] for the squad's purposes: near
+     * it, or stopped in its place in the formation around it. A big squad's wedge or line puts its
+     * outer men twenty and thirty blocks from the point itself — a sixteen-man squad in a wedge had
+     * five men "there" and never switched to defending.
+     */
+    fun reachedPoint(member: NpcEntity, point: Vec3, squadSize: Int): Boolean {
+        val d = member.position().distanceTo(point)
+        return d <= NEAR_POINT || (member.navigation.isDone && d <= NEAR_POINT + (squadSize / 2) * SLOT_SPACING * 1.5)
+    }
+
     private enum class Shape { WEDGE, LINE, COLUMN, GRID, RING, SCATTER }
 
     /** Transit shape depends on order. MOVE is the exception to the arrival perimeter: it keeps its

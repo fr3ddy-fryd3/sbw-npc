@@ -17,8 +17,6 @@ import net.minecraft.world.phys.Vec3
  */
 object OrderArrival {
     private const val INTERVAL_TICKS = 20
-    /** How near the point counts as there — the perimeter a defending squad spreads over. */
-    private const val THERE = SquadFormation.ARRIVAL_RADIUS + 4.0
 
     fun tick(server: MinecraftServer) {
         if (server.tickCount % INTERVAL_TICKS != 0) return
@@ -32,7 +30,7 @@ object OrderArrival {
             val members = squad.members.mapNotNull { SquadManager.findEntity(server, it) as? NpcEntity }.filter { it.isAlive }
             if (members.isEmpty()) continue
             // Three in four: one man pinned in a ditch shouldn't keep the rest from digging in.
-            val there = members.count { it.position().distanceTo(point) <= THERE }
+            val there = members.count { SquadFormation.reachedPoint(it, point, squad.members.size) }
             if (there * 4 < members.size * 3) continue
             DebugFlags.log("[order-debug] {} took its point ({}), defending", squad.name, squad.order)
             mgr.setOrder(squad.id, SquadOrder.DEFEND)
