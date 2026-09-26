@@ -70,7 +70,8 @@ object SquadTeams {
 
     fun clearCache() = factionByTeamName.clear()
 
-    /** Squad friend/foe: both sides need an actual (different) squad faction to be hostile.
+    /** Squad friend/foe: both sides need an actual squad faction, neither the same nor allied or
+     *  at truce ([Diplomacy.friendly]), to be hostile.
      *  Nothing ever puts a player on the scoreboard team itself — a teamless player resolves
      *  through their own chosen faction ([PlayerFactionRegistry]) instead. Anything with no
      *  faction either way (vanilla mobs, a player who never picked one) is neutral, never an
@@ -79,7 +80,15 @@ object SquadTeams {
         if (a === b) return false
         val fa = hostilityFaction(a) ?: return false
         val fb = hostilityFaction(b) ?: return false
-        return fa != fb
+        return !Diplomacy.friendly(fa, fb)
+    }
+
+    /** Both on a faction, and the same one, allied or at truce — see the `isAlliedTo` mixin. */
+    fun sameSide(a: Entity, b: Entity): Boolean {
+        if (a === b) return false
+        val fa = hostilityFaction(a) ?: return false
+        val fb = hostilityFaction(b) ?: return false
+        return Diplomacy.friendly(fa, fb)
     }
 
     /** Whose side [entity] is on for friend-or-foe purposes: an NPC's team, or a player's own pick

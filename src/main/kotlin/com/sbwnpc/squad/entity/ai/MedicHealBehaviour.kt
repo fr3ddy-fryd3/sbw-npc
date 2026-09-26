@@ -7,6 +7,7 @@ import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.npc.NpcClass
+import com.sbwnpc.squad.team.Diplomacy
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity
@@ -126,7 +127,8 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
         }
         NpcRegistry.forEachWithin(level, entity.position(), SCAN_RADIUS, exclude = entity) { ally ->
-            if (SquadTeams.factionOf(ally) == faction) consider(ally)
+            val side = SquadTeams.factionOf(ally)
+            if (side != null && Diplomacy.allied(side, faction)) consider(ally)
         }
         // Players of the same side too. sideOf() already leaves out creative players, who can't
         // be hurt in the first place; spectators neither.
@@ -134,7 +136,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
         for (player in level.players()) {
             if (player.isSpectator || player.distanceToSqr(entity) > r2) continue
             val side = SquadTeams.sideOf(player)
-            if (side == faction) consider(player)
+            if (side != null && Diplomacy.allied(side, faction)) consider(player)
             logPlayerCheck(entity, player, side, faction)
         }
         return best

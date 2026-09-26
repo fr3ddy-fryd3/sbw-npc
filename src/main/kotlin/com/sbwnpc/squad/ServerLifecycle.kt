@@ -23,7 +23,13 @@ import net.neoforged.neoforge.event.server.ServerStoppedEvent
 @EventBusSubscriber
 object ServerLifecycle {
     @SubscribeEvent
+    fun onServerStarted(event: net.neoforged.neoforge.event.server.ServerStartedEvent) {
+        com.sbwnpc.squad.team.Diplomacy.attach(event.server)
+    }
+
+    @SubscribeEvent
     fun onServerStopped(event: ServerStoppedEvent) {
+        com.sbwnpc.squad.team.Diplomacy.detach()
         TeamAwareness.clearAll()
         DeathSites.clearAll()
         MortarClaims.clearAll()

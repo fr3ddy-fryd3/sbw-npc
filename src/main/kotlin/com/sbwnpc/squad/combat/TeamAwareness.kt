@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.combat
 
 import com.sbwnpc.squad.npc.SquadFaction
+import com.sbwnpc.squad.team.Diplomacy
 import java.util.UUID
 
 /**
@@ -49,16 +50,30 @@ object TeamAwareness {
      *  candidate should treat that candidate as actionable regardless of this list (no delay for
      *  whoever just found it themself) — this only covers what's been relayed from elsewhere. */
     fun relayedContacts(faction: SquadFaction, tick: Long): List<UUID> {
-        val contacts = byFaction[faction] ?: return emptyList()
-        if (contacts.isEmpty()) return emptyList()
+        // Allies share what they see; an unallied faction is just itself.
+        val sides = Diplomacy.alliesOf(faction)
         // Called per NPC per sensor scan — one pass, one (usually empty) list, not filter + map.
         var result: MutableList<UUID>? = null
-        for ((id, contact) in contacts) {
-            if (tick - contact.lastSeenTick <= RECENT_WINDOW_TICKS && tick - contact.firstSeenTick >= ALERT_DELAY_TICKS) {
-                (result ?: ArrayList<UUID>(4).also { result = it }).add(id)
+        for (side in sides) {
+            val contacts = byFaction[side] ?: continue
+            for ((id, contact) in contacts) {
+                if (tick - contact.lastSeenTick <= RECENT_WINDOW_TICKS && tick - contact.firstSeenTick >= ALERT_DELAY_TICKS) {
+                    val list = result ?: ArrayList<UUID>(4).also { result = it }
+                    if (id !in list) list.add(id)
+                }
             }
         }
         return result ?: emptyList()
+    }
+
+    /** Everything [faction] and its allies have seen recently, with no relay delay — what a
+     *  commander would have marked on the map. */
+    fun knownContacts(faction: SquadFaction, tick: Long): Set<UUID> {
+        val out = HashSet<UUID>()
+        for (side in Diplomacy.alliesOf(faction)) {
+            byFaction[side]?.forEach { (id, c) -> if (tick - c.lastSeenTick <= RECENT_WINDOW_TICKS) out += id }
+        }
+        return out
     }
 
     /** [tick] must be ServerLevel.gameTime: entity tick counts are not comparable across NPCs. */

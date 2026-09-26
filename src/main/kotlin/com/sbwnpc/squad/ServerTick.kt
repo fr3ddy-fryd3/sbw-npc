@@ -12,5 +12,6 @@ object ServerTick {
     fun onServerTick(event: ServerTickEvent.Post) {
         SelectionHighlight.tick(event.server)
         PilotlessHelicopters.tick(event.server)
+        com.sbwnpc.squad.team.Diplomacy.tick(event.server)
     }
 }
