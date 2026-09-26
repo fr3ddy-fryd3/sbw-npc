@@ -10,7 +10,6 @@ import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
-import net.minecraft.world.entity.ai.util.DefaultRandomPos
 import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 
@@ -61,6 +60,8 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var orderStamp = -1
     /** A defender's chosen place — see [holdDefendPost]. Kept until the point or the order changes. */
     private var defendPost: Vec3? = null
+    /** On the way to a roaming spot — see [roamAround]. */
+    private var roaming = false
     private var defendPostHome: Vec3? = null
 
     // No memory gate needed — eligibility is purely squad/order/target state, same as the old goal's
@@ -152,9 +153,12 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
                     ?.points
                 if (!points.isNullOrEmpty()) {
                     tickRoute(entity, points)
+                } else if (entity.navigation.isDone && roaming) {
+                    // Got there: stand about for a while before the next spot.
+                    roaming = false
+                    repathCooldown = ROAM_PAUSE_MIN + entity.random.nextInt(ROAM_PAUSE_JITTER)
                 } else if (entity.navigation.isDone && repathCooldown == 0) {
-                    wanderNear(entity, home)
-                    repathCooldown = 40 + entity.random.nextInt(40)
+                    roamAround(entity, home)
                 }
             }
             SquadOrder.MOVE -> tickMove(entity, home)
@@ -377,18 +381,35 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
     }
 
-    private fun wanderNear(entity: NpcEntity, center: Vec3, range: Int = 12, maxDistance: Double = Double.POSITIVE_INFINITY) {
-        repeat(4) {
-            val target = DefaultRandomPos.getPosTowards(entity, range, 6, center, Math.PI / 2.0) ?: return
-            if (target.distanceToSqr(center) <= maxDistance * maxDistance) {
-                entity.navigation.moveTo(target.x, target.y, target.z, WALK_SPEED_MODIFIER)
+    /**
+     * A patrol with no route: every member drifts about the area on its own — a spot somewhere in
+     * [ROAM_RADIUS] of the point, a walk there, a pause to look around, and the next. Picking each
+     * spot as "a step toward the point", as this used to, drew the whole squad into a knot at the
+     * middle.
+     */
+    private fun roamAround(entity: NpcEntity, center: Vec3) {
+        val level = entity.level() as? ServerLevel ?: return
+        repeat(ROAM_ATTEMPTS) {
+            val angle = entity.random.nextDouble() * Math.PI * 2
+            val dist = Math.sqrt(entity.random.nextDouble()) * ROAM_RADIUS
+            val spot = com.sbwnpc.squad.util.Terrain.standableOrNull(
+                level, center.x + Math.cos(angle) * dist, center.y + 4.0, center.z + Math.sin(angle) * dist, 12
+            ) ?: return@repeat
+            if (entity.navigation.moveTo(spot.x, spot.y, spot.z, WALK_SPEED_MODIFIER)) {
+                roaming = true
                 return
             }
         }
+        repathCooldown = ROAM_PAUSE_MIN
     }
 
     companion object {
         private const val ROUTE_DWELL_TICKS = 40
+        private const val ROAM_RADIUS = 20.0
+        private const val ROAM_ATTEMPTS = 4
+        /** Standing about at a spot before heading for the next. */
+        private const val ROAM_PAUSE_MIN = 100
+        private const val ROAM_PAUSE_JITTER = 140
         private const val ARRIVAL_CHECK_INTERVAL_TICKS = 20
         private const val START_CHECK_INTERVAL_TICKS = 5
         private const val ROUTE_DWELL_JITTER = 40
