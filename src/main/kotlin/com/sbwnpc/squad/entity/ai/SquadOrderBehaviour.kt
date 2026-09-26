@@ -59,6 +59,9 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var moveAnchor: BlockPos? = null
     private var nextArrivalCheckTick = 0
     private var orderStamp = -1
+    /** A defender's chosen place — see [holdDefendPost]. Kept until the point or the order changes. */
+    private var defendPost: Vec3? = null
+    private var defendPostHome: Vec3? = null
 
     // No memory gate needed — eligibility is purely squad/order/target state, same as the old goal's
     // canUse(). Unlike GunAttackBehaviour/SeekCoverBehaviour/InvestigateBehaviour, nothing here is
@@ -89,6 +92,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun stop(entity: NpcEntity) {
         startCheck.reset()
+        com.sbwnpc.squad.combat.FiringSpots.release(entity.uuid)
     }
 
     override fun start(entity: NpcEntity) {
@@ -105,6 +109,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
             // Fresh command: path to it now, not after the cooldown left over from the last one.
             orderStamp = squad.orderStamp
             repathCooldown = 0
+            defendPost = null
         }
         if (repathCooldown > 0) repathCooldown--
 
@@ -136,8 +141,11 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
             // 3.5 RING_RADIUS made safe by accident — no longer safe by accident against 6.0).
             // A barraging mortar crew stays put by its tube exactly like DEFEND; only the aim
             // point differs, and that is MortarOperatorBehaviour's business.
-            SquadOrder.DEFEND, SquadOrder.BARRAGE ->
-                approachSlot(entity, home, dist <= SquadFormation.ARRIVAL_RADIUS + 4.5, WALK_SPEED_MODIFIER)
+            SquadOrder.DEFEND, SquadOrder.BARRAGE -> {
+                val arrived = dist <= SquadFormation.ARRIVAL_RADIUS + 4.5
+                if (arrived && order == SquadOrder.DEFEND) holdDefendPost(entity, home)
+                else approachSlot(entity, home, arrived, WALK_SPEED_MODIFIER)
+            }
             SquadOrder.PATROL -> {
                 val points = squad.routeId
                     ?.let { (entity.level() as? ServerLevel)?.let { lvl -> RouteManager.get(lvl).get(it) } }
@@ -245,6 +253,68 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (arrived && entity.target == null) faceOutward(entity, anchor)
     }
 
+    /**
+     * A defender's own place on the perimeter, picked once and then held: it walks there, stops,
+     * and watches outward until the order or the point changes. Near its perimeter slot it prefers
+     * a spot with low cover on the outward side — something to crouch behind that it can still see
+     * over — and keeps clear of where squadmates already are.
+     */
+    private fun holdDefendPost(entity: NpcEntity, home: Vec3) {
+        val level = entity.level() as? ServerLevel ?: return
+        val post = defendPost?.takeIf { defendPostHome == home } ?: chooseDefendPost(entity, level, home).also {
+            defendPost = it
+            defendPostHome = home
+            com.sbwnpc.squad.combat.FiringSpots.claim(entity.uuid, it)
+        }
+        val here = entity.position()
+        val dx = here.x - post.x
+        val dz = here.z - post.z
+        val settled = entity.navigation.isDone && dx * dx + dz * dz <= DEFEND_SETTLE_DISTANCE * DEFEND_SETTLE_DISTANCE
+        if (dx * dx + dz * dz > 1.0 && !settled) {
+            val pace = holdPace(entity, WALK_SPEED_MODIFIER)
+            if (repathCooldown == 0) {
+                entity.navigation.moveTo(post.x, post.y, post.z, pace)
+                repathCooldown = 20
+            }
+        } else {
+            entity.navigation.stop()
+        }
+        if (entity.target == null) faceOutward(entity, home)
+    }
+
+    private fun chooseDefendPost(entity: NpcEntity, level: ServerLevel, home: Vec3): Vec3 {
+        val slot = SquadFormation.slotTarget(entity, home, home.subtract(entity.position()), true)
+        val out = Vec3(slot.x - home.x, 0.0, slot.z - home.z)
+        val outward = if (out.lengthSqr() < 1.0e-4) Vec3(1.0, 0.0, 0.0) else out.normalize()
+        val taken = com.sbwnpc.squad.combat.FiringSpots.nearbyWithBodies(level, entity, DEFEND_POST_SEARCH + 2.0)
+        var best = slot
+        var bestScore = Double.NEGATIVE_INFINITY
+        val r = DEFEND_POST_SEARCH.toInt()
+        for (ox in -r..r) for (oz in -r..r) {
+            val ground = com.sbwnpc.squad.util.Terrain.standableOrNull(level, slot.x + ox, slot.y + 1.0, slot.z + oz) ?: continue
+            if (com.sbwnpc.squad.combat.FiringSpots.crowded(ground, taken)) continue
+            val score = coverScore(level, ground, outward) - Math.sqrt((ox * ox + oz * oz).toDouble()) * 0.3
+            if (score > bestScore) {
+                bestScore = score
+                best = ground
+            }
+        }
+        return best
+    }
+
+    /** Low cover on the outward side scores best (crouch behind it, see over it); a full-height
+     *  wall some (cover, but blind); open ground nothing. */
+    private fun coverScore(level: ServerLevel, spot: Vec3, outward: Vec3): Double {
+        val front = BlockPos.containing(spot.x + outward.x, spot.y, spot.z + outward.z)
+        val knee = !level.getBlockState(front).getCollisionShape(level, front).isEmpty
+        val chest = !level.getBlockState(front.above()).getCollisionShape(level, front.above()).isEmpty
+        return when {
+            knee && !chest -> 3.0
+            knee || chest -> 1.0
+            else -> 0.0
+        }
+    }
+
     /** While holding a perimeter slot with nothing to shoot at, look away from the anchor instead
      *  of standing there facing an arbitrary direction — "guns pointing outward" per user feedback.
      *  No-op once there's a real target: GunAttackBehaviour's own lookAt (higher priority) takes over. */
@@ -324,6 +394,9 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val ROUTE_DWELL_JITTER = 40
         private const val MOVE_SLOT_RADIUS = 2.0
         private const val SLOT_SETTLE_DISTANCE = 3.0
+        /** How far around its perimeter slot a defender looks for a better spot. */
+        private const val DEFEND_POST_SEARCH = 3.0
+        private const val DEFEND_SETTLE_DISTANCE = 2.5
         private const val MOVE_RALLY_TIMEOUT_TICKS = 100L
         // Per user request: MOVE/DEFEND/PATROL should read as a calm hold/patrol, not a constant
         // jog — only actually taking a point (ATTACK) or engaging (GunAttackBehaviour, which already
