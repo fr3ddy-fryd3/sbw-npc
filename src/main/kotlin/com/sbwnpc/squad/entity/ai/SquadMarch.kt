@@ -42,8 +42,18 @@ object SquadMarch {
     private const val NO_PROGRESS = 8.0
     private const val TURN_DEGREES = 50.0
 
-    private class March(val goal: BlockPos, val stamp: Int) {
+    /** A man this near a route's nodes (or where an unplanned one starts) is on it. */
+    private const val JOIN = 12.0
+    /** Routes a squad may have at once — parties bound elsewhere, stragglers finding their way. */
+    private const val MAX_MARCHES = 8
+    /** A route nobody has asked for in this long is dropped. */
+    private const val IDLE_TICKS = 200L
+    /** Older nodes beyond this many are dropped from the back of a growing route. */
+    private const val MAX_ROUTE_NODES = 400
+
+    private class March(val goal: BlockPos, val stamp: Int, val origin: BlockPos) {
         var route: List<BlockPos> = emptyList()
+        var lastUsed = 0L
         // Far enough back that a first leg is due at once, near enough that "now - plannedAt"
         // can't overflow (from Long.MIN_VALUE it came out negative and no leg was ever planned).
         var plannedAt = -MIN_REPLAN_TICKS
@@ -54,7 +64,7 @@ object SquadMarch {
         var complete = false
     }
 
-    private val bySquad = HashMap<UUID, March>()
+    private val bySquad = HashMap<UUID, MutableList<March>>()
     private var lastPlanTick = Long.MIN_VALUE
 
     fun clearAll() {
@@ -69,13 +79,19 @@ object SquadMarch {
     fun waypointFor(npc: NpcEntity, goal: BlockPos): BlockPos? {
         val level = npc.level() as? ServerLevel ?: return null
         val squad = npc.currentSquad() ?: return null
-        var march = bySquad[squad.id]
-        if (march == null || march.stamp != squad.orderStamp ||
-            !march.goal.closerThan(goal, SAME_GOAL)
-        ) {
-            march = March(goal, squad.orderStamp)
-            bySquad[squad.id] = march
-        }
+        val marches = bySquad.getOrPut(squad.id) { ArrayList() }
+        marches.removeAll { it.stamp != squad.orderStamp || level.gameTime - it.lastUsed > IDLE_TICKS }
+        // The route this man is on: bound for the same place and passing close by him. One route
+        // per squad had two parties bound for different points re-planning it from under each
+        // other every second, and left a man who had strayed off it — down a cave — aiming for a
+        // node sixty blocks away through rock. Anyone on no route gets one of his own.
+        val march = marches
+            .filter { it.goal.closerThan(goal, SAME_GOAL) }
+            .map { it to distanceTo(it, npc) }
+            .filter { it.second <= JOIN }
+            .minByOrNull { it.second }?.first
+            ?: (if (marches.size < MAX_MARCHES) March(goal, squad.orderStamp, npc.blockPosition()).also { marches += it } else return null)
+        march.lastUsed = level.gameTime
         val route = march.route
         val here = nearestIndex(route, npc)
         val atEnd = route.isEmpty() || here >= route.size - END_NODES
@@ -85,6 +101,12 @@ object SquadMarch {
         }
         if (route.isEmpty()) return null
         return route[(here + LOOKAHEAD).coerceAtMost(route.size - 1)]
+    }
+
+    /** How far [npc] is from [march]'s route — or, before it has one, from where it starts. */
+    private fun distanceTo(march: March, npc: NpcEntity): Double {
+        if (march.route.isEmpty()) return Math.sqrt(march.origin.distToCenterSqr(npc.x, npc.y, npc.z))
+        return Math.sqrt(march.route[nearestIndex(march.route, npc)].distToCenterSqr(npc.x, npc.y, npc.z))
     }
 
     private fun nearestIndex(route: List<BlockPos>, npc: NpcEntity): Int {
@@ -130,7 +152,8 @@ object SquadMarch {
         val progressed = end != null && Math.sqrt(end.distSqr(from)) >= NO_PROGRESS
         val reached = path?.canReach() == true
         if (progressed) {
-            march.route = route
+            // Added on, not swapped in: the men still behind on the last leg keep their way.
+            march.route = (march.route + route).takeLast(MAX_ROUTE_NODES)
             march.failures = 0
             // Done once a straight leg found its way right to the goal; from there the ordinary
             // search takes each man to his own place.
@@ -140,8 +163,8 @@ object SquadMarch {
             march.misses++
         }
         DebugFlags.log(
-            "[march-debug] {} leg from {} toward {} (goal {}, {} blocks, turn {}): {} nodes, reached={}, end={}, {} ms",
-            squadName, from, target, march.goal, len.toInt(), if (straight) 0 else march.failures,
+            "[march-debug] {} route {} leg from {} toward {} (goal {}, {} blocks, turn {}): {} nodes, reached={}, end={}, {} ms",
+            squadName, march.origin, from, target, march.goal, len.toInt(), if (straight) 0 else march.failures,
             route.size, reached, end, "%.1f".format((System.nanoTime() - started) / 1.0e6)
         )
         if (march.misses >= GIVE_UP) {
