@@ -25,6 +25,9 @@ import com.sbwnpc.squad.SquadMod
 object DebugFlags {
     var MARKERS_ENABLED = BuildFlags.DEBUG_ENABLED
     var LOGGING_ENABLED = BuildFlags.DEBUG_ENABLED
+    /** The map feed shows every faction's squads, NPCs and vehicles, not just the player's side
+     *  and the enemies it has spotted — for testing, where one player fields every side. */
+    var MAP_SHOWS_ALL = BuildFlags.DEBUG_ENABLED
 
     /** Same `{}`-placeholder contract as `Logger.info(format, args...)` — call sites keep their
      *  messages verbatim; only the formatting + write is skipped while the flag is off. */
