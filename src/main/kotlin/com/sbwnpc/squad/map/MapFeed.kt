@@ -68,8 +68,12 @@ object MapFeed {
         val routes = RouteManager.get(server)
         val squadList = ListTag()
         val inSquad = HashSet<UUID>()
+        // The player's own squads whatever faction they were raised in (anyone may field several),
+        // plus everything on the sides allied with the player's faction.
+        val shown = sides.toMutableSet()
+        for (squad in squads.all()) if (squad.owner == player.uuid) shown += squad.faction
         for (squad in squads.all()) {
-            if (squad.faction !in sides) continue
+            if (squad.owner != player.uuid && squad.faction !in sides) continue
             val members = squad.members.mapNotNull { level.getEntity(it) as? NpcEntity }.filter { it.isAlive }
             inSquad += squad.members
             if (members.isEmpty()) continue
@@ -100,20 +104,20 @@ object MapFeed {
         for (npc in NpcRegistry.all(level)) {
             if (!npc.isAlive || npc.uuid in inSquad || npc.vehicle != null) continue
             val side = SquadTeams.factionOf(npc) ?: continue
-            if (side !in sides) continue
+            if (side !in shown) continue
             loose.add(point(side, npc))
         }
         tag.put("Loose", loose)
 
         // Friendly vehicles by who is aboard; hostile ones only once seen, through their crew.
-        val known = TeamAwareness.knownContacts(faction, level.gameTime)
+        val known = shown.flatMap { TeamAwareness.knownContacts(it, level.gameTime) }.toSet()
         val vehicles = ListTag()
         val enemies = ListTag()
         val seenVehicles = HashSet<UUID>()
         for (entity in level.allEntities) {
             if (!Ports.vehicles.isVehicle(entity) || !entity.isAlive) continue
             val crew = entity.passengers.firstNotNullOfOrNull { SquadTeams.sideOf(it) } ?: continue
-            if (crew in sides) {
+            if (crew in shown) {
                 vehicles.add(point(crew, entity).also { it.putBoolean("Air", Helicopters.isHelicopter(entity)) })
                 seenVehicles += entity.uuid
             }
@@ -122,7 +126,7 @@ object MapFeed {
             val contact = level.getEntity(id) ?: continue
             if (!contact.isAlive) continue
             val side = SquadTeams.sideOf(contact) ?: continue
-            if (side in sides) continue
+            if (side in shown) continue
             val ride = contact.vehicle?.takeIf(Ports.vehicles::isVehicle)
             if (ride != null) {
                 if (!seenVehicles.add(ride.uuid)) continue
