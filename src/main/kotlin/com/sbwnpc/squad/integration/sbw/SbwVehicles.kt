@@ -34,6 +34,8 @@ object SbwVehicles : Vehicles {
     /** Starting small-arms and autocannon ammunition, as a multiple of one full stack of each
      *  kind (per user call). Tank main-gun shells are not scaled. */
     private const val AMMO_SCALE = 4
+    /** Machine-gun belts go fastest of all, so rifle rounds get twice the rest (per user call). */
+    private const val RIFLE_ROUNDS = 64 * AMMO_SCALE * 2
 
     private val types: Map<VehicleModel, () -> EntityType<*>> = mapOf(
         TankModel.ZTZ_99A to { ModEntities.ZTZ_99A.get() },
@@ -96,7 +98,7 @@ object SbwVehicles : Vehicles {
                 // Main-gun shells stay at a stack each; the scale is for small arms and autocannons.
                 hold.stow(ModItems.LARGE_SHELL_AP.get(), 64)
                 hold.stow(ModItems.LARGE_SHELL_HE.get(), 64)
-                hold.stow(ModItems.RIFLE_AMMO.get(), 64 * AMMO_SCALE)
+                hold.stow(ModItems.RIFLE_AMMO.get(), RIFLE_ROUNDS)
                 hold.stow(ModItems.HEAVY_AMMO.get(), 64 * AMMO_SCALE)
             }
             // Which round a cannon fires is its selected ammo type, not a slot (see loadRound), so
@@ -110,8 +112,14 @@ object SbwVehicles : Vehicles {
                 hold.stow(ModItems.SMALL_SHELL_HE.get(), 64 * AMMO_SCALE)
                 hold.stow(ModItems.SMALL_ROCKET.get(), 16 * AMMO_SCALE)
             }
-            // Small-caliber AP only, per user call — a short supply, not the full loadout the tanks get.
-            is TransportVehicle -> hold.stow(ModItems.SMALL_SHELL_AP.get(), 4 * AMMO_SCALE)
+            // Autocannon AP/HE and the 7.62 coax, all three models (sbw/vehicles/*.json); the BMP-2
+            // and LAV-25 also carry an ATGM — a single-shot launcher, one stack of its missiles.
+            is TransportVehicle -> {
+                hold.stow(ModItems.SMALL_SHELL_AP.get(), 64 * AMMO_SCALE)
+                hold.stow(ModItems.SMALL_SHELL_HE.get(), 64 * AMMO_SCALE)
+                hold.stow(ModItems.RIFLE_AMMO.get(), RIFLE_ROUNDS)
+                if (model != TransportVehicle.LAV_150) hold.stow(ModItems.MEDIUM_ANTI_GROUND_MISSILE.get(), 4)
+            }
             else -> {}
         }
     }
