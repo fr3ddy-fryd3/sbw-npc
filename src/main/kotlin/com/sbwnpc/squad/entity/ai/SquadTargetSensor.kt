@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.entity.ai
 
+import com.sbwnpc.squad.combat.FireAllocation
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.combat.Vision
 import com.sbwnpc.squad.combat.TankWeaponSelection
@@ -106,7 +107,9 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
                 val range = VehicleTargeting.rangeFor(it, NpcEntity.DETECTION_RANGE)
                 it.isAlive && it !== mob && SquadTeams.isHostile(mob, it) && mob.distanceToSqr(it) <= range * range
             }
-            .minByOrNull { mob.distanceToSqr(it) }
+            .sortedBy { mob.distanceToSqr(it) }
+            .toList()
+            .let { FireAllocation.pick(mob, level, it) }
     }
 
     // Two cost fixes versus the naive "filter by LOS, then take the nearest" version:
@@ -130,20 +133,28 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         if (hostiles.isEmpty()) return null
         val rangeSqr = NpcEntity.DETECTION_RANGE * NpcEntity.DETECTION_RANGE
         hostiles.sortBy { mob.distanceToSqr(it) }
+        // The nearest few in sight, not just the nearest: squadmates may already have it covered
+        // (see FireAllocation). Still stops raycasting early — a few candidates is plenty.
+        val visible = ArrayList<LivingEntity>(MAX_SPREAD_CANDIDATES)
         for (candidate in hostiles) {
             if (mob.distanceToSqr(candidate) > rangeSqr) break // box corners reach past the sphere
             // Cheaper than the raycast and rejects more, so it goes first. Head rotation, not body
             // yaw: an NPC scanning around while it walks is looking where its head points.
             if (!Vision.inCone(mob.position(), mob.yHeadRot, candidate.position())) continue
-            if (mob.sensing.hasLineOfSight(candidate)) return candidate
+            if (mob.sensing.hasLineOfSight(candidate)) {
+                visible += candidate
+                if (visible.size >= MAX_SPREAD_CANDIDATES || mob.currentSquad() == null) break
+            }
         }
-        return null
+        return FireAllocation.pick(mob, level, visible)
     }
 
     companion object {
         private const val SCAN_RATE_MIN = 15
         private const val SCAN_RATE_JITTER = 11 // 15..25 ticks, mean 20 — same average as before
         private const val DETECTION_HEIGHT = 24.0
+        /** How many visible enemies a scan considers when spreading the squad's fire. */
+        private const val MAX_SPREAD_CANDIDATES = 4
 
         private val MEMORIES: List<MemoryModuleType<*>> = listOf(MemoryModuleType.ATTACK_TARGET)
     }
