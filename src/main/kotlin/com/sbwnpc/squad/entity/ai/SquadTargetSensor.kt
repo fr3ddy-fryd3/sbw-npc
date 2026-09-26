@@ -77,6 +77,16 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
 
         mob.lastHurtByMob?.takeIf { it.isAlive && SquadTeams.isHostile(mob, it) }?.let { return it }
 
+        // Falling back, a target has to be one this man can shoot from where he stands: the
+        // covering half is there to fire, and a relayed contact behind a hill gives it nothing to
+        // do. Facing away from the enemy, it would see nothing through its own eyes either — so
+        // what the squad is already shooting at comes next, whichever way he faces.
+        if (!isMortarCrew && mob.retreatPoint() != null) {
+            nearestDirectTarget(mob, level)?.let { return it }
+            squadmateTarget(mob, level)?.let { return it }
+            return relayedTarget(mob, level)
+        }
+
         if (!isMortarCrew) {
             relayedTarget(mob, level)?.let { return it }
         }
@@ -96,6 +106,21 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             }
             else -> null
         }
+    }
+
+    /** A target a squadmate is engaging that this member can see too. Squadmates call out what
+     *  they shoot at, so this skips the vision cone the way a relayed contact does. */
+    private fun squadmateTarget(mob: NpcEntity, level: ServerLevel): LivingEntity? {
+        val squad = mob.currentSquad() ?: return null
+        val rangeSqr = NpcEntity.DETECTION_RANGE * NpcEntity.DETECTION_RANGE
+        val seen = HashSet<LivingEntity>()
+        for (id in squad.members) {
+            if (id == mob.uuid) continue
+            val t = (level.getEntity(id) as? NpcEntity)?.target ?: continue
+            if (t.isAlive && SquadTeams.isHostile(mob, t) && mob.distanceToSqr(t) <= rangeSqr) seen += t
+        }
+        val visible = seen.sortedBy { mob.distanceToSqr(it) }.filter { mob.sensing.hasLineOfSight(it) }
+        return FireAllocation.pick(mob, level, visible)
     }
 
     private fun relayedTarget(mob: NpcEntity, level: ServerLevel): LivingEntity? {

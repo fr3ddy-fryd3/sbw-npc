@@ -30,7 +30,9 @@ object Withdrawal {
     /** A path that ended this near counts too: the exact spot may not be standable. */
     private const val SETTLED = 6.0
     /** A bound that takes longer than this has stalled — someone is stuck; swap anyway. */
-    private const val MAX_BOUND_TICKS = 160L
+    private const val MAX_BOUND_TICKS = 100L
+    /** Everyone this close to the rally point: the squad is there, and holds it. */
+    private const val ARRIVED_AT_POINT = SquadFormation.ARRIVAL_RADIUS + 4.0
 
     private class State(val point: Vec3) {
         /** Which half (slot parity) is running. */
@@ -74,6 +76,16 @@ object Withdrawal {
         val members = squad.members.mapNotNull { level.getEntity(it) as? NpcEntity }.filter { it.isAlive }
         state.members = members
         if (members.isEmpty()) return
+        // There: hold it. SquadOrderBehaviour makes the same switch, but only for members with
+        // nobody to shoot at — under fire it never ran, and the squad stayed "retreating" forever.
+        // Three in four is "there": one man pinned in a ditch shouldn't keep the rest running.
+        val there = members.count { it.position().distanceTo(state.point) <= ARRIVED_AT_POINT }
+        if (there * 4 >= members.size * 3) {
+            squad.order = com.sbwnpc.squad.squad.SquadOrder.DEFEND
+            bySquad.remove(squad.id)
+            DebugFlags.log("[retreat-debug] squad {} reached its rally point, defending", squad.name)
+            return
+        }
         state.inContact = members.any { it.target?.isAlive == true }
         if (!state.inContact) {
             state.targets.clear()
@@ -81,6 +93,8 @@ object Withdrawal {
         }
         val runners = members.filter { half(it, squad) == state.moving }
         val boundDone = state.targets.isNotEmpty() && runners.all { m ->
+            // Pinned down in cover or dug in: it isn't coming this bound, so don't wait on it.
+            if (m.combatLockedByCover() || m.diggedIn) return@all true
             val spot = state.targets[m.uuid] ?: return@all true
             val d = m.position().distanceTo(spot)
             d <= ARRIVED || (m.navigation.isDone && d <= SETTLED) ||
