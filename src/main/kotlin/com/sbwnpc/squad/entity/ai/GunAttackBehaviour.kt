@@ -104,7 +104,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     companion object {
         private const val BASE_SHOOT_DISTANCE = 24.0
-        private const val DEFEND_LEASH_DROP = 24.0
+        /** How far past its ring a defender may be drawn before it gives up the target and goes back. */
+        private const val DEFEND_LEASH_MARGIN = 12.0
         private const val SIDESTEP_COOLDOWN = 5
         private const val MAX_SIDESTEP_ATTEMPTS = 3
         private const val SIDESTEP_BATCH_COOLDOWN = 40
@@ -575,7 +576,10 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             else holdFiringPosition(entity, target)
         } else if (defendHome != null) {
             val fromHome = entity.position().distanceTo(defendHome)
-            if (fromHome > DEFEND_LEASH_DROP) {
+            // Measured past the squad's own ring: a flat 24 was inside the ring a big squad
+            // defends from, and every man at his post dropped his target the moment he saw one.
+            val leash = SquadFormation.perimeterRadius(squad?.members?.size ?: 1) + DEFEND_LEASH_MARGIN
+            if (fromHome > leash) {
                 entity.target = null
                 entity.navigation.moveTo(defendHome.x, defendHome.y, defendHome.z, 1.0)
                 return
