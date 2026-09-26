@@ -22,7 +22,11 @@ object VehicleTargeting {
         level: ServerLevel,
         range: Double
     ): LivingEntity? {
-        val box = AABB.ofSize(entity.position(), range * 2, SEARCH_HEIGHT * 2, range * 2)
+        // From a helicopter the ground is a long way down: search as far as the ground can see it.
+        val airborne = isAircrew(entity)
+        val height = if (airborne) AIR_SEARCH_HEIGHT else SEARCH_HEIGHT
+        @Suppress("NAME_SHADOWING") val range = if (airborne) range * AIR_RANGE_FACTOR else range
+        val box = AABB.ofSize(entity.position(), range * 2, height * 2, range * 2)
         // Vehicle-borne hostiles only, cheapest filters first; the raycast is done last and only
         // until the first (nearest) visible one — not for every candidate.
         val occupants = level.getEntitiesOfClass(LivingEntity::class.java, box) {
@@ -76,8 +80,8 @@ object VehicleTargeting {
     /** Whether [target] is flying one, for callers that range-check a target they were handed. */
     fun isAircrew(target: Entity): Boolean = target.vehicle?.let { Helicopters.isHelicopter(it) } == true
 
-    private const val AIR_RANGE_FACTOR = 2.0
-    private const val AIR_SEARCH_HEIGHT = 100.0
+    const val AIR_RANGE_FACTOR = 2.0
+    const val AIR_SEARCH_HEIGHT = 100.0
     private const val AIRCRAFT_REFRESH_TICKS = 10L
 
     private class AircraftList(val at: Long, val list: List<Entity>)

@@ -151,12 +151,18 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     }
 
     private fun nearestGroundTarget(mob: NpcEntity, level: ServerLevel): LivingEntity? {
-        val box = mob.boundingBox.inflate(NpcEntity.DETECTION_RANGE, DETECTION_HEIGHT, NpcEntity.DETECTION_RANGE)
+        // Riding a helicopter, the ground is sighted the way the ground sights a helicopter: twice
+        // as far, a hundred blocks up or down, all round (the airframe turns, not the man in it),
+        // and not through vanilla's line-of-sight check, which gives up at 128 blocks.
+        val airborne = VehicleTargeting.isAircrew(mob)
+        val range = if (airborne) NpcEntity.DETECTION_RANGE * VehicleTargeting.AIR_RANGE_FACTOR else NpcEntity.DETECTION_RANGE
+        val height = if (airborne) VehicleTargeting.AIR_SEARCH_HEIGHT else DETECTION_HEIGHT
+        val box = mob.boundingBox.inflate(range, height, range)
         val hostiles = level.getEntitiesOfClass(LivingEntity::class.java, box) { candidate ->
             candidate !== mob && candidate.isAlive && SquadTeams.isHostile(mob, candidate)
         }
         if (hostiles.isEmpty()) return null
-        val rangeSqr = NpcEntity.DETECTION_RANGE * NpcEntity.DETECTION_RANGE
+        val rangeSqr = range * range
         hostiles.sortBy { mob.distanceToSqr(it) }
         // The nearest few in sight, not just the nearest: squadmates may already have it covered
         // (see FireAllocation). Still stops raycasting early — a few candidates is plenty.
@@ -165,8 +171,10 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             if (mob.distanceToSqr(candidate) > rangeSqr) break // box corners reach past the sphere
             // Cheaper than the raycast and rejects more, so it goes first. Head rotation, not body
             // yaw: an NPC scanning around while it walks is looking where its head points.
-            if (!Vision.inCone(mob.position(), mob.yHeadRot, candidate.position())) continue
-            if (mob.sensing.hasLineOfSight(candidate)) {
+            if (!airborne && !Vision.inCone(mob.position(), mob.yHeadRot, candidate.position())) continue
+            val sees = if (airborne) !com.sbwnpc.squad.combat.Sightline.blocked(level, mob.eyePosition, candidate.eyePosition, mob)
+                else mob.sensing.hasLineOfSight(candidate)
+            if (sees) {
                 visible += candidate
                 if (visible.size >= MAX_SPREAD_CANDIDATES || mob.currentSquad() == null) break
             }
