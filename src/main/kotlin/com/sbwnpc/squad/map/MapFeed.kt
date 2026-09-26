@@ -77,17 +77,27 @@ object MapFeed {
             if (squad.owner != player.uuid && squad.faction !in shown) continue
             val members = squad.members.mapNotNull { level.getEntity(it) as? NpcEntity }.filter { it.isAlive }
             inSquad += squad.members
-            if (members.isEmpty()) continue
+            // Out of loaded range: shown where it was last seen, so it can still be picked out
+            // and ordered (which wakes it — see SquadChunkLoader).
+            val asleep = members.isEmpty()
+            val lastSeen = squad.lastSeen
+            if (asleep && (lastSeen == null || (squad.lastSeenDim ?: net.minecraft.world.level.Level.OVERWORLD) != level.dimension())) continue
             val t = CompoundTag()
+            t.putBoolean("Asleep", asleep)
             t.putUUID("Id", squad.id)
             t.putString("Name", squad.name)
             t.putInt("F", squad.faction.ordinal)
             t.putBoolean("Own", squad.owner == player.uuid)
             t.putString("Order", squad.order.name)
             t.putBoolean("Mortar", squads.isMortarSquad(squad))
-            t.putInt("N", members.size)
-            t.putInt("X", members.sumOf { it.x }.div(members.size).toInt())
-            t.putInt("Z", members.sumOf { it.z }.div(members.size).toInt())
+            t.putInt("N", if (asleep) squad.members.size else members.size)
+            if (asleep) {
+                t.putInt("X", lastSeen!!.x)
+                t.putInt("Z", lastSeen.z)
+            } else {
+                t.putInt("X", members.sumOf { it.x }.div(members.size).toInt())
+                t.putInt("Z", members.sumOf { it.z }.div(members.size).toInt())
+            }
             squad.objective?.let { t.putIntArray("Obj", intArrayOf(it.x, it.y, it.z)) }
             if (squad.order == SquadOrder.BARRAGE) t.putInt("Zone", MortarOperatorBehaviour.BARRAGE_RADIUS.toInt())
             if (squad.order == SquadOrder.PATROL) {

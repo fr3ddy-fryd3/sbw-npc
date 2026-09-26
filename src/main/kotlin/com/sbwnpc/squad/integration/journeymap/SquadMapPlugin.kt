@@ -90,8 +90,14 @@ class SquadMapPlugin : IClientPlugin {
             val order = runCatching { SquadOrder.valueOf(t.getString("Order")) }.getOrNull()
             val name = t.getString("Name")
             val at = BlockPos(t.getInt("X"), 0, t.getInt("Z"))
-            val marker = marker(dim, at, MapShapes.SQUARE, color, SQUAD_SIZE, if (own) 1f else ALLY_OPACITY)
-            marker.setTitle("$name — ${order?.name ?: "?"} (${t.getInt("N")})")
+            val asleep = t.getBoolean("Asleep")
+            val opacity = when {
+                asleep -> ASLEEP_OPACITY
+                own -> 1f
+                else -> ALLY_OPACITY
+            }
+            val marker = marker(dim, at, MapShapes.SQUARE, color, SQUAD_SIZE, opacity)
+            marker.setTitle("$name — ${order?.name ?: "?"} (${t.getInt("N")})" + if (asleep) " — out of range, last seen here" else "")
             marker.setLabel(name)
             marker.setTextProperties(TextProperties().setColor(color).setScale(0.8f).setOffsetY(10))
             val id = t.getUUID("Id").toString()
@@ -249,6 +255,7 @@ class SquadMapPlugin : IClientPlugin {
         const val LOOSE_SIZE = 6.0
         const val VEHICLE_SIZE = 11.0
         const val ALLY_OPACITY = 0.7f
+        const val ASLEEP_OPACITY = 0.4f
         const val OBJECTIVE_SIZE = 3
         const val BARRACKS_SIZE = 2
         const val CIRCLE_POINTS = 32
