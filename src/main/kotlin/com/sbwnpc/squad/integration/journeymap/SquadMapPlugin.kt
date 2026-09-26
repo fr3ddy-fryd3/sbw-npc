@@ -41,8 +41,9 @@ import java.awt.geom.Point2D
  * - JourneyMap's own radar would draw every NPC in range, enemies included, whether anyone on the
  *   player's side has seen them or not; our NPCs are taken off it and drawn from the feed instead.
  * - Left-click one of your squads' squares to select it (a ring marks it, and it becomes the
- *   squad the command tool and quick-command HUD work on too); right-click anywhere on the map
- *   then gives "Move / Attack / Defend / Retreat here" for it. Right-click on the square itself
+ *   squad the command tool and quick-command HUD work on too); Shift+click adds or removes squads
+ *   for a group. Right-click anywhere on the map then gives "Move / Attack / Defend / Retreat
+ *   here" for everything selected. Right-click on the square itself
  *   changes its order in place. A list of squads in the menu would have to scroll past a
  *   handful, and JourneyMap's menus don't.
  *
@@ -52,8 +53,8 @@ import java.awt.geom.Point2D
 class SquadMapPlugin : IClientPlugin {
     private lateinit var api: IClientAPI
 
-    /** The squad map orders go to, picked by clicking its square. */
-    private var selected: String? = null
+    /** The squads map orders go to, picked by clicking their squares. */
+    private val selected = LinkedHashSet<String>()
 
     override fun getModId(): String = SquadMod.MODID
 
@@ -92,7 +93,7 @@ class SquadMapPlugin : IClientPlugin {
             val id = t.getUUID("Id").toString()
             if (own) marker.setOverlayListener(SquadListener(id))
             show(marker)
-            if (own && id == selected) {
+            if (own && id in selected) {
                 show(outline(dim, square(at, SELECTION_RING), color).also { it.setTitle("$name (selected)") })
             }
 
@@ -157,23 +158,34 @@ class SquadMapPlugin : IClientPlugin {
     // --- Orders ---
 
     private fun addOrderMenu(menu: ModPopupMenu) {
-        val id = selected ?: return
-        val squad = list(MapState.latest ?: return, "Squads")
-            .firstOrNull { it.getBoolean("Own") && it.getUUID("Id").toString() == id }
-        if (squad == null) {
-            selected = null
-            return
-        }
-        val name = squad.getString("Name")
+        if (selected.isEmpty()) return
+        val own = list(MapState.latest ?: return, "Squads").filter { it.getBoolean("Own") }
+            .associateBy { it.getUUID("Id").toString() }
+        // Squads that have since been disbanded or wiped out drop out of the selection.
+        selected.retainAll(own.keys)
+        if (selected.isEmpty()) return
+        val ids = selected.toList()
+        val who = if (ids.size == 1) own.getValue(ids[0]).getString("Name") else "${ids.size} squads"
         for ((label, order) in POINT_ORDERS) {
-            menu.addMenuItem("$name: $label") { pos -> sendOrder(id, order, pos) }
+            menu.addMenuItem("$who: $label") { pos -> ids.forEach { sendOrder(it, order, pos) } }
         }
-        menu.addMenuItem("Deselect $name") { _ -> select(null) }
+        menu.addMenuItem("Deselect $who") { _ -> select(null, add = false) }
     }
 
-    private fun select(id: String?) {
-        selected = id
-        if (id != null) PacketDistributor.sendToServer(SquadCmdPayload(SquadCmdPayload.SELECT, id, 0, ""))
+    /** A plain click selects [id] alone (or clears it if it was the only one); [add] toggles it
+     *  in or out of the current group. */
+    private fun select(id: String?, add: Boolean) {
+        when {
+            id == null -> selected.clear()
+            add -> if (!selected.remove(id)) selected += id
+            selected.size == 1 && id in selected -> selected.clear()
+            else -> {
+                selected.clear()
+                selected += id
+            }
+        }
+        // The command tool and the HUD work on one squad: the last one picked.
+        if (id != null && id in selected) PacketDistributor.sendToServer(SquadCmdPayload(SquadCmdPayload.SELECT, id, 0, ""))
         // Not straight away: this runs inside JourneyMap's own click handling, while it is still
         // going over the overlays a redraw would remove.
         net.minecraft.client.Minecraft.getInstance().tell { MapState.latest?.let(::redraw) }
@@ -187,7 +199,7 @@ class SquadMapPlugin : IClientPlugin {
     private inner class SquadListener(private val squad: String) : IOverlayListener {
         override fun onMouseClick(state: UIState, mouse: Point2D.Double, pos: BlockPos, button: Int, doubleClick: Boolean): Boolean {
             if (button != 0) return true
-            select(if (selected == squad) null else squad)
+            select(squad, add = net.minecraft.client.gui.screens.Screen.hasShiftDown())
             // Handled — same answer JourneyMap's own overlays give for a click they take.
             return false
         }
