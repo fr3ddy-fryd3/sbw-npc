@@ -143,7 +143,11 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
             // A barraging mortar crew stays put by its tube exactly like DEFEND; only the aim
             // point differs, and that is MortarOperatorBehaviour's business.
             SquadOrder.DEFEND, SquadOrder.BARRAGE -> {
-                val arrived = dist <= if (order == SquadOrder.DEFEND) SquadFormation.defendArrivalRadius(squad.members.size)
+                // A defender that has picked its post keeps making for it: its way there can lead
+                // out past the arrival line first, and flipping back to "not arrived" there had it
+                // turning round for the centre and back again, over and over.
+                val hasPost = order == SquadOrder.DEFEND && defendPost != null && defendPostHome == home
+                val arrived = hasPost || dist <= if (order == SquadOrder.DEFEND) SquadFormation.defendArrivalRadius(squad.members.size)
                     else SquadFormation.ARRIVAL_RADIUS + 4.5
                 if (arrived && order == SquadOrder.DEFEND) holdDefendPost(entity, home)
                 else approachSlot(entity, home, arrived, WALK_SPEED_MODIFIER)
