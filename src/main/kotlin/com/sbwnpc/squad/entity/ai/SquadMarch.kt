@@ -44,7 +44,9 @@ object SquadMarch {
 
     private class March(val goal: BlockPos, val stamp: Int) {
         var route: List<BlockPos> = emptyList()
-        var plannedAt = Long.MIN_VALUE
+        // Far enough back that a first leg is due at once, near enough that "now - plannedAt"
+        // can't overflow (from Long.MIN_VALUE it came out negative and no leg was ever planned).
+        var plannedAt = -MIN_REPLAN_TICKS
         var failures = 0
         /** Legs that got nowhere, all told — past [GIVE_UP] the goal has no way to it on foot. */
         var misses = 0
