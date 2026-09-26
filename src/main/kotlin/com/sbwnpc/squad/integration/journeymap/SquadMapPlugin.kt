@@ -56,6 +56,10 @@ class SquadMapPlugin : IClientPlugin {
     /** The squads map orders go to, picked by clicking their squares. */
     private val selected = LinkedHashSet<String>()
 
+    /** What the menu needs to know about the player's squads, kept from the last feed each was in. */
+    private class Known(val name: String, val mortar: Boolean)
+    private val known = HashMap<String, Known>()
+
     override fun getModId(): String = SquadMod.MODID
 
     override fun initialize(api: IClientAPI) {
@@ -91,6 +95,7 @@ class SquadMapPlugin : IClientPlugin {
             marker.setLabel(name)
             marker.setTextProperties(TextProperties().setColor(color).setScale(0.8f).setOffsetY(10))
             val id = t.getUUID("Id").toString()
+            if (own) known[id] = Known(name, t.getBoolean("Mortar"))
             if (own) marker.setOverlayListener(SquadListener(id))
             show(marker)
             if (own && id in selected) {
@@ -158,17 +163,16 @@ class SquadMapPlugin : IClientPlugin {
     // --- Orders ---
 
     private fun addOrderMenu(menu: ModPopupMenu) {
-        if (selected.isEmpty()) return
-        val own = list(MapState.latest ?: return, "Squads").filter { it.getBoolean("Own") }
-            .associateBy { it.getUUID("Id").toString() }
-        // Squads that have since been disbanded or wiped out drop out of the selection.
-        selected.retainAll(own.keys)
+        // A squad missing from the feed is not gone — its men are just out of loaded range right
+        // now. Dropping it from the selection for that left the menu empty once the player came
+        // back, with nothing to say why. The server takes orders for unloaded squads too, and
+        // ignores ids that are no longer the player's.
         if (selected.isEmpty()) return
         val ids = selected.toList()
-        val who = if (ids.size == 1) own.getValue(ids[0]).getString("Name") else "${ids.size} squads"
+        val who = if (ids.size == 1) known[ids[0]]?.name ?: "Squad" else "${ids.size} squads"
         // The server turns this into each squad's own order and spot (GroupOrders); a barrage
         // only means something to mortars, so it's only offered when one is selected.
-        val orders = POINT_ORDERS + if (ids.any { own.getValue(it).getBoolean("Mortar") }) listOf("Barrage here" to SquadOrder.BARRAGE) else emptyList()
+        val orders = POINT_ORDERS + if (ids.any { known[it]?.mortar == true }) listOf("Barrage here" to SquadOrder.BARRAGE) else emptyList()
         for ((label, order) in orders) {
             menu.addMenuItem("$who: $label") { pos -> sendOrder(ids, order, pos) }
         }
