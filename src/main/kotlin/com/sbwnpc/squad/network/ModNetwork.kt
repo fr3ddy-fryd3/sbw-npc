@@ -257,7 +257,12 @@ object ModNetwork {
             val id = runCatching { UUID.fromString(p.squad) }.getOrNull() ?: return@enqueueWork
             if (!mgr.ownedBy(id, player.uuid)) return@enqueueWork
             mgr.setOrder(id, SquadOrder.byOrdinal(p.order))
-            mgr.setObjective(level, id, Terrain.lookedAtPos(player, level, OBJECTIVE_RAYCAST_RANGE))
+            val pos = Terrain.lookedAtPos(player, level, OBJECTIVE_RAYCAST_RANGE)
+            mgr.setObjective(level, id, pos)
+            com.sbwnpc.squad.combat.DebugFlags.log(
+                "[order-debug] HUD: {} -> {} at {} (asked {})",
+                mgr.get(id)?.name, mgr.get(id)?.order, pos, SquadOrder.byOrdinal(p.order)
+            )
         }
     }
 
@@ -278,6 +283,7 @@ object ModNetwork {
                 .forEach { squad ->
                     mgr.setOrder(squad.id, order)
                     mgr.setObjective(level, squad.id, pos)
+                    com.sbwnpc.squad.combat.DebugFlags.log("[order-debug] HUD all: {} -> {} at {}", squad.name, squad.order, pos)
                 }
         }
     }

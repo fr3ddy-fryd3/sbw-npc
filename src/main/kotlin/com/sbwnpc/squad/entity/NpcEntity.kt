@@ -415,9 +415,17 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      *  investigate held the squad's orders off for up to ten seconds, and a path to the old
      *  objective kept being walked until its next repath. */
     private fun takeNewOrders() {
-        val stamp = currentSquad()?.orderStamp ?: return
+        val squad = currentSquad() ?: return
+        val stamp = squad.orderStamp
         if (stamp == seenOrderStamp) return
         seenOrderStamp = stamp
+        // Why a member does or doesn't act on it: a target, a vehicle, a tube or a drone all come
+        // before a squad order.
+        com.sbwnpc.squad.combat.DebugFlags.log(
+            "[order-debug] {} ({}) got {}: target={} alert={} transport={} mortar={} drone={} dug={}",
+            squad.name, npcClass, squad.order, target?.name?.string, isAlert(), vehicleTransport,
+            servingMortar, operatingDrone, diggedIn
+        )
         if (target == null) {
             clearAlert()
             navigation.stop()
