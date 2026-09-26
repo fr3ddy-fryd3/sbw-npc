@@ -40,14 +40,20 @@ import java.awt.geom.Point2D
  * - Objectives, barrage zones and patrol routes are outlines in the squad's colour.
  * - JourneyMap's own radar would draw every NPC in range, enemies included, whether anyone on the
  *   player's side has seen them or not; our NPCs are taken off it and drawn from the feed instead.
- * - Right-click on the map: "Squads → Alpha → Move here / Attack here / …". Right-click on a
- *   squad's own square: change its order in place.
+ * - Left-click one of your squads' squares to select it (a ring marks it, and it becomes the
+ *   squad the command tool and quick-command HUD work on too); right-click anywhere on the map
+ *   then gives "Move / Attack / Defend / Retreat here" for it. Right-click on the square itself
+ *   changes its order in place. A list of squads in the menu would have to scroll past a
+ *   handful, and JourneyMap's menus don't.
  *
  * Only ever loaded by JourneyMap itself, so nothing else in the mod may refer to this class.
  */
 @JourneyMapPlugin(apiVersion = "2.0.0")
 class SquadMapPlugin : IClientPlugin {
     private lateinit var api: IClientAPI
+
+    /** The squad map orders go to, picked by clicking its square. */
+    private var selected: String? = null
 
     override fun getModId(): String = SquadMod.MODID
 
@@ -83,8 +89,12 @@ class SquadMapPlugin : IClientPlugin {
             marker.setTitle("$name — ${order?.name ?: "?"} (${t.getInt("N")})")
             marker.setLabel(name)
             marker.setTextProperties(TextProperties().setColor(color).setScale(0.8f).setOffsetY(10))
-            if (own) marker.setOverlayListener(SquadListener(t.getUUID("Id").toString()))
+            val id = t.getUUID("Id").toString()
+            if (own) marker.setOverlayListener(SquadListener(id))
             show(marker)
+            if (own && id == selected) {
+                show(outline(dim, square(at, SELECTION_RING), color).also { it.setTitle("$name (selected)") })
+            }
 
             t.getIntArray("Obj").takeIf { it.size == 3 }?.let { obj ->
                 val center = BlockPos(obj[0], 0, obj[2])
@@ -147,23 +157,41 @@ class SquadMapPlugin : IClientPlugin {
     // --- Orders ---
 
     private fun addOrderMenu(menu: ModPopupMenu) {
-        val own = list(MapState.latest ?: return, "Squads").filter { it.getBoolean("Own") }
-        if (own.isEmpty()) return
-        val squads = menu.createSubItemList("Squads")
-        for (t in own) {
-            val id = t.getUUID("Id").toString()
-            val sub = squads.createSubItemList(t.getString("Name"))
-            for ((label, order) in POINT_ORDERS) {
-                sub.addMenuItem(label) { pos -> sendOrder(id, order, pos) }
-            }
+        val id = selected ?: return
+        val squad = list(MapState.latest ?: return, "Squads")
+            .firstOrNull { it.getBoolean("Own") && it.getUUID("Id").toString() == id }
+        if (squad == null) {
+            selected = null
+            return
         }
+        val name = squad.getString("Name")
+        for ((label, order) in POINT_ORDERS) {
+            menu.addMenuItem("$name: $label") { pos -> sendOrder(id, order, pos) }
+        }
+        menu.addMenuItem("Deselect $name") { _ -> select(null) }
+    }
+
+    private fun select(id: String?) {
+        selected = id
+        if (id != null) PacketDistributor.sendToServer(SquadCmdPayload(SquadCmdPayload.SELECT, id, 0, ""))
+        // Not straight away: this runs inside JourneyMap's own click handling, while it is still
+        // going over the overlays a redraw would remove.
+        net.minecraft.client.Minecraft.getInstance().tell { MapState.latest?.let(::redraw) }
     }
 
     private fun sendOrder(squad: String, order: SquadOrder, pos: BlockPos) =
         PacketDistributor.sendToServer(SquadCmdPayload(SquadCmdPayload.MAP_ORDER, squad, order.ordinal, "${pos.x} ${pos.z}"))
 
-    /** Right-click on a squad's square: switch its order, keeping the objective it has. */
-    private class SquadListener(private val squad: String) : IOverlayListener {
+    /** Left-click on a squad's square selects it; right-click switches its order, keeping the
+     *  objective it has. */
+    private inner class SquadListener(private val squad: String) : IOverlayListener {
+        override fun onMouseClick(state: UIState, mouse: Point2D.Double, pos: BlockPos, button: Int, doubleClick: Boolean): Boolean {
+            if (button != 0) return true
+            select(if (selected == squad) null else squad)
+            // Handled — same answer JourneyMap's own overlays give for a click they take.
+            return false
+        }
+
         override fun onOverlayMenuPopup(state: UIState, mouse: Point2D.Double, pos: BlockPos, menu: ModPopupMenu) {
             for (order in listOf(SquadOrder.ATTACK, SquadOrder.DEFEND, SquadOrder.PATROL, SquadOrder.MOVE, SquadOrder.RETREAT)) {
                 menu.addMenuItem("Order: ${order.name.lowercase().replaceFirstChar { it.uppercase() }}") {
@@ -205,6 +233,7 @@ class SquadMapPlugin : IClientPlugin {
         const val OBJECTIVE_SIZE = 3
         const val BARRACKS_SIZE = 2
         const val CIRCLE_POINTS = 32
+        const val SELECTION_RING = 4
 
         val POINT_ORDERS = listOf(
             "Move here" to SquadOrder.MOVE,
