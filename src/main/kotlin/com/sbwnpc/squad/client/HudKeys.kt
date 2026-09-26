@@ -22,10 +22,10 @@ object HudKeys {
     const val CATEGORY = "key.categories.sbwnpc"
     private val KEYS = mutableListOf<KeyMapping>()
 
-    // I: B is JourneyMap's "create waypoint", and SuperbWarfare and vanilla already hold most of
-    // the other letters. I and Z are the ones nobody in this pack uses.
+    // Z: under the left hand on WASD, and the one such key nothing else in the pack binds — B is
+    // JourneyMap's waypoint key, G opens Curios, and X/C/V are taken several times over.
     @JvmField
-    val TOGGLE = registerKey("hud_toggle", GLFW.GLFW_KEY_I)
+    val TOGGLE = registerKey("hud_toggle", GLFW.GLFW_KEY_Z)
 
     @JvmField
     val SLOTS: List<KeyMapping> = (1..9).map { registerKey("hud_slot_$it", GLFW.GLFW_KEY_1 + (it - 1)) }

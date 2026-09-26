@@ -52,7 +52,7 @@ clicking.
   the controls before the aircraft comes down with it.
 - **Barracks** — a placeable garrison point, configured like the deploy tool, that deploys a squad
   and restocks its losses over time.
-- **Quick-command HUD** — a lightweight panel (default key `I`) to pick a squad and an order
+- **Quick-command HUD** — a lightweight panel (default key `Z`) to pick a squad and an order
   without opening a menu.
 
 ### Requirements
@@ -80,7 +80,7 @@ Recommended alongside: [GeckolibBetterFPS](https://www.curseforge.com/minecraft/
 | **Squad Command Tool** (`sbwnpc:squad_tool`) | Creative, *Superb Warfare Items* tab — or `/give @s sbwnpc:squad_tool` | Deploys NPCs and commands squads. No survival recipe yet. |
 | **Barracks** (`sbwnpc:barracks`) | Same tab — or `/give @s sbwnpc:barracks` | A placed block that garrisons a squad and keeps it at strength. |
 | **Supply Point** (`sbwnpc:supply`) | Same tab — or `/give @s sbwnpc:supply` | Groundwork for squad logistics. Places, breaks, does nothing else yet. |
-| **Quick-command HUD** | Key `I`, rebindable under controls category *SBW NPC Squads* | Pick a squad and an order without opening a menu. |
+| **Quick-command HUD** | Key `Z`, rebindable under controls category *SBW NPC Squads* | Pick a squad and an order without opening a menu. |
 
 On first use the tool asks you to pick a faction once. That is only your own default — you can
 still deploy any of the eight afterwards, including hostile ones to fight against.
@@ -228,7 +228,7 @@ the generation notes.
   борт падает вместе с ним.
 - **Казарма** — устанавливаемая точка гарнизона с теми же настройками, что и у инструмента:
   разворачивает отряд и со временем восстанавливает его потери.
-- **Быстрое командование через HUD** — лёгкая панель (по умолчанию клавиша `I`) для выбора отряда
+- **Быстрое командование через HUD** — лёгкая панель (по умолчанию клавиша `Z`) для выбора отряда
   и приказа без открытия меню.
 
 ### Требования
@@ -257,7 +257,7 @@ the generation notes.
 | **Squad Command Tool** (`sbwnpc:squad_tool`) | Креатив, вкладка *Superb Warfare Items* — или `/give @s sbwnpc:squad_tool` | Деплоит NPC и командует отрядами. Крафта пока нет. |
 | **Barracks** (`sbwnpc:barracks`) | Та же вкладка — или `/give @s sbwnpc:barracks` | Ставится блоком, держит гарнизон и восполняет его потери. |
 | **Supply Point** (`sbwnpc:supply`) | Та же вкладка — или `/give @s sbwnpc:supply` | Задел под логистику отрядов. Ставится и ломается, больше пока ничего. |
-| **HUD быстрых команд** | Клавиша `I`, переназначается в категории *SBW NPC Squads* | Выбрать отряд и приказ, не открывая меню. |
+| **HUD быстрых команд** | Клавиша `Z`, переназначается в категории *SBW NPC Squads* | Выбрать отряд и приказ, не открывая меню. |
 
 При первом использовании инструмент один раз попросит выбрать фракцию. Это только твой дефолт —
 деплоить дальше можно любую из восьми, в том числе враждебную, чтобы было с кем воевать.
