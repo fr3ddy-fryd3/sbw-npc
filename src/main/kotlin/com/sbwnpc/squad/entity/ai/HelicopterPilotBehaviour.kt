@@ -261,6 +261,8 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         if (!airworthy) return landingMission(level, retirePoint(home))
 
+        // Falling back: fly to the point and put down there, whatever is shooting.
+        if (entity.currentSquad()?.order == SquadOrder.RETREAT) return landingMission(level, home)
         if (gunship && target != null) {
             return Mission(standoffPoint(heli, target.position()), target.position(), false, HOLD_SPEED)
         }

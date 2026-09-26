@@ -324,7 +324,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     /** Where this NPC "belongs" per its squad: the guarded entity, else the objective point. */
     fun homeCenter(): Vec3? {
         val squad = currentSquad() ?: return null
-        if (squad.order == SquadOrder.MOVE) {
+        // A point to get to, not an enemy to go after: no focus entity.
+        if (squad.order == SquadOrder.MOVE || squad.order == SquadOrder.RETREAT) {
             return squad.objective?.let { Vec3(it.x + 0.5, it.y.toDouble(), it.z + 0.5) }
         }
         squad.focusEntity?.let { fid ->
@@ -332,6 +333,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         }
         return squad.objective?.let { Vec3(it.x + 0.5, it.y.toDouble(), it.z + 0.5) }
     }
+
+    /** Where the squad is falling back to, while it is. */
+    fun retreatPoint(): Vec3? =
+        if (currentSquad()?.order == SquadOrder.RETREAT) homeCenter() else null
 
     override fun defineSynchedData(builder: SynchedEntityData.Builder) {
         super.defineSynchedData(builder)

@@ -15,7 +15,11 @@ enum class SquadOrder {
 
     /** Mortar crews only: walk shells across an area around the objective instead of stacking
      *  them all on the one point. Appended last so existing saved squads keep their ordinals. */
-    BARRAGE;
+    BARRAGE,
+
+    /** Fall back to the objective, covering each other, then hold it (turns into DEFEND on
+     *  arrival). Appended last for the same reason as [BARRAGE]. */
+    RETREAT;
 
     fun next(): SquadOrder = entries[(ordinal + 1) % entries.size]
 
@@ -39,12 +43,12 @@ enum class SquadOrder {
             gunship: Boolean = false,
             transport: Boolean = false
         ): List<SquadOrder> = when {
-            tank -> listOf(MOVE)
-            mortar -> listOf(ATTACK, DEFEND, BARRAGE)
+            tank -> listOf(MOVE, RETREAT)
+            mortar -> listOf(ATTACK, DEFEND, BARRAGE, RETREAT)
             // A gunship is sent hunting, holds an area, or repositions.
-            gunship -> listOf(ATTACK, DEFEND, MOVE)
+            gunship -> listOf(ATTACK, DEFEND, MOVE, RETREAT)
             // A transport has nothing to attack with; it patrols with its gunners or relocates.
-            transport -> listOf(DEFEND, MOVE)
+            transport -> listOf(DEFEND, MOVE, RETREAT)
             else -> entries.filter { it != BARRAGE }
         }
     }

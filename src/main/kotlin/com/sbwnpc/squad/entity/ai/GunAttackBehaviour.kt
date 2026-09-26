@@ -118,6 +118,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val FALL_BACK_VERTICAL = 7
         private const val FALL_BACK_REPATH_TICKS = 30
         private const val FALL_BACK_SPEED = 1.4
+        /** How long each half of a withdrawing squad runs, or covers, before they swap. */
+        private const val WITHDRAW_BOUND_TICKS = 60L
+        private const val WITHDRAW_SPEED = 1.3
 
         // Friendly-fire assessment used to be two entity queries EVERY tick for every shooter (line
         // of fire + blast radius). Now one combined pass every few ticks — an ally can't cross a
@@ -305,6 +308,29 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun rocketAimPoint(target: LivingEntity): Vec3 =
         target.vehicle?.boundingBox?.center ?: target.position().add(0.0, target.bbHeight * 0.3, 0.0)
+
+    /**
+     * A fighting withdrawal to [point]. The squad works in two halves by slot: one runs for the
+     * rally point while the other stands and fires, and every [WITHDRAW_BOUND_TICKS] they swap.
+     * Everyone keeps shooting whenever the target is in sight — the moving half just doesn't stop
+     * to do it.
+     */
+    private fun withdraw(entity: NpcEntity, point: Vec3) {
+        bounding = true
+        boundPhaseStarted = false
+        firingPos = null
+        FiringSpots.release(entity.uuid)
+        val index = entity.currentSquad()?.let { entity.slotIndex(it) }?.coerceAtLeast(0) ?: 0
+        val moving = (entity.level().gameTime / WITHDRAW_BOUND_TICKS + index) % 2 == 0L
+        if (!moving) {
+            entity.navigation.stop()
+            return
+        }
+        val slot = SquadFormation.slotTarget(
+            entity, point, point.subtract(entity.position()), false, SquadFormation.COMBAT_SPACING
+        )
+        entity.navigateTo(slot, WITHDRAW_SPEED)
+    }
 
     /** Aircrew on foot — a pilot out of a helicopter that can't fly. */
     private fun keepsAway(entity: NpcEntity): Boolean =
@@ -539,7 +565,12 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         val squad = entity.currentSquad()
         val defendHome = if (squad?.order == SquadOrder.DEFEND) entity.homeCenter() else null
-        if (defendHome != null) {
+        val retreatTo = entity.retreatPoint()
+        if (retreatTo != null) {
+            // Already back: hold and fire while the rest come in, never turn round to advance.
+            if (entity.position().distanceTo(retreatTo) > SquadFormation.ARRIVAL_RADIUS) withdraw(entity, retreatTo)
+            else holdFiringPosition(entity, target)
+        } else if (defendHome != null) {
             val fromHome = entity.position().distanceTo(defendHome)
             if (fromHome > DEFEND_LEASH_DROP) {
                 entity.target = null

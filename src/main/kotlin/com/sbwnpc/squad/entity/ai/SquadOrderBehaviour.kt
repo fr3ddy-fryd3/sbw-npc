@@ -148,6 +148,16 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
                 }
             }
             SquadOrder.MOVE -> tickMove(entity, home)
+            // Nobody in sight: just get there at a run. Under fire GunAttackBehaviour takes over
+            // and makes it a fighting withdrawal.
+            SquadOrder.RETREAT -> {
+                val arrived = dist <= SquadFormation.ARRIVAL_RADIUS
+                approachSlot(entity, home, arrived, RUN_SPEED_MODIFIER)
+                if (arrived && entity.tickCount >= nextArrivalCheckTick) {
+                    nextArrivalCheckTick = entity.tickCount + ARRIVAL_CHECK_INTERVAL_TICKS
+                    if (allSquadArrived(entity, squad, home)) squad.order = SquadOrder.DEFEND
+                }
+            }
         }
     }
 
