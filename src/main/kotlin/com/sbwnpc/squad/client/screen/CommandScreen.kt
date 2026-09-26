@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.client.screen
 
+import com.sbwnpc.squad.network.DiplomacyCmdPayload
 import com.sbwnpc.squad.network.RouteCmdPayload
 import com.sbwnpc.squad.network.SquadCmdPayload
 import com.sbwnpc.squad.npc.SquadFaction
@@ -119,8 +120,11 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
         y += FOOTER_GAP
         addRenderableWidget(Button.builder(Component.literal("Routes")) {
             PacketDistributor.sendToServer(RouteCmdPayload(RouteCmdPayload.REQUEST_LIST, "", ""))
-        }.bounds(x, y, 176, 20).build())
-        addRenderableWidget(Button.builder(Component.literal("Close")) { onClose() }.bounds(x + 188, y, 176, 20).build())
+        }.bounds(x, y, 116, 20).build())
+        addRenderableWidget(Button.builder(Component.literal("Diplomacy")) {
+            PacketDistributor.sendToServer(DiplomacyCmdPayload(DiplomacyCmdPayload.REQUEST, 0, 0))
+        }.bounds(x + 124, y, 116, 20).build())
+        addRenderableWidget(Button.builder(Component.literal("Close")) { onClose() }.bounds(x + 248, y, 116, 20).build())
     }
 
     override fun mouseScrolled(mouseX: Double, mouseY: Double, deltaX: Double, deltaY: Double): Boolean {

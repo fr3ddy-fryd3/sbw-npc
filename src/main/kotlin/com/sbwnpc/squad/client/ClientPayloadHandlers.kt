@@ -44,6 +44,10 @@ object ClientPayloadHandlers {
         net.minecraft.client.Minecraft.getInstance().setScreen(ChooseFactionScreen())
     }
 
+    fun openDiplomacyScreen(snapshot: CompoundTag) {
+        net.minecraft.client.Minecraft.getInstance().setScreen(com.sbwnpc.squad.client.screen.DiplomacyScreen(snapshot))
+    }
+
     fun openCommandScreen(snapshot: CompoundTag) {
         net.minecraft.client.Minecraft.getInstance().setScreen(CommandScreen(snapshot))
     }

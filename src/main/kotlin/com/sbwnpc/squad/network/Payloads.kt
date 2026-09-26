@@ -273,3 +273,36 @@ class ConfigureBarracksPayload(val pos: BlockPos, val config: CompoundTag) : Cus
         )
     }
 }
+
+/** Client -> server: a Diplomacy screen action. */
+class DiplomacyCmdPayload(val action: Int, val faction: Int, val proposal: Int) : CustomPacketPayload {
+    override fun type() = TYPE
+
+    companion object {
+        const val REQUEST = 0
+        const val PROPOSE = 1      // faction = the one offered an alliance
+        const val ACCEPT = 2       // proposal = its id
+        const val TOGGLE_LEAVE = 3
+
+        val TYPE = CustomPacketPayload.Type<DiplomacyCmdPayload>(SquadMod.loc("diplomacy_cmd"))
+        val CODEC: StreamCodec<RegistryFriendlyByteBuf, DiplomacyCmdPayload> = StreamCodec.composite(
+            ByteBufCodecs.VAR_INT, DiplomacyCmdPayload::action,
+            ByteBufCodecs.VAR_INT, DiplomacyCmdPayload::faction,
+            ByteBufCodecs.VAR_INT, DiplomacyCmdPayload::proposal,
+            ::DiplomacyCmdPayload
+        )
+    }
+}
+
+/** Server -> client: open/refresh the Diplomacy screen. */
+class OpenDiplomacyPayload(val data: CompoundTag) : CustomPacketPayload {
+    override fun type() = TYPE
+
+    companion object {
+        val TYPE = CustomPacketPayload.Type<OpenDiplomacyPayload>(SquadMod.loc("open_diplomacy"))
+        val CODEC: StreamCodec<RegistryFriendlyByteBuf, OpenDiplomacyPayload> = StreamCodec.composite(
+            ByteBufCodecs.COMPOUND_TAG, OpenDiplomacyPayload::data,
+            ::OpenDiplomacyPayload
+        )
+    }
+}

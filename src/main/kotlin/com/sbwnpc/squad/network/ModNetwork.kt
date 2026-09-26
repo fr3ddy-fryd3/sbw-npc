@@ -48,6 +48,7 @@ object ModNetwork {
         r.playToServer(ChooseFactionPayload.TYPE, ChooseFactionPayload.CODEC) { p, ctx -> onChooseFaction(p, ctx) }
         r.playToServer(RouteCmdPayload.TYPE, RouteCmdPayload.CODEC) { p, ctx -> onRouteCmd(p, ctx) }
         r.playToServer(ConfigureBarracksPayload.TYPE, ConfigureBarracksPayload.CODEC) { p, ctx -> onConfigureBarracks(p, ctx) }
+        r.playToServer(DiplomacyCmdPayload.TYPE, DiplomacyCmdPayload.CODEC) { p, ctx -> onDiplomacyCmd(p, ctx) }
 
         r.playToClient(OpenCommandScreenPayload.TYPE, OpenCommandScreenPayload.CODEC) { p, _ ->
             if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openCommandScreen(p.data)
@@ -66,6 +67,9 @@ object ModNetwork {
         }
         r.playToClient(OpenFinishRoutePayload.TYPE, OpenFinishRoutePayload.CODEC) { p, _ ->
             if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openFinishRoute(p.pointCount)
+        }
+        r.playToClient(OpenDiplomacyPayload.TYPE, OpenDiplomacyPayload.CODEC) { p, _ ->
+            if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openDiplomacyScreen(p.data)
         }
         r.playToClient(OpenBarracksScreenPayload.TYPE, OpenBarracksScreenPayload.CODEC) { p, _ ->
             if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openBarracksScreen(p.pos, p.config)
@@ -258,6 +262,22 @@ object ModNetwork {
                     mgr.setOrder(squad.id, order)
                     mgr.setObjective(level, squad.id, pos)
                 }
+        }
+    }
+
+    private fun onDiplomacyCmd(p: DiplomacyCmdPayload, ctx: IPayloadContext) {
+        ctx.enqueueWork {
+            val player = ctx.player() as? ServerPlayer ?: return@enqueueWork
+            val server = player.server
+            val reply = when (p.action) {
+                DiplomacyCmdPayload.PROPOSE ->
+                    SquadFaction.entries.getOrNull(p.faction)?.let { com.sbwnpc.squad.team.Diplomacy.propose(server, player, it) }
+                DiplomacyCmdPayload.ACCEPT -> com.sbwnpc.squad.team.Diplomacy.accept(server, player, p.proposal)
+                DiplomacyCmdPayload.TOGGLE_LEAVE -> com.sbwnpc.squad.team.Diplomacy.voteLeave(server, player)
+                else -> null
+            }
+            reply?.let { player.displayClientMessage(it, true) }
+            sendToClient(player, OpenDiplomacyPayload(buildDiplomacySnapshot(player)))
         }
     }
 
