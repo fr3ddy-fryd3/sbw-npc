@@ -10,7 +10,8 @@
   "mixins": [
     "VehicleBoardingMixin",
     "VehicleGunDataMixin",
-    "AutoAimableEntityMixin"
+    "AutoAimableEntityMixin",
+    "EntityAllianceMixin"
   ],
   "client": [
     "KeyMappingMixin"
