@@ -71,6 +71,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var nextSeekTick = 0
     private var seekingStartTick = 0
     private var giveupCooldownUntilTick = 0
+    /** The order a scan found no vehicle for — see [tickSeeking]. */
+    private var noVehicleForStamp = Int.MIN_VALUE
     private var lastNoCandidateLogTick = 0
     private var lastEligibilityLogTick = -ELIGIBILITY_LOG_INTERVAL_TICKS
 
@@ -155,6 +157,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.diggedIn) return logEligibility(entity, false) { "dug in" }
         if (entity.operatingDrone) return logEligibility(entity, false) { "flying a drone" }
         if (entity.antiDroneEngaged) return logEligibility(entity, false) { "dealing with a hostile drone" }
+        // Already looked once for this order and there was nothing: walk it.
+        if (entity.currentSquad()?.orderStamp == noVehicleForStamp) {
+            return logEligibility(entity, false) { "no vehicle for this order, walking" }
+        }
         if (entity.tickCount < giveupCooldownUntilTick) {
             return logEligibility(entity, false) { "cooling down after a recent giveup (${giveupCooldownUntilTick - entity.tickCount} ticks left)" }
         }
@@ -315,6 +321,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                     entity.uuid, SEARCH_RADIUS, nearby.size
                 )
             }
+            // One look is enough. Standing here scanning for ten seconds, walking for twenty and
+            // scanning again was a squad on a long march freezing every half a minute. Nothing in
+            // reach now: walk, and don't look again until the next order.
+            noVehicleForStamp = squad.orderStamp
             return
         }
 
