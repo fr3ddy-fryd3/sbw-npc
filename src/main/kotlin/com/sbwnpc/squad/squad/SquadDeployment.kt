@@ -92,13 +92,14 @@ object SquadDeployment {
         for ((i, cls) in composition.withIndex()) {
             val offset = (i - (n - 1) / 2.0) * spacing
             val npc = ModEntities.NPC.get().create(level) ?: continue
-            val spawnX = center.x + 0.5 + rightX * offset
-            val spawnZ = center.z + 0.5 + rightZ * offset
+            val lineX = center.x + 0.5 + rightX * offset
+            val lineZ = center.z + 0.5 + rightZ * offset
             // A line spread sideways from the click point can easily cross a step, overhang, or
             // wall — without this, a member off to either side could spawn with its feet inside a
             // solid block and suffocate before doing anything at all.
-            val spawnY = SafeSpawn.findSafeY(level, spawnX, spawnZ, center.y, npc.getDimensions(Pose.STANDING)) ?: center.y.toDouble()
-            npc.moveTo(spawnX, spawnY, spawnZ, facingYaw + 180f, 0f)
+            val spot = SafeSpawn.findStandingSpot(level, lineX, lineZ, center.y, npc.getDimensions(Pose.STANDING))
+                ?: net.minecraft.world.phys.Vec3(center.x + 0.5, center.y + 1.0, center.z + 0.5)
+            npc.moveTo(spot.x, spot.y, spot.z, facingYaw + 180f, 0f)
             npc.npcClass = cls
             npc.npcRank = rank
             npc.spawnFaction = faction

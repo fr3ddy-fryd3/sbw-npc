@@ -256,21 +256,13 @@ class SquadManager : SavedData() {
                 // A barracks built into a slope/hillside can leave a scattered spot with no safe
                 // footing at all — try a few before falling back to the barracks' own spot, which is
                 // guaranteed to stand on solid ground since the block itself is placed there.
-                var spawnX = pos.x
-                var spawnZ = pos.z
-                var spawnY: Double? = null
-                for (attempt in 0 until SPAWN_ATTEMPTS) {
-                    val bearing = firstBearing + index * GOLDEN_ANGLE + attempt * (Math.PI / 3)
-                    val radius = SPAWN_MIN_RADIUS + level.random.nextDouble() * (SPAWN_MAX_RADIUS - SPAWN_MIN_RADIUS)
-                    val tryX = pos.x + Math.cos(bearing) * radius
-                    val tryZ = pos.z + Math.sin(bearing) * radius
-                    val tryY = SafeSpawn.findSafeY(level, tryX, tryZ, barracksPos.y, dimensions)
-                    if (tryY != null) {
-                        spawnX = tryX; spawnZ = tryZ; spawnY = tryY
-                        break
-                    }
-                }
-                npc.moveTo(spawnX, spawnY ?: (barracksPos.y + 1.0), spawnZ, level.random.nextFloat() * 360f, 0f)
+                val bearing = firstBearing + index * GOLDEN_ANGLE
+                val radius = SPAWN_MIN_RADIUS + level.random.nextDouble() * (SPAWN_MAX_RADIUS - SPAWN_MIN_RADIUS)
+                val spot = SafeSpawn.findStandingSpot(
+                    level, pos.x + Math.cos(bearing) * radius, pos.z + Math.sin(bearing) * radius,
+                    barracksPos.y, dimensions
+                ) ?: Vec3(pos.x, barracksPos.y + 1.0, pos.z)
+                npc.moveTo(spot.x, spot.y, spot.z, level.random.nextFloat() * 360f, 0f)
                 npc.npcClass = cls
                 npc.npcRank = squad.rank
                 npc.spawnFaction = squad.faction
@@ -296,7 +288,6 @@ class SquadManager : SavedData() {
 
     companion object {
         private const val FILE = "sbwnpc_squads"
-        private const val SPAWN_ATTEMPTS = 8
         private const val SPAWN_MIN_RADIUS = 2.0
         private const val SPAWN_MAX_RADIUS = 5.0
         /** Spreads successive bearings evenly however many recruits a wave has. */

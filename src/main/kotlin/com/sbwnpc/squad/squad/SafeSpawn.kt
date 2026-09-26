@@ -21,9 +21,12 @@ object SafeSpawn {
     private const val DEFAULT_CLEAR_RADIUS = 16.0
     private const val RING_STEP = 2.0
 
-    fun findSafeY(level: ServerLevel, x: Double, z: Double, aroundY: Int, dimensions: EntityDimensions): Double? {
+    fun findSafeY(
+        level: ServerLevel, x: Double, z: Double, aroundY: Int, dimensions: EntityDimensions,
+        range: Int = SEARCH_RANGE
+    ): Double? {
         if (isSafe(level, x, aroundY.toDouble(), z, dimensions)) return aroundY.toDouble()
-        for (offset in 1..SEARCH_RANGE) {
+        for (offset in 1..range) {
             if (isSafe(level, x, (aroundY + offset).toDouble(), z, dimensions)) return (aroundY + offset).toDouble()
             if (isSafe(level, x, (aroundY - offset).toDouble(), z, dimensions)) return (aroundY - offset).toDouble()
         }
@@ -66,6 +69,38 @@ object SafeSpawn {
         }
         return null
     }
+
+    /**
+     * Where a soldier meant for [x]/[z] should actually stand: ground at about the same height,
+     * moved aside if need be, before anything higher or lower.
+     *
+     * [findSafeY] alone climbs the column first, so a man placed against a cliff was put on top of
+     * it rather than a step to the side; and when the column had nothing, callers fell back to the
+     * unchecked height and spawned him inside the rock. Level ground within [radius] comes first
+     * here, then the full climb, and null only when there is truly nowhere.
+     */
+    fun findStandingSpot(
+        level: ServerLevel, x: Double, z: Double, aroundY: Int, dimensions: EntityDimensions,
+        radius: Double = STANDING_RADIUS
+    ): Vec3? {
+        findSafeY(level, x, z, aroundY, dimensions, LEVEL_RANGE)?.let { return Vec3(x, it, z) }
+        var ring = 1.0
+        while (ring <= radius) {
+            val samples = Math.max(8, Math.round(2 * Math.PI * ring).toInt())
+            for (i in 0 until samples) {
+                val angle = 2 * Math.PI * i / samples
+                val cx = x + Math.cos(angle) * ring
+                val cz = z + Math.sin(angle) * ring
+                findSafeY(level, cx, cz, aroundY, dimensions, LEVEL_RANGE)?.let { return Vec3(cx, it, cz) }
+            }
+            ring += 1.0
+        }
+        return findClearSpot(level, x, z, aroundY, dimensions, radius)
+    }
+
+    /** How far up or down counts as "about the same height" for [findStandingSpot]. */
+    private const val LEVEL_RANGE = 2
+    private const val STANDING_RADIUS = 8.0
 
     private fun isSafe(level: ServerLevel, x: Double, y: Double, z: Double, dimensions: EntityDimensions): Boolean {
         val floor = BlockPos.containing(x, y - 0.1, z)
