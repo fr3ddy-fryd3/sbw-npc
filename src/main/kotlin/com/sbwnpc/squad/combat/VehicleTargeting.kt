@@ -44,7 +44,8 @@ object VehicleTargeting {
     /**
      * Helicopters are spotted from twice as far as anything on the ground and up to
      * [AIR_SEARCH_HEIGHT] above or below: they are loud, they fly in the open, and a ground-sized
-     * search box left NPCs blind to an aircraft hovering twenty blocks over their heads.
+     * search box left NPCs blind to an aircraft hovering twenty blocks over their heads. 100, not
+     * the 50 it started at: a transport cruising over hills holds 70+ above the ground under it.
      *
      * A box that size would walk a lot of chunk sections for every NPC's scan, so the level's
      * helicopters are listed once every [AIRCRAFT_REFRESH_TICKS] and each scan just looks
@@ -76,7 +77,7 @@ object VehicleTargeting {
     fun isAircrew(target: Entity): Boolean = target.vehicle?.let { Helicopters.isHelicopter(it) } == true
 
     private const val AIR_RANGE_FACTOR = 2.0
-    private const val AIR_SEARCH_HEIGHT = 50.0
+    private const val AIR_SEARCH_HEIGHT = 100.0
     private const val AIRCRAFT_REFRESH_TICKS = 10L
 
     private class AircraftList(val at: Long, val list: List<Entity>)
