@@ -31,6 +31,8 @@ class SquadMod(bus: IEventBus, container: ModContainer) {
         Ports.drones = SbwDrones
         Ports.gear = SbwGear
 
+        container.registerConfig(net.neoforged.fml.config.ModConfig.Type.SERVER, com.sbwnpc.squad.config.SquadConfig.SPEC)
+
         ModEntities.REGISTRY.register(bus)
         ModItems.ITEMS.register(bus)
         ModBlocks.REGISTRY.register(bus)
