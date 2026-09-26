@@ -59,7 +59,7 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val SAFE_RADIUS = 10.0
         private const val SELF_DEFENSE_RANGE_SQR = 6.0 * 6.0
         /** Radius of the area a BARRAGE order shells, per the command's description. */
-        private const val BARRAGE_RADIUS = 40.0
+        const val BARRAGE_RADIUS = 40.0
         /** How long one aim point inside that area is held before walking the fire elsewhere. */
         private const val BARRAGE_SHIFT_TICKS = 100
         private const val MIN_DETECTION = 80.0

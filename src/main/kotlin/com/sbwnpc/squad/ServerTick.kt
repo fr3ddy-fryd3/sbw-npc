@@ -13,5 +13,6 @@ object ServerTick {
         SelectionHighlight.tick(event.server)
         PilotlessHelicopters.tick(event.server)
         com.sbwnpc.squad.team.Diplomacy.tick(event.server)
+        com.sbwnpc.squad.map.MapFeed.tick(event.server)
     }
 }

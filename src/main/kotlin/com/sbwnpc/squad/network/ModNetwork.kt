@@ -49,6 +49,9 @@ object ModNetwork {
         r.playToServer(RouteCmdPayload.TYPE, RouteCmdPayload.CODEC) { p, ctx -> onRouteCmd(p, ctx) }
         r.playToServer(ConfigureBarracksPayload.TYPE, ConfigureBarracksPayload.CODEC) { p, ctx -> onConfigureBarracks(p, ctx) }
         r.playToServer(DiplomacyCmdPayload.TYPE, DiplomacyCmdPayload.CODEC) { p, ctx -> onDiplomacyCmd(p, ctx) }
+        r.playToServer(MapSubscribePayload.TYPE, MapSubscribePayload.CODEC) { _, ctx ->
+            ctx.enqueueWork { (ctx.player() as? ServerPlayer)?.let(com.sbwnpc.squad.map.MapFeed::subscribe) }
+        }
 
         r.playToClient(OpenCommandScreenPayload.TYPE, OpenCommandScreenPayload.CODEC) { p, _ ->
             if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openCommandScreen(p.data)
@@ -67,6 +70,9 @@ object ModNetwork {
         }
         r.playToClient(OpenFinishRoutePayload.TYPE, OpenFinishRoutePayload.CODEC) { p, _ ->
             if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openFinishRoute(p.pointCount)
+        }
+        r.playToClient(MapFeedPayload.TYPE, MapFeedPayload.CODEC) { p, ctx ->
+            if (FMLEnvironment.dist == Dist.CLIENT) ctx.enqueueWork { ClientPayloadHandlers.mapFeed(p.data) }
         }
         r.playToClient(OpenDiplomacyPayload.TYPE, OpenDiplomacyPayload.CODEC) { p, _ ->
             if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openDiplomacyScreen(p.data)

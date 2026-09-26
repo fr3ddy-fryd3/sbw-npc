@@ -30,6 +30,7 @@ object ServerLifecycle {
     @SubscribeEvent
     fun onServerStopped(event: ServerStoppedEvent) {
         com.sbwnpc.squad.team.Diplomacy.detach()
+        com.sbwnpc.squad.map.MapFeed.clearAll()
         TeamAwareness.clearAll()
         DeathSites.clearAll()
         MortarClaims.clearAll()
@@ -50,5 +51,6 @@ object ServerLifecycle {
     fun onPlayerLoggedOut(event: PlayerEvent.PlayerLoggedOutEvent) {
         SquadSelection.clear(event.entity.uuid)
         RouteRecording.cancel(event.entity.uuid)
+        com.sbwnpc.squad.map.MapFeed.unsubscribe(event.entity.uuid)
     }
 }

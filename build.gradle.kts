@@ -34,6 +34,13 @@ repositories {
         url = uri("https://dl.cloudsmith.io/public/tslat/sbl/maven/")
         content { includeGroup("net.tslat.smartbrainlib") }
     }
+    maven {
+        // JourneyMap API — compile-time only. Its licence allows building against it but not
+        // shipping its classes, and JourneyMap itself brings them at runtime.
+        name = "BlameJared"
+        url = uri("https://maven.blamejared.com")
+        content { includeGroup("info.journeymap") }
+    }
 }
 
 base {
@@ -159,6 +166,8 @@ dependencies {
     implementation("net.tslat.smartbrainlib:SmartBrainLib-neoforge-1.21.1:${project.property("smartbrainlib_version")}")
     // See the GeckoLib repository comment above. SBW bundles 4.7.5 (jijImplement in its build).
     compileOnly("software.bernie.geckolib:geckolib-neoforge-1.21.1:4.7.5")
+    // Optional map integration (see integration/journeymap); never bundled.
+    compileOnly("info.journeymap:journeymap-api-neoforge:${project.property("journeymap_api_version")}")
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

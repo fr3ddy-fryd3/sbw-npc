@@ -44,6 +44,8 @@ object ClientPayloadHandlers {
         net.minecraft.client.Minecraft.getInstance().setScreen(ChooseFactionScreen())
     }
 
+    fun mapFeed(feed: CompoundTag) = MapState.accept(feed)
+
     fun openDiplomacyScreen(snapshot: CompoundTag) {
         net.minecraft.client.Minecraft.getInstance().setScreen(com.sbwnpc.squad.client.screen.DiplomacyScreen(snapshot))
     }

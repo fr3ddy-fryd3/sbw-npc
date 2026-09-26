@@ -306,3 +306,23 @@ class OpenDiplomacyPayload(val data: CompoundTag) : CustomPacketPayload {
         )
     }
 }
+
+/** Client -> server: this client has a map mod and wants [MapFeedPayload]s. */
+object MapSubscribePayload : CustomPacketPayload {
+    val TYPE = CustomPacketPayload.Type<MapSubscribePayload>(SquadMod.loc("map_subscribe"))
+    val CODEC: StreamCodec<RegistryFriendlyByteBuf, MapSubscribePayload> = StreamCodec.unit(MapSubscribePayload)
+    override fun type() = TYPE
+}
+
+/** Server -> client: what the player's map shows, once a second — see `MapFeed`. */
+class MapFeedPayload(val data: CompoundTag) : CustomPacketPayload {
+    override fun type() = TYPE
+
+    companion object {
+        val TYPE = CustomPacketPayload.Type<MapFeedPayload>(SquadMod.loc("map_feed"))
+        val CODEC: StreamCodec<RegistryFriendlyByteBuf, MapFeedPayload> = StreamCodec.composite(
+            ByteBufCodecs.COMPOUND_TAG, MapFeedPayload::data,
+            ::MapFeedPayload
+        )
+    }
+}
