@@ -16,6 +16,7 @@ import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.minecraft.world.phys.AABB
+import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 
 /**
@@ -82,6 +83,8 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         /** Close enough to set the tube back up. Well inside [MAX_ENGAGE_RANGE] so a target that
          *  drifts a little doesn't have the crew packing up again the moment they arrive. */
         private const val REDEPLOY_RANGE = 200.0
+        /** How close to the point it was sent to the crew sets the tube up. */
+        private const val RELOCATE_RANGE = 6.0
         /** How long the mission has to stay out of reach before breaking the mortar down. Long
          *  enough that a target dipping behind a hill for a moment isn't reason to move. */
         private const val DISPLACE_AFTER_TICKS = 100
@@ -113,8 +116,8 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         // before the fire mission, because a crew whose target has just died still has to put the
         // tube down somewhere; bailing out here would leave it carrying it forever.
         if (entity.carryingMortar) return true
-        // Falling back is reason enough to go to the tube: it has to be packed up and carried.
-        if (entity.retreatPoint() == null && fireTarget(entity) == null) return false
+        // Being sent somewhere is reason enough to go to the tube: it has to be packed and carried.
+        if (relocationPoint(entity) == null && fireTarget(entity) == null) return false
 
         val current = mortar
         if (current != null && Ports.vehicles.isOperational(current) && !MortarClaims.isOperatorClaimedByOther(current.uuid, entity.uuid)) return true
@@ -157,9 +160,9 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             return
         }
         val m = mortar ?: return
-        entity.retreatPoint()?.let { point ->
-            if (m.position().distanceTo(point) > REDEPLOY_RANGE) {
-                packForRetreat(entity, m)
+        relocationPoint(entity)?.let { point ->
+            if (m.position().distanceTo(point) > RELOCATE_RANGE) {
+                packForRelocation(entity, m)
                 return
             }
         }
@@ -223,8 +226,22 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
      * away if there is no longer anything to shoot at, so a crew never ends up wandering with a
      * mortar on its back.
      */
-    /** Walk to the tube and break it down, so the crew can carry it back to the rally point. */
-    private fun packForRetreat(entity: NpcEntity, m: Entity) {
+    /**
+     * Where the crew has been told to set up, if that is somewhere other than a fire mission: the
+     * rally point of a retreat, or the point it was ordered to defend. An ATTACK or BARRAGE
+     * objective is where the shells go, not where the tube goes, so it never counts.
+     */
+    private fun relocationPoint(entity: NpcEntity): Vec3? {
+        val squad = entity.currentSquad() ?: return null
+        return when (squad.order) {
+            SquadOrder.RETREAT -> entity.retreatPoint()
+            SquadOrder.DEFEND -> squad.objective?.let { Vec3(it.x + 0.5, it.y.toDouble(), it.z + 0.5) }
+            else -> null
+        }
+    }
+
+    /** Walk to the tube and break it down, so the crew can carry it to where it was sent. */
+    private fun packForRelocation(entity: NpcEntity, m: Entity) {
         if (entity.position().distanceTo(m.position()) > 2.5) {
             entity.servingMortar = false
             entity.navigateTo(m.x, m.y, m.z, DISPLACE_SPEED)
@@ -235,8 +252,16 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun tickDisplacing(entity: NpcEntity, level: ServerLevel) {
-        // Falling back, the tube goes where the squad is going, not toward the enemy.
-        val target = entity.retreatPoint()?.let { BlockPos.containing(it) } ?: fireTarget(entity)
+        // Sent somewhere: the tube goes there, and is set up once the crew arrives.
+        relocationPoint(entity)?.let { point ->
+            if (entity.position().distanceTo(point) <= RELOCATE_RANGE) {
+                entity.navigation.stop()
+                if (MortarDeployment.deploy(level, entity, fireTarget(entity)?.center) != null) return
+            }
+            entity.navigateTo(point.x, point.y, point.z, DISPLACE_SPEED)
+            return
+        }
+        val target = fireTarget(entity)
         if (target == null) {
             MortarDeployment.deploy(level, entity, null)
             return
