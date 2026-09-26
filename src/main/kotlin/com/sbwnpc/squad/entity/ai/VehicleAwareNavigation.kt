@@ -53,17 +53,39 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
      * than the walk needs.
      */
     override fun createPath(pos: BlockPos, accuracy: Int): Path? {
+        branch = "?"
+        val result = choosePath(pos, accuracy)
+        if (com.sbwnpc.squad.combat.DebugFlags.LOGGING_ENABLED && mob.tickCount - lastPathLogTick >= PATH_LOG_TICKS) {
+            lastPathLogTick = mob.tickCount
+            com.sbwnpc.squad.combat.DebugFlags.log(
+                "[path-debug] {} at {} asked {} ({} blocks) branch={} target={} -> {}",
+                mob.uuid.toString().take(8), mob.blockPosition(), pos,
+                Math.sqrt(pos.distToCenterSqr(mob.x, mob.y, mob.z)).toInt(), branch, (mob as? com.sbwnpc.squad.entity.NpcEntity)?.target != null,
+                result?.let { "nodes=${it.nodeCount} reach=${it.canReach()} end=${it.endNode?.asBlockPos()} short=${"%.1f".format(it.distToTarget)}" } ?: "null"
+            )
+        }
+        return result
+    }
+
+    private var branch = "?"
+    private var lastPathLogTick = Int.MIN_VALUE / 2
+
+    private fun choosePath(pos: BlockPos, accuracy: Int): Path? {
         val dx = pos.x + 0.5 - mob.x
         val dz = pos.z + 0.5 - mob.z
         val len = Math.sqrt(dx * dx + dz * dz)
         val npc = mob as? com.sbwnpc.squad.entity.NpcEntity
         if (len <= NEAR_RANGE && level.chunkSource.getChunkNow(pos.x shr 4, pos.z shr 4) != null) {
             farGoal = null
+            branch = "near"
             val near = super.createPath(pos, accuracy)
             // Close, but the short search can't get there — a hill in the way, most likely. Out of
             // a fight, the squad's big search looks for the way round.
             if (near != null && !near.canReach() && near.distToTarget > SHORT_OF_GOAL && npc != null && npc.target == null) {
-                SquadMarch.waypointFor(npc, pos)?.let { return super.createPath(it, accuracy) }
+                SquadMarch.waypointFor(npc, pos)?.let {
+                    branch = "near-route $it"
+                    return super.createPath(it, accuracy)
+                }
             }
             return near
         }
@@ -71,11 +93,13 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         npc?.let {
             SquadMarch.waypointFor(it, pos)?.let { waypoint ->
                 farGoal = null
+                branch = "route $waypoint"
                 return super.createPath(waypoint, accuracy)
             }
         }
         val current = path
         val goal = farGoal
+        branch = "leg"
         if (current != null && !current.isDone && goal != null && goal.closerThan(pos, GOAL_DRIFT)) return current
         farGoal = pos
         val leg = legToward(dx, dz, len) ?: return null
@@ -129,6 +153,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         const val GOAL_DRIFT = 4.0
         /** A path ending nearer its goal than this just can't stand on the exact block. */
         const val SHORT_OF_GOAL = 4f
+        const val PATH_LOG_TICKS = 40
     }
 }
 
