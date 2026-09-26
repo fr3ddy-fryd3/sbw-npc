@@ -113,7 +113,8 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         // before the fire mission, because a crew whose target has just died still has to put the
         // tube down somewhere; bailing out here would leave it carrying it forever.
         if (entity.carryingMortar) return true
-        if (fireTarget(entity) == null) return false
+        // Falling back is reason enough to go to the tube: it has to be packed up and carried.
+        if (entity.retreatPoint() == null && fireTarget(entity) == null) return false
 
         val current = mortar
         if (current != null && Ports.vehicles.isOperational(current) && !MortarClaims.isOperatorClaimedByOther(current.uuid, entity.uuid)) return true
@@ -156,6 +157,12 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             return
         }
         val m = mortar ?: return
+        entity.retreatPoint()?.let { point ->
+            if (m.position().distanceTo(point) > REDEPLOY_RANGE) {
+                packForRetreat(entity, m)
+                return
+            }
+        }
         val target = fireTarget(entity) ?: return
 
         val dist = entity.position().distanceTo(m.position())
@@ -216,8 +223,20 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
      * away if there is no longer anything to shoot at, so a crew never ends up wandering with a
      * mortar on its back.
      */
+    /** Walk to the tube and break it down, so the crew can carry it back to the rally point. */
+    private fun packForRetreat(entity: NpcEntity, m: Entity) {
+        if (entity.position().distanceTo(m.position()) > 2.5) {
+            entity.servingMortar = false
+            entity.navigateTo(m.x, m.y, m.z, DISPLACE_SPEED)
+            return
+        }
+        MortarDeployment.pack(m, entity)
+        mortar = null
+    }
+
     private fun tickDisplacing(entity: NpcEntity, level: ServerLevel) {
-        val target = fireTarget(entity)
+        // Falling back, the tube goes where the squad is going, not toward the enemy.
+        val target = entity.retreatPoint()?.let { BlockPos.containing(it) } ?: fireTarget(entity)
         if (target == null) {
             MortarDeployment.deploy(level, entity, null)
             return

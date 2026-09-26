@@ -688,7 +688,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun resolveTripDestination(entity: NpcEntity): Vec3? {
-        if (entity.currentSquad()?.order != SquadOrder.MOVE) return tripDestination
+        val order = entity.currentSquad()?.order
+        if (order != SquadOrder.MOVE && order != SquadOrder.RETREAT) return tripDestination
         val destination = entity.homeCenter()
         if (destination != tripDestination) {
             tripDestination = destination
@@ -709,7 +710,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.rememberVehicleAttacker(attacker)
         BrainUtils.setTargetOfEntity(entity, attacker)
         if (isPermanentCrew(entity, vehicle)) return false
-        if (entity.currentSquad()?.order == SquadOrder.ATTACK) return false
+        val order = entity.currentSquad()?.order
+        if (order == SquadOrder.ATTACK || order == SquadOrder.RETREAT) return false
         return engageVehicleThreat(entity, vehicle, attacker)
     }
 
@@ -722,7 +724,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun engageVehicleThreat(entity: NpcEntity, vehicle: Entity, threat: LivingEntity): Boolean {
-        if (entity.currentSquad()?.order == SquadOrder.ATTACK) return false
+        // Attacking drives through it; so does falling back — stopping to fight is the opposite of
+        // getting away. The gunner still shoots on the move.
+        val order = entity.currentSquad()?.order
+        if (order == SquadOrder.ATTACK || order == SquadOrder.RETREAT) return false
 
         assignCombatGunner(vehicle)?.let { gunner ->
             gunner.rememberVehicleAttacker(threat)

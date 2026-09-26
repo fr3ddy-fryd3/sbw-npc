@@ -146,6 +146,8 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun strikeTarget(entity: NpcEntity): StrikeTarget? {
         val squad = entity.currentSquad()
+        // Falling back: whatever is already in the air finishes its run, nothing new goes up.
+        if (squad?.order == SquadOrder.RETREAT) return null
         if (squad != null && squad.order == SquadOrder.ATTACK) {
             val level = entity.level() as? ServerLevel
             squad.focusEntity?.let { fid ->
