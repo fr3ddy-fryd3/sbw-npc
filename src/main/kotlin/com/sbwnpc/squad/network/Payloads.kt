@@ -77,7 +77,8 @@ class SquadCmdPayload(val action: Int, val squad: String, val value: Int, val te
         const val SELECT = 5
         const val ARM_FOCUS = 6
         const val DELETE_SQUAD = 7
-        /** From the map: value = order, text = "x z" of the point it applies to. */
+        /** From the map: squad = comma-separated squad ids, value = order, text = "x z" of the
+         *  point clicked. Each squad gets its own version of it — see `GroupOrders`. */
         const val MAP_ORDER = 8
 
         val TYPE = CustomPacketPayload.Type<SquadCmdPayload>(SquadMod.loc("squad_cmd"))

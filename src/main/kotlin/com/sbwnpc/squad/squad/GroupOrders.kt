@@ -1,0 +1,111 @@
+package com.sbwnpc.squad.squad
+
+import com.sbwnpc.squad.entity.NpcEntity
+import net.minecraft.core.BlockPos
+import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.level.levelgen.Heightmap
+import java.util.UUID
+
+/**
+ * One order from the map for any mix of squads, turned into what each of them can actually do.
+ *
+ * Each squad gets the order it has the nearest equivalent of, and either its own spot in a line
+ * across the direction of travel or, for a mortar firing, the clicked point itself:
+ *
+ * | Order   | Infantry / gunship | Tank              | Mortar                     | Transport |
+ * |---------|--------------------|-------------------|----------------------------|-----------|
+ * | Attack  | attack, line       | move, line        | fire at the point          | unchanged |
+ * | Defend  | defend, line       | move, line        | carry the tube, defend     | defend    |
+ * | Move    | move, line         | move, line        | carry the tube, defend     | move      |
+ * | Retreat | retreat, line      | retreat, line     | retreat, line              | retreat   |
+ * | Barrage | —                  | —                 | barrage round the point    | —         |
+ *
+ * Only squads going somewhere take a place in the line, [SPACING] apart and in their current
+ * left-to-right order so their paths don't cross — sending them all to the one point had several
+ * squads' defences or formations piling into each other.
+ */
+object GroupOrders {
+    private const val SPACING = 16.0
+
+    private enum class Placement { LINE, POINT }
+
+    private enum class Kind { INFANTRY, TANK, MORTAR, GUNSHIP, TRANSPORT }
+
+    /** What happened, one entry per squad, for the player's action bar. */
+    fun apply(level: ServerLevel, mgr: SquadManager, squadIds: List<UUID>, order: SquadOrder, x: Int, z: Int): List<String> {
+        val plans = squadIds.mapNotNull { id ->
+            val squad = mgr.get(id) ?: return@mapNotNull null
+            val (given, placement) = resolve(kindOf(mgr, squad), order) ?: return@mapNotNull squad to null
+            squad to (given to placement)
+        }
+        val moving = plans.filter { it.second?.second == Placement.LINE }.map { it.first }
+        val spots = lineSpots(level, moving, x.toDouble(), z.toDouble())
+        return plans.map { (squad, plan) ->
+            if (plan == null) return@map "${squad.name}: unchanged"
+            val (given, placement) = plan
+            val (px, pz) = if (placement == Placement.LINE) spots.getValue(squad.id) else x.toDouble() to z.toDouble()
+            val bx = Math.floor(px).toInt()
+            val bz = Math.floor(pz).toInt()
+            // The map knows the column, not the height: stand it on the ground there.
+            val by = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, bx, bz)
+            mgr.setOrder(squad.id, given)
+            mgr.setObjective(level, squad.id, BlockPos(bx, by, bz))
+            mgr.setFocus(squad.id, null)
+            "${squad.name}: ${squad.order.name.lowercase()}"
+        }
+    }
+
+    private fun kindOf(mgr: SquadManager, squad: Squad): Kind = when {
+        mgr.isTankSquad(squad) -> Kind.TANK
+        mgr.isMortarSquad(squad) -> Kind.MORTAR
+        mgr.isGunshipSquad(squad) -> Kind.GUNSHIP
+        mgr.isTransportSquad(squad) -> Kind.TRANSPORT
+        else -> Kind.INFANTRY
+    }
+
+    private fun resolve(kind: Kind, order: SquadOrder): kotlin.Pair<SquadOrder, Placement>? = when (order) {
+        SquadOrder.ATTACK -> when (kind) {
+            Kind.TANK -> SquadOrder.MOVE to Placement.LINE
+            Kind.MORTAR -> SquadOrder.ATTACK to Placement.POINT
+            Kind.TRANSPORT -> null
+            else -> SquadOrder.ATTACK to Placement.LINE
+        }
+        SquadOrder.DEFEND -> when (kind) {
+            Kind.TANK -> SquadOrder.MOVE to Placement.LINE
+            else -> SquadOrder.DEFEND to Placement.LINE
+        }
+        SquadOrder.MOVE -> when (kind) {
+            Kind.MORTAR -> SquadOrder.DEFEND to Placement.LINE
+            else -> SquadOrder.MOVE to Placement.LINE
+        }
+        SquadOrder.RETREAT -> SquadOrder.RETREAT to Placement.LINE
+        SquadOrder.BARRAGE -> if (kind == Kind.MORTAR) SquadOrder.BARRAGE to Placement.POINT else null
+        // Not offered on the map; anything else keeps its current order.
+        SquadOrder.PATROL -> if (kind == Kind.INFANTRY) SquadOrder.PATROL to Placement.LINE else null
+    }
+
+    /** Each squad's spot on a line through the click, across the way they are heading. */
+    private fun lineSpots(level: ServerLevel, squads: List<Squad>, x: Double, z: Double): Map<UUID, kotlin.Pair<Double, Double>> {
+        if (squads.isEmpty()) return emptyMap()
+        if (squads.size == 1) return mapOf(squads[0].id to (x to z))
+        val centres = squads.associate { s ->
+            val members = s.members.mapNotNull { level.getEntity(it) as? NpcEntity }
+            s.id to if (members.isEmpty()) (x to z)
+                else (members.sumOf { it.x } / members.size to members.sumOf { it.z } / members.size)
+        }
+        val cx = centres.values.sumOf { it.first } / centres.size
+        val cz = centres.values.sumOf { it.second } / centres.size
+        var dx = x - cx
+        var dz = z - cz
+        val len = Math.sqrt(dx * dx + dz * dz)
+        if (len < 1.0) { dx = 0.0; dz = 1.0 } else { dx /= len; dz /= len }
+        val rx = -dz
+        val rz = dx
+        val ordered = squads.sortedBy { s -> centres.getValue(s.id).let { (it.first - cx) * rx + (it.second - cz) * rz } }
+        val n = ordered.size
+        return ordered.mapIndexed { i, s ->
+            val offset = (i - (n - 1) / 2.0) * SPACING
+            s.id to (x + rx * offset to z + rz * offset)
+        }.toMap()
+    }
+}

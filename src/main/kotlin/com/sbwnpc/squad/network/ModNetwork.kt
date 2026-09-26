@@ -190,16 +190,14 @@ object ModNetwork {
                 }
                 SquadCmdPayload.DISBAND -> ownedSid()?.let { mgr.disband(level, it); reopen = true }
                 SquadCmdPayload.SET_ORDER -> ownedSid()?.let { mgr.setOrder(it, SquadOrder.byOrdinal(p.value)) }
-                SquadCmdPayload.MAP_ORDER -> ownedSid()?.let { id ->
+                SquadCmdPayload.MAP_ORDER -> {
                     val (x, z) = p.text.split(' ').mapNotNull { it.toIntOrNull() }.takeIf { it.size == 2 }
                         ?: return@enqueueWork
-                    // The map knows the column, not the height: stand it on the ground there.
-                    val y = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z)
-                    mgr.setOrder(id, SquadOrder.byOrdinal(p.value))
-                    mgr.setObjective(level, id, net.minecraft.core.BlockPos(x, y, z))
-                    mgr.setFocus(id, null)
-                    val squad = mgr.get(id)
-                    bar("${squad?.name ?: "Squad"}: ${squad?.order?.name ?: ""} at $x, $z")
+                    // Every id a string the client chose to send: only the sender's own squads.
+                    val ids = p.squad.split(',').mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }
+                        .filter { mgr.ownedBy(it, player.uuid) }
+                    if (ids.isEmpty()) return@enqueueWork
+                    bar(com.sbwnpc.squad.squad.GroupOrders.apply(level, mgr, ids, SquadOrder.byOrdinal(p.value), x, z).joinToString(", "))
                 }
                 SquadCmdPayload.RENAME -> ownedSid()?.let { mgr.rename(it, p.text) }
                 SquadCmdPayload.SELECT -> ownedSid()?.let {

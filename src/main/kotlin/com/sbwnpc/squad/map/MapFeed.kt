@@ -84,6 +84,7 @@ object MapFeed {
             t.putInt("F", squad.faction.ordinal)
             t.putBoolean("Own", squad.owner == player.uuid)
             t.putString("Order", squad.order.name)
+            t.putBoolean("Mortar", squads.isMortarSquad(squad))
             t.putInt("N", members.size)
             t.putInt("X", members.sumOf { it.x }.div(members.size).toInt())
             t.putInt("Z", members.sumOf { it.z }.div(members.size).toInt())

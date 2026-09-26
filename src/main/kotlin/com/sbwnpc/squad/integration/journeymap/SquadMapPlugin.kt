@@ -166,37 +166,13 @@ class SquadMapPlugin : IClientPlugin {
         if (selected.isEmpty()) return
         val ids = selected.toList()
         val who = if (ids.size == 1) own.getValue(ids[0]).getString("Name") else "${ids.size} squads"
-        for ((label, order) in POINT_ORDERS) {
-            menu.addMenuItem("$who: $label") { pos ->
-                spread(ids.map { own.getValue(it) }, pos).forEach { (id, spot) -> sendOrder(id, order, spot) }
-            }
+        // The server turns this into each squad's own order and spot (GroupOrders); a barrage
+        // only means something to mortars, so it's only offered when one is selected.
+        val orders = POINT_ORDERS + if (ids.any { own.getValue(it).getBoolean("Mortar") }) listOf("Barrage here" to SquadOrder.BARRAGE) else emptyList()
+        for ((label, order) in orders) {
+            menu.addMenuItem("$who: $label") { pos -> sendOrder(ids, order, pos) }
         }
         menu.addMenuItem("Deselect $who") { _ -> select(null, add = false) }
-    }
-
-    /**
-     * One objective per squad for a group order, so several squads don't all converge on the one
-     * clicked point: a line across the direction they are moving, centred on the click,
-     * [GROUP_SPACING] apart. Squads keep their left-to-right order, so their paths don't cross.
-     */
-    private fun spread(squads: List<CompoundTag>, click: BlockPos): List<kotlin.Pair<String, BlockPos>> {
-        val ids = squads.map { it.getUUID("Id").toString() }
-        if (squads.size <= 1) return ids.map { it to click }
-        val cx = squads.sumOf { it.getInt("X") }.toDouble() / squads.size
-        val cz = squads.sumOf { it.getInt("Z") }.toDouble() / squads.size
-        var dx = click.x - cx
-        var dz = click.z - cz
-        val len = Math.sqrt(dx * dx + dz * dz)
-        if (len < 1.0) { dx = 0.0; dz = 1.0 } else { dx /= len; dz /= len }
-        // Right of the direction of travel.
-        val rx = -dz
-        val rz = dx
-        val ordered = squads.sortedBy { (it.getInt("X") - cx) * rx + (it.getInt("Z") - cz) * rz }
-        val n = ordered.size
-        return ordered.mapIndexed { i, t ->
-            val offset = (i - (n - 1) / 2.0) * GROUP_SPACING
-            t.getUUID("Id").toString() to BlockPos.containing(click.x + rx * offset, click.y.toDouble(), click.z + rz * offset)
-        }
     }
 
     /** A plain click selects [id] alone (or clears it if it was the only one); [add] toggles it
@@ -218,8 +194,8 @@ class SquadMapPlugin : IClientPlugin {
         net.minecraft.client.Minecraft.getInstance().tell { MapState.latest?.let(::redraw) }
     }
 
-    private fun sendOrder(squad: String, order: SquadOrder, pos: BlockPos) =
-        PacketDistributor.sendToServer(SquadCmdPayload(SquadCmdPayload.MAP_ORDER, squad, order.ordinal, "${pos.x} ${pos.z}"))
+    private fun sendOrder(squads: List<String>, order: SquadOrder, pos: BlockPos) =
+        PacketDistributor.sendToServer(SquadCmdPayload(SquadCmdPayload.MAP_ORDER, squads.joinToString(","), order.ordinal, "${pos.x} ${pos.z}"))
 
     /** Left-click on a squad's square selects it; right-click switches its order, keeping the
      *  objective it has. */
@@ -273,8 +249,6 @@ class SquadMapPlugin : IClientPlugin {
         const val BARRACKS_SIZE = 2
         const val CIRCLE_POINTS = 32
         const val SELECTION_RING = 4
-        /** Between the objectives of squads ordered together. */
-        const val GROUP_SPACING = 16.0
 
         val POINT_ORDERS = listOf(
             "Move here" to SquadOrder.MOVE,
