@@ -100,6 +100,12 @@ object HudOverlayState {
     fun refreshIfDue() {
         if (--refreshTicks > 0) return
         refreshTicks = REFRESH_INTERVAL_TICKS
+        // Left the world with the panel open: client ticks keep coming on the title screen, and
+        // sending with no connection crashed the game.
+        if (net.minecraft.client.Minecraft.getInstance().connection == null) {
+            close()
+            return
+        }
         PacketDistributor.sendToServer(RequestHudPayload)
     }
 
