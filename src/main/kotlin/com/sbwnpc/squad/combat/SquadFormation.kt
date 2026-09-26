@@ -36,14 +36,11 @@ object SquadFormation {
     private const val RING_RADIUS = 4.0
     private const val MIN_HEADING_LENGTH = 2.0
 
-    // DEFEND, once arrived, is deliberately looser than a held RING perimeter: a garrison holding a
-    // position doesn't stand in a neat
-    // circle, but shouldn't wander unbounded either. MIN keeps members no closer than the old RING
-    // radius; MAX matches SeekCoverBehaviour's own "nearby ally" radius already used elsewhere in
-    // this codebase, not an arbitrary new number.
+    // A mortar crew at its tube or a squad that has just fallen back stands about loosely rather
+    // than in a neat circle. MIN keeps members no closer than the RING radius; MAX stays inside the
+    // arrival radius (ARRIVAL_RADIUS + 4.5), or a member standing on its slot reads as "not
+    // arrived" and walks back in.
     private const val DEFEND_SCATTER_MIN = RING_RADIUS
-    // Inside DEFEND's own arrival radius (ARRIVAL_RADIUS + 4.5), or a member standing on its slot
-    // reads as "not arrived" and walks back in.
     private const val DEFEND_SCATTER_MAX = 8.0
 
     /** Callers that decide "arrived, switch to RING" from raw distance to the anchor MUST use a
@@ -71,16 +68,33 @@ object SquadFormation {
         return d <= NEAR_POINT || (member.navigation.isDone && d <= NEAR_POINT + (squadSize / 2) * SLOT_SPACING * 1.5)
     }
 
-    private enum class Shape { WEDGE, LINE, COLUMN, GRID, RING, SCATTER }
+    private enum class Shape { WEDGE, LINE, COLUMN, GRID, RING, PERIMETER, SCATTER }
+
+    /**
+     * Radius of a defending squad's ring: wide enough that its men stand apart and cover the
+     * ground round the point, from [PERIMETER_MIN] for a pair up to [PERIMETER_MAX] at sixteen.
+     */
+    fun perimeterRadius(squadSize: Int): Double =
+        (PERIMETER_MIN + (squadSize - 2) * (PERIMETER_MAX - PERIMETER_MIN) / 14.0).coerceIn(PERIMETER_MIN, PERIMETER_MAX)
+
+    /** How near its point a defender counts as there and takes up its post on the ring. */
+    fun defendArrivalRadius(squadSize: Int): Double = perimeterRadius(squadSize) + 4.5
+
+    private const val PERIMETER_MIN = 5.0
+    private const val PERIMETER_MAX = 25.0
 
     /** Transit shape depends on order. MOVE is the exception to the arrival perimeter: it keeps its
-     *  ordered infantry grid at the destination. DEFEND arrives into SCATTER rather than RING — see
-     *  that shape's own doc note in [localOffset]. */
+     *  ordered infantry grid at the destination. DEFEND arrives into a PERIMETER ring sized to the
+     *  squad; BARRAGE and RETREAT into SCATTER — see that shape's own doc note in [localOffset]. */
     private fun shapeFor(order: SquadOrder, arrived: Boolean): Shape {
         // A MOVE command is a formation movement command, including after the destination is
         // reached. Infantry presets map directly to 2x2, 2x4, and 4x4 grids.
         if (order == SquadOrder.MOVE) return Shape.GRID
-        if (arrived) return if (order == SquadOrder.DEFEND || order == SquadOrder.BARRAGE || order == SquadOrder.RETREAT) Shape.SCATTER else Shape.RING
+        if (arrived) return when (order) {
+            SquadOrder.DEFEND -> Shape.PERIMETER
+            SquadOrder.BARRAGE, SquadOrder.RETREAT -> Shape.SCATTER
+            else -> Shape.RING
+        }
         return when (order) {
             SquadOrder.ATTACK -> Shape.WEDGE
             SquadOrder.DEFEND, SquadOrder.BARRAGE, SquadOrder.RETREAT -> Shape.LINE
@@ -93,10 +107,11 @@ object SquadFormation {
      *  [squadSize]. WEDGE, LINE, and COLUMN use a point/leader slot at the anchor. GRID, RING, and
      *  SCATTER give every member its own point. */
     private fun localOffset(shape: Shape, slotIndex: Int, squadSize: Int, spacing: Double = SLOT_SPACING): Vec3 {
-        if (shape == Shape.RING) {
+        if (shape == Shape.RING || shape == Shape.PERIMETER) {
             val count = squadSize.coerceAtLeast(1)
             val angle = 2.0 * Math.PI * slotIndex / count
-            return Vec3(kotlin.math.sin(angle) * RING_RADIUS, 0.0, kotlin.math.cos(angle) * RING_RADIUS)
+            val radius = if (shape == Shape.PERIMETER) perimeterRadius(squadSize) else RING_RADIUS
+            return Vec3(kotlin.math.sin(angle) * radius, 0.0, kotlin.math.cos(angle) * radius)
         }
         if (shape == Shape.SCATTER) {
             // Stable PER-SLOT pseudo-random point (same seed -> same angle/distance every tick, no
@@ -140,7 +155,7 @@ object SquadFormation {
             // Mostly single-file, alternating slightly left/right (staggered column) rather than
             // dead in the last member's footsteps.
             Shape.COLUMN -> Vec3(side * spacing * 0.4, 0.0, -rank * spacing)
-            Shape.GRID, Shape.RING, Shape.SCATTER -> Vec3.ZERO // unreachable, handled above
+            Shape.GRID, Shape.RING, Shape.PERIMETER, Shape.SCATTER -> Vec3.ZERO // unreachable, handled above
         }
     }
 
@@ -172,7 +187,7 @@ object SquadFormation {
         // member then chases a continuously rotating target — reported in-game as a defending
         // squad "водит хоровод" (circling its own defend point) even with no target/no attack in
         // progress at all.
-        if (shape == Shape.RING || shape == Shape.SCATTER) return anchor.add(local)
+        if (shape == Shape.RING || shape == Shape.PERIMETER || shape == Shape.SCATTER) return anchor.add(local)
 
         val heading = headingFor(mob, anchor, fallbackFacing)
         val flat = Vec3(heading.x, 0.0, heading.z)

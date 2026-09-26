@@ -26,7 +26,7 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
  * per-Flag exclusivity, so the old goal-priority order 4-vs-5 has to be reproduced by hand here,
  * same idiom as `combatLockedByCover()` already is elsewhere in this migration).
  *
- *  - DEFEND: return to within `SquadFormation.ARRIVAL_RADIUS + 4.5` of home (objective point /
+ *  - DEFEND: return to within `SquadFormation.defendArrivalRadius` of home (objective point /
  *    guarded entity — currently 12 blocks, but derived rather than hardcoded, see that line), then
  *    hold in a loose SCATTER (see [SquadFormation] — deliberately not a tight ring).
  *  - PATROL: walk the squad's assigned Route in sequence if it has one (see RouteManager);
@@ -143,7 +143,8 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
             // A barraging mortar crew stays put by its tube exactly like DEFEND; only the aim
             // point differs, and that is MortarOperatorBehaviour's business.
             SquadOrder.DEFEND, SquadOrder.BARRAGE -> {
-                val arrived = dist <= SquadFormation.ARRIVAL_RADIUS + 4.5
+                val arrived = dist <= if (order == SquadOrder.DEFEND) SquadFormation.defendArrivalRadius(squad.members.size)
+                    else SquadFormation.ARRIVAL_RADIUS + 4.5
                 if (arrived && order == SquadOrder.DEFEND) holdDefendPost(entity, home)
                 else approachSlot(entity, home, arrived, WALK_SPEED_MODIFIER)
             }
