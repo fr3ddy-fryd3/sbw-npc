@@ -180,7 +180,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         val heading = home.subtract(assembly)
         if (!squad.moveFormationReady) {
             val rallySlot = SquadFormation.moveSlotTarget(entity, assembly, heading)
-            moveToSlot(entity, rallySlot)
+            moveToSlot(entity, rallySlot, fallIn = true)
             // The rally is for looks; it must never hold the order up. It used to wait for every
             // member, so one man in a fight, at a mortar or stuck behind a wall kept the whole
             // squad standing at the rally point indefinitely.
@@ -198,9 +198,11 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         moveToSlot(entity, slot)
     }
 
-    private fun moveToSlot(entity: NpcEntity, slot: Vec3, speed: Double = WALK_SPEED_MODIFIER) {
+    /** [fallIn]: this is the squad forming up, and a member still far from its place runs to it.
+     *  Otherwise the slot is out at the objective, and "far from it" just means "not there yet". */
+    private fun moveToSlot(entity: NpcEntity, slot: Vec3, speed: Double = WALK_SPEED_MODIFIER, fallIn: Boolean = false) {
         if (entity.position().distanceTo(slot) > 1.5) {
-            val pace = paceTo(entity, slot, speed)
+            val pace = if (fallIn) paceTo(entity, slot, speed) else holdPace(entity, speed)
             if (repathCooldown == 0) {
                 entity.navigation.moveTo(slot.x, slot.y, slot.z, pace)
                 repathCooldown = 20
@@ -232,7 +234,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         // for it again every second had the mob turning on the spot.
         val settled = arrived && entity.navigation.isDone && entity.position().distanceTo(slot) <= SLOT_SETTLE_DISTANCE
         if (!settled && entity.position().distanceTo(slot) > 1.5) {
-            val pace = paceTo(entity, slot, speed)
+            val pace = holdPace(entity, speed)
             if (repathCooldown == 0) {
                 entity.navigation.moveTo(slot.x, slot.y, slot.z, pace)
                 repathCooldown = 20
@@ -270,12 +272,19 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         if (dwelling && entity.target == null) faceOutward(entity, center)
         if (entity.position().distanceTo(slot) > 1.5) {
-            val pace = paceTo(entity, slot, WALK_SPEED_MODIFIER)
+            val pace = holdPace(entity, WALK_SPEED_MODIFIER)
             if (repathCooldown == 0) {
                 entity.navigation.moveTo(slot.x, slot.y, slot.z, pace)
                 repathCooldown = 20
             }
         }
+    }
+
+    /** Keeps a path already under way at [speed] — a member that was running to fall in drops
+     *  back to a walk straight away, not at its next repath. */
+    private fun holdPace(entity: NpcEntity, speed: Double): Double {
+        if (!entity.navigation.isDone) entity.navigation.setSpeedModifier(speed)
+        return speed
     }
 
     /** [base] once in formation; a run while still catching up to it, so the squad closes up
