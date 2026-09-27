@@ -137,8 +137,12 @@ class SquadMapPlugin : IClientPlugin {
         routeDraft = null
         routeSquads = emptyList()
         pendingPoint = null
-        MapState.latest?.let(::redraw)
+        redrawLater()
     }
+
+    /** Not from inside JourneyMap's own render or input handling, which is still going over the
+     *  overlays a redraw removes. */
+    private fun redrawLater() = net.minecraft.client.Minecraft.getInstance().tell { MapState.latest?.let(::redraw) }
 
     private fun sendRoute() {
         val points = routeDraft ?: return
@@ -162,7 +166,7 @@ class SquadMapPlugin : IClientPlugin {
             GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> sendRoute()
             GLFW.GLFW_KEY_BACKSPACE -> {
                 draft.removeLastOrNull()
-                MapState.latest?.let(::redraw)
+                redrawLater()
             }
             GLFW.GLFW_KEY_ESCAPE -> dropRoute()
             else -> return
@@ -190,7 +194,7 @@ class SquadMapPlugin : IClientPlugin {
                 val moved = Math.abs(event.mouseX - start[0]) + Math.abs(event.mouseY - start[1])
                 if (moved <= PAN_SLOP && draft.size < MAX_ROUTE_POINTS) {
                     draft += point
-                    MapState.latest?.let(::redraw)
+                    redrawLater()
                 }
             }
         }
@@ -397,7 +401,10 @@ class SquadMapPlugin : IClientPlugin {
         val shape = ShapeProperties()
             .setStrokeColor(color).setStrokeOpacity(0.9f).setStrokeWidth(2f)
             .setFillColor(color).setFillOpacity(fill)
-        return PolygonOverlay(modId, dim, shape, MapPolygon(points))
+        // JourneyMap refuses a polygon of fewer than 3 points — and a refusal thrown from its render
+        // loop closes the map. A two-point route is drawn there and back.
+        val ring = if (points.size == 2) listOf(points[0], points[1], points[0]) else points
+        return PolygonOverlay(modId, dim, shape, MapPolygon(ring))
     }
 
     // --- Orders ---
