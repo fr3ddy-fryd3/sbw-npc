@@ -651,7 +651,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         // One of 2 weapons per weapon category, picked once and kept for this NPC's whole life —
         // pure visual variety across NPCs of the same class, per user request ("разношерстные").
         val weaponId = npcClass.weaponPool[random.nextInt(npcClass.weaponPool.size)]
-        val gun = Ports.guns.issue(weaponId, this, STARTING_RESERVE_ROUNDS)
+        val gun = Ports.guns.issue(weaponId, this, npcClass.startingRounds(weaponId))
         if (!gun.isEmpty) setItemInHand(InteractionHand.MAIN_HAND, gun)
 
         // Green (RU) kit for CREEPER/CAT/PIG/COW, sand (US) kit for the other 4 factions — per user
@@ -791,8 +791,6 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         private const val LOOT_DROP_CHANCE = 0.30f
         private val LOOTABLE_SLOTS = listOf(EquipmentSlot.MAINHAND, EquipmentSlot.HEAD, EquipmentSlot.CHEST)
         private const val BASE_HEALTH = 20.0
-        /** Rounds carried behind the first magazine. */
-        private const val STARTING_RESERVE_ROUNDS = 120
         private const val VEHICLE_ATTACKER_MEMORY_TICKS = 200
         // internal (not private) — MedicHealBehaviour reuses this to compute its temporary
         // "sprinting to treat someone" speed on the same BASE_SPEED*multiplier basis as applyRole(),

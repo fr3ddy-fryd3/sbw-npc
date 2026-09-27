@@ -65,6 +65,21 @@ enum class NpcClass(
 
     fun next(): NpcClass = entries[(ordinal + 1) % entries.size]
 
+    /**
+     * Every round this class starts with for [weapon], the loaded magazine included (it is filled
+     * from these). Counted in rounds per class and gun, per user call: a flat 120 for everyone gave
+     * an AWM 24 reloads, an M79 120 grenades and an M60 barely one belt.
+     */
+    fun startingRounds(weapon: ResourceLocation): Int = when (this) {
+        RIFLEMAN -> 210
+        MACHINE_GUNNER -> if (weapon.path == "m_60") 400 else 320
+        SNIPER -> if (weapon.path == "awm") 50 else 60
+        GRENADIER -> 20
+        MEDIC -> 180
+        DRONE_OPERATOR -> 120
+        MORTAR_OPERATOR, MORTAR_LOADER, TANK_CREW, HELICOPTER_PILOT, HELICOPTER_GUNNER -> 85
+    }
+
     companion object {
         val DEFAULT = RIFLEMAN
 
