@@ -482,6 +482,51 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         // Offset by entity id so throttled NPCs don't all take their turn on the same tick.
         if (brainTickInterval == 1 || (tickCount + id) % brainTickInterval == 0) tickBrain(this)
         updateCrouch()
+        breakSoftBlockIfStuck()
+    }
+
+    // --- Stuck on a soft block ---
+
+    private var stuckCheckPos: Vec3? = null
+    private var stuckSinceTick = -1
+
+    /**
+     * Stood still with somewhere to go, and what's in the way at eye height is something a hand
+     * clears in a moment — leaves, a bush, a pane of glass: knock it out. Paths are planned round
+     * such blocks, but not every snag is foreseen (a sapling grown since, a leaf the planner took
+     * for open air), and a man standing there pressed against a hedge until the order changed
+     * looked broken. Nothing harder than [SOFT_BLOCK_HARDNESS], nothing with contents, nothing at
+     * all where mob griefing is off.
+     */
+    private fun breakSoftBlockIfStuck() {
+        if (tickCount % STUCK_CHECK_TICKS != 0) return
+        val here = position()
+        val path = navigation.path
+        val moved = stuckCheckPos?.let { it.distanceToSqr(here) > STUCK_MOVE_SQR } ?: true
+        stuckCheckPos = here
+        if (path == null || navigation.isDone || isPassenger || moved) {
+            stuckSinceTick = -1
+            return
+        }
+        if (stuckSinceTick < 0) stuckSinceTick = tickCount
+        if (tickCount - stuckSinceTick < STUCK_BREAK_TICKS) return
+        val level = level() as? ServerLevel ?: return
+        if (!net.neoforged.neoforge.event.EventHooks.canEntityGrief(level, this)) return
+        val next = path.nextNodePos
+        val dx = next.x + 0.5 - x
+        val dz = next.z + 0.5 - z
+        val len = kotlin.math.sqrt(dx * dx + dz * dz)
+        if (len < 1.0e-3) return
+        val pos = BlockPos.containing(x + dx / len * 0.8, eyeY, z + dz / len * 0.8)
+        val state = level.getBlockState(pos)
+        val hardness = state.getDestroySpeed(level, pos)
+        if (state.isAir || !state.fluidState.isEmpty || level.getBlockEntity(pos) != null) return
+        if (hardness < 0f || hardness > SOFT_BLOCK_HARDNESS || state.requiresCorrectToolForDrops()) return
+        if (state.getCollisionShape(level, pos).isEmpty) return
+        swing(net.minecraft.world.InteractionHand.MAIN_HAND)
+        level.destroyBlock(pos, true, this)
+        stuckSinceTick = -1
+        com.sbwnpc.squad.combat.DebugFlags.log("[stuck-debug] {} broke {} at {} to get unstuck", uuid, state.block.descriptionId, pos)
     }
 
     // --- Crouching ---
@@ -903,6 +948,13 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         private const val CROUCH_AFTER_TICKS = 10
         private const val SIGHT_LOST_STAND_TICKS = 10
         private const val STAND_TO_SHOOT_TICKS = 100
+
+        private const val STUCK_CHECK_TICKS = 10
+        private const val STUCK_MOVE_SQR = 0.15 * 0.15
+        /** Stood still this long with a path before it clears the way. */
+        private const val STUCK_BREAK_TICKS = 30
+        /** Leaves are 0.2, glass 0.3, a bush or flower 0; dirt and sand (0.5) stay. */
+        private const val SOFT_BLOCK_HARDNESS = 0.3f
         private const val DISMOUNT_CLEARANCE = 0.3
         private const val DISMOUNT_SAMPLE_STEP = 0.125
         private const val LOD_NEAR_RANGE = 96.0
