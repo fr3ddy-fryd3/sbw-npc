@@ -22,10 +22,11 @@ object ModEntities {
             .eyeHeight(1.74f)
             // In CHUNKS, not blocks (vanilla multiplies by 16): 48 meant "track from 768 blocks",
             // i.e. effectively "every NPC within the server view distance is synced to every player
-            // in it". 8 chunks (128 blocks) is what vanilla uses for monsters, and matches
-            // OffscreenFire.WITNESS_RADIUS — beyond that nobody sees the NPC, so nobody needs its
-            // position/rotation/equipment packets 6-7 times a second.
-            .setTrackingRange(8)
+            // in it". 16 chunks (256 blocks), per user call, so squads can be watched from afar —
+            // twice vanilla's 8 for monsters. Past OffscreenFire.WITNESS_RADIUS (128) their shots
+            // are still simulated rather than real projectiles; that is accepted. A dedicated
+            // server needs view-distance 16 or more for the full range.
+            .setTrackingRange(16)
             .setUpdateInterval(3)
             .build("npc")
     }

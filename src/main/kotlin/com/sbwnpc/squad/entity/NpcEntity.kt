@@ -647,7 +647,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // respawns far away. Same as iron golems / tamed pets.
     override fun removeWhenFarAway(distanceToClosestPlayer: Double): Boolean = false
 
-    // Drawn as far as the server sends them (tracking range 8 chunks, ModEntities), per user call.
+    // Drawn as far as the server sends them (tracking range 16 chunks, ModEntities), per user call.
     // Vanilla sizes this by the hitbox — 64 x the box's average side x the player's entity-distance
     // setting — which for a man-sized box came to about 70-85 blocks, so NPCs the client had been
     // sent were not drawn at all past that.
@@ -821,7 +821,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         private val LOOTABLE_SLOTS = listOf(EquipmentSlot.MAINHAND, EquipmentSlot.HEAD, EquipmentSlot.CHEST)
         private const val BASE_HEALTH = 20.0
         private const val GRENADES_OF_EACH = 2
-        private const val RENDER_DISTANCE = 128.0
+        private const val RENDER_DISTANCE = 256.0
         private const val VEHICLE_ATTACKER_MEMORY_TICKS = 200
         // internal (not private) — MedicHealBehaviour reuses this to compute its temporary
         // "sprinting to treat someone" speed on the same BASE_SPEED*multiplier basis as applyRole(),
