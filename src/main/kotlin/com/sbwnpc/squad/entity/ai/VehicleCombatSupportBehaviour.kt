@@ -75,6 +75,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun stop(entity: NpcEntity) {
         val vehicle = vehicleId?.let { (entity.level() as? ServerLevel)?.getEntity(it)?.takeIf(Ports.vehicles::isVehicle) }
+        traceExit(entity, vehicle, "stop")
         if (vehicle != null && entity.vehicle === vehicle) {
             Ports.vehicles.aimAt(vehicle, entity, null)
             entity.stopRiding()
@@ -91,7 +92,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun tick(entity: NpcEntity) {
         val vehicle = vehicleId?.let { (entity.level() as? ServerLevel)?.getEntity(it)?.takeIf(Ports.vehicles::isVehicle) }
             ?: run {
-                abort(entity)
+                abort(entity, "vehicle gone")
                 return
             }
         val target = engagementTarget(entity)
@@ -102,7 +103,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 entity.navigation.stop()
                 return
             }
-            abort(entity)
+            abort(entity, "no target")
             return
         }
 
@@ -123,7 +124,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 }
                 if (!entity.startRiding(vehicle, false) || !Ports.vehicles.seatHasAmmo(vehicle, entity)) {
                     if (entity.vehicle === vehicle) entity.stopRiding()
-                    abort(entity)
+                    abort(entity, "could not board or seat empty")
                     return
                 }
                 entity.navigation.stop()
@@ -136,7 +137,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
             Phase.FIRING -> {
                 if (!Ports.vehicles.seatHasAmmo(vehicle, entity)) {
-                    abort(entity)
+                    abort(entity, "seat out of ammo")
                     return
                 }
                 if (entity.target !== target) {
@@ -179,8 +180,9 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun fallbackThreat(entity: NpcEntity): LivingEntity? =
         entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) }
 
-    private fun abort(entity: NpcEntity) {
+    private fun abort(entity: NpcEntity, why: String) {
         val vehicle = vehicleId?.let { (entity.level() as? ServerLevel)?.getEntity(it)?.takeIf(Ports.vehicles::isVehicle) }
+        traceExit(entity, vehicle, "abort: $why")
         if (vehicle != null && entity.vehicle === vehicle) {
             Ports.vehicles.aimAt(vehicle, entity, null)
             entity.stopRiding()
@@ -190,6 +192,14 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         targetId = null
         entity.vehicleTransport = false
         entity.navigation.stop()
+    }
+
+    private fun traceExit(entity: NpcEntity, vehicle: Entity?, how: String) {
+        DebugFlags.log(
+            "[vehicle-debug] {} leaving combat support ({}): seated={} ticksSinceTarget={} ammo={} phase={}",
+            entity.uuid, how, vehicle != null && entity.vehicle === vehicle, entity.tickCount - engagedTick,
+            vehicle?.let { Ports.vehicles.seatHasAmmo(it, entity) }, phase
+        )
     }
 
     /**

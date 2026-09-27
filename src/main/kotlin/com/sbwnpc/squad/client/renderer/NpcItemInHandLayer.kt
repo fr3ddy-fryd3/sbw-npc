@@ -46,10 +46,27 @@ class NpcItemInHandLayer(
         val camera = Minecraft.getInstance().gameRenderer.mainCamera.position
         if (entity.distanceToSqr(camera.x, camera.y, camera.z) > RENDER_DISTANCE * RENDER_DISTANCE) return
         PerfProbe.Client.countWeaponDrawn()
+        traceEmptyHand(entity)
         super.render(poseStack, buffer, packedLight, entity, limbSwing, limbSwingAmount, partialTicks, ageInTicks, netHeadYaw, headPitch)
     }
 
+    /** "Spawned with no weapon": says whether this client has an item for the hand at all. Empty
+     *  here means the equipment never arrived; not listed while the NPC shows no gun means it did
+     *  and the model is not being drawn. Once per NPC. */
+    private fun traceEmptyHand(entity: NpcEntity) {
+        if (!com.sbwnpc.squad.combat.DebugFlags.LOGGING_ENABLED || !entity.mainHandItem.isEmpty) return
+        if (entity.tickCount < EMPTY_HAND_GRACE_TICKS || !reportedEmpty.add(entity.id)) return
+        com.sbwnpc.squad.SquadMod.LOGGER.info(
+            "[equip-debug] client: NPC {} (entity {}) has an empty main hand {} ticks after appearing; offhand={} head={} chest={} vehicle={}",
+            entity.uuid, entity.id, entity.tickCount, entity.offhandItem, entity.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.HEAD),
+            entity.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.CHEST), entity.vehicle?.type?.descriptionId
+        )
+    }
+
     companion object {
+        private const val EMPTY_HAND_GRACE_TICKS = 40
+        private val reportedEmpty = HashSet<Int>()
+
         /** Blocks from the camera. Tuning knob for the whole trade: lower is faster, and the point
          *  at which weapons start popping in is exactly this number. */
         const val RENDER_DISTANCE = 32.0

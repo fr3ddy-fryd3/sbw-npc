@@ -262,6 +262,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      */
     override fun stopRiding() {
         val vehicle = this.vehicle
+        if (vehicle != null && !level().isClientSide && com.sbwnpc.squad.combat.DebugFlags.LOGGING_ENABLED) {
+            // Which of the many dismount paths this was — the frames above this one.
+            val from = Throwable().stackTrace.drop(1).take(3).joinToString(" <- ") { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }
+            com.sbwnpc.squad.combat.DebugFlags.log("[dismount-debug] {} ({}) off {}: {}", uuid, npcClass, vehicle.type.descriptionId, from)
+        }
         super.stopRiding()
         if (vehicle == null || this.vehicle != null) return
         if (level().isClientSide || !isAlive || !Ports.vehicles.isVehicle(vehicle)) return
