@@ -360,7 +360,12 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         val held = firingPos
         if (defending && held != null && entity.tickCount >= nextPositionCheckTick &&
             atSpot(entity, held) && !GrenadeHazard.threatens(level0, held) && TickBudget.hasRaycasts(level0) &&
-            concealmentScore(level0, entity, target, held, entity.eyeHeight.toDouble(), emptyList()) != null
+            // With the hulls on the line: a spot a vehicle has since pulled in front of is no longer
+            // "still has a shot", and keeping it had defenders standing behind a hull, never firing.
+            concealmentScore(
+                level0, entity, target, held, entity.eyeHeight.toDouble(),
+                Sightline.vehicleHulls(level0, AABB(held, target.position()).inflate(VEHICLE_LANE_MARGIN), entity, target)
+            ) != null
         ) {
             nextPositionCheckTick = entity.tickCount + HOLD_MIN_TICKS + entity.random.nextInt(HOLD_JITTER_TICKS)
         }
