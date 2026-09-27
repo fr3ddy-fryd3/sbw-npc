@@ -104,6 +104,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     companion object {
         private const val BASE_SHOOT_DISTANCE = 24.0
+        private const val LAUNCHER_SPREAD_FACTOR = 0.25
         /** How far past its ring a defender may be drawn before it gives up the target and goes back. */
         private const val DEFEND_LEASH_MARGIN = 12.0
         private const val SIDESTEP_COOLDOWN = 5
@@ -674,12 +675,16 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                     witnessed = OffscreenFire.hasWitness(level, entity, target)
                 }
                 val simulate = !witnessed && OffscreenFire.canSimulate(gun)
+                // A rocket is aimed, not sprayed: the rifleman's own spread (5-7) throws it about 5
+                // degrees either way — three blocks over or under a tank at thirty — so launchers
+                // fire with a fraction of it. The arc itself (arcPitch) was already on target.
+                val spread = if (gun.explosionRadius > 0.0) shotSpread * LAUNCHER_SPREAD_FACTOR else shotSpread
                 var newProgress = shootTimer.progress
                 do {
                     if (simulate) {
-                        OffscreenFire.fire(entity, gun, target, shotSpread)
+                        OffscreenFire.fire(entity, gun, target, spread)
                     } else {
-                        gun.shootAt(shotSpread, zoom, target.uuid)
+                        gun.shootAt(spread, zoom, target.uuid)
                     }
                     newProgress -= cooldown
                     roundsInBurst++
