@@ -98,6 +98,11 @@ object MapFeed {
                 t.putInt("X", members.sumOf { it.x }.div(members.size).toInt())
                 t.putInt("Z", members.sumOf { it.z }.div(members.size).toInt())
             }
+            // Where each of the player's own men stands, for the map to mark when the squad is
+            // selected — the square alone is the middle, and hides the one stuck behind a hill.
+            if (squad.owner == player.uuid && members.isNotEmpty()) {
+                t.putIntArray("Men", members.flatMap { listOf(it.blockX, it.blockZ) }.toIntArray())
+            }
             squad.objective?.let { t.putIntArray("Obj", intArrayOf(it.x, it.y, it.z)) }
             if (squad.order == SquadOrder.BARRAGE) t.putInt("Zone", MortarOperatorBehaviour.BARRAGE_RADIUS.toInt())
             if (squad.order == SquadOrder.PATROL) {

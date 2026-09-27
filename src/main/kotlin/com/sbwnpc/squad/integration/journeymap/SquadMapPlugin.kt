@@ -50,8 +50,8 @@ import java.awt.geom.Point2D
  * - Objectives, barrage zones and patrol routes are outlines in the squad's colour.
  * - JourneyMap's own radar would draw every NPC in range, enemies included, whether anyone on the
  *   player's side has seen them or not; our NPCs are taken off it and drawn from the feed instead.
- * - Left-click one of your squads' squares to select it (a ring marks it, and it becomes the
- *   squad the command tool and quick-command HUD work on too); Shift+click adds or removes squads
+ * - Left-click one of your squads' squares to select it (a frame marks it, a dot each of its men,
+ *   and it becomes the squad the command tool and quick-command HUD work on too); Shift+click adds or removes squads
  *   for a group, and Shift+drag draws a box that selects every one of your squads inside it.
  *   Right-click anywhere on the map then gives "Move / Attack / Defend / Retreat
  *   here" for everything selected. Right-click on the square itself
@@ -292,6 +292,12 @@ class SquadMapPlugin : IClientPlugin {
             if (own) marker.setOverlayListener(SquadListener(id))
             show(marker)
             if (own && id in selected) {
+                // Each man of a selected squad, so a straggler can be found.
+                t.getIntArray("Men").let { men ->
+                    for (i in 0 until men.size / 2) {
+                        show(marker(dim, BlockPos(men[2 * i], 0, men[2 * i + 1]), MapShapes.CIRCLE, SELECTION_COLOR, MEMBER_SIZE, 1f))
+                    }
+                }
                 // A symbol on screen, like the square itself: an outline drawn in blocks shrank to
                 // nothing inside the square once the map was zoomed out.
                 show(marker(dim, at, MapShapes.FRAME, SELECTION_COLOR, SELECTION_SIZE, 1f).also {
@@ -492,6 +498,7 @@ class SquadMapPlugin : IClientPlugin {
         const val CIRCLE_POINTS = 32
         const val SELECTION_SIZE = 22.0
         const val SELECTION_COLOR = 0xFFFF55
+        const val MEMBER_SIZE = 5.0
         /** Blocks a box has to span on one side at least to be a box and not a slipped click. */
         const val MIN_BOX = 2
         const val BOX_FILL = 0x3366CCFF
