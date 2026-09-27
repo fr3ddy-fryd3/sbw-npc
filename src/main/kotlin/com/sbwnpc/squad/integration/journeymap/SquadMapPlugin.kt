@@ -262,7 +262,9 @@ class SquadMapPlugin : IClientPlugin {
     // --- Drawing ---
 
     private fun redraw(feed: CompoundTag) {
-        api.removeAll(modId)
+        // Not removeAll(modId): that takes the mod's waypoints too, and the objective waypoints
+        // were wiped a second after being made, every time.
+        for (type in journeymap.api.v2.client.display.DisplayType.entries) api.removeAll(modId, type)
         if (!feed.contains("Dim")) {
             syncWaypoints(null, emptyMap())
             return
