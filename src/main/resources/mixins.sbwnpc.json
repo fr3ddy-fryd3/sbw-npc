@@ -11,7 +11,8 @@
     "VehicleBoardingMixin",
     "VehicleGunDataMixin",
     "AutoAimableEntityMixin",
-    "EntityAllianceMixin"
+    "EntityAllianceMixin",
+    "EntityTrackingRangeMixin"
   ],
   "client": [
     "KeyMappingMixin"
