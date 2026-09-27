@@ -492,7 +492,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     /**
      * Stood still with somewhere to go, and what's in the way at eye height is something a hand
-     * clears in a moment — leaves, a bush, a pane of glass: knock it out. Paths are planned round
+     * clears in a moment — leaves, a bush, glass, sand, dirt: knock it out. Paths are planned round
      * such blocks, but not every snag is foreseen (a sapling grown since, a leaf the planner took
      * for open air), and a man standing there pressed against a hedge until the order changed
      * looked broken. Nothing harder than [SOFT_BLOCK_HARDNESS], nothing with contents, nothing at
@@ -520,9 +520,19 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         val pos = BlockPos.containing(x + dx / len * 0.8, eyeY, z + dz / len * 0.8)
         val state = level.getBlockState(pos)
         val hardness = state.getDestroySpeed(level, pos)
-        if (state.isAir || !state.fluidState.isEmpty || level.getBlockEntity(pos) != null) return
-        if (hardness < 0f || hardness > SOFT_BLOCK_HARDNESS || state.requiresCorrectToolForDrops()) return
-        if (state.getCollisionShape(level, pos).isEmpty) return
+        val refusal = when {
+            state.isAir || state.getCollisionShape(level, pos).isEmpty -> "nothing solid there"
+            !state.fluidState.isEmpty -> "fluid"
+            level.getBlockEntity(pos) != null -> "has contents"
+            hardness < 0f || hardness > SOFT_BLOCK_HARDNESS -> "hardness $hardness"
+            state.requiresCorrectToolForDrops() -> "needs a tool"
+            else -> null
+        }
+        if (refusal != null) {
+            com.sbwnpc.squad.combat.DebugFlags.log("[stuck-debug] {} stuck at {}, left {} at {} ({})", uuid, blockPosition(), state.block.descriptionId, pos, refusal)
+            stuckSinceTick = tickCount
+            return
+        }
         swing(net.minecraft.world.InteractionHand.MAIN_HAND)
         level.destroyBlock(pos, true, this)
         stuckSinceTick = -1
@@ -953,8 +963,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         private const val STUCK_MOVE_SQR = 0.15 * 0.15
         /** Stood still this long with a path before it clears the way. */
         private const val STUCK_BREAK_TICKS = 30
-        /** Leaves are 0.2, glass 0.3, a bush or flower 0; dirt and sand (0.5) stay. */
-        private const val SOFT_BLOCK_HARDNESS = 0.3f
+        /** Anything a hand clears quickly: leaves 0.2, glass 0.3, sand and dirt 0.5, gravel and grass
+         *  0.6. Stone (1.5) and planks (2) stay. */
+        private const val SOFT_BLOCK_HARDNESS = 0.6f
         private const val DISMOUNT_CLEARANCE = 0.3
         private const val DISMOUNT_SAMPLE_STEP = 0.125
         private const val LOD_NEAR_RANGE = 96.0
