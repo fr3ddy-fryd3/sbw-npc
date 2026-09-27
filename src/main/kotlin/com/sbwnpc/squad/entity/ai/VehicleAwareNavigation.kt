@@ -157,9 +157,10 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
     }
 }
 
-private class VehicleAwareNodeEvaluator : WalkNodeEvaluator() {
+internal class VehicleAwareNodeEvaluator : WalkNodeEvaluator() {
     private var hulls: List<AABB> = emptyList()
     private var standingOn: BlockPos? = null
+    private var start: BlockPos? = null
 
     /**
      * One entity query for the whole path computation. [done] drops it again, and the evaluator's
@@ -178,12 +179,38 @@ private class VehicleAwareNodeEvaluator : WalkNodeEvaluator() {
         // valid start at all, which is precisely the situation of a mob that has already been
         // pushed up onto a hull and now needs a route off it.
         standingOn = if (hulls.isEmpty()) null else mob.blockPosition()
+        start = mob.blockPosition()
     }
 
     override fun done() {
         hulls = emptyList()
         standingOn = null
+        start = null
         super.done()
+    }
+
+    /**
+     * Blocks that fill the upper part of their space without being full blocks — an azalea bush
+     * is its top half and a thin stem — are open ground to vanilla (only a full collision box
+     * counts as in the way), so paths ran straight through them and men walked into the bush with
+     * no jump to get over it. Anything a man can't step over is solid here, and stood on like it.
+     */
+    override fun getPathType(context: PathfindingContext, x: Int, y: Int, z: Int): PathType {
+        if (bodyHigh(context, x, y, z)) return PathType.BLOCKED
+        val type = super.getPathType(context, x, y, z)
+        if (type == PathType.OPEN && bodyHigh(context, x, y - 1, z)) return PathType.WALKABLE
+        return type
+    }
+
+    private fun bodyHigh(context: PathfindingContext, x: Int, y: Int, z: Int): Boolean {
+        // Wherever the mob already is stays passable, or a man stuck half inside one has no start.
+        start?.let { if (it.x == x && it.y == y && it.z == z) return false }
+        if (context.getPathTypeFromState(x, y, z) != PathType.OPEN) return false
+        val pos = BlockPos(x, y, z)
+        val state = context.getBlockState(pos)
+        if (state.isAir) return false
+        val shape = state.getCollisionShape(context.level(), pos)
+        return !shape.isEmpty && shape.max(net.minecraft.core.Direction.Axis.Y) > STEP_OVER
     }
 
     override fun getPathTypeOfMob(context: PathfindingContext, x: Int, y: Int, z: Int, mob: Mob): PathType {
@@ -208,6 +235,8 @@ private class VehicleAwareNodeEvaluator : WalkNodeEvaluator() {
 
     private companion object {
         const val SEARCH_RADIUS = 24.0
+        /** Taller than this (a carpet, a snow layer, a bottom slab are lower) can't be stepped over. */
+        const val STEP_OVER = 0.5
         /** Keeps routes from hugging the hull close enough to catch on it. */
         const val CLEARANCE = 0.3
     }

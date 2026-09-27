@@ -7,7 +7,6 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.PathNavigationRegion
 import net.minecraft.world.level.levelgen.Heightmap
 import net.minecraft.world.level.pathfinder.PathFinder
-import net.minecraft.world.level.pathfinder.WalkNodeEvaluator
 import java.util.UUID
 
 /**
@@ -145,7 +144,7 @@ object SquadMarch {
         val from = npc.blockPosition()
         val r = SEARCH_RANGE.toInt() + 8
         val region = PathNavigationRegion(level, from.offset(-r, -r, -r), from.offset(r, r, r))
-        val evaluator = WalkNodeEvaluator().apply { setCanPassDoors(true) }
+        val evaluator = VehicleAwareNodeEvaluator().apply { setCanPassDoors(true) }
         val path = PathFinder(evaluator, NODES).findPath(region, npc, setOf(target), SEARCH_RANGE, 1, 1f)
         val route = path?.let { p -> (0 until p.nodeCount).map { p.getNode(it).asBlockPos() } }.orEmpty()
         val end = route.lastOrNull()
