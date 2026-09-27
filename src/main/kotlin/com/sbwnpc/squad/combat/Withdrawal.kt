@@ -31,6 +31,7 @@ object Withdrawal {
     private const val SETTLED = 6.0
     /** A bound that takes longer than this has stalled — someone is stuck; swap anyway. */
     private const val MAX_BOUND_TICKS = 100L
+    private const val STATUS_LOG_TICKS = 40L
 
     private class State(val point: Vec3) {
         /** Which half (slot parity) is running. */
@@ -43,6 +44,7 @@ object Withdrawal {
          *  cover against, and everyone simply runs. */
         var inContact = false
         var members: List<NpcEntity> = emptyList()
+        var lastStatusTick = Long.MIN_VALUE / 2
     }
 
     private val bySquad = HashMap<UUID, State>()
@@ -85,6 +87,22 @@ object Withdrawal {
             return
         }
         state.inContact = members.any { it.target?.isAlive == true }
+        if (DebugFlags.LOGGING_ENABLED && level.gameTime - state.lastStatusTick >= STATUS_LOG_TICKS) {
+            state.lastStatusTick = level.gameTime
+            // Where each man is and what he is doing: a squad "stuck" on the way back reads as one
+            // of these not changing between lines.
+            DebugFlags.log(
+                "[retreat-debug] squad {} status: contact={} moving half {} bound {} ticks old: {}",
+                squad.name, state.inContact, state.moving, level.gameTime - state.boundStart,
+                members.joinToString("; ") { m ->
+                    val spot = state.targets[m.uuid]
+                    "${m.uuid.toString().take(8)} half ${half(m, squad)} at ${m.blockPosition().toShortString()} " +
+                        "point ${m.position().distanceTo(state.point).toInt()} " +
+                        (spot?.let { "spot ${m.position().distanceTo(it).toInt()} " } ?: "no spot ") +
+                        "target=${m.target != null} navDone=${m.navigation.isDone} pinned=${m.combatLockedByCover()} dug=${m.diggedIn}"
+                }
+            )
+        }
         if (!state.inContact) {
             state.targets.clear()
             return
