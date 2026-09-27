@@ -39,6 +39,10 @@ class NpcRenderer(context: EntityRendererProvider.Context) :
         addLayer(NpcItemInHandLayer(this, context.itemInHandRenderer))
     }
 
+    /** Crouched, the model is drawn lower, as the player's renderer does. */
+    override fun getRenderOffset(entity: NpcEntity, partialTicks: Float): net.minecraft.world.phys.Vec3 =
+        if (entity.isCrouching) net.minecraft.world.phys.Vec3(0.0, -0.125, 0.0) else super.getRenderOffset(entity, partialTicks)
+
     // Faction comes purely from the entity's (client-synced) scoreboard team — no extra synced
     // data needed. Unteamed (neutral) NPCs fall back to the default faction's skin.
     override fun getTextureLocation(entity: NpcEntity): ResourceLocation =

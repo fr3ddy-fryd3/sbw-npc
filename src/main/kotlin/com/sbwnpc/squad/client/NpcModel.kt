@@ -28,6 +28,8 @@ class NpcModel(root: ModelPart) : HumanoidModel<NpcEntity>(root) {
         val pose = Ports.gunPoses.armPose(entity, stack) ?: ArmPose.EMPTY
         this.rightArmPose = pose
         this.leftArmPose = pose
+        // HumanoidMobRenderer never sets this — only the player's renderer does.
+        this.crouching = entity.isCrouching
 
         super.setupAnim(entity, limbSwing, limbSwingAmount, ageInTicks, netHeadYaw, headPitch)
     }

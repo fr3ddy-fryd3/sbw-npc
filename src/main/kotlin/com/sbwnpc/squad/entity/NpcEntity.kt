@@ -33,12 +33,14 @@ import net.minecraft.network.syncher.EntityDataSerializers
 import net.minecraft.network.syncher.SynchedEntityData
 import net.minecraft.world.DifficultyInstance
 import net.minecraft.world.InteractionHand
+import net.minecraft.world.entity.EntityDimensions
 import net.minecraft.world.entity.EntityType
 import net.minecraft.world.entity.EquipmentSlot
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.Mob
 import net.minecraft.world.entity.MobSpawnType
 import net.minecraft.world.entity.PathfinderMob
+import net.minecraft.world.entity.Pose
 import net.minecraft.world.entity.SpawnGroupData
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier
 import net.minecraft.world.entity.ai.attributes.Attributes
@@ -474,7 +476,43 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         }
         // Offset by entity id so throttled NPCs don't all take their turn on the same tick.
         if (brainTickInterval == 1 || (tickCount + id) % brainTickInterval == 0) tickBrain(this)
+        updateCrouch()
     }
+
+    // --- Crouching ---
+
+    /** Ticks this NPC has stood still in a position worth crouching in. */
+    private var stillTicks = 0
+    /** Crouching cost it its line of fire: stays up until this tick. */
+    private var standUntilTick = 0
+
+    /**
+     * Down on one knee once settled at a position: in cover, dug in, holding a defend post, or
+     * fighting from where it stands. Up again the moment it moves off. The eyes stay high enough
+     * to see and shoot over a one-block wall; where crouching still hides the target — a taller
+     * lip — it stands to shoot and stays up a while, rather than bobbing up and down every tick.
+     */
+    private fun updateCrouch() {
+        if (pose != Pose.STANDING && pose != Pose.CROUCHING) return
+        val moving = !navigation.isDone || deltaMovement.horizontalDistanceSqr() > STILL_SPEED_SQR
+        val position = combatLockedByCover() || diggedIn || target != null || currentSquad()?.order == SquadOrder.DEFEND
+        stillTicks = if (!moving && onGround() && !isPassenger && !isInWater && position) stillTicks + 1 else 0
+        if (isCrouching && target != null && blockedSightSince != null && tickCount - blockedSightSince!! >= SIGHT_LOST_STAND_TICKS) {
+            standUntilTick = tickCount + STAND_TO_SHOOT_TICKS
+        }
+        val crouch = stillTicks >= CROUCH_AFTER_TICKS && tickCount >= standUntilTick
+        if (crouch && !isCrouching) {
+            setPose(Pose.CROUCHING)
+        } else if (!crouch && isCrouching && canStandUp()) {
+            setPose(Pose.STANDING)
+        }
+    }
+
+    private fun canStandUp(): Boolean =
+        level().noCollision(this, getDimensions(Pose.STANDING).makeBoundingBox(position()).deflate(1.0e-7))
+
+    override fun getDefaultDimensions(pose: Pose): EntityDimensions =
+        if (pose == Pose.CROUCHING) CROUCHING_DIMENSIONS.scale(ageScale) else super.getDefaultDimensions(pose)
 
     // --- Equipment sync ---
     // Vanilla re-compares every equipment slot against its last-broadcast copy each tick
@@ -841,6 +879,13 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         // AI level-of-detail — see refreshAiLod(). Player distances at which the brain drops to
         // every-2nd / every-4th tick when not in combat.
         private const val LOD_RECHECK_TICKS = 20
+
+        /** A player's crouch, scaled to the NPC's height; the eyes clear a one-block wall. */
+        private val CROUCHING_DIMENSIONS: EntityDimensions = EntityDimensions.scalable(0.6f, 1.55f).withEyeHeight(1.35f)
+        private const val STILL_SPEED_SQR = 0.0025
+        private const val CROUCH_AFTER_TICKS = 10
+        private const val SIGHT_LOST_STAND_TICKS = 10
+        private const val STAND_TO_SHOOT_TICKS = 100
         private const val DISMOUNT_CLEARANCE = 0.3
         private const val DISMOUNT_SAMPLE_STEP = 0.125
         private const val LOD_NEAR_RANGE = 96.0
