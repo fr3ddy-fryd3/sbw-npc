@@ -76,6 +76,9 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var launchTick = 0
     private var nextLaunchTick = 0
     private var holdUntilTick = 0
+    /** When the drone, or anyone on its side, last saw the target it is after. */
+    private var sawTargetTick = 0
+    private var nextSightCheckTick = 0
     private var clearance = CRUISE_CLEARANCE_MIN
     private var detonated = false
     private var usesAddonBlast = false
@@ -196,15 +199,22 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         if (spotted != null) {
             lastScanResult = StrikeTarget(spotted.uuid, spotted.position())
+            DebugFlags.log("[fire-support-debug] drone {} -> {} seen by itself at {}", entity.uuid, spotted.uuid, spotted.position())
             return lastScanResult
         }
 
-        val relayed = faction?.let { TeamAwareness.relayedContacts(it, tick) } ?: emptyList()
-        val target = relayed.asSequence()
-            .mapNotNull { level.getEntity(it) as? LivingEntity }
-            .filter { it.isAlive && SquadTeams.isHostile(entity, it) && inLaunchRange(entity, it.position()) }
-            .minByOrNull { entity.distanceToSqr(it) }
-        lastScanResult = target?.let { StrikeTarget(it.uuid, it.position()) }
+        // Sent to where the side last saw it; the drone's own camera takes over once it's there.
+        val sighting = faction?.let { TeamAwareness.sightings(it, tick) }?.asSequence()
+            ?.filter { s ->
+                val e = level.getEntity(s.target) as? LivingEntity
+                e != null && e.isAlive && SquadTeams.isHostile(entity, e) && inLaunchRange(entity, s.pos)
+            }
+            ?.minByOrNull { entity.position().distanceToSqr(it.pos) }
+        lastScanResult = sighting?.let { StrikeTarget(it.target, it.pos) }
+        if (sighting != null) DebugFlags.log(
+            "[fire-support-debug] drone {} -> {} seen by {} {} ticks ago at {}",
+            entity.uuid, sighting.target, sighting.by, tick - sighting.tick, sighting.pos
+        )
         return lastScanResult
     }
 
@@ -229,6 +239,8 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         lastDronePos = drone.position()
         launchTick = entity.tickCount
         holdUntilTick = 0
+        sawTargetTick = entity.tickCount
+        nextSightCheckTick = 0
         detonated = false
         rejected.clear()
         nextRetargetTick = 0
@@ -324,14 +336,32 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
     }
 
-    /** Keeps [targetPos] on the live target; re-targets around the drone if it died. False = nothing
-     *  left to strike. */
+    /**
+     * Keeps [targetPos] on the target while the drone can see it, or on where its side last saw
+     * it; re-targets around the drone if it died. False = nothing left to strike.
+     *
+     * It used to follow the target's live position whether anything saw it or not, so a man who
+     * had gone in under the trees was hunted down through the canopy all the same.
+     */
     private fun refreshTarget(entity: NpcEntity, level: ServerLevel, drone: Entity): Boolean {
         if (phase == Phase.RETURN) return true
         val tid = targetEntityId ?: return true // fixed point (ATTACK objective) — always valid
         val target = level.getEntity(tid) as? LivingEntity
         if (target != null && target.isAlive && SquadTeams.isHostile(entity, target)) {
-            targetPos = target.position()
+            if (entity.tickCount >= nextSightCheckTick) {
+                nextSightCheckTick = entity.tickCount + SIGHT_CHECK_TICKS
+                if (droneSees(level, drone, target)) {
+                    targetPos = target.position()
+                    sawTargetTick = entity.tickCount
+                } else {
+                    val seen = SquadTeams.factionOf(entity)?.let { TeamAwareness.lastSighting(it, tid, level.gameTime) }
+                    val age = seen?.let { (level.gameTime - it.tick).toInt() }
+                    if (seen != null && age != null && entity.tickCount - age > sawTargetTick) {
+                        targetPos = seen.pos
+                        sawTargetTick = entity.tickCount - age
+                    }
+                }
+            }
             return true
         }
         DebugFlags.log("[drone-debug] {} lost its target {} (alive={}, hostile={})",
@@ -347,37 +377,56 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
      */
     private fun retarget(entity: NpcEntity, level: ServerLevel, drone: Entity): Boolean {
         val radius = warheadRadius()
-        var best: LivingEntity? = null
-        var bestD2 = Double.MAX_VALUE
-        fun consider(c: LivingEntity) {
-            if (!c.isAlive || c.uuid in rejected || !SquadTeams.isHostile(entity, c)) return
-            val d2 = c.distanceToSqr(drone)
-            if (d2 >= bestD2) return
+        fun strikable(c: LivingEntity, at: Vec3): Boolean {
+            if (!c.isAlive || c.uuid in rejected || !SquadTeams.isHostile(entity, c)) return false
             // The ally check skips the operator itself, and a drone on its way home is close to it.
-            if (c.distanceTo(entity) <= radius) return
-            if (!FriendlyFireGuard.hasClearBlastRadius(entity, c.position(), radius)) return
-            best = c
-            bestD2 = d2
+            if (at.distanceTo(entity.position()) <= radius) return false
+            return FriendlyFireGuard.hasClearBlastRadius(entity, at, radius)
         }
-        NpcRegistry.forEachWithin(level, drone.position(), RETARGET_RADIUS) { consider(it) }
+        val near = ArrayList<LivingEntity>()
+        NpcRegistry.forEachWithin(level, drone.position(), RETARGET_RADIUS) { near += it }
         val r2 = RETARGET_RADIUS * RETARGET_RADIUS
-        for (player in level.players()) if (player.distanceToSqr(drone) <= r2) consider(player)
-        if (best == null) {
-            val faction = SquadTeams.factionOf(entity)
-            faction?.let { TeamAwareness.relayedContacts(it, level.gameTime) }?.forEach { id ->
-                (level.getEntity(id) as? LivingEntity)
-                    ?.takeIf { inLaunchRange(entity, it.position()) }
-                    ?.let { consider(it) }
-            }
+        for (player in level.players()) if (player.distanceToSqr(drone) <= r2) near += player
+        near.sortBy { it.distanceToSqr(drone) }
+        var checks = 0
+        for (c in near) {
+            if (!strikable(c, c.position())) continue
+            if (checks++ >= MAX_LOS_CHECKS) break
+            if (!droneSees(level, drone, c)) continue
+            return retargetTo(entity, c.uuid, c.position(), "seen by the drone")
         }
-        val next = best ?: return false
-        targetEntityId = next.uuid
-        targetPos = next.position()
+        // Nothing in the drone's own view: what the side has seen, where it was seen.
+        val faction = SquadTeams.factionOf(entity) ?: return false
+        val sighting = TeamAwareness.sightings(faction, level.gameTime).firstOrNull { s ->
+            val c = level.getEntity(s.target) as? LivingEntity
+            c != null && inLaunchRange(entity, s.pos) && strikable(c, s.pos)
+        } ?: return false
+        return retargetTo(entity, sighting.target, sighting.pos, "seen by ${sighting.by}")
+    }
+
+    private fun retargetTo(entity: NpcEntity, id: UUID, pos: Vec3, why: String): Boolean {
+        targetEntityId = id
+        targetPos = pos
+        sawTargetTick = entity.tickCount
         approachSinceTick = null
         if (phase != Phase.LAUNCH) phase = Phase.CRUISE
-        DebugFlags.log("[drone-debug] {} retargeted to {} ({})", entity.uuid, next.uuid, next.type.descriptionId)
+        DebugFlags.log("[fire-support-debug] drone {} retargeted to {} at {} ({})", entity.uuid, id, pos, why)
         return true
     }
+
+    /** The drone's camera: a clear line from the drone to the target's head, within sight range.
+     *  Leaves stop it, as they do a man's eyes. */
+    private fun droneSees(level: ServerLevel, drone: Entity, target: Entity): Boolean {
+        val from = drone.boundingBox.center
+        val to = target.eyePosition
+        if (from.distanceToSqr(to) > DRONE_SIGHT_RANGE * DRONE_SIGHT_RANGE) return false
+        return !com.sbwnpc.squad.combat.Sightline.blocked(level, from, to, drone)
+    }
+
+    /** Whether the drone may commit to the dive: a fixed point always, a man only while he is
+     *  seen. Over a spot he's no longer at, the drone holds and looks for him instead. */
+    private fun targetInSight(entity: NpcEntity): Boolean =
+        targetEntityId == null || entity.tickCount - sawTargetTick <= SIGHT_GRACE_TICKS
 
     private fun apply(drone: Entity, cmd: DroneFlightController.Command) {
         Ports.drones.setInputs(drone, cmd.forward, cmd.back, cmd.up, cmd.down)
@@ -416,7 +465,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         val desiredY = DroneFlightController.cruiseAltitude(terrainAhead(level, drone, targetPos), clearance, drone.y)
         apply(drone, DroneFlightController.steer(drone.position(), drone.yRot, drone.deltaMovement.horizontalDistance(), targetPos, desiredY, CRUISE_SPEED))
         if (horizontalDistance(drone.position(), targetPos) <= ATTACK_RANGE) {
-            if (blastClear(entity)) {
+            if (blastClear(entity) && targetInSight(entity)) {
                 phase = Phase.ATTACK
             } else {
                 phase = Phase.HOLD
@@ -436,8 +485,13 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         val cmd = DroneFlightController.steer(drone.position(), drone.yRot, drone.deltaMovement.horizontalDistance(), targetPos, desiredY, HOLD_SPEED)
         // Hover once overhead instead of overshooting back and forth.
         apply(drone, if (dist < HOLD_HOVER_RADIUS) DroneFlightController.Command(false, cmd.back, cmd.up, cmd.down, cmd.yaw) else cmd)
-        if (blastClear(entity)) {
+        val clear = blastClear(entity)
+        if (clear && targetInSight(entity)) {
             phase = Phase.ATTACK
+        } else if (entity.tickCount >= holdUntilTick && clear) {
+            DebugFlags.log("[fire-support-debug] drone {} lost sight of {} — looking elsewhere", entity.uuid, targetEntityId)
+            targetEntityId?.let { rejected += it }
+            if (!retarget(entity, level, drone)) phase = Phase.RETURN
         } else if (entity.tickCount >= holdUntilTick) {
             val blocker = FriendlyFireGuard.allyInBlast(entity, targetPos, warheadRadius())
             DebugFlags.log("[drone-debug] {} gave up on {}: {} ({}) is {} blocks from it",
@@ -574,6 +628,11 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val ATTACK_RANGE = 15.0
         private const val DETONATE_RANGE = 2.5
         private const val RETARGET_RADIUS = 40.0
+        /** How far the drone's camera makes out a man. */
+        private const val DRONE_SIGHT_RANGE = 64.0
+        private const val SIGHT_CHECK_TICKS = 4
+        /** Out of sight this long, and the drone no longer dives on him. */
+        private const val SIGHT_GRACE_TICKS = 20
         private const val HOLD_MAX_TICKS = 100
         private const val HOLD_HOVER_RADIUS = 6.0
         private const val RECOVER_RADIUS = 4.0
