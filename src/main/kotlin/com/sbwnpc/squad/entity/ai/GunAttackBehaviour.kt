@@ -81,6 +81,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var sidestepAttempts = 0
 
     private var bounding = true
+    /** Running for its place in a withdrawal this tick — see [withdraw]. */
+    private var fallingBack = false
     private var boundPhaseStarted = false
     private var nextBoundToggleTick = 0
 
@@ -325,6 +327,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             entity.navigation.stop()
             return
         }
+        fallingBack = true
         entity.navigateTo(to, WITHDRAW_SPEED)
     }
 
@@ -576,6 +579,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         val squad = entity.currentSquad()
         val defendHome = if (squad?.order == SquadOrder.DEFEND) entity.homeCenter() else null
         val retreatTo = entity.retreatPoint()
+        fallingBack = false
         if (retreatTo != null) {
             // Already back: hold and fire while the rest come in, never turn round to advance.
             if (entity.position().distanceTo(retreatTo) > SquadFormation.ARRIVAL_RADIUS) withdraw(entity, retreatTo)
@@ -625,7 +629,11 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             blastClear = assessment.blastClear
         }
 
-        if (!lineIsClear && !entity.diggedIn) {
+        // A man running back to his place isn't to be turned aside: the half covering him stands
+        // between him and the enemy, so a squadmate is nearly always on his line, and every
+        // sidestep replaced the run with a two-block shuffle — squads stood waiting for runners
+        // that never left.
+        if (!lineIsClear && !entity.diggedIn && !fallingBack) {
             // Dug in: hold fire rather than step out of the hole to clear an ally's line of fire —
             // same reasoning as advanceOrHold's guard above.
             if (hullBlocked) {
