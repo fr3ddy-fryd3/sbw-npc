@@ -25,6 +25,8 @@ import journeymap.api.v2.client.event.FullscreenRenderEvent
 import journeymap.api.v2.common.event.ClientEventRegistry
 import journeymap.api.v2.common.event.FullscreenEventRegistry
 import journeymap.api.v2.client.fullscreen.IFullscreen
+import journeymap.api.v2.common.waypoint.Waypoint
+import journeymap.api.v2.common.waypoint.WaypointFactory
 import net.minecraft.core.BlockPos
 import net.minecraft.core.registries.Registries
 import net.minecraft.nbt.CompoundTag
@@ -58,6 +60,8 @@ import java.awt.geom.Point2D
  * - "Draw patrol route" in that menu turns clicks into route points: left-click adds one (a drag
  *   still pans the map), Backspace takes the last one back, right-click or Enter sends the route
  *   and the selected infantry patrol it, Esc drops it.
+ * - Each of your squads' objectives is also a JourneyMap waypoint — on the minimap and in the
+ *   world with its distance — kept only for the session.
  *
  * Only ever loaded by JourneyMap itself, so nothing else in the mod may refer to this class.
  */
@@ -255,12 +259,16 @@ class SquadMapPlugin : IClientPlugin {
 
     private fun redraw(feed: CompoundTag) {
         api.removeAll(modId)
-        if (!feed.contains("Dim")) return
+        if (!feed.contains("Dim")) {
+            syncWaypoints(null, emptyMap())
+            return
+        }
         DebugFlags.log(
             "[map-debug] feed: squads={} loose={} vehicles={} enemies={}",
             list(feed, "Squads").size, list(feed, "Loose").size, list(feed, "Vehicles").size, list(feed, "Enemies").size
         )
         val dim = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(feed.getString("Dim")))
+        val objectives = HashMap<String, ObjectiveMark>()
 
         for (t in list(feed, "Squads")) {
             val faction = faction(t) ?: continue
@@ -294,6 +302,7 @@ class SquadMapPlugin : IClientPlugin {
             }
 
             t.getIntArray("Obj").takeIf { it.size == 3 }?.let { obj ->
+                if (own) objectives[id] = ObjectiveMark("$name: ${order?.name?.lowercase() ?: "?"}", BlockPos(obj[0], obj[1], obj[2]), color)
                 val center = BlockPos(obj[0], 0, obj[2])
                 val zone = t.getInt("Zone")
                 if (zone > 0) show(outline(dim, circle(center, zone), color, fill = 0.12f))
@@ -329,6 +338,36 @@ class SquadMapPlugin : IClientPlugin {
         routeDraft?.let { draft ->
             for (p in draft) show(outline(dim, diamond(p, OBJECTIVE_SIZE), SELECTION_COLOR, fill = 0.5f))
             if (draft.size >= 2) show(outline(dim, draft, SELECTION_COLOR))
+        }
+        syncWaypoints(dim, objectives)
+    }
+
+    // --- Objective waypoints ---
+
+    private data class ObjectiveMark(val name: String, val pos: BlockPos, val color: Int)
+    private val waypoints = HashMap<String, kotlin.Pair<ObjectiveMark, Waypoint>>()
+
+    /** Brings the waypoints in line with [marks]: only the ones that changed are replaced, so they
+     *  don't flicker with every feed. */
+    private fun syncWaypoints(dim: ResourceKey<Level>?, marks: Map<String, ObjectiveMark>) {
+        val it = waypoints.entries.iterator()
+        while (it.hasNext()) {
+            val (id, entry) = it.next()
+            if (marks[id] != entry.first) {
+                runCatching { api.removeWaypoint(modId, entry.second) }
+                it.remove()
+            }
+        }
+        if (dim == null) return
+        for ((id, mark) in marks) {
+            if (id in waypoints) continue
+            runCatching {
+                val wp = WaypointFactory.createClientWaypoint(modId, mark.pos, mark.name, dim, false)
+                wp.setColor(mark.color)
+                wp.setShowBeacon(false)
+                api.addWaypoint(modId, wp)
+                waypoints[id] = mark to wp
+            }.onFailure { SquadMod.LOGGER.warn("JourneyMap refused a waypoint: {}", it.toString()) }
         }
     }
 
