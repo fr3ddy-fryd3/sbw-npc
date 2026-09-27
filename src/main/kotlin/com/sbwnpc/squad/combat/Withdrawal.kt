@@ -126,12 +126,17 @@ object Withdrawal {
     private fun startBound(level: ServerLevel, squad: Squad, state: State, members: List<NpcEntity>) {
         state.boundStart = level.gameTime
         state.targets.clear()
-        val runners = members.filter { half(it, squad) == state.moving }.ifEmpty { members }
-            .sortedBy { it.slotIndex(squad) }
+        val unsorted = members.filter { half(it, squad) == state.moving }.ifEmpty { members }
         val from = Vec3(
-            runners.sumOf { it.x } / runners.size, runners.sumOf { it.y } / runners.size, runners.sumOf { it.z } / runners.size
+            unsorted.sumOf { it.x } / unsorted.size, unsorted.sumOf { it.y } / unsorted.size, unsorted.sumOf { it.z } / unsorted.size
         )
         val toPoint = state.point.subtract(from)
+        // Places are handed out left to right in the order the men already stand across the line
+        // of retreat. By slot number instead, a man on the left end could be sent to the right
+        // end — thirty blocks sideways, across everyone else's path.
+        val flat = Vec3(toPoint.x, 0.0, toPoint.z).let { if (it.lengthSqr() < 1.0e-4) Vec3(0.0, 0.0, 1.0) else it.normalize() }
+        val right = Vec3(-flat.z, 0.0, flat.x)
+        val runners = unsorted.sortedBy { it.position().subtract(from).dot(right) }
         val length = toPoint.horizontalDistance()
         val anchor = if (length <= BOUND_DISTANCE) state.point else from.add(toPoint.scale(BOUND_DISTANCE / length))
         runners.forEachIndexed { i, m -> state.targets[m.uuid] = lineSpot(anchor, toPoint, i, runners.size) }
