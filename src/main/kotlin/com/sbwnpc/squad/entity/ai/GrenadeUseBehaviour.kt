@@ -23,6 +23,8 @@ import java.util.UUID
  *  - **Flushing.** The target is close, its position is known, and it has been behind something
  *    for long enough that shooting at it is going nowhere.
  *  - **Breaking suppression.** The NPC is pinned by fire it cannot answer, and knows where from.
+ *  - **A bunch.** Several enemies close together within throwing range, at least one of them in
+ *    sight — one grenade does more there than a magazine.
  *
  * Throws are rationed per squad, not per NPC: without that, a squad that walks into an ambush
  * answers with eight grenades in the same second.
@@ -42,7 +44,7 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.tickCount < nextThrowTick) return false
         if (!squadMayThrow(entity)) return false
 
-        val point = flushPoint(entity) ?: suppressionPoint(entity) ?: return false
+        val point = clusterPoint(entity, level) ?: flushPoint(entity) ?: suppressionPoint(entity) ?: return false
         if (!inRange(entity, point)) return false
         val grenade = GrenadeThrower.pick(entity, level, point) ?: return false
         aimPoint = point
@@ -78,6 +80,36 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
         return target.position()
     }
 
+    /**
+     * The middle of [CLUSTER_SIZE] or more enemies within [CLUSTER_RADIUS] of one another, one of
+     * them in sight and within throwing range — the biggest such bunch. Looked for once every
+     * [CLUSTER_SCAN_TICKS]: it is an area query and some line-of-sight checks, per NPC.
+     */
+    private fun clusterPoint(entity: NpcEntity, level: ServerLevel): Vec3? {
+        if (entity.tickCount < nextClusterScanTick) return null
+        nextClusterScanTick = entity.tickCount + CLUSTER_SCAN_TICKS
+        val reach = MAX_RANGE + CLUSTER_RADIUS
+        val enemies = level.getEntitiesOfClass(
+            net.minecraft.world.entity.LivingEntity::class.java, entity.boundingBox.inflate(reach, 6.0, reach)
+        ) { it.isAlive && it !== entity && entity.isEnemy(it) && !VehicleTargeting.isAircrew(it) }
+        if (enemies.size < CLUSTER_SIZE) return null
+        val radiusSqr = CLUSTER_RADIUS * CLUSTER_RADIUS
+        var best: List<net.minecraft.world.entity.LivingEntity>? = null
+        for (centre in enemies) {
+            val bunch = enemies.filter { it.distanceToSqr(centre) <= radiusSqr }
+            if (bunch.size < CLUSTER_SIZE || bunch.size <= (best?.size ?: 0)) continue
+            val middle = Vec3(bunch.sumOf { it.x } / bunch.size, bunch.sumOf { it.y } / bunch.size, bunch.sumOf { it.z } / bunch.size)
+            if (!inRange(entity, middle)) continue
+            // Seen, not merely known of: one in the bunch has to be in view.
+            if (bunch.none { entity.sensing.hasLineOfSight(it) }) continue
+            best = bunch
+        }
+        val bunch = best ?: return null
+        return Vec3(bunch.sumOf { it.x } / bunch.size, bunch.sumOf { it.y } / bunch.size, bunch.sumOf { it.z } / bunch.size)
+    }
+
+    private var nextClusterScanTick = 0
+
     /** Pinned down, and the memory of where the fire is coming from is still live. */
     private fun suppressionPoint(entity: NpcEntity): Vec3? {
         if (!entity.isSuppressed()) return null
@@ -111,6 +143,10 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
          *  momentarily behind a tree. */
         const val BLOCKED_TICKS = 60
         const val SELF_COOLDOWN_TICKS = 200
+        /** Enemies that make a bunch worth a grenade, and how close together they have to be. */
+        const val CLUSTER_SIZE = 3
+        const val CLUSTER_RADIUS = 3.5
+        const val CLUSTER_SCAN_TICKS = 20
         const val SQUAD_COOLDOWN_TICKS = 120L
         /** Fire from this far overhead is coming from the air. */
         const val AIR_THREAT_HEIGHT = 8.0
