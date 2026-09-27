@@ -27,6 +27,8 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var targetId: UUID? = null
     /** Last tick the target was in sight — see [engagementTarget]. */
     private var sawTargetTick = 0
+    /** Last tick the gunner had anything to shoot at — see [lingering]. */
+    private var engagedTick = 0
 
     init {
         noTimeout()
@@ -45,7 +47,8 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun shouldKeepRunning(entity: NpcEntity): Boolean {
         val vehicle = vehicleId?.let { (entity.level() as? ServerLevel)?.getEntity(it)?.takeIf(Ports.vehicles::isVehicle) }
             ?: return false
-        if (!Ports.vehicles.isOperational(vehicle) || engagementTarget(entity) == null) return false
+        if (!Ports.vehicles.isOperational(vehicle)) return false
+        if (engagementTarget(entity) == null) return lingering(entity, vehicle)
         // A vehicle's hull is the gunner's cover. Once claimed, reach and keep it despite sensor
         // line-of-sight gaps or suppression; these are not reasons to abandon an armoured seat.
         if (entity.vehicle === vehicle) return true
@@ -61,6 +64,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         vehicleId = vehicle.uuid
         targetId = target.uuid
         sawTargetTick = entity.tickCount
+        engagedTick = entity.tickCount
         phase = Phase.APPROACHING
         entity.vehicleTransport = true
         DebugFlags.log(
@@ -92,6 +96,12 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
         val target = engagementTarget(entity)
         if (target == null) {
+            if (lingering(entity, vehicle)) {
+                // Off the dead target: SBW's gun keeps working the last UUID it was given.
+                Ports.vehicles.aimAt(vehicle, entity, null)
+                entity.navigation.stop()
+                return
+            }
             abort(entity)
             return
         }
@@ -118,6 +128,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 }
                 entity.navigation.stop()
                 phase = Phase.FIRING
+                engagedTick = entity.tickCount
                 DebugFlags.log(
                     "[vehicle-debug] {} boarded combat support vehicle {} in seat {} for target {}",
                     entity.uuid, vehicle.uuid, Ports.vehicles.seatOf(vehicle, entity), target.uuid
@@ -181,6 +192,15 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.navigation.stop()
     }
 
+    /**
+     * Seated with nothing left to shoot: stays at the gun for [LINGER_TICKS] after the last target
+     * in case another turns up. It used to climb out the tick its target fell — two shots, out —
+     * which looked absurd and left the gun empty just as the next enemy came round the corner.
+     */
+    private fun lingering(entity: NpcEntity, vehicle: Entity): Boolean =
+        entity.vehicle === vehicle && entity.tickCount - engagedTick < LINGER_TICKS &&
+            Ports.vehicles.seatHasAmmo(vehicle, entity)
+
     /** Keeps a pre-boarding target through sensor gaps caused by the vehicle's own collision hull —
      *  but only gaps: once it has been out of sight for [LOST_SIGHT_TICKS] the gunner lets it go and
      *  gets out, rather than sitting alone in the vehicle for as long as that enemy lives. */
@@ -190,13 +210,17 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
             val target = level.getEntity(id) as? LivingEntity
             if (target != null && target.isAlive && SquadTeams.isHostile(entity, target)) {
                 if (entity.sensing.hasLineOfSight(target)) sawTargetTick = entity.tickCount
-                if (entity.tickCount - sawTargetTick < LOST_SIGHT_TICKS) return target
+                if (entity.tickCount - sawTargetTick < LOST_SIGHT_TICKS) {
+                    engagedTick = entity.tickCount
+                    return target
+                }
             }
             targetId = null
         }
         return threat(entity)?.takeIf { entity.sensing.hasLineOfSight(it) }?.also {
             targetId = it.uuid
             sawTargetTick = entity.tickCount
+            engagedTick = entity.tickCount
         }
     }
 
@@ -233,5 +257,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         const val BOARD_SPEED = 1.0
         const val LOST_SIGHT_TICKS = 200
         const val REBOARD_COOLDOWN_TICKS = 200
+        /** How long a gunner stays at the gun after its last target, looking for the next. */
+        const val LINGER_TICKS = 100
     }
 }
