@@ -9,7 +9,9 @@ import net.minecraft.resources.ResourceLocation
  * under a made-up location drew nothing at all.
  */
 internal enum class MapShapes {
-    SQUARE, CIRCLE, TRIANGLE, CROSS;
+    SQUARE, CIRCLE, TRIANGLE, CROSS,
+    /** Hollow square drawn round a selected squad's symbol. */
+    FRAME;
 
     val location: ResourceLocation = SquadMod.loc("textures/map/${name.lowercase()}.png")
 

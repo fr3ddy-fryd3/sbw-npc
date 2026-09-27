@@ -184,7 +184,13 @@ class SquadMapPlugin : IClientPlugin {
             if (own) marker.setOverlayListener(SquadListener(id))
             show(marker)
             if (own && id in selected) {
-                show(outline(dim, square(at, SELECTION_RING), color).also { it.setTitle("$name (selected)") })
+                // A symbol on screen, like the square itself: an outline drawn in blocks shrank to
+                // nothing inside the square once the map was zoomed out.
+                show(marker(dim, at, MapShapes.FRAME, SELECTION_COLOR, SELECTION_SIZE, 1f).also {
+                    it.setTitle("$name (selected)")
+                    // It sits over the square, so a click on the square can land on it instead.
+                    it.setOverlayListener(SquadListener(id))
+                })
             }
 
             t.getIntArray("Obj").takeIf { it.size == 3 }?.let { obj ->
@@ -338,7 +344,8 @@ class SquadMapPlugin : IClientPlugin {
         const val OBJECTIVE_SIZE = 3
         const val BARRACKS_SIZE = 2
         const val CIRCLE_POINTS = 32
-        const val SELECTION_RING = 4
+        const val SELECTION_SIZE = 22.0
+        const val SELECTION_COLOR = 0xFFFF55
         /** Blocks a box has to span on one side at least to be a box and not a slipped click. */
         const val MIN_BOX = 2
         const val BOX_FILL = 0x3366CCFF
