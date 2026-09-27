@@ -208,6 +208,11 @@ object SquadFormation {
         return anchor.add(fwd.scale(local.z)).add(right.scale(local.x))
     }
 
+    /** The [slotIndex]-th of [squadSize]'s place in [order]'s marching formation — wedge, line,
+     *  column or grid — relative to the formation's point, +Z forward, not yet turned to a heading. */
+    fun transitOffset(order: SquadOrder, slotIndex: Int, squadSize: Int): Vec3 =
+        localOffset(shapeFor(order, false), slotIndex, squadSize)
+
     /** Where the [slotIndex]-th of [squadSize] stands in the MOVE grid relative to its centre, not
      *  turned to any heading — what a MOVE order with no distance to cover forms up into. */
     fun gridOffset(slotIndex: Int, squadSize: Int): Vec3 = localOffset(Shape.GRID, slotIndex, squadSize)

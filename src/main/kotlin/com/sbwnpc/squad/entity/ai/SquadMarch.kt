@@ -40,6 +40,10 @@ object SquadMarch {
     /** A leg ending nearer than this to where it started made no headway. */
     private const val NO_PROGRESS = 8.0
     private const val TURN_DEGREES = 50.0
+    /** Nodes back along the route that the formation's heading is taken over. */
+    private const val HEADING_NODES = 4
+    /** A formation place this far above or below the route is off the path the route found. */
+    private const val MAX_STEP_FROM_ROUTE = 4.0
 
     /** A man this near a route's nodes (or where an unplanned one starts) is on it. */
     private const val JOIN = 12.0
@@ -71,11 +75,15 @@ object SquadMarch {
         lastPlanTick = Long.MIN_VALUE
     }
 
+    /** Where to walk next: [formation] is the man's own place in the squad's formation round the
+     *  route, null where the ground there won't take him; [route] is the route itself. */
+    class Waypoint(val route: BlockPos, val formation: BlockPos?)
+
     /**
      * Where [npc] should walk next on its squad's way to [goal], or null when there is no squad
      * route to follow (no squad, or not planned yet — the caller falls back to its own leg).
      */
-    fun waypointFor(npc: NpcEntity, goal: BlockPos): BlockPos? {
+    fun waypointFor(npc: NpcEntity, goal: BlockPos): Waypoint? {
         val level = npc.level() as? ServerLevel ?: return null
         val squad = npc.currentSquad() ?: return null
         val marches = bySquad.getOrPut(squad.id) { ArrayList() }
@@ -96,10 +104,48 @@ object SquadMarch {
         val atEnd = route.isEmpty() || here >= route.size - END_NODES
         if (atEnd && !march.complete && level.gameTime - march.plannedAt >= MIN_REPLAN_TICKS && lastPlanTick != level.gameTime) {
             plan(level, npc, march, squad.name)
-            return march.route.getOrNull((nearestIndex(march.route, npc) + LOOKAHEAD).coerceAtMost(march.route.size - 1))
+            val planned = march.route
+            if (planned.isEmpty()) return null
+            val at = nearestIndex(planned, npc)
+            return Waypoint(planned[(at + LOOKAHEAD).coerceAtMost(planned.size - 1)], formationSpot(level, npc, march, at))
         }
         if (route.isEmpty()) return null
-        return route[(here + LOOKAHEAD).coerceAtMost(route.size - 1)]
+        return Waypoint(route[(here + LOOKAHEAD).coerceAtMost(route.size - 1)], formationSpot(level, npc, march, here))
+    }
+
+    /**
+     * [npc]'s place in its squad's marching formation — a wedge on the attack — laid round the
+     * route rather than on it: the formation's point is [LOOKAHEAD] nodes ahead of the squad's lead
+     * man, turned along the way the route runs there. Walking the route itself had the whole squad
+     * strung out one behind the other. Null where that place is no good — no ground to stand on
+     * near the route's height — and the man keeps to the route there, as he would through a gap.
+     */
+    private fun formationSpot(level: ServerLevel, npc: NpcEntity, march: March, here: Int): BlockPos? {
+        val squad = npc.currentSquad() ?: return null
+        val route = march.route
+        if (route.size < 2) return null
+        val slot = npc.slotIndex(squad)
+        if (slot < 0) return null
+        val local = com.sbwnpc.squad.combat.SquadFormation.transitOffset(squad.order, slot, squad.members.size)
+        // Everyone measures from the same man, or each would put the formation's point sixteen
+        // nodes ahead of himself and the rear would never close up.
+        val lead = (level.getEntity(squad.members.first()) as? NpcEntity)
+            ?.takeIf { it.isAlive && distanceTo(march, it) <= JOIN * 2 }
+        val leadAt = lead?.let { nearestIndex(route, it) } ?: here
+        val a = (leadAt + LOOKAHEAD).coerceAtMost(route.size - 1)
+        val anchor = route[a]
+        val back = route[(a - HEADING_NODES).coerceAtLeast(0)]
+        val dx = (anchor.x - back.x).toDouble()
+        val dz = (anchor.z - back.z).toDouble()
+        val len = Math.sqrt(dx * dx + dz * dz)
+        if (len < 1.0) return null
+        val fx = dx / len
+        val fz = dz / len
+        val x = anchor.x + 0.5 + fx * local.z - fz * local.x
+        val z = anchor.z + 0.5 + fz * local.z + fx * local.x
+        val ground = com.sbwnpc.squad.util.Terrain.standableOrNull(level, x, anchor.y + 1.0, z) ?: return null
+        if (Math.abs(ground.y - anchor.y) > MAX_STEP_FROM_ROUTE) return null
+        return BlockPos.containing(ground)
     }
 
     /** How far [npc] is from [march]'s route — or, before it has one, from where it starts. */

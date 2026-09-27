@@ -84,8 +84,8 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
             // a fight, the squad's big search looks for the way round.
             if (near != null && !near.canReach() && near.distToTarget > SHORT_OF_GOAL && npc != null && npc.target == null) {
                 SquadMarch.waypointFor(npc, pos)?.let {
-                    branch = "near-route $it"
-                    return super.createPath(it, accuracy)
+                    branch = "near-route ${it.route}"
+                    return super.createPath(it.route, accuracy)
                 }
             }
             return near
@@ -94,8 +94,16 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         npc?.let {
             SquadMarch.waypointFor(it, pos)?.let { waypoint ->
                 farGoal = null
-                branch = "route $waypoint"
-                return super.createPath(waypoint, accuracy)
+                // His place in the formation if he can get there; the route itself otherwise.
+                waypoint.formation?.let { spot ->
+                    val path = super.createPath(spot, accuracy)
+                    if (path != null && (path.canReach() || path.distToTarget <= SHORT_OF_GOAL)) {
+                        branch = "formation $spot"
+                        return path
+                    }
+                }
+                branch = "route ${waypoint.route}"
+                return super.createPath(waypoint.route, accuracy)
             }
         }
         val current = path
