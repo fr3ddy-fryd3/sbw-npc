@@ -614,8 +614,10 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             hullBlocked = hullInTheWay
             if (DebugFlags.LOGGING_ENABLED && hulls.isNotEmpty()) {
                 DebugFlags.log(
-                    "[fire-debug] {} vehicles on lane={} crossing={} allyClear={} -> lineIsClear={} answer={}",
-                    entity.uuid, hulls.size, hullInTheWay, assessment.lineClear, lineIsClear,
+                    "[fire-debug] {} at {} target {} at {} hulls {} vehicles on lane={} crossing={} allyClear={} -> lineIsClear={} answer={}",
+                    entity.uuid, entity.blockPosition(), target.name.string, target.blockPosition(),
+                    hulls.map { net.minecraft.core.BlockPos.containing(it.center) },
+                    hulls.size, hullInTheWay, assessment.lineClear, lineIsClear,
                     if (lineIsClear) "fire" else if (hullInTheWay) "reposition" else "sidestep"
                 )
             }
