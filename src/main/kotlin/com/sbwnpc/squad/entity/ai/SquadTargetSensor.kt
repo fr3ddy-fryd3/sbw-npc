@@ -125,7 +125,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
 
     private fun relayedTarget(mob: NpcEntity, level: ServerLevel): LivingEntity? {
         val faction = SquadTeams.factionOf(mob) ?: return null
-        return TeamAwareness.relayedContacts(faction, level.gameTime)
+        return TeamAwareness.relayedContacts(faction, level.gameTime, TeamAwareness.MEMORY_TICKS)
             .asSequence()
             .mapNotNull { level.getEntity(it) as? LivingEntity }
             .filter {

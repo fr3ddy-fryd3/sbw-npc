@@ -16,10 +16,10 @@ import java.util.UUID
  *  - **Relay delay**: a contact only becomes usable by OTHER units ~3s after it was first spotted
  *    (simulates a radio call reaching the rest of the faction). The spotter itself needs no delay —
  *    that's the caller's own responsibility to handle (see [relayedContacts] doc).
- *  - **Freshness**: a contact stops being usable almost immediately once nobody has confirmed
- *    seeing it recently (~2s) — so units relying on this (chiefly the mortar) never keep firing at
- *    a target that broke line of sight into a building/trench, even though the target entity is
- *    technically still alive and in range.
+ *  - **Freshness**: for fire support a contact stops being usable almost immediately once nobody
+ *    has confirmed seeing it recently (~2s) — so the mortar never keeps firing at a target that
+ *    broke line of sight into a building/trench. Infantry and the map remember it for
+ *    [MEMORY_TICKS] instead.
  */
 object TeamAwareness {
 
@@ -27,6 +27,14 @@ object TeamAwareness {
 
     const val ALERT_DELAY_TICKS = 60L   // ~3s before non-spotters can act on it
     const val RECENT_WINDOW_TICKS = 40L // ~2s since the last confirmed sighting by anyone
+    /**
+     * How long infantry and the map keep acting on a contact nobody is still looking at. The 2s
+     * window above is for fire support, which must not shell a spot the enemy has left; used for
+     * everyone it was shorter than the relay delay itself, so a contact reported once — a man's
+     * killer, reported as he died — or seen for under 3s went stale before anyone else could
+     * know of it, and an ally standing nearby never reacted.
+     */
+    const val MEMORY_TICKS = 200L       // ~10s
     const val FORGET_TICKS = 200L       // ~10s untouched -> drop entirely
     private const val SWEEP_INTERVAL_TICKS = 100L
 
@@ -49,7 +57,7 @@ object TeamAwareness {
      *  is NOT the one currently seeing them. A caller with its own direct line of sight to a
      *  candidate should treat that candidate as actionable regardless of this list (no delay for
      *  whoever just found it themself) — this only covers what's been relayed from elsewhere. */
-    fun relayedContacts(faction: SquadFaction, tick: Long): List<UUID> {
+    fun relayedContacts(faction: SquadFaction, tick: Long, window: Long = RECENT_WINDOW_TICKS): List<UUID> {
         // Allies share what they see; an unallied faction is just itself.
         val sides = Diplomacy.alliesOf(faction)
         // Called per NPC per sensor scan — one pass, one (usually empty) list, not filter + map.
@@ -57,7 +65,7 @@ object TeamAwareness {
         for (side in sides) {
             val contacts = byFaction[side] ?: continue
             for ((id, contact) in contacts) {
-                if (tick - contact.lastSeenTick <= RECENT_WINDOW_TICKS && tick - contact.firstSeenTick >= ALERT_DELAY_TICKS) {
+                if (tick - contact.lastSeenTick <= window && tick - contact.firstSeenTick >= ALERT_DELAY_TICKS) {
                     val list = result ?: ArrayList<UUID>(4).also { result = it }
                     if (id !in list) list.add(id)
                 }
@@ -71,7 +79,7 @@ object TeamAwareness {
     fun knownContacts(faction: SquadFaction, tick: Long): Set<UUID> {
         val out = HashSet<UUID>()
         for (side in Diplomacy.alliesOf(faction)) {
-            byFaction[side]?.forEach { (id, c) -> if (tick - c.lastSeenTick <= RECENT_WINDOW_TICKS) out += id }
+            byFaction[side]?.forEach { (id, c) -> if (tick - c.lastSeenTick <= MEMORY_TICKS) out += id }
         }
         return out
     }
