@@ -39,3 +39,12 @@ type = "required"
 versionRange = "[1.16.11,)"
 ordering = "AFTER"
 side = "BOTH"
+
+# Map integration (squads, contacts, orders from the map). Optional: without it the mod works as
+# before. JourneyMap 6.x is the one carrying the API 2.0 the plugin is built against.
+[[dependencies.sbwnpc]]
+modId = "journeymap"
+type = "optional"
+versionRange = "[1.21.1-6.0.0,)"
+ordering = "NONE"
+side = "CLIENT"
