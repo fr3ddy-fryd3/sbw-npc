@@ -55,6 +55,36 @@ object GroupOrders {
     }
 
     /**
+     * A patrol route drawn on the map, walked by every infantry squad among [squadIds]; the rest
+     * keep what they were doing. The route is saved like a recorded one — under "Map: ..." so it
+     * can be told apart in the Routes screen — and the map route a squad had before is dropped once
+     * no squad walks it any more, so redrawing doesn't pile them up.
+     */
+    fun patrol(level: ServerLevel, mgr: SquadManager, routes: RouteManager, owner: UUID, squadIds: List<UUID>, points: List<kotlin.Pair<Int, Int>>): List<String> {
+        val squads = squadIds.mapNotNull { mgr.get(it) }
+        val walkers = squads.filter { kindOf(mgr, it) == Kind.INFANTRY }
+        if (walkers.isEmpty()) return squads.map { "${it.name}: unchanged" }
+        val route = routes.create(
+            owner, MAP_ROUTE_PREFIX + walkers.joinToString(", ") { it.name },
+            points.map { (x, z) -> BlockPos(x, groundY(level, x, z), z) }
+        )
+        val previous = walkers.mapNotNull { it.routeId }.toSet()
+        for (squad in walkers) {
+            mgr.assignRoute(squad.id, route.id)
+            mgr.setOrder(squad.id, SquadOrder.PATROL)
+            mgr.setObjective(level, squad.id, route.points.first())
+            mgr.setFocus(squad.id, null)
+        }
+        for (id in previous) {
+            val old = routes.get(id) ?: continue
+            if (old.name.startsWith(MAP_ROUTE_PREFIX) && mgr.all().none { it.routeId == id }) routes.delete(id)
+        }
+        return squads.map { if (it in walkers) "${it.name}: patrol (${route.points.size} points)" else "${it.name}: unchanged" }
+    }
+
+    private const val MAP_ROUTE_PREFIX = "Map: "
+
+    /**
      * Ground level at a column the map pointed at. The map sends only X and Z, and the point is
      * usually far off in chunks nobody has loaded — where `Level.getHeight` answers the bottom of
      * the world. Every map order was being sent to y = -64: no path leads there, so squads stood

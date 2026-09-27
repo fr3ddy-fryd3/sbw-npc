@@ -4,6 +4,7 @@ import com.sbwnpc.squad.SquadMod
 import com.sbwnpc.squad.client.MapState
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.network.RouteCmdPayload
 import com.sbwnpc.squad.network.SquadCmdPayload
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.SquadOrder
@@ -23,6 +24,7 @@ import journeymap.api.v2.client.event.FullscreenMapEvent
 import journeymap.api.v2.client.event.FullscreenRenderEvent
 import journeymap.api.v2.common.event.ClientEventRegistry
 import journeymap.api.v2.common.event.FullscreenEventRegistry
+import journeymap.api.v2.client.fullscreen.IFullscreen
 import net.minecraft.core.BlockPos
 import net.minecraft.core.registries.Registries
 import net.minecraft.nbt.CompoundTag
@@ -30,7 +32,10 @@ import net.minecraft.nbt.Tag
 import net.minecraft.resources.ResourceKey
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.level.Level
+import net.neoforged.neoforge.client.event.ScreenEvent
+import net.neoforged.neoforge.common.NeoForge
 import net.neoforged.neoforge.network.PacketDistributor
+import org.lwjgl.glfw.GLFW
 import java.awt.geom.Point2D
 
 /**
@@ -50,6 +55,9 @@ import java.awt.geom.Point2D
  *   here" for everything selected. Right-click on the square itself
  *   changes its order in place. A list of squads in the menu would have to scroll past a
  *   handful, and JourneyMap's menus don't.
+ * - "Draw patrol route" in that menu turns clicks into route points: left-click adds one (a drag
+ *   still pans the map), Backspace takes the last one back, right-click or Enter sends the route
+ *   and the selected infantry patrol it, Esc drops it.
  *
  * Only ever loaded by JourneyMap itself, so nothing else in the mod may refer to this class.
  */
@@ -75,9 +83,11 @@ class SquadMapPlugin : IClientPlugin {
         }
         ClientEventRegistry.FULLSCREEN_POPUP_MENU_EVENT.subscribe(modId) { event -> addOrderMenu(event.popupMenu) }
         FullscreenEventRegistry.FULLSCREEN_MAP_CLICK_EVENT.subscribe(modId) { event ->
-            if (event.stage == FullscreenMapEvent.Stage.PRE && event.button == 0 &&
-                net.minecraft.client.gui.screens.Screen.hasShiftDown()
-            ) {
+            if (event.stage != FullscreenMapEvent.Stage.PRE || event.button != 0) return@subscribe
+            if (routeDraft != null) {
+                pendingPoint = event.location
+                pendingScreen = null
+            } else if (net.minecraft.client.gui.screens.Screen.hasShiftDown()) {
                 boxFrom = event.location
                 boxTo = event.location
                 boxScreenFrom = null
@@ -92,7 +102,97 @@ class SquadMapPlugin : IClientPlugin {
                 if (event.isCancellable) event.cancel()
             }
         }
-        FullscreenEventRegistry.FULLSCREEN_RENDER_EVENT.subscribe(modId, ::drawBox)
+        FullscreenEventRegistry.FULLSCREEN_RENDER_EVENT.subscribe(modId) { event ->
+            drawBox(event)
+            drawRouteHint(event)
+        }
+        NeoForge.EVENT_BUS.addListener(ScreenEvent.KeyPressed.Pre::class.java, ::onRouteKey)
+        NeoForge.EVENT_BUS.addListener(ScreenEvent.MouseButtonPressed.Pre::class.java, ::onRouteRightClick)
+        NeoForge.EVENT_BUS.addListener(ScreenEvent.Closing::class.java) { event ->
+            if (routeDraft != null && event.screen is IFullscreen) dropRoute()
+        }
+    }
+
+    // --- Patrol route drawing ---
+
+    /** Points of the route being drawn, or null when not drawing one. */
+    private var routeDraft: MutableList<BlockPos>? = null
+    private var routeSquads: List<String> = emptyList()
+    /** A left-click waiting to learn whether it was a click (a point) or the start of a pan. */
+    private var pendingPoint: BlockPos? = null
+    private var pendingScreen: IntArray? = null
+
+    private fun startRoute(ids: List<String>) {
+        routeDraft = mutableListOf()
+        routeSquads = ids
+        pendingPoint = null
+        net.minecraft.client.Minecraft.getInstance().tell { MapState.latest?.let(::redraw) }
+    }
+
+    private fun dropRoute() {
+        routeDraft = null
+        routeSquads = emptyList()
+        pendingPoint = null
+        MapState.latest?.let(::redraw)
+    }
+
+    private fun sendRoute() {
+        val points = routeDraft ?: return
+        if (points.size < 2) {
+            tell("A patrol route needs at least 2 points")
+            return
+        }
+        PacketDistributor.sendToServer(
+            RouteCmdPayload(RouteCmdPayload.MAP_ROUTE, routeSquads.joinToString(","), points.joinToString(" ") { "${it.x} ${it.z}" })
+        )
+        dropRoute()
+    }
+
+    private fun tell(msg: String) =
+        net.minecraft.client.Minecraft.getInstance().player?.displayClientMessage(net.minecraft.network.chat.Component.literal(msg), true)
+
+    private fun onRouteKey(event: ScreenEvent.KeyPressed.Pre) {
+        val draft = routeDraft ?: return
+        if (event.screen !is IFullscreen) return
+        when (event.keyCode) {
+            GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> sendRoute()
+            GLFW.GLFW_KEY_BACKSPACE -> {
+                draft.removeLastOrNull()
+                MapState.latest?.let(::redraw)
+            }
+            GLFW.GLFW_KEY_ESCAPE -> dropRoute()
+            else -> return
+        }
+        event.isCanceled = true
+    }
+
+    /** Right-click finishes the route — taken before JourneyMap would open its menu for it. */
+    private fun onRouteRightClick(event: ScreenEvent.MouseButtonPressed.Pre) {
+        if (routeDraft == null || event.screen !is IFullscreen || event.button != GLFW.GLFW_MOUSE_BUTTON_RIGHT) return
+        sendRoute()
+        event.isCanceled = true
+    }
+
+    /** Settles a pending click once the button is up, and says what the keys do. */
+    private fun drawRouteHint(event: FullscreenRenderEvent) {
+        val draft = routeDraft ?: return
+        pendingPoint?.let { point ->
+            val start = pendingScreen ?: intArrayOf(event.mouseX, event.mouseY).also { pendingScreen = it }
+            val window = net.minecraft.client.Minecraft.getInstance().window.window
+            if (GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) != GLFW.GLFW_PRESS) {
+                pendingPoint = null
+                pendingScreen = null
+                // Moved with the button down: that was the map being panned, not a point.
+                val moved = Math.abs(event.mouseX - start[0]) + Math.abs(event.mouseY - start[1])
+                if (moved <= PAN_SLOP && draft.size < MAX_ROUTE_POINTS) {
+                    draft += point
+                    MapState.latest?.let(::redraw)
+                }
+            }
+        }
+        val font = net.minecraft.client.Minecraft.getInstance().font
+        val text = "Patrol route: ${draft.size} point(s) — LMB add, Backspace undo, RMB/Enter send, Esc cancel"
+        event.graphics.drawCenteredString(font, text, event.graphics.guiWidth() / 2, ROUTE_HINT_Y, SELECTION_COLOR)
     }
 
     // --- Box selection ---
@@ -226,6 +326,10 @@ class SquadMapPlugin : IClientPlugin {
             val size = if (shape == MapShapes.CIRCLE) LOOSE_SIZE else VEHICLE_SIZE
             show(marker(dim, pos(t), shape, colorOf(faction), size, 1f).also { it.setTitle(faction.label) })
         }
+        routeDraft?.let { draft ->
+            for (p in draft) show(outline(dim, diamond(p, OBJECTIVE_SIZE), SELECTION_COLOR, fill = 0.5f))
+            if (draft.size >= 2) show(outline(dim, draft, SELECTION_COLOR))
+        }
     }
 
     private fun show(overlay: journeymap.api.v2.client.display.Displayable) {
@@ -267,6 +371,8 @@ class SquadMapPlugin : IClientPlugin {
         for ((label, order) in orders) {
             menu.addMenuItem("$who: $label") { pos -> sendOrder(ids, order, pos) }
         }
+        // Only infantry walks a route; the server leaves the rest of a mixed selection as it is.
+        if (ids.any { known[it]?.mortar != true }) menu.addMenuItem("$who: Draw patrol route") { _ -> startRoute(ids) }
         menu.addMenuItem("Deselect $who") { _ -> select(null, add = false) }
     }
 
@@ -296,7 +402,8 @@ class SquadMapPlugin : IClientPlugin {
      *  objective it has. */
     private inner class SquadListener(private val squad: String) : IOverlayListener {
         override fun onMouseClick(state: UIState, mouse: Point2D.Double, pos: BlockPos, button: Int, doubleClick: Boolean): Boolean {
-            if (button != 0) return true
+            // A click while drawing a route is a route point, not a selection.
+            if (button != 0 || routeDraft != null) return true
             select(squad, add = net.minecraft.client.gui.screens.Screen.hasShiftDown())
             // Handled — same answer JourneyMap's own overlays give for a click they take.
             return false
@@ -350,6 +457,11 @@ class SquadMapPlugin : IClientPlugin {
         const val MIN_BOX = 2
         const val BOX_FILL = 0x3366CCFF
         const val BOX_EDGE = 0xCC66CCFF.toInt()
+        /** GUI pixels the mouse may move between press and release for it to still be a click. */
+        const val PAN_SLOP = 3
+        /** The server keeps no more than this many either. */
+        const val MAX_ROUTE_POINTS = 32
+        const val ROUTE_HINT_Y = 30
 
         val POINT_ORDERS = listOf(
             "Move here" to SquadOrder.MOVE,

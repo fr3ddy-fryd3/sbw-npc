@@ -34,6 +34,8 @@ object ModNetwork {
     private const val OBJECTIVE_RAYCAST_RANGE = 1024.0
     /** Generous, but bounded — a config packet has to come from someone standing at the block. */
     private const val BARRACKS_REACH_SQR = 64.0 * 64.0
+    /** Each point of a map-drawn route loads its chunk to find the ground; this keeps that bounded. */
+    private const val MAX_MAP_ROUTE_POINTS = 32
 
     @SubscribeEvent
     fun register(event: RegisterPayloadHandlersEvent) {
@@ -339,6 +341,16 @@ object ModNetwork {
                     val routeId = runCatching { UUID.fromString(p.route) }.getOrNull() ?: return@enqueueWork
                     if (!routes.ownedBy(routeId, player.uuid)) return@enqueueWork
                     routes.delete(routeId)
+                }
+                RouteCmdPayload.MAP_ROUTE -> {
+                    val coords = p.text.split(' ').mapNotNull { it.toIntOrNull() }
+                    val points = coords.chunked(2).filter { it.size == 2 }.map { it[0] to it[1] }.take(MAX_MAP_ROUTE_POINTS)
+                    if (points.size < 2) return@enqueueWork
+                    // Every id a string the client chose to send: only the sender's own squads.
+                    val ids = p.route.split(',').mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }
+                        .filter { squads.ownedBy(it, player.uuid) }
+                    if (ids.isEmpty()) return@enqueueWork
+                    bar(com.sbwnpc.squad.squad.GroupOrders.patrol(level, squads, routes, player.uuid, ids, points).joinToString(", "))
                 }
                 RouteCmdPayload.REQUEST_LIST -> {
                     sendToClient(player, OpenRoutesScreenPayload(buildRouteSnapshot(routes, squads, player.uuid)))

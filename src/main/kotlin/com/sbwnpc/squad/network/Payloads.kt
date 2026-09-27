@@ -208,6 +208,7 @@ class RouteCmdPayload(val action: Int, val route: String, val text: String) : Cu
         const val ASSIGN = 3       // route = route id, text = squad id
         const val DELETE = 4       // route = route id
         const val REQUEST_LIST = 5
+        const val MAP_ROUTE = 6    // route = squad ids, comma-separated; text = "x z x z ..." drawn on the map
 
         val TYPE = CustomPacketPayload.Type<RouteCmdPayload>(SquadMod.loc("route_cmd"))
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, RouteCmdPayload> = StreamCodec.composite(
