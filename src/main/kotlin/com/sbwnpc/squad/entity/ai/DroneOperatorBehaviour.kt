@@ -191,7 +191,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             if (!inLaunchRange(entity, c.position())) continue
             if (losChecks++ >= MAX_LOS_CHECKS) break
             if (!entity.sensing.hasLineOfSight(c)) continue
-            if (faction != null) TeamAwareness.report(faction, c.uuid, tick)
+            if (faction != null) TeamAwareness.report(faction, c.uuid, c.position(), tick, "drone operator ${entity.uuid.toString().take(8)}")
             if (spotted == null) spotted = c
         }
         if (spotted != null) {

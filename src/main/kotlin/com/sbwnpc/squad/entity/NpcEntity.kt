@@ -801,16 +801,16 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     /** A squadmate going down is itself an "invariant" every shooter-AI convention treats as a
      *  strong signal (F.E.A.R./Half-Life-style squad escalation on a downed ally). When the killer
-     *  is resolvable, this is strictly better than a vague alert — feed it straight into
-     *  [TeamAwareness] as if someone had just spotted it directly, so [SquadAwarenessTargetGoal]
-     *  can act on it after the normal relay delay. Only when the killer can't be resolved (fell,
+     *  is resolvable, this is strictly better than a vague alert — feed it into [TeamAwareness] so
+     *  the infantry can act on it after the normal relay delay. Not as a sighting, though: nobody
+     *  saw him, and fire support only shoots at what someone has seen. Only when the killer can't be resolved (fell,
      *  environmental, whatever) does this fall back to a plain [Alarm] at the death position. */
     private fun alertAllies(cause: net.minecraft.world.damagesource.DamageSource) {
         val faction = com.sbwnpc.squad.team.SquadTeams.factionOf(this) ?: return
         val level = level() as? ServerLevel ?: return
         val attacker = cause.entity as? LivingEntity
         if (attacker != null && attacker.isAlive && com.sbwnpc.squad.team.SquadTeams.isHostile(this, attacker)) {
-            com.sbwnpc.squad.combat.TeamAwareness.report(faction, attacker.uuid, level.gameTime)
+            com.sbwnpc.squad.combat.TeamAwareness.reportUnseen(faction, attacker.uuid, level.gameTime)
         } else {
             com.sbwnpc.squad.combat.Alarm.raiseDeath(this, DEATH_ALARM_RADIUS)
         }

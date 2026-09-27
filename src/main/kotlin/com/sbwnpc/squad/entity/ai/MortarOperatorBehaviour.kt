@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
+import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
@@ -352,17 +353,24 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         for (c in candidates) {
             if (losChecks++ >= MAX_LOS_CHECKS) break
             if (!entity.sensing.hasLineOfSight(c)) continue
-            if (faction != null) TeamAwareness.report(faction, c.uuid, tick)
+            if (faction != null) TeamAwareness.report(faction, c.uuid, c.position(), tick, "mortar ${entity.uuid.toString().take(8)}")
             if (selfSpotted == null) selfSpotted = c
         }
         if (selfSpotted != null) {
             lastScanResult = BlockPos.containing(selfSpotted.position())
+            DebugFlags.log("[fire-support-debug] mortar {} -> {} seen by itself at {}", entity.uuid, selfSpotted.uuid, lastScanResult)
             return lastScanResult
         }
 
-        val relayed = faction?.let { TeamAwareness.relayedContacts(it, tick) } ?: emptyList()
-        val target = relayed.asSequence().mapNotNull { level.getEntity(it) as? LivingEntity }.firstOrNull { it.isAlive }
-        lastScanResult = target?.let { BlockPos.containing(it.position()) }
+        // Where the side last saw it, not where it is now: the shell goes where the call said.
+        val sighting = faction?.let { TeamAwareness.sightings(it, tick) }?.firstOrNull { s ->
+            (level.getEntity(s.target) as? LivingEntity)?.isAlive == true
+        }
+        lastScanResult = sighting?.let { BlockPos.containing(it.pos) }
+        if (sighting != null) DebugFlags.log(
+            "[fire-support-debug] mortar {} -> {} seen by {} {} ticks ago at {}",
+            entity.uuid, sighting.target, sighting.by, tick - sighting.tick, lastScanResult
+        )
         return lastScanResult
     }
 
