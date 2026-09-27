@@ -19,7 +19,10 @@ import journeymap.api.v2.client.model.MapPolygon
 import journeymap.api.v2.client.model.ShapeProperties
 import journeymap.api.v2.client.model.TextProperties
 import journeymap.api.v2.client.util.UIState
+import journeymap.api.v2.client.event.FullscreenMapEvent
+import journeymap.api.v2.client.event.FullscreenRenderEvent
 import journeymap.api.v2.common.event.ClientEventRegistry
+import journeymap.api.v2.common.event.FullscreenEventRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.registries.Registries
 import net.minecraft.nbt.CompoundTag
@@ -42,7 +45,8 @@ import java.awt.geom.Point2D
  *   player's side has seen them or not; our NPCs are taken off it and drawn from the feed instead.
  * - Left-click one of your squads' squares to select it (a ring marks it, and it becomes the
  *   squad the command tool and quick-command HUD work on too); Shift+click adds or removes squads
- *   for a group. Right-click anywhere on the map then gives "Move / Attack / Defend / Retreat
+ *   for a group, and Shift+drag draws a box that selects every one of your squads inside it.
+ *   Right-click anywhere on the map then gives "Move / Attack / Defend / Retreat
  *   here" for everything selected. Right-click on the square itself
  *   changes its order in place. A list of squads in the menu would have to scroll past a
  *   handful, and JourneyMap's menus don't.
@@ -70,6 +74,81 @@ class SquadMapPlugin : IClientPlugin {
             if (event.wrappedEntity.entityRef.get() is NpcEntity) event.wrappedEntity.setDisable(true)
         }
         ClientEventRegistry.FULLSCREEN_POPUP_MENU_EVENT.subscribe(modId) { event -> addOrderMenu(event.popupMenu) }
+        FullscreenEventRegistry.FULLSCREEN_MAP_CLICK_EVENT.subscribe(modId) { event ->
+            if (event.stage == FullscreenMapEvent.Stage.PRE && event.button == 0 &&
+                net.minecraft.client.gui.screens.Screen.hasShiftDown()
+            ) {
+                boxFrom = event.location
+                boxTo = event.location
+                boxScreenFrom = null
+                boxDragged = false
+            }
+        }
+        // Cancelled before JourneyMap starts a drag of its own, so the map stays put under the box.
+        FullscreenEventRegistry.FULLSCREEN_MAP_DRAG_EVENT.subscribe(modId) { event ->
+            if (boxFrom != null && event.button == 0) {
+                boxTo = event.location
+                boxDragged = true
+                if (event.isCancellable) event.cancel()
+            }
+        }
+        FullscreenEventRegistry.FULLSCREEN_RENDER_EVENT.subscribe(modId, ::drawBox)
+    }
+
+    // --- Box selection ---
+
+    /** The map point a Shift+drag started at, and where it has got to. */
+    private var boxFrom: BlockPos? = null
+    private var boxTo: BlockPos? = null
+    /** The same start on screen, for drawing — taken on the first frame after the click. */
+    private var boxScreenFrom: IntArray? = null
+    private var boxDragged = false
+
+    private fun drawBox(event: FullscreenRenderEvent) {
+        if (boxFrom == null) return
+        val start = boxScreenFrom ?: intArrayOf(event.mouseX, event.mouseY).also { boxScreenFrom = it }
+        // JourneyMap reports no release: the box closes on the first frame the button is up.
+        val window = net.minecraft.client.Minecraft.getInstance().window.window
+        if (org.lwjgl.glfw.GLFW.glfwGetMouseButton(window, org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT) != org.lwjgl.glfw.GLFW.GLFW_PRESS) {
+            finishBox()
+            return
+        }
+        if (!boxDragged) return
+        val g = event.graphics
+        val x0 = minOf(start[0], event.mouseX)
+        val x1 = maxOf(start[0], event.mouseX)
+        val y0 = minOf(start[1], event.mouseY)
+        val y1 = maxOf(start[1], event.mouseY)
+        g.fill(x0, y0, x1, y1, BOX_FILL)
+        g.fill(x0, y0, x1, y0 + 1, BOX_EDGE)
+        g.fill(x0, y1 - 1, x1, y1, BOX_EDGE)
+        g.fill(x0, y0, x0 + 1, y1, BOX_EDGE)
+        g.fill(x1 - 1, y0, x1, y1, BOX_EDGE)
+    }
+
+    /** Selects every one of the player's squads whose square is inside the box — in place of the
+     *  selection there was. A Shift+click that never moved is left to the square's own toggle. */
+    private fun finishBox() {
+        val from = boxFrom
+        val to = boxTo
+        val dragged = boxDragged
+        boxFrom = null
+        boxTo = null
+        boxScreenFrom = null
+        boxDragged = false
+        if (!dragged || from == null || to == null) return
+        if (Math.abs(from.x - to.x) < MIN_BOX && Math.abs(from.z - to.z) < MIN_BOX) return
+        val feed = MapState.latest ?: return
+        val xs = minOf(from.x, to.x)..maxOf(from.x, to.x)
+        val zs = minOf(from.z, to.z)..maxOf(from.z, to.z)
+        val inside = list(feed, "Squads")
+            .filter { it.getBoolean("Own") && it.getInt("X") in xs && it.getInt("Z") in zs }
+            .map { it.getUUID("Id").toString() }
+        selected.clear()
+        selected.addAll(inside)
+        // The command tool and the HUD work on one squad: the last one picked.
+        inside.lastOrNull()?.let { PacketDistributor.sendToServer(SquadCmdPayload(SquadCmdPayload.SELECT, it, 0, "")) }
+        net.minecraft.client.Minecraft.getInstance().tell { MapState.latest?.let(::redraw) }
     }
 
     // --- Drawing ---
@@ -260,6 +339,10 @@ class SquadMapPlugin : IClientPlugin {
         const val BARRACKS_SIZE = 2
         const val CIRCLE_POINTS = 32
         const val SELECTION_RING = 4
+        /** Blocks a box has to span on one side at least to be a box and not a slipped click. */
+        const val MIN_BOX = 2
+        const val BOX_FILL = 0x3366CCFF
+        const val BOX_EDGE = 0xCC66CCFF.toInt()
 
         val POINT_ORDERS = listOf(
             "Move here" to SquadOrder.MOVE,
