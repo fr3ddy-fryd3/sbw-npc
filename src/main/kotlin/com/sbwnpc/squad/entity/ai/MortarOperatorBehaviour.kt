@@ -67,7 +67,8 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val MAX_DETECTION = 160.0
         private const val MIN_SCATTER = 5.0
         private const val MAX_SCATTER = 10.0
-        private const val FIRE_COOLDOWN_TICKS = 50
+        /** One round every 5s — halved from every 2.5s per user call. */
+        private const val FIRE_COOLDOWN_TICKS = 100
         // With no mortar in range, eligible() used to run the mortar box query every single
         // tick for the rest of the operator's life (SmartBrainLib re-checks stopped behaviours'
         // start conditions each tick). A mortar doesn't appear faster than this.
