@@ -55,6 +55,13 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
     override fun createPath(pos: BlockPos, accuracy: Int): Path? {
         branch = "?"
         val result = choosePath(pos, accuracy)
+        (mob as? com.sbwnpc.squad.entity.NpcEntity)?.let { npc ->
+            val far = pos.distToCenterSqr(mob.x, mob.y, mob.z) > NOWHERE_MIN_DISTANCE * NOWHERE_MIN_DISTANCE
+            val end = result?.endNode?.asBlockPos()
+            // Not a null path: that is ground not loaded yet or a route still being planned.
+            val nowhere = far && result != null && !result.canReach() && end != null && end.distManhattan(mob.blockPosition()) <= 1
+            npc.notePathGoesNowhere(pos, nowhere)
+        }
         if (com.sbwnpc.squad.combat.DebugFlags.LOGGING_ENABLED && mob.tickCount - lastPathLogTick >= PATH_LOG_TICKS) {
             lastPathLogTick = mob.tickCount
             com.sbwnpc.squad.combat.DebugFlags.log(
@@ -153,6 +160,8 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
     }
 
     private companion object {
+        /** Closer than this, a path ending where it stands is just being there. */
+        const val NOWHERE_MIN_DISTANCE = 3.0
         /** The NPC's own follow range: nearer than this, vanilla's own search is enough. */
         const val NEAR_RANGE = 48.0
         const val FAR_RANGE = 100.0
