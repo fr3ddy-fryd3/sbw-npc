@@ -582,23 +582,29 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  getting stuck on a route that no longer exists. */
     private fun currentWaypoint(entity: NpcEntity, home: Vec3): Vec3 {
         // A failed search is still a search: retry only when due, not every tick on an empty path.
-        if (entity.tickCount >= nextRouteTick) {
-            lastRouteSearchTick = entity.tickCount
-            nextRouteTick = entity.tickCount + ROUTE_RECOMPUTE_TICKS
-            val path = entity.navigation.createPath(BlockPos.containing(home), 0)
-            route = if (path != null) (0 until path.nodeCount).map { path.getNodePos(it) } else emptyList()
-            routeIndex = 0
-            DebugFlags.log(
-                "[vehicle-debug] {} recomputed route: {} nodes, canReach={}, dist-to-home={}",
-                entity.uuid, route.size, path?.canReach(), entity.position().distanceTo(home)
-            )
+        val vehicle = entity.vehicle
+        if (entity.tickCount >= nextRouteTick && vehicle != null) {
+            // Sized to the hull (VehicleRoutes); null means another vehicle had this tick's search.
+            val path = VehicleRoutes.plan(entity, vehicle, home)
+            if (path != null || route.isEmpty()) {
+                lastRouteSearchTick = entity.tickCount
+                nextRouteTick = entity.tickCount + if (path != null) ROUTE_RECOMPUTE_TICKS else 1
+            }
+            if (path != null) {
+                route = (0 until path.nodeCount).map { path.getNodePos(it) }
+                routeIndex = 0
+                DebugFlags.log(
+                    "[vehicle-debug] {} recomputed route: {} nodes, canReach={}, dist-to-home={}",
+                    entity.uuid, route.size, path.canReach(), entity.position().distanceTo(home)
+                )
+            }
         }
-        if (route.isEmpty()) return home
+        if (route.isEmpty() || vehicle == null) return home
 
-        var target = route[routeIndex.coerceIn(route.indices)].center
+        var target = VehicleRoutes.centreOf(route[routeIndex.coerceIn(route.indices)], vehicle)
         while (routeIndex < route.size - 1 && entity.position().distanceTo(target) < WAYPOINT_RADIUS) {
             routeIndex++
-            target = route[routeIndex].center
+            target = VehicleRoutes.centreOf(route[routeIndex], vehicle)
         }
 
         // Vanilla pathfinding caps how far it will search at the mob's own FOLLOW_RANGE attribute

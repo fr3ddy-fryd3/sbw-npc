@@ -74,7 +74,8 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         val dx = pos.x + 0.5 - mob.x
         val dz = pos.z + 0.5 - mob.z
         val len = Math.sqrt(dx * dx + dz * dz)
-        val npc = mob as? com.sbwnpc.squad.entity.NpcEntity
+        // At the wheel or on a bench, a man's squad route is a footpath — no way for a vehicle.
+        val npc = (mob as? com.sbwnpc.squad.entity.NpcEntity)?.takeIf { it.vehicle == null }
         if (len <= NEAR_RANGE && level.chunkSource.getChunkNow(pos.x shr 4, pos.z shr 4) != null) {
             farGoal = null
             branch = "near"
@@ -157,7 +158,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
     }
 }
 
-internal class VehicleAwareNodeEvaluator : WalkNodeEvaluator() {
+internal open class VehicleAwareNodeEvaluator : WalkNodeEvaluator() {
     private var hulls: List<AABB> = emptyList()
     private var standingOn: BlockPos? = null
     private var start: BlockPos? = null
