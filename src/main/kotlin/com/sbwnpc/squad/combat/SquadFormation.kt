@@ -134,7 +134,9 @@ object SquadFormation {
             val (columns, rows) = when {
                 squadSize <= 4 -> 2 to 2
                 squadSize <= 8 -> 2 to 4
-                else -> 4 to 4
+                squadSize <= 16 -> 4 to 4
+                // Thirty-two: twice as wide rather than twice as deep.
+                else -> 8 to 4
             }
             val column = slotIndex % columns
             val row = slotIndex / columns
@@ -205,6 +207,10 @@ object SquadFormation {
         val right = Vec3(-fwd.z, 0.0, fwd.x)
         return anchor.add(fwd.scale(local.z)).add(right.scale(local.x))
     }
+
+    /** Where the [slotIndex]-th of [squadSize] stands in the MOVE grid relative to its centre, not
+     *  turned to any heading — what a MOVE order with no distance to cover forms up into. */
+    fun gridOffset(slotIndex: Int, squadSize: Int): Vec3 = localOffset(Shape.GRID, slotIndex, squadSize)
 
     /** Stable MOVE-grid slot with a caller-supplied heading. Unlike [slotTarget], this never derives
      *  its direction from a settling leader, so rallying and holding a grid cannot rotate in place. */

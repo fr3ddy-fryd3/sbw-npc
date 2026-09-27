@@ -45,7 +45,8 @@ object SquadDeployment {
             else -> cfg.preset.composition
         }
         val difficulty = level.getCurrentDifficultyAt(pos)
-        val spawned = deployLine(level, pos, facingYaw, composition, cfg.rank, cfg.faction, difficulty, cfg.preset.spacing)
+        val spawned = if (cfg.preset.grid) deployGrid(level, pos, facingYaw, composition, cfg.rank, cfg.faction, difficulty)
+            else deployLine(level, pos, facingYaw, composition, cfg.rank, cfg.faction, difficulty, cfg.preset.spacing)
         if (spawned.isEmpty()) return null
 
         val vehiclePlaced = when (cfg.preset) {
@@ -62,12 +63,47 @@ object SquadDeployment {
         val squad = if (spawned.size > 1 || cfg.preset == SquadPreset.T90_CREW) {
             val mgr = SquadManager.get(level)
             mgr.create(level, owner, cfg.faction, spawned.map { it.uuid }).also {
-                // Defend right where it was deployed by default — see SquadManager.create's
-                // initialOrder — rather than a DEFEND with nothing to actually guard.
+                // Infantry holds its grid on the spot (MOVE keeps the formation at the destination);
+                // anyone else defends right where it was deployed — see SquadManager.create's
+                // initialOrder — rather than a DEFEND with nothing to actually guard. MOVE goes
+                // first: setObjective takes the rally point from the order already set.
+                if (cfg.preset.grid) mgr.setOrder(it.id, SquadOrder.MOVE)
                 mgr.setObjective(level, it.id, pos)
             }
         } else null
         return Result(spawned, squad, vehicleBlocked = !vehiclePlaced)
+    }
+
+    /**
+     * Spawns [composition] already standing in the squad's MOVE grid round [center] — the same
+     * slots, in the same member order, that the MOVE order it is given then holds, so nobody has
+     * to shuffle into place. Not turned to the player's facing: a MOVE with no distance to cover
+     * has no heading, and forms its grid square to the world.
+     */
+    private fun deployGrid(
+        level: ServerLevel,
+        center: BlockPos,
+        facingYaw: Float,
+        composition: List<NpcClass>,
+        rank: NpcRank,
+        faction: SquadFaction,
+        difficulty: net.minecraft.world.DifficultyInstance
+    ): List<NpcEntity> {
+        val result = mutableListOf<NpcEntity>()
+        for ((i, cls) in composition.withIndex()) {
+            val npc = ModEntities.NPC.get().create(level) ?: continue
+            val offset = com.sbwnpc.squad.combat.SquadFormation.gridOffset(i, composition.size)
+            val spot = SafeSpawn.findStandingSpot(level, center.x + 0.5 + offset.x, center.z + 0.5 + offset.z, center.y, npc.getDimensions(Pose.STANDING))
+                ?: net.minecraft.world.phys.Vec3(center.x + 0.5, center.y + 1.0, center.z + 0.5)
+            npc.moveTo(spot.x, spot.y, spot.z, facingYaw + 180f, 0f)
+            npc.npcClass = cls
+            npc.npcRank = rank
+            npc.spawnFaction = faction
+            npc.finalizeSpawn(level, difficulty, MobSpawnType.SPAWN_EGG, null)
+            level.addFreshEntity(npc)
+            result.add(npc)
+        }
+        return result
     }
 
     /** Spawns [composition] side by side, centred on [center] and facing the player, perpendicular

@@ -33,8 +33,9 @@ clicking.
   preset and deploy it; Command mode selects squads and issues orders. Ctrl+right-click switches
   between them.
 - **Squad presets** — Single, 5 (riflemen + medic), 7 (riflemen, sniper, machine gunner, medic),
-  16 (large mixed squad), Mortar Crew, Tank Crew, Drone Team, Heli Crew. 5 and 7 can deploy with a
-  support vehicle; the tank crew preset lets you pick the model (ZTZ-99A / T-90A / M1A2), and the
+  16 (large mixed squad), 32 (a company: twice the 16), Mortar Crew, Tank Crew, Drone Team, Heli
+  Crew. The infantry presets deploy standing in a square formation, ready to move. 5 and 7 can
+  deploy with a support vehicle; the tank crew preset lets you pick the model (ZTZ-99A / T-90A / M1A2), and the
   heli crew the airframe (Mi-28 gunship or AH-6 transport).
 - **8 factions**, each with its own uniform, team, and color — pick freely, including OPFOR
   test squads.
@@ -94,7 +95,7 @@ Two modes, switched with **Ctrl + right-click on air**. The current one is on th
 - **Right-click air** opens the deploy config: preset, class (Single only), rank, faction, and the
   vehicle or airframe where the preset has one.
 - **Right-click a block** deploys it there, lined up abreast and facing you.
-- Presets: `Single`, `5: Riflemen`, `7: Standard`, `16: Large`, `Mortar Crew`, `Tank Crew`
+- Presets: `Single`, `5: Riflemen`, `7: Standard`, `16: Large`, `32: Company`, `Mortar Crew`, `Tank Crew`
   (ZTZ-99A / T-90A / M1A2), `Drone Team`, `Heli Crew` — Mi-28 gunship or AH-6 transport, and the
   airframe decides which crew comes with it. `5` and `7` can bring a LAV-25 / LAV-150 / BMP-2.
 - Ranks go `RECRUIT → REGULAR → VETERAN → ELITE`: more health, tighter spread, quicker reactions.
@@ -208,7 +209,8 @@ the generation notes.
   и пресета отряда и деплоит его; режим «Командование» выделяет отряды и отдаёт приказы.
   Переключение — Ctrl + ПКМ.
 - **Пресеты отрядов** — Single, 5 (автоматчики + медик), 7 (автоматчики, снайпер, пулемётчик,
-  медик), 16 (большой смешанный отряд), Mortar Crew, Tank Crew, Drone Team, Heli Crew. Пресеты 5 и
+  медик), 16 (большой смешанный отряд), 32 (рота: два отряда по 16), Mortar Crew, Tank Crew, Drone
+  Team, Heli Crew. Пехотные пресеты появляются сразу в строю квадратом и готовы к движению. Пресеты 5 и
   7 можно задеплоить вместе с техникой поддержки; танковый расчёт — с выбором модели (ZTZ-99A /
   T-90A / M1A2), вертолётный — с выбором борта (Ми-28 или AH-6).
 - **8 фракций**, у каждой своя форма, команда и цвет — выбор свободный, в том числе для тестовых
@@ -271,7 +273,7 @@ the generation notes.
 - **ПКМ по воздуху** открывает конфиг: пресет, класс (только для Single), ранг, фракция и техника
   или тип вертолёта — там, где пресет это поддерживает.
 - **ПКМ по блоку** деплоит на это место, шеренгой, лицом к тебе.
-- Пресеты: `Single`, `5: Riflemen`, `7: Standard`, `16: Large`, `Mortar Crew`, `Tank Crew`
+- Пресеты: `Single`, `5: Riflemen`, `7: Standard`, `16: Large`, `32: Company`, `Mortar Crew`, `Tank Crew`
   (ZTZ-99A / T-90A / M1A2), `Drone Team`, `Heli Crew` — Ми-28 или AH-6, и выбранный борт
   определяет, какой экипаж с ним выйдет. С пресетами `5` и `7` можно выдать LAV-25 / LAV-150 /
   БМП-2.
