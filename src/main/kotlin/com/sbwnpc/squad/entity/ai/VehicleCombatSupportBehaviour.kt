@@ -228,6 +228,8 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
             targetId = null
         }
         return threat(entity)?.takeIf { entity.sensing.hasLineOfSight(it) }?.also {
+            DebugFlags.log("[vehicle-debug] {} at the gun takes a new target {} ({} ticks after the last)",
+                entity.uuid, it.uuid, entity.tickCount - engagedTick)
             targetId = it.uuid
             sawTargetTick = entity.tickCount
             engagedTick = entity.tickCount

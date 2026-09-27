@@ -157,6 +157,10 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         val airborne = VehicleTargeting.isAircrew(mob)
         val range = if (airborne) NpcEntity.DETECTION_RANGE * VehicleTargeting.AIR_RANGE_FACTOR else NpcEntity.DETECTION_RANGE
         val height = if (airborne) VehicleTargeting.AIR_SEARCH_HEIGHT else DETECTION_HEIGHT
+        // At a vehicle's gun it's the mount that turns: the whole circle, like aircrew. Held to
+        // its head's cone, a gunner saw only the arc its last target had been in, missed the next
+        // enemy coming from the side, and climbed out believing the fight was over.
+        val allRound = airborne || mob.vehicle?.let { Ports.vehicles.hasWeaponAt(it, mob) } == true
         val box = mob.boundingBox.inflate(range, height, range)
         val hostiles = level.getEntitiesOfClass(LivingEntity::class.java, box) { candidate ->
             candidate !== mob && candidate.isAlive && SquadTeams.isHostile(mob, candidate)
@@ -171,7 +175,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             if (mob.distanceToSqr(candidate) > rangeSqr) break // box corners reach past the sphere
             // Cheaper than the raycast and rejects more, so it goes first. Head rotation, not body
             // yaw: an NPC scanning around while it walks is looking where its head points.
-            if (!airborne && !Vision.inCone(mob.position(), mob.yHeadRot, candidate.position())) continue
+            if (!allRound && !Vision.inCone(mob.position(), mob.yHeadRot, candidate.position())) continue
             val sees = if (airborne) !com.sbwnpc.squad.combat.Sightline.blocked(level, mob.eyePosition, candidate.eyePosition, mob)
                 else mob.sensing.hasLineOfSight(candidate)
             if (sees) {
