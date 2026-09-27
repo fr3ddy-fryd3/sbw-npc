@@ -604,6 +604,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     override fun getFightTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
         net.tslat.smartbrainlib.api.core.BrainActivityGroup.fightTasks(
             com.sbwnpc.squad.entity.ai.GunAttackBehaviour(),
+            // Gun empty: run from the target rather than stand facing it (GunAttack stands down).
+            com.sbwnpc.squad.entity.ai.OutOfAmmoBehaviour(),
             net.tslat.smartbrainlib.api.core.behaviour.custom.attack.AnimatableMeleeAttack<NpcEntity>(20),
             GrenadeThrowBehaviour(),
             com.sbwnpc.squad.entity.ai.GrenadeUseBehaviour()
