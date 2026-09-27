@@ -30,7 +30,12 @@ object Withdrawal {
     /** A path that ended this near counts too: the exact spot may not be standable. */
     private const val SETTLED = 6.0
     /** A bound that takes longer than this has stalled — someone is stuck; swap anyway. */
-    private const val MAX_BOUND_TICKS = 100L
+    private const val MAX_BOUND_TICKS = 60L
+    /** A runner stopped this long into a bound has got as far as he will this bound. */
+    private const val STOPPED_AFTER_TICKS = 20L
+    /** An enemy someone can see within this is contact worth covering against; anything else is
+     *  a contact the squad has only heard of, and it runs. */
+    private const val CONTACT_RANGE = 64.0
     private const val STATUS_LOG_TICKS = 40L
 
     private class State(val point: Vec3) {
@@ -86,7 +91,12 @@ object Withdrawal {
             DebugFlags.log("[retreat-debug] squad {} reached its rally point, defending", squad.name)
             return
         }
-        state.inContact = members.any { it.target?.isAlive == true }
+        // Seen, and near: a target kept only from what others reported (TeamAwareness keeps those
+        // for 10s) had the squad bounding the whole two hundred blocks back, twelve at a time.
+        state.inContact = members.any { m ->
+            val t = m.target
+            t != null && t.isAlive && m.distanceToSqr(t) <= CONTACT_RANGE * CONTACT_RANGE && m.sensing.hasLineOfSight(t)
+        }
         if (DebugFlags.LOGGING_ENABLED && level.gameTime - state.lastStatusTick >= STATUS_LOG_TICKS) {
             state.lastStatusTick = level.gameTime
             // Where each man is and what he is doing: a squad "stuck" on the way back reads as one
@@ -99,7 +109,8 @@ object Withdrawal {
                     "${m.uuid.toString().take(8)} half ${half(m, squad)} at ${m.blockPosition().toShortString()} " +
                         "point ${m.position().distanceTo(state.point).toInt()} " +
                         (spot?.let { "spot ${m.position().distanceTo(it).toInt()} " } ?: "no spot ") +
-                        "target=${m.target != null} navDone=${m.navigation.isDone} pinned=${m.combatLockedByCover()} dug=${m.diggedIn}"
+                        "target=${m.target != null} navDone=${m.navigation.isDone} speed=${"%.2f".format(m.deltaMovement.horizontalDistance())} " +
+                        "suppressed=${m.isSuppressed()} pinned=${m.combatLockedByCover()} dug=${m.diggedIn}"
                 }
             )
         }
@@ -113,7 +124,9 @@ object Withdrawal {
             if (m.combatLockedByCover() || m.diggedIn) return@all true
             val spot = state.targets[m.uuid] ?: return@all true
             val d = m.position().distanceTo(spot)
-            d <= ARRIVED || (m.navigation.isDone && d <= SETTLED) ||
+            // Stopped short is as far as he is getting this bound — waiting on him held every bound
+            // to the timer.
+            d <= ARRIVED || (m.navigation.isDone && (d <= SETTLED || level.gameTime - state.boundStart >= STOPPED_AFTER_TICKS)) ||
                 m.position().distanceTo(state.point) <= SquadFormation.ARRIVAL_RADIUS
         }
         val stalled = level.gameTime - state.boundStart > MAX_BOUND_TICKS
