@@ -162,7 +162,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         return listOf(preferred, other).firstOrNull { grenadesLeft(it) > 0 }
     }
 
-    private fun grenadesLeft(kind: com.sbwnpc.squad.domain.port.GrenadeKind): Int =
+    fun grenadesLeft(kind: com.sbwnpc.squad.domain.port.GrenadeKind): Int =
         if (kind == com.sbwnpc.squad.domain.port.GrenadeKind.DEFENSIVE) rgoLeft else rgnLeft
 
     fun spendGrenade(kind: com.sbwnpc.squad.domain.port.GrenadeKind) {

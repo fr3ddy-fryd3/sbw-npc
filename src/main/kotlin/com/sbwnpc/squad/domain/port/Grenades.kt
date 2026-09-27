@@ -19,6 +19,13 @@ interface Grenades {
     /** Throws a [kind] hand grenade to land on [target], leading it by [targetVelocity]. */
     fun throwAt(thrower: LivingEntity, level: ServerLevel, target: Vec3, targetVelocity: Vec3 = Vec3.ZERO, kind: GrenadeKind = GrenadeKind.OFFENSIVE)
 
+    /**
+     * Whether a [kind] grenade thrown at [target] flies clear all the way: nothing it would touch —
+     * a block, or anyone but the enemy — before it gets within [nearTarget] of the point. Matters
+     * for the impact-fuzed RGO, which goes off wherever it first touches.
+     */
+    fun arcClear(thrower: LivingEntity, level: ServerLevel, target: Vec3, targetVelocity: Vec3, kind: GrenadeKind, nearTarget: Double): Boolean
+
     /** A grenade on a timed fuse — one that lies there long enough to run from. Contact-fuzed
      *  rounds don't count. */
     fun isTimedGrenade(entity: Entity): Boolean

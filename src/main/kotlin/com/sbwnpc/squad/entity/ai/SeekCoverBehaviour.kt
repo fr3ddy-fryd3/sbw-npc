@@ -577,10 +577,10 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  friendly-fire gates as the ordinary grenade behaviour — skip silently rather than risk
      *  hitting an ally, the grenade just stays in reserve for next time. */
     private fun maybeThrowGrenadeOnceDugIn(entity: NpcEntity, level: ServerLevel) {
-        val grenade = entity.grenadeToThrow() ?: return
+        if (!entity.hasGrenade) return
         if (entity.random.nextDouble() >= GRENADE_THROW_CHANCE) return
         val threat = entity.threatPos ?: return
-        if (!GrenadeThrower.isSafeToThrow(entity, threat, grenade)) return
+        val grenade = GrenadeThrower.pick(entity, level, threat) ?: return
         GrenadeThrower.throwAt(entity, level, threat, grenade)
     }
 

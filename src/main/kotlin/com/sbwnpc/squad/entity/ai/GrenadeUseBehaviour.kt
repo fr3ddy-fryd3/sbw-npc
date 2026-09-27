@@ -37,14 +37,14 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean {
         // The grenadier throws his by his own rules (GrenadeThrowBehaviour), from the same count.
         if (entity.npcClass == NpcClass.GRENADIER) return false
-        val grenade = entity.grenadeToThrow() ?: return false
+        if (!entity.hasGrenade) return false
         if (entity.vehicleTransport || entity.operatingDrone || entity.servingMortar || entity.antiDroneEngaged) return false
         if (entity.tickCount < nextThrowTick) return false
         if (!squadMayThrow(entity)) return false
 
         val point = flushPoint(entity) ?: suppressionPoint(entity) ?: return false
         if (!inRange(entity, point)) return false
-        if (!GrenadeThrower.isSafeToThrow(entity, point, grenade)) return false
+        val grenade = GrenadeThrower.pick(entity, level, point) ?: return false
         aimPoint = point
         kind = grenade
         return true

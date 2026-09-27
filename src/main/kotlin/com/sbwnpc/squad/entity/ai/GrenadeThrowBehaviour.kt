@@ -46,14 +46,14 @@ class GrenadeThrowBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.vehicleTransport || entity.operatingDrone || entity.servingMortar || entity.antiDroneEngaged) return false
         if (entity.combatLockedByCover()) return false // SeekCoverBehaviour owns the mob until this lapses
         if (entity.tickCount < nextThrowTick) return false
-        val grenade = entity.grenadeToThrow() ?: return false
+        if (!entity.hasGrenade) return false
         val target = entity.target ?: return false
         if (!target.isAlive) return false
         // Nothing thrown by hand reaches a helicopter.
         if (VehicleTargeting.isAircrew(target)) return false
         val dist = entity.distanceTo(target)
         if (dist !in MIN_RANGE..MAX_RANGE || !entity.sensing.hasLineOfSight(target)) return false
-        return GrenadeThrower.isSafeToThrow(entity, target.boundingBox.center, grenade)
+        return GrenadeThrower.pick(entity, level, target.boundingBox.center, target.deltaMovement) != null
     }
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = false
@@ -62,7 +62,7 @@ class GrenadeThrowBehaviour : ExtendedBehaviour<NpcEntity>() {
         val target = entity.target ?: return
         val level = entity.level() as? ServerLevel ?: return
 
-        val grenade = entity.grenadeToThrow() ?: return
+        val grenade = GrenadeThrower.pick(entity, level, target.boundingBox.center, target.deltaMovement) ?: return
         GrenadeThrower.throwAt(entity, level, target.boundingBox.center, grenade, target.deltaMovement)
 
         nextThrowTick = entity.tickCount + COOLDOWN_TICKS + entity.random.nextInt(COOLDOWN_JITTER)
