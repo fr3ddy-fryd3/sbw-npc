@@ -829,13 +829,22 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      */
     override fun dropCustomDeathLoot(level: ServerLevel, damageSource: DamageSource, recentlyHit: Boolean) {
         super.dropCustomDeathLoot(level, damageSource, recentlyHit)
+        val rolls = ArrayList<String>(LOOTABLE_SLOTS.size)
         for (slot in LOOTABLE_SLOTS) {
             val stack = getItemBySlot(slot)
             val chance = if (slot == EquipmentSlot.MAINHAND) WEAPON_DROP_CHANCE else ARMOUR_DROP_CHANCE
-            if (stack.isEmpty || random.nextFloat() >= chance) continue
-            spawnAtLocation(stack.copy())
+            val roll = random.nextFloat()
+            rolls += "$slot=${if (stack.isEmpty) "empty" else "%.2f/%.2f".format(roll, chance)}"
+            if (stack.isEmpty || roll >= chance) continue
+            val dropped = spawnAtLocation(stack.copy())
+            rolls[rolls.size - 1] += if (dropped != null) " DROPPED" else " (spawn failed)"
             setItemSlot(slot, ItemStack.EMPTY)
         }
+        com.sbwnpc.squad.combat.DebugFlags.log(
+            "[loot-debug] {} ({}) killed by {} via {} (playerHit={}): {}",
+            uuid, npcClass, damageSource.entity?.let { it as? NpcEntity }?.let { "NPC ${it.npcClass}" } ?: damageSource.entity?.name?.string,
+            damageSource.msgId, recentlyHit, rolls.joinToString(", ")
+        )
     }
 
     /** A squadmate going down is itself an "invariant" every shooter-AI convention treats as a
