@@ -165,7 +165,7 @@ is, with nobody left to replace its losses.
   the squad pinned, rationed so an ambush draws an answer rather than a volley.
 - Mortar crews only shell what their own side has actually seen. Out of reach of the target, they
   break the mortar down, carry it closer and set it back up.
-- Each piece of an NPC's kit drops with a 30% chance when a player kills it.
+- A killed NPC drops the weapon in its hands with a 15% chance and each piece of armour with a 5% chance, whoever killed it.
 
 ### How this mod was made
 
@@ -344,7 +344,7 @@ garrison**. Казарма разворачивает отряд и дальше
   огонь, который прижал отряд, — с ограничением, чтобы на засаду летела одна граната, а не залп.
 - Миномётчики бьют только по тому, что их сторона реально видела. Если до цели не достают —
   собирают миномёт, подходят ближе и разворачиваются заново.
-- С убитого игроком NPC каждый предмет снаряжения падает с шансом 30%.
+- С убитого NPC оружие в руках падает с шансом 15%, каждый предмет брони — с шансом 5%, кто бы его ни убил.
 
 ### Как это сделано
 

@@ -818,20 +818,21 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         if (slot in LOOTABLE_SLOTS) 0f else super.getEquipmentDropChance(slot)
 
     /**
-     * Loot: each piece of the NPC's kit drops with a flat [LOOT_DROP_CHANCE], rolled per slot, and
-     * drops exactly as it was carried — a gun keeps the ammo in its magazine.
+     * Loot: the weapon in hand drops with [WEAPON_DROP_CHANCE], each piece of armour with
+     * [ARMOUR_DROP_CHANCE], rolled per slot, and drops exactly as it was carried — a gun keeps the
+     * ammo in its magazine. Whoever or whatever did the killing: an NPC's kill leaves the same
+     * loot as a player's.
      *
      * Rolled here rather than through vanilla's per-slot drop chance because vanilla damages
      * whatever it drops when the chance is below 1.0, which would hand the player a near-broken
-     * rifle. `recentlyHit` is vanilla's "a player did this" flag: mines, fall damage and friendly
-     * fire leave nothing behind, same as for any other mob.
+     * rifle.
      */
     override fun dropCustomDeathLoot(level: ServerLevel, damageSource: DamageSource, recentlyHit: Boolean) {
         super.dropCustomDeathLoot(level, damageSource, recentlyHit)
-        if (!recentlyHit) return
         for (slot in LOOTABLE_SLOTS) {
             val stack = getItemBySlot(slot)
-            if (stack.isEmpty || random.nextFloat() >= LOOT_DROP_CHANCE) continue
+            val chance = if (slot == EquipmentSlot.MAINHAND) WEAPON_DROP_CHANCE else ARMOUR_DROP_CHANCE
+            if (stack.isEmpty || random.nextFloat() >= chance) continue
             spawnAtLocation(stack.copy())
             setItemSlot(slot, ItemStack.EMPTY)
         }
@@ -841,8 +842,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      *  strong signal (F.E.A.R./Half-Life-style squad escalation on a downed ally). When the killer
      *  is resolvable, this is strictly better than a vague alert — feed it into [TeamAwareness] so
      *  the infantry can act on it after the normal relay delay. Not as a sighting, though: nobody
-     *  saw him, and fire support only shoots at what someone has seen. Only when the killer can't be resolved (fell,
-     *  environmental, whatever) does this fall back to a plain [Alarm] at the death position. */
+     *  saw him, and fire support only shoots at what someone has seen. Only when the killer can't
+     *  be resolved (fell, environmental, whatever) does this fall back to a plain [Alarm] at the
+     *  death position. */
     private fun alertAllies(cause: net.minecraft.world.damagesource.DamageSource) {
         val faction = com.sbwnpc.squad.team.SquadTeams.factionOf(this) ?: return
         val level = level() as? ServerLevel ?: return
@@ -855,9 +857,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     }
 
     companion object {
-        /** Per-slot chance that a piece of an NPC's kit survives its death — see
-         *  [dropCustomDeathLoot]. */
-        private const val LOOT_DROP_CHANCE = 0.30f
+        /** Chances that a piece of an NPC's kit survives its death — see [dropCustomDeathLoot]. */
+        private const val WEAPON_DROP_CHANCE = 0.15f
+        private const val ARMOUR_DROP_CHANCE = 0.05f
         private val LOOTABLE_SLOTS = listOf(EquipmentSlot.MAINHAND, EquipmentSlot.HEAD, EquipmentSlot.CHEST)
         private const val BASE_HEALTH = 20.0
         private const val GRENADES_OF_EACH = 2
