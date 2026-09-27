@@ -39,7 +39,7 @@ import java.util.UUID
  * Regeneration, from that mod's own `MiscConfig`) instead of reinventing the healing math — called
  * directly on the ally via the already-registered [ModItems.MEDICAL_KIT] instance, with no item
  * ever placed in the medic's own hand (same "flag/direct call, not a visible item" precedent as
- * [NpcEntity.hasReserveGrenade] — a medic's hands are already full with its SMG).
+ * [NpcEntity.rgnLeft] — a medic's hands are already full with its SMG).
  */
 class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
 

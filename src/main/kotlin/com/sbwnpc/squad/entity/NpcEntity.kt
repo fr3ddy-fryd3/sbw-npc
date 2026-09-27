@@ -146,9 +146,33 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     fun firedRecently(withinTicks: Int): Boolean = tickCount - lastShotTick <= withinTicks
 
-    // Single-use "parting shot" grenade, tracked as a plain flag rather than a visible held item —
-    // see applyRole() for why. Consumed (set false) by SeekCoverBehaviour.maybeThrowGrenadeOnceDugIn.
-    var hasReserveGrenade: Boolean = false
+    // Hand grenades carried, counted rather than held as items — see applyRole() for why. Two of
+    // each, per user call: the RGO when holding ground or falling back, the RGN otherwise.
+    var rgnLeft = 0
+    var rgoLeft = 0
+
+    val hasGrenade: Boolean get() = rgnLeft > 0 || rgoLeft > 0
+
+    /** Which grenade to throw now, or null with none left: the RGO while defending or falling
+     *  back, the RGN otherwise — and whichever is left when that one has run out. */
+    fun grenadeToThrow(): com.sbwnpc.squad.domain.port.GrenadeKind? {
+        val defensive = retreatPoint() != null || currentSquad()?.order.let { it == SquadOrder.DEFEND || it == SquadOrder.RETREAT }
+        val preferred = if (defensive) com.sbwnpc.squad.domain.port.GrenadeKind.DEFENSIVE else com.sbwnpc.squad.domain.port.GrenadeKind.OFFENSIVE
+        val other = if (defensive) com.sbwnpc.squad.domain.port.GrenadeKind.OFFENSIVE else com.sbwnpc.squad.domain.port.GrenadeKind.DEFENSIVE
+        return listOf(preferred, other).firstOrNull { grenadesLeft(it) > 0 }
+    }
+
+    private fun grenadesLeft(kind: com.sbwnpc.squad.domain.port.GrenadeKind): Int =
+        if (kind == com.sbwnpc.squad.domain.port.GrenadeKind.DEFENSIVE) rgoLeft else rgnLeft
+
+    fun spendGrenade(kind: com.sbwnpc.squad.domain.port.GrenadeKind) {
+        if (kind == com.sbwnpc.squad.domain.port.GrenadeKind.DEFENSIVE) rgoLeft = (rgoLeft - 1).coerceAtLeast(0)
+        else rgnLeft = (rgnLeft - 1).coerceAtLeast(0)
+    }
+
+    /** Classes that carry hand grenades at all: not the crews, whose hands are on something else. */
+    private fun carriesGrenades(): Boolean = npcClass != NpcClass.MORTAR_OPERATOR && npcClass != NpcClass.MORTAR_LOADER &&
+        npcClass != NpcClass.TANK_CREW && npcClass != NpcClass.DRONE_OPERATOR
 
     // Set/cleared only by SeekCoverBehaviour (enterDugInHolding/stop) while the mob is holding a
     // foxhole it dug for itself. Read by GunAttackBehaviour to skip ALL repositioning (formation
@@ -669,16 +693,13 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         setItemSlot(EquipmentSlot.HEAD, helmet)
         setItemSlot(EquipmentSlot.CHEST, chest)
 
-        // One reserve grenade per fighter, mortar crew excepted (they aren't a combat-suppression
-        // role) — per user request. Tracked as a plain flag, NOT a visible offhand item — user
-        // feedback: holding a physical grenade in the offhand looked wrong (both hands full), and
-        // GRENADIER's own unlimited GrenadeThrowBehaviour already throws without ever visibly
-        // holding a grenade either (it just spawns HandGrenadeEntity directly), so there's no
-        // established precedent here for a held item in the first place. Consumed by
-        // SeekCoverBehaviour's occasional POST-dig throw (see maybeThrowGrenadeOnceDugIn — thrown
-        // once already dug in, not before); entirely separate from GRENADIER's own mechanic.
-        hasReserveGrenade = npcClass != NpcClass.MORTAR_OPERATOR && npcClass != NpcClass.MORTAR_LOADER &&
-            npcClass != NpcClass.TANK_CREW && npcClass != NpcClass.DRONE_OPERATOR
+        // Two RGN and two RGO per fighter, crews excepted (they aren't a combat-suppression role)
+        // — per user request. Counted, NOT visible offhand items — user feedback: holding a
+        // physical grenade in the offhand looked wrong (both hands full). Thrown by
+        // GrenadeUseBehaviour, the grenadier's GrenadeThrowBehaviour and SeekCoverBehaviour's
+        // post-dig throw, all from these same counts.
+        rgnLeft = if (carriesGrenades()) GRENADES_OF_EACH else 0
+        rgoLeft = rgnLeft
         if (npcClass == NpcClass.DRONE_OPERATOR) dronesLeft = com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES
 
         // A belt-fed gun does nothing to a tank, and the machine gunner is the one member of an
@@ -694,7 +715,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         compound.putString("NpcRank", npcRank.name)
         squadId?.let { compound.putUUID("SquadId", it) }
         assignedVehicleId?.let { compound.putUUID("AssignedVehicle", it) }
-        compound.putBoolean("ReserveGrenade", hasReserveGrenade)
+        compound.putInt("Rgn", rgnLeft)
+        compound.putInt("Rgo", rgoLeft)
         if (carryingMortar) compound.putBoolean("CarryingMortar", true)
         compound.putInt("DronesLeft", dronesLeft)
         if (!stowedWeapon.isEmpty) compound.put("StowedWeapon", stowedWeapon.save(registryAccess()))
@@ -707,8 +729,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         runCatching { npcRank = NpcRank.valueOf(compound.getString("NpcRank")) }
         squadId = if (compound.hasUUID("SquadId")) compound.getUUID("SquadId") else null
         assignedVehicleId = if (compound.hasUUID("AssignedVehicle")) compound.getUUID("AssignedVehicle") else null
-        hasReserveGrenade = if (compound.contains("ReserveGrenade")) compound.getBoolean("ReserveGrenade") else
-            npcClass != NpcClass.MORTAR_OPERATOR && npcClass != NpcClass.MORTAR_LOADER && npcClass != NpcClass.TANK_CREW
+        // Saved before grenades were counted: a full set, as for anyone recruited now.
+        rgnLeft = if (compound.contains("Rgn")) compound.getInt("Rgn") else if (carriesGrenades()) GRENADES_OF_EACH else 0
+        rgoLeft = if (compound.contains("Rgo")) compound.getInt("Rgo") else if (carriesGrenades()) GRENADES_OF_EACH else 0
         carryingMortar = compound.getBoolean("CarryingMortar")
         dronesLeft = if (compound.contains("DronesLeft")) compound.getInt("DronesLeft")
             else if (npcClass == NpcClass.DRONE_OPERATOR) com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES else 0
@@ -797,6 +820,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         private const val LOOT_DROP_CHANCE = 0.30f
         private val LOOTABLE_SLOTS = listOf(EquipmentSlot.MAINHAND, EquipmentSlot.HEAD, EquipmentSlot.CHEST)
         private const val BASE_HEALTH = 20.0
+        private const val GRENADES_OF_EACH = 2
         private const val RENDER_DISTANCE = 128.0
         private const val VEHICLE_ATTACKER_MEMORY_TICKS = 200
         // internal (not private) — MedicHealBehaviour reuses this to compute its temporary

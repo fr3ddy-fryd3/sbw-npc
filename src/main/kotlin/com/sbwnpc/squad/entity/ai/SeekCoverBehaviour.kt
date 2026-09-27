@@ -570,22 +570,18 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /** Per user request: once actually dug in (not before) — a "so the enemy flinches while I catch
      *  my breath" parting shot, not a pre-emptive one. Small [GRENADE_THROW_CHANCE] roll, needs
-     *  [NpcEntity.hasReserveGrenade] (every non-mortar NpcClass starts with one, see
-     *  [NpcEntity.applyRole]) — a plain flag, not a visible held item (user feedback: a physical
-     *  offhand grenade looked wrong with a gun already in the main hand, and GRENADIER's own
-     *  separate, unlimited `GrenadeThrowBehaviour` never visibly holds one either, it just spawns
-     *  the entity directly — no precedent here for a held item in the first place). Consumed on
-     *  use, one-shot per NPC. Thrown at [NpcEntity.threatPos] (the suppressing threat, not
+     *  a grenade left ([NpcEntity.grenadeToThrow]; every non-crew NpcClass starts with 2+2, see
+     *  [NpcEntity.applyRole]) — counted, not a visible held item (user feedback: a physical
+     *  offhand grenade looked wrong with a gun already in the main hand). Thrown at [NpcEntity.threatPos] (the suppressing threat, not
      *  necessarily the current `target`) since that's who this is meant to rattle. Same
      *  friendly-fire gates as the ordinary grenade behaviour — skip silently rather than risk
      *  hitting an ally, the grenade just stays in reserve for next time. */
     private fun maybeThrowGrenadeOnceDugIn(entity: NpcEntity, level: ServerLevel) {
-        if (!entity.hasReserveGrenade) return
+        val grenade = entity.grenadeToThrow() ?: return
         if (entity.random.nextDouble() >= GRENADE_THROW_CHANCE) return
         val threat = entity.threatPos ?: return
-        if (!GrenadeThrower.isSafeToThrow(entity, threat)) return
-        GrenadeThrower.throwAt(entity, level, threat)
-        entity.hasReserveGrenade = false
+        if (!GrenadeThrower.isSafeToThrow(entity, threat, grenade)) return
+        GrenadeThrower.throwAt(entity, level, threat, grenade)
     }
 
     /** Gates digging in to exactly the invariants the user asked for:

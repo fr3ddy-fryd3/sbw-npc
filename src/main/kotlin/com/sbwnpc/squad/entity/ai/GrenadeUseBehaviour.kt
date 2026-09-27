@@ -30,21 +30,23 @@ import java.util.UUID
 class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private var aimPoint: Vec3? = null
+    private var kind: com.sbwnpc.squad.domain.port.GrenadeKind? = null
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean {
-        // The grenadier has its own, unlimited mechanic; this is the ordinary fighter's single one.
+        // The grenadier throws his by his own rules (GrenadeThrowBehaviour), from the same count.
         if (entity.npcClass == NpcClass.GRENADIER) return false
-        if (!entity.hasReserveGrenade) return false
+        val grenade = entity.grenadeToThrow() ?: return false
         if (entity.vehicleTransport || entity.operatingDrone || entity.servingMortar || entity.antiDroneEngaged) return false
         if (entity.tickCount < nextThrowTick) return false
         if (!squadMayThrow(entity)) return false
 
         val point = flushPoint(entity) ?: suppressionPoint(entity) ?: return false
         if (!inRange(entity, point)) return false
-        if (!GrenadeThrower.isSafeToThrow(entity, point)) return false
+        if (!GrenadeThrower.isSafeToThrow(entity, point, grenade)) return false
         aimPoint = point
+        kind = grenade
         return true
     }
 
@@ -53,9 +55,10 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun start(entity: NpcEntity) {
         val level = entity.level() as? ServerLevel ?: return
         val point = aimPoint ?: return
-        GrenadeThrower.throwAt(entity, level, point)
-        entity.hasReserveGrenade = false
+        val grenade = kind ?: return
+        GrenadeThrower.throwAt(entity, level, point, grenade)
         aimPoint = null
+        kind = null
         nextThrowTick = entity.tickCount + SELF_COOLDOWN_TICKS
         entity.currentSquad()?.let { lastSquadThrow[it.id] = level.gameTime }
     }
