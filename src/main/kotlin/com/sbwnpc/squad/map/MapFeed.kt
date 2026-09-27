@@ -75,6 +75,9 @@ object MapFeed {
         for (squad in squads.all()) if (squad.owner == player.uuid) shown += squad.faction
         for (squad in squads.all()) {
             if (squad.owner != player.uuid && squad.faction !in shown) continue
+            // Wiped out and waiting on its barracks for men: nothing out there to show. It used to
+            // pass for a squad merely out of range, square and objective waypoint and all.
+            if (squad.members.isEmpty()) continue
             val members = squad.members.mapNotNull { level.getEntity(it) as? NpcEntity }.filter { it.isAlive }
             inSquad += squad.members
             // Out of loaded range: shown where it was last seen, so it can still be picked out

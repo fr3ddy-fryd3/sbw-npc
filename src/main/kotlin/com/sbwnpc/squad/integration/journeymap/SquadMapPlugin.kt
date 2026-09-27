@@ -358,6 +358,8 @@ class SquadMapPlugin : IClientPlugin {
 
     private data class ObjectiveMark(val name: String, val pos: BlockPos, val color: Int)
     private val waypoints = HashMap<String, kotlin.Pair<ObjectiveMark, Waypoint>>()
+    /** Cleared out of JourneyMap since joining this world. */
+    private var staleWaypointsCleared = false
 
     /** Brings the waypoints in line with [marks]: only the ones that changed are replaced, so they
      *  don't flicker with every feed. */
@@ -370,7 +372,16 @@ class SquadMapPlugin : IClientPlugin {
                 it.remove()
             }
         }
-        if (dim == null) return
+        if (dim == null) {
+            staleWaypointsCleared = false
+            return
+        }
+        // A server running JourneyMap keeps them past the session, "not persistent" or not — and
+        // one left from last time belongs to nothing this client knows of, so it never went away.
+        if (!staleWaypointsCleared) {
+            runCatching { api.removeAllWaypoints(modId) }
+            staleWaypointsCleared = true
+        }
         for ((id, mark) in marks) {
             if (id in waypoints) continue
             runCatching {
