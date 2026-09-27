@@ -725,6 +725,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     override fun readAdditionalSaveData(compound: CompoundTag) {
         super.readAdditionalSaveData(compound)
+        // Saved attributes carry the old base; NPCs from before the change swim at the new pace too.
+        getAttribute(net.neoforged.neoforge.common.NeoForgeMod.SWIM_SPEED)?.baseValue = SWIM_SPEED
         runCatching { npcClass = NpcClass.valueOf(compound.getString("NpcClass")) }
         runCatching { npcRank = NpcRank.valueOf(compound.getString("NpcRank")) }
         squadId = if (compound.hasUUID("SquadId")) compound.getUUID("SquadId") else null
@@ -822,6 +824,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         private const val BASE_HEALTH = 20.0
         private const val GRENADES_OF_EACH = 2
         private const val RENDER_DISTANCE = 256.0
+        private const val SWIM_SPEED = 2.0
         private const val VEHICLE_ATTACKER_MEMORY_TICKS = 200
         // internal (not private) — MedicHealBehaviour reuses this to compute its temporary
         // "sprinting to treat someone" speed on the same BASE_SPEED*multiplier basis as applyRole(),
@@ -874,6 +877,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
                 // neither needs to grow with detection range, and both scale every repath every
                 // NPC makes. Back to vanilla-ish 48 for the pathing side only.
                 .add(Attributes.FOLLOW_RANGE, 48.0)
+                // Twice the usual pace in water, per user call — a squad fording a river crawled.
+                .add(net.neoforged.neoforge.common.NeoForgeMod.SWIM_SPEED, SWIM_SPEED)
         }
     }
 }
