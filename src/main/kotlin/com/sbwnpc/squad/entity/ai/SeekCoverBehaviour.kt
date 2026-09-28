@@ -12,6 +12,7 @@ import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.team.SquadTeams
 import com.sbwnpc.squad.combat.Hostiles
+import com.sbwnpc.squad.util.Terrain
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.tags.BlockTags
@@ -494,7 +495,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         val level = entity.level() as? ServerLevel
         val hole = coverTarget
         if (level != null && hole != null) {
-            val exitPoint = NEIGHBOR_OFFSETS.map { (dx, dz) -> groundAt(level, hole.offset(dx, 0, dz)) }
+            val exitPoint = NEIGHBOR_OFFSETS.map { (dx, dz) -> Terrain.groundAt(level, hole.offset(dx, 0, dz)) }
                 .minByOrNull { it.distSqr(hole) }
             if (exitPoint != null) entity.navigation.moveTo(exitPoint.x + 0.5, exitPoint.y.toDouble(), exitPoint.z + 0.5, 1.0)
         }
@@ -540,10 +541,10 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         // break there).
         level.destroyBlock(hole.offset(dx, 0, dz), false, entity, 512)
         level.destroyBlock(hole.offset(dx, -1, dz), false, entity, 512)
-        // hole.y + 1, NOT a live groundAt() query (PM review finding): isFlatEnoughToDig already
+        // hole.y + 1, NOT a live Terrain.groundAt() query (PM review finding): isFlatEnoughToDig already
         // guaranteed this exact neighbor column's ground sits at or below hole.y when the last dig
         // started (so its own open/walkable height is at or above hole.y + 1) — a real, pre-verified
-        // invariant. Querying groundAt() here instead would read back the two blocks just destroyed
+        // invariant. Querying Terrain.groundAt() here instead would read back the two blocks just destroyed
         // one line above, and/or (at distance 2) terrain that flatness never actually checked —
         // either way risking landing the mob back down inside the breach rather than above it.
         val exitPoint = hole.offset(dx, 1, dz)
@@ -630,7 +631,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  wouldn't actually block fire from the low side at all — the user's own example of what
      *  "digging in" must NOT be). */
     private fun isFlatEnoughToDig(level: ServerLevel, pos: BlockPos): Boolean {
-        return DIG_NEIGHBOR_OFFSETS.all { (dx, dz) -> groundAt(level, pos.offset(dx, 0, dz)).y >= pos.y }
+        return DIG_NEIGHBOR_OFFSETS.all { (dx, dz) -> Terrain.groundAt(level, pos.offset(dx, 0, dz)).y >= pos.y }
     }
 
     private fun tickInCover(entity: NpcEntity, level: ServerLevel) {
@@ -738,7 +739,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             while (dz <= MAX_RADIUS.toInt()) {
                 val distSq = (dx * dx + dz * dz).toDouble()
                 if (distSq in (MIN_RADIUS * MIN_RADIUS)..(MAX_RADIUS * MAX_RADIUS)) {
-                    val ground = groundAt(level, origin.offset(dx, 0, dz))
+                    val ground = Terrain.groundAt(level, origin.offset(dx, 0, dz))
                     if (hasAdjacentSolidWall(level, ground)) candidates += ground
                 }
                 dz += WALL_SCAN_STEP
@@ -749,7 +750,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         repeat(SAMPLE_COUNT) {
             val angle = entity.random.nextDouble() * Math.PI * 2
             val dist = MIN_RADIUS + entity.random.nextDouble() * (MAX_RADIUS - MIN_RADIUS)
-            candidates += groundAt(level, origin.offset(Math.round(Math.cos(angle) * dist).toInt(), 0, Math.round(Math.sin(angle) * dist).toInt()))
+            candidates += Terrain.groundAt(level, origin.offset(Math.round(Math.cos(angle) * dist).toInt(), 0, Math.round(Math.sin(angle) * dist).toInt()))
         }
 
         val threats = nearbyThreats(entity, level, threat)
@@ -807,7 +808,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         if (elevatedWallNearby) return true
         return DEPRESSION_CHECK_DISTANCES.any { dist ->
-            NEIGHBOR_OFFSETS.any { (nx, nz) -> groundAt(level, pos.offset(nx * dist, 0, nz * dist)).y > pos.y }
+            NEIGHBOR_OFFSETS.any { (nx, nz) -> Terrain.groundAt(level, pos.offset(nx * dist, 0, nz * dist)).y > pos.y }
         }
     }
 
@@ -832,17 +833,9 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         return threats.all { threat -> Sightline.blockedBy(level, threat, to, entity, hulls) }
     }
 
-    /** Snaps to standable ground near [pos] — same heuristic shape as the groundAt() helpers used
+    /** Snaps to standable ground near [pos] — same heuristic shape as the Terrain.groundAt() helpers used
      *  elsewhere in this codebase (ModNetwork/SquadToolItem), just bounded much tighter since this
      *  is only ever a few blocks from the mob's own feet. */
-    private fun groundAt(level: ServerLevel, pos: BlockPos): BlockPos {
-        var p = pos
-        var guard = 0
-        while (level.getBlockState(p).isAir && p.y > level.minBuildHeight && guard++ < 10) p = p.below()
-        while (!level.getBlockState(p).isAir && guard++ < 10) p = p.above()
-        return p
-    }
-
     /** No reachable cover found — put real distance between the mob and the threat instead of
      *  standing still under fire, angled off dead-away by a random spread so several suppressed
      *  squadmates retreating at once don't all bunch up on the same line behind the threat (which

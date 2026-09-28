@@ -23,11 +23,18 @@ object Terrain {
         return surfaceBelow(level, hit.location)
     }
 
-    fun standableOrNull(level: BlockGetter, x: Double, y: Double, z: Double, guard: Int = 6): Vec3? {
-        var pos = BlockPos.containing(x, y, z)
+    /** The first air block above the ground at [pos]'s column: down through air, then up through
+     *  solid, [guard] steps in all — so on a cliff or in a cave it may stop short of either. */
+    fun groundAt(level: BlockGetter, pos: BlockPos, guard: Int = 10): BlockPos {
+        var p = pos
         var steps = 0
-        while (level.getBlockState(pos).isAir && pos.y > level.minBuildHeight && steps++ < guard) pos = pos.below()
-        while (!level.getBlockState(pos).isAir && steps++ < guard) pos = pos.above()
+        while (level.getBlockState(p).isAir && p.y > level.minBuildHeight && steps++ < guard) p = p.below()
+        while (!level.getBlockState(p).isAir && steps++ < guard) p = p.above()
+        return p
+    }
+
+    fun standableOrNull(level: BlockGetter, x: Double, y: Double, z: Double, guard: Int = 6): Vec3? {
+        val pos = groundAt(level, BlockPos.containing(x, y, z), guard)
         if (level.getBlockState(pos.below()).isAir) return null
         return Vec3(pos.x + 0.5, pos.y.toDouble(), pos.z + 0.5)
     }
