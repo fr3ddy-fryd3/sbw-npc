@@ -193,10 +193,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun moveToSlot(entity: NpcEntity, slot: Vec3, speed: Double = WALK_SPEED_MODIFIER, fallIn: Boolean = false) {
         if (entity.position().distanceTo(slot) > 1.5) {
             val pace = if (fallIn) paceTo(entity, slot, speed) else holdPace(entity, speed)
-            if (repathCooldown == 0) {
-                entity.navigation.moveTo(slot.x, slot.y, slot.z, pace)
-                repathCooldown = 20
-            }
+            repathWhenDue(entity, slot, pace)
         } else {
             entity.navigation.stop()
         }
@@ -225,10 +222,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         val settled = arrived && entity.navigation.isDone && entity.position().distanceTo(slot) <= SLOT_SETTLE_DISTANCE
         if (!settled && entity.position().distanceTo(slot) > 1.5) {
             val pace = holdPace(entity, speed)
-            if (repathCooldown == 0) {
-                entity.navigation.moveTo(slot.x, slot.y, slot.z, pace)
-                repathCooldown = 20
-            }
+            repathWhenDue(entity, slot, pace)
         } else {
             entity.navigation.stop()
         }
@@ -254,10 +248,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         val settled = entity.navigation.isDone && dx * dx + dz * dz <= DEFEND_SETTLE_DISTANCE * DEFEND_SETTLE_DISTANCE
         if (dx * dx + dz * dz > 1.0 && !settled) {
             val pace = holdPace(entity, WALK_SPEED_MODIFIER)
-            if (repathCooldown == 0) {
-                entity.navigation.moveTo(post.x, post.y, post.z, pace)
-                repathCooldown = 20
-            }
+            repathWhenDue(entity, post, pace)
         } else {
             entity.navigation.stop()
         }
@@ -325,10 +316,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (dwelling && entity.target == null) faceOutward(entity, center)
         if (entity.position().distanceTo(slot) > 1.5) {
             val pace = holdPace(entity, WALK_SPEED_MODIFIER)
-            if (repathCooldown == 0) {
-                entity.navigation.moveTo(slot.x, slot.y, slot.z, pace)
-                repathCooldown = 20
-            }
+            repathWhenDue(entity, slot, pace)
         }
     }
 
@@ -351,6 +339,13 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** Resolves every squad member (not just this one) and checks it's within ARRIVAL_RADIUS of
      *  [home] — an unloaded/dead-but-not-yet-cleaned-up member counts as "not arrived" (conservative:
      *  better to keep waiting than switch the whole squad to DEFEND while unsure). */
+    /** Heads for [to] — at most once a second, not every tick. */
+    private fun repathWhenDue(entity: NpcEntity, to: Vec3, pace: Double) {
+        if (repathCooldown != 0) return
+        entity.navigation.moveTo(to.x, to.y, to.z, pace)
+        repathCooldown = REPATH_COOLDOWN_TICKS
+    }
+
     /**
      * A patrol with no route: every member drifts about the area on its own — a spot somewhere in
      * [ROAM_RADIUS] of the point, a walk there, a pause to look around, and the next. Picking each
@@ -374,6 +369,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     companion object {
+        private const val REPATH_COOLDOWN_TICKS = 20
         private const val ROUTE_DWELL_TICKS = 40
         private const val ROAM_RADIUS = 20.0
         private const val ROAM_ATTEMPTS = 4
