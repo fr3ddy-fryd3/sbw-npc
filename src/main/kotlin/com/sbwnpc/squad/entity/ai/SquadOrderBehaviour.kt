@@ -114,11 +114,9 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
                 // Taking the point turns into holding it — squad-wide, in OrderArrival.
                 approachSlot(entity, home, arrived, RUN_SPEED_MODIFIER)
             }
-            // Own threshold (not SquadFormation.ARRIVAL_RADIUS) — DEFEND holds a wider perimeter
-            // than ATTACK. Derived from ARRIVAL_RADIUS rather than a second hardcoded constant so
-            // widening RING_RADIUS again later can't silently reintroduce the arrived/oscillation
-            // bug documented on ARRIVAL_RADIUS itself (this was a flat `8.0` before, which the old
-            // 3.5 RING_RADIUS made safe by accident — no longer safe by accident against 6.0).
+            // Own arrival threshold, SquadFormation.defendArrivalRadius — DEFEND holds a perimeter
+            // sized to the squad, wider than ATTACK's ring; derived rather than hardcoded so it
+            // stays past the slots it assigns (see the oscillation note on ARRIVAL_RADIUS).
             // A barraging mortar crew stays put by its tube exactly like DEFEND; only the aim
             // point differs, and that is MortarOperatorBehaviour's business.
             SquadOrder.DEFEND, SquadOrder.BARRAGE -> {

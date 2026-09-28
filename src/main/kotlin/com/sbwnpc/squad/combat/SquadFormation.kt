@@ -45,7 +45,7 @@ object SquadFormation {
 
     /** Callers that decide "arrived, switch to RING" from raw distance to the anchor MUST use a
      *  threshold at least this big — not RING_RADIUS itself, safely past it. Using anything smaller
-     *  (e.g. the ATTACK order's old flat `3.0`, less than RING_RADIUS's `3.5`) is a real bug, not a
+     *  (e.g. a flat `3.0`, less than RING_RADIUS) is a real bug, not a
      *  tuning nit: a member can satisfy "arrived" while still short of its actual RING slot distance,
      *  get assigned that farther-out RING point, walk toward it, immediately fail "arrived" again
      *  (now farther than the threshold), flip back to the transit shape — whose index-0/leader slot
@@ -162,10 +162,10 @@ object SquadFormation {
     }
 
     /** World-space point [mob] should path toward instead of the bare [anchor] — offset by its
-     *  formation slot, rotated toward the squad's shared heading (ignored for RING/SCATTER, both
+     *  formation slot, rotated toward the squad's shared heading (ignored for RING/PERIMETER/SCATTER,
      *  rotation-symmetric by construction). [fallbackFacing] is only used when the leader itself can't supply
-     *  a heading (dead/unloaded, or IS the mob asking) — see [headingFor]. [arrived] switches the
-     *  shape to RING regardless of order — see [shapeFor]. Falls back to [anchor] itself if [mob]
+     *  a heading (dead/unloaded, or IS the mob asking) — see [headingFor]. [arrived] switches to the
+     *  order's arrival shape — PERIMETER, SCATTER or RING; MOVE keeps its grid — see [shapeFor]. Falls back to [anchor] itself if [mob]
      *  isn't actually in a squad (shouldn't happen for real callers, but cheap to guard). */
     fun slotTarget(
         mob: NpcEntity, anchor: Vec3, fallbackFacing: Vec3, arrived: Boolean, spacing: Double = SLOT_SPACING
@@ -177,18 +177,14 @@ object SquadFormation {
         val local = localOffset(shape, index, squad.members.size, spacing)
         if (local == Vec3.ZERO) return anchor
 
-        // The doc comment above already claimed this ("ignored for RING/SCATTER, both
-        // rotation-symmetric by construction"), but the code never actually skipped the rotation
-        // below for them — a real bug, not just a stale comment. RING/SCATTER already assign each
+        // Not rotated: RING/PERIMETER/SCATTER already assign each
         // slot its own angle across the FULL circle (see localOffset), so rotating that offset by
         // a heading vector adds nothing to the overall distribution — but for one SPECIFIC slot
         // tracked over time, it makes that slot's target point continuously rotate around the
-        // anchor whenever the heading itself isn't perfectly still. For DEFEND's SCATTER the
-        // heading never is: it's anchor-minus-leader's-position, and the "leader" reference member
-        // is itself scattered and drifting within its own 6-16 block band, never fixed. Every other
-        // member then chases a continuously rotating target — reported in-game as a defending
-        // squad "водит хоровод" (circling its own defend point) even with no target/no attack in
-        // progress at all.
+        // anchor whenever the heading itself isn't perfectly still — and once arrived it never is:
+        // it's anchor-minus-leader's-position, and the leader is itself spread round the point and
+        // drifting. Every other member then chased a continuously rotating target — a defending
+        // squad circling its own defend point with nobody to fight.
         if (shape == Shape.RING || shape == Shape.PERIMETER || shape == Shape.SCATTER) return anchor.add(local)
 
         val heading = headingFor(mob, anchor, fallbackFacing)

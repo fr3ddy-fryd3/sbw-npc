@@ -288,9 +288,9 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         const val REBOARD_COOLDOWN_TICKS = 200
         /** Seats 0 and 1 are the cockpit; the side benches start here. */
         const val FIRST_BENCH_SEAT = 2
+        const val BENCH_LOG_TICKS = 40
         /** As far as aircrew spot the ground (VehicleTargeting): 48 was less than the height a
          *  transport cruises at, so a passenger never had anything in range. */
-        const val BENCH_LOG_TICKS = 40
         const val BENCH_RANGE = NpcEntity.DETECTION_RANGE * com.sbwnpc.squad.combat.VehicleTargeting.AIR_RANGE_FACTOR
     }
 }

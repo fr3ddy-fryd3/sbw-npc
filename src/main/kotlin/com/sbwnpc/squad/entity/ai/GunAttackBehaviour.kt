@@ -149,9 +149,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         // user request; 0 (staying exactly put) is still always in range via bestFiringSpot's own
         // baseline score for the entity's current position, so this only affects how far it's
         // willing to reposition, never whether it's allowed to just hold where it already is.
+        private const val POSITION_SEARCH_RADIUS = 7.0
         /** Slack around the shooter-to-target line when looking for vehicles on it. */
         private const val VEHICLE_LANE_MARGIN = 2.0
-        private const val POSITION_SEARCH_RADIUS = 7.0
         /** Used only when there is no shot at all from where the mob stands — a vehicle hull is
          *  longer than the ordinary search is wide. */
         private const val STUCK_SEARCH_RADIUS = 14.0

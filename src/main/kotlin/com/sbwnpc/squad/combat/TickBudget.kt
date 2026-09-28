@@ -7,9 +7,10 @@ import net.minecraft.server.level.ServerLevel
  * `Level.clip`) that the position searches spend — `GunAttackBehaviour.bestFiringSpot` and
  * `SeekCoverBehaviour.findCover` each burn hundreds per evaluation, and both are triggered for a
  * whole squad on the SAME tick (everyone enters shoot range together; one mortar shell suppresses
- * everyone in its radius together). Without a cap that's a visible freeze; with it, the searches
- * simply spread themselves across the next few ticks (each is written as a resumable scan, see the
- * callers) and total work per tick stays bounded no matter how many NPCs are on the map.
+ * everyone in its radius together). Without a cap that's a visible freeze. Callers check
+ * [hasRaycasts] before starting a search and put it off to a later tick when the budget is spent,
+ * so searches spread over the next few ticks. The check is per search, not per raycast: a search
+ * that starts runs to the end, so one tick can still go past the budget by a search's worth.
  *
  * Counts only what callers explicitly charge — [Sightline.blocked] charges itself, block-state
  * reads are not counted (cheap by comparison). Single-threaded: the server tick is.

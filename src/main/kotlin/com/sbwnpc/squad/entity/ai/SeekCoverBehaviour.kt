@@ -258,7 +258,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             return
         }
         // Per user request: actively engaged (a live target — near-certainly already holding a
-        // GunAttackBehaviour firing position, see item 7) and no real cover found nearby — don't
+        // GunAttackBehaviour firing position) and no real cover found nearby — don't
         // flee across open ground to a blind fallback point. Dig in right where it's standing if
         // possible, otherwise just hold this spot and keep firing (GunAttackBehaviour already finds
         // the best nearby partial cover to shoot from on its own). Only the "no target at all,
@@ -276,9 +276,6 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             coverTarget = it
             entity.navigation.moveTo(it.x + 0.5, it.y.toDouble(), it.z + 0.5, 1.0)
             markCoverChoice(level, it, ORANGE)
-            // TEMPORARY diagnostic, round 5 — pairs with canDigIn()'s log: tells apart "never even
-            // reaches the fallback path" (findCover keeps succeeding now that episodes aren't reset
-            // every 60 ticks anymore) from "reaches it but canDigIn always fails".
             DebugFlags.log("[dig-debug] {} entered fallback retreat", entity.uuid)
         }
     }
@@ -588,12 +585,12 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         val hurtEnough = entity.health < entity.maxHealth * DIG_HEALTH_FRACTION
         val belowState = level.getBlockState(pos.below())
         val diggableGround = belowState.`is`(BlockTags.DIRT) || belowState.`is`(BlockTags.SAND)
+        // In order of cost; the last two walk the ground and the squad. All four only for the trace.
+        if (!DebugFlags.LOGGING_ENABLED) {
+            return hurtEnough && diggableGround && isFlatEnoughToDig(level, pos) && hasCoveringAlly(entity, level)
+        }
         val flatEnough = isFlatEnoughToDig(level, pos)
         val covered = hasCoveringAlly(entity, level)
-        // TEMPORARY diagnostic, round 5 — now that the real bug (ExtendedBehaviour's 60-tick
-        // timeout) is fixed, the retreat loop is gone but so, apparently, is digging ever
-        // triggering at all. Removed too early last round; back specifically for this check (the
-        // start()/stop()/refresh mystery from before is solved, no need to re-trace that).
         if (!(hurtEnough && diggableGround && flatEnough && covered)) {
             DebugFlags.log(
                 "[dig-debug] {} at {} hurtEnough={} diggableGround={} flatEnough={} covered={}",

@@ -13,7 +13,7 @@ import java.util.IdentityHashMap
  *
  * Replaces the `level.getEntitiesOfClass(NpcEntity::class.java, AABB)` scans that the combat
  * helpers used to make (`Alarm`, `SuppressionEvents`, `MedicHealBehaviour`, cover/mortar
- * friendly checks, target sensing): a vanilla AABB query walks every chunk section the box
+ * friendly checks) — target sensing still makes one (`SquadTargetSensor`): a vanilla AABB query walks every chunk section the box
  * touches and filters every entity in them by class — for a 60-block alarm radius that's dozens of
  * sections and all the animals in them, per call, and some callers made that call every tick. A
  * linear pass over a hundred-odd NPCs with a `distanceToSqr` check is both cheaper and — more
