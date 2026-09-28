@@ -206,12 +206,13 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = canEngage(entity)
 
+    /** Still able to fight — or, with ammo left, still on its way somewhere. */
     override fun shouldKeepRunning(entity: NpcEntity): Boolean {
-        if (entity.combatLockedByCover() || entity.combatLockedByMedic()) return false
-        // AntiDroneBehaviour owns the gun (and the mob's feet) while a hostile drone is inbound.
-        if (entity.antiDroneEngaged) return false
-        val gun = currentGun(entity) ?: return false
-        return (canEngage(entity) || !entity.navigation.isDone) && gun.hasAmmo()
+        if (canEngage(entity)) return true
+        // Cover, a medic's treatment or AntiDroneBehaviour (which owns the gun and the feet while
+        // a hostile drone is inbound) take the mob over; nothing to finish walking to then.
+        if (entity.combatLockedByCover() || entity.combatLockedByMedic() || entity.antiDroneEngaged) return false
+        return !entity.navigation.isDone && currentGun(entity)?.hasAmmo() == true
     }
 
     override fun start(entity: NpcEntity) {
@@ -343,20 +344,20 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  Aiming/firing in [tick] runs completely unconditionally regardless of what this picks or
      *  whether the mob is still walking the last few steps toward it. */
     private fun holdFiringPosition(entity: NpcEntity, target: LivingEntity, defending: Boolean = false) {
-        val level0 = entity.level() as? ServerLevel ?: return
+        val level = entity.level() as? ServerLevel ?: return
         // A grenade has come down by the spot being held: pick another now rather than walk
         // into it and get chased back out by GrenadeEvadeBehaviour.
-        if (firingPos?.let { GrenadeHazard.threatens(level0, it) } == true) nextPositionCheckTick = 0
+        if (firingPos?.let { GrenadeHazard.threatens(level, it) } == true) nextPositionCheckTick = 0
         // A defender keeps a position that still has a shot at the target — it has taken it and
         // holds it, rather than shuffling to a slightly better one every few seconds.
         val held = firingPos
         if (defending && held != null && entity.tickCount >= nextPositionCheckTick &&
-            atSpot(entity, held) && !GrenadeHazard.threatens(level0, held) && TickBudget.hasRaycasts(level0) &&
+            atSpot(entity, held) && !GrenadeHazard.threatens(level, held) && TickBudget.hasRaycasts(level) &&
             // With the hulls on the line: a spot a vehicle has since pulled in front of is no longer
             // "still has a shot", and keeping it had defenders standing behind a hull, never firing.
             concealmentScore(
-                level0, entity, target, held, entity.eyeHeight.toDouble(),
-                Sightline.vehicleHulls(level0, AABB(held, target.position()).inflate(VEHICLE_LANE_MARGIN), entity, target)
+                level, entity, target, held, entity.eyeHeight.toDouble(),
+                Sightline.vehicleHulls(level, AABB(held, target.position()).inflate(VEHICLE_LANE_MARGIN), entity, target)
             ) != null
         ) {
             nextPositionCheckTick = entity.tickCount + HOLD_MIN_TICKS + entity.random.nextInt(HOLD_JITTER_TICKS)
@@ -378,7 +379,6 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
             return
         }
-        val level = entity.level() as? ServerLevel ?: return
         // Global raycast budget (TickBudget): a whole squad reaches shoot range on the same tick,
         // and each search is up to ~64 candidates x 4 raycasts. If this tick is already spent,
         // keep holding whatever we have and try again in a tick or two — the searches then spread
