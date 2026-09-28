@@ -10,15 +10,11 @@ and command your own AI-driven infantry, mortar, tank, and drone squads.
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 ![Status](https://img.shields.io/badge/status-active%20dev-yellow)
 
-[English](#english) · [Русский](#русский)
-
 </div>
 
 ---
 
-## English
-
-### What is this
+## What is this
 
 [SBW] NPC Squads lets you recruit NPCs with a single tool, form them into squads, and command them like
 a small AI-controlled army: riflemen, medics, snipers, machine gunners, grenadiers, mortar crews,
@@ -27,7 +23,7 @@ their own side, relay spotted enemies to the rest of their faction, ride and cre
 follow orders — Attack, Defend, Patrol, Move — from a quick-command HUD or by pointing and
 clicking.
 
-### Features
+## Features
 
 - **One tool, two modes** — Recruit mode opens a GUI to pick class, rank, faction and squad
   preset and deploy it; Command mode selects squads and issues orders. Ctrl+right-click switches
@@ -56,7 +52,7 @@ clicking.
 - **Quick-command HUD** — a lightweight panel (default key `Z`) to pick a squad and an order
   without opening a menu.
 
-### Requirements
+## Requirements
 
 - Minecraft 1.21.1 + NeoForge
 - Kotlin for Forge (NeoForge build) — this mod is written in Kotlin and loads through it
@@ -64,8 +60,10 @@ clicking.
   weapons, vehicles, and combat systems and won't do anything without it
 - SmartBrainLib — the behavior-tree AI framework every NPC's combat/movement logic runs on
 - Optional: the SBW Drone Warfare addon, for the drone operator class to use its FPV drone model
+- Optional: [JourneyMap](https://www.curseforge.com/minecraft/mc-mods/journeymap) 6.x — your squads,
+  their objectives and the enemies your side has spotted on the map, and orders given from it
 
-### Installation
+## Installation
 
 1. Install NeoForge, Kotlin for Forge, SuperbWarfare, and SmartBrainLib first.
 2. Grab the latest jar from the [Releases](../../releases) page.
@@ -74,7 +72,12 @@ clicking.
 Recommended alongside: [GeckolibBetterFPS](https://www.curseforge.com/minecraft/mc-mods/geckolibbetterfps)
 — noticeably better frame rate when a lot of NPCs are on screen.
 
-### Where everything is
+With JourneyMap: both it and SuperbWarfare bind `N` by default — JourneyMap's *Waypoint Manager*
+and SuperbWarfare's fire-mode switch — and JourneyMap's works in-game too, so switching fire mode
+also opens the waypoint list. Under *Options → Controls → JourneyMap*, clear *Waypoint Manager* or
+move it to a free key (`I`, for example); the list is still a button on the fullscreen map.
+
+## Where everything is
 
 | Thing | Where to get it | What it does |
 |---|---|---|
@@ -86,7 +89,7 @@ Recommended alongside: [GeckolibBetterFPS](https://www.curseforge.com/minecraft/
 On first use the tool asks you to pick a faction once. That is only your own default — you can
 still deploy any of the eight afterwards, including hostile ones to fight against.
 
-### Using the tool
+## Using the tool
 
 Two modes, switched with **Ctrl + right-click on air**. The current one is on the item tooltip.
 
@@ -110,7 +113,7 @@ Two modes, switched with **Ctrl + right-click on air**. The current one is on th
 - **Right-click a hostile** focuses the selected squad on it — hunted under Attack, guarded
   against under Defend.
 
-### The squad screen
+## The squad screen
 
 One row per squad, scrollable, with the footer buttons under the list:
 
@@ -125,7 +128,7 @@ One row per squad, scrollable, with the footer buttons under the list:
 There is no limit on how many squads you run. The HUD's number keys reach the first nine;
 disbanding one moves the rest up into the freed numbers.
 
-### Orders
+## Orders
 
 | Order | What it means | Who can be given it |
 |---|---|---|
@@ -140,7 +143,7 @@ Attack / Defend / Move and holds a standoff hover 20 blocks off its target; an A
 takes Defend (patrols low with its door gunners, and calls contacts in to the whole faction) and
 Move (flies the squad there and lands).
 
-### The Barracks
+## The Barracks
 
 Right-click a Barracks you placed to configure it the same way the tool is configured, then press
 **Deploy garrison**. It deploys that squad and then keeps it at the strength it went out with:
@@ -151,7 +154,7 @@ configure it — it asks for your faction pick the same way the tool does.
 It is an ordinary block otherwise: mine it or blow it up and it's gone. The squad stays where it
 is, with nobody left to replace its losses.
 
-### Worth knowing
+## Worth knowing
 
 - Squads take cover, dig in when badly hurt, and won't fire through a squadmate — or through a
   parked vehicle.
@@ -167,7 +170,7 @@ is, with nobody left to replace its losses.
   break the mortar down, carry it closer and set it back up.
 - A killed NPC drops the weapon in its hands with a 15% chance and each piece of armour with a 5% chance, whoever killed it.
 
-### How this mod was made
+## How this mod was made
 
 This is a hobby project, built purely for fun. The entire codebase was written by an AI (Claude
 Code) — architecture, features, bug fixes, all of it — while the meatbags did the actual
@@ -176,7 +179,7 @@ playtesting, including multiplayer sessions, and sent back bug reports on whatev
 Pull requests and issues are welcome and will be looked at whenever there's free time — no
 guaranteed response time.
 
-### Skins
+## Skins
 
 All eight faction skins were redesigned with original military uniforms while keeping each mob's
 head pixel-identical, so they stay instantly recognizable. See [`docs/skins/`](docs/skins/) for
@@ -186,184 +189,6 @@ the generation notes.
 
 *Gameplay screenshots are still needed — if you'd like to contribute some, open an issue or a PR.*
 
-### License
+## License
 
 [GNU GPL v3.0](LICENSE) — see the `LICENSE` file for the full text.
-
----
-
-## Русский
-
-### Что это
-
-[SBW] NPC Squads позволяет одним инструментом вербовать NPC, собирать их в отряды и командовать ими,
-как небольшой армией под управлением ИИ: автоматчики, медики, снайперы, пулемётчики, гренадёры,
-миномётные и танковые расчёты, операторы дронов-камикадзе. Отряды прячутся в укрытия, окапываются
-под огнём, не стреляют по своим, передают информацию о замеченных врагах остальной фракции, ездят
-и воюют в технике, выполняют приказы — Атака, Оборона, Патруль, Марш — через быструю HUD-панель
-или простым наведением и кликом.
-
-### Возможности
-
-- **Один инструмент, два режима** — режим «Вербовка» открывает GUI выбора класса, ранга, фракции
-  и пресета отряда и деплоит его; режим «Командование» выделяет отряды и отдаёт приказы.
-  Переключение — Ctrl + ПКМ.
-- **Пресеты отрядов** — Single, 5 (автоматчики + медик), 7 (автоматчики, снайпер, пулемётчик,
-  медик), 16 (большой смешанный отряд), 32 (рота: два отряда по 16), Mortar Crew, Tank Crew, Drone
-  Team, Heli Crew. Пехотные пресеты появляются сразу в строю квадратом и готовы к движению. Пресеты 5 и
-  7 можно задеплоить вместе с техникой поддержки; танковый расчёт — с выбором модели (ZTZ-99A /
-  T-90A / M1A2), вертолётный — с выбором борта (Ми-28 или AH-6).
-- **8 фракций**, у каждой своя форма, команда и цвет — выбор свободный, в том числе для тестовых
-  отрядов противника.
-- **Боевой ИИ** — конус зрения в 150°, из-за которого их можно обойти с фланга, поиск укрытий,
-  подавление, окапывание как последний рубеж, позиции с частичным укрытием тела при стрельбе,
-  защита от дружественного огня по реальному конусу разброса выстрела (а не по прямой линии), и
-  осведомлённость всей фракции о замеченных врагах.
-- **Техника** — экипажи NPC водят, сопровождают и стреляют за свой отряд; отряд, которому далеко
-  до цели, сам реквизирует ближайшую технику. Игрок теперь может подсесть пассажиром к союзному
-  NPC-водителю, а не выкидывать его при посадке.
-- **Операторы дронов** — запускают дрон-камикадзе по замеченной цели (использует дрон аддона SBW
-  Drone Warfare, если он установлен, иначе — обычный дрон SBW); остальные NPC сбивают вражеский
-  дрон или прячутся от него и поднимают тревогу в отряде.
-- **Вертолёты** — NPC-пилоты водят Ми-28 или AH-6: взлетают, возят отряд, выбирают площадку и
-  высаживают. Убей пилота — у экипажа есть несколько секунд, чтобы сесть за управление, иначе
-  борт падает вместе с ним.
-- **Казарма** — устанавливаемая точка гарнизона с теми же настройками, что и у инструмента:
-  разворачивает отряд и со временем восстанавливает его потери.
-- **Быстрое командование через HUD** — лёгкая панель (по умолчанию клавиша `Z`) для выбора отряда
-  и приказа без открытия меню.
-
-### Требования
-
-- Minecraft 1.21.1 + NeoForge
-- Kotlin for Forge (сборка для NeoForge) — мод написан на Kotlin и грузится через него
-- [SuperbWarfare](https://github.com/Mercurows/SuperbWarfare) — аддон построен прямо поверх его
-  оружия, техники и боевой системы и без него не работает
-- SmartBrainLib — фреймворк поведенческих деревьев, на котором держится весь боевой/навигационный
-  AI NPC
-- Опционально: аддон SBW Drone Warfare — чтобы оператор дрона использовал его модель FPV-дрона
-
-### Установка
-
-1. Сначала установи NeoForge, Kotlin for Forge, SuperbWarfare и SmartBrainLib.
-2. Скачай последний jar со страницы [Releases](../../releases).
-3. Положи его в папку `mods/`.
-
-Рекомендуется рядом: [GeckolibBetterFPS](https://www.curseforge.com/minecraft/mc-mods/geckolibbetterfps)
-— заметно поднимает FPS, когда на экране много NPC.
-
-### Что где лежит
-
-| Что | Где взять | Зачем |
-|---|---|---|
-| **Squad Command Tool** (`sbwnpc:squad_tool`) | Креатив, вкладка *Superb Warfare Items* — или `/give @s sbwnpc:squad_tool` | Деплоит NPC и командует отрядами. Крафта пока нет. |
-| **Barracks** (`sbwnpc:barracks`) | Та же вкладка — или `/give @s sbwnpc:barracks` | Ставится блоком, держит гарнизон и восполняет его потери. |
-| **Supply Point** (`sbwnpc:supply`) | Та же вкладка — или `/give @s sbwnpc:supply` | Задел под логистику отрядов. Ставится и ломается, больше пока ничего. |
-| **HUD быстрых команд** | Клавиша `Z`, переназначается в категории *SBW NPC Squads* | Выбрать отряд и приказ, не открывая меню. |
-
-При первом использовании инструмент один раз попросит выбрать фракцию. Это только твой дефолт —
-деплоить дальше можно любую из восьми, в том числе враждебную, чтобы было с кем воевать.
-
-### Инструмент
-
-Два режима, переключаются **Ctrl + ПКМ по воздуху**. Текущий написан в подсказке предмета.
-
-**Режим «Вербовка» — что деплоится**
-
-- **ПКМ по воздуху** открывает конфиг: пресет, класс (только для Single), ранг, фракция и техника
-  или тип вертолёта — там, где пресет это поддерживает.
-- **ПКМ по блоку** деплоит на это место, шеренгой, лицом к тебе.
-- Пресеты: `Single`, `5: Riflemen`, `7: Standard`, `16: Large`, `32: Company`, `Mortar Crew`, `Tank Crew`
-  (ZTZ-99A / T-90A / M1A2), `Drone Team`, `Heli Crew` — Ми-28 или AH-6, и выбранный борт
-  определяет, какой экипаж с ним выйдет. С пресетами `5` и `7` можно выдать LAV-25 / LAV-150 /
-  БМП-2.
-- Ранги идут `RECRUIT → REGULAR → VETERAN → ELITE`: больше здоровья, меньше разброс, быстрее
-  реакция.
-- Всё, что больше одного NPC, автоматически собирается в отряд и остаётся оборонять точку высадки.
-
-**Режим «Командование» — что они делают**
-
-- **ПКМ по NPC** выделяет его; если он уже в отряде — выделяется весь отряд. Shift + ПКМ сбрасывает
-  выделение.
-- **ПКМ по воздуху** открывает экран отрядов.
-- **ПКМ по блоку** с выделенным отрядом ставит ему цель.
-- **ПКМ по врагу** назначает его фокус-целью: при «Атаке» отряд его преследует, при «Обороне» —
-  сторожит.
-
-### Экран отрядов
-
-По строке на отряд, со скроллом; кнопки внизу — под списком.
-
-- **Order** переключает приказы, доступные именно этому отряду.
-- **Objective** взводит клик: следующий ПКМ по блоку станет точкой, от которой отряд работает.
-- **Focus** — то же самое, но по существу.
-- **R** переименовать · **X** расформировать (NPC остаются, отряда нет) · **DEL** удалить отряд
-  вместе со всеми, включая технику.
-- **Routes** — маршруты патрулирования: добавить, ПКМ по блокам расставить точки, завершить и
-  назначить отряду. Отряд с маршрутом ходит по нему на приказе «Патруль».
-
-Лимита на количество отрядов нет. Цифровые клавиши HUD достают до первых девяти; при
-расформировании одного остальные подтягиваются на освободившиеся номера.
-
-### Приказы
-
-| Приказ | Что значит | Кому можно дать |
-|---|---|---|
-| **Defend** | Держаться у точки, далеко не гоняться | Всем, кроме танковых экипажей |
-| **Patrol** | Ходить по округе или по назначенному маршруту | Пехоте |
-| **Attack** | Наступать на точку, пробиваясь через то, что мешает | Всем, кроме транспорта и танковых экипажей |
-| **Move** | Спокойно дойти и встать | Всем |
-| **Barrage** | Обрабатывать площадь радиусом 40 блоков вокруг точки, а не одну точку | Миномётным расчётам |
-
-Танковый экипаж принимает только **Move** — дальше он воюет из танка сам. Ми-28 берёт
-Attack / Defend / Move и висит в 20 блоках от цели, а не над ней; AH-6 берёт Defend (патрулирует
-низко со стрелками на скамьях и раздаёт контакты всей фракции) и Move (везёт отряд и садится).
-
-### Казарма
-
-ПКМ по поставленной казарме открывает тот же конфиг, что и у инструмента, дальше — **Deploy
-garrison**. Казарма разворачивает отряд и дальше держит его в том составе, с которым он вышел:
-замена потерям выходит примерно раз в полминуты, а операторы дронов рядом с ней пополняют запас
-дронов. Повторный деплой заменяет стоящий гарнизон, настраивать может только тот, кто её поставил,
-и фракцию она спрашивает так же, как инструмент.
-
-В остальном это обычный блок: его можно выкопать или взорвать. Отряд при этом остаётся на месте,
-но восполнять его потери больше некому.
-
-### Что стоит знать
-
-- Отряды занимают укрытия, окапываются при тяжёлых ранениях и не стреляют сквозь своих — и сквозь
-  стоящую технику тоже.
-- Отряд с далёкой целью сам реквизирует ближайшую технику и поедет. Подсесть в свободное место
-  можно, не выкидывая NPC-водителя.
-- Видят только то, что перед ними, поэтому их можно обойти с фланга — но выстрел по ним или
-  контакт, который передала своя сторона, разворачивает их.
-- Пулемётчики носят с собой гранатомёт на всё, что сидит в технике; пехота остаётся работой
-  пулемёта.
-- Гранаты идут в ход, чтобы выкурить цель, которая не вылезает из укрытия, и чтобы ответить на
-  огонь, который прижал отряд, — с ограничением, чтобы на засаду летела одна граната, а не залп.
-- Миномётчики бьют только по тому, что их сторона реально видела. Если до цели не достают —
-  собирают миномёт, подходят ближе и разворачиваются заново.
-- С убитого NPC оружие в руках падает с шансом 15%, каждый предмет брони — с шансом 5%, кто бы его ни убил.
-
-### Как это сделано
-
-Это хобби-проект, сделанный просто ради развлечения. Весь код написан ИИ (Claude Code) —
-архитектура, фичи, багфиксы, всё — а тестированием (в т.ч. в мультиплеере) занимаются кожаные
-мешки, которые потом присылают баг-репорты о том, что сломалось.
-
-PR и issue приветствуются и будут рассмотрены в свободное время — без гарантий по срокам.
-
-### Скины
-
-Все восемь фракционных скинов переоформлены в оригинальной военной форме с сохранением исходной
-головы каждого моба пиксель-в-пиксель, чтобы они оставались мгновенно узнаваемыми. Подробности
-генерации — в [`docs/skins/`](docs/skins/).
-
-![Превью скинов](docs/skins/preview.png)
-
-*Скриншотов геймплея пока нет — если хочешь помочь, открой issue или PR.*
-
-### Лицензия
-
-[GNU GPL v3.0](LICENSE) — полный текст в файле `LICENSE`.
