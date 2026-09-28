@@ -135,24 +135,27 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private var nextThrowTick = 0
 
-    private companion object {
+    companion object {
         /** Close enough to reach, far enough not to catch the blast. Matches the grenadier's own. */
-        const val MIN_RANGE = 5.0
-        const val MAX_RANGE = 16.0
+        private const val MIN_RANGE = 5.0
+        private const val MAX_RANGE = 16.0
         /** How long a target has to stay out of sight before it counts as dug in rather than
          *  momentarily behind a tree. */
-        const val BLOCKED_TICKS = 60
-        const val SELF_COOLDOWN_TICKS = 200
+        private const val BLOCKED_TICKS = 60
+        private const val SELF_COOLDOWN_TICKS = 200
         /** Enemies that make a bunch worth a grenade, and how close together they have to be. */
-        const val CLUSTER_SIZE = 3
-        const val CLUSTER_RADIUS = 3.5
-        const val CLUSTER_SCAN_TICKS = 20
-        const val SQUAD_COOLDOWN_TICKS = 120L
+        private const val CLUSTER_SIZE = 3
+        private const val CLUSTER_RADIUS = 3.5
+        private const val CLUSTER_SCAN_TICKS = 20
+        private const val SQUAD_COOLDOWN_TICKS = 120L
         /** Fire from this far overhead is coming from the air. */
-        const val AIR_THREAT_HEIGHT = 8.0
+        private const val AIR_THREAT_HEIGHT = 8.0
 
-        /** Keyed by squad, not by NPC — see [squadMayThrow]. Entries are stale-but-harmless for
-         *  disbanded squads: the value is only ever compared against the current game time. */
-        val lastSquadThrow = HashMap<UUID, Long>()
+        /** Keyed by squad, not by NPC — see [squadMayThrow]. Game time, so it is cleared with the
+         *  server: kept into another world with an earlier clock, every squad would have waited
+         *  out the difference before throwing again. */
+        private val lastSquadThrow = HashMap<UUID, Long>()
+
+        fun clearAll() = lastSquadThrow.clear()
     }
 }
