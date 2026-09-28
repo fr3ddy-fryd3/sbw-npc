@@ -56,7 +56,6 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var routeIndex = 0
     private var routeWaitUntil = 0
     private var moveAnchor: BlockPos? = null
-    private var nextArrivalCheckTick = 0
     private var orderStamp = -1
     /** A defender's chosen place — see [holdDefendPost]. Kept until the point or the order changes. */
     private var defendPost: Vec3? = null
@@ -120,20 +119,8 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
                 // Only ATTACK (taking a point) moves at RUN pace, same as actually being in combat
                 // (GunAttackBehaviour's own movement already uses this same 1.0 modifier) — per user
                 // request, MOVE/DEFEND/PATROL should read as a calm hold/patrol, not a constant jog.
+                // Taking the point turns into holding it — squad-wide, in OrderArrival.
                 approachSlot(entity, home, arrived, RUN_SPEED_MODIFIER)
-                // Per user request: "attack a point" means take it, then hold it — not stand
-                // frozen in an assault wedge forever once there. Flips the squad's own order once
-                // EVERY member (not just this one) has actually reached it, so the squad doesn't
-                // start dispersing into DEFEND's looser SCATTER while stragglers are still catching
-                // up. Checked only from this ATTACK branch, so it can never re-fire once already
-                // DEFEND; harmless if two members both flip it the same tick (same value, idempotent).
-                // Throttled: this resolves every member by UUID each call, and once arrived it
-                // used to run every tick for every arrived member until the last straggler showed
-                // up. A one-second delay before the flip is invisible in-game.
-                if (arrived && entity.tickCount >= nextArrivalCheckTick) {
-                    nextArrivalCheckTick = entity.tickCount + ARRIVAL_CHECK_INTERVAL_TICKS
-                    if (allSquadArrived(entity, squad, home)) squad.order = SquadOrder.DEFEND
-                }
             }
             // Own threshold (not SquadFormation.ARRIVAL_RADIUS) — DEFEND holds a wider perimeter
             // than ATTACK. Derived from ARRIVAL_RADIUS rather than a second hardcoded constant so
@@ -176,10 +163,6 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
                 if (!arrived && bound == null) entity.navigation.stop()
                 else if (bound != null) moveToSlot(entity, bound, RUN_SPEED_MODIFIER)
                 else approachSlot(entity, home, true, RUN_SPEED_MODIFIER)
-                if (arrived && entity.tickCount >= nextArrivalCheckTick) {
-                    nextArrivalCheckTick = entity.tickCount + ARRIVAL_CHECK_INTERVAL_TICKS
-                    if (allSquadArrived(entity, squad, home)) squad.order = SquadOrder.DEFEND
-                }
             }
         }
     }
@@ -378,14 +361,6 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** Resolves every squad member (not just this one) and checks it's within ARRIVAL_RADIUS of
      *  [home] — an unloaded/dead-but-not-yet-cleaned-up member counts as "not arrived" (conservative:
      *  better to keep waiting than switch the whole squad to DEFEND while unsure). */
-    private fun allSquadArrived(entity: NpcEntity, squad: Squad, home: Vec3): Boolean {
-        val level = entity.level() as? ServerLevel ?: return false
-        return squad.members.all { id ->
-            val member = level.getEntity(id) as? NpcEntity ?: return@all false
-            member.position().distanceTo(home) <= SquadFormation.ARRIVAL_RADIUS
-        }
-    }
-
     /**
      * A patrol with no route: every member drifts about the area on its own — a spot somewhere in
      * [ROAM_RADIUS] of the point, a walk there, a pause to look around, and the next. Picking each
@@ -415,7 +390,6 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         /** Standing about at a spot before heading for the next. */
         private const val ROAM_PAUSE_MIN = 100
         private const val ROAM_PAUSE_JITTER = 140
-        private const val ARRIVAL_CHECK_INTERVAL_TICKS = 20
         private const val START_CHECK_INTERVAL_TICKS = 5
         private const val ROUTE_DWELL_JITTER = 40
         private const val MOVE_SLOT_RADIUS = 2.0

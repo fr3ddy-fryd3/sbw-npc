@@ -8,12 +8,14 @@ import net.minecraft.world.phys.Vec3
 
 /**
  * Turns a squad that has taken its point into one holding it: ATTACK and RETREAT become DEFEND
- * once most of the squad is there.
+ * once three in four of the squad are there.
  *
- * Checked here, for the squad as a whole, once a second. It used to be each member's own job, and
- * only a member with nobody to shoot at ever did it, needing every last man within a few blocks:
- * one straggler, one man in a firefight or one who couldn't quite reach his slot kept the whole
- * squad "attacking" a point it had long since taken.
+ * The only place that makes this switch, for the squad as a whole, once a second, through
+ * [SquadManager.setOrder] so every member takes it as a new order and it is saved. It used to be
+ * made in three places by three different rules — by each member (every last man within a few
+ * blocks, and only while it had nobody to shoot at), by the withdrawal, and here — and the first
+ * two set the order behind the manager's back: the members never took it as new orders, and the
+ * world saved the squad still attacking or retreating.
  */
 object OrderArrival {
     private const val INTERVAL_TICKS = 20
@@ -34,6 +36,7 @@ object OrderArrival {
             if (there * 4 < members.size * 3) continue
             DebugFlags.log("[order-debug] {} took its point ({}), defending", squad.name, squad.order)
             mgr.setOrder(squad.id, SquadOrder.DEFEND)
+            com.sbwnpc.squad.combat.Withdrawal.forget(squad.id)
         }
     }
 }

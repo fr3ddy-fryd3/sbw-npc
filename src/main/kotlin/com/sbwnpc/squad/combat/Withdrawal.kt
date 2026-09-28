@@ -56,6 +56,11 @@ object Withdrawal {
 
     fun clearAll() = bySquad.clear()
 
+    /** The squad has stopped falling back: drop its bounds. */
+    fun forget(squad: UUID) {
+        bySquad.remove(squad)
+    }
+
     /**
      * Where [member] should be right now while its squad falls back to [point]: a position to run
      * to, or null to hold where it is and fire.
@@ -80,17 +85,8 @@ object Withdrawal {
     private fun update(level: ServerLevel, squad: Squad, state: State) {
         val members = squad.members.mapNotNull { level.getEntity(it) as? NpcEntity }.filter { it.isAlive }
         state.members = members
+        // Arriving — turning into DEFEND — is OrderArrival's, which then calls [forget].
         if (members.isEmpty()) return
-        // There: hold it. SquadOrderBehaviour makes the same switch, but only for members with
-        // nobody to shoot at — under fire it never ran, and the squad stayed "retreating" forever.
-        // Three in four is "there": one man pinned in a ditch shouldn't keep the rest running.
-        val there = members.count { SquadFormation.reachedPoint(it, state.point, squad.members.size) }
-        if (there * 4 >= members.size * 3) {
-            squad.order = com.sbwnpc.squad.squad.SquadOrder.DEFEND
-            bySquad.remove(squad.id)
-            DebugFlags.log("[retreat-debug] squad {} reached its rally point, defending", squad.name)
-            return
-        }
         // Seen, and near: a target kept only from what others reported (TeamAwareness keeps those
         // for 10s) had the squad bounding the whole two hundred blocks back, twelve at a time.
         state.inContact = members.any { m ->
