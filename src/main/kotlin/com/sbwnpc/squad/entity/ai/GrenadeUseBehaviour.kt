@@ -88,7 +88,7 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun clusterPoint(entity: NpcEntity, level: ServerLevel): Vec3? {
         if (entity.tickCount < nextClusterScanTick) return null
         nextClusterScanTick = entity.tickCount + CLUSTER_SCAN_TICKS
-        val reach = MAX_RANGE + CLUSTER_RADIUS
+        val reach = GrenadeThrower.MAX_RANGE + CLUSTER_RADIUS
         val enemies = level.getEntitiesOfClass(
             net.minecraft.world.entity.LivingEntity::class.java, entity.boundingBox.inflate(reach, 6.0, reach)
         ) { it.isAlive && it !== entity && entity.isEnemy(it) && !VehicleTargeting.isAircrew(it) }
@@ -122,7 +122,7 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun inRange(entity: NpcEntity, point: Vec3): Boolean {
         val dist = entity.position().distanceTo(point)
-        return dist in MIN_RANGE..MAX_RANGE
+        return dist in GrenadeThrower.MIN_RANGE..GrenadeThrower.MAX_RANGE
     }
 
     /** One grenade per squad per [SQUAD_COOLDOWN_TICKS], so an ambush draws an answer, not a volley. */
@@ -136,9 +136,6 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var nextThrowTick = 0
 
     companion object {
-        /** Close enough to reach, far enough not to catch the blast. Matches the grenadier's own. */
-        private const val MIN_RANGE = 5.0
-        private const val MAX_RANGE = 16.0
         /** How long a target has to stay out of sight before it counts as dug in rather than
          *  momentarily behind a tree. */
         private const val BLOCKED_TICKS = 60

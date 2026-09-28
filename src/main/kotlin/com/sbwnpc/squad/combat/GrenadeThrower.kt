@@ -8,6 +8,10 @@ import net.minecraft.world.phys.Vec3
 
 /** Shared grenade trajectory and friendly-fire gate for regular and reserve throws. */
 object GrenadeThrower {
+    /** Close enough to reach, far enough not to catch the blast — for every thrower. */
+    const val MIN_RANGE = 5.0
+    const val MAX_RANGE = 16.0
+
     fun isSafeToThrow(thrower: NpcEntity, target: Vec3, kind: GrenadeKind): Boolean =
         FriendlyFireGuard.hasClearLineOfFire(thrower, target) &&
             FriendlyFireGuard.hasClearBlastRadius(thrower, target, Ports.grenades.blastRadius(kind))

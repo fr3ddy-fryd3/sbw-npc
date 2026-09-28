@@ -22,10 +22,10 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 class GrenadeThrowBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private var nextThrowTick = 0
+    /** Picked when deciding to throw, thrown in [start]. */
+    private var kind: com.sbwnpc.squad.domain.port.GrenadeKind? = null
 
     companion object {
-        private const val MIN_RANGE = 5.0
-        private const val MAX_RANGE = 16.0
         private const val COOLDOWN_TICKS = 100
         private const val COOLDOWN_JITTER = 60
 
@@ -46,8 +46,9 @@ class GrenadeThrowBehaviour : ExtendedBehaviour<NpcEntity>() {
         // Nothing thrown by hand reaches a helicopter.
         if (VehicleTargeting.isAircrew(target)) return false
         val dist = entity.distanceTo(target)
-        if (dist !in MIN_RANGE..MAX_RANGE || !entity.sensing.hasLineOfSight(target)) return false
-        return GrenadeThrower.pick(entity, level, target.boundingBox.center, target.deltaMovement) != null
+        if (dist !in GrenadeThrower.MIN_RANGE..GrenadeThrower.MAX_RANGE || !entity.sensing.hasLineOfSight(target)) return false
+        kind = GrenadeThrower.pick(entity, level, target.boundingBox.center, target.deltaMovement)
+        return kind != null
     }
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = false
@@ -56,7 +57,8 @@ class GrenadeThrowBehaviour : ExtendedBehaviour<NpcEntity>() {
         val target = entity.target ?: return
         val level = entity.level() as? ServerLevel ?: return
 
-        val grenade = GrenadeThrower.pick(entity, level, target.boundingBox.center, target.deltaMovement) ?: return
+        val grenade = kind ?: return
+        kind = null
         GrenadeThrower.throwAt(entity, level, target.boundingBox.center, grenade, target.deltaMovement)
 
         nextThrowTick = entity.tickCount + COOLDOWN_TICKS + entity.random.nextInt(COOLDOWN_JITTER)
