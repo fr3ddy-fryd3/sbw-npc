@@ -207,6 +207,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // (shooting at it or running from it) — same "hands off" contract as the two above.
     var antiDroneEngaged: Boolean = false
 
+    /** Taken up by a role that owns the NPC's hands and feet — driving or riding to a destination,
+     *  flying a drone, crewing a mortar, dealing with a drone — so the rifle, the grenades and the
+     *  squad's own movement leave it alone. */
+    fun busyWithRole(): Boolean = vehicleTransport || operatingDrone || servingMortar || antiDroneEngaged
+
     /** Kamikaze drones this operator still carries; refilled at a barracks (SquadManager.
      *  respawnAtBarracks). Persisted. Meaningless for other classes. */
     var dronesLeft: Int = 0

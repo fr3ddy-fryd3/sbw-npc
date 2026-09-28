@@ -37,7 +37,7 @@ class GrenadeThrowBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean {
         if (entity.npcClass != NpcClass.GRENADIER) return false
-        if (entity.vehicleTransport || entity.operatingDrone || entity.servingMortar || entity.antiDroneEngaged) return false
+        if (entity.busyWithRole()) return false
         if (entity.combatLockedByCover()) return false // SeekCoverBehaviour owns the mob until this lapses
         if (entity.tickCount < nextThrowTick) return false
         if (!entity.hasGrenade) return false

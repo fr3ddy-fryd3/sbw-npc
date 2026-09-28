@@ -54,7 +54,7 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
     // in-game as digging in not actually preventing the mob from running off once shot at again.
     // Not while falling back either: investigating gunfire means walking toward it.
     private fun eligible(entity: NpcEntity) =
-        entity.target == null && !entity.combatLockedByCover() && !entity.diggedIn && !entity.vehicleTransport && !entity.operatingDrone && !entity.servingMortar && !entity.antiDroneEngaged &&
+        entity.target == null && !entity.combatLockedByCover() && !entity.diggedIn && !entity.busyWithRole() &&
             entity.retreatPoint() == null
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = eligible(entity)
