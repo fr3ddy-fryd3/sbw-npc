@@ -112,8 +112,10 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
         return found
     }
 
+    /** Whose drone it is decides, not the drone's own team: a player's drone has none — players
+     *  are never put on one — so going by the team alone, NPCs let every player drone through. */
     private fun isLiveThreat(entity: NpcEntity, drone: Entity, range: Double): Boolean =
-        Ports.vehicles.isOperational(drone) && SquadTeams.isHostile(entity, drone) &&
+        Ports.vehicles.isOperational(drone) && com.sbwnpc.squad.combat.DroneCombat.isHostileDrone(entity, drone) &&
             entity.distanceToSqr(drone) <= range * range
 
     private fun detect(entity: NpcEntity, level: ServerLevel): Entity? {
