@@ -11,6 +11,7 @@ import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.team.SquadTeams
+import com.sbwnpc.squad.combat.Hostiles
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.tags.BlockTags
@@ -781,17 +782,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  exact eyePosition from). Same hostile-detection idiom as
      *  `MortarOperatorBehaviour.scanForEnemy` (NpcEntity/Player, [SquadTeams.isHostile], alive). */
     private fun nearbyThreats(entity: NpcEntity, level: ServerLevel, primary: Vec3): List<Vec3> {
-        // NPCs from the registry, players from the level's own list — same population as the old
-        // `getEntitiesOfClass(LivingEntity) { NpcEntity || Player }` over an 80-block box, without
-        // walking that box's chunk sections.
-        val threats = ArrayList<Vec3>()
-        val r2 = THREAT_SCAN_RADIUS * THREAT_SCAN_RADIUS
-        NpcRegistry.forEachWithin(level, entity.position(), THREAT_SCAN_RADIUS, exclude = entity) {
-            if (it.isAlive && SquadTeams.isHostile(entity, it)) threats += it.eyePosition
-        }
-        for (player in level.players()) {
-            if (player.isAlive && player.distanceToSqr(entity) <= r2 && SquadTeams.isHostile(entity, player)) threats += player.eyePosition
-        }
+        val threats = Hostiles.within(level, entity, THREAT_SCAN_RADIUS).mapTo(ArrayList()) { it.eyePosition }
         threats += primary.add(0.0, 1.5, 0.0)
         return threats
     }

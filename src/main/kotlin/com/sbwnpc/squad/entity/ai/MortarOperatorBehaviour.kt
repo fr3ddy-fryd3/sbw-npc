@@ -10,6 +10,7 @@ import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.Squad
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
+import com.sbwnpc.squad.combat.Hostiles
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
@@ -332,20 +333,10 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         val tick = level.gameTime
         val faction = SquadTeams.factionOf(entity)
         val radius = detectionRadius(entity)
-        // Was a LivingEntity query over a box up to 320 blocks on a side (thousands of chunk
-        // sections), then a raycast against EVERY hostile in it. Now: hostiles from the NPC
-        // registry + player list, nearest first, and at most MAX_LOS_CHECKS raycasts — the nearest
-        // visible one is the fire target either way; the rest only fed TeamAwareness, which the
-        // infantry actually engaging them already does.
-        val candidates = ArrayList<LivingEntity>()
-        NpcRegistry.forEachWithin(level, entity.position(), radius, exclude = entity) {
-            if (it.isAlive && SquadTeams.isHostile(entity, it)) candidates += it
-        }
-        val r2 = radius * radius
-        for (player in level.players()) {
-            if (player.isAlive && player.distanceToSqr(entity) <= r2 && SquadTeams.isHostile(entity, player)) candidates += player
-        }
-        candidates.sortBy { entity.distanceToSqr(it) }
+        // Nearest first, and at most MAX_LOS_CHECKS raycasts — the nearest visible one is the fire
+        // target either way; the rest would only feed TeamAwareness, which the infantry actually
+        // engaging them already does.
+        val candidates = Hostiles.within(level, entity, radius)
 
         var selfSpotted: LivingEntity? = null
         var losChecks = 0

@@ -11,6 +11,7 @@ import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
+import com.sbwnpc.squad.combat.Hostiles
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.Entity
@@ -176,15 +177,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         val faction = SquadTeams.factionOf(entity)
         val radius = maxRange(entity)
 
-        val candidates = ArrayList<LivingEntity>()
-        NpcRegistry.forEachWithin(level, entity.position(), radius, exclude = entity) {
-            if (it.isAlive && SquadTeams.isHostile(entity, it)) candidates += it
-        }
-        val r2 = radius * radius
-        for (player in level.players()) {
-            if (player.isAlive && player.distanceToSqr(entity) <= r2 && SquadTeams.isHostile(entity, player)) candidates += player
-        }
-        candidates.sortBy { entity.distanceToSqr(it) }
+        val candidates = Hostiles.within(level, entity, radius)
 
         var spotted: LivingEntity? = null
         var losChecks = 0
