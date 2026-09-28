@@ -5,7 +5,7 @@ import net.minecraft.server.level.ServerLevel
 /**
  * Global per-server-tick budget for the expensive terrain raycasts ([Sightline.blocked] →
  * `Level.clip`) that the position searches spend — `GunAttackBehaviour.bestFiringSpot` and
- * `SeekCoverBehaviour.findCover` each burn hundreds per evaluation, and both are triggered for a
+ * `CoverSearch.find` each burn hundreds per evaluation, and both are triggered for a
  * whole squad on the SAME tick (everyone enters shoot range together; one mortar shell suppresses
  * everyone in its radius together). Without a cap that's a visible freeze. Callers check
  * [hasRaycasts] before starting a search and put it off to a later tick when the budget is spent,
