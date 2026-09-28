@@ -221,9 +221,6 @@ object SquadMarch {
     private const val TURNED_LEG_MIN = 48.0
     private const val GIVE_UP = 6
 
-    /** Close enough to the goal that the ordinary search takes the squad the rest of the way. */
-    private const val GOAL_REACH = 24.0
-
     /** The farthest point on loaded ground up to [reach] along (ux, uz), on the surface. */
     private fun surfaceToward(level: ServerLevel, npc: NpcEntity, ux: Double, uz: Double, reach: Double): BlockPos? {
         var d = reach

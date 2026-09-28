@@ -65,9 +65,6 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var aimTime = 0
     private val shootTimer = MillisTimer()
 
-    private val clearAimTimeWhenLostSight = true
-    private val zoom = false
-
     private var lineIsClear = true
     /** Why [lineIsClear] is false, when it is: a vehicle hull rather than a squadmate. The two ask
      *  for opposite responses — see the block in [tick]. */
@@ -554,13 +551,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             // Stamped once, on the tick sight was lost — GrenadeUseBehaviour measures from here.
             entity.blockedSightSince = entity.tickCount
         }
-        aimTime = if (canSeeTarget) {
-            minOf(entity.maxAimTime, aimTime + 1)
-        } else if (clearAimTimeWhenLostSight) {
-            0
-        } else {
-            aimTime - 1
-        }
+        // Losing sight starts the aim over.
+        aimTime = if (canSeeTarget) minOf(entity.maxAimTime, aimTime + 1) else 0
 
         entity.lookAt(target, 30f, 30f)
         // lookAt above only sets xRot/yRot (the actual aim SBW fires along) — it never touches
@@ -692,7 +684,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                     if (simulate) {
                         OffscreenFire.fire(entity, gun, target, spread)
                     } else {
-                        gun.shootAt(spread, zoom, target.uuid)
+                        gun.shootAt(spread, zoom = false, target.uuid)
                     }
                     newProgress -= cooldown
                     roundsInBurst++

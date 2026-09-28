@@ -1,6 +1,5 @@
 package com.sbwnpc.squad.client
 
-import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.ChatFormatting
 import net.minecraft.client.Minecraft
 import net.neoforged.api.distmarker.Dist

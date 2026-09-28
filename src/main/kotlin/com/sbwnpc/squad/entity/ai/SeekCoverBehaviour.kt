@@ -146,11 +146,8 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val THREAT_SCAN_RADIUS = 40.0
         private const val COVERING_FIRE_WINDOW_TICKS = 40 // ~2s — covers gaps between shots, not just a single tick
 
-        // See maybeThrowGrenadeOnceDugIn(). Same toss physics as GrenadeThrowBehaviour's own throw
-        // (placeholder constants there too — needs the same in-game visual tuning eventually).
+        // See maybeThrowGrenadeOnceDugIn().
         private const val GRENADE_THROW_CHANCE = 0.2
-        private const val GRENADE_THROW_SPEED = 1.0
-        private const val GRENADE_GRAVITY = 0.05
 
         private val NEIGHBOR_OFFSETS = listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1)
         // How far out (in block-widths, along each NEIGHBOR_OFFSETS direction) to look for a

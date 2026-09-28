@@ -81,7 +81,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.diggedIn) return false
         if (entity.vehicleTransport || entity.operatingDrone || entity.servingMortar || entity.antiDroneEngaged) return false
         if (entity.evadingGrenade()) return false
-        val squad = entity.currentSquad() ?: return false
+        // homeCenter() is null outside a squad too.
         return entity.homeCenter() != null
     }
 

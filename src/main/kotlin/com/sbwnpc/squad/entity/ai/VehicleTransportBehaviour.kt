@@ -780,9 +780,6 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         return entity.tickCount - gunnerSawThreatTick < GUNNER_LOST_SIGHT_TICKS
     }
 
-    private fun threatActive(entity: NpcEntity): Boolean =
-        entity.target?.isAlive == true || entity.isAlert() || entity.isSuppressed()
-
     private fun shouldPrioritizeMortar(entity: NpcEntity, order: SquadOrder): Boolean {
         if (order != SquadOrder.ATTACK || entity.homeCenter() == null) return false
         val claimable: (Entity) -> Boolean = when (entity.npcClass) {

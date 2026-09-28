@@ -33,7 +33,6 @@ class SquadManager : SavedData() {
     fun all(): Collection<Squad> = squads.values
     fun get(id: UUID?): Squad? = id?.let { squads[it] }
     fun forOwner(owner: UUID): List<Squad> = squads.values.filter { it.owner == owner }
-    fun squadOf(entity: UUID): Squad? = squads.values.firstOrNull { entity in it.members }
 
     /** Server-side authorization check — every network handler that acts on a squad by id (as
      *  opposed to picking from the caller's own [forOwner] list) must gate on this before doing

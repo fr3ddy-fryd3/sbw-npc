@@ -7,7 +7,6 @@ import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.npc.SquadPreset
-import com.sbwnpc.squad.npc.TankModel
 import com.sbwnpc.squad.npc.TransportVehicle
 import net.minecraft.ChatFormatting
 import net.minecraft.client.gui.GuiGraphics
