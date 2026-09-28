@@ -197,7 +197,7 @@ class HudOrderAllPayload(val order: Int) : CustomPacketPayload {
     }
 }
 
-/** Client -> server: a route-related action (Phase 5.6 waypoints). */
+/** Client -> server: a patrol-route action. */
 class RouteCmdPayload(val action: Int, val route: String, val text: String) : CustomPacketPayload {
     override fun type() = TYPE
 

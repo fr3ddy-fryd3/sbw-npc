@@ -19,25 +19,23 @@ import net.tslat.smartbrainlib.api.core.sensor.ExtendedSensor
 import net.tslat.smartbrainlib.util.BrainUtils
 
 /**
- * SmartBrain migration step 4 — replaces FOUR separate Goal classes (SquadFocusTargetGoal,
- * SquadAwarenessTargetGoal, plus vanilla HurtByTargetGoal/NearestAttackableTargetGoal) with ONE
- * sensor evaluating the exact same priority chain each scan, all in one place instead of spread
- * across four independently-prioritized targetSelector entries that had to be kept mentally in sync
- * — that fragmentation is what caused the mortar-confusing-its-own-target class of bug earlier in
- * this project.
+ * Picks every NPC's target, all in one place — one priority chain rather than several target
+ * selectors each keeping its own idea of who the enemy is (which once had a mortar crew arguing
+ * with itself over its target).
  *
- * Priority (highest first), unchanged from the old goals:
- * 1. Squad focus (ATTACK: hunt it; DEFEND: whoever last hurt the guarded focus) — skipped entirely
- *    for mortar crew, who have their own solver (see MortarOperatorBehaviour).
- * 2. Whoever last hurt this NPC (vanilla HurtByTargetGoal equivalent).
- * 3. Faction-wide relayed contact via [TeamAwareness] — skipped for mortar crew too (same reason).
- * 4. Nearest directly-visible hostile within follow range (vanilla NearestAttackableTargetGoal
- *    equivalent).
+ * Priority, highest first:
+ * 1. Whatever vehicle is attacking it ([NpcEntity.vehicleAttacker]).
+ * 2. At a vehicle's weapon: the crew of a hostile vehicle, then hostile aircrew.
+ * 3. The squad's focus (ATTACK: hunt it; DEFEND: whoever last hurt the guarded focus) — not for
+ *    mortar crew, who have their own solver (see MortarOperatorBehaviour).
+ * 4. Whoever last hurt this NPC.
+ * 5. Falling back: only what it can shoot from where it stands — its own sight, then what its
+ *    squadmates are shooting at, then the side's contacts.
+ * 6. Otherwise the side's relayed contacts ([TeamAwareness]; not for mortar crew), then the
+ *    nearest hostile it can see.
  *
- * Uses [BrainUtils.setTargetOfEntity] rather than setting the ATTACK_TARGET memory directly — that
- * call ALSO sets the legacy `mob.target` field, which every not-yet-migrated Goal (melee, grenade,
- * mortar, cover, investigate, squad-order) still reads. This is a deliberate, temporary bridge for
- * the migration window (see SMARTBRAIN_MIGRATION_PLAN.md task 4) — those goals are not touched here.
+ * [BrainUtils.setTargetOfEntity] sets both the ATTACK_TARGET memory and `mob.target`, which the
+ * rest of the code reads.
  */
 class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
 

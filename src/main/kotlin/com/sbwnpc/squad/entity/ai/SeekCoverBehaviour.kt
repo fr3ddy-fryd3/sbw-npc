@@ -23,30 +23,21 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 import net.tslat.smartbrainlib.util.BrainUtils
 
 /**
- * SmartBrain migration step 6 — direct port of the old `SeekCoverGoal` onto `ExtendedBehaviour`,
- * placed in `NpcEntity.getCoreTasks()` (see there) rather than a separate `Activity`: like
- * `InteractWithDoor`, this must keep ticking on every phase transition with its own state intact,
- * including through the PEEKING window — a real (mutually-exclusive) SmartBrainLib `Activity` would
- * have `stop()`/`start()` this behaviour every time `COVER_HOLD` toggles off/on for the peek, losing
- * `coverTarget`/`phase` right when they need to survive it. CORE has no such exclusivity (same as
- * the old goal, which reserved `Flag.MOVE` but was never challenged for it — `GunAttackBehaviour`/
- * `GrenadeThrowBehaviour` never reserved any flag either), so this keeps ticking continuously the whole
- * time the mob is suppressed, exactly like before.
+ * In the Core tasks (`NpcEntity.getCoreTasks()`) rather than an `Activity` of its own: it must keep
+ * ticking through every phase with its state intact, the PEEKING window included — a (mutually
+ * exclusive) SmartBrainLib `Activity` would `stop()`/`start()` it every time `COVER_HOLD` toggles
+ * for a peek, losing `coverTarget`/`phase` right when they need to survive.
  *
  * Full suppression response — not just duck-and-hold: while suppressed, the mob finds a point the
  * threat's last known position can't see, ducks there, then periodically steps back OUT to return
  * fire on its current target before ducking back in, repeating for as long as it stays suppressed.
  *
- * Drives [ModMemories.COVER_HOLD] (replaces `NpcEntity.coverPhase`'s externally-visible half — see
- * that memory's own doc comment). While `COVER_HOLD` is absent (the PEEKING window),
- * `NpcEntity.combatLockedByCover()` is false, so `GunAttackBehaviour`/`GrenadeThrowBehaviour` take back
- * over movement/aim/fire for that window — no conflict, since neither of those reserves any
- * `Flag`/exclusivity of its own (confirmed against this codebase's actual wiring, not assumed). This
- * behaviour itself just steps the mob out toward its target for the peek and otherwise gets out of
- * the way; it does not fight for control the way the old duck-and-hold-only version implicitly did
- * by never yielding at all.
+ * Drives [ModMemories.COVER_HOLD]. While it is absent (the PEEKING window),
+ * `NpcEntity.combatLockedByCover()` is false, so `GunAttackBehaviour`/`GrenadeThrowBehaviour` take
+ * movement, aim and fire back for that window; this behaviour only steps the mob out toward its
+ * target for the peek and otherwise keeps out of the way.
  *
- * Digging in (feature/dig-in): if [findCover] finds no real cover, the mob either digs itself a
+ * Digging in: if [findCover] finds no real cover, the mob either digs itself a
  * foxhole right where it's standing (if the ground allows — see [canDigIn] for the exact gating:
  * badly hurt, a squadmate actually covering it, standable dirt/sand, flat enough ground) or, only
  * when it has no live target at all (genuinely blind, nothing to fight from anywhere), retreats via

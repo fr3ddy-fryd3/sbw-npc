@@ -13,20 +13,16 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 import net.tslat.smartbrainlib.util.BrainUtils
 
 /**
- * SmartBrain migration step 7 — direct port of the old `InvestigateGoal` onto `ExtendedBehaviour`,
- * placed in `NpcEntity.getIdleTasks()` (see there): response to an [com.sbwnpc.squad.combat.Alarm]
+ * In the Idle activity (`NpcEntity.getIdleTasks()`): response to an [com.sbwnpc.squad.combat.Alarm]
  * (heard nearby gunfire, or an ally went down without a resolvable killer) — NOT combat, just "go
  * look". If a real target turns up along the way, `ATTACK_TARGET` becomes non-null and the Fight
  * activity outranks Idle automatically, so this stops on its own.
  *
- * Reads [ModMemories.ALERT_POSITION] (see that memory's own doc comment) instead of
- * `NpcEntity.alertUntilTick`/`alertPos` — expires on its own via TTL, `NpcEntity.clearAlert()`
- * clears it early on arrival, same as before.
+ * Reads [ModMemories.ALERT_POSITION] — expires on its own via TTL; `NpcEntity.clearAlert()` clears
+ * it early on arrival.
  *
- * Placed in Idle rather than a dedicated `Activity`, alongside [SquadOrderBehaviour] (migration step
- * 8) — `!entity.combatLockedByCover()` is still checked explicitly here (Idle behaviours aren't
- * mutually exclusive with `SeekCoverBehaviour`, which lives in Core — see that class's own doc
- * comment for why), same manual bridge the old goal already used.
+ * Beside [SquadOrderBehaviour] in Idle. `!entity.combatLockedByCover()` is checked explicitly: Idle
+ * behaviours aren't mutually exclusive with `SeekCoverBehaviour`, which lives in Core.
  */
 class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
 

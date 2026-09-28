@@ -20,7 +20,7 @@ import net.tslat.smartbrainlib.util.BrainUtils
 import java.util.UUID
 
 /**
- * Phase 5.8 — a MEDIC's shoot-vs-heal decision. Placed in `NpcEntity.getCoreTasks()` (like
+ * A MEDIC's shoot-vs-heal decision. Placed in `NpcEntity.getCoreTasks()` (like
  * `SeekCoverBehaviour`/`MortarOperatorBehaviour`) so it can act whether or not the medic currently
  * has a combat target of its own — a real Fight-activity behaviour would only ever run alongside
  * `ATTACK_TARGET`, which would rule out the "no target, heal opportunistically" case entirely.
@@ -37,7 +37,7 @@ import java.util.UUID
  *
  * The actual heal reuses SuperbWarfare's real `MedicalKitItem.treat()` (heal amount/percentage +
  * Regeneration, from that mod's own `MiscConfig`) instead of reinventing the healing math — called
- * directly on the ally via the already-registered [ModItems.MEDICAL_KIT] instance, with no item
+ * directly on the ally through the gear port (`Ports.gear`), with no item
  * ever placed in the medic's own hand (same "flag/direct call, not a visible item" precedent as
  * [NpcEntity.rgnLeft] — a medic's hands are already full with its SMG).
  */

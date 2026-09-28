@@ -33,18 +33,10 @@ import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 
 /**
- * SmartBrain migration step 5 — direct port of the old `NpcGunAttackGoal` into a Fight-activity
- * Behaviour (see `NpcEntity.getFightTasks()`). Only runs while `MemoryModuleType.ATTACK_TARGET` is
- * set — `BrainActivityGroup.fightTasks()` already gates the whole Fight activity on that memory by
- * default (confirmed via javap on the real dependency), same effective condition as the old goal's
- * `mob.target != null` check, just enforced by the framework instead of by hand.
+ * Aiming, moving and shooting at the target, in the Fight activity (`NpcEntity.getFightTasks()`),
+ * which `BrainActivityGroup.fightTasks()` runs only while `MemoryModuleType.ATTACK_TARGET` is set.
  *
- * Behaviour logic (aim/friendly-fire/bounding-advance/shoot) is otherwise UNCHANGED from
- * NpcGunAttackGoal — this is a port, not a redesign. See that class's original doc comments (now
- * removed) for the reasoning behind each piece; kept condensed here since the "why" is preserved,
- * only the framework glue changed.
- *
- * Partial-cover firing position (added later, per user request): once close enough to stop
+ * Partial-cover firing position: once close enough to stop
  * advancing, [advanceOrHold] no longer just freezes wherever the mob happens to be — see
  * [holdFiringPosition]. Distinct from [SeekCoverBehaviour]'s cover-seeking in both trigger and
  * intent: that one only runs while suppressed and tries to get FULLY hidden from every threat,

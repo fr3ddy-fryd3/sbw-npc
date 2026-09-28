@@ -14,10 +14,8 @@ import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 
 /**
- * SmartBrain migration (finishing the plan's "full migration, not partial" decision) — direct port
- * of the old `MortarLoaderGoal` onto `ExtendedBehaviour`, placed in `NpcEntity.getCoreTasks()` for
- * the same reason as [MortarOperatorBehaviour] — a loader keeps resupplying regardless of the
- * current Fight/Idle activity, same as the old goal ran unconditionally at priority 1.
+ * In the Core tasks, for the same reason as [MortarOperatorBehaviour]: a loader keeps resupplying
+ * whichever of Fight or Idle is active.
  *
  * Simplified ammo logistics (no carried shells / resupply points): stand near a mortar and it
  * stays topped up. Separate claim from the operator so both can post at the same mortar.

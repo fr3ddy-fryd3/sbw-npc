@@ -37,16 +37,11 @@ import net.minecraft.world.level.material.MapColor
 import net.minecraft.world.phys.BlockHitResult
 
 /**
- * Destructible resupply point for a squad — Phase 5.5 scope is purely a periodic respawner of
- * missing members (future resource/ammo logistics build on this same block, per plan, not yet).
+ * Destructible resupply point for a squad: periodically respawns its missing members.
  *
- * Was originally a no-AI `Mob` purely to get `hurt()`/health for free — but every OTHER functional
- * placeable SuperbWarfare itself has (ContainerBlock, ChargingStationBlock, VehicleAssemblingTable,
- * etc.) is a plain block: right-click with no tool required, destroyed by mining/explosion like any
- * other block, no bespoke damage tracking. Matching that (explicit user call, after pointing out the
- * Mob version was neither what was asked for nor consistent with SBW's own conventions) means giving
- * up "a rifle can kill it" — it's now only removable by mining or an explosion, same as the rest of
- * SBW's own placeables.
+ * A plain block, like every functional placeable SuperbWarfare has (ContainerBlock,
+ * ChargingStationBlock, VehicleAssemblingTable…): right-click with no tool, removed only by mining
+ * or an explosion — gunfire doesn't hurt it.
  */
 class BarracksBlock : BaseEntityBlock(
     Properties.of().mapColor(MapColor.COLOR_GRAY).strength(6.0f, 12.0f).sound(SoundType.WOOD).noOcclusion()

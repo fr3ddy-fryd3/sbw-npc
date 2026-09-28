@@ -21,17 +21,16 @@ import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 
 /**
- * SmartBrain migration (finishing the plan's "full migration, not partial" decision) — direct port
- * of the old `MortarOperatorGoal` onto `ExtendedBehaviour`, placed in `NpcEntity.getCoreTasks()`
- * (like `SeekCoverBehaviour`/`InteractWithDoor`): a mortar crew member mans its post regardless of
- * whether the Fight/Idle activity is currently active — the old goal ran the same way (priority 1,
- * `Flag.MOVE`, only ever stepping aside for a genuine personal threat, which it checks itself below).
+ * In the Core tasks (`NpcEntity.getCoreTasks()`): a mortar crew member mans its post whichever of
+ * Fight or Idle is active, stepping aside only for a genuine personal threat, which it checks
+ * itself below.
  *
  * Requires the mortar to actually have shells loaded (normally kept topped up by a squadmate
  * running [MortarLoaderBehaviour]). Two ways to get a fire mission:
  *  - commanded: squad order ATTACK with an objective/focus set (always wins).
- *  - autonomous: nearest hostile within the rank-scaled detection radius, even under
- *    DEFEND/PATROL/MOVE — a mortar crew doesn't just sit idle while enemies close in.
+ *  - autonomous: the nearest hostile its crew can see within the rank-scaled detection radius, or
+ *    else where the side last saw one ([com.sbwnpc.squad.combat.TeamAwareness.sightings]), even
+ *    under DEFEND/PATROL/MOVE — a mortar crew doesn't just sit idle while enemies close in.
  *
  * Minimum range / friendly-safety-radius are heuristics, not a faithful read of the mortar's own
  * internal aim-solver state — needs in-game tuning.

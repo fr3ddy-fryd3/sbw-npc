@@ -57,14 +57,10 @@ import net.minecraft.world.level.ServerLevelAccessor
  * is by squad faction == vanilla scoreboard team (see [SquadTeams]); no team on either side means
  * neutral. The faction also picks the NPC's skin ([com.sbwnpc.squad.client.renderer.NpcRenderer]).
  *
- * MIGRATION TO SmartBrainLib — complete. [registerGoals] only registers three trivial, NPC-agnostic
- * vanilla utility goals now (float/swim, random look, random wander), none of which were part of the
- * migration's task list — no risk in leaving those as ordinary Goals indefinitely. Every subsystem
- * that reads/writes combat state (targeting, gun combat, melee, grenades, mortar, cover/suppression,
- * alarm/investigate, squad formations/patrol) is Brain-side. One exception: the random-look goal is
- * [IdleLookAroundGoal], not vanilla's bare `RandomLookAroundGoal` — see that class's doc comment for
- * why it DOES need to check combat state (`mob.target`) despite the above, to fix a real bug
- * (rendered head direction fighting `GunAttackBehaviour` for control mid-combat).
+ *
+ * The AI is a SmartBrainLib brain (sensors and behaviours under `entity/ai`). [registerGoals] keeps
+ * three small vanilla-style goals — float/swim, looking about ([IdleLookAroundGoal], which stands
+ * down in combat so it doesn't fight GunAttackBehaviour for the head) and wandering.
  */
 open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     PathfinderMob(type, level), net.tslat.smartbrainlib.api.SmartBrainOwner<NpcEntity> {
@@ -85,15 +81,14 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     // Suppression (see SeekCoverBehaviour): a temporary "duck and hold" state triggered by taking
     // ranged damage (below, hurt()) or a nearby explosion (SuppressionEvents). Backed by a
-    // SmartBrainLib TTL memory (SmartBrain migration step 6) instead of a hand-rolled
-    // suppressedUntilTick/threatPos pair — expires on its own, no manual tick comparison, and
-    // visible via the brain's own memory (e.g. /data get entity <e> Brain) instead of debug logs.
+    // SmartBrainLib TTL memory — expires on its own, and shows in the brain's memory
+    // (e.g. /data get entity <e> Brain).
     fun isSuppressed(): Boolean = BrainUtils.hasMemory(this, ModMemories.SUPPRESSING_THREAT.get())
     val threatPos: Vec3? get() = BrainUtils.getMemory(this, ModMemories.SUPPRESSING_THREAT.get())
 
     /** Each trigger extends the timer (doesn't stack duration), capped so sustained fire doesn't
-     *  grant an indefinite "immune to squad orders" state — same cap logic as before, just computed
-     *  against the memory's own remaining TTL instead of a local field. */
+     *  grant an indefinite "immune to squad orders" state; measured against the memory's own
+     *  remaining TTL. */
     fun suppress(threat: Vec3) {
         val remaining = if (isSuppressed())
             BrainUtils.getTimeUntilMemoryExpires(this, ModMemories.SUPPRESSING_THREAT.get())
@@ -106,8 +101,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // reaction, distinct from actually having a target. Two sources — GunAttackBehaviour.tick()
     // raises this on nearby allies whenever it fires (heard gunfire), and die() raises it on nearby
     // squadmates when the killer can't be resolved as a direct TeamAwareness contact (see die()
-    // below). Backed by a SmartBrainLib TTL memory (SmartBrain migration step 7) instead of a
-    // hand-rolled alertUntilTick/alertPos pair.
+    // below). Backed by a SmartBrainLib TTL memory.
     fun isAlert(): Boolean = BrainUtils.hasMemory(this, ModMemories.ALERT_POSITION.get())
 
     fun alert(pos: Vec3) {
@@ -375,15 +369,13 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         builder.define(DATA_RANK, NpcRank.DEFAULT.ordinal)
     }
 
-    // Only trivial, NPC-agnostic vanilla utility goals left — none of them ever touched
-    // `mob.target`/ATTACK_TARGET or any custom AI state, so there's no Goal/Brain interop risk in
-    // leaving them here indefinitely (see the class doc comment above).
     /** Vehicles are not obstacles to vanilla pathfinding, so routes are plotted straight through
      *  them and the mob ends up shoved against a hull or standing on its roof. See
      *  [com.sbwnpc.squad.entity.ai.VehicleAwareNavigation]. */
     override fun createNavigation(level: Level): net.minecraft.world.entity.ai.navigation.PathNavigation =
         com.sbwnpc.squad.entity.ai.VehicleAwareNavigation(this, level)
 
+    // Three small vanilla-style goals beside the brain — see the class doc comment.
     override fun registerGoals() {
         super.registerGoals()
         this.goalSelector.addGoal(0, FloatGoal(this))
@@ -391,13 +383,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         this.goalSelector.addGoal(7, IdleWanderGoal(this, SquadOrderBehaviour.WALK_SPEED_MODIFIER))
     }
 
-    // --- SmartBrainOwner: step 2 of the migration (skeleton only) ---
-    // The actual published 1.16.11 jar's API does NOT match SmartBrainLib's git `master` branch
-    // (confirmed by decompiling the real dependency with javap, not trusting the cloned source) —
-    // no auto-wiring mixin exists in this version, so brainProvider()/tickBrain() are wired by hand
-    // below. Task groups are BrainActivityGroup (not raw Lists) in this version; getSensors() is the
-    // only abstract member, the three task-group getters have library defaults (empty groups) that
-    // are overridden here just so tasks 3-5 have an obvious place to fill in one subsystem at a time.
+    // --- SmartBrainOwner ---
+    // SmartBrainLib 1.16.11 (the published jar, whose API differs from the library's git master)
+    // has no auto-wiring mixin: brainProvider()/tickBrain() are wired by hand below.
     override fun brainProvider(): net.minecraft.world.entity.ai.Brain.Provider<NpcEntity> =
         net.tslat.smartbrainlib.api.core.SmartBrainProvider(this)
 
@@ -750,13 +738,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         net.tslat.smartbrainlib.api.core.BrainActivityGroup.idleTasks(
             InvestigateBehaviour(), com.sbwnpc.squad.entity.ai.VehicleTransportBehaviour(), SquadOrderBehaviour()
         )
-    // Fight: only while ATTACK_TARGET is set. GunAttackBehaviour is a direct port of the old
-    // NpcGunAttackGoal; AnimatableMeleeAttack is SmartBrainLib's own ready-made melee behaviour
-    // (only attacks when already within melee range + LOS — it does no chasing of its own, same as
-    // before: GunAttackBehaviour's own advance-to-shootDistance already closes the gap for every
-    // class, since every NpcClass carries a gun, so melee only ever needed to cover the
-    // already-adjacent case); GrenadeThrowBehaviour is a direct port of GrenadeThrowGoal. All three
-    // ran concurrently as unflagged Goals before — same here, just as Behaviours in one Activity.
+    // Fight: only while ATTACK_TARGET is set, all running side by side. AnimatableMeleeAttack is
+    // SmartBrainLib's own melee behaviour and only strikes what is already in reach — it does no
+    // chasing: every class carries a gun, and GunAttackBehaviour closes the distance itself.
     override fun getFightTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
         net.tslat.smartbrainlib.api.core.BrainActivityGroup.fightTasks(
             com.sbwnpc.squad.entity.ai.GunAttackBehaviour(),
@@ -767,7 +751,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             com.sbwnpc.squad.entity.ai.GrenadeUseBehaviour()
         )
 
-    // Used by SquadTargetSensor (step 4 of the SmartBrain migration) too, hence internal not private.
+    // Also used by GrenadeUseBehaviour, hence internal not private.
     internal fun isEnemy(other: LivingEntity): Boolean {
         if (other !is NpcEntity && other !is Player) return false
         if (other is Player && (other.isCreative || other.isSpectator)) return false

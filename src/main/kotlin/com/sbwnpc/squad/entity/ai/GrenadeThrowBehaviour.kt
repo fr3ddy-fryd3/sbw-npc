@@ -11,19 +11,13 @@ import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 
 /**
- * SmartBrain migration (finishing the plan's "full migration, not partial" decision) — direct port
- * of the old `GrenadeThrowGoal` onto `ExtendedBehaviour`, placed in `NpcEntity.getFightTasks()`
- * alongside `GunAttackBehaviour`/`AnimatableMeleeAttack` (multiple behaviours in one Activity group
- * just tick concurrently, same as this and the gun goal already did as two unflagged vanilla Goals).
+ * In the Fight activity (`NpcEntity.getFightTasks()`), running beside GunAttackBehaviour.
  *
  * Supplements the grenadier's M79 (handled by GunAttackBehaviour) with an occasional thrown grenade
  * at medium range — mainly useful for flushing a target out of cover the launcher can't reach.
  * "Instant action" behaviour: throws once in start(), then immediately deactivates
  * (shouldKeepRunning always false) — the cooldown lives in nextThrowTick rather than needing
- * per-tick ticking while inactive, same idiom the old goal used with canContinueToUse() = false.
- *
- * Throw speed/gravity are placeholder constants (SBW's default projectile gravity 0.05, a guessed
- * ~1.0 blocks/tick toss speed) — need visual tuning once seen in-game.
+ * per-tick ticking while inactive. The toss itself is the Grenades port's (`SbwGrenades`).
  */
 class GrenadeThrowBehaviour : ExtendedBehaviour<NpcEntity>() {
 

@@ -14,26 +14,18 @@ import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 
 /**
- * SmartBrain migration step 8 — direct port of the old `SquadOrderGoal` onto `ExtendedBehaviour`,
- * placed in `NpcEntity.getIdleTasks()` alongside [InvestigateBehaviour] (migration step 7).
- * [SquadFormation]'s slot math is untouched (pure functions, never was a Goal) — only the glue
- * moved.
+ * Squad-order movement, in the Idle activity (`NpcEntity.getIdleTasks()`). Low priority: with an
+ * enemy about, the Fight activity (`ATTACK_TARGET` set) outranks Idle on its own; within Idle,
+ * [InvestigateBehaviour] comes first — [eligible] requires `!entity.isAlert()` for that, since Idle
+ * behaviours don't exclude one another by themselves.
  *
- * Squad-order movement. Low priority — the gun behaviour (chase & shoot, Fight activity) always
- * wins when there's an enemy (`ATTACK_TARGET` present outranks Idle automatically); within Idle,
- * [InvestigateBehaviour] additionally outranks this one — see [eligible] below, which requires
- * `!entity.isAlert()` for exactly that reason (Idle behaviours don't have GoalSelector's automatic
- * per-Flag exclusivity, so the old goal-priority order 4-vs-5 has to be reproduced by hand here,
- * same idiom as `combatLockedByCover()` already is elsewhere in this migration).
- *
- *  - DEFEND: return to within `SquadFormation.defendArrivalRadius` of home (objective point /
- *    guarded entity — currently 12 blocks, but derived rather than hardcoded, see that line), then
- *    hold in a loose SCATTER (see [SquadFormation] — deliberately not a tight ring).
+ *  - DEFEND: back to within [SquadFormation.defendArrivalRadius] of home (objective point or
+ *    guarded entity), then each man holds his own post round a perimeter sized to the squad.
  *  - PATROL: walk the squad's assigned Route in sequence if it has one (see RouteManager);
- *    otherwise wander within ~12 blocks of home as before.
- *  - ATTACK: advance to home; once EVERY member has actually arrived, the squad's own order flips
- *    to DEFEND automatically (see [allSquadArrived]) — taking a point means holding it next, not
- *    standing frozen in an assault wedge forever.
+ *    otherwise wander within [ROAM_RADIUS] of home.
+ *  - ATTACK: advance on home at a run. Taking the point turns the squad to DEFEND —
+ *    [com.sbwnpc.squad.squad.OrderArrival].
+ *  - RETREAT: fall back to the point, bounding under fire ([com.sbwnpc.squad.combat.Withdrawal]).
  *  - MOVE: walk calmly to the objective and hold the assigned infantry-grid slot.
  *
  * Destination points go through [SquadFormation.slotTarget] instead of the bare anchor — every
