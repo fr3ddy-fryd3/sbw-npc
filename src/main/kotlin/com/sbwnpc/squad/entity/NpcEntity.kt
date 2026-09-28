@@ -73,6 +73,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         get() = NpcRank.byOrdinal(entityData.get(DATA_RANK))
         set(value) = entityData.set(DATA_RANK, value.ordinal)
 
+    /** Weapon spread before any target-specific adjustment: the rank's, scaled by the class. */
+    val spread: Double get() = npcRank.spread * npcClass.accuracyMultiplier
+
     /** Faction to put the NPC on its scoreboard team; set before finalizeSpawn. null = leave unteamed. */
     var spawnFaction: SquadFaction? = null
 

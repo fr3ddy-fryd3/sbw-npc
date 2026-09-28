@@ -178,7 +178,6 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private val NpcEntity.maxAimTime get() = npcRank.aimTimeTicks
     private val NpcEntity.semiFireInterval get() = npcRank.semiFireIntervalMs
-    private val NpcEntity.spread get() = npcRank.spread * npcClass.accuracyMultiplier
     private val NpcEntity.shootDistance get() = BASE_SHOOT_DISTANCE * npcClass.shootDistanceMultiplier
 
     /**

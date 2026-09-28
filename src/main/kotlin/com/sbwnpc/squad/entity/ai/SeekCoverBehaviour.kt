@@ -683,7 +683,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         for (step in PEEK_STEP_DISTANCES) {
             val candidate = base.add(dir.scale(step))
             val eye = candidate.add(0.0, 1.5, 0.0)
-            if (!Sightline.blockedBy(level, eye, target.eyePosition, entity, hulls, entity.npcRank.spread * entity.npcClass.accuracyMultiplier)) return candidate
+            if (!Sightline.blockedBy(level, eye, target.eyePosition, entity, hulls, entity.spread)) return candidate
         }
         return target.position()
     }

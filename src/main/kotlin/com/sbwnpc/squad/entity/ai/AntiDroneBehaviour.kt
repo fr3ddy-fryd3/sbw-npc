@@ -215,7 +215,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.tickCount < nextShotTick || !gun.canShoot()) return
         // A drone is a small, fast, evasive target — the same aim a rifleman holds on a person
         // shouldn't land on it as reliably.
-        val spread = DroneAccuracy.adjustSpread(entity.npcRank.spread * entity.npcClass.accuracyMultiplier, true)
+        val spread = DroneAccuracy.adjustSpread(entity.spread, true)
         if (!FriendlyFireGuard.hasClearLineOfFire(entity, aim, spread)) return
 
         gun.shootAt(spread, aim)
