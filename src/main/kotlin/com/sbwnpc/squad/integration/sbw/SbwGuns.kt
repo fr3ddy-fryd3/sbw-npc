@@ -95,6 +95,7 @@ private class SbwHandGun(private val holder: LivingEntity, private val data: Gun
     override val roundsPerMinute: Double get() = data.get(GunProp.RPM).toDouble()
     override val muzzleVelocity: Double get() = data.get(GunProp.VELOCITY).toDouble()
     override val explosionRadius: Double get() = data.get(GunProp.EXPLOSION_RADIUS)
+    override val hearingRadius: Double get() = SbwHearing.radius(data)
     override val pellets: Int get() = data.get(GunProp.PROJECTILE_AMOUNT)
     override val damage: Double get() = data.get(GunProp.DAMAGE)
 

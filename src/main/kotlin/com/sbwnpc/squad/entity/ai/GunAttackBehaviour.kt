@@ -701,6 +701,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                 if (entity.tickCount >= nextAlarmTick) {
                     nextAlarmTick = entity.tickCount + ALARM_INTERVAL_TICKS
                     Alarm.raise(entity, entity.position(), target.position(), GUNFIRE_HEARING_RADIUS)
+                    // The other side hears it too — here rather than off SBW's shot event, which a
+                    // shot nobody watches (OffscreenFire) never raises.
+                    (entity.level() as? ServerLevel)?.let { com.sbwnpc.squad.combat.Hearing.gunshot(it, entity, gun.hearingRadius) }
                 }
                 if (fireMode == TriggerMode.AUTO && roundsInBurst >= burstLimit) {
                     roundsInBurst = 0

@@ -38,6 +38,7 @@ object ServerLifecycle {
         TeamAwareness.clearAll()
         com.sbwnpc.squad.block.entity.SupplyPoints.clearAll()
         com.sbwnpc.squad.squad.SquadReports.clearAll()
+        com.sbwnpc.squad.combat.Hearing.clearAll()
         DeathSites.clearAll()
         MortarClaims.clearAll()
         DroneLinks.clearAll()

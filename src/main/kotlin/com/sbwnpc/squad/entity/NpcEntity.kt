@@ -115,6 +115,37 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         BrainUtils.setForgettableMemory(this, ModMemories.ALERT_POSITION.get(), pos, ticks.toInt())
     }
 
+    private var heardAt: Vec3? = null
+    private var heardUntilTick = 0
+
+    /**
+     * Gunfire or an explosion of the other side's, heard at [at] — see [com.sbwnpc.squad.combat.Hearing].
+     * With nothing to fight, it turns to face the sound; and if nothing holds it where it is, goes
+     * to see. Holding means dug in, at a crew post, defending, barraging, on the move or falling
+     * back to an objective, or off to a Supply — none of those drop what they're doing for a noise.
+     */
+    fun hear(at: Vec3) {
+        if (target != null) return
+        heardAt = at
+        heardUntilTick = tickCount + HEARD_LOOK_TICKS
+        val order = currentSquad()?.order
+        val holding = diggedIn || busyWithRole() || resupplying || order == SquadOrder.DEFEND ||
+            order == SquadOrder.BARRAGE || order == SquadOrder.MOVE || order == SquadOrder.RETREAT
+        if (!holding) alert(at)
+    }
+
+    /** Turned toward what it last heard for a few seconds, over the idle look-around. */
+    fun listening(): Boolean = heardAt != null && tickCount < heardUntilTick
+
+    private fun faceHeardNoise() {
+        val at = heardAt ?: return
+        if (target != null || tickCount >= heardUntilTick) {
+            heardAt = null
+            return
+        }
+        lookControl.setLookAt(at.x, at.y, at.z)
+    }
+
     /** Called by [com.sbwnpc.squad.entity.ai.InvestigateBehaviour] once it reaches the alert
      *  position (or gives up navigating to it) — ends the investigation instead of waiting out the
      *  full timer. */
@@ -551,6 +582,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     override fun customServerAiStep() {
         super.customServerAiStep()
         takeNewOrders()
+        faceHeardNoise()
         if (equipmentResyncTicksRemaining > 0) {
             equipmentResyncTicksRemaining--
             resyncEquipmentForNewlySpawnedNpc()
@@ -983,6 +1015,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         private const val BASE_HEALTH = 20.0
         private const val GRENADES_OF_EACH = 2
         const val MEDKITS = 1
+        private const val HEARD_LOOK_TICKS = 100
         const val MORTAR_SHELLS = 30
         /** Below this share of its issued rounds an NPC goes to a Supply between fights. */
         private const val LOW_AMMO_FRACTION = 0.3
