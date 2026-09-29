@@ -183,7 +183,12 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (shouldPrioritizeMortar(entity, squad.order)) {
             return logEligibility(entity, false) { "mortar duty takes priority for ATTACK" }
         }
-        crossing = if (entity.tickCount >= boatCooldownUntilTick) SquadMarch.crossingAhead(entity) else null
+        // Once under way to a boat, the crossing stays: walking over to it takes a man off the
+        // squad's route, where crossingAhead no longer sees the water, and dropping it there (the
+        // far bank is closer than a vehicle is worth) broke the trip off and freed his seat over
+        // and over, every man of the squad taking and losing the wheel in turn.
+        crossing = if (entity.tickCount < boatCooldownUntilTick) null
+            else SquadMarch.crossingAhead(entity) ?: crossing.takeIf { checkGiveup }
         val dist = entity.position().distanceTo(home)
         if (dist <= TRANSPORT_DISTANCE_THRESHOLD && crossing == null) {
             return logEligibility(entity, false) { "home is only $dist blocks away (threshold $TRANSPORT_DISTANCE_THRESHOLD)" }
@@ -281,6 +286,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         phase = Phase.SEEKING
         targetVehicleId = null
         tripDestination = null
+        crossing = null
         // Without this, a stale seekingStartTick from a previous (long-finished) transport episode
         // survives into the next one — checkExtraStartConditions re-evaluates eligible() the very
         // next tick this NPC becomes eligible again (e.g. a fresh far-away order), sees
@@ -318,7 +324,12 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             .filter { if (crossing != null) isUsableBoat(it, entity) else isUsableGroundVehicle(it, entity) }
             .mapNotNull { vehicle ->
                 val claimedBySquad = squad.members.any { VehicleTransportClaims.vehicleOf(it) == vehicle.uuid }
+                // Whoever claimed the wheel may have dropped it since; the next man takes it, or
+                // the rest board as passengers and nobody drives.
+                val wheelFree = VehicleTransportClaims.driverOf(vehicle.uuid) == null &&
+                    Ports.vehicles.seating(vehicle).firstOrNull() == null
                 when {
+                    claimedBySquad && wheelFree -> VehicleChoice(vehicle, isDriver = true)
                     claimedBySquad && VehicleTransportClaims.occupiedOrClaimedSeats(
                         vehicle.uuid, vehicle.passengers.map { it.uuid }
                     ) < Ports.vehicles.seatCount(vehicle) ->
@@ -442,7 +453,26 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         allyBlockedSince = -1
         route = emptyList()
         nextRouteTick = 0
-        phase = if (VehicleTransportClaims.driverOf(vehicle.uuid) == entity.uuid) {
+        // The vehicle seats a man in its first free seat, whatever he claimed, and whoever is in
+        // seat 0 is the one at the wheel: a passenger who boarded first sat there and nobody drove.
+        val atWheel = Ports.vehicles.seatOf(vehicle, entity) == 0
+        if (atWheel && VehicleTransportClaims.driverOf(vehicle.uuid) != entity.uuid) {
+            val claimant = VehicleTransportClaims.driverOf(vehicle.uuid)
+            claimant?.let { VehicleTransportClaims.release(it) }
+            VehicleTransportClaims.claimDriver(vehicle.uuid, entity.uuid)
+            // Whoever had claimed the wheel still has a place, just not that one.
+            claimant?.let {
+                VehicleTransportClaims.claimPassenger(
+                    vehicle.uuid, it, Ports.vehicles.seatCount(vehicle), vehicle.passengers.map { p -> p.uuid }
+                )
+            }
+        } else if (!atWheel && VehicleTransportClaims.driverOf(vehicle.uuid) == entity.uuid) {
+            VehicleTransportClaims.claimPassenger(
+                vehicle.uuid, entity.uuid, Ports.vehicles.seatCount(vehicle), vehicle.passengers.map { it.uuid }
+            )
+        }
+        DebugFlags.log("[vehicle-debug] {} seated in {} as {}", entity.uuid, vehicle.uuid, if (atWheel) "driver" else "passenger")
+        phase = if (atWheel) {
             waitStartTick = entity.tickCount
             Phase.WAITING_FOR_SQUAD
         } else {
