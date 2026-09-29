@@ -32,6 +32,8 @@ object ModNetwork {
     private const val OBJECTIVE_RAYCAST_RANGE = 1024.0
     /** Generous, but bounded — a config packet has to come from someone standing at the block. */
     private const val BARRACKS_REACH_SQR = 64.0 * 64.0
+    /** Standing at the block — the screen is only opened from there. */
+    private const val SUPPLY_REACH_SQR = 8.0 * 8.0
     /** Each point of a map-drawn route loads its chunk to find the ground; this keeps that bounded. */
     private const val MAX_MAP_ROUTE_POINTS = 32
 
@@ -49,6 +51,7 @@ object ModNetwork {
         r.playToServer(RouteCmdPayload.TYPE, RouteCmdPayload.CODEC) { p, ctx -> onRouteCmd(p, ctx) }
         r.playToServer(ConfigureBarracksPayload.TYPE, ConfigureBarracksPayload.CODEC) { p, ctx -> onConfigureBarracks(p, ctx) }
         r.playToServer(DiplomacyCmdPayload.TYPE, DiplomacyCmdPayload.CODEC) { p, ctx -> onDiplomacyCmd(p, ctx) }
+        r.playToServer(SupplyCmdPayload.TYPE, SupplyCmdPayload.CODEC) { p, ctx -> onSupplyCmd(p, ctx) }
         r.playToServer(MapSubscribePayload.TYPE, MapSubscribePayload.CODEC) { _, ctx ->
             ctx.enqueueWork { (ctx.player() as? ServerPlayer)?.let(com.sbwnpc.squad.map.MapFeed::subscribe) }
         }
@@ -79,6 +82,9 @@ object ModNetwork {
         }
         r.playToClient(OpenBarracksScreenPayload.TYPE, OpenBarracksScreenPayload.CODEC) { p, _ ->
             if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openBarracksScreen(p.pos, p.config)
+        }
+        r.playToClient(OpenSupplyScreenPayload.TYPE, OpenSupplyScreenPayload.CODEC) { p, _ ->
+            if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openSupplyScreen(p.pos, p.data)
         }
     }
 
@@ -283,6 +289,32 @@ object ModNetwork {
                     mgr.setObjective(level, squad.id, pos)
                     com.sbwnpc.squad.combat.DebugFlags.log("[order-debug] HUD all: {} -> {} at {}", squad.name, squad.order, pos)
                 }
+        }
+    }
+
+    private fun onSupplyCmd(p: SupplyCmdPayload, ctx: IPayloadContext) {
+        ctx.enqueueWork {
+            val player = ctx.player() as? ServerPlayer ?: return@enqueueWork
+            val level = player.level() as? ServerLevel ?: return@enqueueWork
+            if (player.distanceToSqr(p.pos.center) > SUPPLY_REACH_SQR) return@enqueueWork
+            val supply = level.getBlockEntity(p.pos) as? com.sbwnpc.squad.block.entity.SupplyBlockEntity ?: return@enqueueWork
+            if (!supply.serves(PlayerFactionRegistry.get(level).get(player.uuid))) return@enqueueWork
+            val supplyPort = com.sbwnpc.squad.domain.port.Ports.playerSupply
+            val reply = when (p.action) {
+                SupplyCmdPayload.REFILL_AMMO ->
+                    if (supplyPort.refillAmmo(player)) "Ammunition topped up" else "Your ammunition is already full"
+                SupplyCmdPayload.TAKE_KIT -> {
+                    val name = supplyPort.kits.getOrNull(p.kit) ?: return@enqueueWork
+                    if (supplyPort.issueKit(player, p.kit)) "$name kit issued" else "You already carry the $name kit"
+                }
+                SupplyCmdPayload.SET_SPAWN -> {
+                    com.sbwnpc.squad.block.SupplySpawns.get(player.server).set(player, level, p.pos)
+                    "You will respawn at this Supply"
+                }
+                else -> return@enqueueWork
+            }
+            player.displayClientMessage(net.minecraft.network.chat.Component.literal(reply), true)
+            sendToClient(player, OpenSupplyScreenPayload(p.pos, com.sbwnpc.squad.block.SupplyBlock.snapshot(player, level, p.pos, supply)))
         }
     }
 

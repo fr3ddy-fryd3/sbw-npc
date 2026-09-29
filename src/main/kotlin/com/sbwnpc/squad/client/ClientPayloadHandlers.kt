@@ -46,6 +46,10 @@ object ClientPayloadHandlers {
 
     fun mapFeed(feed: CompoundTag) = MapState.accept(feed)
 
+    fun openSupplyScreen(pos: BlockPos, snapshot: CompoundTag) {
+        net.minecraft.client.Minecraft.getInstance().setScreen(com.sbwnpc.squad.client.screen.SupplyScreen(pos, snapshot))
+    }
+
     fun openDiplomacyScreen(snapshot: CompoundTag) {
         net.minecraft.client.Minecraft.getInstance().setScreen(com.sbwnpc.squad.client.screen.DiplomacyScreen(snapshot))
     }

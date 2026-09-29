@@ -3,7 +3,13 @@ package com.sbwnpc.squad.block
 import com.mojang.serialization.MapCodec
 import com.sbwnpc.squad.block.entity.SupplyBlockEntity
 import com.sbwnpc.squad.init.ModBlockEntities
+import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.network.OpenSupplyScreenPayload
+import com.sbwnpc.squad.network.sendToClient
 import com.sbwnpc.squad.squad.PlayerFactionRegistry
+import net.minecraft.nbt.CompoundTag
+import net.minecraft.nbt.ListTag
+import net.minecraft.server.level.ServerPlayer
 import net.minecraft.ChatFormatting
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -84,21 +90,41 @@ class SupplyBlock : BaseEntityBlock(
         player: Player,
         hitResult: BlockHitResult
     ): InteractionResult {
-        if (!level.isClientSide) {
-            val be = level.getBlockEntity(pos) as? SupplyBlockEntity
-            val text = when {
-                be == null -> Component.literal("Supply point — place it again to use it")
-                else -> Component.literal(
-                    "Supply point — ${be.faction?.label ?: "any side"}, resupplies within ${SupplyBlockEntity.RADIUS.toInt()} blocks"
-                )
-            }
-            player.displayClientMessage(text.withStyle(ChatFormatting.GRAY), true)
+        if (level !is ServerLevel || player !is ServerPlayer) return InteractionResult.SUCCESS
+        val be = level.getBlockEntity(pos) as? SupplyBlockEntity
+        when {
+            be == null -> actionbar(player, "Supply point — place it again to use it", ChatFormatting.GRAY)
+            !be.serves(PlayerFactionRegistry.get(level).get(player.uuid)) ->
+                actionbar(player, "${be.faction?.label ?: "Another side"}'s Supply", ChatFormatting.RED)
+            else -> sendToClient(player, OpenSupplyScreenPayload(pos.immutable(), snapshot(player, level, pos, be)))
         }
         return InteractionResult.SUCCESS
     }
 
+    private fun actionbar(player: Player, text: String, color: ChatFormatting) =
+        player.displayClientMessage(Component.literal(text).withStyle(color), true)
+
     companion object {
         val FACING = BlockStateProperties.HORIZONTAL_FACING
+
+        /** What the Supply screen shows [player] at [pos]. */
+        fun snapshot(player: ServerPlayer, level: ServerLevel, pos: BlockPos, be: SupplyBlockEntity): CompoundTag {
+            val supply = Ports.playerSupply
+            val tag = CompoundTag()
+            tag.putString("Side", be.faction?.label ?: "Any side")
+            val spawn = SupplySpawns.get(level.server).of(player.uuid)
+            tag.putBoolean("SpawnHere", spawn != null && spawn.dimension() == level.dimension() && spawn.pos() == pos)
+            tag.putInt("Radius", SupplyBlockEntity.RADIUS.toInt())
+            val kits = ListTag()
+            supply.kits.forEachIndexed { i, name ->
+                kits.add(CompoundTag().apply {
+                    putString("Name", name)
+                    putString("Contents", supply.kitContents(i).joinToString("\n"))
+                })
+            }
+            tag.put("Kits", kits)
+            return tag
+        }
         val CODEC: MapCodec<SupplyBlock> = simpleCodec { SupplyBlock() }
     }
 }

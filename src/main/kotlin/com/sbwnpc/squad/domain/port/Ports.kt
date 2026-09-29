@@ -8,6 +8,7 @@ object Ports {
     lateinit var grenades: Grenades
     lateinit var drones: Drones
     lateinit var gear: Gear
+    lateinit var playerSupply: PlayerSupply
 
     /** Client only. */
     lateinit var gunPoses: GunPoses

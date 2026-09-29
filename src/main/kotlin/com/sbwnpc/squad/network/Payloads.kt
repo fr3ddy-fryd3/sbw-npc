@@ -278,6 +278,39 @@ class ConfigureBarracksPayload(val pos: BlockPos, val config: CompoundTag) : Cus
     }
 }
 
+/** Server -> client: open/refresh the screen of the Supply at [pos]. */
+class OpenSupplyScreenPayload(val pos: BlockPos, val data: CompoundTag) : CustomPacketPayload {
+    override fun type() = TYPE
+
+    companion object {
+        val TYPE = CustomPacketPayload.Type<OpenSupplyScreenPayload>(SquadMod.loc("open_supply_screen"))
+        val CODEC: StreamCodec<RegistryFriendlyByteBuf, OpenSupplyScreenPayload> = StreamCodec.composite(
+            BlockPos.STREAM_CODEC, OpenSupplyScreenPayload::pos,
+            ByteBufCodecs.COMPOUND_TAG, OpenSupplyScreenPayload::data,
+            ::OpenSupplyScreenPayload
+        )
+    }
+}
+
+/** Client -> server: a Supply screen action at [pos]. */
+class SupplyCmdPayload(val pos: BlockPos, val action: Int, val kit: Int) : CustomPacketPayload {
+    override fun type() = TYPE
+
+    companion object {
+        const val REFILL_AMMO = 0
+        const val TAKE_KIT = 1     // kit = its index
+        const val SET_SPAWN = 2
+
+        val TYPE = CustomPacketPayload.Type<SupplyCmdPayload>(SquadMod.loc("supply_cmd"))
+        val CODEC: StreamCodec<RegistryFriendlyByteBuf, SupplyCmdPayload> = StreamCodec.composite(
+            BlockPos.STREAM_CODEC, SupplyCmdPayload::pos,
+            ByteBufCodecs.VAR_INT, SupplyCmdPayload::action,
+            ByteBufCodecs.VAR_INT, SupplyCmdPayload::kit,
+            ::SupplyCmdPayload
+        )
+    }
+}
+
 /** Client -> server: a Diplomacy screen action. */
 class DiplomacyCmdPayload(val action: Int, val faction: Int, val proposal: Int) : CustomPacketPayload {
     override fun type() = TYPE

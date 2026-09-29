@@ -28,6 +28,7 @@ class SquadMod(bus: IEventBus, container: ModContainer) {
         Ports.vehicles = SbwVehicles
         Ports.mortars = SbwMortars
         Ports.grenades = SbwGrenades
+        Ports.playerSupply = com.sbwnpc.squad.integration.sbw.SbwPlayerSupply
         Ports.drones = SbwDrones
         Ports.gear = SbwGear
 
