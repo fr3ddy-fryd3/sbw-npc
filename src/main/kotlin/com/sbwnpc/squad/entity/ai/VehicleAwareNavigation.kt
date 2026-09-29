@@ -213,7 +213,8 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
 }
 
 internal open class VehicleAwareNodeEvaluator : WalkNodeEvaluator() {
-    private var hulls: List<AABB> = emptyList()
+    /** Vehicles near the mob, each with the box round its hull for a quick first test. */
+    private var hulls: List<Pair<net.minecraft.world.entity.Entity, AABB>> = emptyList()
     private var standingOn: BlockPos? = null
     private var start: BlockPos? = null
 
@@ -231,7 +232,10 @@ internal open class VehicleAwareNodeEvaluator : WalkNodeEvaluator() {
             }
             // The whole hull: a BMP's box is a 3.6-block square round its middle, its hull twice as
             // long, and paths planned through the nose left men pressed against it.
-            .map { Ports.vehicles.hull(it).inflate(CLEARANCE) }
+            .map { it to Ports.vehicles.hull(it).inflate(CLEARANCE) }
+            // One he's already up against or inside of doesn't count: every way out of it would
+            // be a wall, and he'd stand there with a one-node path while it waits for him.
+            .filterNot { (vehicle, _) -> Ports.vehicles.occupies(vehicle, mob.boundingBox, CLEARANCE) }
         // Whatever the mob is standing in stays passable. Blocking it would leave the path with no
         // valid start at all, which is precisely the situation of a mob that has already been
         // pushed up onto a hull and now needs a route off it.
@@ -287,7 +291,9 @@ internal open class VehicleAwareNodeEvaluator : WalkNodeEvaluator() {
             x.toDouble(), y.toDouble(), z.toDouble(),
             x + 1.0, y + 1.0, z + 1.0
         )
-        return hulls.any { it.intersects(node) }
+        // The box round a hull turned across the axes is far bigger than the hull — a BMP at an
+        // angle boxed in men standing well clear of it — so only the hull itself blocks.
+        return hulls.any { (vehicle, box) -> box.intersects(node) && Ports.vehicles.occupies(vehicle, node, CLEARANCE) }
     }
 
     private companion object {

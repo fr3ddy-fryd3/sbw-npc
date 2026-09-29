@@ -6,6 +6,7 @@ import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.atsuishio.superbwarfare.entity.vehicle.utils.VehicleVecUtils
 import com.atsuishio.superbwarfare.init.ModEntities
 import com.atsuishio.superbwarfare.init.ModItems
+import com.atsuishio.superbwarfare.tools.OBB
 import com.sbwnpc.squad.domain.port.CannonRound
 import com.sbwnpc.squad.domain.port.Mobility
 import com.sbwnpc.squad.domain.port.Steering
@@ -229,6 +230,14 @@ object SbwVehicles : Vehicles {
 
     override fun hull(vehicle: Entity): AABB =
         (vehicle as? VehicleEntity)?.getCombinedAABB() ?: vehicle.boundingBox
+
+    override fun occupies(vehicle: Entity, box: AABB, clearance: Double): Boolean {
+        if (vehicle !is VehicleEntity || vehicle.enableAABB()) return vehicle.boundingBox.inflate(clearance).intersects(box)
+        val obbs = vehicle.getOBBs()
+        if (obbs.isEmpty()) return vehicle.boundingBox.inflate(clearance).intersects(box)
+        val probe = box.inflate(clearance)
+        return obbs.any { OBB.isColliding(it, probe) }
+    }
 
     override fun wouldHit(vehicle: Entity, other: Entity, offset: Vec3): Boolean {
         if (vehicle !is VehicleEntity) return vehicle.boundingBox.move(offset).intersects(other.boundingBox)

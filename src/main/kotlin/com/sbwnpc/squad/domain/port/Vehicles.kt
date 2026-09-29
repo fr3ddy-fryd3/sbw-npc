@@ -84,6 +84,10 @@ interface Vehicles {
     /** The whole hull, including parts that stick out of the entity's own box. */
     fun hull(vehicle: Entity): AABB
 
+    /** Whether the hull itself — turned as the vehicle is, not the box round it — takes up any of
+     *  [box], with [clearance] blocks to spare all round. */
+    fun occupies(vehicle: Entity, box: AABB, clearance: Double = 0.0): Boolean
+
     /** Whether the hull, moved by [offset], would run into [other]. */
     fun wouldHit(vehicle: Entity, other: Entity, offset: Vec3): Boolean
 
