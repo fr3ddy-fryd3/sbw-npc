@@ -9,7 +9,7 @@ import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
 /**
- * What NPCs hear of the other side: gunfire and explosions. A noise gives no target — it only turns
+ * What NPCs hear of the other side: gunfire, explosions, and players' footsteps. A noise gives no target — it only turns
  * a listener's head toward it, and sends those free to go and look there
  * ([NpcEntity.hear]). What they find they must see for themselves.
  *
@@ -29,6 +29,11 @@ object Hearing {
     private const val SHOOTER_INTERVAL_TICKS = 20L
 
     private val lastShot = HashMap<UUID, Long>()
+    private val lastStep = HashMap<UUID, Long>()
+
+    private const val WALK_RADIUS = 4.0
+    private const val SPRINT_RADIUS = 8.0
+    private const val LANDING_RADIUS = 3.0
 
     /** [shooter] fired a gun heard [radius] blocks around it. */
     fun gunshot(level: ServerLevel, shooter: Entity, radius: Double) {
@@ -38,6 +43,25 @@ object Hearing {
         lastShot[shooter.uuid] = now
         if (lastShot.size > 512) lastShot.entries.removeIf { now - it.value > SHOOTER_INTERVAL_TICKS }
         noise(level, shooter.eyePosition, radius, shooter)
+    }
+
+    /**
+     * [player] took a step, or came down from a jump when [landing]. Walking is heard close by,
+     * running twice as far; crouching isn't heard at all. Once a second per player is plenty — a
+     * step is a step.
+     */
+    fun footstep(level: ServerLevel, player: Entity, landing: Boolean) {
+        if (player.isSteppingCarefully) return
+        val now = level.gameTime
+        val last = lastStep[player.uuid]
+        if (last != null && now - last < SHOOTER_INTERVAL_TICKS) return
+        lastStep[player.uuid] = now
+        val radius = when {
+            landing -> LANDING_RADIUS
+            player.isSprinting -> SPRINT_RADIUS
+            else -> WALK_RADIUS
+        }
+        noise(level, player.position(), radius, player)
     }
 
     /** An explosion of [power] went off at [at], set off by [source] if anyone. */
@@ -52,5 +76,8 @@ object Hearing {
         }
     }
 
-    fun clearAll() = lastShot.clear()
+    fun clearAll() {
+        lastShot.clear()
+        lastStep.clear()
+    }
 }
