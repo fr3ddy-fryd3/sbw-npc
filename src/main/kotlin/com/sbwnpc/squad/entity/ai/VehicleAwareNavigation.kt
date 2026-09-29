@@ -106,7 +106,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
                 farGoal = null
                 // His place in the formation if he can get there; the route itself otherwise.
                 waypoint.formation?.let { spot ->
-                    reusable(spot)?.let { return it }
+                    reusable(spot, MARCH_DRIFT)?.let { return it }
                     nearGoal = spot
                     val path = super.createPath(spot, accuracy)
                     if (path != null && (path.canReach() || path.distToTarget <= SHORT_OF_GOAL)) {
@@ -115,7 +115,8 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
                     }
                 }
                 branch = "route ${waypoint.route}"
-                nearGoal = null
+                reusable(waypoint.route, MARCH_DRIFT)?.let { return it }
+                nearGoal = waypoint.route
                 return super.createPath(waypoint.route, accuracy)
             }
         }
@@ -151,21 +152,21 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         return null
     }
 
-    /** What the path being walked was last planned to, on the near and formation branches. */
+    /** What the path being walked was last planned to, on the near, formation and route branches. */
     private var nearGoal: BlockPos? = null
 
     /**
-     * The path being walked, if it's still going and was planned to within [NEAR_DRIFT] of [goal].
+     * The path being walked, if it's still going and was planned to within [drift] of [goal].
      * A formation place is worked out from where its man stands and moves a block or so every
      * second, and vanilla keeps a path only for the very same block — so every member of every
      * squad was running a fresh search each second, the biggest cost on the server in a large
      * fight. A path a block or two off gets him there just the same; once it's done, or dropped
      * as stuck (vanilla clears it before replanning), the next ask searches anew.
      */
-    private fun reusable(goal: BlockPos): Path? {
+    private fun reusable(goal: BlockPos, drift: Double = NEAR_DRIFT): Path? {
         val current = path ?: return null
         val planned = nearGoal ?: return null
-        return current.takeIf { !it.isDone && planned.closerThan(goal, NEAR_DRIFT) }
+        return current.takeIf { !it.isDone && planned.closerThan(goal, drift) }
     }
 
     /** The goal of the leg being walked; a new one within [GOAL_DRIFT] of it is the same goal. */
@@ -197,6 +198,14 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         const val GOAL_DRIFT = 4.0
         /** A near goal or formation place moved less than this keeps the path already walked. */
         const val NEAR_DRIFT = 2.0
+        /**
+         * The same on the march, for both his formation place and the route point. Both sit sixteen
+         * route nodes ahead and move on at the squad's pace — faster than [NEAR_DRIFT] a second —
+         * so every man ran a fresh search each second: the biggest path cost left after the long
+         * legs were fixed. A place eight blocks behind where it has moved to still leads him the
+         * same way, and the next ask after he gets there catches up.
+         */
+        const val MARCH_DRIFT = 8.0
         /** A path ending nearer its goal than this just can't stand on the exact block. */
         const val SHORT_OF_GOAL = 4f
         const val PATH_LOG_TICKS = 40
