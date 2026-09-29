@@ -12,16 +12,15 @@ import java.util.UUID
 /**
  * Radio calls from a squad to its commander — the player who owns it, in chat, only while online.
  *
- * Each kind of call has its own quiet interval per squad, so a firefight reads as "contact" once
- * and a volley of casualties as one line with the count, not a wall of them. Runtime only: calls
- * missed while offline are gone. A player can switch them all off ([ReportMutes]).
+ * Each kind of call has its own quiet interval per squad. Contact is called once per fight and
+ * area: while a commander's squad is in contact, his other squads within [CONTACT_AREA] keep quiet
+ * about it. Losses are called at two marks only — half the squad gone, and all of it. Runtime only:
+ * calls missed while offline are gone. A player can switch them all off ([ReportMutes]).
  */
 object SquadReports {
 
-    /** [ongoing]: every sighting restarts the quiet interval, so a firefight is called in once
-     *  at its start and again only after it has gone quiet for that long. */
-    private enum class Kind(val quietTicks: Long, val color: ChatFormatting, val ongoing: Boolean = false) {
-        CONTACT(600, ChatFormatting.RED, ongoing = true),
+    private enum class Kind(val quietTicks: Long, val color: ChatFormatting) {
+        CONTACT(0, ChatFormatting.RED),
         CASUALTIES(0, ChatFormatting.GOLD),
         DESTROYED(0, ChatFormatting.DARK_RED),
         LOW_AMMO(1200, ChatFormatting.YELLOW),
@@ -30,13 +29,24 @@ object SquadReports {
     }
 
     private val lastSent = HashMap<Pair<UUID, Kind>, Long>()
-    /** Deaths not yet called in, per squad — flushed as one line every [FLUSH_TICKS]. */
-    private val pendingDeaths = HashMap<UUID, Int>()
     /** The order stamp a MOVE arrival was last called in for, per squad. */
     private val arrivalCalled = HashMap<UUID, Int>()
 
-    private const val FLUSH_TICKS = 100
+    /** A fight a commander has been told of: where, and when anyone last saw the enemy there. */
+    private class Fight(val at: Vec3, var lastSeen: Long)
+    private val fights = HashMap<UUID, MutableList<Fight>>()
+
+    /** Most men each squad has had — what "half" is half of. */
+    private val strength = HashMap<UUID, Int>()
+    /** Squads whose half-strength call has gone out and that haven't been topped back up since. */
+    private val halfCalled = HashSet<UUID>()
+
+    private const val CHECK_TICKS = 100
     private const val LOW_AMMO_FRACTION = 0.3
+    /** Squads of one commander this near an ongoing fight don't call it in again. */
+    private const val CONTACT_AREA = 100.0
+    /** A fight nobody has seen the enemy in for this long is over; the next sighting is news. */
+    private const val CONTACT_QUIET_TICKS = 600L
 
     private fun send(server: MinecraftServer, squad: Squad, kind: Kind, text: String) {
         val owner = server.playerList.getPlayer(squad.owner) ?: return
@@ -44,10 +54,7 @@ object SquadReports {
         val now = server.overworld().gameTime
         val key = squad.id to kind
         val last = lastSent[key]
-        if (last != null && now - last < kind.quietTicks) {
-            if (kind.ongoing) lastSent[key] = now
-            return
-        }
+        if (last != null && now - last < kind.quietTicks) return
         lastSent[key] = now
         owner.sendSystemMessage(
             Component.literal("[${squad.name}] ").withStyle(squad.faction.accentColor)
@@ -55,19 +62,33 @@ object SquadReports {
         )
     }
 
-    /** [spotter] of a squad has a hostile in its sights. */
+    /** [spotter] of a squad has a hostile in its sights — called in only if it's a new fight. */
     fun contact(spotter: NpcEntity, hostile: Entity) {
         val squad = spotter.currentSquad() ?: return
         val server = spotter.server ?: return
-        val to = hostile.position().subtract(spotter.position())
+        val now = server.overworld().gameTime
+        val known = fights.getOrPut(squad.owner) { ArrayList() }
+        known.removeIf { now - it.lastSeen > CONTACT_QUIET_TICKS }
+        val here = spotter.position()
+        known.firstOrNull { it.at.closerThan(here, CONTACT_AREA) }?.let {
+            it.lastSeen = now
+            return
+        }
+        known += Fight(here, now)
+        val to = hostile.position().subtract(here)
         send(server, squad, Kind.CONTACT, "Contact ${bearing(to)}, ${to.horizontalDistance().toInt()} m")
     }
 
-    /** A member of [squad] is down; called in with the others lost around the same time. Called
-     *  while the man is still on the squad, so its owner is known even if he was the last. */
-    fun memberDown(squad: Squad) {
-        pendingDeaths.merge(squad.id, 1, Int::plus)
-        ownerOfLost[squad.id] = squad.owner to squad.name
+    /** A member of [squad] is down. Called while the man is still on it, so a squad losing its
+     *  last man can still be named. */
+    fun memberDown(squad: Squad, server: MinecraftServer) {
+        val full = maxOf(strength[squad.id] ?: 0, squad.originalComposition.size, squad.members.size)
+        strength[squad.id] = full
+        val left = squad.members.size - 1
+        when {
+            left <= 0 -> send(server, squad, Kind.DESTROYED, "Squad destroyed")
+            left * 2 <= full && halfCalled.add(squad.id) -> send(server, squad, Kind.CASUALTIES, "Half the squad lost, $left left")
+        }
     }
 
     /** [npc] is off to a Supply. */
@@ -83,10 +104,12 @@ object SquadReports {
     }
 
     fun tick(server: MinecraftServer) {
-        if (server.tickCount % FLUSH_TICKS != 0) return
+        if (server.tickCount % CHECK_TICKS != 0) return
         val mgr = SquadManager.get(server)
-        flushDeaths(server, mgr)
         for (squad in mgr.all()) {
+            // Topped back up past half: the next time it falls to half is news again.
+            val full = strength[squad.id]
+            if (full != null && squad.members.size * 2 > full) halfCalled.remove(squad.id)
             val members = squad.members.mapNotNull { SquadManager.findEntity(server, it) as? NpcEntity }.filter { it.isAlive }
             if (members.isEmpty()) continue
             val short = members.count { it.ammoFraction() < LOW_AMMO_FRACTION }
@@ -96,31 +119,6 @@ object SquadReports {
             moveArrival(server, squad, members)
         }
     }
-
-    private fun flushDeaths(server: MinecraftServer, mgr: SquadManager) {
-        if (pendingDeaths.isEmpty()) return
-        val deaths = HashMap(pendingDeaths)
-        pendingDeaths.clear()
-        for ((id, count) in deaths) {
-            val squad = mgr.get(id)
-            val left = squad?.members?.size ?: 0
-            if (squad == null || left == 0) {
-                // Pruned with its last man, unless a Barracks keeps it — either way it's gone.
-                val (owner, name) = ownerOfLost[id] ?: continue
-                if (ReportMutes.get(server).isMuted(owner)) continue
-                server.playerList.getPlayer(owner)?.sendSystemMessage(
-                    Component.literal("[$name] ").withStyle(ChatFormatting.GRAY)
-                        .append(Component.literal("Squad destroyed").withStyle(Kind.DESTROYED.color))
-                )
-                continue
-            }
-            send(server, squad, Kind.CASUALTIES, if (count == 1) "Man down, $left left" else "$count men down, $left left")
-        }
-        ownerOfLost.clear()
-    }
-
-    /** Owner and name of each squad with deaths queued. */
-    private val ownerOfLost = HashMap<UUID, Pair<UUID, String>>()
 
     /** A MOVE has nothing to switch to on arrival — see [OrderArrival] — so it's called in here. */
     private fun moveArrival(server: MinecraftServer, squad: Squad, members: List<NpcEntity>) {
@@ -146,8 +144,9 @@ object SquadReports {
 
     fun clearAll() {
         lastSent.clear()
-        pendingDeaths.clear()
         arrivalCalled.clear()
-        ownerOfLost.clear()
+        fights.clear()
+        strength.clear()
+        halfCalled.clear()
     }
 }

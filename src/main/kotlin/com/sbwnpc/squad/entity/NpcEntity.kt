@@ -894,7 +894,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     }
 
     override fun die(cause: net.minecraft.world.damagesource.DamageSource) {
-        currentSquad()?.let(com.sbwnpc.squad.squad.SquadReports::memberDown)
+        server?.let { srv -> currentSquad()?.let { com.sbwnpc.squad.squad.SquadReports.memberDown(it, srv) } }
         (level() as? ServerLevel)?.let { SquadManager.get(it).removeMemberEverywhere(uuid) }
         alertAllies(cause)
         MortarClaims.release(uuid)
