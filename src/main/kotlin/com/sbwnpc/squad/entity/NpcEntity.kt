@@ -793,7 +793,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         // SquadTeams.factionOf(this)) because finalizeSpawn() calls applyRole() BEFORE assigning the
         // scoreboard team that factionOf() reads from — see finalizeSpawn().
         val faction = spawnFaction ?: SquadFaction.DEFAULT
-        val (helmet, chest) = Ports.gear.uniform(green = faction in GREEN_KIT_FACTIONS)
+        val (helmet, chest) = Ports.gear.uniform(green = faction.greenUniform)
         setItemSlot(EquipmentSlot.HEAD, helmet)
         setItemSlot(EquipmentSlot.CHEST, chest)
 
@@ -1015,10 +1015,6 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         // See navigateTo().
         const val REPATH_INTERVAL_TICKS = 10
 
-        // Green (RU 6B47/6B43) vs sand (US PASGT/IOTV) armor kit — see applyRole(). Verified against
-        // the real SBW source, not guessed: both textures inspected directly (RU = green camo, US =
-        // tan/sand camo).
-        private val GREEN_KIT_FACTIONS = setOf(SquadFaction.CREEPER, SquadFaction.CAT, SquadFaction.PIG, SquadFaction.COW)
 
         @JvmField
         val DATA_CLASS: EntityDataAccessor<Int> =

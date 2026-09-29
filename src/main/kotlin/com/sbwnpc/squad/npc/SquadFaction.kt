@@ -24,6 +24,10 @@ enum class SquadFaction(val label: String, val accentColor: ChatFormatting) {
 
     fun next(): SquadFaction = entries[(ordinal + 1) % entries.size]
 
+    /** Green (RU 6B47/6B43) rather than sand (US PASGT/IOTV) helmet and vest — for its NPCs and for
+     *  its players' Supply kits alike. */
+    val greenUniform: Boolean get() = this == CREEPER || this == CAT || this == PIG || this == COW
+
     companion object {
         val DEFAULT = PIG
         fun byOrdinal(i: Int): SquadFaction = entries.getOrElse(i) { DEFAULT }
