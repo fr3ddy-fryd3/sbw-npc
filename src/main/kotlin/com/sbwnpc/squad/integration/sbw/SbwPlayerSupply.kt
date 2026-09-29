@@ -1,7 +1,5 @@
 package com.sbwnpc.squad.integration.sbw
 
-import com.atsuishio.superbwarfare.data.gun.Ammo
-import com.atsuishio.superbwarfare.init.ModAttachments
 import com.atsuishio.superbwarfare.init.ModItems
 import com.atsuishio.superbwarfare.init.ModSounds
 import com.sbwnpc.squad.domain.port.PlayerSupply
@@ -11,20 +9,8 @@ import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
 import java.util.function.Supplier
 
-/**
- * [PlayerSupply] over SuperbWarfare: a player's rounds live in SBW's player variable (the same
- * store its ammo boxes and ammo items fill), everything else is ordinary items.
- */
+/** [PlayerSupply] over SuperbWarfare. */
 object SbwPlayerSupply : PlayerSupply {
-
-    /** What a refill brings each kind of ammunition up to. SBW's own cap is unlimited by default. */
-    private val FULL = mapOf(
-        Ammo.HANDGUN to 120,
-        Ammo.RIFLE to 300,
-        Ammo.SHOTGUN to 64,
-        Ammo.SNIPER to 60,
-        Ammo.HEAVY to 150,
-    )
 
     private class Kit(val name: String, val items: List<Pair<Supplier<out Item>, Int>>)
 
@@ -41,19 +27,6 @@ object SbwPlayerSupply : PlayerSupply {
 
     override fun kitContents(index: Int): List<String> =
         KITS.getOrNull(index)?.items?.map { (item, count) -> "${count}× ${ItemStack(item.get()).hoverName.string}" }.orEmpty()
-
-    override fun refillAmmo(player: ServerPlayer): Boolean {
-        val variable = player.getData(ModAttachments.PLAYER_VARIABLE).watch()
-        var topped = false
-        for ((type, full) in FULL) {
-            if (type.get(variable) < full && type.set(variable, full)) topped = true
-        }
-        if (!topped) return false
-        player.setData(ModAttachments.PLAYER_VARIABLE, variable)
-        variable.sync(player)
-        player.level().playSound(null, player.blockPosition(), ModSounds.BULLET_SUPPLY.get(), SoundSource.PLAYERS, 1f, 1f)
-        return true
-    }
 
     override fun issueKit(player: ServerPlayer, index: Int): Boolean {
         val kit = KITS.getOrNull(index) ?: return false

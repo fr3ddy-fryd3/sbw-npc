@@ -13,9 +13,8 @@ import net.minecraft.network.chat.Component
 import net.neoforged.neoforge.network.PacketDistributor
 
 /**
- * What a player can do at a Supply of their side: top up their own ammunition, take a kit, or make
- * it their respawn point. Its squads' NPCs need none of this — the block tops them up on its own.
- * The rules are the server's (`SupplyBlock`, `SupplySpawns`); this only shows and asks.
+ * What a player can do at a Supply of their side: take a kit, or make it their respawn point. Its
+ * squads' NPCs need none of this — the block tops them up on its own. The rules are the server's (`SupplyBlock`, `SupplySpawns`); this only shows and asks.
  */
 class SupplyScreen(private val pos: BlockPos, snapshot: CompoundTag) : Screen(Component.literal("Supply")) {
 
@@ -33,15 +32,10 @@ class SupplyScreen(private val pos: BlockPos, snapshot: CompoundTag) : Screen(Co
 
     private val kitRows get() = (kits.size + 1) / 2
     private val left get() = width / 2 - WIDTH / 2
-    private val top get() = height / 2 - (40 + 24 + 16 + kitRows * 24 + 8 + 24 + 24) / 2
+    private val top get() = height / 2 - (40 + 16 + kitRows * 24 + 8 + 24 + 24) / 2
 
     override fun init() {
-        var y = top + 40
-        addRenderableWidget(Button.builder(Component.literal("Refill my ammunition")) {
-            send(SupplyCmdPayload.REFILL_AMMO)
-        }.tooltip(Tooltip.create(Component.literal("Tops up every kind of your gun ammunition")))
-            .bounds(left, y, WIDTH, 20).build())
-        y += 24 + 16
+        var y = top + 40 + 16
         val half = (WIDTH - 4) / 2
         kits.forEachIndexed { i, kit ->
             val x = if (i % 2 == 0) left else left + half + 4
@@ -72,7 +66,7 @@ class SupplyScreen(private val pos: BlockPos, snapshot: CompoundTag) : Screen(Co
                 .withStyle(ChatFormatting.GRAY),
             width / 2, top + 14, 0xFFFFFF
         )
-        g.drawString(font, Component.literal("Kits").withStyle(ChatFormatting.GRAY), left, top + 40 + 24 + 4, -1)
+        g.drawString(font, Component.literal("Kits").withStyle(ChatFormatting.GRAY), left, top + 40 + 4, -1)
     }
 
     override fun isPauseScreen() = false

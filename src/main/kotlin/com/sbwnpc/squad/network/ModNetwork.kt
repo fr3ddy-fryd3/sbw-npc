@@ -301,8 +301,6 @@ object ModNetwork {
             if (!supply.serves(PlayerFactionRegistry.get(level).get(player.uuid))) return@enqueueWork
             val supplyPort = com.sbwnpc.squad.domain.port.Ports.playerSupply
             val reply = when (p.action) {
-                SupplyCmdPayload.REFILL_AMMO ->
-                    if (supplyPort.refillAmmo(player)) "Ammunition topped up" else "Your ammunition is already full"
                 SupplyCmdPayload.TAKE_KIT -> {
                     val name = supplyPort.kits.getOrNull(p.kit) ?: return@enqueueWork
                     if (supplyPort.issueKit(player, p.kit)) "$name kit issued" else "You already carry the $name kit"

@@ -297,7 +297,6 @@ class SupplyCmdPayload(val pos: BlockPos, val action: Int, val kit: Int) : Custo
     override fun type() = TYPE
 
     companion object {
-        const val REFILL_AMMO = 0
         const val TAKE_KIT = 1     // kit = its index
         const val SET_SPAWN = 2
 
