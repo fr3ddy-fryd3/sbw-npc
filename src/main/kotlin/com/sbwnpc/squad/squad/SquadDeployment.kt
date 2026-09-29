@@ -55,8 +55,8 @@ object SquadDeployment {
             SquadPreset.HELI_CREW -> spawnHeliCrew(level, pos, facingYaw, cfg.faction, spawned, cfg.heliModel)
             // Unmanned — left for the squad's own vehicle-transport/combat-support AI to claim,
             // same as any vehicle it finds parked in the world.
-            SquadPreset.FIVE -> !cfg.vehicle || spawnTransport(level, pos, facingYaw, cfg.faction, cfg.vehicleModel)
-            SquadPreset.SEVEN -> !cfg.vehicle || spawnTransport(level, pos, facingYaw, cfg.faction, TransportVehicle.BMP_2)
+            SquadPreset.FIVE -> !cfg.vehicle || spawnTransport(level, pos, facingYaw, cfg.faction, cfg.vehicleModel, spawned)
+            SquadPreset.SEVEN -> !cfg.vehicle || spawnTransport(level, pos, facingYaw, cfg.faction, TransportVehicle.BMP_2, spawned)
             else -> true
         }
 
@@ -234,12 +234,24 @@ object SquadDeployment {
     /** Unmanned transport for a [SquadPreset.FIVE]/[SquadPreset.SEVEN] squad — the squad's own
      *  VehicleTransportBehaviour/VehicleCombatSupportBehaviour finds and boards it like any other
      *  vehicle parked nearby; no crew is seated here. */
-    private fun spawnTransport(level: ServerLevel, center: BlockPos, yaw: Float, faction: SquadFaction, model: TransportVehicle): Boolean {
+    private fun spawnTransport(
+        level: ServerLevel,
+        center: BlockPos,
+        yaw: Float,
+        faction: SquadFaction,
+        model: TransportVehicle,
+        squad: List<NpcEntity>,
+    ): Boolean {
         val vehicle = Ports.vehicles.create(level, model) ?: return false
-        // Off the squad's own spawn line (perpendicular to it), not at its center — FIVE/SEVEN are
-        // both odd-sized, so a member always lands exactly on center and the vehicle would spawn
-        // on top of them.
-        val standoff = 6.0
+        // Out in front of the squad and clear of all of it. The squad stands in a grid square to
+        // the world, up to four and a half blocks from the centre, and a BMP reaches over four from
+        // its own middle: a fixed six blocks out put its nose among the back rank, and a man
+        // spawned against the hull was boxed in by it and held the driver up for the whole trip.
+        vehicle.moveTo(center.x + 0.5, center.y.toDouble(), center.z + 0.5, yaw + 180f, 0f)
+        val hull = Ports.vehicles.hull(vehicle)
+        val vehicleReach = maxOf(hull.xsize, hull.zsize, vehicle.bbWidth.toDouble()) / 2.0
+        val squadReach = squad.maxOfOrNull { Math.hypot(it.x - (center.x + 0.5), it.z - (center.z + 0.5)) } ?: 0.0
+        val standoff = squadReach + vehicleReach + TRANSPORT_GAP
         val yawRad = Math.toRadians(yaw.toDouble())
         val forwardX = -Math.sin(yawRad)
         val forwardZ = Math.cos(yawRad)
@@ -253,4 +265,7 @@ object SquadDeployment {
         SquadTeams.assign(vehicle, faction)
         return true
     }
+
+    /** Open ground between a deployed squad's outermost man and its transport's hull. */
+    private const val TRANSPORT_GAP = 4.0
 }
