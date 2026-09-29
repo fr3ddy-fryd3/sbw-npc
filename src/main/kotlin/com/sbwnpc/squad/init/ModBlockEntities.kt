@@ -2,6 +2,7 @@ package com.sbwnpc.squad.init
 
 import com.sbwnpc.squad.SquadMod
 import com.sbwnpc.squad.block.entity.BarracksBlockEntity
+import com.sbwnpc.squad.block.entity.SupplyBlockEntity
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.neoforged.neoforge.registries.DeferredRegister
@@ -15,6 +16,14 @@ object ModBlockEntities {
         BlockEntityType.Builder.of(
             { pos, state -> BarracksBlockEntity(pos, state) },
             ModBlocks.BARRACKS.get()
+        ).build(null)
+    }
+
+    @JvmField
+    val SUPPLY = REGISTRY.register("supply") { ->
+        BlockEntityType.Builder.of(
+            { pos, state -> SupplyBlockEntity(pos, state) },
+            ModBlocks.SUPPLY.get()
         ).build(null)
     }
 }

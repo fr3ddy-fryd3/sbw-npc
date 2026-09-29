@@ -53,6 +53,15 @@ object SbwGuns : Guns {
         return data.stack
     }
 
+    override fun topUpReserve(stack: ItemStack, rounds: Int): Boolean {
+        if (stack.item !is GunItem) return false
+        val data = GunData.from(stack)
+        if (data.virtualAmmo.get() >= rounds) return false
+        data.virtualAmmo.set(rounds)
+        data.save()
+        return true
+    }
+
     override fun magazineSize(stack: ItemStack): Int =
         if (stack.item is GunItem) GunData.from(stack).get(GunProp.MAGAZINE) else 0
 

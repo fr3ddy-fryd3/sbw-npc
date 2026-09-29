@@ -72,6 +72,10 @@ interface Guns {
     /** A copy of [stack] with only its loaded magazine left in it. */
     fun withoutReserve(stack: ItemStack): ItemStack
 
+    /** Raises the reserve carried in [stack] itself, in place, to [rounds]. True when it was
+     *  below that; false for anything that isn't a gun. */
+    fun topUpReserve(stack: ItemStack, rounds: Int): Boolean
+
     /** Rounds in one full magazine of [stack]; zero for anything that isn't a gun. */
     fun magazineSize(stack: ItemStack): Int
 

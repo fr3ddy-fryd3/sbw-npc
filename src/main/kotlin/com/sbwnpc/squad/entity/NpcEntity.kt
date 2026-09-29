@@ -169,6 +169,32 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         else rgnLeft = (rgnLeft - 1).coerceAtLeast(0)
     }
 
+    /**
+     * Back to what this NPC was issued with: the reserve in each gun it carries, grenades, drones.
+     * Only raises, never takes away. True when anything was short — see
+     * [com.sbwnpc.squad.block.entity.SupplyBlockEntity].
+     */
+    fun resupply(): Boolean {
+        var topped = false
+        for (stack in listOf(mainHandItem, antiArmourWeapon, stowedWeapon)) {
+            if (!Ports.guns.isGun(stack)) continue
+            val full = if (com.sbwnpc.squad.combat.AntiArmourKit.isLauncher(stack)) com.sbwnpc.squad.combat.AntiArmourKit.ROCKETS
+                else npcClass.startingRounds(net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.item))
+            if (Ports.guns.topUpReserve(stack, full)) topped = true
+        }
+        if (carriesGrenades() && (rgnLeft < GRENADES_OF_EACH || rgoLeft < GRENADES_OF_EACH)) {
+            rgnLeft = maxOf(rgnLeft, GRENADES_OF_EACH)
+            rgoLeft = maxOf(rgoLeft, GRENADES_OF_EACH)
+            topped = true
+        }
+        val maxDrones = com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES
+        if (npcClass == NpcClass.DRONE_OPERATOR && dronesLeft < maxDrones) {
+            dronesLeft = maxDrones
+            topped = true
+        }
+        return topped
+    }
+
     /** Classes that carry hand grenades at all: not the crews, whose hands are on something else. */
     private fun carriesGrenades(): Boolean = npcClass != NpcClass.MORTAR_OPERATOR && npcClass != NpcClass.MORTAR_LOADER &&
         npcClass != NpcClass.TANK_CREW && npcClass != NpcClass.DRONE_OPERATOR

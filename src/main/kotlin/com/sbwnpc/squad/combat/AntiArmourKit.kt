@@ -22,7 +22,7 @@ object AntiArmourKit {
     private val RPG = ResourceLocation.fromNamespaceAndPath("superbwarfare", "rpg")
 
     /** Rockets issued. One goes in the tube, the rest is carried. */
-    private const val ROCKETS = 2
+    const val ROCKETS = 2
 
     /** A loaded launcher, or empty if SuperbWarfare has no such item (it always does — this is a
      *  registry lookup, not a guess about the mod being present). */
