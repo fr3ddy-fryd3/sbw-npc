@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.integration.sbw
 
+import com.atsuishio.superbwarfare.data.gun.AmmoConsumer
 import com.atsuishio.superbwarfare.data.gun.FireMode
 import com.atsuishio.superbwarfare.data.gun.GunData
 import com.atsuishio.superbwarfare.data.gun.GunProp
@@ -39,6 +40,31 @@ object SbwGuns : Guns {
         if (stack.item !is GunItem) return 0
         val data = GunData.from(stack)
         return data.ammo.get() + data.virtualAmmo.get()
+    }
+
+    override fun reserve(stack: ItemStack): Int =
+        if (stack.item is GunItem) GunData.from(stack).virtualAmmo.get() else 0
+
+    override fun withoutReserve(stack: ItemStack): ItemStack {
+        if (stack.item !is GunItem) return stack.copy()
+        val data = GunData.from(stack.copy())
+        data.virtualAmmo.set(0)
+        data.save()
+        return data.stack
+    }
+
+    override fun magazineSize(stack: ItemStack): Int =
+        if (stack.item is GunItem) GunData.from(stack).get(GunProp.MAGAZINE) else 0
+
+    override fun ammoItems(stack: ItemStack, rounds: Int): ItemStack {
+        if (stack.item !is GunItem || rounds <= 0) return ItemStack.EMPTY
+        val consumer = GunData.from(stack).selectedAmmoConsumer()
+        if (!consumer.initialized()) consumer.init()
+        if (consumer.type != AmmoConsumer.AmmoConsumeType.PLAYER_AMMO &&
+            consumer.type != AmmoConsumer.AmmoConsumeType.ITEM) return ItemStack.EMPTY
+        val items = rounds / consumer.loadAmount.coerceAtLeast(1)
+        if (items <= 0 || consumer.stack().isEmpty) return ItemStack.EMPTY
+        return consumer.stack().copyWithCount(items)
     }
 
     // Attachments are all that render on a gun someone else is holding: ammo, heat and the

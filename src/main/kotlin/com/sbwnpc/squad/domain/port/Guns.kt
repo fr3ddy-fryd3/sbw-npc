@@ -65,6 +65,20 @@ interface Guns {
     /** Magazine plus reserve carried with the gun itself; zero for anything that isn't a gun. */
     fun roundsLeft(stack: ItemStack): Int
 
+    /** The reserve carried with the gun itself, not counting the magazine; zero for anything that
+     *  isn't a gun. */
+    fun reserve(stack: ItemStack): Int
+
+    /** A copy of [stack] with only its loaded magazine left in it. */
+    fun withoutReserve(stack: ItemStack): ItemStack
+
+    /** Rounds in one full magazine of [stack]; zero for anything that isn't a gun. */
+    fun magazineSize(stack: ItemStack): Int
+
+    /** [rounds] of [stack]'s ammunition as the item a player picks up and loads it from, or empty
+     *  when that gun's ammunition is no item (energy, infinite...). */
+    fun ammoItems(stack: ItemStack, rounds: Int): ItemStack
+
     /** The part of a gun's state that shows on it: two stacks of the same gun look alike when
      *  this is equal. Null for anything that isn't a gun. */
     fun looks(stack: ItemStack): Any?

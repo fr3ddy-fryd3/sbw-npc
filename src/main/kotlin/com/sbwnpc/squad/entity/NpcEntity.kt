@@ -795,9 +795,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     /**
      * Loot: the weapon in hand drops with [WEAPON_DROP_CHANCE], each piece of armour with
-     * [ARMOUR_DROP_CHANCE], rolled per slot, and drops exactly as it was carried — a gun keeps the
-     * ammo in its magazine. Whoever or whatever did the killing: an NPC's kill leaves the same
-     * loot as a player's.
+     * [ARMOUR_DROP_CHANCE], rolled per slot. A gun drops with only its loaded magazine: the reserve
+     * an NPC carries inside it (hundreds of rounds for a machine gunner) stays behind. Instead,
+     * with [AMMO_DROP_CHANCE], rolled on its own, a magazine's worth of that reserve drops as the
+     * gun's ammunition. Whoever or whatever did the killing: an NPC's kill leaves the same loot as
+     * a player's.
      *
      * Rolled here rather than through vanilla's per-slot drop chance because vanilla damages
      * whatever it drops when the chance is below 1.0, which would hand the player a near-broken
@@ -805,14 +807,16 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      */
     override fun dropCustomDeathLoot(level: ServerLevel, damageSource: DamageSource, recentlyHit: Boolean) {
         super.dropCustomDeathLoot(level, damageSource, recentlyHit)
-        val rolls = ArrayList<String>(LOOTABLE_SLOTS.size)
+        val rolls = ArrayList<String>(LOOTABLE_SLOTS.size + 1)
+        dropAmmo(rolls)
         for (slot in LOOTABLE_SLOTS) {
             val stack = getItemBySlot(slot)
             val chance = if (slot == EquipmentSlot.MAINHAND) WEAPON_DROP_CHANCE else ARMOUR_DROP_CHANCE
             val roll = random.nextFloat()
             rolls += "$slot=${if (stack.isEmpty) "empty" else "%.2f/%.2f".format(roll, chance)}"
             if (stack.isEmpty || roll >= chance) continue
-            val dropped = spawnAtLocation(stack.copy())
+            val loot = if (slot == EquipmentSlot.MAINHAND) Ports.guns.withoutReserve(stack) else stack.copy()
+            val dropped = spawnAtLocation(loot)
             rolls[rolls.size - 1] += if (dropped != null) " DROPPED" else " (spawn failed)"
             setItemSlot(slot, ItemStack.EMPTY)
         }
@@ -821,6 +825,23 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             uuid, npcClass, damageSource.entity?.let { it as? NpcEntity }?.let { "NPC ${it.npcClass}" } ?: damageSource.entity?.name?.string,
             damageSource.msgId, recentlyHit, rolls.joinToString(", ")
         )
+    }
+
+    /** The ammunition half of [dropCustomDeathLoot]: one magazine at most, and never more than
+     *  the gun still had in reserve. */
+    private fun dropAmmo(rolls: MutableList<String>) {
+        val gun = mainHandItem
+        val reserve = Ports.guns.reserve(gun)
+        if (reserve <= 0) return
+        val roll = random.nextFloat()
+        rolls += "AMMO=%.2f/%.2f".format(roll, AMMO_DROP_CHANCE)
+        if (roll >= AMMO_DROP_CHANCE) return
+        val ammo = Ports.guns.ammoItems(gun, minOf(reserve, Ports.guns.magazineSize(gun).coerceAtLeast(1)))
+        if (ammo.isEmpty) {
+            rolls[rolls.size - 1] += " (no ammo item)"
+            return
+        }
+        rolls[rolls.size - 1] += if (spawnAtLocation(ammo) != null) " DROPPED ${ammo.count}" else " (spawn failed)"
     }
 
     /** A squadmate going down is itself an "invariant" every shooter-AI convention treats as a
@@ -845,6 +866,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         /** Chances that a piece of an NPC's kit survives its death — see [dropCustomDeathLoot]. */
         private const val WEAPON_DROP_CHANCE = 0.15f
         private const val ARMOUR_DROP_CHANCE = 0.05f
+        private const val AMMO_DROP_CHANCE = 0.5f
         private val LOOTABLE_SLOTS = listOf(EquipmentSlot.MAINHAND, EquipmentSlot.HEAD, EquipmentSlot.CHEST)
         private const val BASE_HEALTH = 20.0
         private const val GRENADES_OF_EACH = 2
