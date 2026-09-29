@@ -17,8 +17,10 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
  * In the Core tasks, for the same reason as [MortarOperatorBehaviour]: a loader keeps resupplying
  * whichever of Fight or Idle is active.
  *
- * Simplified ammo logistics (no carried shells / resupply points): stand near a mortar and it
- * stays topped up. Separate claim from the operator so both can post at the same mortar.
+ * Loads the tube from the shells it carries ([NpcEntity.mortarShellsLeft]); out of them, it goes to
+ * its side's nearest Supply for more and comes back, while the operator stays with the mortar. With
+ * no Supply in reach the mortar falls silent. Separate claim from the operator so both can post at
+ * the same mortar.
  */
 class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
@@ -50,6 +52,8 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
          *  to the same point shove each other off it and both keep walking back. */
         private const val POST_OFFSET = 1.8
         private const val POST_TOLERANCE = 1.2
+        /** Inside a Supply's reach, so the next issue round catches him. */
+        private const val SUPPLY_ARRIVE_DISTANCE = com.sbwnpc.squad.block.entity.SupplyBlockEntity.RADIUS - 3.0
     }
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
@@ -138,6 +142,16 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
             return
         }
         val m = mortar ?: return
+        if (entity.mortarShellsLeft <= 0) {
+            val supply = entity.nearestSupply()
+            if (supply != null) {
+                // Still the crew's errand: squad orders keep off him until he's back at the tube.
+                entity.servingMortar = true
+                if (entity.position().closerThan(supply, SUPPLY_ARRIVE_DISTANCE)) entity.navigation.stop()
+                else entity.navigateTo(supply, 1.0)
+                return
+            }
+        }
         val post = post(entity, m)
         if (entity.position().distanceTo(post) > POST_TOLERANCE) {
             entity.servingMortar = false
@@ -153,6 +167,9 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         // Only touch it when actually empty; re-loading a full tube every check just spams SBW's
         // "exceeding max stack size" clamp warning for nothing.
-        if (!Ports.mortars.hasShell(m)) Ports.mortars.loadShell(m)
+        if (!Ports.mortars.hasShell(m) && entity.mortarShellsLeft > 0) {
+            Ports.mortars.loadShell(m)
+            entity.mortarShellsLeft--
+        }
     }
 }

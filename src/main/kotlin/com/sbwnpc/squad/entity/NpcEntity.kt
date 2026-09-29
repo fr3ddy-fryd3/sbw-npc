@@ -171,7 +171,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     /**
      * Back to what this NPC was issued with: the reserve in each gun it carries, grenades, medical
-     * kit, drones.
+     * kit, mortar shells, drones.
      * Only raises, never takes away. True when anything was short — see
      * [com.sbwnpc.squad.block.entity.SupplyBlockEntity].
      */
@@ -186,6 +186,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         if (carriesGrenades() && (rgnLeft < GRENADES_OF_EACH || rgoLeft < GRENADES_OF_EACH)) {
             rgnLeft = maxOf(rgnLeft, GRENADES_OF_EACH)
             rgoLeft = maxOf(rgoLeft, GRENADES_OF_EACH)
+            topped = true
+        }
+        if (npcClass == NpcClass.MORTAR_LOADER && mortarShellsLeft < MORTAR_SHELLS) {
+            mortarShellsLeft = MORTAR_SHELLS
             topped = true
         }
         if (medkitsLeft < MEDKITS) {
@@ -291,6 +295,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     /** Medical kits on this NPC, for itself — see [com.sbwnpc.squad.entity.ai.SelfTreatBehaviour].
      *  Every class carries [MEDKITS]. Persisted. */
     var medkitsLeft: Int = MEDKITS
+
+    /** Shells a mortar loader carries for its crew's tube — see
+     *  [com.sbwnpc.squad.entity.ai.MortarLoaderBehaviour]. Persisted; zero for every other class. */
+    var mortarShellsLeft: Int = 0
 
     /** Kamikaze drones this operator still carries; refilled at a barracks (SquadManager.
      *  respawnAtBarracks). Persisted. Meaningless for other classes. */
@@ -797,6 +805,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         rgnLeft = if (carriesGrenades()) GRENADES_OF_EACH else 0
         rgoLeft = rgnLeft
         medkitsLeft = MEDKITS
+        mortarShellsLeft = if (npcClass == NpcClass.MORTAR_LOADER) MORTAR_SHELLS else 0
         if (npcClass == NpcClass.DRONE_OPERATOR) dronesLeft = com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES
 
         // A belt-fed gun does nothing to a tank, and the machine gunner is the one member of an
@@ -815,6 +824,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         compound.putInt("Rgn", rgnLeft)
         compound.putInt("Rgo", rgoLeft)
         compound.putInt("Medkits", medkitsLeft)
+        compound.putInt("MortarShells", mortarShellsLeft)
         if (carryingMortar) compound.putBoolean("CarryingMortar", true)
         compound.putInt("DronesLeft", dronesLeft)
         if (!stowedWeapon.isEmpty) compound.put("StowedWeapon", stowedWeapon.save(registryAccess()))
@@ -834,6 +844,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         rgoLeft = if (compound.contains("Rgo")) compound.getInt("Rgo") else if (carriesGrenades()) GRENADES_OF_EACH else 0
         // Saved before NPCs carried one: issued now.
         medkitsLeft = if (compound.contains("Medkits")) compound.getInt("Medkits") else MEDKITS
+        mortarShellsLeft = if (compound.contains("MortarShells")) compound.getInt("MortarShells")
+            else if (npcClass == NpcClass.MORTAR_LOADER) MORTAR_SHELLS else 0
         carryingMortar = compound.getBoolean("CarryingMortar")
         dronesLeft = if (compound.contains("DronesLeft")) compound.getInt("DronesLeft")
             else if (npcClass == NpcClass.DRONE_OPERATOR) com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES else 0
@@ -970,6 +982,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         private const val BASE_HEALTH = 20.0
         private const val GRENADES_OF_EACH = 2
         const val MEDKITS = 1
+        const val MORTAR_SHELLS = 30
         /** Below this share of its issued rounds an NPC goes to a Supply between fights. */
         private const val LOW_AMMO_FRACTION = 0.3
         /** Below this it falls back on a Supply even in a fight. */
