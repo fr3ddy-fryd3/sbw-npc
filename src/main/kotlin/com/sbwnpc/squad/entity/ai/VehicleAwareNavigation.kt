@@ -218,7 +218,9 @@ internal open class VehicleAwareNodeEvaluator : WalkNodeEvaluator() {
             .within(mob.level(), mob.boundingBox.inflate(SEARCH_RADIUS)) { vehicle ->
                 Ports.vehicles.isOperational(vehicle) && vehicle !== ridden
             }
-            .map { it.boundingBox.inflate(CLEARANCE) }
+            // The whole hull: a BMP's box is a 3.6-block square round its middle, its hull twice as
+            // long, and paths planned through the nose left men pressed against it.
+            .map { Ports.vehicles.hull(it).inflate(CLEARANCE) }
         // Whatever the mob is standing in stays passable. Blocking it would leave the path with no
         // valid start at all, which is precisely the situation of a mob that has already been
         // pushed up onto a hull and now needs a route off it.
