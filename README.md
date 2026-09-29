@@ -81,7 +81,7 @@ move it to a free key (`I`, for example); the list is still a button on the full
 
 | Thing | Where to get it | What it does |
 |---|---|---|
-| **Squad Command Tool** (`sbwnpc:squad_tool`) | Creative, *Superb Warfare Items* tab — or `/give @s sbwnpc:squad_tool` | Deploys NPCs and commands squads. No survival recipe yet. |
+| **Squad Command Tool** (`sbwnpc:squad_tool`) | Creative, *Superb Warfare Items* tab — or `/give @s sbwnpc:squad_tool` | Deploys NPCs and commands squads. No recipe: in survival you are handed one on joining and on respawning whenever you have none. |
 | **Barracks** (`sbwnpc:barracks`) | Same tab — or `/give @s sbwnpc:barracks` | A placed block that garrisons a squad and keeps it at strength. |
 | **Supply Point** (`sbwnpc:supply`) | Same tab — or `/give @s sbwnpc:supply` | Groundwork for squad logistics. Places, breaks, does nothing else yet. |
 | **Quick-command HUD** | Key `Z`, rebindable under controls category *SBW NPC Squads* | Pick a squad and an order without opening a menu. |
@@ -168,7 +168,8 @@ is, with nobody left to replace its losses.
   the squad pinned, rationed so an ambush draws an answer rather than a volley.
 - Mortar crews only shell what their own side has actually seen. Out of reach of the target, they
   break the mortar down, carry it closer and set it back up.
-- A killed NPC drops the weapon in its hands with a 15% chance and each piece of armour with a 5% chance, whoever killed it.
+- A killed NPC drops the weapon in its hands with a 15% chance (with only its loaded magazine), each piece of
+  armour with a 5% chance, and a magazine of ammunition for its gun half the time, whoever killed it.
 
 ## How this mod was made
 
