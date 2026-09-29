@@ -297,13 +297,16 @@ class SquadMapPlugin : IClientPlugin {
             if (own) known[id] = Known(name, t.getBoolean("Mortar"))
             if (own) marker.setOverlayListener(SquadListener(id))
             show(marker)
-            if (own && id in selected) {
-                // Each man of a selected squad, so a straggler can be found.
-                t.getIntArray("Men").let { men ->
-                    for (i in 0 until men.size / 2) {
-                        show(marker(dim, BlockPos(men[2 * i], 0, men[2 * i + 1]), MapShapes.CIRCLE, SELECTION_COLOR, MEMBER_SIZE, 1f))
-                    }
+            // Each man of every own squad, so a straggler can be found — dimmer until his squad
+            // is selected.
+            val isSelected = own && id in selected
+            t.getIntArray("Men").let { men ->
+                val menOpacity = if (isSelected) 1f else MEMBER_OPACITY
+                for (i in 0 until men.size / 2) {
+                    show(marker(dim, BlockPos(men[2 * i], 0, men[2 * i + 1]), MapShapes.CIRCLE, SELECTION_COLOR, MEMBER_SIZE, menOpacity))
                 }
+            }
+            if (isSelected) {
                 // A symbol on screen, like the square itself: an outline drawn in blocks shrank to
                 // nothing inside the square once the map was zoomed out.
                 show(marker(dim, at, MapShapes.FRAME, SELECTION_COLOR, SELECTION_SIZE, 1f).also {
@@ -513,6 +516,7 @@ class SquadMapPlugin : IClientPlugin {
         const val VEHICLE_SIZE = 11.0
         const val ALLY_OPACITY = 0.7f
         const val ASLEEP_OPACITY = 0.4f
+        const val MEMBER_OPACITY = 0.8f
         const val OBJECTIVE_SIZE = 3
         const val BARRACKS_SIZE = 2
         const val CIRCLE_POINTS = 32
