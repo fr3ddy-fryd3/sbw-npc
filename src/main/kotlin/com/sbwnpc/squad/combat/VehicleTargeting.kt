@@ -26,14 +26,20 @@ object VehicleTargeting {
         val airborne = isAircrew(entity)
         val height = if (airborne) AIR_SEARCH_HEIGHT else SEARCH_HEIGHT
         @Suppress("NAME_SHADOWING") val range = if (airborne) range * AIR_RANGE_FACTOR else range
-        val box = AABB.ofSize(entity.position(), range * 2, height * 2, range * 2)
-        // Vehicle-borne hostiles only, cheapest filters first; the raycast is done last and only
+        val rangeSqr = range * range
+        // Walked from the level's short list of vehicles rather than a box query for every living
+        // thing within 144 blocks: every NPC ran that one every half second, with a handful of
+        // vehicles on the map at most. Cheapest filters first; the raycast is done last and only
         // until the first (nearest) visible one — not for every candidate.
-        val occupants = level.getEntitiesOfClass(LivingEntity::class.java, box) {
-            it.isAlive && Ports.vehicles.isVehicle(it.vehicle) && it.vehicle !== entity.vehicle && SquadTeams.isHostile(entity, it)
+        val occupants = ArrayList<LivingEntity>()
+        for (vehicle in vehicles(level)) {
+            if (!vehicle.isAlive || vehicle === entity.vehicle) continue
+            if (Math.abs(vehicle.y - entity.y) > height || entity.distanceToSqr(vehicle) > rangeSqr) continue
+            for (rider in vehicle.passengers) {
+                if (rider is LivingEntity && rider.isAlive && SquadTeams.isHostile(entity, rider)) occupants += rider
+            }
         }
         if (occupants.isEmpty()) return null
-        val rangeSqr = range * range
         occupants.sortBy { entity.distanceToSqr(it) }
         for (occupant in occupants) {
             if (entity.distanceToSqr(occupant) > rangeSqr) break
@@ -51,16 +57,16 @@ object VehicleTargeting {
      * search box left NPCs blind to an aircraft hovering twenty blocks over their heads. 100, not
      * the 50 it started at: a transport cruising over hills holds 70+ above the ground under it.
      *
-     * A box that size would walk a lot of chunk sections for every NPC's scan, so the level's
-     * helicopters are listed once every [AIRCRAFT_REFRESH_TICKS] and each scan just looks
-     * through that short list.
+     * A box that size would walk a lot of chunk sections for every NPC's scan, so each scan just
+     * looks through the level's short list of vehicles ([vehicles]).
      */
     fun closestVisibleHostileAircrew(entity: NpcEntity, level: ServerLevel, groundRange: Double): LivingEntity? {
         val range = groundRange * AIR_RANGE_FACTOR
         val rangeSqr = range * range
         var best: LivingEntity? = null
         var bestSqr = Double.MAX_VALUE
-        for (heli in aircraft(level)) {
+        for (heli in vehicles(level)) {
+            if (!Helicopters.isHelicopter(heli)) continue
             if (!heli.isAlive || heli === entity.vehicle) continue
             if (Math.abs(heli.y - entity.y) > AIR_SEARCH_HEIGHT) continue
             val distSqr = entity.distanceToSqr(heli)
@@ -82,16 +88,19 @@ object VehicleTargeting {
 
     const val AIR_RANGE_FACTOR = 2.0
     const val AIR_SEARCH_HEIGHT = 100.0
-    private const val AIRCRAFT_REFRESH_TICKS = 10L
+    private const val VEHICLE_REFRESH_TICKS = 10L
 
-    private class AircraftList(val at: Long, val list: List<Entity>)
-    private val aircraftByLevel = HashMap<ResourceKey<Level>, AircraftList>()
+    private class VehicleList(val at: Long, val list: List<Entity>)
+    private val vehiclesByLevel = HashMap<ResourceKey<Level>, VehicleList>()
 
-    private fun aircraft(level: ServerLevel): List<Entity> {
-        val cached = aircraftByLevel[level.dimension()]
-        if (cached != null && level.gameTime - cached.at < AIRCRAFT_REFRESH_TICKS) return cached.list
-        val list = level.allEntities.filter { Helicopters.isHelicopter(it) }
-        aircraftByLevel[level.dimension()] = AircraftList(level.gameTime, list)
+    /** Every vehicle in [level], listed afresh at most every [VEHICLE_REFRESH_TICKS] — one walk of
+     *  the level's entities shared by every scan in between. May hold one destroyed since. */
+    fun vehicles(level: ServerLevel): List<Entity> {
+        val cached = vehiclesByLevel[level.dimension()]
+        // In range only: a world loaded afresh starts its clock over, and a list from before must not pass.
+        if (cached != null && level.gameTime - cached.at in 0 until VEHICLE_REFRESH_TICKS) return cached.list
+        val list = level.allEntities.filter(Ports.vehicles::isVehicle)
+        vehiclesByLevel[level.dimension()] = VehicleList(level.gameTime, list)
         return list
     }
 
