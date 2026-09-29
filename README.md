@@ -23,6 +23,46 @@ their own side, relay spotted enemies to the rest of their faction, ride and cre
 follow orders — Attack, Defend, Patrol, Move — from a quick-command HUD or by pointing and
 clicking.
 
+## Requirements
+
+- Minecraft 1.21.1 + NeoForge
+- Kotlin for Forge (NeoForge build) — this mod is written in Kotlin and loads through it
+- [SuperbWarfare](https://github.com/Mercurows/SuperbWarfare) — this addon builds directly on its
+  weapons, vehicles, and combat systems and won't do anything without it
+- SmartBrainLib — the behavior-tree AI framework every NPC's combat/movement logic runs on
+- Optional: the SBW Drone Warfare addon, for the drone operator class to use its FPV drone model
+- Optional: [JourneyMap](https://www.curseforge.com/minecraft/mc-mods/journeymap) 6.x — your squads,
+  their objectives and the enemies your side has spotted on the map, and orders given from it
+
+## Installation
+
+1. Install NeoForge, Kotlin for Forge, SuperbWarfare, and SmartBrainLib first.
+2. Grab the latest jar from the [Releases](../../releases) page.
+3. Drop it into your `mods/` folder.
+
+Recommended alongside: [GeckolibBetterFPS](https://www.curseforge.com/minecraft/mc-mods/geckolibbetterfps)
+— noticeably better frame rate when a lot of NPCs are on screen.
+
+## Key conflicts
+
+A few mods often installed alongside bind the same keys as SuperbWarfare, and both actions fire on
+one press. Rebind the other mod's key under *Options → Controls → Key Binds*: click the binding
+and press the new combination, `Ctrl` included.
+
+| Key | SuperbWarfare | Clashes with | Suggested |
+|---|---|---|---|
+| `R` | Reload | Iris — *Reload Shaders* | `Ctrl + R` |
+| `N` | Fire mode | JourneyMap — *Waypoint Manager* | `Ctrl + N` (the list is also a button on the fullscreen map) |
+
+## How this mod was made
+
+This is a hobby project, built purely for fun. The entire codebase was written by an AI (Claude
+Code) — architecture, features, bug fixes, all of it — while the meatbags did the actual
+playtesting, including multiplayer sessions, and sent back bug reports on whatever broke.
+
+Pull requests and issues are welcome and will be looked at whenever there's free time — no
+guaranteed response time.
+
 ## Features
 
 - **One tool, two modes** — Recruit mode opens a GUI to pick class, rank, faction and squad
@@ -51,31 +91,6 @@ clicking.
   and restocks its losses over time.
 - **Quick-command HUD** — a lightweight panel (default key `Z`) to pick a squad and an order
   without opening a menu.
-
-## Requirements
-
-- Minecraft 1.21.1 + NeoForge
-- Kotlin for Forge (NeoForge build) — this mod is written in Kotlin and loads through it
-- [SuperbWarfare](https://github.com/Mercurows/SuperbWarfare) — this addon builds directly on its
-  weapons, vehicles, and combat systems and won't do anything without it
-- SmartBrainLib — the behavior-tree AI framework every NPC's combat/movement logic runs on
-- Optional: the SBW Drone Warfare addon, for the drone operator class to use its FPV drone model
-- Optional: [JourneyMap](https://www.curseforge.com/minecraft/mc-mods/journeymap) 6.x — your squads,
-  their objectives and the enemies your side has spotted on the map, and orders given from it
-
-## Installation
-
-1. Install NeoForge, Kotlin for Forge, SuperbWarfare, and SmartBrainLib first.
-2. Grab the latest jar from the [Releases](../../releases) page.
-3. Drop it into your `mods/` folder.
-
-Recommended alongside: [GeckolibBetterFPS](https://www.curseforge.com/minecraft/mc-mods/geckolibbetterfps)
-— noticeably better frame rate when a lot of NPCs are on screen.
-
-With JourneyMap: both it and SuperbWarfare bind `N` by default — JourneyMap's *Waypoint Manager*
-and SuperbWarfare's fire-mode switch — and JourneyMap's works in-game too, so switching fire mode
-also opens the waypoint list. Under *Options → Controls → JourneyMap*, clear *Waypoint Manager* or
-move it to a free key (`I`, for example); the list is still a button on the fullscreen map.
 
 ## Where everything is
 
@@ -171,15 +186,6 @@ is, with nobody left to replace its losses.
 - A killed NPC drops the weapon in its hands with a 15% chance (with only its loaded magazine), each piece of
   armour with a 5% chance, a magazine of ammunition for its gun half the time, and one of the grenades it
   had left with a 5% chance, whoever killed it.
-
-## How this mod was made
-
-This is a hobby project, built purely for fun. The entire codebase was written by an AI (Claude
-Code) — architecture, features, bug fixes, all of it — while the meatbags did the actual
-playtesting, including multiplayer sessions, and sent back bug reports on whatever broke.
-
-Pull requests and issues are welcome and will be looked at whenever there's free time — no
-guaranteed response time.
 
 ## Skins
 
