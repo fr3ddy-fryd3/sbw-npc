@@ -170,7 +170,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     }
 
     /**
-     * Back to what this NPC was issued with: the reserve in each gun it carries, grenades, drones.
+     * Back to what this NPC was issued with: the reserve in each gun it carries, grenades, medical
+     * kit, drones.
      * Only raises, never takes away. True when anything was short — see
      * [com.sbwnpc.squad.block.entity.SupplyBlockEntity].
      */
@@ -185,6 +186,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         if (carriesGrenades() && (rgnLeft < GRENADES_OF_EACH || rgoLeft < GRENADES_OF_EACH)) {
             rgnLeft = maxOf(rgnLeft, GRENADES_OF_EACH)
             rgoLeft = maxOf(rgoLeft, GRENADES_OF_EACH)
+            topped = true
+        }
+        if (medkitsLeft < MEDKITS) {
+            medkitsLeft = MEDKITS
             topped = true
         }
         val maxDrones = com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES
@@ -282,6 +287,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      *  flying a drone, crewing a mortar, dealing with a drone — so the rifle, the grenades and the
      *  squad's own movement leave it alone. */
     fun busyWithRole(): Boolean = vehicleTransport || operatingDrone || servingMortar || antiDroneEngaged
+
+    /** Medical kits on this NPC, for itself — see [com.sbwnpc.squad.entity.ai.SelfTreatBehaviour].
+     *  Every class carries [MEDKITS]. Persisted. */
+    var medkitsLeft: Int = MEDKITS
 
     /** Kamikaze drones this operator still carries; refilled at a barracks (SquadManager.
      *  respawnAtBarracks). Persisted. Meaningless for other classes. */
@@ -689,6 +698,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             com.sbwnpc.squad.entity.ai.HelicopterRideBehaviour(),
             VehicleCombatSupportBehaviour(),
             MedicHealBehaviour(),
+            com.sbwnpc.squad.entity.ai.SelfTreatBehaviour(),
             // Last: it has to override whatever the behaviours above did with the navigation.
             com.sbwnpc.squad.entity.ai.GrenadeEvadeBehaviour()
         )
@@ -786,6 +796,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         // post-dig throw, all from these same counts.
         rgnLeft = if (carriesGrenades()) GRENADES_OF_EACH else 0
         rgoLeft = rgnLeft
+        medkitsLeft = MEDKITS
         if (npcClass == NpcClass.DRONE_OPERATOR) dronesLeft = com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES
 
         // A belt-fed gun does nothing to a tank, and the machine gunner is the one member of an
@@ -803,6 +814,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         assignedVehicleId?.let { compound.putUUID("AssignedVehicle", it) }
         compound.putInt("Rgn", rgnLeft)
         compound.putInt("Rgo", rgoLeft)
+        compound.putInt("Medkits", medkitsLeft)
         if (carryingMortar) compound.putBoolean("CarryingMortar", true)
         compound.putInt("DronesLeft", dronesLeft)
         if (!stowedWeapon.isEmpty) compound.put("StowedWeapon", stowedWeapon.save(registryAccess()))
@@ -820,6 +832,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         // Saved before grenades were counted: a full set, as for anyone recruited now.
         rgnLeft = if (compound.contains("Rgn")) compound.getInt("Rgn") else if (carriesGrenades()) GRENADES_OF_EACH else 0
         rgoLeft = if (compound.contains("Rgo")) compound.getInt("Rgo") else if (carriesGrenades()) GRENADES_OF_EACH else 0
+        // Saved before NPCs carried one: issued now.
+        medkitsLeft = if (compound.contains("Medkits")) compound.getInt("Medkits") else MEDKITS
         carryingMortar = compound.getBoolean("CarryingMortar")
         dronesLeft = if (compound.contains("DronesLeft")) compound.getInt("DronesLeft")
             else if (npcClass == NpcClass.DRONE_OPERATOR) com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES else 0
@@ -955,6 +969,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         private val LOOTABLE_SLOTS = listOf(EquipmentSlot.MAINHAND, EquipmentSlot.HEAD, EquipmentSlot.CHEST)
         private const val BASE_HEALTH = 20.0
         private const val GRENADES_OF_EACH = 2
+        const val MEDKITS = 1
         /** Below this share of its issued rounds an NPC goes to a Supply between fights. */
         private const val LOW_AMMO_FRACTION = 0.3
         /** Below this it falls back on a Supply even in a fight. */
