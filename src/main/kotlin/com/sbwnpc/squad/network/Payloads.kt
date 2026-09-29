@@ -293,11 +293,11 @@ class OpenSupplyScreenPayload(val pos: BlockPos, val data: CompoundTag) : Custom
 }
 
 /** Client -> server: a Supply screen action at [pos]. */
-class SupplyCmdPayload(val pos: BlockPos, val action: Int, val kit: Int) : CustomPacketPayload {
+class SupplyCmdPayload(val pos: BlockPos, val action: Int, val kit: Int, val option: Int) : CustomPacketPayload {
     override fun type() = TYPE
 
     companion object {
-        const val TAKE_KIT = 1     // kit = its index
+        const val TAKE_KIT = 1     // kit = its index, option = the weapon's
         const val SET_SPAWN = 2
 
         val TYPE = CustomPacketPayload.Type<SupplyCmdPayload>(SquadMod.loc("supply_cmd"))
@@ -305,6 +305,7 @@ class SupplyCmdPayload(val pos: BlockPos, val action: Int, val kit: Int) : Custo
             BlockPos.STREAM_CODEC, SupplyCmdPayload::pos,
             ByteBufCodecs.VAR_INT, SupplyCmdPayload::action,
             ByteBufCodecs.VAR_INT, SupplyCmdPayload::kit,
+            ByteBufCodecs.VAR_INT, SupplyCmdPayload::option,
             ::SupplyCmdPayload
         )
     }

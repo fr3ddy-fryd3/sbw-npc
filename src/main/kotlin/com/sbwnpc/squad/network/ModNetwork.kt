@@ -302,8 +302,10 @@ object ModNetwork {
             val supplyPort = com.sbwnpc.squad.domain.port.Ports.playerSupply
             val reply = when (p.action) {
                 SupplyCmdPayload.TAKE_KIT -> {
-                    val name = supplyPort.kits.getOrNull(p.kit) ?: return@enqueueWork
-                    if (supplyPort.issueKit(player, p.kit)) "$name kit issued" else "You already carry the $name kit"
+                    val name = supplyPort.kits.getOrNull(p.kit)?.name ?: return@enqueueWork
+                    val faction = PlayerFactionRegistry.get(level).get(player.uuid)
+                    if (supplyPort.issueKit(player, p.kit, p.option, faction)) "$name kit issued"
+                    else "You already carry the $name kit"
                 }
                 SupplyCmdPayload.SET_SPAWN -> {
                     com.sbwnpc.squad.block.SupplySpawns.get(player.server).set(player, level, p.pos)

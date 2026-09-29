@@ -116,10 +116,24 @@ class SupplyBlock : BaseEntityBlock(
             tag.putBoolean("SpawnHere", spawn != null && spawn.dimension() == level.dimension() && spawn.pos() == pos)
             tag.putInt("Radius", SupplyBlockEntity.RADIUS.toInt())
             val kits = ListTag()
-            supply.kits.forEachIndexed { i, name ->
+            for (kit in supply.kits) {
+                val options = ListTag()
+                for (option in kit.options) {
+                    val items = ListTag()
+                    option.items.forEach { (id, count) ->
+                        items.add(CompoundTag().apply {
+                            putString("Item", id.toString())
+                            putInt("Count", count)
+                        })
+                    }
+                    options.add(CompoundTag().apply {
+                        putString("Weapon", option.weapon.toString())
+                        put("Items", items)
+                    })
+                }
                 kits.add(CompoundTag().apply {
-                    putString("Name", name)
-                    putString("Contents", supply.kitContents(i).joinToString("\n"))
+                    putString("Name", kit.name)
+                    put("Options", options)
                 })
             }
             tag.put("Kits", kits)
