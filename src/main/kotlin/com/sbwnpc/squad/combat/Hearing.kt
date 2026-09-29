@@ -3,6 +3,7 @@ package com.sbwnpc.squad.combat
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.team.SquadTeams
+import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.phys.Vec3
@@ -42,7 +43,7 @@ object Hearing {
         if (last != null && now - last < SHOOTER_INTERVAL_TICKS) return
         lastShot[shooter.uuid] = now
         if (lastShot.size > 512) lastShot.entries.removeIf { now - it.value > SHOOTER_INTERVAL_TICKS }
-        noise(level, shooter.eyePosition, radius, shooter)
+        noise(level, shooter.eyePosition, radius, shooter, "gunshot")
     }
 
     /**
@@ -61,18 +62,29 @@ object Hearing {
             player.isSprinting -> SPRINT_RADIUS
             else -> WALK_RADIUS
         }
-        noise(level, player.position(), radius, player)
+        noise(level, player.position(), radius, player, if (landing) "landing" else if (player.isSprinting) "running" else "walking")
     }
 
     /** An explosion of [power] went off at [at], set off by [source] if anyone. */
     fun explosion(level: ServerLevel, at: Vec3, power: Float, source: Entity?) {
-        noise(level, at, (power * EXPLOSION_SCALE).coerceIn(MIN_EXPLOSION, MAX_EXPLOSION), source)
+        noise(level, at, (power * EXPLOSION_SCALE).coerceIn(MIN_EXPLOSION, MAX_EXPLOSION), source, "explosion $power")
     }
 
-    private fun noise(level: ServerLevel, at: Vec3, radius: Double, source: Entity?) {
+    private fun noise(level: ServerLevel, at: Vec3, radius: Double, source: Entity?, kind: String) {
+        var heard = 0
         NpcRegistry.forEachWithin(level, at, radius, exclude = source) { npc ->
             // Nobody's noise is everybody's; a known one only the other side's.
-            if (npc.isAlive && (source == null || SquadTeams.isHostile(npc, source))) npc.hear(at)
+            if (npc.isAlive && (source == null || SquadTeams.isHostile(npc, source))) {
+                npc.hear(at)
+                heard++
+            }
+        }
+        if (heard > 0 && DebugFlags.LOGGING_ENABLED) {
+            DebugFlags.log(
+                "[hearing-debug] {} by {} at {} radius {} heard by {}",
+                kind, source?.let { it.uuid.toString().take(8) + " " + it.type.descriptionId } ?: "nobody",
+                BlockPos.containing(at), "%.0f".format(radius), heard
+            )
         }
     }
 

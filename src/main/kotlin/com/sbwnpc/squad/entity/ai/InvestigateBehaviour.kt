@@ -1,9 +1,11 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
+import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.DeathSites
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.team.SquadTeams
+import net.minecraft.core.BlockPos
 import net.minecraft.world.phys.Vec3
 import com.sbwnpc.squad.init.ModMemories
 import net.minecraft.server.level.ServerLevel
@@ -62,20 +64,44 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun start(entity: NpcEntity) {
         BrainUtils.getMemory(entity, ModMemories.ALERT_POSITION.get())?.let {
-            entity.navigation.moveTo(it.x, it.y, it.z, 1.0)
+            val going = entity.navigation.moveTo(it.x, it.y, it.z, 1.0)
+            log(entity, "goes to look at ${BlockPos.containing(it)} (${Math.sqrt(entity.distanceToSqr(it)).toInt()} blocks)" +
+                if (going) "" else ", no path")
         }
     }
 
     override fun tick(entity: NpcEntity) {
         val pos = BrainUtils.getMemory(entity, ModMemories.ALERT_POSITION.get()) ?: return
         if (entity.position().closerThan(pos, ARRIVE_DISTANCE) || entity.navigation.isDone) {
+            log(entity, if (entity.position().closerThan(pos, ARRIVE_DISTANCE)) "got there, nothing seen"
+                else "path ended ${Math.sqrt(entity.distanceToSqr(pos)).toInt()} blocks short, gives up")
             entity.clearAlert()
             return
         }
         if (entity.tickCount % DEATH_SITE_CHECK_INTERVAL == 0 && deathSiteSettled(entity, pos)) {
+            log(entity, "death site already checked, stops")
             entity.clearAlert()
             entity.navigation.stop()
         }
+    }
+
+    override fun stop(entity: NpcEntity) {
+        // Stopped with the alert still up: something else took over.
+        if (entity.isAlert()) {
+            log(entity, when {
+                entity.target != null -> "found a target"
+                entity.combatLockedByCover() -> "taken for cover"
+                entity.diggedIn -> "dug in"
+                entity.busyWithRole() -> "busy with a role"
+                entity.retreatPoint() != null -> "falling back"
+                entity.resupplying -> "off to resupply"
+                else -> "stopped"
+            })
+        }
+    }
+
+    private fun log(entity: NpcEntity, what: String) {
+        if (DebugFlags.LOGGING_ENABLED) DebugFlags.log("[hearing-debug] {} investigating: {}", entity.uuid.toString().take(8), what)
     }
 
     /** Headed for a fallen ally's body: done if someone has already looked and found nothing,

@@ -125,13 +125,35 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      * back to an objective, or off to a Supply — none of those drop what they're doing for a noise.
      */
     fun hear(at: Vec3) {
-        if (target != null) return
+        if (target != null) {
+            logHearing(at, "ignored, already fighting")
+            return
+        }
         heardAt = at
         heardUntilTick = tickCount + HEARD_LOOK_TICKS
         val order = currentSquad()?.order
-        val holding = diggedIn || busyWithRole() || resupplying || order == SquadOrder.DEFEND ||
-            order == SquadOrder.BARRAGE || order == SquadOrder.MOVE || order == SquadOrder.RETREAT
-        if (!holding) alert(at)
+        val holding = when {
+            diggedIn -> "dug in"
+            busyWithRole() -> "busy with a role"
+            resupplying -> "resupplying"
+            order == SquadOrder.DEFEND || order == SquadOrder.BARRAGE || order == SquadOrder.MOVE ||
+                order == SquadOrder.RETREAT -> "order $order"
+            else -> null
+        }
+        if (holding == null) alert(at)
+        logHearing(at, if (holding == null) "turns and goes to look" else "turns, holds ($holding)")
+    }
+
+    private var lastHearingLogTick = Int.MIN_VALUE / 2
+
+    private fun logHearing(at: Vec3, reaction: String) {
+        if (!com.sbwnpc.squad.combat.DebugFlags.LOGGING_ENABLED || tickCount - lastHearingLogTick < HEARING_LOG_TICKS) return
+        lastHearingLogTick = tickCount
+        com.sbwnpc.squad.combat.DebugFlags.log(
+            "[hearing-debug] {} ({}) at {} heard {} ({} blocks): {}",
+            uuid.toString().take(8), npcClass, blockPosition(), BlockPos.containing(at),
+            Math.sqrt(distanceToSqr(at)).toInt(), reaction
+        )
     }
 
     /** Turned toward what it last heard for a few seconds, over the idle look-around. */
@@ -1016,6 +1038,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         private const val GRENADES_OF_EACH = 2
         const val MEDKITS = 1
         private const val HEARD_LOOK_TICKS = 100
+        /** One hearing trace line per NPC per this many ticks — a firefight is a noise a second. */
+        private const val HEARING_LOG_TICKS = 40
         const val MORTAR_SHELLS = 30
         /** Below this share of its issued rounds an NPC goes to a Supply between fights. */
         private const val LOW_AMMO_FRACTION = 0.3
