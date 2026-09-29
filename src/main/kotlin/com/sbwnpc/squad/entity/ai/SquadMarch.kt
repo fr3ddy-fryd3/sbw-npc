@@ -53,6 +53,10 @@ object SquadMarch {
     private const val IDLE_TICKS = 200L
     /** Older nodes beyond this many are dropped from the back of a growing route. */
     private const val MAX_ROUTE_NODES = 400
+    /** Water this many route nodes long is worth a boat — see [crossingAhead]. */
+    private const val MIN_CROSSING = 12
+    /** How far ahead along the route a crossing is looked for. */
+    private const val CROSSING_LOOKAHEAD = 48
 
     private class March(val goal: BlockPos, val stamp: Int, val origin: BlockPos) {
         var route: List<BlockPos> = emptyList()
@@ -146,6 +150,39 @@ object SquadMarch {
         val ground = com.sbwnpc.squad.util.Terrain.standableOrNull(level, x, anchor.y + 1.0, z) ?: return null
         if (Math.abs(ground.y - anchor.y) > MAX_STEP_FROM_ROUTE) return null
         return BlockPos.containing(ground)
+    }
+
+    /** A stretch of water on a squad's route: the last dry node before it and the first one after. */
+    class Crossing(val shore: BlockPos, val farShore: BlockPos)
+
+    /**
+     * Water ahead of [npc] on its squad's route, at least [MIN_CROSSING] nodes of it and starting
+     * within [CROSSING_LOOKAHEAD] nodes — worth a boat rather than a swim. Null when there is none,
+     * or no route yet. A crossing that runs off the end of the route so far ends at its last node.
+     */
+    fun crossingAhead(npc: NpcEntity): Crossing? {
+        val level = npc.level() as? ServerLevel ?: return null
+        val squad = npc.currentSquad() ?: return null
+        val march = bySquad[squad.id]
+            ?.filter { it.stamp == squad.orderStamp && it.route.isNotEmpty() }
+            ?.map { it to distanceTo(it, npc) }
+            ?.filter { it.second <= JOIN }
+            ?.minByOrNull { it.second }?.first ?: return null
+        val route = march.route
+        val from = nearestIndex(route, npc)
+        var start = -1
+        for (i in from until route.size) {
+            val wet = level.getFluidState(route[i]).`is`(net.minecraft.tags.FluidTags.WATER)
+            if (wet && start < 0) {
+                if (i - from > CROSSING_LOOKAHEAD) return null
+                start = i
+            } else if (!wet && start >= 0) {
+                if (i - start >= MIN_CROSSING) return Crossing(route[(start - 1).coerceAtLeast(0)], route[i])
+                start = -1
+            }
+        }
+        if (start >= 0 && route.size - start >= MIN_CROSSING) return Crossing(route[(start - 1).coerceAtLeast(0)], route.last())
+        return null
     }
 
     /** How far [npc] is from [march]'s route — or, before it has one, from where it starts. */

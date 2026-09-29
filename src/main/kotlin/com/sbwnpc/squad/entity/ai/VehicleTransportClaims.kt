@@ -11,6 +11,15 @@ object VehicleTransportClaims {
     private val passengers = HashMap<UUID, MutableSet<UUID>>() // vehicle -> passenger npcs
     private val claimedVehicle = HashMap<UUID, UUID>() // npc -> vehicle
     private val combatGunners = HashMap<UUID, UUID>() // vehicle -> npc holding an armed seat
+    private val crossings = HashMap<UUID, net.minecraft.world.phys.Vec3>() // boat -> far shore it's bound for
+
+    /** Where a boat's driver is taking it — the far shore of the crossing it claimed the boat for,
+     *  so the passengers get off there too. */
+    fun crossingOf(vehicle: UUID): net.minecraft.world.phys.Vec3? = crossings[vehicle]
+
+    fun setCrossing(vehicle: UUID, farShore: net.minecraft.world.phys.Vec3) {
+        crossings[vehicle] = farShore
+    }
 
     fun driverOf(vehicle: UUID): UUID? = drivers[vehicle]
 
@@ -62,7 +71,10 @@ object VehicleTransportClaims {
     fun release(npc: UUID) {
         val vehicle = claimedVehicle.remove(npc)
         if (vehicle != null) {
-            if (drivers[vehicle] == npc) drivers.remove(vehicle)
+            if (drivers[vehicle] == npc) {
+                drivers.remove(vehicle)
+                crossings.remove(vehicle)
+            }
             passengers[vehicle]?.let { seats ->
                 seats.remove(npc)
                 if (seats.isEmpty()) passengers.remove(vehicle)
@@ -76,5 +88,6 @@ object VehicleTransportClaims {
         passengers.clear()
         claimedVehicle.clear()
         combatGunners.clear()
+        crossings.clear()
     }
 }
