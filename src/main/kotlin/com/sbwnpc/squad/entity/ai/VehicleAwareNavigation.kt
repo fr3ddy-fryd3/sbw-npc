@@ -86,12 +86,15 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         if (len <= NEAR_RANGE && level.chunkSource.getChunkNow(pos.x shr 4, pos.z shr 4) != null) {
             farGoal = null
             branch = "near"
+            reusable(pos)?.let { return it }
+            nearGoal = pos
             val near = super.createPath(pos, accuracy)
             // Close, but the short search can't get there — a hill in the way, most likely. Out of
             // a fight, the squad's big search looks for the way round.
             if (near != null && !near.canReach() && near.distToTarget > SHORT_OF_GOAL && npc != null && npc.target == null) {
                 SquadMarch.waypointFor(npc, pos)?.let {
                     branch = "near-route ${it.route}"
+                    nearGoal = null
                     return super.createPath(it.route, accuracy)
                 }
             }
@@ -103,6 +106,8 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
                 farGoal = null
                 // His place in the formation if he can get there; the route itself otherwise.
                 waypoint.formation?.let { spot ->
+                    reusable(spot)?.let { return it }
+                    nearGoal = spot
                     val path = super.createPath(spot, accuracy)
                     if (path != null && (path.canReach() || path.distToTarget <= SHORT_OF_GOAL)) {
                         branch = "formation $spot"
@@ -110,12 +115,14 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
                     }
                 }
                 branch = "route ${waypoint.route}"
+                nearGoal = null
                 return super.createPath(waypoint.route, accuracy)
             }
         }
         val current = path
         val goal = farGoal
         branch = "leg"
+        nearGoal = null
         if (current != null && !current.isDone && goal != null && goal.closerThan(pos, GOAL_DRIFT)) return current
         farGoal = pos
         val leg = legToward(dx, dz, len) ?: return null
@@ -144,6 +151,23 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         return null
     }
 
+    /** What the path being walked was last planned to, on the near and formation branches. */
+    private var nearGoal: BlockPos? = null
+
+    /**
+     * The path being walked, if it's still going and was planned to within [NEAR_DRIFT] of [goal].
+     * A formation place is worked out from where its man stands and moves a block or so every
+     * second, and vanilla keeps a path only for the very same block — so every member of every
+     * squad was running a fresh search each second, the biggest cost on the server in a large
+     * fight. A path a block or two off gets him there just the same; once it's done, or dropped
+     * as stuck (vanilla clears it before replanning), the next ask searches anew.
+     */
+    private fun reusable(goal: BlockPos): Path? {
+        val current = path ?: return null
+        val planned = nearGoal ?: return null
+        return current.takeIf { !it.isDone && planned.closerThan(goal, NEAR_DRIFT) }
+    }
+
     /** The goal of the leg being walked; a new one within [GOAL_DRIFT] of it is the same goal. */
     private var farGoal: BlockPos? = null
     /** What the owner last set the node budget to — restored after a long leg's bigger search. */
@@ -169,6 +193,8 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         const val FAR_NODE_MULTIPLIER = 3f
         const val MIN_LEG = 8.0
         const val GOAL_DRIFT = 4.0
+        /** A near goal or formation place moved less than this keeps the path already walked. */
+        const val NEAR_DRIFT = 2.0
         /** A path ending nearer its goal than this just can't stand on the exact block. */
         const val SHORT_OF_GOAL = 4f
         const val PATH_LOG_TICKS = 40
