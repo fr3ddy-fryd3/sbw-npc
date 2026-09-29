@@ -195,6 +195,51 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         return topped
     }
 
+    /** The gun this NPC fights with, wherever it is right now: in hand, or put away for the
+     *  launcher or the drone monitor. */
+    private fun primaryGun(): ItemStack {
+        val hand = mainHandItem
+        if (Ports.guns.isGun(hand) && !com.sbwnpc.squad.combat.AntiArmourKit.isLauncher(hand)) return hand
+        return listOf(antiArmourWeapon, stowedWeapon).firstOrNull { Ports.guns.isGun(it) && !com.sbwnpc.squad.combat.AntiArmourKit.isLauncher(it) }
+            ?: hand
+    }
+
+    /** Rounds left in the primary gun against what it was issued with, 1 when there is no gun. */
+    fun ammoFraction(): Double {
+        val gun = primaryGun()
+        if (!Ports.guns.isGun(gun)) return 1.0
+        val full = npcClass.startingRounds(net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(gun.item)) +
+            Ports.guns.magazineSize(gun)
+        return if (full <= 0) 1.0 else Ports.guns.roundsLeft(gun).toDouble() / full
+    }
+
+    private var supplyCheckTick = Int.MIN_VALUE
+    private var cachedSupply: Vec3? = null
+
+    /** Centre of the nearest Supply serving this NPC's side within [SUPPLY_SEARCH_RANGE] — looked up
+     *  at most every couple of seconds, since supply points don't move. */
+    fun nearestSupply(): Vec3? {
+        if (tickCount - supplyCheckTick >= SUPPLY_CHECK_INTERVAL) {
+            supplyCheckTick = tickCount
+            cachedSupply = com.sbwnpc.squad.block.entity.SupplyPoints
+                .nearestServing(level().dimension(), position(), SquadTeams.factionOf(this), SUPPLY_SEARCH_RANGE)
+                ?.blockPos?.center
+        }
+        return cachedSupply
+    }
+
+    /** Low on ammunition and a Supply to go to: where [com.sbwnpc.squad.entity.ai.ResupplyBehaviour]
+     *  takes it between fights. */
+    fun wantsResupply(): Boolean = ammoFraction() < LOW_AMMO_FRACTION && nearestSupply() != null
+
+    /** All but out in a fight: the Supply to fall back on, firing, or null — see
+     *  [com.sbwnpc.squad.entity.ai.GunAttackBehaviour]. */
+    fun lowAmmoFallback(): Vec3? = if (ammoFraction() < VERY_LOW_AMMO_FRACTION) nearestSupply() else null
+
+    /** Set by [com.sbwnpc.squad.entity.ai.ResupplyBehaviour] while it walks this NPC to a Supply,
+     *  so squad orders and alarms leave it be. Transient. */
+    var resupplying = false
+
     /** Classes that carry hand grenades at all: not the crews, whose hands are on something else. */
     private fun carriesGrenades(): Boolean = npcClass != NpcClass.MORTAR_OPERATOR && npcClass != NpcClass.MORTAR_LOADER &&
         npcClass != NpcClass.TANK_CREW && npcClass != NpcClass.DRONE_OPERATOR
@@ -658,7 +703,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // apply, and steps aside for SquadOrderBehaviour once close enough / after arrival.
     override fun getIdleTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
         net.tslat.smartbrainlib.api.core.BrainActivityGroup.idleTasks(
-            InvestigateBehaviour(), com.sbwnpc.squad.entity.ai.VehicleTransportBehaviour(), SquadOrderBehaviour()
+            com.sbwnpc.squad.entity.ai.ResupplyBehaviour(), InvestigateBehaviour(),
+            com.sbwnpc.squad.entity.ai.VehicleTransportBehaviour(), SquadOrderBehaviour()
         )
     // Fight: only while ATTACK_TARGET is set, all running side by side. AnimatableMeleeAttack is
     // SmartBrainLib's own melee behaviour and only strikes what is already in reach — it does no
@@ -909,6 +955,12 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         private val LOOTABLE_SLOTS = listOf(EquipmentSlot.MAINHAND, EquipmentSlot.HEAD, EquipmentSlot.CHEST)
         private const val BASE_HEALTH = 20.0
         private const val GRENADES_OF_EACH = 2
+        /** Below this share of its issued rounds an NPC goes to a Supply between fights. */
+        private const val LOW_AMMO_FRACTION = 0.3
+        /** Below this it falls back on a Supply even in a fight. */
+        private const val VERY_LOW_AMMO_FRACTION = 0.1
+        private const val SUPPLY_SEARCH_RANGE = 96.0
+        private const val SUPPLY_CHECK_INTERVAL = 40
         private const val SWIM_SPEED = 2.0
         private const val VEHICLE_ATTACKER_MEMORY_TICKS = 200
         // internal (not private) — MedicHealBehaviour reuses this to compute its temporary

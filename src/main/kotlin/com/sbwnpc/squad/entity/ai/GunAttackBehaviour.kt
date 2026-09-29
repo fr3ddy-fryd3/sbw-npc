@@ -112,6 +112,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val FALL_BACK_REPATH_TICKS = 30
         private const val FALL_BACK_SPEED = 1.4
         private const val WITHDRAW_SPEED = 1.3
+        /** Inside a Supply's reach, so the next issue round catches him. */
+        private const val SUPPLY_ARRIVE_DISTANCE = com.sbwnpc.squad.block.entity.SupplyBlockEntity.RADIUS - 3.0
 
         // Friendly-fire assessment used to be two entity queries EVERY tick for every shooter (line
         // of fire + blast radius). Now one combined pass every few ticks — an ally can't cross a
@@ -562,11 +564,24 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         val squad = entity.currentSquad()
         val defendHome = if (squad?.order == SquadOrder.DEFEND) entity.homeCenter() else null
         val retreatTo = entity.retreatPoint()
+        // All but out and a Supply behind: back to it on his own, still shooting, rather than
+        // hold a post he can't fight from much longer. Not the squad's bounding withdrawal — the
+        // rest of the squad isn't going anywhere.
+        val resupplyAt = if (retreatTo == null) entity.lowAmmoFallback() else null
         fallingBack = false
         if (retreatTo != null) {
             // Already back: hold and fire while the rest come in, never turn round to advance.
             if (entity.position().distanceTo(retreatTo) > SquadFormation.ARRIVAL_RADIUS) withdraw(entity, retreatTo)
             else holdFiringPosition(entity, target)
+        } else if (resupplyAt != null) {
+            if (entity.position().distanceTo(resupplyAt) > SUPPLY_ARRIVE_DISTANCE) {
+                firingPos = null
+                FiringSpots.release(entity.uuid)
+                fallingBack = true
+                entity.navigateTo(resupplyAt, WITHDRAW_SPEED)
+            } else {
+                holdFiringPosition(entity, target)
+            }
         } else if (defendHome != null) {
             val fromHome = entity.position().distanceTo(defendHome)
             // Measured past the squad's own ring: a flat 24 was inside the ring a big squad

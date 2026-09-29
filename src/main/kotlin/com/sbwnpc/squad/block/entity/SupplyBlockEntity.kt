@@ -33,6 +33,22 @@ class SupplyBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlock
         return other != null && Diplomacy.allied(own, other)
     }
 
+    override fun onLoad() {
+        super.onLoad()
+        val level = level ?: return
+        if (!level.isClientSide) SupplyPoints.add(level.dimension(), this)
+    }
+
+    override fun setRemoved() {
+        super.setRemoved()
+        level?.let { SupplyPoints.remove(it.dimension(), this) }
+    }
+
+    override fun onChunkUnloaded() {
+        super.onChunkUnloaded()
+        level?.let { SupplyPoints.remove(it.dimension(), this) }
+    }
+
     private fun issue(level: ServerLevel) {
         NpcRegistry.forEachWithin(level, blockPos.center, RADIUS) { npc ->
             if (npc.isAlive && serves(SquadTeams.factionOf(npc)) && npc.resupply()) {

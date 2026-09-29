@@ -62,6 +62,8 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun eligible(entity: NpcEntity): Boolean {
         if (entity.target != null) return false
+        // On its way to a Supply — ResupplyBehaviour hands it back once topped up.
+        if (entity.resupplying) return false
         // An alarm sends a mob to look — except while falling back, when looking is the one thing
         // it must not do.
         if (entity.isAlert() && entity.retreatPoint() == null) return false

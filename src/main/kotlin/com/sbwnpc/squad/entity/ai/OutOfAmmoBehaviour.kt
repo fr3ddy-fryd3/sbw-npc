@@ -17,7 +17,7 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
  * An empty gun takes the NPC out of [GunAttackBehaviour], but its target stays, and a target keeps
  * it out of its squad orders too — so it stood where it ran dry, facing the enemy, doing nothing
  * until it was shot. Now it runs, a stretch at a time, away from whoever it was fighting, until it
- * has lost sight of them and the target lapses.
+ * has lost sight of them and the target lapses — or, with a Supply of its side in reach, to that.
  */
 class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
 
@@ -51,6 +51,11 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
         val target = entity.target ?: return
         if (entity.tickCount < nextStepTick && !entity.navigation.isDone) return
         nextStepTick = entity.tickCount + REPATH_TICKS
+        // A Supply in reach is where the ammunition is: run there rather than just away.
+        entity.nearestSupply()?.let {
+            entity.navigation.moveTo(it.x, it.y, it.z, SPEED)
+            return
+        }
         val away = DefaultRandomPos.getPosAway(entity, STEP, VERTICAL, target.position()) ?: return
         entity.navigation.moveTo(away.x, away.y, away.z, SPEED)
     }
