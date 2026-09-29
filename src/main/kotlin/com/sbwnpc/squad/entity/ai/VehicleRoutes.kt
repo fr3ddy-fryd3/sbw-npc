@@ -27,6 +27,8 @@ object VehicleRoutes {
     private const val LEG = 96.0
     private const val SEARCH_RANGE = 140f
     private const val NODES = 10_000
+    /** A leg ending this near its end point got there — see SquadMarch's LEG_REACH. */
+    private const val LEG_REACH = 8
     private var lastPlanTick = Long.MIN_VALUE / 2
 
     /** A route for [vehicle] driven by [driver] toward [home] as vehicle-centre points, or null
@@ -41,7 +43,7 @@ object VehicleRoutes {
         val from = vehicle.blockPosition()
         val r = SEARCH_RANGE.toInt() + 8
         val region = PathNavigationRegion(level, from.offset(-r, -r, -r), from.offset(r, r, r))
-        return PathFinder(HullEvaluator(width, height), NODES).findPath(region, driver, setOf(target), SEARCH_RANGE, 2, 1f)
+        return PathFinder(HullEvaluator(width, height), NODES).findPath(region, driver, setOf(target), SEARCH_RANGE, LEG_REACH, 1f)
     }
 
     /** Nodes are the hull's lowest corner; this is where its middle is. */

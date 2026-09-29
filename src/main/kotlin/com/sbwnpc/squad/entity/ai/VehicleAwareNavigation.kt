@@ -129,7 +129,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         val saved = nodeMultiplier
         super.setMaxVisitedNodesMultiplier(FAR_NODE_MULTIPLIER)
         try {
-            return createPath(setOf(leg), 8, false, accuracy, FAR_RANGE.toFloat())
+            return createPath(setOf(leg), 8, false, maxOf(accuracy, LEG_REACH), FAR_RANGE.toFloat())
         } finally {
             super.setMaxVisitedNodesMultiplier(saved)
         }
@@ -192,6 +192,8 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         /** 768 nodes at follow range 48 — three times that for a search twice as far. */
         const val FAR_NODE_MULTIPLIER = 3f
         const val MIN_LEG = 8.0
+        /** A leg ending this near its end point got there — see SquadMarch's LEG_REACH. */
+        const val LEG_REACH = 8
         const val GOAL_DRIFT = 4.0
         /** A near goal or formation place moved less than this keeps the path already walked. */
         const val NEAR_DRIFT = 2.0

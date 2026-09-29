@@ -30,6 +30,13 @@ object SquadMarch {
     /** How far a leg's path may wander to get there. */
     private const val SEARCH_RANGE = 200f
     private const val NODES = 20_000
+    /**
+     * A leg ending this near its target (blocks, counted along each axis) got there. The target is
+     * the top of the column — often the surface of a river or the top of a trunk, where nobody can
+     * stand — and a search held to the exact block went through all [NODES] before giving up a
+     * block or two short: 60–180 ms a time, half the legs planned in a forest march.
+     */
+    private const val LEG_REACH = 8
     /** Nodes ahead of a man's own place on the route that he walks toward. */
     private const val LOOKAHEAD = 16
     /** Within this many nodes of the end, the front has arrived and the next leg is due. */
@@ -228,7 +235,7 @@ object SquadMarch {
         val r = SEARCH_RANGE.toInt() + 8
         val region = PathNavigationRegion(level, from.offset(-r, -r, -r), from.offset(r, r, r))
         val evaluator = VehicleAwareNodeEvaluator().apply { setCanPassDoors(true) }
-        val path = PathFinder(evaluator, NODES).findPath(region, npc, setOf(target), SEARCH_RANGE, 1, 1f)
+        val path = PathFinder(evaluator, NODES).findPath(region, npc, setOf(target), SEARCH_RANGE, LEG_REACH, 1f)
         val route = path?.let { p -> (0 until p.nodeCount).map { p.getNode(it).asBlockPos() } }.orEmpty()
         val end = route.lastOrNull()
         val progressed = end != null && Math.sqrt(end.distSqr(from)) >= NO_PROGRESS
