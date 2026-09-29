@@ -798,7 +798,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      * [ARMOUR_DROP_CHANCE], rolled per slot. A gun drops with only its loaded magazine: the reserve
      * an NPC carries inside it (hundreds of rounds for a machine gunner) stays behind. Instead,
      * with [AMMO_DROP_CHANCE], rolled on its own, a magazine's worth of that reserve drops as the
-     * gun's ammunition. Whoever or whatever did the killing: an NPC's kill leaves the same loot as
+     * gun's ammunition, and with [GRENADE_DROP_CHANCE] one of the grenades it had left. Whoever or whatever did the killing: an NPC's kill leaves the same loot as
      * a player's.
      *
      * Rolled here rather than through vanilla's per-slot drop chance because vanilla damages
@@ -809,6 +809,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         super.dropCustomDeathLoot(level, damageSource, recentlyHit)
         val rolls = ArrayList<String>(LOOTABLE_SLOTS.size + 1)
         dropAmmo(rolls)
+        dropGrenade(rolls)
         for (slot in LOOTABLE_SLOTS) {
             val stack = getItemBySlot(slot)
             val chance = if (slot == EquipmentSlot.MAINHAND) WEAPON_DROP_CHANCE else ARMOUR_DROP_CHANCE
@@ -844,6 +845,17 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         rolls[rolls.size - 1] += if (spawnAtLocation(ammo) != null) " DROPPED ${ammo.count}" else " (spawn failed)"
     }
 
+    /** One grenade of a kind it still carried, either kind being as likely when both are left. */
+    private fun dropGrenade(rolls: MutableList<String>) {
+        val kinds = com.sbwnpc.squad.domain.port.GrenadeKind.entries.filter { grenadesLeft(it) > 0 }
+        if (kinds.isEmpty()) return
+        val roll = random.nextFloat()
+        rolls += "GRENADE=%.2f/%.2f".format(roll, GRENADE_DROP_CHANCE)
+        if (roll >= GRENADE_DROP_CHANCE) return
+        val kind = kinds[random.nextInt(kinds.size)]
+        rolls[rolls.size - 1] += if (spawnAtLocation(Ports.grenades.item(kind)) != null) " DROPPED $kind" else " (spawn failed)"
+    }
+
     /** A squadmate going down is itself an "invariant" every shooter-AI convention treats as a
      *  strong signal (F.E.A.R./Half-Life-style squad escalation on a downed ally). When the killer
      *  is resolvable, this is strictly better than a vague alert — feed it into [TeamAwareness] so
@@ -867,6 +879,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         private const val WEAPON_DROP_CHANCE = 0.15f
         private const val ARMOUR_DROP_CHANCE = 0.05f
         private const val AMMO_DROP_CHANCE = 0.5f
+        private const val GRENADE_DROP_CHANCE = 0.05f
         private val LOOTABLE_SLOTS = listOf(EquipmentSlot.MAINHAND, EquipmentSlot.HEAD, EquipmentSlot.CHEST)
         private const val BASE_HEALTH = 20.0
         private const val GRENADES_OF_EACH = 2

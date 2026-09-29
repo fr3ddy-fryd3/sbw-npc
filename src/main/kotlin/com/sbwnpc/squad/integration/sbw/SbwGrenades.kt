@@ -59,6 +59,11 @@ object SbwGrenades : Grenades {
         level.addFreshEntity(grenade)
     }
 
+    override fun item(kind: GrenadeKind): net.minecraft.world.item.ItemStack = when (kind) {
+        GrenadeKind.OFFENSIVE -> net.minecraft.world.item.ItemStack(com.atsuishio.superbwarfare.init.ModItems.HAND_GRENADE.get())
+        GrenadeKind.DEFENSIVE -> net.minecraft.world.item.ItemStack(com.atsuishio.superbwarfare.init.ModItems.RGO_GRENADE.get())
+    }
+
     // HandGrenadeEntity (the M67, and anything built on it) is the one on a timed fuse. The RGO and
     // launcher rounds go off on contact.
     override fun isTimedGrenade(entity: Entity): Boolean = entity is HandGrenadeEntity

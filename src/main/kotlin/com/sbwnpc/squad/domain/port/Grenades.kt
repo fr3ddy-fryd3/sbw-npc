@@ -26,6 +26,9 @@ interface Grenades {
      */
     fun arcClear(thrower: LivingEntity, level: ServerLevel, target: Vec3, targetVelocity: Vec3, kind: GrenadeKind, nearTarget: Double): Boolean
 
+    /** One [kind] hand grenade as the item a player throws. */
+    fun item(kind: GrenadeKind): net.minecraft.world.item.ItemStack
+
     /** A grenade on a timed fuse — one that lies there long enough to run from. Contact-fuzed
      *  rounds don't count. */
     fun isTimedGrenade(entity: Entity): Boolean
