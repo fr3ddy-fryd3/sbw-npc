@@ -42,12 +42,13 @@ enum class NpcClass(
      *  someone — see that class. */
     MEDIC(listOf(loc("mp_5"), loc("vector")), shootDistanceMultiplier = 3.0, speedMultiplier = 1.3),
 
-    /** Carries a sidearm for self-defence; its real job (MortarOperatorBehaviour) is manning a nearby
+    /** The medic's SMGs for self-defence; its real job (MortarOperatorBehaviour) is manning a nearby
      *  placed MortarEntity, which the MORTAR_LOADER on the same squad keeps supplied. */
-    MORTAR_OPERATOR(listOf(loc("glock_18"), loc("mp_443"))),
+    MORTAR_OPERATOR(listOf(loc("mp_5"), loc("vector"))),
 
-    /** Keeps its squad's manned mortar topped up with shells (MortarLoaderBehaviour) — no combat job. */
-    MORTAR_LOADER(listOf(loc("glock_18"), loc("mp_443"))),
+    /** Keeps its squad's manned mortar loaded (MortarLoaderBehaviour) from the shells it carries, and
+     *  fetches more from a Supply — no combat job. Same SMGs as the operator. */
+    MORTAR_LOADER(listOf(loc("mp_5"), loc("vector"))),
 
     /** Permanent vehicle crewman. Its sidearm is only for the brief period after its vehicle is destroyed. */
     TANK_CREW(listOf(loc("glock_18"), loc("mp_443"))),
@@ -75,9 +76,9 @@ enum class NpcClass(
         MACHINE_GUNNER -> if (weapon.path == "m_60") 400 else 320
         SNIPER -> if (weapon.path == "awm") 50 else 60
         GRENADIER -> 20
-        MEDIC -> 180
+        MEDIC, MORTAR_OPERATOR, MORTAR_LOADER -> 180
         DRONE_OPERATOR -> 120
-        MORTAR_OPERATOR, MORTAR_LOADER, TANK_CREW, HELICOPTER_PILOT, HELICOPTER_GUNNER -> 85
+        TANK_CREW, HELICOPTER_PILOT, HELICOPTER_GUNNER -> 85
     }
 
     companion object {
