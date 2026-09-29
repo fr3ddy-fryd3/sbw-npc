@@ -37,6 +37,7 @@ object ServerLifecycle {
         com.sbwnpc.squad.squad.SquadChunkLoader.clearAll()
         TeamAwareness.clearAll()
         com.sbwnpc.squad.block.entity.SupplyPoints.clearAll()
+        com.sbwnpc.squad.squad.SquadReports.clearAll()
         DeathSites.clearAll()
         MortarClaims.clearAll()
         DroneLinks.clearAll()

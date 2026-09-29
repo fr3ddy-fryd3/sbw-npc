@@ -35,7 +35,9 @@ object OrderArrival {
             val there = members.count { SquadFormation.reachedPoint(it, point, squad.members.size) }
             if (there * 4 < members.size * 3) continue
             DebugFlags.log("[order-debug] {} took its point ({}), defending", squad.name, squad.order)
+            val was = squad.order
             mgr.setOrder(squad.id, SquadOrder.DEFEND)
+            SquadReports.holding(server, squad, was)
             com.sbwnpc.squad.combat.Withdrawal.forget(squad.id)
         }
     }

@@ -49,6 +49,7 @@ class ResupplyBehaviour : ExtendedBehaviour<NpcEntity>() {
         startedTick = entity.tickCount
         nextRepathTick = 0
         FiringSpots.release(entity.uuid)
+        com.sbwnpc.squad.squad.SquadReports.goingToResupply(entity)
         DebugFlags.log("[supply-debug] {} ({}) low on ammo ({}), going to {}",
             entity.uuid, entity.npcClass, "%.2f".format(entity.ammoFraction()), entity.nearestSupply())
     }
