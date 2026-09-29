@@ -33,6 +33,8 @@ clicking.
 - Optional: the SBW Drone Warfare addon, for the drone operator class to use its FPV drone model
 - Optional: [JourneyMap](https://www.curseforge.com/minecraft/mc-mods/journeymap) 6.x — your squads,
   their objectives and the enemies your side has spotted on the map, and orders given from it
+- Optional: [Physics Mod](https://www.curseforge.com/minecraft/mc-mods/physics-mod) — not needed by
+  this addon at all, but ragdolls, debris and shattering blocks make a firefight feel a lot more real
 
 ## Installation
 
