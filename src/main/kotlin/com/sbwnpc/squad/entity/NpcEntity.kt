@@ -967,7 +967,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             val stack = getItemBySlot(slot)
             val chance = if (slot == EquipmentSlot.MAINHAND) WEAPON_DROP_CHANCE else ARMOUR_DROP_CHANCE
             val roll = random.nextFloat()
-            rolls += "$slot=${if (stack.isEmpty) "empty" else "%.2f/%.2f".format(roll, chance)}"
+            rolls += "$slot=${if (stack.isEmpty) "empty" else "%.3f/%.4f".format(roll, chance)}"
             if (stack.isEmpty || roll >= chance) continue
             val loot = if (slot == EquipmentSlot.MAINHAND) Ports.guns.withoutReserve(stack) else stack.copy()
             val dropped = spawnAtLocation(loot)
@@ -988,7 +988,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         val reserve = Ports.guns.reserve(gun)
         if (reserve <= 0) return
         val roll = random.nextFloat()
-        rolls += "AMMO=%.2f/%.2f".format(roll, AMMO_DROP_CHANCE)
+        rolls += "AMMO=%.3f/%.4f".format(roll, AMMO_DROP_CHANCE)
         if (roll >= AMMO_DROP_CHANCE) return
         val ammo = Ports.guns.ammoItems(gun, minOf(reserve, Ports.guns.magazineSize(gun).coerceAtLeast(1)))
         if (ammo.isEmpty) {
@@ -1003,7 +1003,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         val kinds = com.sbwnpc.squad.domain.port.GrenadeKind.entries.filter { grenadesLeft(it) > 0 }
         if (kinds.isEmpty()) return
         val roll = random.nextFloat()
-        rolls += "GRENADE=%.2f/%.2f".format(roll, GRENADE_DROP_CHANCE)
+        rolls += "GRENADE=%.3f/%.4f".format(roll, GRENADE_DROP_CHANCE)
         if (roll >= GRENADE_DROP_CHANCE) return
         val kind = kinds[random.nextInt(kinds.size)]
         rolls[rolls.size - 1] += if (spawnAtLocation(Ports.grenades.item(kind)) != null) " DROPPED $kind" else " (spawn failed)"
@@ -1029,10 +1029,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     companion object {
         /** Chances that a piece of an NPC's kit survives its death — see [dropCustomDeathLoot]. */
-        private const val WEAPON_DROP_CHANCE = 0.15f
-        private const val ARMOUR_DROP_CHANCE = 0.05f
-        private const val AMMO_DROP_CHANCE = 0.5f
-        private const val GRENADE_DROP_CHANCE = 0.05f
+        private const val WEAPON_DROP_CHANCE = 0.0375f
+        private const val ARMOUR_DROP_CHANCE = 0.0125f
+        private const val AMMO_DROP_CHANCE = 0.125f
+        private const val GRENADE_DROP_CHANCE = 0.0125f
         private val LOOTABLE_SLOTS = listOf(EquipmentSlot.MAINHAND, EquipmentSlot.HEAD, EquipmentSlot.CHEST)
         private const val BASE_HEALTH = 20.0
         private const val GRENADES_OF_EACH = 2
