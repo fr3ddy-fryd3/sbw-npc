@@ -196,6 +196,10 @@ object ModNetwork {
                 }
                 SquadCmdPayload.DISBAND -> ownedSid()?.let { mgr.disband(level, it); reopen = true }
                 SquadCmdPayload.SET_ORDER -> ownedSid()?.let { mgr.setOrder(it, SquadOrder.byOrdinal(p.value)) }
+                SquadCmdPayload.TOGGLE_REPORTS -> {
+                    val on = com.sbwnpc.squad.squad.ReportMutes.get(player.server).toggle(player.uuid)
+                    bar(if (on) "Squad reports on" else "Squad reports off")
+                }
                 SquadCmdPayload.MAP_ORDER -> {
                     val (x, z) = p.text.split(' ').mapNotNull { it.toIntOrNull() }.takeIf { it.size == 2 }
                         ?: return@enqueueWork
@@ -231,7 +235,10 @@ object ModNetwork {
             // closing the screen for them means reopening it for every squad they wanted gone.
             // Send the fresh list instead; the client swaps the screen out under them.
             if (reopen) {
-                val snap = buildSquadSnapshot(mgr, player.uuid, SquadSelection.looseOf(player.uuid).size)
+                val snap = buildSquadSnapshot(
+                    mgr, player.uuid, SquadSelection.looseOf(player.uuid).size,
+                    !com.sbwnpc.squad.squad.ReportMutes.get(player.server).isMuted(player.uuid)
+                )
                 sendToClient(player, OpenCommandScreenPayload(snap))
             }
         }
@@ -241,7 +248,10 @@ object ModNetwork {
         ctx.enqueueWork {
             val player = ctx.player() as? ServerPlayer ?: return@enqueueWork
             val level = player.level() as? ServerLevel ?: return@enqueueWork
-            val snap = buildSquadSnapshot(SquadManager.get(level), player.uuid, 0)
+            val snap = buildSquadSnapshot(
+                SquadManager.get(level), player.uuid, 0,
+                !com.sbwnpc.squad.squad.ReportMutes.get(player.server).isMuted(player.uuid)
+            )
             // Lets the client show an accurate "ALL SQUADS (N)" count for the `0` key, which
             // (see onHudOrderAll) only actually orders squads matching this — not every squad the
             // player owns, since free-choice deploys mean those can now span multiple factions.

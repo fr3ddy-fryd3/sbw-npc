@@ -43,6 +43,7 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
     )
 
     private val loose = snapshot.getInt("Loose")
+    private var reportsOn = snapshot.getBoolean("Reports")
     private val rows = snapshot.getList("Squads", Tag.TAG_COMPOUND.toInt()).map {
         val t = it as CompoundTag
         Row(
@@ -120,12 +121,22 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
         y += FOOTER_GAP
         addRenderableWidget(Button.builder(Component.literal("Routes")) {
             PacketDistributor.sendToServer(RouteCmdPayload(RouteCmdPayload.REQUEST_LIST, "", ""))
-        }.bounds(x, y, 116, 20).build())
+        }.bounds(x, y, 88, 20).build())
         addRenderableWidget(Button.builder(Component.literal("Diplomacy")) {
             PacketDistributor.sendToServer(DiplomacyCmdPayload(DiplomacyCmdPayload.REQUEST, 0, 0))
-        }.bounds(x + 124, y, 116, 20).build())
-        addRenderableWidget(Button.builder(Component.literal("Close")) { onClose() }.bounds(x + 248, y, 116, 20).build())
+        }.bounds(x + 92, y, 88, 20).build())
+        addRenderableWidget(Button.builder(reportsLabel()) {
+            reportsOn = !reportsOn
+            it.message = reportsLabel()
+            send(SquadCmdPayload.TOGGLE_REPORTS)
+        }.bounds(x + 184, y, 88, 20)
+            .tooltip(Tooltip.create(Component.literal("Your squads' radio calls in chat: contact, casualties, ammo, objective")))
+            .build())
+        addRenderableWidget(Button.builder(Component.literal("Close")) { onClose() }.bounds(x + 276, y, 88, 20).build())
     }
+
+    private fun reportsLabel(): Component =
+        if (reportsOn) Component.literal("Reports: on") else Component.literal("Reports: off").withStyle(ChatFormatting.GRAY)
 
     override fun mouseScrolled(mouseX: Double, mouseY: Double, deltaX: Double, deltaY: Double): Boolean {
         if (rows.size <= visibleRows) return super.mouseScrolled(mouseX, mouseY, deltaX, deltaY)

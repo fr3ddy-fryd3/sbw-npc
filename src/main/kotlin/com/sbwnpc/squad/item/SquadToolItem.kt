@@ -90,7 +90,10 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
                 val name = SquadManager.get(serverLevel).get(armed)?.name ?: "Squad"
                 actionbar(player, "$name → objective (${pos.x}, ${pos.y}, ${pos.z})", ChatFormatting.GRAY)
             } else {
-                val snap = buildSquadSnapshot(SquadManager.get(serverLevel), player.uuid, SquadSelection.looseOf(player.uuid).size)
+                val snap = buildSquadSnapshot(
+                    SquadManager.get(serverLevel), player.uuid, SquadSelection.looseOf(player.uuid).size,
+                    !com.sbwnpc.squad.squad.ReportMutes.get(serverLevel.server).isMuted(player.uuid)
+                )
                 sendToClient(player, OpenCommandScreenPayload(snap))
             }
         }
@@ -119,7 +122,10 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
                 val name = SquadManager.get(serverLevel).get(squadId)?.name ?: "Squad"
                 actionbar(player, "$name → objective (${context.clickedPos.x}, ${context.clickedPos.y}, ${context.clickedPos.z})", ChatFormatting.GRAY)
             } else if (player is net.minecraft.server.level.ServerPlayer) {
-                val snap = buildSquadSnapshot(SquadManager.get(serverLevel), player.uuid, SquadSelection.looseOf(player.uuid).size)
+                val snap = buildSquadSnapshot(
+                    SquadManager.get(serverLevel), player.uuid, SquadSelection.looseOf(player.uuid).size,
+                    !com.sbwnpc.squad.squad.ReportMutes.get(serverLevel.server).isMuted(player.uuid)
+                )
                 sendToClient(player, OpenCommandScreenPayload(snap))
             }
             return InteractionResult.CONSUME

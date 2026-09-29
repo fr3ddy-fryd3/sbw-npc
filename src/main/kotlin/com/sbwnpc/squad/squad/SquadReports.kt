@@ -14,7 +14,7 @@ import java.util.UUID
  *
  * Each kind of call has its own quiet interval per squad, so a firefight reads as "contact" once
  * and a volley of casualties as one line with the count, not a wall of them. Runtime only: calls
- * missed while offline are gone.
+ * missed while offline are gone. A player can switch them all off ([ReportMutes]).
  */
 object SquadReports {
 
@@ -40,6 +40,7 @@ object SquadReports {
 
     private fun send(server: MinecraftServer, squad: Squad, kind: Kind, text: String) {
         val owner = server.playerList.getPlayer(squad.owner) ?: return
+        if (ReportMutes.get(server).isMuted(owner.uuid)) return
         val now = server.overworld().gameTime
         val key = squad.id to kind
         val last = lastSent[key]
@@ -106,6 +107,7 @@ object SquadReports {
             if (squad == null || left == 0) {
                 // Pruned with its last man, unless a Barracks keeps it — either way it's gone.
                 val (owner, name) = ownerOfLost[id] ?: continue
+                if (ReportMutes.get(server).isMuted(owner)) continue
                 server.playerList.getPlayer(owner)?.sendSystemMessage(
                     Component.literal("[$name] ").withStyle(ChatFormatting.GRAY)
                         .append(Component.literal("Squad destroyed").withStyle(Kind.DESTROYED.color))

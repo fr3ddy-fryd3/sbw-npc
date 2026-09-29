@@ -13,8 +13,9 @@ fun sendToClient(player: ServerPlayer, payload: CustomPacketPayload) {
 }
 
 /** Server-side: pack the player's squads into a tag the CommandScreen reads. */
-fun buildSquadSnapshot(mgr: SquadManager, owner: UUID, looseCount: Int): CompoundTag = CompoundTag().apply {
+fun buildSquadSnapshot(mgr: SquadManager, owner: UUID, looseCount: Int, reportsOn: Boolean): CompoundTag = CompoundTag().apply {
     putInt("Loose", looseCount)
+    putBoolean("Reports", reportsOn)
     put("Squads", ListTag().apply {
         mgr.forOwner(owner).forEach { s ->
             add(CompoundTag().apply {

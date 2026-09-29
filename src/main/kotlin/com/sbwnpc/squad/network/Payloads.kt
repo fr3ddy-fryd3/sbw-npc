@@ -80,6 +80,8 @@ class SquadCmdPayload(val action: Int, val squad: String, val value: Int, val te
         /** From the map: squad = comma-separated squad ids, value = order, text = "x z" of the
          *  point clicked. Each squad gets its own version of it — see `GroupOrders`. */
         const val MAP_ORDER = 8
+        /** Radio calls from all the sender's squads on or off. */
+        const val TOGGLE_REPORTS = 9
 
         val TYPE = CustomPacketPayload.Type<SquadCmdPayload>(SquadMod.loc("squad_cmd"))
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, SquadCmdPayload> = StreamCodec.composite(
