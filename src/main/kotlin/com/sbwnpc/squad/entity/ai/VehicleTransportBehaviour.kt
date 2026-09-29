@@ -96,6 +96,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var recoveryTurnLeft = false
     private var avoidancePoint: Vec3? = null
     private var nextAvoidanceTick = 0
+    // A man of our side in the way: since when, and until when the vehicle is steering round him.
+    private var allyBlockedSince = -1
+    private var detourUntilTick = 0
 
     // Last logged turn state for steerToward — purely for change-detection in the debug log, not
     // control state (the actual steering state lives on the vehicle itself).
@@ -222,6 +225,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         seekingStartTick = entity.tickCount
         lastStuckCheckPos = null
         recoveryUntilTick = 0
+        allyBlockedSince = -1
         route = emptyList()
         nextRouteTick = 0
         lastLoggedRight = false
@@ -253,6 +257,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         lastStuckCheckTick = entity.tickCount
         lastStuckCheckPos = null
         recoveryUntilTick = 0
+        allyBlockedSince = -1
         route = emptyList()
         nextRouteTick = 0
         arrivalWaitStartTick = -1
@@ -434,6 +439,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         lastStuckCheckTick = entity.tickCount
         lastStuckCheckPos = null
         recoveryUntilTick = 0
+        allyBlockedSince = -1
         route = emptyList()
         nextRouteTick = 0
         phase = if (VehicleTransportClaims.driverOf(vehicle.uuid) == entity.uuid) {
@@ -498,6 +504,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             lastStuckCheckTick = entity.tickCount
             lastStuckCheckPos = null
             recoveryUntilTick = 0
+            allyBlockedSince = -1
             phase = Phase.DRIVING
         }
     }
@@ -571,12 +578,31 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
         }
 
-        if (alliedNpcBlocksTravel(entity, vehicle, forwardDirection(vehicle))) {
+        val blocker = allyInTheWay(entity, vehicle, forwardDirection(vehicle))
+        if (blocker != null) {
             stopVehicle(vehicle)
             Ports.vehicles.cutPower(vehicle)
             nextRouteTick = entity.tickCount
+            // Waiting on a man is not being stuck; the go-round below is what handles it.
+            lastStuckCheckTick = entity.tickCount
+            lastStuckCheckPos = vehicle.position()
+            if (allyBlockedSince < 0) allyBlockedSince = entity.tickCount
+            // He hasn't moved off — he may not be able to, pressed against the hull. Back off and
+            // go round him instead of waiting out the whole trip.
+            if (entity.tickCount - allyBlockedSince >= ALLY_WAIT_TICKS) {
+                DebugFlags.log("[vehicle-debug] {} blocked by {} for {} ticks, backing off to go round",
+                    entity.uuid, blocker.uuid, entity.tickCount - allyBlockedSince)
+                allyBlockedSince = -1
+                recoveryUntilTick = entity.tickCount + RECOVERY_TICKS
+                recoveryTurnLeft = entity.random.nextBoolean()
+                detourUntilTick = recoveryUntilTick + DETOUR_TICKS
+                avoidancePoint = null
+                nextAvoidanceTick = entity.tickCount
+                performRecovery(entity, vehicle)
+            }
             return
         }
+        allyBlockedSince = -1
         // Open water: straight at the landing point. The land route and the trees are no use there.
         steerToward(vehicle, if (isBoat(vehicle)) home else aroundTrees(entity, vehicle, currentWaypoint(entity, home)))
     }
@@ -585,7 +611,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun aroundTrees(entity: NpcEntity, vehicle: Entity, waypoint: Vec3): Vec3 {
         if (entity.tickCount >= nextAvoidanceTick || avoidancePoint == null) {
             nextAvoidanceTick = entity.tickCount + AVOIDANCE_INTERVAL_TICKS
-            val point = TreeAvoidance.steerPoint(entity.level(), vehicle, waypoint)
+            // Going round a man who stood in the way: headings that run into him are closed too.
+            val detouring = entity.tickCount < detourUntilTick
+            val point = TreeAvoidance.steerPoint(entity.level(), vehicle, waypoint) { dir ->
+                detouring && allyInTheWay(entity, vehicle, dir, DETOUR_LOOKAHEAD) != null
+            }
             avoidancePoint = if (point == waypoint) null else point
             if (avoidancePoint != null) DebugFlags.log("[vehicle-debug] {} steering round a tree to {}", entity.uuid, point)
         }
@@ -869,21 +899,31 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         return Vec3(view.x, 0.0, view.z).normalize()
     }
 
-    private fun alliedNpcBlocksTravel(entity: NpcEntity, vehicle: Entity, direction: Vec3): Boolean {
-        if (direction.lengthSqr() < 1.0e-6) return false
-        val lookahead = maxOf(MIN_ALLY_LOOKAHEAD, vehicle.deltaMovement.horizontalDistance() * ALLY_BRAKE_LOOKAHEAD_TICKS)
+    private fun alliedNpcBlocksTravel(entity: NpcEntity, vehicle: Entity, direction: Vec3): Boolean =
+        allyInTheWay(entity, vehicle, direction) != null
+
+    /** The first man of the driver's side the hull would run into going [direction], looking
+     *  [reach] blocks ahead — by default as far as the vehicle can brake from its current speed. */
+    private fun allyInTheWay(
+        entity: NpcEntity,
+        vehicle: Entity,
+        direction: Vec3,
+        reach: Double = maxOf(MIN_ALLY_LOOKAHEAD, vehicle.deltaMovement.horizontalDistance() * ALLY_BRAKE_LOOKAHEAD_TICKS),
+    ): NpcEntity? {
+        if (direction.lengthSqr() < 1.0e-6) return null
+        val lookahead = reach
         val offset = direction.normalize().scale(lookahead)
         val corridor = Ports.vehicles.hull(vehicle).expandTowards(offset.x, offset.y, offset.z).inflate(ALLY_CLEARANCE)
-        val faction = SquadTeams.factionOf(entity) ?: return false
-        val level = entity.level() as? ServerLevel ?: return false
+        val faction = SquadTeams.factionOf(entity) ?: return null
+        val level = entity.level() as? ServerLevel ?: return null
         val samples = kotlin.math.ceil(lookahead / ALLY_SWEEP_STEP).toInt().coerceIn(1, MAX_ALLY_SWEEP_SAMPLES)
         // Runs every tick while driving — NpcRegistry instead of a corridor box entity query.
         NpcRegistry.forEachIn(level, corridor, exclude = entity) { ally ->
             if (ally.vehicle !== vehicle && ally.isAlive && SquadTeams.factionOf(ally) == faction &&
                 (1..samples).any { step -> vehicleOverlaps(vehicle, ally, offset.scale(step.toDouble() / samples)) }
-            ) return true
+            ) return ally
         }
-        return false
+        return null
     }
 
     private fun vehicleOverlaps(vehicle: Entity, entity: NpcEntity, offset: Vec3): Boolean =
@@ -959,6 +999,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val ALLY_CLEARANCE = 0.3
         private const val ALLY_SWEEP_STEP = 0.5
         private const val MAX_ALLY_SWEEP_SAMPLES = 12
+        private const val ALLY_WAIT_TICKS = 40 // 2s for a man in the way to move off before going round
+        private const val DETOUR_TICKS = 60 // 3s steering clear of him after backing off
+        private const val DETOUR_LOOKAHEAD = 8.0
         private const val STUCK_CHECK_INTERVAL_TICKS = 40 // 2s between progress checks
         private const val STUCK_DISTANCE_SQR = 1.0 // moved less than 1 block in that window
         private const val RECOVERY_TICKS = 30 // ~1.5s reverse-and-turn before retrying

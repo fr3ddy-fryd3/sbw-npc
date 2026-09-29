@@ -29,8 +29,8 @@ object TreeAvoidance {
     private const val SIDE_SLACK = 0.2
 
     /** Where to steer instead of [toward], or [toward] itself when the way there is clear (or
-     *  nothing nearby is). */
-    fun steerPoint(level: Level, vehicle: Entity, toward: Vec3): Vec3 {
+     *  nothing nearby is). A heading [blocked] rules out is passed over like one with a tree. */
+    fun steerPoint(level: Level, vehicle: Entity, toward: Vec3, blocked: (Vec3) -> Boolean = { false }): Vec3 {
         val here = vehicle.position()
         val want = Vec3(toward.x - here.x, 0.0, toward.z - here.z)
         if (want.lengthSqr() < 1.0e-4) return toward
@@ -38,7 +38,7 @@ object TreeAvoidance {
         for (offset in OFFSETS) {
             val angle = base + Math.toRadians(offset)
             val dir = Vec3(Math.cos(angle), 0.0, Math.sin(angle))
-            if (!treeAhead(level, vehicle.boundingBox, dir)) {
+            if (!treeAhead(level, vehicle.boundingBox, dir) && !blocked(dir)) {
                 return if (offset == 0.0) toward else here.add(dir.scale(LOOKAHEAD))
             }
         }
