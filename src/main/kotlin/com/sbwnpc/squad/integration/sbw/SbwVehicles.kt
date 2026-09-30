@@ -197,7 +197,10 @@ object SbwVehicles : Vehicles {
             // deltaRot down, and yRot goes up by minus that).
             val right = diff > SHIP_HEADING_DEADBAND
             val left = diff < -SHIP_HEADING_DEADBAND
-            vehicle.forwardInputDown = throttle
+            // Off the throttle through a sharp turn: at full speed the swing is too wide, and a
+            // boat turning onto the next leg of its way ran up the bank instead.
+            val sharp = Math.abs(diff) > SHIP_SHARP_TURN && vehicle.deltaMovement.horizontalDistance() > SHIP_TURN_SPEED
+            vehicle.forwardInputDown = throttle && !sharp
             vehicle.backInputDown = false
             vehicle.rightInputDown = right
             vehicle.leftInputDown = left
@@ -413,4 +416,7 @@ object SbwVehicles : Vehicles {
     // Heading error (degrees) within which a boat's helm is let go: the swing it has built up
     // carries it the rest of the way.
     private const val SHIP_HEADING_DEADBAND = 12.0
+    // A turn sharper than this (degrees) is taken at no more than SHIP_TURN_SPEED blocks a tick.
+    private const val SHIP_SHARP_TURN = 45.0
+    private const val SHIP_TURN_SPEED = 0.35
 }
