@@ -72,18 +72,21 @@ object Hearing {
 
     private fun noise(level: ServerLevel, at: Vec3, radius: Double, source: Entity?, kind: String) {
         var heard = 0
+        var inRange = 0
         NpcRegistry.forEachWithin(level, at, radius, exclude = source) { npc ->
+            inRange++
             // Nobody's noise is everybody's; a known one only the other side's.
             if (npc.isAlive && (source == null || SquadTeams.isHostile(npc, source))) {
                 npc.hear(at)
                 heard++
             }
         }
-        if (heard > 0 && DebugFlags.LOGGING_ENABLED) {
+        // A player's noise is logged even unheard, to tell "nobody near" from "nobody hostile".
+        if ((heard > 0 || source is net.minecraft.world.entity.player.Player) && DebugFlags.LOGGING_ENABLED) {
             DebugFlags.log(
-                "[hearing-debug] {} by {} at {} radius {} heard by {}",
+                "[hearing-debug] {} by {} at {} radius {} heard by {} of {} NPCs in range",
                 kind, source?.let { it.uuid.toString().take(8) + " " + it.type.descriptionId } ?: "nobody",
-                BlockPos.containing(at), "%.0f".format(radius), heard
+                BlockPos.containing(at), "%.0f".format(radius), heard, inRange
             )
         }
     }
