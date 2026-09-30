@@ -19,6 +19,7 @@ import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.minecraft.world.phys.AABB
+import net.minecraft.util.Mth
 import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 import net.tslat.smartbrainlib.util.BrainUtils
@@ -130,6 +131,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** The way over the water the boat being driven follows, and how far along it it is. */
     private var boatRoute: List<Vec3> = emptyList()
     private var boatRouteIndex = 0
+    /** As fast as the boat should go for the bends ahead — see [pursue]. */
+    private var boatTargetSpeed = 1.0
     /** Whether the way the boat follows ends at a bank — see [WaterRoutes.Route.complete]. */
     private var boatRouteComplete = true
     /** Not before this tick is the next stretch of a way that goes on looked for again. */
@@ -673,9 +676,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (isBoat(vehicle)) {
             // Its own way over the water; the land route and the trees are no use there.
             val waypoint = boatWaypoint(entity, vehicle, home)
-            // In to the bank at a crawl: at full speed it ploughed in wherever the bow pointed.
-            val coasting = horizontalDistance(vehicle.position(), home) < BOAT_SLOW_RADIUS &&
-                vehicle.deltaMovement.horizontalDistance() > BOAT_APPROACH_SPEED
+            // In to the bank at a crawl: at full speed it ploughed in wherever the bow pointed. And
+            // no faster than the bends ahead allow.
+            val speed = vehicle.deltaMovement.horizontalDistance()
+            val coasting = (horizontalDistance(vehicle.position(), home) < BOAT_SLOW_RADIUS && speed > BOAT_APPROACH_SPEED) ||
+                speed > boatTargetSpeed
             if (waypoint == null) stopVehicle(vehicle) else steerToward(vehicle, waypoint, throttle = !coasting)
             return
         }
@@ -726,17 +731,85 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             boatLookAheadTick = entity.tickCount + BOAT_LOOKAHEAD_RETRY_TICKS
             nextRouteTick = entity.tickCount
         }
-        // Passed once close by — or once nearer the next point than this one is: a boat that swung
-        // wide of a point went round and round it trying to hit it.
-        while (boatRouteIndex < boatRoute.size - 1) {
-            val point = boatRoute[boatRouteIndex]
-            val next = boatRoute[boatRouteIndex + 1]
-            val here = vehicle.position()
-            if (horizontalDistance(here, point) >= BOAT_WAYPOINT_RADIUS &&
-                horizontalDistance(here, next) >= horizontalDistance(point, next)) break
-            boatRouteIndex++
+        return pursue(vehicle) ?: landing
+    }
+
+    /**
+     * Steering along the boat's way: not at the next point of it but at a point some way ahead on
+     * it — further the faster it goes — so the turn is begun before the bend, not in it; and
+     * [boatTargetSpeed] from the bends coming up. A boat's turn widens with its speed: fifty blocks
+     * at full speed, a dozen at a crawl. Aimed at the next point at full speed it went round in
+     * circles missing it, or up the bank.
+     */
+    private fun pursue(vehicle: Entity): Vec3? {
+        val route = boatRoute
+        if (route.isEmpty()) return null
+        if (route.size == 1) {
+            boatTargetSpeed = BOAT_SLOW_TURN_SPEED
+            return route[0]
         }
-        return boatRoute.getOrNull(boatRouteIndex) ?: landing
+        val here = vehicle.position()
+        // Where along the way the boat is: the nearest point on the next few legs.
+        var leg = boatRouteIndex.coerceIn(0, route.size - 2)
+        var along = 0.0
+        var nearest = Double.MAX_VALUE
+        for (i in leg until minOf(route.size - 1, leg + BOAT_LEGS_LOOKED_AT)) {
+            val a = route[i]
+            val b = route[i + 1]
+            val len = horizontalDistance(a, b)
+            val t = if (len < 1e-6) 0.0 else (((here.x - a.x) * (b.x - a.x) + (here.z - a.z) * (b.z - a.z)) / (len * len)).coerceIn(0.0, 1.0)
+            val d = Math.hypot(a.x + (b.x - a.x) * t - here.x, a.z + (b.z - a.z) * t - here.z)
+            if (d < nearest) {
+                nearest = d
+                leg = i
+                along = t * len
+            }
+        }
+        boatRouteIndex = leg
+        val speed = vehicle.deltaMovement.horizontalDistance()
+
+        // The point to steer at, carried on along the way from where the boat is.
+        var ahead = BOAT_CARROT_MIN + speed * BOAT_CARROT_PER_SPEED
+        var i = leg
+        var fromStart = along
+        var carrot = route.last()
+        while (i < route.size - 1) {
+            val len = horizontalDistance(route[i], route[i + 1])
+            if (fromStart + ahead <= len) {
+                val t = (fromStart + ahead) / len
+                carrot = Vec3(route[i].x + (route[i + 1].x - route[i].x) * t, route[i].y, route[i].z + (route[i + 1].z - route[i].z) * t)
+                break
+            }
+            ahead -= len - fromStart
+            fromStart = 0.0
+            i++
+        }
+
+        // How fast to go: slow enough for the sharpest bend within braking reach.
+        var target = BOAT_FULL_SPEED
+        var distance = horizontalDistance(route[leg], route[leg + 1]) - along
+        val reach = BOAT_BRAKE_MIN + speed * BOAT_BRAKE_PER_SPEED
+        var j = leg + 1
+        while (j < route.size - 1 && distance <= reach) {
+            val inX = route[j].x - route[j - 1].x
+            val inZ = route[j].z - route[j - 1].z
+            val outX = route[j + 1].x - route[j].x
+            val outZ = route[j + 1].z - route[j].z
+            val turn = Math.abs(Mth.wrapDegrees(Math.toDegrees(Math.atan2(outZ, outX) - Math.atan2(inZ, inX))))
+            target = minOf(target, speedForTurn(turn))
+            distance += horizontalDistance(route[j], route[j + 1])
+            j++
+        }
+        boatTargetSpeed = target
+        return carrot
+    }
+
+    /** The speed a boat can take a bend of [degrees] at without running wide into the bank. */
+    private fun speedForTurn(degrees: Double): Double = when {
+        degrees <= 20.0 -> BOAT_FULL_SPEED
+        degrees <= 45.0 -> 0.55
+        degrees <= 75.0 -> 0.4
+        else -> BOAT_SLOW_TURN_SPEED
     }
 
     private fun horizontalDistance(a: Vec3, b: Vec3): Double = Math.hypot(a.x - b.x, a.z - b.z)
@@ -1201,6 +1274,17 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val BANK_CHECK_TICKS = 10L
         /** A boat's reverse-and-turn — slower to get going astern than a wheeled vehicle. */
         private const val BOAT_RECOVERY_TICKS = 60
+        /** Steering aims this far along the way ahead of the boat, and this much further per block a tick of speed. */
+        private const val BOAT_CARROT_MIN = 6.0
+        private const val BOAT_CARROT_PER_SPEED = 14.0
+        /** Bends this far ahead, and this much further per block a tick of speed, slow the boat down. */
+        private const val BOAT_BRAKE_MIN = 10.0
+        private const val BOAT_BRAKE_PER_SPEED = 35.0
+        private const val BOAT_FULL_SPEED = 2.0
+        /** Round a hairpin at no more than this. */
+        private const val BOAT_SLOW_TURN_SPEED = 0.28
+        /** Legs of the way looked along for where the boat is on it. */
+        private const val BOAT_LEGS_LOOKED_AT = 4
         /** Blocks short of the end of a way that goes on at which the next stretch is looked for. */
         private const val BOAT_LOOKAHEAD = 40.0
         private const val BOAT_LOOKAHEAD_RETRY_TICKS = 40
