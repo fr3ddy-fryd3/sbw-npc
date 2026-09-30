@@ -13,7 +13,7 @@ import net.minecraft.world.level.pathfinder.WalkNodeEvaluator
  * the floor there: off snow six layers deep (standing at .625) toward snow four deep a block up
  * (its top at 1.375) the node is .375 up — no jump — while the snow is .75 up, too high to step.
  * The man walked into it for good. Anything that makes the floor a part of a block high does the
- * same: snow, a carpet on a step.
+ * same: snow, a carpet on a step. Only a man actually walking into it jumps.
  */
 class NpcMoveControl(mob: Mob) : MoveControl(mob) {
     override fun tick() {
@@ -22,7 +22,9 @@ class NpcMoveControl(mob: Mob) : MoveControl(mob) {
         val y = wantedY
         val z = wantedZ
         super.tick()
-        if (!moving || operation != Operation.WAIT || !mob.onGround() || mob.isInWater) return
+        // Only when actually held up: a stair's shape goes a whole block up, but its lower step is
+        // walked up without a jump, and a man hopping up every staircase looked broken too.
+        if (!moving || operation != Operation.WAIT || !mob.onGround() || mob.isInWater || !mob.horizontalCollision) return
         val dx = x - mob.x
         val dz = z - mob.z
         if (dx * dx + dz * dz >= Math.max(1.0f, mob.bbWidth).toDouble()) return
