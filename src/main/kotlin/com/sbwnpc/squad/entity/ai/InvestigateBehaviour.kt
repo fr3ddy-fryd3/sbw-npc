@@ -38,6 +38,8 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     companion object {
         private const val ARRIVE_DISTANCE = 3.0
+        /** A path that ended at least this much nearer than the last one began is worth another. */
+        private const val PROGRESS = 2.0
         /** The look at a death site is a raycast — twice a second is plenty. */
         private const val DEATH_SITE_CHECK_INTERVAL = 10
 
@@ -62,8 +64,12 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = eligible(entity)
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = eligible(entity) && entity.isAlert()
 
+    /** How far off the spot was when the path now walked was asked for. */
+    private var askedFrom = Double.MAX_VALUE
+
     override fun start(entity: NpcEntity) {
         BrainUtils.getMemory(entity, ModMemories.ALERT_POSITION.get())?.let {
+            askedFrom = Math.sqrt(entity.distanceToSqr(it))
             val going = entity.navigation.moveTo(it.x, it.y, it.z, 1.0)
             log(entity, "goes to look at ${BlockPos.containing(it)} (${Math.sqrt(entity.distanceToSqr(it)).toInt()} blocks)" +
                 if (going) "" else ", no path")
@@ -72,6 +78,15 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun tick(entity: NpcEntity) {
         val pos = BrainUtils.getMemory(entity, ModMemories.ALERT_POSITION.get()) ?: return
+        // A far spot is got to a stretch at a time — a path goes a hundred blocks at most, and
+        // counts as there some blocks short: on again while each stretch gets him nearer.
+        if (!entity.position().closerThan(pos, ARRIVE_DISTANCE) && entity.navigation.isDone) {
+            val now = Math.sqrt(entity.distanceToSqr(pos))
+            if (now < askedFrom - PROGRESS) {
+                askedFrom = now
+                if (entity.navigation.moveTo(pos.x, pos.y, pos.z, 1.0)) return
+            }
+        }
         if (entity.position().closerThan(pos, ARRIVE_DISTANCE) || entity.navigation.isDone) {
             log(entity, if (entity.position().closerThan(pos, ARRIVE_DISTANCE)) "got there, nothing seen"
                 else "path ended ${Math.sqrt(entity.distanceToSqr(pos)).toInt()} blocks short, gives up")
