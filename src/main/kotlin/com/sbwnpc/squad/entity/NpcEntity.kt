@@ -950,8 +950,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      * Loot: the weapon in hand drops with [WEAPON_DROP_CHANCE], each piece of armour with
      * [ARMOUR_DROP_CHANCE], rolled per slot. A gun drops with only its loaded magazine: the reserve
      * an NPC carries inside it (hundreds of rounds for a machine gunner) stays behind. Instead,
-     * with [AMMO_DROP_CHANCE], rolled on its own, a magazine's worth of that reserve drops as the
-     * gun's ammunition, and with [GRENADE_DROP_CHANCE] one of the grenades it had left. Whoever or whatever did the killing: an NPC's kill leaves the same loot as
+     * with [AMMO_DROP_CHANCE], rolled on its own, a box of the gun's ammunition drops (a
+     * magazine's worth of rounds for a gun with no box), and with [GRENADE_DROP_CHANCE] one of the grenades it had left. Whoever or whatever did the killing: an NPC's kill leaves the same loot as
      * a player's.
      *
      * Rolled here rather than through vanilla's per-slot drop chance because vanilla damages
@@ -981,8 +981,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         )
     }
 
-    /** The ammunition half of [dropCustomDeathLoot]: one magazine at most, and never more than
-     *  the gun still had in reserve. */
+    /** The ammunition half of [dropCustomDeathLoot]: one box of the gun's ammunition, or where
+     *  there is no box one magazine at most and never more than the gun still had in reserve. */
     private fun dropAmmo(rolls: MutableList<String>) {
         val gun = mainHandItem
         val reserve = Ports.guns.reserve(gun)
@@ -990,7 +990,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         val roll = random.nextFloat()
         rolls += "AMMO=%.3f/%.4f".format(roll, AMMO_DROP_CHANCE)
         if (roll >= AMMO_DROP_CHANCE) return
-        val ammo = Ports.guns.ammoItems(gun, minOf(reserve, Ports.guns.magazineSize(gun).coerceAtLeast(1)))
+        // A box of it where there is one — loose rounds on a body looked odd — and a magazine's
+        // worth of whatever else (heavy rounds, rockets) has no box.
+        val ammo = Ports.guns.ammoBox(gun).takeUnless { it.isEmpty }
+            ?: Ports.guns.ammoItems(gun, minOf(reserve, Ports.guns.magazineSize(gun).coerceAtLeast(1)))
         if (ammo.isEmpty) {
             rolls[rolls.size - 1] += " (no ammo item)"
             return

@@ -186,7 +186,7 @@ is, with nobody left to replace its losses.
 - Mortar crews only shell what their own side has actually seen. Out of reach of the target, they
   break the mortar down, carry it closer and set it back up.
 - A killed NPC drops the weapon in its hands with a 3.75% chance (with only its loaded magazine), each
-  piece of armour with a 1.25% chance, a magazine of ammunition for its gun with a 12.5% chance, and one of
+  piece of armour with a 1.25% chance, a box of ammunition for its gun with a 12.5% chance, and one of
   the grenades it had left with a 1.25% chance, whoever killed it.
 
 ## Skins

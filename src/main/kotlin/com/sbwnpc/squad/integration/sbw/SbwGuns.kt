@@ -1,10 +1,12 @@
 package com.sbwnpc.squad.integration.sbw
 
+import com.atsuishio.superbwarfare.data.gun.Ammo
 import com.atsuishio.superbwarfare.data.gun.AmmoConsumer
 import com.atsuishio.superbwarfare.data.gun.FireMode
 import com.atsuishio.superbwarfare.data.gun.GunData
 import com.atsuishio.superbwarfare.data.gun.GunProp
 import com.atsuishio.superbwarfare.init.ModDamageTypes
+import com.atsuishio.superbwarfare.init.ModItems
 import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.sbwnpc.squad.domain.port.Guns
 import com.sbwnpc.squad.domain.port.HandGun
@@ -74,6 +76,21 @@ object SbwGuns : Guns {
         val items = rounds / consumer.loadAmount.coerceAtLeast(1)
         if (items <= 0 || consumer.stack().isEmpty) return ItemStack.EMPTY
         return consumer.stack().copyWithCount(items)
+    }
+
+    override fun ammoBox(stack: ItemStack): ItemStack {
+        if (stack.item !is GunItem) return ItemStack.EMPTY
+        val consumer = GunData.from(stack).selectedAmmoConsumer()
+        if (!consumer.initialized()) consumer.init()
+        if (consumer.type != AmmoConsumer.AmmoConsumeType.PLAYER_AMMO) return ItemStack.EMPTY
+        val box = when (consumer.playerAmmoType) {
+            Ammo.HANDGUN -> ModItems.HANDGUN_AMMO_BOX
+            Ammo.RIFLE -> ModItems.RIFLE_AMMO_BOX
+            Ammo.SHOTGUN -> ModItems.SHOTGUN_AMMO_BOX
+            Ammo.SNIPER -> ModItems.SNIPER_AMMO_BOX
+            else -> return ItemStack.EMPTY
+        }
+        return ItemStack(box.get())
     }
 
     // Attachments are all that render on a gun someone else is holding: ammo, heat and the

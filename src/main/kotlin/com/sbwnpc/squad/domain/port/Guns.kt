@@ -85,6 +85,10 @@ interface Guns {
      *  when that gun's ammunition is no item (energy, infinite...). */
     fun ammoItems(stack: ItemStack, rounds: Int): ItemStack
 
+    /** One box of [stack]'s ammunition — the handgun, rifle, shotgun or sniper box — or empty when
+     *  there is no box for it (heavy rounds, rockets, energy...). */
+    fun ammoBox(stack: ItemStack): ItemStack
+
     /** The part of a gun's state that shows on it: two stacks of the same gun look alike when
      *  this is equal. Null for anything that isn't a gun. */
     fun looks(stack: ItemStack): Any?
