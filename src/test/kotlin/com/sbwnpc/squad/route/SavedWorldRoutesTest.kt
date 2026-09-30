@@ -67,6 +67,42 @@ class SavedWorldRoutesTest {
             "lowest y %.0f highest y %.0f, ${search.expanded} units, $ticks ticks, %.0f ms").format(route.length, short, ys.min(), ys.max(), ms)
     }
 
+    /** Only the ground within [radius] of where the traveller has been is known — as in the game,
+     *  where the land loads round the squad as it goes. */
+    private class Seen(private val ground: Ground, private val radius: Int) : Ground {
+        val spots = ArrayList<Vec3>()
+        private fun seen(x: Int, z: Int) = spots.any { Math.abs(it.x - x) <= radius && Math.abs(it.z - z) <= radius }
+        override fun known(x: Int, z: Int) = seen(x, z) && ground.known(x, z)
+        override fun kind(x: Int, z: Int) = if (seen(x, z)) ground.kind(x, z) else GroundMap.Kind.UNKNOWN
+        override fun height(x: Int, z: Int) = if (seen(x, z)) ground.height(x, z) else Int.MIN_VALUE
+        override fun room(x: Int, z: Int) = if (seen(x, z)) ground.room(x, z) else 0
+    }
+
+    /** The trip taken a known stretch at a time: planned, followed to the end of what is known,
+     *  planned again from there with the land round it seen — until it gets there. */
+    private fun travel(trip: Trip, radius: Int, medium: (Ground) -> CellPlanner.Medium, ground: Ground): String {
+        val seen = Seen(ground, radius)
+        var at = trip.from
+        var legs = 0
+        var lowest = Double.MAX_VALUE
+        var walked = 0.0
+        while (legs < 20) {
+            seen.spots += at
+            legs++
+            val search = CellPlanner.search(medium(seen), at, trip.goal) ?: return "${trip.name}: leg $legs not on known open ground at $at"
+            while (!search.step(2_500)) Unit
+            val route = search.result() ?: return "${trip.name}: leg $legs NO ROUTE (${search.stoppedBy}) at $at"
+            lowest = minOf(lowest, route.trail.minOf { it.y })
+            // Along the way the land round it loads too.
+            route.trail.forEachIndexed { i, p -> if (i % 32 == 0) seen.spots += p }
+            walked += route.trail.zipWithNext { a, b -> Math.hypot(a.x - b.x, a.z - b.z) }.sum()
+            at = route.landing
+            if (route.complete) break
+        }
+        val short = Math.hypot(at.x - trip.goal.x, at.z - trip.goal.z)
+        return "${trip.name}: seen $radius, $legs legs, %.0f blocks, ends %.0f from the goal, lowest y %.0f".format(walked, short, lowest)
+    }
+
     @Test
     fun `marches and drives from the log`() {
         val ground = ground()
@@ -84,5 +120,7 @@ class SavedWorldRoutesTest {
         )
         for (trip in marches) println("[walk] " + plan(Walking(ground), trip))
         for (trip in drives) println("[drive] " + plan(Driving(ground, 1.65, 1.5, 3.0), trip))
+        for (trip in marches) println("[walk seen] " + travel(trip, 128, { Walking(it) }, ground))
+        for (trip in drives) println("[drive seen] " + travel(trip, 128, { Driving(it, 1.65, 1.5, 3.0) }, ground))
     }
 }
