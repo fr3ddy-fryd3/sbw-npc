@@ -36,8 +36,16 @@ object WaterRoutes {
     private const val MAX_LEG = 24
     private val DIAGONAL = Math.sqrt(2.0)
 
-    /** [route] runs from the boat to [landing], a point on the water right by the bank. */
-    class Route(val route: List<Vec3>, val landing: Vec3, val shore: Vec3, val length: Double)
+    /**
+     * [route] runs from the boat to [landing], a point on the water right by the bank at [shore].
+     * Not [complete] when the search ran out before the water did — it went on nearer the goal
+     * than any bank found — and then [landing] is as far that way as it got, with no bank at it:
+     * the boat sails there and looks again.
+     */
+    class Route(val route: List<Vec3>, val landing: Vec3, val shore: Vec3, val length: Double, val complete: Boolean)
+
+    /** Water left unsearched this much nearer the goal than the best bank means the voyage goes on. */
+    private const val FRONTIER_GAIN = 16.0
 
     /**
      * The route for a boat [halfWidth] blocks either side of its middle, floating at [from], to the
@@ -64,6 +72,9 @@ object WaterRoutes {
         var bestScore = Double.MAX_VALUE
         var expanded = 0
         var improvedAt = 0
+        // Water the search reached the edge of its range at, nearest the goal first.
+        var edge: Long? = null
+        var edgeH = Double.MAX_VALUE
         while (open.isNotEmpty() && expanded < MAX_NODES) {
             val (current, f) = open.poll()
             val cg = g[current] ?: continue
@@ -86,7 +97,14 @@ object WaterRoutes {
                 if (dx == 0 && dz == 0) continue
                 val nx = x + dx
                 val nz = z + dz
-                if (Math.abs(nx - start.first) > MAX_RANGE || Math.abs(nz - start.second) > MAX_RANGE) continue
+                if (Math.abs(nx - start.first) > MAX_RANGE || Math.abs(nz - start.second) > MAX_RANGE) {
+                    val hh = h(x, z)
+                    if (hh < edgeH) {
+                        edgeH = hh
+                        edge = current
+                    }
+                    continue
+                }
                 if (!grid.open(nx, nz)) continue
                 // No cutting a corner across the bank.
                 if (dx != 0 && dz != 0 && (!grid.open(x + dx, z) || !grid.open(x, z + dz))) continue
@@ -100,8 +118,21 @@ object WaterRoutes {
                 }
             }
         }
-        val end = best ?: return null
-        val shore = bestShore ?: return null
+        // The water the search stopped short on: still-open columns and the edge of its range.
+        var frontier = edge
+        var frontierH = edgeH
+        for ((k, _) in open) {
+            if (!g.containsKey(k)) continue
+            val hh = h(BlockPos.getX(k), BlockPos.getZ(k))
+            if (hh < frontierH) {
+                frontierH = hh
+                frontier = k
+            }
+        }
+        val onward = frontier?.takeIf { frontierH < bestScore - FRONTIER_GAIN }
+        val end = onward ?: best ?: return null
+        val shore = if (onward != null) Vec3(BlockPos.getX(end) + 0.5, surface + 1.0, BlockPos.getZ(end) + 0.5)
+            else bestShore ?: return null
 
         val columns = ArrayList<Long>()
         var at: Long? = end
@@ -113,7 +144,7 @@ object WaterRoutes {
         val y = surface + 0.5
         val points = simplify(grid, columns).map { Vec3(BlockPos.getX(it) + 0.5, y, BlockPos.getZ(it) + 0.5) }
         val landing = Vec3(BlockPos.getX(end) + 0.5, y, BlockPos.getZ(end) + 0.5)
-        return Route(points, landing, shore, g[end] ?: 0.0)
+        return Route(points, landing, shore, g[end] ?: 0.0, complete = onward == null)
     }
 
     /**

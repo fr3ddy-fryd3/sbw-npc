@@ -21,6 +21,11 @@ object VehicleTransportClaims {
         landings[vehicle] = landing
     }
 
+    /** The boat is under way with no bank picked yet — its way over the water goes on. */
+    fun clearLanding(vehicle: UUID) {
+        landings.remove(vehicle)
+    }
+
     fun driverOf(vehicle: UUID): UUID? = drivers[vehicle]
 
     fun vehicleOf(npc: UUID): UUID? = claimedVehicle[npc]

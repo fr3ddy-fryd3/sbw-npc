@@ -130,6 +130,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** The way over the water the boat being driven follows, and how far along it it is. */
     private var boatRoute: List<Vec3> = emptyList()
     private var boatRouteIndex = 0
+    /** Whether the way the boat follows ends at a bank — see [WaterRoutes.Route.complete]. */
+    private var boatRouteComplete = true
     /** Since when the boat this man rides has had nobody at the wheel — see [tickRiding]. */
     private var driverlessSince = -1
     /** What the man at a boat's machine gun is firing at — see [workBoatGun]. */
@@ -264,8 +266,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         repathCooldown = 0
         boardTick = entity.tickCount
         waitStartTick = entity.tickCount
-        tripDestination = if (isBoat(vehicle)) landingOf(vehicle) else entity.homeCenter()
+        tripDestination = if (isBoat(vehicle)) landingOf(vehicle) ?: BoatTrips.tripOf(vehicle.uuid)?.route?.landing else entity.homeCenter()
         boatRoute = emptyList()
+        boatRouteComplete = true
         observedDamageStamp = Ports.vehicles.lastHitTime(vehicle)
         lastStuckCheckTick = entity.tickCount
         lastStuckCheckPos = null
@@ -296,6 +299,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         tripDestination = null
         boatTrips = emptyList()
         boatRoute = emptyList()
+        boatRouteComplete = true
         // Without this, a stale seekingStartTick from a previous (long-finished) transport episode
         // survives into the next one — checkExtraStartConditions re-evaluates eligible() the very
         // next tick this NPC becomes eligible again (e.g. a fresh far-away order), sees
@@ -388,7 +392,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         if (claimed) {
             if (isBoat(choice.vehicle) && VehicleTransportClaims.landingOf(choice.vehicle.uuid) == null) {
-                boatTrips.firstOrNull { it.boat == choice.vehicle.uuid }?.let {
+                boatTrips.firstOrNull { it.boat == choice.vehicle.uuid && it.route.complete }?.let {
                     VehicleTransportClaims.setLanding(choice.vehicle.uuid, it.route.landing)
                 }
             }
@@ -455,9 +459,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // If it's already gone (squad disbanded, order changed mid-walk-over) there's nothing
         // to drive to; stay mounted but idle rather than steering at a stale/absent target — the
         // eligibility check will unmount this NPC on its own on the next tick.
-        tripDestination = if (isBoat(vehicle)) landingOf(vehicle) else entity.homeCenter()
+        tripDestination = if (isBoat(vehicle)) landingOf(vehicle) ?: BoatTrips.tripOf(vehicle.uuid)?.route?.landing else entity.homeCenter()
         observedDamageStamp = Ports.vehicles.lastHitTime(vehicle)
         boatRoute = emptyList()
+        boatRouteComplete = true
 
         boardTick = entity.tickCount
         // Reset stuck-detection state — it must not carry over from a previous vehicle (e.g. after
@@ -612,7 +617,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             lastStuckCheckPos = vehicle.position()
             if (last != null && vehicle.position().distanceToSqr(last) < STUCK_DISTANCE_SQR) {
                 // Run aground short of the landing point: this is the shore, get off here.
-                if (isBoat(vehicle) && horizontalDistance(vehicle.position(), home) <= BOAT_AGROUND_RADIUS) {
+                if (isBoat(vehicle) && boatRouteComplete && horizontalDistance(vehicle.position(), home) <= BOAT_AGROUND_RADIUS) {
                     waitToStopThenDismount(entity, vehicle, isDriver = true)
                     return
                 }
@@ -680,17 +685,24 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 boatRoute = route.route
                 boatRouteIndex = 0
                 nextRouteTick = Int.MAX_VALUE
+                boatRouteComplete = route.complete
                 // The way can come out at another bank than the one first picked; everyone aboard
-                // gets off where it actually goes.
-                VehicleTransportClaims.setLanding(vehicle.uuid, route.landing)
+                // gets off where it actually goes — and nowhere while it goes on past what was searched.
+                if (route.complete) VehicleTransportClaims.setLanding(vehicle.uuid, route.landing)
+                else VehicleTransportClaims.clearLanding(vehicle.uuid)
                 tripDestination = route.landing
                 DebugFlags.log(
-                    "[boat-debug] {} steering {} along {} points, {} blocks, to land at {}",
+                    "[boat-debug] {} steering {} along {} points, {} blocks, {} {}",
                     entity.uuid.toString().take(8), vehicle.uuid.toString().take(8), boatRoute.size,
-                    route.length.toInt(), BlockPos.containing(route.shore)
+                    route.length.toInt(), if (route.complete) "to land at" else "on toward the goal, to look again at",
+                    BlockPos.containing(route.shore)
                 )
             }
         }
+        // The end of a way that goes on: search the next stretch from here.
+        if (!boatRouteComplete && boatRoute.isNotEmpty() && boatRouteIndex >= boatRoute.size - 1 &&
+            horizontalDistance(vehicle.position(), boatRoute.last()) < BOAT_WAYPOINT_RADIUS * 2
+        ) nextRouteTick = entity.tickCount
         // Passed once close by — or once nearer the next point than this one is: a boat that swung
         // wide of a point went round and round it trying to hit it.
         while (boatRouteIndex < boatRoute.size - 1) {
@@ -724,7 +736,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /** Where the crew of [vehicle], a boat, get off: what its driver's trip set, or the squad's. */
     private fun landingOf(vehicle: Entity): Vec3? =
-        VehicleTransportClaims.landingOf(vehicle.uuid) ?: BoatTrips.tripOf(vehicle.uuid)?.route?.landing
+        VehicleTransportClaims.landingOf(vehicle.uuid) ?: BoatTrips.tripOf(vehicle.uuid)?.route?.takeIf { it.complete }?.landing
 
     /** [TreeAvoidance] is a few hundred block lookups, so its answer is kept for a few ticks. */
     private fun aroundTrees(entity: NpcEntity, vehicle: Entity, waypoint: Vec3): Vec3 {
@@ -934,8 +946,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun resolveTripDestination(entity: NpcEntity): Vec3? {
         // A boat's trip ends at its landing, whatever the order says about where the squad goes after.
-        // Read live: the driver may have found another way, to another bank, since boarding.
-        entity.vehicle?.takeIf(::isBoat)?.let { return landingOf(it) ?: tripDestination }
+        // Read live: the driver may have found another way, to another bank, since boarding. Only
+        // the driver steers for the end of a stretch that goes on; the rest wait for a bank.
+        entity.vehicle?.takeIf(::isBoat)?.let {
+            return if (VehicleTransportClaims.driverOf(it.uuid) == entity.uuid) landingOf(it) ?: tripDestination else landingOf(it)
+        }
         val order = entity.currentSquad()?.order
         if (order != SquadOrder.MOVE && order != SquadOrder.RETREAT) return tripDestination
         val destination = entity.homeCenter()
@@ -1048,6 +1063,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  washed up on land — a vehicle on the road stops well short and lets everyone walk in. */
     private fun arrived(entity: NpcEntity, vehicle: Entity, home: Vec3): Boolean {
         if (!isBoat(vehicle)) return vehicle.position().distanceTo(home) <= ARRIVAL_RADIUS
+        // Under way to the next stretch of water, not to a bank: nobody gets off.
+        if (entity.vehicle === vehicle && VehicleTransportClaims.driverOf(vehicle.uuid) == entity.uuid && !boatRouteComplete) return false
         val dist = horizontalDistance(vehicle.position(), home)
         return dist <= BOAT_ARRIVAL_RADIUS ||
             (!vehicle.isInWater && entity.tickCount - boardTick > BOAT_LAUNCH_GRACE_TICKS) ||
@@ -1117,14 +1134,15 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
     }
 
-    /** A player may ride with our NPC driver, but NPCs must never take over a player's vehicle. */
+    /** A player of ours may ride along in the back; a player at the wheel, or anyone not ours,
+     *  keeps the vehicle his — NPCs never take over a player's vehicle. */
     private fun hasBlockingPlayerAboard(vehicle: Entity, entity: NpcEntity): Boolean {
         val players = vehicle.passengers.filterIsInstance<net.minecraft.world.entity.player.Player>()
         if (players.isEmpty()) return false
-        val driver = vehicle.firstPassenger as? NpcEntity ?: return true
-        val faction = SquadTeams.factionOf(entity) ?: return true
-        if (SquadTeams.factionOf(driver) != faction) return true
-        return players.any { !DriverAllegiance.isAlliedDriver(it, driver) }
+        // A player at the wheel is driving it himself.
+        if (players.any { Ports.vehicles.seatOf(vehicle, it) == 0 }) return true
+        // One of ours in the back rides along; anyone else keeps it his.
+        return players.any { !DriverAllegiance.isAlliedDriver(it, entity) }
     }
 
     private fun holdVehicle(vehicle: Entity) {
