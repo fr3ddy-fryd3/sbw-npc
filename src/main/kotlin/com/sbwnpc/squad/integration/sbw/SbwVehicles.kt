@@ -193,9 +193,10 @@ object SbwVehicles : Vehicles {
         // the helm hard over for good — the boat went round in circles. Steer by the heading
         // itself: helm over until the bow is near the mark, then let it straighten.
         if (vehicle.computed().engineType == EngineType.SHIP) {
-            // Right swings the bow to a lower yRot, left to a higher one.
-            val left = diff > SHIP_HEADING_DEADBAND
-            val right = diff < -SHIP_HEADING_DEADBAND
+            // Right swings the bow to a higher yRot, left to a lower one (shipEngine: right takes
+            // deltaRot down, and yRot goes up by minus that).
+            val right = diff > SHIP_HEADING_DEADBAND
+            val left = diff < -SHIP_HEADING_DEADBAND
             vehicle.forwardInputDown = true
             vehicle.backInputDown = false
             vehicle.rightInputDown = right
