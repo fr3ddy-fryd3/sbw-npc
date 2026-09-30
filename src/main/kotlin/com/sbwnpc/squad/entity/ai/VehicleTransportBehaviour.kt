@@ -205,6 +205,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
         }
         if (entity.diggedIn) return logEligibility(entity, false) { "dug in" }
+        // Off to a Supply: the order waits till he's topped up, the ride to it too. Both ran at
+        // once, and each took the other off him in turn.
+        if (entity.resupplying) return logEligibility(entity, false) { "resupplying" }
         if (entity.operatingDrone) return logEligibility(entity, false) { "flying a drone" }
         if (entity.antiDroneEngaged) return logEligibility(entity, false) { "dealing with a hostile drone" }
         // Already looked once for this order and there was nothing: walk it.
