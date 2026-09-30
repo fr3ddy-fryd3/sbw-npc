@@ -64,8 +64,8 @@ object SquadMarch {
     /** A formation place this far above or below the route is off the path the route found. */
     private const val MAX_STEP_FROM_ROUTE = 4.0
 
-    /** A man this near a route's nodes (or where an unplanned one starts) is on it. */
-    private const val JOIN = 12.0
+    /** A man this near a route's nodes is on it — the width of a squad's formation round it. */
+    private const val JOIN = 24.0
     /** Routes a squad may have at once — parties bound elsewhere, stragglers finding their way. */
     private const val MAX_MARCHES = 8
     /** A route nobody has asked for in this long is dropped. */
@@ -122,11 +122,15 @@ object SquadMarch {
         // per squad had two parties bound for different points re-planning it from under each
         // other every second, and left a man who had strayed off it — down a cave — aiming for a
         // node sixty blocks away through rock. Anyone on no route gets one of his own.
-        val march = marches
-            .filter { it.goal.closerThan(goal, SAME_GOAL) }
+        // A route not planned yet is everyone's bound there: the whole squad waits on the one
+        // search. By distance from whoever asked first, the far side of the formation started
+        // searches of its own, and each of them stood still until its own came back.
+        val bound = marches.filter { it.goal.closerThan(goal, SAME_GOAL) }
+        val march = bound
             .map { it to distanceTo(it, npc) }
-            .filter { it.second <= JOIN }
+            .filter { it.first.route.isNotEmpty() && it.second <= JOIN }
             .minByOrNull { it.second }?.first
+            ?: bound.firstOrNull { it.route.isEmpty() }
             ?: (if (marches.size < MAX_MARCHES) March(goal, squad.orderStamp, npc.blockPosition()).also { marches += it } else return null)
         march.lastUsed = level.gameTime
         val route = march.route
