@@ -132,6 +132,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var boatRouteIndex = 0
     /** Whether the way the boat follows ends at a bank — see [WaterRoutes.Route.complete]. */
     private var boatRouteComplete = true
+    /** Not before this tick is the next stretch of a way that goes on looked for again. */
+    private var boatLookAheadTick = 0
+    /** When the boat last got stuck — a second time soon after means its way is no good. */
+    private var boatStuckTick = Int.MIN_VALUE / 2
     /** Since when the boat this man rides has had nobody at the wheel — see [tickRiding]. */
     private var driverlessSince = -1
     /** What the man at a boat's machine gun is firing at — see [workBoatGun]. */
@@ -350,7 +354,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                         vehicle.uuid, vehicle.passengers.map { it.uuid }
                     ) < Ports.vehicles.seatCount(vehicle) ->
                         VehicleChoice(vehicle, isDriver = false)
-                    VehicleTransportClaims.claimedSeats(vehicle.uuid) == 0 && vehicle.passengers.isEmpty() ->
+                    // Nobody's claim and no NPC aboard — a player of ours in the back rides along.
+                    VehicleTransportClaims.claimedSeats(vehicle.uuid) == 0 &&
+                        vehicle.passengers.none { it !is net.minecraft.world.entity.player.Player } &&
+                        Ports.vehicles.seating(vehicle).firstOrNull() == null ->
                         VehicleChoice(vehicle, isDriver = true)
                     else -> null
                 }
@@ -624,7 +631,15 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 // A boat takes a while to get going astern, and more with its bow in the bank.
                 recoveryUntilTick = entity.tickCount + if (isBoat(vehicle)) BOAT_RECOVERY_TICKS else RECOVERY_TICKS
                 recoveryTurnLeft = entity.random.nextBoolean()
-                nextRouteTick = entity.tickCount // force a fresh route once recovery ends
+                if (isBoat(vehicle)) {
+                    // Backed off, a boat carries on along the way it had: searched afresh from
+                    // up against a bank, it came out with a worse landing than the one it was on
+                    // its way to. Only stuck again soon after is the way itself no good.
+                    if (entity.tickCount - boatStuckTick < BOAT_RESTUCK_TICKS) nextRouteTick = entity.tickCount
+                    boatStuckTick = entity.tickCount
+                } else {
+                    nextRouteTick = entity.tickCount // force a fresh route once recovery ends
+                }
                 performRecovery(entity, vehicle)
                 return
             }
@@ -699,10 +714,15 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 )
             }
         }
-        // The end of a way that goes on: search the next stretch from here.
-        if (!boatRouteComplete && boatRoute.isNotEmpty() && boatRouteIndex >= boatRoute.size - 1 &&
-            horizontalDistance(vehicle.position(), boatRoute.last()) < BOAT_WAYPOINT_RADIUS * 2
-        ) nextRouteTick = entity.tickCount
+        // Nearing the end of a way that goes on: search the next stretch while still running
+        // straight along this one. Waiting for the very end had the boat at full speed there with
+        // the next stretch starting off at a right angle.
+        if (!boatRouteComplete && boatRoute.isNotEmpty() && entity.tickCount >= boatLookAheadTick &&
+            horizontalDistance(vehicle.position(), boatRoute.last()) < BOAT_LOOKAHEAD
+        ) {
+            boatLookAheadTick = entity.tickCount + BOAT_LOOKAHEAD_RETRY_TICKS
+            nextRouteTick = entity.tickCount
+        }
         // Passed once close by — or once nearer the next point than this one is: a boat that swung
         // wide of a point went round and round it trying to hit it.
         while (boatRouteIndex < boatRoute.size - 1) {
@@ -1178,6 +1198,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val BANK_CHECK_TICKS = 10L
         /** A boat's reverse-and-turn — slower to get going astern than a wheeled vehicle. */
         private const val BOAT_RECOVERY_TICKS = 60
+        /** Blocks short of the end of a way that goes on at which the next stretch is looked for. */
+        private const val BOAT_LOOKAHEAD = 40.0
+        private const val BOAT_LOOKAHEAD_RETRY_TICKS = 40
+        /** Stuck again within this of the last time, a boat's way is searched afresh. */
+        private const val BOAT_RESTUCK_TICKS = 300
         /** Riding a boat with nobody at the wheel this long, at rest, before getting off. */
         private const val DRIVERLESS_TICKS = 40
         /** A boat out of the water this soon after boarding is still being pushed off, not landed. */
