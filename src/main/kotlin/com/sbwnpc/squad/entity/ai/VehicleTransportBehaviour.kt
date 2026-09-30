@@ -95,6 +95,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     // without this a stretch the vehicle genuinely can't get through would stop it dead forever.
     private var lastStuckCheckTick = 0
     private var lastStuckCheckPos: Vec3? = null
+    /** The heading at the last progress check: turning on the spot or backing round is progress. */
+    private var lastStuckCheckYaw = 0f
     private var recoveryUntilTick = 0
     private var recoveryTurnLeft = false
     private var avoidancePoint: Vec3? = null
@@ -652,9 +654,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         if (entity.tickCount - lastStuckCheckTick >= STUCK_CHECK_INTERVAL_TICKS) {
             val last = lastStuckCheckPos
+            val turned = Math.abs(net.minecraft.util.Mth.wrapDegrees(vehicle.yRot - lastStuckCheckYaw)) > STUCK_TURN_DEGREES
             lastStuckCheckTick = entity.tickCount
             lastStuckCheckPos = vehicle.position()
-            if (last != null && vehicle.position().distanceToSqr(last) < STUCK_DISTANCE_SQR) {
+            lastStuckCheckYaw = vehicle.yRot
+            if (last != null && !turned && vehicle.position().distanceToSqr(last) < STUCK_DISTANCE_SQR) {
                 // Run aground short of the landing point: this is the shore, get off here.
                 if (isBoat(vehicle) && boatRouteComplete && horizontalDistance(vehicle.position(), home) <= BOAT_AGROUND_RADIUS) {
                     waitToStopThenDismount(entity, vehicle, isDriver = true)
@@ -1452,6 +1456,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val DETOUR_LOOKAHEAD = 8.0
         private const val STUCK_CHECK_INTERVAL_TICKS = 40 // 2s between progress checks
         private const val STUCK_DISTANCE_SQR = 1.0 // moved less than 1 block in that window
+        /** Turned more than this in that window — a tank turning on the spot — isn't stuck. */
+        private const val STUCK_TURN_DEGREES = 20f
         private const val RECOVERY_TICKS = 30 // ~1.5s reverse-and-turn before retrying
         private const val MAX_TRANSIT_TICKS = 2400 // ~2 min hard cap before giving up and walking
         private const val ROUTE_RECOMPUTE_TICKS = 100 // 5s between route refreshes

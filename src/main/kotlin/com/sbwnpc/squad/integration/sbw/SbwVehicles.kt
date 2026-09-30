@@ -162,7 +162,8 @@ object SbwVehicles : Vehicles {
     }
 
     /**
-     * Always throttle forward, turn left/right to close the heading gap.
+     * Throttle forward, turn left/right to close the heading gap — a sharp turn taken slowly, a
+     * tank turning on the spot, a wheeled vehicle turning back on itself backing round.
      *
      * Targets [VehicleEntity.rudderRot] directly — SBW's own "steering wheel" state
      * (VehicleEngineUtils.wheelEngine) — rather than reacting to raw heading error with
@@ -209,18 +210,57 @@ object SbwVehicles : Vehicles {
 
         val targetRudder = Mth.clamp((-diff / RUDDER_FULL_LOCK_DEGREES).toFloat(), -1f, 1f) * MAX_RUDDER_MAGNITUDE
         val rudderError = vehicle.rudderRot - targetRudder
-        val right = rudderError > RUDDER_DEADBAND
-        val left = rudderError < -RUDDER_DEADBAND
+        var right = rudderError > RUDDER_DEADBAND
+        var left = rudderError < -RUDDER_DEADBAND
+        val speed = vehicle.deltaMovement.horizontalDistance()
+        val sharp = Math.abs(diff) > SHARP_TURN
+        val detail = "pos=${vehicle.position()} yRot=${vehicle.yRot} desiredYaw=$desiredYaw diff=$diff " +
+            "rudderRot=${vehicle.rudderRot} targetRudder=$targetRudder speed=$speed"
 
-        vehicle.forwardInputDown = throttle
-        vehicle.backInputDown = false
+        // A sharp turn is not driven round at speed: a wheeled vehicle turns about a circle ten
+        // blocks and more across whatever its speed, and one turning back on itself on a hilltop
+        // drove off the edge of it, well off the way it was given.
+        if (sharp && vehicle.computed().engineType == EngineType.TRACK) {
+            // Tracks turn on the spot: off the throttle until it faces the way.
+            vehicle.forwardInputDown = false
+            vehicle.backInputDown = false
+            vehicle.rightInputDown = right
+            vehicle.leftInputDown = left
+            return Steering(right, left, "$detail pivot")
+        }
+        if (Math.abs(diff) > REVERSE_TURN && roomBehind(vehicle)) {
+            // Turning back on itself: backing round, the wheels over the other way, until the way
+            // is no more than a sharp turn off the bow — then on forward.
+            right = diff < 0
+            left = diff > 0
+            vehicle.forwardInputDown = false
+            vehicle.backInputDown = true
+            vehicle.rightInputDown = right
+            vehicle.leftInputDown = left
+            return Steering(right, left, "$detail backing round")
+        }
+        vehicle.forwardInputDown = throttle && (!sharp || speed < CREEP_SPEED)
+        vehicle.backInputDown = sharp && speed > TURN_SPEED
         vehicle.rightInputDown = right
         vehicle.leftInputDown = left
-        return Steering(
-            right, left,
-            "pos=${vehicle.position()} yRot=${vehicle.yRot} desiredYaw=$desiredYaw diff=$diff " +
-                "rudderRot=${vehicle.rudderRot} targetRudder=$targetRudder speed=${vehicle.deltaMovement.horizontalDistance()}"
-        )
+        return Steering(right, left, if (sharp) "$detail creeping round" else detail)
+    }
+
+    /** Ground to back onto behind the hull: nothing more than a step up or a drop it could climb back. */
+    private fun roomBehind(vehicle: VehicleEntity): Boolean {
+        val level = vehicle.level()
+        val hull = vehicle.getCombinedAABB()
+        val half = Math.max(hull.xsize, hull.zsize) / 2.0
+        val back = vehicle.getViewVector(1f).multiply(-1.0, 0.0, -1.0).normalize()
+        val from = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, vehicle.blockX, vehicle.blockZ)
+        val climb = Math.max(1.0, vehicle.maxUpStep().toDouble())
+        for (d in listOf(half + 1.0, half + BACK_ROOM)) {
+            val x = Mth.floor(vehicle.x + back.x * d)
+            val z = Mth.floor(vehicle.z + back.z * d)
+            val h = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z)
+            if (Math.abs(h - from) > climb) return false
+        }
+        return true
     }
 
     override fun reverse(vehicle: Entity, turnLeft: Boolean) {
@@ -419,4 +459,14 @@ object SbwVehicles : Vehicles {
     // A turn sharper than this (degrees) is taken at no more than SHIP_TURN_SPEED blocks a tick.
     private const val SHIP_SHARP_TURN = 45.0
     private const val SHIP_TURN_SPEED = 0.35
+    // A land vehicle's heading error (degrees) past which the turn is taken slowly, not at speed.
+    private const val SHARP_TURN = 60.0
+    // Past this (degrees), a wheeled vehicle backs round rather than drive a circle forward.
+    private const val REVERSE_TURN = 100.0
+    // Taking a sharp turn, a wheeled vehicle keeps the throttle on only below this (blocks a tick)
+    // and brakes above TURN_SPEED.
+    private const val CREEP_SPEED = 0.12
+    private const val TURN_SPEED = 0.25
+    // Blocks behind the hull that must be ground it can back onto.
+    private const val BACK_ROOM = 4.0
 }
