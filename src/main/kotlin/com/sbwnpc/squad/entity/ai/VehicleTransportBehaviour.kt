@@ -130,6 +130,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** The way over the water the boat being driven follows, and how far along it it is. */
     private var boatRoute: List<Vec3> = emptyList()
     private var boatRouteIndex = 0
+    /** What the man at a boat's machine gun is firing at — see [workBoatGun]. */
+    private var boatGunTarget: java.util.UUID? = null
     /** No boat trips before this — just landed, or found no boat to take. */
     private var boatCooldownUntilTick = 0
 
@@ -801,6 +803,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             tickCombatDismount(entity, vehicle)
             return
         }
+        if (isBoat(vehicle)) workBoatGun(entity, vehicle)
         val home = resolveTripDestination(entity) ?: return
         if (arrived(entity, vehicle, home)) {
             waitToStopThenDismount(entity, vehicle, isDriver = false)
@@ -809,6 +812,32 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.tickCount - boardTick > MAX_TRANSIT_TICKS) {
             waitToStopThenDismount(entity, vehicle, isDriver = false)
         }
+    }
+
+    /**
+     * The man at a boat's machine gun fires it on the way at whatever his target sensor picked —
+     * enemy crews and aircrew first, the whole circle round — while it's in sight and the gun has
+     * rounds. SBW lays and fires the gun itself once it has a target, as for a tank's gunner.
+     */
+    private fun workBoatGun(entity: NpcEntity, vehicle: Entity) {
+        if (!Ports.vehicles.hasWeaponAt(vehicle, entity)) return
+        val target = entity.target?.takeIf {
+            it.isAlive && SquadTeams.isHostile(entity, it) && entity.sensing.hasLineOfSight(it)
+        }?.takeIf { Ports.vehicles.seatHasAmmo(vehicle, entity) }
+        val aimed = boatGunTarget
+        if (target?.uuid != aimed) {
+            DebugFlags.log(
+                "[boat-debug] {} at the boat's gun: {}", entity.uuid.toString().take(8),
+                when {
+                    target != null -> "firing at ${target.uuid.toString().take(8)} ${target.type.descriptionId}"
+                    !Ports.vehicles.seatHasAmmo(vehicle, entity) -> "out of ammunition"
+                    else -> "nothing in sight"
+                }
+            )
+            boatGunTarget = target?.uuid
+        }
+        // SBW keeps firing at the last target it was given: always tell it, target or none.
+        Ports.vehicles.aimAt(vehicle, entity, target)
     }
 
     private fun tickCombatDismount(entity: NpcEntity, mountedVehicle: Entity? = null) {
@@ -855,6 +884,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 entity.uuid, kotlin.math.sqrt(speedSqr), slowEnough, waitedTooLong,
                 entity.health, entity.maxHealth, vehicle.position()
             )
+            // A gun left with a target keeps firing at it with nobody aboard.
+            if (Ports.vehicles.hasWeaponAt(vehicle, entity)) Ports.vehicles.aimAt(vehicle, entity, null)
+            boatGunTarget = null
             entity.stopRiding()
             releaseVehicleTeamIfLastAboard(vehicle, entity)
             arrivalWaitStartTick = -1
