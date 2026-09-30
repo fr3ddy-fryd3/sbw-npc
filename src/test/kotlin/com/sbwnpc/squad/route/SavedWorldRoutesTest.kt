@@ -62,9 +62,10 @@ class SavedWorldRoutesTest {
         val route = search.result()
             ?: return "${trip.name}: NO ROUTE (${search.stoppedBy}) after ${search.expanded} units, $ticks ticks, %.0f ms".format(ms)
         val ys = route.trail.map { it.y }
+        val wet = route.trail.count { medium.pace == 1.0 && medium.extraCost(Math.floor(it.x).toInt(), Math.floor(it.z).toInt()) > 0 }
         val short = Math.hypot(route.landing.x - trip.goal.x, route.landing.z - trip.goal.z)
         return ("${trip.name}: ${search.stoppedBy}, ${route.trail.size} columns, cost %.0f, ends %.0f from the goal, " +
-            "lowest y %.0f highest y %.0f, ${search.expanded} units, $ticks ticks, %.0f ms").format(route.length, short, ys.min(), ys.max(), ms)
+            "lowest y %.0f highest y %.0f, $wet in water, ${search.expanded} units, $ticks ticks, %.0f ms").format(route.length, short, ys.min(), ys.max(), ms)
     }
 
     /** Only the ground within [radius] of where the traveller has been is known — as in the game,
@@ -101,6 +102,22 @@ class SavedWorldRoutesTest {
         }
         val short = Math.hypot(at.x - trip.goal.x, at.z - trip.goal.z)
         return "${trip.name}: seen $radius, $legs legs, %.0f blocks, ends %.0f from the goal, lowest y %.0f".format(walked, short, lowest)
+    }
+
+    @Test
+    fun `marches from a big fight`() {
+        val path = System.getenv("SBWNPC_GROUND2")
+        assumeTrue(path != null && File(path).exists(), "no saved-world ground to plan over")
+        val ground = FileGround(File(path!!))
+        val marches = listOf(
+            Trip("Golf 21:25:23", Vec3(280.5, 89.0, -66.5), Vec3(-229.5, 78.0, -287.5)),
+            Trip("Golf 21:28:59", Vec3(41.5, 64.0, -114.5), Vec3(-220.5, 78.0, -284.5)),
+            Trip("Alpha 21:48", Vec3(-220.5, 72.0, 245.5), Vec3(77.5, 73.0, 575.5)),
+            Trip("Charlie 21:48", Vec3(-304.5, 68.0, 362.5), Vec3(37.5, 72.0, 567.5)),
+            Trip("Delta 21:48", Vec3(-309.5, 67.0, 359.5), Vec3(24.5, 71.0, 593.5)),
+            Trip("Golf 21:48", Vec3(-160.5, 65.0, 497.5), Vec3(-345.5, 67.0, 270.5)),
+        )
+        for (trip in marches) println("[fight] " + plan(Walking(ground), trip))
     }
 
     @Test
