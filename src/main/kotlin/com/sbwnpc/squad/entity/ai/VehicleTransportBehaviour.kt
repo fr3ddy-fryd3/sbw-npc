@@ -137,7 +137,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var boatBestRemaining = Double.MAX_VALUE
     /** As fast as the boat should go for the bends ahead — see [pursue]. */
     private var boatTargetSpeed = 1.0
-    /** Whether the way the boat follows ends at a bank — see [WaterRoutes.Route.complete]. */
+    /** Whether the way the boat follows ends at a bank — see [com.sbwnpc.squad.route.CellPlanner.Route.complete]. */
     private var boatRouteComplete = true
     /** Not before this tick is the next stretch of a way that goes on looked for again. */
     private var boatLookAheadTick = 0

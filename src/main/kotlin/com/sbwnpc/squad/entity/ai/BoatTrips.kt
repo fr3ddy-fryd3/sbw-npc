@@ -3,6 +3,7 @@ package com.sbwnpc.squad.entity.ai
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.route.CellPlanner
 import com.sbwnpc.squad.vehicle.WaterRoutes
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
@@ -28,16 +29,16 @@ import java.util.UUID
  */
 object BoatTrips {
     /** A boat's trip: its way over the water to [goal], and what it costs in blocks walked. */
-    class Trip(val boat: UUID, val goal: Vec3, val route: WaterRoutes.Route, val cost: Double)
+    class Trip(val boat: UUID, val goal: Vec3, val route: CellPlanner.Route, val cost: Double)
 
     private class Decision(val stamp: Int, val goal: BlockPos, val madeAt: Long, val walk: Double, val pending: ArrayDeque<UUID>) {
         val trips = ArrayList<Trip>()
         /** The boat being weighed now, and its search under way. */
-        var current: kotlin.Pair<Entity, WaterRoutes.Search>? = null
+        var current: kotlin.Pair<Entity, CellPlanner.Search>? = null
     }
 
     /** A boat's search for its next stretch of water, and when it was begun. */
-    private class Replan(val goal: Vec3, val search: WaterRoutes.Search, val startedAt: Long)
+    private class Replan(val goal: Vec3, val search: CellPlanner.Search, val startedAt: Long)
 
     /** A boat must save this share of the walk to be worth the boarding and landing. */
     private const val ADVANTAGE = 0.2
@@ -76,7 +77,7 @@ object BoatTrips {
     }
 
     /** Runs [search] on with what's left of this tick's columns; true once it's over. */
-    private fun advance(level: ServerLevel, search: WaterRoutes.Search): Boolean {
+    private fun advance(level: ServerLevel, search: CellPlanner.Search): Boolean {
         if (budgetTick != level.gameTime) {
             budgetTick = level.gameTime
             budgetLeft = NODES_PER_TICK
@@ -158,7 +159,7 @@ object BoatTrips {
      * A fresh way for [boat] from where it is now to [goal] — after it was knocked off the old
      * one. Null when no search can run this tick (another one had it) or none was found.
      */
-    fun replan(boat: Entity, goal: Vec3): WaterRoutes.Route? {
+    fun replan(boat: Entity, goal: Vec3): CellPlanner.Route? {
         val level = boat.level() as? ServerLevel ?: return null
         replans.entries.removeIf { level.gameTime - it.value.startedAt > REPLAN_TICKS }
         val replan = replans[boat.uuid]?.takeIf { it.goal == goal } ?: run {
@@ -174,7 +175,7 @@ object BoatTrips {
         return replan.search.result()
     }
 
-    private fun weigh(npc: NpcEntity, boat: Entity, goal: Vec3, search: WaterRoutes.Search, decision: Decision, squadName: String) {
+    private fun weigh(npc: NpcEntity, boat: Entity, goal: Vec3, search: CellPlanner.Search, decision: Decision, squadName: String) {
         val route = search.result()
         val how = "${search.expanded} columns, ${search.stoppedBy}"
         if (route == null) {
