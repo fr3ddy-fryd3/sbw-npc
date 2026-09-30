@@ -696,6 +696,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             ) trip.route else BoatTrips.replan(vehicle, trip?.goal ?: landing)
             if (route == null) {
                 if (boatRoute.isEmpty()) return null
+                // At the end of a stretch that goes on and the next not found yet: wait there
+                // rather than circle the last point.
+                if (!boatRouteComplete && horizontalDistance(vehicle.position(), boatRoute.last()) < BOAT_WAYPOINT_RADIUS * 2) return null
             } else {
                 boatRoute = route.route
                 boatRouteIndex = 0

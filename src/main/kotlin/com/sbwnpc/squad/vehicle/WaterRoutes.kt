@@ -17,21 +17,24 @@ import java.util.PriorityQueue
  * land, so the search ends at the place a boat can put its crew ashore — water next to ground a
  * man can stand on — nearest the goal.
  *
- * Only loaded ground is searched, and within [MAX_NODES] columns; a goal farther than that gets the
- * landing nearest it among what was searched.
+ * A [Search] runs over several ticks, [step] by step: finding the way out of a big lake round a
+ * bay that points at the goal but goes nowhere takes a hundred thousand columns, far too many for
+ * one tick. Only loaded ground is searched; where the water runs on into ground that isn't loaded,
+ * or past [MAX_RANGE], the voyage goes on and is looked at again from further along.
  */
 object WaterRoutes {
-    /** Columns searched at most. A river 500 blocks long is a few thousand; an open lake more. */
-    private const val MAX_NODES = 30_000
+    /** Columns searched at most, over all the ticks a search takes. */
+    private const val MAX_NODES = 150_000
     /** Nor farther than this from where the boat is. */
-    private const val MAX_RANGE = 384
+    private const val MAX_RANGE = 512
     /** Extra cost of a step right by the bank — a boat keeps to the middle where it can. */
     private const val BANK_PENALTY = 0.8
-    /** A landing this near the goal is as good as any: the search stops there. */
-    private const val CLOSE_ENOUGH = 4.0
-    /** Columns searched since the best landing last got nearer the goal before giving up on a
-     *  nearer one: a lake searched to its far shore has nothing more to offer. */
-    private const val STALE_NODES = 6_000
+    /**
+     * A landing this near the goal is as good as any: the search stops there. Nearer than the
+     * water comes is no use waiting for — searching on for a bank a few blocks better took every
+     * column there was.
+     */
+    private const val CLOSE_ENOUGH = 12.0
     /** Straight stretches of the route are kept as one leg up to this many columns. */
     private const val MAX_LEG = 24
     private val DIAGONAL = Math.sqrt(2.0)
@@ -48,103 +51,130 @@ object WaterRoutes {
     private const val FRONTIER_GAIN = 16.0
 
     /**
-     * The route for a boat [halfWidth] blocks either side of its middle, floating at [from], to the
-     * landing nearest [goal]; null when it isn't afloat or no landing can be reached.
+     * A search for the way of a boat [halfWidth] blocks either side of its middle, floating at
+     * [from], to the landing nearest [goal]; null when it isn't afloat.
      */
-    fun plan(level: ServerLevel, from: Vec3, halfWidth: Double, goal: Vec3): Route? {
+    fun search(level: ServerLevel, from: Vec3, halfWidth: Double, goal: Vec3): Search? {
         val surface = surfaceY(level, BlockPos.containing(from)) ?: return null
         val grid = Grid(level, surface, Math.max(0, Math.ceil(halfWidth - 0.5).toInt()))
-        val startX = Math.floor(from.x).toInt()
-        val startZ = Math.floor(from.z).toInt()
-        val start = grid.nearestOpen(startX, startZ) ?: return null
+        val start = grid.nearestOpen(Math.floor(from.x).toInt(), Math.floor(from.z).toInt()) ?: return null
+        return Search(grid, start, goal)
+    }
 
-        val g = HashMap<Long, Double>()
-        val parent = HashMap<Long, Long>()
-        val open = PriorityQueue<Pair<Long, Double>>(compareBy { it.second })
-        val key = { x: Int, z: Int -> BlockPos.asLong(x, 0, z) }
-        val h = { x: Int, z: Int -> Math.hypot(x + 0.5 - goal.x, z + 0.5 - goal.z) }
-        val startKey = key(start.first, start.second)
-        g[startKey] = 0.0
-        open.add(startKey to h(start.first, start.second))
-
-        var best: Long? = null
-        var bestShore: Vec3? = null
-        var bestScore = Double.MAX_VALUE
+    /** One search under way — see [step] and [result]. */
+    class Search internal constructor(private val grid: Grid, private val start: Pair<Int, Int>, private val goal: Vec3) {
+        private val g = HashMap<Long, Double>()
+        private val parent = HashMap<Long, Long>()
+        private val open = PriorityQueue<Pair<Long, Double>>(compareBy { it.second })
+        private var best: Long? = null
+        private var bestShore: Vec3? = null
+        private var bestScore = Double.MAX_VALUE
+        /** Water the search reached the edge of — its range, or ground not loaded — nearest the goal. */
+        private var edge: Long? = null
+        private var edgeH = Double.MAX_VALUE
         var expanded = 0
-        var improvedAt = 0
-        // Water the search reached the edge of its range at, nearest the goal first.
-        var edge: Long? = null
-        var edgeH = Double.MAX_VALUE
-        while (open.isNotEmpty() && expanded < MAX_NODES) {
-            val (current, f) = open.poll()
-            val cg = g[current] ?: continue
-            if (f > cg + h(BlockPos.getX(current), BlockPos.getZ(current)) + 1e-6) continue // stale entry
-            expanded++
-            val x = BlockPos.getX(current)
-            val z = BlockPos.getZ(current)
-            grid.landingAt(x, z)?.let { shore ->
-                val score = Math.hypot(shore.x - goal.x, shore.z - goal.z)
-                if (score < bestScore - 0.5) improvedAt = expanded
-                if (score < bestScore) {
-                    bestScore = score
-                    best = current
-                    bestShore = shore
-                }
-            }
-            if (bestScore <= CLOSE_ENOUGH) break
-            if (best != null && expanded - improvedAt > STALE_NODES) break
-            for (dx in -1..1) for (dz in -1..1) {
-                if (dx == 0 && dz == 0) continue
-                val nx = x + dx
-                val nz = z + dz
-                if (Math.abs(nx - start.first) > MAX_RANGE || Math.abs(nz - start.second) > MAX_RANGE) {
-                    val hh = h(x, z)
-                    if (hh < edgeH) {
-                        edgeH = hh
-                        edge = current
-                    }
-                    continue
-                }
-                if (!grid.open(nx, nz)) continue
-                // No cutting a corner across the bank.
-                if (dx != 0 && dz != 0 && (!grid.open(x + dx, z) || !grid.open(x, z + dz))) continue
-                val step = (if (dx != 0 && dz != 0) DIAGONAL else 1.0) + if (grid.byBank(nx, nz)) BANK_PENALTY else 0.0
-                val ng = cg + step
-                val nk = key(nx, nz)
-                if (ng < (g[nk] ?: Double.MAX_VALUE)) {
-                    g[nk] = ng
-                    parent[nk] = current
-                    open.add(nk to ng + h(nx, nz))
-                }
-            }
-        }
-        // The water the search stopped short on: still-open columns and the edge of its range.
-        var frontier = edge
-        var frontierH = edgeH
-        for ((k, _) in open) {
-            if (!g.containsKey(k)) continue
-            val hh = h(BlockPos.getX(k), BlockPos.getZ(k))
-            if (hh < frontierH) {
-                frontierH = hh
-                frontier = k
-            }
-        }
-        val onward = frontier?.takeIf { frontierH < bestScore - FRONTIER_GAIN }
-        val end = onward ?: best ?: return null
-        val shore = if (onward != null) Vec3(BlockPos.getX(end) + 0.5, surface + 1.0, BlockPos.getZ(end) + 0.5)
-            else bestShore ?: return null
+            private set
+        var finished = false
+            private set
+        /** Why it stopped: a landing close enough, all the water searched, or out of columns. */
+        var stoppedBy = ""
+            private set
 
-        val columns = ArrayList<Long>()
-        var at: Long? = end
-        while (at != null) {
-            columns += at
-            at = parent[at]
+        init {
+            val k = key(start.first, start.second)
+            g[k] = 0.0
+            open.add(k to h(start.first, start.second))
         }
-        columns.reverse()
-        val y = surface + 0.5
-        val points = simplify(grid, columns).map { Vec3(BlockPos.getX(it) + 0.5, y, BlockPos.getZ(it) + 0.5) }
-        val landing = Vec3(BlockPos.getX(end) + 0.5, y, BlockPos.getZ(end) + 0.5)
-        return Route(points, landing, shore, g[end] ?: 0.0, complete = onward == null)
+
+        private fun key(x: Int, z: Int) = BlockPos.asLong(x, 0, z)
+        private fun h(x: Int, z: Int) = Math.hypot(x + 0.5 - goal.x, z + 0.5 - goal.z)
+
+        /** Searches up to [budget] more columns; true once the search is over. */
+        fun step(budget: Int): Boolean {
+            if (finished) return true
+            var left = budget
+            while (left > 0) {
+                if (open.isEmpty()) return finish("all the water")
+                if (expanded >= MAX_NODES) return finish("out of columns")
+                val (current, f) = open.poll()
+                val cg = g[current] ?: continue
+                val x = BlockPos.getX(current)
+                val z = BlockPos.getZ(current)
+                if (f > cg + h(x, z) + 1e-6) continue // stale entry
+                expanded++
+                left--
+                grid.landingAt(x, z)?.let { shore ->
+                    val score = Math.hypot(shore.x - goal.x, shore.z - goal.z)
+                    if (score < bestScore) {
+                        bestScore = score
+                        best = current
+                        bestShore = shore
+                    }
+                }
+                if (bestScore <= CLOSE_ENOUGH) return finish("close enough")
+                for (dx in -1..1) for (dz in -1..1) {
+                    if (dx == 0 && dz == 0) continue
+                    val nx = x + dx
+                    val nz = z + dz
+                    if (Math.abs(nx - start.first) > MAX_RANGE || Math.abs(nz - start.second) > MAX_RANGE || !grid.loaded(nx, nz)) {
+                        val hh = h(x, z)
+                        if (hh < edgeH) {
+                            edgeH = hh
+                            edge = current
+                        }
+                        continue
+                    }
+                    if (!grid.open(nx, nz)) continue
+                    // No cutting a corner across the bank.
+                    if (dx != 0 && dz != 0 && (!grid.open(x + dx, z) || !grid.open(x, z + dz))) continue
+                    val step = (if (dx != 0 && dz != 0) DIAGONAL else 1.0) + if (grid.byBank(nx, nz)) BANK_PENALTY else 0.0
+                    val ng = cg + step
+                    val nk = key(nx, nz)
+                    if (ng < (g[nk] ?: Double.MAX_VALUE)) {
+                        g[nk] = ng
+                        parent[nk] = current
+                        open.add(nk to ng + h(nx, nz))
+                    }
+                }
+            }
+            return false
+        }
+
+        private fun finish(why: String): Boolean {
+            finished = true
+            stoppedBy = why
+            return true
+        }
+
+        /** The way found, once [finished]; null if there's no landing and no water going on. */
+        fun result(): Route? {
+            // The water the search stopped short on: still-open columns and the edges it reached.
+            var frontier = edge
+            var frontierH = edgeH
+            for ((k, _) in open) {
+                if (!g.containsKey(k)) continue
+                val hh = h(BlockPos.getX(k), BlockPos.getZ(k))
+                if (hh < frontierH) {
+                    frontierH = hh
+                    frontier = k
+                }
+            }
+            val onward = frontier?.takeIf { frontierH < bestScore - FRONTIER_GAIN }
+            val end = onward ?: best ?: return null
+            val y = grid.y + 0.5
+            val shore = if (onward != null) Vec3(BlockPos.getX(end) + 0.5, grid.y + 1.0, BlockPos.getZ(end) + 0.5)
+                else bestShore ?: return null
+            val columns = ArrayList<Long>()
+            var at: Long? = end
+            while (at != null) {
+                columns += at
+                at = parent[at]
+            }
+            columns.reverse()
+            val points = simplify(grid, columns).map { Vec3(BlockPos.getX(it) + 0.5, y, BlockPos.getZ(it) + 0.5) }
+            val landing = Vec3(BlockPos.getX(end) + 0.5, y, BlockPos.getZ(end) + 0.5)
+            return Route(points, landing, shore, g[end] ?: 0.0, complete = onward == null)
+        }
     }
 
     /**
@@ -202,10 +232,12 @@ object WaterRoutes {
     }
 
     /** Which water columns at one surface height a hull fits through. */
-    private class Grid(val level: ServerLevel, val y: Int, val clearance: Int) {
+    internal class Grid(val level: ServerLevel, val y: Int, val clearance: Int) {
         private val water = HashMap<Long, Boolean>()
         private val fits = HashMap<Long, Boolean>()
         private val cursor = BlockPos.MutableBlockPos()
+
+        fun loaded(x: Int, z: Int): Boolean = level.chunkSource.getChunkNow(x shr 4, z shr 4) != null
 
         /** Open water at the surface with room above it, on loaded ground. */
         fun water(x: Int, z: Int): Boolean = water.getOrPut(BlockPos.asLong(x, 0, z)) {
