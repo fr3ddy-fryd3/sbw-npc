@@ -216,6 +216,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
 
         val squad = entity.currentSquad() ?: return logEligibility(entity, false) { "no squad" }
+        // A barrage's objective is what the tube shells, not somewhere to be driven to.
+        if (squad.order == SquadOrder.BARRAGE) return logEligibility(entity, false) { "barrage is fired from the tube" }
         val home = entity.homeCenter() ?: return logEligibility(entity, false) { "no home/objective" }
         if (shouldPrioritizeMortar(entity, squad.order)) {
             return logEligibility(entity, false) { "mortar duty takes priority for ATTACK" }

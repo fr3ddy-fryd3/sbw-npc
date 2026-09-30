@@ -120,16 +120,18 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
             // Own arrival threshold, SquadFormation.defendArrivalRadius — DEFEND holds a perimeter
             // sized to the squad, wider than ATTACK's ring; derived rather than hardcoded so it
             // stays past the slots it assigns (see the oscillation note on ARRIVAL_RADIUS).
-            // A barraging mortar crew stays put by its tube exactly like DEFEND; only the aim
-            // point differs, and that is MortarOperatorBehaviour's business.
-            SquadOrder.DEFEND, SquadOrder.BARRAGE -> {
+            // A barraging crew shells the objective from where its tube stands: the objective is
+            // the target, not a place to go. Moving the tube within reach of it is
+            // MortarOperatorBehaviour's business; taken for a point to hold, it walked the crew
+            // off toward the shelling whenever they stepped away from the tube.
+            SquadOrder.BARRAGE -> entity.navigation.stop()
+            SquadOrder.DEFEND -> {
                 // A defender that has picked its post keeps making for it: its way there can lead
                 // out past the arrival line first, and flipping back to "not arrived" there had it
                 // turning round for the centre and back again, over and over.
-                val hasPost = order == SquadOrder.DEFEND && defendPost != null && defendPostHome == home
-                val arrived = hasPost || dist <= if (order == SquadOrder.DEFEND) SquadFormation.defendArrivalRadius(squad.members.size)
-                    else SquadFormation.ARRIVAL_RADIUS + 4.5
-                if (arrived && order == SquadOrder.DEFEND) holdDefendPost(entity, home)
+                val hasPost = defendPost != null && defendPostHome == home
+                val arrived = hasPost || dist <= SquadFormation.defendArrivalRadius(squad.members.size)
+                if (arrived) holdDefendPost(entity, home)
                 else approachSlot(entity, home, arrived, WALK_SPEED_MODIFIER)
             }
             SquadOrder.PATROL -> {
