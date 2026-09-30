@@ -13,6 +13,14 @@ import java.util.PriorityQueue
  * blocks across is found, not just the next hundred blocks of it. Then the way itself is found
  * column by column, only through the cells the first pass went by.
  *
+ * A cell of the first pass is not one place but as many as it has parts — columns a traveller can
+ * get between both ways without leaving it — and one part leads on to another only where a column
+ * of the one steps onto a column of the other: the usual way of making the coarse pass of a
+ * two-level search exact (as in HPA*). Taken whole, a cell cut by a ledge or a cliff let the first
+ * pass through where no traveller could go, and the column pass then found no way along the cells
+ * it chose: the trip was thrown away, and a squad on a mountain was sent off in blind legs down
+ * into the valleys and caves.
+ *
  * How a trip ends is the [Medium]'s: a boat puts its crew on a bank and they walk in, a vehicle can
  * stop anywhere and its crew walk on, a man on foot walks right up to the goal. Every way to end
  * it costs the whole trip in blocks walked ([Medium.pace]), and the cheapest is taken.
@@ -101,13 +109,18 @@ object CellPlanner {
         private val startZ: Int,
         val goal: Vec3,
     ) {
+        /** Per known cell, the part of it each column belongs to (-1: closed), [CELL] columns of x
+         *  by [CELL] of z; and how many parts it has. A node of the first pass is a cell with the
+         *  part in the key's y — part 0 for a cell nothing is known of. */
+        private val parts = HashMap<Long, IntArray>()
+        private val partCount = HashMap<Long, Int>()
         private val cellG = HashMap<Long, Double>()
         private val cellParent = HashMap<Long, Long>()
         private val cellOpen = PriorityQueue<Pair<Long, Double>>(compareBy { it.second })
         private val cellKnown = HashMap<Long, Boolean>()
         private var cellsVisited = 0
 
-        /** The cheapest way to end the trip so far: the cell and column, where to get off, and the
+        /** The cheapest way to end the trip so far: the node and column, where to get off, and the
          *  whole trip's cost in blocks walked. [bestUnseen]: going on into ground not yet seen. */
         private var bestCost = Double.MAX_VALUE
         private var bestCell: Long? = null
@@ -133,19 +146,62 @@ object CellPlanner {
             private set
 
         init {
-            val c = key(Math.floorDiv(startX, CELL), Math.floorDiv(startZ, CELL))
-            cellG[c] = 0.0
-            cellOpen.add(c to cellH(c))
+            val cx = Math.floorDiv(startX, CELL)
+            val cz = Math.floorDiv(startZ, CELL)
+            val cell = key(cx, cz)
+            val part = if (known(cell)) partsOf(cell)[columnIndex(startX, startZ)] else 0
+            val start = node(cx, cz, part.coerceAtLeast(0))
+            cellG[start] = 0.0
+            cellOpen.add(start to cellH(start))
         }
 
         private fun key(x: Int, z: Int) = BlockPos.asLong(x, 0, z)
+        private fun node(cx: Int, cz: Int, part: Int) = BlockPos.asLong(cx, part, cz)
         private fun kx(k: Long) = BlockPos.getX(k)
         private fun kz(k: Long) = BlockPos.getZ(k)
+        private fun partOf(n: Long) = BlockPos.getY(n)
+        private fun cellOfNode(n: Long) = key(kx(n), kz(n))
         private fun cellOf(x: Int, z: Int) = key(Math.floorDiv(x, CELL), Math.floorDiv(z, CELL))
+        private fun columnIndex(x: Int, z: Int) = Math.floorMod(x, CELL) * CELL + Math.floorMod(z, CELL)
         private fun cellH(c: Long) = Math.hypot(kx(c) * CELL + CELL / 2.0 - goal.x, kz(c) * CELL + CELL / 2.0 - goal.z) * medium.pace
-        private fun known(c: Long) = cellKnown.getOrPut(c) { medium.known(kx(c) * CELL, kz(c) * CELL) }
+        private fun known(c: Long) = cellKnown.getOrPut(cellOfNode(c)) { medium.known(kx(c) * CELL, kz(c) * CELL) }
         private fun inRange(c: Long) =
             Math.abs(kx(c) * CELL - startX) <= MAX_RANGE && Math.abs(kz(c) * CELL - startZ) <= MAX_RANGE
+
+        /** The parts of a known [cell]: open columns joined wherever the traveller can step from
+         *  one to the other and back. */
+        private fun partsOf(cell: Long): IntArray = parts.getOrPut(cellOfNode(cell)) {
+            val x0 = kx(cell) * CELL
+            val z0 = kz(cell) * CELL
+            val ids = IntArray(CELL * CELL) { -1 }
+            var count = 0
+            val stack = ArrayDeque<Int>()
+            for (s in 0 until CELL * CELL) {
+                if (ids[s] >= 0 || !medium.open(x0 + s / CELL, z0 + s % CELL)) continue
+                ids[s] = count
+                stack.addLast(s)
+                while (stack.isNotEmpty()) {
+                    val c = stack.removeLast()
+                    val ax = x0 + c / CELL
+                    val az = z0 + c % CELL
+                    for ((dx, dz) in SIDES) {
+                        val i = c / CELL + dx
+                        val j = c % CELL + dz
+                        if (i !in 0 until CELL || j !in 0 until CELL) continue
+                        val t = i * CELL + j
+                        if (ids[t] >= 0) continue
+                        val bx = x0 + i
+                        val bz = z0 + j
+                        if (!medium.open(bx, bz) || !medium.step(ax, az, bx, bz) || !medium.step(bx, bz, ax, az)) continue
+                        ids[t] = count
+                        stack.addLast(t)
+                    }
+                }
+                count++
+            }
+            partCount[cellOfNode(cell)] = count
+            ids
+        }
 
         /** Searches on for up to [budget] units of work; true once the search is over. */
         fun step(budget: Int): Boolean {
@@ -201,52 +257,96 @@ object CellPlanner {
             return false
         }
 
-        private fun visitCell(cell: Long, cg: Double) {
+        private fun visitCell(n: Long, cg: Double) {
             cellsVisited++
-            if (known(cell)) {
+            val cx = kx(n)
+            val cz = kz(n)
+            val here = known(n)
+            if (here) {
+                val ids = partsOf(n)
                 for (i in 0 until CELL) for (j in 0 until CELL) {
-                    val x = kx(cell) * CELL + i
-                    val z = kz(cell) * CELL + j
-                    if (!medium.open(x, z)) continue
+                    if (ids[i * CELL + j] != partOf(n)) continue
+                    val x = cx * CELL + i
+                    val z = cz * CELL + j
                     val exit = medium.exitAt(x, z, goal) ?: continue
                     val cost = cg + medium.remaining(exit, goal)
                     if (cost < bestCost) {
                         bestCost = cost
-                        bestCell = cell
+                        bestCell = n
                         bestColumn = key(x, z)
                         bestExit = exit
                         bestUnseen = false
                     }
                 }
+                // Down a ledge to another part of the same cell: a way only that way round.
+                val count = partCount[cellOfNode(n)] ?: 0
+                for (q in 0 until count) {
+                    if (q == partOf(n) || !stepsWithin(n, partOf(n), q)) continue
+                    relax(n, node(cx, cz, q), cg + medium.pace)
+                }
             } else {
                 // Nothing known here: going on over it toward the goal is a way to end it too.
-                val cost = cg + cellH(cell) * UNSEEN
+                val cost = cg + cellH(n) * UNSEEN
                 if (cost < bestCost) {
                     bestCost = cost
-                    bestCell = cell
+                    bestCell = n
                     bestColumn = null
                     bestExit = null
                     bestUnseen = true
                 }
             }
             for ((dx, dz) in SIDES) {
-                val next = key(kx(cell) + dx, kz(cell) + dz)
+                val next = key(cx + dx, cz + dz)
                 if (!inRange(next)) continue
-                if (!passable(cell, next, dx, dz)) continue
                 val ng = cg + CELL * medium.pace * if (known(next)) 1.0 else UNSEEN
-                if (ng < (cellG[next] ?: Double.MAX_VALUE)) {
-                    cellG[next] = ng
-                    cellParent[next] = cell
-                    cellOpen.add(next to ng + cellH(next))
+                if (!known(next)) {
+                    relax(n, next, ng)
+                    continue
+                }
+                val count = partsOf(next).let { partCount[next] ?: 0 }
+                for (q in 0 until count) {
+                    if (passable(n, dx, dz, q, here)) relax(n, node(cx + dx, cz + dz, q), ng)
                 }
             }
         }
 
-        /** The traveller can cross from [cell] to its neighbour [next] facing ([dx], [dz]). */
-        private fun passable(cell: Long, next: Long, dx: Int, dz: Int): Boolean {
-            if (!known(next) || !known(cell)) return true
+        private fun relax(from: Long, to: Long, ng: Double) {
+            if (ng < (cellG[to] ?: Double.MAX_VALUE)) {
+                cellG[to] = ng
+                cellParent[to] = from
+                cellOpen.add(to to ng + cellH(to))
+            }
+        }
+
+        /** A column of part [p] of [cell] steps onto a neighbouring column of its part [q]. */
+        private fun stepsWithin(cell: Long, p: Int, q: Int): Boolean {
+            val ids = partsOf(cell)
             val x0 = kx(cell) * CELL
             val z0 = kz(cell) * CELL
+            for (c in 0 until CELL * CELL) {
+                if (ids[c] != p) continue
+                for ((dx, dz) in SIDES) {
+                    val i = c / CELL + dx
+                    val j = c % CELL + dz
+                    if (i !in 0 until CELL || j !in 0 until CELL || ids[i * CELL + j] != q) continue
+                    if (medium.step(x0 + c / CELL, z0 + c % CELL, x0 + i, z0 + j)) return true
+                }
+            }
+            return false
+        }
+
+        /**
+         * The traveller can get from node [n] into part [q] of the next cell over, facing ([dx], [dz]):
+         * a column of [n]'s part on that side steps onto one of [q] across it. Out of a cell nothing
+         * is known of, any part with a column on that side will do.
+         */
+        private fun passable(n: Long, dx: Int, dz: Int, q: Int, here: Boolean): Boolean {
+            val cell = cellOfNode(n)
+            val next = key(kx(n) + dx, kz(n) + dz)
+            val nextIds = partsOf(next)
+            val ids = if (here) partsOf(cell) else null
+            val x0 = kx(n) * CELL
+            val z0 = kz(n) * CELL
             for (k in 0 until CELL) {
                 val (ax, az) = when {
                     dx > 0 -> (x0 + CELL - 1) to (z0 + k)
@@ -254,7 +354,11 @@ object CellPlanner {
                     dz > 0 -> (x0 + k) to (z0 + CELL - 1)
                     else -> (x0 + k) to z0
                 }
-                if (medium.open(ax, az) && medium.open(ax + dx, az + dz) && medium.step(ax, az, ax + dx, az + dz)) return true
+                val bx = ax + dx
+                val bz = az + dz
+                if (nextIds[columnIndex(bx, bz)] != q) continue
+                if (ids == null) return true
+                if (ids[columnIndex(ax, az)] == partOf(n) && medium.step(ax, az, bx, bz)) return true
             }
             return false
         }
@@ -292,16 +396,17 @@ object CellPlanner {
             return true
         }
 
-        /** An open column of [cell] on its side facing [toward]. */
-        private fun columnToward(cell: Long, toward: Long): Long? {
+        /** A column of node [n]'s part on its side facing [toward]. */
+        private fun columnToward(n: Long, toward: Long): Long? {
             val cx = (kx(toward) * CELL + CELL / 2.0)
             val cz = (kz(toward) * CELL + CELL / 2.0)
+            val ids = partsOf(n)
             var best: Long? = null
             var bestD = Double.MAX_VALUE
             for (i in 0 until CELL) for (j in 0 until CELL) {
-                val x = kx(cell) * CELL + i
-                val z = kz(cell) * CELL + j
-                if (!medium.open(x, z)) continue
+                if (ids[i * CELL + j] != partOf(n)) continue
+                val x = kx(n) * CELL + i
+                val z = kz(n) * CELL + j
                 val d = Math.hypot(x + 0.5 - cx, z + 0.5 - cz)
                 if (d < bestD) {
                     bestD = d
