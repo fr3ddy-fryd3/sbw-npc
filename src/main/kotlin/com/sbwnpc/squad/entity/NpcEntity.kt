@@ -364,6 +364,15 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      *  the ground if the carrier dies, so a displacing crew can never simply lose its mortar. */
     var carryingMortar: Boolean = false
 
+    /** The mortar crew's own behaviour is walking this man somewhere — after the carried tube, to
+     *  a Supply for shells, back to the tube — see [com.sbwnpc.squad.entity.ai.MortarLoaderBehaviour]
+     *  and [com.sbwnpc.squad.entity.ai.MortarOperatorBehaviour]. Runtime only. */
+    var mortarErrand: Boolean = false
+
+    /** The crew's errand, not the squad order, sets where and how fast it goes. Both used to steer
+     *  it at once, and the order's walking pace won. */
+    fun movingMortar(): Boolean = carryingMortar || mortarErrand
+
     /** A machine gunner's launcher while the machine gun is in its hands, and the machine gun
      *  while the launcher is — see [com.sbwnpc.squad.combat.AntiArmourKit]. Persisted; empty for
      *  every class that carries no second weapon. */

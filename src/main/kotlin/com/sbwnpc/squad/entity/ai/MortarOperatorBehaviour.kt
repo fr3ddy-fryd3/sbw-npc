@@ -90,7 +90,10 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         /** How long the mission has to stay out of reach before breaking the mortar down. Long
          *  enough that a target dipping behind a hill for a moment isn't reason to move. */
         private const val DISPLACE_AFTER_TICKS = 100
-        private const val DISPLACE_SPEED = 1.0
+        /** At a run, like a man falling in: a crew displacing its tube has fire to get back to. */
+        private const val DISPLACE_SPEED = 1.3
+        /** Farther than this from the tube, he runs to it. */
+        private const val RUN_TO_TUBE_DISTANCE = 8.0
     }
 
     private var nextMortarSearchTick = 0
@@ -152,10 +155,12 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         MortarClaims.releaseOperator(entity.uuid)
         mortar = null
         entity.servingMortar = false
+        entity.mortarErrand = false
     }
 
     override fun tick(entity: NpcEntity) {
         val level = entity.level() as? ServerLevel ?: return
+        entity.mortarErrand = false
         if (entity.carryingMortar) {
             entity.servingMortar = false
             tickDisplacing(entity, level)
@@ -173,7 +178,8 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         val dist = entity.position().distanceTo(m.position())
         if (dist > 2.5) {
             entity.servingMortar = false
-            entity.navigateTo(m.x, m.y, m.z, 1.0)
+            entity.mortarErrand = true
+            entity.navigateTo(m.x, m.y, m.z, if (dist > RUN_TO_TUBE_DISTANCE) DISPLACE_SPEED else 1.0)
             return
         }
         entity.servingMortar = true
@@ -246,6 +252,7 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun packForRelocation(entity: NpcEntity, m: Entity) {
         if (entity.position().distanceTo(m.position()) > 2.5) {
             entity.servingMortar = false
+            entity.mortarErrand = true
             entity.navigateTo(m.x, m.y, m.z, DISPLACE_SPEED)
             return
         }

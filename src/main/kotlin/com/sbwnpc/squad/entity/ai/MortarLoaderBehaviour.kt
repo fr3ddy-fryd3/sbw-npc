@@ -47,7 +47,12 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val SELF_DEFENSE_RANGE_SQR = 6.0 * 6.0
         /** How close the loader keeps to an operator carrying the mortar. */
         private const val FOLLOW_DISTANCE_SQR = 5.0 * 5.0
-        private const val FOLLOW_SPEED = 1.0
+        /** At a run, like the operator carrying the tube, or he falls behind it. */
+        private const val FOLLOW_SPEED = 1.3
+        /** Fetching shells: the tube is silent until he's back. */
+        private const val ERRAND_SPEED = 1.3
+        /** Farther than this from his post, he runs back to it. */
+        private const val RUN_BACK_DISTANCE = 8.0
         /** The loader's place beside the tube. The operator takes the tube itself; two men walking
          *  to the same point shove each other off it and both keep walking back. */
         private const val POST_OFFSET = 1.8
@@ -118,6 +123,7 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
         carrier = null
         postOf = null
         entity.servingMortar = false
+        entity.mortarErrand = false
     }
 
     /** Beside the tube, square to where it points. */
@@ -132,7 +138,10 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun tick(entity: NpcEntity) {
-        carrier?.takeIf { it.isAlive && it.carryingMortar }?.let { with ->
+        entity.mortarErrand = false
+        val with = carrier?.takeIf { it.isAlive && it.carryingMortar }
+        if (with != null) {
+            entity.mortarErrand = true
             entity.servingMortar = false
             if (entity.distanceToSqr(with) > FOLLOW_DISTANCE_SQR) {
                 entity.navigateTo(with.x, with.y, with.z, FOLLOW_SPEED)
@@ -148,14 +157,15 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
                 // Still the crew's errand: squad orders keep off him until he's back at the tube.
                 entity.servingMortar = true
                 if (entity.position().closerThan(supply, SUPPLY_ARRIVE_DISTANCE)) entity.navigation.stop()
-                else entity.navigateTo(supply, 1.0)
+                else entity.navigateTo(supply, ERRAND_SPEED)
                 return
             }
         }
         val post = post(entity, m)
         if (entity.position().distanceTo(post) > POST_TOLERANCE) {
             entity.servingMortar = false
-            entity.navigateTo(post, 1.0)
+            entity.mortarErrand = true
+            entity.navigateTo(post, if (entity.position().distanceTo(post) > RUN_BACK_DISTANCE) ERRAND_SPEED else 1.0)
             return
         }
         entity.servingMortar = true

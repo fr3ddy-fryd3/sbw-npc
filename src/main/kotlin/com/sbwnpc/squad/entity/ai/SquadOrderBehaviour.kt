@@ -74,6 +74,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         // moment would get marched off toward its DEFEND/PATROL slot, right out of its own hole.
         if (entity.diggedIn) return false
         if (entity.busyWithRole()) return false
+        if (entity.movingMortar()) return false
         if (entity.evadingGrenade()) return false
         // homeCenter() is null outside a squad too.
         return entity.homeCenter() != null
