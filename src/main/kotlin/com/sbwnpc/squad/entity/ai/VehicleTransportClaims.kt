@@ -11,14 +11,14 @@ object VehicleTransportClaims {
     private val passengers = HashMap<UUID, MutableSet<UUID>>() // vehicle -> passenger npcs
     private val claimedVehicle = HashMap<UUID, UUID>() // npc -> vehicle
     private val combatGunners = HashMap<UUID, UUID>() // vehicle -> npc holding an armed seat
-    private val crossings = HashMap<UUID, net.minecraft.world.phys.Vec3>() // boat -> far shore it's bound for
+    private val landings = HashMap<UUID, net.minecraft.world.phys.Vec3>() // boat -> where it puts its crew ashore
 
-    /** Where a boat's driver is taking it — the far shore of the crossing it claimed the boat for,
-     *  so the passengers get off there too. */
-    fun crossingOf(vehicle: UUID): net.minecraft.world.phys.Vec3? = crossings[vehicle]
+    /** Where a boat is taking its crew ashore ([BoatTrips]), so everyone aboard gets off there —
+     *  kept while anyone still holds a seat in it, whoever is at the wheel. */
+    fun landingOf(vehicle: UUID): net.minecraft.world.phys.Vec3? = landings[vehicle]
 
-    fun setCrossing(vehicle: UUID, farShore: net.minecraft.world.phys.Vec3) {
-        crossings[vehicle] = farShore
+    fun setLanding(vehicle: UUID, landing: net.minecraft.world.phys.Vec3) {
+        landings[vehicle] = landing
     }
 
     fun driverOf(vehicle: UUID): UUID? = drivers[vehicle]
@@ -71,14 +71,12 @@ object VehicleTransportClaims {
     fun release(npc: UUID) {
         val vehicle = claimedVehicle.remove(npc)
         if (vehicle != null) {
-            if (drivers[vehicle] == npc) {
-                drivers.remove(vehicle)
-                crossings.remove(vehicle)
-            }
+            if (drivers[vehicle] == npc) drivers.remove(vehicle)
             passengers[vehicle]?.let { seats ->
                 seats.remove(npc)
                 if (seats.isEmpty()) passengers.remove(vehicle)
             }
+            if (!drivers.containsKey(vehicle) && !passengers.containsKey(vehicle)) landings.remove(vehicle)
         }
         combatGunners.entries.removeIf { it.value == npc }
     }
@@ -88,6 +86,6 @@ object VehicleTransportClaims {
         passengers.clear()
         claimedVehicle.clear()
         combatGunners.clear()
-        crossings.clear()
+        landings.clear()
     }
 }

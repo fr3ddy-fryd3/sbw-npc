@@ -414,29 +414,41 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         if (vehicle == null || this.vehicle != null) return
         if (level().isClientSide || !isAlive || !Ports.vehicles.isVehicle(vehicle)) return
         val hull = Ports.vehicles.hull(vehicle)
+        // Off a boat, onto the bank it came up against rather than into the water beside it.
+        if (Ports.vehicles.mobility(vehicle) == com.sbwnpc.squad.domain.port.Mobility.WATER) {
+            clearSpotBeside(hull, dry = true)?.let { teleportTo(it.x, it.y, it.z) }
+            return
+        }
         if (!hull.intersects(boundingBox)) return
         clearSpotBeside(hull)?.let { teleportTo(it.x, it.y, it.z) }
     }
 
-    /** Nearest standable, unobstructed spot just outside [hull], searched round its edge. */
-    private fun clearSpotBeside(hull: net.minecraft.world.phys.AABB): Vec3? {
-        val margin = bbWidth / 2.0 + DISMOUNT_CLEARANCE
-        val box = hull.inflate(margin, 0.0, margin)
+    /** Nearest standable, unobstructed spot just outside [hull], searched round its edge — or, when
+     *  [dry], the nearest one on land, up to [LANDING_REACH] blocks further out, and only if there's
+     *  none the nearest in the water. */
+    private fun clearSpotBeside(hull: net.minecraft.world.phys.AABB, dry: Boolean = false): Vec3? {
         val candidates = ArrayList<Vec3>()
-        var t = 0.0
-        while (t < 1.0) {
-            candidates += Vec3(box.minX + (box.maxX - box.minX) * t, 0.0, box.minZ)
-            candidates += Vec3(box.minX + (box.maxX - box.minX) * t, 0.0, box.maxZ)
-            candidates += Vec3(box.minX, 0.0, box.minZ + (box.maxZ - box.minZ) * t)
-            candidates += Vec3(box.maxX, 0.0, box.minZ + (box.maxZ - box.minZ) * t)
-            t += DISMOUNT_SAMPLE_STEP
+        for (ring in 0..(if (dry) LANDING_REACH else 0)) {
+            val margin = bbWidth / 2.0 + DISMOUNT_CLEARANCE + ring
+            val box = hull.inflate(margin, 0.0, margin)
+            var t = 0.0
+            while (t < 1.0) {
+                candidates += Vec3(box.minX + (box.maxX - box.minX) * t, 0.0, box.minZ)
+                candidates += Vec3(box.minX + (box.maxX - box.minX) * t, 0.0, box.maxZ)
+                candidates += Vec3(box.minX, 0.0, box.minZ + (box.maxZ - box.minZ) * t)
+                candidates += Vec3(box.maxX, 0.0, box.minZ + (box.maxZ - box.minZ) * t)
+                t += DISMOUNT_SAMPLE_STEP
+            }
         }
-        return candidates.sortedBy { it.distanceToSqr(x, 0.0, z) }.firstNotNullOfOrNull { c ->
-            val ground = com.sbwnpc.squad.util.Terrain.standableOrNull(level(), c.x, y + 1.0, c.z) ?: return@firstNotNullOfOrNull null
+        val spots = candidates.sortedBy { it.distanceToSqr(x, 0.0, z) }.mapNotNull { c ->
+            val ground = com.sbwnpc.squad.util.Terrain.standableOrNull(level(), c.x, y + 1.0, c.z) ?: return@mapNotNull null
             val at = Vec3(c.x, ground.y, c.z)
             val body = getDimensions(pose).makeBoundingBox(at)
             at.takeIf { !body.intersects(hull) && level().noCollision(this, body) }
         }
+        if (!dry) return spots.firstOrNull()
+        return spots.firstOrNull { !level().getFluidState(BlockPos.containing(it.x, it.y - 0.5, it.z)).`is`(net.minecraft.tags.FluidTags.WATER) &&
+            !level().getFluidState(BlockPos.containing(it)).`is`(net.minecraft.tags.FluidTags.WATER) } ?: spots.firstOrNull()
     }
 
     override fun hurt(source: DamageSource, amount: Float): Boolean {
@@ -1070,6 +1082,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
         private const val DISMOUNT_CLEARANCE = 0.3
         private const val DISMOUNT_SAMPLE_STEP = 0.125
+        /** Blocks past a boat's side searched for the bank to step out onto. */
+        private const val LANDING_REACH = 4
         private const val LOD_NEAR_RANGE = 96.0
         private const val LOD_FAR_RANGE = 192.0
         private const val IDLE_PATH_NODE_MULTIPLIER = 0.5f
