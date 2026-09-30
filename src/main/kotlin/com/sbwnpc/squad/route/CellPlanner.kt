@@ -61,8 +61,6 @@ object CellPlanner {
         fun step(ax: Int, az: Int, bx: Int, bz: Int): Boolean
         /** Extra blocks of travel stepping onto this column costs: by a bank, in water... */
         fun extraCost(x: Int, z: Int): Double
-        /** Extra blocks of travel getting from one column to another costs — the climb, say. */
-        fun stepCost(ax: Int, az: Int, bx: Int, bz: Int): Double = 0.0
         /** Where the traveller gets off if the trip ends at this column, or null if it can't. */
         fun exitAt(x: Int, z: Int, goal: Vec3): Vec3?
         /** Blocks walked from getting off at [exit] to the goal. */
@@ -247,8 +245,7 @@ object CellPlanner {
                     if (!medium.open(nx, nz) || !medium.step(x, z, nx, nz)) continue
                     // No cutting a corner.
                     if (dx != 0 && dz != 0 && (!medium.open(x + dx, z) || !medium.open(x, z + dz))) continue
-                    val ng = cg + (if (dx != 0 && dz != 0) DIAGONAL else 1.0) + medium.extraCost(nx, nz) +
-                        medium.stepCost(x, z, nx, nz)
+                    val ng = cg + (if (dx != 0 && dz != 0) DIAGONAL else 1.0) + medium.extraCost(nx, nz)
                     val nk = key(nx, nz)
                     if (ng < (g[nk] ?: Double.MAX_VALUE)) {
                         g[nk] = ng
@@ -285,7 +282,7 @@ object CellPlanner {
                 val count = partCount[cellOfNode(n)] ?: 0
                 for (q in 0 until count) {
                     if (q == partOf(n) || !stepsWithin(n, partOf(n), q)) continue
-                    relax(n, node(cx, cz, q), cg + medium.pace + climb(n, node(cx, cz, q)))
+                    relax(n, node(cx, cz, q), cg + medium.pace)
                 }
             } else {
                 // Nothing known here: going on over it toward the goal is a way to end it too.
@@ -308,35 +305,9 @@ object CellPlanner {
                 }
                 val count = partsOf(next).let { partCount[next] ?: 0 }
                 for (q in 0 until count) {
-                    val to = node(cx + dx, cz + dz, q)
-                    if (passable(n, dx, dz, q, here)) relax(n, to, ng + climb(n, to))
+                    if (passable(n, dx, dz, q, here)) relax(n, node(cx + dx, cz + dz, q), ng)
                 }
             }
-        }
-
-        /** What getting from node [from] to node [to] costs over the flat, in blocks walked: the
-         *  climb between the middles of their parts. Nothing where either is unknown. */
-        private fun climb(from: Long, to: Long): Double {
-            if (!known(from) || !known(to)) return 0.0
-            val a = middleOf(from) ?: return 0.0
-            val b = middleOf(to) ?: return 0.0
-            return medium.stepCost(kx(a), kz(a), kx(b), kz(b)) * medium.pace
-        }
-
-        /** The column of node [n]'s part nearest the middle of its cell. */
-        private fun middleOf(n: Long): Long? {
-            val ids = partsOf(n)
-            var best: Long? = null
-            var bestD = Double.MAX_VALUE
-            for (i in 0 until CELL) for (j in 0 until CELL) {
-                if (ids[i * CELL + j] != partOf(n)) continue
-                val d = (i - (CELL - 1) / 2.0).let { it * it } + (j - (CELL - 1) / 2.0).let { it * it }
-                if (d < bestD) {
-                    bestD = d
-                    best = key(kx(n) * CELL + i, kz(n) * CELL + j)
-                }
-            }
-            return best
         }
 
         private fun relax(from: Long, to: Long, ng: Double) {

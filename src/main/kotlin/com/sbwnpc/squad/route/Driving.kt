@@ -7,8 +7,7 @@ import net.minecraft.world.phys.Vec3
 /**
  * A vehicle on the ground, for [CellPlanner]: its hull [halfWidth] blocks either side of its middle
  * over ground ([Ground]) no rougher than it can climb ([climb], its own step height), with
- * [headroom] blocks free over it — no water, no trunks, nothing that burns. Climbing and going down
- * cost more than the flat, as on foot, if less.
+ * [headroom] blocks free over it — no water, no trunks, nothing that burns.
  *
  * It can stop anywhere and its crew walk on: the trip ends wherever driving on would cost more than
  * getting out — at the goal where the ground lets it get there, at the foot of the climb where it
@@ -52,11 +51,6 @@ class Driving(
 
     override fun extraCost(x: Int, z: Int) = 0.0
 
-    override fun stepCost(ax: Int, az: Int, bx: Int, bz: Int): Double {
-        val rise = ground.height(bx, bz) - ground.height(ax, az)
-        return if (rise > 0) rise * CLIMB_COST else -rise * DESCENT_COST
-    }
-
     override fun exitAt(x: Int, z: Int, goal: Vec3): Vec3 = Vec3(x + 0.5, pointY(x, z), z + 0.5)
 
     override fun pointY(x: Int, z: Int) = ground.height(x, z).toDouble()
@@ -64,9 +58,5 @@ class Driving(
     companion object {
         /** A vehicle covers ground this many times faster than a man walking. */
         const val DRIVE_PACE = 2.0
-        /** Extra blocks of driving a block climbed costs. */
-        private const val CLIMB_COST = 1.0
-        /** Extra blocks of driving a block gone down costs. */
-        private const val DESCENT_COST = 0.5
     }
 }
