@@ -12,31 +12,43 @@ import java.util.PriorityQueue
  * nearest where its crew is going.
  *
  * The ground pathfinder is no use here: it is for a man walking, who swims where he has to and
- * climbs out wherever. This searches the water surface the boat floats on, one column at a time,
- * wide enough everywhere for the hull, keeping off the banks where it can. The goal is usually on
- * land, so the search ends at the place a boat can put its crew ashore — water next to ground a
- * man can stand on — nearest the goal.
+ * climbs out wherever. This searches the water surface the boat floats on, wide enough everywhere
+ * for the hull. The goal is usually on land, so the search ends at the place a boat can put its
+ * crew ashore — water next to ground a man can stand on — nearest the goal.
  *
- * A [Search] runs over several ticks, [step] by step: finding the way out of a big lake round a
- * bay that points at the goal but goes nowhere takes a hundred thousand columns, far too many for
- * one tick. Only loaded ground is searched; where the water runs on into ground that isn't loaded,
- * or past [MAX_RANGE], the voyage goes on and is looked at again from further along.
+ * Two passes. First the water is taken in [CELL]-block cells, and every cell the boat can reach is
+ * visited outward from it, nearest first ([Search] runs a few hundred a tick): the bank nearest the
+ * goal is the best one anywhere in reach, however far round a bay the way to it goes. A search
+ * drawn straight at the goal, as this used to be, spent everything it had on a bay pointing at the
+ * goal that led nowhere and set the crew down there. Then the way itself is found column by column,
+ * only through the cells the first pass went by, keeping to the middle of the water where it can —
+ * a boat at speed needs fifty blocks to turn round.
+ *
+ * Only loaded ground is searched; water running on into ground that isn't loaded, or past
+ * [MAX_RANGE], nearer the goal than any bank found makes the voyage go on: the boat sails there
+ * and looks again.
  */
 object WaterRoutes {
-    /** Columns searched at most, over all the ticks a search takes. */
-    private const val MAX_NODES = 150_000
+    /** Blocks along a side of a cell of the first pass. */
+    private const val CELL = 4
+    /** Cells visited at most. */
+    private const val MAX_CELLS = 80_000
+    /** Columns of the second pass at most. */
+    private const val MAX_COLUMNS = 60_000
     /** Nor farther than this from where the boat is. */
-    private const val MAX_RANGE = 512
-    /** Extra cost of a step right by the bank — a boat keeps to the middle where it can. */
-    private const val BANK_PENALTY = 0.8
-    /**
-     * A landing this near the goal is as good as any: the search stops there. Nearer than the
-     * water comes is no use waiting for — searching on for a bank a few blocks better took every
-     * column there was.
-     */
+    private const val MAX_RANGE = 768
+    /** Extra cost of a column with the bank within two blocks of the hull — the middle is kept to. */
+    private const val NARROW_PENALTY = 1.5
+    /** Extra cost of a column right by the bank. */
+    private const val BANK_PENALTY = 3.0
+    /** A landing this near the goal is as good as any: the search stops there. */
     private const val CLOSE_ENOUGH = 12.0
+    /** Water left unsearched this much nearer the goal than the best bank means the voyage goes on. */
+    private const val FRONTIER_GAIN = 16.0
     /** Straight stretches of the route are kept as one leg up to this many columns. */
     private const val MAX_LEG = 24
+    /** Cells of the first pass counted as this many units of a tick's search budget. */
+    private const val CELL_COST = 12
     private val DIAGONAL = Math.sqrt(2.0)
 
     /**
@@ -46,9 +58,6 @@ object WaterRoutes {
      * the boat sails there and looks again.
      */
     class Route(val route: List<Vec3>, val landing: Vec3, val shore: Vec3, val length: Double, val complete: Boolean)
-
-    /** Water left unsearched this much nearer the goal than the best bank means the voyage goes on. */
-    private const val FRONTIER_GAIN = 16.0
 
     /**
      * A search for the way of a boat [halfWidth] blocks either side of its middle, floating at
@@ -63,107 +72,220 @@ object WaterRoutes {
 
     /** One search under way — see [step] and [result]. */
     class Search internal constructor(private val grid: Grid, private val start: Pair<Int, Int>, private val goal: Vec3) {
+        // First pass: cells, outward from the boat.
+        private val startCell = cellOf(start.first, start.second)
+        private val cellParent = HashMap<Long, Long>()
+        private val cellSeen = HashSet<Long>()
+        private val cellQueue = ArrayDeque<Long>()
+        /** The best bank so far: its water column, where a man steps out, and how far that is from the goal. */
+        private var landingColumn: Long? = null
+        private var landingCell: Long? = null
+        private var bestShore: Vec3? = null
+        private var bestScore = Double.MAX_VALUE
+        /** The cell the search reached an edge at — its range or unloaded ground — nearest the goal. */
+        private var edgeCell: Long? = null
+        private var edgeH = Double.MAX_VALUE
+        private var cellsVisited = 0
+
+        // Second pass: columns, through the cells the way goes by.
+        private var corridor: HashSet<Long>? = null
+        private var target: Long? = null
+        private var onward = false
         private val g = HashMap<Long, Double>()
         private val parent = HashMap<Long, Long>()
         private val open = PriorityQueue<Pair<Long, Double>>(compareBy { it.second })
-        private var best: Long? = null
-        private var bestShore: Vec3? = null
-        private var bestScore = Double.MAX_VALUE
-        /** Water the search reached the edge of — its range, or ground not loaded — nearest the goal. */
-        private var edge: Long? = null
-        private var edgeH = Double.MAX_VALUE
+        private var reached: Long? = null
+        private var route: Route? = null
+
+        /** Work done so far, in the units a tick's budget is counted in. */
         var expanded = 0
             private set
         var finished = false
             private set
-        /** Why it stopped: a landing close enough, all the water searched, or out of columns. */
+        /** How it ended: at a bank near enough, the best bank in all the water in reach, on toward
+         *  water not yet searched, or no way at all. */
         var stoppedBy = ""
             private set
 
         init {
-            val k = key(start.first, start.second)
-            g[k] = 0.0
-            open.add(k to h(start.first, start.second))
+            cellSeen += startCell
+            cellQueue += startCell
         }
 
         private fun key(x: Int, z: Int) = BlockPos.asLong(x, 0, z)
+        private fun cellOf(x: Int, z: Int) = key(Math.floorDiv(x, CELL), Math.floorDiv(z, CELL))
+        private fun cx(cell: Long) = BlockPos.getX(cell)
+        private fun cz(cell: Long) = BlockPos.getZ(cell)
+        private fun cellH(cell: Long) = Math.hypot(cx(cell) * CELL + CELL / 2.0 - goal.x, cz(cell) * CELL + CELL / 2.0 - goal.z)
         private fun h(x: Int, z: Int) = Math.hypot(x + 0.5 - goal.x, z + 0.5 - goal.z)
 
-        /** Searches up to [budget] more columns; true once the search is over. */
+        /** Searches on for up to [budget] units of work; true once the search is over. */
         fun step(budget: Int): Boolean {
             if (finished) return true
             var left = budget
+            if (corridor == null) {
+                while (left > 0) {
+                    if (cellQueue.isEmpty() || cellsVisited >= MAX_CELLS || bestScore <= CLOSE_ENOUGH) {
+                        if (!chooseTarget()) return finish("no way to a bank")
+                        break
+                    }
+                    visitCell(cellQueue.removeFirst())
+                    left -= CELL_COST
+                    expanded += CELL_COST
+                }
+                if (corridor == null) return false
+            }
             while (left > 0) {
-                if (open.isEmpty()) return finish("all the water")
-                if (expanded >= MAX_NODES) return finish("out of columns")
+                val t = target ?: return finish("no way to a bank")
+                if (open.isEmpty() || g.size > MAX_COLUMNS) return finish("no way through")
                 val (current, f) = open.poll()
                 val cg = g[current] ?: continue
                 val x = BlockPos.getX(current)
                 val z = BlockPos.getZ(current)
-                if (f > cg + h(x, z) + 1e-6) continue // stale entry
-                expanded++
+                val tx = BlockPos.getX(t)
+                val tz = BlockPos.getZ(t)
+                if (f > cg + Math.hypot((x - tx).toDouble(), (z - tz).toDouble()) + 1e-6) continue // stale entry
                 left--
-                grid.landingAt(x, z)?.let { shore ->
-                    val score = Math.hypot(shore.x - goal.x, shore.z - goal.z)
-                    if (score < bestScore) {
-                        bestScore = score
-                        best = current
-                        bestShore = shore
-                    }
+                expanded++
+                if (current == t) {
+                    reached = current
+                    return finish(
+                        when {
+                            onward -> "on toward water not yet searched"
+                            bestScore <= CLOSE_ENOUGH -> "close enough"
+                            else -> "best bank in reach"
+                        }
+                    )
                 }
-                if (bestScore <= CLOSE_ENOUGH) return finish("close enough")
                 for (dx in -1..1) for (dz in -1..1) {
                     if (dx == 0 && dz == 0) continue
                     val nx = x + dx
                     val nz = z + dz
-                    if (Math.abs(nx - start.first) > MAX_RANGE || Math.abs(nz - start.second) > MAX_RANGE || !grid.loaded(nx, nz)) {
-                        val hh = h(x, z)
-                        if (hh < edgeH) {
-                            edgeH = hh
-                            edge = current
-                        }
-                        continue
-                    }
+                    if (cellOf(nx, nz) !in corridor!!) continue
                     if (!grid.open(nx, nz)) continue
                     // No cutting a corner across the bank.
                     if (dx != 0 && dz != 0 && (!grid.open(x + dx, z) || !grid.open(x, z + dz))) continue
-                    val step = (if (dx != 0 && dz != 0) DIAGONAL else 1.0) + if (grid.byBank(nx, nz)) BANK_PENALTY else 0.0
+                    val step = (if (dx != 0 && dz != 0) DIAGONAL else 1.0) +
+                        (if (grid.byBank(nx, nz)) BANK_PENALTY else if (!grid.wide(nx, nz)) NARROW_PENALTY else 0.0)
                     val ng = cg + step
                     val nk = key(nx, nz)
                     if (ng < (g[nk] ?: Double.MAX_VALUE)) {
                         g[nk] = ng
                         parent[nk] = current
-                        open.add(nk to ng + h(nx, nz))
+                        open.add(nk to ng + Math.hypot((nx - tx).toDouble(), (nz - tz).toDouble()))
                     }
                 }
             }
             return false
         }
 
-        private fun finish(why: String): Boolean {
-            finished = true
-            stoppedBy = why
+        private fun visitCell(cell: Long) {
+            cellsVisited++
+            val x0 = cx(cell) * CELL
+            val z0 = cz(cell) * CELL
+            // By the bank: look for somewhere to land.
+            var whole = true
+            for (i in 0 until CELL) for (j in 0 until CELL) if (!grid.open(x0 + i, z0 + j)) whole = false
+            if (!whole) {
+                for (i in 0 until CELL) for (j in 0 until CELL) {
+                    val x = x0 + i
+                    val z = z0 + j
+                    if (!grid.open(x, z) || !grid.byBank(x, z)) continue
+                    val shore = grid.landingAt(x, z) ?: continue
+                    val score = Math.hypot(shore.x - goal.x, shore.z - goal.z)
+                    if (score < bestScore) {
+                        bestScore = score
+                        bestShore = shore
+                        landingColumn = key(x, z)
+                        landingCell = cell
+                    }
+                }
+            }
+            for ((dx, dz) in SIDES) {
+                val next = key(cx(cell) + dx, cz(cell) + dz)
+                if (next in cellSeen) continue
+                val nx0 = cx(next) * CELL
+                val nz0 = cz(next) * CELL
+                if (Math.abs(nx0 - start.first) > MAX_RANGE || Math.abs(nz0 - start.second) > MAX_RANGE || !grid.loaded(nx0, nz0)) {
+                    val hh = cellH(cell)
+                    if (hh < edgeH) {
+                        edgeH = hh
+                        edgeCell = cell
+                    }
+                    continue
+                }
+                if (!linked(x0, z0, dx, dz)) continue
+                cellSeen += next
+                cellParent[next] = cell
+                cellQueue += next
+            }
+        }
+
+        /** Water the hull fits through runs across the side of the cell at ([x0], [z0]) facing ([dx], [dz]). */
+        private fun linked(x0: Int, z0: Int, dx: Int, dz: Int): Boolean {
+            for (k in 0 until CELL) {
+                val (ax, az) = when {
+                    dx > 0 -> (x0 + CELL - 1) to (z0 + k)
+                    dx < 0 -> x0 to (z0 + k)
+                    dz > 0 -> (x0 + k) to (z0 + CELL - 1)
+                    else -> (x0 + k) to z0
+                }
+                if (grid.open(ax, az) && grid.open(ax + dx, az + dz)) return true
+            }
+            return false
+        }
+
+        /** After the first pass: where the way goes, and the cells it goes by. */
+        private fun chooseTarget(): Boolean {
+            // Water still unsearched — the queue, and the edges — nearer the goal than the best bank.
+            var frontier = edgeCell
+            var frontierH = edgeH
+            for (cell in cellQueue) {
+                val hh = cellH(cell)
+                if (hh < frontierH) {
+                    frontierH = hh
+                    frontier = cell
+                }
+            }
+            val goOn = frontier?.takeIf { frontierH < bestScore - FRONTIER_GAIN }
+            val endCell: Long
+            val endColumn: Long
+            if (goOn != null) {
+                endCell = goOn
+                endColumn = openColumnIn(goOn) ?: return false
+                onward = true
+            } else {
+                endCell = landingCell ?: return false
+                endColumn = landingColumn ?: return false
+            }
+            // The cells on the way there, and their neighbours, for the column search to go through.
+            val way = HashSet<Long>()
+            var at: Long? = endCell
+            while (at != null) {
+                for (dx in -1..1) for (dz in -1..1) way += key(cx(at) + dx, cz(at) + dz)
+                at = cellParent[at]
+            }
+            corridor = way
+            target = endColumn
+            val s = key(start.first, start.second)
+            g[s] = 0.0
+            open.add(s to Math.hypot((start.first - BlockPos.getX(endColumn)).toDouble(), (start.second - BlockPos.getZ(endColumn)).toDouble()))
             return true
         }
 
-        /** The way found, once [finished]; null if there's no landing and no water going on. */
-        fun result(): Route? {
-            // The water the search stopped short on: still-open columns and the edges it reached.
-            var frontier = edge
-            var frontierH = edgeH
-            for ((k, _) in open) {
-                if (!g.containsKey(k)) continue
-                val hh = h(BlockPos.getX(k), BlockPos.getZ(k))
-                if (hh < frontierH) {
-                    frontierH = hh
-                    frontier = k
-                }
+        private fun openColumnIn(cell: Long): Long? {
+            for (i in 0 until CELL) for (j in 0 until CELL) {
+                val x = cx(cell) * CELL + i
+                val z = cz(cell) * CELL + j
+                if (grid.open(x, z)) return key(x, z)
             }
-            val onward = frontier?.takeIf { frontierH < bestScore - FRONTIER_GAIN }
-            val end = onward ?: best ?: return null
-            val y = grid.y + 0.5
-            val shore = if (onward != null) Vec3(BlockPos.getX(end) + 0.5, grid.y + 1.0, BlockPos.getZ(end) + 0.5)
-                else bestShore ?: return null
+            return null
+        }
+
+        private fun finish(why: String): Boolean {
+            finished = true
+            stoppedBy = why
+            val end = reached ?: return true
             val columns = ArrayList<Long>()
             var at: Long? = end
             while (at != null) {
@@ -171,9 +293,19 @@ object WaterRoutes {
                 at = parent[at]
             }
             columns.reverse()
+            val y = grid.y + 0.5
             val points = simplify(grid, columns).map { Vec3(BlockPos.getX(it) + 0.5, y, BlockPos.getZ(it) + 0.5) }
             val landing = Vec3(BlockPos.getX(end) + 0.5, y, BlockPos.getZ(end) + 0.5)
-            return Route(points, landing, shore, g[end] ?: 0.0, complete = onward == null)
+            val shore = if (onward) Vec3(landing.x, grid.y + 1.0, landing.z) else bestShore ?: return true
+            route = Route(points, landing, shore, g[end] ?: 0.0, complete = !onward)
+            return true
+        }
+
+        /** The way found, once [finished]; null if there's none. */
+        fun result(): Route? = route
+
+        private companion object {
+            val SIDES = listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1)
         }
     }
 
@@ -260,6 +392,11 @@ object WaterRoutes {
 
         fun byBank(x: Int, z: Int): Boolean =
             !open(x + 1, z) || !open(x - 1, z) || !open(x, z + 1) || !open(x, z - 1)
+
+        /** Two blocks of water to spare either side of the hull as well. */
+        fun wide(x: Int, z: Int): Boolean =
+            open(x + 2, z) && open(x - 2, z) && open(x, z + 2) && open(x, z - 2) &&
+                open(x + 2, z + 2) && open(x - 2, z - 2) && open(x + 2, z - 2) && open(x - 2, z + 2)
 
         /** Ground a man can step out onto beside this column, within the hull's reach and one more
          *  block — the bank the boat can come up against — or null. */
