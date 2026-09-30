@@ -57,6 +57,8 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
          *  to the same point shove each other off it and both keep walking back. */
         private const val POST_OFFSET = 1.8
         private const val POST_TOLERANCE = 1.2
+        /** This near the tube he can load it — the reach the operator lays it from too. */
+        private const val LOAD_REACH = 2.5
         /** Inside a Supply's reach, so the next issue round catches him. */
         private const val SUPPLY_ARRIVE_DISTANCE = com.sbwnpc.squad.block.entity.SupplyBlockEntity.RADIUS - 3.0
     }
@@ -162,7 +164,11 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
         }
         val post = post(entity, m)
-        if (entity.position().distanceTo(post) > POST_TOLERANCE) {
+        // Near enough the tube is at it, wherever the post itself fell: laid beside the hull, the
+        // post can be somewhere nobody can path to, and a loader held to it stood a step short of
+        // it for good and never loaded a shell.
+        val atTube = entity.position().distanceTo(m.position()) <= LOAD_REACH
+        if (!atTube && entity.position().distanceTo(post) > POST_TOLERANCE) {
             entity.servingMortar = false
             entity.mortarErrand = true
             entity.navigateTo(post, if (entity.position().distanceTo(post) > RUN_BACK_DISTANCE) ERRAND_SPEED else 1.0)
