@@ -1154,6 +1154,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             releaseVehicleTeamIfLastAboard(vehicle, entity)
             arrivalWaitStartTick = -1
             if (isBoat(vehicle)) boatCooldownUntilTick = entity.tickCount + BOAT_COOLDOWN_TICKS
+            // Out where the drive ends — at the goal, or where walking on beats driving: the rest of
+            // this order is on foot. Still further off than the distance worth a ride, the crew
+            // climbed straight back in, was refused, and got out again.
+            else entity.currentSquad()?.let { noVehicleForStamp = it.orderStamp }
         }
     }
 
