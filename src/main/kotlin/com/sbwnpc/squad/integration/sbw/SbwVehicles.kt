@@ -179,7 +179,7 @@ object SbwVehicles : Vehicles {
      * that structurally, since the commanded turn backs off as the vehicle actually straightens out
      * rather than staying locked in until a timer expires.
      */
-    override fun driveToward(vehicle: Entity, point: Vec3): Steering {
+    override fun driveToward(vehicle: Entity, point: Vec3, throttle: Boolean): Steering {
         if (vehicle !is VehicleEntity) return Steering(right = false, left = false, detail = "not a vehicle")
         val toTarget = point.subtract(vehicle.position())
         // VehicleVecUtils.getYRotFromVector's raw output is the negation of yRot's own convention —
@@ -197,7 +197,7 @@ object SbwVehicles : Vehicles {
             // deltaRot down, and yRot goes up by minus that).
             val right = diff > SHIP_HEADING_DEADBAND
             val left = diff < -SHIP_HEADING_DEADBAND
-            vehicle.forwardInputDown = true
+            vehicle.forwardInputDown = throttle
             vehicle.backInputDown = false
             vehicle.rightInputDown = right
             vehicle.leftInputDown = left
@@ -209,7 +209,7 @@ object SbwVehicles : Vehicles {
         val right = rudderError > RUDDER_DEADBAND
         val left = rudderError < -RUDDER_DEADBAND
 
-        vehicle.forwardInputDown = true
+        vehicle.forwardInputDown = throttle
         vehicle.backInputDown = false
         vehicle.rightInputDown = right
         vehicle.leftInputDown = left

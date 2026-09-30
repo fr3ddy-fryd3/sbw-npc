@@ -69,8 +69,8 @@ interface Vehicles {
     /** Null for anything that isn't a vehicle. */
     fun mobility(vehicle: Entity): Mobility?
 
-    /** Throttle forward and steer toward [point] for one tick. */
-    fun driveToward(vehicle: Entity, point: Vec3): Steering
+    /** Steer toward [point] for one tick, throttle forward unless [throttle] is off (coasting). */
+    fun driveToward(vehicle: Entity, point: Vec3, throttle: Boolean = true): Steering
 
     /** Back up for one tick, turning to one side. */
     fun reverse(vehicle: Entity, turnLeft: Boolean)

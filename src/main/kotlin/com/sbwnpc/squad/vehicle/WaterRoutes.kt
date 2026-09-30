@@ -116,6 +116,35 @@ object WaterRoutes {
         return Route(points, landing, shore, g[end] ?: 0.0)
     }
 
+    /**
+     * Ground a man can step out onto within [reach] blocks of [hull]'s sides — a boat that has
+     * come to rest against the bank, however badly it parked.
+     */
+    fun bankBeside(level: ServerLevel, hull: net.minecraft.world.phys.AABB, reach: Int): Boolean {
+        val y = hull.minY + 1.0
+        for (ring in 1..reach) {
+            val box = hull.inflate(ring.toDouble(), 0.0, ring.toDouble())
+            var x = box.minX
+            while (x <= box.maxX) {
+                if (dryAt(level, x, y, box.minZ) || dryAt(level, x, y, box.maxZ)) return true
+                x += 1.0
+            }
+            var z = box.minZ
+            while (z <= box.maxZ) {
+                if (dryAt(level, box.minX, y, z) || dryAt(level, box.maxX, y, z)) return true
+                z += 1.0
+            }
+        }
+        return false
+    }
+
+    private fun dryAt(level: ServerLevel, x: Double, y: Double, z: Double): Boolean {
+        val spot = Terrain.standableOrNull(level, x, y + 1.0, z, 4) ?: return false
+        if (spot.y > y + 2.0) return false
+        val under = BlockPos.containing(spot.x, spot.y - 0.5, spot.z)
+        return !level.getFluidState(under).`is`(FluidTags.WATER) && !level.getFluidState(BlockPos.containing(spot)).`is`(FluidTags.WATER)
+    }
+
     /** The water surface at or near [at]: the top water block with no water over it. */
     fun surfaceY(level: ServerLevel, at: BlockPos): Int? {
         for (dy in 1 downTo -3) {

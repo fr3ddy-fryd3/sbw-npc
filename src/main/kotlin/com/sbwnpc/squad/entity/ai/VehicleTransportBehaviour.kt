@@ -130,6 +130,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** The way over the water the boat being driven follows, and how far along it it is. */
     private var boatRoute: List<Vec3> = emptyList()
     private var boatRouteIndex = 0
+    /** Since when the boat this man rides has had nobody at the wheel — see [tickRiding]. */
+    private var driverlessSince = -1
     /** What the man at a boat's machine gun is firing at — see [workBoatGun]. */
     private var boatGunTarget: java.util.UUID? = null
     /** No boat trips before this — just landed, or found no boat to take. */
@@ -614,7 +616,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                     waitToStopThenDismount(entity, vehicle, isDriver = true)
                     return
                 }
-                recoveryUntilTick = entity.tickCount + RECOVERY_TICKS
+                // A boat takes a while to get going astern, and more with its bow in the bank.
+                recoveryUntilTick = entity.tickCount + if (isBoat(vehicle)) BOAT_RECOVERY_TICKS else RECOVERY_TICKS
                 recoveryTurnLeft = entity.random.nextBoolean()
                 nextRouteTick = entity.tickCount // force a fresh route once recovery ends
                 performRecovery(entity, vehicle)
@@ -650,7 +653,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (isBoat(vehicle)) {
             // Its own way over the water; the land route and the trees are no use there.
             val waypoint = boatWaypoint(entity, vehicle, home)
-            if (waypoint == null) stopVehicle(vehicle) else steerToward(vehicle, waypoint)
+            // In to the bank at a crawl: at full speed it ploughed in wherever the bow pointed.
+            val coasting = horizontalDistance(vehicle.position(), home) < BOAT_SLOW_RADIUS &&
+                vehicle.deltaMovement.horizontalDistance() > BOAT_APPROACH_SPEED
+            if (waypoint == null) stopVehicle(vehicle) else steerToward(vehicle, waypoint, throttle = !coasting)
             return
         }
         steerToward(vehicle, aroundTrees(entity, vehicle, currentWaypoint(entity, home)))
@@ -699,6 +705,22 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun horizontalDistance(a: Vec3, b: Vec3): Double = Math.hypot(a.x - b.x, a.z - b.z)
+
+    /**
+     * A boat at rest with ground to step out onto beside it: everyone gets off here, whether or not
+     * it came right up to its landing point. It used to be the driver alone who gave up on a boat
+     * stuck a few blocks off, leaving the rest sitting in it.
+     */
+    private fun restingAtBank(vehicle: Entity): Boolean {
+        if (vehicle.deltaMovement.horizontalDistance() > BOAT_RESTING_SPEED) return false
+        val level = vehicle.level() as? ServerLevel ?: return false
+        val cached = bankCache[vehicle.uuid]
+        if (cached != null && level.gameTime - cached.first < BANK_CHECK_TICKS) return cached.second
+        val bank = com.sbwnpc.squad.vehicle.WaterRoutes.bankBeside(level, Ports.vehicles.hull(vehicle), LANDING_REACH)
+        bankCache[vehicle.uuid] = level.gameTime to bank
+        if (bankCache.size > 64) bankCache.entries.removeIf { level.gameTime - it.value.first > BANK_CHECK_TICKS }
+        return bank
+    }
 
     /** Where the crew of [vehicle], a boat, get off: what its driver's trip set, or the squad's. */
     private fun landingOf(vehicle: Entity): Vec3? =
@@ -803,7 +825,23 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             tickCombatDismount(entity, vehicle)
             return
         }
-        if (isBoat(vehicle)) workBoatGun(entity, vehicle)
+        if (isBoat(vehicle)) {
+            workBoatGun(entity, vehicle)
+            // Nobody at the wheel and going nowhere: the driver got off, or never came. Waiting in
+            // it only ends when the trip's time runs out.
+            if (Ports.vehicles.seating(vehicle).firstOrNull() == null &&
+                vehicle.deltaMovement.horizontalDistance() <= BOAT_RESTING_SPEED
+            ) {
+                if (driverlessSince < 0) driverlessSince = entity.tickCount
+                if (entity.tickCount - driverlessSince > DRIVERLESS_TICKS) {
+                    driverlessSince = -1
+                    waitToStopThenDismount(entity, vehicle, isDriver = false)
+                    return
+                }
+            } else {
+                driverlessSince = -1
+            }
+        }
         val home = resolveTripDestination(entity) ?: return
         if (arrived(entity, vehicle, home)) {
             waitToStopThenDismount(entity, vehicle, isDriver = false)
@@ -1012,7 +1050,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (!isBoat(vehicle)) return vehicle.position().distanceTo(home) <= ARRIVAL_RADIUS
         val dist = horizontalDistance(vehicle.position(), home)
         return dist <= BOAT_ARRIVAL_RADIUS ||
-            (!vehicle.isInWater && entity.tickCount - boardTick > BOAT_LAUNCH_GRACE_TICKS)
+            (!vehicle.isInWater && entity.tickCount - boardTick > BOAT_LAUNCH_GRACE_TICKS) ||
+            (dist <= BOAT_BANK_RADIUS && restingAtBank(vehicle))
     }
 
     private fun isUsableGroundVehicle(vehicle: Entity, entity: NpcEntity): Boolean =
@@ -1060,8 +1099,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         Ports.vehicles.wouldHit(vehicle, entity, offset)
 
     /** Throttle forward and steer at [target] — see the Vehicles adapter for how. */
-    private fun steerToward(vehicle: Entity, target: Vec3) {
-        val steering = Ports.vehicles.driveToward(vehicle, target)
+    private fun steerToward(vehicle: Entity, target: Vec3, throttle: Boolean = true) {
+        val steering = Ports.vehicles.driveToward(vehicle, target, throttle)
         // Logged on every turn-state change, plus an unconditional full snapshot every
         // FULL_STATE_LOG_INTERVAL_TICKS regardless of whether anything changed — a state-change-only
         // log stays silent for an entire trip if the controller gets stuck holding steady, which is
@@ -1096,6 +1135,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun stopVehicle(vehicle: Entity) = Ports.vehicles.release(vehicle)
 
     companion object {
+        /** Whether each boat was last found resting against a bank, and when — see [restingAtBank];
+         *  shared, as everyone aboard asks about the same boat. */
+        private val bankCache = HashMap<java.util.UUID, kotlin.Pair<Long, Boolean>>()
+
         private const val TRANSPORT_DISTANCE_THRESHOLD = 100.0
         private const val SEARCH_RADIUS = 60.0
         private const val BOARD_DISTANCE = 3.0
@@ -1106,6 +1149,19 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val BOAT_AGROUND_RADIUS = 8.0
         /** A point on a boat's way over the water counts as passed this near. */
         private const val BOAT_WAYPOINT_RADIUS = 5.0
+        /** Within this of its landing a boat comes in slowly, at no more than [BOAT_APPROACH_SPEED]. */
+        private const val BOAT_SLOW_RADIUS = 14.0
+        private const val BOAT_APPROACH_SPEED = 0.25
+        /** A boat at rest this near its landing, with ground beside it, has arrived. */
+        private const val BOAT_BANK_RADIUS = 12.0
+        private const val BOAT_RESTING_SPEED = 0.05
+        /** Blocks past a boat's side a man steps out onto the bank — as NpcEntity puts him down. */
+        private const val LANDING_REACH = 4
+        private const val BANK_CHECK_TICKS = 10L
+        /** A boat's reverse-and-turn — slower to get going astern than a wheeled vehicle. */
+        private const val BOAT_RECOVERY_TICKS = 60
+        /** Riding a boat with nobody at the wheel this long, at rest, before getting off. */
+        private const val DRIVERLESS_TICKS = 40
         /** A boat out of the water this soon after boarding is still being pushed off, not landed. */
         private const val BOAT_LAUNCH_GRACE_TICKS = 60
         /** After landing, or finding no boat, before the water ahead is looked at again. */
