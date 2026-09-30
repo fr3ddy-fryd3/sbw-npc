@@ -8,25 +8,29 @@ import net.minecraft.world.phys.Vec3
 import java.util.PriorityQueue
 
 /**
- * A way for a boat across the water, round headlands and along the bends of a river, to the bank
- * nearest where its crew is going.
+ * A way for a boat across the water, round headlands and along the bends of a river, to where its
+ * crew gets off for the goal.
  *
  * The ground pathfinder is no use here: it is for a man walking, who swims where he has to and
  * climbs out wherever. This searches the water surface the boat floats on, wide enough everywhere
- * for the hull. The goal is usually on land, so the search ends at the place a boat can put its
- * crew ashore — water next to ground a man can stand on — nearest the goal.
+ * for the hull, and ends at a bank — water next to ground a man can stand on.
  *
- * Two passes. First the water is taken in [CELL]-block cells, and every cell the boat can reach is
- * visited outward from it, nearest first ([Search] runs a few hundred a tick): the bank nearest the
- * goal is the best one anywhere in reach, however far round a bay the way to it goes. A search
- * drawn straight at the goal, as this used to be, spent everything it had on a bay pointing at the
- * goal that led nowhere and set the crew down there. Then the way itself is found column by column,
- * only through the cells the first pass went by, keeping to the middle of the water where it can —
- * a boat at speed needs fifty blocks to turn round.
+ * Which bank is a matter of the whole trip's cost, in blocks walked: the voyage at [BOAT_PACE]
+ * times a man's pace, then the walk in from the bank. The water is taken in [CELL]-block cells,
+ * visited outward from the boat nearest first ([Search] runs a few hundred a tick), and the search
+ * stops once sailing on further would cost more than the best trip found — nothing further out
+ * could beat it.
  *
- * Only loaded ground is searched; water running on into ground that isn't loaded, or past
- * [MAX_RANGE], nearer the goal than any bank found makes the voyage go on: the boat sails there
- * and looks again.
+ * The world beyond the ground that's loaded, and past [MAX_RANGE], is unknown. Where the water runs
+ * on out of sight it is taken to go on toward the goal ([UNSEEN_WATER]), and going on over it is
+ * a trip like any other: the planner's usual assumption of free space where nothing is known yet.
+ * Deciding on a bank as if the water ended where the loaded ground did set crews down hundreds of
+ * blocks short with the lake running on. When going on is the cheaper trip the boat sails to the
+ * edge of what's seen, the ground loads round it, and it looks again — landing then if it turns
+ * out there was no more water.
+ *
+ * Then the way itself is found column by column, only through the cells the first pass went by,
+ * keeping to the middle of the water where it can — a boat at speed needs fifty blocks to turn.
  */
 object WaterRoutes {
     /** Blocks along a side of a cell of the first pass. */
@@ -41,10 +45,14 @@ object WaterRoutes {
     private const val NARROW_PENALTY = 1.5
     /** Extra cost of a column right by the bank. */
     private const val BANK_PENALTY = 3.0
-    /** A landing this near the goal is as good as any: the search stops there. */
-    private const val CLOSE_ENOUGH = 12.0
-    /** Water left unsearched this much nearer the goal than the best bank means the voyage goes on. */
-    private const val FRONTIER_GAIN = 16.0
+    /** A boat covers ground this many times faster than a man walking. */
+    const val BOAT_PACE = 2.5
+    /**
+     * Water not yet seen — past the ground that's loaded, or the search's range — is taken to go
+     * on toward the goal, at this many times the straight line. It's a guess, made good as the boat
+     * gets there and the ground loads: there it looks again, and lands if it was wrong.
+     */
+    const val UNSEEN_WATER = 1.3
     /** Straight stretches of the route are kept as one leg up to this many columns. */
     private const val MAX_LEG = 24
     /** Cells of the first pass counted as this many units of a tick's search budget. */
@@ -57,7 +65,14 @@ object WaterRoutes {
      * than any bank found — and then [landing] is as far that way as it got, with no bank at it:
      * the boat sails there and looks again.
      */
-    class Route(val route: List<Vec3>, val landing: Vec3, val shore: Vec3, val length: Double, val complete: Boolean)
+    class Route(val route: List<Vec3>, val landing: Vec3, val shore: Vec3, val length: Double, val complete: Boolean) {
+        /** What's left after the voyage, in blocks walked: the walk in from the bank, or the rest of
+         *  the way over the water not yet seen. */
+        fun remaining(goal: Vec3): Double {
+            val d = Math.hypot(shore.x - goal.x, shore.z - goal.z)
+            return if (complete) d else d * UNSEEN_WATER / BOAT_PACE
+        }
+    }
 
     /**
      * A search for the way of a boat [halfWidth] blocks either side of its middle, floating at
@@ -77,14 +92,18 @@ object WaterRoutes {
         private val cellParent = HashMap<Long, Long>()
         private val cellSeen = HashSet<Long>()
         private val cellQueue = ArrayDeque<Long>()
-        /** The best bank so far: its water column, where a man steps out, and how far that is from the goal. */
-        private var landingColumn: Long? = null
-        private var landingCell: Long? = null
+        /** Cells from the boat, for each cell reached — the queue is in this order. */
+        private val depth = HashMap<Long, Int>()
+        /**
+         * The best way to end the voyage so far, and what the whole trip costs in blocks walked:
+         * a bank (sail there, walk in) or the edge of the water seen (sail there, and on over the
+         * water not yet seen). [bestColumn] is the water column it ends at.
+         */
+        private var bestCost = Double.MAX_VALUE
+        private var bestCell: Long? = null
+        private var bestColumn: Long? = null
         private var bestShore: Vec3? = null
-        private var bestScore = Double.MAX_VALUE
-        /** The cell the search reached an edge at — its range or unloaded ground — nearest the goal. */
-        private var edgeCell: Long? = null
-        private var edgeH = Double.MAX_VALUE
+        private var bestIsEdge = false
         private var cellsVisited = 0
 
         // Second pass: columns, through the cells the way goes by.
@@ -110,12 +129,15 @@ object WaterRoutes {
         init {
             cellSeen += startCell
             cellQueue += startCell
+            depth[startCell] = 0
         }
 
         private fun key(x: Int, z: Int) = BlockPos.asLong(x, 0, z)
         private fun cellOf(x: Int, z: Int) = key(Math.floorDiv(x, CELL), Math.floorDiv(z, CELL))
         private fun cx(cell: Long) = BlockPos.getX(cell)
         private fun cz(cell: Long) = BlockPos.getZ(cell)
+        /** Blocks walked the sail out to [cell] is worth. */
+        private fun sail(cell: Long) = (depth[cell] ?: 0) * CELL / BOAT_PACE
         private fun cellH(cell: Long) = Math.hypot(cx(cell) * CELL + CELL / 2.0 - goal.x, cz(cell) * CELL + CELL / 2.0 - goal.z)
         private fun h(x: Int, z: Int) = Math.hypot(x + 0.5 - goal.x, z + 0.5 - goal.z)
 
@@ -125,7 +147,10 @@ object WaterRoutes {
             var left = budget
             if (corridor == null) {
                 while (left > 0) {
-                    if (cellQueue.isEmpty() || cellsVisited >= MAX_CELLS || bestScore <= CLOSE_ENOUGH) {
+                    // Cells come out nearest the boat first: once sailing on to the next one costs
+                    // more than the best trip found, nothing further out can beat it.
+                    val nextSail = cellQueue.firstOrNull()?.let { (depth[it] ?: 0) * CELL / BOAT_PACE }
+                    if (nextSail == null || nextSail >= bestCost || cellsVisited >= MAX_CELLS) {
                         if (!chooseTarget()) return finish("no way to a bank")
                         break
                     }
@@ -149,13 +174,7 @@ object WaterRoutes {
                 expanded++
                 if (current == t) {
                     reached = current
-                    return finish(
-                        when {
-                            onward -> "on toward water not yet searched"
-                            bestScore <= CLOSE_ENOUGH -> "close enough"
-                            else -> "best bank in reach"
-                        }
-                    )
+                    return finish(if (onward) "on toward water not yet seen" else "best bank")
                 }
                 for (dx in -1..1) for (dz in -1..1) {
                     if (dx == 0 && dz == 0) continue
@@ -192,12 +211,13 @@ object WaterRoutes {
                     val z = z0 + j
                     if (!grid.open(x, z) || !grid.byBank(x, z)) continue
                     val shore = grid.landingAt(x, z) ?: continue
-                    val score = Math.hypot(shore.x - goal.x, shore.z - goal.z)
-                    if (score < bestScore) {
-                        bestScore = score
+                    val cost = sail(cell) + Math.hypot(shore.x - goal.x, shore.z - goal.z)
+                    if (cost < bestCost) {
+                        bestCost = cost
                         bestShore = shore
-                        landingColumn = key(x, z)
-                        landingCell = cell
+                        bestColumn = key(x, z)
+                        bestCell = cell
+                        bestIsEdge = false
                     }
                 }
             }
@@ -206,17 +226,24 @@ object WaterRoutes {
                 if (next in cellSeen) continue
                 val nx0 = cx(next) * CELL
                 val nz0 = cz(next) * CELL
-                if (Math.abs(nx0 - start.first) > MAX_RANGE || Math.abs(nz0 - start.second) > MAX_RANGE || !grid.loaded(nx0, nz0)) {
-                    val hh = cellH(cell)
-                    if (hh < edgeH) {
-                        edgeH = hh
-                        edgeCell = cell
+                if (Math.abs(nx0 - start.first) > MAX_RANGE || Math.abs(nz0 - start.second) > MAX_RANGE || !grid.known(nx0, nz0)) {
+                    // The water runs on out of sight here: going on over it is a trip too.
+                    val cost = sail(cell) + cellH(cell) * UNSEEN_WATER / BOAT_PACE
+                    if (cost < bestCost) {
+                        openColumnIn(cell)?.let { column ->
+                            bestCost = cost
+                            bestCell = cell
+                            bestColumn = column
+                            bestShore = null
+                            bestIsEdge = true
+                        }
                     }
                     continue
                 }
                 if (!linked(x0, z0, dx, dz)) continue
                 cellSeen += next
                 cellParent[next] = cell
+                depth[next] = (depth[cell] ?: 0) + 1
                 cellQueue += next
             }
         }
@@ -237,27 +264,9 @@ object WaterRoutes {
 
         /** After the first pass: where the way goes, and the cells it goes by. */
         private fun chooseTarget(): Boolean {
-            // Water still unsearched — the queue, and the edges — nearer the goal than the best bank.
-            var frontier = edgeCell
-            var frontierH = edgeH
-            for (cell in cellQueue) {
-                val hh = cellH(cell)
-                if (hh < frontierH) {
-                    frontierH = hh
-                    frontier = cell
-                }
-            }
-            val goOn = frontier?.takeIf { frontierH < bestScore - FRONTIER_GAIN }
-            val endCell: Long
-            val endColumn: Long
-            if (goOn != null) {
-                endCell = goOn
-                endColumn = openColumnIn(goOn) ?: return false
-                onward = true
-            } else {
-                endCell = landingCell ?: return false
-                endColumn = landingColumn ?: return false
-            }
+            val endCell = bestCell ?: return false
+            val endColumn = bestColumn ?: return false
+            onward = bestIsEdge
             // The cells on the way there, and their neighbours, for the column search to go through.
             val way = HashSet<Long>()
             var at: Long? = endCell
@@ -367,19 +376,13 @@ object WaterRoutes {
     internal class Grid(val level: ServerLevel, val y: Int, val clearance: Int) {
         private val water = HashMap<Long, Boolean>()
         private val fits = HashMap<Long, Boolean>()
-        private val cursor = BlockPos.MutableBlockPos()
 
-        fun loaded(x: Int, z: Int): Boolean = level.chunkSource.getChunkNow(x shr 4, z shr 4) != null
+        /** Whether the ground here is loaded or has been seen — see [WaterMap]. */
+        fun known(x: Int, z: Int): Boolean = WaterMap.known(level, y, x, z)
 
-        /** Open water at the surface with room above it, on loaded ground. */
+        /** Open water at the surface with room above it, as seen now or last seen. */
         fun water(x: Int, z: Int): Boolean = water.getOrPut(BlockPos.asLong(x, 0, z)) {
-            if (level.chunkSource.getChunkNow(x shr 4, z shr 4) == null) return@getOrPut false
-            if (!level.getFluidState(cursor.set(x, y, z)).`is`(FluidTags.WATER)) return@getOrPut false
-            for (dy in 1..2) {
-                cursor.set(x, y + dy, z)
-                if (!level.getBlockState(cursor).getCollisionShape(level, cursor).isEmpty) return@getOrPut false
-            }
-            true
+            WaterMap.kind(level, y, x, z) == WaterMap.Kind.WATER
         }
 
         /** The whole hull fits with its middle over this column. */
@@ -405,12 +408,11 @@ object WaterRoutes {
             for ((dx, dz) in SIDES) {
                 val sx = x + dx * reach
                 val sz = z + dz * reach
-                if (water(sx, sz)) continue
-                if (level.chunkSource.getChunkNow(sx shr 4, sz shr 4) == null) continue
-                val spot = Terrain.standableOrNull(level, sx + 0.5, y + 2.0, sz + 0.5, 4) ?: continue
-                if (spot.y < y + 1 || spot.y > y + 2) continue
-                if (level.getFluidState(BlockPos.containing(spot.x, spot.y - 1.0, spot.z)).`is`(FluidTags.WATER)) continue
-                return spot
+                when (WaterMap.kind(level, y, sx, sz)) {
+                    WaterMap.Kind.SHORE_LOW -> return Vec3(sx + 0.5, y + 1.0, sz + 0.5)
+                    WaterMap.Kind.SHORE_HIGH -> return Vec3(sx + 0.5, y + 2.0, sz + 0.5)
+                    else -> continue
+                }
             }
             return null
         }

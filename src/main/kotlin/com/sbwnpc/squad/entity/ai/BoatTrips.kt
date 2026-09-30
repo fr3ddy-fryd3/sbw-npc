@@ -14,9 +14,10 @@ import java.util.UUID
 /**
  * Whether a squad takes the boats near it, worked out once per order.
  *
- * For each boat within reach, the way over the water ([WaterRoutes]) to the bank nearest the goal,
- * and what the trip costs in blocks walked: the walk to the boat, the voyage at [BOAT_PACE] times a
- * man's pace, the walk in from the bank. Against that, walking the whole way — at best the straight
+ * For each boat within reach, the way over the water ([WaterRoutes]) that makes the cheapest trip,
+ * and what the trip costs in blocks walked: the walk to the boat, the voyage at
+ * [WaterRoutes.BOAT_PACE] times a man's pace, the walk in from the bank — or, where the water runs
+ * on out of sight, the rest of it taken as more water. Against that, walking the whole way — at best the straight
  * line, and with the water ahead to swim if the squad's route crosses some. A boat is taken when it
  * saves at least a [ADVANTAGE] share of that and actually goes somewhere; a river along the way to
  * the goal is sailed down, a lake crossed, and a pond next to a road left alone.
@@ -38,8 +39,6 @@ object BoatTrips {
     /** A boat's search for its next stretch of water, and when it was begun. */
     private class Replan(val goal: Vec3, val search: WaterRoutes.Search, val startedAt: Long)
 
-    /** A boat covers ground this many times faster than a man walking. */
-    private const val BOAT_PACE = 2.5
     /** A boat must save this share of the walk to be worth the boarding and landing. */
     private const val ADVANTAGE = 0.2
     /** Voyages shorter than this aren't worth getting in for. */
@@ -182,7 +181,7 @@ object BoatTrips {
             DebugFlags.log("[boat-debug] {} boat {}: no way over the water to a bank ({})", squadName, boat.uuid.toString().take(8), how)
             return
         }
-        val cost = npc.position().distanceTo(boat.position()) + route.length / BOAT_PACE + route.shore.distanceTo(goal)
+        val cost = npc.position().distanceTo(boat.position()) + route.length / WaterRoutes.BOAT_PACE + route.remaining(goal)
         val worth = route.length >= MIN_VOYAGE && cost <= decision.walk * (1 - ADVANTAGE)
         DebugFlags.log(
             "[boat-debug] {} boat {}: voyage {} {} {} ({} from goal), trip {} vs walk {} -> {} ({})",
