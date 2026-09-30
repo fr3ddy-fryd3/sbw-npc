@@ -36,6 +36,8 @@ object ServerLifecycle {
         com.sbwnpc.squad.entity.ai.SquadMarch.clearAll()
         com.sbwnpc.squad.entity.ai.BoatTrips.clearAll()
         com.sbwnpc.squad.vehicle.WaterMap.clearAll()
+        com.sbwnpc.squad.route.GroundMap.clearAll()
+        com.sbwnpc.squad.route.PlanBudget.clearAll()
         com.sbwnpc.squad.squad.SquadChunkLoader.clearAll()
         TeamAwareness.clearAll()
         com.sbwnpc.squad.block.entity.SupplyPoints.clearAll()

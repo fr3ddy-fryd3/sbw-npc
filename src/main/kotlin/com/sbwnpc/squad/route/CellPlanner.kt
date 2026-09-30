@@ -62,12 +62,14 @@ object CellPlanner {
     }
 
     /**
-     * [route] runs from the start to [landing], the column the trip ends at, where the traveller
+     * [route] (its turns; [trail], every column) runs from the start to [landing], the column the trip ends at, where the traveller
      * gets off at [shore]. Not [complete] when it runs on into ground not yet seen: then [landing]
      * is as far as the known ground goes, and the traveller looks again from there.
      */
     class Route(
         val route: List<Vec3>,
+        /** Every column of the way, a block or so apart — for walking it in a column of men. */
+        val trail: List<Vec3>,
         val landing: Vec3,
         val shore: Vec3,
         val length: Double,
@@ -320,10 +322,11 @@ object CellPlanner {
                 at = parent[at]
             }
             columns.reverse()
-            val points = simplify(columns).map { Vec3(kx(it) + 0.5, medium.pointY(kx(it), kz(it)), kz(it) + 0.5) }
+            val point = { c: Long -> Vec3(kx(c) + 0.5, medium.pointY(kx(c), kz(c)), kz(c) + 0.5) }
+            val points = simplify(columns).map(point)
             val landing = Vec3(kx(end) + 0.5, medium.pointY(kx(end), kz(end)), kz(end) + 0.5)
             val shore = if (complete) bestExit ?: landing else landing
-            route = Route(points, landing, shore, g[end] ?: 0.0, complete, medium.pace)
+            route = Route(points, columns.map(point), landing, shore, g[end] ?: 0.0, complete, medium.pace)
             return true
         }
 

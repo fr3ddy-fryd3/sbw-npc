@@ -2,11 +2,15 @@ package com.sbwnpc.squad.entity.ai
 
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.route.CellPlanner
+import com.sbwnpc.squad.route.PlanBudget
+import com.sbwnpc.squad.route.Walking
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.PathNavigationRegion
 import net.minecraft.world.level.levelgen.Heightmap
 import net.minecraft.world.level.pathfinder.PathFinder
+import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
 /**
@@ -17,7 +21,12 @@ import java.util.UUID
  * line, and with a hill in the way that is the foot of the hill — the squad stood pressed into the
  * slope. Finding the way round takes a search many times the size, too dear to run for every man.
  *
- * So one man searches [LEG] blocks toward the goal with a budget of [NODES] nodes, and the route
+ * The route comes from the long-route planner ([CellPlanner] on foot, [Walking]): the whole way
+ * to the goal over the lie of the land as far as it's known, round hills and lakes, looked at
+ * again as the squad nears the end of what it could see. Where that finds nothing — the squad is
+ * inside a building or down a cave — it falls back on legs:
+ *
+ * one man searches [LEG] blocks toward the goal with a budget of [NODES] nodes, and the route
  * he finds becomes the squad's: everyone aims a little way ahead of their own place along it
  * with the ordinary short search, and when the front reaches its end the next leg is planned from
  * there. Only one such search runs per server tick, so squads ordered off together don't stall
@@ -41,6 +50,9 @@ object SquadMarch {
     private const val LOOKAHEAD = 16
     /** Within this many nodes of the end, the front has arrived and the next leg is due. */
     private const val END_NODES = 8
+    /** The same for a long route that ran on into ground not yet seen: looked at again early,
+     *  so the next stretch is there before the front runs out of the last. */
+    private const val LONG_END_NODES = 32
     /** A requested goal this near the route's own is the same march (formation slots differ). */
     private const val SAME_GOAL = 40.0
     private const val MIN_REPLAN_TICKS = 40L
@@ -76,6 +88,13 @@ object SquadMarch {
         var misses = 0
         /** The route's last node is the goal's own column — no further legs needed. */
         var complete = false
+        /** The long-route search under way for the next stretch, and when it began. */
+        var search: CellPlanner.Search? = null
+        var searchStarted = 0L
+        /** The long-route planner found no way from here: planned in legs instead. */
+        var legsOnly = false
+        /** The route came from the long-route planner: looked at again further from its end. */
+        var long = false
     }
 
     private val bySquad = HashMap<UUID, MutableList<March>>()
@@ -112,7 +131,16 @@ object SquadMarch {
         march.lastUsed = level.gameTime
         val route = march.route
         val here = nearestIndex(route, npc)
-        val atEnd = route.isEmpty() || here >= route.size - END_NODES
+        val atEnd = route.isEmpty() || here >= route.size - if (march.long) LONG_END_NODES else END_NODES
+        if (atEnd && !march.complete && !march.legsOnly) {
+            planLong(level, npc, march, goal, squad.name)
+            val planned = march.route
+            if (planned.isEmpty()) return if (march.search != null) Waypoint(npc.blockPosition(), null) else null
+            if (!march.legsOnly) {
+                val at = nearestIndex(planned, npc)
+                return Waypoint(planned[(at + LOOKAHEAD).coerceAtMost(planned.size - 1)], formationSpot(level, npc, march, at))
+            }
+        }
         if (atEnd && !march.complete && level.gameTime - march.plannedAt >= MIN_REPLAN_TICKS && lastPlanTick != level.gameTime) {
             plan(level, npc, march, squad.name)
             val planned = march.route
@@ -209,6 +237,42 @@ object SquadMarch {
             }
         }
         return best
+    }
+
+    /**
+     * The way on from [npc] to [goal] by the long-route planner — over the whole lie of the land
+     * as far as it's known, round the hills and lakes a hundred-block leg ran into blind. Runs over
+     * a few ticks; the route it finds is walked on from where the last one ended. Where it finds
+     * no way at all (inside a building, down a cave) the march goes back to legs.
+     */
+    private fun planLong(level: ServerLevel, npc: NpcEntity, march: March, goal: BlockPos, squadName: String) {
+        val search = march.search ?: CellPlanner.search(Walking(level), npc.position(), Vec3.atBottomCenterOf(goal))
+            ?.also {
+                march.search = it
+                march.searchStarted = level.gameTime
+            }
+        if (search == null) {
+            march.legsOnly = true
+            DebugFlags.log("[march-debug] {} no long route from {} (not on known open ground), planning in legs", squadName, npc.blockPosition())
+            return
+        }
+        if (!PlanBudget.advance(level, search)) return
+        march.search = null
+        val found = search.result()
+        if (found == null || found.trail.size < 2) {
+            march.legsOnly = true
+            DebugFlags.log("[march-debug] {} no long route from {} to {} ({}), planning in legs", squadName, npc.blockPosition(), goal, search.stoppedBy)
+            return
+        }
+        march.route = (march.route + found.trail.map { BlockPos.containing(it) }).takeLast(MAX_ROUTE_NODES)
+        march.complete = found.complete
+        march.long = true
+        DebugFlags.log(
+            "[march-debug] {} long route from {} to {}: {} nodes, {} blocks, ends {} {} from the goal ({}; {} units over {} ticks)",
+            squadName, npc.blockPosition(), goal, found.trail.size, found.length.toInt(), BlockPos.containing(found.landing),
+            Math.hypot(found.landing.x - goal.x - 0.5, found.landing.z - goal.z - 0.5).toInt(), search.stoppedBy,
+            search.expanded, level.gameTime - march.searchStarted + 1
+        )
     }
 
     private fun plan(level: ServerLevel, npc: NpcEntity, march: March, squadName: String) {

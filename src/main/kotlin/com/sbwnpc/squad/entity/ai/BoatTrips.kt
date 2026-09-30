@@ -4,6 +4,7 @@ import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.route.CellPlanner
+import com.sbwnpc.squad.route.PlanBudget
 import com.sbwnpc.squad.vehicle.WaterRoutes
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
@@ -23,7 +24,7 @@ import java.util.UUID
  * saves at least a [ADVANTAGE] share of that and actually goes somewhere; a river along the way to
  * the goal is sailed down, a lake crossed, and a pond next to a road left alone.
  *
- * The water searches run a few thousand columns a tick for everyone together ([NODES_PER_TICK]),
+ * The water searches run a few thousand columns a tick for everyone together ([PlanBudget]),
  * so a squad's boats are weighed over some ticks and the squad waits for the answer; a boat under
  * way looking for its next stretch keeps going along the last one meanwhile.
  */
@@ -60,34 +61,18 @@ object BoatTrips {
     /** A decision is looked at again after this long — boats move, get taken, sink. */
     private const val DECISION_TICKS = 600L
 
-    /** Columns of water searched per server tick, all searches together. */
-    private const val NODES_PER_TICK = 2_500
     /** A boat's search nobody has come back for in this long is dropped. */
     private const val REPLAN_TICKS = 600L
 
     private val bySquad = HashMap<UUID, Decision>()
     private val replans = HashMap<UUID, Replan>()
-    private var budgetTick = Long.MIN_VALUE
-    private var budgetLeft = 0
 
     fun clearAll() {
         bySquad.clear()
         replans.clear()
-        budgetTick = Long.MIN_VALUE
     }
 
-    /** Runs [search] on with what's left of this tick's columns; true once it's over. */
-    private fun advance(level: ServerLevel, search: CellPlanner.Search): Boolean {
-        if (budgetTick != level.gameTime) {
-            budgetTick = level.gameTime
-            budgetLeft = NODES_PER_TICK
-        }
-        if (budgetLeft <= 0) return false
-        val before = search.expanded
-        val done = search.step(budgetLeft)
-        budgetLeft -= (search.expanded - before).coerceAtLeast(1)
-        return done
-    }
+    private fun advance(level: ServerLevel, search: CellPlanner.Search): Boolean = PlanBudget.advance(level, search)
 
     /**
      * The boat trips worth taking for [npc]'s squad to [goal], cheapest first — empty when walking
