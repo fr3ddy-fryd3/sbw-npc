@@ -547,6 +547,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     override fun createNavigation(level: Level): net.minecraft.world.entity.ai.navigation.PathNavigation =
         com.sbwnpc.squad.entity.ai.VehicleAwareNavigation(this, level)
 
+    init {
+        moveControl = com.sbwnpc.squad.entity.ai.NpcMoveControl(this)
+    }
+
     // Three small vanilla-style goals beside the brain — see the class doc comment.
     override fun registerGoals() {
         super.registerGoals()
