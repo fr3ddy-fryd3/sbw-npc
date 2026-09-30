@@ -188,6 +188,21 @@ object SbwVehicles : Vehicles {
         val desiredYaw: Double = -VehicleVecUtils.getYRotFromVector(toTarget)
         val diff = Mth.wrapDegrees(desiredYaw - vehicle.yRot.toDouble())
 
+        // A boat turns by the swing its helm builds up, not by where the rudder sits: its engine
+        // keeps pushing rudderRot the way it's held, so steering to a rudder target (below) held
+        // the helm hard over for good — the boat went round in circles. Steer by the heading
+        // itself: helm over until the bow is near the mark, then let it straighten.
+        if (vehicle.computed().engineType == EngineType.SHIP) {
+            // Right swings the bow to a lower yRot, left to a higher one.
+            val left = diff > SHIP_HEADING_DEADBAND
+            val right = diff < -SHIP_HEADING_DEADBAND
+            vehicle.forwardInputDown = true
+            vehicle.backInputDown = false
+            vehicle.rightInputDown = right
+            vehicle.leftInputDown = left
+            return Steering(right, left, "ship pos=${vehicle.position()} yRot=${vehicle.yRot} desiredYaw=$desiredYaw diff=$diff speed=${vehicle.deltaMovement.horizontalDistance()}")
+        }
+
         val targetRudder = Mth.clamp((-diff / RUDDER_FULL_LOCK_DEGREES).toFloat(), -1f, 1f) * MAX_RUDDER_MAGNITUDE
         val rudderError = vehicle.rudderRot - targetRudder
         val right = rudderError > RUDDER_DEADBAND
@@ -394,4 +409,7 @@ object SbwVehicles : Vehicles {
     // float noise/the engine's own per-tick rudderRot changes chatter the input on/off every tick;
     // too large and steering stays visibly short of what was actually commanded.
     private const val RUDDER_DEADBAND = 0.05f
+    // Heading error (degrees) within which a boat's helm is let go: the swing it has built up
+    // carries it the rest of the way.
+    private const val SHIP_HEADING_DEADBAND = 12.0
 }
