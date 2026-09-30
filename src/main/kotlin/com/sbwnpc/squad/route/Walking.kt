@@ -5,7 +5,9 @@ import net.minecraft.world.phys.Vec3
 
 /**
  * A man on foot, for [CellPlanner]: over ground and through water ([Ground]), up a block at a step
- * and down three at most, never through a trunk, a low canopy or anything that burns.
+ * and down three at most, never through a trunk, a low canopy or anything that burns. Climbing
+ * costs more than the flat, and going down some too, so that a way round a valley on the level
+ * beats one down into it and up the far side unless it is a good deal longer.
  *
  * The walk ends at the goal. Where it can't be got to — up a cliff, inside walls — it ends as near
  * as the ground allows, the rest of the way counted at [SHORT_OF_GOAL] times its length so that
@@ -31,6 +33,11 @@ class Walking(private val ground: Ground) : CellPlanner.Medium {
     override fun extraCost(x: Int, z: Int): Double =
         if (ground.kind(x, z) == GroundMap.Kind.WATER) SWIM_COST else 0.0
 
+    override fun stepCost(ax: Int, az: Int, bx: Int, bz: Int): Double {
+        val rise = ground.height(bx, bz) - ground.height(ax, az)
+        return if (rise > 0) rise * CLIMB_COST else -rise * DESCENT_COST
+    }
+
     override fun exitAt(x: Int, z: Int, goal: Vec3): Vec3 = Vec3(x + 0.5, pointY(x, z), z + 0.5)
 
     override fun remaining(exit: Vec3, goal: Vec3): Double {
@@ -45,6 +52,11 @@ class Walking(private val ground: Ground) : CellPlanner.Medium {
         const val MAX_DROP = 3
         /** Extra blocks of walking a block of swimming costs. */
         const val SWIM_COST = 2.0
+        /** Extra blocks of walking a block climbed costs — a jump at every one. */
+        const val CLIMB_COST = 2.0
+        /** Extra blocks of walking a block gone down costs: cheap, but not free, or a valley on
+         *  the way is worth dropping into for a few blocks saved. */
+        const val DESCENT_COST = 1.0
         /** This near the goal is at it. */
         const val AT_GOAL = 4.0
         const val SHORT_OF_GOAL = 2.0
