@@ -10,7 +10,7 @@ import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
 /**
- * What NPCs hear of the other side: gunfire, explosions, and players' footsteps. A noise gives no target — it only turns
+ * What NPCs hear of the other side: gunfire, explosions, and footsteps — players' and NPCs'. A noise gives no target — it only turns
  * a listener's head toward it, and sends those free to go and look there
  * ([NpcEntity.hear]). What they find they must see for themselves.
  *
@@ -35,6 +35,8 @@ object Hearing {
     private const val WALK_RADIUS = 4.0
     private const val SPRINT_RADIUS = 8.0
     private const val LANDING_RADIUS = 3.0
+    /** Blocks a tick over which an NPC is taken to be running rather than walking. */
+    private const val NPC_RUN_SPEED = 0.2
 
     /** [shooter] fired a gun heard [radius] blocks around it. */
     fun gunshot(level: ServerLevel, shooter: Entity, radius: Double) {
@@ -47,22 +49,27 @@ object Hearing {
     }
 
     /**
-     * [player] took a step, or came down from a jump when [landing]. Walking is heard close by,
-     * running twice as far; crouching isn't heard at all. Once a second per player is plenty — a
-     * step is a step.
+     * [walker] — a player or an NPC — took a step, or came down from a jump when [landing].
+     * Walking is heard close by, running twice as far; crouching isn't heard at all. Once a second
+     * per walker is plenty — a step is a step.
      */
-    fun footstep(level: ServerLevel, player: Entity, landing: Boolean) {
-        if (player.isSteppingCarefully) return
+    fun footstep(level: ServerLevel, walker: Entity, landing: Boolean) {
+        // A player sneaking, an NPC crouched.
+        if (walker.isSteppingCarefully || walker.pose == net.minecraft.world.entity.Pose.CROUCHING) return
         val now = level.gameTime
-        val last = lastStep[player.uuid]
+        val last = lastStep[walker.uuid]
         if (last != null && now - last < SHOOTER_INTERVAL_TICKS) return
-        lastStep[player.uuid] = now
+        lastStep[walker.uuid] = now
+        if (lastStep.size > 1024) lastStep.entries.removeIf { now - it.value > SHOOTER_INTERVAL_TICKS }
+        // An NPC never sets the sprint flag; it runs when it's moving at a run.
+        val running = walker.isSprinting ||
+            (walker !is net.minecraft.world.entity.player.Player && walker.deltaMovement.horizontalDistance() > NPC_RUN_SPEED)
         val radius = when {
             landing -> LANDING_RADIUS
-            player.isSprinting -> SPRINT_RADIUS
+            running -> SPRINT_RADIUS
             else -> WALK_RADIUS
         }
-        noise(level, player.position(), radius, player, if (landing) "landing" else if (player.isSprinting) "running" else "walking")
+        noise(level, walker.position(), radius, walker, if (landing) "landing" else if (running) "running" else "walking")
     }
 
     /** An explosion of [power] went off at [at], set off by [source] if anyone. */
