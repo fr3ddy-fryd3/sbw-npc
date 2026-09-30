@@ -23,11 +23,13 @@ import net.minecraft.world.level.levelgen.Heightmap
 object GroundMap {
     enum class Kind { UNKNOWN, GROUND, WATER, TREE, NO_ROOM, DANGER }
 
-    private class Chunk(val height: ShortArray, val kind: ByteArray, val seenAt: Long)
+    private class Chunk(val height: ShortArray, val kind: ByteArray, val room: ByteArray, val seenAt: Long)
 
     private const val REFRESH_TICKS = 600L
     private const val FORGET_TICKS = 36_000L
     private const val MAX_CHUNKS = 40_000
+    /** Free blocks over the ground counted up to. */
+    const val MAX_ROOM = 4
     /** Blocks down past trunks at most, to the ground a tree stands on. */
     private const val MAX_TRUNK = 40
 
@@ -43,6 +45,12 @@ object GroundMap {
     fun kind(level: ServerLevel, x: Int, z: Int): Kind {
         val chunk = chunkAt(level, x shr 4, z shr 4) ?: return Kind.UNKNOWN
         return kinds[chunk.kind[(x and 15) * 16 + (z and 15)].toInt()]
+    }
+
+    /** Free blocks over the ground at column ([x], [z]), up to [MAX_ROOM] — a tank needs more than a man. */
+    fun room(level: ServerLevel, x: Int, z: Int): Int {
+        val chunk = chunkAt(level, x shr 4, z shr 4) ?: return 0
+        return chunk.room[(x and 15) * 16 + (z and 15)].toInt()
     }
 
     /** The height a man stands at over column ([x], [z]) — on the ground, or at the water's surface. */
@@ -71,6 +79,7 @@ object GroundMap {
         val chunk = level.chunkSource.getChunkNow(cx, cz)!!
         val height = ShortArray(256)
         val kind = ByteArray(256)
+        val room = ByteArray(256)
         val cursor = BlockPos.MutableBlockPos()
         for (lx in 0 until 16) for (lz in 0 until 16) {
             val x = (cx shl 4) + lx
@@ -91,21 +100,23 @@ object GroundMap {
                 trunk -> Kind.TREE
                 state.`is`(Blocks.CACTUS) || state.`is`(Blocks.MAGMA_BLOCK) || state.`is`(Blocks.CAMPFIRE) ||
                     state.`is`(Blocks.SWEET_BERRY_BUSH) || state.`is`(Blocks.POWDER_SNOW) -> Kind.DANGER
-                !roomOver(level, cursor, x, y, z) -> Kind.NO_ROOM
-                else -> Kind.GROUND
+                else -> {
+                    room[i] = roomOver(level, cursor, x, y, z).toByte()
+                    if (room[i] < 2) Kind.NO_ROOM else Kind.GROUND
+                }
             }
             kind[i] = k.ordinal.toByte()
             height[i] = (if (k == Kind.WATER) y else y + 1).toShort()
         }
-        return Chunk(height, kind, now)
+        return Chunk(height, kind, room, now)
     }
 
-    /** Two blocks free to stand in over the ground at [y] — no low branch or overhang. */
-    private fun roomOver(level: ServerLevel, cursor: BlockPos.MutableBlockPos, x: Int, y: Int, z: Int): Boolean {
-        for (dy in 1..2) {
+    /** Blocks free over the ground at [y], up to [MAX_ROOM] — a low branch or overhang cuts it. */
+    private fun roomOver(level: ServerLevel, cursor: BlockPos.MutableBlockPos, x: Int, y: Int, z: Int): Int {
+        for (dy in 1..MAX_ROOM) {
             cursor.set(x, y + dy, z)
-            if (!level.getBlockState(cursor).getCollisionShape(level, cursor).isEmpty) return false
+            if (!level.getBlockState(cursor).getCollisionShape(level, cursor).isEmpty) return dy - 1
         }
-        return true
+        return MAX_ROOM
     }
 }
