@@ -131,6 +131,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** The way over the water the boat being driven follows, and how far along it it is. */
     private var boatRoute: List<Vec3> = emptyList()
     private var boatRouteIndex = 0
+    /** When the boat last got nearer the end of its way, and how near that was — a boat that has
+     *  stopped getting anywhere is given up on, however long its voyage. */
+    private var boatProgressTick = 0
+    private var boatBestRemaining = Double.MAX_VALUE
     /** As fast as the boat should go for the bends ahead — see [pursue]. */
     private var boatTargetSpeed = 1.0
     /** Whether the way the boat follows ends at a bank — see [WaterRoutes.Route.complete]. */
@@ -276,6 +280,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         tripDestination = if (isBoat(vehicle)) landingOf(vehicle) ?: BoatTrips.tripOf(vehicle.uuid)?.route?.landing else entity.homeCenter()
         boatRoute = emptyList()
         boatRouteComplete = true
+        boatProgressTick = entity.tickCount
+        boatBestRemaining = Double.MAX_VALUE
         observedDamageStamp = Ports.vehicles.lastHitTime(vehicle)
         lastStuckCheckTick = entity.tickCount
         lastStuckCheckPos = null
@@ -307,6 +313,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         boatTrips = emptyList()
         boatRoute = emptyList()
         boatRouteComplete = true
+        boatProgressTick = entity.tickCount
+        boatBestRemaining = Double.MAX_VALUE
         // Without this, a stale seekingStartTick from a previous (long-finished) transport episode
         // survives into the next one — checkExtraStartConditions re-evaluates eligible() the very
         // next tick this NPC becomes eligible again (e.g. a fresh far-away order), sees
@@ -473,6 +481,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         observedDamageStamp = Ports.vehicles.lastHitTime(vehicle)
         boatRoute = emptyList()
         boatRouteComplete = true
+        boatProgressTick = entity.tickCount
+        boatBestRemaining = Double.MAX_VALUE
 
         boardTick = entity.tickCount
         // Reset stuck-detection state — it must not carry over from a previous vehicle (e.g. after
@@ -605,8 +615,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
 
         // Hard cap: recovery below isn't guaranteed to work (e.g. genuinely boxed in) — give up and
-        // let the driver walk the rest rather than sit there forever retrying.
-        if (entity.tickCount - boardTick > MAX_TRANSIT_TICKS) {
+        // let the driver walk the rest rather than sit there forever retrying. A boat's voyage can
+        // run to several minutes: it gives up only once it has stopped getting anywhere.
+        val givenUp = if (isBoat(vehicle)) entity.tickCount - boatProgressTick > BOAT_NO_PROGRESS_TICKS
+            else entity.tickCount - boardTick > MAX_TRANSIT_TICKS
+        if (givenUp) {
             if (isPermanentCrew(entity, vehicle)) {
                 holdVehicle(vehicle)
                 phase = Phase.HOLDING
@@ -709,6 +722,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 boatRouteIndex = 0
                 nextRouteTick = Int.MAX_VALUE
                 boatRouteComplete = route.complete
+                boatBestRemaining = Double.MAX_VALUE
+                boatProgressTick = entity.tickCount
                 // The way can come out at another bank than the one first picked; everyone aboard
                 // gets off where it actually goes — and nowhere while it goes on past what was searched.
                 if (route.complete) VehicleTransportClaims.setLanding(vehicle.uuid, route.landing)
@@ -730,6 +745,13 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         ) {
             boatLookAheadTick = entity.tickCount + BOAT_LOOKAHEAD_RETRY_TICKS
             nextRouteTick = entity.tickCount
+        }
+        boatRoute.lastOrNull()?.let { end ->
+            val remaining = horizontalDistance(vehicle.position(), end)
+            if (remaining < boatBestRemaining - BOAT_PROGRESS_STEP) {
+                boatBestRemaining = remaining
+                boatProgressTick = entity.tickCount
+            }
         }
         return pursue(vehicle) ?: landing
     }
@@ -955,7 +977,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             waitToStopThenDismount(entity, vehicle, isDriver = false)
             return
         }
-        if (entity.tickCount - boardTick > MAX_TRANSIT_TICKS) {
+        // Not on a boat: out on the water that's a swim. A boat whose driver gives up leaves them
+        // with nobody at the wheel, and that gets them off (above).
+        if (!isBoat(vehicle) && entity.tickCount - boardTick > MAX_TRANSIT_TICKS) {
             waitToStopThenDismount(entity, vehicle, isDriver = false)
         }
     }
@@ -1163,7 +1187,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.vehicle === vehicle && VehicleTransportClaims.driverOf(vehicle.uuid) == entity.uuid && !boatRouteComplete) return false
         val dist = horizontalDistance(vehicle.position(), home)
         return dist <= BOAT_ARRIVAL_RADIUS ||
-            (!vehicle.isInWater && entity.tickCount - boardTick > BOAT_LAUNCH_GRACE_TICKS) ||
+            // Washed up by its landing. Anywhere else it ran aground on the way: that's stuck, not there.
+            (!vehicle.isInWater && entity.tickCount - boardTick > BOAT_LAUNCH_GRACE_TICKS && dist <= BOAT_BANK_RADIUS) ||
             (dist <= BOAT_BANK_RADIUS && restingAtBank(vehicle))
     }
 
@@ -1285,6 +1310,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val BOAT_SLOW_TURN_SPEED = 0.28
         /** Legs of the way looked along for where the boat is on it. */
         private const val BOAT_LEGS_LOOKED_AT = 4
+        /** A boat that hasn't got this much nearer the end of its way in [BOAT_NO_PROGRESS_TICKS]
+         *  is given up on and everyone gets off. */
+        private const val BOAT_PROGRESS_STEP = 4.0
+        private const val BOAT_NO_PROGRESS_TICKS = 1200
         /** Blocks short of the end of a way that goes on at which the next stretch is looked for. */
         private const val BOAT_LOOKAHEAD = 40.0
         private const val BOAT_LOOKAHEAD_RETRY_TICKS = 40
