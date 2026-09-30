@@ -69,9 +69,12 @@ object SquadMarch {
     /** Routes a squad may have at once — parties bound elsewhere, stragglers finding their way. */
     private const val MAX_MARCHES = 8
     /** A route nobody has asked for in this long is dropped. */
-    private const val IDLE_TICKS = 200L
+    private const val IDLE_TICKS = 1200L
     /** Older nodes beyond this many are dropped from the back of a growing route. */
-    private const val MAX_ROUTE_NODES = 400
+    private const val MAX_ROUTE_NODES = 2000
+    /** A way found from near here to the same goal this recently is taken again, not searched for. */
+    private const val REUSE_TICKS = 1200L
+    private const val MAX_REMEMBERED = 64
     /** Water this many route nodes long is worth a boat — see [crossingAhead]. */
     private const val MIN_CROSSING = 12
     /** How far ahead along the route a crossing is looked for. */
@@ -98,10 +101,15 @@ object SquadMarch {
     }
 
     private val bySquad = HashMap<UUID, MutableList<March>>()
+
+    /** A way the long-route planner found lately — see [REUSE_TICKS]. */
+    private class Found(val dimension: String, val from: BlockPos, val goal: BlockPos, val trail: List<BlockPos>, val complete: Boolean, val at: Long)
+    private val found = ArrayList<Found>()
     private var lastPlanTick = Long.MIN_VALUE
 
     fun clearAll() {
         bySquad.clear()
+        found.clear()
         lastPlanTick = Long.MIN_VALUE
     }
 
@@ -250,6 +258,23 @@ object SquadMarch {
      * no way at all (inside a building, down a cave) the march goes back to legs.
      */
     private fun planLong(level: ServerLevel, npc: NpcEntity, march: March, goal: BlockPos, squadName: String) {
+        // The same way from the same place, found a moment ago for someone else — the men a
+        // barracks sends up after the squad, a march dropped while its squad fought. Seven in ten
+        // searches in a big fight were one done already, and the rest of the squads stood waiting
+        // their turn behind them.
+        if (march.search == null) {
+            val dimension = level.dimension().location().toString()
+            found.removeIf { level.gameTime - it.at > REUSE_TICKS }
+            found.firstOrNull {
+                it.dimension == dimension && it.from.closerThan(npc.blockPosition(), JOIN) && it.goal.closerThan(goal, SAME_GOAL)
+            }?.let {
+                march.route = (march.route + it.trail).takeLast(MAX_ROUTE_NODES)
+                march.complete = it.complete
+                march.long = true
+                DebugFlags.log("[march-debug] {} takes the way found from {} to {} ({} nodes)", squadName, it.from, it.goal, it.trail.size)
+                return
+            }
+        }
         val search = march.search ?: CellPlanner.search(Walking(level), npc.position(), Vec3.atBottomCenterOf(goal))
             ?.also {
                 march.search = it
@@ -268,8 +293,11 @@ object SquadMarch {
             DebugFlags.log("[march-debug] {} no long route from {} to {} ({}), planning in legs", squadName, npc.blockPosition(), goal, search.stoppedBy)
             return
         }
-        march.route = (march.route + found.trail.map { BlockPos.containing(it) }).takeLast(MAX_ROUTE_NODES)
+        val trail = found.trail.map { BlockPos.containing(it) }
+        march.route = (march.route + trail).takeLast(MAX_ROUTE_NODES)
         march.complete = found.complete
+        if (this.found.size >= MAX_REMEMBERED) this.found.removeAt(0)
+        this.found += Found(level.dimension().location().toString(), trail.first(), goal, trail, found.complete, level.gameTime)
         march.long = true
         DebugFlags.log(
             "[march-debug] {} long route from {} to {}: {} nodes, {} blocks, ends {} {} from the goal ({}; {} units over {} ticks)",
