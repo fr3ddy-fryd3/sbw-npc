@@ -38,8 +38,12 @@ object BoatTrips {
     private const val ADVANTAGE = 0.2
     /** Voyages shorter than this aren't worth getting in for. */
     private const val MIN_VOYAGE = 24.0
-    /** Water in the way counts as this many times the straight walk — swimming it is slow. */
+    /** Water on the squad's own route counts as this many times the straight walk. */
     private const val SWIM_PENALTY = 1.6
+    /** A block of water on the straight line to the goal costs this many blocks of walking. */
+    private const val SWIM_COST = 3.0
+    /** Blocks between the samples of the straight line taken for [walkCost]. */
+    private const val WALK_SAMPLE = 4.0
     /** Boats weighed per squad, nearest first. */
     private const val MAX_BOATS = 3
     private const val SEARCH_RADIUS = 60.0
@@ -75,7 +79,7 @@ object BoatTrips {
             val boats = Ports.vehicles.within(level, AABB.ofSize(npc.position(), SEARCH_RADIUS * 2, 32.0, SEARCH_RADIUS * 2)) {
                 it.distanceToSqr(npc) <= SEARCH_RADIUS * SEARCH_RADIUS && usable(it)
             }.sortedBy { it.distanceToSqr(npc) }.take(MAX_BOATS)
-            val walk = npc.position().distanceTo(goal) * if (waterAhead) SWIM_PENALTY else 1.0
+            val walk = walkCost(level, npc.position(), goal) * if (waterAhead) SWIM_PENALTY else 1.0
             decision = Decision(squad.orderStamp, goalPos, level.gameTime, walk, ArrayDeque(boats.map { it.uuid }))
             bySquad[squad.id] = decision
         }
@@ -87,6 +91,31 @@ object BoatTrips {
             weigh(level, npc, boat, goal, decision, squad.name)
         }
         return decision.trips.sortedBy { it.cost }
+    }
+
+    /**
+     * Walking to [goal], in blocks: the straight line, with the stretches of it that are water
+     * counted [SWIM_COST] times over — that's either swimming or a long way round. Taking the line
+     * as dry ground had a squad set down 400 blocks short of its goal, on a lake, decide the rest
+     * was a walk, and swim it.
+     */
+    private fun walkCost(level: ServerLevel, from: Vec3, goal: Vec3): Double {
+        val dist = Math.hypot(goal.x - from.x, goal.z - from.z)
+        val steps = Math.ceil(dist / WALK_SAMPLE).toInt().coerceAtLeast(1)
+        var wet = 0
+        var seen = 0
+        val cursor = BlockPos.MutableBlockPos()
+        for (i in 0..steps) {
+            val t = i.toDouble() / steps
+            val x = Math.floor(from.x + (goal.x - from.x) * t).toInt()
+            val z = Math.floor(from.z + (goal.z - from.z) * t).toInt()
+            val chunk = level.chunkSource.getChunkNow(x shr 4, z shr 4) ?: continue
+            val top = chunk.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, x and 15, z and 15)
+            seen++
+            if (level.getFluidState(cursor.set(x, top, z)).`is`(net.minecraft.tags.FluidTags.WATER)) wet++
+        }
+        val wetShare = if (seen == 0) 0.0 else wet.toDouble() / seen
+        return dist * (1 + wetShare * (SWIM_COST - 1))
     }
 
     /** The trip [boat] is on, if some squad's decision took it. */
