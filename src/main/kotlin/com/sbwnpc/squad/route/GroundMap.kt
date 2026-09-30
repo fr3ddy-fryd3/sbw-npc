@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.route
 
 import net.minecraft.core.BlockPos
+import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.tags.BlockTags
 import net.minecraft.tags.FluidTags
@@ -32,6 +33,8 @@ object GroundMap {
     const val MAX_ROOM = 4
     /** Blocks down past trunks at most, to the ground a tree stands on. */
     private const val MAX_TRUNK = 40
+    /** Blocks of snow or the like lying on the ground counted as floor at most. */
+    private const val MAX_LYING = 2
 
     private data class Key(val dimension: String, val cx: Int, val cz: Int)
 
@@ -100,15 +103,37 @@ object GroundMap {
                 trunk -> Kind.TREE
                 state.`is`(Blocks.CACTUS) || state.`is`(Blocks.MAGMA_BLOCK) || state.`is`(Blocks.CAMPFIRE) ||
                     state.`is`(Blocks.SWEET_BERRY_BUSH) || state.`is`(Blocks.POWDER_SNOW) -> Kind.DANGER
-                else -> {
-                    room[i] = roomOver(level, cursor, x, y, z).toByte()
-                    if (room[i] < 2) Kind.NO_ROOM else Kind.GROUND
-                }
+                else -> null
             }
-            kind[i] = k.ordinal.toByte()
-            height[i] = (if (k == Kind.WATER) y else y + 1).toShort()
+            if (k != null) {
+                kind[i] = k.ordinal.toByte()
+                height[i] = (if (k == Kind.WATER) y else y + 1).toShort()
+                continue
+            }
+            // Whatever lies on the ground without blocking movement — snow, a carpet — is the floor
+            // a man stands on, not something over his head: counted as that, a snowfield read as
+            // ground with no room over it, and no way on foot was found across a snowy mountain.
+            var floor = y
+            var surface = y + topOf(level, cursor.set(x, y, z))
+            while (floor - y < MAX_LYING) {
+                cursor.set(x, floor + 1, z)
+                val lying = level.getBlockState(cursor)
+                val shape = lying.getCollisionShape(level, cursor)
+                if (shape.isEmpty || lying.blocksMotion()) break
+                floor++
+                surface = floor + shape.max(Direction.Axis.Y)
+            }
+            room[i] = roomOver(level, cursor, x, floor, z).toByte()
+            kind[i] = (if (room[i] < 2) Kind.NO_ROOM else Kind.GROUND).ordinal.toByte()
+            height[i] = Math.floor(surface + 0.5).toInt().toShort()
         }
         return Chunk(height, kind, room, now)
+    }
+
+    /** Where on the block at [pos] a man stands: the top of its shape, a whole block if it has none. */
+    private fun topOf(level: ServerLevel, pos: BlockPos): Double {
+        val shape = level.getBlockState(pos).getCollisionShape(level, pos)
+        return if (shape.isEmpty) 1.0 else shape.max(Direction.Axis.Y)
     }
 
     /** Blocks free over the ground at [y], up to [MAX_ROOM] — a low branch or overhang cuts it. */
