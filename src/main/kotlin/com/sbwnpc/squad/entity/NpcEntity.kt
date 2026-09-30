@@ -275,7 +275,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         return if (full <= 0) 1.0 else Ports.guns.roundsLeft(gun).toDouble() / full
     }
 
-    private var supplyCheckTick = Int.MIN_VALUE
+    // Not MIN_VALUE: `tickCount - MIN_VALUE` overflows negative, the lookup below never ran, and
+    // no NPC ever saw a Supply.
+    private var supplyCheckTick = Int.MIN_VALUE / 2
     private var cachedSupply: Vec3? = null
 
     /** Centre of the nearest Supply serving this NPC's side within [SUPPLY_SEARCH_RANGE] — looked up
