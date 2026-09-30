@@ -82,7 +82,12 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         val dz = pos.z + 0.5 - mob.z
         val len = Math.sqrt(dx * dx + dz * dz)
         // At the wheel or on a bench, a man's squad route is a footpath — no way for a vehicle.
-        val npc = (mob as? com.sbwnpc.squad.entity.NpcEntity)?.takeIf { it.vehicle == null }
+        // And only the squad's own march goes by its route: a man off to look at a noise, to a
+        // Supply or for shells had a march planned for his errand alone, stood still till it
+        // came back — and whoever asked for his path just once took that for a path already
+        // walked and gave up.
+        val npc = (mob as? com.sbwnpc.squad.entity.NpcEntity)
+            ?.takeIf { it.vehicle == null && it.homeCenter()?.let { home -> pos.closerThan(BlockPos.containing(home), MARCH_GOAL_RANGE) } == true }
         if (len <= NEAR_RANGE && level.chunkSource.getChunkNow(pos.x shr 4, pos.z shr 4) != null) {
             farGoal = null
             branch = "near"
@@ -189,6 +194,8 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         const val NOWHERE_MIN_DISTANCE = 3.0
         /** The NPC's own follow range: nearer than this, vanilla's own search is enough. */
         const val NEAR_RANGE = 48.0
+        /** A goal this near the squad's objective is the squad's march: a place in its formation there. */
+        const val MARCH_GOAL_RANGE = 48.0
         const val FAR_RANGE = 100.0
         /** 768 nodes at follow range 48 — three times that for a search twice as far. */
         const val FAR_NODE_MULTIPLIER = 3f
