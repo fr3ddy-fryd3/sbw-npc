@@ -114,6 +114,7 @@ object CellPlanner {
          *  part in the key's y — part 0 for a cell nothing is known of. */
         private val parts = HashMap<Long, IntArray>()
         private val partCount = HashMap<Long, Int>()
+        private val partExtra = HashMap<Long, Double>()
         private val cellG = HashMap<Long, Double>()
         private val cellParent = HashMap<Long, Long>()
         private val cellOpen = PriorityQueue<Pair<Long, Double>>(compareBy { it.second })
@@ -282,7 +283,7 @@ object CellPlanner {
                 val count = partCount[cellOfNode(n)] ?: 0
                 for (q in 0 until count) {
                     if (q == partOf(n) || !stepsWithin(n, partOf(n), q)) continue
-                    relax(n, node(cx, cz, q), cg + medium.pace)
+                    relax(n, node(cx, cz, q), cg + medium.pace + extraOf(node(cx, cz, q)))
                 }
             } else {
                 // Nothing known here: going on over it toward the goal is a way to end it too.
@@ -305,9 +306,28 @@ object CellPlanner {
                 }
                 val count = partsOf(next).let { partCount[next] ?: 0 }
                 for (q in 0 until count) {
-                    if (passable(n, dx, dz, q, here)) relax(n, node(cx + dx, cz + dz, q), ng)
+                    val to = node(cx + dx, cz + dz, q)
+                    if (passable(n, dx, dz, q, here)) relax(n, to, ng + extraOf(to))
                 }
             }
+        }
+
+        /**
+         * What crossing node [n] costs over the flat, in blocks walked: the columns' own extra cost
+         * (a swim, a bank) over its part, [CELL] blocks of it. Left out, a lake cost the coarse pass
+         * no more than the meadow round it, and the column pass, held to the cells it picked, swam
+         * two hundred blocks where the walk round cost two thirds as much.
+         */
+        private fun extraOf(n: Long): Double = partExtra.getOrPut(n) {
+            val ids = partsOf(n)
+            var sum = 0.0
+            var count = 0
+            for (i in 0 until CELL) for (j in 0 until CELL) {
+                if (ids[i * CELL + j] != partOf(n)) continue
+                sum += medium.extraCost(kx(n) * CELL + i, kz(n) * CELL + j)
+                count++
+            }
+            if (count == 0) 0.0 else sum / count * CELL * medium.pace
         }
 
         private fun relax(from: Long, to: Long, ng: Double) {
