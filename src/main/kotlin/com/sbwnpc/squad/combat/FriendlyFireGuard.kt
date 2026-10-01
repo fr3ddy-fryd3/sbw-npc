@@ -43,18 +43,19 @@ object FriendlyFireGuard {
     /** Result of one combined [assess] pass — both answers from a single walk over the allies. */
     class Assessment(val lineClear: Boolean, val blastClear: Boolean)
 
-    /** Every non-hostile NPC and player in the level except [shooter] — the "allies" all three
-     *  checks below filter against. Walks [NpcRegistry] + `level.players()` instead of an AABB
-     *  entity query: a linear pass over the (hundred-odd) NPCs is cheaper than walking the chunk
-     *  sections of a shooter→target box, and it's the same for every box size. Same population as
-     *  the old `getEntitiesOfClass(LivingEntity) { NpcEntity || Player }` filter. */
-    private inline fun forEachAlly(shooter: NpcEntity, action: (LivingEntity) -> Unit) {
+    /** Every non-hostile NPC and player in the level except [shooter] that [near] lets through —
+     *  the "allies" all three checks below filter against. Walks [NpcRegistry] + `level.players()`
+     *  instead of an AABB entity query: a linear pass over the NPCs is cheaper than walking the
+     *  chunk sections of a shooter→target box, and it's the same for every box size. [near] is the
+     *  caller's cheap geometric test and runs first: with hundreds of NPCs in a level, a faction
+     *  lookup for each of them, per shooter, was the costly part of the pass. */
+    private inline fun forEachAlly(shooter: NpcEntity, near: (LivingEntity) -> Boolean, action: (LivingEntity) -> Unit) {
         val level = shooter.level() as? ServerLevel ?: return
         for (npc in NpcRegistry.all(level)) {
-            if (npc !== shooter && !SquadTeams.isHostile(shooter, npc)) action(npc)
+            if (npc !== shooter && near(npc) && !SquadTeams.isHostile(shooter, npc)) action(npc)
         }
         for (player in level.players()) {
-            if (!SquadTeams.isHostile(shooter, player)) action(player)
+            if (near(player) && !SquadTeams.isHostile(shooter, player)) action(player)
         }
     }
 
@@ -77,7 +78,8 @@ object FriendlyFireGuard {
 
         var lineClear = true
         var blastClear = true
-        forEachAlly(shooter) { ally ->
+        val blastBox = AABB(impactPoint, impactPoint).inflate(blastRadius)
+        forEachAlly(shooter, { coneBox.intersects(it.boundingBox) || (checkBlast && blastBox.contains(it.position())) }) { ally ->
             if (lineClear && aimDir != null && coneBox.intersects(ally.boundingBox) &&
                 inFiringCone(ally, from, aimDir, aimDist, maxAngle)
             ) lineClear = false
@@ -117,7 +119,8 @@ object FriendlyFireGuard {
      *  the answer to "who, then?" for callers that report why they held fire. */
     fun allyInBlast(shooter: NpcEntity, impactPoint: Vec3, blastRadius: Double): LivingEntity? {
         if (blastRadius <= 0.0) return null
-        forEachAlly(shooter) { ally ->
+        val blastBox = AABB(impactPoint, impactPoint).inflate(blastRadius)
+        forEachAlly(shooter, { blastBox.contains(it.position()) }) { ally ->
             if (canBeHurt(ally) && ally.position().distanceTo(impactPoint) <= blastRadius) return ally
         }
         return null
@@ -148,7 +151,7 @@ object FriendlyFireGuard {
         fun crowding(p: Vec3): Int {
             var n = 0
             val r2 = SIDESTEP_CHECK_RADIUS * SIDESTEP_CHECK_RADIUS
-            forEachAlly(shooter) { if (it.position().distanceToSqr(p) <= r2) n++ }
+            forEachAlly(shooter, { it.position().distanceToSqr(p) <= r2 }) { n++ }
             return n
         }
 
