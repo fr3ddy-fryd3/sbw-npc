@@ -43,6 +43,9 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val PROGRESS = 2.0
         /** The spot moved farther than this: the way to the old one is no way to the new. */
         private const val SPOT_SHIFT = 16.0
+        /** A moved spot is asked the way to at most this often: in a big fight the shots move it
+         *  every second, and each ask is a long path search for every man sent to look. */
+        private const val REPLAN_TICKS = 60
         /** The look at a death site is a raycast — twice a second is plenty. */
         private const val DEATH_SITE_CHECK_INTERVAL = 10
 
@@ -73,6 +76,12 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** The spot the path being walked was asked for. */
     private var spot: Vec3? = null
 
+    /** When that path was asked for. */
+    private var askedAt = Int.MIN_VALUE / 2
+
+    /** A moved spot is waiting out [REPLAN_TICKS] — said once in the log. */
+    private var deferring = false
+
     override fun start(entity: NpcEntity) {
         BrainUtils.getMemory(entity, ModMemories.ALERT_POSITION.get())?.let { setOut(entity, it, "goes to look at") }
     }
@@ -80,6 +89,8 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** Asks for the way to [pos], or — heard in mid-jump — for it once he lands. */
     private fun setOut(entity: NpcEntity, pos: Vec3, what: String) {
         spot = pos
+        askedAt = entity.tickCount
+        deferring = false
         askedFrom = Math.sqrt(entity.distanceToSqr(pos))
         val going = entity.navigation.moveTo(pos.x, pos.y, pos.z, 1.0)
         // No path can be asked for till he lands — the first tick on the ground asks for it. The
@@ -104,7 +115,18 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
         // gets him there — but a stretch's progress is counted to the spot as it is now, or a
         // farther noise made the stretch look like no progress and he gave up on the spot.
         spot?.takeIf { pos.distanceToSqr(it) > 1.0 }?.let { old ->
-            if (pos.distanceToSqr(old) > SPOT_SHIFT * SPOT_SHIFT) {
+            val end = entity.navigation.path?.takeUnless { entity.navigation.isDone }?.endNode?.asBlockPos()
+            if (pos.distanceToSqr(old) > SPOT_SHIFT * SPOT_SHIFT &&
+                (end == null || end.distToCenterSqr(pos) > SPOT_SHIFT * SPOT_SHIFT)
+            ) {
+                // Still on his way: the new spot waits a little, so a run of shots is one new
+                // path rather than one each. The old spot stays the one to count from meanwhile.
+                if (end != null && entity.tickCount - askedAt < REPLAN_TICKS) {
+                    if (!deferring) log(entity, "spot moved ${Math.sqrt(pos.distanceToSqr(old)).toInt()} blocks, " +
+                        "path ends ${Math.sqrt(end.distToCenterSqr(pos)).toInt()} from it: asks in ${REPLAN_TICKS - (entity.tickCount - askedAt)} ticks")
+                    deferring = true
+                    return
+                }
                 setOut(entity, pos, "spot moved ${Math.sqrt(pos.distanceToSqr(old)).toInt()} blocks, goes to look at")
                 return
             }
