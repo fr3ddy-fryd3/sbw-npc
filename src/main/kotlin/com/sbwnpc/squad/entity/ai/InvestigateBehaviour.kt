@@ -76,8 +76,19 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
             spot = it
             askedFrom = Math.sqrt(entity.distanceToSqr(it))
             val going = entity.navigation.moveTo(it.x, it.y, it.z, 1.0)
+            // Heard in mid-jump: no path can be asked for till he lands — the first tick on the
+            // ground asks for it. The path he was on goes nowhere near the noise.
+            val inAir = !going && !canPlan(entity)
+            if (inAir) {
+                askedFrom = Double.MAX_VALUE
+                entity.navigation.stop()
+            }
             log(entity, "goes to look at ${BlockPos.containing(it)} (${Math.sqrt(entity.distanceToSqr(it)).toInt()} blocks)" +
-                if (going) ", ${pathTrace(entity, it)}" else ", no path")
+                when {
+                    going -> ", ${pathTrace(entity, it)}"
+                    inAir -> ", in the air: asks once he lands"
+                    else -> ", no path"
+                })
         }
     }
 
@@ -91,12 +102,14 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
         // A far spot is got to a stretch at a time — a path goes a hundred blocks at most, and
         // counts as there some blocks short: on again while each stretch gets him nearer.
         if (!entity.position().closerThan(pos, ARRIVE_DISTANCE) && entity.navigation.isDone) {
+            // Nothing can be planned mid-jump, and an empty answer then says nothing about the way.
+            if (!canPlan(entity)) return
             val now = Math.sqrt(entity.distanceToSqr(pos))
             if (now < askedFrom - PROGRESS) {
                 val before = askedFrom
                 askedFrom = now
                 val going = entity.navigation.moveTo(pos.x, pos.y, pos.z, 1.0)
-                log(entity, "stretch ended ${now.toInt()} blocks off (asked from ${before.toInt()}), asks again: " +
+                log(entity, "stretch ended ${now.toInt()} blocks off (asked from ${if (before == Double.MAX_VALUE) "the air" else before.toInt()}), asks again: " +
                     if (going) pathTrace(entity, pos) else "no path")
                 if (going) return
             } else {
@@ -130,6 +143,8 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
             })
         }
     }
+
+    private fun canPlan(entity: NpcEntity) = (entity.navigation as? VehicleAwareNavigation)?.canPlan != false
 
     private fun pathTrace(entity: NpcEntity, pos: Vec3): String = entity.navigation.path?.let {
         "path of ${it.nodeCount} nodes ends ${it.endNode?.asBlockPos()}, " +
