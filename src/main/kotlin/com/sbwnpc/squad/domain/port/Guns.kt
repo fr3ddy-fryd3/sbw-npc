@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.domain.port
 
 import net.minecraft.resources.ResourceLocation
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.phys.Vec3
@@ -92,4 +93,7 @@ interface Guns {
     /** The part of a gun's state that shows on it: two stacks of the same gun look alike when
      *  this is equal. Null for anything that isn't a gun. */
     fun looks(stack: ItemStack): Any?
+
+    /** A bullet or shell in flight, as fired from a gun. */
+    fun isRound(entity: Entity): Boolean
 }

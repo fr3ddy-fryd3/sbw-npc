@@ -55,6 +55,7 @@ object ServerLifecycle {
         FiringSpots.clearAll()
         DroneRegistry.clearAll()
         GrenadeRegistry.clearAll()
+        com.sbwnpc.squad.combat.StrayRounds.clearAll()
         SquadTeams.clearCache()
     }
 

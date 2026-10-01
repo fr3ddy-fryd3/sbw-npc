@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.integration.sbw
 
 import com.atsuishio.superbwarfare.data.gun.Ammo
+import com.atsuishio.superbwarfare.entity.projectile.ProjectileEntity
 import com.atsuishio.superbwarfare.data.gun.AmmoConsumer
 import com.atsuishio.superbwarfare.data.gun.FireMode
 import com.atsuishio.superbwarfare.data.gun.GunData
@@ -15,6 +16,7 @@ import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.nbt.Tag
 import net.minecraft.core.component.DataComponents
 import net.minecraft.resources.ResourceLocation
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.phys.Vec3
@@ -28,6 +30,8 @@ object SbwGuns : Guns {
     }
 
     override fun isGun(stack: ItemStack): Boolean = stack.item is GunItem
+
+    override fun isRound(entity: Entity): Boolean = entity is ProjectileEntity
 
     override fun issue(item: ResourceLocation, holder: LivingEntity, reserve: Int): ItemStack {
         val gun = BuiltInRegistries.ITEM.getOptional(item).orElse(null) as? GunItem ?: return ItemStack.EMPTY
