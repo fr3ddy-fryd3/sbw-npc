@@ -189,8 +189,9 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
         const val HEADER_HEIGHT = 26
         const val FOOTER_GAP = 12
         const val MAX_VISIBLE_ROWS = 12
-        /** Title, Create row, footer and a margin — what the rows cannot use. */
-        const val VERTICAL_CHROME = 110
+        /** Title, Create row, footer, the faction banner above the title and a margin — what the
+         *  rows cannot use. */
+        const val VERTICAL_CHROME = 130
         /** Room left of the Order button for the squad's name. */
         const val LABEL_WIDTH = 88
         /** Marks a squad a Barracks keeps up. */

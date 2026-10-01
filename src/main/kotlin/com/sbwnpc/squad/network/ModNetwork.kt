@@ -65,6 +65,9 @@ object ModNetwork {
         r.playToClient(OpenFactionPickPayload.TYPE, OpenFactionPickPayload.CODEC) { _, _ ->
             if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openFactionPick()
         }
+        r.playToClient(PlayerFactionPayload.TYPE, PlayerFactionPayload.CODEC) { p, _ ->
+            if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.playerFaction(p.faction)
+        }
         r.playToClient(OpenRecruitScreenPayload.TYPE, OpenRecruitScreenPayload.CODEC) { _, _ ->
             if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openRecruitScreenFromHeldItem()
         }
@@ -140,6 +143,7 @@ object ModNetwork {
             val player = ctx.player() as? ServerPlayer ?: return@enqueueWork
             val level = player.level() as? ServerLevel ?: return@enqueueWork
             PlayerFactionRegistry.get(level).set(player.uuid, SquadFaction.byOrdinal(p.faction))
+            PlayerFactionRegistry.get(level).sync(player)
         }
     }
 

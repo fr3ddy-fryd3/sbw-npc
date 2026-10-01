@@ -40,6 +40,10 @@ object ClientPayloadHandlers {
         openRecruitScreen(stack)
     }
 
+    fun playerFaction(ordinal: Int) {
+        FactionBanner.faction = if (ordinal < 0) null else com.sbwnpc.squad.npc.SquadFaction.byOrdinal(ordinal)
+    }
+
     fun openFactionPick() {
         net.minecraft.client.Minecraft.getInstance().setScreen(ChooseFactionScreen())
     }

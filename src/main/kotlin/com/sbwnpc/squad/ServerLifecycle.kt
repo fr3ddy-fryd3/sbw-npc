@@ -60,6 +60,12 @@ object ServerLifecycle {
     }
 
     @SubscribeEvent
+    fun onPlayerLoggedIn(event: PlayerEvent.PlayerLoggedInEvent) {
+        val player = event.entity as? net.minecraft.server.level.ServerPlayer ?: return
+        com.sbwnpc.squad.squad.PlayerFactionRegistry.get(player.server).sync(player)
+    }
+
+    @SubscribeEvent
     fun onPlayerLoggedOut(event: PlayerEvent.PlayerLoggedOutEvent) {
         SquadSelection.clear(event.entity.uuid)
         RouteRecording.cancel(event.entity.uuid)

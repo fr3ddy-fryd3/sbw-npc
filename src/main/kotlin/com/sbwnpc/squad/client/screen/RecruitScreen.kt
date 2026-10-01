@@ -36,6 +36,9 @@ class RecruitScreen(
     private val onChange: (SquadToolItem.Config) -> Unit
 ) : Screen(title) {
 
+    /** Opened from the squad tool, not a Barracks. */
+    val forTool get() = deployLabel == null
+
     private var preset = cfg.preset
     private var cls = cfg.cls
     private var rank = cfg.rank

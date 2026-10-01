@@ -158,6 +158,20 @@ object OpenFactionPickPayload : CustomPacketPayload {
     val CODEC: StreamCodec<RegistryFriendlyByteBuf, OpenFactionPickPayload> = StreamCodec.unit(this)
 }
 
+/** Server -> client: the player's own faction, or -1 before they've picked one — for the banner
+ *  over the screen while the squad tool is in hand. Sent on login and when they pick. */
+class PlayerFactionPayload(val faction: Int) : CustomPacketPayload {
+    override fun type() = TYPE
+
+    companion object {
+        val TYPE = CustomPacketPayload.Type<PlayerFactionPayload>(SquadMod.loc("player_faction"))
+        val CODEC: StreamCodec<RegistryFriendlyByteBuf, PlayerFactionPayload> = StreamCodec.composite(
+            ByteBufCodecs.VAR_INT, PlayerFactionPayload::faction,
+            ::PlayerFactionPayload
+        )
+    }
+}
+
 /** Client -> server: the player's one-time faction pick. */
 class ChooseFactionPayload(val faction: Int) : CustomPacketPayload {
     override fun type() = TYPE

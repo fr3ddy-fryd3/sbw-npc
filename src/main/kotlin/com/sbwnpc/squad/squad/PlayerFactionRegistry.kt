@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.squad
 
 import com.sbwnpc.squad.network.OpenFactionPickPayload
+import com.sbwnpc.squad.network.PlayerFactionPayload
 import com.sbwnpc.squad.network.sendToClient
 import com.sbwnpc.squad.npc.SquadFaction
 import net.minecraft.core.HolderLookup
@@ -36,6 +37,9 @@ class PlayerFactionRegistry : SavedData() {
         factions[player] = faction
         setDirty()
     }
+
+    /** Tells [player]'s client which faction they are on, for the banner shown with the tool. */
+    fun sync(player: ServerPlayer) = sendToClient(player, PlayerFactionPayload(factions[player.uuid]?.ordinal ?: -1))
 
     /** The player's recorded default faction, or null — and a mandatory pick screen sent to the
      *  client — if they haven't chosen yet. Server-side entry points call this only to gate on
