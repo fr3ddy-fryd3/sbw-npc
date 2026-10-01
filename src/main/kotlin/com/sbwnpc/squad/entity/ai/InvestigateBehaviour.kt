@@ -68,24 +68,39 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** How far off the spot was when the path now walked was asked for. */
     private var askedFrom = Double.MAX_VALUE
 
+    /** The spot the walk was set out for — only to trace it moving to a newer noise. */
+    private var spot: Vec3? = null
+
     override fun start(entity: NpcEntity) {
         BrainUtils.getMemory(entity, ModMemories.ALERT_POSITION.get())?.let {
+            spot = it
             askedFrom = Math.sqrt(entity.distanceToSqr(it))
             val going = entity.navigation.moveTo(it.x, it.y, it.z, 1.0)
             log(entity, "goes to look at ${BlockPos.containing(it)} (${Math.sqrt(entity.distanceToSqr(it)).toInt()} blocks)" +
-                if (going) "" else ", no path")
+                if (going) ", ${pathTrace(entity, it)}" else ", no path")
         }
     }
 
     override fun tick(entity: NpcEntity) {
         val pos = BrainUtils.getMemory(entity, ModMemories.ALERT_POSITION.get()) ?: return
+        if (spot?.let { pos.distanceToSqr(it) > 1.0 } == true) {
+            log(entity, "spot moved to ${BlockPos.containing(pos)} (${Math.sqrt(entity.distanceToSqr(pos)).toInt()} blocks), " +
+                "still walking the path to ${spot?.let(BlockPos::containing)}, asked from ${askedFrom.toInt()}")
+        }
+        spot = pos
         // A far spot is got to a stretch at a time — a path goes a hundred blocks at most, and
         // counts as there some blocks short: on again while each stretch gets him nearer.
         if (!entity.position().closerThan(pos, ARRIVE_DISTANCE) && entity.navigation.isDone) {
             val now = Math.sqrt(entity.distanceToSqr(pos))
             if (now < askedFrom - PROGRESS) {
+                val before = askedFrom
                 askedFrom = now
-                if (entity.navigation.moveTo(pos.x, pos.y, pos.z, 1.0)) return
+                val going = entity.navigation.moveTo(pos.x, pos.y, pos.z, 1.0)
+                log(entity, "stretch ended ${now.toInt()} blocks off (asked from ${before.toInt()}), asks again: " +
+                    if (going) pathTrace(entity, pos) else "no path")
+                if (going) return
+            } else {
+                log(entity, "stretch ended ${now.toInt()} blocks off, no nearer than the ${askedFrom.toInt()} it was asked from")
             }
         }
         if (entity.position().closerThan(pos, ARRIVE_DISTANCE) || entity.navigation.isDone) {
@@ -115,6 +130,11 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
             })
         }
     }
+
+    private fun pathTrace(entity: NpcEntity, pos: Vec3): String = entity.navigation.path?.let {
+        "path of ${it.nodeCount} nodes ends ${it.endNode?.asBlockPos()}, " +
+            "${it.endNode?.let { end -> Math.sqrt(end.asBlockPos().distToCenterSqr(pos)).toInt() }} blocks from the spot, reach=${it.canReach()}"
+    } ?: "no path kept"
 
     private fun log(entity: NpcEntity, what: String) {
         DebugFlags.log(LogGroup.HEARING, "{} investigating: {}", entity.uuid.toString().take(8), what)

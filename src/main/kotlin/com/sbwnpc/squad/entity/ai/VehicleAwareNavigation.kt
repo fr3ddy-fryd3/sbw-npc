@@ -62,13 +62,15 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
             val nowhere = far && result != null && !result.canReach() && end != null && end.distManhattan(mob.blockPosition()) <= 1
             npc.notePathGoesNowhere(pos, nowhere)
         }
-        if (com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.PATH) && mob.tickCount - lastPathLogTick >= PATH_LOG_TICKS) {
+        // No path at all is rare and is what a caller gives up on — never skipped.
+        if (com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.PATH) && (result == null || mob.tickCount - lastPathLogTick >= PATH_LOG_TICKS)) {
             lastPathLogTick = mob.tickCount
             com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.PATH,
                 "{} at {} asked {} ({} blocks) branch={} target={} -> {}",
                 mob.uuid.toString().take(8), mob.blockPosition(), pos,
                 Math.sqrt(pos.distToCenterSqr(mob.x, mob.y, mob.z)).toInt(), branch, (mob as? com.sbwnpc.squad.entity.NpcEntity)?.target != null,
-                result?.let { "nodes=${it.nodeCount} reach=${it.canReach()} end=${it.endNode?.asBlockPos()} short=${"%.1f".format(it.distToTarget)}" } ?: "null"
+                result?.let { "nodes=${it.nodeCount} reach=${it.canReach()} end=${it.endNode?.asBlockPos()} short=${"%.1f".format(it.distToTarget)}" }
+                    ?: "null (canUpdate=${canUpdatePath()} ground=${mob.onGround()} liquid=${mob.isInLiquid} passenger=${mob.isPassenger} y=${"%.2f".format(mob.y)})"
             )
         }
         return result
@@ -131,7 +133,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         nearGoal = null
         if (current != null && !current.isDone && goal != null && goal.closerThan(pos, GOAL_DRIFT)) return current
         farGoal = pos
-        val leg = legToward(dx, dz, len) ?: return null
+        val leg = legToward(dx, dz, len) ?: run { branch = "leg (no loaded ground toward the goal)"; return null }
         val saved = nodeMultiplier
         super.setMaxVisitedNodesMultiplier(FAR_NODE_MULTIPLIER)
         try {
