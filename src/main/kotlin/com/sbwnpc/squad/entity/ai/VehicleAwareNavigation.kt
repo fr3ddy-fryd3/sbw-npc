@@ -106,7 +106,49 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
             traceAir("asked mid-jump, keeps walking the path to ${this.path?.target}")
             return false
         }
+        if (path == null || !path.sameAs(this.path)) traceHandover(if (path == null) "path dropped, none in its place" else "new path to ${path.target}")
         return super.moveTo(path, speed)
+    }
+
+    override fun stop() {
+        if (path?.isDone == false) traceHandover("stopped")
+        super.stop()
+    }
+
+    override fun tick() {
+        super.tick()
+        traceWalk()
+    }
+
+    private fun investigating() = (mob as? com.sbwnpc.squad.entity.NpcEntity)?.isAlert() == true &&
+        com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.PATH)
+
+    /** While he's off to look at a noise: who took his path away or swapped it, from the frames above. */
+    private fun traceHandover(what: String) {
+        if (!investigating()) return
+        val from = Throwable().stackTrace.asSequence()
+            .map { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }
+            // Only the plumbing — vanilla's own stuck check (PathNavigation.doStuckDetection) stays.
+            .filterNot { frame -> PLUMBING.any { frame.startsWith(it) } }
+            .take(4).joinToString(" <- ")
+        com.sbwnpc.squad.combat.DebugFlags.log(
+            com.sbwnpc.squad.combat.LogGroup.PATH, "{} at {} {} (was to {}, node {}/{}) by {}",
+            mob.uuid.toString().take(8), mob.blockPosition(), what, path?.target, path?.nextNodeIndex, path?.nodeCount, from
+        )
+    }
+
+    private var lastWalkLogTick = Int.MIN_VALUE / 2
+
+    /** Once a second while he's off to look at a noise: is he getting along the path, or standing. */
+    private fun traceWalk() {
+        val current = path ?: return
+        if (current.isDone || mob.tickCount - lastWalkLogTick < WALK_LOG_TICKS || !investigating()) return
+        lastWalkLogTick = mob.tickCount
+        com.sbwnpc.squad.combat.DebugFlags.log(
+            com.sbwnpc.squad.combat.LogGroup.PATH, "{} walking at {} node {}/{} next {} to {} speed {} ground={}",
+            mob.uuid.toString().take(8), mob.blockPosition(), current.nextNodeIndex, current.nodeCount,
+            current.nextNodePos, current.target, "%.2f".format(mob.deltaMovement.horizontalDistance()), mob.onGround()
+        )
     }
 
     private var lastAirLogTick = Int.MIN_VALUE / 2
@@ -262,6 +304,11 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         const val SHORT_OF_GOAL = 4f
         const val PATH_LOG_TICKS = 40
         const val AIR_LOG_TICKS = 10
+        const val WALK_LOG_TICKS = 20
+        val PLUMBING = listOf(
+            "VehicleAwareNavigation.traceHandover", "VehicleAwareNavigation.moveTo", "VehicleAwareNavigation.stop",
+            "PathNavigation.moveTo"
+        )
     }
 }
 
