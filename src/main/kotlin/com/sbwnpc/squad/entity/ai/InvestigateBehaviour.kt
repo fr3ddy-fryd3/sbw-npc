@@ -41,6 +41,8 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val ARRIVE_DISTANCE = 3.0
         /** A path that ended at least this much nearer than the last one began is worth another. */
         private const val PROGRESS = 2.0
+        /** The spot moved farther than this: the way to the old one is no way to the new. */
+        private const val SPOT_SHIFT = 16.0
         /** The look at a death site is a raycast — twice a second is plenty. */
         private const val DEATH_SITE_CHECK_INTERVAL = 10
 
@@ -68,37 +70,47 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** How far off the spot was when the path now walked was asked for. */
     private var askedFrom = Double.MAX_VALUE
 
-    /** The spot the walk was set out for — only to trace it moving to a newer noise. */
+    /** The spot the path being walked was asked for. */
     private var spot: Vec3? = null
 
     override fun start(entity: NpcEntity) {
-        BrainUtils.getMemory(entity, ModMemories.ALERT_POSITION.get())?.let {
-            spot = it
-            askedFrom = Math.sqrt(entity.distanceToSqr(it))
-            val going = entity.navigation.moveTo(it.x, it.y, it.z, 1.0)
-            // Heard in mid-jump: no path can be asked for till he lands — the first tick on the
-            // ground asks for it. The path he was on goes nowhere near the noise.
-            val inAir = !going && !canPlan(entity)
-            if (inAir) {
-                askedFrom = Double.MAX_VALUE
-                entity.navigation.stop()
-            }
-            log(entity, "goes to look at ${BlockPos.containing(it)} (${Math.sqrt(entity.distanceToSqr(it)).toInt()} blocks)" +
-                when {
-                    going -> ", ${pathTrace(entity, it)}"
-                    inAir -> ", in the air: asks once he lands"
-                    else -> ", no path"
-                })
+        BrainUtils.getMemory(entity, ModMemories.ALERT_POSITION.get())?.let { setOut(entity, it, "goes to look at") }
+    }
+
+    /** Asks for the way to [pos], or — heard in mid-jump — for it once he lands. */
+    private fun setOut(entity: NpcEntity, pos: Vec3, what: String) {
+        spot = pos
+        askedFrom = Math.sqrt(entity.distanceToSqr(pos))
+        val going = entity.navigation.moveTo(pos.x, pos.y, pos.z, 1.0)
+        // No path can be asked for till he lands — the first tick on the ground asks for it. The
+        // path he was on goes nowhere near the noise.
+        val inAir = !going && !canPlan(entity)
+        if (inAir) {
+            askedFrom = Double.MAX_VALUE
+            entity.navigation.stop()
         }
+        log(entity, "$what ${BlockPos.containing(pos)} (${Math.sqrt(entity.distanceToSqr(pos)).toInt()} blocks)" +
+            when {
+                going -> ", ${pathTrace(entity, pos)}"
+                inAir -> ", in the air: asks once he lands"
+                else -> ", no path"
+            })
     }
 
     override fun tick(entity: NpcEntity) {
         val pos = BrainUtils.getMemory(entity, ModMemories.ALERT_POSITION.get()) ?: return
-        if (spot?.let { pos.distanceToSqr(it) > 1.0 } == true) {
-            log(entity, "spot moved to ${BlockPos.containing(pos)} (${Math.sqrt(entity.distanceToSqr(pos)).toInt()} blocks), " +
-                "still walking the path to ${spot?.let(BlockPos::containing)}, asked from ${askedFrom.toInt()}")
+        // Newer shots move the spot, in a fight every second or so. Gone somewhere else, the path
+        // to the old one leads the wrong way: a new one now. A few blocks over, the old one still
+        // gets him there — but a stretch's progress is counted to the spot as it is now, or a
+        // farther noise made the stretch look like no progress and he gave up on the spot.
+        spot?.takeIf { pos.distanceToSqr(it) > 1.0 }?.let { old ->
+            if (pos.distanceToSqr(old) > SPOT_SHIFT * SPOT_SHIFT) {
+                setOut(entity, pos, "spot moved ${Math.sqrt(pos.distanceToSqr(old)).toInt()} blocks, goes to look at")
+                return
+            }
+            if (askedFrom != Double.MAX_VALUE) askedFrom = Math.sqrt(entity.distanceToSqr(pos))
+            spot = pos
         }
-        spot = pos
         // A far spot is got to a stretch at a time — a path goes a hundred blocks at most, and
         // counts as there some blocks short: on again while each stretch gets him nearer.
         if (!entity.position().closerThan(pos, ARRIVE_DISTANCE) && entity.navigation.isDone) {
