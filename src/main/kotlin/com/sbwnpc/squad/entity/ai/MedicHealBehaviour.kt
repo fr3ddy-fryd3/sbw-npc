@@ -145,7 +145,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** Debug builds only: why a medic did or didn't take on a player in range — faction, health,
      *  and whether its own fight has raised the bar to critical. At most every 2 s per medic. */
     private fun logPlayerCheck(entity: NpcEntity, player: net.minecraft.world.entity.player.Player, side: com.sbwnpc.squad.npc.SquadFaction?, mine: com.sbwnpc.squad.npc.SquadFaction) {
-        if (!com.sbwnpc.squad.combat.DebugFlags.LOGGING_ENABLED || entity.tickCount < nextPlayerLogTick) return
+        if (!com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.MEDIC) || entity.tickCount < nextPlayerLogTick) return
         nextPlayerLogTick = entity.tickCount + PLAYER_LOG_INTERVAL_TICKS
         val verdict = when {
             side != mine -> "other side"
@@ -153,7 +153,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
             entity.target != null -> "in a fight, only below ${(CRITICAL_HEALTH_FRACTION * 100).toInt()}%"
             else -> "not hurt enough"
         }
-        com.sbwnpc.squad.combat.DebugFlags.log("[medic-debug] {} sees {} side={} mine={} hp={}/{} creative={} target={} -> {}",
+        com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.MEDIC, "{} sees {} side={} mine={} hp={}/{} creative={} target={} -> {}",
             entity.uuid, player.name.string, side, mine, "%.1f".format(player.health), player.maxHealth,
             player.isCreative, entity.target?.type?.descriptionId, verdict)
     }

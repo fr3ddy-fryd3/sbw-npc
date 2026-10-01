@@ -2,6 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
@@ -355,7 +356,7 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         if (selfSpotted != null) {
             lastScanResult = BlockPos.containing(selfSpotted.position())
-            DebugFlags.log("[fire-support-debug] mortar {} -> {} seen by itself at {}", entity.uuid, selfSpotted.uuid, lastScanResult)
+            DebugFlags.log(LogGroup.FIRE_SUPPORT, "mortar {} -> {} seen by itself at {}", entity.uuid, selfSpotted.uuid, lastScanResult)
             return lastScanResult
         }
 
@@ -364,8 +365,8 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             (level.getEntity(s.target) as? LivingEntity)?.isAlive == true
         }
         lastScanResult = sighting?.let { BlockPos.containing(it.pos) }
-        if (sighting != null) DebugFlags.log(
-            "[fire-support-debug] mortar {} -> {} seen by {} {} ticks ago at {}",
+        if (sighting != null) DebugFlags.log(LogGroup.FIRE_SUPPORT,
+            "mortar {} -> {} seen by {} {} ticks ago at {}",
             entity.uuid, sighting.target, sighting.by, tick - sighting.tick, lastScanResult
         )
         return lastScanResult

@@ -4,6 +4,7 @@ import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.Alarm
 import com.sbwnpc.squad.combat.AntiArmourKit
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.DroneCombat
 import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.FriendlyFireGuard
@@ -616,9 +617,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                 Sightline.crosses(hulls, entity.eyePosition, target.eyePosition, shotSpread)
             lineIsClear = assessment.lineClear && !hullInTheWay
             hullBlocked = hullInTheWay
-            if (DebugFlags.LOGGING_ENABLED && hulls.isNotEmpty()) {
-                DebugFlags.log(
-                    "[fire-debug] {} at {} target {} at {} hulls {} vehicles on lane={} crossing={} allyClear={} -> lineIsClear={} answer={}",
+            if (DebugFlags.on(LogGroup.FIRE) && hulls.isNotEmpty()) {
+                DebugFlags.log(LogGroup.FIRE,
+                    "{} at {} target {} at {} hulls {} vehicles on lane={} crossing={} allyClear={} -> lineIsClear={} answer={}",
                     entity.uuid, entity.blockPosition(), target.name.string, target.blockPosition(),
                     hulls.map { net.minecraft.core.BlockPos.containing(it.center) },
                     hulls.size, hullInTheWay, assessment.lineClear, lineIsClear,

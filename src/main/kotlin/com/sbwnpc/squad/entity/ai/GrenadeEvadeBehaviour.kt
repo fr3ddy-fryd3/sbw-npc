@@ -2,6 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.GrenadeHazard
 import com.sbwnpc.squad.entity.GrenadeRegistry
@@ -62,7 +63,7 @@ class GrenadeEvadeBehaviour : ExtendedBehaviour<NpcEntity>() {
         fleeTo?.let { entity.navigation.moveTo(it.x, it.y, it.z, SPRINT_SPEED) }
         // The old spot is inside the blast; whatever was headed there has to pick again after.
         FiringSpots.release(entity.uuid)
-        DebugFlags.log("[grenade-debug] {} ({}) running from a grenade {} blocks away",
+        DebugFlags.log(LogGroup.GRENADE, "{} ({}) running from a grenade {} blocks away",
             entity.uuid, entity.npcClass, "%.1f".format(entity.distanceTo(g)))
     }
 

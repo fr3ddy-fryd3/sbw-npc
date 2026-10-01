@@ -2,6 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.DeathSites
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.team.SquadTeams
@@ -116,7 +117,7 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun log(entity: NpcEntity, what: String) {
-        if (DebugFlags.LOGGING_ENABLED) DebugFlags.log("[hearing-debug] {} investigating: {}", entity.uuid.toString().take(8), what)
+        DebugFlags.log(LogGroup.HEARING, "{} investigating: {}", entity.uuid.toString().take(8), what)
     }
 
     /** Headed for a fallen ally's body: done if someone has already looked and found nothing,

@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.block.entity
 
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.init.ModBlockEntities
 import com.sbwnpc.squad.npc.SquadFaction
@@ -52,7 +53,7 @@ class SupplyBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlock
     private fun issue(level: ServerLevel) {
         NpcRegistry.forEachWithin(level, blockPos.center, RADIUS) { npc ->
             if (npc.isAlive && serves(SquadTeams.factionOf(npc)) && npc.resupply()) {
-                DebugFlags.log("[supply-debug] {} ({}) resupplied at {}", npc.uuid, npc.npcClass, blockPos)
+                DebugFlags.log(LogGroup.SUPPLY, "{} ({}) resupplied at {}", npc.uuid, npc.npcClass, blockPos)
             }
         }
     }

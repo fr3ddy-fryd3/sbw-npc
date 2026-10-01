@@ -2,6 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.server.level.ServerLevel
@@ -34,7 +35,7 @@ class SelfTreatBehaviour : ExtendedBehaviour<NpcEntity>() {
             net.minecraft.core.particles.DustParticleOptions(HEAL_COLOR, 1.5f),
             entity.x, entity.y + 1.0, entity.z, 12, 0.3, 0.5, 0.3, 0.0
         )
-        DebugFlags.log("[medkit-debug] {} ({}) treated itself in cover, {} hp", entity.uuid, entity.npcClass, entity.health)
+        DebugFlags.log(LogGroup.MEDIC, "{} ({}) treated itself in cover, {} hp", entity.uuid, entity.npcClass, entity.health)
     }
 
     private companion object {

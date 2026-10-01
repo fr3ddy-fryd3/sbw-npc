@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.squad
 
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.server.MinecraftServer
@@ -34,7 +35,7 @@ object OrderArrival {
             // Three in four: one man pinned in a ditch shouldn't keep the rest from digging in.
             val there = members.count { SquadFormation.reachedPoint(it, point, squad.members.size) }
             if (there * 4 < members.size * 3) continue
-            DebugFlags.log("[order-debug] {} took its point ({}), defending", squad.name, squad.order)
+            DebugFlags.log(LogGroup.ORDER, "{} took its point ({}), defending", squad.name, squad.order)
             val was = squad.order
             mgr.setOrder(squad.id, SquadOrder.DEFEND)
             SquadReports.holding(server, squad, was)

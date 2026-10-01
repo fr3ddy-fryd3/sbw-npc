@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.vehicle
 
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.domain.port.Ports
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerLevel
@@ -33,7 +34,7 @@ object PilotlessHelicopters {
         if (!Helicopters.isHelicopter(heli) || Ports.vehicles.isWreck(heli)) return
         if (Helicopters.isGrounded(level, heli)) return // already down; nothing to fall
         deadlines.putIfAbsent(heli.uuid, level.gameTime + GRACE_TICKS)
-        DebugFlags.log("[heli-debug] {} lost its pilot, {} ticks to recover", heli.uuid, GRACE_TICKS)
+        DebugFlags.log(LogGroup.HELI, "{} lost its pilot, {} ticks to recover", heli.uuid, GRACE_TICKS)
     }
 
     fun clear() = deadlines.clear()
@@ -56,7 +57,7 @@ object PilotlessHelicopters {
             }
             if (level.gameTime < deadline) continue
             iterator.remove()
-            DebugFlags.log("[heli-debug] {} nobody took the controls, writing it off", heli.uuid)
+            DebugFlags.log(LogGroup.HELI, "{} nobody took the controls, writing it off", heli.uuid)
             // SBW turns this into a wreck on its next tick and detonates it where it lands.
             Ports.vehicles.writeOff(heli)
         }

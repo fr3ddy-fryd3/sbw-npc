@@ -2,6 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.VehicleCannonAmmo
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
@@ -120,7 +121,7 @@ class HelicopterGunnerBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.startRiding(gunship, false)) {
             entity.assignedVehicleId = gunship.uuid
             seatTarget = null
-            DebugFlags.log("[heli-debug] {} took over the turret on {}", entity.uuid, gunship.uuid)
+            DebugFlags.log(LogGroup.HELI, "{} took over the turret on {}", entity.uuid, gunship.uuid)
         }
     }
 

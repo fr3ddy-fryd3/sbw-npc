@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.route.CellPlanner
 import com.sbwnpc.squad.route.PlanBudget
@@ -271,7 +272,7 @@ object SquadMarch {
                 march.route = (march.route + it.trail).takeLast(MAX_ROUTE_NODES)
                 march.complete = it.complete
                 march.long = true
-                DebugFlags.log("[march-debug] {} takes the way found from {} to {} ({} nodes)", squadName, it.from, it.goal, it.trail.size)
+                DebugFlags.log(LogGroup.MARCH, "{} takes the way found from {} to {} ({} nodes)", squadName, it.from, it.goal, it.trail.size)
                 return
             }
         }
@@ -282,7 +283,7 @@ object SquadMarch {
             }
         if (search == null) {
             march.legsOnly = true
-            DebugFlags.log("[march-debug] {} no long route from {} (not on known open ground), planning in legs", squadName, npc.blockPosition())
+            DebugFlags.log(LogGroup.MARCH, "{} no long route from {} (not on known open ground), planning in legs", squadName, npc.blockPosition())
             return
         }
         if (!PlanBudget.advance(level, search)) return
@@ -290,7 +291,7 @@ object SquadMarch {
         val found = search.result()
         if (found == null || found.trail.size < 2) {
             march.legsOnly = true
-            DebugFlags.log("[march-debug] {} no long route from {} to {} ({}), planning in legs", squadName, npc.blockPosition(), goal, search.stoppedBy)
+            DebugFlags.log(LogGroup.MARCH, "{} no long route from {} to {} ({}), planning in legs", squadName, npc.blockPosition(), goal, search.stoppedBy)
             return
         }
         val trail = found.trail.map { BlockPos.containing(it) }
@@ -299,8 +300,8 @@ object SquadMarch {
         if (this.found.size >= MAX_REMEMBERED) this.found.removeAt(0)
         this.found += Found(level.dimension().location().toString(), trail.first(), goal, trail, found.complete, level.gameTime)
         march.long = true
-        DebugFlags.log(
-            "[march-debug] {} long route from {} to {}: {} nodes, {} blocks, ends {} {} from the goal ({}; {} units over {} ticks)",
+        DebugFlags.log(LogGroup.MARCH,
+            "{} long route from {} to {}: {} nodes, {} blocks, ends {} {} from the goal ({}; {} units over {} ticks)",
             squadName, npc.blockPosition(), goal, found.trail.size, found.length.toInt(), BlockPos.containing(found.landing),
             Math.hypot(found.landing.x - goal.x - 0.5, found.landing.z - goal.z - 0.5).toInt(), search.stoppedBy,
             search.expanded, level.gameTime - march.searchStarted + 1
@@ -347,14 +348,14 @@ object SquadMarch {
             march.failures++
             march.misses++
         }
-        DebugFlags.log(
-            "[march-debug] {} route {} leg from {} toward {} (goal {}, {} blocks, turn {}): {} nodes, reached={}, end={}, {} ms",
+        DebugFlags.log(LogGroup.MARCH,
+            "{} route {} leg from {} toward {} (goal {}, {} blocks, turn {}): {} nodes, reached={}, end={}, {} ms",
             squadName, march.origin, from, target, march.goal, len.toInt(), if (straight) 0 else march.failures,
             route.size, reached, end, "%.1f".format((System.nanoTime() - started) / 1.0e6)
         )
         if (march.misses >= GIVE_UP) {
             march.complete = true
-            DebugFlags.log("[march-debug] {} found no way on foot to {}, holding where it got to", squadName, march.goal)
+            DebugFlags.log(LogGroup.MARCH, "{} found no way on foot to {}, holding where it got to", squadName, march.goal)
         }
     }
 

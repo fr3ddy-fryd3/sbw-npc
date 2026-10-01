@@ -2,6 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.domain.port.Ports
@@ -192,7 +193,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         if (spotted != null) {
             lastScanResult = StrikeTarget(spotted.uuid, spotted.position())
-            DebugFlags.log("[fire-support-debug] drone {} -> {} seen by itself at {}", entity.uuid, spotted.uuid, spotted.position())
+            DebugFlags.log(LogGroup.FIRE_SUPPORT, "drone {} -> {} seen by itself at {}", entity.uuid, spotted.uuid, spotted.position())
             return lastScanResult
         }
 
@@ -204,8 +205,8 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
             ?.minByOrNull { entity.position().distanceToSqr(it.pos) }
         lastScanResult = sighting?.let { StrikeTarget(it.target, it.pos) }
-        if (sighting != null) DebugFlags.log(
-            "[fire-support-debug] drone {} -> {} seen by {} {} ticks ago at {}",
+        if (sighting != null) DebugFlags.log(LogGroup.FIRE_SUPPORT,
+            "drone {} -> {} seen by {} {} ticks ago at {}",
             entity.uuid, sighting.target, sighting.by, tick - sighting.tick, sighting.pos
         )
         return lastScanResult
@@ -245,7 +246,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.operatingDrone = true
         entity.navigation.stop()
         holdMonitor(entity)
-        DebugFlags.log("[drone-debug] {} launched drone {} at {} ({} left)", entity.uuid, drone.uuid, target.pos, entity.dronesLeft)
+        DebugFlags.log(LogGroup.DRONE, "{} launched drone {} at {} ({} left)", entity.uuid, drone.uuid, target.pos, entity.dronesLeft)
     }
 
     private fun holdMonitor(entity: NpcEntity) {
@@ -279,7 +280,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         drone.discard()
         entity.dronesLeft++
         detonated = true // nothing left to blow up
-        DebugFlags.log("[drone-debug] {} recovered its drone", entity.uuid)
+        DebugFlags.log(LogGroup.DRONE, "{} recovered its drone", entity.uuid)
         cleanup(entity)
     }
 
@@ -312,7 +313,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (phase != Phase.LAUNCH && phase != Phase.RETURN &&
             (drone.onGround() || drone.horizontalCollision || drone.verticalCollision)
         ) {
-            DebugFlags.log("[drone-debug] {} drone impact at {}", entity.uuid, drone.position())
+            DebugFlags.log(LogGroup.DRONE, "{} drone impact at {}", entity.uuid, drone.position())
             detonate(level, entity, drone, drone.position())
             cleanup(entity)
             return
@@ -357,7 +358,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
             return true
         }
-        DebugFlags.log("[drone-debug] {} lost its target {} (alive={}, hostile={})",
+        DebugFlags.log(LogGroup.DRONE, "{} lost its target {} (alive={}, hostile={})",
             entity.uuid, tid, target?.isAlive, target?.let { SquadTeams.isHostile(entity, it) })
         return retarget(entity, level, drone)
     }
@@ -403,7 +404,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         sawTargetTick = entity.tickCount
         approachSinceTick = null
         if (phase != Phase.LAUNCH) phase = Phase.CRUISE
-        DebugFlags.log("[fire-support-debug] drone {} retargeted to {} at {} ({})", entity.uuid, id, pos, why)
+        DebugFlags.log(LogGroup.FIRE_SUPPORT, "drone {} retargeted to {} at {} ({})", entity.uuid, id, pos, why)
         return true
     }
 
@@ -482,17 +483,17 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (clear && targetInSight(entity)) {
             phase = Phase.ATTACK
         } else if (entity.tickCount >= holdUntilTick && clear) {
-            DebugFlags.log("[fire-support-debug] drone {} lost sight of {} — looking elsewhere", entity.uuid, targetEntityId)
+            DebugFlags.log(LogGroup.FIRE_SUPPORT, "drone {} lost sight of {} — looking elsewhere", entity.uuid, targetEntityId)
             targetEntityId?.let { rejected += it }
             if (!retarget(entity, level, drone)) phase = Phase.RETURN
         } else if (entity.tickCount >= holdUntilTick) {
             val blocker = FriendlyFireGuard.allyInBlast(entity, targetPos, warheadRadius())
-            DebugFlags.log("[drone-debug] {} gave up on {}: {} ({}) is {} blocks from it",
+            DebugFlags.log(LogGroup.DRONE, "{} gave up on {}: {} ({}) is {} blocks from it",
                 entity.uuid, targetEntityId, blocker?.uuid, blocker?.let { describe(it) },
                 blocker?.position()?.distanceTo(targetPos))
             targetEntityId?.let { rejected += it }
             if (!retarget(entity, level, drone)) {
-                DebugFlags.log("[drone-debug] {} nothing else to strike, heading home", entity.uuid)
+                DebugFlags.log(LogGroup.DRONE, "{} nothing else to strike, heading home", entity.uuid)
                 phase = Phase.RETURN
             }
         }
@@ -540,7 +541,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (dist <= APPROACH_RADIUS) {
             val since = approachSinceTick ?: entity.tickCount.also { approachSinceTick = it }
             if (entity.tickCount - since > APPROACH_MAX_TICKS) {
-                DebugFlags.log("[drone-debug] {} drone couldn't settle, picked up anyway", entity.uuid)
+                DebugFlags.log(LogGroup.DRONE, "{} drone couldn't settle, picked up anyway", entity.uuid)
                 recover(entity, drone)
                 return
             }

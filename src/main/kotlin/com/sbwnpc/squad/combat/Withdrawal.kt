@@ -93,12 +93,12 @@ object Withdrawal {
             val t = m.target
             t != null && t.isAlive && m.distanceToSqr(t) <= CONTACT_RANGE * CONTACT_RANGE && m.sensing.hasLineOfSight(t)
         }
-        if (DebugFlags.LOGGING_ENABLED && level.gameTime - state.lastStatusTick >= STATUS_LOG_TICKS) {
+        if (DebugFlags.on(LogGroup.RETREAT) && level.gameTime - state.lastStatusTick >= STATUS_LOG_TICKS) {
             state.lastStatusTick = level.gameTime
             // Where each man is and what he is doing: a squad "stuck" on the way back reads as one
             // of these not changing between lines.
-            DebugFlags.log(
-                "[retreat-debug] squad {} status: contact={} moving half {} bound {} ticks old: {}",
+            DebugFlags.log(LogGroup.RETREAT,
+                "squad {} status: contact={} moving half {} bound {} ticks old: {}",
                 squad.name, state.inContact, state.moving, level.gameTime - state.boundStart,
                 members.joinToString("; ") { m ->
                     val spot = state.targets[m.uuid]
@@ -149,8 +149,8 @@ object Withdrawal {
         val length = toPoint.horizontalDistance()
         val anchor = if (length <= BOUND_DISTANCE) state.point else from.add(toPoint.scale(BOUND_DISTANCE / length))
         runners.forEachIndexed { i, m -> state.targets[m.uuid] = lineSpot(anchor, toPoint, i, runners.size) }
-        DebugFlags.log(
-            "[retreat-debug] squad {} half {} bounds {} blocks toward {} ({} men)",
+        DebugFlags.log(LogGroup.RETREAT,
+            "squad {} half {} bounds {} blocks toward {} ({} men)",
             squad.name, state.moving, "%.1f".format(minOf(length, BOUND_DISTANCE)), state.point, runners.size
         )
     }

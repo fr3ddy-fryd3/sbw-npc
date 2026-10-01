@@ -89,9 +89,9 @@ object Hearing {
             }
         }
         // A player's noise is logged even unheard, to tell "nobody near" from "nobody hostile".
-        if ((heard > 0 || source is net.minecraft.world.entity.player.Player) && DebugFlags.LOGGING_ENABLED) {
-            DebugFlags.log(
-                "[hearing-debug] {} by {} at {} radius {} heard by {} of {} NPCs in range",
+        if ((heard > 0 || source is net.minecraft.world.entity.player.Player) && DebugFlags.on(LogGroup.HEARING)) {
+            DebugFlags.log(LogGroup.HEARING,
+                "{} by {} at {} radius {} heard by {} of {} NPCs in range",
                 kind, source?.let { it.uuid.toString().take(8) + " " + it.type.descriptionId } ?: "nobody",
                 BlockPos.containing(at), "%.0f".format(radius), heard, inRange
             )

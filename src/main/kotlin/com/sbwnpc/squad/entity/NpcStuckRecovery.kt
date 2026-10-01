@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.entity
 
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.InteractionHand
@@ -81,12 +82,12 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
         stuckSinceTick = -1
         nowhereSinceTick = -1
         if (refusal != null) {
-            DebugFlags.log("[stuck-debug] {} stuck at {}, left {} at {} ({})", npc.uuid, npc.blockPosition(), state.block.descriptionId, pos, refusal)
+            DebugFlags.log(LogGroup.STUCK, "{} stuck at {}, left {} at {} ({})", npc.uuid, npc.blockPosition(), state.block.descriptionId, pos, refusal)
             return
         }
         npc.swing(InteractionHand.MAIN_HAND)
         level.destroyBlock(pos, true, npc)
-        DebugFlags.log("[stuck-debug] {} broke {} at {} to get unstuck", npc.uuid, state.block.descriptionId, pos)
+        DebugFlags.log(LogGroup.STUCK, "{} broke {} at {} to get unstuck", npc.uuid, state.block.descriptionId, pos)
     }
 
     private fun solid(level: ServerLevel, pos: BlockPos): Boolean {

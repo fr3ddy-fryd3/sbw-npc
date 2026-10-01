@@ -3,6 +3,7 @@ package com.sbwnpc.squad.entity.ai
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.block.entity.SupplyBlockEntity
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.server.level.ServerLevel
@@ -50,7 +51,7 @@ class ResupplyBehaviour : ExtendedBehaviour<NpcEntity>() {
         nextRepathTick = 0
         FiringSpots.release(entity.uuid)
         com.sbwnpc.squad.squad.SquadReports.goingToResupply(entity)
-        DebugFlags.log("[supply-debug] {} ({}) low on ammo ({}), going to {}",
+        DebugFlags.log(LogGroup.SUPPLY, "{} ({}) low on ammo ({}), going to {}",
             entity.uuid, entity.npcClass, "%.2f".format(entity.ammoFraction()), entity.nearestSupply())
     }
 
@@ -67,7 +68,7 @@ class ResupplyBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun stop(entity: NpcEntity) {
         entity.resupplying = false
-        DebugFlags.log("[supply-debug] {} ({}) done resupplying ({})",
+        DebugFlags.log(LogGroup.SUPPLY, "{} ({}) done resupplying ({})",
             entity.uuid, entity.npcClass, "%.2f".format(entity.ammoFraction()))
     }
 

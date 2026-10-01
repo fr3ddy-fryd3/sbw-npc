@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.util
 
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import net.neoforged.api.distmarker.Dist
@@ -19,7 +20,7 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent
  * frustum are different problems with different answers. Guessing between them is how a week gets
  * spent optimising the wrong one.
  *
- * Both halves are gated on [DebugFlags.LOGGING_ENABLED], so a production jar carries nothing but
+ * Both halves are gated on [DebugFlags.on] for [LogGroup.PERF], so a production jar carries nothing but
  * one already-false branch per tick and per rendered NPC.
  */
 @EventBusSubscriber
@@ -34,13 +35,13 @@ object PerfProbe {
 
     @SubscribeEvent
     fun onServerTickPre(event: ServerTickEvent.Pre) {
-        if (!DebugFlags.LOGGING_ENABLED) return
+        if (!DebugFlags.on(LogGroup.PERF)) return
         tickStart = System.nanoTime()
     }
 
     @SubscribeEvent
     fun onServerTickPost(event: ServerTickEvent.Post) {
-        if (!DebugFlags.LOGGING_ENABLED || tickStart == 0L) return
+        if (!DebugFlags.on(LogGroup.PERF) || tickStart == 0L) return
         tickNanos += System.nanoTime() - tickStart
         ticks++
 
@@ -52,8 +53,8 @@ object PerfProbe {
         val npcs = event.server.allLevels.sumOf { NpcRegistry.all(it).size }
         // Measured here rather than read off the server's own tick-time array so the number means
         // the same thing on an integrated server as on a dedicated one.
-        DebugFlags.log(
-            "[perf] server: {} ms/tick over {} ticks, {} NPCs loaded",
+        DebugFlags.log(LogGroup.PERF,
+            "server: {} ms/tick over {} ticks, {} NPCs loaded",
             "%.2f".format(tickNanos / 1_000_000.0 / ticks), ticks, npcs
         )
         tickNanos = 0
@@ -77,18 +78,18 @@ object PerfProbe {
          *  crowd in the distance from the same crowd walked up to, which is the difference that
          *  actually costs anything. */
         fun countWeaponDrawn() {
-            if (DebugFlags.LOGGING_ENABLED) weapons++
+            if (DebugFlags.on(LogGroup.PERF)) weapons++
         }
 
         @SubscribeEvent
         fun onRenderNpc(event: RenderLivingEvent.Pre<*, *>) {
-            if (!DebugFlags.LOGGING_ENABLED) return
+            if (!DebugFlags.on(LogGroup.PERF)) return
             if (event.entity is NpcEntity) rendered++
         }
 
         @SubscribeEvent
         fun onRenderGui(event: net.neoforged.neoforge.client.event.RenderGuiEvent.Post) {
-            if (!DebugFlags.LOGGING_ENABLED) return
+            if (!DebugFlags.on(LogGroup.PERF)) return
             frames++
             val now = System.currentTimeMillis()
             if (lastReport == 0L) {
@@ -98,8 +99,8 @@ object PerfProbe {
             val elapsed = now - lastReport
             if (elapsed < REPORT_INTERVAL_MS) return
             val perFrame = frames.coerceAtLeast(1).toDouble()
-            DebugFlags.log(
-                "[perf] client: {} fps, {} NPC renders per frame ({} with weapons)",
+            DebugFlags.log(LogGroup.PERF,
+                "client: {} fps, {} NPC renders per frame ({} with weapons)",
                 "%.1f".format(frames * 1000.0 / elapsed),
                 "%.1f".format(rendered / perFrame),
                 "%.1f".format(weapons / perFrame)

@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.route.CellPlanner
@@ -101,7 +102,7 @@ object BoatTrips {
                 val boat = level.getEntity(id) ?: return@run null
                 val search = WaterRoutes.search(level, boat.position(), boat.bbWidth / 2.0, goal)
                 if (search == null) {
-                    DebugFlags.log("[boat-debug] {} boat {}: not afloat", squad.name, id.toString().take(8))
+                    DebugFlags.log(LogGroup.BOAT, "{} boat {}: not afloat", squad.name, id.toString().take(8))
                     return@run null
                 }
                 (boat to search).also { decision.current = it }
@@ -153,8 +154,8 @@ object BoatTrips {
         }
         if (!advance(level, replan.search)) return null
         replans.remove(boat.uuid)
-        DebugFlags.log(
-            "[boat-debug] boat {} searched {} columns over {} ticks ({})", boat.uuid.toString().take(8),
+        DebugFlags.log(LogGroup.BOAT,
+            "boat {} searched {} columns over {} ticks ({})", boat.uuid.toString().take(8),
             replan.search.expanded, level.gameTime - replan.startedAt + 1, replan.search.stoppedBy
         )
         return replan.search.result()
@@ -164,13 +165,13 @@ object BoatTrips {
         val route = search.result()
         val how = "${search.expanded} columns, ${search.stoppedBy}"
         if (route == null) {
-            DebugFlags.log("[boat-debug] {} boat {}: no way over the water to a bank ({})", squadName, boat.uuid.toString().take(8), how)
+            DebugFlags.log(LogGroup.BOAT, "{} boat {}: no way over the water to a bank ({})", squadName, boat.uuid.toString().take(8), how)
             return
         }
         val cost = npc.position().distanceTo(boat.position()) + route.length / WaterRoutes.BOAT_PACE + route.remaining(goal)
         val worth = route.length >= MIN_VOYAGE && cost <= decision.walk * (1 - ADVANTAGE)
-        DebugFlags.log(
-            "[boat-debug] {} boat {}: voyage {} {} {} ({} from goal), trip {} vs walk {} -> {} ({})",
+        DebugFlags.log(LogGroup.BOAT,
+            "{} boat {}: voyage {} {} {} ({} from goal), trip {} vs walk {} -> {} ({})",
             squadName, boat.uuid.toString().take(8), route.length.toInt(), if (route.complete) "to land at" else "and on past",
             BlockPos.containing(route.shore), route.shore.distanceTo(goal).toInt(), cost.toInt(), decision.walk.toInt(),
             if (worth) "take it" else "walk", how

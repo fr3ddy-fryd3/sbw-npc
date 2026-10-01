@@ -147,10 +147,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     private var lastHearingLogTick = Int.MIN_VALUE / 2
 
     private fun logHearing(at: Vec3, reaction: String) {
-        if (!com.sbwnpc.squad.combat.DebugFlags.LOGGING_ENABLED || tickCount - lastHearingLogTick < HEARING_LOG_TICKS) return
+        if (!com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.HEARING) || tickCount - lastHearingLogTick < HEARING_LOG_TICKS) return
         lastHearingLogTick = tickCount
-        com.sbwnpc.squad.combat.DebugFlags.log(
-            "[hearing-debug] {} ({}) at {} heard {} ({} blocks): {}",
+        com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.HEARING,
+            "{} ({}) at {} heard {} ({} blocks): {}",
             uuid.toString().take(8), npcClass, blockPosition(), BlockPos.containing(at),
             Math.sqrt(distanceToSqr(at)).toInt(), reaction
         )
@@ -416,10 +416,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      */
     override fun stopRiding() {
         val vehicle = this.vehicle
-        if (vehicle != null && !level().isClientSide && com.sbwnpc.squad.combat.DebugFlags.LOGGING_ENABLED) {
+        if (vehicle != null && !level().isClientSide && com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.VEHICLE)) {
             // Which of the many dismount paths this was — the frames above this one.
             val from = Throwable().stackTrace.drop(1).take(3).joinToString(" <- ") { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }
-            com.sbwnpc.squad.combat.DebugFlags.log("[dismount-debug] {} ({}) off {}: {}", uuid, npcClass, vehicle.type.descriptionId, from)
+            com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.VEHICLE, "{} ({}) off {}: {}", uuid, npcClass, vehicle.type.descriptionId, from)
         }
         super.stopRiding()
         if (vehicle == null || this.vehicle != null) return
@@ -616,8 +616,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         seenOrderStamp = stamp
         // Why a member does or doesn't act on it: a target, a vehicle, a tube or a drone all come
         // before a squad order.
-        com.sbwnpc.squad.combat.DebugFlags.log(
-            "[order-debug] {} ({}) got {}: target={} alert={} transport={} mortar={} drone={} dug={}",
+        com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER,
+            "{} ({}) got {}: target={} alert={} transport={} mortar={} drone={} dug={}",
             squad.name, npcClass, squad.order, target?.name?.string, isAlert(), vehicleTransport,
             servingMortar, operatingDrone, diggedIn
         )
@@ -1001,8 +1001,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             rolls[rolls.size - 1] += if (dropped != null) " DROPPED" else " (spawn failed)"
             setItemSlot(slot, ItemStack.EMPTY)
         }
-        com.sbwnpc.squad.combat.DebugFlags.log(
-            "[loot-debug] {} ({}) killed by {} via {} (playerHit={}): {}",
+        com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.LOOT,
+            "{} ({}) killed by {} via {} (playerHit={}): {}",
             uuid, npcClass, damageSource.entity?.let { it as? NpcEntity }?.let { "NPC ${it.npcClass}" } ?: damageSource.entity?.name?.string,
             damageSource.msgId, recentlyHit, rolls.joinToString(", ")
         )

@@ -2,6 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.TankWeaponSelection
 import com.sbwnpc.squad.combat.VehicleTargeting
 import com.sbwnpc.squad.domain.port.Ports
@@ -67,8 +68,8 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         engagedTick = entity.tickCount
         phase = Phase.APPROACHING
         entity.vehicleTransport = true
-        DebugFlags.log(
-            "[vehicle-debug] {} claimed combat support vehicle {} for target {}",
+        DebugFlags.log(LogGroup.VEHICLE,
+            "{} claimed combat support vehicle {} for target {}",
             entity.uuid, vehicle.uuid, target.uuid
         )
     }
@@ -130,8 +131,8 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 entity.navigation.stop()
                 phase = Phase.FIRING
                 engagedTick = entity.tickCount
-                DebugFlags.log(
-                    "[vehicle-debug] {} boarded combat support vehicle {} in seat {} for target {}",
+                DebugFlags.log(LogGroup.VEHICLE,
+                    "{} boarded combat support vehicle {} in seat {} for target {}",
                     entity.uuid, vehicle.uuid, Ports.vehicles.seatOf(vehicle, entity), target.uuid
                 )
             }
@@ -195,8 +196,8 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun traceExit(entity: NpcEntity, vehicle: Entity?, how: String) {
-        DebugFlags.log(
-            "[vehicle-debug] {} leaving combat support ({}): seated={} ticksSinceTarget={} ammo={} phase={}",
+        DebugFlags.log(LogGroup.VEHICLE,
+            "{} leaving combat support ({}): seated={} ticksSinceTarget={} ammo={} phase={}",
             entity.uuid, how, vehicle != null && entity.vehicle === vehicle, entity.tickCount - engagedTick,
             vehicle?.let { Ports.vehicles.seatHasAmmo(it, entity) }, phase
         )
@@ -228,7 +229,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
             targetId = null
         }
         return threat(entity)?.takeIf { entity.sensing.hasLineOfSight(it) }?.also {
-            DebugFlags.log("[vehicle-debug] {} at the gun takes a new target {} ({} ticks after the last)",
+            DebugFlags.log(LogGroup.VEHICLE, "{} at the gun takes a new target {} ({} ticks after the last)",
                 entity.uuid, it.uuid, entity.tickCount - engagedTick)
             targetId = it.uuid
             sawTargetTick = entity.tickCount

@@ -54,7 +54,7 @@ class NpcItemInHandLayer(
      *  here means the equipment never arrived; not listed while the NPC shows no gun means it did
      *  and the model is not being drawn. Once per NPC. */
     private fun traceEmptyHand(entity: NpcEntity) {
-        if (!com.sbwnpc.squad.combat.DebugFlags.LOGGING_ENABLED || !entity.mainHandItem.isEmpty) return
+        if (!com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.EQUIP) || !entity.mainHandItem.isEmpty) return
         if (entity.tickCount < EMPTY_HAND_GRACE_TICKS || !reportedEmpty.add(entity.id)) return
         com.sbwnpc.squad.SquadMod.LOGGER.info(
             "[equip-debug] client: NPC {} (entity {}) has an empty main hand {} ticks after appearing; offhand={} head={} chest={} vehicle={}",

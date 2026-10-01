@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.squad
 
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.config.SquadConfig
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.core.BlockPos
@@ -68,7 +69,7 @@ object SquadChunkLoader {
 
         for (spot in held - wanted) server.getLevel(spot.dimension)?.chunkSource?.removeRegionTicket(TICKET, spot.chunk, TICKET_DISTANCE, spot.chunk)
         for (spot in wanted - held) server.getLevel(spot.dimension)?.chunkSource?.addRegionTicket(TICKET, spot.chunk, TICKET_DISTANCE, spot.chunk)
-        if (wanted != held) DebugFlags.log("[chunk-debug] squads hold {} chunks (was {})", wanted.size, held.size)
+        if (wanted != held) DebugFlags.log(LogGroup.CHUNK, "squads hold {} chunks (was {})", wanted.size, held.size)
         held.clear()
         held += wanted
         lastSpots.keys.retainAll(mgr.all().map { it.id }.toSet())

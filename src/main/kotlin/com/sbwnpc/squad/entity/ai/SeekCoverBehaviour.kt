@@ -2,6 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.GrenadeThrower
 import com.sbwnpc.squad.combat.Sightline
@@ -257,7 +258,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             coverTarget = it
             entity.navigation.moveTo(it.x + 0.5, it.y.toDouble(), it.z + 0.5, 1.0)
             markCoverChoice(level, it, ORANGE)
-            DebugFlags.log("[dig-debug] {} entered fallback retreat", entity.uuid)
+            DebugFlags.log(LogGroup.DIG, "{} entered fallback retreat", entity.uuid)
         }
     }
 
@@ -567,14 +568,14 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         val belowState = level.getBlockState(pos.below())
         val diggableGround = belowState.`is`(BlockTags.DIRT) || belowState.`is`(BlockTags.SAND)
         // In order of cost; the last two walk the ground and the squad. All four only for the trace.
-        if (!DebugFlags.LOGGING_ENABLED) {
+        if (!DebugFlags.on(LogGroup.DIG)) {
             return hurtEnough && diggableGround && isFlatEnoughToDig(level, pos) && hasCoveringAlly(entity, level)
         }
         val flatEnough = isFlatEnoughToDig(level, pos)
         val covered = hasCoveringAlly(entity, level)
         if (!(hurtEnough && diggableGround && flatEnough && covered)) {
-            DebugFlags.log(
-                "[dig-debug] {} at {} hurtEnough={} diggableGround={} flatEnough={} covered={}",
+            DebugFlags.log(LogGroup.DIG,
+                "{} at {} hurtEnough={} diggableGround={} flatEnough={} covered={}",
                 entity.uuid, pos, hurtEnough, diggableGround, flatEnough, covered
             )
         }

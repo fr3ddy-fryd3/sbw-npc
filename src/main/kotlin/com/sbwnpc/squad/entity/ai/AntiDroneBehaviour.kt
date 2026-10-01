@@ -2,6 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.DroneAccuracy
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.entity.DroneRegistry
@@ -107,7 +108,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
         val found = detect(entity, level) ?: return null
         remember(entity, found)
         shout(entity, level, found)
-        DebugFlags.log("[drone-debug] {} spotted hostile drone {}", entity.uuid, found.uuid)
+        DebugFlags.log(LogGroup.DRONE, "{} spotted hostile drone {}", entity.uuid, found.uuid)
         return found
     }
 

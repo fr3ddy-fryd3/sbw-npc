@@ -12,6 +12,7 @@ import com.sbwnpc.squad.vehicle.DriverAllegiance
 import com.sbwnpc.squad.vehicle.VehiclePower
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
@@ -249,7 +250,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun logEligibility(entity: NpcEntity, result: Boolean, reason: () -> String): Boolean {
         if (entity.tickCount - lastEligibilityLogTick >= ELIGIBILITY_LOG_INTERVAL_TICKS) {
             lastEligibilityLogTick = entity.tickCount
-            DebugFlags.log("[vehicle-debug] {} eligible={} : {}", entity.uuid, result, reason())
+            DebugFlags.log(LogGroup.VEHICLE, "{} eligible={} : {}", entity.uuid, result, reason())
         }
         return result
     }
@@ -284,8 +285,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         tripDestination = null
         observedDamageStamp = 0L
         entity.vehicleTransport = true
-        DebugFlags.log(
-            "[vehicle-debug] {} starting vehicle transport, home={} dist={}",
+        DebugFlags.log(LogGroup.VEHICLE,
+            "{} starting vehicle transport, home={} dist={}",
             entity.uuid, entity.homeCenter(), entity.homeCenter()?.let { entity.position().distanceTo(it) }
         )
     }
@@ -403,8 +404,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (choice == null) {
             if (entity.tickCount - lastNoCandidateLogTick > NO_CANDIDATE_LOG_INTERVAL_TICKS) {
                 lastNoCandidateLogTick = entity.tickCount
-                DebugFlags.log(
-                    "[vehicle-debug] {} found no claimable vehicle within {} blocks ({} vehicles total nearby)",
+                DebugFlags.log(LogGroup.VEHICLE,
+                    "{} found no claimable vehicle within {} blocks ({} vehicles total nearby)",
                     entity.uuid, SEARCH_RADIUS, nearby.size
                 )
             }
@@ -438,8 +439,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
             targetVehicleId = choice.vehicle.uuid
             phase = Phase.BOARDING
-            DebugFlags.log(
-                "[vehicle-debug] {} claimed {} seat of {} (capacity={})",
+            DebugFlags.log(LogGroup.VEHICLE,
+                "{} claimed {} seat of {} (capacity={})",
                 entity.uuid, if (choice.isDriver) "driver" else "passenger", choice.vehicle.uuid,
                 Ports.vehicles.seatCount(choice.vehicle)
             )
@@ -481,8 +482,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // Not force=true: lets VehicleEntity.canAddPassenger's own real seat-capacity check apply as
         // a final backstop, instead of only trusting the app-level claim registry.
         if (!entity.startRiding(vehicle, false)) {
-            DebugFlags.log(
-                "[vehicle-debug] {} in range of {} but startRiding refused", entity.uuid, vehicle.uuid
+            DebugFlags.log(LogGroup.VEHICLE,
+                "{} in range of {} but startRiding refused", entity.uuid, vehicle.uuid
             )
             VehicleTransportClaims.release(entity.uuid)
             targetVehicleId = null
@@ -490,7 +491,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             seekingStartTick = entity.tickCount
             return
         }
-        DebugFlags.log("[vehicle-debug] {} boarded {}", entity.uuid, vehicle.uuid)
+        DebugFlags.log(LogGroup.VEHICLE, "{} boarded {}", entity.uuid, vehicle.uuid)
 
         entity.currentSquad()?.faction?.let { SquadTeams.assign(vehicle, it) }
 
@@ -535,7 +536,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 vehicle.uuid, entity.uuid, Ports.vehicles.seatCount(vehicle), vehicle.passengers.map { it.uuid }
             )
         }
-        DebugFlags.log("[vehicle-debug] {} seated in {} as {}", entity.uuid, vehicle.uuid, if (atWheel) "driver" else "passenger")
+        DebugFlags.log(LogGroup.VEHICLE, "{} seated in {} as {}", entity.uuid, vehicle.uuid, if (atWheel) "driver" else "passenger")
         phase = if (atWheel) {
             waitStartTick = entity.tickCount
             Phase.WAITING_FOR_SQUAD
@@ -698,7 +699,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             // He hasn't moved off — he may not be able to, pressed against the hull. Back off and
             // go round him instead of waiting out the whole trip.
             if (entity.tickCount - allyBlockedSince >= ALLY_WAIT_TICKS) {
-                DebugFlags.log("[vehicle-debug] {} blocked by {} for {} ticks, backing off to go round",
+                DebugFlags.log(LogGroup.VEHICLE, "{} blocked by {} for {} ticks, backing off to go round",
                     entity.uuid, blocker.uuid, entity.tickCount - allyBlockedSince)
                 allyBlockedSince = -1
                 recoveryUntilTick = entity.tickCount + RECOVERY_TICKS
@@ -756,8 +757,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 if (route.complete) VehicleTransportClaims.setLanding(vehicle.uuid, route.landing)
                 else VehicleTransportClaims.clearLanding(vehicle.uuid)
                 tripDestination = route.landing
-                DebugFlags.log(
-                    "[boat-debug] {} steering {} along {} points, {} blocks, {} {}",
+                DebugFlags.log(LogGroup.BOAT,
+                    "{} steering {} along {} points, {} blocks, {} {}",
                     entity.uuid.toString().take(8), vehicle.uuid.toString().take(8), boatRoute.size,
                     route.length.toInt(), if (route.complete) "to land at" else "on toward the goal, to look again at",
                     BlockPos.containing(route.shore)
@@ -893,7 +894,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 detouring && allyInTheWay(entity, vehicle, dir, DETOUR_LOOKAHEAD) != null
             }
             avoidancePoint = if (point == waypoint) null else point
-            if (avoidancePoint != null) DebugFlags.log("[vehicle-debug] {} steering round a tree to {}", entity.uuid, point)
+            if (avoidancePoint != null) DebugFlags.log(LogGroup.VEHICLE, "{} steering round a tree to {}", entity.uuid, point)
         }
         return avoidancePoint ?: waypoint
     }
@@ -935,7 +936,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             driveSearch = com.sbwnpc.squad.route.CellPlanner.search(medium, vehicle.position(), home)
             driveSearchStarted = entity.tickCount
             if (driveSearch == null) {
-                DebugFlags.log("[vehicle-debug] {} no long route for {} from {} (not on known open ground), short routes instead",
+                DebugFlags.log(LogGroup.VEHICLE, "{} no long route for {} from {} (not on known open ground), short routes instead",
                     entity.uuid, vehicle.uuid, vehicle.blockPosition())
                 driveLegsOnly = true
                 return currentWaypoint(entity, home)
@@ -947,7 +948,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 nextRouteTick = Int.MAX_VALUE
                 val found = search.result()
                 if (found == null || found.route.isEmpty()) {
-                    DebugFlags.log("[vehicle-debug] {} no long route for {} to {} ({}), short routes instead",
+                    DebugFlags.log(LogGroup.VEHICLE, "{} no long route for {} to {} ({}), short routes instead",
                         entity.uuid, vehicle.uuid, BlockPos.containing(home), search.stoppedBy)
                     driveLegsOnly = true
                     return currentWaypoint(entity, home)
@@ -957,8 +958,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 driveRouteComplete = found.complete
                 if (found.complete) VehicleTransportClaims.setLanding(vehicle.uuid, found.landing)
                 else VehicleTransportClaims.clearLanding(vehicle.uuid)
-                DebugFlags.log(
-                    "[vehicle-debug] {} driving {} along {} points, {} blocks, {} {} ({} from home; {} units over {} ticks)",
+                DebugFlags.log(LogGroup.VEHICLE,
+                    "{} driving {} along {} points, {} blocks, {} {} ({} from home; {} units over {} ticks)",
                     entity.uuid, vehicle.uuid, driveRoute.size, found.length.toInt(),
                     if (found.complete) "crew out at" else "on toward the goal, to look again at", BlockPos.containing(found.landing),
                     horizontalDistance(found.landing, home).toInt(), search.expanded, entity.tickCount - driveSearchStarted + 1
@@ -1000,8 +1001,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             if (path != null) {
                 route = (0 until path.nodeCount).map { path.getNodePos(it) }
                 routeIndex = 0
-                DebugFlags.log(
-                    "[vehicle-debug] {} recomputed route: {} nodes, canReach={}, dist-to-home={}",
+                DebugFlags.log(LogGroup.VEHICLE,
+                    "{} recomputed route: {} nodes, canReach={}, dist-to-home={}",
                     entity.uuid, route.size, path.canReach(), entity.position().distanceTo(home)
                 )
             }
@@ -1089,8 +1090,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         }?.takeIf { Ports.vehicles.seatHasAmmo(vehicle, entity) }
         val aimed = boatGunTarget
         if (target?.uuid != aimed) {
-            DebugFlags.log(
-                "[boat-debug] {} at the boat's gun: {}", entity.uuid.toString().take(8),
+            DebugFlags.log(LogGroup.BOAT,
+                "{} at the boat's gun: {}", entity.uuid.toString().take(8),
                 when {
                     target != null -> "firing at ${target.uuid.toString().take(8)} ${target.type.descriptionId}"
                     !Ports.vehicles.seatHasAmmo(vehicle, entity) -> "out of ammunition"
@@ -1142,8 +1143,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             // next test tells us the actual speed/health at the exact moment of dismount instead of
             // guessing again: was it the slow-enough check firing on a real stop, or the timeout
             // firing early while still going, and was the NPC already hurt going into it.
-            DebugFlags.log(
-                "[vehicle-debug] {} dismounting: speed={} slowEnough={} waitedTooLong={} health={}/{} pos={}",
+            DebugFlags.log(LogGroup.VEHICLE,
+                "{} dismounting: speed={} slowEnough={} waitedTooLong={} health={}/{} pos={}",
                 entity.uuid, kotlin.math.sqrt(speedSqr), slowEnough, waitedTooLong,
                 entity.health, entity.maxHealth, vehicle.position()
             )
@@ -1222,8 +1223,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         phase = Phase.COMBAT_DISMOUNT
         gunnerSawThreatTick = entity.tickCount
-        DebugFlags.log(
-            "[vehicle-debug] {} stopping {} for combat against {}",
+        DebugFlags.log(LogGroup.VEHICLE,
+            "{} stopping {} for combat against {}",
             entity.uuid, vehicle.uuid, threat.uuid
         )
         return true
@@ -1358,8 +1359,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             if (dueForFullLog) lastFullLogTick = vehicle.tickCount
             lastLoggedRight = steering.right
             lastLoggedLeft = steering.left
-            DebugFlags.log(
-                "[vehicle-debug] steer: {} -> right={} left={}", steering.detail, steering.right, steering.left
+            DebugFlags.log(LogGroup.VEHICLE,
+                "steer: {} -> right={} left={}", steering.detail, steering.right, steering.left
             )
         }
     }

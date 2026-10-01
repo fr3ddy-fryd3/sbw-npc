@@ -3,6 +3,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.DroneCombat
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.domain.port.Ports
@@ -117,7 +118,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
             // short of the objective would turn straight round and climb back into the aircraft
             // that had just given up on the trip.
             noLiftUntilTick = entity.tickCount + REBOARD_COOLDOWN_TICKS
-            DebugFlags.log("[heli-debug] {} dismounted at {}", entity.uuid, entity.position())
+            DebugFlags.log(LogGroup.HELI, "{} dismounted at {}", entity.uuid, entity.position())
         }
     }
 
@@ -138,7 +139,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.startRiding(heli, false)) {
             phase = Phase.RIDING
             groundedSince = Int.MIN_VALUE / 2
-            DebugFlags.log("[heli-debug] {} boarded transport {}", entity.uuid, heli.uuid)
+            DebugFlags.log(LogGroup.HELI, "{} boarded transport {}", entity.uuid, heli.uuid)
         }
     }
 
@@ -152,9 +153,9 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
      */
     private fun fireFromBench(entity: NpcEntity, heli: Entity) {
         val held = benchHoldReason(entity, heli) ?: return
-        if (DebugFlags.LOGGING_ENABLED && entity.tickCount - lastBenchLogTick >= BENCH_LOG_TICKS) {
+        if (DebugFlags.on(LogGroup.HELI) && entity.tickCount - lastBenchLogTick >= BENCH_LOG_TICKS) {
             lastBenchLogTick = entity.tickCount
-            DebugFlags.log("[heli-debug] {} on the bench not firing: {}", entity.uuid, held)
+            DebugFlags.log(LogGroup.HELI, "{} on the bench not firing: {}", entity.uuid, held)
         }
     }
 
@@ -264,15 +265,15 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         val chosen = nearby.firstOrNull { boardable(it, entity) }
         if (chosen == null) {
             if (nearby.isNotEmpty()) {
-                DebugFlags.log(
-                    "[heli-debug] {} found no ride: {}", entity.uuid,
+                DebugFlags.log(LogGroup.HELI,
+                    "{} found no ride: {}", entity.uuid,
                     nearby.joinToString { "${it.uuid}=${reject(it, entity)}" }
                 )
             }
             return null
         }
         rideId = chosen.uuid
-        DebugFlags.log("[heli-debug] {} heading for transport {}", entity.uuid, chosen.uuid)
+        DebugFlags.log(LogGroup.HELI, "{} heading for transport {}", entity.uuid, chosen.uuid)
         return chosen
     }
 

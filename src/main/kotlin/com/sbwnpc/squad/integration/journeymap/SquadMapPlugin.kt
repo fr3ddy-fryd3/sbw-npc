@@ -3,6 +3,7 @@ package com.sbwnpc.squad.integration.journeymap
 import com.sbwnpc.squad.SquadMod
 import com.sbwnpc.squad.client.MapState
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.network.RouteCmdPayload
 import com.sbwnpc.squad.network.SquadCmdPayload
@@ -269,8 +270,8 @@ class SquadMapPlugin : IClientPlugin {
             syncWaypoints(null, emptyMap())
             return
         }
-        DebugFlags.log(
-            "[map-debug] feed: squads={} loose={} vehicles={} enemies={}",
+        DebugFlags.log(LogGroup.MAP,
+            "feed: squads={} loose={} vehicles={} enemies={}",
             list(feed, "Squads").size, list(feed, "Loose").size, list(feed, "Vehicles").size, list(feed, "Enemies").size
         )
         val dim = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(feed.getString("Dim")))

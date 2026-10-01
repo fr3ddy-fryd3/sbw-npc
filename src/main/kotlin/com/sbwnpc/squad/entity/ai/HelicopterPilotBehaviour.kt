@@ -2,6 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
@@ -124,7 +125,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         // fight on foot. VehicleCrewBehaviour keeps the pilot from climbing back in until the
         // contact is over.
         if (!airworthy && !airborne && target != null) {
-            DebugFlags.log("[heli-debug] {} bailing out of a grounded, unflyable helicopter", entity.uuid)
+            DebugFlags.log(LogGroup.HELI, "{} bailing out of a grounded, unflyable helicopter", entity.uuid)
             cutControls(heli)
             entity.stopRiding()
             return
@@ -159,9 +160,9 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         // Guarded rather than left to DebugFlags.log alone, because the formatting below would
         // otherwise still run on every sample with the flag off.
-        if (DebugFlags.LOGGING_ENABLED && entity.tickCount % TELEMETRY_INTERVAL == 0) {
-            DebugFlags.log(
-                "[heli-debug] {} phase={} h={} y={} power={} rotor={} pitch={} roll={} vy={} spd={} target={} reloc={} toHome={} boarding={} seats={}",
+        if (DebugFlags.on(LogGroup.HELI) && entity.tickCount % TELEMETRY_INTERVAL == 0) {
+            DebugFlags.log(LogGroup.HELI,
+                "{} phase={} h={} y={} power={} rotor={} pitch={} roll={} vy={} spd={} target={} reloc={} toHome={} boarding={} seats={}",
                 entity.uuid, phase, "%.1f".format(height), "%.1f".format(heli.y),
                 "%.4f".format(Ports.vehicles.throttle(heli)), "%.4f".format(Ports.vehicles.rotorSpeed(heli)),
                 "%.1f".format(heli.xRot), "%.1f".format(Ports.vehicles.roll(heli)),
@@ -183,7 +184,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
                 climbStraight(heli, safeY, rollRate)
                 if (heli.y >= safeY - 1.0) {
                     phase = Phase.TRANSIT
-                    DebugFlags.log("[heli-debug] {} airborne, transiting to {}", entity.uuid, station)
+                    DebugFlags.log(LogGroup.HELI, "{} airborne, transiting to {}", entity.uuid, station)
                 }
             }
             Phase.TRANSIT -> {

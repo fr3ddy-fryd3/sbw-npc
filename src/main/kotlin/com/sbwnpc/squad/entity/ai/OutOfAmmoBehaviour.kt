@@ -2,6 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
@@ -44,7 +45,7 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun start(entity: NpcEntity) {
         nextStepTick = 0
         FiringSpots.release(entity.uuid)
-        DebugFlags.log("[ammo-debug] {} ({}) out of ammo, running from {}", entity.uuid, entity.npcClass, entity.target?.name?.string)
+        DebugFlags.log(LogGroup.AMMO, "{} ({}) out of ammo, running from {}", entity.uuid, entity.npcClass, entity.target?.name?.string)
     }
 
     override fun tick(entity: NpcEntity) {

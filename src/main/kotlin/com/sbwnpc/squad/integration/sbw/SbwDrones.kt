@@ -7,6 +7,7 @@ import com.atsuishio.superbwarfare.init.ModEntities
 import com.atsuishio.superbwarfare.init.ModItems
 import com.atsuishio.superbwarfare.tools.CustomExplosion
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.domain.port.Drones
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.resources.ResourceLocation
@@ -78,7 +79,7 @@ object SbwDrones : Drones {
             .radius(data.explosionRadius)
             .position(at)
             .explode()
-        DebugFlags.log("[drone-debug] {} warhead detonated at {}", operator.uuid, at)
+        DebugFlags.log(LogGroup.DRONE, "{} warhead detonated at {}", operator.uuid, at)
     }
 
     override fun setInputs(drone: Entity, forward: Boolean, back: Boolean, up: Boolean, down: Boolean) {

@@ -273,8 +273,8 @@ object ModNetwork {
             mgr.setOrder(id, SquadOrder.byOrdinal(p.order))
             val pos = Terrain.lookedAtPos(player, level, OBJECTIVE_RAYCAST_RANGE)
             mgr.setObjective(level, id, pos)
-            com.sbwnpc.squad.combat.DebugFlags.log(
-                "[order-debug] HUD: {} -> {} at {} (asked {})",
+            com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER,
+                "HUD: {} -> {} at {} (asked {})",
                 mgr.get(id)?.name, mgr.get(id)?.order, pos, SquadOrder.byOrdinal(p.order)
             )
         }
@@ -297,7 +297,7 @@ object ModNetwork {
                 .forEach { squad ->
                     mgr.setOrder(squad.id, order)
                     mgr.setObjective(level, squad.id, pos)
-                    com.sbwnpc.squad.combat.DebugFlags.log("[order-debug] HUD all: {} -> {} at {}", squad.name, squad.order, pos)
+                    com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER, "HUD all: {} -> {} at {}", squad.name, squad.order, pos)
                 }
         }
     }
