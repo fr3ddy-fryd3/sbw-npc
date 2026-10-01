@@ -54,7 +54,10 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
      */
     override fun createPath(pos: BlockPos, accuracy: Int): Path? {
         branch = "?"
-        val result = choosePath(pos, accuracy)
+        // Vanilla plans nothing while he's off the ground, and an empty answer then is no news
+        // about the way — so the branch state (the goals the path being walked was planned to)
+        // is left as it is, not set to a goal nothing was planned to.
+        val result = if (canPlan) choosePath(pos, accuracy) else { branch = "in the air"; null }
         (mob as? com.sbwnpc.squad.entity.NpcEntity)?.let { npc ->
             val far = pos.distToCenterSqr(mob.x, mob.y, mob.z) > NOWHERE_MIN_DISTANCE * NOWHERE_MIN_DISTANCE
             val end = result?.endNode?.asBlockPos()
@@ -62,8 +65,8 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
             val nowhere = far && result != null && !result.canReach() && end != null && end.distManhattan(mob.blockPosition()) <= 1
             npc.notePathGoesNowhere(pos, nowhere)
         }
-        // No path at all is rare and is what a caller gives up on — never skipped.
-        if (com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.PATH) && (result == null || mob.tickCount - lastPathLogTick >= PATH_LOG_TICKS)) {
+        // No path on the ground is rare and is what a caller gives up on — never skipped.
+        if (com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.PATH) && (result == null && canPlan || mob.tickCount - lastPathLogTick >= PATH_LOG_TICKS)) {
             lastPathLogTick = mob.tickCount
             com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.PATH,
                 "{} at {} asked {} ({} blocks) branch={} target={} -> {}",
@@ -77,6 +80,46 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
     }
 
     private var branch = "?"
+
+    /** Whether a path can be planned now — not mid-jump or falling (vanilla's own condition). */
+    val canPlan: Boolean get() = canUpdatePath()
+
+    /**
+     * Vanilla re-plans the path being walked when a block next to it changes — which in a fight
+     * is all the time — by dropping it first and asking again. Mid-jump the answer is empty, and
+     * a man walking a good path was left with none: whoever had asked for it once took that for
+     * the walk being over. Off the ground, vanilla's own deferred re-plan is used instead: its
+     * tick asks again every tick until he lands.
+     */
+    override fun recomputePath() {
+        if (!canPlan && targetPos != null) {
+            if (!hasDelayedRecomputation) traceAir("re-plan to $targetPos put off till he lands")
+            hasDelayedRecomputation = true
+            return
+        }
+        super.recomputePath()
+    }
+
+    /** An empty answer mid-jump keeps the path he's walking; the caller still hears there was none. */
+    override fun moveTo(path: Path?, speed: Double): Boolean {
+        if (path == null && !canPlan && this.path?.isDone == false) {
+            traceAir("asked mid-jump, keeps walking the path to ${this.path?.target}")
+            return false
+        }
+        return super.moveTo(path, speed)
+    }
+
+    private var lastAirLogTick = Int.MIN_VALUE / 2
+
+    /** Once a jump — callers ask every tick while he's up. */
+    private fun traceAir(what: String) {
+        if (mob.tickCount - lastAirLogTick < AIR_LOG_TICKS) return
+        lastAirLogTick = mob.tickCount
+        com.sbwnpc.squad.combat.DebugFlags.log(
+            com.sbwnpc.squad.combat.LogGroup.PATH, "{} at {} y={}: {}",
+            mob.uuid.toString().take(8), mob.blockPosition(), "%.2f".format(mob.y), what
+        )
+    }
     private var lastPathLogTick = Int.MIN_VALUE / 2
 
     private fun choosePath(pos: BlockPos, accuracy: Int): Path? {
@@ -218,6 +261,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         /** A path ending nearer its goal than this just can't stand on the exact block. */
         const val SHORT_OF_GOAL = 4f
         const val PATH_LOG_TICKS = 40
+        const val AIR_LOG_TICKS = 10
     }
 }
 
