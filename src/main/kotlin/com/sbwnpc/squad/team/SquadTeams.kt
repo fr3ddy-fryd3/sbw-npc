@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.team
 
+import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.PlayerFactionRegistry
 import net.minecraft.network.chat.Component
@@ -33,6 +34,7 @@ object SquadTeams {
         val level = entity.level() as? ServerLevel ?: return
         val team = getOrCreate(level, faction)
         level.scoreboard.addPlayerToTeam(entity.scoreboardName, team)
+        (entity as? NpcEntity)?.forgetFaction()
     }
 
     fun clear(entity: Entity) {
@@ -40,12 +42,16 @@ object SquadTeams {
         val team = level.scoreboard.getPlayersTeam(entity.scoreboardName) ?: return
         if (team.name.startsWith(PREFIX)) {
             level.scoreboard.removePlayerFromTeam(entity.scoreboardName, team)
+            (entity as? NpcEntity)?.forgetFaction()
         }
     }
 
     /** The faction an entity's team encodes, purely from the (client-synced) scoreboard team name
      *  — no extra synced entity data needed for e.g. the renderer to pick a skin. */
-    fun factionOf(entity: Entity): SquadFaction? {
+    fun factionOf(entity: Entity): SquadFaction? =
+        if (entity is NpcEntity) entity.factionThisTick { teamFaction(entity) } else teamFaction(entity)
+
+    private fun teamFaction(entity: Entity): SquadFaction? {
         val team = entity.team as? PlayerTeam ?: return null
         return factionOfTeamName(team.name)
     }

@@ -79,6 +79,25 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     /** Faction to put the NPC on its scoreboard team; set before finalizeSpawn. null = leave unteamed. */
     var spawnFaction: SquadFaction? = null
 
+    // The faction this tick, for SquadTeams.factionOf: every shooter's ally and target scans ask
+    // each NPC in the level, and the scoreboard lookup behind it was a few percent of a big
+    // fight's tick. A team change reaches it next tick at the latest (SquadTeams drops it at once).
+    private var factionTick = Long.MIN_VALUE
+    private var factionNow: SquadFaction? = null
+
+    internal fun factionThisTick(lookup: () -> SquadFaction?): SquadFaction? {
+        val now = level().gameTime
+        if (now != factionTick) {
+            factionNow = lookup()
+            factionTick = now
+        }
+        return factionNow
+    }
+
+    internal fun forgetFaction() {
+        factionTick = Long.MIN_VALUE
+    }
+
     /** Command group this NPC belongs to, if any. Server-side; persisted. */
     var squadId: UUID? = null
 
