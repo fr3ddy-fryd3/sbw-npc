@@ -37,9 +37,9 @@ import java.util.UUID
  * explodes ANY drone on `destroy()` unless SBW's kamikaze flag is set, so we set no flag and mount
  * no payload: detonating at the target is just `destroy()`, and being shot down or crashing
  * explodes it exactly as a player-flown one would (its config, sounds, particles). Without the
- * addon: SBW's bare drone with a kamikaze attachment and our own `CustomExplosion` from the
- * attachment's datapack entry, because SBW's `kamikazeExplosion` silently does nothing without a
- * player controller — on impact and when shot down alike.
+ * addon: SBW's bare drone with nothing mounted (a mounted rocket is drawn under it) and our own
+ * `CustomExplosion` from a kamikaze attachment's datapack entry — SBW's `kamikazeExplosion`
+ * silently does nothing without a player controller anyway — on impact and when shot down alike.
  *
  * Flying: `DroneEntity` moves from its public input flags (see [DroneFlightController] for what
  * each one really does); we write them every tick and set `yRot` directly, since without a

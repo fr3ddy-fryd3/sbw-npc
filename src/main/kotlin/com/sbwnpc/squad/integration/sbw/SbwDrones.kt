@@ -24,12 +24,13 @@ import net.minecraft.world.phys.Vec3
  * weapon". Its crash-explosion mixin fires on destroy() for any drone WITHOUT SBW's kamikaze flag,
  * so detonating is just destroying it, and being shot down or falling into water explodes it
  * exactly like a player's would. Spawned by registry id so the addon stays an optional runtime
- * dependency. Fallback without the addon: SBW's bare drone with a kamikaze attachment, and our
+ * dependency. Fallback without the addon: SBW's bare drone, nothing mounted, and our
  * own stand-in for SBW's `kamikazeExplosion`, which needs a player controller.
  */
 object SbwDrones : Drones {
     /** Fallback warhead (no addon) — any SBW `drone_attachments` entry with IsKamikaze.
-     *  RPG TBG: 150 dmg / r 11. */
+     *  RPG TBG: 150 dmg / r 11. Only its numbers are used: nothing is mounted on the drone, or the
+     *  rocket is drawn hanging under it — the blast at the target is ours ([explodeWarhead]). */
     private val WARHEAD_ITEM = ModItems.RPG_ROCKET_TBG
 
     /** Drone Warfare addon's FPV drone ("cubed_fpv_drone"). A DroneEntity subclass, so it flies
@@ -49,7 +50,7 @@ object SbwDrones : Drones {
     override fun createKamikaze(level: ServerLevel): Entity {
         val addonType = BuiltInRegistries.ENTITY_TYPE.getOptional(ADDON_FPV_DRONE_ID).orElse(null)
         (addonType?.create(level) as? DroneEntity)?.let { return it }
-        return DroneEntity(ModEntities.DRONE.get(), level).also(::armWarhead)
+        return DroneEntity(ModEntities.DRONE.get(), level)
     }
 
     override fun blowsUpOnCrash(drone: Entity): Boolean =
@@ -95,27 +96,4 @@ object SbwDrones : Drones {
     override fun monitor(): ItemStack = ItemStack(ModItems.MONITOR.get())
 
     override fun isMonitor(stack: ItemStack): Boolean = stack.`is`(ModItems.MONITOR.get())
-
-    /** Mirrors the player-side `DroneEntity.interact` attach branch for a kamikaze payload. */
-    private fun armWarhead(drone: DroneEntity) {
-        val payload = ItemStack(WARHEAD_ITEM.get())
-        val data = CustomData.DRONE_ATTACHMENT[DroneEntity.getItemId(payload)] ?: return
-        drone.currentItem = payload
-        drone.entityData.set(DroneEntity.DISPLAY_ENTITY, data.displayEntity())
-        drone.entityData.set(DroneEntity.IS_KAMIKAZE, true)
-        drone.entityData.set(DroneEntity.MAX_AMMO, 1)
-        drone.setAmmo(1)
-        val scale = data.scale()
-        val offset = data.offset()
-        val rotation = data.rotation()
-        drone.entityData.set(
-            DroneEntity.DISPLAY_DATA, listOf(
-                scale[0], scale[1], scale[2],
-                offset[0], offset[1], offset[2],
-                rotation[0], rotation[1], rotation[2],
-                data.xLength, data.zLength,
-                data.tickCount.toFloat()
-            )
-        )
-    }
 }
