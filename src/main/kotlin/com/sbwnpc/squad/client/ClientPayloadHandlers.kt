@@ -25,8 +25,15 @@ object ClientPayloadHandlers {
     /** The Barracks' garrison config — the same screen, sent back to the block instead of the tool. */
     fun openBarracksScreen(pos: BlockPos, config: CompoundTag) {
         net.minecraft.client.Minecraft.getInstance().setScreen(
-            RecruitScreen.forBarracks(pos, SquadToolItem.readConfig(config))
+            RecruitScreen.forBarracks(pos, SquadToolItem.readConfig(config), config.getCompound("Recruitment"))
         )
+    }
+
+    fun barracksQueue(pos: BlockPos, data: CompoundTag) {
+        when (val screen = net.minecraft.client.Minecraft.getInstance().screen) {
+            is RecruitScreen -> screen.updateBarracksQueue(pos, data)
+            is com.sbwnpc.squad.client.screen.BarracksQueueScreen -> screen.updateQueue(pos, data)
+        }
     }
 
     /** Recruit-mode air-click round-trips through the server first (faction-lock check); this

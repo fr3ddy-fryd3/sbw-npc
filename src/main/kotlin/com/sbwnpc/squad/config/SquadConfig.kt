@@ -25,7 +25,17 @@ object SquadConfig {
         )
         .defineInRange("npcViewDistance", 256, 64, 512)
 
+    val RECRUIT_INTERVAL_SECONDS: ModConfigSpec.IntValue = builder
+        .comment(
+            "Seconds of loaded barracks time between individual NPC recruits, including the first.",
+            "Initial recruitment and replacements share this limit. Unloading pauses the clock."
+        )
+        .defineInRange("recruitIntervalSeconds", 30, 1, 3600)
+
     val SPEC: ModConfigSpec = builder.build()
+
+    fun recruitIntervalTicks(): Int =
+        (if (SPEC.isLoaded) RECRUIT_INTERVAL_SECONDS.get() else RECRUIT_INTERVAL_SECONDS.default) * 20
 
     /** [NPC_VIEW_DISTANCE], or its default while no world's config is loaded — the client asks
      *  before it has joined one, and a config value read then throws. */

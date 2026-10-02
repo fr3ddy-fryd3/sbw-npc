@@ -50,6 +50,16 @@ object ModNetwork {
         r.playToServer(ChooseFactionPayload.TYPE, ChooseFactionPayload.CODEC) { p, ctx -> onChooseFaction(p, ctx) }
         r.playToServer(RouteCmdPayload.TYPE, RouteCmdPayload.CODEC) { p, ctx -> onRouteCmd(p, ctx) }
         r.playToServer(ConfigureBarracksPayload.TYPE, ConfigureBarracksPayload.CODEC) { p, ctx -> onConfigureBarracks(p, ctx) }
+        r.playToServer(RequestBarracksQueuePayload.TYPE, RequestBarracksQueuePayload.CODEC) { p, ctx ->
+            ctx.enqueueWork {
+                val player = ctx.player() as? ServerPlayer ?: return@enqueueWork
+                val level = player.serverLevel()
+                if (player.distanceToSqr(Vec3.atCenterOf(p.pos)) > BARRACKS_REACH_SQR || !level.hasChunkAt(p.pos)) return@enqueueWork
+                val be = level.getBlockEntity(p.pos) as? BarracksBlockEntity ?: return@enqueueWork
+                if (be.owner != player.uuid) return@enqueueWork
+                sendToClient(player, BarracksQueuePayload(p.pos, be.recruitmentSnapshot(level)))
+            }
+        }
         r.playToServer(DiplomacyCmdPayload.TYPE, DiplomacyCmdPayload.CODEC) { p, ctx -> onDiplomacyCmd(p, ctx) }
         r.playToServer(SupplyCmdPayload.TYPE, SupplyCmdPayload.CODEC) { p, ctx -> onSupplyCmd(p, ctx) }
         r.playToServer(MapSubscribePayload.TYPE, MapSubscribePayload.CODEC) { _, ctx ->
@@ -85,6 +95,11 @@ object ModNetwork {
         }
         r.playToClient(OpenBarracksScreenPayload.TYPE, OpenBarracksScreenPayload.CODEC) { p, _ ->
             if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openBarracksScreen(p.pos, p.config)
+        }
+        r.playToClient(BarracksQueuePayload.TYPE, BarracksQueuePayload.CODEC) { p, ctx ->
+            ctx.enqueueWork {
+                if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.barracksQueue(p.pos, p.data)
+            }
         }
         r.playToClient(OpenSupplyScreenPayload.TYPE, OpenSupplyScreenPayload.CODEC) { p, _ ->
             if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openSupplyScreen(p.pos, p.data)
@@ -159,7 +174,7 @@ object ModNetwork {
         ctx.enqueueWork {
             val player = ctx.player() as? ServerPlayer ?: return@enqueueWork
             val level = player.level() as? ServerLevel ?: return@enqueueWork
-            if (player.distanceToSqr(Vec3.atCenterOf(p.pos)) > BARRACKS_REACH_SQR) return@enqueueWork
+            if (player.distanceToSqr(Vec3.atCenterOf(p.pos)) > BARRACKS_REACH_SQR || !level.hasChunkAt(p.pos)) return@enqueueWork
             val be = level.getBlockEntity(p.pos) as? BarracksBlockEntity ?: return@enqueueWork
             if (be.owner != player.uuid) return@enqueueWork
             be.configure(level, SquadToolItem.readConfig(p.config))

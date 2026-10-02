@@ -55,7 +55,7 @@ import java.util.UUID
  * -> blast where it is. Operator killed -> [onOperatorDied]: same, "signal lost".
  *
  * One drone per operator, [MAX_DRONES] carried, refilled at a barracks
- * (SquadManager.respawnAtBarracks). While flying the operator stands still holding the Monitor
+ * (SquadManager.resupplyAtBarracks). While flying the operator stands still holding the Monitor
  * (its gun is stowed in `NpcEntity.stowedWeapon`) and every other movement/combat behaviour stands
  * down via `NpcEntity.operatingDrone`; suppression doesn't interrupt the flight (the operator is
  * stationary either way, SeekCoverBehaviour may shuffle it into cover meanwhile).

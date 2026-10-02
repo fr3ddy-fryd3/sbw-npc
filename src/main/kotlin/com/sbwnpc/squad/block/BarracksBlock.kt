@@ -37,7 +37,7 @@ import net.minecraft.world.level.material.MapColor
 import net.minecraft.world.phys.BlockHitResult
 
 /**
- * Destructible resupply point for a squad: periodically respawns its missing members.
+ * Destructible recruitment point: releases one initial or replacement NPC per interval.
  *
  * A plain block, like every functional placeable SuperbWarfare has (ContainerBlock,
  * ChargingStationBlock, VehicleAssemblingTable…): right-click with no tool, removed only by mining
@@ -111,7 +111,9 @@ class BarracksBlock : BaseEntityBlock(
         // and the Barracks is a second way into deploying, so it cannot skip it.
         val own = PlayerFactionRegistry.get(level as ServerLevel).requireOrPrompt(serverPlayer)
             ?: return InteractionResult.SUCCESS
-        sendToClient(serverPlayer, OpenBarracksScreenPayload(pos.immutable(), SquadToolItem.configTag(be.configOrDefault(own))))
+        val config = SquadToolItem.configTag(be.configOrDefault(own))
+        config.put("Recruitment", be.recruitmentSnapshot(level))
+        sendToClient(serverPlayer, OpenBarracksScreenPayload(pos.immutable(), config))
         return InteractionResult.SUCCESS
     }
 

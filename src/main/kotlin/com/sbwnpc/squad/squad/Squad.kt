@@ -54,6 +54,9 @@ class Squad(
     var lastSeen: BlockPos? = null
     var lastSeenDim: ResourceKey<Level>? = null
 
+    /** Null only for a pre-1.0 save whose member roles have not been resolved yet. */
+    var recruitmentRoster: RecruitmentRoster? = null
+
     fun save(): CompoundTag {
         val tag = CompoundTag()
         tag.putUUID("Id", id)
@@ -74,6 +77,7 @@ class Squad(
         val comp = ListTag()
         originalComposition.forEach { comp.add(StringTag.valueOf(it.name)) }
         tag.put("OriginalComposition", comp)
+        recruitmentRoster?.let { tag.put("RecruitmentRoster", it.save()) }
         routeId?.let { tag.putUUID("RouteId", it) }
         moveAssembly?.let { tag.put("MoveAssembly", NbtUtils.writeBlockPos(it)) }
         tag.putBoolean("MoveFormationReady", moveFormationReady)
@@ -114,6 +118,9 @@ class Squad(
             if (tag.contains("LastSeen")) squad.lastSeen = NbtUtils.readBlockPos(tag, "LastSeen").orElse(null)
             if (tag.contains("LastSeenDim", Tag.TAG_STRING.toInt())) {
                 squad.lastSeenDim = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(tag.getString("LastSeenDim")))
+            }
+            if (tag.contains("RecruitmentRoster", Tag.TAG_LIST.toInt())) {
+                squad.recruitmentRoster = RecruitmentRoster.load(tag.getList("RecruitmentRoster", Tag.TAG_COMPOUND.toInt()))
             }
             return squad
         }

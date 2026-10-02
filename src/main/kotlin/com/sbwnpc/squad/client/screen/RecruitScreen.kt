@@ -3,6 +3,7 @@ package com.sbwnpc.squad.client.screen
 import com.sbwnpc.squad.item.SquadToolItem
 import com.sbwnpc.squad.network.ConfigureBarracksPayload
 import com.sbwnpc.squad.network.ConfigureToolPayload
+import com.sbwnpc.squad.network.RequestBarracksQueuePayload
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
@@ -15,6 +16,8 @@ import net.minecraft.client.gui.components.Checkbox
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.core.BlockPos
 import net.minecraft.network.chat.Component
+import net.minecraft.nbt.CompoundTag
+import net.minecraft.nbt.Tag
 import net.minecraft.world.item.ItemStack
 import net.neoforged.neoforge.network.PacketDistributor
 
@@ -33,6 +36,8 @@ class RecruitScreen(
      *  Non-null for the Barracks, where nothing is sent until this button is pressed — the label
      *  of the one control that actually deploys. */
     private val deployLabel: String? = null,
+    private val barracksPos: BlockPos? = null,
+    private var queueSnapshot: CompoundTag = CompoundTag(),
     private val onChange: (SquadToolItem.Config) -> Unit
 ) : Screen(title) {
 
@@ -50,6 +55,8 @@ class RecruitScreen(
 
     private lateinit var classBtn: Button
     private var presetRowY = 0
+    private var queueButton: Button? = null
+    private var refreshTicks = 0
 
     override fun init() {
         val cx = width / 2
@@ -145,8 +152,11 @@ class RecruitScreen(
                 Button.builder(Component.literal(label).withStyle(ChatFormatting.GREEN)) {
                     push()
                     onClose()
-                }.bounds(cx - 100, y, 200, 20).build()
+                }.bounds(cx - 100, y, 126, 20).build()
             )
+            queueButton = addRenderableWidget(Button.builder(queueLabel()) {
+                minecraft?.setScreen(BarracksQueueScreen(this, barracksPos!!, queueSnapshot))
+            }.bounds(cx + 30, y, 70, 20).build())
         }
     }
 
@@ -170,6 +180,22 @@ class RecruitScreen(
      */
     private fun changed() {
         if (deployLabel == null) push()
+    }
+
+    private fun queueLabel() = Component.literal("Queue (${queueSnapshot.getList("Entries", Tag.TAG_COMPOUND.toInt()).size})")
+
+    fun updateBarracksQueue(pos: BlockPos, snapshot: CompoundTag) {
+        if (pos != barracksPos) return
+        queueSnapshot = snapshot
+        queueButton?.message = queueLabel()
+    }
+
+    override fun tick() {
+        super.tick()
+        if (barracksPos != null && ++refreshTicks >= 20) {
+            refreshTicks = 0
+            PacketDistributor.sendToServer(RequestBarracksQueuePayload(barracksPos))
+        }
     }
 
     override fun render(g: GuiGraphics, mouseX: Int, mouseY: Int, partial: Float) {
@@ -198,9 +224,9 @@ class RecruitScreen(
             )
         }
 
-        /** What a Barracks garrisons and keeps at strength. Nothing is sent until Deploy. */
-        fun forBarracks(pos: BlockPos, cfg: SquadToolItem.Config) = RecruitScreen(
-            Component.literal("Barracks Garrison"), cfg, "Deploy garrison"
+        /** Configure future recruitment without replacing living soldiers. */
+        fun forBarracks(pos: BlockPos, cfg: SquadToolItem.Config, queue: CompoundTag) = RecruitScreen(
+            Component.literal("Barracks Garrison"), cfg, "Apply recruitment", pos, queue
         ) { updated ->
             PacketDistributor.sendToServer(ConfigureBarracksPayload(pos, SquadToolItem.configTag(updated)))
         }

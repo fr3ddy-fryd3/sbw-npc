@@ -374,8 +374,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      *  [com.sbwnpc.squad.entity.ai.MortarLoaderBehaviour]. Persisted; zero for every other class. */
     var mortarShellsLeft: Int = 0
 
-    /** Kamikaze drones this operator still carries; refilled at a barracks (SquadManager.
-     *  respawnAtBarracks). Persisted. Meaningless for other classes. */
+    /** Kamikaze drones this operator still carries; refilled by SquadManager.resupplyAtBarracks.
+     *  Persisted. Meaningless for other classes. */
     var dronesLeft: Int = 0
 
     /** True while a mortar operator has broken its mortar down and is carrying it to a new

@@ -294,6 +294,31 @@ class ConfigureBarracksPayload(val pos: BlockPos, val config: CompoundTag) : Cus
     }
 }
 
+/** Client -> server: refresh a nearby owned barracks' production queue. */
+class RequestBarracksQueuePayload(val pos: BlockPos) : CustomPacketPayload {
+    override fun type() = TYPE
+
+    companion object {
+        val TYPE = CustomPacketPayload.Type<RequestBarracksQueuePayload>(SquadMod.loc("request_barracks_queue"))
+        val CODEC: StreamCodec<RegistryFriendlyByteBuf, RequestBarracksQueuePayload> = StreamCodec.composite(
+            BlockPos.STREAM_CODEC, RequestBarracksQueuePayload::pos, ::RequestBarracksQueuePayload
+        )
+    }
+}
+
+/** Server -> client: queue state only; never overwrites unsubmitted configuration edits. */
+class BarracksQueuePayload(val pos: BlockPos, val data: CompoundTag) : CustomPacketPayload {
+    override fun type() = TYPE
+
+    companion object {
+        val TYPE = CustomPacketPayload.Type<BarracksQueuePayload>(SquadMod.loc("barracks_queue"))
+        val CODEC: StreamCodec<RegistryFriendlyByteBuf, BarracksQueuePayload> = StreamCodec.composite(
+            BlockPos.STREAM_CODEC, BarracksQueuePayload::pos,
+            ByteBufCodecs.COMPOUND_TAG, BarracksQueuePayload::data, ::BarracksQueuePayload
+        )
+    }
+}
+
 /** Server -> client: open/refresh the screen of the Supply at [pos]. */
 class OpenSupplyScreenPayload(val pos: BlockPos, val data: CompoundTag) : CustomPacketPayload {
     override fun type() = TYPE

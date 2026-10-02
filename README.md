@@ -28,7 +28,8 @@ clicking.
 [PLAN-1.0.0.md](PLAN-1.0.0.md) defines the next version: physical NPC commanders with delegated
 authority and succession, sequential barracks recruitment, earned ranks, engineering squads,
 territorial Supply points, and operations. These systems are being designed on `feature/1.0.0`;
-`develop` remains on `0.6.0-dev` for playtesting and fixes. They are planned features, not part of
+`develop` remains on `0.6.0-dev` for playtesting and fixes. The recruitment queue is implemented
+on `feature/1.0.0`; the remaining systems are planned features, not part of
 the current release.
 
 ## Requirements
@@ -171,11 +172,25 @@ Move (flies the squad there and lands).
 
 ## The Barracks
 
-Right-click a Barracks you placed to configure it the same way the tool is configured, then press
-**Deploy garrison**. It deploys that squad and then keeps it at the strength it went out with:
-replacements walk out every half a minute or so, and drone operators standing near it get their
-drones back. Re-deploying replaces the garrison standing there, and only whoever placed it can
-configure it — it asks for your faction pick the same way the tool does.
+Right-click a Barracks you placed, choose its composition, then press **Apply recruitment**.
+It creates an empty squad and recruits one NPC every `recruitIntervalSeconds` (30 seconds by
+default, in the world's `serverconfig/sbwnpc-server.toml`). The first recruit also waits a full
+interval: seven soldiers take at least 210 seconds. Initial recruits and replacements share one
+queue across every squad assigned to that Barracks. Replacements have priority, with one initial
+recruit admitted after three replacements when both are waiting.
+
+The **Queue** button shows the actual release order, next recruit, time remaining, and any reason
+production is waiting. The queue and countdown survive saves; unloading pauses recruitment, and
+reloading never releases a catch-up wave. Unloaded soldiers keep their places. Older saves wait
+for unknown member roles to load before recruiting replacements. No safe spawn space means the
+request waits. Drone operators nearby still get their drones replenished independently.
+
+Applying new settings preserves living soldiers and changes future recruitment. Surplus soldiers
+stay until they die; their retired places are not refilled. Choosing another faction releases the
+old squad to manual control and queues a new one on the selected side. Only the player who placed
+the Barracks can configure it. Disbanding or deleting its garrison cancels that recruitment order.
+Support vehicles and mortars deploy once the initial crew is assembled; replacements do not
+generate additional vehicles.
 
 It is an ordinary block otherwise: mine it or blow it up and it's gone. The squad stays where it
 is, with nobody left to replace its losses.
