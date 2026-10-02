@@ -42,14 +42,30 @@ object SbwPlayerSupply : PlayerSupply {
         ModItems.HAND_GRENADE to 2, ModItems.RGO_GRENADE to 2, ModItems.MEDICAL_KIT to medkits
     )
 
-    private val SPECS = listOf(
+    /** Drone Warfare addon's FPV goggles: its FPV drone is flown only with them on, plus a Monitor. */
+    private val ADDON_FPV_GOGGLES_ID = ResourceLocation.fromNamespaceAndPath("sbwdroneconfig", "fpv_goggles")
+
+    private fun addonItem(id: ResourceLocation): Item? = BuiltInRegistries.ITEM.getOptional(id).orElse(null)
+
+    /** With the Drone Warfare addon, the FPV drone its own NPC operators fly ([SbwDrones]) and the
+     *  goggles to fly it with; without it, SBW's drone. */
+    private fun droneKit(): List<Pair<Supplier<out Item>, Int>> {
+        val fpv = addonItem(SbwDrones.ADDON_FPV_DRONE_ID)
+        val goggles = addonItem(ADDON_FPV_GOGGLES_ID)
+        val drones = if (fpv != null && goggles != null) listOf(Supplier { fpv } to 10, Supplier { goggles } to 1)
+            else listOf(ModItems.DRONE to 10)
+        return drones + listOf(ModItems.MONITOR to 1, ModItems.MEDICAL_KIT to 1)
+    }
+
+    /** Built on first use: the addon's items are looked up in the item registry. */
+    private val SPECS by lazy { listOf(
         Spec("Rifleman", NpcClass.RIFLEMAN, fighter()),
         Spec("Machine gunner", NpcClass.MACHINE_GUNNER, fighter() + (ModItems.RPG_ROCKET_STANDARD to 2), launcher = true),
         Spec("Sniper", NpcClass.SNIPER, fighter()),
         Spec("Grenadier", NpcClass.GRENADIER, fighter()),
         Spec("Medic", NpcClass.MEDIC, fighter(medkits = 10)),
-        Spec("Drone operator", NpcClass.DRONE_OPERATOR, listOf(ModItems.DRONE to 10, ModItems.MONITOR to 1, ModItems.MEDICAL_KIT to 1)),
-    )
+        Spec("Drone operator", NpcClass.DRONE_OPERATOR, droneKit()),
+    ) }
 
     /** Built on first use: the gun data behind the ammunition lines needs the registries. */
     override val kits: List<Kit> by lazy {

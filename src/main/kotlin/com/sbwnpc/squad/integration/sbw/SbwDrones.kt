@@ -34,7 +34,7 @@ object SbwDrones : Drones {
 
     /** Drone Warfare addon's FPV drone ("cubed_fpv_drone"). A DroneEntity subclass, so it flies
      *  exactly like SBW's own. */
-    private val ADDON_FPV_DRONE_ID = ResourceLocation.fromNamespaceAndPath("sbwdroneconfig", "cubed_fpv_drone")
+    internal val ADDON_FPV_DRONE_ID = ResourceLocation.fromNamespaceAndPath("sbwdroneconfig", "cubed_fpv_drone")
 
     // DroneCrashExplosionSystem.FPV_CRASH_EXPLOSION_POWER = 5.8 (vanilla explosion power; damage
     // reaches ~2x that).
