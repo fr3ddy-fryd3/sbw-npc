@@ -23,6 +23,14 @@ their own side, relay spotted enemies to the rest of their faction, ride and cre
 follow orders — Attack, Defend, Patrol, Move — from a quick-command HUD or by pointing and
 clicking.
 
+## Version 1.0.0 design
+
+[PLAN-1.0.0.md](PLAN-1.0.0.md) defines the next version: physical NPC commanders with delegated
+authority and succession, sequential barracks recruitment, earned ranks, engineering squads,
+territorial Supply points, and operations. These systems are being designed on `feature/1.0.0`;
+`develop` remains on `0.6.0-dev` for playtesting and fixes. They are planned features, not part of
+the current release.
+
 ## Requirements
 
 - Minecraft 1.21.1 + NeoForge
