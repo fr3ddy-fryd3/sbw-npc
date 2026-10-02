@@ -1,7 +1,9 @@
 package com.sbwnpc.squad.client.renderer
 
 import com.mojang.blaze3d.vertex.PoseStack
+import com.mojang.math.Axis
 import com.sbwnpc.squad.client.NpcModel
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.util.PerfProbe
 import net.minecraft.client.Minecraft
@@ -9,20 +11,15 @@ import net.minecraft.client.renderer.ItemInHandRenderer
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.entity.RenderLayerParent
 import net.minecraft.client.renderer.entity.layers.ItemInHandLayer
+import net.minecraft.world.entity.HumanoidArm
+import net.minecraft.world.entity.LivingEntity
+import net.minecraft.world.item.ItemDisplayContext
+import net.minecraft.world.item.ItemStack
 
 /**
- * Draws an NPC's weapon only while it is close enough to see, and nothing at all past that.
- *
- * SuperbWarfare's guns are GeckoLib items: every one in a hand is a full animated model, built and
- * submitted to a translucent pass once per frame per holder. Measured on a real fight, our NPCs
- * cost ~0.36 ms each per frame to draw against a ~0.02-0.05 ms vanilla mob, and the frame rate
- * tracked the number of NPCs *in frame* rather than the number loaded — 148 loaded with 20 on
- * screen ran at 34 fps, the same 148 with 147 on screen at 11, on an unchanged server tick.
- *
- * GeckolibBetterFPS takes roughly 40% of that off by throttling the animation, which is worth
- * having, but it cannot help with the geometry: the model is still assembled and drawn. Distance
- * is the only lever that removes the work entirely, and it costs almost nothing visually — past
- * [RENDER_DISTANCE] a rifle is a few pixels against the body holding it.
+ * Draws held items within four chunks of the camera. Guns use a separate static renderer:
+ * vanilla's item renderer would delegate them to SBW's animated GeckoLib renderer every frame.
+ * Other held items retain their normal item rendering.
  */
 class NpcItemInHandLayer(
     renderer: RenderLayerParent<NpcEntity, NpcModel>,
@@ -50,6 +47,33 @@ class NpcItemInHandLayer(
         super.render(poseStack, buffer, packedLight, entity, limbSwing, limbSwingAmount, partialTicks, ageInTicks, netHeadYaw, headPitch)
     }
 
+    override fun renderArmWithItem(
+        entity: LivingEntity,
+        stack: ItemStack,
+        displayContext: ItemDisplayContext,
+        arm: HumanoidArm,
+        poseStack: PoseStack,
+        buffer: MultiBufferSource,
+        packedLight: Int
+    ) {
+        if (stack.isEmpty) return
+        if (!Ports.gunRendering.supports(stack)) {
+            super.renderArmWithItem(entity, stack, displayContext, arm, poseStack, buffer, packedLight)
+            return
+        }
+
+        poseStack.pushPose()
+        try {
+            parentModel.translateToHand(arm, poseStack)
+            poseStack.mulPose(Axis.XP.rotationDegrees(-90.0f))
+            poseStack.mulPose(Axis.YP.rotationDegrees(180.0f))
+            poseStack.translate(if (arm == HumanoidArm.LEFT) -1.0f / 16 else 1.0f / 16, 0.125f, -0.625f)
+            Ports.gunRendering.render(entity, stack, displayContext, poseStack, buffer, packedLight)
+        } finally {
+            poseStack.popPose()
+        }
+    }
+
     /** "Spawned with no weapon": says whether this client has an item for the hand at all. Empty
      *  here means the equipment never arrived; not listed while the NPC shows no gun means it did
      *  and the model is not being drawn. Once per NPC. */
@@ -69,6 +93,6 @@ class NpcItemInHandLayer(
 
         /** Blocks from the camera. Tuning knob for the whole trade: lower is faster, and the point
          *  at which weapons start popping in is exactly this number. */
-        const val RENDER_DISTANCE = 32.0
+        const val RENDER_DISTANCE = 64.0
     }
 }

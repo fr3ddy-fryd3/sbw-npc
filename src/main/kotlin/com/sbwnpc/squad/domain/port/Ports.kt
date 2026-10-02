@@ -12,4 +12,5 @@ object Ports {
 
     /** Client only. */
     lateinit var gunPoses: GunPoses
+    lateinit var gunRendering: GunRendering
 }
