@@ -18,7 +18,7 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
  * An empty gun takes the NPC out of [GunAttackBehaviour], but its target stays, and a target keeps
  * it out of its squad orders too — so it stood where it ran dry, facing the enemy, doing nothing
  * until it was shot. Now it runs, a stretch at a time, away from whoever it was fighting, until it
- * has lost sight of them and the target lapses — or, with a Supply of its side in reach, to that.
+ * has lost sight of them and the target lapses — or to the nearest friendly Supply, even far away.
  */
 class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
 
@@ -44,6 +44,7 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun start(entity: NpcEntity) {
         nextStepTick = 0
+        entity.resupplying = entity.nearestSupply() != null
         FiringSpots.release(entity.uuid)
         DebugFlags.log(LogGroup.AMMO, "{} ({}) out of ammo, running from {}", entity.uuid, entity.npcClass, entity.target?.name?.string)
     }
@@ -52,13 +53,19 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
         val target = entity.target ?: return
         if (entity.tickCount < nextStepTick && !entity.navigation.isDone) return
         nextStepTick = entity.tickCount + REPATH_TICKS
-        // A Supply in reach is where the ammunition is: run there rather than just away.
+        // A fully empty NPC can return to a known Supply even outside the ordinary search radius.
         entity.nearestSupply()?.let {
-            entity.navigation.moveTo(it.x, it.y, it.z, SPEED)
+            entity.resupplying = true
+            entity.navigateTo(it, SPEED)
             return
         }
+        entity.resupplying = false
         val away = DefaultRandomPos.getPosAway(entity, STEP, VERTICAL, target.position()) ?: return
         entity.navigation.moveTo(away.x, away.y, away.z, SPEED)
+    }
+
+    override fun stop(entity: NpcEntity) {
+        entity.resupplying = false
     }
 
     private companion object {

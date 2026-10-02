@@ -5,7 +5,6 @@ import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.init.ModBlockEntities
 import com.sbwnpc.squad.npc.SquadFaction
-import com.sbwnpc.squad.team.Diplomacy
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.core.BlockPos
 import net.minecraft.core.HolderLookup
@@ -26,28 +25,19 @@ class SupplyBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlock
 
     /** The side of whoever put it down. */
     var faction: SquadFaction? = null
+        set(value) {
+            field = value
+            (level as? ServerLevel)?.let { SupplyPoints.get(it).remember(blockPos, value) }
+        }
 
     private var ticksUntilIssue = ISSUE_INTERVAL_TICKS
 
-    fun serves(other: SquadFaction?): Boolean {
-        val own = faction ?: return true
-        return other != null && Diplomacy.allied(own, other)
-    }
+    fun serves(other: SquadFaction?): Boolean = SupplyPoints.serves(faction, other)
 
     override fun onLoad() {
         super.onLoad()
-        val level = level ?: return
-        if (!level.isClientSide) SupplyPoints.add(level.dimension(), this)
-    }
-
-    override fun setRemoved() {
-        super.setRemoved()
-        level?.let { SupplyPoints.remove(it.dimension(), this) }
-    }
-
-    override fun onChunkUnloaded() {
-        super.onChunkUnloaded()
-        level?.let { SupplyPoints.remove(it.dimension(), this) }
+        val level = level as? ServerLevel ?: return
+        SupplyPoints.get(level).remember(blockPos, faction)
     }
 
     private fun issue(level: ServerLevel) {

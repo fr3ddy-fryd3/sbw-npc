@@ -1,41 +1,101 @@
 package com.sbwnpc.squad.block.entity
 
 import com.sbwnpc.squad.npc.SquadFaction
-import net.minecraft.resources.ResourceKey
-import net.minecraft.world.level.Level
+import com.sbwnpc.squad.team.Diplomacy
+import net.minecraft.core.BlockPos
+import net.minecraft.core.HolderLookup
+import net.minecraft.nbt.CompoundTag
+import net.minecraft.nbt.ListTag
+import net.minecraft.nbt.NbtUtils
+import net.minecraft.nbt.Tag
+import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.level.saveddata.SavedData
 import net.minecraft.world.phys.Vec3
 
 /**
- * Every Supply block currently loaded, per dimension — kept by the block entities themselves as
- * they load and unload, so finding the nearest one is a walk over a handful of entries rather than
- * a scan of the blocks around an NPC. Runtime only: a block in an unloaded chunk isn't somewhere an
- * NPC can walk to this minute anyway.
+ * Known Supply positions and their factions, saved per dimension. Unloading a chunk does not
+ * forget its supplies: an empty NPC can march to one from far away, loading the ground as it goes.
+ * Existing worlds discover their supplies when the block entities next load; no terrain scan or
+ * distant chunk load is needed to find one. Breaking a block removes its entry.
  */
-object SupplyPoints {
-    private val byLevel = HashMap<ResourceKey<Level>, MutableSet<SupplyBlockEntity>>()
+class SupplyPoints : SavedData() {
+    private val points = LinkedHashMap<BlockPos, SquadFaction?>()
 
-    fun add(level: ResourceKey<Level>, be: SupplyBlockEntity) {
-        byLevel.getOrPut(level) { HashSet() } += be
+    fun remember(pos: BlockPos, faction: SquadFaction?) {
+        if (points.containsKey(pos) && points[pos] == faction) return
+        points[pos.immutable()] = faction
+        setDirty()
     }
 
-    fun remove(level: ResourceKey<Level>, be: SupplyBlockEntity) {
-        byLevel[level]?.remove(be)
+    fun remove(pos: BlockPos) {
+        if (!points.containsKey(pos)) return
+        points.remove(pos)
+        setDirty()
     }
 
     /** The nearest Supply within [range] of [from] that serves [faction], or null. */
-    fun nearestServing(level: ResourceKey<Level>, from: Vec3, faction: SquadFaction?, range: Double): SupplyBlockEntity? {
-        var best: SupplyBlockEntity? = null
+    fun nearestServing(from: Vec3, faction: SquadFaction?, range: Double): BlockPos? {
+        var best: BlockPos? = null
         var bestD2 = range * range
-        for (be in byLevel[level] ?: return null) {
-            if (be.isRemoved || !be.serves(faction)) continue
-            val d2 = be.blockPos.center.distanceToSqr(from)
+        for ((pos, own) in points) {
+            if (!serves(own, faction)) continue
+            val d2 = pos.center.distanceToSqr(from)
             if (d2 <= bestD2) {
-                best = be
+                best = pos
                 bestD2 = d2
             }
         }
         return best
     }
 
-    fun clearAll() = byLevel.clear()
+    /** Check the chosen destination when its chunk is already loaded, without waking distant land. */
+    fun nearestServing(level: ServerLevel, from: Vec3, faction: SquadFaction?, range: Double): BlockPos? {
+        while (true) {
+            val pos = nearestServing(from, faction, range) ?: return null
+            val chunk = level.chunkSource.getChunkNow(pos.x shr 4, pos.z shr 4) ?: return pos
+            val be = chunk.getBlockEntity(pos) as? SupplyBlockEntity
+            if (be == null || be.isRemoved) {
+                remove(pos)
+                continue
+            }
+            remember(pos, be.faction)
+            if (be.serves(faction)) return pos
+        }
+    }
+
+    override fun save(tag: CompoundTag, registries: HolderLookup.Provider): CompoundTag {
+        val list = ListTag()
+        for ((pos, faction) in points) {
+            list.add(CompoundTag().apply {
+                put("Pos", NbtUtils.writeBlockPos(pos))
+                faction?.let { putString("Faction", it.name) }
+            })
+        }
+        tag.put("Points", list)
+        return tag
+    }
+
+    companion object {
+        private const val FILE = "sbwnpc_supply_points"
+        private val FACTORY = Factory({ SupplyPoints() }, { tag, _ -> load(tag) }, null)
+
+        fun get(level: ServerLevel): SupplyPoints = level.dataStorage.computeIfAbsent(FACTORY, FILE)
+
+        fun serves(own: SquadFaction?, other: SquadFaction?): Boolean =
+            own == null || (other != null && Diplomacy.allied(own, other))
+
+        internal fun load(tag: CompoundTag): SupplyPoints {
+            val data = SupplyPoints()
+            for (entry in tag.getList("Points", Tag.TAG_COMPOUND.toInt())) {
+                val point = entry as CompoundTag
+                val pos = NbtUtils.readBlockPos(point, "Pos").orElse(null) ?: continue
+                val faction = if (point.contains("Faction")) {
+                    // A malformed faction must not turn a restricted point into a public one.
+                    runCatching { SquadFaction.valueOf(point.getString("Faction")) }.getOrNull() ?: continue
+                } else null
+                data.points[pos] = faction
+            }
+            return data
+        }
+    }
 }

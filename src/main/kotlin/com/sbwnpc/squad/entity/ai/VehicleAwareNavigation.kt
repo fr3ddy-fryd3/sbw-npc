@@ -169,12 +169,13 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         val dz = pos.z + 0.5 - mob.z
         val len = Math.sqrt(dx * dx + dz * dz)
         // At the wheel or on a bench, a man's squad route is a footpath — no way for a vehicle.
-        // And only the squad's own march goes by its route: a man off to look at a noise, to a
-        // Supply or for shells had a march planned for his errand alone, stood still till it
-        // came back — and whoever asked for his path just once took that for a path already
-        // walked and gave up.
+        // The squad march and resupply trips use long routes. Brief errands (investigating a
+        // noise, returning to a mortar) still use local legs rather than wait for a long search.
+        // Resupplying men follow the route itself, not a formation around the squad's lead.
         val npc = (mob as? com.sbwnpc.squad.entity.NpcEntity)
-            ?.takeIf { it.vehicle == null && it.homeCenter()?.let { home -> pos.closerThan(BlockPos.containing(home), MARCH_GOAL_RANGE) } == true }
+            ?.takeIf { it.vehicle == null && (resupplyTrip(it) ||
+                it.homeCenter()?.let { home -> pos.closerThan(BlockPos.containing(home), MARCH_GOAL_RANGE) } == true) }
+        val formation = npc?.let { !resupplyTrip(it) } ?: true
         if (len <= NEAR_RANGE && level.chunkSource.getChunkNow(pos.x shr 4, pos.z shr 4) != null) {
             farGoal = null
             branch = "near"
@@ -183,8 +184,9 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
             val near = super.createPath(pos, accuracy)
             // Close, but the short search can't get there — a hill in the way, most likely. Out of
             // a fight, the squad's big search looks for the way round.
-            if (near != null && !near.canReach() && near.distToTarget > SHORT_OF_GOAL && npc != null && npc.target == null) {
-                SquadMarch.waypointFor(npc, pos)?.let {
+            if (near != null && !near.canReach() && near.distToTarget > SHORT_OF_GOAL && npc != null &&
+                (npc.target == null || resupplyTrip(npc))) {
+                SquadMarch.waypointFor(npc, pos, formation)?.let {
                     branch = "near-route ${it.route}"
                     nearGoal = null
                     return super.createPath(it.route, accuracy)
@@ -194,7 +196,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         }
         // In a squad: its shared route, walked with the ordinary short search.
         npc?.let {
-            SquadMarch.waypointFor(it, pos)?.let { waypoint ->
+            SquadMarch.waypointFor(it, pos, formation)?.let { waypoint ->
                 farGoal = null
                 // His place in the formation if he can get there; the route itself otherwise.
                 waypoint.formation?.let { spot ->
@@ -243,6 +245,9 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         }
         return null
     }
+
+    private fun resupplyTrip(npc: com.sbwnpc.squad.entity.NpcEntity): Boolean =
+        npc.resupplying || (npc.servingMortar && npc.mortarShellsLeft <= 0)
 
     /** What the path being walked was last planned to, on the near, formation and route branches. */
     private var nearGoal: BlockPos? = null

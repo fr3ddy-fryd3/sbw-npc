@@ -2,6 +2,7 @@ package com.sbwnpc.squad.block
 
 import com.mojang.serialization.MapCodec
 import com.sbwnpc.squad.block.entity.SupplyBlockEntity
+import com.sbwnpc.squad.block.entity.SupplyPoints
 import com.sbwnpc.squad.init.ModBlockEntities
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.network.OpenSupplyScreenPayload
@@ -68,6 +69,11 @@ class SupplyBlock : BaseEntityBlock(
         val be = level.getBlockEntity(pos) as? SupplyBlockEntity ?: return
         be.faction = PlayerFactionRegistry.get(level).get(placer.uuid)
         be.setChanged()
+    }
+
+    override fun onRemove(state: BlockState, level: Level, pos: BlockPos, newState: BlockState, movedByPiston: Boolean) {
+        if (level is ServerLevel && !state.`is`(newState.block)) SupplyPoints.get(level).remove(pos)
+        super.onRemove(state, level, pos, newState, movedByPiston)
     }
 
     override fun createBlockStateDefinition(builder: StateDefinition.Builder<Block, BlockState>) {

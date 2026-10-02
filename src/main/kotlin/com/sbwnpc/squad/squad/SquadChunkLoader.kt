@@ -4,6 +4,7 @@ import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.config.SquadConfig
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.NpcRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.resources.ResourceKey
 import net.minecraft.server.MinecraftServer
@@ -19,7 +20,7 @@ import java.util.UUID
  * Past a player's range the chunks unload — ground, blocks and the NPCs with them — and a squad
  * sent a thousand blocks off simply stopped where the player left it. Here each busy squad holds a
  * small region ticket over every chunk its men are in, enough for them to walk, path and fight
- * exactly as they would near a player. Busy means a fight on, or an order that takes it somewhere
+ * exactly as they would near a player. Busy means a fight on, a resupply trip, or an order that takes it somewhere
  * it isn't yet; a squad holding a position with nothing to shoot at lets go and sleeps.
  *
  * Busy squads keep their tickets near players too. It costs nothing there — the chunks are loaded
@@ -33,6 +34,7 @@ import java.util.UUID
  * barracks also holds a ticket at its own position, independently of where the men went, so its
  * reinforcement timer keeps running. SquadManager saves that link even for an empty garrison;
  * destroying the barracks or removing its last assigned squad releases the ticket.
+ * A lone NPC returning to Supply holds the same ticket, counting as one squad against the limit.
  */
 object SquadChunkLoader {
     private val TICKET: TicketType<ChunkPos> = TicketType.create("sbwnpc_squad", Comparator.comparingLong(ChunkPos::toLong))
@@ -57,19 +59,28 @@ object SquadChunkLoader {
         val mgr = SquadManager.get(server)
         val limit = SquadConfig.ACTIVE_SQUAD_CHUNK_LIMIT.get()
         val wanted = HashSet<Spot>()
-        val farBusy = ArrayList<kotlin.Pair<Squad, Int>>()
+        val farBusy = ArrayList<kotlin.Pair<Set<Spot>, Int>>()
         for (squad in mgr.all()) {
             val members = squad.members.mapNotNull { SquadManager.findEntity(server, it) as? NpcEntity }.filter { it.isAlive }
             if (members.isNotEmpty()) remember(mgr, squad, members)
             if (limit <= 0) continue
             squad.barracks?.let { wanted += Spot(it.dimension, ChunkPos(it.pos)) }
             val fighting = members.any { it.target?.isAlive == true }
-            if (!fighting && !underway(squad)) continue
+            val resupplying = members.any(::resupplying)
+            if (!fighting && !resupplying && !underway(squad)) continue
             if (nearPlayer(server, squad)) wanted += spotsOf(squad)
-            else farBusy += squad to if (fighting) 0 else 1
+            else farBusy += spotsOf(squad) to if (fighting) 0 else 1
+        }
+        if (limit > 0) for (level in server.allLevels) {
+            for (npc in NpcRegistry.all(level)) {
+                if (!npc.isAlive || mgr.get(npc.squadId) != null || !resupplying(npc)) continue
+                val spots = setOf(Spot(level.dimension(), ChunkPos(npc.blockPosition())))
+                if (nearPlayer(server, level.dimension(), npc.blockPosition())) wanted += spots
+                else farBusy += spots to if (npc.target?.isAlive == true) 0 else 1
+            }
         }
         farBusy.sortBy { it.second }
-        for ((squad, _) in farBusy.take(limit)) wanted += spotsOf(squad)
+        for ((spots, _) in farBusy.take(limit)) wanted += spots
 
         for (spot in held - wanted) server.getLevel(spot.dimension)?.chunkSource?.removeRegionTicket(TICKET, spot.chunk, TICKET_DISTANCE, spot.chunk)
         for (spot in wanted - held) server.getLevel(spot.dimension)?.chunkSource?.addRegionTicket(TICKET, spot.chunk, TICKET_DISTANCE, spot.chunk)
@@ -78,6 +89,9 @@ object SquadChunkLoader {
         held += wanted
         lastSpots.keys.retainAll(mgr.all().map { it.id }.toSet())
     }
+
+    private fun resupplying(npc: NpcEntity): Boolean =
+        npc.resupplying || (npc.servingMortar && npc.mortarShellsLeft <= 0 && npc.nearestSupply() != null)
 
     private fun remember(mgr: SquadManager, squad: Squad, members: List<NpcEntity>) {
         lastSpots[squad.id] = members.map { Spot(it.level().dimension(), ChunkPos(it.blockPosition())) }.toSet()
@@ -110,9 +124,13 @@ object SquadChunkLoader {
     /** Within some player's simulation range — a ticket there is free. */
     private fun nearPlayer(server: MinecraftServer, squad: Squad): Boolean {
         val at = squad.lastSeen ?: return false
+        return nearPlayer(server, squad.lastSeenDim ?: Level.OVERWORLD, at)
+    }
+
+    private fun nearPlayer(server: MinecraftServer, dimension: ResourceKey<Level>, at: BlockPos): Boolean {
         val reach = server.playerList.simulationDistance * 16.0 + 32.0
         return server.playerList.players.any {
-            it.level().dimension() == (squad.lastSeenDim ?: Level.OVERWORLD) &&
+            it.level().dimension() == dimension &&
                 it.position().distanceToSqr(at.x + 0.5, it.y, at.z + 0.5) <= reach * reach
         }
     }

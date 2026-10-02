@@ -102,7 +102,8 @@ object SquadMarch {
         var long = false
     }
 
-    private val bySquad = HashMap<UUID, MutableList<March>>()
+    /** Squad id, or NPC id for an individual resupply trip. */
+    private val byGroup = HashMap<UUID, MutableList<March>>()
 
     /** A way the long-route planner found lately — see [REUSE_TICKS]. */
     private class Found(val dimension: String, val from: BlockPos, val goal: BlockPos, val trail: List<BlockPos>, val complete: Boolean, val at: Long)
@@ -110,9 +111,14 @@ object SquadMarch {
     private var lastPlanTick = Long.MIN_VALUE
 
     fun clearAll() {
-        bySquad.clear()
+        byGroup.clear()
         found.clear()
         lastPlanTick = Long.MIN_VALUE
+    }
+
+    /** Individual routes need no saved group to own them; discard them when the NPC leaves. */
+    fun forgetIndividual(npc: UUID) {
+        byGroup.remove(npc)
     }
 
     /** Where to walk next: [formation] is the man's own place in the squad's formation round the
@@ -121,13 +127,17 @@ object SquadMarch {
 
     /**
      * Where [npc] should walk next on its squad's way to [goal], or null when there is no squad
-     * route to follow (no squad, or not planned yet — the caller falls back to its own leg).
+     * route to follow (not planned yet — the caller falls back to its own leg). With formation
+     * disabled, a lone NPC can use the same planner for a long resupply trip.
      */
-    fun waypointFor(npc: NpcEntity, goal: BlockPos): Waypoint? {
+    fun waypointFor(npc: NpcEntity, goal: BlockPos, followFormation: Boolean = true): Waypoint? {
         val level = npc.level() as? ServerLevel ?: return null
-        val squad = npc.currentSquad() ?: return null
-        val marches = bySquad.getOrPut(squad.id) { ArrayList() }
-        marches.removeAll { it.stamp != squad.orderStamp || level.gameTime - it.lastUsed > IDLE_TICKS }
+        val squad = npc.currentSquad()
+        if (squad == null && followFormation) return null
+        val stamp = squad?.orderStamp ?: 0
+        val name = squad?.name ?: npc.uuid.toString().take(8)
+        val marches = byGroup.getOrPut(squad?.id ?: npc.uuid) { ArrayList() }
+        marches.removeAll { it.stamp != stamp || level.gameTime - it.lastUsed > IDLE_TICKS }
         // The route this man is on: bound for the same place and passing close by him. One route
         // per squad had two parties bound for different points re-planning it from under each
         // other every second, and left a man who had strayed off it — down a cave — aiming for a
@@ -142,29 +152,32 @@ object SquadMarch {
             .filter { it.first.route.isNotEmpty() && it.second <= JOIN }
             .minByOrNull { it.second }?.first
             ?: bound.firstOrNull { it.route.isEmpty() }
-            ?: (if (marches.size < MAX_MARCHES) March(goal, squad.orderStamp, npc.blockPosition()).also { marches += it } else return null)
+            ?: (if (marches.size < MAX_MARCHES) March(goal, stamp, npc.blockPosition()).also { marches += it } else return null)
         march.lastUsed = level.gameTime
         val route = march.route
         val here = march.progress.index(npc.uuid, npc.position())
         val atEnd = route.isEmpty() || here >= route.size - if (march.long) LONG_END_NODES else END_NODES
         if (atEnd && !march.complete && !march.legsOnly) {
-            planLong(level, npc, march, goal, squad.name)
+            planLong(level, npc, march, goal, name)
             val planned = march.route
             if (planned.isEmpty()) return if (march.search != null) Waypoint(npc.blockPosition(), null) else null
             if (!march.legsOnly) {
                 val at = march.progress.index(npc.uuid, npc.position())
-                return Waypoint(planned[(at + LOOKAHEAD).coerceAtMost(planned.size - 1)], formationSpot(level, npc, march, at))
+                return Waypoint(planned[(at + LOOKAHEAD).coerceAtMost(planned.size - 1)],
+                    if (followFormation) formationSpot(level, npc, march, at) else null)
             }
         }
         if (atEnd && !march.complete && level.gameTime - march.plannedAt >= MIN_REPLAN_TICKS && lastPlanTick != level.gameTime) {
-            plan(level, npc, march, squad.name)
+            plan(level, npc, march, name)
             val planned = march.route
             if (planned.isEmpty()) return null
             val at = march.progress.index(npc.uuid, npc.position())
-            return Waypoint(planned[(at + LOOKAHEAD).coerceAtMost(planned.size - 1)], formationSpot(level, npc, march, at))
+            return Waypoint(planned[(at + LOOKAHEAD).coerceAtMost(planned.size - 1)],
+                if (followFormation) formationSpot(level, npc, march, at) else null)
         }
         if (route.isEmpty()) return null
-        return Waypoint(route[(here + LOOKAHEAD).coerceAtMost(route.size - 1)], formationSpot(level, npc, march, here))
+        return Waypoint(route[(here + LOOKAHEAD).coerceAtMost(route.size - 1)],
+            if (followFormation) formationSpot(level, npc, march, here) else null)
     }
 
     /**
@@ -214,7 +227,7 @@ object SquadMarch {
     fun crossingAhead(npc: NpcEntity): Crossing? {
         val level = npc.level() as? ServerLevel ?: return null
         val squad = npc.currentSquad() ?: return null
-        val marches = bySquad[squad.id]?.filter { it.stamp == squad.orderStamp && it.route.isNotEmpty() } ?: return null
+        val marches = byGroup[squad.id]?.filter { it.stamp == squad.orderStamp && it.route.isNotEmpty() } ?: return null
         val march = marches.firstOrNull { it.progress.contains(npc.uuid) && distanceTo(it, npc) <= JOIN * 2 }
             ?: marches.map { it to distanceTo(it, npc) }.filter { it.second <= JOIN }.minByOrNull { it.second }?.first
             ?: return null

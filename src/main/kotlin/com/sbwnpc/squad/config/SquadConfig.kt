@@ -10,10 +10,11 @@ object SquadConfig {
         .comment(
             "How many squads far from every player keep the ground under them loaded, so they go",
             "on moving and fighting instead of freezing where the player left them. Only squads",
-            "with somewhere to be (moving, attacking, retreating) or a fight on count; squads",
+            "with somewhere to be (moving, attacking, retreating, resupplying) or a fight on count; squads",
             "holding a position with nothing to shoot at sleep. Each one costs about as much as",
             "a player on a small patch of the world. Assigned barracks also stay loaded at their",
             "own positions so reinforcements spawn; they do not count against the squad limit.",
+            "Each independent NPC returning to Supply counts as one squad against this limit.",
             "0 turns off both squad and barracks tickets."
         )
         .defineInRange("activeSquadChunkLimit", 8, 0, 64)

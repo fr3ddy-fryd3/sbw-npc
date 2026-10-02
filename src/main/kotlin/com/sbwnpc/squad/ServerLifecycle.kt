@@ -40,7 +40,6 @@ object ServerLifecycle {
         com.sbwnpc.squad.route.PlanBudget.clearAll()
         com.sbwnpc.squad.squad.SquadChunkLoader.clearAll()
         TeamAwareness.clearAll()
-        com.sbwnpc.squad.block.entity.SupplyPoints.clearAll()
         com.sbwnpc.squad.squad.SquadReports.clearAll()
         com.sbwnpc.squad.combat.Hearing.clearAll()
         DeathSites.clearAll()

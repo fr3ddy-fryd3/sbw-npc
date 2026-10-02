@@ -12,13 +12,16 @@ import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 
 /**
- * In the Idle activity: low on ammunition, no one to fight and a Supply in reach — go and stand by
+ * In the Idle activity: low on ammunition, no one to fight and a Supply to return to — go and stand by
  * it until the block has topped the NPC up ([SupplyBlockEntity]), then let the squad order take it
  * back to whatever it was doing. [NpcEntity.resupplying] keeps [SquadOrderBehaviour] and
  * [InvestigateBehaviour] off it meanwhile.
  *
  * A target ends it at once: the Fight activity takes over, and if the NPC is all but out by then
  * [GunAttackBehaviour] falls back on the Supply itself, firing.
+ *
+ * Long trips have no overall time limit while reaching fresh ground. A minute without progress
+ * still ends an unreachable trip, instead of holding up squad orders forever.
  */
 class ResupplyBehaviour : ExtendedBehaviour<NpcEntity>() {
 
@@ -26,7 +29,7 @@ class ResupplyBehaviour : ExtendedBehaviour<NpcEntity>() {
         noTimeout()
     }
 
-    private var startedTick = 0
+    private val travel = GroundTravelProgress()
     private var nextRepathTick = 0
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
@@ -42,12 +45,12 @@ class ResupplyBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean =
         free(entity) && entity.ammoFraction() < TOPPED_UP_FRACTION && entity.nearestSupply() != null &&
-            entity.tickCount - startedTick < GIVE_UP_TICKS
+            !travel.stalled(entity.tickCount)
 
     override fun start(entity: NpcEntity) {
         entity.resupplying = true
         entity.clearAlert()
-        startedTick = entity.tickCount
+        travel.reset(entity.tickCount, entity.position())
         nextRepathTick = 0
         FiringSpots.release(entity.uuid)
         com.sbwnpc.squad.squad.SquadReports.goingToResupply(entity)
@@ -56,6 +59,7 @@ class ResupplyBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun tick(entity: NpcEntity) {
+        travel.observe(entity.tickCount, entity.position())
         val supply = entity.nearestSupply() ?: return
         if (entity.position().closerThan(supply, ARRIVE_DISTANCE)) {
             entity.navigation.stop()
@@ -79,6 +83,5 @@ class ResupplyBehaviour : ExtendedBehaviour<NpcEntity>() {
         const val ARRIVE_DISTANCE = SupplyBlockEntity.RADIUS - 3.0
         /** The reserve comes back whole, the magazine may still be half-spent. */
         const val TOPPED_UP_FRACTION = 0.8
-        const val GIVE_UP_TICKS = 20 * 90
     }
 }
