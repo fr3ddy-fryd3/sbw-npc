@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.sbwnpc.squad.combat.FireAllocation
+import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.combat.Vision
 import com.sbwnpc.squad.combat.TankWeaponSelection
@@ -117,7 +118,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             val t = (level.getEntity(id) as? NpcEntity)?.target ?: continue
             if (t.isAlive && SquadTeams.isHostile(mob, t) && mob.distanceToSqr(t) <= rangeSqr) seen += t
         }
-        val visible = seen.sortedBy { mob.distanceToSqr(it) }.filter { mob.sensing.hasLineOfSight(it) }
+        val visible = seen.sortedBy { mob.distanceToSqr(it) }.filter { DetectionSightline.canSee(mob, it) }
         return FireAllocation.pick(mob, level, visible)
     }
 
@@ -174,8 +175,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             // Cheaper than the raycast and rejects more, so it goes first. Head rotation, not body
             // yaw: an NPC scanning around while it walks is looking where its head points.
             if (!allRound && !Vision.inCone(mob.position(), mob.yHeadRot, candidate.position())) continue
-            val sees = if (airborne) !com.sbwnpc.squad.combat.Sightline.blocked(level, mob.eyePosition, candidate.eyePosition, mob)
-                else mob.sensing.hasLineOfSight(candidate)
+            val sees = DetectionSightline.canSee(mob, candidate)
             if (sees) {
                 visible += candidate
                 if (visible.size >= MAX_SPREAD_CANDIDATES || mob.currentSquad() == null) break

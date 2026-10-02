@@ -10,6 +10,7 @@
   "mixins": [
     "VehicleBoardingMixin",
     "VehicleGunDataMixin",
+    "VehicleShootingMixin",
     "AutoAimableEntityMixin",
     "EntityAllianceMixin",
     "EntityTrackingRangeMixin"

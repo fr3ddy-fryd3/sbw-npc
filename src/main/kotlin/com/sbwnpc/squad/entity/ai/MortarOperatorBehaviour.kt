@@ -350,7 +350,7 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         var losChecks = 0
         for (c in candidates) {
             if (losChecks++ >= MAX_LOS_CHECKS) break
-            if (!entity.sensing.hasLineOfSight(c)) continue
+            if (!com.sbwnpc.squad.combat.DetectionSightline.canSee(entity, c)) continue
             if (faction != null) TeamAwareness.report(faction, c.uuid, c.position(), tick, "mortar ${entity.uuid.toString().take(8)}")
             if (selfSpotted == null) selfSpotted = c
         }

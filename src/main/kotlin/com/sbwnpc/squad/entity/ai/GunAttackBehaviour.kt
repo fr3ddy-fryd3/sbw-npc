@@ -11,6 +11,7 @@ import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.GrenadeHazard
 import com.sbwnpc.squad.combat.OffscreenFire
 import com.sbwnpc.squad.combat.Sightline
+import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.combat.TickBudget
@@ -533,7 +534,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         chooseWeapon(entity, target)
         val gun = currentGun(entity) ?: return
 
-        val canSeeTarget = entity.sensing.hasLineOfSight(target)
+        val canSeeTarget = DetectionSightline.canSee(entity, target)
+        // Seeing through a window is not a clear firing lane. Keep vanilla's collider test.
+        val canShootTarget = canSeeTarget && entity.sensing.hasLineOfSight(target)
         if (canSeeTarget) {
             // Feeds TeamAwareness for the whole faction — this is the ONLY place that reports a
             // sighting (SquadTargetSensor's own nearestDirectTarget only CONSUMES relayed contacts,
@@ -541,13 +544,15 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             // regardless of how the current target was acquired (focus/hurt-by/relay/direct).
             SquadTeams.factionOf(entity)?.let { TeamAwareness.report(it, target.uuid, target.position(), entity.level().gameTime, "${entity.npcClass} ${entity.uuid.toString().take(8)}") }
             com.sbwnpc.squad.squad.SquadReports.contact(entity, target)
+        }
+        if (canShootTarget) {
             entity.blockedSightSince = null
         } else if (entity.blockedSightSince == null) {
             // Stamped once, on the tick sight was lost — GrenadeUseBehaviour measures from here.
             entity.blockedSightSince = entity.tickCount
         }
         // Losing sight starts the aim over.
-        aimTime = if (canSeeTarget) minOf(entity.maxAimTime, aimTime + 1) else 0
+        aimTime = if (canShootTarget) minOf(entity.maxAimTime, aimTime + 1) else 0
 
         entity.lookAt(target, 30f, 30f)
         // lookAt above only sets xRot/yRot (the actual aim SBW fires along) — it never touches
@@ -662,7 +667,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         gun.operate()
 
         val pausedBetweenBursts = entity.tickCount < burstPauseUntilTick
-        if (!pausedBetweenBursts && lineIsClear && blastClear && gun.canShoot() && aimTime >= entity.maxAimTime) {
+        if (canShootTarget && !pausedBetweenBursts && lineIsClear && blastClear && gun.canShoot() && aimTime >= entity.maxAimTime) {
             val rps = gun.roundsPerMinute / 60.0
             var cooldown = Math.round(1000 / rps).coerceAtLeast(1)
 

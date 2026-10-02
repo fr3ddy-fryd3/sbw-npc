@@ -177,6 +177,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.lookAt(EntityAnchorArgument.Anchor.EYES, aim)
         val dist = entity.distanceTo(target)
         if (dist > BENCH_RANGE) return "target ${dist.toInt()} blocks off (range ${BENCH_RANGE.toInt()})"
+        if (!com.sbwnpc.squad.combat.DetectionSightline.visible(entity.level(), entity.eyePosition, aim, entity)) return "target concealed"
         // Not hasLineOfSight: vanilla gives up past 128 blocks, and from cruising height that is
         // most of the ground a passenger can see.
         val level = entity.level() as? ServerLevel ?: return null

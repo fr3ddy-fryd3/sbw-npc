@@ -354,7 +354,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
             if (checks >= MAX_SCOUT_SIGHT_CHECKS) break
             if (entity.distanceToSqr(hostile) > SCOUT_RANGE * SCOUT_RANGE) break
             checks++
-            if (!entity.sensing.hasLineOfSight(hostile)) continue
+            if (!com.sbwnpc.squad.combat.DetectionSightline.canSee(entity, hostile)) continue
             TeamAwareness.report(faction, hostile.uuid, hostile.position(), level.gameTime, "helicopter ${entity.uuid.toString().take(8)}")
         }
     }

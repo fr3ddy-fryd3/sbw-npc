@@ -101,7 +101,7 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
             val middle = Vec3(bunch.sumOf { it.x } / bunch.size, bunch.sumOf { it.y } / bunch.size, bunch.sumOf { it.z } / bunch.size)
             if (!inRange(entity, middle)) continue
             // Seen, not merely known of: one in the bunch has to be in view.
-            if (bunch.none { entity.sensing.hasLineOfSight(it) }) continue
+            if (bunch.none { com.sbwnpc.squad.combat.DetectionSightline.canSee(entity, it) }) continue
             best = bunch
         }
         val bunch = best ?: return null

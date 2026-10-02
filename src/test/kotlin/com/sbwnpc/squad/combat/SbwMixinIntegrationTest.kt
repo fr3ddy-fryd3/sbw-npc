@@ -9,6 +9,7 @@ class SbwMixinIntegrationTest {
     fun `boarding and drone hooks are applied to the runtime classes`() {
         val hooks = listOf(
             "com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity" to "boardAlongsideAlliedDriver",
+            "com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity" to "checkNpcFiringLane",
             "com.atsuishio.superbwarfare.data.gun.GunData" to "applyDroneSpread",
             "com.atsuishio.superbwarfare.entity.vehicle.base.AutoAimableEntity" to "markAutonomousShot"
         )
