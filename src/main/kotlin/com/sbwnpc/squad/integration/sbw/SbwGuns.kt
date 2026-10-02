@@ -9,12 +9,15 @@ import com.atsuishio.superbwarfare.data.gun.GunProp
 import com.atsuishio.superbwarfare.init.ModDamageTypes
 import com.atsuishio.superbwarfare.init.ModItems
 import com.atsuishio.superbwarfare.item.gun.GunItem
+import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.domain.port.Guns
 import com.sbwnpc.squad.domain.port.HandGun
 import com.sbwnpc.squad.domain.port.TriggerMode
+import com.sbwnpc.squad.npc.NpcClass
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.nbt.Tag
 import net.minecraft.core.component.DataComponents
+import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
@@ -39,6 +42,20 @@ object SbwGuns : Guns {
         data.virtualAmmo.set(reserve)
         data.reloadAmmo(holder)
         data.save()
+        return if (holder is NpcEntity && holder.npcClass == NpcClass.FUN_GRENADIER) {
+            configureFunM79(data.stack)
+        } else {
+            data.stack
+        }
+    }
+
+    /** Applies the fun M79 profile without changing SuperbWarfare's global M79 definition. */
+    fun configureFunM79(stack: ItemStack): ItemStack {
+        if (BuiltInRegistries.ITEM.getKey(stack.item) != FUN_M79_ID) return stack
+        val data = GunData.from(stack)
+        data.propertyOverrideString.set(FUN_M79_OVERRIDE)
+        data.save()
+        stack.set(DataComponents.CUSTOM_NAME, Component.literal("M79 (fun)"))
         return data.stack
     }
 
@@ -107,6 +124,10 @@ object SbwGuns : Guns {
     }
 }
 
+private val FUN_M79_ID = ResourceLocation.fromNamespaceAndPath("superbwarfare", "m_79")
+private const val FUN_M79_OVERRIDE =
+    "{\"ExplosionDamage\":100000.0,\"ExplosionRadius\":1000.0,\"ExplosionDestroy\":true}"
+
 private const val TBG_ROCKET = "superbwarfare:rpg_rocket_tbg"
 private const val TBG_BOOST = 1.03
 private const val MAX_ARC_DEGREES = 45.0
@@ -125,7 +146,7 @@ private class SbwHandGun(private val holder: LivingEntity, private val data: Gun
             FireMode.SEMI -> TriggerMode.SEMI
             FireMode.BURST -> TriggerMode.BURST
             // No mode selected: fire as the old code did, without a trigger reset.
-            FireMode.AUTO, null -> TriggerMode.AUTO
+            FireMode.AUTO, FireMode.HOLD, FireMode.CHARGE, null -> TriggerMode.AUTO
         }
 
     override val needsTriggerReset: Boolean

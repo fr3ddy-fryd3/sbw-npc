@@ -92,7 +92,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
         NpcClass.RIFLEMAN, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.TANK_CREW, NpcClass.DRONE_OPERATOR -> true
         // Helicopter crew carry a sidearm and are strapped into an aircraft; the gunship's own
         // turret is what deals with a drone, through the ordinary targeting path.
-        NpcClass.MEDIC, NpcClass.GRENADIER, NpcClass.MORTAR_OPERATOR, NpcClass.MORTAR_LOADER,
+        NpcClass.MEDIC, NpcClass.GRENADIER, NpcClass.FUN_GRENADIER, NpcClass.MORTAR_OPERATOR, NpcClass.MORTAR_LOADER,
         NpcClass.HELICOPTER_PILOT, NpcClass.HELICOPTER_GUNNER -> false
     }
 

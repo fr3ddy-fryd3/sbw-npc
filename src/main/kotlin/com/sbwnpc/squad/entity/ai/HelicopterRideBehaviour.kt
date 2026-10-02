@@ -197,7 +197,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /** Ordinary infantry only: every other class has a post of its own to man. */
     private fun canRide(entity: NpcEntity): Boolean = when (entity.npcClass) {
-        NpcClass.RIFLEMAN, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC -> true
+        NpcClass.RIFLEMAN, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.FUN_GRENADIER, NpcClass.MEDIC -> true
         NpcClass.MORTAR_OPERATOR, NpcClass.MORTAR_LOADER, NpcClass.TANK_CREW,
         NpcClass.HELICOPTER_PILOT, NpcClass.HELICOPTER_GUNNER, NpcClass.DRONE_OPERATOR -> false
     }

@@ -38,7 +38,7 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean {
         // The grenadier throws his by his own rules (GrenadeThrowBehaviour), from the same count.
-        if (entity.npcClass == NpcClass.GRENADIER) return false
+        if (entity.npcClass == NpcClass.GRENADIER || entity.npcClass == NpcClass.FUN_GRENADIER) return false
         if (!entity.hasGrenade) return false
         if (entity.busyWithRole()) return false
         if (entity.tickCount < nextThrowTick) return false

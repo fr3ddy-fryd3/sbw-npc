@@ -62,7 +62,9 @@ enum class NpcClass(
     // Flies kamikaze drones at targets 80-150 blocks out (by rank) — see DroneOperatorBehaviour.
     // Same rifles as RIFLEMAN (per user request): once the drones are spent it fights on as an
     // ordinary rifleman rather than plinking with a sidearm.
-    DRONE_OPERATOR(listOf(loc("ak_47"), loc("ak_12")), shootDistanceMultiplier = 2.0, speedMultiplier = 1.3);
+    DRONE_OPERATOR(listOf(loc("ak_47"), loc("ak_12")), shootDistanceMultiplier = 2.0, speedMultiplier = 1.3),
+    /** M79 variant with the Kirov/airship bomb explosion parameters. */
+    FUN_GRENADIER(listOf(loc("m_79")), shootDistanceMultiplier = 1.5, speedMultiplier = 1.3);
 
     fun next(): NpcClass = entries[(ordinal + 1) % entries.size]
 
@@ -78,6 +80,7 @@ enum class NpcClass(
         GRENADIER -> 20
         MEDIC, MORTAR_OPERATOR, MORTAR_LOADER -> 180
         DRONE_OPERATOR -> 120
+        FUN_GRENADIER -> 20
         TANK_CREW, HELICOPTER_PILOT, HELICOPTER_GUNNER -> 85
     }
 

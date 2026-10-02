@@ -36,7 +36,7 @@ class GrenadeThrowBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = MEMORIES
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean {
-        if (entity.npcClass != NpcClass.GRENADIER) return false
+        if (entity.npcClass != NpcClass.GRENADIER && entity.npcClass != NpcClass.FUN_GRENADIER) return false
         if (entity.busyWithRole()) return false
         if (entity.combatLockedByCover()) return false // SeekCoverBehaviour owns the mob until this lapses
         if (entity.tickCount < nextThrowTick) return false

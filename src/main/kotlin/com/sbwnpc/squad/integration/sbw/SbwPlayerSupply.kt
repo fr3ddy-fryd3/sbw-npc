@@ -3,7 +3,7 @@ package com.sbwnpc.squad.integration.sbw
 import com.atsuishio.superbwarfare.data.gun.AmmoConsumer
 import com.atsuishio.superbwarfare.data.gun.GunData
 import com.atsuishio.superbwarfare.data.gun.GunProp
-import com.atsuishio.superbwarfare.init.ModAttachments
+import com.atsuishio.superbwarfare.init.ModDataAttachments
 import com.atsuishio.superbwarfare.init.ModItems
 import com.atsuishio.superbwarfare.init.ModSounds
 import com.atsuishio.superbwarfare.item.gun.GunItem
@@ -63,6 +63,7 @@ object SbwPlayerSupply : PlayerSupply {
         Spec("Machine gunner", NpcClass.MACHINE_GUNNER, fighter() + (ModItems.RPG_ROCKET_STANDARD to 2), launcher = true),
         Spec("Sniper", NpcClass.SNIPER, fighter()),
         Spec("Grenadier", NpcClass.GRENADIER, fighter()),
+        Spec("M79 (fun)", NpcClass.FUN_GRENADIER, fighter()),
         Spec("Medic", NpcClass.MEDIC, fighter(medkits = 10)),
         Spec("Drone operator", NpcClass.DRONE_OPERATOR, droneKit()),
     ) }
@@ -115,7 +116,10 @@ object SbwPlayerSupply : PlayerSupply {
         var given = false
 
         gunItem(weapon)?.let { gun ->
-            if (player.inventory.countItem(gun) == 0) given = give(player, loaded(gun)) || given
+            if (player.inventory.countItem(gun) == 0) {
+                val stack = loaded(gun).let { if (spec.cls == NpcClass.FUN_GRENADIER) SbwGuns.configureFunM79(it) else it }
+                given = give(player, stack) || given
+            }
             given = topUpAmmo(player, gun, spec.cls.startingRounds(weapon)) || given
         }
         if (spec.launcher) {
@@ -146,9 +150,8 @@ object SbwPlayerSupply : PlayerSupply {
         return when (consumer.type) {
             AmmoConsumer.AmmoConsumeType.PLAYER_AMMO -> {
                 val type = consumer.playerAmmoType ?: return false
-                val variable = player.getData(ModAttachments.PLAYER_VARIABLE).watch()
+                val variable = player.getData(ModDataAttachments.PLAYER_VARIABLE)
                 if (type.get(variable) >= rounds || !type.set(variable, rounds)) return false
-                player.setData(ModAttachments.PLAYER_VARIABLE, variable)
                 variable.sync(player)
                 true
             }
