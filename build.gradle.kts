@@ -41,6 +41,11 @@ repositories {
         url = uri("https://maven.blamejared.com")
         content { includeGroup("info.journeymap") }
     }
+    maven {
+        name = "SimpleBedrockModel"
+        url = uri("https://jitpack.io")
+        content { includeGroup("com.github.MCModderAnchor") }
+    }
 }
 
 base {
@@ -159,6 +164,10 @@ dependencies {
     // указанная здесь версия ни на что не влияет (Gradle подставит локальный проект).
     compileOnly("com.atsuishio.superbwarfare:superbwarfare:${project.property("superbwarfare_version")}")
     gameRuntimeOnly("com.atsuishio.superbwarfare:superbwarfare:${project.property("superbwarfare_version")}")
+    // Regression tests exercise SBW's resource decoder alongside our static model loader.
+    testCompileOnly("com.atsuishio.superbwarfare:superbwarfare:${project.property("superbwarfare_version")}") {
+        isTransitive = false
+    }
     testRuntimeOnly("com.atsuishio.superbwarfare:superbwarfare:${project.property("superbwarfare_version")}") {
         isTransitive = false
     }
@@ -166,6 +175,8 @@ dependencies {
     implementation("net.tslat.smartbrainlib:SmartBrainLib-neoforge-1.21.1:${project.property("smartbrainlib_version")}")
     // See the GeckoLib repository comment above. SBW bundles 4.7.5 (jijImplement in its build).
     compileOnly("software.bernie.geckolib:geckolib-neoforge-1.21.1:4.7.5")
+    // Already bundled by SBW. Used to bake NPC guns into static geometry, without GeoItemRenderer.
+    compileOnly("com.github.MCModderAnchor:SimpleBedrockModel:2.5.1.1-neoforge-mc1.21.1")
     // Optional map integration (see integration/journeymap); never bundled.
     compileOnly("info.journeymap:journeymap-api-neoforge:${project.property("journeymap_api_version")}")
 

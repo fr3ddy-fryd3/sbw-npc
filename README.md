@@ -42,8 +42,9 @@ clicking.
 2. Grab the latest jar from the [Releases](../../releases) page.
 3. Drop it into your `mods/` folder.
 
-Recommended alongside: [GeckolibBetterFPS](https://www.curseforge.com/minecraft/mc-mods/geckolibbetterfps)
-— noticeably better frame rate when a lot of NPCs are on screen.
+NPC guns use cached static third-person models within 64 blocks (4 chunks) of the camera.
+Their rendering bypasses GeckoLib and uses SBW's simplified weapon meshes independently of its
+`enable_gun_lod` setting. Players keep SBW's normal weapon renderer.
 
 ## Key conflicts
 
