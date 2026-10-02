@@ -74,7 +74,7 @@ class SquadMapPlugin : IClientPlugin {
     private val selected = LinkedHashSet<String>()
 
     /** What the menu needs to know about the player's squads, kept from the last feed each was in. */
-    private class Known(val name: String, val mortar: Boolean)
+    private class Known(val name: String, val orders: List<SquadOrder>)
     private val known = HashMap<String, Known>()
 
     override fun getModId(): String = SquadMod.MODID
@@ -295,7 +295,9 @@ class SquadMapPlugin : IClientPlugin {
             marker.setLabel(name)
             marker.setTextProperties(TextProperties().setColor(color).setScale(0.8f).setOffsetY(10))
             val id = t.getUUID("Id").toString()
-            if (own) known[id] = Known(name, t.getBoolean("Mortar"))
+            if (own) known[id] = Known(name, SquadOrder.availableFor(
+                t.getBoolean("Tank"), t.getBoolean("Mortar"), t.getBoolean("Gunship"), t.getBoolean("Transport")
+            ))
             if (own) marker.setOverlayListener(SquadListener(id))
             show(marker)
             // Each man of every own squad, so a straggler can be found — dimmer until his squad
@@ -304,13 +306,13 @@ class SquadMapPlugin : IClientPlugin {
             t.getIntArray("Men").let { men ->
                 val menOpacity = if (isSelected) 1f else MEMBER_OPACITY
                 for (i in 0 until men.size / 2) {
-                    show(marker(dim, BlockPos(men[2 * i], 0, men[2 * i + 1]), MapShapes.CIRCLE, SELECTION_COLOR, MEMBER_SIZE, menOpacity))
+                    show(marker(dim, BlockPos(men[2 * i], 0, men[2 * i + 1]), MapShapes.CIRCLE, color, MEMBER_SIZE, menOpacity))
                 }
             }
             if (isSelected) {
                 // A symbol on screen, like the square itself: an outline drawn in blocks shrank to
                 // nothing inside the square once the map was zoomed out.
-                show(marker(dim, at, MapShapes.FRAME, SELECTION_COLOR, SELECTION_SIZE, 1f).also {
+                show(marker(dim, at, MapShapes.FRAME, color, SELECTION_SIZE, 1f).also {
                     it.setTitle("$name (selected)")
                     // It sits over the square, so a click on the square can land on it instead.
                     it.setOverlayListener(SquadListener(id))
@@ -436,12 +438,13 @@ class SquadMapPlugin : IClientPlugin {
         val who = if (ids.size == 1) known[ids[0]]?.name ?: "Squad" else "${ids.size} squads"
         // The server turns this into each squad's own order and spot (GroupOrders); a barrage
         // only means something to mortars, so it's only offered when one is selected.
-        val orders = POINT_ORDERS + if (ids.any { known[it]?.mortar == true }) listOf("Barrage here" to SquadOrder.BARRAGE) else emptyList()
-        for ((label, order) in orders) {
+        val options = ids.mapNotNull { known[it]?.orders }
+        for (order in SquadOrder.pointOrdersFor(options)) {
+            val label = "${order.name.lowercase().replaceFirstChar { it.uppercase() }} here"
             menu.addMenuItem("$who: $label") { pos -> sendOrder(ids, order, pos) }
         }
         // Only infantry walks a route; the server leaves the rest of a mixed selection as it is.
-        if (ids.any { known[it]?.mortar != true }) menu.addMenuItem("$who: Draw patrol route") { _ -> startRoute(ids) }
+        if (options.any { SquadOrder.PATROL in it }) menu.addMenuItem("$who: Draw patrol route") { _ -> startRoute(ids) }
         menu.addMenuItem("Deselect $who") { _ -> select(null, add = false) }
     }
 
@@ -479,7 +482,7 @@ class SquadMapPlugin : IClientPlugin {
         }
 
         override fun onOverlayMenuPopup(state: UIState, mouse: Point2D.Double, pos: BlockPos, menu: ModPopupMenu) {
-            for (order in listOf(SquadOrder.ATTACK, SquadOrder.DEFEND, SquadOrder.PATROL, SquadOrder.MOVE, SquadOrder.RETREAT)) {
+            for (order in known[squad]?.orders.orEmpty()) {
                 menu.addMenuItem("Order: ${order.name.lowercase().replaceFirstChar { it.uppercase() }}") {
                     PacketDistributor.sendToServer(SquadCmdPayload(SquadCmdPayload.SET_ORDER, squad, order.ordinal, ""))
                 }
@@ -517,7 +520,7 @@ class SquadMapPlugin : IClientPlugin {
         const val VEHICLE_SIZE = 11.0
         const val ALLY_OPACITY = 0.7f
         const val ASLEEP_OPACITY = 0.4f
-        const val MEMBER_OPACITY = 0.8f
+        const val MEMBER_OPACITY = 0.5f
         const val OBJECTIVE_SIZE = 3
         const val BARRACKS_SIZE = 2
         const val CIRCLE_POINTS = 32
@@ -534,11 +537,5 @@ class SquadMapPlugin : IClientPlugin {
         const val MAX_ROUTE_POINTS = 32
         const val ROUTE_HINT_Y = 30
 
-        val POINT_ORDERS = listOf(
-            "Move here" to SquadOrder.MOVE,
-            "Attack here" to SquadOrder.ATTACK,
-            "Defend here" to SquadOrder.DEFEND,
-            "Retreat here" to SquadOrder.RETREAT
-        )
     }
 }

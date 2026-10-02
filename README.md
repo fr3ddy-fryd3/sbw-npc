@@ -152,14 +152,19 @@ disbanding one moves the rest up into the freed numbers.
 |---|---|---|
 | **Defend** | Hold near the objective, don't chase far | Everyone except tank crews |
 | **Patrol** | Wander the area, or walk the assigned route | Infantry |
-| **Attack** | Advance on the objective, fight through what's in the way | Everyone except transports and tank crews |
-| **Move** | Walk there calmly, then hold | Everyone |
+| **Attack** | Advance on the objective; AH-6 circles it for its bench gunners | Everyone except tank crews |
+| **Move** | Travel to the objective, then hold or land | Infantry, tank crews, helicopters |
 | **Barrage** | Shell a 40-block area around the objective instead of one point | Mortar crews |
+| **Retreat** | Fall back to the objective, then hold; helicopters land there | Everyone |
 
-Tank crews only take **Move** — they fight from the tank by themselves. A Mi-28 gunship takes
-Attack / Defend / Move and holds a standoff hover 20 blocks off its target; an AH-6 transport
+Tank crews take **Move** and **Retreat** — they fight from the tank by themselves. A Mi-28 gunship takes
+Attack / Defend / Move / Retreat and holds a standoff hover 20 blocks off its target; an AH-6 transport
 takes Defend (patrols low with its door gunners, and calls contacts in to the whole faction) and
-Move (flies the squad there and lands).
+Move (flies the squad there and lands), Attack (continuous orbit about 40 blocks from the point,
+24 blocks above terrain, with an occupied bench facing inward), and Retreat (flies back and lands).
+AH-6 Attack stays active until another order or a forced withdrawal. Map menus offer the commands
+available to the selected squad types. NPC map dots and selection frames use their faction colour;
+unselected squad members have 50% opacity.
 
 ## The Barracks
 

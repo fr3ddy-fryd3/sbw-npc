@@ -196,8 +196,43 @@ class HelicopterFlightControllerTest {
         assertTrue(kotlin.math.abs(sim.pos.y - 84.0) < 6.0, "expected to reach hover altitude, at ${sim.pos.y}")
     }
 
+    @Test
+    fun `AH-6 keeps circling with the firing bench facing the ground target`() {
+        for (direction in listOf(1, -1)) {
+            val center = Vec3(0.0, 66.0, 0.0)
+            val sim = Heli(Vec3(40.0, 90.0, 0.0), if (direction == 1) 0f else 180f,
+                increment = 1f, decrement = 1f, yawSpeed = 1f, pitchSpeed = 1f, rollSpeed = 0.75f)
+            var angle = 0.0
+            var goodArcTicks = 0
+            var worstBank = 0f
+            repeat(2500) { tick ->
+                val previous = kotlin.math.atan2(sim.pos.z, sim.pos.x)
+                val target = BenchAttackOrbit.waypoint(sim.pos, center, direction, sim.yaw)
+                val cmd = HelicopterFlightController.steer(
+                    sim.pos, sim.yaw, sim.pitch, sim.roll, sim.rollRate(), sim.motion,
+                    target, 90.0, BenchAttackOrbit.SPEED, sim.tuning()
+                )
+                assertFalse(cmd.hoverMode)
+                sim.step(cmd)
+                val current = kotlin.math.atan2(sim.pos.z, sim.pos.x)
+                angle += kotlin.math.atan2(sin(current - previous), cos(current - previous))
+                worstBank = maxOf(worstBank, kotlin.math.abs(sim.roll))
+                if (tick >= 500 && BenchAttackOrbit.canAim(if (direction == 1) 2 else 3, sim.yaw, sim.pos, center)) goodArcTicks++
+            }
+            assertTrue(direction * angle > Math.PI * 4, "did not complete two orbits: $angle")
+            assertTrue(sim.pos.horizontalDistance() in 25.0..65.0, "orbit radius drifted to ${sim.pos.horizontalDistance()}")
+            assertTrue(goodArcTicks > 1800, "ground target visible from the bench for only $goodArcTicks ticks")
+            assertTrue(worstBank < 12f, "bank ran away to $worstBank")
+        }
+    }
+
     /** Minimal model of VehicleEngineUtils.helicopterEngine — only the parts the controller drives. */
-    private class Heli(var pos: Vec3, var yaw: Float) {
+    private class Heli(
+        var pos: Vec3, var yaw: Float,
+        private val increment: Float = 0.8f, private val decrement: Float = 0.8f,
+        private val liftSpeed: Float = 1f, private val yawSpeed: Float = 0.85f,
+        private val pitchSpeed: Float = 0.75f, private val rollSpeed: Float = 0.6f
+    ) {
         var pitch = 0f
         var roll = 0f
         private var previousRoll = 0f
@@ -207,13 +242,6 @@ class HelicopterFlightControllerTest {
         private var holdPowerTick = 0
         private var holdTick = 0
         private var deltaRot = 0f
-
-        private val increment = 0.8f
-        private val decrement = 0.8f
-        private val liftSpeed = 1f
-        private val yawSpeed = 0.85f
-        private val pitchSpeed = 0.75f
-        private val rollSpeed = 0.6f
 
         fun tuning() = Tuning(propellerRot, yawSpeed, pitchSpeed)
 

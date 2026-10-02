@@ -14,7 +14,7 @@ import java.util.UUID
  *
  * | Order   | Infantry / gunship | Tank              | Mortar                     | Transport |
  * |---------|--------------------|-------------------|----------------------------|-----------|
- * | Attack  | attack, line       | move, line        | fire at the point          | unchanged |
+ * | Attack  | attack, line       | move, line        | fire at the point          | orbit     |
  * | Defend  | defend, line       | move, line        | carry the tube, defend     | defend    |
  * | Move    | move, line         | move, line        | carry the tube, defend     | move      |
  * | Retreat | retreat, line      | retreat, line     | retreat, line              | retreat   |
@@ -105,7 +105,6 @@ object GroupOrders {
         SquadOrder.ATTACK -> when (kind) {
             Kind.TANK -> SquadOrder.MOVE to Placement.LINE
             Kind.MORTAR -> SquadOrder.ATTACK to Placement.POINT
-            Kind.TRANSPORT -> null
             else -> SquadOrder.ATTACK to Placement.LINE
         }
         SquadOrder.DEFEND -> when (kind) {

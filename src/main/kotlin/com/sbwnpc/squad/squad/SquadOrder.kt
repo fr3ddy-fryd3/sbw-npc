@@ -35,7 +35,7 @@ enum class SquadOrder {
 
         /**
          * What a squad of this shape can be ordered to do. One list, used by the command screen,
-         * the quick-command HUD and the server's own validation, so the three cannot disagree.
+         * the quick-command HUD, map menus and the server's own validation.
          */
         fun availableFor(
             tank: Boolean,
@@ -47,9 +47,15 @@ enum class SquadOrder {
             mortar -> listOf(ATTACK, DEFEND, BARRAGE, RETREAT)
             // A gunship is sent hunting, holds an area, or repositions.
             gunship -> listOf(ATTACK, DEFEND, MOVE, RETREAT)
-            // A transport has nothing to attack with; it patrols with its gunners or relocates.
-            transport -> listOf(DEFEND, MOVE, RETREAT)
+            // AH-6 attacks by orbiting for its passengers' guns; MOVE still ends in a landing.
+            transport -> listOf(ATTACK, DEFEND, MOVE, RETREAT)
             else -> entries.filter { it != BARRAGE }
+        }
+
+        /** Map point commands supported by at least one selected squad; patrol uses its route editor. */
+        fun pointOrdersFor(available: Collection<List<SquadOrder>>): List<SquadOrder> {
+            val supported = available.flatten().toSet()
+            return listOf(MOVE, ATTACK, DEFEND, RETREAT, BARRAGE).filter { it in supported }
         }
     }
 }

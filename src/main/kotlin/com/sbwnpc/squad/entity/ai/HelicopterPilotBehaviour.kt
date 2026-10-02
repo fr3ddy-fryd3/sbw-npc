@@ -57,6 +57,8 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** Only the aircraft actually flying nearby — what the altitude bands are computed against. */
     private var layerIds: List<java.util.UUID> = emptyList()
     private var nextTrafficTick = 0
+    private var orbitOrderStamp = Int.MIN_VALUE
+    private var orbitDirection = 1
 
     init {
         noTimeout()
@@ -139,7 +141,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         // never sets off on a hop they were never going to get on.
         val launchDistance =
             if (Helicopters.hasTurret(heli)) RELOCATE_DISTANCE else Helicopters.AIR_TRANSPORT_DISTANCE
-        val relocating = HelicopterFlightController.horizontalDistance(heli.position(), mission.anchor) > launchDistance
+        val relocating = HelicopterFlightController.horizontalDistance(heli.position(), mission.anchor) > launchDistance || mission.attackOrbit
         // Don't leave the squad on the pad: a transport holds until its passengers are aboard, or
         // until it's clear they aren't coming.
         //
@@ -189,12 +191,17 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
             Phase.TRANSIT -> {
                 fly(level, heli, station, facing, mission.speed, rollRate, clearance)
-                if (HelicopterFlightController.horizontalDistance(heli.position(), station) <= ON_STATION_RADIUS) {
+                if (!mission.attackOrbit && HelicopterFlightController.horizontalDistance(heli.position(), station) <= ON_STATION_RADIUS) {
                     onStationReached(mission)
                     phase = if (mission.landOnArrival) Phase.LANDING else Phase.STATION
                 }
             }
             Phase.STATION -> {
+                if (mission.attackOrbit) {
+                    phase = Phase.TRANSIT
+                    fly(level, heli, station, facing, mission.speed, rollRate, clearance)
+                    return
+                }
                 fly(level, heli, station, facing, minOf(mission.speed, HOLD_SPEED), rollRate, clearance)
                 if (mission.landOnArrival) {
                     phase = Phase.LANDING
@@ -233,17 +240,19 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         /** How high over the terrain this leg is flown. A patrol sits low enough to see and be
          *  seen; anything else keeps the safe margin. */
         val clearance: Double = CRUISE_CLEARANCE,
-        val patrol: Boolean = false
+        val patrol: Boolean = false,
+        val attackOrbit: Boolean = false
     )
 
     /**
      * Turns the squad's order into a flight plan.
      *
-     * ATTACK holds over the fight and only breaks off once contact has genuinely gone quiet — not
+     * Mi-28 ATTACK holds over the fight and only breaks off once contact has genuinely gone quiet — not
      * the instant [engagementTarget] blinks out, because the sensor rescans on an interval and
      * line of sight comes and goes, and trying to land in the middle of that was putting the
      * aircraft on the deck with enemies still up. When it does break off it clears the area first
      * rather than landing on the contested point.
+     * AH-6 ATTACK keeps a continuous orbit with a firing bench facing the objective.
      *
      * DEFEND (and PATROL, which needs nothing of its own here — a helicopter has no use for
      * walking a route) circles the objective slowly instead of parking over it.
@@ -256,14 +265,26 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         airworthy: Boolean
     ): Mission {
         val level = entity.level() as? ServerLevel
-        // A transport has no turret; its guns are bolted to the airframe, so there is nothing it
-        // can usefully do over a target except get shot at. It flies its cargo and lands.
+        // Mi-28 lays its turret on a target; AH-6 positions the aircraft for its bench gunners.
         val gunship = Helicopters.hasTurret(heli)
 
         if (!airworthy) return landingMission(level, retirePoint(home))
 
         // Falling back: fly to the point and put down there, whatever is shooting.
         if (entity.currentSquad()?.order == SquadOrder.RETREAT) return landingMission(level, home)
+        if (!gunship && entity.currentSquad()?.order == SquadOrder.ATTACK && entity.homeCenter() != null) {
+            val stamp = entity.currentSquad()!!.orderStamp
+            if (stamp != orbitOrderStamp || phase == Phase.TAKEOFF) {
+                orbitOrderStamp = stamp
+                val seats = Ports.vehicles.seating(heli)
+                orbitDirection = BenchAttackOrbit.direction(seats.getOrNull(2) != null, seats.getOrNull(3) != null)
+            }
+            return Mission(
+                BenchAttackOrbit.waypoint(heli.position(), home, orbitDirection, heli.yRot), null,
+                false, BenchAttackOrbit.SPEED, anchor = home, clearance = BenchAttackOrbit.CLEARANCE,
+                attackOrbit = true
+            )
+        }
         if (gunship && target != null) {
             return Mission(standoffPoint(heli, target.position()), target.position(), false, HOLD_SPEED)
         }
@@ -276,7 +297,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
                 loiterPoint(home), null, false, LOITER_SPEED,
                 anchor = home, clearance = PATROL_CLEARANCE, patrol = true
             )
-            // Only a gunship is sent to take a point; a transport told to attack just goes home.
+            // A gunship retires once contact clears. AH-6 holds its commanded orbit above.
             SquadOrder.ATTACK ->
                 if (gunship) landingMission(level, retirePoint(home)) else landingMission(level, home)
             else -> landingMission(level, home)
