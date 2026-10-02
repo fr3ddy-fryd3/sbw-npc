@@ -29,7 +29,10 @@ import java.util.UUID
  * [SquadConfig.ACTIVE_SQUAD_CHUNK_LIMIT], those in a fight first.
  *
  * Where each squad was is kept on the squad itself ([Squad.lastSeen]), so one ordered off while
- * asleep — even after a restart — is found and woken where it was left.
+ * asleep — even after a restart — is found and woken where it was left. A squad's assigned
+ * barracks also holds a ticket at its own position, independently of where the men went, so its
+ * reinforcement timer keeps running. SquadManager saves that link even for an empty garrison;
+ * destroying the barracks or removing its last assigned squad releases the ticket.
  */
 object SquadChunkLoader {
     private val TICKET: TicketType<ChunkPos> = TicketType.create("sbwnpc_squad", Comparator.comparingLong(ChunkPos::toLong))
@@ -59,6 +62,7 @@ object SquadChunkLoader {
             val members = squad.members.mapNotNull { SquadManager.findEntity(server, it) as? NpcEntity }.filter { it.isAlive }
             if (members.isNotEmpty()) remember(mgr, squad, members)
             if (limit <= 0) continue
+            squad.barracks?.let { wanted += Spot(it.dimension, ChunkPos(it.pos)) }
             val fighting = members.any { it.target?.isAlive == true }
             if (!fighting && !underway(squad)) continue
             if (nearPlayer(server, squad)) wanted += spotsOf(squad)
@@ -69,7 +73,7 @@ object SquadChunkLoader {
 
         for (spot in held - wanted) server.getLevel(spot.dimension)?.chunkSource?.removeRegionTicket(TICKET, spot.chunk, TICKET_DISTANCE, spot.chunk)
         for (spot in wanted - held) server.getLevel(spot.dimension)?.chunkSource?.addRegionTicket(TICKET, spot.chunk, TICKET_DISTANCE, spot.chunk)
-        if (wanted != held) DebugFlags.log(LogGroup.CHUNK, "squads hold {} chunks (was {})", wanted.size, held.size)
+        if (wanted != held) DebugFlags.log(LogGroup.CHUNK, "squads and barracks hold {} chunks (was {})", wanted.size, held.size)
         held.clear()
         held += wanted
         lastSpots.keys.retainAll(mgr.all().map { it.id }.toSet())
