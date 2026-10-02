@@ -18,7 +18,7 @@ import net.neoforged.neoforge.common.Tags
 
 /** Eyes only. Firing lanes and cover searches keep their ordinary collider raycasts. */
 object DetectionSightline {
-    private const val MAX_FOLIAGE_BLOCKS = 3
+    private const val FOLIAGE_BLOCKS_TO_HIDE = 3
 
     fun canSee(observer: Entity, target: Entity): Boolean =
         observer.level() === target.level() && visible(observer.level(), observer.eyePosition, target.eyePosition, observer)
@@ -40,7 +40,7 @@ object DetectionSightline {
                 // Vanilla traverses each voxel once. Count block cells, not samples or plant halves
                 // outside the ray; gaps between patches do not restore the sight budget.
                 foliage++
-                return if (foliage > MAX_FOLIAGE_BLOCKS) Shapes.block() else Shapes.empty()
+                return if (foliage >= FOLIAGE_BLOCKS_TO_HIDE) Shapes.block() else Shapes.empty()
             }
             if (isGlass(state)) return Shapes.empty()
             return super.getBlockShape(state, level, pos)

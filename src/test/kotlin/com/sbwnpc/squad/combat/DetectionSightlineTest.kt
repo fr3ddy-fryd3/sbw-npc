@@ -40,19 +40,21 @@ class DetectionSightlineTest {
         world.clip(ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, collision)).type == HitResult.Type.MISS
 
     @Test
-    fun `three foliage blocks can be seen through but the fourth conceals the target`() {
+    fun `two foliage blocks can be seen through but the third conceals the target`() {
         for (plant in listOf(Blocks.SHORT_GRASS, Blocks.TALL_GRASS, Blocks.FERN, Blocks.LARGE_FERN)) {
-            assertTrue(seen(terrain(plant, 3)), "three ${plant.name} blocks should be transparent")
-            assertFalse(seen(terrain(plant, 4)), "four ${plant.name} blocks should conceal")
-            assertTrue(colliderClear(terrain(plant, 4)), "grass must not become solid for shots or cover")
+            assertTrue(seen(terrain(plant, 2)), "two ${plant.name} blocks should be transparent")
+            assertFalse(seen(terrain(plant, 3)), "three ${plant.name} blocks should conceal")
+            assertTrue(colliderClear(terrain(plant, 3)), "grass must not become solid for shots or cover")
         }
     }
 
     @Test
     fun `mixed foliage across separate patches shares one budget`() {
-        val plants = listOf(Blocks.SHORT_GRASS, Blocks.TALL_GRASS, Blocks.FERN, Blocks.LARGE_FERN)
-        val world = Terrain(plants.mapIndexed { i, block -> BlockPos(1 + i * 2, 64, 0) to block.defaultBlockState() }.toMap())
+        val plants = listOf(Blocks.SHORT_GRASS, Blocks.TALL_GRASS, Blocks.FERN)
+        val world = Terrain(plants.mapIndexed { i, block -> BlockPos(1 + i * 4, 64, 0) to block.defaultBlockState() }.toMap())
         assertFalse(seen(world))
+        assertFalse(seen(world, to, from))
+        assertTrue(colliderClear(world))
     }
 
     @Test
@@ -65,7 +67,7 @@ class DetectionSightlineTest {
     fun `the upper halves of tall grass and large fern conceal at eye height`() {
         for (plant in listOf(Blocks.TALL_GRASS, Blocks.LARGE_FERN)) {
             val upper = plant.defaultBlockState().setValue(BlockStateProperties.DOUBLE_BLOCK_HALF, DoubleBlockHalf.UPPER)
-            val world = Terrain((1..4).associate { BlockPos(it, 65, 0) to upper })
+            val world = Terrain((1..3).associate { BlockPos(it, 65, 0) to upper })
             assertFalse(seen(world, Vec3(0.5, 65.6, 0.5), Vec3(12.5, 65.6, 0.5)))
         }
     }
@@ -100,10 +102,10 @@ class DetectionSightlineTest {
 
     @Test
     fun `foliage counts are independent for every ray in both directions`() {
-        val world = terrain(Blocks.TALL_GRASS, 4)
+        val world = terrain(Blocks.TALL_GRASS, 3)
         assertFalse(seen(world))
         assertFalse(seen(world, to, from))
-        assertTrue(seen(world, end = Vec3(3.5, 64.5, 0.5)))
-        assertTrue(seen(world, end = Vec3(3.5, 64.5, 0.5)))
+        assertTrue(seen(world, end = Vec3(2.5, 64.5, 0.5)))
+        assertTrue(seen(world, end = Vec3(2.5, 64.5, 0.5)))
     }
 }
