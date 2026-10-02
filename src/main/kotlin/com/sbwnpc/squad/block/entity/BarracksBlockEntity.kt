@@ -105,7 +105,11 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
         // Spawned a block up so a squad doesn't deploy inside the Barracks itself, and facing away
         // from it the way a player's own deploy faces away from them.
         val deployed = SquadDeployment.deploy(level, blockPos.above(), 0f, cfg, owner) ?: return
-        val squad = deployed.squad ?: return
+        // A one-man preset still needs a persistent garrison link. Ordinary single deployment
+        // intentionally makes a loose NPC; without this a barracks spawned another every wave.
+        val squad = deployed.squad ?: mgr.create(level, owner, cfg.faction, deployed.members.map { it.uuid }).also {
+            mgr.setObjective(level, it.id, blockPos.above())
+        }
         mgr.assignBarracks(squad.id, ref(level))
         garrison = squad.id
         setChanged()
