@@ -82,7 +82,8 @@ object SquadMarch {
     private const val CROSSING_LOOKAHEAD = 48
 
     private class March(val goal: BlockPos, val stamp: Int, val origin: BlockPos) {
-        var route: List<BlockPos> = emptyList()
+        val progress = MarchProgress(MAX_ROUTE_NODES)
+        val route get() = progress.route
         var lastUsed = 0L
         // Far enough back that a first leg is due at once, near enough that "now - plannedAt"
         // can't overflow (from Long.MIN_VALUE it came out negative and no leg was ever planned).
@@ -135,7 +136,8 @@ object SquadMarch {
         // search. By distance from whoever asked first, the far side of the formation started
         // searches of its own, and each of them stood still until its own came back.
         val bound = marches.filter { it.goal.closerThan(goal, SAME_GOAL) }
-        val march = bound
+        val march = bound.firstOrNull { it.progress.contains(npc.uuid) && distanceTo(it, npc) <= JOIN * 2 }
+            ?: bound
             .map { it to distanceTo(it, npc) }
             .filter { it.first.route.isNotEmpty() && it.second <= JOIN }
             .minByOrNull { it.second }?.first
@@ -143,14 +145,14 @@ object SquadMarch {
             ?: (if (marches.size < MAX_MARCHES) March(goal, squad.orderStamp, npc.blockPosition()).also { marches += it } else return null)
         march.lastUsed = level.gameTime
         val route = march.route
-        val here = nearestIndex(route, npc)
+        val here = march.progress.index(npc.uuid, npc.position())
         val atEnd = route.isEmpty() || here >= route.size - if (march.long) LONG_END_NODES else END_NODES
         if (atEnd && !march.complete && !march.legsOnly) {
             planLong(level, npc, march, goal, squad.name)
             val planned = march.route
             if (planned.isEmpty()) return if (march.search != null) Waypoint(npc.blockPosition(), null) else null
             if (!march.legsOnly) {
-                val at = nearestIndex(planned, npc)
+                val at = march.progress.index(npc.uuid, npc.position())
                 return Waypoint(planned[(at + LOOKAHEAD).coerceAtMost(planned.size - 1)], formationSpot(level, npc, march, at))
             }
         }
@@ -158,7 +160,7 @@ object SquadMarch {
             plan(level, npc, march, squad.name)
             val planned = march.route
             if (planned.isEmpty()) return null
-            val at = nearestIndex(planned, npc)
+            val at = march.progress.index(npc.uuid, npc.position())
             return Waypoint(planned[(at + LOOKAHEAD).coerceAtMost(planned.size - 1)], formationSpot(level, npc, march, at))
         }
         if (route.isEmpty()) return null
@@ -183,8 +185,9 @@ object SquadMarch {
         // nodes ahead of himself and the rear would never close up.
         val lead = (level.getEntity(squad.members.first()) as? NpcEntity)
             ?.takeIf { it.isAlive && distanceTo(march, it) <= JOIN * 2 }
-        val leadAt = lead?.let { nearestIndex(route, it) } ?: here
-        val a = (leadAt + LOOKAHEAD).coerceAtMost(route.size - 1)
+        val leadAt = lead?.let { march.progress.index(it.uuid, it.position()) } ?: here
+        // Close up to the lead when behind it, but never turn back for a straggling lead.
+        val a = (maxOf(leadAt, here) + LOOKAHEAD).coerceAtMost(route.size - 1)
         val anchor = route[a]
         val back = route[(a - HEADING_NODES).coerceAtLeast(0)]
         val dx = (anchor.x - back.x).toDouble()
@@ -211,13 +214,12 @@ object SquadMarch {
     fun crossingAhead(npc: NpcEntity): Crossing? {
         val level = npc.level() as? ServerLevel ?: return null
         val squad = npc.currentSquad() ?: return null
-        val march = bySquad[squad.id]
-            ?.filter { it.stamp == squad.orderStamp && it.route.isNotEmpty() }
-            ?.map { it to distanceTo(it, npc) }
-            ?.filter { it.second <= JOIN }
-            ?.minByOrNull { it.second }?.first ?: return null
+        val marches = bySquad[squad.id]?.filter { it.stamp == squad.orderStamp && it.route.isNotEmpty() } ?: return null
+        val march = marches.firstOrNull { it.progress.contains(npc.uuid) && distanceTo(it, npc) <= JOIN * 2 }
+            ?: marches.map { it to distanceTo(it, npc) }.filter { it.second <= JOIN }.minByOrNull { it.second }?.first
+            ?: return null
         val route = march.route
-        val from = nearestIndex(route, npc)
+        val from = march.progress.index(npc.uuid, npc.position())
         var start = -1
         for (i in from until route.size) {
             val wet = level.getFluidState(route[i]).`is`(net.minecraft.tags.FluidTags.WATER)
@@ -236,20 +238,7 @@ object SquadMarch {
     /** How far [npc] is from [march]'s route — or, before it has one, from where it starts. */
     private fun distanceTo(march: March, npc: NpcEntity): Double {
         if (march.route.isEmpty()) return Math.sqrt(march.origin.distToCenterSqr(npc.x, npc.y, npc.z))
-        return Math.sqrt(march.route[nearestIndex(march.route, npc)].distToCenterSqr(npc.x, npc.y, npc.z))
-    }
-
-    private fun nearestIndex(route: List<BlockPos>, npc: NpcEntity): Int {
-        var best = 0
-        var bestSqr = Double.MAX_VALUE
-        for (i in route.indices) {
-            val d = route[i].distToCenterSqr(npc.x, npc.y, npc.z)
-            if (d <= bestSqr) {
-                best = i
-                bestSqr = d
-            }
-        }
-        return best
+        return Math.sqrt(march.route[march.progress.index(npc.uuid, npc.position(), remember = false)].distToCenterSqr(npc.x, npc.y, npc.z))
     }
 
     /**
@@ -264,45 +253,51 @@ object SquadMarch {
         // searches in a big fight were one done already, and the rest of the squads stood waiting
         // their turn behind them.
         if (march.search == null) {
+            if (level.gameTime - march.plannedAt < MIN_REPLAN_TICKS) return
+            march.plannedAt = level.gameTime
             val dimension = level.dimension().location().toString()
             found.removeIf { level.gameTime - it.at > REUSE_TICKS }
             found.firstOrNull {
+                march.route.isEmpty() &&
                 it.dimension == dimension && it.from.closerThan(npc.blockPosition(), JOIN) && it.goal.closerThan(goal, SAME_GOAL)
             }?.let {
-                march.route = (march.route + it.trail).takeLast(MAX_ROUTE_NODES)
+                march.progress.append(it.trail)
                 march.complete = it.complete
                 march.long = true
                 DebugFlags.log(LogGroup.MARCH, "{} takes the way found from {} to {} ({} nodes)", squadName, it.from, it.goal, it.trail.size)
                 return
             }
         }
-        val search = march.search ?: CellPlanner.search(Walking(level), npc.position(), Vec3.atBottomCenterOf(goal))
+        val from = march.route.lastOrNull()?.let(Vec3::atBottomCenterOf) ?: npc.position()
+        val search = march.search ?: CellPlanner.search(Walking(level), from, Vec3.atBottomCenterOf(goal))
             ?.also {
                 march.search = it
                 march.searchStarted = level.gameTime
             }
         if (search == null) {
-            march.legsOnly = true
-            DebugFlags.log(LogGroup.MARCH, "{} no long route from {} (not on known open ground), planning in legs", squadName, npc.blockPosition())
+            march.legsOnly = march.route.isEmpty()
+            DebugFlags.log(LogGroup.MARCH, "{} no long route from {} (not on known open ground), {}", squadName, BlockPos.containing(from),
+                if (march.legsOnly) "planning in legs" else "waiting for the frontier to load")
             return
         }
         if (!PlanBudget.advance(level, search)) return
         march.search = null
         val found = search.result()
         if (found == null || found.trail.size < 2) {
-            march.legsOnly = true
-            DebugFlags.log(LogGroup.MARCH, "{} no long route from {} to {} ({}), planning in legs", squadName, npc.blockPosition(), goal, search.stoppedBy)
+            march.legsOnly = march.route.isEmpty()
+            DebugFlags.log(LogGroup.MARCH, "{} no long route from {} to {} ({}), {}", squadName, BlockPos.containing(from), goal, search.stoppedBy,
+                if (march.legsOnly) "planning in legs" else "keeping the previous route")
             return
         }
         val trail = found.trail.map { BlockPos.containing(it) }
-        march.route = (march.route + trail).takeLast(MAX_ROUTE_NODES)
+        march.progress.append(trail)
         march.complete = found.complete
         if (this.found.size >= MAX_REMEMBERED) this.found.removeAt(0)
         this.found += Found(level.dimension().location().toString(), trail.first(), goal, trail, found.complete, level.gameTime)
         march.long = true
         DebugFlags.log(LogGroup.MARCH,
             "{} long route from {} to {}: {} nodes, {} blocks, ends {} {} from the goal ({}; {} units over {} ticks)",
-            squadName, npc.blockPosition(), goal, found.trail.size, found.length.toInt(), BlockPos.containing(found.landing),
+            squadName, trail.first(), goal, found.trail.size, found.length.toInt(), BlockPos.containing(found.landing),
             Math.hypot(found.landing.x - goal.x - 0.5, found.landing.z - goal.z - 0.5).toInt(), search.stoppedBy,
             search.expanded, level.gameTime - march.searchStarted + 1
         )
@@ -339,7 +334,7 @@ object SquadMarch {
         val reached = path?.canReach() == true
         if (progressed) {
             // Added on, not swapped in: the men still behind on the last leg keep their way.
-            march.route = (march.route + route).takeLast(MAX_ROUTE_NODES)
+            march.progress.append(route)
             march.failures = 0
             // Done once a straight leg found its way right to the goal; from there the ordinary
             // search takes each man to his own place.

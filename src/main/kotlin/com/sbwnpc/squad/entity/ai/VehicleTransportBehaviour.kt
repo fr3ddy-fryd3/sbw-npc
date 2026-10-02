@@ -46,7 +46,7 @@ import net.tslat.smartbrainlib.util.BrainUtils
  *    can't climb or fit through, and ending where the crew is better off walking on — at the goal,
  *    or at the foot of a climb. A blind reverse-and-turn recovery still kicks in if progress
  *    stalls anyway, and the way is searched again after it; the driver gives up and dismounts to
- *    walk if that doesn't clear it within a hard cap either. Where no long route is found it
+ *    walk if it keeps revisiting the same ground for a minute. Where no long route is found it
  *    falls back on short routes from the driver's own pathfinder.
  *  - RIDING (passenger only): just waiting for the vehicle to arrive; dismounts itself once close
  *    enough, independently of the driver.
@@ -87,7 +87,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     // Route the driver follows instead of a straight line to home — see class doc comment.
     private var route: List<BlockPos> = emptyList()
-    private var routeIndex = 0
+    private val groundRouteProgress = GroundRouteProgress()
+    private val groundTravelProgress = GroundTravelProgress()
     private var nextRouteTick = 0
     private var lastRouteSearchTick = Int.MIN_VALUE / 2
 
@@ -600,6 +601,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             lastStuckCheckPos = null
             recoveryUntilTick = 0
             allyBlockedSince = -1
+            groundTravelProgress.reset(entity.tickCount, vehicle.position())
             phase = Phase.DRIVING
         }
     }
@@ -638,11 +640,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             return
         }
 
-        // Hard cap: recovery below isn't guaranteed to work (e.g. genuinely boxed in) — give up and
-        // let the driver walk the rest rather than sit there forever retrying. A boat's voyage can
-        // run to several minutes: it gives up only once it has stopped getting anywhere.
+        // Distance, rather than time aboard: long marches and terrain detours can take minutes.
+        // Fresh ground counts, but repeated reversals over the same patch do not.
+        if (!isBoat(vehicle)) groundTravelProgress.observe(entity.tickCount, vehicle.position())
         val givenUp = if (isBoat(vehicle)) entity.tickCount - boatProgressTick > BOAT_NO_PROGRESS_TICKS
-            else entity.tickCount - boardTick > MAX_TRANSIT_TICKS
+            else groundTravelProgress.stalled(entity.tickCount)
         if (givenUp) {
             if (isPermanentCrew(entity, vehicle)) {
                 holdVehicle(vehicle)
@@ -725,7 +727,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         val waypoint = if (driveLegsOnly) currentWaypoint(entity, home) else driveWaypoint(entity, vehicle, home)
         // No way yet: the first search takes a moment. Wait for it rather than set off wrong.
-        if (waypoint == null) stopVehicle(vehicle) else steerToward(vehicle, aroundTrees(entity, vehicle, waypoint))
+        if (waypoint == null) holdVehicle(vehicle) else steerToward(vehicle, aroundTrees(entity, vehicle, waypoint))
     }
 
     /**
@@ -907,10 +909,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         val home = resolveTripDestination(entity) ?: return
         if (vehicle.position().distanceTo(home) > ARRIVAL_RADIUS) {
             route = emptyList()
-            routeIndex = 0
+            groundRouteProgress.reset(emptyList(), vehicle.position())
             nextRouteTick = entity.tickCount
             lastStuckCheckTick = entity.tickCount
             lastStuckCheckPos = null
+            groundTravelProgress.reset(entity.tickCount, vehicle.position())
             phase = Phase.DRIVING
         }
     }
@@ -920,6 +923,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         driveRouteComplete = true
         driveSearch = null
         driveLegsOnly = false
+        groundRouteProgress.reset(emptyList(), Vec3.ZERO)
     }
 
     /**
@@ -939,6 +943,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 DebugFlags.log(LogGroup.VEHICLE, "{} no long route for {} from {} (not on known open ground), short routes instead",
                     entity.uuid, vehicle.uuid, vehicle.blockPosition())
                 driveLegsOnly = true
+                nextRouteTick = entity.tickCount
+                VehicleTransportClaims.clearLanding(vehicle.uuid)
                 return currentWaypoint(entity, home)
             }
         }
@@ -951,10 +957,12 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                     DebugFlags.log(LogGroup.VEHICLE, "{} no long route for {} to {} ({}), short routes instead",
                         entity.uuid, vehicle.uuid, BlockPos.containing(home), search.stoppedBy)
                     driveLegsOnly = true
+                    nextRouteTick = entity.tickCount
+                    VehicleTransportClaims.clearLanding(vehicle.uuid)
                     return currentWaypoint(entity, home)
                 }
                 driveRoute = found.route
-                routeIndex = 0
+                groundRouteProgress.reset(driveRoute, vehicle.position())
                 driveRouteComplete = found.complete
                 if (found.complete) VehicleTransportClaims.setLanding(vehicle.uuid, found.landing)
                 else VehicleTransportClaims.clearLanding(vehicle.uuid)
@@ -968,11 +976,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 return null
             }
         }
-        var target = driveRoute[routeIndex.coerceIn(driveRoute.indices)]
-        while (routeIndex < driveRoute.size - 1 && horizontalDistance(vehicle.position(), target) < WAYPOINT_RADIUS) {
-            routeIndex++
-            target = driveRoute[routeIndex]
-        }
+        val target = groundRouteProgress.waypoint(vehicle.position(), WAYPOINT_RADIUS)
         // Nearing the end of a way that runs on into ground not yet seen: the next stretch.
         if (!driveRouteComplete && driveSearch == null && entity.tickCount >= driveLookAheadTick &&
             horizontalDistance(vehicle.position(), driveRoute.last()) < DRIVE_LOOKAHEAD
@@ -980,6 +984,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             driveLookAheadTick = entity.tickCount + BOAT_LOOKAHEAD_RETRY_TICKS
             nextRouteTick = entity.tickCount
         }
+        // Wait at an unfinished frontier instead of steering back at a point already passed.
+        if (!driveRouteComplete && groundRouteProgress.finished(vehicle.position(), GROUND_EXIT_RADIUS)) return null
         return target
     }
 
@@ -988,7 +994,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  current route short of home — see below — via [nextRouteTick] being force-reset). Falls back to
      *  an empty route (steer straight at [home]) if the pathfinder can't find anything, rather than
      *  getting stuck on a route that no longer exists. */
-    private fun currentWaypoint(entity: NpcEntity, home: Vec3): Vec3 {
+    private fun currentWaypoint(entity: NpcEntity, home: Vec3): Vec3? {
         // A failed search is still a search: retry only when due, not every tick on an empty path.
         val vehicle = entity.vehicle
         if (entity.tickCount >= nextRouteTick && vehicle != null) {
@@ -1000,7 +1006,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
             if (path != null) {
                 route = (0 until path.nodeCount).map { path.getNodePos(it) }
-                routeIndex = 0
+                groundRouteProgress.reset(route.map { VehicleRoutes.centreOf(it, vehicle) }, vehicle.position())
                 DebugFlags.log(LogGroup.VEHICLE,
                     "{} recomputed route: {} nodes, canReach={}, dist-to-home={}",
                     entity.uuid, route.size, path.canReach(), entity.position().distanceTo(home)
@@ -1009,11 +1015,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         if (route.isEmpty() || vehicle == null) return home
 
-        var target = VehicleRoutes.centreOf(route[routeIndex.coerceIn(route.indices)], vehicle)
-        while (routeIndex < route.size - 1 && entity.position().distanceTo(target) < WAYPOINT_RADIUS) {
-            routeIndex++
-            target = VehicleRoutes.centreOf(route[routeIndex], vehicle)
-        }
+        val target = groundRouteProgress.waypoint(vehicle.position(), WAYPOINT_RADIUS)
 
         // Vanilla pathfinding caps how far it will search at the mob's own FOLLOW_RANGE attribute
         // (confirmed in PathNavigation.createPath: search region sized to followRange+8, followRange
@@ -1025,9 +1027,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // overshooting and turning back onto it every tick — i.e. circling in place right where the
         // route ran out. Schedule another partial route, with a minimum 10 ticks between searches
         // so a one-node path cannot create an A* retry loop.
-        if (routeIndex == route.size - 1 && entity.position().distanceTo(target) < WAYPOINT_RADIUS) {
+        if (groundRouteProgress.finished(vehicle.position(), GROUND_EXIT_RADIUS)) {
             // Degenerate/one-node partial paths must not trigger A* every tick either.
             nextRouteTick = maxOf(entity.tickCount, lastRouteSearchTick + 10)
+            return null
         }
         return target
     }
@@ -1043,8 +1046,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /** Passenger only: no driving of its own — just watches for the vehicle actually getting close
      *  enough and dismounts itself, independently of what the driver's own instance is doing. Also
-     *  bails out on the same hard cap as the driver, in case the driver gave up (or died) and left
-     *  the vehicle stranded with nobody driving it. */
+     *  leaves a stopped vehicle if the driver gave up or died. */
     private fun tickRiding(entity: NpcEntity) {
         val vehicle = mountOrAbort(entity) ?: return
         if (reactToVehicleFire(entity, vehicle) || engageVehicleThreat(entity, vehicle)) {
@@ -1052,8 +1054,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             return
         }
         if (isBoat(vehicle)) workBoatGun(entity, vehicle)
-        // Nobody at the wheel and going nowhere: the driver got off, or never came. Waiting in it
-        // only ends when the trip's time runs out.
+        // Nobody at the wheel and going nowhere: the driver got off, or never came.
         if (!isPermanentCrew(entity, vehicle) && Ports.vehicles.seating(vehicle).firstOrNull() == null &&
             vehicle.deltaMovement.horizontalDistance() <= BOAT_RESTING_SPEED
         ) {
@@ -1070,11 +1071,6 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (arrived(entity, vehicle, home)) {
             waitToStopThenDismount(entity, vehicle, isDriver = false)
             return
-        }
-        // Not on a boat: out on the water that's a swim. A boat whose driver gives up leaves them
-        // with nobody at the wheel, and that gets them off (above).
-        if (!isBoat(vehicle) && entity.tickCount - boardTick > MAX_TRANSIT_TICKS) {
-            waitToStopThenDismount(entity, vehicle, isDriver = false)
         }
     }
 
@@ -1179,9 +1175,14 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (destination != tripDestination) {
             tripDestination = destination
             route = emptyList()
-            routeIndex = 0
             nextRouteTick = entity.tickCount
             resetDriveRoute()
+            entity.vehicle?.let { vehicle ->
+                if (VehicleTransportClaims.driverOf(vehicle.uuid) == entity.uuid) {
+                    VehicleTransportClaims.clearLanding(vehicle.uuid)
+                    groundTravelProgress.reset(entity.tickCount, vehicle.position())
+                }
+            }
         }
         return tripDestination
     }
@@ -1469,7 +1470,6 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         /** Turned more than this in that window — a tank turning on the spot — isn't stuck. */
         private const val STUCK_TURN_DEGREES = 20f
         private const val RECOVERY_TICKS = 30 // ~1.5s reverse-and-turn before retrying
-        private const val MAX_TRANSIT_TICKS = 2400 // ~2 min hard cap before giving up and walking
         private const val ROUTE_RECOMPUTE_TICKS = 100 // 5s between route refreshes
         // Deliberately much larger than SquadOrderBehaviour's walking-mob waypoint radius (3 blocks) —
         // a walking mob can turn on the spot, a vehicle cannot. A waypoint inside the vehicle's own
