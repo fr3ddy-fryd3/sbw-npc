@@ -25,4 +25,17 @@ class VehicleRoutesTest {
         assertTrue(VehicleRoutes.leadsOn(from, from.add(0.0, 0.0, 40.0), goal, true))
         assertFalse(VehicleRoutes.leadsOn(from, from.add(0.0, 0.0, 40.0), goal, false))
     }
+
+    @Test
+    fun `hull start and target use the same corner coordinates as path waypoints`() {
+        // Recorded moving/blocked BMP positions; positive and negative axes both matter.
+        for (position in listOf(Vec3(437.572979, 126.0, -1999.817381),
+                Vec3(560.276018, 132.470832, -2011.050342), Vec3(-560.27, 64.5, 2011.05))) {
+            val node = VehicleRoutes.cornerOf(position, 3.6f)
+            val centre = VehicleRoutes.centreOf(node, 3.6f)
+            assertTrue(kotlin.math.abs(centre.x - position.x) < 1.0)
+            assertTrue(kotlin.math.abs(centre.z - position.z) < 1.0)
+            assertTrue(kotlin.math.abs(centre.y - position.y) <= 0.5)
+        }
+    }
 }

@@ -20,6 +20,20 @@ internal class GroundRouteProgress {
         project(position, route.size - 1)
     }
 
+    /** Refreshes must lead somewhere from the current position. A one-node or already-passed
+     *  answer leaves a usable route intact instead of repeatedly stopping its traveller. */
+    fun replaceIfAdvancing(route: List<Vec3>, position: Vec3, radius: Double): Boolean {
+        if (route.size < 2) return false
+        val replacement = GroundRouteProgress()
+        replacement.reset(route, position)
+        if (replacement.finished(position, radius)) return false
+        this.route = replacement.route
+        distances = replacement.distances
+        leg = replacement.leg
+        along = replacement.along
+        return true
+    }
+
     fun waypoint(position: Vec3, lookAhead: Double): Vec3? {
         if (route.isEmpty()) return null
         project(position, minOf(route.size - 1, leg + 4))

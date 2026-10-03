@@ -41,10 +41,7 @@ object VehicleRoutes {
      *  which is not evidence of an impassable route. */
     class SearchResult(val path: Path?)
 
-    /** A route for [vehicle] driven by [driver] toward [home] as vehicle-centre points, or null
-     *  when no search could run this tick or none was found. */
-    fun plan(driver: NpcEntity, vehicle: Entity, home: Vec3): Path? = tryPlan(driver, vehicle, home)?.path
-
+    /** Searches a hull-sized leg from [vehicle] toward [home], deferred if no search can run yet. */
     fun tryPlan(driver: NpcEntity, vehicle: Entity, home: Vec3): SearchResult? {
         val level = driver.level() as? ServerLevel ?: return null
         if (lastPlanTick == level.gameTime) return null
@@ -66,8 +63,9 @@ object VehicleRoutes {
             // even if a search fails. Floating nodes stay at the surface rather than the bottom.
             driver.setPathfindingMalus(PathType.WATER, if (amphibious) 1f else -1f)
             if (amphibious) driver.setPathfindingMalus(PathType.WATER_BORDER, 0f)
+            val targetCorner = cornerOf(Vec3(target.x + 0.5, target.y.toDouble(), target.z + 0.5), vehicle.bbWidth)
             return SearchResult(PathFinder(HullEvaluator(vehicle, width, height, amphibious), NODES)
-                .findPath(region, driver, setOf(target), SEARCH_RANGE, LEG_REACH, 1f))
+                .findPath(region, driver, setOf(targetCorner), SEARCH_RANGE, LEG_REACH, 1f))
         } finally {
             if (previousStep != null) stepHeight.baseValue = previousStep
             driver.setPathfindingMalus(PathType.WATER, waterCost)
@@ -85,8 +83,19 @@ object VehicleRoutes {
 
     /** Nodes are the hull's lowest corner; this is where its middle is. */
     fun centreOf(node: BlockPos, vehicle: Entity): Vec3 {
-        val half = Math.ceil(vehicle.bbWidth.toDouble()) / 2.0
+        return centreOf(node, vehicle.bbWidth)
+    }
+
+    internal fun centreOf(node: BlockPos, width: Float): Vec3 {
+        val half = Math.ceil(width.toDouble()) / 2.0
         return Vec3(node.x + half, node.y.toDouble(), node.z + half)
+    }
+
+    /** The whole search uses minimum-corner nodes; both the start and goal are hull centres. */
+    internal fun cornerOf(position: Vec3, width: Float): BlockPos {
+        val half = Math.ceil(width.toDouble()) / 2.0
+        return BlockPos(kotlin.math.floor(position.x - half).toInt(),
+            kotlin.math.floor(position.y + 0.5).toInt(), kotlin.math.floor(position.z - half).toInt())
     }
 
     private fun legToward(level: ServerLevel, from: Vec3, home: Vec3): BlockPos? {
@@ -125,13 +134,19 @@ object VehicleRoutes {
 
         override fun getStart(): Node {
             val level = vehicle.level() as? ServerLevel
-            if (!amphibious || !vehicle.isInWater || level == null) return super.getStart()
-            // The driver's seat can be dry above a floating hull: use the hull's waterline.
-            return getStartNode(BlockPos(
-                kotlin.math.floor(vehicle.x - width / 2.0).toInt(),
-                GroundMap.height(level, vehicle.blockX, vehicle.blockZ),
-                kotlin.math.floor(vehicle.z - width / 2.0).toInt()
-            ))
+            var at = cornerOf(vehicle.position(), vehicle.bbWidth)
+            if (amphibious && vehicle.isInWater && level != null) {
+                at = BlockPos(at.x, GroundMap.height(level, vehicle.blockX, vehicle.blockZ), at.z)
+                return getStartNode(at)
+            }
+            // A seated NPC's coordinates describe the turret, and its tiny box is no basis for
+            // the start of a four-block hull. The native evaluator then searched a box shifted
+            // two blocks uphill, often buried in the slope, and returned only that blocked node.
+            for (dy in 0..Math.ceil(vehicle.maxUpStep().toDouble()).toInt()) {
+                val candidate = at.above(dy)
+                if (canStartAt(candidate)) return getStartNode(candidate)
+            }
+            return getStartNode(at)
         }
 
         override fun getPathTypeOfMob(context: PathfindingContext, x: Int, y: Int, z: Int, mob: Mob): PathType {

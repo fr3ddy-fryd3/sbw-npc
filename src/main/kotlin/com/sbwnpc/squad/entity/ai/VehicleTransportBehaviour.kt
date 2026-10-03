@@ -1050,29 +1050,30 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /** (Re)computes a route to [home] with the driver's own pathfinder, throttled to once every
      *  [ROUTE_RECOMPUTE_TICKS] (or immediately after a stuck-recovery episode, or after exhausting the
-     *  current route short of home — see below — via [nextRouteTick] being force-reset). Falls back to
-     *  an empty route (steer straight at [home]) if the pathfinder can't find anything, rather than
-     *  getting stuck on a route that no longer exists. */
+     *  current route short of home via [nextRouteTick]). A failed or one-node refresh keeps the
+     *  current route. With no usable route, the driver holds while retrying. */
     private fun currentWaypoint(entity: NpcEntity, home: Vec3): Vec3? {
         // A failed search is still a search: retry only when due, not every tick on an empty path.
         val vehicle = entity.vehicle
         if (entity.tickCount >= nextRouteTick && vehicle != null) {
-            // Sized to the hull (VehicleRoutes); null means another vehicle had this tick's search.
-            val path = VehicleRoutes.plan(entity, vehicle, home)
-            if (path != null || route.isEmpty()) {
+            // A deferred search says nothing about the current route's usability.
+            val checked = VehicleRoutes.tryPlan(entity, vehicle, home)
+            if (checked != null) {
+                val path = checked.path
+                val proposed = path?.let { (0 until it.nodeCount).map { i -> it.getNodePos(i) } } ?: emptyList()
+                val accepted = groundRouteProgress.replaceIfAdvancing(
+                    proposed.map { VehicleRoutes.centreOf(it, vehicle) }, vehicle.position(), GROUND_EXIT_RADIUS)
                 lastRouteSearchTick = entity.tickCount
-                nextRouteTick = entity.tickCount + if (path != null) ROUTE_RECOMPUTE_TICKS else 1
-            }
-            if (path != null) {
-                route = (0 until path.nodeCount).map { path.getNodePos(it) }
-                groundRouteProgress.reset(route.map { VehicleRoutes.centreOf(it, vehicle) }, vehicle.position())
+                nextRouteTick = entity.tickCount + if (accepted) ROUTE_RECOMPUTE_TICKS else ROUTE_RETRY_TICKS
+                if (accepted) route = proposed
                 DebugFlags.log(LogGroup.VEHICLE,
-                    "{} recomputed route: {} nodes, canReach={}, dist-to-home={}",
-                    entity.uuid, route.size, path.canReach(), entity.position().distanceTo(home)
+                    "{} route refresh for {}: {} nodes, canReach={}, accepted={}, kept={} nodes, start={}, end={}, dist-to-home={}",
+                    entity.uuid, vehicle.uuid, proposed.size, path?.canReach(), accepted, route.size,
+                    proposed.firstOrNull(), proposed.lastOrNull(), vehicle.position().distanceTo(home)
                 )
             }
         }
-        if (route.isEmpty() || vehicle == null) return home
+        if (route.isEmpty() || vehicle == null) return null
 
         val target = groundRouteProgress.waypoint(vehicle.position(), WAYPOINT_RADIUS)
 
@@ -1081,14 +1082,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // itself passed as the pathfinder's own max distance) — 72 blocks for NpcEntity, well short of
         // the 100+ block trips this behaviour triggers for. A route to a distant home is therefore
         // routinely a PARTIAL one that stops well short of the actual target. Reaching the LAST node of
-        // such a route isn't arrival: without forcing an immediate recompute here, the vehicle would
-        // keep steering at that same now-passed dead-end point for up to ROUTE_RECOMPUTE_TICKS (5s),
-        // overshooting and turning back onto it every tick — i.e. circling in place right where the
-        // route ran out. Schedule another partial route, with a minimum 10 ticks between searches
-        // so a one-node path cannot create an A* retry loop.
+        // such a route schedules its next leg rather than turning back onto a passed point.
         if (groundRouteProgress.finished(vehicle.position(), GROUND_EXIT_RADIUS)) {
             // Degenerate/one-node partial paths must not trigger A* every tick either.
-            nextRouteTick = maxOf(entity.tickCount, lastRouteSearchTick + 10)
+            nextRouteTick = maxOf(entity.tickCount, lastRouteSearchTick + ROUTE_RETRY_TICKS)
             return null
         }
         return target
@@ -1532,6 +1529,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val STUCK_TURN_DEGREES = 20f
         private const val RECOVERY_TICKS = 30 // ~1.5s reverse-and-turn before retrying
         private const val ROUTE_RECOMPUTE_TICKS = 100 // 5s between route refreshes
+        private const val ROUTE_RETRY_TICKS = 20 // failed refreshes retry once a second
         // Deliberately much larger than SquadOrderBehaviour's walking-mob waypoint radius (3 blocks) —
         // a walking mob can turn on the spot, a vehicle cannot. A waypoint inside the vehicle's own
         // minimum turning radius is physically unpointable at: the vehicle just orbits that spot,
