@@ -61,8 +61,8 @@ import java.awt.geom.Point2D
  * - "Draw patrol route" in that menu turns clicks into route points: left-click adds one (a drag
  *   still pans the map), Backspace takes the last one back, right-click or Enter sends the route
  *   and the selected infantry patrol it, Esc drops it.
- * - Each of your squads' objectives is also a JourneyMap waypoint — on the minimap and in the
- *   world with its distance — kept only for the session.
+ * - Each owned squad's objective is also a JourneyMap waypoint on the minimap. Only objectives
+ *   matching the player's faction appear in the world with their distance, kept for the session.
  *
  * Only ever loaded by JourneyMap itself, so nothing else in the mod may refer to this class.
  */
@@ -275,6 +275,9 @@ class SquadMapPlugin : IClientPlugin {
             list(feed, "Squads").size, list(feed, "Loose").size, list(feed, "Vehicles").size, list(feed, "Enemies").size
         )
         val dim = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(feed.getString("Dim")))
+        val playerFaction = if (feed.contains("DefaultFaction", Tag.TAG_INT.toInt())) {
+            SquadFaction.entries.getOrNull(feed.getInt("DefaultFaction"))
+        } else com.sbwnpc.squad.client.FactionBanner.faction
         val objectives = HashMap<String, ObjectiveMark>()
 
         for (t in list(feed, "Squads")) {
@@ -320,7 +323,10 @@ class SquadMapPlugin : IClientPlugin {
             }
 
             t.getIntArray("Obj").takeIf { it.size == 3 }?.let { obj ->
-                if (own) objectives[id] = ObjectiveMark("$name: ${order?.name?.lowercase() ?: "?"}", BlockPos(obj[0], obj[1], obj[2]), color)
+                if (own) objectives[id] = ObjectiveMark(
+                    "$name: ${order?.name?.lowercase() ?: "?"}", BlockPos(obj[0], obj[1], obj[2]), color,
+                    showInWorld = faction == playerFaction
+                )
                 val center = BlockPos(obj[0], 0, obj[2])
                 val zone = t.getInt("Zone")
                 if (zone > 0) show(outline(dim, circle(center, zone), color, fill = 0.12f))
@@ -362,7 +368,7 @@ class SquadMapPlugin : IClientPlugin {
 
     // --- Objective waypoints ---
 
-    private data class ObjectiveMark(val name: String, val pos: BlockPos, val color: Int)
+    private data class ObjectiveMark(val name: String, val pos: BlockPos, val color: Int, val showInWorld: Boolean)
     private val waypoints = HashMap<String, kotlin.Pair<ObjectiveMark, Waypoint>>()
     /** Cleared out of JourneyMap since joining this world. */
     private var staleWaypointsCleared = false
@@ -394,6 +400,8 @@ class SquadMapPlugin : IClientPlugin {
                 val wp = WaypointFactory.createClientWaypoint(modId, mark.pos, mark.name, dim, false)
                 wp.setColor(mark.color)
                 wp.setShowBeacon(false)
+                wp.setShowOnMap(true)
+                wp.setShowInWorld(mark.showInWorld)
                 api.addWaypoint(modId, wp)
                 waypoints[id] = mark to wp
             }.onFailure { SquadMod.LOGGER.warn("JourneyMap refused a waypoint: {}", it.toString()) }

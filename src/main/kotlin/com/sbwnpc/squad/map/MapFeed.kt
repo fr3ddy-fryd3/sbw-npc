@@ -62,6 +62,7 @@ object MapFeed {
         val sides = Diplomacy.alliesOf(faction)
         val tag = CompoundTag()
         tag.putString("Dim", level.dimension().location().toString())
+        tag.putInt("DefaultFaction", faction.ordinal)
 
         val squads = SquadManager.get(server)
         val routes = RouteManager.get(server)
