@@ -1,6 +1,5 @@
 package com.sbwnpc.squad.client
 
-import net.minecraft.ChatFormatting
 import net.minecraft.client.Minecraft
 import net.neoforged.api.distmarker.Dist
 import net.neoforged.bus.api.SubscribeEvent
@@ -52,8 +51,8 @@ object HudClientEvents {
                 // but unnumbered, and commanded from the squad screen instead.
                 val keyed = HudOverlayState.rows.take(HudOverlayState.SLOT_COUNT)
                 val rest = HudOverlayState.rows.drop(HudOverlayState.SLOT_COUNT)
-                lines = keyed.mapIndexed { i, row -> "${i + 1}. ${label(row)}" to argb(row.faction.accentColor) } +
-                    rest.map { row -> "   ${label(row)}" to argb(row.faction.accentColor) } +
+                lines = keyed.mapIndexed { i, row -> "${i + 1}. ${label(row)}" to argb(row.faction.rgb) } +
+                    rest.map { row -> "   ${label(row)}" to argb(row.faction.rgb) } +
                     listOf("[0] Order ALL" to 0xAAAAAA)
             }
             HudOverlayState.Mode.ORDERS -> {
@@ -76,5 +75,5 @@ object HudClientEvents {
 
     private fun label(row: HudOverlayState.Row) = "${row.name} (${row.members}) [${row.faction.label}]"
 
-    private fun argb(color: ChatFormatting): Int = 0xFF000000.toInt() or (color.color ?: 0xFFFFFF)
+    private fun argb(color: Int): Int = 0xFF000000.toInt() or color
 }

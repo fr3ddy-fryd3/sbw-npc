@@ -82,11 +82,11 @@ class DiplomacyScreen(snapshot: CompoundTag) : Screen(Component.literal("Diploma
     override fun render(g: GuiGraphics, mouseX: Int, mouseY: Int, partial: Float) {
         super.render(g, mouseX, mouseY, partial)
         val header = if (own == null) Component.literal("Pick a faction first")
-            else Component.literal("Diplomacy — ").append(Component.literal(own.label).withStyle(own.accentColor))
+            else Component.literal("Diplomacy — ").append(Component.literal(own.label).withStyle(own.accentStyle))
         g.drawCenteredString(font, header, width / 2, top, 0xFFFFFF)
         var y = top + 20
         for (row in rows) {
-            g.drawString(font, Component.literal(row.faction.label).withStyle(row.faction.accentColor), left, y + 6, -1)
+            g.drawString(font, Component.literal(row.faction.label).withStyle(row.faction.accentStyle), left, y + 6, -1)
             g.drawString(font, statusText(row), left + 90, y + 6, -1)
             y += ROW_HEIGHT
         }

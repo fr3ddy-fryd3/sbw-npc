@@ -31,7 +31,7 @@ class ChooseFactionScreen : Screen(Component.literal("Choose Your Faction")) {
             val col = i % cols
             val row = i / cols
             addRenderableWidget(
-                Button.builder(Component.literal(faction.label).withStyle(faction.accentColor)) {
+                Button.builder(Component.literal(faction.label).withStyle(faction.accentStyle)) {
                     PacketDistributor.sendToServer(ChooseFactionPayload(faction.ordinal))
                     onClose()
                 }.bounds(startX + col * (btnW + gapX), startY + row * (btnH + gapY), btnW, btnH).build()

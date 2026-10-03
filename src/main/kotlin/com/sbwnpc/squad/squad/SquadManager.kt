@@ -146,7 +146,7 @@ class SquadManager : SavedData() {
 
     private fun spawnObjectiveMarker(level: ServerLevel, squad: Squad, pos: BlockPos) {
         val owner = level.server.playerList.getPlayer(squad.owner) ?: return
-        val color = Vec3.fromRGB24(squad.faction.accentColor.color ?: 0xFFFFFF).toVector3f()
+        val color = Vec3.fromRGB24(squad.faction.rgb).toVector3f()
         val options = DustParticleOptions(color, 1.5f)
         val center = pos.center
         level.sendParticles(owner, options, true, center.x, center.y + 0.6, center.z, 40, 0.3, 0.7, 0.3, 0.02)

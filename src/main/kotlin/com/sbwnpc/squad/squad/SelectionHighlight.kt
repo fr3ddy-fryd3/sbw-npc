@@ -32,7 +32,7 @@ object SelectionHighlight {
             val members = SquadSelection.looseOf(player.uuid)
             for (id in members) {
                 val npc = level.getEntity(id) as? NpcEntity ?: continue
-                val color = SquadTeams.factionOf(npc)?.accentColor?.color ?: 0xFFFFFF
+                val color = SquadTeams.factionOf(npc)?.rgb ?: 0xFFFFFF
                 val options = DustParticleOptions(Vec3.fromRGB24(color).toVector3f(), 1.0f)
                 level.sendParticles(
                     player, options, true,

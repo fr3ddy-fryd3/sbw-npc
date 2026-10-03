@@ -57,7 +57,7 @@ object SquadReports {
         if (last != null && now - last < kind.quietTicks) return
         lastSent[key] = now
         owner.sendSystemMessage(
-            Component.literal("[${squad.name}] ").withStyle(squad.faction.accentColor)
+            Component.literal("[${squad.name}] ").withStyle(squad.faction.accentStyle)
                 .append(Component.literal(text).withStyle(kind.color))
         )
     }

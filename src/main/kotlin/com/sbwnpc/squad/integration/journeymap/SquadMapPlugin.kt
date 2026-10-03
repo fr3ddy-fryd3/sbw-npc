@@ -499,7 +499,7 @@ class SquadMapPlugin : IClientPlugin {
 
     private fun pos(t: CompoundTag) = BlockPos(t.getInt("X"), 0, t.getInt("Z"))
 
-    private fun colorOf(faction: SquadFaction): Int = faction.accentColor.color ?: 0xFFFFFF
+    private fun colorOf(faction: SquadFaction): Int = faction.rgb
 
     private fun square(c: BlockPos, r: Int) = listOf(
         c.offset(-r, 0, -r), c.offset(r, 0, -r), c.offset(r, 0, r), c.offset(-r, 0, r)

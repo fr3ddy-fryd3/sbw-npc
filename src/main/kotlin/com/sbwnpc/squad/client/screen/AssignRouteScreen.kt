@@ -22,7 +22,7 @@ class AssignRouteScreen(
         var y = height / 2 - (rows.size * 24) / 2
 
         for (row in rows) {
-            addRenderableWidget(Button.builder(Component.literal(row.name).withStyle(row.faction.accentColor)) {
+            addRenderableWidget(Button.builder(Component.literal(row.name).withStyle(row.faction.accentStyle)) {
                 PacketDistributor.sendToServer(RouteCmdPayload(RouteCmdPayload.ASSIGN, routeId, row.id))
                 onClose()
             }.bounds(cx - 100, y, 200, 20).build())
