@@ -177,6 +177,7 @@ dependencies {
     compileOnly("software.bernie.geckolib:geckolib-neoforge-1.21.1:4.7.5")
     // Already bundled by SBW. Used to bake NPC guns into static geometry, without GeoItemRenderer.
     compileOnly("com.github.MCModderAnchor:SimpleBedrockModel:2.5.1.1-neoforge-mc1.21.1")
+    testCompileOnly("com.github.MCModderAnchor:SimpleBedrockModel:2.5.1.1-neoforge-mc1.21.1")
     // Optional map integration (see integration/journeymap); never bundled.
     compileOnly("info.journeymap:journeymap-api-neoforge:${project.property("journeymap_api_version")}")
 
