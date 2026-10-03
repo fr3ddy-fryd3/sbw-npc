@@ -64,10 +64,10 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun eligible(entity: NpcEntity): Boolean {
         if (entity.target != null) return false
         // On its way to a Supply — ResupplyBehaviour hands it back once topped up.
-        if (entity.resupplying) return false
+        if (entity.resupplying || entity.combatLockedByCover() || entity.combatLockedByMedic()) return false
         // An alarm sends a mob to look — except while falling back, when looking is the one thing
         // it must not do.
-        if (entity.isAlert() && entity.retreatPoint() == null) return false
+        if (entity.isAlert() && entity.retreatPoint() == null && !com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) return false
         // A dug-in mob clears COVER_HOLD for its whole holding duration (see
         // SeekCoverBehaviour.enterDugInHolding) so GunAttackBehaviour can still fire from the hole —
         // this behaviour never checked combatLockedByCover() in the first place (only target/alert/
@@ -98,6 +98,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun tick(entity: NpcEntity) {
         val squad = entity.currentSquad() ?: return
+        if (com.sbwnpc.squad.combat.tactics.SquadTactics.move(entity)) return
         val order = squad.order
         val home = entity.homeCenter() ?: return
         val dist = entity.position().distanceTo(home)

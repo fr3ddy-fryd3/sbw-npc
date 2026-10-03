@@ -44,6 +44,8 @@ class Squad(
 ) {
     /** Bumped on every new order or objective, so members can tell a fresh command from the one
      *  they're already carrying out. Not saved: a reload is a fresh start anyway. */
+    val tactics = com.sbwnpc.squad.combat.tactics.SquadTacticalState()
+
     var orderStamp: Int = 0
 
     /** Game time the current MOVE rally started — see `SquadOrderBehaviour.tickMove`. Not saved. */

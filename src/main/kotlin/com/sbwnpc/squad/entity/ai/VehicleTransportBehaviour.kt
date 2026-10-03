@@ -203,6 +203,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // VehicleCrewBehaviour handles getting it back aboard if it is ever ejected.
         entity.assignedVehicleId?.let { assigned -> return entity.vehicle?.uuid == assigned }
         if (entity.vehicle != null) return true // already mounted: DRIVING/RIDING keep going regardless
+        if (com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) return false
 
         if (combatInterrupted(entity)) {
             return logEligibility(entity, false) {

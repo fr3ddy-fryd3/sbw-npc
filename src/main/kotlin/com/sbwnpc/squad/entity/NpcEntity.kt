@@ -821,6 +821,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // OpenDoorGoal, not just a port — it also holds a door open for OTHER squad members mid-transit.
     override fun getCoreTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
         net.tslat.smartbrainlib.api.core.BrainActivityGroup.coreTasks(
+            com.sbwnpc.squad.entity.ai.SquadTacticalBehaviour(),
             net.tslat.smartbrainlib.api.core.behaviour.custom.move.InteractWithDoor<NpcEntity>(),
             SeekCoverBehaviour(),
             com.sbwnpc.squad.entity.ai.BlindReturnFireBehaviour(),

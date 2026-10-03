@@ -591,6 +591,10 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             } else {
                 holdFiringPosition(entity, target)
             }
+        } else if (com.sbwnpc.squad.combat.tactics.SquadTactics.move(entity)) {
+            bounding = true
+            boundPhaseStarted = false
+            firingPos = null
         } else if (defendHome != null) {
             val fromHome = entity.position().distanceTo(defendHome)
             // Measured past the squad's own ring: a flat 24 was inside the ring a big squad

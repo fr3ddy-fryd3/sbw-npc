@@ -1,0 +1,82 @@
+package com.sbwnpc.squad.combat.tactics
+
+import com.sbwnpc.squad.npc.NpcClass
+import com.sbwnpc.squad.squad.SquadOrder
+import net.minecraft.world.phys.Vec3
+import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Test
+import java.util.UUID
+
+class TacticalCoordinationTest {
+    private val squad = UUID(0, 2)
+    private val members = (0..5).map { TacticalMember(UUID(0,it.toLong()), Vec3(it*5.0,64.0,0.0), canFire = true) }
+    private fun view(now: Long = 0, order: SquadOrder = SquadOrder.ATTACK) = TacticalSnapshot(now, order, 1,
+        Vec3(12.5,64.0,0.0), Vec3(12.5,64.0,0.0), members,
+        listOf(TacticalContact(UUID(2,1),Vec3(50.0,64.0,0.0),now), TacticalContact(UUID(2,2),Vec3(53.0,64.0,1.0),now)))
+
+    @Test fun `an unready covering group cannot release the flankers`() {
+        val state = SquadTacticalState()
+        val view = view()
+        state.select(TacticalRules.choose(view),1,0)
+        val plan = state.plan!!
+        TacticalManeuvers.assign(squad,plan,view)
+        assertTrue(plan.tasks.values.any { it.job == TacticalJob.WAIT })
+        TacticalManeuvers.advance(squad,state,plan,view)
+        assertEquals(TacticalStatus.PREPARING,plan.status)
+        assertFalse(plan.tasks.values.any { it.job == TacticalJob.FLANK })
+        plan.tasks.values.filter { it.job == TacticalJob.COVER }.forEach { it.position = it.anchor }
+        TacticalManeuvers.advance(squad,state,plan,view)
+        assertEquals(TacticalStatus.EXECUTING,plan.status)
+        assertTrue(plan.tasks.values.any { it.job == TacticalJob.FLANK })
+    }
+    @Test fun `covering fire preserves its chosen positions during a maneuver`() {
+        val state = SquadTacticalState(); val view = view()
+        state.select(TacticalRules.choose(view),1,0)
+        val plan = state.plan!!
+        TacticalManeuvers.assign(squad,plan,view)
+        val cover = plan.tasks.filterValues { it.job == TacticalJob.COVER }
+        cover.values.forEach { it.position = it.anchor }
+        TacticalManeuvers.advance(squad,state,plan,view)
+        cover.forEach { (id,task) -> assertSame(task,plan.tasks[id]) }
+    }
+    @Test fun `unreachable covering positions time out instead of deadlocking the squad`() {
+        val state = SquadTacticalState(); val initial = view()
+        state.select(TacticalRules.choose(initial),1,0)
+        val plan = state.plan!!
+        TacticalManeuvers.assign(squad,plan,initial)
+        TacticalManeuvers.advance(squad,state,plan,view(110))
+        assertEquals(TacticalStatus.FAILED,plan.status)
+        assertEquals(TacticalPattern.FLANK,state.blockedPattern)
+        assertTrue(state.blockedUntil > 110)
+    }
+    @Test fun `small score changes preserve the plan but a fresh player order replaces it immediately`() {
+        val state = SquadTacticalState()
+        state.select(TacticalChoice(TacticalPattern.FLANK,Vec3(50.0,64.0,0.0)),1,0)
+        val old = state.plan
+        assertFalse(state.select(TacticalChoice(TacticalPattern.BOUND,Vec3(51.0,64.0,0.0)),1,20))
+        assertSame(old,state.plan)
+        assertTrue(state.select(TacticalChoice(TacticalPattern.FOLLOW_ORDER,null),2,21))
+        assertNotSame(old,state.plan)
+    }
+    @Test fun `unknown shooters do not produce a precise flanking contact`() {
+        val view = view().copy(contacts = emptyList(), incoming = listOf(Vec3(80.0,64.0,0.0)))
+        assertEquals(TacticalPattern.RETURN_FIRE,TacticalRules.choose(view).pattern)
+    }
+    @Test fun `a defender does not pursue an unseen target or stop a distant straggler`() {
+        val view = view(order = SquadOrder.DEFEND).copy(contacts = emptyList(), members =
+            listOf(members[0].copy(position = Vec3(200.0,64.0,0.0))))
+        val choice = TacticalRules.choose(view)
+        assertEquals(TacticalPattern.CONSOLIDATE,choice.pattern)
+        val plan = TacticalPlan(1,choice.pattern,choice.focus,0,1)
+        TacticalManeuvers.assign(squad,plan,view)
+        assertTrue(plan.tasks.isEmpty())
+        assertFalse(TacticalRules.withinOrder(view,Vec3(100.0,64.0,0.0),24.0))
+    }
+    @Test fun `medics remain behind the maneuver group`() {
+        val view = view().copy(members = members + TacticalMember(UUID(0,9),Vec3(10.0,64.0,0.0),NpcClass.MEDIC))
+        val plan = TacticalPlan(1,TacticalPattern.FLANK,Vec3(50.0,64.0,0.0),0,1,TacticalStatus.EXECUTING)
+        TacticalManeuvers.assign(squad,plan,view)
+        assertEquals(TacticalJob.RESERVE,plan.tasks[UUID(0,9)]!!.job)
+        assertTrue(plan.tasks[UUID(0,9)]!!.anchor.x < view.center.x)
+    }
+}

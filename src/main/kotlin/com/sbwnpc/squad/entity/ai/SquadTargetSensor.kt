@@ -87,6 +87,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         }
 
         if (!isMortarCrew) {
+            com.sbwnpc.squad.combat.tactics.SquadTactics.preferredTarget(mob, level)?.let { return it }
             relayedTarget(mob, level)?.let { return it }
         }
 
