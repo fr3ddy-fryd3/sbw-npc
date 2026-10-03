@@ -66,21 +66,20 @@ object SquadTactics {
         state.snapshot = view
         var choice = TacticalRules.choose(view)
         if (choice.pattern != TacticalPattern.EVADE && now < (state.blocked[choice.pattern] ?: Long.MIN_VALUE))
-            choice = TacticalChoice(if (now < (state.blocked[TacticalPattern.REORGANIZE] ?: Long.MIN_VALUE))
-                (if (now < (state.blocked[TacticalPattern.REORIENT] ?: Long.MIN_VALUE)) TacticalPattern.FOLLOW_ORDER else TacticalPattern.REORIENT)
-                else TacticalPattern.REORGANIZE,choice.focus)
+            choice = TacticalChoice(TacticalPattern.FOLLOW_ORDER,choice.focus)
         val previousTasks = state.plan?.tasks?.toMap().orEmpty()
         val previousStatus = state.plan?.status
         if (state.select(choice, squad.orderStamp, now)) {
             state.plan?.let { plan ->
                 TacticalManeuvers.assign(squad.id, plan, view)
-                DebugFlags.log(LogGroup.ORDER, "[tactics] {} plan={} pattern={} members={} contacts={}", squad.name, plan.id, plan.pattern, members.size, view.visible.size)
+                DebugFlags.log(LogGroup.ORDER, "[tactics] {} plan={} pattern={} members={} contacts={} center={} focus={} jobs={}",
+                    squad.name,plan.id,plan.pattern,members.size,view.visible.size,view.center,plan.focus,jobs(plan))
             }
         }
         state.plan?.let { plan ->
             TacticalManeuvers.advance(squad.id,state,plan,view)
-            if (plan.status != previousStatus) DebugFlags.log(LogGroup.ORDER,"[tactics] {} plan={} phase={} tasks={}",
-                squad.name,plan.id,plan.status,plan.tasks.size)
+            if (plan.status != previousStatus) DebugFlags.log(LogGroup.ORDER,"[tactics] {} plan={} phase={} bounds={} jobs={}",
+                squad.name,plan.id,plan.status,plan.bounds,jobs(plan))
         }
         for ((id,old) in previousTasks) if (state.plan?.tasks?.get(id) !== old) FiringSpots.release(id)
     }
@@ -119,8 +118,7 @@ object SquadTactics {
                 TacticalPositions.Outcome.UNREACHABLE -> {
                     task.nextSearch = entity.level().gameTime + 30
                     DebugFlags.log(LogGroup.ORDER,"[tactics] {} job={} unreachable={} attempt={}",entity.uuid,task.job,task.anchor,task.failures+1)
-                    if (++task.failures >= 3) state.fail(entity.level().gameTime)
-                    return true
+                    return !failedTask(entity,task)
                 }
                 TacticalPositions.Outcome.FOUND -> {
                     task.position = result.position
@@ -147,20 +145,36 @@ object SquadTactics {
             return true
         }
         if (entity.level().gameTime - task.lastProgress >= 100) {
+            if ((entity.navigation as? com.sbwnpc.squad.entity.ai.VehicleAwareNavigation)?.canPlan == false) return true
             task.position = null
             task.nextSearch = entity.level().gameTime + 20
-            if (++task.failures >= 3) state.fail(entity.level().gameTime)
-            return true
+            return !failedTask(entity,task)
         }
         if (entity.navigation.isDone && entity.level().gameTime >= task.nextSearch) {
             task.nextSearch = entity.level().gameTime + 20
+            if ((entity.navigation as? com.sbwnpc.squad.entity.ai.VehicleAwareNavigation)?.canPlan == false) {
+                task.nextSearch = entity.level().gameTime + 2
+                return true
+            }
             if (!TacticalBudget.path(entity.level().gameTime)) { task.nextSearch = entity.level().gameTime + 2; return true }
             val path = entity.navigation.createPath(position.x, position.y, position.z, 0)
             if (path?.canReach() == true) entity.navigation.moveTo(path, if (task.job in RUNNING_JOBS) 1.3 else 1.0)
-            else { task.position = null; if (++task.failures >= 3) state.fail(entity.level().gameTime) }
+            else { task.position = null; return !failedTask(entity,task) }
         }
         return true
     }
+
+    private fun failedTask(entity: NpcEntity,task: TacticalTask): Boolean {
+        if (++task.failures < 3) return false
+        val plan = entity.currentSquad()?.tactics?.plan ?: return true
+        TacticalManeuvers.abandon(plan,entity.uuid)
+        FiringSpots.release(entity.uuid)
+        DebugFlags.log(LogGroup.ORDER,"[tactics] {} plan={} pattern={} job={} individual fallback, remaining={}",
+            entity.uuid,plan.id,plan.pattern,task.job,jobs(plan))
+        return true
+    }
+
+    private fun jobs(plan: TacticalPlan) = plan.tasks.values.groupingBy { it.job }.eachCount()
 
     fun preferredTarget(entity: NpcEntity, level: ServerLevel): LivingEntity? {
         val task = task(entity) ?: return null

@@ -89,4 +89,36 @@ class TacticalCoordinationTest {
         TacticalManeuvers.advance(squad,state,plan,view)
         assertEquals(TacticalStatus.PREPARING,plan.status)
     }
+
+    @Test fun `one unreachable covering member does not cancel the other members maneuver`() {
+        val state = SquadTacticalState()
+        val view = view()
+        state.select(TacticalRules.choose(view),1,0)
+        val plan = state.plan!!
+        TacticalManeuvers.assign(squad,plan,view)
+        val failed = plan.tasks.entries.first { it.value.job == TacticalJob.COVER }.key
+        TacticalManeuvers.abandon(plan,failed)
+        plan.tasks.values.filter { it.job == TacticalJob.COVER }.forEach { it.position=it.anchor }
+        TacticalManeuvers.advance(squad,state,plan,view)
+        assertEquals(TacticalStatus.EXECUTING,plan.status)
+        assertNull(plan.tasks[failed])
+        assertTrue(plan.tasks.values.any { it.job == TacticalJob.FLANK })
+        assertNull(state.blockedPattern)
+        TacticalManeuvers.assign(squad,plan,view)
+        assertNull(plan.tasks[failed], "a phase change must not reclaim the failed member from individual AI")
+    }
+
+    @Test fun `waiting for cover does not consume the covering fire timeout before movement starts`() {
+        val state = SquadTacticalState()
+        val initial = view()
+        state.select(TacticalRules.choose(initial),1,0)
+        val plan = state.plan!!
+        TacticalManeuvers.assign(squad,plan,initial)
+        plan.tasks.values.filter { it.job == TacticalJob.COVER }.forEach { it.position=it.anchor }
+        TacticalManeuvers.advance(squad,state,plan,view(80))
+        assertEquals(TacticalStatus.EXECUTING,plan.status)
+        assertEquals(80L,plan.lastCover)
+        TacticalManeuvers.advance(squad,state,plan,view(90).copy(members=members.map { it.copy(canFire=false) }))
+        assertEquals(TacticalStatus.EXECUTING,plan.status)
+    }
 }

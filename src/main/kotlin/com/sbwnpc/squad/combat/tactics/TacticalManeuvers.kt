@@ -16,16 +16,23 @@ object TacticalManeuvers {
         val forward = focus.subtract(view.center).multiply(1.0, 0.0, 1.0).normalize()
             .let { if (it.lengthSqr() < 0.01) Vec3(0.0, 0.0, 1.0) else it }
         val side = Vec3(-forward.z, 0.0, forward.x)
-        val fighters = view.members.filter { it.ready && it.role != NpcClass.MEDIC }
-            .sortedWith(compareBy<TacticalMember> { if (it.role in SUPPORT_ROLES) 0 else 1 }.thenBy { it.id })
+        val fighters = view.members.filter { it.ready && it.health >= 0.3 && it.role != NpcClass.MEDIC }
+            .filter { it.id !in plan.failedMembers }
+            .sortedWith(compareBy<TacticalMember> { if (it.canFire) 0 else 1 }
+                .thenBy { if (it.role in SUPPORT_ROLES) 0 else 1 }.thenBy { it.id })
         val fileOrder = fighters.sortedBy { it.position.distanceToSqr(focus) }.filter { it.id !in plan.passed }
         val fileMovers = fileOrder.take(2).map { it.id }.toSet()
         val support = fighters.take(maxOf(1, fighters.size / 3)).map { it.id }.toSet()
+        if (plan.pattern == TacticalPattern.ATTACK_HEIGHT) {
+            plan.heightSupport.retainAll(fighters.map { it.id }.toSet())
+            if (plan.heightSupport.isEmpty()) plan.heightSupport.addAll(support)
+        }
         val patient = view.members.filter { it.health < 0.6 || it.role == NpcClass.MEDIC }.minByOrNull { it.health }
         val guard = if (fighters.size >= 4 && patient != null) fighters.filter { it.id != patient.id && it.id !in support }
             .minByOrNull { it.position.distanceToSqr(patient.position) }?.id else null
         val escape = escapeDirection(view,forward)
         for ((index, member) in view.members.withIndex()) {
+            if (member.id in plan.failedMembers) continue
             if (member.position.distanceTo(view.center) > 48.0) continue
             if (view.order == SquadOrder.DEFEND && view.home != null &&
                 member.position.distanceTo(view.home) > SquadFormation.perimeterRadius(view.members.size) + 10.0) continue
@@ -34,7 +41,7 @@ object TacticalManeuvers {
             var anchor = member.position
             var assignedFocus = plan.focus
             when (plan.pattern) {
-                TacticalPattern.FLANK, TacticalPattern.ENCIRCLE, TacticalPattern.DISLODGE, TacticalPattern.ATTACK_HEIGHT -> {
+                TacticalPattern.FLANK, TacticalPattern.ENCIRCLE, TacticalPattern.DISLODGE -> {
                     if (member.id !in support) {
                         job = if (plan.status == TacticalStatus.PREPARING) TacticalJob.WAIT else TacticalJob.FLANK
                         val direction = if (plan.flankSide != 0.0) plan.flankSide else if (squadId.leastSignificantBits and 1L == 0L) 1.0 else -1.0
@@ -45,7 +52,23 @@ object TacticalManeuvers {
                             val angle = slot * Math.PI * 2.0 / attackers.size.coerceAtLeast(1)
                             anchor = focus.add(forward.scale(kotlin.math.cos(angle)*18.0)).add(side.scale(kotlin.math.sin(angle)*18.0))
                         }
-                        if (plan.pattern == TacticalPattern.ATTACK_HEIGHT) anchor = anchor.add(0.0, minOf(8.0,focus.y-view.center.y),0.0)
+                    }
+                }
+                TacticalPattern.ATTACK_HEIGHT -> {
+                    val catchingUp = plan.bounds % 2 == 1
+                    val moves = (member.id in plan.heightSupport) == catchingUp
+                    if (moves) {
+                        job = if (plan.status == TacticalStatus.PREPARING) TacticalJob.WAIT else TacticalJob.ADVANCE
+                        val front = plan.heightFront ?: view.center
+                        if (catchingUp) anchor = front.add(lateral)
+                        else {
+                            val uphill = focus.subtract(front).multiply(1.0,0.0,1.0).normalize()
+                                .let { if (it.lengthSqr() < 0.01) forward else it }
+                            val direction = if (plan.flankSide != 0.0) plan.flankSide else if (squadId.leastSignificantBits and 1L == 0L) 1.0 else -1.0
+                            val approach = if (plan.bounds == 0) side.scale(direction * (10.0 + index % 2 * 4.0)).add(lateral) else lateral
+                            anchor = front.add(uphill.scale(minOf(12.0,focus.subtract(front).horizontalDistance())))
+                                .add(approach).add(0.0,minOf(8.0,maxOf(0.0,focus.y-front.y)),0.0)
+                        }
                     }
                 }
                 TacticalPattern.BOUND, TacticalPattern.PURSUE, TacticalPattern.FOCUS_SECTOR -> {
@@ -127,7 +150,8 @@ object TacticalManeuvers {
                 job = TacticalJob.RESERVE
                 anchor = view.center.subtract(forward.scale(8.0)).add(lateral)
             }
-            if (member.id == guard && patient != null && plan.pattern !in setOf(TacticalPattern.EVADE,TacticalPattern.FILE)) {
+            if (member.id == guard && patient != null && plan.pattern !in setOf(TacticalPattern.EVADE,TacticalPattern.FILE) &&
+                !(plan.pattern == TacticalPattern.ATTACK_HEIGHT && plan.bounds % 2 == 1)) {
                 job = TacticalJob.COVER
                 anchor = patient.position.subtract(forward.scale(4.0)).add(side.scale(4.0))
             }
@@ -142,13 +166,27 @@ object TacticalManeuvers {
         val maneuver = retreating || plan.pattern in setOf(TacticalPattern.FLANK,TacticalPattern.ENCIRCLE,TacticalPattern.DISLODGE,
             TacticalPattern.ATTACK_HEIGHT,TacticalPattern.BOUND,TacticalPattern.PURSUE,TacticalPattern.FOCUS_SECTOR,TacticalPattern.FILE)
         if (!maneuver) { plan.status = TacticalStatus.EXECUTING; return }
+        if (plan.pattern == TacticalPattern.ATTACK_HEIGHT && plan.bounds == 0 && plan.status == TacticalStatus.PREPARING &&
+            view.members.none { plan.tasks[it.id]?.job == TacticalJob.COVER && covers(it,plan.tasks[it.id]) && settled(it,plan.tasks[it.id]) } &&
+            view.members.any { plan.tasks[it.id]?.job == TacticalJob.WAIT && covers(it,plan.tasks[it.id]) }) {
+            // Contact was acquired before anyone finished aiming. Use the firing lane which
+            // actually became ready, even if its shooter originally belonged to the advance.
+            plan.heightSupport.clear()
+            assign(squadId,plan,view)
+            for (member in view.members) {
+                val task = plan.tasks[member.id] ?: continue
+                if (task.job == TacticalJob.COVER && covers(member,task)) task.position=member.position
+            }
+        }
         val covering = view.members.filter { plan.tasks[it.id]?.job == TacticalJob.COVER }
         if (plan.status == TacticalStatus.PREPARING) {
             val ready = covering.any { covers(it,plan.tasks[it.id]) && settled(it,plan.tasks[it.id]) } ||
+                (plan.pattern == TacticalPattern.ATTACK_HEIGHT && view.visible.isEmpty()) ||
                 (retreating && (plan.pattern == TacticalPattern.AVOID_ARMOUR || view.now-plan.phaseSince >= 40))
             if (ready) {
                 plan.status = if (retreating) TacticalStatus.REGROUPING else TacticalStatus.EXECUTING
                 plan.phaseSince = view.now
+                plan.lastCover = view.now
                 val previous = HashMap(plan.tasks)
                 assign(squadId, plan, view)
                 // A covering position remains fixed while the other group starts its maneuver.
@@ -171,6 +209,21 @@ object TacticalManeuvers {
                 plan.phaseSince = view.now
                 assign(squadId,plan,view)
                 if (plan.passed.size >= view.fighting.count { it.role != NpcClass.MEDIC }) plan.status = TacticalStatus.COMPLETED
+            } else if (plan.pattern == TacticalPattern.ATTACK_HEIGHT) {
+                if (plan.bounds % 2 == 0) plan.heightFront = Vec3(
+                    movers.map { it.position.x }.sorted()[movers.size/2],
+                    movers.map { it.position.y }.sorted()[movers.size/2],
+                    movers.map { it.position.z }.sorted()[movers.size/2])
+                plan.bounds++
+                val front = plan.heightFront!!
+                if (plan.bounds % 2 == 0 && plan.focus?.let {
+                    front.y >= it.y-2.0 && it.subtract(front).horizontalDistance() <= 24.0
+                } == true) plan.status = TacticalStatus.COMPLETED
+                else {
+                    plan.status = TacticalStatus.PREPARING
+                    plan.phaseSince = view.now
+                    assign(squadId,plan,view)
+                }
             } else if (plan.pattern in setOf(TacticalPattern.BOUND,TacticalPattern.PURSUE,TacticalPattern.FOCUS_SECTOR,
                 TacticalPattern.REORGANIZE,TacticalPattern.BREAK_CONTACT) && ++plan.bounds < 3 && (plan.focus?.distanceTo(view.center) ?: 0.0) > 24.0) {
                 plan.movingHalf = 1 - plan.movingHalf
@@ -178,10 +231,16 @@ object TacticalManeuvers {
                 plan.phaseSince = view.now
                 assign(squadId, plan, view)
             } else for (member in movers) plan.tasks[member.id] = TacticalTask(TacticalJob.COVER, member.position, plan.focus, plan.id)
-        } else if (view.now - plan.phaseSince > (if (plan.pattern == TacticalPattern.ENCIRCLE) 400 else 160)) state.fail(view.now)
+        } else if (view.now - plan.phaseSince > (if (plan.pattern in setOf(TacticalPattern.ENCIRCLE,TacticalPattern.ATTACK_HEIGHT)) 400 else 160)) state.fail(view.now)
     }
 
-    private fun covers(member: TacticalMember,task: TacticalTask?): Boolean = member.canFire &&
+    /** A local routing failure gives only this member back to the existing individual AI. */
+    fun abandon(plan: TacticalPlan, member: UUID) {
+        plan.tasks.remove(member)
+        plan.failedMembers.add(member)
+    }
+
+    internal fun covers(member: TacticalMember,task: TacticalTask?): Boolean = member.canFire &&
         (member.firingAt == null || task?.focus == null || member.firingAt.distanceTo(task.focus) <= 18.0)
     private fun settled(member: TacticalMember, task: TacticalTask?): Boolean = task?.position?.let {
         member.position.distanceTo(it) <= 2.5 && member.position.distanceTo(task.anchor) <= 10.0

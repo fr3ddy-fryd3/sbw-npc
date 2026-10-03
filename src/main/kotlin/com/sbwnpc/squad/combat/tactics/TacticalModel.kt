@@ -45,6 +45,10 @@ object TacticalRules {
         if (view.order == SquadOrder.RETREAT || view.order == SquadOrder.BARRAGE)
             return TacticalChoice(TacticalPattern.FOLLOW_ORDER, null, true)
         if (contacts.isEmpty()) {
+            // The ridge can hide the enemy while we climb. Keep approaching its last seen
+            // position instead of leaving fourteen men behind and sending two searchers.
+            if (view.offensive && view.contacts.isNotEmpty() && focus != null && focus.y-view.center.y >= 6.0)
+                return TacticalChoice(TacticalPattern.ATTACK_HEIGHT,focus)
             if (view.incoming.isNotEmpty()) return TacticalChoice(TacticalPattern.RETURN_FIRE, view.incoming.first())
             if (view.contacts.isNotEmpty() && view.offensive) return TacticalChoice(TacticalPattern.SEARCH, focus)
             if (view.narrow && view.order != SquadOrder.DEFEND) return TacticalChoice(TacticalPattern.FILE, view.home)
@@ -117,6 +121,9 @@ class TacticalPlan(
     var origin: Vec3? = null
     var flankSide = 0.0
     val passed = HashSet<UUID>()
+    val failedMembers = HashSet<UUID>()
+    val heightSupport = HashSet<UUID>()
+    var heightFront: Vec3? = null
 }
 
 /** Runtime state belongs to a Squad. A world reload starts a fresh tactical assessment. */
@@ -136,7 +143,7 @@ class SquadTacticalState {
     fun select(choice: TacticalChoice, stamp: Int, now: Long): Boolean {
         val old = plan
         val changedOrder = old != null && old.stamp != stamp
-        val expired = old == null || old.status == TacticalStatus.FAILED || old.status == TacticalStatus.COMPLETED || (old.pattern == TacticalPattern.EVADE && choice.pattern != TacticalPattern.EVADE) || now - old.started >= if (old.pattern == TacticalPattern.ENCIRCLE) 480 else 240
+        val expired = old == null || old.status == TacticalStatus.FAILED || old.status == TacticalStatus.COMPLETED || (old.pattern == TacticalPattern.EVADE && choice.pattern != TacticalPattern.EVADE) || now - old.started >= if (old.pattern in setOf(TacticalPattern.ENCIRCLE,TacticalPattern.ATTACK_HEIGHT)) 480 else 240
         val changedFocus = old?.focus != null && choice.focus != null && old.focus.distanceTo(choice.focus) > 20.0
         val ready = old == null || old.pattern in setOf(TacticalPattern.FOLLOW_ORDER,TacticalPattern.CONSOLIDATE,
             TacticalPattern.SEARCH,TacticalPattern.RETURN_FIRE) || now - old.started >= 80

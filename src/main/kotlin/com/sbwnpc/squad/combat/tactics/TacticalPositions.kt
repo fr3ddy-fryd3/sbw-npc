@@ -2,6 +2,7 @@ package com.sbwnpc.squad.combat.tactics
 
 import com.sbwnpc.squad.combat.*
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import com.sbwnpc.squad.util.Terrain
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
@@ -15,13 +16,21 @@ object TacticalPositions {
 
     fun find(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot): Result {
         val level = entity.level() as ServerLevel
+        if ((entity.navigation as? VehicleAwareNavigation)?.canPlan == false) return Result(Outcome.DEFERRED)
+        val homeRadius = SquadFormation.perimeterRadius(view.members.size) + 10.0
+        val member = view.members.firstOrNull { it.id == entity.uuid }
+        // Someone already aiming/firing safely should cover from here, not abandon the lane
+        // because a nearby point scores higher or another body's spacing excludes this spot.
+        if (task.job == TacticalJob.COVER && member != null && TacticalManeuvers.covers(member,task) &&
+            member.position.distanceTo(task.anchor) <= 10.0 &&
+            TacticalRules.withinOrder(view,member.position,homeRadius) && !GrenadeHazard.threatens(level,member.position))
+            return Result(Outcome.FOUND,member.position)
         if (!TickBudget.hasRaycasts(level)) return Result(Outcome.DEFERRED)
         val taken = FiringSpots.nearbyWithBodies(level, entity, 40.0)
         val threats = view.visible.sortedByDescending { it.priority }.take(3)
         val hulls = Sightline.vehicleHulls(level, entity.boundingBox.inflate(48.0), entity, entity.target)
         val candidates = ArrayList<Pair<Vec3, Double>>()
         val localAnchor = if (task.job in RUNNING_JOBS + TacticalJob.SEARCH) TacticalRoutes.leg(entity.position(),task) else task.anchor
-        val homeRadius = SquadFormation.perimeterRadius(view.members.size) + 10.0
         for (offset in OFFSETS) {
             if (!TickBudget.hasRaycasts(level)) {
                 if (candidates.isEmpty()) return Result(Outcome.DEFERRED)
@@ -51,7 +60,8 @@ object TacticalPositions {
             var score = candidate.distanceTo(localAnchor) + candidate.distanceTo(entity.position()) * 0.2 + exposure * 5.0
             if (firing && mustShoot) score -= 8.0
             if (pattern in setOf(TacticalPattern.AVOID_ARMOUR,TacticalPattern.BREAK_CONTACT,TacticalPattern.REORGANIZE)) score += exposure*10.0
-            if (pattern == TacticalPattern.ATTACK_HEIGHT && task.focus != null) score += maxOf(0.0,task.focus.y-candidate.y)*1.5
+            if (pattern == TacticalPattern.ATTACK_HEIGHT && task.job in RUNNING_JOBS && task.focus != null)
+                score += maxOf(0.0,task.focus.y-candidate.y)*1.5
             if (pattern == TacticalPattern.HOLD_HEIGHT) score += maxOf(0.0,view.center.y-candidate.y)*8.0
             candidates += candidate to score
         }
