@@ -681,6 +681,23 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     private val posture = NpcPosture(this)
     private val stuckRecovery = NpcStuckRecovery(this)
 
+    private var descentRecoveryUntil = -1
+
+    internal val recoveringNavigation: Boolean get() = tickCount <= descentRecoveryUntil
+
+    internal fun allowRecoveryDescent() {
+        descentRecoveryUntil = tickCount + 100
+    }
+
+    /** Ordinary marches avoid damaging drops; a stranded NPC can use a bounded descent. */
+    override fun getMaxFallDistance(): Int {
+        val normal = super.getMaxFallDistance()
+        if (!recoveringNavigation) return normal
+        return com.sbwnpc.squad.entity.ai.WalkingClearance.recoveryFallDistance(health) {
+            calculateFallDamage(it, 1f)
+        }
+    }
+
     /** See [NpcStuckRecovery.notePathGoesNowhere]; the navigation reports every path it plans. */
     fun notePathGoesNowhere(toward: BlockPos, goesNowhere: Boolean) = stuckRecovery.notePathGoesNowhere(toward, goesNowhere)
 

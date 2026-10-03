@@ -390,6 +390,7 @@ object SquadMarch {
             // Added on, not swapped in: the men still behind on the last leg keep their way.
             march.progress.append(route)
             march.failures = 0
+            march.misses = 0
             // Done once a straight leg found its way right to the goal; from there the ordinary
             // search takes each man to his own place.
             march.complete = straight && reached && len <= LEG
@@ -403,9 +404,13 @@ object SquadMarch {
             route.size, reached, end, "%.1f".format((System.nanoTime() - started) / 1.0e6)
         )
         if (march.misses >= GIVE_UP) {
-            march.complete = true
             SquadMod.LOGGER.warn("{}: NPC {} ({}) cannot continue walking from {} toward {} after {} failed legs",
                 squadName, npc.uuid, npc.npcClass, npc.blockPosition(), march.goal, march.misses)
+            // Terrain recovery can clear foliage or get him off a perch. Six failed searches
+            // must not turn a distant order into a permanently completed march.
+            march.misses = 0
+            march.failures = 0
+            march.plannedAt = level.gameTime + 200
         }
     }
 
