@@ -108,6 +108,7 @@ object GroundMap {
             if (k != null) {
                 kind[i] = k.ordinal.toByte()
                 height[i] = (if (k == Kind.WATER) y else y + 1).toShort()
+                if (k == Kind.WATER) room[i] = roomOver(level, cursor, x, y, z).toByte()
                 continue
             }
             // Whatever lies on the ground without blocking movement — snow, a carpet — is the floor

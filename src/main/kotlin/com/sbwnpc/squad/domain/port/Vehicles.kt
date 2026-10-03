@@ -69,6 +69,9 @@ interface Vehicles {
     /** Null for anything that isn't a vehicle. */
     fun mobility(vehicle: Entity): Mobility?
 
+    /** A ground vehicle with buoyancy and propulsion on water, as defined by its engine. */
+    fun canCrossWater(vehicle: Entity): Boolean
+
     /** Steer toward [point] for one tick, throttle forward unless [throttle] is off (coasting). */
     fun driveToward(vehicle: Entity, point: Vec3, throttle: Boolean = true): Steering
 

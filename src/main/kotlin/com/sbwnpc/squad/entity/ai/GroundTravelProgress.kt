@@ -25,4 +25,9 @@ internal class GroundTravelProgress {
     }
 
     fun stalled(tick: Int): Boolean = tick - lastProgressTick > 1200
+
+    /** Deliberate stops for planning do not spend the recovery allowance; revisited cells stay known. */
+    fun pause(tick: Int) {
+        lastProgressTick = tick
+    }
 }

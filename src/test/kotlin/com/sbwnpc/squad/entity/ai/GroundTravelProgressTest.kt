@@ -33,4 +33,28 @@ class GroundTravelProgressTest {
         progress.reset(4301, Vec3.ZERO)
         assertFalse(progress.stalled(4301))
     }
+
+    @Test
+    fun `a long deliberate planning stop does not consume the driving recovery time`() {
+        val progress = GroundTravelProgress()
+        progress.reset(0, Vec3.ZERO)
+        for (tick in 1..1800) {
+            progress.pause(tick)
+            assertFalse(progress.stalled(tick))
+        }
+        assertFalse(progress.stalled(3000))
+        assertTrue(progress.stalled(3001))
+    }
+
+    @Test
+    fun `planning pauses retain visited ground so repeated reversals are still stuck`() {
+        val progress = GroundTravelProgress()
+        progress.reset(0, Vec3.ZERO)
+        progress.observe(1, Vec3(8.0, 0.0, 0.0))
+        progress.pause(1800)
+        for (tick in 1801..3100) {
+            progress.observe(tick, Vec3(if (tick % 80 < 40) 0.0 else 8.0, 0.0, 0.0))
+        }
+        assertTrue(progress.stalled(3100))
+    }
 }

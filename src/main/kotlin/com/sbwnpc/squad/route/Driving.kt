@@ -7,7 +7,8 @@ import net.minecraft.world.phys.Vec3
 /**
  * A vehicle on the ground, for [CellPlanner]: its hull [halfWidth] blocks either side of its middle
  * over ground ([Ground]) no rougher than it can climb ([climb], its own step height), with
- * [headroom] blocks free over it — no water, no trunks, nothing that burns.
+ * [headroom] blocks free over it — no trunks, nothing that burns. Amphibious engines can also
+ * cross water at its surface, while the crew only gets off onto land.
  *
  * It can stop anywhere and its crew walk on: the trip ends wherever driving on would cost more than
  * getting out — at the goal where the ground lets it get there, at the foot of the climb where it
@@ -18,9 +19,10 @@ class Driving(
     halfWidth: Double,
     climb: Double,
     height: Double,
+    private val canCrossWater: Boolean = false,
 ) : CellPlanner.Medium {
-    constructor(level: ServerLevel, halfWidth: Double, climb: Double, height: Double) :
-        this(Ground.of(level), halfWidth, climb, height)
+    constructor(level: ServerLevel, halfWidth: Double, climb: Double, height: Double, canCrossWater: Boolean = false) :
+        this(Ground.of(level), halfWidth, climb, height, canCrossWater)
 
     private val clearance = Math.max(0, Math.ceil(halfWidth - 0.5).toInt())
     private val climb = Math.max(1, Math.floor(climb).toInt())
@@ -43,7 +45,8 @@ class Driving(
 
     private fun ground(x: Int, z: Int): Boolean {
         val kind = ground.kind(x, z)
-        return (kind == GroundMap.Kind.GROUND || kind == GroundMap.Kind.NO_ROOM) && ground.room(x, z) >= headroom
+        return (kind == GroundMap.Kind.GROUND || kind == GroundMap.Kind.NO_ROOM ||
+            (canCrossWater && kind == GroundMap.Kind.WATER)) && ground.room(x, z) >= headroom
     }
 
     override fun step(ax: Int, az: Int, bx: Int, bz: Int) =
@@ -51,7 +54,14 @@ class Driving(
 
     override fun extraCost(x: Int, z: Int) = 0.0
 
-    override fun exitAt(x: Int, z: Int, goal: Vec3): Vec3 = Vec3(x + 0.5, pointY(x, z), z + 0.5)
+    override fun exitAt(x: Int, z: Int, goal: Vec3): Vec3? =
+        if (ground.kind(x, z) == GroundMap.Kind.WATER) null else Vec3(x + 0.5, pointY(x, z), z + 0.5)
+
+    // A known detour is fine. Driving back to an unknown frontier farther from the objective
+    // just guesses that the water or cliff ahead will vanish on the other side of it; walk on
+    // from the best reachable bank instead. Walking and boat exploration keep their own rules.
+    override fun canExplore(from: Vec3, frontier: Vec3, goal: Vec3): Boolean =
+        Math.hypot(frontier.x - goal.x, frontier.z - goal.z) < Math.hypot(from.x - goal.x, from.z - goal.z)
 
     override fun pointY(x: Int, z: Int) = ground.height(x, z).toDouble()
 
