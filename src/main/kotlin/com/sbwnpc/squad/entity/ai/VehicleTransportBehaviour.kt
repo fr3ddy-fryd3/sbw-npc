@@ -43,8 +43,8 @@ import net.tslat.smartbrainlib.util.BrainUtils
  *    either boarded (any vehicle) or is otherwise occupied (fighting), or a timeout passes.
  *  - DRIVING (driver only): follows a way over the land from the long-route planner
  *    ([com.sbwnpc.squad.route.Driving]): sized to the hull and its step height, round whatever it
- *    can't climb or fit through, and ending where the crew is better off walking on — at the goal,
- *    or at the foot of a climb. A blind reverse-and-turn recovery still kicks in if progress
+ *    can't climb or fit through, to the goal or a continuation. Only without either does the crew
+ *    walk on from a reachable stop. A blind reverse-and-turn recovery still kicks in if progress
  *    stalls anyway, and the way is searched again after it; the driver gives up and dismounts to
  *    walk if it keeps revisiting the same ground for a minute. Where no long route is found it
  *    falls back on short routes from the driver's own pathfinder.
@@ -944,7 +944,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     /**
      * The next point on the vehicle's way over the land to [home], from the long-route planner:
      * the whole way round what it can't climb or fit through, as far as the ground is known, and
-     * ending where it's cheaper for the crew to walk on. Searched again after the vehicle got stuck
+     * ending short only when no continuation is found. Searched again after the vehicle got stuck
      * ([nextRouteTick]) and short of the end of a way that runs on into ground not yet seen. Null
      * while the first search runs.
      */
@@ -992,10 +992,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 if (found.complete) VehicleTransportClaims.setLanding(vehicle.uuid, found.landing)
                 else VehicleTransportClaims.clearLanding(vehicle.uuid)
                 DebugFlags.log(LogGroup.VEHICLE,
-                    "{} driving {} along {} points, {} blocks, {} {} ({} from home; {} units over {} ticks)",
+                    "{} driving {} along {} points, {} blocks, {} {} ({} from home; {} units over {} ticks; {})",
                     entity.uuid, vehicle.uuid, driveRoute.size, found.length.toInt(),
                     if (found.complete) "crew out at" else "on toward the goal, to look again at", BlockPos.containing(found.landing),
-                    horizontalDistance(found.landing, home).toInt(), search.expanded, entity.tickCount - driveSearchStarted + 1
+                    horizontalDistance(found.landing, home).toInt(), search.expanded, entity.tickCount - driveSearchStarted + 1,
+                    search.stoppedBy
                 )
             } else if (driveRoute.isEmpty()) {
                 return null
@@ -1177,7 +1178,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             releaseVehicleTeamIfLastAboard(vehicle, entity)
             arrivalWaitStartTick = -1
             if (isBoat(vehicle)) boatCooldownUntilTick = entity.tickCount + BOAT_COOLDOWN_TICKS
-            // Out where the drive ends — at the goal, or where walking on beats driving: the rest of
+            // Out where the drive ends — at the goal, or where no continuation was found: the rest of
             // this order is on foot. Still further off than the distance worth a ride, the crew
             // climbed straight back in, was refused, and got out again.
             else entity.currentSquad()?.let { noVehicleForStamp = it.orderStamp }
@@ -1313,10 +1314,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  washed up on land — a vehicle on the road stops well short and lets everyone walk in. */
     private fun arrived(entity: NpcEntity, vehicle: Entity, home: Vec3): Boolean {
         if (!isBoat(vehicle)) {
-            // Where its way ends: the goal, or where the crew walks on from because driving
-            // further costs more than walking — the foot of a climb it can't make.
+            // Everyone uses the driver's arrival radius. Falling through to home (the landing
+            // for passengers) made them get off 20 blocks early and obstruct their own driver.
             VehicleTransportClaims.landingOf(vehicle.uuid)?.let {
-                if (horizontalDistance(vehicle.position(), it) <= GROUND_EXIT_RADIUS) return true
+                return horizontalDistance(vehicle.position(), it) <= GROUND_EXIT_RADIUS
             }
             // An amphibious trip ends on its chosen bank, not 20 blocks short while still afloat.
             if (vehicle.isInWater && Ports.vehicles.canCrossWater(vehicle)) return false

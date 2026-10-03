@@ -64,6 +64,9 @@ object CellPlanner {
         fun extraCost(x: Int, z: Int): Double
         /** Where the traveller gets off if the trip ends at this column, or null if it can't. */
         fun exitAt(x: Int, z: Int, goal: Vec3): Vec3?
+        /** Whether this exit competes with continuing the trip. Other exits are fallbacks used
+         *  only if neither a preferred exit nor a continuation can be found. */
+        fun preferredExit(exit: Vec3, goal: Vec3): Boolean = true
         /** Blocks walked from getting off at [exit] to the goal. */
         fun remaining(exit: Vec3, goal: Vec3): Double = Math.hypot(exit.x - goal.x, exit.z - goal.z)
         /** Whether to leave known ground here in search of a continuation. */
@@ -131,6 +134,14 @@ object CellPlanner {
         private var bestColumn: Long? = null
         private var bestExit: Vec3? = null
         private var bestUnseen = false
+
+        /** A reachable place to walk on from when driving cannot reach the goal or continue.
+         *  Its cost must not prune the search for a longer, usable driving detour. */
+        private var fallbackCost = Double.MAX_VALUE
+        private var fallbackCell: Long? = null
+        private var fallbackColumn: Long? = null
+        private var fallbackExit: Vec3? = null
+        private var usingFallback = false
 
         private var corridor: HashSet<Long>? = null
         private var target: Long? = null
@@ -240,7 +251,9 @@ object CellPlanner {
                 if (f > cg + Math.hypot((x - tx).toDouble(), (z - tz).toDouble()) + 1e-9) continue // stale entry
                 left--
                 expanded++
-                if (current == t) return finish(if (complete) "to the end" else "to the next stretch", current)
+                if (current == t) return finish(
+                    if (!complete) "to the next stretch" else if (usingFallback) "no continuation; crew walks on" else "to the end", current
+                )
                 for (dx in -1..1) for (dz in -1..1) {
                     if (dx == 0 && dz == 0) continue
                     val nx = x + dx
@@ -274,7 +287,14 @@ object CellPlanner {
                     val z = cz * CELL + j
                     val exit = medium.exitAt(x, z, goal) ?: continue
                     val cost = cg + medium.remaining(exit, goal)
-                    if (cost < bestCost) {
+                    if (!medium.preferredExit(exit, goal)) {
+                        if (cost < fallbackCost) {
+                            fallbackCost = cost
+                            fallbackCell = n
+                            fallbackColumn = key(x, z)
+                            fallbackExit = exit
+                        }
+                    } else if (cost < bestCost) {
                         bestCost = cost
                         bestCell = n
                         bestColumn = key(x, z)
@@ -416,6 +436,12 @@ object CellPlanner {
         /** After the first pass: where the way goes, and the cells it goes by. The way is followed
          *  only as far as the known ground: past that it's a guess. */
         private fun chooseTarget(): Boolean {
+            if (bestCell == null && fallbackCell != null) {
+                bestCell = fallbackCell
+                bestColumn = fallbackColumn
+                bestExit = fallbackExit
+                usingFallback = true
+            }
             var endCell = bestCell ?: return false
             val cells = ArrayList<Long>()
             var at: Long? = endCell

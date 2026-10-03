@@ -74,6 +74,31 @@ class DrivingTest {
     }
 
     @Test
+    fun `a longer usable drive wins over leaving the crew hundreds of blocks short`() {
+        val ridge = object : Plain() {
+            override fun height(x: Int, z: Int) = if (x in 100..119 && z in -300..300) 100 else 64
+        }
+        // The drive round this ridge costs more than a straight-line estimate of walking from
+        // its foot. That estimate used to end the trip over 500 blocks before the objective.
+        val found = plan(ridge, at(620.5), true, at(80.5))
+        assertTrue(found.complete)
+        assertTrue(found.landing.distanceTo(at(620.5)) <= 20.0, "a usable detour was abandoned: ${found.landing}")
+        assertTrue(found.trail.any { kotlin.math.abs(it.z) > 300.0 })
+    }
+
+    @Test
+    fun `a longer detour to unseen ground continues instead of disembarking`() {
+        val ridge = object : Plain() {
+            override fun known(x: Int, z: Int) = x in -320..159 && z in -400..400
+            override fun height(x: Int, z: Int) = if (x in 100..119 && z in -300..300) 100 else 64
+        }
+        val found = plan(ridge, at(620.5), true, at(80.5))
+        assertFalse(found.complete, "the known detour leads to a continuation, not a foot exit")
+        assertTrue(found.landing.x >= 150.0, "the detour did not get past the ridge: ${found.landing}")
+        assertTrue(found.trail.any { kotlin.math.abs(it.z) > 300.0 })
+    }
+
+    @Test
     fun `a two kilometre drive over known ground continues beyond the search range`() {
         val found = plan(Plain(), at(2200.5), false)
         assertFalse(found.complete, "the range limit must not be a disembarkation point")

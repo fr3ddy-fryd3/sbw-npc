@@ -10,9 +10,9 @@ import net.minecraft.world.phys.Vec3
  * [headroom] blocks free over it — no trunks, nothing that burns. Amphibious engines can also
  * cross water at its surface, while the crew only gets off onto land.
  *
- * It can stop anywhere and its crew walk on: the trip ends wherever driving on would cost more than
- * getting out — at the goal where the ground lets it get there, at the foot of the climb where it
- * doesn't.
+ * It drives to the goal or the next stretch of known ground whenever it can. A stop far short of
+ * the goal is a fallback only when no continuation can be found, rather than an alternative that
+ * wins merely because a straight-line estimate of the crew's walk is cheaper than a detour.
  */
 class Driving(
     private val ground: Ground,
@@ -57,6 +57,9 @@ class Driving(
     override fun exitAt(x: Int, z: Int, goal: Vec3): Vec3? =
         if (ground.kind(x, z) == GroundMap.Kind.WATER) null else Vec3(x + 0.5, pointY(x, z), z + 0.5)
 
+    override fun preferredExit(exit: Vec3, goal: Vec3): Boolean =
+        Math.hypot(exit.x - goal.x, exit.z - goal.z) <= GOAL_RADIUS
+
     // A known detour is fine. Driving back to an unknown frontier farther from the objective
     // just guesses that the water or cliff ahead will vanish on the other side of it; walk on
     // from the best reachable bank instead. Walking and boat exploration keep their own rules.
@@ -68,5 +71,6 @@ class Driving(
     companion object {
         /** A vehicle covers ground this many times faster than a man walking. */
         const val DRIVE_PACE = 2.0
+        private const val GOAL_RADIUS = 20.0
     }
 }
