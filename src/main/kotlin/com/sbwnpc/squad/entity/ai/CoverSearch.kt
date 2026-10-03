@@ -29,7 +29,7 @@ object CoverSearch {
      *  actually shipped before and, per user feedback in-game, mostly just resulted in NPCs backing
      *  straight away from the threat (`SeekCoverBehaviour`'s fallback retreat) instead of finding real cover — because
      *  purely random points rarely land next to a wall by chance within a small sample. */
-    fun find(entity: NpcEntity, level: ServerLevel, threat: Vec3): BlockPos? {
+    fun find(entity: NpcEntity, level: ServerLevel, threat: Vec3,excluded: Set<BlockPos> = emptySet()): BlockPos? {
         val origin = entity.blockPosition()
         val candidates = ArrayList<BlockPos>(64)
 
@@ -64,7 +64,11 @@ object CoverSearch {
         // whole suppressed squad behind the same wall.
         val taken = FiringSpots.nearbyWithBodies(level, entity, MAX_RADIUS)
         return candidates.asSequence()
+            .mapNotNull { Terrain.feetAt(level,it.bottomCenter) { feet ->
+                level.noCollision(entity,entity.getDimensions(entity.pose).makeBoundingBox(feet))
+            }?.let(BlockPos::containing) }
             .distinct()
+            .filterNot { it in excluded }
             .filterNot { GrenadeHazard.threatens(level, it) }
             .filterNot { FiringSpots.crowded(it.bottomCenter, taken) }
             .sortedBy { it.distSqr(origin) }

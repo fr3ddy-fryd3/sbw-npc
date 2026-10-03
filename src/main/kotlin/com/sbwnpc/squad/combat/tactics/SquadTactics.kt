@@ -105,7 +105,7 @@ object SquadTactics {
     /** True means tactical movement owns the feet this tick; cover/medical/vehicles outrank it. */
     fun move(entity: NpcEntity): Boolean {
         if (entity.vehicle != null || entity.busyWithRole() || entity.resupplying || entity.diggedIn ||
-            entity.combatLockedByCover() || entity.combatLockedByMedic() || entity.retreatPoint() != null) return false
+            entity.movementLockedByCover() || entity.combatLockedByMedic() || entity.retreatPoint() != null) return false
         val task = task(entity) ?: return false
         val squad = entity.currentSquad() ?: return false
         val state = squad.tactics
@@ -175,6 +175,16 @@ object SquadTactics {
     }
 
     private fun jobs(plan: TacticalPlan) = plan.tasks.values.groupingBy { it.job }.eachCount()
+
+    /** Moving groups keep their path; stationary shooters request a new coordinated position. */
+    fun repositionForFire(entity: NpcEntity) {
+        val task=task(entity) ?: return
+        val position=task.position ?: return
+        if (task.job !in setOf(TacticalJob.COVER,TacticalJob.ANTI_ARMOUR) || entity.position().distanceTo(position)>2.0) return
+        task.position=null
+        task.nextSearch=entity.level().gameTime+10
+        FiringSpots.release(entity.uuid)
+    }
 
     fun preferredTarget(entity: NpcEntity, level: ServerLevel): LivingEntity? {
         val task = task(entity) ?: return null

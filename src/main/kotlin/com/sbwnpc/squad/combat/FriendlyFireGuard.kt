@@ -62,8 +62,8 @@ object FriendlyFireGuard {
     /** One pass answering both "is the firing cone toward [aimPoint] clear" and "is the blast
      *  radius around [impactPoint] clear" — GunAttackBehaviour needs both every time it evaluates a
      *  shot, and they used to be two separate entity queries per tick per shooter. */
-    fun assess(shooter: NpcEntity, aimPoint: Vec3, spread: Double, impactPoint: Vec3, blastRadius: Double): Assessment {
-        val from = shooter.eyePosition
+    fun assess(shooter: NpcEntity, aimPoint: Vec3, spread: Double, impactPoint: Vec3, blastRadius: Double,
+               from: Vec3 = shooter.eyePosition): Assessment {
         val toAim = aimPoint.subtract(from)
         val aimDist = toAim.length()
         val aimDir = if (aimDist < 1.0e-6) null else toAim.scale(1.0 / aimDist)
@@ -138,10 +138,10 @@ object FriendlyFireGuard {
      *  straight into a second ally standing on the "wrong" side. Only meaningful for the firing-
      *  cone risk — repositioning the shooter doesn't change where an explosive round lands at the
      *  target, so callers should not use this to try to "fix" a blocked blast-radius check. */
-    fun sidestepAwayFromAllies(shooter: NpcEntity, aimPoint: Vec3) {
+    fun sidestepAwayFromAllies(shooter: NpcEntity, aimPoint: Vec3): Vec3? {
         val dir = aimPoint.subtract(shooter.eyePosition)
         val flat = Vec3(dir.x, 0.0, dir.z)
-        if (flat.lengthSqr() < 1.0e-6) return
+        if (flat.lengthSqr() < 1.0e-6) return null
         val perp = Vec3(-flat.z, 0.0, flat.x).normalize()
 
         val from = shooter.position()
@@ -156,6 +156,6 @@ object FriendlyFireGuard {
         }
 
         val chosen = if (crowding(optionA) <= crowding(optionB)) optionA else optionB
-        shooter.navigation.moveTo(chosen.x, chosen.y, chosen.z, 1.0)
+        return chosen.takeIf { shooter.navigation.moveTo(chosen.x, chosen.y, chosen.z, 1.0) }
     }
 }

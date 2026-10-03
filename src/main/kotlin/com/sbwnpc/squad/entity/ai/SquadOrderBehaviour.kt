@@ -64,7 +64,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun eligible(entity: NpcEntity): Boolean {
         if (entity.target != null) return false
         // On its way to a Supply — ResupplyBehaviour hands it back once topped up.
-        if (entity.resupplying || entity.combatLockedByCover() || entity.combatLockedByMedic()) return false
+        if (entity.resupplying || entity.movementLockedByCover() || entity.combatLockedByMedic()) return false
         // An alarm sends a mob to look — except while falling back, when looking is the one thing
         // it must not do.
         if (entity.isAlert() && entity.retreatPoint() == null && !com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) return false
@@ -88,7 +88,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun stop(entity: NpcEntity) {
         startCheck.reset()
-        com.sbwnpc.squad.combat.FiringSpots.release(entity.uuid)
+        if (!com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) com.sbwnpc.squad.combat.FiringSpots.release(entity.uuid)
     }
 
     override fun start(entity: NpcEntity) {

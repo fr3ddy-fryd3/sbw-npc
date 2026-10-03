@@ -38,4 +38,23 @@ object Terrain {
         if (level.getBlockState(pos.below()).isAir) return null
         return Vec3(pos.x + 0.5, pos.y.toDouble(), pos.z + 0.5)
     }
+
+    /** Nearest supporting collider at a column; grass and flowers are never a platform. */
+    fun feetAt(level: BlockGetter,raw: Vec3,guard: Int=12,clearance: (Vec3)->Boolean = { true }): Vec3? {
+        val column=BlockPos.containing(raw)
+        for (distance in 0..guard) {
+            val offsets=if (distance==0) intArrayOf(0) else intArrayOf(-distance,distance)
+            for (offset in offsets) {
+                val floor=column.offset(0,offset,0)
+                if (floor.y<level.minBuildHeight || floor.y>=level.maxBuildHeight) continue
+                val shape=level.getBlockState(floor).getCollisionShape(level,floor)
+                val height=shape.toAabbs().filter { it.minX<=0.5 && it.maxX>=0.5 && it.minZ<=0.5 && it.maxZ>=0.5 }
+                    .maxOfOrNull { it.maxY } ?: continue
+                val feet=Vec3(column.x+0.5,floor.y+height,column.z+0.5)
+                if (!level.getFluidState(BlockPos.containing(feet)).isEmpty || !clearance(feet)) continue
+                return feet
+            }
+        }
+        return null
+    }
 }

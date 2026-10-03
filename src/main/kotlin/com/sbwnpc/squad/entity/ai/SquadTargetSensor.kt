@@ -56,6 +56,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     override fun doTick(level: ServerLevel, entity: NpcEntity) {
         val target = computeDesired(entity, level)
         BrainUtils.setTargetOfEntity(entity, target)
+        if (target != null && DetectionSightline.canSeeWithin(entity,target,NpcEntity.DETECTION_RANGE)) entity.rememberVisible(target)
         if (target != null) TankWeaponSelection.update(entity, target)
     }
 

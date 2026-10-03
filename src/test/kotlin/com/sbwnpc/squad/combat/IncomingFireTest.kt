@@ -30,6 +30,14 @@ class IncomingFireTest {
         fire.beginReply(20)
         assertTrue(fire.ready(20))
         assertFalse(fire.ready(80))
-        assertFalse(fire.pending(240))
+        assertTrue(fire.pending(240), "reaching cover must not expire the response before the first peek")
+        assertFalse(fire.pending(600))
+    }
+
+    @Test fun `an uncertain far sector only requires a clear local muzzle lane`() {
+        val origin=Vec3(0.0,65.5,0.0)
+        val aim=Vec3(120.0,65.5,0.0)
+        assertEquals(Vec3(12.0,65.5,0.0),IncomingFire.laneEnd(origin,aim))
+        assertEquals(Vec3(4.0,65.5,0.0),IncomingFire.laneEnd(origin,Vec3(4.0,65.5,0.0)))
     }
 }

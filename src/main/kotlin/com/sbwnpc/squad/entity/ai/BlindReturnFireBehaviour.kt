@@ -13,6 +13,7 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 
 /** Only cover's deliberate peek window permits a finite response to an unseen shooter. */
 class BlindReturnFireBehaviour : ExtendedBehaviour<NpcEntity>() {
+    private var nextLogTick=0
     init { noTimeout() }
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
     private fun eligible(entity: NpcEntity): Boolean =
@@ -37,12 +38,23 @@ class BlindReturnFireBehaviour : ExtendedBehaviour<NpcEntity>() {
         val level = entity.level() as ServerLevel
         val spread = maxOf(entity.spread, 9.0)
         val hulls = Sightline.vehicleHulls(level, AABB(entity.eyePosition, aim).inflate(2.0), entity, null)
-        if (Sightline.blockedBy(level, entity.eyePosition, aim, entity, hulls, spread) ||
-            !FriendlyFireGuard.hasClearLineOfFire(entity, aim, spread)) return
+        val terrainBlocked=Sightline.blockedBy(level,entity.eyePosition,
+            com.sbwnpc.squad.combat.IncomingFire.laneEnd(entity.eyePosition,aim),entity,hulls,spread)
+        val allyBlocked=!FriendlyFireGuard.hasClearLineOfFire(entity,aim,spread)
+        if (terrainBlocked || allyBlocked) {
+            if (entity.tickCount>=nextLogTick) {
+                nextLogTick=entity.tickCount+20
+                com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER,
+                    "[return-fire] {} held: terrain={} allies={}",entity.uuid,terrainBlocked,allyBlocked)
+            }
+            return
+        }
         val interval = kotlin.math.ceil(1200.0 / gun.roundsPerMinute.coerceAtLeast(1.0)).toLong() +
             if (gun.needsTriggerReset) kotlin.math.ceil(entity.npcRank.semiFireIntervalMs / 50.0).toLong() else 0L
         gun.shootAt(spread, aim)
         entity.lastShotTick = entity.tickCount
         entity.incomingFire.shot(now, interval)
+        com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER,
+            "[return-fire] {} shot, remaining={}",entity.uuid,entity.incomingFire.roundsLeft)
     }
 }

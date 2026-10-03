@@ -204,6 +204,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     fun combatLockedByCover(): Boolean =
         BrainUtils.hasMemory(this, ModMemories.COVER_HOLD.get()) || evadingGrenade()
 
+    /** Peeking permits shooting while cover keeps sole ownership of the short movement. */
+    var coverPeekPoint: Vec3? = null
+        internal set
+    fun movementLockedByCover(): Boolean = combatLockedByCover() || coverPeekPoint != null
+
     /** Running from a live grenade (GrenadeEvadeBehaviour). Part of [combatLockedByCover]; exposed
      *  on its own for the movers that don't read that lock. */
     fun evadingGrenade(): Boolean = BrainUtils.hasMemory(this, ModMemories.GRENADE_EVADE.get())
@@ -218,6 +223,19 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     var readyToCover: Boolean = false
     var lastFireAt: Vec3? = null
         internal set
+    private var sightedTarget: UUID? = null
+    private var sightedEye: Vec3? = null
+    private var sightedUntil = Long.MIN_VALUE
+
+    fun rememberVisible(target: LivingEntity) {
+        sightedTarget=target.uuid
+        sightedEye=target.eyePosition
+        sightedUntil=level().gameTime+200
+    }
+
+    fun rememberedEye(target: LivingEntity): Vec3? = sightedEye?.takeIf {
+        sightedTarget==target.uuid && level().gameTime<sightedUntil
+    }
 
     fun firedRecently(withinTicks: Int): Boolean = tickCount - lastShotTick <= withinTicks
 
@@ -498,6 +516,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         if (result && !level().isClientSide && Ports.gear.isBulletDamage(source)) {
             incomingFire.record(eyePosition, source.directEntity?.takeIf { it !== source.entity }?.deltaMovement, source.entity?.eyePosition ?: source.sourcePosition, level().gameTime)
             suppress(incomingFire.point(level().gameTime) ?: source.sourcePosition ?: position())
+            com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER,
+                "[return-fire] {} hit, sector={} rounds={}",uuid,incomingFire.point(level().gameTime),incomingFire.roundsLeft)
         }
         return result
     }
