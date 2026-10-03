@@ -187,7 +187,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             // used to spend the raycast budget before a single launchable target got looked at.
             if (!inLaunchRange(entity, c.position())) continue
             if (losChecks++ >= MAX_LOS_CHECKS) break
-            if (!entity.sensing.hasLineOfSight(c)) continue
+            if (!com.sbwnpc.squad.combat.DetectionSightline.canSee(entity, c)) continue
             if (faction != null) TeamAwareness.report(faction, c.uuid, c.position(), tick, "drone operator ${entity.uuid.toString().take(8)}")
             if (spotted == null) spotted = c
         }
@@ -414,7 +414,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         val from = drone.boundingBox.center
         val to = target.eyePosition
         if (from.distanceToSqr(to) > DRONE_SIGHT_RANGE * DRONE_SIGHT_RANGE) return false
-        return !com.sbwnpc.squad.combat.Sightline.blocked(level, from, to, drone)
+        return com.sbwnpc.squad.combat.DetectionSightline.visible(level, from, to, drone)
     }
 
     /** Whether the drone may commit to the dive: a fixed point always, a man only while he is

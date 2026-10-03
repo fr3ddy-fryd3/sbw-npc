@@ -34,7 +34,7 @@ object FactionBanner {
         val font = Minecraft.getInstance().font
         val faction = faction
         val text = if (faction == null) "Your faction: not picked" else "Your faction: ${faction.label}"
-        val color = 0xFF000000.toInt() or (faction?.accentColor?.color ?: 0xAAAAAA)
+        val color = 0xFF000000.toInt() or (faction?.rgb ?: 0xAAAAAA)
 
         val g = event.guiGraphics
         val width = font.width(text)

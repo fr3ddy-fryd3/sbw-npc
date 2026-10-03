@@ -25,7 +25,7 @@ object SquadTeams {
         scoreboard.getPlayerTeam(name)?.let { return it }
         return scoreboard.addPlayerTeam(name).apply {
             this.color = faction.accentColor
-            displayName = Component.literal(faction.label).withStyle(faction.accentColor)
+            displayName = Component.literal(faction.label).withStyle(faction.accentStyle)
             isAllowFriendlyFire = false
         }
     }

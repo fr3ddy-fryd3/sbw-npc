@@ -168,7 +168,7 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
             // The label shares its line with the Order button — cut it rather than draw under it,
             // and put the whole thing in a tooltip.
             val fitted = font.plainSubstrByWidth(label, LABEL_WIDTH)
-            g.drawString(font, Component.literal(fitted).withStyle(row.faction.accentColor), listX, y, -1)
+            g.drawString(font, Component.literal(fitted).withStyle(row.faction.accentStyle), listX, y, -1)
             if (mouseX in listX until listX + LABEL_WIDTH && mouseY in y - 6 until y + ROW_HEIGHT - 6) {
                 val lines = mutableListOf<Component>(Component.literal(label))
                 row.barracks?.let {

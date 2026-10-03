@@ -10,11 +10,17 @@
   "mixins": [
     "VehicleBoardingMixin",
     "VehicleGunDataMixin",
+    "VehicleShootingMixin",
     "AutoAimableEntityMixin",
     "EntityAllianceMixin",
-    "EntityTrackingRangeMixin"
+    "EntityTrackingRangeMixin",
+    "AircraftSnapshotMixin"
   ],
   "client": [
-    "KeyMappingMixin"
+    "KeyMappingMixin",
+    "AircraftWorldRenderMixin",
+    "AircraftRendererMixin",
+    "AircraftModelEntriesMixin",
+    "AircraftModelReloadMixin"
   ]
 }

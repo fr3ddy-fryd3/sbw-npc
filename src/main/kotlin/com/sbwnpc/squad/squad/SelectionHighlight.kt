@@ -1,10 +1,11 @@
 package com.sbwnpc.squad.squad
 
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.core.particles.DustParticleOptions
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerLevel
-import org.joml.Vector3f
+import net.minecraft.world.phys.Vec3
 
 /**
  * Small "you selected this one" cue for the command tool — a particle puff above each NPC
@@ -20,19 +21,19 @@ import org.joml.Vector3f
 object SelectionHighlight {
     private const val INTERVAL_TICKS = 10
     private var nextTick = 0
-    private val COLOR = Vector3f(1f, 1f, 1f)
 
     fun tick(server: MinecraftServer) {
         val now = server.tickCount
         if (now < nextTick) return
         nextTick = now + INTERVAL_TICKS
 
-        val options = DustParticleOptions(COLOR, 1.0f)
         for (player in server.playerList.players) {
             val level = player.level() as? ServerLevel ?: continue
             val members = SquadSelection.looseOf(player.uuid)
             for (id in members) {
                 val npc = level.getEntity(id) as? NpcEntity ?: continue
+                val color = SquadTeams.factionOf(npc)?.rgb ?: 0xFFFFFF
+                val options = DustParticleOptions(Vec3.fromRGB24(color).toVector3f(), 1.0f)
                 level.sendParticles(
                     player, options, true,
                     npc.x, npc.y + npc.bbHeight + 0.3, npc.z,

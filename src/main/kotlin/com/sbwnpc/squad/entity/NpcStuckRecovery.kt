@@ -2,19 +2,20 @@ package com.sbwnpc.squad.entity
 
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.entity.ai.WalkingClearance
+import com.sbwnpc.squad.SquadMod
 import net.minecraft.core.BlockPos
+import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.phys.Vec3
 
 /**
  * Stuck with somewhere to go — either walking a path without getting anywhere, or getting paths
- * that end where it stands — and what's in the way at eye height is something a hand clears in a
- * moment: leaves, a bush, glass, sand, dirt. Knock it out. Paths are planned round such blocks, but
- * not every snag is foreseen, and a man standing pressed against a hedge until the order changed
- * looked broken. Nothing harder than [SOFT_BLOCK_HARDNESS], nothing with contents, nothing at all
- * where mob griefing is off. With eye height clear, the block over its head goes instead, so it can
- * climb the one at its feet.
+ * that end where it stands — gets a fresh path with a bounded, health-aware descent allowance.
+ * Soft colliders touching his body, legs or jumping headroom can be cleared, one at a time.
+ * Nothing harder than [SOFT_BLOCK_HARDNESS], nothing with contents, and no block breaking where
+ * mob griefing is off. Navigation recovery works independently of block breaking.
  */
 class NpcStuckRecovery(private val npc: NpcEntity) {
     private var stuckCheckPos: Vec3? = null
@@ -24,10 +25,12 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
     private var nowhereToward: BlockPos? = null
     private var nowhereSinceTick = -1
     private var nowhereLastTick = -1
+    private var recoveryAttempts = 0
+    private var lastWarningTick = -600
 
     /**
-     * Called by the navigation for every path it plans: [goesNowhere] is a path that can't reach
-     * [toward] and ends where the NPC already stands. A man boxed in like that has a path that is
+     * Called by the navigation for every ground search: [goesNowhere] means no path, or a local
+     * path ending where the NPC already stands while [toward] is still far away. A man boxed in has a path that is
      * finished before it starts — the navigation reports itself done, so from outside he looks
      * like someone who has arrived, standing still with nowhere to go.
      */
@@ -48,6 +51,7 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
         val path = npc.navigation.path
         val moved = stuckCheckPos?.let { it.distanceToSqr(here) > STUCK_MOVE_SQR } ?: true
         stuckCheckPos = here
+        if (moved) recoveryAttempts = 0
         val walkingInPlace = path != null && !npc.navigation.isDone && !moved
         if (walkingInPlace) {
             if (stuckSinceTick < 0) stuckSinceTick = tick
@@ -61,38 +65,41 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
             else -> return
         }
         val level = npc.level() as? ServerLevel ?: return
-        if (!net.neoforged.neoforge.event.EventHooks.canEntityGrief(level, npc)) return
         val dx = toward.x - npc.x
         val dz = toward.z - npc.z
         val len = kotlin.math.sqrt(dx * dx + dz * dz)
-        if (len < 1.0e-3) return
-        val eye = BlockPos.containing(npc.x + dx / len * 0.8, npc.eyeY, npc.z + dz / len * 0.8)
-        val pos = if (solid(level, eye)) eye else eye.above()
-        val state = level.getBlockState(pos)
-        val hardness = state.getDestroySpeed(level, pos)
-        val refusal = when {
-            !solid(level, pos) -> "nothing solid there"
-            !state.fluidState.isEmpty -> "fluid"
-            level.getBlockEntity(pos) != null -> "has contents"
-            hardness < 0f || hardness > SOFT_BLOCK_HARDNESS -> "hardness $hardness"
-            state.requiresCorrectToolForDrops() -> "needs a tool"
-            else -> null
-        }
-        // Either way, not again for another STUCK_BREAK_TICKS.
+        val direction = if (len < 1.0e-3) Vec3.ZERO else Vec3(dx / len, 0.0, dz / len)
+        val candidates = WalkingClearance.clearingCandidates(level, npc, npc.boundingBox, direction) +
+            listOfNotNull(WalkingClearance.lowerCrownLayer(level, npc, npc.boundingBox))
+        val pos = if (net.neoforged.neoforge.event.EventHooks.canEntityGrief(level, npc)) {
+            candidates.firstOrNull { candidate ->
+                val state = level.getBlockState(candidate)
+                val hardness = state.getDestroySpeed(level, candidate)
+                state.fluidState.isEmpty && level.getBlockEntity(candidate) == null &&
+                    hardness >= 0f && hardness <= SOFT_BLOCK_HARDNESS && !state.requiresCorrectToolForDrops()
+            }
+        } else null
+        // A new search must not reuse the path that has just failed to move him.
         stuckSinceTick = -1
         nowhereSinceTick = -1
-        if (refusal != null) {
-            DebugFlags.log(LogGroup.STUCK, "{} stuck at {}, left {} at {} ({})", npc.uuid, npc.blockPosition(), state.block.descriptionId, pos, refusal)
-            return
+        if (pos != null) {
+            val state = level.getBlockState(pos)
+            npc.swing(InteractionHand.MAIN_HAND)
+            level.destroyBlock(pos, true, npc)
+            DebugFlags.log(LogGroup.STUCK, "{} broke {} at {} to get unstuck", npc.uuid, state.block.descriptionId, pos)
         }
-        npc.swing(InteractionHand.MAIN_HAND)
-        level.destroyBlock(pos, true, npc)
-        DebugFlags.log(LogGroup.STUCK, "{} broke {} at {} to get unstuck", npc.uuid, state.block.descriptionId, pos)
-    }
-
-    private fun solid(level: ServerLevel, pos: BlockPos): Boolean {
-        val state = level.getBlockState(pos)
-        return !state.isAir && !state.getCollisionShape(level, pos).isEmpty
+        npc.allowRecoveryDescent()
+        npc.navigation.stop()
+        npc.navigation.moveTo(npc.navigation.createPath(BlockPos.containing(toward), 1), 1.0)
+        DebugFlags.log(LogGroup.STUCK, "{} replanned from {} toward {} with fall limit {}", npc.uuid,
+            npc.blockPosition(), toward, npc.maxFallDistance)
+        recoveryAttempts++
+        if (recoveryAttempts >= 6 && tick - lastWarningTick >= 600) {
+            lastWarningTick = tick
+            SquadMod.LOGGER.warn("NPC {} ({}) still stuck at {} toward {} after {} recoveries; fall limit {}, colliders {}",
+                npc.uuid, npc.npcClass, npc.blockPosition(), toward, recoveryAttempts, npc.maxFallDistance,
+                candidates.take(4).map { "${BuiltInRegistries.BLOCK.getKey(level.getBlockState(it).block)} at $it" })
+        }
     }
 
     private companion object {

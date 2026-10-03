@@ -28,7 +28,8 @@ import java.util.PriorityQueue
  * Only ground that is loaded or remembered is known. The rest is taken as crossable, at
  * [UNSEEN] times the cost — the usual assumption when planning across a world seen bit by bit: the
  * way goes on through it toward the goal, the traveller follows it as far as the known ground
- * goes ([Route.complete] false), the ground there loads, and it looks again. Deciding as if the
+ * goes ([Route.complete] false), the ground there loads, and it looks again. A known route beyond
+ * the search range is also continued in another leg. Deciding as if the
  * world ended where the loaded ground did set boat crews down hundreds of blocks short.
  */
 object CellPlanner {
@@ -63,16 +64,21 @@ object CellPlanner {
         fun extraCost(x: Int, z: Int): Double
         /** Where the traveller gets off if the trip ends at this column, or null if it can't. */
         fun exitAt(x: Int, z: Int, goal: Vec3): Vec3?
+        /** Whether this exit competes with continuing the trip. Other exits are fallbacks used
+         *  only if neither a preferred exit nor a continuation can be found. */
+        fun preferredExit(exit: Vec3, goal: Vec3): Boolean = true
         /** Blocks walked from getting off at [exit] to the goal. */
         fun remaining(exit: Vec3, goal: Vec3): Double = Math.hypot(exit.x - goal.x, exit.z - goal.z)
+        /** Whether to leave known ground here in search of a continuation. */
+        fun canExplore(from: Vec3, frontier: Vec3, goal: Vec3): Boolean = true
         /** The height of a route point over this column. */
         fun pointY(x: Int, z: Int): Double
     }
 
     /**
      * [route] (its turns; [trail], every column) runs from the start to [landing], the column the trip ends at, where the traveller
-     * gets off at [shore]. Not [complete] when it runs on into ground not yet seen: then [landing]
-     * is as far as the known ground goes, and the traveller looks again from there.
+     * gets off at [shore]. Not [complete] when it runs beyond known ground or the search range:
+     * then [landing] is the next continuation point, and the traveller looks again from there.
      */
     class Route(
         val route: List<Vec3>,
@@ -122,12 +128,20 @@ object CellPlanner {
         private var cellsVisited = 0
 
         /** The cheapest way to end the trip so far: the node and column, where to get off, and the
-         *  whole trip's cost in blocks walked. [bestUnseen]: going on into ground not yet seen. */
+         *  whole trip's cost in blocks walked. [bestUnseen]: continuing beyond this search. */
         private var bestCost = Double.MAX_VALUE
         private var bestCell: Long? = null
         private var bestColumn: Long? = null
         private var bestExit: Vec3? = null
         private var bestUnseen = false
+
+        /** A reachable place to walk on from when driving cannot reach the goal or continue.
+         *  Its cost must not prune the search for a longer, usable driving detour. */
+        private var fallbackCost = Double.MAX_VALUE
+        private var fallbackCell: Long? = null
+        private var fallbackColumn: Long? = null
+        private var fallbackExit: Vec3? = null
+        private var usingFallback = false
 
         private var corridor: HashSet<Long>? = null
         private var target: Long? = null
@@ -237,7 +251,9 @@ object CellPlanner {
                 if (f > cg + Math.hypot((x - tx).toDouble(), (z - tz).toDouble()) + 1e-9) continue // stale entry
                 left--
                 expanded++
-                if (current == t) return finish(if (complete) "to the end" else "on into ground not yet seen", current)
+                if (current == t) return finish(
+                    if (!complete) "to the next stretch" else if (usingFallback) "no continuation; crew walks on" else "to the end", current
+                )
                 for (dx in -1..1) for (dz in -1..1) {
                     if (dx == 0 && dz == 0) continue
                     val nx = x + dx
@@ -271,7 +287,14 @@ object CellPlanner {
                     val z = cz * CELL + j
                     val exit = medium.exitAt(x, z, goal) ?: continue
                     val cost = cg + medium.remaining(exit, goal)
-                    if (cost < bestCost) {
+                    if (!medium.preferredExit(exit, goal)) {
+                        if (cost < fallbackCost) {
+                            fallbackCost = cost
+                            fallbackCell = n
+                            fallbackColumn = key(x, z)
+                            fallbackExit = exit
+                        }
+                    } else if (cost < bestCost) {
                         bestCost = cost
                         bestCell = n
                         bestColumn = key(x, z)
@@ -298,9 +321,36 @@ object CellPlanner {
             }
             for ((dx, dz) in SIDES) {
                 val next = key(cx + dx, cz + dz)
-                if (!inRange(next)) continue
+                if (!inRange(next)) {
+                    // Known ground continues beyond this search's range too. A bounded search
+                    // ending here is another leg, not proof the crew should finish on foot.
+                    if (!here) continue
+                    val onward = !known(next) || partsOf(next).let {
+                        (0 until (partCount[next] ?: 0)).any { q -> passable(n, dx, dz, q, here) }
+                    }
+                    if (here && onward && medium.canExplore(
+                            Vec3(startX + 0.5, 0.0, startZ + 0.5),
+                            Vec3(kx(next) * CELL + CELL / 2.0, 0.0, kz(next) * CELL + CELL / 2.0), goal
+                        )
+                    ) {
+                        val cost = cg + cellH(n) * UNSEEN
+                        if (cost < bestCost) {
+                            bestCost = cost
+                            bestCell = n
+                            bestColumn = columnToward(n, next)
+                            bestExit = null
+                            bestUnseen = true
+                        }
+                    }
+                    continue
+                }
                 val ng = cg + CELL * medium.pace * if (known(next)) 1.0 else UNSEEN
                 if (!known(next)) {
+                    if (here && !medium.canExplore(
+                            Vec3(startX + 0.5, 0.0, startZ + 0.5),
+                            Vec3(kx(next) * CELL + CELL / 2.0, 0.0, kz(next) * CELL + CELL / 2.0), goal
+                        )
+                    ) continue
                     relax(n, next, ng)
                     continue
                 }
@@ -386,6 +436,12 @@ object CellPlanner {
         /** After the first pass: where the way goes, and the cells it goes by. The way is followed
          *  only as far as the known ground: past that it's a guess. */
         private fun chooseTarget(): Boolean {
+            if (bestCell == null && fallbackCell != null) {
+                bestCell = fallbackCell
+                bestColumn = fallbackColumn
+                bestExit = fallbackExit
+                usingFallback = true
+            }
             var endCell = bestCell ?: return false
             val cells = ArrayList<Long>()
             var at: Long? = endCell

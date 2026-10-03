@@ -10,6 +10,7 @@ import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.team.SquadTeams
+import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.vehicle.Helicopters
 import net.minecraft.commands.arguments.EntityAnchorArgument
 import net.minecraft.server.level.ServerLevel
@@ -102,6 +103,8 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
             entity.vehicleTransport = false
             return
         }
+        // Attack launches even on the current pad: its gunners must stay aboard while waiting.
+        if (entity.currentSquad()?.order == SquadOrder.ATTACK && Helicopters.canFly(heli) && heli.firstPassenger != null) return
         if (groundedSince == Int.MIN_VALUE / 2) groundedSince = entity.tickCount
 
         val home = entity.homeCenter()
@@ -170,9 +173,11 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         gun.operate()
 
         val aim = target.position().add(0.0, target.bbHeight * 0.5, 0.0)
+        if (!Helicopters.hasTurret(heli) && !BenchAttackOrbit.canAim(seat, heli.yRot, entity.eyePosition, aim)) return "target outside the seat's firing arc"
         entity.lookAt(EntityAnchorArgument.Anchor.EYES, aim)
         val dist = entity.distanceTo(target)
         if (dist > BENCH_RANGE) return "target ${dist.toInt()} blocks off (range ${BENCH_RANGE.toInt()})"
+        if (!com.sbwnpc.squad.combat.DetectionSightline.visible(entity.level(), entity.eyePosition, aim, entity)) return "target concealed"
         // Not hasLineOfSight: vanilla gives up past 128 blocks, and from cruising height that is
         // most of the ground a passenger can see.
         val level = entity.level() as? ServerLevel ?: return null
@@ -229,7 +234,8 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.vehicle != null || entity.diggedIn || entity.operatingDrone || entity.antiDroneEngaged) return false
         if (entity.target != null || entity.isSuppressed()) return false
         val home = entity.homeCenter() ?: return false
-        return entity.position().distanceTo(home) >= Helicopters.AIR_TRANSPORT_DISTANCE
+        return entity.currentSquad()?.order == SquadOrder.ATTACK ||
+            entity.position().distanceTo(home) >= Helicopters.AIR_TRANSPORT_DISTANCE
     }
 
     /**

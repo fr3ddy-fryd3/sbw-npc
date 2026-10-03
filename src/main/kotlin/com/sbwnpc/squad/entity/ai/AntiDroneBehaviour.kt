@@ -126,7 +126,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
             val d2 = entity.distanceToSqr(drone)
             if (d2 >= bestD2) continue
             val heard = d2 <= HEARING_RANGE * HEARING_RANGE && Ports.vehicles.engineRunning(drone)
-            if (heard || entity.sensing.hasLineOfSight(drone)) {
+            if (heard || com.sbwnpc.squad.combat.DetectionSightline.canSee(entity, drone)) {
                 best = drone
                 bestD2 = d2
             }

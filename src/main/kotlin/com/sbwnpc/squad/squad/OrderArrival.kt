@@ -26,6 +26,8 @@ object OrderArrival {
         val mgr = SquadManager.get(server)
         for (squad in mgr.all()) {
             if (squad.order != SquadOrder.ATTACK && squad.order != SquadOrder.RETREAT) continue
+            // AH-6 keeps orbiting for its gunners instead of finishing the attack on arrival.
+            if (squad.order == SquadOrder.ATTACK && mgr.isTransportSquad(squad)) continue
             // Hunting a unit rather than taking a point: nothing to arrive at.
             if (squad.focusEntity != null) continue
             val goal = squad.objective ?: continue

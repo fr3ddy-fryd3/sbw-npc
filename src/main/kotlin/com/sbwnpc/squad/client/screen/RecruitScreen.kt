@@ -163,7 +163,7 @@ class RecruitScreen(
     private fun presetLabel() = Component.literal("Deploy: ${preset.label}").withStyle(ChatFormatting.WHITE)
     private fun classLabel() = Component.literal("Class: ${cls.name}").withStyle(ChatFormatting.GOLD)
     private fun rankLabel() = Component.literal("Rank: ${rank.name}").withStyle(ChatFormatting.AQUA)
-    private fun factionLabel() = Component.literal("Faction: ${faction.label}").withStyle(faction.accentColor)
+    private fun factionLabel() = Component.literal("Faction: ${faction.label}").withStyle(faction.accentStyle)
     private fun vehicleModelLabel() = Component.literal("Vehicle: ${vehicleModel.label}").withStyle(ChatFormatting.GOLD)
     private fun tankModelLabel() = Component.literal("Tank: ${tankModel.label}").withStyle(ChatFormatting.GOLD)
 

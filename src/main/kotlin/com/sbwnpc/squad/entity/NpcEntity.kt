@@ -298,15 +298,21 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // no NPC ever saw a Supply.
     private var supplyCheckTick = Int.MIN_VALUE / 2
     private var cachedSupply: Vec3? = null
+    private var supplySearchUnlimited = false
 
-    /** Centre of the nearest Supply serving this NPC's side within [SUPPLY_SEARCH_RANGE] — looked up
-     *  at most every couple of seconds, since supply points don't move. */
+    /** A nearby friendly Supply while rounds remain; the nearest known one at any distance once
+     *  completely empty. Mortar loaders likewise go farther when their shells are exhausted.
+     *  Looked up every couple of seconds, or immediately when the search range changes. */
     fun nearestSupply(): Vec3? {
-        if (tickCount - supplyCheckTick >= SUPPLY_CHECK_INTERVAL) {
+        val level = level() as? ServerLevel ?: return null
+        val unlimited = ammoFraction() <= 0.0 || (npcClass == NpcClass.MORTAR_LOADER && mortarShellsLeft <= 0)
+        if (unlimited != supplySearchUnlimited || tickCount - supplyCheckTick >= SUPPLY_CHECK_INTERVAL) {
             supplyCheckTick = tickCount
-            cachedSupply = com.sbwnpc.squad.block.entity.SupplyPoints
-                .nearestServing(level().dimension(), position(), SquadTeams.factionOf(this), SUPPLY_SEARCH_RANGE)
-                ?.blockPos?.center
+            supplySearchUnlimited = unlimited
+            cachedSupply = com.sbwnpc.squad.block.entity.SupplyPoints.get(level)
+                .nearestServing(level, position(), SquadTeams.factionOf(this),
+                    if (unlimited) Double.POSITIVE_INFINITY else SUPPLY_SEARCH_RANGE)
+                ?.center
         }
         return cachedSupply
     }
@@ -533,6 +539,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     }
 
     override fun onRemovedFromLevel() {
+        if (!level().isClientSide) com.sbwnpc.squad.entity.ai.SquadMarch.forgetIndividual(uuid)
         NpcRegistry.remove(this)
         super.onRemovedFromLevel()
     }
@@ -673,6 +680,23 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     private val posture = NpcPosture(this)
     private val stuckRecovery = NpcStuckRecovery(this)
+
+    private var descentRecoveryUntil = -1
+
+    internal val recoveringNavigation: Boolean get() = tickCount <= descentRecoveryUntil
+
+    internal fun allowRecoveryDescent() {
+        descentRecoveryUntil = tickCount + 100
+    }
+
+    /** Ordinary marches avoid damaging drops; a stranded NPC can use a bounded descent. */
+    override fun getMaxFallDistance(): Int {
+        val normal = super.getMaxFallDistance()
+        if (!recoveringNavigation) return normal
+        return com.sbwnpc.squad.entity.ai.WalkingClearance.recoveryFallDistance(health) {
+            calculateFallDamage(it, 1f)
+        }
+    }
 
     /** See [NpcStuckRecovery.notePathGoesNowhere]; the navigation reports every path it plans. */
     fun notePathGoesNowhere(toward: BlockPos, goesNowhere: Boolean) = stuckRecovery.notePathGoesNowhere(toward, goesNowhere)

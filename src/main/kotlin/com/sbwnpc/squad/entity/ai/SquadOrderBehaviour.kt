@@ -20,7 +20,8 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
  * behaviours don't exclude one another by themselves.
  *
  *  - DEFEND: back to within [SquadFormation.defendArrivalRadius] of home (objective point or
- *    guarded entity), then each man holds his own post round a perimeter sized to the squad.
+ *    guarded entity), running when more than [DEFEND_RUN_DISTANCE] blocks away, then each man
+ *    holds his own post round a perimeter sized to the squad.
  *  - PATROL: walk the squad's assigned Route in sequence if it has one (see RouteManager);
  *    otherwise wander within [ROAM_RADIUS] of home.
  *  - ATTACK: advance on home at a run. Taking the point turns the squad to DEFEND —
@@ -111,9 +112,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         when (order) {
             SquadOrder.ATTACK -> {
                 val arrived = dist <= SquadFormation.ARRIVAL_RADIUS
-                // Only ATTACK (taking a point) moves at RUN pace, same as actually being in combat
-                // (GunAttackBehaviour's own movement already uses this same 1.0 modifier) — per user
-                // request, MOVE/DEFEND/PATROL should read as a calm hold/patrol, not a constant jog.
+                // ATTACK advances at combat pace; distant defenders use the same pace to catch up.
                 // Taking the point turns into holding it — squad-wide, in OrderArrival.
                 approachSlot(entity, home, arrived, RUN_SPEED_MODIFIER)
             }
@@ -126,13 +125,14 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
             // off toward the shelling whenever they stepped away from the tube.
             SquadOrder.BARRAGE -> entity.navigation.stop()
             SquadOrder.DEFEND -> {
+                val speed = if (dist > DEFEND_RUN_DISTANCE) RUN_SPEED_MODIFIER else WALK_SPEED_MODIFIER
                 // A defender that has picked its post keeps making for it: its way there can lead
                 // out past the arrival line first, and flipping back to "not arrived" there had it
                 // turning round for the centre and back again, over and over.
                 val hasPost = defendPost != null && defendPostHome == home
                 val arrived = hasPost || dist <= SquadFormation.defendArrivalRadius(squad.members.size)
-                if (arrived) holdDefendPost(entity, home)
-                else approachSlot(entity, home, arrived, WALK_SPEED_MODIFIER)
+                if (arrived) holdDefendPost(entity, home, speed)
+                else approachSlot(entity, home, arrived, speed)
             }
             SquadOrder.PATROL -> {
                 val points = squad.routeId
@@ -240,7 +240,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
      * a spot with low cover on the outward side — something to crouch behind that it can still see
      * over — and keeps clear of where squadmates already are.
      */
-    private fun holdDefendPost(entity: NpcEntity, home: Vec3) {
+    private fun holdDefendPost(entity: NpcEntity, home: Vec3, speed: Double) {
         val level = entity.level() as? ServerLevel ?: return
         val post = defendPost?.takeIf { defendPostHome == home } ?: chooseDefendPost(entity, level, home).also {
             defendPost = it
@@ -252,7 +252,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         val dz = here.z - post.z
         val settled = entity.navigation.isDone && dx * dx + dz * dz <= DEFEND_SETTLE_DISTANCE * DEFEND_SETTLE_DISTANCE
         if (dx * dx + dz * dz > 1.0 && !settled) {
-            val pace = holdPace(entity, WALK_SPEED_MODIFIER)
+            val pace = holdPace(entity, speed)
             repathWhenDue(entity, post, pace)
         } else {
             entity.navigation.stop()
@@ -388,15 +388,10 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         /** How far around its perimeter slot a defender looks for a better spot. */
         private const val DEFEND_POST_SEARCH = 3.0
         private const val DEFEND_SETTLE_DISTANCE = 2.5
+        private const val DEFEND_RUN_DISTANCE = 80.0
         private const val MOVE_RALLY_TIMEOUT_TICKS = 100L
-        // Per user request: MOVE/DEFEND/PATROL should read as a calm hold/patrol, not a constant
-        // jog — only actually taking a point (ATTACK) or engaging (GunAttackBehaviour, which already
-        // moves at a plain 1.0 modifier) should look urgent. Both are still just a navigation
-        // speedModifier multiplying the entity's own per-class MOVEMENT_SPEED attribute (tuned in
-        // NpcEntity.applyRole()) — this doesn't change how fast an NPC even CAN move, just how much
-        // of that speed idle movement actually uses. RUN_SPEED_MODIFIER matches what ATTACK/combat
-        // movement already used before this change (kept as a named constant here purely so both
-        // paces are visible together, not because ATTACK's pace itself changed).
+        // Navigation modifiers multiply each role's MOVEMENT_SPEED. MOVE/PATROL and nearby
+        // defenders walk; ATTACK/RETREAT and defenders beyond DEFEND_RUN_DISTANCE run at combat pace.
         // internal (not private) — NpcEntity.registerGoals() reuses this for vanilla idle wandering.
         internal const val WALK_SPEED_MODIFIER = 0.6
         private const val RUN_SPEED_MODIFIER = 1.0

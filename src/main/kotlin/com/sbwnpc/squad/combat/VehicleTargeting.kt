@@ -46,7 +46,7 @@ object VehicleTargeting {
             // Same arc the naked eye gets in SquadTargetSensor — a tank behind you is no more
             // visible than a rifleman behind you.
             if (!Vision.inCone(entity.position(), entity.yHeadRot, occupant.position())) continue
-            if (entity.sensing.hasLineOfSight(occupant.vehicle!!)) return occupant
+            if (DetectionSightline.canSee(entity, occupant.vehicle!!)) return occupant
         }
         return null
     }
@@ -76,7 +76,7 @@ object VehicleTargeting {
             } as? LivingEntity ?: continue
             if (!Vision.inCone(entity.position(), entity.yHeadRot, heli.position())) continue
             // Not hasLineOfSight: vanilla gives up past 128 blocks, well inside this range.
-            if (Sightline.blocked(level, entity.eyePosition, heli.boundingBox.center, entity)) continue
+            if (!DetectionSightline.visible(level, entity.eyePosition, heli.boundingBox.center, entity)) continue
             best = occupant
             bestSqr = distSqr
         }

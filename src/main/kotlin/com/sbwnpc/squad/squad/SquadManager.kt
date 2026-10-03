@@ -130,9 +130,7 @@ class SquadManager : SavedData() {
         it == NpcClass.MORTAR_OPERATOR || it == NpcClass.MORTAR_LOADER
     }
 
-    /** Sets the objective and, if it's a real point, bursts a squad-coloured particle marker
-     *  visible only to the squad's owner — the only person who can act on where they just
-     *  pointed, and the only one who needs to see it. */
+    /** Sets the objective; only an owner on the squad's faction sees the world particle marker. */
     fun setObjective(level: ServerLevel, id: UUID, pos: BlockPos?) {
         val squad = squads[id] ?: return
         squad.objective = pos
@@ -149,7 +147,8 @@ class SquadManager : SavedData() {
 
     private fun spawnObjectiveMarker(level: ServerLevel, squad: Squad, pos: BlockPos) {
         val owner = level.server.playerList.getPlayer(squad.owner) ?: return
-        val color = Vec3.fromRGB24(squad.faction.accentColor.color ?: 0xFFFFFF).toVector3f()
+        if (PlayerFactionRegistry.get(level).get(owner.uuid) != squad.faction) return
+        val color = Vec3.fromRGB24(squad.faction.rgb).toVector3f()
         val options = DustParticleOptions(color, 1.5f)
         val center = pos.center
         level.sendParticles(owner, options, true, center.x, center.y + 0.6, center.z, 40, 0.3, 0.7, 0.3, 0.02)

@@ -62,6 +62,7 @@ object MapFeed {
         val sides = Diplomacy.alliesOf(faction)
         val tag = CompoundTag()
         tag.putString("Dim", level.dimension().location().toString())
+        tag.putInt("DefaultFaction", faction.ordinal)
 
         val squads = SquadManager.get(server)
         val routes = RouteManager.get(server)
@@ -92,6 +93,9 @@ object MapFeed {
             t.putBoolean("Own", squad.owner == player.uuid)
             t.putString("Order", squad.order.name)
             t.putBoolean("Mortar", squads.isMortarSquad(squad))
+            t.putBoolean("Tank", squads.isTankSquad(squad))
+            t.putBoolean("Gunship", squads.isGunshipSquad(squad))
+            t.putBoolean("Transport", squads.isTransportSquad(squad))
             t.putInt("N", if (asleep) squad.members.size else members.size)
             if (asleep) {
                 t.putInt("X", lastSeen!!.x)

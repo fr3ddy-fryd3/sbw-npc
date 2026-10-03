@@ -161,6 +161,14 @@ object SbwVehicles : Vehicles {
         }
     }
 
+    override fun canCrossWater(vehicle: Entity): Boolean {
+        if (vehicle !is VehicleEntity || vehicle.computed().engineType !in GROUND_ENGINES) return false
+        // EngineInfo is lazy until the first engine tick; use the same computed JSON before then.
+        val buoyancy = vehicle.engineInfo?.buoyancy
+            ?: vehicle.computed().engineInfo.get("Buoyancy")?.asDouble ?: 0.0
+        return buoyancy > 0.0
+    }
+
     /**
      * Throttle forward, turn left/right to close the heading gap — a sharp turn taken slowly, a
      * tank turning on the spot, a wheeled vehicle turning back on itself backing round.

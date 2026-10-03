@@ -26,6 +26,7 @@ import net.minecraft.ChatFormatting
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.Tag
 import net.minecraft.network.chat.Component
+import net.minecraft.network.chat.Style
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.InteractionHand
@@ -144,7 +145,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             actionbar(player, "No room for the vehicle here — deployed on foot", ChatFormatting.RED)
         } else {
             deployed.squad?.let {
-                actionbar(player, "Deployed ${it.name} (${deployed.members.size})", cfg.faction.accentColor)
+                actionbar(player, "Deployed ${it.name} (${deployed.members.size})", cfg.faction.accentStyle)
             }
         }
         return InteractionResult.CONSUME
@@ -170,7 +171,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             mgr.setFocus(armedFocus, target.uuid)
             val squad = mgr.get(armedFocus)
             val verb = if (squad?.order == SquadOrder.DEFEND) "will guard" else "will target"
-            actionbar(player, "${squad?.name ?: "Squad"} $verb ${target.name.string}", (squad?.faction?.accentColor ?: ChatFormatting.GRAY))
+            actionbar(player, "${squad?.name ?: "Squad"} $verb ${target.name.string}", squad?.faction?.accentStyle ?: Style.EMPTY.withColor(ChatFormatting.GRAY))
             return InteractionResult.SUCCESS
         }
 
@@ -190,7 +191,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
                 }
                 SquadSelection.selectSquad(player.uuid, sid)
                 val s = mgr.get(sid)
-                actionbar(player, "Selected ${s?.name ?: "squad"} (${s?.members?.size ?: 0})", (s?.faction?.accentColor ?: ChatFormatting.GRAY))
+                actionbar(player, "Selected ${s?.name ?: "squad"} (${s?.members?.size ?: 0})", s?.faction?.accentStyle ?: Style.EMPTY.withColor(ChatFormatting.GRAY))
             } else {
                 val loose = SquadSelection.looseOf(player.uuid)
                 val existingFaction = loose.firstOrNull()?.let { level.getEntity(it) }?.let { SquadTeams.factionOf(it) }
@@ -210,12 +211,15 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         mgr.setFocus(sid, target.uuid)
         val squad = mgr.get(sid)
         val verb = if (squad?.order == SquadOrder.DEFEND) "will guard" else "will target"
-        actionbar(player, "${squad?.name ?: "Squad"} $verb ${target.name.string}", (squad?.faction?.accentColor ?: ChatFormatting.GRAY))
+        actionbar(player, "${squad?.name ?: "Squad"} $verb ${target.name.string}", squad?.faction?.accentStyle ?: Style.EMPTY.withColor(ChatFormatting.GRAY))
         return InteractionResult.SUCCESS
     }
 
     private fun actionbar(player: Player, msg: String, color: ChatFormatting) =
         player.displayClientMessage(Component.literal(msg).withStyle(color), true)
+
+    private fun actionbar(player: Player, msg: String, style: Style) =
+        player.displayClientMessage(Component.literal(msg).withStyle(style), true)
 
     override fun appendHoverText(stack: ItemStack, context: TooltipContext, tooltip: MutableList<Component>, flag: TooltipFlag) {
         val m = when (mode(stack)) {
@@ -226,7 +230,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         readConfig(stack)?.let { cfg ->
             val what = if (cfg.preset == SquadPreset.SINGLE) cfg.cls.name else cfg.preset.label
             tooltip.add(Component.literal("Deploy: $what / ${cfg.rank.name}").withStyle(ChatFormatting.GOLD))
-            tooltip.add(Component.literal("Faction: ${cfg.faction.label}").withStyle(cfg.faction.accentColor))
+            tooltip.add(Component.literal("Faction: ${cfg.faction.label}").withStyle(cfg.faction.accentStyle))
         }
         tooltip.add(Component.literal("ctrl+air: switch mode · air: open GUI").withStyle(ChatFormatting.DARK_GRAY))
     }

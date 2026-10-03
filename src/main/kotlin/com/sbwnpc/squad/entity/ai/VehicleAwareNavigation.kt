@@ -61,9 +61,13 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         (mob as? com.sbwnpc.squad.entity.NpcEntity)?.let { npc ->
             val far = pos.distToCenterSqr(mob.x, mob.y, mob.z) > NOWHERE_MIN_DISTANCE * NOWHERE_MIN_DISTANCE
             val end = result?.endNode?.asBlockPos()
-            // Not a null path: that is ground not loaded yet or a route still being planned.
-            val nowhere = far && result != null && !result.canReach() && end != null && end.distManhattan(mob.blockPosition()) <= 1
-            npc.notePathGoesNowhere(pos, nowhere)
+            // A reachable local waypoint can still be the block he already occupies, while the
+            // actual order is far away. Null ground searches also need physical stuck recovery.
+            // Airborne requests say nothing about whether the path can advance.
+            if (canPlan) {
+                val nowhere = far && (result == null || end != null && end.distManhattan(mob.blockPosition()) <= 1)
+                npc.notePathGoesNowhere(pos, nowhere)
+            }
         }
         // No path on the ground is rare and is what a caller gives up on — never skipped.
         if (com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.PATH) && (result == null && canPlan || mob.tickCount - lastPathLogTick >= PATH_LOG_TICKS)) {
@@ -169,12 +173,13 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         val dz = pos.z + 0.5 - mob.z
         val len = Math.sqrt(dx * dx + dz * dz)
         // At the wheel or on a bench, a man's squad route is a footpath — no way for a vehicle.
-        // And only the squad's own march goes by its route: a man off to look at a noise, to a
-        // Supply or for shells had a march planned for his errand alone, stood still till it
-        // came back — and whoever asked for his path just once took that for a path already
-        // walked and gave up.
+        // The squad march and resupply trips use long routes. Brief errands (investigating a
+        // noise, returning to a mortar) still use local legs rather than wait for a long search.
+        // Resupplying men follow the route itself, not a formation around the squad's lead.
         val npc = (mob as? com.sbwnpc.squad.entity.NpcEntity)
-            ?.takeIf { it.vehicle == null && it.homeCenter()?.let { home -> pos.closerThan(BlockPos.containing(home), MARCH_GOAL_RANGE) } == true }
+            ?.takeIf { !it.recoveringNavigation && it.vehicle == null && (resupplyTrip(it) ||
+                it.homeCenter()?.let { home -> pos.closerThan(BlockPos.containing(home), MARCH_GOAL_RANGE) } == true) }
+        val formation = npc?.let { !resupplyTrip(it) } ?: true
         if (len <= NEAR_RANGE && level.chunkSource.getChunkNow(pos.x shr 4, pos.z shr 4) != null) {
             farGoal = null
             branch = "near"
@@ -183,8 +188,9 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
             val near = super.createPath(pos, accuracy)
             // Close, but the short search can't get there — a hill in the way, most likely. Out of
             // a fight, the squad's big search looks for the way round.
-            if (near != null && !near.canReach() && near.distToTarget > SHORT_OF_GOAL && npc != null && npc.target == null) {
-                SquadMarch.waypointFor(npc, pos)?.let {
+            if (near != null && !near.canReach() && near.distToTarget > SHORT_OF_GOAL && npc != null &&
+                (npc.target == null || resupplyTrip(npc))) {
+                SquadMarch.waypointFor(npc, pos, formation)?.let {
                     branch = "near-route ${it.route}"
                     nearGoal = null
                     return super.createPath(it.route, accuracy)
@@ -194,7 +200,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         }
         // In a squad: its shared route, walked with the ordinary short search.
         npc?.let {
-            SquadMarch.waypointFor(it, pos)?.let { waypoint ->
+            SquadMarch.waypointFor(it, pos, formation)?.let { waypoint ->
                 farGoal = null
                 // His place in the formation if he can get there; the route itself otherwise.
                 waypoint.formation?.let { spot ->
@@ -243,6 +249,9 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         }
         return null
     }
+
+    private fun resupplyTrip(npc: com.sbwnpc.squad.entity.NpcEntity): Boolean =
+        npc.resupplying || (npc.servingMortar && npc.mortarShellsLeft <= 0)
 
     /** What the path being walked was last planned to, on the near, formation and route branches. */
     private var nearGoal: BlockPos? = null
@@ -317,6 +326,7 @@ internal open class VehicleAwareNodeEvaluator : WalkNodeEvaluator() {
     private var hulls: List<Pair<net.minecraft.world.entity.Entity, AABB>> = emptyList()
     private var standingOn: BlockPos? = null
     private var start: BlockPos? = null
+    private var escapingCanopy = false
 
     /**
      * One entity query for the whole path computation. [done] drops it again, and the evaluator's
@@ -341,12 +351,17 @@ internal open class VehicleAwareNodeEvaluator : WalkNodeEvaluator() {
         // pushed up onto a hull and now needs a route off it.
         standingOn = if (hulls.isEmpty()) null else mob.blockPosition()
         start = mob.blockPosition()
+        // A man already on a crown needs a way off it, but ground routes must not climb crowns.
+        escapingCanopy = (-1..0).any { dy ->
+            WalkingClearance.leaves(level.getBlockState(mob.blockPosition().offset(0, dy, 0)))
+        }
     }
 
     override fun done() {
         hulls = emptyList()
         standingOn = null
         start = null
+        escapingCanopy = false
         super.done()
     }
 
@@ -359,7 +374,12 @@ internal open class VehicleAwareNodeEvaluator : WalkNodeEvaluator() {
     override fun getPathType(context: PathfindingContext, x: Int, y: Int, z: Int): PathType {
         if (bodyHigh(context, x, y, z)) return PathType.BLOCKED
         val type = super.getPathType(context, x, y, z)
-        if (type == PathType.OPEN && bodyHigh(context, x, y - 1, z)) return PathType.WALKABLE
+        if (type == PathType.OPEN) {
+            val below = BlockPos(x, y - 1, z)
+            val state = context.getBlockState(below)
+            // Partial roots need a raised walking node even when they are only half a block high.
+            if (!state.isAir && !state.getCollisionShape(context.level(), below).isEmpty) return PathType.WALKABLE
+        }
         return type
     }
 
@@ -378,7 +398,20 @@ internal open class VehicleAwareNodeEvaluator : WalkNodeEvaluator() {
         if (hulls.isNotEmpty() && !isStandingOn(x, y, z) && occupied(x, y, z)) {
             return PathType.BLOCKED
         }
-        return super.getPathTypeOfMob(context, x, y, z, mob)
+        val type = super.getPathTypeOfMob(context, x, y, z, mob)
+        if (mob.getPathfindingMalus(type) < 0f) return type
+        val pos = BlockPos(x, y, z)
+        val support = context.getBlockState(pos.below())
+        if (WalkingClearance.leaves(support) && (!escapingCanopy || y > (start?.y ?: y) + 1)) return PathType.BLOCKED
+        // Vanilla normally checks collisions only for fences/doors and jumps. A modded branch
+        // can occupy an otherwise empty neighboring node, and roots can catch the legs there.
+        // Keep the start usable for an NPC who was already pushed into an obstacle.
+        val origin = start
+        if (origin != null && origin.x == x && origin.z == z && kotlin.math.abs(origin.y - y) <= 1) return type
+        val floor = if (type == PathType.OPEN || type == PathType.WATER) y.toDouble()
+            else getFloorLevel(pos)
+        val box = WalkingClearance.body(x, floor, z, mob.bbWidth, mob.bbHeight)
+        return if (context.level().noBlockCollision(mob, box)) type else PathType.BLOCKED
     }
 
     private fun isStandingOn(x: Int, y: Int, z: Int): Boolean {
