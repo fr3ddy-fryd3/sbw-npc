@@ -16,7 +16,7 @@ class BlindReturnFireBehaviour : ExtendedBehaviour<NpcEntity>() {
     init { noTimeout() }
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
     private fun eligible(entity: NpcEntity): Boolean =
-        entity.target?.let { com.sbwnpc.squad.combat.DetectionSightline.canSee(entity, it) } != true &&
+        entity.target?.let { com.sbwnpc.squad.combat.DetectionSightline.canSeeWithin(entity, it, NpcEntity.DETECTION_RANGE) } != true &&
         entity.incomingFire.replying(entity.level().gameTime) && !entity.busyWithRole() &&
         !entity.combatLockedByCover() && !entity.combatLockedByMedic() && !entity.resupplying && entity.vehicle == null
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity) = eligible(entity)
@@ -24,6 +24,7 @@ class BlindReturnFireBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun tick(entity: NpcEntity) {
         val now = entity.level().gameTime
         val aim = entity.incomingFire.point(now) ?: return
+        com.sbwnpc.squad.combat.AntiArmourKit.wield(entity,launcher=false)
         val gun = Ports.guns.inHand(entity) ?: return
         // Uncertain contacts never authorize grenades, rockets, or simulated hits.
         if (gun.explosionRadius > 0.0 || !gun.hasAmmo()) return

@@ -79,4 +79,14 @@ class TacticalCoordinationTest {
         assertEquals(TacticalJob.RESERVE,plan.tasks[UUID(0,9)]!!.job)
         assertTrue(plan.tasks[UUID(0,9)]!!.anchor.x < view.center.x)
     }
+    @Test fun `firing in another direction does not count as covering the maneuver`() {
+        val state=SquadTacticalState()
+        val view=view().copy(members=members.map { it.copy(firingAt=Vec3(-100.0,64.0,0.0)) })
+        state.select(TacticalRules.choose(view),1,0)
+        val plan=state.plan!!
+        TacticalManeuvers.assign(squad,plan,view)
+        plan.tasks.values.filter { it.job == TacticalJob.COVER }.forEach { it.position=it.anchor }
+        TacticalManeuvers.advance(squad,state,plan,view)
+        assertEquals(TacticalStatus.PREPARING,plan.status)
+    }
 }

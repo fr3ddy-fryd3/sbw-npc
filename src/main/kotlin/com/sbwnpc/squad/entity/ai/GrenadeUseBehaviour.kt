@@ -77,7 +77,9 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (VehicleTargeting.isAircrew(target)) return null
         val since = entity.blockedSightSince ?: return null
         if (entity.tickCount - since < BLOCKED_TICKS) return null
-        return target.position()
+        val known = entity.currentSquad()?.tactics?.contacts?.get(target.uuid)
+        if (known != null && entity.level().gameTime-known.seenAt <= 100) return known.position
+        return target.position().takeIf { com.sbwnpc.squad.combat.DetectionSightline.canSee(entity,target) }
     }
 
     /**
@@ -91,7 +93,8 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
         val reach = GrenadeThrower.MAX_RANGE + CLUSTER_RADIUS
         val enemies = level.getEntitiesOfClass(
             net.minecraft.world.entity.LivingEntity::class.java, entity.boundingBox.inflate(reach, 6.0, reach)
-        ) { it.isAlive && it !== entity && entity.isEnemy(it) && !VehicleTargeting.isAircrew(it) }
+        ) { it.isAlive && it !== entity && entity.isEnemy(it) && !VehicleTargeting.isAircrew(it) &&
+            com.sbwnpc.squad.combat.DetectionSightline.canSee(entity,it) }
         if (enemies.size < CLUSTER_SIZE) return null
         val radiusSqr = CLUSTER_RADIUS * CLUSTER_RADIUS
         var best: List<net.minecraft.world.entity.LivingEntity>? = null
@@ -114,7 +117,10 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun suppressionPoint(entity: NpcEntity): Vec3? {
         if (!entity.isSuppressed()) return null
         // Pinned down from the air: the fire comes from somewhere a grenade can't go.
-        val from = entity.threatPos ?: return null
+        val target = entity.target ?: return null
+        val known = entity.currentSquad()?.tactics?.contacts?.get(target.uuid)
+        val from = known?.position?.takeIf { entity.level().gameTime-known.seenAt <= 100 }
+            ?: target.position().takeIf { com.sbwnpc.squad.combat.DetectionSightline.canSee(entity,target) } ?: return null
         if (from.y - entity.y > AIR_THREAT_HEIGHT) return null
         entity.target?.takeIf { VehicleTargeting.isAircrew(it) }?.let { return null }
         return from

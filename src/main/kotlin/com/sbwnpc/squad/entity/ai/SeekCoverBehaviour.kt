@@ -245,7 +245,8 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         // possible, otherwise just hold this spot and keep firing (GunAttackBehaviour already finds
         // the best nearby partial cover to shoot from on its own). Only the "no target at all,
         // genuinely blind" case still falls back to fallbackAwayFrom below.
-        if (entity.target != null) {
+        if (entity.target != null && (!entity.incomingFire.pending(level.gameTime) ||
+            com.sbwnpc.squad.combat.DetectionSightline.canSeeWithin(entity,entity.target!!,NpcEntity.DETECTION_RANGE))) {
             if (digsUsed < MAX_DIGS && canDigIn(entity, level, entity.blockPosition())) {
                 startDigging(entity)
             } else {
@@ -630,7 +631,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             startDigging(entity)
             return
         }
-        val target = entity.target?.takeIf { com.sbwnpc.squad.combat.DetectionSightline.canSee(entity, it) }
+        val target = entity.target?.takeIf { com.sbwnpc.squad.combat.DetectionSightline.canSeeWithin(entity, it, NpcEntity.DETECTION_RANGE) }
         if (target != null && target.isAlive) {
             phase = Phase.PEEKING
             phaseUntilTick = entity.tickCount + PEEK_TICKS
@@ -642,7 +643,8 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             entity.navigation.moveTo(peekPoint.x, peekPoint.y, peekPoint.z, 1.0)
         } else {
             val aim = entity.incomingFire.point(level.gameTime)
-            val peek = if (aim != null && entity.incomingFire.pending(level.gameTime))
+            val peek = if (aim != null && entity.incomingFire.pending(level.gameTime) &&
+                com.sbwnpc.squad.domain.port.Ports.guns.inHand(entity)?.hasAmmo() == true)
                 coverTarget?.let { blindPeekPoint(entity, level, it, aim) } else null
             if (peek != null) {
                 phase = Phase.PEEKING
@@ -697,7 +699,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun tickPeeking(entity: NpcEntity) {
         val target = entity.target
         val blindReply = entity.incomingFire.replying(entity.level().gameTime) &&
-            (target == null || !com.sbwnpc.squad.combat.DetectionSightline.canSee(entity, target))
+            (target == null || !com.sbwnpc.squad.combat.DetectionSightline.canSeeWithin(entity, target, NpcEntity.DETECTION_RANGE))
         if (entity.tickCount >= phaseUntilTick || (!blindReply && (target == null || !target.isAlive))) {
             duckBackToCover(entity)
         }

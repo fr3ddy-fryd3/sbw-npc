@@ -12,7 +12,13 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 class SquadTacticalBehaviour : ExtendedBehaviour<NpcEntity>() {
     init { noTimeout() }
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity) = entity.squadId != null
-    override fun shouldKeepRunning(entity: NpcEntity) = entity.squadId != null
-    override fun tick(entity: NpcEntity) = SquadTactics.refresh(entity)
+    private fun eligible(entity: NpcEntity) = entity.squadId != null && entity.vehicle == null &&
+        entity.npcClass !in setOf(com.sbwnpc.squad.npc.NpcClass.TANK_CREW,com.sbwnpc.squad.npc.NpcClass.HELICOPTER_PILOT,
+            com.sbwnpc.squad.npc.NpcClass.HELICOPTER_GUNNER,com.sbwnpc.squad.npc.NpcClass.MORTAR_OPERATOR,com.sbwnpc.squad.npc.NpcClass.MORTAR_LOADER)
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity) = eligible(entity)
+    override fun shouldKeepRunning(entity: NpcEntity) = eligible(entity)
+    override fun tick(entity: NpcEntity) {
+        SquadTactics.refresh(entity)
+        SquadTactics.equip(entity)
+    }
 }

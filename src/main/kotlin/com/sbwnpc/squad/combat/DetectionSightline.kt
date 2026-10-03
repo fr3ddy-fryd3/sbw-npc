@@ -20,6 +20,9 @@ import net.neoforged.neoforge.common.Tags
 object DetectionSightline {
     private const val FOLIAGE_BLOCKS_TO_HIDE = 3
 
+    fun canSeeWithin(observer: Entity,target: Entity,range: Double): Boolean =
+        observer.distanceToSqr(target) <= range*range && canSee(observer,target)
+
     fun canSee(observer: Entity, target: Entity): Boolean =
         observer.level() === target.level() && visible(observer.level(), observer.eyePosition, target.eyePosition, observer)
 

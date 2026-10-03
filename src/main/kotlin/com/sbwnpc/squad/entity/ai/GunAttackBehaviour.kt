@@ -204,7 +204,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.busyWithRole()) return false
         if (entity.combatLockedByCover() || entity.combatLockedByMedic()) return false
         val target = entity.target ?: return false
-        if (entity.incomingFire.replying(entity.level().gameTime) && !DetectionSightline.canSee(entity, target)) return false
+        if (entity.incomingFire.replying(entity.level().gameTime) && !DetectionSightline.canSeeWithin(entity, target, NpcEntity.DETECTION_RANGE)) return false
         val gun = currentGun(entity) ?: return false
         return target.isAlive && gun.hasAmmo()
     }
@@ -225,6 +225,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun stop(entity: NpcEntity) {
+        entity.readyToCover = false
         // The fight is over; a gunner left holding a launcher would meet the next rifleman with it.
         AntiArmourKit.wield(entity, launcher = false)
         FiringSpots.release(entity.uuid)
@@ -530,13 +531,13 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun tick(entity: NpcEntity) {
         val target = entity.target ?: return
-        if (entity.incomingFire.replying(entity.level().gameTime) && !DetectionSightline.canSee(entity, target)) return
+        if (entity.incomingFire.replying(entity.level().gameTime) && !DetectionSightline.canSeeWithin(entity, target, NpcEntity.DETECTION_RANGE)) return
         // Decided before the gun data is read, so the rest of this tick aims and fires whatever
         // the swap left in the gunner's hands.
         chooseWeapon(entity, target)
         val gun = currentGun(entity) ?: return
 
-        val canSeeTarget = DetectionSightline.canSee(entity, target)
+        val canSeeTarget = DetectionSightline.canSeeWithin(entity, target, NpcEntity.DETECTION_RANGE)
         // Seeing through a window is not a clear firing lane. Keep vanilla's collider test.
         val canShootTarget = canSeeTarget && entity.sensing.hasLineOfSight(target)
         if (canSeeTarget) {
@@ -617,7 +618,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             val explosionRadius = gun.explosionRadius
             shotSpread = DroneCombat.spreadForTarget(entity.spread, target)
             val assessment = FriendlyFireGuard.assess(
-                entity, target.eyePosition, shotSpread, target.position(), explosionRadius
+                entity, com.sbwnpc.squad.combat.tactics.SquadTactics.firingLaneEnd(entity,target), shotSpread, target.position(), explosionRadius
             )
             // A vehicle in the way counts as "line not clear" too, but it is answered differently
             // from an ally in the way — see the block further down.
@@ -673,7 +674,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         gun.operate()
 
         val pausedBetweenBursts = entity.tickCount < burstPauseUntilTick
-        if (canShootTarget && !pausedBetweenBursts && lineIsClear && blastClear && gun.canShoot() && aimTime >= entity.maxAimTime) {
+        entity.readyToCover = canShootTarget && lineIsClear && blastClear && !pausedBetweenBursts &&
+            gun.canShoot() && aimTime >= entity.maxAimTime && com.sbwnpc.squad.combat.tactics.SquadTactics.permitsFire(entity,target)
+        if (canShootTarget && com.sbwnpc.squad.combat.tactics.SquadTactics.permitsFire(entity,target) && !pausedBetweenBursts && lineIsClear && blastClear && gun.canShoot() && aimTime >= entity.maxAimTime) {
             val rps = gun.roundsPerMinute / 60.0
             var cooldown = Math.round(1000 / rps).coerceAtLeast(1)
 
@@ -710,6 +713,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                 } while (newProgress - cooldown > 0)
                 shootTimer.progress = newProgress
                 entity.lastShotTick = entity.tickCount
+                entity.lastFireAt = target.position()
                 if (entity.tickCount >= nextAlarmTick) {
                     nextAlarmTick = entity.tickCount + ALARM_INTERVAL_TICKS
                     Alarm.raise(entity, entity.position(), target.position(), GUNFIRE_HEARING_RADIUS)

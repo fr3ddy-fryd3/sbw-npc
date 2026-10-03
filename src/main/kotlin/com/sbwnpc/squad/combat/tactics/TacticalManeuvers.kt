@@ -10,42 +10,110 @@ import java.util.UUID
 object TacticalManeuvers {
     fun assign(squadId: UUID, plan: TacticalPlan, view: TacticalSnapshot) {
         plan.tasks.clear()
-        if (plan.pattern in setOf(TacticalPattern.FOLLOW_ORDER, TacticalPattern.EVADE)) return
+        if (plan.pattern in setOf(TacticalPattern.FOLLOW_ORDER)) return
+        if (plan.origin == null) plan.origin = view.center
         val focus = plan.focus ?: view.home ?: view.center
         val forward = focus.subtract(view.center).multiply(1.0, 0.0, 1.0).normalize()
             .let { if (it.lengthSqr() < 0.01) Vec3(0.0, 0.0, 1.0) else it }
         val side = Vec3(-forward.z, 0.0, forward.x)
         val fighters = view.members.filter { it.ready && it.role != NpcClass.MEDIC }
             .sortedWith(compareBy<TacticalMember> { if (it.role in SUPPORT_ROLES) 0 else 1 }.thenBy { it.id })
+        val fileOrder = fighters.sortedBy { it.position.distanceToSqr(focus) }.filter { it.id !in plan.passed }
+        val fileMovers = fileOrder.take(2).map { it.id }.toSet()
         val support = fighters.take(maxOf(1, fighters.size / 3)).map { it.id }.toSet()
+        val patient = view.members.filter { it.health < 0.6 || it.role == NpcClass.MEDIC }.minByOrNull { it.health }
+        val guard = if (fighters.size >= 4 && patient != null) fighters.filter { it.id != patient.id && it.id !in support }
+            .minByOrNull { it.position.distanceToSqr(patient.position) }?.id else null
+        val escape = escapeDirection(view,forward)
         for ((index, member) in view.members.withIndex()) {
+            if (member.position.distanceTo(view.center) > 48.0) continue
             if (view.order == SquadOrder.DEFEND && view.home != null &&
                 member.position.distanceTo(view.home) > SquadFormation.perimeterRadius(view.members.size) + 10.0) continue
             val lateral = side.scale((index % 3 - 1) * 5.0)
             var job = TacticalJob.COVER
             var anchor = member.position
+            var assignedFocus = plan.focus
             when (plan.pattern) {
-                TacticalPattern.FLANK, TacticalPattern.DISLODGE -> {
+                TacticalPattern.FLANK, TacticalPattern.ENCIRCLE, TacticalPattern.DISLODGE, TacticalPattern.ATTACK_HEIGHT -> {
                     if (member.id !in support) {
                         job = if (plan.status == TacticalStatus.PREPARING) TacticalJob.WAIT else TacticalJob.FLANK
-                        val direction = if (squadId.leastSignificantBits and 1L == 0L) 1.0 else -1.0
+                        val direction = if (plan.flankSide != 0.0) plan.flankSide else if (squadId.leastSignificantBits and 1L == 0L) 1.0 else -1.0
                         anchor = view.center.add(forward.scale(10.0)).add(side.scale(direction * (16.0 + index % 2 * 5.0))).add(lateral)
+                        if (plan.pattern == TacticalPattern.ENCIRCLE) {
+                            val attackers = fighters.filter { it.id !in support }
+                            val slot = attackers.indexOf(member).coerceAtLeast(0)
+                            val angle = slot * Math.PI * 2.0 / attackers.size.coerceAtLeast(1)
+                            anchor = focus.add(forward.scale(kotlin.math.cos(angle)*18.0)).add(side.scale(kotlin.math.sin(angle)*18.0))
+                        }
+                        if (plan.pattern == TacticalPattern.ATTACK_HEIGHT) anchor = anchor.add(0.0, minOf(8.0,focus.y-view.center.y),0.0)
                     }
                 }
-                TacticalPattern.BOUND -> {
-                    val half = fighters.indexOf(member).coerceAtLeast(0) % 2
-                    if (half == plan.movingHalf && focus.distanceTo(view.center) > 24.0) {
+                TacticalPattern.BOUND, TacticalPattern.PURSUE, TacticalPattern.FOCUS_SECTOR -> {
+                    val half = if (plan.bounds == 0 && member.role in SUPPORT_ROLES) 1 else fighters.indexOf(member).coerceAtLeast(0) % 2
+                    val allowed = plan.pattern != TacticalPattern.PURSUE || member.position.distanceTo(plan.origin!!) < 32.0
+                    if (half == plan.movingHalf && allowed && focus.distanceTo(view.center) > 24.0) {
                         job = if (plan.status == TacticalStatus.PREPARING) TacticalJob.WAIT else TacticalJob.ADVANCE
                         anchor = view.center.add(forward.scale(12.0)).add(lateral)
+                        if (plan.pattern == TacticalPattern.PURSUE) anchor = towards(plan.origin!!,anchor,32.0)
+                    } else if (plan.pattern == TacticalPattern.FOCUS_SECTOR) {
+                        assignedFocus = view.visible.sortedByDescending { it.priority }.getOrNull(index % view.visible.size.coerceAtLeast(1))?.position ?: focus
+                    }
+                }
+                TacticalPattern.HOLD_HEIGHT -> {
+                    anchor = member.position
+                    job = TacticalJob.COVER
+                }
+                TacticalPattern.FILE -> {
+                    val coverId = if (view.visible.isNotEmpty()) fileOrder.lastOrNull()?.id else null
+                    job = when {
+                        member.id == coverId -> TacticalJob.COVER
+                        member.id in plan.passed -> TacticalJob.OBSERVE
+                        member.id in fileMovers && (view.visible.isEmpty() || plan.status == TacticalStatus.EXECUTING) -> TacticalJob.ADVANCE
+                        else -> TacticalJob.WAIT
+                    }
+                    anchor = when {
+                        member.id in plan.passed -> towards(member.position,focus,8.0).add(side.scale(if (index % 2 == 0) 4.0 else -4.0))
+                        job == TacticalJob.ADVANCE -> towards(member.position,focus,10.0)
+                        else -> member.position
                     }
                 }
                 TacticalPattern.SEARCH -> {
                     job = if (index < 2) TacticalJob.SEARCH else TacticalJob.OBSERVE
-                    anchor = if (index < 2) towards(member.position, focus, 12.0).add(lateral) else member.position
+                    anchor = if (index < 2) focus.add(side.scale(if (index % 2 == 0) 5.0 else -5.0)) else member.position
                 }
                 TacticalPattern.REORGANIZE, TacticalPattern.BREAK_CONTACT, TacticalPattern.AVOID_ARMOUR -> {
-                    job = if (member.id in support) TacticalJob.COVER else TacticalJob.REGROUP
-                    anchor = view.center.subtract(forward.scale(10.0)).add(lateral)
+                    val half = fighters.indexOf(member).coerceAtLeast(0) % 2
+                    job = if (half != plan.movingHalf && member.ready && plan.pattern != TacticalPattern.AVOID_ARMOUR)
+                        TacticalJob.COVER else if (plan.status == TacticalStatus.PREPARING && plan.pattern != TacticalPattern.AVOID_ARMOUR)
+                        TacticalJob.WAIT else TacticalJob.RETREAT
+                    anchor = if (job == TacticalJob.COVER) member.position else view.center.add(escape.scale(12.0)).add(lateral)
+                    if (plan.pattern == TacticalPattern.REORGANIZE) {
+                        anchor = towards(plan.origin!!,anchor,32.0)
+                        if (member.position.distanceTo(plan.origin!!) >= 30.0) { job=TacticalJob.COVER; anchor=member.position }
+                    }
+                }
+                TacticalPattern.REORIENT -> {
+                    assignedFocus = view.visible.minByOrNull { it.position.distanceToSqr(member.position) }?.position ?: focus
+                    anchor = member.position
+                }
+                TacticalPattern.REPEL -> {
+                    anchor = if (member.role in SUPPORT_ROLES) member.position.subtract(forward.scale(5.0)) else member.position.add(lateral.scale(0.5))
+                    job = TacticalJob.COVER
+                }
+                TacticalPattern.ANTI_ARMOUR -> {
+                    if (member.rockets) {
+                        job = TacticalJob.ANTI_ARMOUR
+                        anchor = member.position.add(side.scale(if (index % 2 == 0) 5.0 else -5.0))
+                    } else {
+                        assignedFocus = view.visible.filter { !it.armoured }.minByOrNull { it.position.distanceToSqr(member.position) }?.position
+                        job = if (assignedFocus != null) TacticalJob.COVER else TacticalJob.OBSERVE
+                        anchor = member.position.subtract(forward.scale(4.0)).add(lateral)
+                    }
+                }
+                TacticalPattern.EVADE -> {
+                    job = TacticalJob.REGROUP
+                    val angle = index * Math.PI * 2.0 / view.members.size.coerceAtLeast(1)
+                    anchor = member.position.add(Vec3(kotlin.math.cos(angle),0.0,kotlin.math.sin(angle)).scale(8.0))
                 }
                 TacticalPattern.CONSOLIDATE -> {
                     job = TacticalJob.OBSERVE
@@ -59,19 +127,27 @@ object TacticalManeuvers {
                 job = TacticalJob.RESERVE
                 anchor = view.center.subtract(forward.scale(8.0)).add(lateral)
             }
-            plan.tasks[member.id] = TacticalTask(job, anchor, plan.focus, plan.id)
+            if (member.id == guard && patient != null && plan.pattern !in setOf(TacticalPattern.EVADE,TacticalPattern.FILE)) {
+                job = TacticalJob.COVER
+                anchor = patient.position.subtract(forward.scale(4.0)).add(side.scale(4.0))
+            }
+            plan.tasks[member.id] = TacticalTask(job, anchor, assignedFocus, plan.id)
         }
     }
 
     fun advance(squadId: UUID, state: SquadTacticalState, plan: TacticalPlan, view: TacticalSnapshot) {
         plan.tasks.keys.retainAll(view.members.map { it.id }.toSet())
-        val maneuver = plan.pattern in setOf(TacticalPattern.FLANK, TacticalPattern.DISLODGE, TacticalPattern.BOUND)
+        if (plan.pattern == TacticalPattern.FILE && view.visible.isEmpty()) plan.status = TacticalStatus.EXECUTING
+        val retreating = plan.pattern in setOf(TacticalPattern.REORGANIZE,TacticalPattern.BREAK_CONTACT,TacticalPattern.AVOID_ARMOUR)
+        val maneuver = retreating || plan.pattern in setOf(TacticalPattern.FLANK,TacticalPattern.ENCIRCLE,TacticalPattern.DISLODGE,
+            TacticalPattern.ATTACK_HEIGHT,TacticalPattern.BOUND,TacticalPattern.PURSUE,TacticalPattern.FOCUS_SECTOR,TacticalPattern.FILE)
         if (!maneuver) { plan.status = TacticalStatus.EXECUTING; return }
         val covering = view.members.filter { plan.tasks[it.id]?.job == TacticalJob.COVER }
         if (plan.status == TacticalStatus.PREPARING) {
-            val ready = covering.any { it.canFire && settled(it, plan.tasks[it.id]) }
+            val ready = covering.any { covers(it,plan.tasks[it.id]) && settled(it,plan.tasks[it.id]) } ||
+                (retreating && (plan.pattern == TacticalPattern.AVOID_ARMOUR || view.now-plan.phaseSince >= 40))
             if (ready) {
-                plan.status = TacticalStatus.EXECUTING
+                plan.status = if (retreating) TacticalStatus.REGROUPING else TacticalStatus.EXECUTING
                 plan.phaseSince = view.now
                 val previous = HashMap(plan.tasks)
                 assign(squadId, plan, view)
@@ -80,26 +156,45 @@ object TacticalManeuvers {
             } else if (view.now - plan.phaseSince > 100) state.fail(view.now)
             return
         }
-        val movers = view.members.filter { plan.tasks[it.id]?.job in setOf(TacticalJob.FLANK, TacticalJob.ADVANCE) }
+        val movers = view.members.filter { plan.tasks[it.id]?.job in setOf(TacticalJob.FLANK, TacticalJob.ADVANCE, TacticalJob.RETREAT) }
         if (movers.isEmpty()) return
-        if (covering.any { it.canFire }) plan.lastCover = view.now
-        if (view.now - plan.lastCover > 40 && view.visible.isNotEmpty()) {
+        if (covering.any { covers(it,plan.tasks[it.id]) }) plan.lastCover = view.now
+        if (!retreating && view.now - plan.lastCover > 40 && view.visible.isNotEmpty()) {
             for (member in movers) plan.tasks[member.id] = TacticalTask(TacticalJob.COVER, member.position, plan.focus, plan.id)
             plan.status = TacticalStatus.REGROUPING
             state.fail(view.now)
             return
         }
         if (movers.all { settled(it, plan.tasks[it.id]) }) {
-            if (plan.pattern == TacticalPattern.BOUND && ++plan.bounds < 3 && (plan.focus?.distanceTo(view.center) ?: 0.0) > 24.0) {
+            if (plan.pattern == TacticalPattern.FILE) {
+                plan.passed.addAll(movers.map { it.id })
+                plan.phaseSince = view.now
+                assign(squadId,plan,view)
+                if (plan.passed.size >= view.fighting.count { it.role != NpcClass.MEDIC }) plan.status = TacticalStatus.COMPLETED
+            } else if (plan.pattern in setOf(TacticalPattern.BOUND,TacticalPattern.PURSUE,TacticalPattern.FOCUS_SECTOR,
+                TacticalPattern.REORGANIZE,TacticalPattern.BREAK_CONTACT) && ++plan.bounds < 3 && (plan.focus?.distanceTo(view.center) ?: 0.0) > 24.0) {
                 plan.movingHalf = 1 - plan.movingHalf
                 plan.status = TacticalStatus.PREPARING
                 plan.phaseSince = view.now
                 assign(squadId, plan, view)
             } else for (member in movers) plan.tasks[member.id] = TacticalTask(TacticalJob.COVER, member.position, plan.focus, plan.id)
-        } else if (view.now - plan.phaseSince > 160) state.fail(view.now)
+        } else if (view.now - plan.phaseSince > (if (plan.pattern == TacticalPattern.ENCIRCLE) 400 else 160)) state.fail(view.now)
     }
 
-    private fun settled(member: TacticalMember, task: TacticalTask?): Boolean = task?.position?.let { member.position.distanceTo(it) <= 2.5 } == true
+    private fun covers(member: TacticalMember,task: TacticalTask?): Boolean = member.canFire &&
+        (member.firingAt == null || task?.focus == null || member.firingAt.distanceTo(task.focus) <= 18.0)
+    private fun settled(member: TacticalMember, task: TacticalTask?): Boolean = task?.position?.let {
+        member.position.distanceTo(it) <= 2.5 && member.position.distanceTo(task.anchor) <= 10.0
+    } == true
+    private fun escapeDirection(view: TacticalSnapshot,forward: Vec3): Vec3 {
+        val threats = view.visible.map { it.position } + view.incoming
+        if (threats.isEmpty()) return forward.scale(-1.0)
+        return (0..7).map { angle -> Vec3(kotlin.math.cos(angle*Math.PI/4.0),0.0,kotlin.math.sin(angle*Math.PI/4.0)) }
+            .maxBy { direction ->
+                val next = view.center.add(direction.scale(12.0))
+                threats.minOf { it.distanceTo(next) } - (view.home?.let { next.distanceTo(it)*0.1 } ?: 0.0)
+            }
+    }
     private fun towards(from: Vec3, to: Vec3, distance: Double): Vec3 = from.add(to.subtract(from).normalize().scale(minOf(distance, from.distanceTo(to))))
     private val SUPPORT_ROLES = setOf(NpcClass.MACHINE_GUNNER, NpcClass.SNIPER)
 }

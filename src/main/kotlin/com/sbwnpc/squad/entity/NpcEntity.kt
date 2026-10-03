@@ -215,6 +215,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // providing covering fire before digging in, rather than just inferring it from having a
     // target and line of sight. internal (not private) for the same cross-file reason isEnemy() is.
     var lastShotTick: Int = Int.MIN_VALUE / 2
+    var readyToCover: Boolean = false
+    var lastFireAt: Vec3? = null
         internal set
 
     fun firedRecently(withinTicks: Int): Boolean = tickCount - lastShotTick <= withinTicks
@@ -494,8 +496,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         // Not vanilla's DamageTypeTags.IS_PROJECTILE: SBW's gunfire isn't in it, so that tag left
         // suppression coming only from explosions — see the Gear adapter.
         if (result && !level().isClientSide && Ports.gear.isBulletDamage(source)) {
-            incomingFire.record(eyePosition, source.directEntity?.takeIf { it !== source.entity }?.deltaMovement, source.sourcePosition, level().gameTime)
-            suppress(source.sourcePosition ?: position())
+            incomingFire.record(eyePosition, source.directEntity?.takeIf { it !== source.entity }?.deltaMovement, source.entity?.eyePosition ?: source.sourcePosition, level().gameTime)
+            suppress(incomingFire.point(level().gameTime) ?: source.sourcePosition ?: position())
         }
         return result
     }
