@@ -143,6 +143,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
      */
     private var driveRoute: List<Vec3> = emptyList()
     private var driveRouteComplete = true
+    /** A far stop proposed by the surface map, awaiting a hull-sized search before anyone exits. */
+    private var driveExitToCheck: Vec3? = null
     private var driveSearch: com.sbwnpc.squad.route.CellPlanner.Search? = null
     private var driveSearchStarted = 0
     /** Not before this tick is the next stretch of a vehicle's way into unseen ground looked for again. */
@@ -644,7 +646,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // Distance, rather than time aboard: long marches and terrain detours can take minutes.
         // Fresh ground counts, but repeated reversals over the same patch do not.
         val waitingForRoute = !isBoat(vehicle) && !driveLegsOnly &&
-            (driveRoute.isEmpty() || (!driveRouteComplete && groundRouteProgress.finished(vehicle.position(), GROUND_EXIT_RADIUS)))
+            (driveRoute.isEmpty() || ((!driveRouteComplete || driveExitToCheck != null) &&
+                groundRouteProgress.finished(vehicle.position(), GROUND_EXIT_RADIUS)))
         if (!isBoat(vehicle)) {
             groundTravelProgress.observe(entity.tickCount, vehicle.position())
             if (waitingForRoute) {
@@ -935,6 +938,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun resetDriveRoute() {
         driveRoute = emptyList()
         driveRouteComplete = true
+        driveExitToCheck = null
         driveSearch = null
         driveLegsOnly = false
         driveContinueFromEnd = false
@@ -960,8 +964,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             driveContinueFromEnd = false
             driveSearch = com.sbwnpc.squad.route.CellPlanner.search(medium, from, home)
             driveSearchStarted = entity.tickCount
-            DebugFlags.log(LogGroup.VEHICLE, "{} planning {} from {} to {} amphibious={}",
-                entity.uuid, vehicle.uuid, from, home, Ports.vehicles.canCrossWater(vehicle))
+            DebugFlags.log(LogGroup.VEHICLE, "{} planning {} from {} to {} amphibious={} width={} height={} step={}",
+                entity.uuid, vehicle.uuid, from, home, Ports.vehicles.canCrossWater(vehicle),
+                vehicle.bbWidth, vehicle.bbHeight, vehicle.maxUpStep())
             if (driveSearch == null) {
                 DebugFlags.log(LogGroup.VEHICLE, "{} no long route for {} from {} (not on known open ground), short routes instead",
                     entity.uuid, vehicle.uuid, vehicle.blockPosition())
@@ -989,12 +994,14 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 nextAvoidanceTick = entity.tickCount
                 groundRouteProgress.reset(driveRoute, vehicle.position())
                 driveRouteComplete = found.complete
-                if (found.complete) VehicleTransportClaims.setLanding(vehicle.uuid, found.landing)
+                driveExitToCheck = found.landing.takeIf { found.complete && horizontalDistance(it, home) > ARRIVAL_RADIUS }
+                if (found.complete && driveExitToCheck == null) VehicleTransportClaims.setLanding(vehicle.uuid, found.landing)
                 else VehicleTransportClaims.clearLanding(vehicle.uuid)
                 DebugFlags.log(LogGroup.VEHICLE,
                     "{} driving {} along {} points, {} blocks, {} {} ({} from home; {} units over {} ticks; {})",
                     entity.uuid, vehicle.uuid, driveRoute.size, found.length.toInt(),
-                    if (found.complete) "crew out at" else "on toward the goal, to look again at", BlockPos.containing(found.landing),
+                    if (!found.complete) "on toward the goal, to look again at" else if (driveExitToCheck != null) "checking stop at" else "crew out at",
+                    BlockPos.containing(found.landing),
                     horizontalDistance(found.landing, home).toInt(), search.expanded, entity.tickCount - driveSearchStarted + 1,
                     search.stoppedBy
                 )
@@ -1003,6 +1010,31 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
         }
         val target = groundRouteProgress.waypoint(vehicle.position(), WAYPOINT_RADIUS)
+        driveExitToCheck?.let { stop ->
+            if (groundRouteProgress.finished(vehicle.position(), GROUND_EXIT_RADIUS)) {
+                // A heightmap cannot establish that the hull is trapped. Before publishing this
+                // landing to the passengers, check the existing 3D pathfinder against real blocks.
+                val checked = VehicleRoutes.tryPlan(entity, vehicle, home) ?: return null
+                val path = checked.path
+                val end = path?.endNode?.asBlockPos()?.let { VehicleRoutes.centreOf(it, vehicle) }
+                driveExitToCheck = null
+                if (VehicleRoutes.leadsOn(vehicle.position(), end, home, path?.canReach() == true)) {
+                    driveLegsOnly = true
+                    route = (0 until path!!.nodeCount).map { path.getNodePos(it) }
+                    groundRouteProgress.reset(route.map { VehicleRoutes.centreOf(it, vehicle) }, vehicle.position())
+                    lastRouteSearchTick = entity.tickCount
+                    nextRouteTick = entity.tickCount + ROUTE_RECOMPUTE_TICKS
+                    VehicleTransportClaims.clearLanding(vehicle.uuid)
+                    DebugFlags.log(LogGroup.VEHICLE, "{} continuing {} past map stop {} on hull route to {}",
+                        entity.uuid, vehicle.uuid, stop, end)
+                    return groundRouteProgress.waypoint(vehicle.position(), WAYPOINT_RADIUS)
+                }
+                VehicleTransportClaims.setLanding(vehicle.uuid, vehicle.position())
+                DebugFlags.log(LogGroup.VEHICLE, "{} confirmed stop for {} at {}: hull route end={} canReach={}",
+                    entity.uuid, vehicle.uuid, vehicle.position(), end, path?.canReach())
+                return null
+            }
+        }
         // Nearing the end of a way that runs on into ground not yet seen: the next stretch.
         if (!driveRouteComplete && driveSearch == null && entity.tickCount >= driveLookAheadTick &&
             horizontalDistance(vehicle.position(), driveRoute.last()) < DRIVE_LOOKAHEAD

@@ -19,7 +19,7 @@ class DrivingTest {
     }
 
     private fun plan(ground: Ground, goal: Vec3, amphibious: Boolean, from: Vec3 = at(0.5)): CellPlanner.Route {
-        val search = CellPlanner.search(Driving(ground, 1.5, 2.25, 2.5, amphibious), from, goal)!!
+        val search = CellPlanner.search(Driving(ground, 1.8, 2.25, 2.1, amphibious), from, goal)!!
         var ticks = 0
         while (!search.step(2500)) assertTrue(++ticks < 2000, "search did not finish")
         return search.result() ?: error("no route: ${search.stoppedBy}")
@@ -121,5 +121,27 @@ class DrivingTest {
         val found = plan(cliff, Vec3(180.5, 90.0, 0.5), true)
         assertTrue(found.complete)
         assertTrue(found.landing.x < 40.0, "the crew cannot be dropped in deep water below a cliff")
+    }
+
+    @Test
+    fun `a wide hull climbs a slope whose total rise exceeds its step height`() {
+        val slope = object : Plain() {
+            override fun height(x: Int, z: Int) = 64 + x.coerceIn(0, 40) * 2
+        }
+        val found = plan(slope, Vec3(100.5, 144.0, 0.5), true, at(-10.5))
+        assertTrue(found.complete)
+        assertTrue(found.landing.distanceTo(Vec3(100.5, 144.0, 0.5)) <= 20.0,
+            "a climbable slope became a premature dismount: ${found.landing}")
+        assertTrue(found.trail.any { it.y in 66.0..140.0 })
+    }
+
+    @Test
+    fun `a cliff across one edge of the hull still prevents a step`() {
+        val edge = object : Plain() {
+            override fun height(x: Int, z: Int) = if (x >= 10 && z == 2) 80 else 64
+        }
+        val medium = Driving(edge, 1.8, 2.25, 2.1, true)
+        assertFalse(medium.step(7, 0, 8, 0), "the hull edge would hit a 16 block wall")
+        assertTrue(medium.step(7, -3, 8, -3), "the clear road around the cliff remains usable")
     }
 }

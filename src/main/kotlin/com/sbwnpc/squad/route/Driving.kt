@@ -35,10 +35,9 @@ class Driving(
 
     override fun open(x: Int, z: Int): Boolean = fits.getOrPut(BlockPos.asLong(x, 0, z)) {
         if (!ground(x, z)) return@getOrPut false
-        val h = ground.height(x, z)
         for (dx in -clearance..clearance) for (dz in -clearance..clearance) {
             if (dx == 0 && dz == 0) continue
-            if (!ground(x + dx, z + dz) || Math.abs(ground.height(x + dx, z + dz) - h) > climb) return@getOrPut false
+            if (!ground(x + dx, z + dz)) return@getOrPut false
         }
         true
     }
@@ -49,8 +48,15 @@ class Driving(
             (canCrossWater && kind == GroundMap.Kind.WATER)) && ground.room(x, z) >= headroom
     }
 
-    override fun step(ax: Int, az: Int, bx: Int, bz: Int) =
-        Math.abs(ground.height(bx, bz) - ground.height(ax, az)) <= climb
+    override fun step(ax: Int, az: Int, bx: Int, bz: Int): Boolean {
+        // Step height limits a change while the hull moves, not the total rise across its width.
+        // A five-block footprint on a climbable slope can span four blocks of height. Comparing
+        // every corner with its middle incorrectly cut that slope into isolated flat patches.
+        for (dx in -clearance..clearance) for (dz in -clearance..clearance) {
+            if (Math.abs(ground.height(bx + dx, bz + dz) - ground.height(ax + dx, az + dz)) > climb) return false
+        }
+        return true
+    }
 
     override fun extraCost(x: Int, z: Int) = 0.0
 

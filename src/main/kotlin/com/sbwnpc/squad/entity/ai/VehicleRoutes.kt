@@ -37,13 +37,19 @@ object VehicleRoutes {
     private const val LEG_REACH = 8
     private var lastPlanTick = Long.MIN_VALUE / 2
 
+    /** A completed search, including one that found no path. Null from [tryPlan] means deferred,
+     *  which is not evidence of an impassable route. */
+    class SearchResult(val path: Path?)
+
     /** A route for [vehicle] driven by [driver] toward [home] as vehicle-centre points, or null
      *  when no search could run this tick or none was found. */
-    fun plan(driver: NpcEntity, vehicle: Entity, home: Vec3): Path? {
+    fun plan(driver: NpcEntity, vehicle: Entity, home: Vec3): Path? = tryPlan(driver, vehicle, home)?.path
+
+    fun tryPlan(driver: NpcEntity, vehicle: Entity, home: Vec3): SearchResult? {
         val level = driver.level() as? ServerLevel ?: return null
         if (lastPlanTick == level.gameTime) return null
-        lastPlanTick = level.gameTime
         val target = legToward(level, vehicle.position(), home) ?: return null
+        lastPlanTick = level.gameTime
         val width = Math.ceil(vehicle.bbWidth.toDouble()).toInt().coerceAtLeast(1)
         val height = Math.ceil(vehicle.bbHeight.toDouble()).toInt().coerceAtLeast(2)
         val from = vehicle.blockPosition()
@@ -60,13 +66,21 @@ object VehicleRoutes {
             // even if a search fails. Floating nodes stay at the surface rather than the bottom.
             driver.setPathfindingMalus(PathType.WATER, if (amphibious) 1f else -1f)
             if (amphibious) driver.setPathfindingMalus(PathType.WATER_BORDER, 0f)
-            return PathFinder(HullEvaluator(vehicle, width, height, amphibious), NODES)
-                .findPath(region, driver, setOf(target), SEARCH_RANGE, LEG_REACH, 1f)
+            return SearchResult(PathFinder(HullEvaluator(vehicle, width, height, amphibious), NODES)
+                .findPath(region, driver, setOf(target), SEARCH_RANGE, LEG_REACH, 1f))
         } finally {
             if (previousStep != null) stepHeight.baseValue = previousStep
             driver.setPathfindingMalus(PathType.WATER, waterCost)
             driver.setPathfindingMalus(PathType.WATER_BORDER, bankCost)
         }
+    }
+
+    /** A partial path must take the hull beyond the stop and toward the objective. A complete
+     *  path to the next leg may take a detour; a one-node or backwards partial path cannot. */
+    internal fun leadsOn(from: Vec3, end: Vec3?, home: Vec3, reachesTarget: Boolean): Boolean {
+        if (end == null || Math.hypot(end.x - from.x, end.z - from.z) < LEG_REACH) return false
+        return reachesTarget || Math.hypot(end.x - home.x, end.z - home.z) <
+            Math.hypot(from.x - home.x, from.z - home.z) - LEG_REACH
     }
 
     /** Nodes are the hull's lowest corner; this is where its middle is. */
