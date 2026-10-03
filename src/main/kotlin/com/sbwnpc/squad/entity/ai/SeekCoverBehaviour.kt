@@ -630,7 +630,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             startDigging(entity)
             return
         }
-        val target = entity.target
+        val target = entity.target?.takeIf { com.sbwnpc.squad.combat.DetectionSightline.canSee(entity, it) }
         if (target != null && target.isAlive) {
             phase = Phase.PEEKING
             phaseUntilTick = entity.tickCount + PEEK_TICKS
@@ -641,8 +641,16 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             val peekPoint = coverTarget?.let { findPeekPoint(entity, level, it, target) } ?: target.position()
             entity.navigation.moveTo(peekPoint.x, peekPoint.y, peekPoint.z, 1.0)
         } else {
-            // Nothing to shoot at yet — stay down, recheck shortly rather than popping out blind.
-            phaseUntilTick = entity.tickCount + RECHECK_TICKS
+            val aim = entity.incomingFire.point(level.gameTime)
+            val peek = if (aim != null && entity.incomingFire.pending(level.gameTime))
+                coverTarget?.let { blindPeekPoint(entity, level, it, aim) } else null
+            if (peek != null) {
+                phase = Phase.PEEKING
+                phaseUntilTick = entity.tickCount + 60
+                entity.incomingFire.beginReply(level.gameTime)
+                BrainUtils.clearMemory(entity, ModMemories.COVER_HOLD.get())
+                entity.navigation.moveTo(peek.x, peek.y, peek.z, 1.0)
+            } else phaseUntilTick = entity.tickCount + RECHECK_TICKS
         }
     }
 
@@ -670,9 +678,27 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         return target.position()
     }
 
+    private fun blindPeekPoint(entity: NpcEntity, level: ServerLevel, cover: BlockPos, aim: Vec3): Vec3? {
+        val base = cover.bottomCenter
+        val flat = aim.subtract(base).multiply(1.0, 0.0, 1.0).normalize()
+        val side = Vec3(-flat.z, 0.0, flat.x)
+        val hulls = Sightline.vehicleHulls(level, AABB(base, aim).inflate(3.0), entity, null)
+        for (step in PEEK_STEP_DISTANCES) {
+            for (direction in listOf(side, side.scale(-1.0), flat)) {
+                val candidate = Terrain.standableOrNull(level, base.x + direction.x * step, base.y, base.z + direction.z * step) ?: continue
+                if (Sightline.blockedBy(level, candidate.add(0.0, entity.eyeHeight.toDouble(), 0.0), aim, entity, hulls, entity.spread)) continue
+                val path = entity.navigation.createPath(candidate.x, candidate.y, candidate.z, 0) ?: continue
+                if (path.canReach()) return candidate
+            }
+        }
+        return null
+    }
+
     private fun tickPeeking(entity: NpcEntity) {
         val target = entity.target
-        if (entity.tickCount >= phaseUntilTick || target == null || !target.isAlive) {
+        val blindReply = entity.incomingFire.replying(entity.level().gameTime) &&
+            (target == null || !com.sbwnpc.squad.combat.DetectionSightline.canSee(entity, target))
+        if (entity.tickCount >= phaseUntilTick || (!blindReply && (target == null || !target.isAlive))) {
             duckBackToCover(entity)
         }
     }
@@ -691,6 +717,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun duckBackToCover(entity: NpcEntity) {
+        entity.incomingFire.endReply()
         phase = Phase.RETURNING_TO_COVER
         BrainUtils.setMemory(entity, ModMemories.COVER_HOLD.get(), true)
         val target = coverTarget ?: return

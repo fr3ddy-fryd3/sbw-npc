@@ -105,6 +105,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // ranged damage (below, hurt()) or a nearby explosion (SuppressionEvents). Backed by a
     // SmartBrainLib TTL memory — expires on its own, and shows in the brain's memory
     // (e.g. /data get entity <e> Brain).
+    val incomingFire = com.sbwnpc.squad.combat.IncomingFire()
+
     fun isSuppressed(): Boolean = BrainUtils.hasMemory(this, ModMemories.SUPPRESSING_THREAT.get())
     val threatPos: Vec3? get() = BrainUtils.getMemory(this, ModMemories.SUPPRESSING_THREAT.get())
 
@@ -492,6 +494,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         // Not vanilla's DamageTypeTags.IS_PROJECTILE: SBW's gunfire isn't in it, so that tag left
         // suppression coming only from explosions — see the Gear adapter.
         if (result && !level().isClientSide && Ports.gear.isBulletDamage(source)) {
+            incomingFire.record(eyePosition, source.directEntity?.takeIf { it !== source.entity }?.deltaMovement, source.sourcePosition, level().gameTime)
             suppress(source.sourcePosition ?: position())
         }
         return result
@@ -820,6 +823,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         net.tslat.smartbrainlib.api.core.BrainActivityGroup.coreTasks(
             net.tslat.smartbrainlib.api.core.behaviour.custom.move.InteractWithDoor<NpcEntity>(),
             SeekCoverBehaviour(),
+            com.sbwnpc.squad.entity.ai.BlindReturnFireBehaviour(),
             MortarOperatorBehaviour(),
             MortarLoaderBehaviour(),
             com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour(),

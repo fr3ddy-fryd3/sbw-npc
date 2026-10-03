@@ -204,6 +204,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.busyWithRole()) return false
         if (entity.combatLockedByCover() || entity.combatLockedByMedic()) return false
         val target = entity.target ?: return false
+        if (entity.incomingFire.replying(entity.level().gameTime) && !DetectionSightline.canSee(entity, target)) return false
         val gun = currentGun(entity) ?: return false
         return target.isAlive && gun.hasAmmo()
     }
@@ -529,6 +530,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun tick(entity: NpcEntity) {
         val target = entity.target ?: return
+        if (entity.incomingFire.replying(entity.level().gameTime) && !DetectionSightline.canSee(entity, target)) return
         // Decided before the gun data is read, so the rest of this tick aims and fires whatever
         // the swap left in the gunner's hands.
         chooseWeapon(entity, target)
