@@ -17,10 +17,12 @@ enum class NpcClass(
     val shootDistanceMultiplier: Double = 1.0,
     val accuracyMultiplier: Double = 1.0,
     val speedMultiplier: Double = 1.4, // "everyone else" default per user request — was the one global value before
+    /** Support roles stay behind the assault and back off when an enemy closes inside this range. */
+    val minimumCombatDistance: Double = 0.0,
 ) {
     RIFLEMAN(listOf(loc("ak_47"), loc("ak_12")), shootDistanceMultiplier = 2.0),
-    MACHINE_GUNNER(listOf(loc("rpk"), loc("m_60")), shootDistanceMultiplier = 1.5, speedMultiplier = 1.3),
-    SNIPER(listOf(loc("svd"), loc("awm")), shootDistanceMultiplier = 3.0, accuracyMultiplier = 1.0 / 1.4, speedMultiplier = 1.3), // a bit tighter spread per user request (was /1.2)
+    MACHINE_GUNNER(listOf(loc("rpk"), loc("m_60")), shootDistanceMultiplier = 3.0, speedMultiplier = 1.3, minimumCombatDistance = 56.0),
+    SNIPER(listOf(loc("svd"), loc("awm")), shootDistanceMultiplier = 3.0, accuracyMultiplier = 1.0 / 1.4, speedMultiplier = 1.3, minimumCombatDistance = 64.0), // a bit tighter spread per user request (was /1.2)
 
     /** Only ever spawned individually (`SquadPreset.SINGLE`) — removed from every squad-composition
      *  preset in favour of [MEDIC], per user decision. Still a fully valid class otherwise (weapon,
@@ -31,16 +33,12 @@ enum class NpcClass(
      *  with its own SMG — see that behaviour's doc comment for the shoot-vs-heal priority. Replaces
      *  `GRENADIER`'s slot(s) in the squad-composition presets ("8: Standard", "16: Large").
      *
-     *  Per user request: paced/positioned like a SNIPER overall (speedMultiplier 1.3, same "normal"
-     *  pace) rather than up front — `shootDistanceMultiplier` matching SNIPER's 3.0 is what actually
-     *  keeps it in the rear: `GunAttackBehaviour.advanceOrHold` stops advancing as soon as a mob is
-     *  within its OWN `shootDistance`, independent of formation-slot depth, so a medic with a
-     *  short/default range would keep closing distance past riflemen/snipers who already stopped
-     *  farther out and end up physically ahead of them despite any formation-slot "rear rank".
+     *  Paced and positioned like a SNIPER: the long engagement range stops normal advancing,
+     *  and minimumCombatDistance keeps its firing positions and idle assault posts in the rear.
      *  MedicHealBehaviour itself temporarily overrides the 1.3 pace to
      *  [com.sbwnpc.squad.entity.ai.MedicHealBehaviour] sprint speed while actually running to treat
      *  someone — see that class. */
-    MEDIC(listOf(loc("mp_5"), loc("vector")), shootDistanceMultiplier = 3.0, speedMultiplier = 1.3),
+    MEDIC(listOf(loc("mp_5"), loc("vector")), shootDistanceMultiplier = 3.0, speedMultiplier = 1.3, minimumCombatDistance = 64.0),
 
     /** The medic's SMGs for self-defence; its real job (MortarOperatorBehaviour) is manning a nearby
      *  placed MortarEntity, which the MORTAR_LOADER on the same squad keeps supplied. */

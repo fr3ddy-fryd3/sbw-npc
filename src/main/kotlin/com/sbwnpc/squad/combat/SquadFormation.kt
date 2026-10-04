@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.combat
 
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.phys.Vec3
@@ -174,7 +175,10 @@ object SquadFormation {
         val index = mob.slotIndex(squad)
         if (index < 0) return anchor
         val shape = shapeFor(squad.order, arrived)
-        val local = localOffset(shape, index, squad.members.size, spacing)
+        val rearSupport = squad.order == SquadOrder.ATTACK && mob.npcClass.minimumCombatDistance > 0.0
+        val local = if (rearSupport)
+            attackOffset(mob.npcClass, index, squad.members.size, spacing)
+        else localOffset(shape, index, squad.members.size, spacing)
         if (local == Vec3.ZERO) return anchor
 
         // Not rotated: RING/PERIMETER/SCATTER already assign each
@@ -185,7 +189,8 @@ object SquadFormation {
         // it's anchor-minus-leader's-position, and the leader is itself spread round the point and
         // drifting. Every other member then chased a continuously rotating target — a defending
         // squad circling its own defend point with nobody to fight.
-        if (shape == Shape.RING || shape == Shape.PERIMETER || shape == Shape.SCATTER) return anchor.add(local)
+        if ((shape == Shape.RING && !rearSupport) ||
+            shape == Shape.PERIMETER || shape == Shape.SCATTER) return anchor.add(local)
 
         val heading = headingFor(mob, anchor, fallbackFacing)
         val flat = Vec3(heading.x, 0.0, heading.z)
@@ -202,6 +207,20 @@ object SquadFormation {
         val fwd = flat.normalize()
         val right = Vec3(-fwd.z, 0.0, fwd.x)
         return anchor.add(fwd.scale(local.z)).add(right.scale(local.x))
+    }
+
+    /** Support stays behind the attack point even after the assault arrives or its lead man dies. */
+    internal fun attackOffset(
+        cls: NpcClass, slotIndex: Int, squadSize: Int, spacing: Double = SLOT_SPACING
+    ): Vec3 {
+        if (cls.minimumCombatDistance == 0.0) return localOffset(Shape.WEDGE, slotIndex, squadSize, spacing)
+        // Twelve distinct rear posts cover the largest preset's twelve support members. Bound
+        // the sideways spread so their posts stay within the 72-block engagement range.
+        val post = slotIndex.mod(12)
+        return Vec3(
+            (post % 4 - 1.5) * spacing, 0.0,
+            -cls.minimumCombatDistance - (post / 4) * SLOT_SPACING
+        )
     }
 
     /** The [slotIndex]-th of [squadSize]'s place in [order]'s marching formation — wedge, line,

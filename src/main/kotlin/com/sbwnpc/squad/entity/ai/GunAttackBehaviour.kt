@@ -259,7 +259,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             boundPhaseStarted = false
             return
         }
-        if (keepsAway(entity) && entity.distanceToSqr(target) < KEEP_AWAY_DISTANCE * KEEP_AWAY_DISTANCE) {
+        val minimumDistance = keepAwayDistance(entity)
+        if (minimumDistance > 0.0 && horizontalDistance(entity.position(), target.position()) < minimumDistance) {
             fallBack(entity, target)
             return
         }
@@ -324,19 +325,25 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.navigateTo(to, WITHDRAW_SPEED)
     }
 
-    /** Aircrew on foot — a pilot out of a helicopter that can't fly. */
-    private fun keepsAway(entity: NpcEntity): Boolean =
-        entity.npcClass == NpcClass.HELICOPTER_PILOT && entity.vehicle == null
+    /** Rear support, and aircrew on foot after leaving a helicopter. */
+    private fun keepAwayDistance(entity: NpcEntity): Double =
+        if (entity.npcClass == NpcClass.HELICOPTER_PILOT && entity.vehicle == null) KEEP_AWAY_DISTANCE
+        else entity.npcClass.minimumCombatDistance
 
     private fun fallBack(entity: NpcEntity, target: LivingEntity) {
+        fallingBack = true
         bounding = true
         boundPhaseStarted = false
         firingPos = null
         FiringSpots.release(entity.uuid)
         if (entity.tickCount < nextFallBackTick && !entity.navigation.isDone) return
         nextFallBackTick = entity.tickCount + FALL_BACK_REPATH_TICKS
-        val away = DefaultRandomPos.getPosAway(entity, FALL_BACK_STEP, FALL_BACK_VERTICAL, target.position()) ?: return
-        entity.navigation.moveTo(away.x, away.y, away.z, FALL_BACK_SPEED)
+        val away = DefaultRandomPos.getPosAway(entity, FALL_BACK_STEP, FALL_BACK_VERTICAL, target.position())
+        if (away == null || horizontalDistance(away, target.position()) <= horizontalDistance(entity.position(), target.position()) ||
+            !entity.navigation.moveTo(away.x, away.y, away.z, FALL_BACK_SPEED)) {
+            // Failed retreat must not leave an old assault path running toward the enemy.
+            entity.navigation.stop()
+        }
     }
 
     /** Once close enough to fight without needing to advance further, prefer a nearby spot that
@@ -504,6 +511,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         eyeHeight: Double,
         vehicleHulls: List<AABB>
     ): Double? {
+        // Better concealment cannot draw support back into the assault's close positions.
+        if (horizontalDistance(pos, target.position()) < entity.npcClass.minimumCombatDistance) return null
         val myEye = Vec3(pos.x, pos.y + eyeHeight, pos.z)
         if (Sightline.blocked(level, target.eyePosition, myEye, entity)) return null
         // Standing behind armour is cover from the enemy, but it is not a firing position.
@@ -593,7 +602,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             val fromHome = entity.position().distanceTo(defendHome)
             // Measured past the squad's own ring: a flat 24 was inside the ring a big squad
             // defends from, and every man at his post dropped his target the moment he saw one.
-            val leash = SquadFormation.perimeterRadius(squad?.members?.size ?: 1) + DEFEND_LEASH_MARGIN
+            val leash = SquadFormation.perimeterRadius(squad?.members?.size ?: 1) + DEFEND_LEASH_MARGIN +
+                entity.npcClass.minimumCombatDistance
             if (fromHome > leash) {
                 entity.target = null
                 entity.navigation.moveTo(defendHome.x, defendHome.y, defendHome.z, 1.0)
@@ -601,7 +611,10 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
             // Defending means holding: take a firing position and fight from it, never advance on
             // the enemy the way an attacking squad bounds forward.
-            holdFiringPosition(entity, target, defending = true)
+            if (entity.npcClass.minimumCombatDistance > 0.0 &&
+                horizontalDistance(entity.position(), target.position()) < entity.npcClass.minimumCombatDistance) {
+                fallBack(entity, target)
+            } else holdFiringPosition(entity, target, defending = true)
         } else {
             advanceOrHold(entity, target)
         }

@@ -88,6 +88,7 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /** Asks for the way to [pos], or — heard in mid-jump — for it once he lands. */
     private fun setOut(entity: NpcEntity, pos: Vec3, what: String) {
+        if (holdSupportDistance(entity, pos)) return
         spot = pos
         askedAt = entity.tickCount
         deferring = false
@@ -110,6 +111,7 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun tick(entity: NpcEntity) {
         val pos = BrainUtils.getMemory(entity, ModMemories.ALERT_POSITION.get()) ?: return
+        if (holdSupportDistance(entity, pos)) return
         // Newer shots move the spot, in a fight every second or so. Gone somewhere else, the path
         // to the old one leads the wrong way: a new one now. A few blocks over, the old one still
         // gets him there — but a stretch's progress is counted to the spot as it is now, or a
@@ -179,6 +181,19 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun canPlan(entity: NpcEntity) = (entity.navigation as? VehicleAwareNavigation)?.canPlan != false
+
+    /** Hearing a fight must not draw rear support into it while no target is visible. */
+    private fun holdSupportDistance(entity: NpcEntity, pos: Vec3): Boolean {
+        val distance = entity.npcClass.minimumCombatDistance
+        if (distance <= 0.0) return false
+        val dx = entity.x - pos.x
+        val dz = entity.z - pos.z
+        if (dx * dx + dz * dz > distance * distance) return false
+        entity.navigation.stop()
+        entity.lookControl.setLookAt(pos.x, pos.y + entity.eyeHeight, pos.z)
+        entity.clearAlert()
+        return true
+    }
 
     private fun pathTrace(entity: NpcEntity, pos: Vec3): String = entity.navigation.path?.let {
         "path of ${it.nodeCount} nodes ends ${it.endNode?.asBlockPos()}, " +
