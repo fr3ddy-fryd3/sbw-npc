@@ -59,7 +59,8 @@ object SquadTactics {
                 ready && !npc.combatLockedByCover() && (npc.readyToCover || npc.firedRecently(40)) && target != null &&
                     target.uuid in seen && DetectionSightline.canSee(npc, target) && npc.sensing.hasLineOfSight(target),
                 npc.isSuppressed(), AntiArmourKit.loaded(npc),
-                if (npc.readyToCover && target?.uuid in seen) target?.position() else npc.lastFireAt)
+                if (npc.readyToCover && target?.uuid in seen) target?.position() else npc.lastFireAt,
+                recentFire=npc.firedRecently(40),recentFireAt=npc.lastFireAt)
         }
         state.peakStrength = maxOf(state.peakStrength, members.size)
         val knownFocus = state.contacts.values.filter { now - it.seenAt < 40 }.maxByOrNull { it.priority }?.position
@@ -75,27 +76,53 @@ object SquadTactics {
             state.snapshot!!.home!!.distanceTo(view.home)>8.0
         if (defensiveHomeMoved) state.plan?.status=TacticalStatus.COMPLETED
         state.snapshot = view
-        var choice = TacticalRules.choose(view)
+        val proposed = TacticalRules.choose(view)
+        var choice = proposed
         if (choice.pattern != TacticalPattern.EVADE && now < (state.blocked[choice.pattern] ?: Long.MIN_VALUE))
-            choice = TacticalChoice(TacticalPattern.FOLLOW_ORDER,choice.focus)
+            choice = TacticalChoice(TacticalPattern.FOLLOW_ORDER,choice.focus,reason=TacticalReason.PATTERN_COOLDOWN)
         val previousTasks = state.plan?.tasks?.toMap().orEmpty()
         val sameDefensiveOrder=!defensiveHomeMoved && state.plan?.stamp==squad.orderStamp && state.plan?.pattern in DefensiveOverwatch.PATTERNS
         val previousStatus = state.plan?.status
-        if (state.select(choice, squad.orderStamp, now)) {
+        val previousPlan = state.plan
+        val previousBounds = previousPlan?.bounds
+        val selected = state.select(choice, squad.orderStamp, now)
+        if (selected) {
             state.plan?.let { plan ->
                 TacticalManeuvers.assign(squad.id, plan, view)
                 if (sameDefensiveOrder) DefensiveOverwatch.preservePosts(plan,previousTasks,view)
-                DebugFlags.log(LogGroup.ORDER, "[tactics] {} plan={} pattern={} members={} contacts={} center={} focus={} jobs={}",
-                    squad.name,plan.id,plan.pattern,members.size,view.visible.size,view.center,plan.focus,jobs(plan))
+                if (DebugFlags.on(LogGroup.ORDER)) DebugFlags.log(LogGroup.ORDER,
+                    "[tactics] {} plan={} pattern={} reason={} previousPlan={} previousPattern={} previousPhase={} orderChanged={} members={} contacts={} center={} focus={} jobs={}",
+                    squad.name,plan.id,plan.pattern,plan.reason,previousPlan?.id,previousPlan?.pattern,previousStatus,
+                    previousPlan!=null && previousPlan.stamp!=squad.orderStamp,members.size,view.visible.size,view.center,plan.focus,jobs(plan))
             }
         }
         state.plan?.let { plan ->
             TacticalManeuvers.refreshSectors(plan,view)
             TacticalManeuvers.advance(squad.id,state,plan,view)
-            if (plan.status != previousStatus) DebugFlags.log(LogGroup.ORDER,"[tactics] {} plan={} phase={} bounds={} jobs={}",
-                squad.name,plan.id,plan.status,plan.bounds,jobs(plan))
+            val phaseChanged = plan.status != previousStatus || plan.bounds != previousBounds
+            if (phaseChanged && DebugFlags.on(LogGroup.ORDER)) DebugFlags.log(LogGroup.ORDER,
+                "[tactics] {} plan={} phase={} bounds={} failure={} jobs={}",
+                squad.name,plan.id,plan.status,plan.bounds,plan.failure,jobs(plan))
+            trace(squad,view,proposed,choice,selected || phaseChanged)
         }
         for ((id,old) in previousTasks) if (state.plan?.tasks?.get(id) !== old) FiringSpots.release(id)
+    }
+
+    /** One heartbeat per five seconds, plus actual plan/phase changes; no per-tick log scans. */
+    private fun trace(squad: Squad,view: TacticalSnapshot,proposed: TacticalChoice,effective: TacticalChoice,changed: Boolean) {
+        if (!DebugFlags.on(LogGroup.ORDER)) return
+        val state=squad.tactics
+        if (!changed && view.now<state.nextTrace) return
+        val plan=state.plan ?: return
+        state.nextTrace=view.now+100
+        DebugFlags.log(LogGroup.ORDER,
+            "[tactics] {} snapshot squad={} tick={} plan={} pattern={} phase={} reason={} proposed={} proposedReason={} effective={} cooldown={} order={} stamp={} members={} peak={} fighting={} visible={} remembered={} incoming={} suppressed={} narrow={} open={} stalled={} heightDelta={} cover={} shotsLast40Ticks={} coverAge={} phaseAge={} bounds={} positioned={} failed={} jobs={}",
+            squad.name,squad.id,view.now,plan.id,plan.pattern,plan.status,plan.reason,proposed.pattern,proposed.reason,
+            effective.pattern,effective.reason==TacticalReason.PATTERN_COOLDOWN,view.order,view.stamp,view.members.size,
+            view.peakStrength,view.fighting.size,view.visible.size,view.contacts.size,view.incoming.size,
+            view.members.count { it.suppressed },view.narrow,view.open,view.stalled,plan.focus?.y?.minus(view.center.y),
+            TacticalTelemetry.cover(plan,view),view.members.count { it.recentFire },view.now-plan.lastCover,
+            view.now-plan.phaseSince,plan.bounds,plan.tasks.values.count { it.position!=null },plan.failedMembers.size,jobs(plan))
     }
 
     fun task(entity: NpcEntity): TacticalTask? {
@@ -131,8 +158,9 @@ object SquadTactics {
                 TacticalPositions.Outcome.DEFERRED -> { task.nextSearch = entity.level().gameTime + 2; return true }
                 TacticalPositions.Outcome.UNREACHABLE -> {
                     task.nextSearch = entity.level().gameTime + 30
-                    DebugFlags.log(LogGroup.ORDER,"[tactics] {} job={} unreachable={} attempt={}",entity.uuid,task.job,task.anchor,task.failures+1)
-                    return !failedTask(entity,task)
+                    DebugFlags.log(LogGroup.ORDER,"[tactics] {} plan={} job={} unreachable={} from={} attempt={}",
+                        entity.uuid,task.plan,task.job,task.anchor,entity.position(),task.failures+1)
+                    return !failedTask(entity,task,"no reachable position")
                 }
                 TacticalPositions.Outcome.FOUND -> {
                     task.position = result.position
@@ -178,7 +206,7 @@ object SquadTactics {
             task.position = null
             task.search = null
             task.nextSearch = entity.level().gameTime + 20
-            return !failedTask(entity,task)
+            return !failedTask(entity,task,"no movement progress for 100 ticks")
         }
         if (entity.navigation.isDone && entity.level().gameTime >= task.nextSearch) {
             task.nextSearch = entity.level().gameTime + 20
@@ -189,18 +217,19 @@ object SquadTactics {
             if (!TacticalBudget.path(entity.level().gameTime)) { task.nextSearch = entity.level().gameTime + 2; return true }
             val path = TacticalPositions.pathToPosition(entity,position)
             if (TacticalPositions.reaches(path,position)) entity.navigation.moveTo(path,TacticalPositions.speed(task))
-            else { task.position = null; task.search = null; return !failedTask(entity,task) }
+            else { task.position = null; task.search = null; return !failedTask(entity,task,"position path no longer reaches destination") }
         }
         return true
     }
 
-    private fun failedTask(entity: NpcEntity,task: TacticalTask): Boolean {
+    private fun failedTask(entity: NpcEntity,task: TacticalTask,reason: String): Boolean {
         if (++task.failures < if (task.job==TacticalJob.OVERWATCH) 1 else 3) return false
         val plan = entity.currentSquad()?.tactics?.plan ?: return true
         TacticalManeuvers.abandon(plan,entity.uuid)
         FiringSpots.release(entity.uuid)
-        DebugFlags.log(LogGroup.ORDER,"[tactics] {} plan={} pattern={} job={} individual fallback, remaining={}",
-            entity.uuid,plan.id,plan.pattern,task.job,jobs(plan))
+        if (DebugFlags.on(LogGroup.ORDER)) DebugFlags.log(LogGroup.ORDER,
+            "[tactics] {} plan={} pattern={} job={} reason={} failures={} individual fallback, remaining={}",
+            entity.uuid,plan.id,plan.pattern,task.job,reason,task.failures,jobs(plan))
         return true
     }
 

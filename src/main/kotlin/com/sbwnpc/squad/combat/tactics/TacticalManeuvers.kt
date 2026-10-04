@@ -215,7 +215,7 @@ object TacticalManeuvers {
                 assign(squadId, plan, view)
                 // A covering position remains fixed while the other group starts its maneuver.
                 for ((id, task) in previous) if (task.job == TacticalJob.COVER) plan.tasks[id] = task
-            } else if (view.now - plan.phaseSince > 100) state.fail(view.now)
+            } else if (view.now - plan.phaseSince > 100) state.fail(view.now,TacticalFailure.COVER_NOT_READY_TIMEOUT)
             return
         }
         val movers = view.members.filter { plan.tasks[it.id]?.job in setOf(TacticalJob.FLANK, TacticalJob.ADVANCE, TacticalJob.RETREAT) }
@@ -224,7 +224,7 @@ object TacticalManeuvers {
         if (!retreating && view.now - plan.lastCover > 80 && view.visible.isNotEmpty()) {
             for (member in movers) plan.tasks[member.id] = TacticalTask(TacticalJob.COVER, member.position, plan.focus, plan.id)
             plan.status = TacticalStatus.REGROUPING
-            state.fail(view.now)
+            state.fail(view.now,TacticalFailure.COVER_LOST)
             return
         }
         if (movers.all { settled(it, plan.tasks[it.id]) }) {
@@ -255,7 +255,7 @@ object TacticalManeuvers {
                 plan.phaseSince = view.now
                 assign(squadId, plan, view)
             } else for (member in movers) plan.tasks[member.id] = TacticalTask(TacticalJob.COVER, member.position, plan.focus, plan.id)
-        } else if (view.now - plan.phaseSince > (if (plan.pattern in setOf(TacticalPattern.ENCIRCLE,TacticalPattern.ATTACK_HEIGHT)) 400 else 160)) state.fail(view.now)
+        } else if (view.now - plan.phaseSince > (if (plan.pattern in setOf(TacticalPattern.ENCIRCLE,TacticalPattern.ATTACK_HEIGHT)) 400 else 160)) state.fail(view.now,TacticalFailure.MOVEMENT_TIMEOUT)
     }
 
     /** A local routing failure gives only this member back to the existing individual AI. */
@@ -268,7 +268,7 @@ object TacticalManeuvers {
         val focus=task?.focus
         return member.canFire && (member.firingAt==null || focus==null || member.firingAt.distanceTo(focus)<=18.0)
     }
-    private fun settled(member: TacticalMember, task: TacticalTask?): Boolean = task?.position?.let {
+    internal fun settled(member: TacticalMember, task: TacticalTask?): Boolean = task?.position?.let {
         member.position.distanceTo(it) <= 2.5 && member.position.distanceTo(task.anchor) <= 10.0
     } == true
     private fun escapeDirection(view: TacticalSnapshot,forward: Vec3): Vec3 {
