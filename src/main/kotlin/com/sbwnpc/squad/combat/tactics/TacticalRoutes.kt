@@ -13,10 +13,11 @@ object TacticalRoutes {
             if (a.lengthSqr() > 64.0 && b.lengthSqr() > 64.0) {
                 val angle = acos(a.normalize().dot(b.normalize()).coerceIn(-1.0,1.0))
                 if (angle > Math.PI/3.0) {
-                    val turn = if (a.x*b.z-a.z*b.x >= 0.0) Math.PI/4.0 else -Math.PI/4.0
+                    val step=minOf(Math.PI/4.0,2.0*asin((24.0/(2.0*a.length())).coerceAtMost(1.0)))
+                    val turn = if (a.x*b.z-a.z*b.x >= 0.0) step else -step
                     val unit = a.normalize()
                     val rotated = Vec3(unit.x*cos(turn)-unit.z*sin(turn),0.0,unit.x*sin(turn)+unit.z*cos(turn))
-                    return Vec3(focus.x,from.y,focus.z).add(rotated.scale(a.length().coerceIn(18.0,24.0)))
+                    return Vec3(focus.x,from.y,focus.z).add(rotated.scale(a.length()))
                 }
             }
         }

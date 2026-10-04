@@ -16,7 +16,8 @@ enum class TacticalJob { COVER, ADVANCE, FLANK, OBSERVE, SEARCH, REGROUP, RETREA
 data class TacticalMember(
     val id: UUID, val position: Vec3, val role: NpcClass = NpcClass.RIFLEMAN,
     val health: Double = 1.0, val ready: Boolean = true, val canFire: Boolean = false,
-    val suppressed: Boolean = false, val rockets: Boolean = false, val firingAt: Vec3? = null
+    val suppressed: Boolean = false, val rockets: Boolean = false, val firingAt: Vec3? = null,
+    val recentFire: Boolean = canFire
 )
 data class TacticalContact(
     val id: UUID, val position: Vec3, val seenAt: Long, val velocity: Vec3 = Vec3.ZERO,
@@ -47,7 +48,7 @@ object TacticalRules {
         if (contacts.isEmpty()) {
             // The ridge can hide the enemy while we climb. Keep approaching its last seen
             // position instead of leaving fourteen men behind and sending two searchers.
-            if (view.offensive && view.contacts.isNotEmpty() && focus != null && focus.y-view.center.y >= 6.0)
+            if (view.offensive && view.contacts.isNotEmpty() && focus != null && focus.y-view.center.y >= 8.0)
                 return TacticalChoice(TacticalPattern.ATTACK_HEIGHT,focus)
             if (view.incoming.isNotEmpty()) return TacticalChoice(TacticalPattern.RETURN_FIRE, view.incoming.first())
             if (view.contacts.isNotEmpty() && view.offensive) return TacticalChoice(TacticalPattern.SEARCH, focus)
@@ -78,9 +79,9 @@ object TacticalRules {
         }) return TacticalChoice(TacticalPattern.REPEL,focus,true)
         if (view.offensive && view.fighting.count { it.role != NpcClass.MEDIC } < 2)
             return TacticalChoice(TacticalPattern.FOLLOW_ORDER,focus)
-        if (focus != null && view.center.y - focus.y >= 6.0) return TacticalChoice(TacticalPattern.HOLD_HEIGHT, focus)
+        if (focus != null && view.center.y - focus.y >= 8.0) return TacticalChoice(TacticalPattern.HOLD_HEIGHT, focus)
         if (!view.offensive) return TacticalChoice(TacticalPattern.REORIENT, focus)
-        if (focus != null && focus.y - view.center.y >= 6.0) return TacticalChoice(TacticalPattern.ATTACK_HEIGHT, focus)
+        if (focus != null && focus.y - view.center.y >= 8.0) return TacticalChoice(TacticalPattern.ATTACK_HEIGHT, focus)
         if (view.narrow) return TacticalChoice(TacticalPattern.FILE, focus)
         if (view.stalled) return TacticalChoice(TacticalPattern.DISLODGE, focus)
         if (contacts.all { it.velocity.dot(it.position.subtract(view.center).normalize()) > 0.08 })
@@ -114,6 +115,7 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
     var closest = Double.MAX_VALUE
     var search: TacticalPositionSearch? = null
     var nextValidation = Long.MIN_VALUE
+    var staging: Vec3? = null
 }
 
 /** Keeps progress across tick budgets, including candidates after an unreachable first choice. */
@@ -139,6 +141,8 @@ class TacticalPlan(
     val failedMembers = HashSet<UUID>()
     val heightSupport = HashSet<UUID>()
     val flankSupport = HashSet<UUID>()
+    val flankOrder = ArrayList<UUID>()
+    val flankArrived = HashSet<UUID>()
     var heightFront: Vec3? = null
 }
 
@@ -149,6 +153,8 @@ class SquadTacticalState {
     var plan: TacticalPlan? = null
         private set
     var nextAssessment = Long.MIN_VALUE
+    var nextTrace = Long.MIN_VALUE
+    val holdAfterFailure = HashMap<UUID,Long>()
     var peakStrength = 0
     var blockedUntil = Long.MIN_VALUE
     var blockedPattern: TacticalPattern? = null
@@ -159,7 +165,8 @@ class SquadTacticalState {
     fun select(choice: TacticalChoice, stamp: Int, now: Long): Boolean {
         val old = plan
         val changedOrder = old != null && old.stamp != stamp
-        val expired = old == null || old.status == TacticalStatus.FAILED || old.status == TacticalStatus.COMPLETED || (old.pattern == TacticalPattern.EVADE && choice.pattern != TacticalPattern.EVADE) || now - old.started >= if (old.pattern in setOf(TacticalPattern.ENCIRCLE,TacticalPattern.ATTACK_HEIGHT)) 480 else 240
+        val expired = old == null || old.status == TacticalStatus.FAILED || old.status == TacticalStatus.COMPLETED || (old.pattern == TacticalPattern.EVADE && choice.pattern != TacticalPattern.EVADE) ||
+            now-old.started>=1200 || now-old.phaseSince>=if (old.pattern in TacticalFlanks.PATTERNS+TacticalPattern.ATTACK_HEIGHT) 480 else 240
         val changedFocus = old?.focus != null && choice.focus != null && old.focus.distanceTo(choice.focus) > 20.0
         if (!changedOrder && !expired && old?.pattern==TacticalPattern.REORIENT && choice.pattern==old.pattern) return false
         // Losing sight for a moment must not replace a flank already walking round the ridge
@@ -170,7 +177,7 @@ class SquadTacticalState {
             TacticalPattern.SEARCH,TacticalPattern.RETURN_FIRE) || now - old.started >= 80
         if (!changedOrder && !expired && !choice.emergency && (!ready || (old?.pattern == choice.pattern && !changedFocus))) return false
         if (!changedOrder && !expired && choice.emergency && old?.pattern == choice.pattern && !changedFocus) return false
-        if (changedOrder) { blockedPattern = null; blocked.clear() }
+        if (changedOrder) { blockedPattern = null; blocked.clear(); holdAfterFailure.clear() }
         plan = TacticalPlan(++serial, choice.pattern, choice.focus, now, stamp).also {
             it.flankSide = flankSide
             if (old?.pattern == choice.pattern && choice.pattern in setOf(TacticalPattern.PURSUE,TacticalPattern.REORGANIZE) && !changedOrder) it.origin = old.origin
@@ -190,6 +197,7 @@ class SquadTacticalState {
             if (it.pattern in setOf(TacticalPattern.FLANK,TacticalPattern.DISLODGE,TacticalPattern.ATTACK_HEIGHT))
                 flankSide = if (it.flankSide == 0.0) -1.0 else -it.flankSide
             it.status = TacticalStatus.FAILED
+            for (id in it.tasks.keys) holdAfterFailure[id]=now+120
         }
         blockedUntil = now + 120
         nextAssessment = now
