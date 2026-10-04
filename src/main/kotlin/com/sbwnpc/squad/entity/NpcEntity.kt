@@ -1104,7 +1104,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         /** Chances that a piece of an NPC's kit survives its death — see [dropCustomDeathLoot]. */
         private const val WEAPON_DROP_CHANCE = 0.0375f
         private const val ARMOUR_DROP_CHANCE = 0.0125f
-        private const val AMMO_DROP_CHANCE = 0.125f
+        private const val AMMO_DROP_CHANCE = 0.1875f
         private const val GRENADE_DROP_CHANCE = 0.0125f
         private val LOOTABLE_SLOTS = listOf(EquipmentSlot.MAINHAND, EquipmentSlot.HEAD, EquipmentSlot.CHEST)
         private const val BASE_HEALTH = 20.0
