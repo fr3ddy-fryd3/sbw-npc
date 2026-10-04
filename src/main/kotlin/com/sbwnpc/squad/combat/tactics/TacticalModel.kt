@@ -11,7 +11,7 @@ enum class TacticalPattern {
     EVADE, CONSOLIDATE
 }
 enum class TacticalStatus { PREPARING, EXECUTING, REGROUPING, COMPLETED, FAILED }
-enum class TacticalJob { COVER, ADVANCE, FLANK, OBSERVE, SEARCH, REGROUP, RETREAT, ANTI_ARMOUR, RESERVE, WAIT }
+enum class TacticalJob { COVER, ADVANCE, FLANK, OBSERVE, SEARCH, REGROUP, RETREAT, ANTI_ARMOUR, RESERVE, WAIT, OVERWATCH }
 
 data class TacticalMember(
     val id: UUID, val position: Vec3, val role: NpcClass = NpcClass.RIFLEMAN,
@@ -109,12 +109,14 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, val focus: Vec3?, val
     var lastProgress = 0L
     var closest = Double.MAX_VALUE
     var search: TacticalPositionSearch? = null
+    var nextValidation = Long.MIN_VALUE
 }
 
 /** Keeps progress across tick budgets, including candidates after an unreachable first choice. */
 class TacticalPositionSearch(val origin: Vec3, val probes: List<Vec3>) {
     var probeIndex = 0
     val scored = LinkedHashMap<Vec3, Double>()
+    val visited = HashSet<Vec3>()
     var destinations: List<Vec3>? = null
     var destinationIndex = 0
 }

@@ -607,7 +607,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             val fromHome = entity.position().distanceTo(defendHome)
             // Measured past the squad's own ring: a flat 24 was inside the ring a big squad
             // defends from, and every man at his post dropped his target the moment he saw one.
-            val leash = SquadFormation.perimeterRadius(squad?.members?.size ?: 1) + DEFEND_LEASH_MARGIN
+            val leash = SquadFormation.perimeterRadius(squad?.members?.size ?: 1) + DEFEND_LEASH_MARGIN +
+                if (entity.npcClass in setOf(NpcClass.SNIPER,NpcClass.MACHINE_GUNNER))
+                    com.sbwnpc.squad.combat.tactics.DefensiveOverwatch.RADIUS else 0.0
             if (fromHome > leash) {
                 entity.target = null
                 entity.navigation.moveTo(defendHome.x, defendHome.y, defendHome.z, 1.0)

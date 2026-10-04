@@ -70,17 +70,20 @@ object SquadTactics {
             narrow = terrain.narrow, open = terrain.open,
             stalled = npcs.any { it.blockedSightSince?.let { since -> it.tickCount - since >= 80 } == true },
             peakStrength = state.peakStrength)
-        if (squad.order == SquadOrder.DEFEND && state.snapshot?.home != null && view.home != null &&
-            state.snapshot!!.home!!.distanceTo(view.home) > 8.0) state.plan?.status = TacticalStatus.COMPLETED
+        val defensiveHomeMoved=squad.order == SquadOrder.DEFEND && state.snapshot?.home != null && view.home != null &&
+            state.snapshot!!.home!!.distanceTo(view.home)>8.0
+        if (defensiveHomeMoved) state.plan?.status=TacticalStatus.COMPLETED
         state.snapshot = view
         var choice = TacticalRules.choose(view)
         if (choice.pattern != TacticalPattern.EVADE && now < (state.blocked[choice.pattern] ?: Long.MIN_VALUE))
             choice = TacticalChoice(TacticalPattern.FOLLOW_ORDER,choice.focus)
         val previousTasks = state.plan?.tasks?.toMap().orEmpty()
+        val sameDefensiveOrder=!defensiveHomeMoved && state.plan?.stamp==squad.orderStamp && state.plan?.pattern in DefensiveOverwatch.PATTERNS
         val previousStatus = state.plan?.status
         if (state.select(choice, squad.orderStamp, now)) {
             state.plan?.let { plan ->
                 TacticalManeuvers.assign(squad.id, plan, view)
+                if (sameDefensiveOrder) DefensiveOverwatch.preservePosts(plan,previousTasks,view)
                 DebugFlags.log(LogGroup.ORDER, "[tactics] {} plan={} pattern={} members={} contacts={} center={} focus={} jobs={}",
                     squad.name,plan.id,plan.pattern,members.size,view.visible.size,view.center,plan.focus,jobs(plan))
             }
@@ -134,6 +137,9 @@ object SquadTactics {
                     task.closest = Double.MAX_VALUE
                     task.lastProgress = entity.level().gameTime
                     task.nextSearch = entity.level().gameTime + 20
+                    task.nextValidation=entity.level().gameTime+40
+                    if (task.job==TacticalJob.OVERWATCH) DebugFlags.log(LogGroup.ORDER,
+                        "[tactics] {} overwatch={} anchor={} height={}",entity.uuid,task.position,task.anchor,task.position!!.y-task.anchor.y)
                 }
             }
         }
@@ -141,7 +147,18 @@ object SquadTactics {
         FiringSpots.claim(entity.uuid,position)
         val distance = entity.position().distanceTo(position)
         if (distance < task.closest - 0.5) { task.closest = distance; task.lastProgress = entity.level().gameTime }
-        if (distance <= 2.0) {
+        if (distance <= if (task.job==TacticalJob.OVERWATCH) 0.9 else 2.0) {
+            if (task.job==TacticalJob.OVERWATCH && entity.level().gameTime>=task.nextValidation &&
+                TickBudget.hasRaycasts(entity.level() as ServerLevel)) {
+                task.nextValidation=entity.level().gameTime+40
+                if (GrenadeHazard.threatens(entity.level() as ServerLevel,position) || !TacticalPositions.protected(entity,task,entity.position())) {
+                    task.position=null
+                    task.search=null
+                    task.nextSearch=entity.level().gameTime+10
+                    FiringSpots.release(entity.uuid)
+                    return true
+                }
+            }
             if (task.job in RUNNING_JOBS + TacticalJob.SEARCH && entity.position().distanceTo(task.anchor) > 10.0) {
                 task.position = null
                 task.search = null
@@ -168,7 +185,7 @@ object SquadTactics {
                 return true
             }
             if (!TacticalBudget.path(entity.level().gameTime)) { task.nextSearch = entity.level().gameTime + 2; return true }
-            val path = entity.navigation.createPath(position.x, position.y, position.z, 0)
+            val path = TacticalPositions.pathToPosition(entity,position)
             if (TacticalPositions.reaches(path,position)) entity.navigation.moveTo(path,TacticalPositions.speed(task))
             else { task.position = null; task.search = null; return !failedTask(entity,task) }
         }
@@ -176,7 +193,7 @@ object SquadTactics {
     }
 
     private fun failedTask(entity: NpcEntity,task: TacticalTask): Boolean {
-        if (++task.failures < 3) return false
+        if (++task.failures < if (task.job==TacticalJob.OVERWATCH) 1 else 3) return false
         val plan = entity.currentSquad()?.tactics?.plan ?: return true
         TacticalManeuvers.abandon(plan,entity.uuid)
         FiringSpots.release(entity.uuid)
@@ -191,7 +208,7 @@ object SquadTactics {
     fun repositionForFire(entity: NpcEntity) {
         val task=task(entity) ?: return
         val position=task.position ?: return
-        if (task.job !in setOf(TacticalJob.COVER,TacticalJob.ANTI_ARMOUR) || entity.position().distanceTo(position)>2.0) return
+        if (task.job !in setOf(TacticalJob.COVER,TacticalJob.ANTI_ARMOUR,TacticalJob.OVERWATCH) || entity.position().distanceTo(position)>2.0) return
         task.position=null
         task.search=null
         task.nextSearch=entity.level().gameTime+10

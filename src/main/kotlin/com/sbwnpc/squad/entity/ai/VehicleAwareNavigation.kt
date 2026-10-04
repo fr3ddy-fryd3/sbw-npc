@@ -28,6 +28,19 @@ import net.minecraft.world.phys.AABB
  * be told directly.
  */
 class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob, level) {
+    /** Tactical posts need their exact height, rather than a march waypoint on the surface. */
+    fun createPositionPath(pos: BlockPos): Path? {
+        if (!canPlan) return null
+        val saved=nodeMultiplier
+        super.setMaxVisitedNodesMultiplier(maxOf(1f,saved))
+        try {
+            val range=(kotlin.math.sqrt(pos.distToCenterSqr(mob.x,mob.y,mob.z))+8.0).coerceIn(48.0,80.0).toFloat()
+            return createPath(setOf(pos),8,false,0,range)
+        } finally {
+            super.setMaxVisitedNodesMultiplier(saved)
+        }
+    }
+
     override fun createPathFinder(maxVisitedNodes: Int): PathFinder {
         val evaluator = VehicleAwareNodeEvaluator()
         evaluator.setCanPassDoors(true)

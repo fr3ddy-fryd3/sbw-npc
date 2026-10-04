@@ -37,9 +37,11 @@ object TacticalManeuvers {
         val escape = escapeDirection(view,forward)
         for ((index, member) in view.members.withIndex()) {
             if (member.id in plan.failedMembers) continue
-            if (member.position.distanceTo(view.center) > 48.0) continue
+            val overwatch=DefensiveOverwatch.enabled(view,member,plan.pattern)
+            val homeRadius=SquadFormation.perimeterRadius(view.members.size)+10.0+if (overwatch) DefensiveOverwatch.RADIUS else 0.0
+            if (member.position.distanceTo(view.center) > if (overwatch) 80.0 else 48.0) continue
             if (view.order == SquadOrder.DEFEND && view.home != null &&
-                member.position.distanceTo(view.home) > SquadFormation.perimeterRadius(view.members.size) + 10.0) continue
+                member.position.distanceTo(view.home) > homeRadius) continue
             val lateral = side.scale((index % 3 - 1) * 5.0)
             var job = TacticalJob.COVER
             var anchor = member.position
@@ -158,6 +160,12 @@ object TacticalManeuvers {
                 !(plan.pattern == TacticalPattern.ATTACK_HEIGHT && plan.bounds % 2 == 1)) {
                 job = TacticalJob.COVER
                 anchor = patient.position.subtract(forward.scale(4.0)).add(side.scale(4.0))
+            }
+            if (overwatch && member.id != guard) {
+                job=TacticalJob.OVERWATCH
+                val angle=index*Math.PI*2.0/view.members.size.coerceAtLeast(1)
+                anchor=(view.home ?: view.center).add(Vec3(kotlin.math.cos(angle),0.0,kotlin.math.sin(angle))
+                    .scale(SquadFormation.perimeterRadius(view.members.size)))
             }
             plan.tasks[member.id] = TacticalTask(job, anchor, assignedFocus, plan.id)
         }
