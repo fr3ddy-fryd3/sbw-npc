@@ -33,32 +33,25 @@ object SquadDeployment {
      *  reach to put one — the infantry still deploys, but the caller should say so. */
     class Result(val members: List<NpcEntity>, val squad: Squad?, val vehicleBlocked: Boolean = false)
 
+    /** Full planned strength, including the chosen helicopter's crew. */
+    fun composition(cfg: SquadToolItem.Config): List<NpcClass> = when (cfg.preset) {
+        SquadPreset.SINGLE -> listOf(cfg.cls)
+        SquadPreset.HELI_CREW -> cfg.heliModel.crew
+        else -> cfg.preset.composition
+    }
+
     /**
      * Deploys [cfg]'s preset centred on [pos], facing away from [facingYaw], and forms a squad
      * around it when the preset is more than one NPC. Returns null if nothing could be spawned.
      */
     fun deploy(level: ServerLevel, pos: BlockPos, facingYaw: Float, cfg: SquadToolItem.Config, owner: UUID): Result? {
-        val composition = when (cfg.preset) {
-            SquadPreset.SINGLE -> listOf(cfg.cls)
-            // Who flies out depends on which airframe was picked, not on the preset alone.
-            SquadPreset.HELI_CREW -> cfg.heliModel.crew
-            else -> cfg.preset.composition
-        }
+        val composition = composition(cfg)
         val difficulty = level.getCurrentDifficultyAt(pos)
         val spawned = if (cfg.preset.grid) deployGrid(level, pos, facingYaw, composition, cfg.rank, cfg.faction, difficulty)
             else deployLine(level, pos, facingYaw, composition, cfg.rank, cfg.faction, difficulty, cfg.preset.spacing)
         if (spawned.isEmpty()) return null
 
-        val vehiclePlaced = when (cfg.preset) {
-            SquadPreset.MORTAR_CREW -> spawnMortar(level, pos, facingYaw, cfg.faction)
-            SquadPreset.T90_CREW -> spawnTankCrew(level, pos, facingYaw, cfg.faction, spawned, cfg.tankModel)
-            SquadPreset.HELI_CREW -> spawnHeliCrew(level, pos, facingYaw, cfg.faction, spawned, cfg.heliModel)
-            // Unmanned — left for the squad's own vehicle-transport/combat-support AI to claim,
-            // same as any vehicle it finds parked in the world.
-            SquadPreset.FIVE -> !cfg.vehicle || spawnTransport(level, pos, facingYaw, cfg.faction, cfg.vehicleModel, spawned)
-            SquadPreset.SEVEN -> !cfg.vehicle || spawnTransport(level, pos, facingYaw, cfg.faction, TransportVehicle.BMP_2, spawned)
-            else -> true
-        }
+        val vehiclePlaced = deploySupport(level, pos, facingYaw, cfg, spawned)
 
         val squad = if (spawned.size > 1 || cfg.preset == SquadPreset.T90_CREW) {
             val mgr = SquadManager.get(level)
@@ -72,6 +65,18 @@ object SquadDeployment {
             }
         } else null
         return Result(spawned, squad, vehicleBlocked = !vehiclePlaced)
+    }
+
+    /** Places support once the crew is present; barracks build that crew one member at a time. */
+    fun deploySupport(
+        level: ServerLevel, pos: BlockPos, facingYaw: Float, cfg: SquadToolItem.Config, members: List<NpcEntity>
+    ): Boolean = when (cfg.preset) {
+        SquadPreset.MORTAR_CREW -> spawnMortar(level, pos, facingYaw, cfg.faction)
+        SquadPreset.T90_CREW -> spawnTankCrew(level, pos, facingYaw, cfg.faction, members, cfg.tankModel)
+        SquadPreset.HELI_CREW -> spawnHeliCrew(level, pos, facingYaw, cfg.faction, members, cfg.heliModel)
+        SquadPreset.FIVE -> !cfg.vehicle || spawnTransport(level, pos, facingYaw, cfg.faction, cfg.vehicleModel, members)
+        SquadPreset.SEVEN -> !cfg.vehicle || spawnTransport(level, pos, facingYaw, cfg.faction, TransportVehicle.BMP_2, members)
+        else -> true
     }
 
     /**

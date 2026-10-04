@@ -42,12 +42,15 @@ class SquadManager : SavedData() {
     /** No cap on how many squads one player runs. The quick-command HUD's number keys only reach
      *  the first [HUD_SLOTS] of them ([forOwner] is in creation order, so disbanding one moves the
      *  rest up into the freed numbers); everything past that is commanded from the squad screen. */
-    fun create(level: ServerLevel, owner: UUID, faction: SquadFaction, members: List<UUID>): Squad {
+    fun create(
+        level: ServerLevel, owner: UUID, faction: SquadFaction, members: List<UUID>,
+        originalComposition: List<NpcClass>? = null, rank: NpcRank? = null
+    ): Squad {
         // Captured now so a future barracks assignment knows what "full strength" means for this
         // squad — the actual classes it was formed/last topped up with, not a guess.
         val npcs = members.mapNotNull { findEntity(level.server, it) as? NpcEntity }
-        val composition = npcs.map { it.npcClass }
-        val rank = npcs.firstOrNull()?.npcRank ?: NpcRank.DEFAULT
+        val composition = originalComposition ?: npcs.map { it.npcClass }
+        val squadRank = rank ?: npcs.firstOrNull()?.npcRank ?: NpcRank.DEFAULT
         val tank = composition.contains(NpcClass.TANK_CREW)
         val heli = composition.any { it == NpcClass.HELICOPTER_PILOT || it == NpcClass.HELICOPTER_GUNNER }
         val prefix = when {
@@ -63,7 +66,7 @@ class SquadManager : SavedData() {
         }
         val squad = Squad(
             UUID.randomUUID(), nextName(owner, prefix), faction, initialOrder, members.toMutableList(),
-            null, null, owner, null, composition, rank
+            null, null, owner, null, composition, squadRank
         )
         squads[squad.id] = squad
         members.forEach { m ->
@@ -221,7 +224,7 @@ class SquadManager : SavedData() {
     }
 
     /** Called periodically by BarracksBlockEntity itself (not on a separate scheduler) for every
-     *  squad currently assigned to it: spawns whatever's missing versus [Squad.originalComposition]
+     *  squad currently assigned to it: spawns one missing member versus [Squad.originalComposition]
      *  at [barracksPos], scattered a little so reinforcements don't all stack on one block.
      *
      *  Reinforcements spawn on the SQUAD's own faction, not whatever faction the barracks' owner
@@ -234,8 +237,8 @@ class SquadManager : SavedData() {
         val barracks = BarracksRef(level.dimension(), barracksPos)
         val pos = Vec3(barracksPos.x + 0.5, barracksPos.y.toDouble(), barracksPos.z + 0.5)
         val difficulty = level.getCurrentDifficultyAt(barracksPos)
-        var changed = false
-        squadsAtBarracks(barracks).forEach { squad ->
+        val assigned = squadsAtBarracks(barracks)
+        assigned.forEach { squad ->
             val members = squad.members.map { findEntity(level.server, it) as? NpcEntity }
             // Resupply: drone operators standing near their barracks get their drones back.
             members.forEach { npc ->
@@ -243,35 +246,27 @@ class SquadManager : SavedData() {
                     npc.position().distanceToSqr(pos) <= RESUPPLY_RADIUS * RESUPPLY_RADIUS
                 ) npc.dronesLeft = com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES
             }
-            val present = members.map { it?.npcClass }
-            val missing = missingClasses(squad.originalComposition, present)
-            // Each recruit of a wave gets its own bearing round the barracks, so a whole wave
-            // doesn't come out of one spot in a heap.
-            val firstBearing = level.random.nextDouble() * Math.PI * 2
-            missing.forEachIndexed { index, cls ->
-                val npc = ModEntities.NPC.get().create(level) ?: return@forEachIndexed
-                val dimensions = npc.getDimensions(Pose.STANDING)
-                // A barracks built into a slope/hillside can leave a scattered spot with no safe
-                // footing at all — try a few before falling back to the barracks' own spot, which is
-                // guaranteed to stand on solid ground since the block itself is placed there.
-                val bearing = firstBearing + index * GOLDEN_ANGLE
-                val radius = SPAWN_MIN_RADIUS + level.random.nextDouble() * (SPAWN_MAX_RADIUS - SPAWN_MIN_RADIUS)
-                val spot = SafeSpawn.findStandingSpot(
-                    level, pos.x + Math.cos(bearing) * radius, pos.z + Math.sin(bearing) * radius,
-                    barracksPos.y, dimensions
-                ) ?: Vec3(pos.x, barracksPos.y + 1.0, pos.z)
-                npc.moveTo(spot.x, spot.y, spot.z, level.random.nextFloat() * 360f, 0f)
-                npc.npcClass = cls
-                npc.npcRank = squad.rank
-                npc.spawnFaction = squad.faction
-                npc.finalizeSpawn(level, difficulty, MobSpawnType.SPAWN_EGG, null)
-                level.addFreshEntity(npc)
-                squad.members.add(npc.uuid)
-                npc.squadId = squad.id
-                changed = true
-            }
         }
-        if (changed) setDirty()
+        // One recruit for the whole block, even when several squads are assigned to it.
+        val (squad, cls) = nextReinforcement(assigned) { id ->
+            (findEntity(level.server, id) as? NpcEntity)?.npcClass
+        } ?: return
+        val npc = ModEntities.NPC.get().create(level) ?: return
+        val bearing = level.random.nextDouble() * Math.PI * 2
+        val radius = SPAWN_MIN_RADIUS + level.random.nextDouble() * (SPAWN_MAX_RADIUS - SPAWN_MIN_RADIUS)
+        val spot = SafeSpawn.findStandingSpot(
+            level, pos.x + Math.cos(bearing) * radius, pos.z + Math.sin(bearing) * radius,
+            barracksPos.y, npc.getDimensions(Pose.STANDING)
+        ) ?: Vec3(pos.x, barracksPos.y + 1.0, pos.z)
+        npc.moveTo(spot.x, spot.y, spot.z, level.random.nextFloat() * 360f, 0f)
+        npc.npcClass = cls
+        npc.npcRank = squad.rank
+        npc.spawnFaction = squad.faction
+        npc.finalizeSpawn(level, difficulty, MobSpawnType.SPAWN_EGG, null)
+        if (!level.addFreshEntity(npc)) return
+        squad.members.add(npc.uuid)
+        npc.squadId = squad.id
+        setDirty()
     }
 
     private fun nextName(owner: UUID, prefix: String = ""): String =
@@ -288,8 +283,6 @@ class SquadManager : SavedData() {
         private const val FILE = "sbwnpc_squads"
         private const val SPAWN_MIN_RADIUS = 2.0
         private const val SPAWN_MAX_RADIUS = 5.0
-        /** Spreads successive bearings evenly however many recruits a wave has. */
-        private const val GOLDEN_ANGLE = 2.399963
         /** How many squads the 1-9 quick-command keys can address — a keyboard limit, not a cap
          *  on how many a player may have. */
         const val HUD_SLOTS = 9
@@ -350,6 +343,18 @@ class SquadManager : SavedData() {
             val remaining = present.filterNotNull().toMutableList()
             val missing = composition.filter { !remaining.remove(it) }
             return missing.drop(present.count { it == null })
+        }
+
+        /** The next recruit across all squads served by one barracks. */
+        internal fun nextReinforcement(
+            squads: List<Squad>, present: (UUID) -> NpcClass?
+        ): Pair<Squad, NpcClass>? {
+            for (squad in squads) {
+                val cls = missingClasses(squad.originalComposition, squad.members.map(present)).firstOrNull()
+                    ?: continue
+                return squad to cls
+            }
+            return null
         }
 
         fun findEntity(server: MinecraftServer, uuid: UUID): Entity? {

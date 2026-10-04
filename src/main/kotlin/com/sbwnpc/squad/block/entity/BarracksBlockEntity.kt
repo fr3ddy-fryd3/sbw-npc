@@ -9,6 +9,7 @@ import com.sbwnpc.squad.npc.SquadPreset
 import com.sbwnpc.squad.squad.BarracksRef
 import com.sbwnpc.squad.squad.SquadDeployment
 import com.sbwnpc.squad.squad.SquadManager
+import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.core.BlockPos
 import net.minecraft.core.HolderLookup
 import net.minecraft.nbt.CompoundTag
@@ -39,6 +40,7 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
     var config: CompoundTag? = null
         private set
     private var garrison: UUID? = null
+    private var supportDeployed = false
     private var ticksUntilRespawn = RESPAWN_INTERVAL_TICKS
 
     /**
@@ -63,7 +65,8 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
     fun configure(level: ServerLevel, cfg: SquadToolItem.Config) {
         clearGarrison(level)
         config = SquadToolItem.configTag(cfg)
-        ticksUntilRespawn = 0
+        // Reconfiguring cannot bypass the production interval.
+        ticksUntilRespawn = RESPAWN_INTERVAL_TICKS
         setChanged()
     }
 
@@ -74,6 +77,7 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
         // unlinked — it was never this Barracks' to delete.
         mgr.clearBarracks(ref(level))
         garrison = null
+        supportDeployed = false
     }
 
     /** Back to an unconfigured Barracks: nothing deployed, nothing to deploy. */
@@ -90,29 +94,38 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
         val cfg = config?.let { SquadToolItem.readConfig(it) } ?: return
         val owner = owner ?: return
         val mgr = SquadManager.get(level)
-        garrison?.let { id ->
-            if (mgr.get(id) != null) {
-                mgr.respawnAtBarracks(level, blockPos.immutable())
-            } else {
+        val squad = garrison?.let { id ->
+            mgr.get(id) ?: run {
                 // A garrison squad outlives its last member (SquadManager keeps an empty squad that
                 // still has a Barracks), so the only way it disappears is the player deleting or
                 // disbanding it from the squad screen. That is the player ending this garrison — the
                 // Barracks used to read it as "nothing deployed yet" and put a fresh squad out.
                 standDown()
+                return
             }
-            return
+        } ?: run {
+            // Register the complete plan before producing the first NPC, so a partial garrison
+            // still knows its intended strength after saving, casualties or chunk unloading.
+            val composition = SquadDeployment.composition(cfg)
+            if (composition.isEmpty()) return
+            mgr.create(level, owner, cfg.faction, emptyList(), composition, cfg.rank).also {
+                mgr.assignBarracks(it.id, ref(level))
+                if (cfg.preset.grid) mgr.setOrder(it.id, SquadOrder.MOVE)
+                mgr.setObjective(level, it.id, blockPos.above())
+                garrison = it.id
+                setChanged()
+            }
         }
-        // Spawned a block up so a squad doesn't deploy inside the Barracks itself, and facing away
-        // from it the way a player's own deploy faces away from them.
-        val deployed = SquadDeployment.deploy(level, blockPos.above(), 0f, cfg, owner) ?: return
-        // A one-man preset still needs a persistent garrison link. Ordinary single deployment
-        // intentionally makes a loose NPC; without this a barracks spawned another every wave.
-        val squad = deployed.squad ?: mgr.create(level, owner, cfg.faction, deployed.members.map { it.uuid }).also {
-            mgr.setObjective(level, it.id, blockPos.above())
+        mgr.respawnAtBarracks(level, blockPos.immutable())
+        if (!supportDeployed) {
+            val members = squad.members.mapNotNull { level.getEntity(it) as? com.sbwnpc.squad.entity.NpcEntity }
+            if (SquadManager.missingClasses(squad.originalComposition, members.map { it.npcClass }).isEmpty()) {
+                // In particular, keep a helicopter on the pad until both pilot and gunner exist.
+                SquadDeployment.deploySupport(level, blockPos.above(), 0f, cfg, members)
+                supportDeployed = true
+                setChanged()
+            }
         }
-        mgr.assignBarracks(squad.id, ref(level))
-        garrison = squad.id
-        setChanged()
     }
 
     override fun saveAdditional(tag: CompoundTag, registries: HolderLookup.Provider) {
@@ -120,6 +133,8 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
         owner?.let { tag.putUUID("Owner", it) }
         config?.let { tag.put("Config", it) }
         garrison?.let { tag.putUUID("Garrison", it) }
+        tag.putBoolean("SupportDeployed", supportDeployed)
+        tag.putInt("RespawnCooldown", ticksUntilRespawn)
     }
 
     override fun loadAdditional(tag: CompoundTag, registries: HolderLookup.Provider) {
@@ -127,10 +142,14 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
         owner = if (tag.hasUUID("Owner")) tag.getUUID("Owner") else null
         config = if (tag.contains("Config")) tag.getCompound("Config") else null
         garrison = if (tag.hasUUID("Garrison")) tag.getUUID("Garrison") else null
+        // Older garrisons already deployed their vehicles with the original full wave.
+        supportDeployed = if (tag.contains("SupportDeployed")) tag.getBoolean("SupportDeployed") else garrison != null
+        ticksUntilRespawn = if (tag.contains("RespawnCooldown"))
+            tag.getInt("RespawnCooldown").coerceIn(1, RESPAWN_INTERVAL_TICKS) else RESPAWN_INTERVAL_TICKS
     }
 
     companion object {
-        private const val RESPAWN_INTERVAL_TICKS = 600 // ~30s
+        private const val RESPAWN_INTERVAL_TICKS = 200 // ~10s, one NPC per block
 
         @JvmStatic
         fun serverTick(level: Level, pos: BlockPos, state: BlockState, be: BarracksBlockEntity) {
@@ -138,6 +157,7 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
             if (--be.ticksUntilRespawn > 0) return
             be.ticksUntilRespawn = RESPAWN_INTERVAL_TICKS
             be.maintainGarrison(level)
+            be.setChanged()
         }
     }
 }
