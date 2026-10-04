@@ -57,7 +57,7 @@ object TacticalManeuvers {
             if (member.id in plan.failedMembers) continue
             val overwatch=DefensiveOverwatch.enabled(view,member,plan.pattern)
             val homeRadius=SquadFormation.perimeterRadius(view.members.size)+10.0+if (overwatch) DefensiveOverwatch.RADIUS else 0.0
-            val assignmentRange=if (plan.pattern in FLANK_PATTERNS && member.id in plan.flankOrder) 160.0 else if (overwatch) 80.0 else 48.0
+            val assignmentRange=if (view.offensive && plan.pattern in FLANK_PATTERNS+TacticalPattern.BOUND) 160.0 else if (overwatch) 80.0 else 48.0
             if (member.position.distanceTo(view.center) > assignmentRange) continue
             if (view.order == SquadOrder.DEFEND && view.home != null &&
                 member.position.distanceTo(view.home) > homeRadius) continue
@@ -72,7 +72,7 @@ object TacticalManeuvers {
                     if (slot>=0 && member.id !in plan.flankArrived && member.id !in plan.flankSupport && member.id!=guard) {
                         job=if (plan.status!=TacticalStatus.PREPARING && member.id in flankWave) TacticalJob.FLANK else TacticalJob.WAIT
                         anchor=TacticalFlanks.anchor(plan,view,slot)
-                        if (job==TacticalJob.WAIT) staging=TacticalFlanks.staging(plan,slot)
+                        if (job==TacticalJob.WAIT) staging=plan.waitingPosts.getOrPut(member.id) { member.position }
                     }
                 }
                 TacticalPattern.ATTACK_HEIGHT -> {
@@ -193,6 +193,14 @@ object TacticalManeuvers {
         val maneuver = retreating || plan.pattern in setOf(TacticalPattern.FLANK,TacticalPattern.ENCIRCLE,TacticalPattern.DISLODGE,
             TacticalPattern.ATTACK_HEIGHT,TacticalPattern.BOUND,TacticalPattern.PURSUE,TacticalPattern.FOCUS_SECTOR,TacticalPattern.FILE)
         if (!maneuver) { plan.status = TacticalStatus.EXECUTING; return }
+        if (plan.openingLane) {
+            val scouts=view.members.filter { it.id in plan.laneMembers && plan.tasks[it.id]?.opensLane==true }
+            val shooters=view.members.count { firesCover(it,plan.tasks[it.id]) &&
+                (plan.tasks[it.id]?.job==TacticalJob.COVER || it.id in plan.laneMembers) }
+            if (shooters>=TacticalFlanks.requiredCover(view) || scouts.all { settled(it,plan.tasks[it.id]) } ||
+                view.now-plan.phaseSince>=160) finishOpeningLane(plan,view)
+            return
+        }
         if (plan.pattern in FLANK_PATTERNS + TacticalPattern.ATTACK_HEIGHT && plan.bounds == 0 && plan.status == TacticalStatus.PREPARING &&
             (if (plan.pattern in FLANK_PATTERNS) view.members.count {
                 plan.tasks[it.id]?.job==TacticalJob.COVER && firesCover(it,plan.tasks[it.id])
@@ -214,6 +222,19 @@ object TacticalManeuvers {
             }
         }
         val covering = view.members.filter { plan.tasks[it.id]?.job == TacticalJob.COVER }
+        // Cover may have peeked from a different position. Actual fire is stronger evidence
+        // than a stale walking endpoint; keep that shooter where it can already fight.
+        for (member in covering) if (firesCover(member,plan.tasks[member.id]))
+            plan.tasks[member.id]?.position=member.position
+        if (!retreating && plan.status==TacticalStatus.REGROUPING) {
+            if (view.visible.isEmpty() || covering.any { maintainsCover(plan,it) }) {
+                plan.phaseSince+=view.now-plan.pausedSince
+                plan.lastCover=view.now
+                plan.pausedSince=Long.MIN_VALUE
+                plan.status=TacticalStatus.EXECUTING
+            } else if (view.now-plan.pausedSince>=160) state.fail(view.now,TacticalFailure.COVER_LOST)
+            return
+        }
         if (plan.status == TacticalStatus.PREPARING) {
             val ready = (if (plan.pattern in FLANK_PATTERNS)
                 covering.count { firesCover(it,plan.tasks[it.id]) && settled(it,plan.tasks[it.id]) } >= TacticalFlanks.requiredCover(view)
@@ -228,6 +249,11 @@ object TacticalManeuvers {
                 assign(squadId, plan, view)
                 // A covering position remains fixed while the other group starts its maneuver.
                 for ((id, task) in previous) if (task.job == TacticalJob.COVER) plan.tasks[id] = task
+            } else if (view.now-plan.phaseSince>=80 && plan.pattern in FLANK_PATTERNS+TacticalPattern.BOUND &&
+                covering.none { firesCover(it,plan.tasks[it.id]) } && startOpeningLane(plan,view)) {
+                // A blocked firing lane cannot be fixed by waiting for shots from that lane.
+                // Only two fighters make a short lateral probe; the assault wave stays put.
+                return
             } else if (view.now - plan.phaseSince > 100) state.fail(view.now,TacticalFailure.COVER_NOT_READY_TIMEOUT)
             return
         }
@@ -236,13 +262,12 @@ object TacticalManeuvers {
             if (plan.pattern in FLANK_PATTERNS) finishFlankWave(squadId,plan,view,emptyList())
             return
         }
-        if (if (plan.pattern in FLANK_PATTERNS)
-            covering.count { firesCover(it,plan.tasks[it.id]) } >= TacticalFlanks.requiredCover(view)
-            else covering.any { covers(it,plan.tasks[it.id]) }) plan.lastCover = view.now
+        // Launching a large wave requires two actual shooters. Once moving, one continuing
+        // shooter sustains it while the other reloads or peeks, instead of cancelling the wave.
+        if (covering.any { maintainsCover(plan,it) }) plan.lastCover = view.now
         if (!retreating && view.now - plan.lastCover > 80 && view.visible.isNotEmpty()) {
-            for (member in movers) plan.tasks[member.id] = TacticalTask(TacticalJob.COVER, member.position, plan.focus, plan.id)
             plan.status = TacticalStatus.REGROUPING
-            state.fail(view.now,TacticalFailure.COVER_LOST)
+            plan.pausedSince=view.now
             return
         }
         if (movers.all { settled(it, plan.tasks[it.id]) }) {
@@ -276,6 +301,46 @@ object TacticalManeuvers {
                 assign(squadId, plan, view)
             } else for (member in movers) plan.tasks[member.id] = TacticalTask(TacticalJob.COVER, member.position, plan.focus, plan.id)
         } else if (view.now - plan.phaseSince > (if (plan.pattern in FLANK_PATTERNS+TacticalPattern.ATTACK_HEIGHT) 400 else 160)) state.fail(view.now,TacticalFailure.MOVEMENT_TIMEOUT)
+    }
+
+    private fun maintainsCover(plan: TacticalPlan,member: TacticalMember): Boolean =
+        if (plan.pattern in FLANK_PATTERNS) firesCover(member,plan.tasks[member.id]) else covers(member,plan.tasks[member.id])
+
+    private fun startOpeningLane(plan: TacticalPlan,view: TacticalSnapshot): Boolean {
+        if (plan.laneAttempts>=2 || plan.focus==null) return false
+        val scouts=view.fighting.filter { member ->
+            member.role!=NpcClass.MEDIC && !member.suppressed && member.id!=plan.medicGuard &&
+                plan.tasks[member.id]?.job in setOf(TacticalJob.COVER,TacticalJob.WAIT)
+        }.sortedWith(compareBy<TacticalMember> { if (plan.tasks[it.id]?.job==TacticalJob.COVER) 0 else 1 }
+            .thenBy { it.position.distanceToSqr(plan.focus) }).take(2)
+        if (scouts.isEmpty()) return false
+        plan.laneAttempts++
+        plan.openingLane=true
+        plan.laneMembers.clear()
+        plan.laneMembers.addAll(scouts.map { it.id })
+        for ((index,member) in scouts.withIndex()) {
+            val towards=plan.focus.subtract(member.position).multiply(1.0,0.0,1.0).normalize()
+                .let { if (it.lengthSqr()<0.01) Vec3(0.0,0.0,1.0) else it }
+            val side=Vec3(-towards.z,0.0,towards.x).scale(if (index%2==0) 12.0 else -12.0)
+            plan.tasks[member.id]=TacticalTask(TacticalJob.SEARCH,member.position.add(side),plan.focus,plan.id).also { it.opensLane=true }
+        }
+        plan.phaseSince=view.now
+        plan.status=TacticalStatus.EXECUTING
+        return true
+    }
+
+    private fun finishOpeningLane(plan: TacticalPlan,view: TacticalSnapshot) {
+        for (member in view.members.filter { it.id in plan.laneMembers && it.id !in plan.failedMembers }) {
+            plan.tasks[member.id]=TacticalTask(TacticalJob.COVER,member.position,plan.focus,plan.id).also { it.position=member.position }
+            if (plan.pattern in FLANK_PATTERNS) {
+                plan.flankSupport.add(member.id)
+                plan.flankOrder.remove(member.id)
+            }
+        }
+        plan.laneMembers.clear()
+        plan.openingLane=false
+        plan.phaseSince=view.now
+        plan.status=TacticalStatus.PREPARING
     }
 
     private fun finishFlankWave(squadId: UUID,plan: TacticalPlan,view: TacticalSnapshot,movers: List<TacticalMember>) {

@@ -128,6 +128,8 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
     var search: TacticalPositionSearch? = null
     var nextValidation = Long.MIN_VALUE
     var staging: Vec3? = null
+    var opensLane = false
+    var pausedAt: Long? = null
 }
 
 /** Keeps progress across tick budgets, including candidates after an unreachable first choice. */
@@ -137,6 +139,8 @@ class TacticalPositionSearch(val origin: Vec3, val probes: List<Vec3>) {
     val visited = HashSet<Vec3>()
     var destinations: List<Vec3>? = null
     var destinationIndex = 0
+    val rejections = LinkedHashMap<String,Int>()
+    fun reject(reason: String) { rejections[reason]=(rejections[reason] ?: 0)+1 }
 }
 class TacticalPlan(
     val id: Int, val pattern: TacticalPattern, val focus: Vec3?, val started: Long, val stamp: Int,
@@ -159,6 +163,11 @@ class TacticalPlan(
     val flankArrived = HashSet<UUID>()
     var medicGuard: UUID? = null
     var heightFront: Vec3? = null
+    val waitingPosts = HashMap<UUID,Vec3>()
+    var openingLane = false
+    var laneAttempts = 0
+    val laneMembers = HashSet<UUID>()
+    var pausedSince = Long.MIN_VALUE
 }
 
 /** Runtime state belongs to a Squad. A world reload starts a fresh tactical assessment. */

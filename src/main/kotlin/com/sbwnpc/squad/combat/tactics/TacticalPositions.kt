@@ -13,7 +13,7 @@ import net.minecraft.world.phys.Vec3
 /** Local positions are validated through the existing navigation and collider raycasts. */
 object TacticalPositions {
     enum class Outcome { FOUND, DEFERRED, UNREACHABLE }
-    data class Result(val outcome: Outcome, val position: Vec3? = null)
+    data class Result(val outcome: Outcome, val position: Vec3? = null, val rejections: Map<String,Int> = emptyMap())
 
     fun find(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot): Result {
         val level = entity.level() as ServerLevel
@@ -45,21 +45,25 @@ object TacticalPositions {
             if (!TickBudget.hasRaycasts(level) || probesThisTick++ >= 24) return Result(Outcome.DEFERRED)
             val raw=search.probes[search.probeIndex++]
             val block=BlockPos.containing(raw)
-            if (!level.chunkSource.hasChunk(block.x shr 4,block.z shr 4)) continue
-            val candidate=Terrain.feetAt(level,raw,if (overwatch) 9 else 12) { level.noCollision(entity,entity.getDimensions(entity.pose).makeBoundingBox(it)) } ?: continue
-            if (!search.visited.add(candidate) || !TacticalRules.withinOrder(view,candidate,homeRadius)) continue
+            if (!level.chunkSource.hasChunk(block.x shr 4,block.z shr 4)) { search.reject("unloaded"); continue }
+            val candidate=Terrain.feetAt(level,raw,if (overwatch) 9 else 12) { level.noCollision(entity,entity.getDimensions(entity.pose).makeBoundingBox(it)) }
+            if (candidate==null) { search.reject("terrain"); continue }
+            if (!search.visited.add(candidate)) continue
+            if (!TacticalRules.withinOrder(view,candidate,homeRadius)) { search.reject("order"); continue }
             if (overwatch && !DefensiveOverwatch.within(task.anchor,candidate)) continue
             if (pattern == TacticalPattern.HOLD_HEIGHT && candidate.y < view.center.y-2.0) continue
             if (pattern == TacticalPattern.FILE && task.job == TacticalJob.ADVANCE && candidate.distanceTo(localAnchor)>1.0) continue
             if (!overwatch && (kotlin.math.abs(candidate.y-entity.y)>12.0 || candidate.distanceTo(entity.position())>48.0)) continue
+            if (task.opensLane && focus!=null && !TacticalRoutes.safeLaneProbe(search.origin,candidate,focus)) continue
             val body=entity.getDimensions(entity.pose).makeBoundingBox(candidate)
-            if (!safeBody(entity,candidate,body,hulls,taken)) continue
+            if (!safeBody(entity,candidate,body,hulls,taken)) { search.reject("occupied_or_hazard"); continue }
             val eye=candidate.add(0.0,entity.eyeHeight.toDouble(),0.0)
             if (overwatch && !protected(entity,task,candidate,hulls)) continue
             val exposure=threats.count { !Sightline.blockedBy(level,it.position.add(0.0,1.5,0.0),candidate.add(0.0,1.0,0.0),entity,hulls) }
             val mustShoot=task.job in setOf(TacticalJob.COVER,TacticalJob.ANTI_ARMOUR,TacticalJob.OVERWATCH)
             val firing=focus?.let { !Sightline.blockedBy(level,eye,it.add(0.0,1.5,0.0),entity,hulls) } ?: true
-            if (mustShoot && (!firing || !friendlyLane(entity,eye,focus))) continue
+            if (mustShoot && !firing) { search.reject("blocked_shot"); continue }
+            if (mustShoot && !friendlyLane(entity,eye,focus)) { search.reject("friendly_fire"); continue }
             var score=candidate.distanceTo(localAnchor)+candidate.distanceTo(entity.position())*0.2+exposure*5.0
             if (firing && mustShoot) score-=8.0
             if (pattern in setOf(TacticalPattern.AVOID_ARMOUR,TacticalPattern.BREAK_CONTACT,TacticalPattern.REORGANIZE)) score+=exposure*10.0
@@ -82,6 +86,7 @@ object TacticalPositions {
                     val foot=Vec3(node.x+0.5,node.y.toDouble(),node.z+0.5)
                     if (!TacticalRules.withinOrder(view,foot,homeRadius) || GrenadeHazard.threatens(level,foot) ||
                         (pattern == TacticalPattern.HOLD_HEIGHT && foot.y < view.center.y-2.0)) { safe=false; break }
+                    if (task.opensLane && focus!=null && !TacticalRoutes.safeLaneProbe(search.origin,foot,focus)) { safe=false; break }
                     if (index % 4 == 0 && task.job == TacticalJob.FLANK) {
                         if (!TickBudget.hasRaycasts(level)) return Result(Outcome.DEFERRED)
                         if (threats.any { it.position.distanceTo(foot)<8.0 }) { safe=false; break }
@@ -95,11 +100,12 @@ object TacticalPositions {
                     FiringSpots.claim(entity.uuid,candidate)
                     return finish(task,candidate)
                 }
-            }
+                search.reject(if (safe) "navigation" else "unsafe_route")
+            } else search.reject("unreachable_route")
             search.destinationIndex++
         }
         task.search=null
-        return Result(Outcome.UNREACHABLE)
+        return Result(Outcome.UNREACHABLE,rejections=search.rejections.toMap())
     }
 
     internal fun reaches(path: Path?, candidate: Vec3): Boolean = path?.canReach()==true && path.endNode?.let {

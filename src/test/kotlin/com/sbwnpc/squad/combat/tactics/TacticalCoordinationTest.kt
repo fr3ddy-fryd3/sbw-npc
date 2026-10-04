@@ -62,11 +62,12 @@ class TacticalCoordinationTest {
     @Test fun `an unready covering group cannot release the flankers`() {
         val state = SquadTacticalState()
         val view = view()
+        val unready=view.copy(members=members.map { it.copy(canFire=false,recentFire=false) })
         state.select(TacticalRules.choose(view),1,0)
         val plan = state.plan!!
-        TacticalManeuvers.assign(squad,plan,view)
+        TacticalManeuvers.assign(squad,plan,unready)
         assertTrue(plan.tasks.values.any { it.job == TacticalJob.WAIT })
-        TacticalManeuvers.advance(squad,state,plan,view)
+        TacticalManeuvers.advance(squad,state,plan,unready)
         assertEquals(TacticalStatus.PREPARING,plan.status)
         assertFalse(plan.tasks.values.any { it.job == TacticalJob.FLANK })
         plan.tasks.values.filter { it.job == TacticalJob.COVER }.forEach { it.position = it.anchor }
@@ -84,12 +85,13 @@ class TacticalCoordinationTest {
         TacticalManeuvers.advance(squad,state,plan,view)
         cover.forEach { (id,task) -> assertSame(task,plan.tasks[id]) }
     }
-    @Test fun `unreachable covering positions time out instead of deadlocking the squad`() {
-        val state = SquadTacticalState(); val initial = view()
+    @Test fun `a pinned group unable to open a firing lane fails without releasing a charge`() {
+        val state = SquadTacticalState()
+        val initial = view().copy(members=members.map { it.copy(canFire=false,recentFire=false,suppressed=true) })
         state.select(TacticalRules.choose(initial),1,0)
         val plan = state.plan!!
         TacticalManeuvers.assign(squad,plan,initial)
-        TacticalManeuvers.advance(squad,state,plan,view(110))
+        TacticalManeuvers.advance(squad,state,plan,initial.copy(now=110,contacts=initial.contacts.map { it.copy(seenAt=110) }))
         assertEquals(TacticalStatus.FAILED,plan.status)
         assertEquals(TacticalPattern.FLANK,state.blockedPattern)
         assertTrue(state.blockedUntil > 110)

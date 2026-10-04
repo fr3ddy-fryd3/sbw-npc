@@ -117,13 +117,14 @@ object SquadTactics {
         val plan=state.plan ?: return
         state.nextTrace=view.now+100
         DebugFlags.log(LogGroup.ORDER,
-            "[tactics] {} snapshot squad={} tick={} plan={} pattern={} phase={} reason={} proposed={} proposedReason={} effective={} cooldown={} order={} stamp={} members={} peak={} fighting={} visible={} remembered={} incoming={} suppressed={} narrow={} open={} stalled={} heightDelta={} cover={} shotsLast40Ticks={} coverAge={} phaseAge={} bounds={} positioned={} failed={} jobs={}",
+            "[tactics] {} snapshot squad={} tick={} plan={} pattern={} phase={} reason={} proposed={} proposedReason={} effective={} cooldown={} order={} stamp={} members={} peak={} fighting={} visible={} remembered={} incoming={} suppressed={} narrow={} open={} stalled={} heightDelta={} cover={} shotsLast40Ticks={} coverAge={} phaseAge={} bounds={} openingLane={} laneAttempts={} positioned={} failed={} jobs={}",
             squad.name,squad.id,view.now,plan.id,plan.pattern,plan.status,plan.reason,proposed.pattern,proposed.reason,
             effective.pattern,effective.reason==TacticalReason.PATTERN_COOLDOWN,view.order,view.stamp,view.members.size,
             view.peakStrength,view.fighting.size,view.visible.size,view.contacts.size,view.incoming.size,
             view.members.count { it.suppressed },view.narrow,view.open,view.stalled,plan.focus?.y?.minus(view.center.y),
             TacticalTelemetry.cover(plan,view),view.members.count { it.recentFire },view.now-plan.lastCover,
-            view.now-plan.phaseSince,plan.bounds,plan.tasks.values.count { it.position!=null },plan.failedMembers.size,jobs(plan))
+            view.now-plan.phaseSince,plan.bounds,plan.openingLane,plan.laneAttempts,
+            plan.tasks.values.count { it.position!=null },plan.failedMembers.size,jobs(plan))
     }
 
     fun task(entity: NpcEntity): TacticalTask? {
@@ -158,6 +159,16 @@ object SquadTactics {
         val squad = entity.currentSquad() ?: return false
         val state = squad.tactics
         val view = state.snapshot ?: return false
+        if (state.plan?.status==TacticalStatus.REGROUPING && state.plan?.pausedSince!=Long.MIN_VALUE && task.job in RUNNING_JOBS) {
+            if (task.pausedAt==null) task.pausedAt=entity.level().gameTime
+            entity.navigation.stop()
+            return true
+        }
+        task.pausedAt?.let { since ->
+            task.lastProgress+=entity.level().gameTime-since
+            task.pausedAt=null
+            task.nextSearch=entity.level().gameTime
+        }
         if (task.job == TacticalJob.WAIT && task.staging==null) { entity.navigation.stop(); return true }
         if (task.position == null && entity.level().gameTime >= task.nextSearch) {
             val result = TacticalPositions.find(entity, task, view)
@@ -165,8 +176,8 @@ object SquadTactics {
                 TacticalPositions.Outcome.DEFERRED -> { task.nextSearch = entity.level().gameTime + 2; return true }
                 TacticalPositions.Outcome.UNREACHABLE -> {
                     task.nextSearch = entity.level().gameTime + 30
-                    DebugFlags.log(LogGroup.ORDER,"[tactics] {} plan={} job={} unreachable={} from={} attempt={}",
-                        entity.uuid,task.plan,task.job,task.anchor,entity.position(),task.failures+1)
+                    DebugFlags.log(LogGroup.ORDER,"[tactics] {} plan={} job={} unreachable={} from={} staging={} opensLane={} rejected={} attempt={}",
+                        entity.uuid,task.plan,task.job,task.anchor,entity.position(),task.staging,task.opensLane,result.rejections,task.failures+1)
                     return !failedTask(entity,task,"no reachable position")
                 }
                 TacticalPositions.Outcome.FOUND -> {

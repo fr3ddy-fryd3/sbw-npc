@@ -42,12 +42,5 @@ object TacticalFlanks {
         return origin.add(forward.scale(depth)).add(side.scale(sideways))
     }
 
-    fun staging(plan: TacticalPlan,slot: Int): Vec3 {
-        val origin=plan.origin!!
-        val forward=(plan.focus ?: origin.add(0.0,0.0,1.0)).subtract(origin).multiply(1.0,0.0,1.0).normalize()
-        val side=Vec3(-forward.z,0.0,forward.x)
-        return origin.subtract(forward.scale(6.0+(slot/8)*4.0)).add(side.scale((slot%8-3.5)*4.0))
-    }
-
     fun requiredCover(view: TacticalSnapshot): Int = if (view.fighting.size>=12) 2 else 1
 }
