@@ -14,6 +14,18 @@ class TacticalSituationsTest {
     private fun view(contacts: List<TacticalContact> = listOf(enemy())) = TacticalSnapshot(0,SquadOrder.ATTACK,1,
         Vec3(0.0,64.0,0.0),Vec3(50.0,64.0,0.0),members,contacts)
 
+    @Test fun `a broad frontal defence is not treated as a rear attack`() {
+        val choice=TacticalRules.choose(view(listOf(enemy(z=-60.0),enemy(z=60.0))))
+        assertEquals(TacticalPattern.FOCUS_SECTOR,choice.pattern)
+        assertFalse(choice.emergency)
+    }
+
+    @Test fun `one blocked shooter cannot replan a functioning 32 member attack`() {
+        assertFalse(TacticalRules.stalled(1,28))
+        assertFalse(TacticalRules.stalled(1,1))
+        assertTrue(TacticalRules.stalled(15,28))
+    }
+
     @Test fun `wide enemy frontage focuses on a limited sector`() {
         val view=view(listOf(enemy(z=-45.0),enemy(),enemy(z=45.0)))
         val choice=TacticalRules.choose(view)

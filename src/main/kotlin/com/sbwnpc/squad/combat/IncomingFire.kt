@@ -7,6 +7,7 @@ class IncomingFire {
     private var aim: Vec3? = null
     private var expires = Long.MIN_VALUE
     private var lastEpisode = Long.MIN_VALUE
+    private var lastHit = Long.MIN_VALUE
     private var nextShot = 0L
     private var rounds = 0
     private var bursts = 0
@@ -20,6 +21,7 @@ class IncomingFire {
         val bearing = kotlin.math.round(yaw / 0.15) * 0.15
         val pitch = kotlin.math.round(direction.y.coerceIn(-0.7, 0.7) / 0.12) * 0.12
         aim = origin.add(Vec3(kotlin.math.cos(bearing), pitch, kotlin.math.sin(bearing)).normalize().scale(96.0))
+        lastHit = now
         expires = now + 600
         if (lastEpisode == Long.MIN_VALUE || now - lastEpisode >= 160) {
             lastEpisode = now
@@ -31,6 +33,8 @@ class IncomingFire {
     }
 
     fun point(now: Long): Vec3? = aim?.takeIf { now < expires }
+    /** Recent bearings inform squad manoeuvres; the longer memory only finishes a cover reply. */
+    fun recentPoint(now: Long): Vec3? = point(now)?.takeIf { now-lastHit < 60 }
     fun pending(now: Long): Boolean = point(now) != null && bursts > 0
     fun beginReply(now: Long) {
         if (pending(now)) replyUntil = now + 60

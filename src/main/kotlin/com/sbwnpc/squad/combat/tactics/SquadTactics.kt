@@ -64,11 +64,12 @@ object SquadTactics {
         state.peakStrength = maxOf(state.peakStrength, members.size)
         val knownFocus = state.contacts.values.filter { now - it.seenAt < 40 }.maxByOrNull { it.priority }?.position
         val terrain = TacticalTerrain.assess(level, npcs, knownFocus ?: entity.homeCenter(), knownFocus)
+        val engaged=npcs.filter { it.target!=null && it.npcClass!=NpcClass.MEDIC && !it.busyWithRole() && !it.resupplying }
         val view = TacticalSnapshot(now, squad.order, squad.orderStamp, center, entity.homeCenter(), members,
-            state.contacts.values.filter { it.position.distanceTo(center) <= 96.0 }, npcs.mapNotNull { it.incomingFire.point(now) },
+            state.contacts.values.filter { it.position.distanceTo(center) <= 96.0 }, npcs.mapNotNull { it.incomingFire.recentPoint(now) },
             npcs.any { it.evadingGrenade() || GrenadeHazard.threatens(level, it.position()) },
             narrow = terrain.narrow, open = terrain.open,
-            stalled = npcs.any { it.blockedSightSince?.let { since -> it.tickCount - since >= 80 } == true },
+            stalled = TacticalRules.stalled(engaged.count { !it.firedRecently(40) && it.blockedSightSince?.let { since -> it.tickCount-since>=80 }==true },engaged.size),
             peakStrength = state.peakStrength)
         val defensiveHomeMoved=squad.order == SquadOrder.DEFEND && state.snapshot?.home != null && view.home != null &&
             state.snapshot!!.home!!.distanceTo(view.home)>8.0
@@ -89,6 +90,7 @@ object SquadTactics {
             }
         }
         state.plan?.let { plan ->
+            TacticalManeuvers.refreshSectors(plan,view)
             TacticalManeuvers.advance(squad.id,state,plan,view)
             if (plan.status != previousStatus) DebugFlags.log(LogGroup.ORDER,"[tactics] {} plan={} phase={} bounds={} jobs={}",
                 squad.name,plan.id,plan.status,plan.bounds,jobs(plan))

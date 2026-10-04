@@ -5,6 +5,15 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 
 class IncomingFireTest {
+    @Test fun `an old hit can finish its reply without making the squad treat it as a current rear attack`() {
+        val fire=IncomingFire()
+        fire.record(Vec3.ZERO,Vec3(1.0,0.0,0.0),null,100)
+        assertNotNull(fire.recentPoint(159))
+        assertNull(fire.recentPoint(160))
+        assertTrue(fire.pending(300))
+        fire.record(Vec3.ZERO,Vec3(1.0,0.0,0.0),null,310)
+        assertNotNull(fire.recentPoint(311))
+    }
     @Test fun `projectile trajectory wins over exact damage source coordinates`() {
         assertEquals(Vec3(-1.0, -0.0, -0.0), IncomingFire.direction(Vec3.ZERO, Vec3(2.0, 0.0, 0.0), Vec3(0.0, 0.0, 20.0)))
         assertNull(IncomingFire.direction(Vec3.ZERO, Vec3.ZERO, Vec3.ZERO))

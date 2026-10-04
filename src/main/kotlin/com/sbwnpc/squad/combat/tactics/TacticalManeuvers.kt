@@ -8,6 +8,17 @@ import java.util.UUID
 
 /** Pure assignment and progress rules, independently testable without a running world. */
 object TacticalManeuvers {
+    /** Turning to a new sector does not invalidate an already chosen walking destination. */
+    fun refreshSectors(plan: TacticalPlan,view: TacticalSnapshot) {
+        if (plan.pattern!=TacticalPattern.REORIENT) return
+        for (member in view.members) {
+            val task=plan.tasks[member.id] ?: continue
+            val focus=view.visible.minByOrNull { it.position.distanceToSqr(member.position) }?.position ?: continue
+            if (task.position==null && task.focus?.distanceTo(focus)?.let { it>8.0 }==true) task.search=null
+            task.focus=focus
+        }
+    }
+
     fun assign(squadId: UUID, plan: TacticalPlan, view: TacticalSnapshot) {
         plan.tasks.clear()
         if (plan.pattern in setOf(TacticalPattern.FOLLOW_ORDER)) return
@@ -253,8 +264,10 @@ object TacticalManeuvers {
         plan.failedMembers.add(member)
     }
 
-    internal fun covers(member: TacticalMember,task: TacticalTask?): Boolean = member.canFire &&
-        (member.firingAt == null || task?.focus == null || member.firingAt.distanceTo(task.focus) <= 18.0)
+    internal fun covers(member: TacticalMember,task: TacticalTask?): Boolean {
+        val focus=task?.focus
+        return member.canFire && (member.firingAt==null || focus==null || member.firingAt.distanceTo(focus)<=18.0)
+    }
     private fun settled(member: TacticalMember, task: TacticalTask?): Boolean = task?.position?.let {
         member.position.distanceTo(it) <= 2.5 && member.position.distanceTo(task.anchor) <= 10.0
     } == true

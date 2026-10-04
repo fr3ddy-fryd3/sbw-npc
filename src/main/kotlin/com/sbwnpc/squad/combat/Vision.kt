@@ -20,6 +20,11 @@ object Vision {
     /** Total arc, centred on where the NPC is looking. */
     const val CONE_DEGREES = 150.0
 
+    /** Body-distance threats are noticed all round; more distant enemies still need the cone. */
+    fun noticesClose(viewerPos: Vec3,yaw: Float,targetPos: Vec3): Boolean =
+        viewerPos.distanceToSqr(targetPos)<=36.0 &&
+            (viewerPos.distanceToSqr(targetPos)<=6.25 || inCone(viewerPos,yaw,targetPos))
+
     fun inCone(
         viewerPos: Vec3,
         viewYawDegrees: Float,

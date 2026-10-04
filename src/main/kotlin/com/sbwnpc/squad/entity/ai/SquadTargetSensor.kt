@@ -47,7 +47,8 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     // N raycasts in one tick, nothing on the other 19. Randomising the interval per scan
     // decorrelates them within a few cycles. Average is still ~20 ticks.
     init {
-        setScanRate { entity -> SCAN_RATE_MIN + entity.random.nextInt(SCAN_RATE_JITTER) }
+        setScanRate { entity -> if (entity.target?.let { entity.distanceToSqr(it)<=36.0 }==true) 4
+            else SCAN_RATE_MIN + entity.random.nextInt(SCAN_RATE_JITTER) }
     }
 
     override fun type(): SensorType<out ExtendedSensor<*>> = ModSensors.SQUAD_TARGET.get()
@@ -74,6 +75,8 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             VehicleTargeting.closestVisibleHostileVehicleOccupant(mob, level, NpcEntity.DETECTION_RANGE)?.let { return it }
             VehicleTargeting.closestVisibleHostileAircrew(mob, level, NpcEntity.DETECTION_RANGE)?.let { return it }
         }
+
+        if (!isMortarCrew && mob.vehicle==null) closeThreat(mob,level)?.let { return it }
 
         if (!isMortarCrew) {
             squadFocusTarget(mob, level)?.let { return it }
@@ -111,6 +114,18 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             }
             else -> null
         }
+    }
+
+    /** A local visible threat outranks a distant ordered/relayed target, without seeing through cover. */
+    private fun closeThreat(mob: NpcEntity,level: ServerLevel): LivingEntity? {
+        val candidates=level.getEntitiesOfClass(LivingEntity::class.java,mob.boundingBox.inflate(6.0)) {
+            it!==mob && it.isAlive && SquadTeams.isHostile(mob,it) && Vision.noticesClose(mob.position(),mob.yHeadRot,it.position())
+        }.sortedBy { mob.distanceToSqr(it) }
+        for (candidate in candidates) if (DetectionSightline.canSee(mob,candidate)) {
+            SquadTactics.observe(mob,candidate)
+            return candidate
+        }
+        return null
     }
 
     /** A target a squadmate is engaging that this member can see too. Squadmates call out what

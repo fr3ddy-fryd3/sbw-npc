@@ -9,6 +9,13 @@ class VisionTest {
 
     private val eye = Vec3(0.0, 64.0, 0.0)
 
+    @Test fun `a body-distance enemy is noticed behind but a distant flanker keeps the normal vision cone`() {
+        assertTrue(Vision.noticesClose(eye,0f,eye.add(0.0,0.0,-2.0)))
+        assertFalse(Vision.noticesClose(eye,0f,eye.add(0.0,0.0,-4.0)))
+        assertTrue(Vision.noticesClose(eye,0f,eye.add(0.0,0.0,6.0)))
+        assertFalse(Vision.noticesClose(eye,0f,eye.add(0.0,10.0,0.0)))
+    }
+
     /** Yaw 0 faces +Z in Minecraft, so this is "directly in front". */
     @Test
     fun `straight ahead is seen`() {

@@ -31,9 +31,8 @@ import java.util.UUID
  * [ModMemories.MEDIC_HEALING] (same "hands off, I own the mob right now" idiom as
  * `SeekCoverBehaviour`'s `COVER_HOLD`) for as long as treatment takes. A merely wounded ally (below
  * [NEEDS_HEAL_FRACTION] but not critical) is only tended opportunistically, when the medic itself
- * has no target — `GunAttackBehaviour` is already inactive without one, so no lock is needed there
- * (matches this codebase's existing level of rigor: `SeekCoverBehaviour` itself doesn't lock out
- * Idle behaviours either, only the Fight one).
+ * has no target. The same memory owns movement during both treatments, so an idle tactical
+ * behaviour cannot replace the medic's route to a patient with its squad position.
  *
  * The actual heal reuses SuperbWarfare's real `MedicalKitItem.treat()` (heal amount/percentage +
  * Regeneration, from that mod's own `MiscConfig`) instead of reinventing the healing math — called
@@ -165,6 +164,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun start(entity: NpcEntity) {
         healTargetId = candidate(entity)?.uuid
+        if (healTargetId != null) BrainUtils.setMemory(entity,ModMemories.MEDIC_HEALING.get(),true)
     }
 
     override fun stop(entity: NpcEntity) {
@@ -199,11 +199,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
         val sticky = healTargetId?.let { level.getEntity(it) as? LivingEntity }?.takeIf { it.isAlive && needsHealing(entity, it) }
         val ally = sticky ?: candidate(entity)?.also { healTargetId = it.uuid } ?: return
 
-        if (ally.health / ally.maxHealth < CRITICAL_HEALTH_FRACTION) {
-            BrainUtils.setMemory(entity, ModMemories.MEDIC_HEALING.get(), true)
-        } else {
-            BrainUtils.clearMemory(entity, ModMemories.MEDIC_HEALING.get())
-        }
+        BrainUtils.setMemory(entity, ModMemories.MEDIC_HEALING.get(), true)
 
         val dist = entity.position().distanceTo(ally.position())
         if (dist > HEAL_RANGE) {

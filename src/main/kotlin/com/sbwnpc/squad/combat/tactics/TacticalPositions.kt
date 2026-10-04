@@ -18,6 +18,7 @@ object TacticalPositions {
     fun find(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot): Result {
         val level = entity.level() as ServerLevel
         if ((entity.navigation as? VehicleAwareNavigation)?.canPlan == false) return Result(Outcome.DEFERRED)
+        val focus=task.focus
         val overwatch=task.job==TacticalJob.OVERWATCH
         val homeRadius = SquadFormation.perimeterRadius(view.members.size) + 10.0 + if (overwatch) DefensiveOverwatch.RADIUS else 0.0
         val member = view.members.firstOrNull { it.id == entity.uuid }
@@ -53,12 +54,12 @@ object TacticalPositions {
             if (overwatch && !protected(entity,task,candidate,hulls)) continue
             val exposure=threats.count { !Sightline.blockedBy(level,it.position.add(0.0,1.5,0.0),candidate.add(0.0,1.0,0.0),entity,hulls) }
             val mustShoot=task.job in setOf(TacticalJob.COVER,TacticalJob.ANTI_ARMOUR,TacticalJob.OVERWATCH)
-            val firing=task.focus?.let { !Sightline.blockedBy(level,eye,it.add(0.0,1.5,0.0),entity,hulls) } ?: true
-            if (mustShoot && (!firing || !friendlyLane(entity,eye,task.focus))) continue
+            val firing=focus?.let { !Sightline.blockedBy(level,eye,it.add(0.0,1.5,0.0),entity,hulls) } ?: true
+            if (mustShoot && (!firing || !friendlyLane(entity,eye,focus))) continue
             var score=candidate.distanceTo(localAnchor)+candidate.distanceTo(entity.position())*0.2+exposure*5.0
             if (firing && mustShoot) score-=8.0
             if (pattern in setOf(TacticalPattern.AVOID_ARMOUR,TacticalPattern.BREAK_CONTACT,TacticalPattern.REORGANIZE)) score+=exposure*10.0
-            if (pattern == TacticalPattern.ATTACK_HEIGHT && task.job in RUNNING_JOBS && task.focus != null) score+=maxOf(0.0,task.focus.y-candidate.y)*1.5
+            if (pattern == TacticalPattern.ATTACK_HEIGHT && task.job in RUNNING_JOBS && focus != null) score+=maxOf(0.0,focus.y-candidate.y)*1.5
             if (pattern == TacticalPattern.HOLD_HEIGHT) score+=maxOf(0.0,view.center.y-candidate.y)*8.0
             if (overwatch) score=DefensiveOverwatch.score(task.anchor,search.origin,candidate,exposure)
             search.scored[candidate]=score

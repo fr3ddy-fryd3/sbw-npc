@@ -14,6 +14,22 @@ class TacticalCoordinationTest {
         Vec3(12.5,64.0,0.0), Vec3(12.5,64.0,0.0), members,
         listOf(TacticalContact(UUID(2,1),Vec3(50.0,64.0,0.0),now), TacticalContact(UUID(2,2),Vec3(53.0,64.0,1.0),now)))
 
+    @Test fun `changing a threat sector turns the shooter without replacing its path or cover post`() {
+        val state=SquadTacticalState()
+        state.select(TacticalChoice(TacticalPattern.REORIENT,Vec3(50.0,64.0,0.0),true),1,0)
+        val plan=state.plan!!
+        TacticalManeuvers.assign(squad,plan,view())
+        val task=plan.tasks[members[0].id]!!
+        task.position=members[0].position
+        assertFalse(state.select(TacticalChoice(TacticalPattern.REORIENT,Vec3(-50.0,64.0,0.0),true),1,10))
+        val threat=TacticalContact(UUID(9,9),Vec3(-50.0,64.0,0.0),10)
+        TacticalManeuvers.refreshSectors(plan,view(10).copy(contacts=listOf(threat)))
+        assertSame(task,plan.tasks[members[0].id])
+        assertEquals(members[0].position,task.position)
+        assertEquals(threat.position,task.focus)
+        assertTrue(state.select(TacticalChoice(TacticalPattern.FOLLOW_ORDER,null),2,11))
+    }
+
     @Test fun `brief contact loss and stalled sight cannot cancel an executing flank`() {
         val state=SquadTacticalState()
         state.select(TacticalChoice(TacticalPattern.FLANK,Vec3(50.0,64.0,0.0)),1,0)

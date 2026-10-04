@@ -59,7 +59,9 @@ object TacticalRules {
         val directions = (contacts.map { it.position } + view.incoming).map {
             it.subtract(view.center).multiply(1.0,0.0,1.0).normalize()
         }.filter { it.lengthSqr() > 0.5 }
-        val multipleFronts = directions.indices.any { a -> directions.indices.any { b -> a < b && directions[a].dot(directions[b]) < -0.2 } }
+        val attackDirection=(view.home ?: focus ?: view.center).subtract(view.center).multiply(1.0,0.0,1.0).normalize()
+        val allAhead=view.offensive && attackDirection.lengthSqr()>0.5 && directions.all { it.dot(attackDirection)>=-0.1 }
+        val multipleFronts = !allAhead && directions.indices.any { a -> directions.indices.any { b -> a < b && directions[a].dot(directions[b]) < -0.2 } }
         if (multipleFronts) return TacticalChoice(
             if (view.members.count { it.suppressed } * 2 >= view.members.size) TacticalPattern.BREAK_CONTACT else TacticalPattern.REORIENT,
             focus, true)
@@ -100,9 +102,11 @@ object TacticalRules {
 
     fun withinOrder(view: TacticalSnapshot, candidate: Vec3, radius: Double): Boolean =
         view.order != SquadOrder.DEFEND || view.home == null || candidate.distanceTo(view.home) <= radius
+
+    fun stalled(blocked: Int,engaged: Int): Boolean = engaged>=2 && blocked>=maxOf(2,(engaged+1)/2)
 }
 
-class TacticalTask(val job: TacticalJob, val anchor: Vec3, val focus: Vec3?, val plan: Int) {
+class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val plan: Int) {
     var position: Vec3? = null
     var nextSearch = Long.MIN_VALUE
     var failures = 0
@@ -157,6 +161,7 @@ class SquadTacticalState {
         val changedOrder = old != null && old.stamp != stamp
         val expired = old == null || old.status == TacticalStatus.FAILED || old.status == TacticalStatus.COMPLETED || (old.pattern == TacticalPattern.EVADE && choice.pattern != TacticalPattern.EVADE) || now - old.started >= if (old.pattern in setOf(TacticalPattern.ENCIRCLE,TacticalPattern.ATTACK_HEIGHT)) 480 else 240
         val changedFocus = old?.focus != null && choice.focus != null && old.focus.distanceTo(choice.focus) > 20.0
+        if (!changedOrder && !expired && old?.pattern==TacticalPattern.REORIENT && choice.pattern==old.pattern) return false
         // Losing sight for a moment must not replace a flank already walking round the ridge
         // with a two-man search, or make every mover return to its previous position.
         if (!changedOrder && !expired && !choice.emergency && old?.pattern in ACTIVE_MANEUVERS &&
