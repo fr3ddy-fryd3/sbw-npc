@@ -376,7 +376,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     companion object {
         private const val REPATH_COOLDOWN_TICKS = 20
         private const val ROUTE_DWELL_TICKS = 40
-        private const val ROAM_RADIUS = 20.0
+        private const val ROAM_RADIUS = 40.0
         private const val ROAM_ATTEMPTS = 4
         /** Standing about at a spot before heading for the next. */
         private const val ROAM_PAUSE_MIN = 100
