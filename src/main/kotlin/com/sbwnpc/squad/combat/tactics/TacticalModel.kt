@@ -209,6 +209,9 @@ class SquadTacticalState {
     fun holdsAfterFailure(member: UUID,stamp: Int,now: Long): Boolean {
         val current=plan ?: return false
         if (current.stamp!=stamp) return false
+        // The previous plan's safety hold cannot block the task which recovers from it.
+        // Unassigned members still stay out of a frontal rush.
+        if (current.status!=TacticalStatus.FAILED && member in current.tasks) return false
         return now<(holdAfterFailure[member] ?: Long.MIN_VALUE) ||
             (current.pattern in TacticalFlanks.PATTERNS+TacticalPattern.ATTACK_HEIGHT &&
                 member in current.failedMembers && snapshot?.visible?.isNotEmpty()==true)

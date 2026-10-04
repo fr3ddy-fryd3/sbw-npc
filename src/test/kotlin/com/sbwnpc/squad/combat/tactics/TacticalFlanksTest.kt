@@ -138,6 +138,21 @@ class TacticalFlanksTest {
         assertFalse(state.holdsAfterFailure(member,1,200))
     }
 
+    @Test fun `failure hold cannot stop the covering work of a replacement plan`() {
+        val view=view()
+        val (state,old)=setup(view)
+        val member=old.tasks.keys.first()
+        state.snapshot=view
+        state.fail(20,TacticalFailure.COVER_LOST)
+        assertTrue(state.holdsAfterFailure(member,1,21))
+        state.select(TacticalChoice(TacticalPattern.REORIENT,focus),1,21)
+        TacticalManeuvers.assign(squad,state.plan!!,view.copy(now=21))
+        assertFalse(state.holdsAfterFailure(member,1,21), "a fresh local task owns movement immediately")
+        TacticalManeuvers.abandon(state.plan!!,member)
+        assertTrue(state.holdsAfterFailure(member,1,22), "unassigned members must not resume the frontal order")
+        assertFalse(state.holdsAfterFailure(member,1,141))
+    }
+
     @Test fun `distant rear flank legs stay short and do not cut toward the enemy`() {
         val start=Vec3(0.0,64.0,0.0)
         val task=TacticalTask(TacticalJob.FLANK,focus.add(24.0,0.0,0.0),focus,1)
