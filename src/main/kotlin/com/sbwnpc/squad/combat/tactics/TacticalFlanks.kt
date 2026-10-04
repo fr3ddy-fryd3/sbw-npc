@@ -10,7 +10,8 @@ object TacticalFlanks {
 
     fun pending(plan: TacticalPlan,view: TacticalSnapshot): List<UUID> {
         val alive=view.fighting.map { it.id }.toSet()
-        return plan.flankOrder.filter { it in alive && it !in plan.flankArrived && it !in plan.failedMembers }
+        return plan.flankOrder.filter { it in alive && it !in plan.flankArrived && it !in plan.failedMembers &&
+            it !in plan.flankSupport && it!=plan.medicGuard }
     }
 
     fun anchor(plan: TacticalPlan,view: TacticalSnapshot,slot: Int): Vec3 {
@@ -21,7 +22,10 @@ object TacticalFlanks {
         }
         val side=Vec3(-forward.z,0.0,forward.x)
         if (plan.pattern==TacticalPattern.ENCIRCLE) {
-            val angle=slot*Math.PI*2/plan.flankOrder.size.coerceAtLeast(1)
+            // The first wave takes both near shoulders; later waves close around the far side.
+            val wing=if (slot%2==0) 1.0 else -1.0
+            val progress=(slot/2+1).toDouble()/((plan.flankOrder.size+1)/2+1)
+            val angle=Math.PI+wing*progress*Math.PI*0.85
             return focus.add(forward.scale(kotlin.math.cos(angle)*24.0)).add(side.scale(kotlin.math.sin(angle)*24.0))
         }
         val projections=view.contacts.map { it.position.subtract(focus).dot(side) }
@@ -29,7 +33,8 @@ object TacticalFlanks {
         val right=maxOf(20.0,(projections.maxOrNull() ?: 0.0)+12.0)
         val both=plan.flankOrder.size>=8 && plan.pattern!=TacticalPattern.FOCUS_SECTOR
         val weak=if (kotlin.math.abs(left)<=right) -1.0 else 1.0
-        val direction=if (both) (if (slot%2==0) -1.0 else 1.0) else if (plan.pattern==TacticalPattern.FOCUS_SECTOR) weak else plan.flankSide
+        val direction=if (both) (if (slot%2==0) -1.0 else 1.0) else if (plan.pattern==TacticalPattern.FOCUS_SECTOR) weak
+            else if (plan.flankSide<0.0) -1.0 else 1.0
         val lane=slot/(if (both) 2 else 1)
         val sideways=(if (direction<0) left else right)+direction*(lane%3)*4.0
         val distance=focus.subtract(origin).horizontalDistance()

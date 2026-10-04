@@ -157,6 +157,7 @@ class TacticalPlan(
     val flankSupport = HashSet<UUID>()
     val flankOrder = ArrayList<UUID>()
     val flankArrived = HashSet<UUID>()
+    var medicGuard: UUID? = null
     var heightFront: Vec3? = null
 }
 
@@ -186,7 +187,7 @@ class SquadTacticalState {
         // Losing sight for a moment must not replace a flank already walking round the ridge
         // with a two-man search, or make every mover return to its previous position.
         if (!changedOrder && !expired && !choice.emergency && old?.pattern in ACTIVE_MANEUVERS &&
-            (choice.pattern in PASSIVE_CHOICES || (!changedFocus && choice.pattern in ACTIVE_MANEUVERS))) return false
+            (choice.pattern in PASSIVE_CHOICES || choice.pattern in ACTIVE_MANEUVERS)) return false
         val ready = old == null || old.pattern in setOf(TacticalPattern.FOLLOW_ORDER,TacticalPattern.CONSOLIDATE,
             TacticalPattern.SEARCH,TacticalPattern.RETURN_FIRE) || now - old.started >= 80
         if (!changedOrder && !expired && !choice.emergency && (!ready || (old?.pattern == choice.pattern && !changedFocus))) return false
@@ -204,6 +205,14 @@ class SquadTacticalState {
         TacticalPattern.ATTACK_HEIGHT,TacticalPattern.BOUND,TacticalPattern.PURSUE,TacticalPattern.FOCUS_SECTOR)
     private val PASSIVE_CHOICES = setOf(TacticalPattern.FOLLOW_ORDER,TacticalPattern.SEARCH,TacticalPattern.RETURN_FIRE,
         TacticalPattern.REORIENT,TacticalPattern.CONSOLIDATE)
+
+    fun holdsAfterFailure(member: UUID,stamp: Int,now: Long): Boolean {
+        val current=plan ?: return false
+        if (current.stamp!=stamp) return false
+        return now<(holdAfterFailure[member] ?: Long.MIN_VALUE) ||
+            (current.pattern in TacticalFlanks.PATTERNS+TacticalPattern.ATTACK_HEIGHT &&
+                member in current.failedMembers && snapshot?.visible?.isNotEmpty()==true)
+    }
 
     fun fail(now: Long, reason: TacticalFailure = TacticalFailure.UNSPECIFIED) {
         plan?.let {

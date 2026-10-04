@@ -79,7 +79,8 @@ object SquadTactics {
         val proposed = TacticalRules.choose(view)
         var choice = proposed
         if (choice.pattern != TacticalPattern.EVADE && now < (state.blocked[choice.pattern] ?: Long.MIN_VALUE))
-            choice = TacticalChoice(TacticalPattern.FOLLOW_ORDER,choice.focus,reason=TacticalReason.PATTERN_COOLDOWN)
+            choice = TacticalChoice(if (view.visible.isNotEmpty()) TacticalPattern.REORIENT else TacticalPattern.FOLLOW_ORDER,
+                choice.focus,reason=TacticalReason.PATTERN_COOLDOWN)
         val previousTasks = state.plan?.tasks?.toMap().orEmpty()
         val sameDefensiveOrder=!defensiveHomeMoved && state.plan?.stamp==squad.orderStamp && state.plan?.pattern in DefensiveOverwatch.PATTERNS
         val previousStatus = state.plan?.status
@@ -135,6 +136,12 @@ object SquadTactics {
 
     fun hasTask(entity: NpcEntity): Boolean = task(entity) != null
 
+    /** A failed combat route yields local firing-position work, rather than a frontal assault. */
+    fun holdsAfterFailure(entity: NpcEntity): Boolean {
+        val squad=entity.currentSquad() ?: return false
+        return squad.tactics.holdsAfterFailure(entity.uuid,squad.orderStamp,entity.level().gameTime)
+    }
+
     fun equip(entity: NpcEntity) {
         if (entity.vehicle != null || entity.busyWithRole() || entity.combatLockedByMedic() || entity.resupplying) return
         val task = task(entity) ?: return
@@ -151,7 +158,7 @@ object SquadTactics {
         val squad = entity.currentSquad() ?: return false
         val state = squad.tactics
         val view = state.snapshot ?: return false
-        if (task.job == TacticalJob.WAIT) { entity.navigation.stop(); return true }
+        if (task.job == TacticalJob.WAIT && task.staging==null) { entity.navigation.stop(); return true }
         if (task.position == null && entity.level().gameTime >= task.nextSearch) {
             val result = TacticalPositions.find(entity, task, view)
             when (result.outcome) {
@@ -225,6 +232,8 @@ object SquadTactics {
     private fun failedTask(entity: NpcEntity,task: TacticalTask,reason: String): Boolean {
         if (++task.failures < if (task.job==TacticalJob.OVERWATCH) 1 else 3) return false
         val plan = entity.currentSquad()?.tactics?.plan ?: return true
+        if (plan.pattern in TacticalFlanks.PATTERNS+TacticalPattern.ATTACK_HEIGHT)
+            entity.currentSquad()?.tactics?.holdAfterFailure?.set(entity.uuid,entity.level().gameTime+120)
         TacticalManeuvers.abandon(plan,entity.uuid)
         FiringSpots.release(entity.uuid)
         if (DebugFlags.on(LogGroup.ORDER)) DebugFlags.log(LogGroup.ORDER,

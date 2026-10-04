@@ -98,6 +98,10 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun tick(entity: NpcEntity) {
         val squad = entity.currentSquad() ?: return
+        if (entity.retreatPoint()==null && com.sbwnpc.squad.combat.tactics.SquadTactics.holdsAfterFailure(entity)) {
+            entity.navigation.stop()
+            return
+        }
         if (com.sbwnpc.squad.combat.tactics.SquadTactics.move(entity)) return
         val order = squad.order
         val home = entity.homeCenter() ?: return

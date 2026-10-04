@@ -30,12 +30,16 @@ object TacticalPositions {
         val taken = FiringSpots.nearbyWithBodies(level,entity,64.0)
         val threats = view.visible.sortedByDescending { it.priority }.take(3)
         val hulls = Sightline.vehicleHulls(level,entity.boundingBox.inflate(64.0),entity,entity.target)
-        val localAnchor = if (task.job in RUNNING_JOBS + TacticalJob.SEARCH) TacticalRoutes.leg(entity.position(),task) else task.anchor
+        val localAnchor = task.staging ?: if (task.job in RUNNING_JOBS + TacticalJob.SEARCH) TacticalRoutes.leg(entity.position(),task) else task.anchor
         if (task.search?.origin?.distanceTo(entity.position())?.let { it > 4.0 } == true) task.search=null
         if (overwatch && task.search==null) entity.navigation.stop()
         val search = task.search ?: TacticalPositionSearch(entity.position(),
             if (overwatch) DefensiveOverwatch.probes(task.anchor) else OFFSETS.map { localAnchor.add(it) }).also { task.search=it }
-        val pattern = entity.currentSquad()?.tactics?.plan?.pattern
+        val plan = entity.currentSquad()?.tactics?.plan
+        val pattern = plan?.pattern
+        val covered = plan!=null && view.members.count {
+            plan.tasks[it.id]?.job==TacticalJob.COVER && TacticalManeuvers.firesCover(it,plan.tasks[it.id])
+        } >= TacticalFlanks.requiredCover(view)
         var probesThisTick=0
         while (search.probeIndex < search.probes.size) {
             if (!TickBudget.hasRaycasts(level) || probesThisTick++ >= 24) return Result(Outcome.DEFERRED)
@@ -82,7 +86,7 @@ object TacticalPositions {
                         if (!TickBudget.hasRaycasts(level)) return Result(Outcome.DEFERRED)
                         if (threats.any { it.position.distanceTo(foot)<8.0 }) { safe=false; break }
                         val threat=threats.firstOrNull()
-                        if (threat != null && foot.distanceTo(threat.position)<entity.position().distanceTo(threat.position)*0.6 &&
+                        if (!covered && threat != null && foot.distanceTo(threat.position)<entity.position().distanceTo(threat.position)*0.6 &&
                             !Sightline.blocked(level,threat.position.add(0.0,1.5,0.0),foot.add(0.0,1.0,0.0),entity) &&
                             pattern != TacticalPattern.ENCIRCLE) { safe=false; break }
                     }

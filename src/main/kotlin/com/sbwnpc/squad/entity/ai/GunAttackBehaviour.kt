@@ -702,6 +702,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             bounding=true
             boundPhaseStarted=false
             firingPos=null
+        } else if (com.sbwnpc.squad.combat.tactics.SquadTactics.holdsAfterFailure(entity)) {
+            holdFiringPosition(entity,target)
         } else if (com.sbwnpc.squad.combat.tactics.SquadTactics.move(entity).also { tacticalMovement=it }) {
             bounding = true
             boundPhaseStarted = false
