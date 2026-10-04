@@ -20,12 +20,11 @@ import net.minecraft.world.phys.Vec3
  */
 object SelectionHighlight {
     private const val INTERVAL_TICKS = 10
-    private var nextTick = 0
 
     fun tick(server: MinecraftServer) {
-        val now = server.tickCount
-        if (now < nextTick) return
-        nextTick = now + INTERVAL_TICKS
+        // The server tick counter starts over when an integrated world is reopened. A static
+        // nextTick from the previous world could suppress selection particles for hours.
+        if (server.tickCount % INTERVAL_TICKS != 0) return
 
         for (player in server.playerList.players) {
             val level = player.level() as? ServerLevel ?: continue
