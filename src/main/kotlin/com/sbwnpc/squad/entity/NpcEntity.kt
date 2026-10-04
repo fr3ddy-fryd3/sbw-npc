@@ -129,6 +129,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     fun isAlert(): Boolean = BrainUtils.hasMemory(this, ModMemories.ALERT_POSITION.get())
 
     fun alert(pos: Vec3) {
+        if (com.sbwnpc.squad.combat.CombatPosition.holdsPosition(currentSquad()?.order)) {
+            hear(pos)
+            return
+        }
         val remaining = if (isAlert())
             BrainUtils.getTimeUntilMemoryExpires(this, ModMemories.ALERT_POSITION.get())
         else 0L
@@ -157,7 +161,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             diggedIn -> "dug in"
             busyWithRole() -> "busy with a role"
             resupplying -> "resupplying"
-            order == SquadOrder.DEFEND || order == SquadOrder.BARRAGE || order == SquadOrder.MOVE ||
+            order == SquadOrder.DEFEND || order == SquadOrder.PATROL || order == SquadOrder.BARRAGE || order == SquadOrder.MOVE ||
                 order == SquadOrder.RETREAT -> "order $order"
             else -> null
         }
@@ -560,7 +564,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // separate event subscriber.
     override fun onAddedToLevel() {
         super.onAddedToLevel()
-        NpcRegistry.add(this)
+        // Chunk loading calls this hook even when EntityJoinLevelEvent cancelled the addition.
+        if (!isRemoved) NpcRegistry.add(this)
     }
 
     override fun onRemovedFromLevel() {
@@ -1131,7 +1136,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         /** Chances that a piece of an NPC's kit survives its death — see [dropCustomDeathLoot]. */
         private const val WEAPON_DROP_CHANCE = 0.0375f
         private const val ARMOUR_DROP_CHANCE = 0.0125f
-        private const val AMMO_DROP_CHANCE = 0.125f
+        private const val AMMO_DROP_CHANCE = 0.1875f
         private const val GRENADE_DROP_CHANCE = 0.0125f
         private val LOOTABLE_SLOTS = listOf(EquipmentSlot.MAINHAND, EquipmentSlot.HEAD, EquipmentSlot.CHEST)
         private const val BASE_HEALTH = 20.0

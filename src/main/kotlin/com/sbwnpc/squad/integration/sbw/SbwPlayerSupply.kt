@@ -60,7 +60,8 @@ object SbwPlayerSupply : PlayerSupply {
     /** Built on first use: the addon's items are looked up in the item registry. */
     private val SPECS by lazy { listOf(
         Spec("Rifleman", NpcClass.RIFLEMAN, fighter()),
-        Spec("Machine gunner", NpcClass.MACHINE_GUNNER, fighter() + (ModItems.RPG_ROCKET_STANDARD to 2), launcher = true),
+        // Fresh RPGs select TBG by default; supply rounds they can reload without switching types.
+        Spec("Machine gunner", NpcClass.MACHINE_GUNNER, fighter() + (ModItems.RPG_ROCKET_TBG to 2), launcher = true),
         Spec("Sniper", NpcClass.SNIPER, fighter()),
         Spec("Grenadier", NpcClass.GRENADIER, fighter()),
         Spec("Medic", NpcClass.MEDIC, fighter(medkits = 10)),

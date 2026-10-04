@@ -33,7 +33,7 @@ object SquadConfig {
             "Seconds of loaded barracks time between individual NPC recruits, including the first.",
             "Initial recruitment and replacements share this limit. Unloading pauses the clock."
         )
-        .defineInRange("recruitIntervalSeconds", 30, 1, 3600)
+        .defineInRange("recruitIntervalSeconds", 10, 1, 3600)
 
     val SPEC: ModConfigSpec = builder.build()
 

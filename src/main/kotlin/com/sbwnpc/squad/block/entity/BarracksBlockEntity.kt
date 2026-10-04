@@ -12,6 +12,7 @@ import com.sbwnpc.squad.squad.BarracksRecruitmentQueue
 import com.sbwnpc.squad.squad.BarracksRef
 import com.sbwnpc.squad.squad.SquadDeployment
 import com.sbwnpc.squad.squad.SquadManager
+import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.core.BlockPos
 import net.minecraft.core.HolderLookup
 import net.minecraft.nbt.CompoundTag

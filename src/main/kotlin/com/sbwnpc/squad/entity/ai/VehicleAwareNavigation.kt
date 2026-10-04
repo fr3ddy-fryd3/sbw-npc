@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.sbwnpc.squad.domain.port.Ports
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap
 import net.minecraft.core.BlockPos
 import net.minecraft.world.entity.Mob
 import net.minecraft.world.level.pathfinder.Path
@@ -335,6 +336,10 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
 }
 
 internal open class VehicleAwareNodeEvaluator : WalkNodeEvaluator() {
+    // Vanilla caches the aggregate type of a mob-sized node, but neighboring nodes repeatedly
+    // evaluate overlapping cells and their 24 surrounding hazards. Keep the final cell type
+    // for this search only; raw block types in PathfindingContext do not cache those hazards.
+    private val cellTypes = Long2ObjectOpenHashMap<PathType>()
     /** Vehicles near the mob, each with the box round its hull for a quick first test. */
     private var hulls: List<Pair<net.minecraft.world.entity.Entity, AABB>> = emptyList()
     private var standingOn: BlockPos? = null
@@ -347,6 +352,7 @@ internal open class VehicleAwareNodeEvaluator : WalkNodeEvaluator() {
      * phantom walls behind.
      */
     override fun prepare(level: PathNavigationRegion, mob: Mob) {
+        cellTypes.clear()
         super.prepare(level, mob)
         val ridden = mob.vehicle
         hulls = Ports.vehicles
@@ -371,6 +377,7 @@ internal open class VehicleAwareNodeEvaluator : WalkNodeEvaluator() {
     }
 
     override fun done() {
+        cellTypes.clear()
         hulls = emptyList()
         standingOn = null
         start = null
@@ -385,6 +392,15 @@ internal open class VehicleAwareNodeEvaluator : WalkNodeEvaluator() {
      * no jump to get over it. Anything a man can't step over is solid here, and stood on like it.
      */
     override fun getPathType(context: PathfindingContext, x: Int, y: Int, z: Int): PathType {
+        // The public evaluator API can also be queried outside a prepared path search. Those
+        // independent queries must see current terrain rather than retain a cached answer.
+        if (context !== currentContext) return calculatePathType(context, x, y, z)
+        val key = BlockPos.asLong(x, y, z)
+        cellTypes.get(key)?.let { return it }
+        return calculatePathType(context, x, y, z).also { cellTypes.put(key, it) }
+    }
+
+    private fun calculatePathType(context: PathfindingContext, x: Int, y: Int, z: Int): PathType {
         if (bodyHigh(context, x, y, z)) return PathType.BLOCKED
         val type = super.getPathType(context, x, y, z)
         if (type == PathType.OPEN) {

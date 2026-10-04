@@ -15,6 +15,7 @@ import com.sbwnpc.squad.vehicle.PilotlessHelicopters
 import com.sbwnpc.squad.squad.SquadSelection
 import com.sbwnpc.squad.team.SquadTeams
 import net.neoforged.bus.api.SubscribeEvent
+import net.neoforged.bus.api.EventPriority
 import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.neoforge.event.entity.player.PlayerEvent
 import net.neoforged.neoforge.event.server.ServerStoppedEvent
@@ -22,6 +23,12 @@ import net.neoforged.neoforge.event.server.ServerStoppedEvent
 /** Clears runtime-only state so UUIDs cannot leak into the next world or login session. */
 @EventBusSubscriber
 object ServerLifecycle {
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    fun onEntityJoin(event: net.neoforged.neoforge.event.entity.EntityJoinLevelEvent) {
+        val level = event.level as? net.minecraft.server.level.ServerLevel ?: return
+        if (SquadManager.get(level).discardDeletedEntity(event.entity)) event.isCanceled = true
+    }
+
     @SubscribeEvent
     fun onServerStarted(event: net.neoforged.neoforge.event.server.ServerStartedEvent) {
         com.sbwnpc.squad.team.Diplomacy.attach(event.server)

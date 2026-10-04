@@ -59,7 +59,7 @@ class GrenadeThrowBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         val grenade = kind ?: return
         kind = null
-        GrenadeThrower.throwAt(entity, level, target.boundingBox.center, grenade, target.deltaMovement)
+        if (!GrenadeThrower.throwAt(entity, level, target.boundingBox.center, grenade, target.deltaMovement)) return
 
         nextThrowTick = entity.tickCount + COOLDOWN_TICKS + entity.random.nextInt(COOLDOWN_JITTER)
     }

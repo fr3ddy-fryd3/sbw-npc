@@ -113,8 +113,8 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         when (order) {
             SquadOrder.ATTACK -> {
                 val arrived = dist <= SquadFormation.ARRIVAL_RADIUS
-                // ATTACK advances at combat pace; distant defenders use the same pace to catch up.
-                // Taking the point turns into holding it — squad-wide, in OrderArrival.
+                // With no enemy contact every class reaches the ordered point. Combat range
+                // and rear support posts are decided only by GunAttackBehaviour.
                 approachSlot(entity, home, arrived, RUN_SPEED_MODIFIER)
             }
             // Own arrival threshold, SquadFormation.defendArrivalRadius — DEFEND holds a perimeter
@@ -377,7 +377,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     companion object {
         private const val REPATH_COOLDOWN_TICKS = 20
         private const val ROUTE_DWELL_TICKS = 40
-        private const val ROAM_RADIUS = 20.0
+        private const val ROAM_RADIUS = 40.0
         private const val ROAM_ATTEMPTS = 4
         /** Standing about at a spot before heading for the next. */
         private const val ROAM_PAUSE_MIN = 100

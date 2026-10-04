@@ -65,7 +65,9 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
     // Not while falling back either: investigating gunfire means walking toward it.
     private fun eligible(entity: NpcEntity) =
         entity.target == null && !entity.movementLockedByCover() && !entity.diggedIn && !entity.busyWithRole() &&
-            entity.retreatPoint() == null && !entity.resupplying && !com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)
+            entity.retreatPoint() == null && !entity.resupplying &&
+            !com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity) &&
+            !com.sbwnpc.squad.combat.CombatPosition.holdsPosition(entity.currentSquad()?.order)
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = eligible(entity)
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = eligible(entity) && entity.isAlert()

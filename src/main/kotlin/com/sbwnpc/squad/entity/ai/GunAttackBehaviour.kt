@@ -3,6 +3,7 @@ package com.sbwnpc.squad.entity.ai
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.Alarm
 import com.sbwnpc.squad.combat.AntiArmourKit
+import com.sbwnpc.squad.combat.CombatPosition
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.DroneCombat
@@ -33,6 +34,7 @@ import net.minecraft.world.entity.ai.util.DefaultRandomPos
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
+import net.tslat.smartbrainlib.util.BrainUtils
 
 /**
  * Aiming, moving and shooting at the target, in the Fight activity (`NpcEntity.getFightTasks()`),
@@ -58,6 +60,13 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private var aimTime = 0
     private val shootTimer = MillisTimer()
+    private val openingFire = OpeningFire()
+    /** Patrol combat stays around the place contact began, including on a long assigned route. */
+    private var firingOrigin: Vec3? = null
+    private var combatOrderStamp = -1
+    private var advancingFromPost = false
+    private var holdingAdvanceGoal: Vec3? = null
+    private var holdingAdvanceComplete = false
 
     private var lineIsClear = true
     /** Why [lineIsClear] is false, when it is: a vehicle hull rather than a squadmate. The two ask
@@ -96,10 +105,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var burstPauseUntilTick = 0
 
     companion object {
-        private const val BASE_SHOOT_DISTANCE = 24.0
         private const val LAUNCHER_SPREAD_FACTOR = 0.25
-        /** How far past its ring a defender may be drawn before it gives up the target and goes back. */
-        private const val DEFEND_LEASH_MARGIN = 12.0
         private const val SIDESTEP_COOLDOWN = 5
         private const val MAX_SIDESTEP_ATTEMPTS = 3
         private const val SIDESTEP_BATCH_COOLDOWN = 40
@@ -182,7 +188,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private val NpcEntity.maxAimTime get() = npcRank.aimTimeTicks
     private val NpcEntity.semiFireInterval get() = npcRank.semiFireIntervalMs
-    private val NpcEntity.shootDistance get() = BASE_SHOOT_DISTANCE * npcClass.shootDistanceMultiplier
+    private val NpcEntity.shootDistance get() = npcClass.assaultDistance
 
     /**
      * Swaps a machine gunner onto its launcher for an armoured target and back off it again.
@@ -222,6 +228,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun start(entity: NpcEntity) {
         entity.isAggressive = true
+        firingOrigin = entity.position()
+        openingFire.reset()
     }
 
     override fun stop(entity: NpcEntity) {
@@ -233,6 +241,12 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.isAggressive = false
         entity.stopUsingItem()
         aimTime = 0
+        openingFire.reset()
+        firingOrigin = null
+        combatOrderStamp = -1
+        advancingFromPost = false
+        holdingAdvanceGoal = null
+        holdingAdvanceComplete = false
         shootTimer.stop()
         lineIsClear = true
         hullBlocked = false
@@ -261,7 +275,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             boundPhaseStarted = false
             return
         }
-        if (keepsAway(entity) && entity.distanceToSqr(target) < KEEP_AWAY_DISTANCE * KEEP_AWAY_DISTANCE) {
+        val minimumDistance = keepAwayDistance(entity)
+        if (minimumDistance > 0.0 && horizontalDistance(entity.position(), target.position()) < minimumDistance) {
             fallBack(entity, target)
             return
         }
@@ -326,19 +341,25 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.navigateTo(to, WITHDRAW_SPEED)
     }
 
-    /** Aircrew on foot — a pilot out of a helicopter that can't fly. */
-    private fun keepsAway(entity: NpcEntity): Boolean =
-        entity.npcClass == NpcClass.HELICOPTER_PILOT && entity.vehicle == null
+    /** A downed pilot is the one role that actively backs away from ordinary contact. */
+    private fun keepAwayDistance(entity: NpcEntity): Double =
+        if (entity.npcClass == NpcClass.HELICOPTER_PILOT && entity.vehicle == null) KEEP_AWAY_DISTANCE
+        else 0.0
 
     private fun fallBack(entity: NpcEntity, target: LivingEntity) {
+        fallingBack = true
         bounding = true
         boundPhaseStarted = false
         firingPos = null
         FiringSpots.release(entity.uuid)
         if (entity.tickCount < nextFallBackTick && !entity.navigation.isDone) return
         nextFallBackTick = entity.tickCount + FALL_BACK_REPATH_TICKS
-        val away = DefaultRandomPos.getPosAway(entity, FALL_BACK_STEP, FALL_BACK_VERTICAL, target.position()) ?: return
-        entity.navigation.moveTo(away.x, away.y, away.z, FALL_BACK_SPEED)
+        val away = DefaultRandomPos.getPosAway(entity, FALL_BACK_STEP, FALL_BACK_VERTICAL, target.position())
+        if (away == null || horizontalDistance(away, target.position()) <= horizontalDistance(entity.position(), target.position()) ||
+            !entity.navigation.moveTo(away.x, away.y, away.z, FALL_BACK_SPEED)) {
+            // Failed retreat must not leave an old assault path running toward the enemy.
+            entity.navigation.stop()
+        }
     }
 
     /** Once close enough to fight without needing to advance further, prefer a nearby spot that
@@ -349,15 +370,15 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  and fire for a few seconds — real stationary aiming, not endless micro-shuffling every tick.
      *  Aiming/firing in [tick] runs completely unconditionally regardless of what this picks or
      *  whether the mob is still walking the last few steps toward it. */
-    private fun holdFiringPosition(entity: NpcEntity, target: LivingEntity, defending: Boolean = false) {
+    private fun holdFiringPosition(entity: NpcEntity, target: LivingEntity) {
         val level = entity.level() as? ServerLevel ?: return
         // A grenade has come down by the spot being held: pick another now rather than walk
         // into it and get chased back out by GrenadeEvadeBehaviour.
         if (firingPos?.let { GrenadeHazard.threatens(level, it) } == true) nextPositionCheckTick = 0
-        // A defender keeps a position that still has a shot at the target — it has taken it and
-        // holds it, rather than shuffling to a slightly better one every few seconds.
+        // A useful firing post is kept in every order. An enemy moving farther away is no reason
+        // to abandon a clear shot in favour of slightly better concealment.
         val held = firingPos
-        if (defending && held != null && entity.tickCount >= nextPositionCheckTick &&
+        if (held != null && entity.tickCount >= nextPositionCheckTick &&
             atSpot(entity, held) && !GrenadeHazard.threatens(level, held) && TickBudget.hasRaycasts(level) &&
             // With the hulls on the line: a spot a vehicle has since pulled in front of is no longer
             // "still has a shot", and keeping it had defenders standing behind a hull, never firing.
@@ -506,6 +527,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         eyeHeight: Double,
         vehicleHulls: List<AABB>
     ): Double? {
+        if (!canRelocate(entity, pos)) return null
         val myEye = Vec3(pos.x, pos.y + eyeHeight, pos.z)
         if (Sightline.blocked(level, target.eyePosition, myEye, entity)) return null
         // Standing behind armour is cover from the enemy, but it is not a firing position.
@@ -520,18 +542,96 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         return 0.0
     }
 
+    /** Optional firing shifts stay near the defend point or the patrol's original contact post. */
+    private fun canRelocate(entity: NpcEntity, point: Vec3): Boolean {
+        val squad = entity.currentSquad() ?: return true
+        if (!CombatPosition.holdsPosition(squad.order)) return true
+        val post = firingOrigin ?: entity.position()
+        if (!CombatPosition.withinArea(post, point, CombatPosition.MAX_ADVANCE_DISTANCE)) return false
+        val home = entity.homeCenter()
+        return squad.order != SquadOrder.DEFEND || home == null ||
+            CombatPosition.withinArea(home, point, CombatPosition.defendRadius(entity.npcClass, squad.members.size))
+    }
+
+    private fun holdOpeningFire(entity: NpcEntity) {
+        entity.navigation.stop()
+        val here = entity.position()
+        if (firingPos == null || horizontalDistance(firingPos!!, here) > ARRIVE_DISTANCE) {
+            firingPos = here
+            FiringSpots.claim(entity.uuid, here)
+            nextPositionCheckTick = entity.tickCount + HOLD_MIN_TICKS
+        }
+    }
+
+    private fun finishHoldingAdvance(entity: NpcEntity) {
+        if (!advancingFromPost) return
+        advancingFromPost = false
+        entity.navigation.stop()
+        firingPos = entity.position()
+        FiringSpots.claim(entity.uuid, entity.position())
+        nextPositionCheckTick = entity.tickCount + HOLD_MIN_TICKS
+    }
+
+    private fun tryHoldingAdvance(entity: NpcEntity, target: LivingEntity): Boolean {
+        if (entity.diggedIn || holdingAdvanceComplete) return false
+        val order = entity.currentSquad()?.order
+        if (!CombatPosition.mayAdvance(order, entity.npcClass, entity.position(), target.position())) return false
+        // Pick one endpoint for this approach. Following every movement of a distant target
+        // around the 24-block boundary made the post wander and continually replaced its path.
+        val spot = holdingAdvanceGoal ?: run {
+            val goal = CombatPosition.advancePoint(entity.npcClass, firingOrigin ?: entity.position(), target.position())
+                ?: return false
+            val level = entity.level() as? ServerLevel ?: return false
+            Terrain.standableOrNull(level, goal.x, entity.y + 4.0, goal.z, 12) ?: return false
+        }
+        if (!canRelocate(entity, spot)) return false
+        if (atSpot(entity, spot) || entity.navigation.isDone &&
+            horizontalDistance(entity.position(), spot) <= SETTLE_DISTANCE) {
+            holdingAdvanceComplete = true
+            return false
+        }
+        // If the enemy passed behind us, continuing to the old endpoint is no longer an approach.
+        if (spot.distanceToSqr(target.position()) >= entity.distanceToSqr(target)) return false
+        holdingAdvanceGoal = spot
+        firingPos = spot
+        FiringSpots.claim(entity.uuid, spot)
+        nextPositionCheckTick = entity.tickCount + HOLD_MIN_TICKS
+        advancingFromPost = true
+        entity.navigateTo(spot, 1.0)
+        return true
+    }
+
     private fun moveTowardFormationSlot(entity: NpcEntity, target: LivingEntity) {
         val targetPos = target.position()
         // Opened out under fire: the marching interval puts the whole squad in one burst.
         val slot = SquadFormation.slotTarget(
-            entity, targetPos, targetPos.subtract(entity.position()), false, SquadFormation.COMBAT_SPACING
+            entity, targetPos, targetPos.subtract(entity.position()), false, SquadFormation.COMBAT_SPACING,
+            combat = true
         )
-        entity.navigation.moveTo(slot.x, slot.y, slot.z, 1.0)
+        // Each bound ends after a few seconds and discards its path. A 100-block search to a
+        // distant enemy is mostly unused; a short leg keeps the same heading and formation.
+        val step = CombatPosition.assaultStep(entity.position(), slot)
+        val level = entity.level() as? ServerLevel ?: return
+        val ground = Terrain.standableOrNull(level, step.x, step.y + 4.0, step.z, 12) ?: return
+        entity.navigateTo(ground, 1.0)
     }
 
     override fun tick(entity: NpcEntity) {
         val target = entity.target ?: return
         if (entity.incomingFire.replying(entity.level().gameTime) && !DetectionSightline.canSeeWithin(entity, target, NpcEntity.DETECTION_RANGE)) return
+        val squad = entity.currentSquad()
+        if (squad != null && squad.orderStamp != combatOrderStamp) {
+            combatOrderStamp = squad.orderStamp
+            firingOrigin = entity.position()
+            firingPos = null
+            nextPositionCheckTick = 0
+            openingFire.reset()
+            boundPhaseStarted = false
+            advancingFromPost = false
+            holdingAdvanceGoal = null
+            holdingAdvanceComplete = false
+        }
+        val holding = CombatPosition.holdsPosition(squad?.order)
         // Decided before the gun data is read, so the rest of this tick aims and fires whatever
         // the swap left in the gunner's hands.
         chooseWeapon(entity, target)
@@ -539,7 +639,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         val canSeeTarget = DetectionSightline.canSeeWithin(entity, target, NpcEntity.DETECTION_RANGE)
         // Seeing through a window is not a clear firing lane. Keep vanilla's collider test.
-        val canShootTarget = canSeeTarget && entity.sensing.hasLineOfSight(target)
+        val canShootTarget = canSeeTarget && if (entity.distanceToSqr(target) > 128.0 * 128.0)
+            !Sightline.blocked(entity.level() as ServerLevel, entity.eyePosition, target.eyePosition, entity)
+        else entity.sensing.hasLineOfSight(target)
         if (canSeeTarget) {
             entity.rememberVisible(target)
             com.sbwnpc.squad.combat.tactics.SquadTactics.observe(entity,target)
@@ -573,13 +675,14 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         // onto the armour, and taking the drop out without lowering the aim sent it over the top.
         gun.arcPitch(entity.eyePosition, rocketAimPoint(target))?.let { entity.xRot = it }
 
-        val squad = entity.currentSquad()
         val defendHome = if (squad?.order == SquadOrder.DEFEND) entity.homeCenter() else null
         val retreatTo = entity.retreatPoint()
         // All but out and a Supply behind: back to it on his own, still shooting, rather than
         // hold a post he can't fight from much longer. Not the squad's bounding withdrawal — the
         // rest of the squad isn't going anywhere.
         val resupplyAt = if (retreatTo == null) entity.lowAmmoFallback() else null
+        val opening = openingFire.hold(target.uuid, entity.tickCount, canShootTarget && lineIsClear && blastClear,
+            gun.triggerMode == TriggerMode.AUTO)
         fallingBack = false
         var tacticalMovement=false
         if (retreatTo != null) {
@@ -603,21 +706,30 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             bounding = true
             boundPhaseStarted = false
             firingPos = null
-        } else if (defendHome != null) {
-            val fromHome = entity.position().distanceTo(defendHome)
+        } else if (holding) {
             // Measured past the squad's own ring: a flat 24 was inside the ring a big squad
             // defends from, and every man at his post dropped his target the moment he saw one.
-            val leash = SquadFormation.perimeterRadius(squad?.members?.size ?: 1) + DEFEND_LEASH_MARGIN +
-                if (entity.npcClass in setOf(NpcClass.SNIPER,NpcClass.MACHINE_GUNNER))
+            val leash = CombatPosition.defendRadius(entity.npcClass, squad?.members?.size ?: 1) +
+                if (entity.npcClass in setOf(NpcClass.SNIPER, NpcClass.MACHINE_GUNNER))
                     com.sbwnpc.squad.combat.tactics.DefensiveOverwatch.RADIUS else 0.0
-            if (fromHome > leash) {
-                entity.target = null
+            if (defendHome != null && !CombatPosition.withinArea(defendHome, entity.position(), leash)) {
+                BrainUtils.setTargetOfEntity(entity, null)
                 entity.navigation.moveTo(defendHome.x, defendHome.y, defendHome.z, 1.0)
                 return
             }
-            // Defending means holding: take a firing position and fight from it, never advance on
-            // the enemy the way an attacking squad bounds forward.
-            holdFiringPosition(entity, target, defending = true)
+            if (opening) {
+                finishHoldingAdvance(entity)
+                holdOpeningFire(entity)
+            } else if (!tryHoldingAdvance(entity, target)) {
+                // Stop an approach as soon as the enemy comes within x2, keeping the new post.
+                finishHoldingAdvance(entity)
+                holdFiringPosition(entity, target)
+            }
+        } else if (opening) {
+            holdOpeningFire(entity)
+        } else if (!lineIsClear && firingPos != null) {
+            // Finish clearing an ally's firing lane before another advance replaces the sidestep.
+            holdFiringPosition(entity, target)
         } else {
             advanceOrHold(entity, target)
         }
@@ -668,17 +780,18 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                 // The answer to a hull is a different position, so ask for one now instead of
                 // waiting out the hold timer.
                 nextPositionCheckTick = 0
-            } else if (entity.navigation.isDone && entity.tickCount >= nextSidestepTick) {
+            } else if (entity.tickCount >= nextSidestepTick &&
+                (firingPos == null || entity.navigation.isDone || atSpot(entity, firingPos!!))) {
                 if (sidestepAttempts >= MAX_SIDESTEP_ATTEMPTS) {
                     sidestepAttempts = 0
                     nextSidestepTick = entity.tickCount + SIDESTEP_BATCH_COOLDOWN
                 } else {
                     nextSidestepTick = entity.tickCount + SIDESTEP_COOLDOWN
                     sidestepAttempts++
-                    FriendlyFireGuard.sidestepAwayFromAllies(entity,target.eyePosition)?.let { step ->
-                        firingPos=step
-                        nextPositionCheckTick=entity.tickCount+SIDESTEP_BATCH_COOLDOWN
-                        FiringSpots.claim(entity.uuid,step)
+                    FriendlyFireGuard.sidestepAwayFromAllies(entity, target.eyePosition) { canRelocate(entity, it) }?.let {
+                        firingPos = it
+                        FiringSpots.claim(entity.uuid, it)
+                        nextPositionCheckTick = entity.tickCount + HOLD_MIN_TICKS
                     }
                 }
             }
@@ -725,6 +838,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                     }
                     newProgress -= cooldown
                     roundsInBurst++
+                    openingFire.fired()
                 } while (newProgress - cooldown > 0)
                 shootTimer.progress = newProgress
                 entity.lastShotTick = entity.tickCount

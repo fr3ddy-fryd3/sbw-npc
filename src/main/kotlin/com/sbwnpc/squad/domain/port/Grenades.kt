@@ -21,8 +21,8 @@ interface Grenades {
 
     /**
      * Whether a [kind] grenade thrown at [target] flies clear all the way: nothing it would touch —
-     * a block, or anyone but the enemy — before it gets within [nearTarget] of the point. Matters
-     * for the impact-fuzed RGO, which goes off wherever it first touches.
+     * a block, or anyone but the enemy — before it gets within [nearTarget] of the point.
+     * Rejects impossible ballistic solutions for both grenade types.
      */
     fun arcClear(thrower: LivingEntity, level: ServerLevel, target: Vec3, targetVelocity: Vec3, kind: GrenadeKind, nearTarget: Double): Boolean
 

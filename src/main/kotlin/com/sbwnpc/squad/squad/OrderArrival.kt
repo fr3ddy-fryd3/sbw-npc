@@ -32,9 +32,10 @@ object OrderArrival {
             if (squad.focusEntity != null) continue
             val goal = squad.objective ?: continue
             val point = Vec3(goal.x + 0.5, goal.y.toDouble(), goal.z + 0.5)
-            val members = squad.members.mapNotNull { SquadManager.findEntity(server, it) as? NpcEntity }.filter { it.isAlive }
+            val members = squad.members.mapNotNull { SquadManager.findEntity(server, it) as? NpcEntity }
+                .filter { it.isAlive }
             if (members.isEmpty()) continue
-            // Three in four: one man pinned in a ditch shouldn't keep the rest from digging in.
+            // Every role marches to the objective once enemy contact has ended.
             val there = members.count { SquadFormation.reachedPoint(it, point, squad.members.size) }
             if (there * 4 < members.size * 3) continue
             DebugFlags.log(LogGroup.ORDER, "{} took its point ({}), defending", squad.name, squad.order)

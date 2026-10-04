@@ -33,6 +33,13 @@ object SquadDeployment {
      *  reach to put one — the infantry still deploys, but the caller should say so. */
     class Result(val members: List<NpcEntity>, val squad: Squad?, val vehicleBlocked: Boolean = false)
 
+    /** Full planned strength, including the chosen helicopter's crew. */
+    fun composition(cfg: SquadToolItem.Config): List<NpcClass> = when (cfg.preset) {
+        SquadPreset.SINGLE -> listOf(cfg.cls)
+        SquadPreset.HELI_CREW -> cfg.heliModel.crew
+        else -> cfg.preset.composition
+    }
+
     /**
      * Deploys [cfg]'s preset centred on [pos], facing away from [facingYaw], and forms a squad
      * around it when the preset is more than one NPC. Returns null if nothing could be spawned.
@@ -60,25 +67,16 @@ object SquadDeployment {
         return Result(spawned, squad, vehicleBlocked = !vehiclePlaced)
     }
 
-    fun composition(cfg: SquadToolItem.Config): List<NpcClass> = when (cfg.preset) {
-        SquadPreset.SINGLE -> listOf(cfg.cls)
-        SquadPreset.HELI_CREW -> cfg.heliModel.crew
-        else -> cfg.preset.composition
-    }
-
-    /** Barracks call this once their initial crew is assembled, never to create another NPC. */
-    fun deploySupport(level: ServerLevel, pos: BlockPos, facingYaw: Float,
-                      cfg: SquadToolItem.Config, members: List<NpcEntity>): Boolean {
-        return when (cfg.preset) {
-            SquadPreset.MORTAR_CREW -> spawnMortar(level, pos, facingYaw, cfg.faction)
-            SquadPreset.T90_CREW -> spawnTankCrew(level, pos, facingYaw, cfg.faction, members, cfg.tankModel)
-            SquadPreset.HELI_CREW -> spawnHeliCrew(level, pos, facingYaw, cfg.faction, members, cfg.heliModel)
-            // Unmanned — left for the squad's own vehicle-transport/combat-support AI to claim,
-            // same as any vehicle it finds parked in the world.
-            SquadPreset.FIVE -> !cfg.vehicle || spawnTransport(level, pos, facingYaw, cfg.faction, cfg.vehicleModel, members)
-            SquadPreset.SEVEN -> !cfg.vehicle || spawnTransport(level, pos, facingYaw, cfg.faction, TransportVehicle.BMP_2, members)
-            else -> true
-        }
+    /** Places support once the crew is present; barracks build that crew one member at a time. */
+    fun deploySupport(
+        level: ServerLevel, pos: BlockPos, facingYaw: Float, cfg: SquadToolItem.Config, members: List<NpcEntity>
+    ): Boolean = when (cfg.preset) {
+        SquadPreset.MORTAR_CREW -> spawnMortar(level, pos, facingYaw, cfg.faction)
+        SquadPreset.T90_CREW -> spawnTankCrew(level, pos, facingYaw, cfg.faction, members, cfg.tankModel)
+        SquadPreset.HELI_CREW -> spawnHeliCrew(level, pos, facingYaw, cfg.faction, members, cfg.heliModel)
+        SquadPreset.FIVE -> !cfg.vehicle || spawnTransport(level, pos, facingYaw, cfg.faction, cfg.vehicleModel, members)
+        SquadPreset.SEVEN -> !cfg.vehicle || spawnTransport(level, pos, facingYaw, cfg.faction, TransportVehicle.BMP_2, members)
+        else -> true
     }
 
     /**
