@@ -11,6 +11,7 @@ import net.minecraft.core.HolderLookup
 import net.minecraft.core.particles.DustParticleOptions
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
+import net.minecraft.nbt.NbtUtils
 import net.minecraft.nbt.Tag
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerLevel
@@ -29,6 +30,9 @@ import java.util.UUID
 class SquadManager : SavedData() {
 
     private val squads = LinkedHashMap<UUID, Squad>()
+    // A deleted member can be asleep in an unloaded chunk. Keep the deletion in SavedData
+    // until it loads, including across server restarts; removing its squad alone strands it.
+    private val pendingDeletes = LinkedHashSet<UUID>()
 
     fun all(): Collection<Squad> = squads.values
     fun get(id: UUID?): Squad? = id?.let { squads[it] }
@@ -86,13 +90,33 @@ class SquadManager : SavedData() {
      * two cannot drift apart on what "delete" means.
      */
     fun deleteSquad(level: ServerLevel, id: UUID) {
-        val members = get(id)?.members?.toList() ?: return
-        val assignedVehicles = members.mapNotNull {
-            (level.getEntity(it) as? NpcEntity)?.assignedVehicleId
-        }.toSet()
-        disband(level, id)
-        members.forEach { member -> level.getEntity(member)?.discard() }
-        assignedVehicles.forEach { vehicle -> level.getEntity(vehicle)?.discard() }
+        val members = beginDeletion(id)
+        members.forEach { member -> findEntity(level.server, member)?.let(::discardDeletedEntity) }
+    }
+
+    internal fun beginDeletion(id: UUID): List<UUID> {
+        val squad = squads.remove(id) ?: return emptyList()
+        val members = squad.members.toList()
+        pendingDeletes.addAll(members)
+        setDirty()
+        return members
+    }
+
+    /** Consuming a member's deletion also schedules its vehicle, even if that is unloaded. */
+    internal fun takeDeletion(id: UUID, assignedVehicle: UUID?): Boolean {
+        if (!pendingDeletes.remove(id)) return false
+        assignedVehicle?.let { pendingDeletes.add(it) }
+        setDirty()
+        return true
+    }
+
+    /** Used both for loaded members and by the entity-join hook before unloaded ones reappear. */
+    fun discardDeletedEntity(entity: Entity): Boolean {
+        val vehicle = (entity as? NpcEntity)?.assignedVehicleId
+        if (!takeDeletion(entity.uuid, vehicle)) return false
+        entity.discard()
+        vehicle?.let { id -> entity.server?.let { findEntity(it, id) }?.let(::discardDeletedEntity) }
+        return true
     }
 
     fun disband(level: ServerLevel, id: UUID) {
@@ -273,9 +297,16 @@ class SquadManager : SavedData() {
         firstFreeName(forOwner(owner).map { it.name }.toSet(), prefix)
 
     override fun save(tag: CompoundTag, registries: HolderLookup.Provider): CompoundTag {
+        return saveState(tag)
+    }
+
+    internal fun saveState(tag: CompoundTag): CompoundTag {
         val list = ListTag()
         squads.values.forEach { list.add(it.save()) }
         tag.put("Squads", list)
+        val deleted = ListTag()
+        pendingDeletes.forEach { deleted.add(NbtUtils.createUUID(it)) }
+        tag.put("PendingDeletes", deleted)
         return tag
     }
 
@@ -304,11 +335,14 @@ class SquadManager : SavedData() {
             return "${prefix}Squad $n"
         }
 
-        private fun load(tag: CompoundTag, registries: HolderLookup.Provider): SquadManager {
+        internal fun load(tag: CompoundTag): SquadManager {
             val mgr = SquadManager()
             tag.getList("Squads", Tag.TAG_COMPOUND.toInt()).forEach { e ->
                 val squad = Squad.load(e as CompoundTag)
                 mgr.squads[squad.id] = squad
+            }
+            tag.getList("PendingDeletes", Tag.TAG_INT_ARRAY.toInt()).forEach { e ->
+                mgr.pendingDeletes.add(NbtUtils.loadUUID(e))
             }
             return mgr
         }
@@ -324,7 +358,7 @@ class SquadManager : SavedData() {
         fun get(server: MinecraftServer): SquadManager {
             cached?.let { if (cachedServer === server) return it }
             val mgr = server.overworld().dataStorage.computeIfAbsent(
-                SavedData.Factory({ SquadManager() }, ::load, null), FILE
+                SavedData.Factory({ SquadManager() }, { tag, _ -> load(tag) }, null), FILE
             )
             cached = mgr
             cachedServer = server

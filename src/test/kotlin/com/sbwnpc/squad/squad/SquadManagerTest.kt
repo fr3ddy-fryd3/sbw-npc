@@ -10,10 +10,72 @@ import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.npc.SquadPreset
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import net.minecraft.nbt.CompoundTag
+import net.minecraft.nbt.ListTag
 import java.util.UUID
 
 class SquadManagerTest {
+    private fun manager(vararg squads: Squad): SquadManager {
+        val tag = CompoundTag()
+        val list = ListTag()
+        squads.forEach { list.add(it.save()) }
+        tag.put("Squads", list)
+        return SquadManager.load(tag)
+    }
+
+    @Test
+    fun `deleting an unloaded squad survives a restart without deleting another squad`() {
+        val deleted = garrison(listOf(RIFLEMAN, SNIPER))
+        val kept = garrison(listOf(MEDIC))
+        val members = List(2) { UUID.randomUUID() }
+        deleted.members.addAll(members)
+        val otherMember = UUID.randomUUID()
+        kept.members.add(otherMember)
+        var mgr = manager(deleted, kept)
+        assertEquals(members, mgr.beginDeletion(deleted.id))
+        assertNull(mgr.get(deleted.id))
+        mgr = SquadManager.load(mgr.saveState(CompoundTag()))
+        assertNull(mgr.get(deleted.id))
+        assertEquals(listOf(otherMember), mgr.get(kept.id)!!.members)
+        assertTrue(mgr.takeDeletion(members[0], null))
+        assertFalse(mgr.takeDeletion(otherMember, null))
+        // The remaining member is still scheduled even after saving the first one's removal.
+        mgr = SquadManager.load(mgr.saveState(CompoundTag()))
+        assertFalse(mgr.takeDeletion(members[0], null))
+        assertTrue(mgr.takeDeletion(members[1], null))
+    }
+
+    @Test
+    fun `a deleted crewman loading later schedules its unloaded vehicle across a restart`() {
+        val squad = garrison(listOf(NpcClass.TANK_CREW, NpcClass.TANK_CREW))
+        val crew = List(2) { UUID.randomUUID() }
+        squad.members.addAll(crew)
+        var mgr = manager(squad)
+        mgr.beginDeletion(squad.id)
+        mgr = SquadManager.load(mgr.saveState(CompoundTag()))
+        val vehicle = UUID.randomUUID()
+        assertTrue(mgr.takeDeletion(crew[0], vehicle))
+        assertTrue(mgr.takeDeletion(crew[1], vehicle))
+        mgr = SquadManager.load(mgr.saveState(CompoundTag()))
+        assertTrue(mgr.takeDeletion(vehicle, null))
+        assertFalse(mgr.takeDeletion(vehicle, null))
+    }
+
+    @Test
+    fun `legacy saves and NPCs without a deletion request remain untouched`() {
+        val squad = garrison(listOf(RIFLEMAN))
+        val member = UUID.randomUUID()
+        squad.members.add(member)
+        val mgr = manager(squad)
+        assertFalse(mgr.takeDeletion(member, UUID.randomUUID()))
+        assertFalse(mgr.takeDeletion(UUID.randomUUID(), null))
+        assertTrue(mgr.beginDeletion(UUID.randomUUID()).isEmpty())
+        assertEquals(listOf(member), mgr.get(squad.id)!!.members)
+    }
+
     private fun garrison(composition: List<NpcClass>) = Squad(
         UUID.randomUUID(), "Alpha", SquadFaction.DEFAULT, SquadOrder.DEFEND, mutableListOf(),
         null, null, UUID.randomUUID(), originalComposition = composition, rank = NpcRank.DEFAULT

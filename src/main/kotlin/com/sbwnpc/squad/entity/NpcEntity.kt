@@ -539,7 +539,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // separate event subscriber.
     override fun onAddedToLevel() {
         super.onAddedToLevel()
-        NpcRegistry.add(this)
+        // Chunk loading calls this hook even when EntityJoinLevelEvent cancelled the addition.
+        if (!isRemoved) NpcRegistry.add(this)
     }
 
     override fun onRemovedFromLevel() {
