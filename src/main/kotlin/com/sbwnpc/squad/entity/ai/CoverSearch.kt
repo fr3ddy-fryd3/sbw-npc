@@ -66,7 +66,7 @@ object CoverSearch {
         return candidates.asSequence()
             .mapNotNull { Terrain.feetAt(level,it.bottomCenter) { feet ->
                 level.noCollision(entity,entity.getDimensions(entity.pose).makeBoundingBox(feet))
-            }?.let(BlockPos::containing) }
+            }?.let { feet -> BlockPos.containing(feet.x,kotlin.math.ceil(feet.y),feet.z) } }
             .distinct()
             .filterNot { it in excluded }
             .filterNot { GrenadeHazard.threatens(level, it) }

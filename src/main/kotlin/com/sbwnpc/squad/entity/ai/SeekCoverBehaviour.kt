@@ -250,8 +250,8 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         if ((entity.navigation as? VehicleAwareNavigation)?.canPlan == false ||
             !com.sbwnpc.squad.combat.tactics.TacticalBudget.path(level.gameTime)) return
         CoverSearch.find(entity, level, threat,failedCover)?.let {
-            val path=entity.navigation.createPath(it.x+0.5,it.y.toDouble(),it.z+0.5,0)
-            if (path?.canReach()!=true) { failedCover.add(it); return }
+            val path=com.sbwnpc.squad.combat.tactics.TacticalPositions.pathToPosition(entity,it.bottomCenter)
+            if (!com.sbwnpc.squad.combat.tactics.TacticalPositions.reaches(path,it.bottomCenter)) { failedCover.add(it); return }
             isFallbackRetreat = false
             coverTarget = it
             FiringSpots.claim(entity.uuid, it.bottomCenter)
@@ -275,9 +275,11 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             return
         }
         fallbackAwayFrom(entity, threat)?.let {
+            val path=com.sbwnpc.squad.combat.tactics.TacticalPositions.pathToPosition(entity,it.bottomCenter)
+            if (!com.sbwnpc.squad.combat.tactics.TacticalPositions.reaches(path,it.bottomCenter)) { failedCover.add(it); return }
             isFallbackRetreat = true
             coverTarget = it
-            entity.navigation.moveTo(it.x + 0.5, it.y.toDouble(), it.z + 0.5, 1.0)
+            entity.navigation.moveTo(path,1.0)
             markCoverChoice(level, it, ORANGE)
             DebugFlags.log(LogGroup.DIG, "{} entered fallback retreat", entity.uuid)
         }
@@ -722,8 +724,8 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
                 val lane = if (blind) com.sbwnpc.squad.combat.IncomingFire.laneEnd(eye,aim) else aim
                 if (Sightline.blockedBy(level,eye,lane,entity,hulls,spread) ||
                     !com.sbwnpc.squad.combat.FriendlyFireGuard.assess(entity,aim,spread,aim,0.0,eye).lineClear) continue
-                val path = entity.navigation.createPath(candidate.x, candidate.y, candidate.z, 0) ?: continue
-                if (path.canReach()) return candidate
+                val path = com.sbwnpc.squad.combat.tactics.TacticalPositions.pathToPosition(entity,candidate) ?: continue
+                if (com.sbwnpc.squad.combat.tactics.TacticalPositions.reaches(path,candidate)) return candidate
             }
         }
         return null
@@ -787,6 +789,10 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         val baseAngle = Math.atan2(away.z, away.x)
         val angle = baseAngle + (entity.random.nextDouble() * 2.0 - 1.0) * FALLBACK_SPREAD_RADIANS
         val dir = Vec3(Math.cos(angle), 0.0, Math.sin(angle))
-        return BlockPos.containing(entity.position().add(dir.x * FALLBACK_DISTANCE, 0.0, dir.z * FALLBACK_DISTANCE))
+        val level=entity.level() as? ServerLevel ?: return null
+        val feet=Terrain.feetAt(level,entity.position().add(dir.x*FALLBACK_DISTANCE,0.0,dir.z*FALLBACK_DISTANCE)) {
+            level.noCollision(entity,entity.getDimensions(entity.pose).makeBoundingBox(it))
+        } ?: return null
+        return BlockPos.containing(feet.x,kotlin.math.ceil(feet.y),feet.z).takeIf { it !in failedCover }
     }
 }
