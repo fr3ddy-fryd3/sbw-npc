@@ -17,7 +17,7 @@ enum class NpcClass(
     val shootDistanceMultiplier: Double = 1.0,
     val accuracyMultiplier: Double = 1.0,
     val speedMultiplier: Double = 1.4, // "everyone else" default per user request — was the one global value before
-    /** Planned rear offset on an assault order; a close enemy is fought from the current post. */
+    /** Rear offset from a contacted enemy; ordinary order movement still reaches its objective. */
     val attackStandoffDistance: Double = 0.0,
 ) {
     RIFLEMAN(listOf(loc("ak_47"), loc("ak_12")), shootDistanceMultiplier = 2.0),
@@ -34,7 +34,7 @@ enum class NpcClass(
      *  `GRENADIER`'s slot(s) in the squad-composition presets ("8: Standard", "16: Large").
      *
      *  Paced and positioned like a SNIPER: the long engagement range stops normal advancing,
-     *  and attackStandoffDistance places its idle assault post in the rear.
+     *  and attackStandoffDistance places its combat post behind the riflemen.
      *  MedicHealBehaviour itself temporarily overrides the 1.3 pace to
      *  [com.sbwnpc.squad.entity.ai.MedicHealBehaviour] sprint speed while actually running to treat
      *  someone — see that class. */

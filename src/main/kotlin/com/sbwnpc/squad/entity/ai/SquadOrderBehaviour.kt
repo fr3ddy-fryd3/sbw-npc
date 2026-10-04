@@ -55,9 +55,6 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** On the way to a roaming spot — see [roamAround]. */
     private var roaming = false
     private var defendPostHome: Vec3? = null
-    /** A support role's rear post, kept stable when the assault reaches the objective. */
-    private var attackPost: Vec3? = null
-    private var attackPostHome: Vec3? = null
 
     // No memory gate needed — eligibility is purely squad/order/target state, same as the old goal's
     // canUse(). Unlike GunAttackBehaviour/SeekCoverBehaviour/InvestigateBehaviour, nothing here is
@@ -109,30 +106,15 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
             orderStamp = squad.orderStamp
             repathCooldown = 0
             defendPost = null
-            attackPost = null
         }
         if (repathCooldown > 0) repathCooldown--
 
         when (order) {
             SquadOrder.ATTACK -> {
-                if (entity.npcClass.attackStandoffDistance > 0.0) {
-                    // No target in sight is still an assault order: support must not walk all the
-                    // way to the point just because GunAttackBehaviour is temporarily inactive.
-                    val post = attackPost?.takeIf { attackPostHome == home }
-                        ?: SquadFormation.slotTarget(entity, home, home.subtract(entity.position()), false).let { slot ->
-                            (entity.level() as? ServerLevel)?.let { level ->
-                                com.sbwnpc.squad.util.Terrain.standableOrNull(level, slot.x, slot.y + 4.0, slot.z, 12)
-                            } ?: slot
-                        }.also {
-                            attackPost = it
-                            attackPostHome = home
-                        }
-                    moveToSlot(entity, post, RUN_SPEED_MODIFIER)
-                } else {
-                    val arrived = dist <= SquadFormation.ARRIVAL_RADIUS
-                    // Taking the point turns into holding it — squad-wide, in OrderArrival.
-                    approachSlot(entity, home, arrived, RUN_SPEED_MODIFIER)
-                }
+                val arrived = dist <= SquadFormation.ARRIVAL_RADIUS
+                // With no enemy contact every class reaches the ordered point. Combat range
+                // and rear support posts are decided only by GunAttackBehaviour.
+                approachSlot(entity, home, arrived, RUN_SPEED_MODIFIER)
             }
             // Own arrival threshold, SquadFormation.defendArrivalRadius — DEFEND holds a perimeter
             // sized to the squad, wider than ATTACK's ring; derived rather than hardcoded so it

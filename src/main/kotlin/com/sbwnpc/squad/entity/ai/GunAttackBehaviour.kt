@@ -603,7 +603,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         val targetPos = target.position()
         // Opened out under fire: the marching interval puts the whole squad in one burst.
         val slot = SquadFormation.slotTarget(
-            entity, targetPos, targetPos.subtract(entity.position()), false, SquadFormation.COMBAT_SPACING
+            entity, targetPos, targetPos.subtract(entity.position()), false, SquadFormation.COMBAT_SPACING,
+            combat = true
         )
         // Each bound ends after a few seconds and discards its path. A 100-block search to a
         // distant enemy is mostly unused; a short leg keeps the same heading and formation.

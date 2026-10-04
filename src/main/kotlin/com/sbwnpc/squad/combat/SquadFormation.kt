@@ -169,16 +169,15 @@ object SquadFormation {
      *  order's arrival shape — PERIMETER, SCATTER or RING; MOVE keeps its grid — see [shapeFor]. Falls back to [anchor] itself if [mob]
      *  isn't actually in a squad (shouldn't happen for real callers, but cheap to guard). */
     fun slotTarget(
-        mob: NpcEntity, anchor: Vec3, fallbackFacing: Vec3, arrived: Boolean, spacing: Double = SLOT_SPACING
+        mob: NpcEntity, anchor: Vec3, fallbackFacing: Vec3, arrived: Boolean, spacing: Double = SLOT_SPACING,
+        combat: Boolean = false
     ): Vec3 {
         val squad = mob.currentSquad() ?: return anchor
         val index = mob.slotIndex(squad)
         if (index < 0) return anchor
         val shape = shapeFor(squad.order, arrived)
-        val rearSupport = squad.order == SquadOrder.ATTACK && mob.npcClass.attackStandoffDistance > 0.0
-        val local = if (rearSupport)
-            attackOffset(mob.npcClass, index, squad.members.size, spacing)
-        else localOffset(shape, index, squad.members.size, spacing)
+        val rearSupport = combat && mob.npcClass.attackStandoffDistance > 0.0
+        val local = formationOffset(squad.order, arrived, mob.npcClass, index, squad.members.size, spacing, combat)
         if (local == Vec3.ZERO) return anchor
 
         // Not rotated: RING/PERIMETER/SCATTER already assign each
@@ -209,7 +208,15 @@ object SquadFormation {
         return anchor.add(fwd.scale(local.z)).add(right.scale(local.x))
     }
 
-    /** Support stays behind the attack point even after the assault arrives or its lead man dies. */
+    /** Rear positions are relative to a contacted enemy, never to an empty ordered objective. */
+    internal fun formationOffset(
+        order: SquadOrder, arrived: Boolean, cls: NpcClass, slotIndex: Int, squadSize: Int,
+        spacing: Double = SLOT_SPACING, combat: Boolean = false
+    ): Vec3 = if (combat && cls.attackStandoffDistance > 0.0)
+        attackOffset(cls, slotIndex, squadSize, spacing)
+    else localOffset(shapeFor(order, arrived), slotIndex, squadSize, spacing)
+
+    /** Support holds a rear position relative to the enemy even if casualties put it in slot zero. */
     internal fun attackOffset(
         cls: NpcClass, slotIndex: Int, squadSize: Int, spacing: Double = SLOT_SPACING
     ): Vec3 {
