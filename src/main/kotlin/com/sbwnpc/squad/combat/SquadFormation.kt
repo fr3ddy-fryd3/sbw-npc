@@ -175,7 +175,7 @@ object SquadFormation {
         val index = mob.slotIndex(squad)
         if (index < 0) return anchor
         val shape = shapeFor(squad.order, arrived)
-        val rearSupport = squad.order == SquadOrder.ATTACK && mob.npcClass.minimumCombatDistance > 0.0
+        val rearSupport = squad.order == SquadOrder.ATTACK && mob.npcClass.attackStandoffDistance > 0.0
         val local = if (rearSupport)
             attackOffset(mob.npcClass, index, squad.members.size, spacing)
         else localOffset(shape, index, squad.members.size, spacing)
@@ -213,13 +213,13 @@ object SquadFormation {
     internal fun attackOffset(
         cls: NpcClass, slotIndex: Int, squadSize: Int, spacing: Double = SLOT_SPACING
     ): Vec3 {
-        if (cls.minimumCombatDistance == 0.0) return localOffset(Shape.WEDGE, slotIndex, squadSize, spacing)
+        if (cls.attackStandoffDistance == 0.0) return localOffset(Shape.WEDGE, slotIndex, squadSize, spacing)
         // Twelve distinct rear posts cover the largest preset's twelve support members. Bound
         // the sideways spread so their posts stay within the 72-block engagement range.
         val post = slotIndex.mod(12)
         return Vec3(
             (post % 4 - 1.5) * spacing, 0.0,
-            -cls.minimumCombatDistance - (post / 4) * SLOT_SPACING
+            -cls.attackStandoffDistance - (post / 4) * SLOT_SPACING
         )
     }
 

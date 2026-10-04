@@ -127,6 +127,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     fun isAlert(): Boolean = BrainUtils.hasMemory(this, ModMemories.ALERT_POSITION.get())
 
     fun alert(pos: Vec3) {
+        if (com.sbwnpc.squad.combat.CombatPosition.holdsPosition(currentSquad()?.order)) {
+            hear(pos)
+            return
+        }
         val remaining = if (isAlert())
             BrainUtils.getTimeUntilMemoryExpires(this, ModMemories.ALERT_POSITION.get())
         else 0L
@@ -155,7 +159,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             diggedIn -> "dug in"
             busyWithRole() -> "busy with a role"
             resupplying -> "resupplying"
-            order == SquadOrder.DEFEND || order == SquadOrder.BARRAGE || order == SquadOrder.MOVE ||
+            order == SquadOrder.DEFEND || order == SquadOrder.PATROL || order == SquadOrder.BARRAGE || order == SquadOrder.MOVE ||
                 order == SquadOrder.RETREAT -> "order $order"
             else -> null
         }

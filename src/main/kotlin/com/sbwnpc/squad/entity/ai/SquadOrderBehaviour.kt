@@ -115,7 +115,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         when (order) {
             SquadOrder.ATTACK -> {
-                if (entity.npcClass.minimumCombatDistance > 0.0) {
+                if (entity.npcClass.attackStandoffDistance > 0.0) {
                     // No target in sight is still an assault order: support must not walk all the
                     // way to the point just because GunAttackBehaviour is temporarily inactive.
                     val post = attackPost?.takeIf { attackPostHome == home }

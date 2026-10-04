@@ -138,10 +138,10 @@ object FriendlyFireGuard {
      *  straight into a second ally standing on the "wrong" side. Only meaningful for the firing-
      *  cone risk — repositioning the shooter doesn't change where an explosive round lands at the
      *  target, so callers should not use this to try to "fix" a blocked blast-radius check. */
-    fun sidestepAwayFromAllies(shooter: NpcEntity, aimPoint: Vec3) {
+    fun sidestepAwayFromAllies(shooter: NpcEntity, aimPoint: Vec3, canMoveTo: (Vec3) -> Boolean = { true }): Vec3? {
         val dir = aimPoint.subtract(shooter.eyePosition)
         val flat = Vec3(dir.x, 0.0, dir.z)
-        if (flat.lengthSqr() < 1.0e-6) return
+        if (flat.lengthSqr() < 1.0e-6) return null
         val perp = Vec3(-flat.z, 0.0, flat.x).normalize()
 
         val from = shooter.position()
@@ -155,7 +155,7 @@ object FriendlyFireGuard {
             return n
         }
 
-        val chosen = if (crowding(optionA) <= crowding(optionB)) optionA else optionB
-        shooter.navigation.moveTo(chosen.x, chosen.y, chosen.z, 1.0)
+        val chosen = listOf(optionA, optionB).filter(canMoveTo).minByOrNull(::crowding) ?: return null
+        return chosen.takeIf { shooter.navigation.moveTo(it.x, it.y, it.z, 1.0) }
     }
 }

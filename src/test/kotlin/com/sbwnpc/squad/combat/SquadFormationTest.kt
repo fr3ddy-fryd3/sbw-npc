@@ -12,11 +12,11 @@ class SquadFormationTest {
     fun `support stays behind the riflemen even when casualties put it in the lead slot`() {
         val assaultRange = 24.0 * NpcClass.RIFLEMAN.shootDistanceMultiplier
         for (cls in support) {
-            assertTrue(cls.minimumCombatDistance > assaultRange)
+            assertTrue(cls.attackStandoffDistance > assaultRange)
             assertTrue(cls.shootDistanceMultiplier > NpcClass.RIFLEMAN.shootDistanceMultiplier)
             for (slot in 0 until 32) {
                 val post = SquadFormation.attackOffset(cls, slot, 32, SquadFormation.COMBAT_SPACING)
-                assertTrue(post.z <= -cls.minimumCombatDistance, "$cls slot $slot is too close: $post")
+                assertTrue(post.z <= -cls.attackStandoffDistance, "$cls slot $slot is too close: $post")
                 assertTrue(post.length() <= 24.0 * cls.shootDistanceMultiplier,
                     "$cls slot $slot cannot cover the objective from $post")
             }

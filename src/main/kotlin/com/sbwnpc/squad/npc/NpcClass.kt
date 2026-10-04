@@ -17,12 +17,12 @@ enum class NpcClass(
     val shootDistanceMultiplier: Double = 1.0,
     val accuracyMultiplier: Double = 1.0,
     val speedMultiplier: Double = 1.4, // "everyone else" default per user request — was the one global value before
-    /** Support roles stay behind the assault and back off when an enemy closes inside this range. */
-    val minimumCombatDistance: Double = 0.0,
+    /** Planned rear offset on an assault order; a close enemy is fought from the current post. */
+    val attackStandoffDistance: Double = 0.0,
 ) {
     RIFLEMAN(listOf(loc("ak_47"), loc("ak_12")), shootDistanceMultiplier = 2.0),
-    MACHINE_GUNNER(listOf(loc("rpk"), loc("m_60")), shootDistanceMultiplier = 3.0, speedMultiplier = 1.3, minimumCombatDistance = 56.0),
-    SNIPER(listOf(loc("svd"), loc("awm")), shootDistanceMultiplier = 3.0, accuracyMultiplier = 1.0 / 1.4, speedMultiplier = 1.3, minimumCombatDistance = 64.0), // a bit tighter spread per user request (was /1.2)
+    MACHINE_GUNNER(listOf(loc("rpk"), loc("m_60")), shootDistanceMultiplier = 3.0, speedMultiplier = 1.3, attackStandoffDistance = 56.0),
+    SNIPER(listOf(loc("svd"), loc("awm")), shootDistanceMultiplier = 3.0, accuracyMultiplier = 1.0 / 1.4, speedMultiplier = 1.3, attackStandoffDistance = 64.0), // a bit tighter spread per user request (was /1.2)
 
     /** Only ever spawned individually (`SquadPreset.SINGLE`) — removed from every squad-composition
      *  preset in favour of [MEDIC], per user decision. Still a fully valid class otherwise (weapon,
@@ -34,11 +34,11 @@ enum class NpcClass(
      *  `GRENADIER`'s slot(s) in the squad-composition presets ("8: Standard", "16: Large").
      *
      *  Paced and positioned like a SNIPER: the long engagement range stops normal advancing,
-     *  and minimumCombatDistance keeps its firing positions and idle assault posts in the rear.
+     *  and attackStandoffDistance places its idle assault post in the rear.
      *  MedicHealBehaviour itself temporarily overrides the 1.3 pace to
      *  [com.sbwnpc.squad.entity.ai.MedicHealBehaviour] sprint speed while actually running to treat
      *  someone — see that class. */
-    MEDIC(listOf(loc("mp_5"), loc("vector")), shootDistanceMultiplier = 3.0, speedMultiplier = 1.3, minimumCombatDistance = 64.0),
+    MEDIC(listOf(loc("mp_5"), loc("vector")), shootDistanceMultiplier = 3.0, speedMultiplier = 1.3, attackStandoffDistance = 64.0),
 
     /** The medic's SMGs for self-defence; its real job (MortarOperatorBehaviour) is manning a nearby
      *  placed MortarEntity, which the MORTAR_LOADER on the same squad keeps supplied. */
@@ -61,6 +61,9 @@ enum class NpcClass(
     // Same rifles as RIFLEMAN (per user request): once the drones are spent it fights on as an
     // ordinary rifleman rather than plinking with a sidearm.
     DRONE_OPERATOR(listOf(loc("ak_47"), loc("ak_12")), shootDistanceMultiplier = 2.0, speedMultiplier = 1.3);
+
+    /** Ordinary assault stops at this range; holding orders can shoot out to twice it. */
+    val assaultDistance: Double get() = 24.0 * shootDistanceMultiplier
 
     fun next(): NpcClass = entries[(ordinal + 1) % entries.size]
 

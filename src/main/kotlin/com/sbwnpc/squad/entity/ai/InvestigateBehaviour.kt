@@ -65,7 +65,8 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
     // Not while falling back either: investigating gunfire means walking toward it.
     private fun eligible(entity: NpcEntity) =
         entity.target == null && !entity.combatLockedByCover() && !entity.diggedIn && !entity.busyWithRole() &&
-            entity.retreatPoint() == null && !entity.resupplying
+            entity.retreatPoint() == null && !entity.resupplying &&
+            !com.sbwnpc.squad.combat.CombatPosition.holdsPosition(entity.currentSquad()?.order)
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = eligible(entity)
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = eligible(entity) && entity.isAlert()
@@ -184,7 +185,7 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /** Hearing a fight must not draw rear support into it while no target is visible. */
     private fun holdSupportDistance(entity: NpcEntity, pos: Vec3): Boolean {
-        val distance = entity.npcClass.minimumCombatDistance
+        val distance = entity.npcClass.attackStandoffDistance
         if (distance <= 0.0) return false
         val dx = entity.x - pos.x
         val dz = entity.z - pos.z
