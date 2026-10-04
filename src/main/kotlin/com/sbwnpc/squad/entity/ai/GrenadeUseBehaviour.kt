@@ -58,9 +58,9 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
         val level = entity.level() as? ServerLevel ?: return
         val point = aimPoint ?: return
         val grenade = kind ?: return
-        GrenadeThrower.throwAt(entity, level, point, grenade)
         aimPoint = null
         kind = null
+        if (!GrenadeThrower.throwAt(entity, level, point, grenade)) return
         nextThrowTick = entity.tickCount + SELF_COOLDOWN_TICKS
         entity.currentSquad()?.let { lastSquadThrow[it.id] = level.gameTime }
     }
