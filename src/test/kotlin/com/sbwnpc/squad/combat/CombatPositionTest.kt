@@ -25,6 +25,18 @@ class CombatPositionTest {
     }
 
     @Test
+    fun `an assault bound plans a local leg while retaining the formation heading`() {
+        val from = Vec3(0.0, 64.0, 0.0)
+        val slot = Vec3(120.0, 90.0, 160.0)
+        val step = CombatPosition.assaultStep(from, slot)
+        assertEquals(14.4, step.x, 1.0e-9)
+        assertEquals(64.0, step.y, 1.0e-9)
+        assertEquals(19.2, step.z, 1.0e-9)
+        val nearby = Vec3(6.0, 66.0, 8.0)
+        assertEquals(nearby, CombatPosition.assaultStep(from, nearby))
+    }
+
+    @Test
     fun `small firing shifts cannot accumulate into a chase far from the original post`() {
         val patrolPost = Vec3(1000.0, 64.0, 500.0)
         assertTrue(CombatPosition.withinArea(patrolPost, patrolPost.add(24.0, 1.0, 0.0), CombatPosition.MAX_ADVANCE_DISTANCE))

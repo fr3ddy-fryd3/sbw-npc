@@ -26,6 +26,14 @@ object CombatPosition {
         return post.add(toward.scale(minOf(remaining, MAX_ADVANCE_DISTANCE) / distance))
     }
 
+    /** Combat bounds walk only a short leg before stopping to fire, so do not plan a long route. */
+    fun assaultStep(from: Vec3, slot: Vec3): Vec3 {
+        val delta = Vec3(slot.x - from.x, 0.0, slot.z - from.z)
+        val distance = delta.length()
+        if (distance <= MAX_ADVANCE_DISTANCE) return slot
+        return from.add(delta.scale(MAX_ADVANCE_DISTANCE / distance))
+    }
+
     fun defendRadius(cls: NpcClass, squadSize: Int): Double =
         maxOf(SquadFormation.perimeterRadius(squadSize), cls.attackStandoffDistance) + LOCAL_MOVE_RADIUS
 

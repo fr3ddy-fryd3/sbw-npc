@@ -65,6 +65,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var firingOrigin: Vec3? = null
     private var combatOrderStamp = -1
     private var advancingFromPost = false
+    private var holdingAdvanceGoal: Vec3? = null
+    private var holdingAdvanceComplete = false
 
     private var lineIsClear = true
     /** Why [lineIsClear] is false, when it is: a vehicle hull rather than a squadmate. The two ask
@@ -241,6 +243,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         firingOrigin = null
         combatOrderStamp = -1
         advancingFromPost = false
+        holdingAdvanceGoal = null
+        holdingAdvanceComplete = false
         shootTimer.stop()
         lineIsClear = true
         hullBlocked = false
@@ -567,14 +571,26 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun tryHoldingAdvance(entity: NpcEntity, target: LivingEntity): Boolean {
-        if (entity.diggedIn) return false
+        if (entity.diggedIn || holdingAdvanceComplete) return false
         val order = entity.currentSquad()?.order
         if (!CombatPosition.mayAdvance(order, entity.npcClass, entity.position(), target.position())) return false
-        val goal = CombatPosition.advancePoint(entity.npcClass, firingOrigin ?: entity.position(), target.position())
-            ?: return false
-        val level = entity.level() as? ServerLevel ?: return false
-        val spot = Terrain.standableOrNull(level, goal.x, entity.y + 4.0, goal.z, 12) ?: return false
-        if (!canRelocate(entity, spot) || atSpot(entity, spot)) return false
+        // Pick one endpoint for this approach. Following every movement of a distant target
+        // around the 24-block boundary made the post wander and continually replaced its path.
+        val spot = holdingAdvanceGoal ?: run {
+            val goal = CombatPosition.advancePoint(entity.npcClass, firingOrigin ?: entity.position(), target.position())
+                ?: return false
+            val level = entity.level() as? ServerLevel ?: return false
+            Terrain.standableOrNull(level, goal.x, entity.y + 4.0, goal.z, 12) ?: return false
+        }
+        if (!canRelocate(entity, spot)) return false
+        if (atSpot(entity, spot) || entity.navigation.isDone &&
+            horizontalDistance(entity.position(), spot) <= SETTLE_DISTANCE) {
+            holdingAdvanceComplete = true
+            return false
+        }
+        // If the enemy passed behind us, continuing to the old endpoint is no longer an approach.
+        if (spot.distanceToSqr(target.position()) >= entity.distanceToSqr(target)) return false
+        holdingAdvanceGoal = spot
         firingPos = spot
         FiringSpots.claim(entity.uuid, spot)
         nextPositionCheckTick = entity.tickCount + HOLD_MIN_TICKS
@@ -589,7 +605,12 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         val slot = SquadFormation.slotTarget(
             entity, targetPos, targetPos.subtract(entity.position()), false, SquadFormation.COMBAT_SPACING
         )
-        entity.navigation.moveTo(slot.x, slot.y, slot.z, 1.0)
+        // Each bound ends after a few seconds and discards its path. A 100-block search to a
+        // distant enemy is mostly unused; a short leg keeps the same heading and formation.
+        val step = CombatPosition.assaultStep(entity.position(), slot)
+        val level = entity.level() as? ServerLevel ?: return
+        val ground = Terrain.standableOrNull(level, step.x, step.y + 4.0, step.z, 12) ?: return
+        entity.navigateTo(ground, 1.0)
     }
 
     override fun tick(entity: NpcEntity) {
@@ -603,6 +624,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             openingFire.reset()
             boundPhaseStarted = false
             advancingFromPost = false
+            holdingAdvanceGoal = null
+            holdingAdvanceComplete = false
         }
         val holding = CombatPosition.holdsPosition(squad?.order)
         // Decided before the gun data is read, so the rest of this tick aims and fires whatever
