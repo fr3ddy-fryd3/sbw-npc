@@ -13,6 +13,23 @@ import java.util.UUID
 
 /** One assessment per squad; existing individual behaviours retain weapons and emergency actions. */
 object SquadTactics {
+    /** Called only after the existing sensor or gun behaviour has actually seen this enemy. */
+    fun observe(npc: NpcEntity, target: LivingEntity) {
+        if (npc.vehicle != null || npc.npcClass !in GROUND_ROLES || !target.isAlive || !npc.isEnemy(target)) return
+        val squad = npc.currentSquad() ?: return
+        val state = squad.tactics
+        val now = npc.level().gameTime
+        val old = state.contacts[target.uuid]
+        val velocity = if (old != null && now > old.seenAt) target.position().subtract(old.position).scale(1.0 / (now - old.seenAt)) else target.deltaMovement
+        val dangerous = target is NpcEntity && target.npcClass in SUPPORT_ROLES
+        state.contacts[target.uuid] = TacticalContact(target.uuid, target.position(), now, velocity,
+            target.vehicle?.let { Ports.vehicles.isOperational(it) &&
+                (Ports.vehicles.modelOf(it) is com.sbwnpc.squad.npc.TankModel ||
+                 Ports.vehicles.modelOf(it) is com.sbwnpc.squad.npc.TransportVehicle) } == true,
+            1.0 + (if (dangerous) 1.0 else 0.0) + (if (target.uuid == squad.focusEntity) 5.0 else 0.0),
+            target.vehicle?.let { Ports.vehicles.mobility(it) == com.sbwnpc.squad.domain.port.Mobility.AIR } == true)
+    }
+
     fun refresh(entity: NpcEntity) {
         val squad = entity.currentSquad() ?: return
         val level = entity.level() as? ServerLevel ?: return
@@ -31,15 +48,7 @@ object SquadTactics {
             if (!target.isAlive || !npc.isEnemy(target) || npc.distanceToSqr(target) > NpcEntity.DETECTION_RANGE * NpcEntity.DETECTION_RANGE) continue
             if (target.uuid in seen || !DetectionSightline.canSee(npc, target)) continue
             seen += target.uuid
-            val old = state.contacts[target.uuid]
-            val velocity = if (old != null && now > old.seenAt) target.position().subtract(old.position).scale(1.0 / (now - old.seenAt)) else target.deltaMovement
-            val dangerous = target is NpcEntity && target.npcClass in SUPPORT_ROLES
-            state.contacts[target.uuid] = TacticalContact(target.uuid, target.position(), now, velocity,
-                target.vehicle?.let { Ports.vehicles.isOperational(it) &&
-                    (Ports.vehicles.modelOf(it) is com.sbwnpc.squad.npc.TankModel ||
-                     Ports.vehicles.modelOf(it) is com.sbwnpc.squad.npc.TransportVehicle) } == true,
-                1.0 + (if (dangerous) 1.0 else 0.0) + (if (target.uuid == squad.focusEntity) 5.0 else 0.0),
-                target.vehicle?.let { Ports.vehicles.mobility(it) == com.sbwnpc.squad.domain.port.Mobility.AIR } == true)
+            observe(npc,target)
         }
         state.contacts.entries.removeIf { now - it.value.seenAt > 200 }
         val members = npcs.map { npc ->
@@ -47,13 +56,13 @@ object SquadTactics {
             val gun = Ports.guns.inHand(npc)
             val ready = (gun?.hasAmmo() == true || AntiArmourKit.loaded(npc)) && !npc.busyWithRole() && !npc.resupplying && !npc.combatLockedByMedic() && !npc.evadingGrenade()
             TacticalMember(npc.uuid, npc.position(), npc.npcClass, (npc.health / npc.maxHealth).toDouble(), ready,
-                ready && !npc.combatLockedByCover() && (npc.readyToCover || npc.firedRecently(10)) && target != null &&
+                ready && !npc.combatLockedByCover() && (npc.readyToCover || npc.firedRecently(40)) && target != null &&
                     target.uuid in seen && DetectionSightline.canSee(npc, target) && npc.sensing.hasLineOfSight(target),
                 npc.isSuppressed(), AntiArmourKit.loaded(npc),
                 if (npc.readyToCover && target?.uuid in seen) target?.position() else npc.lastFireAt)
         }
         state.peakStrength = maxOf(state.peakStrength, members.size)
-        val knownFocus = state.contacts.values.filter { now - it.seenAt <= 20 }.maxByOrNull { it.priority }?.position
+        val knownFocus = state.contacts.values.filter { now - it.seenAt < 40 }.maxByOrNull { it.priority }?.position
         val terrain = TacticalTerrain.assess(level, npcs, knownFocus ?: entity.homeCenter(), knownFocus)
         val view = TacticalSnapshot(now, squad.order, squad.orderStamp, center, entity.homeCenter(), members,
             state.contacts.values.filter { it.position.distanceTo(center) <= 96.0 }, npcs.mapNotNull { it.incomingFire.point(now) },
@@ -135,6 +144,7 @@ object SquadTactics {
         if (distance <= 2.0) {
             if (task.job in RUNNING_JOBS + TacticalJob.SEARCH && entity.position().distanceTo(task.anchor) > 10.0) {
                 task.position = null
+                task.search = null
                 task.nextSearch = entity.level().gameTime + 5
             } else entity.navigation.stop()
             if (task.job in setOf(TacticalJob.OBSERVE,TacticalJob.SEARCH,TacticalJob.RESERVE)) {
@@ -147,6 +157,7 @@ object SquadTactics {
         if (entity.level().gameTime - task.lastProgress >= 100) {
             if ((entity.navigation as? com.sbwnpc.squad.entity.ai.VehicleAwareNavigation)?.canPlan == false) return true
             task.position = null
+            task.search = null
             task.nextSearch = entity.level().gameTime + 20
             return !failedTask(entity,task)
         }
@@ -158,8 +169,8 @@ object SquadTactics {
             }
             if (!TacticalBudget.path(entity.level().gameTime)) { task.nextSearch = entity.level().gameTime + 2; return true }
             val path = entity.navigation.createPath(position.x, position.y, position.z, 0)
-            if (path?.canReach() == true) entity.navigation.moveTo(path, if (task.job in RUNNING_JOBS) 1.3 else 1.0)
-            else { task.position = null; return !failedTask(entity,task) }
+            if (TacticalPositions.reaches(path,position)) entity.navigation.moveTo(path,TacticalPositions.speed(task))
+            else { task.position = null; task.search = null; return !failedTask(entity,task) }
         }
         return true
     }
@@ -182,6 +193,7 @@ object SquadTactics {
         val position=task.position ?: return
         if (task.job !in setOf(TacticalJob.COVER,TacticalJob.ANTI_ARMOUR) || entity.position().distanceTo(position)>2.0) return
         task.position=null
+        task.search=null
         task.nextSearch=entity.level().gameTime+10
         FiringSpots.release(entity.uuid)
     }

@@ -3,6 +3,7 @@ package com.sbwnpc.squad.entity.ai
 import com.sbwnpc.squad.combat.FireAllocation
 import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.TeamAwareness
+import com.sbwnpc.squad.combat.tactics.SquadTactics
 import com.sbwnpc.squad.combat.Vision
 import com.sbwnpc.squad.combat.TankWeaponSelection
 import com.sbwnpc.squad.combat.VehicleTargeting
@@ -56,7 +57,10 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     override fun doTick(level: ServerLevel, entity: NpcEntity) {
         val target = computeDesired(entity, level)
         BrainUtils.setTargetOfEntity(entity, target)
-        if (target != null && DetectionSightline.canSeeWithin(entity,target,NpcEntity.DETECTION_RANGE)) entity.rememberVisible(target)
+        if (target != null && DetectionSightline.canSeeWithin(entity,target,NpcEntity.DETECTION_RANGE)) {
+            entity.rememberVisible(target)
+            SquadTactics.observe(entity,target)
+        }
         if (target != null) TankWeaponSelection.update(entity, target)
     }
 
@@ -179,6 +183,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             if (!allRound && !Vision.inCone(mob.position(), mob.yHeadRot, candidate.position())) continue
             val sees = DetectionSightline.canSee(mob, candidate)
             if (sees) {
+                SquadTactics.observe(mob,candidate)
                 visible += candidate
                 if (visible.size >= MAX_SPREAD_CANDIDATES || mob.currentSquad() == null) break
             }

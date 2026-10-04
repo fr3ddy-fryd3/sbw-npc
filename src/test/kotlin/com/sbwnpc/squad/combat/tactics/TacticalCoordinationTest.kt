@@ -14,6 +14,35 @@ class TacticalCoordinationTest {
         Vec3(12.5,64.0,0.0), Vec3(12.5,64.0,0.0), members,
         listOf(TacticalContact(UUID(2,1),Vec3(50.0,64.0,0.0),now), TacticalContact(UUID(2,2),Vec3(53.0,64.0,1.0),now)))
 
+    @Test fun `brief contact loss and stalled sight cannot cancel an executing flank`() {
+        val state=SquadTacticalState()
+        state.select(TacticalChoice(TacticalPattern.FLANK,Vec3(50.0,64.0,0.0)),1,0)
+        val plan=state.plan!!
+        plan.status=TacticalStatus.EXECUTING
+        assertFalse(state.select(TacticalChoice(TacticalPattern.SEARCH,plan.focus),1,120))
+        assertFalse(state.select(TacticalChoice(TacticalPattern.RETURN_FIRE,Vec3(100.0,64.0,0.0)),1,130))
+        assertFalse(state.select(TacticalChoice(TacticalPattern.DISLODGE,plan.focus),1,140))
+        assertSame(plan,state.plan)
+        assertTrue(state.select(TacticalChoice(TacticalPattern.REPEL,plan.focus,true),1,150))
+    }
+
+    @Test fun `a late ready shooter can release the waiting flank group`() {
+        val state=SquadTacticalState()
+        val initial=view().copy(members=members.map { it.copy(canFire=false) })
+        state.select(TacticalRules.choose(initial),1,0)
+        val plan=state.plan!!
+        TacticalManeuvers.assign(squad,plan,initial)
+        val shooter=plan.tasks.entries.last { it.value.job == TacticalJob.WAIT }.key
+        val ready=initial.copy(now=20,members=initial.members.map { it.copy(canFire=it.id==shooter) })
+        TacticalManeuvers.advance(squad,state,plan,ready)
+        assertEquals(TacticalStatus.EXECUTING,plan.status)
+        assertEquals(TacticalJob.COVER,plan.tasks[shooter]!!.job)
+        assertEquals(4,plan.tasks.values.count { it.job == TacticalJob.FLANK })
+        val support=plan.tasks.filterValues { it.job == TacticalJob.COVER }.keys.toSet()
+        TacticalManeuvers.assign(squad,plan,ready.copy(members=members.reversed()))
+        assertEquals(support,plan.tasks.filterValues { it.job == TacticalJob.COVER }.keys)
+    }
+
     @Test fun `an unready covering group cannot release the flankers`() {
         val state = SquadTacticalState()
         val view = view()

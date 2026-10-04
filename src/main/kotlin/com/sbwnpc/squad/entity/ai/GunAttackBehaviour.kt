@@ -542,6 +542,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         val canShootTarget = canSeeTarget && entity.sensing.hasLineOfSight(target)
         if (canSeeTarget) {
             entity.rememberVisible(target)
+            com.sbwnpc.squad.combat.tactics.SquadTactics.observe(entity,target)
             // Feeds TeamAwareness for the whole faction — this is the ONLY place that reports a
             // sighting (SquadTargetSensor's own nearestDirectTarget only CONSUMES relayed contacts,
             // it doesn't report). Without this, faction-wide awareness would never receive anything

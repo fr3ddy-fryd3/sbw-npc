@@ -29,7 +29,7 @@ data class TacticalSnapshot(
     val narrow: Boolean = false, val open: Boolean = false, val stalled: Boolean = false,
     val peakStrength: Int = members.size
 ) {
-    val visible get() = contacts.filter { now - it.seenAt <= 20 }
+    val visible get() = contacts.filter { now - it.seenAt < 40 }
     val fighting get() = members.filter { it.ready && it.health >= 0.3 }
     val offensive get() = order == SquadOrder.ATTACK
 }
@@ -108,6 +108,15 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, val focus: Vec3?, val
     var failures = 0
     var lastProgress = 0L
     var closest = Double.MAX_VALUE
+    var search: TacticalPositionSearch? = null
+}
+
+/** Keeps progress across tick budgets, including candidates after an unreachable first choice. */
+class TacticalPositionSearch(val origin: Vec3, val probes: List<Vec3>) {
+    var probeIndex = 0
+    val scored = LinkedHashMap<Vec3, Double>()
+    var destinations: List<Vec3>? = null
+    var destinationIndex = 0
 }
 class TacticalPlan(
     val id: Int, val pattern: TacticalPattern, val focus: Vec3?, val started: Long, val stamp: Int,
@@ -123,6 +132,7 @@ class TacticalPlan(
     val passed = HashSet<UUID>()
     val failedMembers = HashSet<UUID>()
     val heightSupport = HashSet<UUID>()
+    val flankSupport = HashSet<UUID>()
     var heightFront: Vec3? = null
 }
 
@@ -145,6 +155,10 @@ class SquadTacticalState {
         val changedOrder = old != null && old.stamp != stamp
         val expired = old == null || old.status == TacticalStatus.FAILED || old.status == TacticalStatus.COMPLETED || (old.pattern == TacticalPattern.EVADE && choice.pattern != TacticalPattern.EVADE) || now - old.started >= if (old.pattern in setOf(TacticalPattern.ENCIRCLE,TacticalPattern.ATTACK_HEIGHT)) 480 else 240
         val changedFocus = old?.focus != null && choice.focus != null && old.focus.distanceTo(choice.focus) > 20.0
+        // Losing sight for a moment must not replace a flank already walking round the ridge
+        // with a two-man search, or make every mover return to its previous position.
+        if (!changedOrder && !expired && !choice.emergency && old?.pattern in ACTIVE_MANEUVERS &&
+            (choice.pattern in PASSIVE_CHOICES || (!changedFocus && choice.pattern in ACTIVE_MANEUVERS))) return false
         val ready = old == null || old.pattern in setOf(TacticalPattern.FOLLOW_ORDER,TacticalPattern.CONSOLIDATE,
             TacticalPattern.SEARCH,TacticalPattern.RETURN_FIRE) || now - old.started >= 80
         if (!changedOrder && !expired && !choice.emergency && (!ready || (old?.pattern == choice.pattern && !changedFocus))) return false
@@ -156,6 +170,11 @@ class SquadTacticalState {
         }
         return true
     }
+
+    private val ACTIVE_MANEUVERS = setOf(TacticalPattern.FLANK,TacticalPattern.ENCIRCLE,TacticalPattern.DISLODGE,
+        TacticalPattern.ATTACK_HEIGHT,TacticalPattern.BOUND,TacticalPattern.PURSUE,TacticalPattern.FOCUS_SECTOR)
+    private val PASSIVE_CHOICES = setOf(TacticalPattern.FOLLOW_ORDER,TacticalPattern.SEARCH,TacticalPattern.RETURN_FIRE,
+        TacticalPattern.REORIENT,TacticalPattern.CONSOLIDATE)
 
     fun fail(now: Long) {
         plan?.let {
