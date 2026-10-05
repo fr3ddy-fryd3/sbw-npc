@@ -1,5 +1,7 @@
 package com.sbwnpc.squad.combat.tactics
 
+import com.sbwnpc.squad.combat.CombatPositionSafety
+import com.sbwnpc.squad.npc.NpcClass
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
@@ -41,7 +43,9 @@ object TacticalFlanks {
         }
         val lane = slot / (if (both) 2 else 1)
         val sideways = (if (direction < 0) left else right) + direction * (lane % 3) * 4.0
-        val depth = maxOf(10.0, focus.subtract(origin).horizontalDistance() - 20.0 - (lane / 3) * 4.0)
+        val member = view.members.firstOrNull { it.id == state.order.getOrNull(slot) }
+        val clearance = CombatPositionSafety.clearance(member?.role ?: NpcClass.RIFLEMAN) + CombatPositionSafety.FLANK_MARGIN
+        val depth = focus.subtract(origin).horizontalDistance() - clearance - (lane / 3) * 4.0
         return origin.add(forward.scale(depth)).add(side.scale(sideways))
     }
 
@@ -54,7 +58,8 @@ object TacticalFlanks {
         val wing = if (slot % 2 == 0) 1.0 else -1.0
         val progress = (slot / 2 + 1).toDouble() / ((state.order.size + 1) / 2 + 1)
         val angle = Math.PI + wing * progress * Math.PI * 0.85
-        val radius = maxOf(48.0, view.fighting.filter { it.role !in TacticalLayout.SUPPORT_ROLES }.minOfOrNull { it.role.assaultDistance } ?: 48.0)
+        val member = view.members.firstOrNull { it.id == state.order.getOrNull(slot) }
+        val radius = CombatPositionSafety.clearance(member?.role ?: NpcClass.RIFLEMAN) + CombatPositionSafety.FLANK_MARGIN
         return focus.add(forward.scale(kotlin.math.cos(angle) * radius)).add(side.scale(kotlin.math.sin(angle) * radius))
     }
 

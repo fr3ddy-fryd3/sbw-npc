@@ -55,7 +55,30 @@ object TacticalMovement {
             entity.navigation.stop()
             return true
         }
-        if (task.position == null && entity.level().gameTime >= task.nextSearch) {
+        val activePath = entity.navigation.path
+        val destination = task.position
+        val unsafeDestination = destination != null && !TacticalPositions.safeDistance(entity, view, destination)
+        val unsafeRoute = activePath != null && !activePath.isDone && !TacticalPositions.safePath(entity, view, activePath)
+        if (unsafeDestination || unsafeRoute) {
+            entity.navigation.stop()
+            task.navigationPath = null
+            task.position = null
+            task.search = null
+            task.nextSearch = entity.level().gameTime + 10
+            FiringSpots.release(entity.uuid)
+            DebugFlags.log(
+                LogGroup.ORDER,
+                "[tactics] {} squad={} tick={} plan={} event=position_invalidated job={} reason=enemy_clearance",
+                entity.uuid,
+                squad.id,
+                entity.level().gameTime,
+                task.plan,
+                task.job,
+            )
+            return true
+        }
+        val reviewDue = task.job in TacticalJob.FIRE_SUPPORT && entity.level().gameTime >= task.nextValidation
+        if ((task.position == null || task.search != null || reviewDue) && entity.level().gameTime >= task.nextSearch) {
             val result = TacticalPositions.find(entity, task, view)
             when (result.outcome) {
                 TacticalPositions.Outcome.DEFERRED -> {
@@ -77,7 +100,7 @@ object TacticalMovement {
                     task.closest = Double.MAX_VALUE
                     task.lastProgress = entity.level().gameTime
                     task.nextSearch = entity.level().gameTime + 20
-                    task.nextValidation = entity.level().gameTime + 40
+                    task.nextValidation = entity.level().gameTime + if (task.job in TacticalJob.FIRE_SUPPORT) 100 else 40
                     if (task.job == TacticalJob.OVERWATCH) {
                         DebugFlags.log(
                             LogGroup.ORDER,
@@ -143,7 +166,7 @@ object TacticalMovement {
                 return true
             }
             val path = TacticalPositions.pathToPosition(entity, position)
-            if (TacticalPositions.reaches(path, position)) {
+            if (TacticalPositions.reaches(path, position) && TacticalPositions.safePath(entity, view, path!!)) {
                 if (entity.navigation.moveTo(path, TacticalPositions.speed(task))) task.navigationPath = path
             } else {
                 task.position = null

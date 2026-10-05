@@ -56,7 +56,7 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
 /** Keeps progress across tick budgets, including candidates after an unreachable first choice. */
 class TacticalPositionSearch(val origin: Vec3, val probes: List<Vec3>) {
     var probeIndex = 0
-    val scored = LinkedHashMap<Vec3, Double>()
+    val scored = LinkedHashMap<Vec3, TacticalPositionScore>()
     val visited = HashSet<Vec3>()
     var destinations: List<Vec3>? = null
     var destinationIndex = 0

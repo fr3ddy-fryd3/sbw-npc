@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.combat.tactics
 
+import com.sbwnpc.squad.combat.CombatPositionSafety
 import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.world.phys.Vec3
 import org.junit.jupiter.api.Assertions.*
@@ -124,8 +125,8 @@ class TacticalAttackRegressionTest {
             assertFalse(EncirclePositions.candidate(view(), TacticalTask(TacticalJob.FLANK, it.anchor, focus, 1), focus.add(8.0, 0.0, 0.0), it.anchor))
         }
         val from = focus.add(-80.0, 0.0, 0.0)
-        assertFalse(TacticalRoutes.safeFlankDistance(from, focus.add(-10.0, 0.0, 0.0), focus))
-        assertTrue(TacticalRoutes.safeFlankDistance(focus.add(-8.0, 0.0, 0.0), focus.add(-12.0, 0.0, 0.0), focus))
+        assertFalse(CombatPositionSafety.permits(from, focus.add(-10.0, 0.0, 0.0), focus, 48.0))
+        assertTrue(CombatPositionSafety.permits(focus.add(-8.0, 0.0, 0.0), focus.add(-12.0, 0.0, 0.0), focus, 48.0))
     }
 
     @Test fun `reinforcements join lasting defence and a recovered fighter leaves reserve without resetting other posts`() {

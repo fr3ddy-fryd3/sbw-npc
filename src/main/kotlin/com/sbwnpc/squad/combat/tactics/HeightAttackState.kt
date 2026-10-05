@@ -1,5 +1,7 @@
 package com.sbwnpc.squad.combat.tactics
 
+import com.sbwnpc.squad.combat.CombatPositionSafety
+import com.sbwnpc.squad.npc.NpcClass
 import net.minecraft.world.phys.Vec3
 import java.util.Collections
 import java.util.UUID
@@ -79,7 +81,7 @@ class HeightAttackState : CoveredManeuverState() {
         bounds++
         val point = front!!
         val done = bounds % 2 == 0 && context.plan.focus?.let {
-            point.y >= it.y - 2.0 && it.subtract(point).horizontalDistance() <= 24.0
+            point.y >= it.y - 2.0 && it.subtract(point).horizontalDistance() <= CombatPositionSafety.clearance(NpcClass.RIFLEMAN) + CombatPositionSafety.APPROACH_MARGIN
         } == true
         phases.transition(if (done) CompletedPhase() else PreparingPhase(), context, if (done) "height_reached" else "height_group_arrived")
     }

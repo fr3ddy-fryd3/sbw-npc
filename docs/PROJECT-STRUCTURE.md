@@ -1,6 +1,6 @@
 # Карта проекта
 
-Этот документ помогает найти код конкретной механики и понять, какие соседние файлы затронет изменение. Подробности тактического модуля находятся в [TACTICS-ARCHITECTURE.md](TACTICS-ARCHITECTURE.md), правила чтения и дополнения кода — в [CODE-STYLE.md](CODE-STYLE.md).
+Справочник каталогов, модулей и точек входа. Архитектура тактики — [TACTICS-ARCHITECTURE.md](TACTICS-ARCHITECTURE.md), оформление кода — [CODE-STYLE.md](CODE-STYLE.md).
 
 ## Откуда начать
 
@@ -19,8 +19,6 @@
 | `build/` | Результаты сборки, отчёты тестов и сгенерированные файлы |
 | [PLAN-1.0.0.md](../PLAN-1.0.0.md) | План версии; описание намерений, а не подтверждение реализации |
 | [CLAUDE.md](../CLAUDE.md) | Правила работы с репозиторием и технические особенности |
-
-В IDE начни с поиска имени файла или символа: `GunAttackBehaviour`, `SquadOrder`, `SupplyPoints`. Через Find Usages можно перейти к вызывающему коду и связанным тестам.
 
 ## Основные модули
 
@@ -62,6 +60,8 @@
 | Реакция на попадания и неизвестного стрелка | [IncomingFire.kt](../src/main/kotlin/com/sbwnpc/squad/combat/IncomingFire.kt), [BlindReturnFireBehaviour.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/BlindReturnFireBehaviour.kt), [SuppressionEvents.kt](../src/main/kotlin/com/sbwnpc/squad/combat/SuppressionEvents.kt) |
 | Безопасность стрельбы рядом с союзниками | [FriendlyFireGuard.kt](../src/main/kotlin/com/sbwnpc/squad/combat/FriendlyFireGuard.kt), [FireAllocation.kt](../src/main/kotlin/com/sbwnpc/squad/combat/FireAllocation.kt) |
 | Разведение стрелков по позициям | [FiringSpots.kt](../src/main/kotlin/com/sbwnpc/squad/combat/FiringSpots.kt), `TacticalPositions.kt`, `CoverSearch.kt` |
+| Дистанция боевой позиции от известных врагов, безопасность маршрута | [CombatPositionSafety.kt](../src/main/kotlin/com/sbwnpc/squad/combat/CombatPositionSafety.kt), [TacticalClearance.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalClearance.kt) |
+| Приоритет укрытия перед открытой позицией | [TacticalPositionScore.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalPositionScore.kt), `TacticalPositions.kt`; индивидуальный поиск — `GunAttackBehaviour.bestFiringSpot` |
 | Лечение | [MedicHealBehaviour.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/MedicHealBehaviour.kt), [SelfTreatBehaviour.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/SelfTreatBehaviour.kt) |
 | Гранаты и уклонение | [GrenadeUseBehaviour.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/GrenadeUseBehaviour.kt), [GrenadeThrowBehaviour.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/GrenadeThrowBehaviour.kt), [GrenadeEvadeBehaviour.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/GrenadeEvadeBehaviour.kt) |
 | Тактические манёвры | [TacticalRules.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalRules.kt) выбирает манёвр; соответствующий класс State выполняет его; [подробная карта](TACTICS-ARCHITECTURE.md) |
@@ -107,57 +107,16 @@
 | Быстрые команды и клавиши | [HudClientEvents.kt](../src/main/kotlin/com/sbwnpc/squad/client/HudClientEvents.kt), [HudOverlayState.kt](../src/main/kotlin/com/sbwnpc/squad/client/HudOverlayState.kt), [HudKeys.kt](../src/main/kotlin/com/sbwnpc/squad/client/HudKeys.kt) |
 | Текстуры и переводы | [assets/sbwnpc/](../src/main/resources/assets/sbwnpc/), [lang/en_us.json](../src/main/resources/assets/sbwnpc/lang/en_us.json); [описание скинов](skins/README.md) |
 
-## Как связаны части проекта
+## Тесты, сборка и диагностика
 
-Типовой приказ проходит следующий путь:
-
-```mermaid
-flowchart LR
-    UI[Экран / HUD / JourneyMap] --> Packet[Payloads и ModNetwork]
-    Packet --> Manager[SquadManager и GroupOrders]
-    Manager --> Squad[Squad: приказ, цель, orderStamp]
-    Squad --> AI[Поведения NPC / тактика отряда]
-    AI --> Action[Навигация / оружие / транспорт]
-```
-
-Экран отправляет запрос. Серверный обработчик проверяет право управлять отрядом и меняет серверное состояние. AI читает приказ и выполняет действия. Поэтому изменение кнопки в GUI само по себе не меняет поведение NPC.
-
-Контакты и видимость проходят через сенсоры и общие проверки. Тактика получает снимок наблюдений. Индивидуальные поведения исполняют задания и сохраняют управление оружием, укрытием и лечением. Для внешних возможностей AI обращается к `domain/port`, реализации подключаются в `SquadMod` из `integration/sbw`.
-
-Сохранение отрядов находится в `Squad.save/load` и `SquadManager`. Патрули сохраняет `RouteManager`, выбор фракции — `PlayerFactionRegistry`. Текущий тактический манёвр, задания и поиски позиций относятся к временным данным и заново создаются после загрузки мира.
-
-## Как самостоятельно дополнить код
-
-1. Найди механику в таблице и открой её точку входа. Посмотри вызовы через Find Usages.
-2. Проверь, принадлежит изменение серверному AI, клиентскому отображению или контракту сети. Для нового действия обычно нужны и экран, и payload, и серверный обработчик.
-3. Если добавляешь поведение, подключи его в соответствующую группу Brain в `NpcEntity`. Новые типы памяти и сенсоры регистрируются в `init/ModMemories.kt` и `init/ModSensors.kt`.
-4. Для нового блока, предмета или сущности проверь соответствующий файл `init/` и ресурсы. Для новой механики оружия или транспорта проверь существующие порты и адаптеры SBW.
-5. Для изменения тактики следуй [инструкции расширения состояний](TACTICS-ARCHITECTURE.md#как-добавить-манёвр).
-6. Найди проверки модуля в `src/test/kotlin/com/sbwnpc/squad/`. Проверяй наблюдаемый результат: переход, назначение, освобождение маршрута или сохранение данных.
-
-Примеры поиска из корня проекта:
-
-```bash
-rg --files src/main/kotlin | rg 'Tactical|Supply|Vehicle'
-rg -n 'availableFor|orderStamp' src/main/kotlin
-rg -n 'SquadTactics.move|movementLockedByCover' src/main/kotlin
-```
-
-## Проверки и рабочие команды
-
-| Команда | Результат |
+| Группа | Расположение |
 |---|---|
-| `./gradlew test --console=plain` | Автоматические тесты; HTML-отчёт — `build/reports/tests/test/index.html`, XML — `build/test-results/test/` |
-| `./gradlew test --tests '*TacticalLifecycleTest' --console=plain` | Выбранный класс тестов |
-| `./gradlew compileKotlin --console=plain` | Проверка компиляции Kotlin |
-| `./gradlew formatKotlin --console=plain` | Единое оформление исходников и тестов Kotlin по `.editorconfig` |
-| `./gradlew checkKotlinStyle --console=plain` | Проверка оформления; также входит в `check` и `build` |
-| `./gradlew buildDevelop --console=plain` | Сборка для игровых тестов с доступной отладкой; результат — `build/libs/` |
-| `./gradlew buildProduction --console=plain` | Сборка с отключённой отладкой; обычный `build` использует тот же режим |
-| `git diff --check` | Проверка ошибок пробелов в изменениях |
-
-При запуске тестов Gradle может собрать JAR как зависимость тестовой задачи. Это не установка мода в игру. Игровая проверка выполняется отдельно: собранный мод кладётся в плоскую папку `~/.minecraft/mods/`.
-
-Для диагностики используется `config/sbwnpc-debug.toml` в debug-сборке. `logGroups = ["order"]` включает тактические решения, `"path"`, `"stuck"`, `"vehicle"`, `"supply"` — соответствующие механики. Полный список находится в [LogGroup.kt](../src/main/kotlin/com/sbwnpc/squad/combat/LogGroup.kt).
-
-Сгенерированные файлы в `build/` меняются через исходный код или задачу генерации. Если перемещается модуль или меняется его ответственность, обновляй эту карту вместе с кодом.
+| Тесты тактики | [src/test/kotlin/com/sbwnpc/squad/combat/tactics/](../src/test/kotlin/com/sbwnpc/squad/combat/tactics/) |
+| Тесты остальных модулей | [src/test/kotlin/com/sbwnpc/squad/](../src/test/kotlin/com/sbwnpc/squad/) — каталоги соответствуют основному коду |
+| Задачи сборки, форматирования и тестов | [build.gradle.kts](../build.gradle.kts) |
+| Настройки форматирования | [.editorconfig](../.editorconfig) |
+| JAR-файлы | `build/libs/` |
+| Отчёты тестов | `build/reports/tests/test/`, `build/test-results/test/` |
+| Генерация BuildFlags | `build.gradle.kts`; результат — `build/generated/buildFlags/` |
+| Группы диагностических сообщений | [combat/LogGroup.kt](../src/main/kotlin/com/sbwnpc/squad/combat/LogGroup.kt) |
+| Настройки диагностики | [combat/DebugFlags.kt](../src/main/kotlin/com/sbwnpc/squad/combat/DebugFlags.kt); в игре — `config/sbwnpc-debug.toml` |

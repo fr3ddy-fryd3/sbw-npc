@@ -54,7 +54,10 @@ object TacticalPositions {
         val post = task.staging ?: task.anchor
         val canKeepPosition = task.job in TacticalJob.FIRE_SUPPORT && member != null && TacticalEvidence.covers(member, task) &&
             TacticalFirePosts.withinPost(post, member.position) &&
-            TacticalRules.withinOrder(view, member.position, homeRadius) && !GrenadeHazard.threatens(level, member.position)
+            TacticalRules.withinOrder(view, member.position, homeRadius) && !GrenadeHazard.threatens(level, member.position) &&
+            safeDistance(entity, view, member.position) && TickBudget.hasRaycasts(level) &&
+            task.focus?.let { Sightline.blocked(level, it.add(0.0, 1.5, 0.0), member.position.add(0.0, 1.0, 0.0), entity) } == true &&
+            friendlyLane(entity, member.position.add(0.0, entity.eyeHeight.toDouble(), 0.0), task.focus)
         return if (canKeepPosition) member?.position else null
     }
 
@@ -73,7 +76,7 @@ object TacticalPositions {
             entity.position(),
             when {
                 overwatch -> DefensiveOverwatch.probes(task.anchor)
-                task.job in TacticalJob.FIRING_POSITIONS -> TacticalFirePosts.probes(localAnchor)
+                task.job in TacticalJob.FIRING_POSITIONS -> listOf(entity.position()) + TacticalFirePosts.probes(localAnchor)
                 else -> OFFSETS.map { localAnchor.add(it) }
             },
         ).also { task.search = it }
@@ -123,7 +126,7 @@ object TacticalPositions {
         if (context.overwatch && !DefensiveOverwatch.within(task.anchor, candidate)) return
         if (task.job in TacticalJob.FIRING_POSITIONS && !context.overwatch && !TacticalFirePosts.withinPost(context.localAnchor, candidate)) return
         if (!context.policy.candidate(context.view, task, candidate, context.localAnchor)) return
-        if (task.job == TacticalJob.FLANK && context.view.visible.any { !TacticalRoutes.safeFlankDistance(entity.position(), candidate, it.position) }) {
+        if (!safeDistance(entity, context.view, candidate)) {
             search.reject("close_enemy")
             return
         }
@@ -139,7 +142,8 @@ object TacticalPositions {
         val exposure = context.threats.count {
             !Sightline.blockedBy(level, it.position.add(0.0, 1.5, 0.0), candidate.add(0.0, 1.0, 0.0), entity, context.hulls)
         }
-        val mustShoot = task.job in SHOOTING_JOBS
+        val finishingFlank = task.job == TacticalJob.FLANK && candidate.distanceTo(task.anchor) <= 10.0
+        val mustShoot = task.job in SHOOTING_JOBS || finishingFlank
         val firing = focus?.let { !Sightline.blockedBy(level, eye, it.add(0.0, 1.5, 0.0), entity, context.hulls) } ?: true
         if (mustShoot && !firing) {
             search.reject("blocked_shot")
@@ -152,12 +156,12 @@ object TacticalPositions {
         search.scored[candidate] = score(context, candidate, exposure, firing, mustShoot)
     }
 
-    private fun score(context: SearchContext, candidate: Vec3, exposure: Int, firing: Boolean, mustShoot: Boolean): Double {
-        var score = candidate.distanceTo(context.localAnchor) + candidate.distanceTo(context.entity.position()) * 0.2 + exposure * 5.0
+    private fun score(context: SearchContext, candidate: Vec3, exposure: Int, firing: Boolean, mustShoot: Boolean): TacticalPositionScore {
+        var score = candidate.distanceTo(context.localAnchor) + candidate.distanceTo(context.entity.position())
         if (firing && mustShoot) score -= 8.0
         score += context.policy.score(context.view, context.task, candidate, exposure)
-        if (context.overwatch) score = DefensiveOverwatch.score(context.task.anchor, context.search.origin, candidate, exposure)
-        return score
+        if (context.overwatch) return TacticalPositionScore(false, 0, DefensiveOverwatch.score(context.task.anchor, context.search.origin, candidate, exposure))
+        return TacticalPositionScore(exposure > 0, exposure, score)
     }
 
     /** A budget deferral keeps the current destination; a rejected route advances to the next. */
@@ -168,8 +172,16 @@ object TacticalPositions {
         val destinations = search.destinations ?: search.scored.entries.sortedBy { it.value }.map { it.key }
             .also { search.destinations = it }
         while (search.destinationIndex < destinations.size) {
-            if (!TickBudget.hasRaycasts(context.level) || !TacticalBudget.path(context.level.gameTime)) return Result(Outcome.DEFERRED)
+            if (!TickBudget.hasRaycasts(context.level)) return Result(Outcome.DEFERRED)
             val candidate = destinations[search.destinationIndex]
+            if (candidate.distanceTo(entity.position()) <= 0.9 && safeDistance(entity, context.view, candidate)) {
+                entity.navigation.stop()
+                task.navigationPath = null
+                FiringSpots.claim(entity.uuid, entity.position())
+                tracePosition(context, entity.position(), search.scored[candidate])
+                return finish(task, entity.position())
+            }
+            if (!TacticalBudget.path(context.level.gameTime)) return Result(Outcome.DEFERRED)
             val path = pathToCandidate(context, candidate)
             if (reaches(path, candidate)) {
                 val safety = checkRoute(context, path!!)
@@ -177,6 +189,7 @@ object TacticalPositions {
                 if (safety == RouteSafety.SAFE && entity.navigation.moveTo(path, speed(task))) {
                     task.navigationPath = path
                     FiringSpots.claim(entity.uuid, candidate)
+                    tracePosition(context, candidate, search.scored[candidate])
                     return finish(task, candidate)
                 }
                 search.reject(if (safety == RouteSafety.SAFE) "navigation" else "unsafe_route")
@@ -187,6 +200,15 @@ object TacticalPositions {
         }
         task.search = null
         return Result(Outcome.UNREACHABLE, rejections = search.rejections.toMap())
+    }
+
+    private fun tracePosition(context: SearchContext, point: Vec3, quality: TacticalPositionScore?) {
+        if (!DebugFlags.on(LogGroup.ORDER)) return
+        DebugFlags.log(
+            LogGroup.ORDER, "[tactics] {} squad={} tick={} plan={} event=position_selected job={} position={} quality={} nearestEnemy={} rejected={}",
+            context.entity.uuid, context.entity.currentSquad()?.id, context.level.gameTime, context.task.plan, context.task.job, point, quality,
+            TacticalClearance.threats(context.view).minOfOrNull { point.subtract(it).horizontalDistance() }, context.search.rejections,
+        )
     }
 
     private fun pathToCandidate(context: SearchContext, candidate: Vec3): Path? {
@@ -202,7 +224,8 @@ object TacticalPositions {
     private fun checkRoute(context: SearchContext, path: Path): RouteSafety {
         val task = context.task
         val focus = context.focus
-        for (index in 0 until path.nodeCount) {
+        if (!safePath(context.entity, context.view, path)) return RouteSafety.UNSAFE
+        for (index in path.nextNodeIndex until path.nodeCount) {
             val node = path.getNode(index)
             val foot = Vec3(node.x + 0.5, node.y.toDouble(), node.z + 0.5)
             if (!TacticalRules.withinOrder(context.view, foot, context.homeRadius) || GrenadeHazard.threatens(context.level, foot) ||
@@ -211,7 +234,6 @@ object TacticalPositions {
                 return RouteSafety.UNSAFE
             }
             if (task.opensLane && focus != null && !TacticalRoutes.safeLaneProbe(context.search.origin, foot, focus)) return RouteSafety.UNSAFE
-            if (task.job == TacticalJob.FLANK && context.view.visible.any { !TacticalRoutes.safeFlankDistance(context.entity.position(), foot, it.position) }) return RouteSafety.UNSAFE
             if (index % 4 == 0 && task.job == TacticalJob.FLANK) {
                 if (!TickBudget.hasRaycasts(context.level)) return RouteSafety.DEFERRED
                 if (hasUncoveredApproach(context, foot)) return RouteSafety.UNSAFE
@@ -219,6 +241,11 @@ object TacticalPositions {
         }
         return RouteSafety.SAFE
     }
+
+    fun safeDistance(entity: NpcEntity, view: TacticalSnapshot, point: Vec3): Boolean = TacticalClearance.permitsPosition(entity.npcClass, entity.position(), point, view)
+
+    /** Repaths and already-running paths must respect newly reported or approaching enemies too. */
+    fun safePath(entity: NpcEntity, view: TacticalSnapshot, path: Path): Boolean = TacticalClearance.permitsPath(entity.npcClass, entity.position(), path, view)
 
     private fun hasUncoveredApproach(context: SearchContext, foot: Vec3): Boolean {
         val threat = context.threats.firstOrNull()

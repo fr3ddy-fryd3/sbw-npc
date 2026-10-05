@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.combat.tactics
 
+import com.sbwnpc.squad.combat.CombatPositionSafety
 import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.SquadOrder
@@ -176,6 +177,12 @@ class TacticalLayout(val context: TacticalContext) {
                     .add(Vec3(kotlin.math.cos(angle), 0.0, kotlin.math.sin(angle)).scale(SquadFormation.perimeterRadius(view.members.size))),
                 intent.focus,
             )
+        }
+        if (intent.job == TacticalJob.ADVANCE) {
+            val safeAnchor = TacticalClearance.threats(view).fold(intent.anchor) { point, threat ->
+                CombatPositionSafety.approach(member.position, point, threat, CombatPositionSafety.clearance(member.role) + CombatPositionSafety.APPROACH_MARGIN)
+            }
+            if (safeAnchor != intent.anchor) intent = intent(intent.job, safeAnchor, intent.focus)
         }
         if (intent.job == TacticalJob.WAIT && intent.staging == null) intent.staging = member.position
         return intent
