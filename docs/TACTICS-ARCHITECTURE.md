@@ -30,7 +30,8 @@ Strategy выделяет заменяемый алгоритм за интер�
 
 | Файл | Ответственность |
 |---|---|
-| [SquadTactics.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/SquadTactics.kt) | Адаптер мира: собирает наблюдения, запускает оценку и предоставляет API индивидуальному AI |
+| [SquadTactics.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/SquadTactics.kt) | API индивидуального AI, запись контактов, запуск оценки и сводная диагностика |
+| [TacticalSnapshotCollector.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalSnapshotCollector.kt) | Собирает наблюдения мира и состояния участников в неизменяемый снимок |
 | [TacticalModel.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalModel.kt) | Идентификаторы манёвров, снимок наблюдений, контакт, участник и предложение решения |
 | [SquadTacticalState.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/SquadTacticalState.kt) | Память отряда, оценка ситуации, замена и отмена плана, восстановление после отказа |
 | [TacticalRules.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalRules.kt) | Явный порядок правил; первое применимое предложение завершает выбор |
@@ -51,7 +52,7 @@ Strategy выделяет заменяемый алгоритм за интер�
 | [TacticalTaskBoard.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalTaskBoard.kt) | Единственный владелец состава заданий: замена, сохранение, отмена и исключение участника |
 | [TacticalTask.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalTask.kt) | Задание и прогресс его индивидуального исполнения, поиска и маршрута |
 | [TacticalMovement.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalMovement.kt) | Движение, приоритеты других поведений, повторные попытки и отказ конкретного задания |
-| [TacticalPositions.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalPositions.kt) | Поиск достижимой позиции с проверками геометрии, видимости и огневой линии |
+| [TacticalPositions.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalPositions.kt) | Этапы поиска: `prepareSearch` → `collectCandidates` / `scoreCandidate` → `findReachablePosition` / `checkRoute` |
 | [TacticalPositionPolicy.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalPositionPolicy.kt) | Ограничения и дополнительные оценки позиции для манёвра |
 | [TacticalEvidence.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalEvidence.kt) | Готовность прикрытия, фактический огонь и достижение назначенного места |
 | [TacticalEvents.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalEvents.kt) | Структурированные события и необязательный ограниченный буфер трассировки |
@@ -61,6 +62,8 @@ Strategy выделяет заменяемый алгоритм за интер�
 | `TacticalTerrain`, `TacticalRoutes`, `TacticalFlanks`, `DefensiveOverwatch`, `TacticalBudget`, `TacticalTelemetry` | Оценка местности, геометрия подхода, поддерживающие позиции, бюджет и сводная диагностика |
 
 ## Владение данными
+
+`TacticalPositions.SearchContext` хранит результаты запросов одного вызова поиска. `TacticalPositionSearch` на задании сохраняет курсоры, проверенные точки, оценки и причины отказов между тиками. Результат проверки маршрута `DEFERRED` оставляет текущую точку для повторной попытки; небезопасный или недостижимый путь переводит курсор к следующей точке. Бюджет и порядок этих проверок являются частью поведения поиска.
 
 На один `Squad` приходится один `SquadTacticalState`. Он хранит контакты, текущий снимок, cooldown после отказа и ссылку на план.
 

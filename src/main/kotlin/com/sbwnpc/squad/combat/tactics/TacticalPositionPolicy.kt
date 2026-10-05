@@ -18,7 +18,12 @@ object WithdrawalPositions : TacticalPositionPolicy {
     override fun score(view: TacticalSnapshot, task: TacticalTask, point: Vec3, exposure: Int) = exposure * 10.0
 }
 object HeightAttackPositions : TacticalPositionPolicy {
-    override fun score(view: TacticalSnapshot, task: TacticalTask, point: Vec3, exposure: Int): Double = if (task.job in TacticalJob.RUNNING) task.focus?.let { maxOf(0.0, it.y - point.y) * 1.5 } ?: 0.0 else 0.0
+    override fun score(view: TacticalSnapshot, task: TacticalTask, point: Vec3, exposure: Int): Double {
+        if (task.job !in TacticalJob.RUNNING) return 0.0
+        val focus = task.focus ?: return 0.0
+        val remainingHeight = maxOf(0.0, focus.y - point.y)
+        return remainingHeight * 1.5
+    }
 }
 object HoldHeightPositions : TacticalPositionPolicy {
     override fun candidate(view: TacticalSnapshot, task: TacticalTask, point: Vec3, localAnchor: Vec3) = route(view, point)
