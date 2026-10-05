@@ -61,6 +61,9 @@ and press the new combination, `Ctrl` included.
 
 ## How this mod was made
 
+Developer guides: [Project structure / Карта проекта](docs/PROJECT-STRUCTURE.md) ·
+[Squad tactics architecture / Архитектура тактики](docs/TACTICS-ARCHITECTURE.md).
+
 This is a hobby project, built purely for fun. The entire codebase was written by an AI (Claude
 Code and Codex) — architecture, features, bug fixes, all of it — while the meatbags did the actual
 playtesting, including multiplayer sessions, and sent back bug reports on whatever broke.
