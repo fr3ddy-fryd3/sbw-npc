@@ -33,7 +33,9 @@ Strategy выделяет заменяемый алгоритм за интер�
 | [SquadTactics.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/SquadTactics.kt) | Адаптер мира: собирает наблюдения, запускает оценку и предоставляет API индивидуальному AI |
 | [TacticalModel.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalModel.kt) | Идентификаторы манёвров, снимок наблюдений, контакт, участник и предложение решения |
 | [SquadTacticalState.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/SquadTacticalState.kt) | Память отряда, оценка ситуации, замена и отмена плана, восстановление после отказа |
-| [TacticalRules.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalRules.kt) | Стандартные правила предложения манёвра |
+| [TacticalRules.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalRules.kt) | Явный порядок правил; первое применимое предложение завершает выбор |
+| [TacticalDecisionRules.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalDecisionRules.kt) | Именованные правила: условие применимости, манёвр и причина |
+| [TacticalSituation.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalSituation.kt) | Расчёты по снимку: высота, фронты угроз, движение, компактность; числовые пороги |
 | [TacticalSelectionPolicy.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalSelectionPolicy.kt) | Условия принятия или отклонения замены текущего плана |
 | [TacticalStates.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalStates.kt) | Полный реестр фабрик состояний и их политик устойчивости |
 | [TacticalPlan.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalPlan.kt) | Идентичность плана и обязательный жизненный цикл его состояния |
@@ -128,7 +130,7 @@ Brain продолжает работать через SmartBrainLib: сенсо
 2. Определи политику устойчивости и назначения. Данные прогресса храни в экземпляре State. Чистый алгоритм оценки позиции предоставь через `TacticalPositionPolicy`.
 3. Для нового покрытого манёвра реализуй `task` и `arrived`; общая подготовка, пауза и таймауты уже есть в базовом классе. Переходы проводи через `phases.transition`, завершение и отказ — через API плана и контекста.
 4. Зарегистрируй фабрику, возвращающую новый экземпляр. Реестр требует реализации каждого идентификатора и не подменяет отсутствующий манёвр поведением по умолчанию.
-5. Добавь условие выбора в `TacticalRules` либо другую реализацию `TacticalDecisionPolicy`. Правила выбора возвращают предложение и причину, не меняя текущий план напрямую.
+5. Добавь именованное правило в `TacticalDecisionRules` и размести его в `TacticalRules.priorityOrder` либо используй другую реализацию `TacticalDecisionPolicy`. `null` означает, что правило неприменимо; предложение завершает выбор. Общие расчёты снимка находятся в `TacticalSituation`. Правила возвращают предложение и причину, не меняя текущий план напрямую. Проверь пересечения условий с соседними правилами: порядок определяет поведение.
 6. Проверь сценарий перехода, завершение или отказ, смену приказа и независимость двух отрядов. Потом проверь достижимость, стрельбу и совместимость с укрытиями в игре.
 
 Пример заменяемой политики позиции, сохраняющей верхнюю площадку для обычного состояния удержания:
