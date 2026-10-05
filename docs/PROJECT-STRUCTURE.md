@@ -69,6 +69,10 @@
 
 ### Приказы, движение и техника
 
+В `GunAttackBehaviour.tick` виден порядок боевого обновления: смена приказа → наблюдение и прицеливание → движение → огневая линия → работа оружия и очередь. Реализация этапов находится в `updateAim`, `updateCombatMovement`, `updateFiringLane`, `clearBlockedFiringLane` и `tickShooting`. `holdOrderedPosition` отвечает за удержание позиции и возврат в зону обороны.
+
+В `VehicleTransportBehaviour.tickDriving` виден порядок управления поездкой. Проверка питания — `stopIfPowerExhausted`, прогресса — `updateProgressAndCheckStall`, застревания — `recoverIfStuck`, союзника перед техникой — `yieldToBlockingAlly`. `steerBoat` применяет водный маршрут; сухопутные точки выбирают `currentWaypoint` и `driveWaypoint`.
+
 `route/` содержит планирование маршрутов по миру. `squad/RouteManager.kt` хранит **патрульные маршруты, записанные игроком**. Это разные задачи, несмотря на похожие названия.
 
 | Что нужно изменить | Где смотреть |

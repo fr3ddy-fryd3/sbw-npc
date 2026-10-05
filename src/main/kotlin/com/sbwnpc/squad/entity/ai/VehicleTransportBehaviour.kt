@@ -664,8 +664,45 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             tickCombatDismount(entity, vehicle)
             return
         }
-        // Ran the battery down on the way. Nothing here can move it, so walk the rest — a
-        // permanent crew stays with its vehicle as usual and just holds.
+        if (stopIfPowerExhausted(entity, vehicle)) return
+        val home = resolveTripDestination(entity)
+        if (home == null) {
+            waitToStopThenDismount(entity, vehicle, isDriver = true)
+            return
+        }
+        if (arrived(entity, vehicle, home)) {
+            finishDriving(entity, vehicle)
+            return
+        }
+        if (updateProgressAndCheckStall(entity, vehicle)) {
+            finishDriving(entity, vehicle)
+            return
+        }
+        if (entity.tickCount < recoveryUntilTick) {
+            performRecovery(entity, vehicle)
+            return
+        }
+        if (recoverIfStuck(entity, vehicle, home)) return
+        if (yieldToBlockingAlly(entity, vehicle)) return
+        if (isBoat(vehicle)) {
+            steerBoat(entity, vehicle, home)
+            return
+        }
+        val waypoint = if (driveLegsOnly) currentWaypoint(entity, home) else driveWaypoint(entity, vehicle, home)
+        // Wait for a route before issuing steering commands.
+        if (waypoint == null) holdVehicle(vehicle) else steerToward(vehicle, aroundTrees(entity, vehicle, waypoint))
+    }
+
+    private fun finishDriving(entity: NpcEntity, vehicle: Entity) {
+        if (isPermanentCrew(entity, vehicle)) {
+            holdVehicle(vehicle)
+            phase = Phase.HOLDING
+        } else {
+            waitToStopThenDismount(entity, vehicle, isDriver = true)
+        }
+    }
+
+    private fun stopIfPowerExhausted(entity: NpcEntity, vehicle: Entity): Boolean {
         if (!VehiclePower.hasReserve(vehicle, STRANDED_RESERVE_TICKS)) {
             stopVehicle(vehicle)
             if (isPermanentCrew(entity, vehicle)) {
@@ -674,24 +711,12 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             } else {
                 waitToStopThenDismount(entity, vehicle, isDriver = true)
             }
-            return
+            return true
         }
-        val home = resolveTripDestination(entity)
-        if (home == null) {
-            waitToStopThenDismount(entity, vehicle, isDriver = true)
-            return
-        }
+        return false
+    }
 
-        if (arrived(entity, vehicle, home)) {
-            if (isPermanentCrew(entity, vehicle)) {
-                holdVehicle(vehicle)
-                phase = Phase.HOLDING
-                return
-            }
-            waitToStopThenDismount(entity, vehicle, isDriver = true)
-            return
-        }
-
+    private fun updateProgressAndCheckStall(entity: NpcEntity, vehicle: Entity): Boolean {
         // Distance, rather than time aboard: long marches and terrain detours can take minutes.
         // Fresh ground counts, but repeated reversals over the same patch do not.
         val waitingForRoute = !isBoat(vehicle) && !driveLegsOnly &&
@@ -715,21 +740,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         } else {
             groundTravelProgress.stalled(entity.tickCount)
         }
-        if (givenUp) {
-            if (isPermanentCrew(entity, vehicle)) {
-                holdVehicle(vehicle)
-                phase = Phase.HOLDING
-                return
-            }
-            waitToStopThenDismount(entity, vehicle, isDriver = true)
-            return
-        }
+        return givenUp
+    }
 
-        if (entity.tickCount < recoveryUntilTick) {
-            performRecovery(entity, vehicle)
-            return
-        }
-
+    private fun recoverIfStuck(entity: NpcEntity, vehicle: Entity, home: Vec3): Boolean {
         if (entity.tickCount - lastStuckCheckTick >= STUCK_CHECK_INTERVAL_TICKS) {
             val last = lastStuckCheckPos
             val turned = Math.abs(net.minecraft.util.Mth.wrapDegrees(vehicle.yRot - lastStuckCheckYaw)) > STUCK_TURN_DEGREES
@@ -740,7 +754,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 // Run aground short of the landing point: this is the shore, get off here.
                 if (isBoat(vehicle) && boatRouteComplete && horizontalDistance(vehicle.position(), home) <= BOAT_AGROUND_RADIUS) {
                     waitToStopThenDismount(entity, vehicle, isDriver = true)
-                    return
+                    return true
                 }
                 // A boat takes a while to get going astern, and more with its bow in the bank.
                 recoveryUntilTick = entity.tickCount + if (isBoat(vehicle)) BOAT_RECOVERY_TICKS else RECOVERY_TICKS
@@ -757,10 +771,13 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 }
                 DebugFlags.log(LogGroup.VEHICLE, "{} recovering {} at {} after no movement", entity.uuid, vehicle.uuid, vehicle.position())
                 performRecovery(entity, vehicle)
-                return
+                return true
             }
         }
+        return false
+    }
 
+    private fun yieldToBlockingAlly(entity: NpcEntity, vehicle: Entity): Boolean {
         val blocker = allyInTheWay(entity, vehicle, forwardDirection(vehicle))
         if (blocker != null) {
             stopVehicle(vehicle)
@@ -789,23 +806,21 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 nextAvoidanceTick = entity.tickCount
                 performRecovery(entity, vehicle)
             }
-            return
+            return true
         }
         allyBlockedSince = -1
-        if (isBoat(vehicle)) {
-            // Its own way over the water; the land route and the trees are no use there.
-            val waypoint = boatWaypoint(entity, vehicle, home)
-            // In to the bank at a crawl: at full speed it ploughed in wherever the bow pointed. And
-            // no faster than the bends ahead allow.
-            val speed = vehicle.deltaMovement.horizontalDistance()
-            val coasting = (horizontalDistance(vehicle.position(), home) < BOAT_SLOW_RADIUS && speed > BOAT_APPROACH_SPEED) ||
-                speed > boatTargetSpeed
-            if (waypoint == null) stopVehicle(vehicle) else steerToward(vehicle, waypoint, throttle = !coasting)
-            return
-        }
-        val waypoint = if (driveLegsOnly) currentWaypoint(entity, home) else driveWaypoint(entity, vehicle, home)
-        // No way yet: the first search takes a moment. Wait for it rather than set off wrong.
-        if (waypoint == null) holdVehicle(vehicle) else steerToward(vehicle, aroundTrees(entity, vehicle, waypoint))
+        return false
+    }
+
+    private fun steerBoat(entity: NpcEntity, vehicle: Entity, home: Vec3) {
+        // Its own way over the water; the land route and the trees are no use there.
+        val waypoint = boatWaypoint(entity, vehicle, home)
+        // In to the bank at a crawl: at full speed it ploughed in wherever the bow pointed. And
+        // no faster than the bends ahead allow.
+        val speed = vehicle.deltaMovement.horizontalDistance()
+        val coasting = (horizontalDistance(vehicle.position(), home) < BOAT_SLOW_RADIUS && speed > BOAT_APPROACH_SPEED) ||
+            speed > boatTargetSpeed
+        if (waypoint == null) stopVehicle(vehicle) else steerToward(vehicle, waypoint, throttle = !coasting)
     }
 
     /**
