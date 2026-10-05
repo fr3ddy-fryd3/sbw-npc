@@ -16,15 +16,7 @@ class TacticalRuntimeEvents private constructor(private var squad: Squad, privat
             event.task.releaseNavigation(npc?.navigation?.path) { npc?.navigation?.stop() }
         }
         if (!DebugFlags.on(LogGroup.ORDER)) return
-        val detail = when (event) {
-            is TacticalEvent.PlanSelected -> "event=plan_selected pattern=${event.choice.pattern} reason=${event.choice.reason} previousPlan=${event.previous} previousPhase=${event.previousPhase} stamp=${event.orderStamp} trigger=${event.trigger} focus=${event.choice.focus}"
-            is TacticalEvent.Lifecycle -> "event=${event.action} pattern=${event.pattern} statePhase=${event.phase} trigger=${event.trigger}"
-            is TacticalEvent.Transition -> "event=transition from=${event.from} to=${event.to} trigger=${event.trigger} evidence=${event.evidence}"
-            is TacticalEvent.SelectionHeld -> "event=selection_held proposed=${event.proposed} active=${event.active} reason=${event.reason}"
-            is TacticalEvent.TaskAssigned -> "event=task_assigned npc=${event.member} job=${event.job} anchor=${event.anchor} trigger=${event.trigger}"
-            is TacticalEvent.TaskReleased -> "event=task_released npc=${event.member} job=${event.task.job} position=${event.task.position} trigger=${event.trigger}"
-            is TacticalEvent.TaskPaused -> "event=task_${if (event.paused) "paused" else "resumed"} npc=${event.member} reason=${event.reason}"
-        }
+        val detail = TacticalEventFormat.detail(event)
         DebugFlags.log(LogGroup.ORDER, "[tactics] {} squad={} tick={} plan={} {}", squad.name, squad.id, event.tick, event.plan, detail)
     }
 

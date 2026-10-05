@@ -6,10 +6,31 @@ import net.minecraft.server.level.ServerLevel
 
 /** Executes owned movement tasks through the existing navigator, cover and medical priorities. */
 object TacticalMovement {
+    /** Core behavior calls this even while the individual mover is suspended by another behavior. */
+    fun observe(entity: NpcEntity) {
+        val squad = entity.currentSquad() ?: return
+        val plan = squad.tactics.plan ?: return
+        if (plan.stamp != squad.orderStamp) return
+        val task = plan.tasks[entity.uuid] ?: return
+        task.observeBlocker(entity.uuid, entity.level().gameTime, blocker(entity), squad.tactics.events)
+    }
+
+    private fun blocker(entity: NpcEntity): TacticalMovementBlocker? = when {
+        entity.vehicle != null -> TacticalMovementBlocker.VEHICLE
+        entity.busyWithRole() -> TacticalMovementBlocker.ROLE_TASK
+        entity.resupplying -> TacticalMovementBlocker.SUPPLY
+        entity.diggedIn -> TacticalMovementBlocker.DUG_IN
+        entity.evadingGrenade() -> TacticalMovementBlocker.GRENADE
+        entity.movementLockedByCover() -> TacticalMovementBlocker.COVER
+        entity.combatLockedByMedic() -> TacticalMovementBlocker.MEDIC
+        entity.retreatPoint() != null -> TacticalMovementBlocker.RETREAT
+        else -> null
+    }
+
     /** True means tactical movement owns the feet this tick; cover/medical/vehicles outrank it. */
     fun move(entity: NpcEntity): Boolean {
-        if (entity.vehicle != null || entity.busyWithRole() || entity.resupplying || entity.diggedIn ||
-            entity.movementLockedByCover() || entity.combatLockedByMedic() || entity.retreatPoint() != null) return false
+        observe(entity)
+        if (blocker(entity) != null) return false
         val task = SquadTactics.task(entity) ?: return false
         val squad = entity.currentSquad() ?: return false
         val state = squad.tactics

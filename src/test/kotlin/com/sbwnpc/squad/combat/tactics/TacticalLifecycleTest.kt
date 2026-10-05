@@ -81,6 +81,55 @@ class TacticalLifecycleTest {
         assertThrows(IllegalArgumentException::class.java) { TacticalStateRegistry(emptyMap()) }
     }
 
+    @Test fun `deactivation releases tasks once and a returning squad gets a fresh plan with its contacts preserved`() {
+        val events = mutableListOf<TacticalEvent>()
+        val state = SquadTacticalState(TacticalEventSink(events::add))
+        val contact = view().contacts.single()
+        state.contacts[contact.id] = contact
+        state.assess(squad, view())
+        val old = state.plan!!
+        val assigned = old.tasks.keys.toSet()
+        events.clear()
+        state.deactivate(50, "no_ground_members")
+        state.deactivate(60, "no_ground_members")
+        assertNull(state.plan)
+        assertTrue(old.tasks.isEmpty())
+        assertEquals(contact, state.contacts[contact.id])
+        assertEquals(assigned, events.filterIsInstance<TacticalEvent.TaskReleased>().map { it.member }.toSet())
+        assertEquals(assigned.size, events.filterIsInstance<TacticalEvent.TaskReleased>().size)
+        assertEquals(1, events.filterIsInstance<TacticalEvent.Lifecycle>().count { it.action == "state_exit" })
+        state.assess(squad, view(70))
+        assertNotSame(old, state.plan)
+        assertNotSame(old.behavior, state.plan!!.behavior)
+        assertTrue(state.plan!!.id > old.id)
+        assertFalse(state.plan!!.tasks.isEmpty())
+    }
+
+    @Test fun `selection observers cannot replace or deactivate a plan halfway through replacement`() {
+        val events = mutableListOf<TacticalEvent>()
+        lateinit var state: SquadTacticalState
+        var rejected = 0
+        state = SquadTacticalState(TacticalEventSink {
+            events += it
+            if (it is TacticalEvent.TaskReleased) {
+                assertThrows(IllegalStateException::class.java) {
+                    state.select(TacticalChoice(TacticalPattern.EVADE, focus), 9, it.tick)
+                }
+                assertThrows(IllegalStateException::class.java) { state.deactivate(it.tick, "reentrant") }
+                rejected++
+            }
+        })
+        state.select(TacticalChoice(TacticalPattern.REORIENT, focus), 1, 0)
+        val old = state.plan!!
+        TacticalCoordinator.assign(squad, old, view())
+        state.select(TacticalChoice(TacticalPattern.BOUND, focus), 2, 10)
+        assertEquals(members.size, rejected)
+        assertEquals(TacticalPattern.BOUND, state.plan!!.pattern)
+        assertEquals(2, events.filterIsInstance<TacticalEvent.PlanSelected>().size)
+        assertTrue(old.tasks.isEmpty())
+        assertTrue(state.select(TacticalChoice(TacticalPattern.REORIENT, focus), 3, 20))
+    }
+
     @Test fun `a shared mutable state cannot be attached to two plans`() {
         val behavior = FlankState()
         TacticalPlan(1, TacticalPattern.FLANK, focus, 0, 1, behavior = behavior)

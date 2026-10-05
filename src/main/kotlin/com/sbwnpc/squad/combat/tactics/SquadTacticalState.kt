@@ -29,6 +29,7 @@ class SquadTacticalState(
     private var serial = 0
     private var lastHeld: Pair<TacticalPattern, TacticalSelectionHold>? = null
     private var nextHeldTrace = Long.MIN_VALUE
+    private var selecting = false
 
     fun assess(squad: UUID, view: TacticalSnapshot): TacticalAssessment {
         val old = plan
@@ -54,6 +55,13 @@ class SquadTacticalState(
     }
 
     fun select(choice: TacticalChoice, stamp: Int, now: Long): Boolean {
+        check(!selecting) { "A tactical observer cannot reenter plan selection" }
+        selecting = true
+        try { return selectPlan(choice, stamp, now) }
+        finally { selecting = false }
+    }
+
+    private fun selectPlan(choice: TacticalChoice, stamp: Int, now: Long): Boolean {
         val old = plan
         val decision = TacticalSelectionPolicy.evaluate(old, choice, stamp, now, registry)
         if (decision is TacticalSelection.Keep) {
@@ -78,6 +86,21 @@ class SquadTacticalState(
         lastHeld = null
         nextHeldTrace = Long.MIN_VALUE
         return true
+    }
+
+    /** Cancels owned work; observations remain available if this squad becomes active again. */
+    fun deactivate(now: Long = snapshot?.now ?: plan?.started ?: 0L, trigger: String) {
+        check(!selecting) { "Cannot deactivate during plan selection" }
+        val previous = plan ?: return
+        selecting = true
+        try {
+            previous.exit(now, trigger)
+            plan = null
+            holdAfterFailure.clear()
+            lastHeld = null
+            nextHeldTrace = Long.MIN_VALUE
+            nextAssessment = now
+        } finally { selecting = false }
     }
 
     fun holdsAfterFailure(member: UUID, stamp: Int, now: Long): Boolean {

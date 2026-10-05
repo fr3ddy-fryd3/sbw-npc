@@ -42,7 +42,14 @@ sealed interface TacticalEvent {
         override val plan: Int, override val tick: Long, val member: UUID,
         val paused: Boolean, val reason: String
     ) : TacticalEvent
+
+    data class MovementBlocked(
+        override val plan: Int, override val tick: Long, val member: UUID,
+        val previous: TacticalMovementBlocker?, val current: TacticalMovementBlocker?
+    ) : TacticalEvent
 }
+
+enum class TacticalMovementBlocker { VEHICLE, ROLE_TASK, SUPPLY, DUG_IN, GRENADE, COVER, MEDIC, RETREAT }
 
 data class TacticalTransitionEvidence(
     val members: Int, val visible: Int, val coverAssigned: Int,

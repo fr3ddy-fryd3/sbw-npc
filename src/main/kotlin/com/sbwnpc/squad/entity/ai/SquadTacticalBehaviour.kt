@@ -19,6 +19,7 @@ class SquadTacticalBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun shouldKeepRunning(entity: NpcEntity) = eligible(entity)
     override fun tick(entity: NpcEntity) {
         SquadTactics.refresh(entity)
+        com.sbwnpc.squad.combat.tactics.TacticalMovement.observe(entity)
         SquadTactics.equip(entity)
     }
 }

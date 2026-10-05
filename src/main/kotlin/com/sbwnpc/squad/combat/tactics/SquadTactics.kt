@@ -40,7 +40,7 @@ object SquadTactics {
         state.nextAssessment = now + 10
         val npcs = squad.members.mapNotNull { level.getEntity(it) as? NpcEntity }
             .filter { it.isAlive && it.vehicle == null && it.npcClass in GROUND_ROLES }
-        if (npcs.isEmpty()) return
+        if (npcs.isEmpty()) { state.deactivate(now, "no_ground_members"); return }
         if (state.flankSide == 0.0) state.flankSide = if (squad.id.leastSignificantBits and 1L == 0L) 1.0 else -1.0
         val center = average(npcs.map { it.position() })
         val seen = HashSet<UUID>()
@@ -85,8 +85,8 @@ object SquadTactics {
         val plan=state.plan ?: return
         state.nextTrace=view.now+100
         DebugFlags.log(LogGroup.ORDER,
-            "[tactics] {} snapshot squad={} tick={} plan={} pattern={} phase={} reason={} proposed={} proposedReason={} effective={} cooldown={} order={} stamp={} members={} peak={} fighting={} visible={} remembered={} incoming={} suppressed={} narrow={} open={} stalled={} heightDelta={} cover={} shotsLast40Ticks={} coverAge={} phaseAge={} bounds={} openingLane={} laneAttempts={} positioned={} failed={} jobs={}",
-            squad.name,squad.id,view.now,plan.id,plan.pattern,plan.status,plan.reason,proposed.pattern,proposed.reason,
+            "[tactics] {} snapshot squad={} tick={} plan={} pattern={} state={} statePhase={} phase={} reason={} proposed={} proposedReason={} effective={} cooldown={} order={} stamp={} members={} peak={} fighting={} visible={} remembered={} incoming={} suppressed={} narrow={} open={} stalled={} heightDelta={} cover={} shotsLast40Ticks={} coverAge={} phaseAge={} bounds={} openingLane={} laneAttempts={} positioned={} failed={} jobs={}",
+            squad.name,squad.id,view.now,plan.id,plan.pattern,plan.behavior.javaClass.simpleName,plan.phase,plan.status,plan.reason,proposed.pattern,proposed.reason,
             effective.pattern,effective.reason==TacticalReason.PATTERN_COOLDOWN,view.order,view.stamp,view.members.size,
             view.peakStrength,view.fighting.size,view.visible.size,view.contacts.size,view.incoming.size,
             view.members.count { it.suppressed },view.narrow,view.open,view.stalled,plan.focus?.y?.minus(view.center.y),

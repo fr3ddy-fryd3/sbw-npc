@@ -16,6 +16,15 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
         private set
     private var pauseReason: String? = null
     internal var navigationPath: net.minecraft.world.level.pathfinder.Path? = null
+    private var movementBlocker: TacticalMovementBlocker? = null
+
+    /** Observations explain individual preemption without changing timers or navigation. */
+    internal fun observeBlocker(member: java.util.UUID, now: Long, blocker: TacticalMovementBlocker?, events: TacticalEventSink) {
+        if (movementBlocker == blocker) return
+        val previous = movementBlocker
+        movementBlocker = blocker
+        events.emit(TacticalEvent.MovementBlocked(plan, now, member, previous, blocker))
+    }
 
     internal fun suspend(now: Long, reason: String): Boolean {
         if (pauseReason == reason) return false

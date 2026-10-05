@@ -99,6 +99,7 @@ class SquadManager : SavedData() {
 
     internal fun beginDeletion(id: UUID): List<UUID> {
         val squad = squads.remove(id) ?: return emptyList()
+        squad.tactics.deactivate(trigger = "squad_deleted")
         val members = squad.members.toList()
         pendingDeletes.addAll(members)
         setDirty()
@@ -124,6 +125,7 @@ class SquadManager : SavedData() {
 
     fun disband(level: ServerLevel, id: UUID) {
         val squad = squads.remove(id) ?: return
+        squad.tactics.deactivate(level.gameTime, "squad_disbanded")
         squad.members.forEach { m -> (findEntity(level.server, m) as? NpcEntity)?.squadId = null }
         setDirty()
     }
@@ -212,7 +214,11 @@ class SquadManager : SavedData() {
         if (changed) setDirty()
     }
 
-    private fun pruneEmptySquads(): Boolean = squads.entries.removeIf { it.value.members.isEmpty() && it.value.barracks == null }
+    private fun pruneEmptySquads(): Boolean = squads.entries.removeIf {
+        val empty = it.value.members.isEmpty() && it.value.barracks == null
+        if (empty) it.value.tactics.deactivate(trigger = "squad_empty")
+        empty
+    }
 
     fun squadsAtBarracks(barracks: BarracksRef): List<Squad> = squads.values.filter { it.barracks == barracks }
 
