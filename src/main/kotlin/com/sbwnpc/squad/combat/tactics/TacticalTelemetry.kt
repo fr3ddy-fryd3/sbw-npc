@@ -7,8 +7,8 @@ object TacticalTelemetry {
     fun cover(plan: TacticalPlan,view: TacticalSnapshot): Cover {
         val members=view.members.filter { plan.tasks[it.id]?.job == TacticalJob.COVER }
         return Cover(members.size,
-            members.count { TacticalManeuvers.covers(it,plan.tasks[it.id]) },
-            members.count { TacticalManeuvers.covers(it,plan.tasks[it.id]) && TacticalManeuvers.settled(it,plan.tasks[it.id]) },
+            members.count { TacticalEvidence.covers(it,plan.tasks[it.id]) },
+            members.count { TacticalEvidence.covers(it,plan.tasks[it.id]) && TacticalEvidence.settled(it,plan.tasks[it.id]) },
             members.count { member ->
                 val focus=plan.tasks[member.id]?.focus
                 val firedAt=member.recentFireAt

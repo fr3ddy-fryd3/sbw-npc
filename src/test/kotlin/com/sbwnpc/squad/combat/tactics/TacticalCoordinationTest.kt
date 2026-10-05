@@ -18,12 +18,12 @@ class TacticalCoordinationTest {
         val state=SquadTacticalState()
         state.select(TacticalChoice(TacticalPattern.REORIENT,Vec3(50.0,64.0,0.0),true),1,0)
         val plan=state.plan!!
-        TacticalManeuvers.assign(squad,plan,view())
+        TacticalCoordinator.assign(squad,plan,view())
         val task=plan.tasks[members[0].id]!!
         task.position=members[0].position
         assertFalse(state.select(TacticalChoice(TacticalPattern.REORIENT,Vec3(-50.0,64.0,0.0),true),1,10))
         val threat=TacticalContact(UUID(9,9),Vec3(-50.0,64.0,0.0),10)
-        TacticalManeuvers.refreshSectors(plan,view(10).copy(contacts=listOf(threat)))
+        TacticalCoordinator.refreshSectors(plan,view(10).copy(contacts=listOf(threat)))
         assertSame(task,plan.tasks[members[0].id])
         assertEquals(members[0].position,task.position)
         assertEquals(threat.position,task.focus)
@@ -34,7 +34,8 @@ class TacticalCoordinationTest {
         val state=SquadTacticalState()
         state.select(TacticalChoice(TacticalPattern.FLANK,Vec3(50.0,64.0,0.0)),1,0)
         val plan=state.plan!!
-        plan.status=TacticalStatus.EXECUTING
+        plan.tasks.values.filter { it.job == TacticalJob.COVER }.forEach { it.position = it.anchor }
+        TacticalCoordinator.advance(squad,state,plan,view())
         assertFalse(state.select(TacticalChoice(TacticalPattern.SEARCH,plan.focus),1,120))
         assertFalse(state.select(TacticalChoice(TacticalPattern.RETURN_FIRE,Vec3(100.0,64.0,0.0)),1,130))
         assertFalse(state.select(TacticalChoice(TacticalPattern.DISLODGE,plan.focus),1,140))
@@ -47,15 +48,15 @@ class TacticalCoordinationTest {
         val initial=view().copy(members=members.map { it.copy(canFire=false) })
         state.select(TacticalRules.choose(initial),1,0)
         val plan=state.plan!!
-        TacticalManeuvers.assign(squad,plan,initial)
+        TacticalCoordinator.assign(squad,plan,initial)
         val shooter=plan.tasks.entries.last { it.value.job == TacticalJob.WAIT }.key
         val ready=initial.copy(now=20,members=initial.members.map { it.copy(canFire=it.id==shooter) })
-        TacticalManeuvers.advance(squad,state,plan,ready)
+        TacticalCoordinator.advance(squad,state,plan,ready)
         assertEquals(TacticalStatus.EXECUTING,plan.status)
         assertEquals(TacticalJob.COVER,plan.tasks[shooter]!!.job)
         assertEquals(4,plan.tasks.values.count { it.job == TacticalJob.FLANK })
         val support=plan.tasks.filterValues { it.job == TacticalJob.COVER }.keys.toSet()
-        TacticalManeuvers.assign(squad,plan,ready.copy(members=members.reversed()))
+        TacticalCoordinator.assign(squad,plan,ready.copy(members=members.reversed()))
         assertEquals(support,plan.tasks.filterValues { it.job == TacticalJob.COVER }.keys)
     }
 
@@ -65,13 +66,13 @@ class TacticalCoordinationTest {
         val unready=view.copy(members=members.map { it.copy(canFire=false,recentFire=false) })
         state.select(TacticalRules.choose(view),1,0)
         val plan = state.plan!!
-        TacticalManeuvers.assign(squad,plan,unready)
+        TacticalCoordinator.assign(squad,plan,unready)
         assertTrue(plan.tasks.values.any { it.job == TacticalJob.WAIT })
-        TacticalManeuvers.advance(squad,state,plan,unready)
+        TacticalCoordinator.advance(squad,state,plan,unready)
         assertEquals(TacticalStatus.PREPARING,plan.status)
         assertFalse(plan.tasks.values.any { it.job == TacticalJob.FLANK })
         plan.tasks.values.filter { it.job == TacticalJob.COVER }.forEach { it.position = it.anchor }
-        TacticalManeuvers.advance(squad,state,plan,view)
+        TacticalCoordinator.advance(squad,state,plan,view)
         assertEquals(TacticalStatus.EXECUTING,plan.status)
         assertTrue(plan.tasks.values.any { it.job == TacticalJob.FLANK })
     }
@@ -79,10 +80,10 @@ class TacticalCoordinationTest {
         val state = SquadTacticalState(); val view = view()
         state.select(TacticalRules.choose(view),1,0)
         val plan = state.plan!!
-        TacticalManeuvers.assign(squad,plan,view)
+        TacticalCoordinator.assign(squad,plan,view)
         val cover = plan.tasks.filterValues { it.job == TacticalJob.COVER }
         cover.values.forEach { it.position = it.anchor }
-        TacticalManeuvers.advance(squad,state,plan,view)
+        TacticalCoordinator.advance(squad,state,plan,view)
         cover.forEach { (id,task) -> assertSame(task,plan.tasks[id]) }
     }
     @Test fun `a pinned group unable to open a firing lane fails without releasing a charge`() {
@@ -90,8 +91,8 @@ class TacticalCoordinationTest {
         val initial = view().copy(members=members.map { it.copy(canFire=false,recentFire=false,suppressed=true) })
         state.select(TacticalRules.choose(initial),1,0)
         val plan = state.plan!!
-        TacticalManeuvers.assign(squad,plan,initial)
-        TacticalManeuvers.advance(squad,state,plan,initial.copy(now=110,contacts=initial.contacts.map { it.copy(seenAt=110) }))
+        TacticalCoordinator.assign(squad,plan,initial)
+        TacticalCoordinator.advance(squad,state,plan,initial.copy(now=110,contacts=initial.contacts.map { it.copy(seenAt=110) }))
         assertEquals(TacticalStatus.FAILED,plan.status)
         assertEquals(TacticalPattern.FLANK,state.blockedPattern)
         assertTrue(state.blockedUntil > 110)
@@ -115,14 +116,14 @@ class TacticalCoordinationTest {
         val choice = TacticalRules.choose(view)
         assertEquals(TacticalPattern.CONSOLIDATE,choice.pattern)
         val plan = TacticalPlan(1,choice.pattern,choice.focus,0,1)
-        TacticalManeuvers.assign(squad,plan,view)
+        TacticalCoordinator.assign(squad,plan,view)
         assertTrue(plan.tasks.isEmpty())
         assertFalse(TacticalRules.withinOrder(view,Vec3(100.0,64.0,0.0),24.0))
     }
     @Test fun `medics remain behind the maneuver group`() {
         val view = view().copy(members = members + TacticalMember(UUID(0,9),Vec3(10.0,64.0,0.0),NpcClass.MEDIC))
         val plan = TacticalPlan(1,TacticalPattern.FLANK,Vec3(50.0,64.0,0.0),0,1,TacticalStatus.EXECUTING)
-        TacticalManeuvers.assign(squad,plan,view)
+        TacticalCoordinator.assign(squad,plan,view)
         assertEquals(TacticalJob.RESERVE,plan.tasks[UUID(0,9)]!!.job)
         assertTrue(plan.tasks[UUID(0,9)]!!.anchor.x < view.center.x)
     }
@@ -131,9 +132,9 @@ class TacticalCoordinationTest {
         val view=view().copy(members=members.map { it.copy(firingAt=Vec3(-100.0,64.0,0.0)) })
         state.select(TacticalRules.choose(view),1,0)
         val plan=state.plan!!
-        TacticalManeuvers.assign(squad,plan,view)
+        TacticalCoordinator.assign(squad,plan,view)
         plan.tasks.values.filter { it.job == TacticalJob.COVER }.forEach { it.position=it.anchor }
-        TacticalManeuvers.advance(squad,state,plan,view)
+        TacticalCoordinator.advance(squad,state,plan,view)
         assertEquals(TacticalStatus.PREPARING,plan.status)
     }
 
@@ -142,16 +143,16 @@ class TacticalCoordinationTest {
         val view = view()
         state.select(TacticalRules.choose(view),1,0)
         val plan = state.plan!!
-        TacticalManeuvers.assign(squad,plan,view)
+        TacticalCoordinator.assign(squad,plan,view)
         val failed = plan.tasks.entries.first { it.value.job == TacticalJob.COVER }.key
-        TacticalManeuvers.abandon(plan,failed)
+        TacticalCoordinator.abandon(plan,failed)
         plan.tasks.values.filter { it.job == TacticalJob.COVER }.forEach { it.position=it.anchor }
-        TacticalManeuvers.advance(squad,state,plan,view)
+        TacticalCoordinator.advance(squad,state,plan,view)
         assertEquals(TacticalStatus.EXECUTING,plan.status)
         assertNull(plan.tasks[failed])
         assertTrue(plan.tasks.values.any { it.job == TacticalJob.FLANK })
         assertNull(state.blockedPattern)
-        TacticalManeuvers.assign(squad,plan,view)
+        TacticalCoordinator.assign(squad,plan,view)
         assertNull(plan.tasks[failed], "a phase change must not reclaim the failed member from individual AI")
     }
 
@@ -160,12 +161,12 @@ class TacticalCoordinationTest {
         val initial = view()
         state.select(TacticalRules.choose(initial),1,0)
         val plan = state.plan!!
-        TacticalManeuvers.assign(squad,plan,initial)
+        TacticalCoordinator.assign(squad,plan,initial)
         plan.tasks.values.filter { it.job == TacticalJob.COVER }.forEach { it.position=it.anchor }
-        TacticalManeuvers.advance(squad,state,plan,view(80))
+        TacticalCoordinator.advance(squad,state,plan,view(80))
         assertEquals(TacticalStatus.EXECUTING,plan.status)
         assertEquals(80L,plan.lastCover)
-        TacticalManeuvers.advance(squad,state,plan,view(90).copy(members=members.map { it.copy(canFire=false) }))
+        TacticalCoordinator.advance(squad,state,plan,view(90).copy(members=members.map { it.copy(canFire=false) }))
         assertEquals(TacticalStatus.EXECUTING,plan.status)
     }
 }

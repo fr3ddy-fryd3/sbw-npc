@@ -37,7 +37,7 @@ class DefensiveOverwatchTest {
 
     @Test fun `only snipers and machine gunners take high posts while defending`() {
         val plan=TacticalPlan(1,TacticalPattern.CONSOLIDATE,null,0,1)
-        TacticalManeuvers.assign(UUID(0,2),plan,view())
+        TacticalCoordinator.assign(UUID(0,2),plan,view())
         assertEquals(TacticalJob.OVERWATCH,plan.tasks[members[0].id]!!.job)
         assertEquals(TacticalJob.OVERWATCH,plan.tasks[members[1].id]!!.job)
         assertEquals(TacticalJob.OBSERVE,plan.tasks[members[2].id]!!.job)
@@ -72,12 +72,12 @@ class DefensiveOverwatchTest {
 
     @Test fun `a changed contact preserves the original defensive assignment and selected roof`() {
         val original=TacticalPlan(1,TacticalPattern.CONSOLIDATE,null,0,1)
-        TacticalManeuvers.assign(UUID(0,2),original,view())
+        TacticalCoordinator.assign(UUID(0,2),original,view())
         val old=original.tasks[members[0].id]!!
         val roof=old.anchor.add(20.0,10.0,0.0)
         old.position=roof
         val next=TacticalPlan(2,TacticalPattern.REORIENT,Vec3(30.0,64.0,0.0),100,1)
-        TacticalManeuvers.assign(UUID(0,2),next,view().copy(now=100,members=members.map {
+        TacticalCoordinator.assign(UUID(0,2),next,view().copy(now=100,members=members.map {
             if (it.id==members[0].id) it.copy(position=roof) else it
         }))
         DefensiveOverwatch.preservePosts(next,original.tasks,view().copy(now=100))

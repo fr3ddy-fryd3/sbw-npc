@@ -7,10 +7,16 @@ import net.minecraft.world.phys.Vec3
 /** Protected support posts around a fixed defensive assignment, never around each new stop. */
 object DefensiveOverwatch {
     const val RADIUS = 32.0
-    val PATTERNS = setOf(TacticalPattern.CONSOLIDATE,TacticalPattern.REORIENT,TacticalPattern.HOLD_HEIGHT,TacticalPattern.RETURN_FIRE)
+    val PATTERNS get() = TacticalStates.registry.defensivePatterns
 
     fun enabled(view: TacticalSnapshot,member: TacticalMember,pattern: TacticalPattern): Boolean =
-        view.order == SquadOrder.DEFEND && pattern in PATTERNS && member.ready && member.health >= 0.3 &&
+        enabled(view, member, pattern in PATTERNS)
+
+    fun enabled(view: TacticalSnapshot, member: TacticalMember, state: TacticalState): Boolean =
+        enabled(view, member, state.supportsDefensiveOverwatch)
+
+    private fun enabled(view: TacticalSnapshot, member: TacticalMember, supported: Boolean): Boolean =
+        view.order == SquadOrder.DEFEND && supported && member.ready && member.health >= 0.3 &&
             member.role in setOf(NpcClass.SNIPER,NpcClass.MACHINE_GUNNER)
 
     fun within(anchor: Vec3,point: Vec3): Boolean = point.subtract(anchor).horizontalDistance() <= RADIUS &&
@@ -44,11 +50,12 @@ object DefensiveOverwatch {
         -point.y*1000.0 + point.distanceTo(anchor) + point.distanceTo(origin)*0.2 + exposure*5.0
 
     fun preservePosts(plan: TacticalPlan,previous: Map<java.util.UUID,TacticalTask>,view: TacticalSnapshot) {
-        if (view.order != SquadOrder.DEFEND || plan.pattern !in PATTERNS) return
+        if (view.order != SquadOrder.DEFEND || !plan.behavior.supportsDefensiveOverwatch) return
+        val desired = plan.tasks.toMutableMap()
         for ((id,next) in plan.tasks.toMap()) {
             val old=previous[id] ?: continue
             if (next.job != TacticalJob.OVERWATCH || old.job != TacticalJob.OVERWATCH) continue
-            plan.tasks[id]=TacticalTask(next.job,old.anchor,next.focus,plan.id).also {
+            desired[id]=TacticalTask(next.job,old.anchor,next.focus,plan.id).also {
                 it.position=old.position
                 it.search=if (old.focus==next.focus) old.search else null
                 it.nextSearch=if (it.search != null || it.position != null) old.nextSearch else view.now
@@ -58,5 +65,6 @@ object DefensiveOverwatch {
                 it.failures=old.failures
             }
         }
+        plan.assignments.replace(desired,view.now,"preserve_defensive_posts")
     }
 }

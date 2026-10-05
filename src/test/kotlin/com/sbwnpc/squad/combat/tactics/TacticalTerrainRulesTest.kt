@@ -14,7 +14,7 @@ class TacticalTerrainRulesTest {
         val view = view(74.0)
         assertEquals(TacticalPattern.ATTACK_HEIGHT,TacticalRules.choose(view).pattern)
         val plan = TacticalPlan(1,TacticalPattern.ATTACK_HEIGHT,view.contacts[0].position,0,1)
-        TacticalManeuvers.assign(UUID(0,2),plan,view)
+        TacticalCoordinator.assign(UUID(0,2),plan,view)
         assertTrue(plan.tasks.values.any { it.job == TacticalJob.WAIT && it.anchor.y > view.center.y })
         assertTrue(plan.tasks.values.filter { it.job == TacticalJob.WAIT }.all { kotlin.math.abs(it.anchor.z) >= 5.0 })
     }
@@ -22,7 +22,7 @@ class TacticalTerrainRulesTest {
         val view = view(54.0).copy(order=SquadOrder.DEFEND,home=Vec3(12.5,64.0,0.0))
         assertEquals(TacticalPattern.HOLD_HEIGHT,TacticalRules.choose(view).pattern)
         val plan = TacticalPlan(1,TacticalPattern.HOLD_HEIGHT,view.contacts[0].position,0,1)
-        TacticalManeuvers.assign(UUID(0,2),plan,view)
+        TacticalCoordinator.assign(UUID(0,2),plan,view)
         assertTrue(plan.tasks.values.all { it.anchor.y == 64.0 && it.job == TacticalJob.COVER })
     }
     @Test fun `an unopposed narrow crossing releases only the first pair`() {
@@ -31,9 +31,9 @@ class TacticalTerrainRulesTest {
         val state = SquadTacticalState()
         state.select(TacticalRules.choose(view),1,0)
         val plan=state.plan!!
-        TacticalManeuvers.assign(UUID(0,2),plan,view)
-        TacticalManeuvers.advance(UUID(0,2),state,plan,view)
-        TacticalManeuvers.assign(UUID(0,2),plan,view)
+        TacticalCoordinator.assign(UUID(0,2),plan,view)
+        TacticalCoordinator.advance(UUID(0,2),state,plan,view)
+        TacticalCoordinator.assign(UUID(0,2),plan,view)
         assertEquals(2,plan.tasks.values.count { it.job == TacticalJob.ADVANCE })
         assertEquals(4,plan.tasks.values.count { it.job == TacticalJob.WAIT })
     }
@@ -47,12 +47,12 @@ class TacticalTerrainRulesTest {
         val state = SquadTacticalState()
         state.select(TacticalRules.choose(view),1,0)
         val plan = state.plan!!
-        TacticalManeuvers.assign(UUID(0,2),plan,view)
+        TacticalCoordinator.assign(UUID(0,2),plan,view)
         assertEquals(TacticalJob.COVER,plan.tasks[members.last().id]!!.job)
         assertEquals(5,plan.tasks.values.count { it.job == TacticalJob.COVER })
         assertEquals(11,plan.tasks.values.count { it.job == TacticalJob.WAIT })
         plan.tasks.values.filter { it.job == TacticalJob.COVER }.forEach { it.position=it.anchor }
-        TacticalManeuvers.advance(UUID(0,2),state,plan,view)
+        TacticalCoordinator.advance(UUID(0,2),state,plan,view)
         assertEquals(TacticalStatus.EXECUTING,plan.status)
         assertEquals(11,plan.tasks.values.count { it.job == TacticalJob.ADVANCE })
     }
@@ -63,27 +63,27 @@ class TacticalTerrainRulesTest {
         val state = SquadTacticalState()
         state.select(TacticalRules.choose(view),1,0)
         val plan = state.plan!!
-        TacticalManeuvers.assign(UUID(0,2),plan,view)
-        val originalSupport = plan.heightSupport.toSet()
+        TacticalCoordinator.assign(UUID(0,2),plan,view)
+        val originalSupport = (plan.behavior as HeightAttackState).support.toSet()
         settleCover(plan)
-        TacticalManeuvers.advance(UUID(0,2),state,plan,view)
+        TacticalCoordinator.advance(UUID(0,2),state,plan,view)
         view = arrive(plan,view.copy(now=40))
-        TacticalManeuvers.advance(UUID(0,2),state,plan,view)
+        TacticalCoordinator.advance(UUID(0,2),state,plan,view)
         assertEquals(1,plan.bounds)
         assertEquals(TacticalStatus.PREPARING,plan.status)
-        assertTrue(plan.heightFront!!.y > view.center.y)
+        assertTrue((plan.behavior as HeightAttackState).front!!.y > view.center.y)
         settleCover(plan)
-        TacticalManeuvers.advance(UUID(0,2),state,plan,view)
+        TacticalCoordinator.advance(UUID(0,2),state,plan,view)
         assertEquals(originalSupport,plan.tasks.filterValues { it.job == TacticalJob.ADVANCE }.keys)
-        assertTrue(plan.tasks.filterValues { it.job == TacticalJob.ADVANCE }.values.all { it.anchor.y == plan.heightFront!!.y })
+        assertTrue(plan.tasks.filterValues { it.job == TacticalJob.ADVANCE }.values.all { it.anchor.y == (plan.behavior as HeightAttackState).front!!.y })
         assertTrue(plan.tasks.filterValues { it.job == TacticalJob.COVER }.keys.none { it in originalSupport })
         view = arrive(plan,view.copy(now=80))
-        TacticalManeuvers.advance(UUID(0,2),state,plan,view)
+        TacticalCoordinator.advance(UUID(0,2),state,plan,view)
         assertEquals(2,plan.bounds)
         settleCover(plan)
-        TacticalManeuvers.advance(UUID(0,2),state,plan,view)
+        TacticalCoordinator.advance(UUID(0,2),state,plan,view)
         assertEquals(11,plan.tasks.values.count { it.job == TacticalJob.ADVANCE })
-        assertTrue(plan.tasks.filterValues { it.job == TacticalJob.ADVANCE }.values.all { it.anchor.y > plan.heightFront!!.y })
+        assertTrue(plan.tasks.filterValues { it.job == TacticalJob.ADVANCE }.values.all { it.anchor.y > (plan.behavior as HeightAttackState).front!!.y })
     }
 
     @Test fun `a late firing lane promotes its shooter from the waiting group instead of deadlocking`() {
@@ -92,10 +92,10 @@ class TacticalTerrainRulesTest {
         val state = SquadTacticalState()
         state.select(TacticalRules.choose(initial),1,0)
         val plan = state.plan!!
-        TacticalManeuvers.assign(UUID(0,2),plan,initial)
+        TacticalCoordinator.assign(UUID(0,2),plan,initial)
         assertEquals(TacticalJob.WAIT,plan.tasks[members.last().id]!!.job)
         val ready = initial.copy(now=20,members=members.mapIndexed { index,member -> member.copy(canFire=index==15) })
-        TacticalManeuvers.advance(UUID(0,2),state,plan,ready)
+        TacticalCoordinator.advance(UUID(0,2),state,plan,ready)
         assertEquals(TacticalJob.COVER,plan.tasks[members.last().id]!!.job)
         assertEquals(TacticalStatus.EXECUTING,plan.status)
         assertEquals(11,plan.tasks.values.count { it.job == TacticalJob.ADVANCE })
@@ -121,8 +121,8 @@ class TacticalTerrainRulesTest {
         val state = SquadTacticalState()
         state.select(choice,1,40)
         val plan = state.plan!!
-        TacticalManeuvers.assign(UUID(0,2),plan,view)
-        TacticalManeuvers.advance(UUID(0,2),state,plan,view)
+        TacticalCoordinator.assign(UUID(0,2),plan,view)
+        TacticalCoordinator.advance(UUID(0,2),state,plan,view)
         assertEquals(TacticalStatus.EXECUTING,plan.status)
         assertEquals(4,plan.tasks.values.count { it.job == TacticalJob.ADVANCE })
         assertFalse(plan.tasks.values.any { it.job == TacticalJob.SEARCH })

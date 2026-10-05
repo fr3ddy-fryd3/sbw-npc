@@ -22,7 +22,7 @@ object TacticalPositions {
         val overwatch=task.job==TacticalJob.OVERWATCH
         val homeRadius = SquadFormation.perimeterRadius(view.members.size) + 10.0 + if (overwatch) DefensiveOverwatch.RADIUS else 0.0
         val member = view.members.firstOrNull { it.id == entity.uuid }
-        if (task.job == TacticalJob.COVER && member != null && TacticalManeuvers.covers(member,task) &&
+        if (task.job == TacticalJob.COVER && member != null && TacticalEvidence.covers(member,task) &&
             member.position.distanceTo(task.anchor) <= 10.0 &&
             TacticalRules.withinOrder(view,member.position,homeRadius) && !GrenadeHazard.threatens(level,member.position))
             return finish(task,member.position)
@@ -36,9 +36,9 @@ object TacticalPositions {
         val search = task.search ?: TacticalPositionSearch(entity.position(),
             if (overwatch) DefensiveOverwatch.probes(task.anchor) else OFFSETS.map { localAnchor.add(it) }).also { task.search=it }
         val plan = entity.currentSquad()?.tactics?.plan
-        val pattern = plan?.pattern
+        val policy = plan?.behavior?.positions ?: DefaultTacticalPositions
         val covered = plan!=null && view.members.count {
-            plan.tasks[it.id]?.job==TacticalJob.COVER && TacticalManeuvers.firesCover(it,plan.tasks[it.id])
+            plan.tasks[it.id]?.job==TacticalJob.COVER && TacticalEvidence.firesCover(it,plan.tasks[it.id])
         } >= TacticalFlanks.requiredCover(view)
         var probesThisTick=0
         while (search.probeIndex < search.probes.size) {
@@ -51,8 +51,7 @@ object TacticalPositions {
             if (!search.visited.add(candidate)) continue
             if (!TacticalRules.withinOrder(view,candidate,homeRadius)) { search.reject("order"); continue }
             if (overwatch && !DefensiveOverwatch.within(task.anchor,candidate)) continue
-            if (pattern == TacticalPattern.HOLD_HEIGHT && candidate.y < view.center.y-2.0) continue
-            if (pattern == TacticalPattern.FILE && task.job == TacticalJob.ADVANCE && candidate.distanceTo(localAnchor)>1.0) continue
+            if (!policy.candidate(view,task,candidate,localAnchor)) continue
             if (!overwatch && (kotlin.math.abs(candidate.y-entity.y)>12.0 || candidate.distanceTo(entity.position())>48.0)) continue
             if (task.opensLane && focus!=null && !TacticalRoutes.safeLaneProbe(search.origin,candidate,focus)) continue
             val body=entity.getDimensions(entity.pose).makeBoundingBox(candidate)
@@ -66,9 +65,7 @@ object TacticalPositions {
             if (mustShoot && !friendlyLane(entity,eye,focus)) { search.reject("friendly_fire"); continue }
             var score=candidate.distanceTo(localAnchor)+candidate.distanceTo(entity.position())*0.2+exposure*5.0
             if (firing && mustShoot) score-=8.0
-            if (pattern in setOf(TacticalPattern.AVOID_ARMOUR,TacticalPattern.BREAK_CONTACT,TacticalPattern.REORGANIZE)) score+=exposure*10.0
-            if (pattern == TacticalPattern.ATTACK_HEIGHT && task.job in RUNNING_JOBS && focus != null) score+=maxOf(0.0,focus.y-candidate.y)*1.5
-            if (pattern == TacticalPattern.HOLD_HEIGHT) score+=maxOf(0.0,view.center.y-candidate.y)*8.0
+            score+=policy.score(view,task,candidate,exposure)
             if (overwatch) score=DefensiveOverwatch.score(task.anchor,search.origin,candidate,exposure)
             search.scored[candidate]=score
         }
@@ -85,7 +82,7 @@ object TacticalPositions {
                     val node=path.getNode(index)
                     val foot=Vec3(node.x+0.5,node.y.toDouble(),node.z+0.5)
                     if (!TacticalRules.withinOrder(view,foot,homeRadius) || GrenadeHazard.threatens(level,foot) ||
-                        (pattern == TacticalPattern.HOLD_HEIGHT && foot.y < view.center.y-2.0)) { safe=false; break }
+                        !policy.route(view,foot)) { safe=false; break }
                     if (task.opensLane && focus!=null && !TacticalRoutes.safeLaneProbe(search.origin,foot,focus)) { safe=false; break }
                     if (index % 4 == 0 && task.job == TacticalJob.FLANK) {
                         if (!TickBudget.hasRaycasts(level)) return Result(Outcome.DEFERRED)
@@ -93,10 +90,11 @@ object TacticalPositions {
                         val threat=threats.firstOrNull()
                         if (!covered && threat != null && foot.distanceTo(threat.position)<entity.position().distanceTo(threat.position)*0.6 &&
                             !Sightline.blocked(level,threat.position.add(0.0,1.5,0.0),foot.add(0.0,1.0,0.0),entity) &&
-                            pattern != TacticalPattern.ENCIRCLE) { safe=false; break }
+                            !policy.permitsExposedFlankAdvance) { safe=false; break }
                     }
                 }
                 if (safe && entity.navigation.moveTo(path,speed(task))) {
+                    task.navigationPath=path
                     FiringSpots.claim(entity.uuid,candidate)
                     return finish(task,candidate)
                 }
@@ -136,7 +134,7 @@ object TacticalPositions {
             hulls.none { it.intersects(body) } && !GrenadeHazard.threatens(entity.level() as ServerLevel,point) && !FiringSpots.crowded(point,taken)
     private fun friendlyLane(entity: NpcEntity,eye: Vec3,focus: Vec3?): Boolean = focus == null ||
         FriendlyFireGuard.assess(entity,focus.add(0.0,1.5,0.0),3.0,focus,0.0,eye).lineClear
-    private val RUNNING_JOBS=setOf(TacticalJob.ADVANCE,TacticalJob.FLANK,TacticalJob.REGROUP,TacticalJob.RETREAT)
+    private val RUNNING_JOBS=TacticalJob.RUNNING
     private val OFFSETS=listOf(Vec3.ZERO,Vec3(0.8,0.0,0.0),Vec3(-0.8,0.0,0.0),Vec3(0.0,0.0,0.8),Vec3(0.0,0.0,-0.8),
         Vec3(4.0,0.0,0.0),Vec3(-4.0,0.0,0.0),Vec3(0.0,0.0,4.0),Vec3(0.0,0.0,-4.0),
         Vec3(4.0,0.0,4.0),Vec3(-4.0,0.0,4.0),Vec3(4.0,0.0,-4.0),Vec3(-4.0,0.0,-4.0))

@@ -40,7 +40,7 @@ class TacticalSituationsTest {
         assertEquals(TacticalPattern.ENCIRCLE,TacticalRules.choose(view).pattern)
         assertNotEquals(TacticalPattern.ENCIRCLE,TacticalRules.choose(view.copy(members=members)).pattern)
         val plan=TacticalPlan(1,TacticalPattern.ENCIRCLE,view.contacts[0].position,0,1,TacticalStatus.EXECUTING)
-        TacticalManeuvers.assign(UUID(0,2),plan,view)
+        TacticalCoordinator.assign(UUID(0,2),plan,view)
         val destinations=plan.tasks.values.filter { it.job == TacticalJob.FLANK }.map { it.anchor }
         assertTrue(destinations.size >= 4)
         assertEquals(destinations.size,destinations.distinct().size)
@@ -58,9 +58,12 @@ class TacticalSituationsTest {
         assertEquals(TacticalPattern.PURSUE,TacticalRules.choose(view).pattern)
         assertNotEquals(TacticalPattern.PURSUE,TacticalRules.choose(view.copy(order=SquadOrder.DEFEND)).pattern)
         val plan=TacticalPlan(1,TacticalPattern.PURSUE,Vec3(150.0,64.0,0.0),0,1,TacticalStatus.EXECUTING)
-        plan.origin=Vec3.ZERO.add(0.0,64.0,0.0)
-        TacticalManeuvers.assign(UUID(0,2),plan,view.copy(center=Vec3(30.0,64.0,0.0)))
-        assertTrue(plan.tasks.values.filter { it.job == TacticalJob.ADVANCE }.all { it.anchor.distanceTo(plan.origin!!) <= 32.01 })
+        TacticalCoordinator.assign(UUID(0,2),plan,view)
+        TacticalCoordinator.assign(UUID(0,2),plan,view.copy(now=10,center=Vec3(30.0,64.0,0.0)))
+        val advances=plan.tasks.values.filter { it.job == TacticalJob.ADVANCE }
+        assertFalse(advances.isEmpty())
+        assertEquals(view.center,plan.origin)
+        assertTrue(advances.all { it.anchor.distanceTo(plan.origin!!) <= 32.01 })
     }
     @Test fun `losing capability cancels ambitious maneuvers`() {
         val depleted=view().copy(members=members.mapIndexed { index,m -> m.copy(ready=index<2) })
@@ -72,7 +75,7 @@ class TacticalSituationsTest {
         assertEquals(TacticalPattern.ANTI_ARMOUR,TacticalRules.choose(view).pattern)
         assertEquals(TacticalPattern.AVOID_ARMOUR,TacticalRules.choose(view.copy(members=members)).pattern)
         val plan=TacticalPlan(1,TacticalPattern.ANTI_ARMOUR,view.contacts[0].position,0,1)
-        TacticalManeuvers.assign(UUID(0,2),plan,view)
+        TacticalCoordinator.assign(UUID(0,2),plan,view)
         assertEquals(TacticalJob.ANTI_ARMOUR,plan.tasks[members[0].id]!!.job)
         assertTrue(plan.tasks.filterKeys { it != members[0].id }.values.all { it.focus == view.contacts[1].position })
     }

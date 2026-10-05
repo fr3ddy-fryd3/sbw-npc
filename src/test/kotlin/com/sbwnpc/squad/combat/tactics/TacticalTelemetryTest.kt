@@ -13,9 +13,9 @@ class TacticalTelemetryTest {
     private fun view(members: List<TacticalMember>)=TacticalSnapshot(20,SquadOrder.ATTACK,1,
         member.position,focus,members,listOf(TacticalContact(UUID(1,1),focus,20)))
     private fun plan(members: List<TacticalMember>)=TacticalPlan(1,TacticalPattern.FLANK,focus,0,1).apply {
-        members.forEach { npc -> tasks[npc.id]=TacticalTask(TacticalJob.COVER,npc.position,focus,id).apply {
+        members.forEach { npc -> assignments.put(npc.id,TacticalTask(TacticalJob.COVER,npc.position,focus,id).apply {
             position=npc.position
-        } }
+        },20,"fixture") }
     }
 
     @Test fun `ready to shoot is reported separately from actual covering shots`() {
