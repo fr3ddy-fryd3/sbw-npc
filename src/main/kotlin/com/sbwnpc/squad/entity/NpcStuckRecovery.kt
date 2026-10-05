@@ -1,9 +1,9 @@
 package com.sbwnpc.squad.entity
 
+import com.sbwnpc.squad.SquadMod
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.entity.ai.WalkingClearance
-import com.sbwnpc.squad.SquadMod
 import net.minecraft.core.BlockPos
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.server.level.ServerLevel
@@ -20,6 +20,7 @@ import net.minecraft.world.phys.Vec3
 class NpcStuckRecovery(private val npc: NpcEntity) {
     private var stuckCheckPos: Vec3? = null
     private var stuckSinceTick = -1
+
     /** Where it last asked to go and got a path that ends where it stands, and when — see
      *  [notePathGoesNowhere]. */
     private var nowhereToward: BlockPos? = null
@@ -78,7 +79,9 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
                 state.fluidState.isEmpty && level.getBlockEntity(candidate) == null &&
                     hardness >= 0f && hardness <= SOFT_BLOCK_HARDNESS && !state.requiresCorrectToolForDrops()
             }
-        } else null
+        } else {
+            null
+        }
         // A new search must not reuse the path that has just failed to move him.
         stuckSinceTick = -1
         nowhereSinceTick = -1
@@ -91,24 +94,40 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
         npc.allowRecoveryDescent()
         npc.navigation.stop()
         npc.navigation.moveTo(npc.navigation.createPath(BlockPos.containing(toward), 1), 1.0)
-        DebugFlags.log(LogGroup.STUCK, "{} replanned from {} toward {} with fall limit {}", npc.uuid,
-            npc.blockPosition(), toward, npc.maxFallDistance)
+        DebugFlags.log(
+            LogGroup.STUCK,
+            "{} replanned from {} toward {} with fall limit {}",
+            npc.uuid,
+            npc.blockPosition(),
+            toward,
+            npc.maxFallDistance,
+        )
         recoveryAttempts++
         if (recoveryAttempts >= 6 && tick - lastWarningTick >= 600) {
             lastWarningTick = tick
-            SquadMod.LOGGER.warn("NPC {} ({}) still stuck at {} toward {} after {} recoveries; fall limit {}, colliders {}",
-                npc.uuid, npc.npcClass, npc.blockPosition(), toward, recoveryAttempts, npc.maxFallDistance,
-                candidates.take(4).map { "${BuiltInRegistries.BLOCK.getKey(level.getBlockState(it).block)} at $it" })
+            SquadMod.LOGGER.warn(
+                "NPC {} ({}) still stuck at {} toward {} after {} recoveries; fall limit {}, colliders {}",
+                npc.uuid,
+                npc.npcClass,
+                npc.blockPosition(),
+                toward,
+                recoveryAttempts,
+                npc.maxFallDistance,
+                candidates.take(4).map { "${BuiltInRegistries.BLOCK.getKey(level.getBlockState(it).block)} at $it" },
+            )
         }
     }
 
     private companion object {
         const val STUCK_CHECK_TICKS = 10
         const val STUCK_MOVE_SQR = 0.15 * 0.15
+
         /** Stood still this long with a path before it clears the way. */
         const val STUCK_BREAK_TICKS = 30
+
         /** A path that goes nowhere counts only while they keep coming. */
         const val NOWHERE_FRESH_TICKS = 40
+
         /** Anything a hand clears quickly: leaves 0.2, glass 0.3, sand and dirt 0.5, gravel and grass
          *  0.6. Stone (1.5) and planks (2) stay. */
         const val SOFT_BLOCK_HARDNESS = 0.6f

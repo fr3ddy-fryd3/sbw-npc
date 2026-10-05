@@ -30,10 +30,11 @@ object DroneFlightController {
         val back: Boolean,
         val up: Boolean,
         val down: Boolean,
-        val yaw: Float
+        val yaw: Float,
     )
 
     const val MAX_YAW_STEP = 6f
+
     /** Don't add thrust unless roughly pointed at the target — otherwise a fast drone that's still
      *  turning sails off on a wide arc and has to come back around. */
     private const val THRUST_HEADING_TOLERANCE = 30f

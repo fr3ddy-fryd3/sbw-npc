@@ -5,12 +5,16 @@ import java.util.UUID
 
 /** Common plan identity; maneuver-specific progress lives in [behavior]. */
 class TacticalPlan(
-    val id: Int, val pattern: TacticalPattern, val focus: Vec3?, val started: Long, val stamp: Int,
+    val id: Int,
+    val pattern: TacticalPattern,
+    val focus: Vec3?,
+    val started: Long,
+    val stamp: Int,
     initialStatus: TacticalStatus = TacticalStatus.PREPARING,
     val events: TacticalEventSink = TacticalEventSink.NONE,
     val behavior: TacticalState = TacticalStates.create(pattern),
     val reason: TacticalReason = TacticalReason.UNSPECIFIED,
-    val flankSide: Double = 0.0
+    val flankSide: Double = 0.0,
 ) {
     val assignments = TacticalTaskBoard(id, events)
     val tasks get() = assignments.tasks
@@ -44,7 +48,9 @@ class TacticalPlan(
             entered = true
             events.emit(TacticalEvent.Lifecycle(id, view.now, "state_enter", pattern, phase, "plan_selected"))
             behavior.enter(next)
-        } else behavior.assign(next)
+        } else {
+            behavior.assign(next)
+        }
     }
 
     internal fun tick(squad: UUID, owner: SquadTacticalState, view: TacticalSnapshot) {
@@ -89,7 +95,10 @@ class TacticalPlan(
     private fun transitionTerminal(now: Long, next: TacticalPhaseState, trigger: String) {
         if (exited) return
         val previous = context
-        if (previous != null) behavior.phases.transition(next, previous.copy(view = previous.view.copy(now = now)), trigger)
-        else behavior.phases.initialize(next.status)
+        if (previous != null) {
+            behavior.phases.transition(next, previous.copy(view = previous.view.copy(now = now)), trigger)
+        } else {
+            behavior.phases.initialize(next.status)
+        }
     }
 }

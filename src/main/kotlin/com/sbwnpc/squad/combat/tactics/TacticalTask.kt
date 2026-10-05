@@ -56,6 +56,8 @@ class TacticalPositionSearch(val origin: Vec3, val probes: List<Vec3>) {
     val visited = HashSet<Vec3>()
     var destinations: List<Vec3>? = null
     var destinationIndex = 0
-    val rejections = LinkedHashMap<String,Int>()
-    fun reject(reason: String) { rejections[reason]=(rejections[reason] ?: 0)+1 }
+    val rejections = LinkedHashMap<String, Int>()
+    fun reject(reason: String) {
+        rejections[reason] = (rejections[reason] ?: 0) + 1
+    }
 }

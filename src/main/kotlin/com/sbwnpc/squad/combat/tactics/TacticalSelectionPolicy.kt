@@ -19,10 +19,12 @@ object TacticalSelectionPolicy {
         val changedFocus = old.focus != null && choice.focus != null && old.focus.distanceTo(choice.focus) > 20.0
         if (policy.keepsThreatSector && choice.pattern == old.pattern) return TacticalSelection.Keep(TacticalSelectionHold.STICKY_SECTOR)
         val proposed = registry.policy(choice.pattern)
-        if (!choice.emergency && policy.committed && (proposed.passive || proposed.committed))
+        if (!choice.emergency && policy.committed && (proposed.passive || proposed.committed)) {
             return TacticalSelection.Keep(TacticalSelectionHold.COMMITTED_MANEUVER)
-        if (!choice.emergency && !policy.quickReplacement && now - old.started < 80)
+        }
+        if (!choice.emergency && !policy.quickReplacement && now - old.started < 80) {
             return TacticalSelection.Keep(TacticalSelectionHold.MINIMUM_DURATION)
+        }
         if (old.pattern == choice.pattern && !changedFocus) return TacticalSelection.Keep(TacticalSelectionHold.SAME_PLAN)
         return TacticalSelection.Replace(if (choice.emergency) "emergency_${choice.reason}" else "assessment_changed")
     }

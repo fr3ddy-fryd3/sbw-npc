@@ -35,8 +35,11 @@ class BarracksRecruitmentQueue {
         while (remaining.isNotEmpty()) {
             val replacement = remaining.firstOrNull { it.replacement }
             val initial = remaining.firstOrNull { !it.replacement }
-            val next = if (replacement != null && (initial == null || streak < MAX_REPLACEMENT_STREAK)) replacement
-                else initial!!
+            val next = if (replacement != null && (initial == null || streak < MAX_REPLACEMENT_STREAK)) {
+                replacement
+            } else {
+                initial!!
+            }
             remaining.remove(next)
             result += next
             streak = if (next.replacement) streak + 1 else 0
@@ -52,28 +55,37 @@ class BarracksRecruitmentQueue {
         remainingTicks = intervalTicks
     }
 
-    fun save(): CompoundTag = CompoundTag().apply {
-        putInt("RemainingTicks", remainingTicks)
-        putInt("ReplacementStreak", replacementStreak)
-        put("Requests", ListTag().also { list ->
-            requests.forEach { request -> list.add(CompoundTag().apply {
-                putUUID("Squad", request.squad)
-                putUUID("Slot", request.slot)
-                putBoolean("Replacement", request.replacement)
-            }) }
-        })
-    }
+    fun save(): CompoundTag =
+        CompoundTag().apply {
+            putInt("RemainingTicks", remainingTicks)
+            putInt("ReplacementStreak", replacementStreak)
+            put(
+                "Requests",
+                ListTag().also { list ->
+                    requests.forEach { request ->
+                        list.add(
+                            CompoundTag().apply {
+                                putUUID("Squad", request.squad)
+                                putUUID("Slot", request.slot)
+                                putBoolean("Replacement", request.replacement)
+                            },
+                        )
+                    }
+                },
+            )
+        }
 
     companion object {
         private const val MAX_REPLACEMENT_STREAK = 3
 
-        fun load(tag: CompoundTag) = BarracksRecruitmentQueue().apply {
-            remainingTicks = tag.getInt("RemainingTicks").coerceAtLeast(0)
-            replacementStreak = tag.getInt("ReplacementStreak").coerceIn(0, MAX_REPLACEMENT_STREAK)
-            tag.getList("Requests", Tag.TAG_COMPOUND.toInt()).forEach { raw ->
-                val request = raw as CompoundTag
-                requests += Request(request.getUUID("Squad"), request.getUUID("Slot"), request.getBoolean("Replacement"))
+        fun load(tag: CompoundTag) =
+            BarracksRecruitmentQueue().apply {
+                remainingTicks = tag.getInt("RemainingTicks").coerceAtLeast(0)
+                replacementStreak = tag.getInt("ReplacementStreak").coerceIn(0, MAX_REPLACEMENT_STREAK)
+                tag.getList("Requests", Tag.TAG_COMPOUND.toInt()).forEach { raw ->
+                    val request = raw as CompoundTag
+                    requests += Request(request.getUUID("Squad"), request.getUUID("Slot"), request.getBoolean("Replacement"))
+                }
             }
-        }
     }
 }

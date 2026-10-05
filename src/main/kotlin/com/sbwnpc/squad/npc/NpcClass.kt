@@ -57,10 +57,12 @@ enum class NpcClass(
 
     /** Works the gunship turret from seat 1 (HelicopterGunnerBehaviour); same sidearm caveat. */
     HELICOPTER_GUNNER(listOf(loc("glock_18"), loc("mp_443"))),
+
     // Flies kamikaze drones at targets 80-150 blocks out (by rank) — see DroneOperatorBehaviour.
     // Same rifles as RIFLEMAN (per user request): once the drones are spent it fights on as an
     // ordinary rifleman rather than plinking with a sidearm.
-    DRONE_OPERATOR(listOf(loc("ak_47"), loc("ak_12")), shootDistanceMultiplier = 2.0, speedMultiplier = 1.3);
+    DRONE_OPERATOR(listOf(loc("ak_47"), loc("ak_12")), shootDistanceMultiplier = 2.0, speedMultiplier = 1.3),
+    ;
 
     /** Ordinary assault stops at this range; holding orders can shoot out to twice it. */
     val assaultDistance: Double get() = 24.0 * shootDistanceMultiplier
@@ -72,15 +74,16 @@ enum class NpcClass(
      * from these). Counted in rounds per class and gun, per user call: a flat 120 for everyone gave
      * an AWM 24 reloads, an M79 120 grenades and an M60 barely one belt.
      */
-    fun startingRounds(weapon: ResourceLocation): Int = when (this) {
-        RIFLEMAN -> 210
-        MACHINE_GUNNER -> if (weapon.path == "m_60") 400 else 320
-        SNIPER -> if (weapon.path == "awm") 50 else 60
-        GRENADIER -> 20
-        MEDIC, MORTAR_OPERATOR, MORTAR_LOADER -> 180
-        DRONE_OPERATOR -> 120
-        TANK_CREW, HELICOPTER_PILOT, HELICOPTER_GUNNER -> 85
-    }
+    fun startingRounds(weapon: ResourceLocation): Int =
+        when (this) {
+            RIFLEMAN -> 210
+            MACHINE_GUNNER -> if (weapon.path == "m_60") 400 else 320
+            SNIPER -> if (weapon.path == "awm") 50 else 60
+            GRENADIER -> 20
+            MEDIC, MORTAR_OPERATOR, MORTAR_LOADER -> 180
+            DRONE_OPERATOR -> 120
+            TANK_CREW, HELICOPTER_PILOT, HELICOPTER_GUNNER -> 85
+        }
 
     companion object {
         val DEFAULT = RIFLEMAN

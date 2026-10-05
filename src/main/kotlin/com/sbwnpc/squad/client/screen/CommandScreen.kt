@@ -39,7 +39,7 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
         val gunship: Boolean,
         val transport: Boolean,
         /** Where the Barracks keeping this squad up stands, or null for an ordinary squad. */
-        val barracks: BlockPos?
+        val barracks: BlockPos?,
     )
 
     private val loose = snapshot.getInt("Loose")
@@ -52,7 +52,7 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
             t.getInt("Members"), SquadOrder.byOrdinal(t.getInt("Order")),
             t.getBoolean("Tank"), t.getBoolean("Mortar"),
             t.getBoolean("Gunship"), t.getBoolean("Transport"),
-            if (t.contains("Barracks")) BlockPos.of(t.getLong("Barracks")) else null
+            if (t.contains("Barracks")) BlockPos.of(t.getLong("Barracks")) else null,
         )
     }
 
@@ -61,8 +61,7 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
     private var visibleRows = 0
     private var listX = 0
 
-    private fun send(action: Int, id: String = "", value: Int = 0, text: String = "") =
-        PacketDistributor.sendToServer(SquadCmdPayload(action, id, value, text))
+    private fun send(action: Int, id: String = "", value: Int = 0, text: String = "") = PacketDistributor.sendToServer(SquadCmdPayload(action, id, value, text))
 
     /** Rows that fit between the Create button and the footer, leaving the title room above. */
     private fun capacity(): Int = ((height - VERTICAL_CHROME) / ROW_HEIGHT).coerceIn(1, MAX_VISIBLE_ROWS)
@@ -77,7 +76,8 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
         var y = (height - panelHeight) / 2
 
         val create = Button.builder(Component.literal("Create squad from selection ($loose)")) {
-            send(SquadCmdPayload.CREATE); onClose()
+            send(SquadCmdPayload.CREATE)
+            onClose()
         }.bounds(x, y, 364, 20).build()
         create.active = loose > 0
         addRenderableWidget(create)
@@ -85,58 +85,77 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
         y += HEADER_HEIGHT
         listTop = y - 2
         for (row in rows.drop(scroll).take(visibleRows)) {
-            addRenderableWidget(Button.builder(Component.literal("Order: ${row.order.name}")) {
-                row.order = row.order.next(SquadOrder.availableFor(row.tank, row.mortar, row.gunship, row.transport))
-                it.message = Component.literal("Order: ${row.order.name}")
-                send(SquadCmdPayload.SET_ORDER, row.id, row.order.ordinal)
-            }.bounds(x + 92, y, 90, 20).build())
+            addRenderableWidget(
+                Button.builder(Component.literal("Order: ${row.order.name}")) {
+                    row.order = row.order.next(SquadOrder.availableFor(row.tank, row.mortar, row.gunship, row.transport))
+                    it.message = Component.literal("Order: ${row.order.name}")
+                    send(SquadCmdPayload.SET_ORDER, row.id, row.order.ordinal)
+                }.bounds(x + 92, y, 90, 20).build(),
+            )
 
-            addRenderableWidget(Button.builder(Component.literal("Objective")) {
-                send(SquadCmdPayload.ARM_OBJECTIVE, row.id); onClose()
-            }.bounds(x + 186, y, 58, 20).build())
+            addRenderableWidget(
+                Button.builder(Component.literal("Objective")) {
+                    send(SquadCmdPayload.ARM_OBJECTIVE, row.id)
+                    onClose()
+                }.bounds(x + 186, y, 58, 20).build(),
+            )
 
-            addRenderableWidget(Button.builder(Component.literal("Focus")) {
-                send(SquadCmdPayload.ARM_FOCUS, row.id); onClose()
-            }.bounds(x + 248, y, 44, 20).build())
+            addRenderableWidget(
+                Button.builder(Component.literal("Focus")) {
+                    send(SquadCmdPayload.ARM_FOCUS, row.id)
+                    onClose()
+                }.bounds(x + 248, y, 44, 20).build(),
+            )
 
-            addRenderableWidget(Button.builder(Component.literal("R")) {
-                Minecraft.getInstance().setScreen(RenameScreen(row.id, row.name))
-            }.bounds(x + 296, y, 14, 20).build())
+            addRenderableWidget(
+                Button.builder(Component.literal("R")) {
+                    Minecraft.getInstance().setScreen(RenameScreen(row.id, row.name))
+                }.bounds(x + 296, y, 14, 20).build(),
+            )
 
             // Disband/Delete keep the screen up — the server re-sends the list (see class doc).
             val garrisonNote = if (row.barracks != null) "\nIts Barracks stops deploying." else ""
-            addRenderableWidget(Button.builder(Component.literal("X").withStyle(ChatFormatting.RED)) {
-                send(SquadCmdPayload.DISBAND, row.id)
-            }.bounds(x + 314, y, 14, 20)
-                .tooltip(Tooltip.create(Component.literal("Disband — the NPCs stay$garrisonNote"))).build())
+            addRenderableWidget(
+                Button.builder(Component.literal("X").withStyle(ChatFormatting.RED)) {
+                    send(SquadCmdPayload.DISBAND, row.id)
+                }.bounds(x + 314, y, 14, 20)
+                    .tooltip(Tooltip.create(Component.literal("Disband — the NPCs stay$garrisonNote"))).build(),
+            )
 
-            addRenderableWidget(Button.builder(Component.literal("DEL").withStyle(ChatFormatting.DARK_RED)) {
-                send(SquadCmdPayload.DELETE_SQUAD, row.id)
-            }.bounds(x + 332, y, 32, 20)
-                .tooltip(Tooltip.create(Component.literal("Delete the squad and its NPCs$garrisonNote"))).build())
+            addRenderableWidget(
+                Button.builder(Component.literal("DEL").withStyle(ChatFormatting.DARK_RED)) {
+                    send(SquadCmdPayload.DELETE_SQUAD, row.id)
+                }.bounds(x + 332, y, 32, 20)
+                    .tooltip(Tooltip.create(Component.literal("Delete the squad and its NPCs$garrisonNote"))).build(),
+            )
 
             y += ROW_HEIGHT
         }
 
         y += FOOTER_GAP
-        addRenderableWidget(Button.builder(Component.literal("Routes")) {
-            PacketDistributor.sendToServer(RouteCmdPayload(RouteCmdPayload.REQUEST_LIST, "", ""))
-        }.bounds(x, y, 88, 20).build())
-        addRenderableWidget(Button.builder(Component.literal("Diplomacy")) {
-            PacketDistributor.sendToServer(DiplomacyCmdPayload(DiplomacyCmdPayload.REQUEST, 0, 0))
-        }.bounds(x + 92, y, 88, 20).build())
-        addRenderableWidget(Button.builder(reportsLabel()) {
-            reportsOn = !reportsOn
-            it.message = reportsLabel()
-            send(SquadCmdPayload.TOGGLE_REPORTS)
-        }.bounds(x + 184, y, 88, 20)
-            .tooltip(Tooltip.create(Component.literal("Your squads' radio calls in chat: contact, casualties, ammo, objective")))
-            .build())
+        addRenderableWidget(
+            Button.builder(Component.literal("Routes")) {
+                PacketDistributor.sendToServer(RouteCmdPayload(RouteCmdPayload.REQUEST_LIST, "", ""))
+            }.bounds(x, y, 88, 20).build(),
+        )
+        addRenderableWidget(
+            Button.builder(Component.literal("Diplomacy")) {
+                PacketDistributor.sendToServer(DiplomacyCmdPayload(DiplomacyCmdPayload.REQUEST, 0, 0))
+            }.bounds(x + 92, y, 88, 20).build(),
+        )
+        addRenderableWidget(
+            Button.builder(reportsLabel()) {
+                reportsOn = !reportsOn
+                it.message = reportsLabel()
+                send(SquadCmdPayload.TOGGLE_REPORTS)
+            }.bounds(x + 184, y, 88, 20)
+                .tooltip(Tooltip.create(Component.literal("Your squads' radio calls in chat: contact, casualties, ammo, objective")))
+                .build(),
+        )
         addRenderableWidget(Button.builder(Component.literal("Close")) { onClose() }.bounds(x + 276, y, 88, 20).build())
     }
 
-    private fun reportsLabel(): Component =
-        if (reportsOn) Component.literal("Reports: on") else Component.literal("Reports: off").withStyle(ChatFormatting.GRAY)
+    private fun reportsLabel(): Component = if (reportsOn) Component.literal("Reports: on") else Component.literal("Reports: off").withStyle(ChatFormatting.GRAY)
 
     override fun mouseScrolled(mouseX: Double, mouseY: Double, deltaX: Double, deltaY: Double): Boolean {
         if (rows.size <= visibleRows) return super.mouseScrolled(mouseX, mouseY, deltaX, deltaY)
@@ -185,15 +204,19 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
     private companion object {
         const val ROW_HEIGHT = 24
         const val BUTTON_HEIGHT = 20
+
         /** Create button plus the gap under it. */
         const val HEADER_HEIGHT = 26
         const val FOOTER_GAP = 12
         const val MAX_VISIBLE_ROWS = 12
+
         /** Title, Create row, footer, the faction banner above the title and a margin — what the
          *  rows cannot use. */
         const val VERTICAL_CHROME = 130
+
         /** Room left of the Order button for the squad's name. */
         const val LABEL_WIDTH = 88
+
         /** Marks a squad a Barracks keeps up. */
         const val GARRISON_MARK = "\u2302 "
 

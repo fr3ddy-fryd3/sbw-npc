@@ -11,11 +11,11 @@ import com.sbwnpc.squad.entity.ai.MortarClaims
 import com.sbwnpc.squad.entity.ai.VehicleTransportClaims
 import com.sbwnpc.squad.squad.RouteRecording
 import com.sbwnpc.squad.squad.SquadManager
-import com.sbwnpc.squad.vehicle.PilotlessHelicopters
 import com.sbwnpc.squad.squad.SquadSelection
 import com.sbwnpc.squad.team.SquadTeams
-import net.neoforged.bus.api.SubscribeEvent
+import com.sbwnpc.squad.vehicle.PilotlessHelicopters
 import net.neoforged.bus.api.EventPriority
+import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.neoforge.event.entity.player.PlayerEvent
 import net.neoforged.neoforge.event.server.ServerStoppedEvent

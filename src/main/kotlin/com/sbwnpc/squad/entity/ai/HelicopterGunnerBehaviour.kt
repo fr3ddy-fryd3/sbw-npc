@@ -113,7 +113,7 @@ class HelicopterGunnerBehaviour : ExtendedBehaviour<NpcEntity>() {
                 entity.x.coerceIn(hull.minX, hull.maxX),
                 entity.y.coerceIn(hull.minY, hull.maxY),
                 entity.z.coerceIn(hull.minZ, hull.maxZ),
-                BOARD_SPEED
+                BOARD_SPEED,
             )
             return
         }

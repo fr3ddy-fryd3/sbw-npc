@@ -2,6 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.Hostiles
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.domain.port.Ports
@@ -11,7 +12,6 @@ import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.Squad
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
-import com.sbwnpc.squad.combat.Hostiles
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
@@ -53,6 +53,7 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var barrageAim: BlockPos? = null
     private var nextFireTick = 0
     private var lastScanResult: BlockPos? = null
+
     /** Consecutive ticks the fire mission has been out of reach — see [outOfReach]. */
     private var unreachableTicks = 0
 
@@ -61,38 +62,49 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val MIN_RANGE_SQR = 25.0 * 25.0
         private const val SAFE_RADIUS = 10.0
         private const val SELF_DEFENSE_RANGE_SQR = 6.0 * 6.0
+
         /** Radius of the area a BARRAGE order shells, per the command's description. */
         const val BARRAGE_RADIUS = 40.0
+
         /** How long one aim point inside that area is held before walking the fire elsewhere. */
         private const val BARRAGE_SHIFT_TICKS = 100
         private const val MIN_DETECTION = 80.0
         private const val MAX_DETECTION = 160.0
         private const val MIN_SCATTER = 5.0
         private const val MAX_SCATTER = 10.0
+
         /** One round every 5s — halved from every 2.5s per user call. */
         private const val FIRE_COOLDOWN_TICKS = 100
+
         // With no mortar in range, eligible() used to run the mortar box query every single
         // tick for the rest of the operator's life (SmartBrainLib re-checks stopped behaviours'
         // start conditions each tick). A mortar doesn't appear faster than this.
         private const val MORTAR_SEARCH_INTERVAL_TICKS = 40
+
         // The friendly-near-target check ran every tick while manning the mortar; the aim itself is
         // only refreshed every 20 ticks, so checking at the same cadence loses nothing.
         private const val FRIENDLY_CHECK_INTERVAL_TICKS = 20
         private const val MAX_LOS_CHECKS = 8
         private const val START_CHECK_INTERVAL_TICKS = 5
+
         /** Past this, a commanded fire mission counts as out of reach whatever the ballistics say
          *  — a crew shelling from the far end of the map is not supporting anybody. */
         private const val MAX_ENGAGE_RANGE = 300.0
+
         /** Close enough to set the tube back up. Well inside [MAX_ENGAGE_RANGE] so a target that
          *  drifts a little doesn't have the crew packing up again the moment they arrive. */
         private const val REDEPLOY_RANGE = 200.0
+
         /** How close to the point it was sent to the crew sets the tube up. */
         private const val RELOCATE_RANGE = 6.0
+
         /** How long the mission has to stay out of reach before breaking the mortar down. Long
          *  enough that a target dipping behind a hill for a moment isn't reason to move. */
         private const val DISPLACE_AFTER_TICKS = 100
+
         /** At a run, like a man falling in: a crew displacing its tube has fire to get back to. */
         private const val DISPLACE_SPEED = 1.3
+
         /** Farther than this from the tube, he runs to it. */
         private const val RUN_TO_TUBE_DISTANCE = 8.0
     }
@@ -132,7 +144,8 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.tickCount < nextMortarSearchTick) return false
         nextMortarSearchTick = entity.tickCount + MORTAR_SEARCH_INTERVAL_TICKS
         val found = Ports.mortars.within(
-            level, AABB.ofSize(entity.position(), SEARCH_RANGE * 2, SEARCH_RANGE * 2, SEARCH_RANGE * 2)
+            level,
+            AABB.ofSize(entity.position(), SEARCH_RANGE * 2, SEARCH_RANGE * 2, SEARCH_RANGE * 2),
         ).firstOrNull {
             Ports.vehicles.isOperational(it) && entity.distanceToSqr(it) <= SEARCH_RANGE * SEARCH_RANGE &&
                 !MortarClaims.isOperatorClaimedByOther(it.uuid, entity.uuid)
@@ -147,8 +160,7 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private val startCheck = StartCheckThrottle(START_CHECK_INTERVAL_TICKS)
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
-        startCheck.check(entity) { eligible(entity) }
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = startCheck.check(entity) { eligible(entity) }
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = eligible(entity)
 
     override fun stop(entity: NpcEntity) {
@@ -230,11 +242,6 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         return !canHitTarget(m, target)
     }
 
-    /**
-     * Carrying the tube towards the fire mission. Sets it back up once close enough — or straight
-     * away if there is no longer anything to shoot at, so a crew never ends up wandering with a
-     * mortar on its back.
-     */
     /**
      * Where the crew has been told to set up, if that is somewhere other than a fire mission: the
      * rally point of a retreat, or the point it was ordered to defend. An ATTACK or BARRAGE
@@ -365,10 +372,17 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             (level.getEntity(s.target) as? LivingEntity)?.isAlive == true
         }
         lastScanResult = sighting?.let { BlockPos.containing(it.pos) }
-        if (sighting != null) DebugFlags.log(LogGroup.FIRE_SUPPORT,
-            "mortar {} -> {} seen by {} {} ticks ago at {}",
-            entity.uuid, sighting.target, sighting.by, tick - sighting.tick, lastScanResult
-        )
+        if (sighting != null) {
+            DebugFlags.log(
+                LogGroup.FIRE_SUPPORT,
+                "mortar {} -> {} seen by {} {} ticks ago at {}",
+                entity.uuid,
+                sighting.target,
+                sighting.by,
+                tick - sighting.tick,
+                lastScanResult,
+            )
+        }
         return lastScanResult
     }
 

@@ -16,7 +16,7 @@ class SbwMixinIntegrationTest {
             "com.atsuishio.superbwarfare.data.gun.GunData" to "applyDroneSpread",
             "com.atsuishio.superbwarfare.entity.vehicle.base.AutoAimableEntity" to "markAutonomousShot",
             "com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity" to "writeAircraftVisuals",
-            "com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity" to "readAircraftVisuals"
+            "com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity" to "readAircraftVisuals",
         )
         for ((className, hook) in hooks) {
             val type = Class.forName(className, false, javaClass.classLoader)
@@ -27,9 +27,10 @@ class SbwMixinIntegrationTest {
     @Test
     fun `client aircraft injection descriptors match the actual SBW bytecode`() {
         // JUnit runs as a dedicated server. Inspect client bytecode without loading client classes.
-        fun read(name: String): ClassNode = ClassNode().also { node ->
-            javaClass.classLoader.getResourceAsStream("$name.class")!!.use { ClassReader(it).accept(node, ClassReader.SKIP_CODE) }
-        }
+        fun read(name: String): ClassNode =
+            ClassNode().also { node ->
+                javaClass.classLoader.getResourceAsStream("$name.class")!!.use { ClassReader(it).accept(node, ClassReader.SKIP_CODE) }
+            }
         for (mixin in listOf("AircraftModelEntriesMixin", "AircraftModelReloadMixin", "AircraftRendererMixin", "AircraftWorldRenderMixin")) {
             val node = read("com/sbwnpc/squad/mixin/$mixin")
             val annotation = node.invisibleAnnotations.single { it.desc == "Lorg/spongepowered/asm/mixin/Mixin;" }

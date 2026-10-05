@@ -29,12 +29,13 @@ class ConfigureToolPayload(
     val vehicle: Boolean,
     val vehicleModel: Int,
     val tankModel: Int,
-    val heliModel: Int
+    val heliModel: Int,
 ) : CustomPacketPayload {
     override fun type() = TYPE
 
     companion object {
         val TYPE = CustomPacketPayload.Type<ConfigureToolPayload>(SquadMod.loc("configure_tool"))
+
         // Past StreamCodec.composite's max arity of 6, so this is wired by hand instead of the
         // usual composite(...) call.
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, ConfigureToolPayload> = StreamCodec.of(
@@ -57,9 +58,9 @@ class ConfigureToolPayload(
                     ByteBufCodecs.BOOL.decode(buf),
                     ByteBufCodecs.VAR_INT.decode(buf),
                     ByteBufCodecs.VAR_INT.decode(buf),
-                    ByteBufCodecs.VAR_INT.decode(buf)
+                    ByteBufCodecs.VAR_INT.decode(buf),
                 )
-            }
+            },
         )
     }
 }
@@ -77,9 +78,11 @@ class SquadCmdPayload(val action: Int, val squad: String, val value: Int, val te
         const val SELECT = 5
         const val ARM_FOCUS = 6
         const val DELETE_SQUAD = 7
+
         /** From the map: squad = comma-separated squad ids, value = order, text = "x z" of the
          *  point clicked. Each squad gets its own version of it — see `GroupOrders`. */
         const val MAP_ORDER = 8
+
         /** Radio calls from all the sender's squads on or off. */
         const val TOGGLE_REPORTS = 9
 
@@ -89,7 +92,7 @@ class SquadCmdPayload(val action: Int, val squad: String, val value: Int, val te
             ByteBufCodecs.STRING_UTF8, SquadCmdPayload::squad,
             ByteBufCodecs.VAR_INT, SquadCmdPayload::value,
             ByteBufCodecs.STRING_UTF8, SquadCmdPayload::text,
-            ::SquadCmdPayload
+            ::SquadCmdPayload,
         )
     }
 }
@@ -101,8 +104,9 @@ class OpenCommandScreenPayload(val data: CompoundTag) : CustomPacketPayload {
     companion object {
         val TYPE = CustomPacketPayload.Type<OpenCommandScreenPayload>(SquadMod.loc("open_command_screen"))
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, OpenCommandScreenPayload> = StreamCodec.composite(
-            ByteBufCodecs.COMPOUND_TAG, OpenCommandScreenPayload::data,
-            ::OpenCommandScreenPayload
+            ByteBufCodecs.COMPOUND_TAG,
+            OpenCommandScreenPayload::data,
+            ::OpenCommandScreenPayload,
         )
     }
 }
@@ -125,8 +129,9 @@ class OpenHudPayload(val data: CompoundTag) : CustomPacketPayload {
     companion object {
         val TYPE = CustomPacketPayload.Type<OpenHudPayload>(SquadMod.loc("open_hud"))
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, OpenHudPayload> = StreamCodec.composite(
-            ByteBufCodecs.COMPOUND_TAG, OpenHudPayload::data,
-            ::OpenHudPayload
+            ByteBufCodecs.COMPOUND_TAG,
+            OpenHudPayload::data,
+            ::OpenHudPayload,
         )
     }
 }
@@ -140,9 +145,11 @@ class HudOrderPayload(val squad: String, val order: Int) : CustomPacketPayload {
     companion object {
         val TYPE = CustomPacketPayload.Type<HudOrderPayload>(SquadMod.loc("hud_order"))
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, HudOrderPayload> = StreamCodec.composite(
-            ByteBufCodecs.STRING_UTF8, HudOrderPayload::squad,
-            ByteBufCodecs.VAR_INT, HudOrderPayload::order,
-            ::HudOrderPayload
+            ByteBufCodecs.STRING_UTF8,
+            HudOrderPayload::squad,
+            ByteBufCodecs.VAR_INT,
+            HudOrderPayload::order,
+            ::HudOrderPayload,
         )
     }
 }
@@ -166,8 +173,9 @@ class PlayerFactionPayload(val faction: Int) : CustomPacketPayload {
     companion object {
         val TYPE = CustomPacketPayload.Type<PlayerFactionPayload>(SquadMod.loc("player_faction"))
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, PlayerFactionPayload> = StreamCodec.composite(
-            ByteBufCodecs.VAR_INT, PlayerFactionPayload::faction,
-            ::PlayerFactionPayload
+            ByteBufCodecs.VAR_INT,
+            PlayerFactionPayload::faction,
+            ::PlayerFactionPayload,
         )
     }
 }
@@ -179,8 +187,9 @@ class ChooseFactionPayload(val faction: Int) : CustomPacketPayload {
     companion object {
         val TYPE = CustomPacketPayload.Type<ChooseFactionPayload>(SquadMod.loc("choose_faction"))
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, ChooseFactionPayload> = StreamCodec.composite(
-            ByteBufCodecs.VAR_INT, ChooseFactionPayload::faction,
-            ::ChooseFactionPayload
+            ByteBufCodecs.VAR_INT,
+            ChooseFactionPayload::faction,
+            ::ChooseFactionPayload,
         )
     }
 }
@@ -207,8 +216,9 @@ class HudOrderAllPayload(val order: Int) : CustomPacketPayload {
     companion object {
         val TYPE = CustomPacketPayload.Type<HudOrderAllPayload>(SquadMod.loc("hud_order_all"))
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, HudOrderAllPayload> = StreamCodec.composite(
-            ByteBufCodecs.VAR_INT, HudOrderAllPayload::order,
-            ::HudOrderAllPayload
+            ByteBufCodecs.VAR_INT,
+            HudOrderAllPayload::order,
+            ::HudOrderAllPayload,
         )
     }
 }
@@ -219,19 +229,22 @@ class RouteCmdPayload(val action: Int, val route: String, val text: String) : Cu
 
     companion object {
         const val START_RECORDING = 0
-        const val FINISH = 1       // text = new route's name
+        const val FINISH = 1 // text = new route's name
         const val CANCEL = 2
-        const val ASSIGN = 3       // route = route id, text = squad id
-        const val DELETE = 4       // route = route id
+        const val ASSIGN = 3 // route = route id, text = squad id
+        const val DELETE = 4 // route = route id
         const val REQUEST_LIST = 5
-        const val MAP_ROUTE = 6    // route = squad ids, comma-separated; text = "x z x z ..." drawn on the map
+        const val MAP_ROUTE = 6 // route = squad ids, comma-separated; text = "x z x z ..." drawn on the map
 
         val TYPE = CustomPacketPayload.Type<RouteCmdPayload>(SquadMod.loc("route_cmd"))
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, RouteCmdPayload> = StreamCodec.composite(
-            ByteBufCodecs.VAR_INT, RouteCmdPayload::action,
-            ByteBufCodecs.STRING_UTF8, RouteCmdPayload::route,
-            ByteBufCodecs.STRING_UTF8, RouteCmdPayload::text,
-            ::RouteCmdPayload
+            ByteBufCodecs.VAR_INT,
+            RouteCmdPayload::action,
+            ByteBufCodecs.STRING_UTF8,
+            RouteCmdPayload::route,
+            ByteBufCodecs.STRING_UTF8,
+            RouteCmdPayload::text,
+            ::RouteCmdPayload,
         )
     }
 }
@@ -243,8 +256,9 @@ class OpenRoutesScreenPayload(val data: CompoundTag) : CustomPacketPayload {
     companion object {
         val TYPE = CustomPacketPayload.Type<OpenRoutesScreenPayload>(SquadMod.loc("open_routes_screen"))
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, OpenRoutesScreenPayload> = StreamCodec.composite(
-            ByteBufCodecs.COMPOUND_TAG, OpenRoutesScreenPayload::data,
-            ::OpenRoutesScreenPayload
+            ByteBufCodecs.COMPOUND_TAG,
+            OpenRoutesScreenPayload::data,
+            ::OpenRoutesScreenPayload,
         )
     }
 }
@@ -258,8 +272,9 @@ class OpenFinishRoutePayload(val pointCount: Int) : CustomPacketPayload {
     companion object {
         val TYPE = CustomPacketPayload.Type<OpenFinishRoutePayload>(SquadMod.loc("open_finish_route"))
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, OpenFinishRoutePayload> = StreamCodec.composite(
-            ByteBufCodecs.VAR_INT, OpenFinishRoutePayload::pointCount,
-            ::OpenFinishRoutePayload
+            ByteBufCodecs.VAR_INT,
+            OpenFinishRoutePayload::pointCount,
+            ::OpenFinishRoutePayload,
         )
     }
 }
@@ -273,9 +288,11 @@ class OpenBarracksScreenPayload(val pos: BlockPos, val config: CompoundTag) : Cu
     companion object {
         val TYPE = CustomPacketPayload.Type<OpenBarracksScreenPayload>(SquadMod.loc("open_barracks_screen"))
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, OpenBarracksScreenPayload> = StreamCodec.composite(
-            BlockPos.STREAM_CODEC, OpenBarracksScreenPayload::pos,
-            ByteBufCodecs.COMPOUND_TAG, OpenBarracksScreenPayload::config,
-            ::OpenBarracksScreenPayload
+            BlockPos.STREAM_CODEC,
+            OpenBarracksScreenPayload::pos,
+            ByteBufCodecs.COMPOUND_TAG,
+            OpenBarracksScreenPayload::config,
+            ::OpenBarracksScreenPayload,
         )
     }
 }
@@ -287,9 +304,11 @@ class ConfigureBarracksPayload(val pos: BlockPos, val config: CompoundTag) : Cus
     companion object {
         val TYPE = CustomPacketPayload.Type<ConfigureBarracksPayload>(SquadMod.loc("configure_barracks"))
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, ConfigureBarracksPayload> = StreamCodec.composite(
-            BlockPos.STREAM_CODEC, ConfigureBarracksPayload::pos,
-            ByteBufCodecs.COMPOUND_TAG, ConfigureBarracksPayload::config,
-            ::ConfigureBarracksPayload
+            BlockPos.STREAM_CODEC,
+            ConfigureBarracksPayload::pos,
+            ByteBufCodecs.COMPOUND_TAG,
+            ConfigureBarracksPayload::config,
+            ::ConfigureBarracksPayload,
         )
     }
 }
@@ -301,7 +320,9 @@ class RequestBarracksQueuePayload(val pos: BlockPos) : CustomPacketPayload {
     companion object {
         val TYPE = CustomPacketPayload.Type<RequestBarracksQueuePayload>(SquadMod.loc("request_barracks_queue"))
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, RequestBarracksQueuePayload> = StreamCodec.composite(
-            BlockPos.STREAM_CODEC, RequestBarracksQueuePayload::pos, ::RequestBarracksQueuePayload
+            BlockPos.STREAM_CODEC,
+            RequestBarracksQueuePayload::pos,
+            ::RequestBarracksQueuePayload,
         )
     }
 }
@@ -313,8 +334,11 @@ class BarracksQueuePayload(val pos: BlockPos, val data: CompoundTag) : CustomPac
     companion object {
         val TYPE = CustomPacketPayload.Type<BarracksQueuePayload>(SquadMod.loc("barracks_queue"))
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, BarracksQueuePayload> = StreamCodec.composite(
-            BlockPos.STREAM_CODEC, BarracksQueuePayload::pos,
-            ByteBufCodecs.COMPOUND_TAG, BarracksQueuePayload::data, ::BarracksQueuePayload
+            BlockPos.STREAM_CODEC,
+            BarracksQueuePayload::pos,
+            ByteBufCodecs.COMPOUND_TAG,
+            BarracksQueuePayload::data,
+            ::BarracksQueuePayload,
         )
     }
 }
@@ -326,9 +350,11 @@ class OpenSupplyScreenPayload(val pos: BlockPos, val data: CompoundTag) : Custom
     companion object {
         val TYPE = CustomPacketPayload.Type<OpenSupplyScreenPayload>(SquadMod.loc("open_supply_screen"))
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, OpenSupplyScreenPayload> = StreamCodec.composite(
-            BlockPos.STREAM_CODEC, OpenSupplyScreenPayload::pos,
-            ByteBufCodecs.COMPOUND_TAG, OpenSupplyScreenPayload::data,
-            ::OpenSupplyScreenPayload
+            BlockPos.STREAM_CODEC,
+            OpenSupplyScreenPayload::pos,
+            ByteBufCodecs.COMPOUND_TAG,
+            OpenSupplyScreenPayload::data,
+            ::OpenSupplyScreenPayload,
         )
     }
 }
@@ -338,7 +364,7 @@ class SupplyCmdPayload(val pos: BlockPos, val action: Int, val kit: Int, val opt
     override fun type() = TYPE
 
     companion object {
-        const val TAKE_KIT = 1     // kit = its index, option = the weapon's
+        const val TAKE_KIT = 1 // kit = its index, option = the weapon's
         const val SET_SPAWN = 2
 
         val TYPE = CustomPacketPayload.Type<SupplyCmdPayload>(SquadMod.loc("supply_cmd"))
@@ -347,7 +373,7 @@ class SupplyCmdPayload(val pos: BlockPos, val action: Int, val kit: Int, val opt
             ByteBufCodecs.VAR_INT, SupplyCmdPayload::action,
             ByteBufCodecs.VAR_INT, SupplyCmdPayload::kit,
             ByteBufCodecs.VAR_INT, SupplyCmdPayload::option,
-            ::SupplyCmdPayload
+            ::SupplyCmdPayload,
         )
     }
 }
@@ -358,16 +384,19 @@ class DiplomacyCmdPayload(val action: Int, val faction: Int, val proposal: Int) 
 
     companion object {
         const val REQUEST = 0
-        const val PROPOSE = 1      // faction = the one offered an alliance
-        const val ACCEPT = 2       // proposal = its id
+        const val PROPOSE = 1 // faction = the one offered an alliance
+        const val ACCEPT = 2 // proposal = its id
         const val TOGGLE_LEAVE = 3
 
         val TYPE = CustomPacketPayload.Type<DiplomacyCmdPayload>(SquadMod.loc("diplomacy_cmd"))
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, DiplomacyCmdPayload> = StreamCodec.composite(
-            ByteBufCodecs.VAR_INT, DiplomacyCmdPayload::action,
-            ByteBufCodecs.VAR_INT, DiplomacyCmdPayload::faction,
-            ByteBufCodecs.VAR_INT, DiplomacyCmdPayload::proposal,
-            ::DiplomacyCmdPayload
+            ByteBufCodecs.VAR_INT,
+            DiplomacyCmdPayload::action,
+            ByteBufCodecs.VAR_INT,
+            DiplomacyCmdPayload::faction,
+            ByteBufCodecs.VAR_INT,
+            DiplomacyCmdPayload::proposal,
+            ::DiplomacyCmdPayload,
         )
     }
 }
@@ -379,8 +408,9 @@ class OpenDiplomacyPayload(val data: CompoundTag) : CustomPacketPayload {
     companion object {
         val TYPE = CustomPacketPayload.Type<OpenDiplomacyPayload>(SquadMod.loc("open_diplomacy"))
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, OpenDiplomacyPayload> = StreamCodec.composite(
-            ByteBufCodecs.COMPOUND_TAG, OpenDiplomacyPayload::data,
-            ::OpenDiplomacyPayload
+            ByteBufCodecs.COMPOUND_TAG,
+            OpenDiplomacyPayload::data,
+            ::OpenDiplomacyPayload,
         )
     }
 }
@@ -399,8 +429,9 @@ class MapFeedPayload(val data: CompoundTag) : CustomPacketPayload {
     companion object {
         val TYPE = CustomPacketPayload.Type<MapFeedPayload>(SquadMod.loc("map_feed"))
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, MapFeedPayload> = StreamCodec.composite(
-            ByteBufCodecs.COMPOUND_TAG, MapFeedPayload::data,
-            ::MapFeedPayload
+            ByteBufCodecs.COMPOUND_TAG,
+            MapFeedPayload::data,
+            ::MapFeedPayload,
         )
     }
 }

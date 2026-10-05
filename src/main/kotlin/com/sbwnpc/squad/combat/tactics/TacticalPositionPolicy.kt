@@ -11,13 +11,14 @@ interface TacticalPositionPolicy {
 }
 
 object DefaultTacticalPositions : TacticalPositionPolicy
-object EncirclePositions : TacticalPositionPolicy { override val permitsExposedFlankAdvance = true }
+object EncirclePositions : TacticalPositionPolicy {
+    override val permitsExposedFlankAdvance = true
+}
 object WithdrawalPositions : TacticalPositionPolicy {
     override fun score(view: TacticalSnapshot, task: TacticalTask, point: Vec3, exposure: Int) = exposure * 10.0
 }
 object HeightAttackPositions : TacticalPositionPolicy {
-    override fun score(view: TacticalSnapshot, task: TacticalTask, point: Vec3, exposure: Int): Double =
-        if (task.job in TacticalJob.RUNNING) task.focus?.let { maxOf(0.0, it.y - point.y) * 1.5 } ?: 0.0 else 0.0
+    override fun score(view: TacticalSnapshot, task: TacticalTask, point: Vec3, exposure: Int): Double = if (task.job in TacticalJob.RUNNING) task.focus?.let { maxOf(0.0, it.y - point.y) * 1.5 } ?: 0.0 else 0.0
 }
 object HoldHeightPositions : TacticalPositionPolicy {
     override fun candidate(view: TacticalSnapshot, task: TacticalTask, point: Vec3, localAnchor: Vec3) = route(view, point)
@@ -25,6 +26,5 @@ object HoldHeightPositions : TacticalPositionPolicy {
     override fun score(view: TacticalSnapshot, task: TacticalTask, point: Vec3, exposure: Int) = maxOf(0.0, view.center.y - point.y) * 8.0
 }
 object FilePositions : TacticalPositionPolicy {
-    override fun candidate(view: TacticalSnapshot, task: TacticalTask, point: Vec3, localAnchor: Vec3) =
-        task.job != TacticalJob.ADVANCE || point.distanceTo(localAnchor) <= 1.0
+    override fun candidate(view: TacticalSnapshot, task: TacticalTask, point: Vec3, localAnchor: Vec3) = task.job != TacticalJob.ADVANCE || point.distanceTo(localAnchor) <= 1.0
 }

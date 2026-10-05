@@ -14,8 +14,7 @@ object BenchAttackOrbit {
     private const val LEAD = Math.PI / 6
 
     /** Stock AH-6 seat 2 faces +90 degrees; seat 3 faces -90. Seat 1 faces forward. */
-    fun direction(positiveBenchOccupied: Boolean, negativeBenchOccupied: Boolean): Int =
-        if (!positiveBenchOccupied && negativeBenchOccupied) -1 else 1
+    fun direction(positiveBenchOccupied: Boolean, negativeBenchOccupied: Boolean): Int = if (!positiveBenchOccupied && negativeBenchOccupied) -1 else 1
 
     fun waypoint(position: Vec3, center: Vec3, direction: Int, fallbackYaw: Float): Vec3 {
         val dx = position.x - center.x
@@ -27,7 +26,12 @@ object BenchAttackOrbit {
 
     /** Seat arcs come from SBW's AH-6 data. Don't shoot across the cabin or out the back. */
     fun canAim(seat: Int, aircraftYaw: Float, from: Vec3, target: Vec3): Boolean {
-        val orientation = when (seat) { 1 -> 0f; 2 -> 90f; 3 -> -90f; else -> return false }
+        val orientation = when (seat) {
+            1 -> 0f
+            2 -> 90f
+            3 -> -90f
+            else -> return false
+        }
         val relative = Mth.wrapDegrees(HelicopterFlightController.yawToward(from, target) - aircraftYaw - orientation)
         return kotlin.math.abs(relative) <= 80f
     }

@@ -13,8 +13,7 @@ import java.util.UUID
 
 class BarracksRecruitmentTest {
     private val interval = 600
-    private fun request(squad: UUID = UUID.randomUUID(), replacement: Boolean = false) =
-        BarracksRecruitmentQueue.Request(squad, UUID.randomUUID(), replacement)
+    private fun request(squad: UUID = UUID.randomUUID(), replacement: Boolean = false) = BarracksRecruitmentQueue.Request(squad, UUID.randomUUID(), replacement)
 
     @Test
     fun `seven initial soldiers need seven full intervals including the first`() {
@@ -114,7 +113,10 @@ class BarracksRecruitmentTest {
         val changed = request()
         queue.synchronize(listOf(changed), interval)
         assertEquals(interval, queue.remainingTicks)
-        repeat(23) { queue.tick(); queue.synchronize(listOf(changed), interval) }
+        repeat(23) {
+            queue.tick()
+            queue.synchronize(listOf(changed), interval)
+        }
         assertEquals(interval - 23, queue.remainingTicks)
     }
 
@@ -123,8 +125,10 @@ class BarracksRecruitmentTest {
         val rifleman = UUID.randomUUID()
         val sniper = UUID.randomUUID()
         val medic = UUID.randomUUID()
-        val roster = RecruitmentRoster.migrate(listOf(RIFLEMAN, SNIPER, MEDIC),
-            linkedMapOf(rifleman to RIFLEMAN, sniper to SNIPER, medic to MEDIC))!!
+        val roster = RecruitmentRoster.migrate(
+            listOf(RIFLEMAN, SNIPER, MEDIC),
+            linkedMapOf(rifleman to RIFLEMAN, sniper to SNIPER, medic to MEDIC),
+        )!!
         // No entity resolution is needed after saving: an unloaded sniper still reserves SNIPER.
         val restored = RecruitmentRoster.load(roster.save())
         restored.release(medic)
@@ -135,8 +139,12 @@ class BarracksRecruitmentTest {
 
     @Test
     fun `legacy unknown roles delay migration instead of guessing a replacement class`() {
-        assertNull(RecruitmentRoster.migrate(listOf(RIFLEMAN, SNIPER, MEDIC),
-            mapOf(UUID.randomUUID() to RIFLEMAN, UUID.randomUUID() to null)))
+        assertNull(
+            RecruitmentRoster.migrate(
+                listOf(RIFLEMAN, SNIPER, MEDIC),
+                mapOf(UUID.randomUUID() to RIFLEMAN, UUID.randomUUID() to null),
+            ),
+        )
     }
 
     @Test
@@ -162,9 +170,11 @@ class BarracksRecruitmentTest {
 
     @Test
     fun `empty garrison and its vacant places survive the squad save format`() {
-        val squad = Squad(UUID.randomUUID(), "Alpha", SquadFaction.DEFAULT, SquadOrder.DEFEND,
+        val squad = Squad(
+            UUID.randomUUID(), "Alpha", SquadFaction.DEFAULT, SquadOrder.DEFEND,
             mutableListOf(), BlockPos.ZERO, null, UUID.randomUUID(),
-            BarracksRef(Level.OVERWORLD, BlockPos.ZERO), listOf(RIFLEMAN, MEDIC), NpcRank.DEFAULT)
+            BarracksRef(Level.OVERWORLD, BlockPos.ZERO), listOf(RIFLEMAN, MEDIC), NpcRank.DEFAULT,
+        )
         squad.recruitmentRoster = RecruitmentRoster.empty(squad.originalComposition)
         val loaded = Squad.load(squad.save())
         assertEquals(squad.id, loaded.id)

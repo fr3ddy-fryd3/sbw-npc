@@ -14,8 +14,16 @@ class TacticalDiagnosticsTest {
     @Test fun `a lost covering group produces distinct pause and failure logs with evidence from before cleanup`() {
         val events = mutableListOf<TacticalEvent>()
         val members = (0..5).map { TacticalMember(UUID(0, it.toLong()), origin, canFire = true) }
-        fun view(now: Long, ready: Boolean) = TacticalSnapshot(now, SquadOrder.ATTACK, 1, origin, focus,
-            members.map { it.copy(canFire = ready, recentFire = false) }, listOf(TacticalContact(UUID(1, 1), focus, now)))
+        fun view(now: Long, ready: Boolean) =
+            TacticalSnapshot(
+                now,
+                SquadOrder.ATTACK,
+                1,
+                origin,
+                focus,
+                members.map { it.copy(canFire = ready, recentFire = false) },
+                listOf(TacticalContact(UUID(1, 1), focus, now)),
+            )
         val state = SquadTacticalState(TacticalEventSink(events::add))
         state.select(TacticalChoice(TacticalPattern.BOUND, focus), 1, 0)
         val plan = state.plan!!

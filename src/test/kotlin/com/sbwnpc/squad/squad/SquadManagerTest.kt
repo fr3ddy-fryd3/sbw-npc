@@ -1,26 +1,26 @@
 package com.sbwnpc.squad.squad
 
-import com.sbwnpc.squad.npc.NpcClass.MACHINE_GUNNER
-import com.sbwnpc.squad.npc.NpcClass.MEDIC
-import com.sbwnpc.squad.npc.NpcClass.RIFLEMAN
-import com.sbwnpc.squad.npc.NpcClass.SNIPER
-import com.sbwnpc.squad.npc.NpcClass
-import com.sbwnpc.squad.npc.NpcRank
-import com.sbwnpc.squad.npc.SquadFaction
-import com.sbwnpc.squad.npc.SquadPreset
 import com.sbwnpc.squad.combat.tactics.TacticalContact
 import com.sbwnpc.squad.combat.tactics.TacticalEvent
 import com.sbwnpc.squad.combat.tactics.TacticalEventSink
 import com.sbwnpc.squad.combat.tactics.TacticalMember
 import com.sbwnpc.squad.combat.tactics.TacticalSnapshot
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNull
-import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Test
+import com.sbwnpc.squad.npc.NpcClass
+import com.sbwnpc.squad.npc.NpcClass.MACHINE_GUNNER
+import com.sbwnpc.squad.npc.NpcClass.MEDIC
+import com.sbwnpc.squad.npc.NpcClass.RIFLEMAN
+import com.sbwnpc.squad.npc.NpcClass.SNIPER
+import com.sbwnpc.squad.npc.NpcRank
+import com.sbwnpc.squad.npc.SquadFaction
+import com.sbwnpc.squad.npc.SquadPreset
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
 import net.minecraft.world.phys.Vec3
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
 import java.util.UUID
 
 class SquadManagerTest {
@@ -82,10 +82,11 @@ class SquadManagerTest {
         assertEquals(listOf(member), mgr.get(squad.id)!!.members)
     }
 
-    private fun garrison(composition: List<NpcClass>) = Squad(
-        UUID.randomUUID(), "Alpha", SquadFaction.DEFAULT, SquadOrder.DEFEND, mutableListOf(),
-        null, null, UUID.randomUUID(), originalComposition = composition, rank = NpcRank.DEFAULT
-    )
+    private fun garrison(composition: List<NpcClass>) =
+        Squad(
+            UUID.randomUUID(), "Alpha", SquadFaction.DEFAULT, SquadOrder.DEFEND, mutableListOf(),
+            null, null, UUID.randomUUID(), originalComposition = composition, rank = NpcRank.DEFAULT,
+        )
 
     @Test
     fun `deleting a squad or pruning its last member cancels owned tactical work`() {
@@ -98,14 +99,26 @@ class SquadManagerTest {
             active.tactics.events.runtime = TacticalEventSink { if (it is TacticalEvent.TaskReleased) released += it }
             val origin = Vec3(0.0, 64.0, 0.0)
             val focus = Vec3(50.0, 64.0, 0.0)
-            active.tactics.assess(active.id, TacticalSnapshot(10, SquadOrder.DEFEND, 0, origin, origin,
-                active.members.map { TacticalMember(it, origin, canFire = true) },
-                listOf(TacticalContact(UUID.randomUUID(), focus, 10))))
+            active.tactics.assess(
+                active.id,
+                TacticalSnapshot(
+                    10,
+                    SquadOrder.DEFEND,
+                    0,
+                    origin,
+                    origin,
+                    active.members.map { TacticalMember(it, origin, canFire = true) },
+                    listOf(TacticalContact(UUID.randomUUID(), focus, 10)),
+                ),
+            )
             val plan = active.tactics.plan!!
             val assigned = plan.tasks.keys.toSet()
             assertFalse(assigned.isEmpty())
-            if (delete) mgr.beginDeletion(active.id)
-            else source.members.toList().forEach(mgr::removeMemberEverywhere)
+            if (delete) {
+                mgr.beginDeletion(active.id)
+            } else {
+                source.members.toList().forEach(mgr::removeMemberEverywhere)
+            }
             assertNull(mgr.get(active.id))
             assertNull(active.tactics.plan)
             assertTrue(plan.tasks.isEmpty())

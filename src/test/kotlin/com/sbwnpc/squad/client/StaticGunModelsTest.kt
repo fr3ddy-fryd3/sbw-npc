@@ -21,15 +21,16 @@ import java.io.File
 import java.nio.file.Path
 import java.util.Optional
 
-internal fun gunResources(vararg roots: File): MultiPackResourceManager = MultiPackResourceManager(
-    PackType.CLIENT_RESOURCES,
-    roots.mapIndexed { index, root ->
-        PathPackResources(
-            PackLocationInfo("test-$index", Component.literal("test"), PackSource.BUILT_IN, Optional.empty()),
-            root.toPath()
-        )
-    }
-)
+internal fun gunResources(vararg roots: File): MultiPackResourceManager =
+    MultiPackResourceManager(
+        PackType.CLIENT_RESOURCES,
+        roots.mapIndexed { index, root ->
+            PathPackResources(
+                PackLocationInfo("test-$index", Component.literal("test"), PackSource.BUILT_IN, Optional.empty()),
+                root.toPath(),
+            )
+        },
+    )
 
 class StaticGunModelsTest {
     private val resources = File(System.getProperty("sbwnpc.projectDir"), "SuperbWarfare/src/main/resources")
@@ -54,14 +55,17 @@ class StaticGunModelsTest {
 
     @Test
     fun `resource pack LOD arrays and geometry outside geo lod are used on reload`() {
-        overrideResource("superbwarfare:sbw/guns/ak_47.json", """
+        overrideResource(
+            "superbwarfare:sbw/guns/ak_47.json",
+            """
             {"Model": {
               "Model": "superbwarfare:geo/ak_47.geo.json",
               "Texture": "superbwarfare:textures/item/ak_47.png",
               "LODModel": ["superbwarfare:geo/lod/ak_47.geo.json", "test:models/npc.json"],
               "LODTexture": ["superbwarfare:textures/item/lod/ak_47.png", "superbwarfare:textures/item/lod/ak_12.png"]
             }}
-        """)
+        """,
+        )
         val simplified = File(resources, "assets/superbwarfare/geo/lod/ak_12.geo.json").readText()
         overrideResource("test:models/npc.json", simplified)
         val original = gunResources(resources).use(StaticGunModels::load).getValue(id("superbwarfare:ak_47"))
@@ -74,15 +78,21 @@ class StaticGunModelsTest {
 
     @Test
     fun `missing or broken LOD never falls back to full geometry`() {
-        overrideResource("superbwarfare:sbw/guns/ak_47.json", """
+        overrideResource(
+            "superbwarfare:sbw/guns/ak_47.json",
+            """
             {"Model": {"Model": "superbwarfare:geo/ak_47.geo.json", "Texture": "superbwarfare:textures/item/ak_47.png"}}
-        """)
-        overrideResource("superbwarfare:sbw/guns/ak_12.json", """
+        """,
+        )
+        overrideResource(
+            "superbwarfare:sbw/guns/ak_12.json",
+            """
             {"Model": {
               "Model": "superbwarfare:geo/ak_12.geo.json", "Texture": "superbwarfare:textures/item/ak_12.png",
               "LODModel": "test:models/missing.json"
             }}
-        """)
+        """,
+        )
         val guns = gunResources(resources, overrides.toFile()).use(StaticGunModels::load)
         assertFalse(guns.containsKey(id("superbwarfare:ak_47")))
         assertFalse(guns.containsKey(id("superbwarfare:ak_12")))
@@ -91,12 +101,15 @@ class StaticGunModelsTest {
 
     @Test
     fun `a LOD may share the full model texture without sharing its geometry`() {
-        overrideResource("superbwarfare:sbw/guns/ak_47.json", """
+        overrideResource(
+            "superbwarfare:sbw/guns/ak_47.json",
+            """
             {"Model": {
               "Model": "superbwarfare:geo/ak_47.geo.json", "Texture": "superbwarfare:textures/item/ak_47.png",
               "LODModel": "superbwarfare:geo/lod/ak_47.geo.json", "LODTexture": []
             }}
-        """)
+        """,
+        )
         val gun = gunResources(resources, overrides.toFile()).use(StaticGunModels::load).getValue(id("superbwarfare:ak_47"))
         assertEquals(id("superbwarfare:geo/lod/ak_47.geo.json"), gun.geometry)
         assertEquals(id("superbwarfare:textures/item/ak_47.png"), gun.texture)

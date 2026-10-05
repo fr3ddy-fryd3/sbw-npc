@@ -43,14 +43,17 @@ object SquadChunkLoader {
      *  them is loaded so paths and sight lines have ground to work on. */
     private const val TICKET_DISTANCE = 3
     private const val INTERVAL_TICKS = 20
+
     /** Closer than this to its objective, a moving squad has arrived. */
     private const val ARRIVED = 12.0
+
     /** Moved this far since it was last written down: worth saving. */
     private const val RESAVE_DISTANCE = 8
 
     private data class Spot(val dimension: ResourceKey<Level>, val chunk: ChunkPos)
 
     private val held = HashSet<Spot>()
+
     /** The chunks each squad's men were in, while they were loaded. */
     private val lastSpots = HashMap<UUID, Set<Spot>>()
 
@@ -68,15 +71,23 @@ object SquadChunkLoader {
             val fighting = members.any { it.target?.isAlive == true }
             val resupplying = members.any(::resupplying)
             if (!fighting && !resupplying && !underway(squad)) continue
-            if (nearPlayer(server, squad)) wanted += spotsOf(squad)
-            else farBusy += spotsOf(squad) to if (fighting) 0 else 1
+            if (nearPlayer(server, squad)) {
+                wanted += spotsOf(squad)
+            } else {
+                farBusy += spotsOf(squad) to if (fighting) 0 else 1
+            }
         }
-        if (limit > 0) for (level in server.allLevels) {
-            for (npc in NpcRegistry.all(level)) {
-                if (!npc.isAlive || mgr.get(npc.squadId) != null || !resupplying(npc)) continue
-                val spots = setOf(Spot(level.dimension(), ChunkPos(npc.blockPosition())))
-                if (nearPlayer(server, level.dimension(), npc.blockPosition())) wanted += spots
-                else farBusy += spots to if (npc.target?.isAlive == true) 0 else 1
+        if (limit > 0) {
+            for (level in server.allLevels) {
+                for (npc in NpcRegistry.all(level)) {
+                    if (!npc.isAlive || mgr.get(npc.squadId) != null || !resupplying(npc)) continue
+                    val spots = setOf(Spot(level.dimension(), ChunkPos(npc.blockPosition())))
+                    if (nearPlayer(server, level.dimension(), npc.blockPosition())) {
+                        wanted += spots
+                    } else {
+                        farBusy += spots to if (npc.target?.isAlive == true) 0 else 1
+                    }
+                }
             }
         }
         farBusy.sortBy { it.second }
@@ -90,13 +101,14 @@ object SquadChunkLoader {
         lastSpots.keys.retainAll(mgr.all().map { it.id }.toSet())
     }
 
-    private fun resupplying(npc: NpcEntity): Boolean =
-        npc.resupplying || (npc.servingMortar && npc.mortarShellsLeft <= 0 && npc.nearestSupply() != null)
+    private fun resupplying(npc: NpcEntity): Boolean = npc.resupplying || (npc.servingMortar && npc.mortarShellsLeft <= 0 && npc.nearestSupply() != null)
 
     private fun remember(mgr: SquadManager, squad: Squad, members: List<NpcEntity>) {
         lastSpots[squad.id] = members.map { Spot(it.level().dimension(), ChunkPos(it.blockPosition())) }.toSet()
         val centre = BlockPos.containing(
-            members.sumOf { it.x } / members.size, members.sumOf { it.y } / members.size, members.sumOf { it.z } / members.size
+            members.sumOf { it.x } / members.size,
+            members.sumOf { it.y } / members.size,
+            members.sumOf { it.z } / members.size,
         )
         val dim = members[0].level().dimension()
         val old = squad.lastSeen

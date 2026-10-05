@@ -3,7 +3,9 @@ package com.sbwnpc.squad.combat.tactics
 import com.sbwnpc.squad.squad.SquadOrder
 import java.util.UUID
 
-fun interface TacticalDecisionPolicy { fun choose(view: TacticalSnapshot): TacticalChoice }
+fun interface TacticalDecisionPolicy {
+    fun choose(view: TacticalSnapshot): TacticalChoice
+}
 
 data class TacticalAssessment(val proposed: TacticalChoice, val effective: TacticalChoice, val selected: Boolean, val changed: Boolean)
 
@@ -11,7 +13,7 @@ data class TacticalAssessment(val proposed: TacticalChoice, val effective: Tacti
 class SquadTacticalState(
     observer: TacticalEventSink = TacticalEventSink.NONE,
     private val registry: TacticalStateRegistry = TacticalStates.registry,
-    private val decisions: TacticalDecisionPolicy = TacticalRules
+    private val decisions: TacticalDecisionPolicy = TacticalRules,
 ) {
     val events = TacticalEventStream(observer)
     val contacts = LinkedHashMap<UUID, TacticalContact>()
@@ -40,15 +42,23 @@ class SquadTacticalState(
         if (movedHome) old?.complete(view.now, "defensive_home_changed")
         snapshot = view
         val proposed = decisions.choose(view)
-        val effective = if (proposed.pattern != TacticalPattern.EVADE && view.now < (blocked[proposed.pattern] ?: Long.MIN_VALUE))
-            TacticalChoice(if (view.visible.isNotEmpty()) TacticalPattern.REORIENT else TacticalPattern.FOLLOW_ORDER,
-                proposed.focus, reason = TacticalReason.PATTERN_COOLDOWN) else proposed
+        val effective = if (proposed.pattern != TacticalPattern.EVADE && view.now < (blocked[proposed.pattern] ?: Long.MIN_VALUE)) {
+            TacticalChoice(
+                if (view.visible.isNotEmpty()) TacticalPattern.REORIENT else TacticalPattern.FOLLOW_ORDER,
+                proposed.focus,
+                reason = TacticalReason.PATTERN_COOLDOWN,
+            )
+        } else {
+            proposed
+        }
         val previous = old?.tasks?.toMap().orEmpty()
         val retainDefence = !movedHome && old?.stamp == view.stamp && old.behavior.supportsDefensiveOverwatch
         val selected = select(effective, view.stamp, view.now)
-        if (selected) plan?.let {
-            TacticalCoordinator.assign(squad, it, view, this)
-            if (retainDefence) DefensiveOverwatch.preservePosts(it, previous, view)
+        if (selected) {
+            plan?.let {
+                TacticalCoordinator.assign(squad, it, view, this)
+                if (retainDefence) DefensiveOverwatch.preservePosts(it, previous, view)
+            }
         }
         plan?.let { TacticalCoordinator.advance(squad, this, it, view) }
         return TacticalAssessment(proposed, effective, selected, selected || plan?.phase != oldPhase || plan?.bounds != oldBounds)
@@ -57,8 +67,11 @@ class SquadTacticalState(
     fun select(choice: TacticalChoice, stamp: Int, now: Long): Boolean {
         check(!selecting) { "A tactical observer cannot reenter plan selection" }
         selecting = true
-        try { return selectPlan(choice, stamp, now) }
-        finally { selecting = false }
+        try {
+            return selectPlan(choice, stamp, now)
+        } finally {
+            selecting = false
+        }
     }
 
     private fun selectPlan(choice: TacticalChoice, stamp: Int, now: Long): Boolean {
@@ -76,12 +89,19 @@ class SquadTacticalState(
         decision as TacticalSelection.Replace
         val changedOrder = old != null && old.stamp != stamp
         // Validate the new state before cancelling any work owned by the current plan.
-        val next = TacticalPlan(serial + 1, choice.pattern, choice.focus, now, stamp, events = events,
-            behavior = registry.create(choice.pattern), reason = choice.reason, flankSide = flankSide).also {
-            if (old?.pattern == choice.pattern && it.behavior.stability.carriesOrigin && !changedOrder)
+        val next = TacticalPlan(
+            serial + 1, choice.pattern, choice.focus, now, stamp, events = events,
+            behavior = registry.create(choice.pattern), reason = choice.reason, flankSide = flankSide,
+        ).also {
+            if (old?.pattern == choice.pattern && it.behavior.stability.carriesOrigin && !changedOrder) {
                 it.behavior.origin = old.origin
+            }
         }
-        if (changedOrder) { blockedPattern = null; blocked.clear(); holdAfterFailure.clear() }
+        if (changedOrder) {
+            blockedPattern = null
+            blocked.clear()
+            holdAfterFailure.clear()
+        }
         old?.exit(now, decision.trigger)
         serial++
         plan = next
@@ -103,7 +123,9 @@ class SquadTacticalState(
             lastHeld = null
             nextHeldTrace = Long.MIN_VALUE
             nextAssessment = now
-        } finally { selecting = false }
+        } finally {
+            selecting = false
+        }
     }
 
     fun holdsAfterFailure(member: UUID, stamp: Int, now: Long): Boolean {

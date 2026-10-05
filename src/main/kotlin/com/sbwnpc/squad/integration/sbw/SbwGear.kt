@@ -10,8 +10,11 @@ import net.minecraft.world.item.ItemStack
 
 object SbwGear : Gear {
     override fun uniform(green: Boolean): Pair<ItemStack, ItemStack> =
-        if (green) ItemStack(ModItems.RU_HELMET_6B47.get()) to ItemStack(ModItems.RU_CHEST_6B43.get())
-        else ItemStack(ModItems.US_HELMET_PASGT.get()) to ItemStack(ModItems.US_CHEST_IOTV.get())
+        if (green) {
+            ItemStack(ModItems.RU_HELMET_6B47.get()) to ItemStack(ModItems.RU_CHEST_6B43.get())
+        } else {
+            ItemStack(ModItems.US_HELMET_PASGT.get()) to ItemStack(ModItems.US_CHEST_IOTV.get())
+        }
 
     override fun treat(patient: LivingEntity) {
         (ModItems.MEDICAL_KIT.get() as MedicalKitItem).treat(patient)

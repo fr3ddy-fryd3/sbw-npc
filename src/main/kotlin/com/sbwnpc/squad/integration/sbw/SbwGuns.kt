@@ -1,20 +1,20 @@
 package com.sbwnpc.squad.integration.sbw
 
 import com.atsuishio.superbwarfare.data.gun.Ammo
-import com.atsuishio.superbwarfare.entity.projectile.ProjectileEntity
 import com.atsuishio.superbwarfare.data.gun.AmmoConsumer
 import com.atsuishio.superbwarfare.data.gun.FireMode
 import com.atsuishio.superbwarfare.data.gun.GunData
 import com.atsuishio.superbwarfare.data.gun.GunProp
+import com.atsuishio.superbwarfare.entity.projectile.ProjectileEntity
 import com.atsuishio.superbwarfare.init.ModDamageTypes
 import com.atsuishio.superbwarfare.init.ModItems
 import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.sbwnpc.squad.domain.port.Guns
 import com.sbwnpc.squad.domain.port.HandGun
 import com.sbwnpc.squad.domain.port.TriggerMode
+import net.minecraft.core.component.DataComponents
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.nbt.Tag
-import net.minecraft.core.component.DataComponents
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
@@ -48,8 +48,7 @@ object SbwGuns : Guns {
         return data.ammo.get() + data.virtualAmmo.get()
     }
 
-    override fun reserve(stack: ItemStack): Int =
-        if (stack.item is GunItem) GunData.from(stack).virtualAmmo.get() else 0
+    override fun reserve(stack: ItemStack): Int = if (stack.item is GunItem) GunData.from(stack).virtualAmmo.get() else 0
 
     override fun withoutReserve(stack: ItemStack): ItemStack {
         if (stack.item !is GunItem) return stack.copy()
@@ -68,15 +67,17 @@ object SbwGuns : Guns {
         return true
     }
 
-    override fun magazineSize(stack: ItemStack): Int =
-        if (stack.item is GunItem) GunData.from(stack).get(GunProp.MAGAZINE) else 0
+    override fun magazineSize(stack: ItemStack): Int = if (stack.item is GunItem) GunData.from(stack).get(GunProp.MAGAZINE) else 0
 
     override fun ammoItems(stack: ItemStack, rounds: Int): ItemStack {
         if (stack.item !is GunItem || rounds <= 0) return ItemStack.EMPTY
         val consumer = GunData.from(stack).selectedAmmoConsumer()
         if (!consumer.initialized()) consumer.init()
         if (consumer.type != AmmoConsumer.AmmoConsumeType.PLAYER_AMMO &&
-            consumer.type != AmmoConsumer.AmmoConsumeType.ITEM) return ItemStack.EMPTY
+            consumer.type != AmmoConsumer.AmmoConsumeType.ITEM
+        ) {
+            return ItemStack.EMPTY
+        }
         val items = rounds / consumer.loadAmount.coerceAtLeast(1)
         if (items <= 0 || consumer.stack().isEmpty) return ItemStack.EMPTY
         return consumer.stack().copyWithCount(items)
@@ -123,7 +124,9 @@ private class SbwHandGun(private val holder: LivingEntity, private val data: Gun
     override val triggerMode: TriggerMode
         get() = when (data.selectedFireModeInfo().mode) {
             FireMode.SEMI -> TriggerMode.SEMI
+
             FireMode.BURST -> TriggerMode.BURST
+
             // No mode selected: fire as the old code did, without a trigger reset.
             FireMode.AUTO, null -> TriggerMode.AUTO
         }
@@ -174,7 +177,10 @@ private class SbwHandGun(private val holder: LivingEntity, private val data: Gun
                 h = nh
                 y += vy
                 vy -= gravity
-                if (tick > 2) { vh *= boost; vy *= boost }
+                if (tick > 2) {
+                    vh *= boost
+                    vy *= boost
+                }
             }
             return null
         }

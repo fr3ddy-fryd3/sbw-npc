@@ -2,8 +2,8 @@ package com.sbwnpc.squad.combat
 
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
-import net.minecraft.server.level.ServerLevel
 import com.sbwnpc.squad.team.SquadTeams
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.phys.Vec3
 
 /**

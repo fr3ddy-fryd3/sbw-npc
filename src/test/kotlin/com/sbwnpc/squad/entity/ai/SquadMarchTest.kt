@@ -28,8 +28,10 @@ class SquadMarchTest {
                     val anchor = SquadMarch.formationAnchorIndex(progress.route, 0, here, local.z)
                     // On this straight +X route, depth is X and sideways offset is Z.
                     val next = Vec3(progress.route[anchor].x + 0.5 + local.z, 64.5, local.x)
-                    assertTrue(next.x >= position.x + 14.0,
-                        "$order slot $slot stopped at $position aiming at $next (depth ${local.z})")
+                    assertTrue(
+                        next.x >= position.x + 14.0,
+                        "$order slot $slot stopped at $position aiming at $next (depth ${local.z})",
+                    )
                     position = position.add(1.0, 0.0, 0.0)
                 }
             }
@@ -71,8 +73,11 @@ class SquadMarchTest {
             val here = progress.index(walker, position)
             val anchor = SquadMarch.formationAnchorIndex(partial, 0, here, local.z)
             val slot = Vec3(partial[anchor].x + 0.5 + local.z, 64.5, local.x)
-            val next = if (SquadMarch.formationAdvances(partial, here, slot)) slot
-                else Vec3.atBottomCenterOf(partial[(here + 16).coerceAtMost(partial.lastIndex)])
+            val next = if (SquadMarch.formationAdvances(partial, here, slot)) {
+                slot
+            } else {
+                Vec3.atBottomCenterOf(partial[(here + 16).coerceAtMost(partial.lastIndex)])
+            }
             assertTrue(next.x > position.x, "rear stopped at $position before the continuation point")
             position = position.add(1.0, 0.0, 0.0)
         }

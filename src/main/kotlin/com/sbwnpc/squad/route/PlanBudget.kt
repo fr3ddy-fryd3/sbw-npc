@@ -14,8 +14,10 @@ import net.minecraft.server.level.ServerLevel
 object PlanBudget {
     /** Units of [CellPlanner.Search] work per server tick, all searches together — a few milliseconds. */
     private const val PER_TICK = 2_500
+
     /** No search gets less than this in a tick it is run, or a crowd of them would each crawl. */
     private const val MIN_SHARE = 250
+
     /** A search nobody has asked after in this long is dropped. */
     private const val ABANDON_TICKS = 200
 

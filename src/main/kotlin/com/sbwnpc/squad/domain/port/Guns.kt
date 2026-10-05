@@ -16,13 +16,17 @@ enum class TriggerMode { SEMI, BURST, AUTO }
  */
 interface HandGun {
     val roundsPerMinute: Double
+
     /** Blocks per tick. */
     val muzzleVelocity: Double
+
     /** Zero for anything that doesn't explode on impact. */
     val explosionRadius: Double
+
     /** How far off a shot from it is heard, suppressor included. */
     val hearingRadius: Double
     val pellets: Int
+
     /** Per pellet. */
     val damage: Double
     val triggerMode: TriggerMode

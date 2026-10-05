@@ -71,25 +71,27 @@ object WaterMap {
         val shoreLow = BitSet(256)
         val shoreHigh = BitSet(256)
         val cursor = BlockPos.MutableBlockPos()
-        for (lx in 0 until 16) for (lz in 0 until 16) {
-            val x = (cx shl 4) + lx
-            val z = (cz shl 4) + lz
-            val i = lx * 16 + lz
-            if (level.getFluidState(cursor.set(x, y, z)).`is`(FluidTags.WATER)) {
-                var room = true
-                for (dy in 1..2) {
-                    cursor.set(x, y + dy, z)
-                    if (!level.getBlockState(cursor).getCollisionShape(level, cursor).isEmpty) room = false
+        for (lx in 0 until 16) {
+            for (lz in 0 until 16) {
+                val x = (cx shl 4) + lx
+                val z = (cz shl 4) + lz
+                val i = lx * 16 + lz
+                if (level.getFluidState(cursor.set(x, y, z)).`is`(FluidTags.WATER)) {
+                    var room = true
+                    for (dy in 1..2) {
+                        cursor.set(x, y + dy, z)
+                        if (!level.getBlockState(cursor).getCollisionShape(level, cursor).isEmpty) room = false
+                    }
+                    if (room) water.set(i)
+                    continue
                 }
-                if (room) water.set(i)
-                continue
-            }
-            // Ground a man steps out onto from a boat: its surface one or two blocks over the water.
-            val spot = Terrain.standableOrNull(level, x + 0.5, y + 2.0, z + 0.5, 4) ?: continue
-            if (level.getFluidState(BlockPos.containing(spot.x, spot.y - 1.0, spot.z)).`is`(FluidTags.WATER)) continue
-            when (spot.y.toInt()) {
-                y + 1 -> shoreLow.set(i)
-                y + 2 -> shoreHigh.set(i)
+                // Ground a man steps out onto from a boat: its surface one or two blocks over the water.
+                val spot = Terrain.standableOrNull(level, x + 0.5, y + 2.0, z + 0.5, 4) ?: continue
+                if (level.getFluidState(BlockPos.containing(spot.x, spot.y - 1.0, spot.z)).`is`(FluidTags.WATER)) continue
+                when (spot.y.toInt()) {
+                    y + 1 -> shoreLow.set(i)
+                    y + 2 -> shoreHigh.set(i)
+                }
             }
         }
         return Chunk(water, shoreLow, shoreHigh, now)

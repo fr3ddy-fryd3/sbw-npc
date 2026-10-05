@@ -19,8 +19,10 @@ import net.minecraft.world.phys.Vec3
 object WaterRoutes {
     /** A boat covers ground this many times faster than a man walking. */
     const val BOAT_PACE = 2.5
+
     /** Extra cost of a column with the bank within two blocks of the hull — the middle is kept to. */
     private const val NARROW_PENALTY = 1.5
+
     /** Extra cost of a column right by the bank. */
     private const val BANK_PENALTY = 3.0
 
@@ -81,25 +83,30 @@ object WaterRoutes {
         override fun known(x: Int, z: Int): Boolean = WaterMap.known(level, y, x, z)
 
         /** Open water at the surface with room above it, as seen now or last seen. */
-        private fun water(x: Int, z: Int): Boolean = water.getOrPut(BlockPos.asLong(x, 0, z)) {
-            WaterMap.kind(level, y, x, z) == WaterMap.Kind.WATER
-        }
+        private fun water(x: Int, z: Int): Boolean =
+            water.getOrPut(BlockPos.asLong(x, 0, z)) {
+                WaterMap.kind(level, y, x, z) == WaterMap.Kind.WATER
+            }
 
         /** The whole hull fits with its middle over this column. */
-        override fun open(x: Int, z: Int): Boolean = fits.getOrPut(BlockPos.asLong(x, 0, z)) {
-            for (dx in -clearance..clearance) for (dz in -clearance..clearance) {
-                if (!water(x + dx, z + dz)) return@getOrPut false
+        override fun open(x: Int, z: Int): Boolean =
+            fits.getOrPut(BlockPos.asLong(x, 0, z)) {
+                for (dx in -clearance..clearance) {
+                    for (dz in -clearance..clearance) {
+                        if (!water(x + dx, z + dz)) return@getOrPut false
+                    }
+                }
+                true
             }
-            true
-        }
 
         override fun step(ax: Int, az: Int, bx: Int, bz: Int) = true
 
-        override fun extraCost(x: Int, z: Int): Double = when {
-            !open(x + 1, z) || !open(x - 1, z) || !open(x, z + 1) || !open(x, z - 1) -> BANK_PENALTY
-            !wide(x, z) -> NARROW_PENALTY
-            else -> 0.0
-        }
+        override fun extraCost(x: Int, z: Int): Double =
+            when {
+                !open(x + 1, z) || !open(x - 1, z) || !open(x, z + 1) || !open(x, z - 1) -> BANK_PENALTY
+                !wide(x, z) -> NARROW_PENALTY
+                else -> 0.0
+            }
 
         /** Two blocks of water to spare either side of the hull as well. */
         private fun wide(x: Int, z: Int): Boolean =

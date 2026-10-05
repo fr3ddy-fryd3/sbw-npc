@@ -11,21 +11,21 @@ import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.SquadOrder
 import journeymap.api.v2.client.IClientAPI
 import journeymap.api.v2.client.IClientPlugin
-import journeymap.api.v2.common.JourneyMapPlugin
 import journeymap.api.v2.client.display.IOverlayListener
 import journeymap.api.v2.client.display.MarkerOverlay
 import journeymap.api.v2.client.display.PolygonOverlay
+import journeymap.api.v2.client.event.FullscreenMapEvent
+import journeymap.api.v2.client.event.FullscreenRenderEvent
+import journeymap.api.v2.client.fullscreen.IFullscreen
 import journeymap.api.v2.client.fullscreen.ModPopupMenu
 import journeymap.api.v2.client.model.MapImage
 import journeymap.api.v2.client.model.MapPolygon
 import journeymap.api.v2.client.model.ShapeProperties
 import journeymap.api.v2.client.model.TextProperties
 import journeymap.api.v2.client.util.UIState
-import journeymap.api.v2.client.event.FullscreenMapEvent
-import journeymap.api.v2.client.event.FullscreenRenderEvent
+import journeymap.api.v2.common.JourneyMapPlugin
 import journeymap.api.v2.common.event.ClientEventRegistry
 import journeymap.api.v2.common.event.FullscreenEventRegistry
-import journeymap.api.v2.client.fullscreen.IFullscreen
 import journeymap.api.v2.common.waypoint.Waypoint
 import journeymap.api.v2.common.waypoint.WaypointFactory
 import net.minecraft.core.BlockPos
@@ -123,6 +123,7 @@ class SquadMapPlugin : IClientPlugin {
     /** Points of the route being drawn, or null when not drawing one. */
     private var routeDraft: MutableList<BlockPos>? = null
     private var routeSquads: List<String> = emptyList()
+
     /** A left-click waiting to learn whether it was a click (a point) or the start of a pan. */
     private var pendingPoint: BlockPos? = null
     private var pendingScreen: IntArray? = null
@@ -152,24 +153,26 @@ class SquadMapPlugin : IClientPlugin {
             return
         }
         PacketDistributor.sendToServer(
-            RouteCmdPayload(RouteCmdPayload.MAP_ROUTE, routeSquads.joinToString(","), points.joinToString(" ") { "${it.x} ${it.z}" })
+            RouteCmdPayload(RouteCmdPayload.MAP_ROUTE, routeSquads.joinToString(","), points.joinToString(" ") { "${it.x} ${it.z}" }),
         )
         dropRoute()
     }
 
-    private fun tell(msg: String) =
-        net.minecraft.client.Minecraft.getInstance().player?.displayClientMessage(net.minecraft.network.chat.Component.literal(msg), true)
+    private fun tell(msg: String) = net.minecraft.client.Minecraft.getInstance().player?.displayClientMessage(net.minecraft.network.chat.Component.literal(msg), true)
 
     private fun onRouteKey(event: ScreenEvent.KeyPressed.Pre) {
         val draft = routeDraft ?: return
         if (event.screen !is IFullscreen) return
         when (event.keyCode) {
             GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> sendRoute()
+
             GLFW.GLFW_KEY_BACKSPACE -> {
                 draft.removeLastOrNull()
                 redrawLater()
             }
+
             GLFW.GLFW_KEY_ESCAPE -> dropRoute()
+
             else -> return
         }
         event.isCanceled = true
@@ -209,6 +212,7 @@ class SquadMapPlugin : IClientPlugin {
     /** The map point a Shift+drag started at, and where it has got to. */
     private var boxFrom: BlockPos? = null
     private var boxTo: BlockPos? = null
+
     /** The same start on screen, for drawing — taken on the first frame after the click. */
     private var boxScreenFrom: IntArray? = null
     private var boxDragged = false
@@ -270,14 +274,20 @@ class SquadMapPlugin : IClientPlugin {
             syncWaypoints(null, emptyMap())
             return
         }
-        DebugFlags.log(LogGroup.MAP,
+        DebugFlags.log(
+            LogGroup.MAP,
             "feed: squads={} loose={} vehicles={} enemies={}",
-            list(feed, "Squads").size, list(feed, "Loose").size, list(feed, "Vehicles").size, list(feed, "Enemies").size
+            list(feed, "Squads").size,
+            list(feed, "Loose").size,
+            list(feed, "Vehicles").size,
+            list(feed, "Enemies").size,
         )
         val dim = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(feed.getString("Dim")))
         val playerFaction = if (feed.contains("DefaultFaction", Tag.TAG_INT.toInt())) {
             SquadFaction.entries.getOrNull(feed.getInt("DefaultFaction"))
-        } else com.sbwnpc.squad.client.FactionBanner.faction
+        } else {
+            com.sbwnpc.squad.client.FactionBanner.faction
+        }
         val objectives = HashMap<String, ObjectiveMark>()
 
         for (t in list(feed, "Squads")) {
@@ -298,9 +308,17 @@ class SquadMapPlugin : IClientPlugin {
             marker.setLabel(name)
             marker.setTextProperties(TextProperties().setColor(color).setScale(0.8f).setOffsetY(10))
             val id = t.getUUID("Id").toString()
-            if (own) known[id] = Known(name, SquadOrder.availableFor(
-                t.getBoolean("Tank"), t.getBoolean("Mortar"), t.getBoolean("Gunship"), t.getBoolean("Transport")
-            ))
+            if (own) {
+                known[id] = Known(
+                    name,
+                    SquadOrder.availableFor(
+                        t.getBoolean("Tank"),
+                        t.getBoolean("Mortar"),
+                        t.getBoolean("Gunship"),
+                        t.getBoolean("Transport"),
+                    ),
+                )
+            }
             if (own) marker.setOverlayListener(SquadListener(id))
             show(marker)
             // Each man of every own squad, so a straggler can be found — dimmer until his squad
@@ -315,18 +333,24 @@ class SquadMapPlugin : IClientPlugin {
             if (isSelected) {
                 // A symbol on screen, like the square itself: an outline drawn in blocks shrank to
                 // nothing inside the square once the map was zoomed out.
-                show(marker(dim, at, MapShapes.FRAME, color, SELECTION_SIZE, 1f).also {
-                    it.setTitle("$name (selected)")
-                    // It sits over the square, so a click on the square can land on it instead.
-                    it.setOverlayListener(SquadListener(id))
-                })
+                show(
+                    marker(dim, at, MapShapes.FRAME, color, SELECTION_SIZE, 1f).also {
+                        it.setTitle("$name (selected)")
+                        // It sits over the square, so a click on the square can land on it instead.
+                        it.setOverlayListener(SquadListener(id))
+                    },
+                )
             }
 
             t.getIntArray("Obj").takeIf { it.size == 3 }?.let { obj ->
-                if (own) objectives[id] = ObjectiveMark(
-                    "$name: ${order?.name?.lowercase() ?: "?"}", BlockPos(obj[0], obj[1], obj[2]), color,
-                    showInWorld = faction == playerFaction
-                )
+                if (own) {
+                    objectives[id] = ObjectiveMark(
+                        "$name: ${order?.name?.lowercase() ?: "?"}",
+                        BlockPos(obj[0], obj[1], obj[2]),
+                        color,
+                        showInWorld = faction == playerFaction,
+                    )
+                }
                 val center = BlockPos(obj[0], 0, obj[2])
                 val zone = t.getInt("Zone")
                 if (zone > 0) show(outline(dim, circle(center, zone), color, fill = 0.12f))
@@ -370,6 +394,7 @@ class SquadMapPlugin : IClientPlugin {
 
     private data class ObjectiveMark(val name: String, val pos: BlockPos, val color: Int, val showInWorld: Boolean)
     private val waypoints = HashMap<String, kotlin.Pair<ObjectiveMark, Waypoint>>()
+
     /** Cleared out of JourneyMap since joining this world. */
     private var staleWaypointsCleared = false
 
@@ -413,7 +438,12 @@ class SquadMapPlugin : IClientPlugin {
     }
 
     private fun marker(
-        dim: ResourceKey<Level>, at: BlockPos, shape: MapShapes, color: Int, size: Double, opacity: Float
+        dim: ResourceKey<Level>,
+        at: BlockPos,
+        shape: MapShapes,
+        color: Int,
+        size: Double,
+        opacity: Float,
     ): MarkerOverlay {
         // centerAnchors() centres on the size set so far, so it has to come after the resize —
         // before it, every symbol sat half a full-size texture up and left of its point.
@@ -461,8 +491,11 @@ class SquadMapPlugin : IClientPlugin {
     private fun select(id: String?, add: Boolean) {
         when {
             id == null -> selected.clear()
+
             add -> if (!selected.remove(id)) selected += id
+
             selected.size == 1 && id in selected -> selected.clear()
+
             else -> {
                 selected.clear()
                 selected += id
@@ -475,8 +508,7 @@ class SquadMapPlugin : IClientPlugin {
         net.minecraft.client.Minecraft.getInstance().tell { MapState.latest?.let(::redraw) }
     }
 
-    private fun sendOrder(squads: List<String>, order: SquadOrder, pos: BlockPos) =
-        PacketDistributor.sendToServer(SquadCmdPayload(SquadCmdPayload.MAP_ORDER, squads.joinToString(","), order.ordinal, "${pos.x} ${pos.z}"))
+    private fun sendOrder(squads: List<String>, order: SquadOrder, pos: BlockPos) = PacketDistributor.sendToServer(SquadCmdPayload(SquadCmdPayload.MAP_ORDER, squads.joinToString(","), order.ordinal, "${pos.x} ${pos.z}"))
 
     /** Left-click on a squad's square selects it; right-click switches its order, keeping the
      *  objective it has. */
@@ -500,8 +532,7 @@ class SquadMapPlugin : IClientPlugin {
 
     // --- Feed helpers ---
 
-    private fun list(feed: CompoundTag, key: String): List<CompoundTag> =
-        feed.getList(key, Tag.TAG_COMPOUND.toInt()).map { it as CompoundTag }
+    private fun list(feed: CompoundTag, key: String): List<CompoundTag> = feed.getList(key, Tag.TAG_COMPOUND.toInt()).map { it as CompoundTag }
 
     private fun faction(t: CompoundTag): SquadFaction? = SquadFaction.entries.getOrNull(t.getInt("F"))
 
@@ -509,18 +540,27 @@ class SquadMapPlugin : IClientPlugin {
 
     private fun colorOf(faction: SquadFaction): Int = faction.rgb
 
-    private fun square(c: BlockPos, r: Int) = listOf(
-        c.offset(-r, 0, -r), c.offset(r, 0, -r), c.offset(r, 0, r), c.offset(-r, 0, r)
-    )
+    private fun square(c: BlockPos, r: Int) =
+        listOf(
+            c.offset(-r, 0, -r),
+            c.offset(r, 0, -r),
+            c.offset(r, 0, r),
+            c.offset(-r, 0, r),
+        )
 
-    private fun diamond(c: BlockPos, r: Int) = listOf(
-        c.offset(0, 0, -r), c.offset(r, 0, 0), c.offset(0, 0, r), c.offset(-r, 0, 0)
-    )
+    private fun diamond(c: BlockPos, r: Int) =
+        listOf(
+            c.offset(0, 0, -r),
+            c.offset(r, 0, 0),
+            c.offset(0, 0, r),
+            c.offset(-r, 0, 0),
+        )
 
-    private fun circle(c: BlockPos, r: Int) = (0 until CIRCLE_POINTS).map {
-        val a = it * Math.PI * 2 / CIRCLE_POINTS
-        c.offset((Math.cos(a) * r).toInt(), 0, (Math.sin(a) * r).toInt())
-    }
+    private fun circle(c: BlockPos, r: Int) =
+        (0 until CIRCLE_POINTS).map {
+            val a = it * Math.PI * 2 / CIRCLE_POINTS
+            c.offset((Math.cos(a) * r).toInt(), 0, (Math.sin(a) * r).toInt())
+        }
 
     private companion object {
         const val SQUAD_SIZE = 12.0
@@ -535,15 +575,17 @@ class SquadMapPlugin : IClientPlugin {
         const val SELECTION_SIZE = 22.0
         const val SELECTION_COLOR = 0xFFFF55
         const val MEMBER_SIZE = 5.0
+
         /** Blocks a box has to span on one side at least to be a box and not a slipped click. */
         const val MIN_BOX = 2
         const val BOX_FILL = 0x3366CCFF
         const val BOX_EDGE = 0xCC66CCFF.toInt()
+
         /** GUI pixels the mouse may move between press and release for it to still be a click. */
         const val PAN_SLOP = 3
+
         /** The server keeps no more than this many either. */
         const val MAX_ROUTE_POINTS = 32
         const val ROUTE_HINT_Y = 30
-
     }
 }

@@ -28,8 +28,7 @@ object AntiArmourKit {
      *  registry lookup, not a guess about the mod being present). */
     fun issue(npc: NpcEntity): ItemStack = Ports.guns.issue(RPG, npc, ROCKETS)
 
-    fun isLauncher(stack: ItemStack): Boolean =
-        !stack.isEmpty && BuiltInRegistries.ITEM.getKey(stack.item) == RPG
+    fun isLauncher(stack: ItemStack): Boolean = !stack.isEmpty && BuiltInRegistries.ITEM.getKey(stack.item) == RPG
 
     /** Whether there is anything left to fire. */
     fun loaded(npc: NpcEntity): Boolean {

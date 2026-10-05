@@ -59,10 +59,13 @@ class SupplySpawns : SavedData() {
 
     override fun save(tag: CompoundTag, registries: HolderLookup.Provider): CompoundTag {
         spawns.forEach { (uuid, at) ->
-            tag.put(uuid.toString(), CompoundTag().apply {
-                putString("Dim", at.dimension().location().toString())
-                putLong("Pos", at.pos().asLong())
-            })
+            tag.put(
+                uuid.toString(),
+                CompoundTag().apply {
+                    putString("Dim", at.dimension().location().toString())
+                    putLong("Pos", at.pos().asLong())
+                },
+            )
         }
         return tag
     }
@@ -82,8 +85,7 @@ class SupplySpawns : SavedData() {
             return data
         }
 
-        fun get(server: MinecraftServer): SupplySpawns =
-            server.overworld().dataStorage.computeIfAbsent(SavedData.Factory({ SupplySpawns() }, ::load, null), FILE)
+        fun get(server: MinecraftServer): SupplySpawns = server.overworld().dataStorage.computeIfAbsent(SavedData.Factory({ SupplySpawns() }, ::load, null), FILE)
     }
 }
 
@@ -121,7 +123,12 @@ object SupplySpawnEvents {
             return
         }
         event.dimensionTransition = DimensionTransition(
-            level, Vec3.atBottomCenterOf(feet), Vec3.ZERO, player.yRot, 0f, DimensionTransition.DO_NOTHING
+            level,
+            Vec3.atBottomCenterOf(feet),
+            Vec3.ZERO,
+            player.yRot,
+            0f,
+            DimensionTransition.DO_NOTHING,
         )
     }
 
@@ -131,6 +138,5 @@ object SupplySpawnEvents {
             state.block.isPossibleToRespawnInThis(state)
         }
 
-    private fun tell(player: ServerPlayer, text: String) =
-        player.sendSystemMessage(Component.literal(text).withStyle(ChatFormatting.GRAY))
+    private fun tell(player: ServerPlayer, text: String) = player.sendSystemMessage(Component.literal(text).withStyle(ChatFormatting.GRAY))
 }

@@ -70,7 +70,7 @@ object MapFeed {
         val inSquad = HashSet<UUID>()
         // The player's own squads whatever faction they were raised in (anyone may field several),
         // plus everything on the sides allied with the player's faction.
-        val showAll = com.sbwnpc.squad.combat.DebugFlags.MAP_SHOWS_ALL
+        val showAll = com.sbwnpc.squad.combat.DebugFlags.mapShowsAll
         val shown = if (showAll) SquadFaction.entries.toMutableSet() else sides.toMutableSet()
         for (squad in squads.all()) if (squad.owner == player.uuid) shown += squad.faction
         for (squad in squads.all()) {

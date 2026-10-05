@@ -11,15 +11,22 @@ object TacticalEvidence {
         member.recentFire && covers(member, task) &&
             (member.recentFireAt == null || task?.focus == null || member.recentFireAt.distanceTo(task.focus!!) <= 18.0)
 
-    fun settled(member: TacticalMember, task: TacticalTask?): Boolean = task?.position?.let {
-        member.position.distanceTo(it) <= 2.5 && (task.job == TacticalJob.COVER || member.position.distanceTo(task.anchor) <= 10.0)
-    } == true
+    fun settled(member: TacticalMember, task: TacticalTask?): Boolean =
+        task?.position?.let {
+            member.position.distanceTo(it) <= 2.5 && (task.job == TacticalJob.COVER || member.position.distanceTo(task.anchor) <= 10.0)
+        } == true
 
     fun transition(plan: TacticalPlan, view: TacticalSnapshot): TacticalTransitionEvidence {
         val cover = view.members.filter { plan.tasks[it.id]?.job == TacticalJob.COVER }
         val movers = view.members.filter { plan.tasks[it.id]?.job in setOf(TacticalJob.FLANK, TacticalJob.ADVANCE, TacticalJob.RETREAT) }
-        return TacticalTransitionEvidence(view.members.size, view.visible.size, cover.size,
-            cover.count { covers(it, plan.tasks[it.id]) }, cover.count { firesCover(it, plan.tasks[it.id]) },
-            movers.size, movers.count { settled(it, plan.tasks[it.id]) })
+        return TacticalTransitionEvidence(
+            view.members.size,
+            view.visible.size,
+            cover.size,
+            cover.count { covers(it, plan.tasks[it.id]) },
+            cover.count { firesCover(it, plan.tasks[it.id]) },
+            movers.size,
+            movers.count { settled(it, plan.tasks[it.id]) },
+        )
     }
 }

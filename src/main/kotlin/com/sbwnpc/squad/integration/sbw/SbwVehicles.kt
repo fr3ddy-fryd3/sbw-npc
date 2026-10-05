@@ -35,6 +35,7 @@ object SbwVehicles : Vehicles {
     /** Starting small-arms and autocannon ammunition, as a multiple of one full stack of each
      *  kind (per user call). Tank main-gun shells are not scaled. */
     private const val AMMO_SCALE = 4
+
     /** Machine-gun belts go fastest of all, so rifle rounds get twice the rest (per user call). */
     private const val RIFLE_ROUNDS = 64 * AMMO_SCALE * 2
 
@@ -51,8 +52,7 @@ object SbwVehicles : Vehicles {
 
     override fun isVehicle(entity: Entity?): Boolean = entity is VehicleEntity
 
-    override fun isOperational(entity: Entity?): Boolean =
-        entity is VehicleEntity && entity.isAlive && !entity.isWreck
+    override fun isOperational(entity: Entity?): Boolean = entity is VehicleEntity && entity.isAlive && !entity.isWreck
 
     override fun isWreck(vehicle: Entity): Boolean = vehicle is VehicleEntity && vehicle.isWreck
 
@@ -60,14 +60,11 @@ object SbwVehicles : Vehicles {
 
     override fun seatCount(vehicle: Entity): Int = (vehicle as? VehicleEntity)?.maxPassengers ?: 0
 
-    override fun seatOf(vehicle: Entity, passenger: Entity): Int =
-        (vehicle as? VehicleEntity)?.getSeatIndex(passenger) ?: -1
+    override fun seatOf(vehicle: Entity, passenger: Entity): Int = (vehicle as? VehicleEntity)?.getSeatIndex(passenger) ?: -1
 
-    override fun seating(vehicle: Entity): List<Entity?> =
-        (vehicle as? VehicleEntity)?.getOrderedPassengers() ?: emptyList()
+    override fun seating(vehicle: Entity): List<Entity?> = (vehicle as? VehicleEntity)?.getOrderedPassengers() ?: emptyList()
 
-    override fun hasWeaponAt(vehicle: Entity, passenger: Entity): Boolean =
-        vehicle is VehicleEntity && vehicle.getGunData(passenger) != null
+    override fun hasWeaponAt(vehicle: Entity, passenger: Entity): Boolean = vehicle is VehicleEntity && vehicle.getGunData(passenger) != null
 
     // SBW's engines simply stop responding when the battery runs down — `VehicleEngineUtils`
     // zeroes every input once `energy <= energyCost` — with no outward sign beyond the vehicle not
@@ -82,11 +79,9 @@ object SbwVehicles : Vehicles {
         return vehicle.energy > perTick * ticks
     }
 
-    override fun modelOf(vehicle: Entity): VehicleModel? =
-        if (vehicle !is VehicleEntity) null else types.entries.firstOrNull { it.value() == vehicle.type }?.key
+    override fun modelOf(vehicle: Entity): VehicleModel? = if (vehicle !is VehicleEntity) null else types.entries.firstOrNull { it.value() == vehicle.type }?.key
 
-    override fun create(level: ServerLevel, model: VehicleModel): Entity? =
-        types[model]?.invoke()?.create(level) as? VehicleEntity
+    override fun create(level: ServerLevel, model: VehicleModel): Entity? = types[model]?.invoke()?.create(level) as? VehicleEntity
 
     override fun fuelAndArm(vehicle: Entity, model: VehicleModel) {
         if (vehicle !is VehicleEntity) return
@@ -102,6 +97,7 @@ object SbwVehicles : Vehicles {
                 hold.stow(ModItems.RIFLE_AMMO.get(), RIFLE_ROUNDS)
                 hold.stow(ModItems.HEAVY_AMMO.get(), 64 * AMMO_SCALE)
             }
+
             // Which round a cannon fires is its selected ammo type, not a slot (see loadRound), so
             // the stacks can go anywhere. The AH-6's 20mm only takes HE, so it gets no AP.
             HelicopterModel.MI_28 -> {
@@ -109,10 +105,12 @@ object SbwVehicles : Vehicles {
                 hold.stow(ModItems.SMALL_SHELL_HE.get(), 64 * AMMO_SCALE)
                 hold.stow(ModItems.SMALL_ROCKET.get(), 16 * AMMO_SCALE)
             }
+
             HelicopterModel.AH_6 -> {
                 hold.stow(ModItems.SMALL_SHELL_HE.get(), 64 * AMMO_SCALE)
                 hold.stow(ModItems.SMALL_ROCKET.get(), 16 * AMMO_SCALE)
             }
+
             // Autocannon AP/HE and the 7.62 coax, all three models (sbw/vehicles/*.json); the BMP-2
             // and LAV-25 also carry an ATGM — a single-shot launcher, one stack of its missiles.
             is TransportVehicle -> {
@@ -121,6 +119,7 @@ object SbwVehicles : Vehicles {
                 hold.stow(ModItems.RIFLE_AMMO.get(), RIFLE_ROUNDS)
                 if (model != TransportVehicle.LAV_150) hold.stow(ModItems.MEDIUM_ANTI_GROUND_MISSILE.get(), 4)
             }
+
             else -> {}
         }
     }
@@ -144,8 +143,7 @@ object SbwVehicles : Vehicles {
         (vehicle as? VehicleEntity)?.health = 0f
     }
 
-    override fun within(level: Level, area: AABB, filter: (Entity) -> Boolean): List<Entity> =
-        level.getEntitiesOfClass(VehicleEntity::class.java, area) { filter(it) }
+    override fun within(level: Level, area: AABB, filter: (Entity) -> Boolean): List<Entity> = level.getEntitiesOfClass(VehicleEntity::class.java, area) { filter(it) }
 
     // --- Driving ---
 
@@ -295,8 +293,7 @@ object SbwVehicles : Vehicles {
         (vehicle as? VehicleEntity)?.power = 0f
     }
 
-    override fun hull(vehicle: Entity): AABB =
-        (vehicle as? VehicleEntity)?.getCombinedAABB() ?: vehicle.boundingBox
+    override fun hull(vehicle: Entity): AABB = (vehicle as? VehicleEntity)?.getCombinedAABB() ?: vehicle.boundingBox
 
     override fun occupies(vehicle: Entity, box: AABB, clearance: Double): Boolean {
         if (vehicle !is VehicleEntity || vehicle.enableAABB()) return vehicle.boundingBox.inflate(clearance).intersects(box)
@@ -308,8 +305,11 @@ object SbwVehicles : Vehicles {
 
     override fun wouldHit(vehicle: Entity, other: Entity, offset: Vec3): Boolean {
         if (vehicle !is VehicleEntity) return vehicle.boundingBox.move(offset).intersects(other.boundingBox)
-        return if (vehicle.enableAABB()) vehicle.boundingBox.move(offset).intersects(other.boundingBox)
-        else vehicle.isInObb(other, offset)
+        return if (vehicle.enableAABB()) {
+            vehicle.boundingBox.move(offset).intersects(other.boundingBox)
+        } else {
+            vehicle.isInObb(other, offset)
+        }
     }
 
     // --- Damage ---
@@ -323,11 +323,9 @@ object SbwVehicles : Vehicles {
 
     // --- Weapons ---
 
-    override fun canFire(vehicle: Entity, passenger: LivingEntity): Boolean =
-        vehicle is VehicleEntity && vehicle.canShoot(passenger)
+    override fun canFire(vehicle: Entity, passenger: LivingEntity): Boolean = vehicle is VehicleEntity && vehicle.canShoot(passenger)
 
-    override fun seatReady(vehicle: Entity, seat: Int): Boolean =
-        vehicle is VehicleEntity && vehicle.getGunData(seat)?.canShoot(vehicle.ammoSupplier) == true
+    override fun seatReady(vehicle: Entity, seat: Int): Boolean = vehicle is VehicleEntity && vehicle.getGunData(seat)?.canShoot(vehicle.ammoSupplier) == true
 
     // `canShoot` is false while SBW reloads or cools a weapon; only an empty weapon counts here.
     override fun seatHasAmmo(vehicle: Entity, passenger: Entity): Boolean {
@@ -450,6 +448,7 @@ object SbwVehicles : Vehicles {
     // error); 45° means anything from a moderate correction to a near-reversal all command close to
     // full lock, while small corrections near the target heading get proportionally gentle steering.
     private const val RUDDER_FULL_LOCK_DEGREES = 45.0
+
     // Below the vehicle's hard rudderRot clamp (±0.8 in VehicleEngineUtils.wheelEngine) on purpose:
     // rudderRot's *0.75 decay applies every tick even while an input is held, so continuous
     // single-direction holding only settles at ~0.3-0.6 depending on speed (lower at cruising
@@ -457,24 +456,31 @@ object SbwVehicles : Vehicles {
     // Targeting within that achievable range keeps the proportional response effective across most
     // of a turn, not just its final stretch.
     private const val MAX_RUDDER_MAGNITUDE = 0.4f
+
     // How close actual rudderRot must get to the target before releasing input — too small and
     // float noise/the engine's own per-tick rudderRot changes chatter the input on/off every tick;
     // too large and steering stays visibly short of what was actually commanded.
     private const val RUDDER_DEADBAND = 0.05f
+
     // Heading error (degrees) within which a boat's helm is let go: the swing it has built up
     // carries it the rest of the way.
     private const val SHIP_HEADING_DEADBAND = 12.0
+
     // A turn sharper than this (degrees) is taken at no more than SHIP_TURN_SPEED blocks a tick.
     private const val SHIP_SHARP_TURN = 45.0
     private const val SHIP_TURN_SPEED = 0.35
+
     // A land vehicle's heading error (degrees) past which the turn is taken slowly, not at speed.
     private const val SHARP_TURN = 60.0
+
     // Past this (degrees), a wheeled vehicle backs round rather than drive a circle forward.
     private const val REVERSE_TURN = 100.0
+
     // Taking a sharp turn, a wheeled vehicle keeps the throttle on only below this (blocks a tick)
     // and brakes above TURN_SPEED.
     private const val CREEP_SPEED = 0.12
     private const val TURN_SPEED = 0.25
+
     // Blocks behind the hull that must be ground it can back onto.
     private const val BACK_ROOM = 4.0
 }

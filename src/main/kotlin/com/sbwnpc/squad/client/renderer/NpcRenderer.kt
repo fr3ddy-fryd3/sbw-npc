@@ -12,8 +12,7 @@ import net.minecraft.client.renderer.entity.layers.HumanoidArmorLayer
 import net.minecraft.client.renderer.entity.layers.ItemInHandLayer
 import net.minecraft.resources.ResourceLocation
 
-class NpcRenderer(context: EntityRendererProvider.Context) :
-    HumanoidMobRenderer<NpcEntity, NpcModel>(context, NpcModel(context.bakeLayer(NpcModel.LAYER)), 0.5f) {
+class NpcRenderer(context: EntityRendererProvider.Context) : HumanoidMobRenderer<NpcEntity, NpcModel>(context, NpcModel(context.bakeLayer(NpcModel.LAYER)), 0.5f) {
 
     init {
         // The base HumanoidMobRenderer constructor (3-arg, no layers) never adds armor rendering on
@@ -28,8 +27,8 @@ class NpcRenderer(context: EntityRendererProvider.Context) :
                 this,
                 HumanoidModel(context.bakeLayer(ModelLayers.PLAYER_INNER_ARMOR)),
                 HumanoidModel(context.bakeLayer(ModelLayers.PLAYER_OUTER_ARMOR)),
-                context.modelManager
-            )
+                context.modelManager,
+            ),
         )
 
         // HumanoidMobRenderer's constructor has already added the vanilla in-hand layer; swap it
@@ -40,11 +39,9 @@ class NpcRenderer(context: EntityRendererProvider.Context) :
     }
 
     /** Crouched, the model is drawn lower, as the player's renderer does. */
-    override fun getRenderOffset(entity: NpcEntity, partialTicks: Float): net.minecraft.world.phys.Vec3 =
-        if (entity.isCrouching) net.minecraft.world.phys.Vec3(0.0, -0.125, 0.0) else super.getRenderOffset(entity, partialTicks)
+    override fun getRenderOffset(entity: NpcEntity, partialTicks: Float): net.minecraft.world.phys.Vec3 = if (entity.isCrouching) net.minecraft.world.phys.Vec3(0.0, -0.125, 0.0) else super.getRenderOffset(entity, partialTicks)
 
     // Faction comes purely from the entity's (client-synced) scoreboard team — no extra synced
     // data needed. Unteamed (neutral) NPCs fall back to the default faction's skin.
-    override fun getTextureLocation(entity: NpcEntity): ResourceLocation =
-        (SquadTeams.factionOf(entity) ?: SquadFaction.DEFAULT).texture
+    override fun getTextureLocation(entity: NpcEntity): ResourceLocation = (SquadTeams.factionOf(entity) ?: SquadFaction.DEFAULT).texture
 }

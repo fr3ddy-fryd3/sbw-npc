@@ -6,11 +6,11 @@ import com.sbwnpc.squad.network.OpenFinishRoutePayload
 import com.sbwnpc.squad.network.OpenRecruitScreenPayload
 import com.sbwnpc.squad.network.buildSquadSnapshot
 import com.sbwnpc.squad.network.sendToClient
+import com.sbwnpc.squad.npc.HelicopterModel
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.npc.SquadPreset
-import com.sbwnpc.squad.npc.HelicopterModel
 import com.sbwnpc.squad.npc.TankModel
 import com.sbwnpc.squad.npc.TransportVehicle
 import com.sbwnpc.squad.squad.PlayerFactionRegistry
@@ -92,8 +92,10 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
                 actionbar(player, "$name → objective (${pos.x}, ${pos.y}, ${pos.z})", ChatFormatting.GRAY)
             } else {
                 val snap = buildSquadSnapshot(
-                    SquadManager.get(serverLevel), player.uuid, SquadSelection.looseOf(player.uuid).size,
-                    !com.sbwnpc.squad.squad.ReportMutes.get(serverLevel.server).isMuted(player.uuid)
+                    SquadManager.get(serverLevel),
+                    player.uuid,
+                    SquadSelection.looseOf(player.uuid).size,
+                    !com.sbwnpc.squad.squad.ReportMutes.get(serverLevel.server).isMuted(player.uuid),
                 )
                 sendToClient(player, OpenCommandScreenPayload(snap))
             }
@@ -124,8 +126,10 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
                 actionbar(player, "$name → objective (${context.clickedPos.x}, ${context.clickedPos.y}, ${context.clickedPos.z})", ChatFormatting.GRAY)
             } else if (player is net.minecraft.server.level.ServerPlayer) {
                 val snap = buildSquadSnapshot(
-                    SquadManager.get(serverLevel), player.uuid, SquadSelection.looseOf(player.uuid).size,
-                    !com.sbwnpc.squad.squad.ReportMutes.get(serverLevel.server).isMuted(player.uuid)
+                    SquadManager.get(serverLevel),
+                    player.uuid,
+                    SquadSelection.looseOf(player.uuid).size,
+                    !com.sbwnpc.squad.squad.ReportMutes.get(serverLevel.server).isMuted(player.uuid),
                 )
                 sendToClient(player, OpenCommandScreenPayload(snap))
             }
@@ -215,11 +219,9 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         return InteractionResult.SUCCESS
     }
 
-    private fun actionbar(player: Player, msg: String, color: ChatFormatting) =
-        player.displayClientMessage(Component.literal(msg).withStyle(color), true)
+    private fun actionbar(player: Player, msg: String, color: ChatFormatting) = player.displayClientMessage(Component.literal(msg).withStyle(color), true)
 
-    private fun actionbar(player: Player, msg: String, style: Style) =
-        player.displayClientMessage(Component.literal(msg).withStyle(style), true)
+    private fun actionbar(player: Player, msg: String, style: Style) = player.displayClientMessage(Component.literal(msg).withStyle(style), true)
 
     override fun appendHoverText(stack: ItemStack, context: TooltipContext, tooltip: MutableList<Component>, flag: TooltipFlag) {
         val m = when (mode(stack)) {
@@ -243,7 +245,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         val vehicle: Boolean = false,
         val vehicleModel: TransportVehicle = TransportVehicle.DEFAULT,
         val tankModel: TankModel = TankModel.DEFAULT,
-        val heliModel: HelicopterModel = HelicopterModel.DEFAULT
+        val heliModel: HelicopterModel = HelicopterModel.DEFAULT,
     )
 
     companion object {
@@ -266,22 +268,24 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             return readConfig(StackData.read(stack))
         }
 
-        fun readConfig(tag: CompoundTag): Config = Config(
-            readEnum(tag, KEY_CLASS, NpcClass.DEFAULT, { NpcClass.valueOf(it) }, { NpcClass.byOrdinal(it) }),
-            readEnum(tag, KEY_RANK, NpcRank.DEFAULT, { NpcRank.valueOf(it) }, { NpcRank.byOrdinal(it) }),
-            readEnum(tag, KEY_FACTION, SquadFaction.DEFAULT, { SquadFaction.valueOf(it) }, { SquadFaction.byOrdinal(it) }),
-            readEnum(tag, KEY_PRESET, SquadPreset.DEFAULT, { SquadPreset.valueOf(it) }, { SquadPreset.byOrdinal(it) }),
-            tag.getBoolean(KEY_VEHICLE),
-            readEnum(tag, KEY_VEHICLE_MODEL, TransportVehicle.DEFAULT, { TransportVehicle.valueOf(it) }, { TransportVehicle.byOrdinal(it) }),
-            readEnum(tag, KEY_TANK_MODEL, TankModel.DEFAULT, { TankModel.valueOf(it) }, { TankModel.byOrdinal(it) }),
-            readEnum(tag, KEY_HELI_MODEL, HelicopterModel.DEFAULT, { HelicopterModel.valueOf(it) }, { HelicopterModel.byOrdinal(it) })
-        )
+        fun readConfig(tag: CompoundTag): Config =
+            Config(
+                readEnum(tag, KEY_CLASS, NpcClass.DEFAULT, { NpcClass.valueOf(it) }, { NpcClass.byOrdinal(it) }),
+                readEnum(tag, KEY_RANK, NpcRank.DEFAULT, { NpcRank.valueOf(it) }, { NpcRank.byOrdinal(it) }),
+                readEnum(tag, KEY_FACTION, SquadFaction.DEFAULT, { SquadFaction.valueOf(it) }, { SquadFaction.byOrdinal(it) }),
+                readEnum(tag, KEY_PRESET, SquadPreset.DEFAULT, { SquadPreset.valueOf(it) }, { SquadPreset.byOrdinal(it) }),
+                tag.getBoolean(KEY_VEHICLE),
+                readEnum(tag, KEY_VEHICLE_MODEL, TransportVehicle.DEFAULT, { TransportVehicle.valueOf(it) }, { TransportVehicle.byOrdinal(it) }),
+                readEnum(tag, KEY_TANK_MODEL, TankModel.DEFAULT, { TankModel.valueOf(it) }, { TankModel.byOrdinal(it) }),
+                readEnum(tag, KEY_HELI_MODEL, HelicopterModel.DEFAULT, { HelicopterModel.valueOf(it) }, { HelicopterModel.byOrdinal(it) }),
+            )
 
-        private inline fun <T> readEnum(tag: CompoundTag, key: String, default: T, byName: (String) -> T, byOrdinal: (Int) -> T): T = when {
-            tag.contains(key, Tag.TAG_STRING.toInt()) -> runCatching { byName(tag.getString(key)) }.getOrDefault(default)
-            tag.contains(key, Tag.TAG_INT.toInt()) -> byOrdinal(tag.getInt(key))
-            else -> default
-        }
+        private inline fun <T> readEnum(tag: CompoundTag, key: String, default: T, byName: (String) -> T, byOrdinal: (Int) -> T): T =
+            when {
+                tag.contains(key, Tag.TAG_STRING.toInt()) -> runCatching { byName(tag.getString(key)) }.getOrDefault(default)
+                tag.contains(key, Tag.TAG_INT.toInt()) -> byOrdinal(tag.getInt(key))
+                else -> default
+            }
 
         /** The same NBT shape [writeConfig] stores on the tool, as a standalone tag — what the
          *  Barracks persists and what its config packets carry. */

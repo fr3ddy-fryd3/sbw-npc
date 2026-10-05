@@ -15,13 +15,27 @@ class TacticalLifecycleTest {
     private val origin = Vec3(0.0, 64.0, 0.0)
     private val focus = Vec3(50.0, 64.0, 0.0)
     private val members = (0..5).map { TacticalMember(UUID(0, it.toLong()), Vec3(it * 5.0, 64.0, 0.0), canFire = true) }
-    private fun view(now: Long = 0, stamp: Int = 1) = TacticalSnapshot(now, SquadOrder.ATTACK, stamp, origin, focus, members,
-        listOf(TacticalContact(UUID(1, 1), focus, now)))
+    private fun view(now: Long = 0, stamp: Int = 1) =
+        TacticalSnapshot(
+            now,
+            SquadOrder.ATTACK,
+            stamp,
+            origin,
+            focus,
+            members,
+            listOf(TacticalContact(UUID(1, 1), focus, now)),
+        )
 
     private class RecordingState(private val calls: MutableList<String>) : TacticalState() {
-        override fun onEnter(context: TacticalContext) { calls += "enter:${context.plan.id}" }
-        override fun beforeTick(context: TacticalContext) { calls += "tick:${context.plan.id}" }
-        override fun onExit(context: TacticalContext, trigger: String) { calls += "exit:${context.plan.id}" }
+        override fun onEnter(context: TacticalContext) {
+            calls += "enter:${context.plan.id}"
+        }
+        override fun beforeTick(context: TacticalContext) {
+            calls += "tick:${context.plan.id}"
+        }
+        override fun onExit(context: TacticalContext, trigger: String) {
+            calls += "exit:${context.plan.id}"
+        }
         override fun task(layout: TacticalLayout, member: TacticalMember, index: Int) = layout.cover(member)
     }
 
@@ -29,9 +43,13 @@ class TacticalLifecycleTest {
         val calls = mutableListOf<String>()
         val events = mutableListOf<TacticalEvent>()
         val registry = TacticalStates.registry.replacing(TacticalPattern.FOLLOW_ORDER) { RecordingState(calls) }
-        val state = SquadTacticalState(TacticalEventSink(events::add), registry, TacticalDecisionPolicy {
-            TacticalChoice(TacticalPattern.FOLLOW_ORDER, null)
-        })
+        val state = SquadTacticalState(
+            TacticalEventSink(events::add),
+            registry,
+            TacticalDecisionPolicy {
+                TacticalChoice(TacticalPattern.FOLLOW_ORDER, null)
+            },
+        )
         state.assess(squad, view())
         val plan = state.plan!!
         val tasks = plan.tasks.toMap()
@@ -48,9 +66,13 @@ class TacticalLifecycleTest {
         val calls = mutableListOf<String>()
         val events = mutableListOf<TacticalEvent>()
         val registry = TacticalStates.registry.replacing(TacticalPattern.FOLLOW_ORDER) { RecordingState(calls) }
-        val state = SquadTacticalState(TacticalEventSink(events::add), registry, TacticalDecisionPolicy {
-            TacticalChoice(TacticalPattern.FOLLOW_ORDER, null)
-        })
+        val state = SquadTacticalState(
+            TacticalEventSink(events::add),
+            registry,
+            TacticalDecisionPolicy {
+                TacticalChoice(TacticalPattern.FOLLOW_ORDER, null)
+            },
+        )
         state.assess(squad, view())
         val old = state.plan!!
         events.clear()
@@ -109,16 +131,18 @@ class TacticalLifecycleTest {
         val events = mutableListOf<TacticalEvent>()
         lateinit var state: SquadTacticalState
         var rejected = 0
-        state = SquadTacticalState(TacticalEventSink {
-            events += it
-            if (it is TacticalEvent.TaskReleased) {
-                assertThrows(IllegalStateException::class.java) {
-                    state.select(TacticalChoice(TacticalPattern.EVADE, focus), 9, it.tick)
+        state = SquadTacticalState(
+            TacticalEventSink {
+                events += it
+                if (it is TacticalEvent.TaskReleased) {
+                    assertThrows(IllegalStateException::class.java) {
+                        state.select(TacticalChoice(TacticalPattern.EVADE, focus), 9, it.tick)
+                    }
+                    assertThrows(IllegalStateException::class.java) { state.deactivate(it.tick, "reentrant") }
+                    rejected++
                 }
-                assertThrows(IllegalStateException::class.java) { state.deactivate(it.tick, "reentrant") }
-                rejected++
-            }
-        })
+            },
+        )
         state.select(TacticalChoice(TacticalPattern.REORIENT, focus), 1, 0)
         val old = state.plan!!
         TacticalCoordinator.assign(squad, old, view())
@@ -141,9 +165,13 @@ class TacticalLifecycleTest {
         val shared = RecordingState(calls)
         val registry = TacticalStates.registry.replacing(TacticalPattern.FOLLOW_ORDER) { shared }
         val events = mutableListOf<TacticalEvent>()
-        val state = SquadTacticalState(TacticalEventSink(events::add), registry, TacticalDecisionPolicy {
-            TacticalChoice(TacticalPattern.FOLLOW_ORDER, null)
-        })
+        val state = SquadTacticalState(
+            TacticalEventSink(events::add),
+            registry,
+            TacticalDecisionPolicy {
+                TacticalChoice(TacticalPattern.FOLLOW_ORDER, null)
+            },
+        )
         state.assess(squad, view())
         val old = state.plan!!
         val tasks = old.tasks.toMap()
@@ -163,13 +191,19 @@ class TacticalLifecycleTest {
         val registry = TacticalStates.registry.replacing(TacticalPattern.BOUND) {
             object : TacticalState() {
                 override fun onEnter(context: TacticalContext) = context.fail(TacticalFailure.MOVEMENT_TIMEOUT)
-                override fun beforeTick(context: TacticalContext) { ticks++ }
+                override fun beforeTick(context: TacticalContext) {
+                    ticks++
+                }
                 override fun task(layout: TacticalLayout, member: TacticalMember, index: Int) = layout.cover(member)
             }
         }
-        val state = SquadTacticalState(TacticalEventSink(events::add), registry, TacticalDecisionPolicy {
-            TacticalChoice(TacticalPattern.BOUND, focus)
-        })
+        val state = SquadTacticalState(
+            TacticalEventSink(events::add),
+            registry,
+            TacticalDecisionPolicy {
+                TacticalChoice(TacticalPattern.BOUND, focus)
+            },
+        )
         state.assess(squad, view())
         assertEquals(TacticalPhase.FAILED, state.plan!!.phase)
         assertEquals(TacticalFailure.MOVEMENT_TIMEOUT, state.plan!!.failure)
@@ -187,13 +221,19 @@ class TacticalLifecycleTest {
                 override fun task(layout: TacticalLayout, member: TacticalMember, index: Int) = layout.cover(member)
             }
         }
-        val state = SquadTacticalState(registry = registry, decisions = TacticalDecisionPolicy {
-            TacticalChoice(TacticalPattern.FOLLOW_ORDER, focus)
-        })
-        val defence = view().copy(order = SquadOrder.DEFEND, home = origin,
+        val state = SquadTacticalState(
+            registry = registry,
+            decisions = TacticalDecisionPolicy {
+                TacticalChoice(TacticalPattern.FOLLOW_ORDER, focus)
+            },
+        )
+        val defence = view().copy(
+            order = SquadOrder.DEFEND,
+            home = origin,
             members = members.mapIndexed { index, member ->
                 if (index == 0) member.copy(role = NpcClass.SNIPER) else member
-            })
+            },
+        )
         state.assess(squad, defence)
         val old = state.plan!!.tasks[members.first().id]!!
         assertEquals(TacticalJob.OVERWATCH, old.job)
@@ -289,7 +329,11 @@ class TacticalLifecycleTest {
         val plan = state.plan!!
         TacticalCoordinator.assign(squad, plan, view())
         val cover = plan.tasks.filterValues { it.job == TacticalJob.COVER }.toMap()
-        cover.values.forEach { it.position = it.anchor; it.failures = 2; it.nextSearch = 91 }
+        cover.values.forEach {
+            it.position = it.anchor
+            it.failures = 2
+            it.nextSearch = 91
+        }
         events.clear()
         TacticalCoordinator.advance(squad, state, plan, view(10))
         assertEquals(TacticalPhase.EXECUTING, plan.phase)

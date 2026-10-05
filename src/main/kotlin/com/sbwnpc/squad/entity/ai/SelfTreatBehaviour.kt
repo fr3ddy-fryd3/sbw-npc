@@ -33,7 +33,7 @@ class SelfTreatBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.medkitsLeft--
         (entity.level() as? ServerLevel)?.sendParticles(
             net.minecraft.core.particles.DustParticleOptions(HEAL_COLOR, 1.5f),
-            entity.x, entity.y + 1.0, entity.z, 12, 0.3, 0.5, 0.3, 0.0
+            entity.x, entity.y + 1.0, entity.z, 12, 0.3, 0.5, 0.3, 0.0,
         )
         DebugFlags.log(LogGroup.MEDIC, "{} ({}) treated itself in cover, {} hp", entity.uuid, entity.npcClass, entity.health)
     }
@@ -41,6 +41,7 @@ class SelfTreatBehaviour : ExtendedBehaviour<NpcEntity>() {
     private companion object {
         const val WOUNDED_FRACTION = 0.5f
         const val START_CHECK_INTERVAL_TICKS = 10
+
         /** Same colour as a medic's treatment. */
         val HEAL_COLOR = org.joml.Vector3f(1.0f, 0.45f, 0.45f)
     }

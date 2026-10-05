@@ -22,7 +22,7 @@ class NpcModel(root: ModelPart) : HumanoidModel<NpcEntity>(root) {
         limbSwingAmount: Float,
         ageInTicks: Float,
         netHeadYaw: Float,
-        headPitch: Float
+        headPitch: Float,
     ) {
         val stack = entity.mainHandItem
         val pose = Ports.gunPoses.armPose(entity, stack) ?: ArmPose.EMPTY
@@ -37,7 +37,6 @@ class NpcModel(root: ModelPart) : HumanoidModel<NpcEntity>(root) {
     companion object {
         val LAYER = ModelLayerLocation(SquadMod.loc("npc"), "main")
 
-        fun createBodyLayer(): LayerDefinition =
-            LayerDefinition.create(createMesh(CubeDeformation.NONE, 0.0f), 64, 64)
+        fun createBodyLayer(): LayerDefinition = LayerDefinition.create(createMesh(CubeDeformation.NONE, 0.0f), 64, 64)
     }
 }

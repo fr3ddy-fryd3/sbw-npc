@@ -31,8 +31,11 @@ class FileState : CoveredManeuverState() {
     }
 
     override fun prepare(context: TacticalContext) {
-        if (context.view.visible.isEmpty()) phases.transition(ExecutingPhase(), context, "unopposed_crossing")
-        else super.prepare(context)
+        if (context.view.visible.isEmpty()) {
+            phases.transition(ExecutingPhase(), context, "unopposed_crossing")
+        } else {
+            super.prepare(context)
+        }
     }
 
     override fun arrived(context: TacticalContext, movers: List<TacticalMember>) {
@@ -42,7 +45,10 @@ class FileState : CoveredManeuverState() {
     }
 
     override fun phaseEntered(context: TacticalContext, from: TacticalPhase?) {
-        if (from == TacticalPhase.EXECUTING) assign(context, trigger = "file_next_pair")
-        else super.phaseEntered(context, from)
+        if (from == TacticalPhase.EXECUTING) {
+            assign(context, trigger = "file_next_pair")
+        } else {
+            super.phaseEntered(context, from)
+        }
     }
 }

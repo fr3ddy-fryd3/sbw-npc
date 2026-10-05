@@ -24,15 +24,19 @@ import java.util.UUID
 object Airspace {
     /** Horizontal distance two helicopters are expected to keep. */
     const val SEPARATION = 26.0
+
     /** Vertical spacing between stacked aircraft. */
     const val LAYER_HEIGHT = 6.0
+
     /** Beyond this many aircraft in one place, stacking higher stops being useful. */
     const val MAX_LAYERS = 3
+
     /** Only aircraft this close are worth stacking against. Layering is for two machines
      *  converging on the same piece of sky, not for everything inside [AWARENESS_RANGE] — counting
      *  the wider set is what had a lone gunship cruising three bands higher than its mission
      *  called for. */
     const val LAYER_RANGE = 48.0
+
     /** How far out another helicopter is worth knowing about. */
     const val AWARENESS_RANGE = 96.0
 
@@ -70,8 +74,7 @@ object Airspace {
      * something to avoid hovering over, but not in this one: an aircraft does not need to climb
      * over something sitting on the ground.
      */
-    fun layerFor(self: UUID, neighbours: List<UUID>): Int =
-        neighbours.count { it < self }.coerceAtMost(MAX_LAYERS - 1)
+    fun layerFor(self: UUID, neighbours: List<UUID>): Int = neighbours.count { it < self }.coerceAtMost(MAX_LAYERS - 1)
 
     fun clearanceFor(self: UUID, neighbours: List<UUID>): Double = layerFor(self, neighbours) * LAYER_HEIGHT
 }

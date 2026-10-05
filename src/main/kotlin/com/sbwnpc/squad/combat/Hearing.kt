@@ -20,12 +20,15 @@ import java.util.UUID
 object Hearing {
     /** A gun's own sound radius (SBW's `SoundRadius`, 8–32) is this many times how far it's heard. */
     const val GUNSHOT_SCALE = 3.0
+
     /** A suppressor on top of the quieter radius SBW already gives it. */
     const val SUPPRESSED_SCALE = 0.5
+
     /** Blocks per point of explosion power. */
     private const val EXPLOSION_SCALE = 12.0
     private const val MIN_EXPLOSION = 24.0
     private const val MAX_EXPLOSION = 128.0
+
     /** A machine gun is heard as it opens up, not ten times a second. */
     private const val SHOOTER_INTERVAL_TICKS = 20L
 
@@ -35,6 +38,7 @@ object Hearing {
     private const val WALK_RADIUS = 4.0
     private const val SPRINT_RADIUS = 8.0
     private const val LANDING_RADIUS = 3.0
+
     /** Blocks a tick over which an NPC is taken to be running rather than walking. */
     private const val NPC_RUN_SPEED = 0.2
 
@@ -69,7 +73,19 @@ object Hearing {
             running -> SPRINT_RADIUS
             else -> WALK_RADIUS
         }
-        noise(level, walker.position(), radius, walker, if (landing) "landing" else if (running) "running" else "walking")
+        noise(
+            level,
+            walker.position(),
+            radius,
+            walker,
+            if (landing) {
+                "landing"
+            } else if (running) {
+                "running"
+            } else {
+                "walking"
+            },
+        )
     }
 
     /** An explosion of [power] went off at [at], set off by [source] if anyone. */
@@ -90,10 +106,15 @@ object Hearing {
         }
         // A player's noise is logged even unheard, to tell "nobody near" from "nobody hostile".
         if ((heard > 0 || source is net.minecraft.world.entity.player.Player) && DebugFlags.on(LogGroup.HEARING)) {
-            DebugFlags.log(LogGroup.HEARING,
+            DebugFlags.log(
+                LogGroup.HEARING,
                 "{} by {} at {} radius {} heard by {} of {} NPCs in range",
-                kind, source?.let { it.uuid.toString().take(8) + " " + it.type.descriptionId } ?: "nobody",
-                BlockPos.containing(at), "%.0f".format(radius), heard, inRange
+                kind,
+                source?.let { it.uuid.toString().take(8) + " " + it.type.descriptionId } ?: "nobody",
+                BlockPos.containing(at),
+                "%.0f".format(radius),
+                heard,
+                inRange,
             )
         }
     }

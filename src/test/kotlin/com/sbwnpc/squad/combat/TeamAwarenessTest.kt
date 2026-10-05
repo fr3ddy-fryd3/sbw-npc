@@ -15,6 +15,7 @@ class TeamAwarenessTest {
     private val here = Vec3(1.0, 64.0, 2.0)
 
     @BeforeEach fun reset() = TeamAwareness.clearAll()
+
     @AfterEach fun cleanup() = TeamAwareness.clearAll()
 
     @Test

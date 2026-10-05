@@ -48,8 +48,7 @@ object SquadTeams {
 
     /** The faction an entity's team encodes, purely from the (client-synced) scoreboard team name
      *  — no extra synced entity data needed for e.g. the renderer to pick a skin. */
-    fun factionOf(entity: Entity): SquadFaction? =
-        if (entity is NpcEntity) entity.factionThisTick { teamFaction(entity) } else teamFaction(entity)
+    fun factionOf(entity: Entity): SquadFaction? = if (entity is NpcEntity) entity.factionThisTick { teamFaction(entity) } else teamFaction(entity)
 
     private fun teamFaction(entity: Entity): SquadFaction? {
         val team = entity.team as? PlayerTeam ?: return null
@@ -68,8 +67,11 @@ object SquadTeams {
 
     private fun factionOfTeamName(name: String): SquadFaction? {
         val hit = factionByTeamName.computeIfAbsent(name) {
-            if (!name.startsWith(PREFIX)) NONE
-            else runCatching { SquadFaction.valueOf(name.removePrefix(PREFIX).uppercase()) }.getOrNull() ?: NONE
+            if (!name.startsWith(PREFIX)) {
+                NONE
+            } else {
+                runCatching { SquadFaction.valueOf(name.removePrefix(PREFIX).uppercase()) }.getOrNull() ?: NONE
+            }
         }
         return hit as? SquadFaction
     }

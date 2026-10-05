@@ -15,7 +15,7 @@ object ModBlockEntities {
     val BARRACKS = REGISTRY.register("barracks") { ->
         BlockEntityType.Builder.of(
             { pos, state -> BarracksBlockEntity(pos, state) },
-            ModBlocks.BARRACKS.get()
+            ModBlocks.BARRACKS.get(),
         ).build(null)
     }
 
@@ -23,7 +23,7 @@ object ModBlockEntities {
     val SUPPLY = REGISTRY.register("supply") { ->
         BlockEntityType.Builder.of(
             { pos, state -> SupplyBlockEntity(pos, state) },
-            ModBlocks.SUPPLY.get()
+            ModBlocks.SUPPLY.get(),
         ).build(null)
     }
 }

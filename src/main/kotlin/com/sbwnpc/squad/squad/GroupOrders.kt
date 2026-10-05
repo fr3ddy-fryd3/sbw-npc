@@ -65,8 +65,9 @@ object GroupOrders {
         val walkers = squads.filter { kindOf(mgr, it) == Kind.INFANTRY }
         if (walkers.isEmpty()) return squads.map { "${it.name}: unchanged" }
         val route = routes.create(
-            owner, MAP_ROUTE_PREFIX + walkers.joinToString(", ") { it.name },
-            points.map { (x, z) -> BlockPos(x, groundY(level, x, z), z) }
+            owner,
+            MAP_ROUTE_PREFIX + walkers.joinToString(", ") { it.name },
+            points.map { (x, z) -> BlockPos(x, groundY(level, x, z), z) },
         )
         val previous = walkers.mapNotNull { it.routeId }.toSet()
         for (squad in walkers) {
@@ -90,36 +91,42 @@ object GroupOrders {
      * the world. Every map order was being sent to y = -64: no path leads there, so squads stood
      * still, and one that did get close never counted as arrived. The chunk is loaded to read it.
      */
-    private fun groundY(level: ServerLevel, x: Int, z: Int): Int =
-        level.getChunk(x shr 4, z shr 4).getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x and 15, z and 15) + 1
+    private fun groundY(level: ServerLevel, x: Int, z: Int): Int = level.getChunk(x shr 4, z shr 4).getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x and 15, z and 15) + 1
 
-    private fun kindOf(mgr: SquadManager, squad: Squad): Kind = when {
-        mgr.isTankSquad(squad) -> Kind.TANK
-        mgr.isMortarSquad(squad) -> Kind.MORTAR
-        mgr.isGunshipSquad(squad) -> Kind.GUNSHIP
-        mgr.isTransportSquad(squad) -> Kind.TRANSPORT
-        else -> Kind.INFANTRY
-    }
+    private fun kindOf(mgr: SquadManager, squad: Squad): Kind =
+        when {
+            mgr.isTankSquad(squad) -> Kind.TANK
+            mgr.isMortarSquad(squad) -> Kind.MORTAR
+            mgr.isGunshipSquad(squad) -> Kind.GUNSHIP
+            mgr.isTransportSquad(squad) -> Kind.TRANSPORT
+            else -> Kind.INFANTRY
+        }
 
-    private fun resolve(kind: Kind, order: SquadOrder): kotlin.Pair<SquadOrder, Placement>? = when (order) {
-        SquadOrder.ATTACK -> when (kind) {
-            Kind.TANK -> SquadOrder.MOVE to Placement.LINE
-            Kind.MORTAR -> SquadOrder.ATTACK to Placement.POINT
-            else -> SquadOrder.ATTACK to Placement.LINE
+    private fun resolve(kind: Kind, order: SquadOrder): kotlin.Pair<SquadOrder, Placement>? =
+        when (order) {
+            SquadOrder.ATTACK -> when (kind) {
+                Kind.TANK -> SquadOrder.MOVE to Placement.LINE
+                Kind.MORTAR -> SquadOrder.ATTACK to Placement.POINT
+                else -> SquadOrder.ATTACK to Placement.LINE
+            }
+
+            SquadOrder.DEFEND -> when (kind) {
+                Kind.TANK -> SquadOrder.MOVE to Placement.LINE
+                else -> SquadOrder.DEFEND to Placement.LINE
+            }
+
+            SquadOrder.MOVE -> when (kind) {
+                Kind.MORTAR -> SquadOrder.DEFEND to Placement.LINE
+                else -> SquadOrder.MOVE to Placement.LINE
+            }
+
+            SquadOrder.RETREAT -> SquadOrder.RETREAT to Placement.LINE
+
+            SquadOrder.BARRAGE -> if (kind == Kind.MORTAR) SquadOrder.BARRAGE to Placement.POINT else null
+
+            // Not offered on the map; anything else keeps its current order.
+            SquadOrder.PATROL -> if (kind == Kind.INFANTRY) SquadOrder.PATROL to Placement.LINE else null
         }
-        SquadOrder.DEFEND -> when (kind) {
-            Kind.TANK -> SquadOrder.MOVE to Placement.LINE
-            else -> SquadOrder.DEFEND to Placement.LINE
-        }
-        SquadOrder.MOVE -> when (kind) {
-            Kind.MORTAR -> SquadOrder.DEFEND to Placement.LINE
-            else -> SquadOrder.MOVE to Placement.LINE
-        }
-        SquadOrder.RETREAT -> SquadOrder.RETREAT to Placement.LINE
-        SquadOrder.BARRAGE -> if (kind == Kind.MORTAR) SquadOrder.BARRAGE to Placement.POINT else null
-        // Not offered on the map; anything else keeps its current order.
-        SquadOrder.PATROL -> if (kind == Kind.INFANTRY) SquadOrder.PATROL to Placement.LINE else null
-    }
 
     /** Each squad's spot on a line through the click, across the way they are heading. */
     private fun lineSpots(level: ServerLevel, squads: List<Squad>, x: Double, z: Double): Map<UUID, kotlin.Pair<Double, Double>> {
@@ -127,15 +134,24 @@ object GroupOrders {
         if (squads.size == 1) return mapOf(squads[0].id to (x to z))
         val centres = squads.associate { s ->
             val members = s.members.mapNotNull { level.getEntity(it) as? NpcEntity }
-            s.id to if (members.isEmpty()) (x to z)
-                else (members.sumOf { it.x } / members.size to members.sumOf { it.z } / members.size)
+            s.id to if (members.isEmpty()) {
+                (x to z)
+            } else {
+                (members.sumOf { it.x } / members.size to members.sumOf { it.z } / members.size)
+            }
         }
         val cx = centres.values.sumOf { it.first } / centres.size
         val cz = centres.values.sumOf { it.second } / centres.size
         var dx = x - cx
         var dz = z - cz
         val len = Math.sqrt(dx * dx + dz * dz)
-        if (len < 1.0) { dx = 0.0; dz = 1.0 } else { dx /= len; dz /= len }
+        if (len < 1.0) {
+            dx = 0.0
+            dz = 1.0
+        } else {
+            dx /= len
+            dz /= len
+        }
         val rx = -dz
         val rz = dx
         val ordered = squads.sortedBy { s -> centres.getValue(s.id).let { (it.first - cx) * rx + (it.second - cz) * rz } }

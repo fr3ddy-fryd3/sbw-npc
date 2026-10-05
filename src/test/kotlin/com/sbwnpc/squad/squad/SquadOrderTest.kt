@@ -21,7 +21,7 @@ class SquadOrderTest {
     fun `both helicopter classes can attack without infantry patrol commands`() {
         for (orders in listOf(
             SquadOrder.availableFor(false, false, gunship = true),
-            SquadOrder.availableFor(false, false, transport = true)
+            SquadOrder.availableFor(false, false, transport = true),
         )) {
             assertTrue(SquadOrder.ATTACK in orders)
             assertFalse(SquadOrder.PATROL in orders)

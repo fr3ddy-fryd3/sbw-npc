@@ -34,11 +34,12 @@ object SquadDeployment {
     class Result(val members: List<NpcEntity>, val squad: Squad?, val vehicleBlocked: Boolean = false)
 
     /** Full planned strength, including the chosen helicopter's crew. */
-    fun composition(cfg: SquadToolItem.Config): List<NpcClass> = when (cfg.preset) {
-        SquadPreset.SINGLE -> listOf(cfg.cls)
-        SquadPreset.HELI_CREW -> cfg.heliModel.crew
-        else -> cfg.preset.composition
-    }
+    fun composition(cfg: SquadToolItem.Config): List<NpcClass> =
+        when (cfg.preset) {
+            SquadPreset.SINGLE -> listOf(cfg.cls)
+            SquadPreset.HELI_CREW -> cfg.heliModel.crew
+            else -> cfg.preset.composition
+        }
 
     /**
      * Deploys [cfg]'s preset centred on [pos], facing away from [facingYaw], and forms a squad
@@ -47,8 +48,11 @@ object SquadDeployment {
     fun deploy(level: ServerLevel, pos: BlockPos, facingYaw: Float, cfg: SquadToolItem.Config, owner: UUID): Result? {
         val composition = composition(cfg)
         val difficulty = level.getCurrentDifficultyAt(pos)
-        val spawned = if (cfg.preset.grid) deployGrid(level, pos, facingYaw, composition, cfg.rank, cfg.faction, difficulty)
-            else deployLine(level, pos, facingYaw, composition, cfg.rank, cfg.faction, difficulty, cfg.preset.spacing)
+        val spawned = if (cfg.preset.grid) {
+            deployGrid(level, pos, facingYaw, composition, cfg.rank, cfg.faction, difficulty)
+        } else {
+            deployLine(level, pos, facingYaw, composition, cfg.rank, cfg.faction, difficulty, cfg.preset.spacing)
+        }
         if (spawned.isEmpty()) return null
 
         val vehiclePlaced = deploySupport(level, pos, facingYaw, cfg, spawned)
@@ -63,21 +67,28 @@ object SquadDeployment {
                 if (cfg.preset.grid) mgr.setOrder(it.id, SquadOrder.MOVE)
                 mgr.setObjective(level, it.id, pos)
             }
-        } else null
+        } else {
+            null
+        }
         return Result(spawned, squad, vehicleBlocked = !vehiclePlaced)
     }
 
     /** Places support once the crew is present; barracks build that crew one member at a time. */
     fun deploySupport(
-        level: ServerLevel, pos: BlockPos, facingYaw: Float, cfg: SquadToolItem.Config, members: List<NpcEntity>
-    ): Boolean = when (cfg.preset) {
-        SquadPreset.MORTAR_CREW -> spawnMortar(level, pos, facingYaw, cfg.faction)
-        SquadPreset.T90_CREW -> spawnTankCrew(level, pos, facingYaw, cfg.faction, members, cfg.tankModel)
-        SquadPreset.HELI_CREW -> spawnHeliCrew(level, pos, facingYaw, cfg.faction, members, cfg.heliModel)
-        SquadPreset.FIVE -> !cfg.vehicle || spawnTransport(level, pos, facingYaw, cfg.faction, cfg.vehicleModel, members)
-        SquadPreset.SEVEN -> !cfg.vehicle || spawnTransport(level, pos, facingYaw, cfg.faction, TransportVehicle.BMP_2, members)
-        else -> true
-    }
+        level: ServerLevel,
+        pos: BlockPos,
+        facingYaw: Float,
+        cfg: SquadToolItem.Config,
+        members: List<NpcEntity>,
+    ): Boolean =
+        when (cfg.preset) {
+            SquadPreset.MORTAR_CREW -> spawnMortar(level, pos, facingYaw, cfg.faction)
+            SquadPreset.T90_CREW -> spawnTankCrew(level, pos, facingYaw, cfg.faction, members, cfg.tankModel)
+            SquadPreset.HELI_CREW -> spawnHeliCrew(level, pos, facingYaw, cfg.faction, members, cfg.heliModel)
+            SquadPreset.FIVE -> !cfg.vehicle || spawnTransport(level, pos, facingYaw, cfg.faction, cfg.vehicleModel, members)
+            SquadPreset.SEVEN -> !cfg.vehicle || spawnTransport(level, pos, facingYaw, cfg.faction, TransportVehicle.BMP_2, members)
+            else -> true
+        }
 
     /**
      * Spawns [composition] already standing in the squad's MOVE grid round [center] — the same
@@ -92,7 +103,7 @@ object SquadDeployment {
         composition: List<NpcClass>,
         rank: NpcRank,
         faction: SquadFaction,
-        difficulty: net.minecraft.world.DifficultyInstance
+        difficulty: net.minecraft.world.DifficultyInstance,
     ): List<NpcEntity> {
         val result = mutableListOf<NpcEntity>()
         for ((i, cls) in composition.withIndex()) {
@@ -122,7 +133,7 @@ object SquadDeployment {
         rank: NpcRank,
         faction: SquadFaction,
         difficulty: net.minecraft.world.DifficultyInstance,
-        spacing: Double = 2.0
+        spacing: Double = 2.0,
     ): List<NpcEntity> {
         val yawRad = Math.toRadians(facingYaw.toDouble())
         val rightX = Math.cos(yawRad)
@@ -154,7 +165,11 @@ object SquadDeployment {
     private fun spawnMortar(level: ServerLevel, center: BlockPos, yaw: Float, faction: SquadFaction): Boolean {
         val mortar = Ports.mortars.create(level, yaw + 180f)
         val spot = SafeSpawn.findClearSpot(
-            level, center.x + 0.5, center.z + 0.5, center.y, mortar.getDimensions(Pose.STANDING)
+            level,
+            center.x + 0.5,
+            center.z + 0.5,
+            center.y,
+            mortar.getDimensions(Pose.STANDING),
         ) ?: return false
         mortar.moveTo(spot.x, spot.y, spot.z, yaw + 180f, 0f)
         level.addFreshEntity(mortar)
@@ -168,7 +183,7 @@ object SquadDeployment {
         yaw: Float,
         faction: SquadFaction,
         crew: List<NpcEntity>,
-        model: TankModel
+        model: TankModel,
     ): Boolean {
         val tank = Ports.vehicles.create(level, model) ?: return false
         // Off the deploy point, not on it — spawned right where the player clicked, a tank this
@@ -203,7 +218,7 @@ object SquadDeployment {
         yaw: Float,
         faction: SquadFaction,
         crew: List<NpcEntity>,
-        model: HelicopterModel
+        model: HelicopterModel,
     ): Boolean {
         val heli = Ports.vehicles.create(level, model) ?: return false
         // Well off the deploy point, and high enough that the rotor isn't inside the canopy the

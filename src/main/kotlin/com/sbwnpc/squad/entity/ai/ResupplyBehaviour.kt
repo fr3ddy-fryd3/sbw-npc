@@ -3,8 +3,8 @@ package com.sbwnpc.squad.entity.ai
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.block.entity.SupplyBlockEntity
 import com.sbwnpc.squad.combat.DebugFlags
-import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.FiringSpots
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
@@ -40,8 +40,7 @@ class ResupplyBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private val startCheck = StartCheckThrottle(START_CHECK_INTERVAL_TICKS)
 
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
-        startCheck.check(entity) { free(entity) && entity.wantsResupply() }
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = startCheck.check(entity) { free(entity) && entity.wantsResupply() }
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean =
         free(entity) && entity.ammoFraction() < TOPPED_UP_FRACTION && entity.nearestSupply() != null &&
@@ -54,8 +53,14 @@ class ResupplyBehaviour : ExtendedBehaviour<NpcEntity>() {
         nextRepathTick = 0
         FiringSpots.release(entity.uuid)
         com.sbwnpc.squad.squad.SquadReports.goingToResupply(entity)
-        DebugFlags.log(LogGroup.SUPPLY, "{} ({}) low on ammo ({}), going to {}",
-            entity.uuid, entity.npcClass, "%.2f".format(entity.ammoFraction()), entity.nearestSupply())
+        DebugFlags.log(
+            LogGroup.SUPPLY,
+            "{} ({}) low on ammo ({}), going to {}",
+            entity.uuid,
+            entity.npcClass,
+            "%.2f".format(entity.ammoFraction()),
+            entity.nearestSupply(),
+        )
     }
 
     override fun tick(entity: NpcEntity) {
@@ -72,15 +77,22 @@ class ResupplyBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun stop(entity: NpcEntity) {
         entity.resupplying = false
-        DebugFlags.log(LogGroup.SUPPLY, "{} ({}) done resupplying ({})",
-            entity.uuid, entity.npcClass, "%.2f".format(entity.ammoFraction()))
+        DebugFlags.log(
+            LogGroup.SUPPLY,
+            "{} ({}) done resupplying ({})",
+            entity.uuid,
+            entity.npcClass,
+            "%.2f".format(entity.ammoFraction()),
+        )
     }
 
     private companion object {
         const val START_CHECK_INTERVAL_TICKS = 20
         const val REPATH_TICKS = 40
+
         /** Well inside the block's reach, so the next issue round catches it. */
         const val ARRIVE_DISTANCE = SupplyBlockEntity.RADIUS - 3.0
+
         /** The reserve comes back whole, the magazine may still be half-spent. */
         const val TOPPED_UP_FRACTION = 0.8
     }

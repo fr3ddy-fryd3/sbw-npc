@@ -13,6 +13,7 @@ import net.minecraft.world.entity.Pose
 class NpcPosture(private val npc: NpcEntity) {
     /** Ticks it has stood still in a position worth crouching in. */
     private var stillTicks = 0
+
     /** Crouching cost it its line of fire: stays up until this tick. */
     private var standUntilTick = 0
 
@@ -35,8 +36,7 @@ class NpcPosture(private val npc: NpcEntity) {
         }
     }
 
-    private fun canStandUp(): Boolean =
-        npc.level().noCollision(npc, npc.getDimensions(Pose.STANDING).makeBoundingBox(npc.position()).deflate(1.0e-7))
+    private fun canStandUp(): Boolean = npc.level().noCollision(npc, npc.getDimensions(Pose.STANDING).makeBoundingBox(npc.position()).deflate(1.0e-7))
 
     companion object {
         /** A player's crouch, scaled to the NPC's height; the eyes clear a one-block wall. */

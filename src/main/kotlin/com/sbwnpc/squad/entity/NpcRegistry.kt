@@ -50,8 +50,11 @@ object NpcRegistry {
      *  sphere test rather than the cube those boxes actually were (a slightly tighter match for
      *  "within earshot"/"within blast radius" than before, never looser). */
     inline fun forEachWithin(
-        level: ServerLevel, center: net.minecraft.world.phys.Vec3, radius: Double, exclude: Entity? = null,
-        action: (NpcEntity) -> Unit
+        level: ServerLevel,
+        center: net.minecraft.world.phys.Vec3,
+        radius: Double,
+        exclude: Entity? = null,
+        action: (NpcEntity) -> Unit,
     ) {
         val r2 = radius * radius
         for (npc in all(level)) {

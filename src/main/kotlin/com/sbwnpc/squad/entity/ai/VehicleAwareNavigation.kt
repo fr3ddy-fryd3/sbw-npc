@@ -4,11 +4,11 @@ import com.sbwnpc.squad.domain.port.Ports
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap
 import net.minecraft.core.BlockPos
 import net.minecraft.world.entity.Mob
-import net.minecraft.world.level.pathfinder.Path
-import net.minecraft.world.level.levelgen.Heightmap
 import net.minecraft.world.entity.ai.navigation.GroundPathNavigation
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.PathNavigationRegion
+import net.minecraft.world.level.levelgen.Heightmap
+import net.minecraft.world.level.pathfinder.Path
 import net.minecraft.world.level.pathfinder.PathFinder
 import net.minecraft.world.level.pathfinder.PathType
 import net.minecraft.world.level.pathfinder.PathfindingContext
@@ -32,11 +32,11 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
     /** Tactical posts need their exact height, rather than a march waypoint on the surface. */
     fun createPositionPath(pos: BlockPos): Path? {
         if (!canPlan) return null
-        val saved=nodeMultiplier
-        super.setMaxVisitedNodesMultiplier(maxOf(1f,saved))
+        val saved = nodeMultiplier
+        super.setMaxVisitedNodesMultiplier(maxOf(1f, saved))
         try {
-            val range=(kotlin.math.sqrt(pos.distToCenterSqr(mob.x,mob.y,mob.z))+8.0).coerceIn(48.0,80.0).toFloat()
-            return createPath(setOf(pos),8,false,0,range)
+            val range = (kotlin.math.sqrt(pos.distToCenterSqr(mob.x, mob.y, mob.z)) + 8.0).coerceIn(48.0, 80.0).toFloat()
+            return createPath(setOf(pos), 8, false, 0, range)
         } finally {
             super.setMaxVisitedNodesMultiplier(saved)
         }
@@ -71,7 +71,12 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         // Vanilla plans nothing while he's off the ground, and an empty answer then is no news
         // about the way — so the branch state (the goals the path being walked was planned to)
         // is left as it is, not set to a goal nothing was planned to.
-        val result = if (canPlan) choosePath(pos, accuracy) else { branch = "in the air"; null }
+        val result = if (canPlan) {
+            choosePath(pos, accuracy)
+        } else {
+            branch = "in the air"
+            null
+        }
         (mob as? com.sbwnpc.squad.entity.NpcEntity)?.let { npc ->
             val far = pos.distToCenterSqr(mob.x, mob.y, mob.z) > NOWHERE_MIN_DISTANCE * NOWHERE_MIN_DISTANCE
             val end = result?.endNode?.asBlockPos()
@@ -79,19 +84,22 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
             // actual order is far away. Null ground searches also need physical stuck recovery.
             // Airborne requests say nothing about whether the path can advance.
             if (canPlan) {
-                val nowhere = far && (result == null || end != null && end.distManhattan(mob.blockPosition()) <= 1)
+                val nowhere = far && (result == null || (end != null && end.distManhattan(mob.blockPosition()) <= 1))
                 npc.notePathGoesNowhere(pos, nowhere)
             }
         }
         // No path on the ground is rare and is what a caller gives up on — never skipped.
-        if (com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.PATH) && (result == null && canPlan || mob.tickCount - lastPathLogTick >= PATH_LOG_TICKS)) {
+        if (com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.PATH) &&
+            ((result == null && canPlan) || mob.tickCount - lastPathLogTick >= PATH_LOG_TICKS)
+        ) {
             lastPathLogTick = mob.tickCount
-            com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.PATH,
+            com.sbwnpc.squad.combat.DebugFlags.log(
+                com.sbwnpc.squad.combat.LogGroup.PATH,
                 "{} at {} asked {} ({} blocks) branch={} target={} -> {}",
                 mob.uuid.toString().take(8), mob.blockPosition(), pos,
                 Math.sqrt(pos.distToCenterSqr(mob.x, mob.y, mob.z)).toInt(), branch, (mob as? com.sbwnpc.squad.entity.NpcEntity)?.target != null,
                 result?.let { "nodes=${it.nodeCount} reach=${it.canReach()} end=${it.endNode?.asBlockPos()} short=${"%.1f".format(it.distToTarget)}" }
-                    ?: "null (canUpdate=${canUpdatePath()} ground=${mob.onGround()} liquid=${mob.isInLiquid} passenger=${mob.isPassenger} y=${"%.2f".format(mob.y)})"
+                    ?: "null (canUpdate=${canUpdatePath()} ground=${mob.onGround()} liquid=${mob.isInLiquid} passenger=${mob.isPassenger} y=${"%.2f".format(mob.y)})",
             )
         }
         return result
@@ -138,8 +146,9 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         traceWalk()
     }
 
-    private fun investigating() = (mob as? com.sbwnpc.squad.entity.NpcEntity)?.isAlert() == true &&
-        com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.PATH)
+    private fun investigating() =
+        (mob as? com.sbwnpc.squad.entity.NpcEntity)?.isAlert() == true &&
+            com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.PATH)
 
     /** While he's off to look at a noise: who took his path away or swapped it, from the frames above. */
     private fun traceHandover(what: String) {
@@ -151,7 +160,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
             .take(4).joinToString(" <- ")
         com.sbwnpc.squad.combat.DebugFlags.log(
             com.sbwnpc.squad.combat.LogGroup.PATH, "{} at {} {} (was to {}, node {}/{}) by {}",
-            mob.uuid.toString().take(8), mob.blockPosition(), what, path?.target, path?.nextNodeIndex, path?.nodeCount, from
+            mob.uuid.toString().take(8), mob.blockPosition(), what, path?.target, path?.nextNodeIndex, path?.nodeCount, from,
         )
     }
 
@@ -165,7 +174,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         com.sbwnpc.squad.combat.DebugFlags.log(
             com.sbwnpc.squad.combat.LogGroup.PATH, "{} walking at {} node {}/{} next {} to {} speed {} ground={}",
             mob.uuid.toString().take(8), mob.blockPosition(), current.nextNodeIndex, current.nodeCount,
-            current.nextNodePos, current.target, "%.2f".format(mob.deltaMovement.horizontalDistance()), mob.onGround()
+            current.nextNodePos, current.target, "%.2f".format(mob.deltaMovement.horizontalDistance()), mob.onGround(),
         )
     }
 
@@ -176,8 +185,12 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         if (mob.tickCount - lastAirLogTick < AIR_LOG_TICKS) return
         lastAirLogTick = mob.tickCount
         com.sbwnpc.squad.combat.DebugFlags.log(
-            com.sbwnpc.squad.combat.LogGroup.PATH, "{} at {} y={}: {}",
-            mob.uuid.toString().take(8), mob.blockPosition(), "%.2f".format(mob.y), what
+            com.sbwnpc.squad.combat.LogGroup.PATH,
+            "{} at {} y={}: {}",
+            mob.uuid.toString().take(8),
+            mob.blockPosition(),
+            "%.2f".format(mob.y),
+            what,
         )
     }
     private var lastPathLogTick = Int.MIN_VALUE / 2
@@ -191,8 +204,12 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         // noise, returning to a mortar) still use local legs rather than wait for a long search.
         // Resupplying men follow the route itself, not a formation around the squad's lead.
         val npc = (mob as? com.sbwnpc.squad.entity.NpcEntity)
-            ?.takeIf { !it.recoveringNavigation && it.vehicle == null && (resupplyTrip(it) ||
-                it.homeCenter()?.let { home -> pos.closerThan(BlockPos.containing(home), MARCH_GOAL_RANGE) } == true) }
+            ?.takeIf {
+                !it.recoveringNavigation && it.vehicle == null && (
+                    resupplyTrip(it) ||
+                        it.homeCenter()?.let { home -> pos.closerThan(BlockPos.containing(home), MARCH_GOAL_RANGE) } == true
+                    )
+            }
         val formation = npc?.let { !resupplyTrip(it) } ?: true
         if (len <= NEAR_RANGE && level.chunkSource.getChunkNow(pos.x shr 4, pos.z shr 4) != null) {
             farGoal = null
@@ -203,7 +220,8 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
             // Close, but the short search can't get there — a hill in the way, most likely. Out of
             // a fight, the squad's big search looks for the way round.
             if (near != null && !near.canReach() && near.distToTarget > SHORT_OF_GOAL && npc != null &&
-                (npc.target == null || resupplyTrip(npc))) {
+                (npc.target == null || resupplyTrip(npc))
+            ) {
                 SquadMarch.waypointFor(npc, pos, formation)?.let {
                     branch = "near-route ${it.route}"
                     nearGoal = null
@@ -238,7 +256,10 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         nearGoal = null
         if (current != null && !current.isDone && goal != null && goal.closerThan(pos, GOAL_DRIFT)) return current
         farGoal = pos
-        val leg = legToward(dx, dz, len) ?: run { branch = "leg (no loaded ground toward the goal)"; return null }
+        val leg = legToward(dx, dz, len) ?: run {
+            branch = "leg (no loaded ground toward the goal)"
+            return null
+        }
         val saved = nodeMultiplier
         super.setMaxVisitedNodesMultiplier(FAR_NODE_MULTIPLIER)
         try {
@@ -264,8 +285,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         return null
     }
 
-    private fun resupplyTrip(npc: com.sbwnpc.squad.entity.NpcEntity): Boolean =
-        npc.resupplying || (npc.servingMortar && npc.mortarShellsLeft <= 0)
+    private fun resupplyTrip(npc: com.sbwnpc.squad.entity.NpcEntity): Boolean = npc.resupplying || (npc.servingMortar && npc.mortarShellsLeft <= 0)
 
     /** What the path being walked was last planned to, on the near, formation and route branches. */
     private var nearGoal: BlockPos? = null
@@ -286,6 +306,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
 
     /** The goal of the leg being walked; a new one within [GOAL_DRIFT] of it is the same goal. */
     private var farGoal: BlockPos? = null
+
     /** What the owner last set the node budget to — restored after a long leg's bigger search. */
     private var nodeMultiplier = 1f
 
@@ -302,19 +323,25 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
     private companion object {
         /** Closer than this, a path ending where it stands is just being there. */
         const val NOWHERE_MIN_DISTANCE = 3.0
+
         /** The NPC's own follow range: nearer than this, vanilla's own search is enough. */
         const val NEAR_RANGE = 48.0
+
         /** A goal this near the squad's objective is the squad's march: a place in its formation there. */
         const val MARCH_GOAL_RANGE = 48.0
         const val FAR_RANGE = 100.0
+
         /** 768 nodes at follow range 48 — three times that for a search twice as far. */
         const val FAR_NODE_MULTIPLIER = 3f
         const val MIN_LEG = 8.0
+
         /** A leg ending this near its end point got there — see SquadMarch's LEG_REACH. */
         const val LEG_REACH = 8
         const val GOAL_DRIFT = 4.0
+
         /** A near goal or formation place moved less than this keeps the path already walked. */
         const val NEAR_DRIFT = 2.0
+
         /**
          * The same on the march, for both his formation place and the route point. Both sit sixteen
          * route nodes ahead and move on at the squad's pace — faster than [NEAR_DRIFT] a second —
@@ -323,14 +350,17 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
          * same way, and the next ask after he gets there catches up.
          */
         const val MARCH_DRIFT = 8.0
+
         /** A path ending nearer its goal than this just can't stand on the exact block. */
         const val SHORT_OF_GOAL = 4f
         const val PATH_LOG_TICKS = 40
         const val AIR_LOG_TICKS = 10
         const val WALK_LOG_TICKS = 20
         val PLUMBING = listOf(
-            "VehicleAwareNavigation.traceHandover", "VehicleAwareNavigation.moveTo", "VehicleAwareNavigation.stop",
-            "PathNavigation.moveTo"
+            "VehicleAwareNavigation.traceHandover",
+            "VehicleAwareNavigation.moveTo",
+            "VehicleAwareNavigation.stop",
+            "PathNavigation.moveTo",
         )
     }
 }
@@ -340,6 +370,7 @@ internal open class VehicleAwareNodeEvaluator : WalkNodeEvaluator() {
     // evaluate overlapping cells and their 24 surrounding hazards. Keep the final cell type
     // for this search only; raw block types in PathfindingContext do not cache those hazards.
     private val cellTypes = Long2ObjectOpenHashMap<PathType>()
+
     /** Vehicles near the mob, each with the box round its hull for a quick first test. */
     private var hulls: List<Pair<net.minecraft.world.entity.Entity, AABB>> = emptyList()
     private var standingOn: BlockPos? = null
@@ -437,8 +468,11 @@ internal open class VehicleAwareNodeEvaluator : WalkNodeEvaluator() {
         // Keep the start usable for an NPC who was already pushed into an obstacle.
         val origin = start
         if (origin != null && origin.x == x && origin.z == z && kotlin.math.abs(origin.y - y) <= 1) return type
-        val floor = if (type == PathType.OPEN || type == PathType.WATER) y.toDouble()
-            else getFloorLevel(pos)
+        val floor = if (type == PathType.OPEN || type == PathType.WATER) {
+            y.toDouble()
+        } else {
+            getFloorLevel(pos)
+        }
         val box = WalkingClearance.body(x, floor, z, mob.bbWidth, mob.bbHeight)
         return if (context.level().noBlockCollision(mob, box)) type else PathType.BLOCKED
     }
@@ -450,8 +484,12 @@ internal open class VehicleAwareNodeEvaluator : WalkNodeEvaluator() {
 
     private fun occupied(x: Int, y: Int, z: Int): Boolean {
         val node = AABB(
-            x.toDouble(), y.toDouble(), z.toDouble(),
-            x + 1.0, y + 1.0, z + 1.0
+            x.toDouble(),
+            y.toDouble(),
+            z.toDouble(),
+            x + 1.0,
+            y + 1.0,
+            z + 1.0,
         )
         // The box round a hull turned across the axes is far bigger than the hull — a BMP at an
         // angle boxed in men standing well clear of it — so only the hull itself blocks.
@@ -460,8 +498,10 @@ internal open class VehicleAwareNodeEvaluator : WalkNodeEvaluator() {
 
     private companion object {
         const val SEARCH_RADIUS = 24.0
+
         /** Taller than this (a carpet, a snow layer, a bottom slab are lower) can't be stepped over. */
         const val STEP_OVER = 0.5
+
         /** Keeps routes from hugging the hull close enough to catch on it. */
         const val CLEARANCE = 0.3
     }

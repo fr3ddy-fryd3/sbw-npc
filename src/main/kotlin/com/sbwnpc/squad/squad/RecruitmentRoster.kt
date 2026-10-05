@@ -12,7 +12,7 @@ class RecruitmentRoster(val slots: MutableList<Slot>) {
         val role: NpcClass,
         var occupant: UUID? = null,
         var recruited: Boolean = false,
-        var active: Boolean = true
+        var active: Boolean = true,
     )
 
     fun vacancies(): List<Slot> = slots.filter { it.active && it.occupant == null }
@@ -31,22 +31,26 @@ class RecruitmentRoster(val slots: MutableList<Slot>) {
         remaining.forEach { slots += Slot(UUID.randomUUID(), it) }
     }
 
-    fun save(): ListTag = ListTag().also { list ->
-        slots.forEach { slot ->
-            list.add(CompoundTag().apply {
-                putUUID("Id", slot.id)
-                putString("Role", slot.role.name)
-                slot.occupant?.let { putUUID("Occupant", it) }
-                putBoolean("Recruited", slot.recruited)
-                putBoolean("Active", slot.active)
-            })
+    fun save(): ListTag =
+        ListTag().also { list ->
+            slots.forEach { slot ->
+                list.add(
+                    CompoundTag().apply {
+                        putUUID("Id", slot.id)
+                        putString("Role", slot.role.name)
+                        slot.occupant?.let { putUUID("Occupant", it) }
+                        putBoolean("Recruited", slot.recruited)
+                        putBoolean("Active", slot.active)
+                    },
+                )
+            }
         }
-    }
 
     companion object {
-        fun empty(composition: List<NpcClass>) = RecruitmentRoster(
-            composition.map { Slot(UUID.randomUUID(), it) }.toMutableList()
-        )
+        fun empty(composition: List<NpcClass>) =
+            RecruitmentRoster(
+                composition.map { Slot(UUID.randomUUID(), it) }.toMutableList(),
+            )
 
         /** Legacy saves must resolve every member before assigning places, never guess an unloaded role. */
         fun migrate(composition: List<NpcClass>, members: Map<UUID, NpcClass?>): RecruitmentRoster? {
@@ -61,13 +65,18 @@ class RecruitmentRoster(val slots: MutableList<Slot>) {
             return roster
         }
 
-        fun load(list: ListTag): RecruitmentRoster = RecruitmentRoster(list.map { raw ->
-            val tag = raw as CompoundTag
-            Slot(
-                tag.getUUID("Id"), NpcClass.valueOf(tag.getString("Role")),
-                if (tag.hasUUID("Occupant")) tag.getUUID("Occupant") else null,
-                tag.getBoolean("Recruited"), tag.getBoolean("Active")
+        fun load(list: ListTag): RecruitmentRoster =
+            RecruitmentRoster(
+                list.map { raw ->
+                    val tag = raw as CompoundTag
+                    Slot(
+                        tag.getUUID("Id"),
+                        NpcClass.valueOf(tag.getString("Role")),
+                        if (tag.hasUUID("Occupant")) tag.getUUID("Occupant") else null,
+                        tag.getBoolean("Recruited"),
+                        tag.getBoolean("Active"),
+                    )
+                }.toMutableList(),
             )
-        }.toMutableList())
     }
 }

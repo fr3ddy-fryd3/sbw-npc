@@ -31,6 +31,7 @@ import java.util.UUID
 class SquadManager : SavedData() {
 
     private val squads = LinkedHashMap<UUID, Squad>()
+
     // A deleted member can be asleep in an unloaded chunk. Keep the deletion in SavedData
     // until it loads, including across server restarts; removing its squad alone strands it.
     private val pendingDeletes = LinkedHashSet<UUID>()
@@ -48,8 +49,12 @@ class SquadManager : SavedData() {
      *  the first [HUD_SLOTS] of them ([forOwner] is in creation order, so disbanding one moves the
      *  rest up into the freed numbers); everything past that is commanded from the squad screen. */
     fun create(
-        level: ServerLevel, owner: UUID, faction: SquadFaction, members: List<UUID>,
-        originalComposition: List<NpcClass>? = null, rank: NpcRank? = null
+        level: ServerLevel,
+        owner: UUID,
+        faction: SquadFaction,
+        members: List<UUID>,
+        originalComposition: List<NpcClass>? = null,
+        rank: NpcRank? = null,
     ): Squad {
         // Captured now so a future barracks assignment knows what "full strength" means for this
         // squad — the actual classes it was formed/last topped up with, not a guess.
@@ -67,14 +72,17 @@ class SquadManager : SavedData() {
             // Tank crews structurally can't run anything but MOVE — setOrder forces it right back
             // the instant anyone tries to change it, so starting there avoids a one-tick mismatch.
             tank -> SquadOrder.MOVE
+
             else -> SquadOrder.DEFEND
         }
         val squad = Squad(
             UUID.randomUUID(), nextName(owner, prefix), faction, initialOrder, members.toMutableList(),
-            null, null, owner, null, composition, squadRank
+            null, null, owner, null, composition, squadRank,
         )
-        squad.recruitmentRoster = RecruitmentRoster.migrate(composition,
-            members.associateWith { (findEntity(level.server, it) as? NpcEntity)?.npcClass })
+        squad.recruitmentRoster = RecruitmentRoster.migrate(
+            composition,
+            members.associateWith { (findEntity(level.server, it) as? NpcEntity)?.npcClass },
+        )
         squads[squad.id] = squad
         members.forEach { m ->
             val e = findEntity(level.server, m)
@@ -133,7 +141,10 @@ class SquadManager : SavedData() {
     fun setOrder(id: UUID, order: SquadOrder) {
         squads[id]?.let {
             val available = SquadOrder.availableFor(
-                isTankSquad(it), isMortarSquad(it), isGunshipSquad(it), isTransportSquad(it)
+                isTankSquad(it),
+                isMortarSquad(it),
+                isGunshipSquad(it),
+                isTransportSquad(it),
             )
             it.order = when {
                 order in available -> order
@@ -145,19 +156,17 @@ class SquadManager : SavedData() {
         }
     }
 
-    fun isTankSquad(squad: Squad): Boolean =
-        squad.originalComposition.contains(NpcClass.TANK_CREW) || squad.name.startsWith("Tank ")
+    fun isTankSquad(squad: Squad): Boolean = squad.originalComposition.contains(NpcClass.TANK_CREW) || squad.name.startsWith("Tank ")
 
     /** A gunship squad brought a turret gunner; a transport squad is a pilot without one. */
-    fun isGunshipSquad(squad: Squad): Boolean =
-        squad.originalComposition.contains(NpcClass.HELICOPTER_GUNNER)
+    fun isGunshipSquad(squad: Squad): Boolean = squad.originalComposition.contains(NpcClass.HELICOPTER_GUNNER)
 
-    fun isTransportSquad(squad: Squad): Boolean =
-        squad.originalComposition.contains(NpcClass.HELICOPTER_PILOT) && !isGunshipSquad(squad)
+    fun isTransportSquad(squad: Squad): Boolean = squad.originalComposition.contains(NpcClass.HELICOPTER_PILOT) && !isGunshipSquad(squad)
 
-    fun isMortarSquad(squad: Squad): Boolean = squad.originalComposition.any {
-        it == NpcClass.MORTAR_OPERATOR || it == NpcClass.MORTAR_LOADER
-    }
+    fun isMortarSquad(squad: Squad): Boolean =
+        squad.originalComposition.any {
+            it == NpcClass.MORTAR_OPERATOR || it == NpcClass.MORTAR_LOADER
+        }
 
     /** Sets the objective; only an owner on the squad's faction sees the world particle marker. */
     fun setObjective(level: ServerLevel, id: UUID, pos: BlockPos?) {
@@ -184,7 +193,10 @@ class SquadManager : SavedData() {
     }
 
     fun setFocus(id: UUID, entity: UUID?) {
-        squads[id]?.takeUnless(::isTankSquad)?.let { it.focusEntity = entity; setDirty() }
+        squads[id]?.takeUnless(::isTankSquad)?.let {
+            it.focusEntity = entity
+            setDirty()
+        }
     }
 
     private fun moveAssemblyPoint(level: ServerLevel, squad: Squad): BlockPos? {
@@ -193,12 +205,15 @@ class SquadManager : SavedData() {
         return BlockPos.containing(
             members.sumOf { it.x } / members.size,
             members.sumOf { it.y } / members.size,
-            members.sumOf { it.z } / members.size
+            members.sumOf { it.z } / members.size,
         )
     }
 
     fun rename(id: UUID, name: String) {
-        squads[id]?.let { it.name = name.take(MAX_NAME_LENGTH).ifBlank { it.name }; setDirty() }
+        squads[id]?.let {
+            it.name = name.take(MAX_NAME_LENGTH).ifBlank { it.name }
+            setDirty()
+        }
     }
 
     fun removeMemberEverywhere(entity: UUID) {
@@ -214,11 +229,12 @@ class SquadManager : SavedData() {
         if (changed) setDirty()
     }
 
-    private fun pruneEmptySquads(): Boolean = squads.entries.removeIf {
-        val empty = it.value.members.isEmpty() && it.value.barracks == null
-        if (empty) it.value.tactics.deactivate(trigger = "squad_empty")
-        empty
-    }
+    private fun pruneEmptySquads(): Boolean =
+        squads.entries.removeIf {
+            val empty = it.value.members.isEmpty() && it.value.barracks == null
+            if (empty) it.value.tactics.deactivate(trigger = "squad_empty")
+            empty
+        }
 
     fun squadsAtBarracks(barracks: BarracksRef): List<Squad> = squads.values.filter { it.barracks == barracks }
 
@@ -236,7 +252,10 @@ class SquadManager : SavedData() {
     }
 
     fun assignRoute(id: UUID, routeId: UUID?) {
-        squads[id]?.let { it.routeId = routeId; setDirty() }
+        squads[id]?.let {
+            it.routeId = routeId
+            setDirty()
+        }
     }
 
     /** Called (see [com.sbwnpc.squad.combat.SquadFocusCleanup]) the instant anything a squad was
@@ -263,8 +282,12 @@ class SquadManager : SavedData() {
     }
 
     /** An empty, persistent squad is created before its first recruit, so losing everyone is safe. */
-    fun createAtBarracks(level: ServerLevel, barracks: BarracksRef, owner: UUID,
-                         cfg: SquadToolItem.Config): Squad {
+    fun createAtBarracks(
+        level: ServerLevel,
+        barracks: BarracksRef,
+        owner: UUID,
+        cfg: SquadToolItem.Config,
+    ): Squad {
         val composition = SquadDeployment.composition(cfg)
         val squad = create(level, owner, cfg.faction, emptyList())
         squad.barracks = barracks
@@ -293,8 +316,11 @@ class SquadManager : SavedData() {
     }
 
     /** Returns a reason when the head of the shared queue cannot spawn; never uses an unsafe fallback. */
-    fun recruitAtBarracks(level: ServerLevel, barracks: BarracksRef,
-                          request: BarracksRecruitmentQueue.Request): String? {
+    fun recruitAtBarracks(
+        level: ServerLevel,
+        barracks: BarracksRef,
+        request: BarracksRecruitmentQueue.Request,
+    ): String? {
         val squad = get(request.squad) ?: return "Squad removed"
         if (squad.barracks != barracks) return "Squad moved to another barracks"
         val slot = squad.recruitmentRoster?.slots?.firstOrNull { it.id == request.slot && it.active && it.occupant == null }
@@ -303,9 +329,12 @@ class SquadManager : SavedData() {
         val angle = level.random.nextDouble() * Math.PI * 2
         val radius = SPAWN_MIN_RADIUS + level.random.nextDouble() * (SPAWN_MAX_RADIUS - SPAWN_MIN_RADIUS)
         val spot = SafeSpawn.findStandingSpot(
-            level, barracks.pos.x + 0.5 + Math.cos(angle) * radius,
-            barracks.pos.z + 0.5 + Math.sin(angle) * radius, barracks.pos.y + 1,
-            npc.getDimensions(Pose.STANDING), requireSolidFloor = true
+            level,
+            barracks.pos.x + 0.5 + Math.cos(angle) * radius,
+            barracks.pos.z + 0.5 + Math.sin(angle) * radius,
+            barracks.pos.y + 1,
+            npc.getDimensions(Pose.STANDING),
+            requireSolidFloor = true,
         ) ?: return "No safe space near the barracks"
         npc.moveTo(spot.x, spot.y, spot.z, level.random.nextFloat() * 360f, 0f)
         npc.npcClass = slot.role
@@ -329,17 +358,16 @@ class SquadManager : SavedData() {
                 val npc = level.getEntity(member) as? NpcEntity
                 if (npc != null && npc.npcClass == NpcClass.DRONE_OPERATOR && npc.isAlive &&
                     npc.position().distanceToSqr(pos) <= RESUPPLY_RADIUS * RESUPPLY_RADIUS
-                ) npc.dronesLeft = com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES
+                ) {
+                    npc.dronesLeft = com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES
+                }
             }
         }
     }
 
-    private fun nextName(owner: UUID, prefix: String = ""): String =
-        firstFreeName(forOwner(owner).map { it.name }.toSet(), prefix)
+    private fun nextName(owner: UUID, prefix: String = ""): String = firstFreeName(forOwner(owner).map { it.name }.toSet(), prefix)
 
-    override fun save(tag: CompoundTag, registries: HolderLookup.Provider): CompoundTag {
-        return saveState(tag)
-    }
+    override fun save(tag: CompoundTag, registries: HolderLookup.Provider): CompoundTag = saveState(tag)
 
     internal fun saveState(tag: CompoundTag): CompoundTag {
         val list = ListTag()
@@ -355,6 +383,7 @@ class SquadManager : SavedData() {
         private const val FILE = "sbwnpc_squads"
         private const val SPAWN_MIN_RADIUS = 2.0
         private const val SPAWN_MAX_RADIUS = 5.0
+
         /** How many squads the 1-9 quick-command keys can address — a keyboard limit, not a cap
          *  on how many a player may have. */
         const val HUD_SLOTS = 9
@@ -399,7 +428,8 @@ class SquadManager : SavedData() {
         fun get(server: MinecraftServer): SquadManager {
             cached?.let { if (cachedServer === server) return it }
             val mgr = server.overworld().dataStorage.computeIfAbsent(
-                SavedData.Factory({ SquadManager() }, { tag, _ -> load(tag) }, null), FILE
+                SavedData.Factory({ SquadManager() }, { tag, _ -> load(tag) }, null),
+                FILE,
             )
             cached = mgr
             cachedServer = server
@@ -422,7 +452,8 @@ class SquadManager : SavedData() {
 
         /** The next recruit across all squads served by one barracks. */
         internal fun nextReinforcement(
-            squads: List<Squad>, present: (UUID) -> NpcClass?
+            squads: List<Squad>,
+            present: (UUID) -> NpcClass?,
         ): Pair<Squad, NpcClass>? {
             for (squad in squads) {
                 val cls = missingClasses(squad.originalComposition, squad.members.map(present)).firstOrNull()

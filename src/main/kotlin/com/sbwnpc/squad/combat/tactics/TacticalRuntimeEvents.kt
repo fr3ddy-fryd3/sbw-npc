@@ -24,8 +24,12 @@ class TacticalRuntimeEvents private constructor(private var squad: Squad, privat
         fun bind(squad: Squad, level: ServerLevel) {
             val stream = squad.tactics.events
             val existing = stream.runtime as? TacticalRuntimeEvents
-            if (existing == null) stream.runtime = TacticalRuntimeEvents(squad, level)
-            else { existing.squad = squad; existing.level = level }
+            if (existing == null) {
+                stream.runtime = TacticalRuntimeEvents(squad, level)
+            } else {
+                existing.squad = squad
+                existing.level = level
+            }
         }
     }
 }

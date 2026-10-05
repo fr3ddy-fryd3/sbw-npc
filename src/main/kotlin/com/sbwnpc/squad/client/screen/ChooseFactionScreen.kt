@@ -34,7 +34,7 @@ class ChooseFactionScreen : Screen(Component.literal("Choose Your Faction")) {
                 Button.builder(Component.literal(faction.label).withStyle(faction.accentStyle)) {
                     PacketDistributor.sendToServer(ChooseFactionPayload(faction.ordinal))
                     onClose()
-                }.bounds(startX + col * (btnW + gapX), startY + row * (btnH + gapY), btnW, btnH).build()
+                }.bounds(startX + col * (btnW + gapX), startY + row * (btnH + gapY), btnW, btnH).build(),
             )
         }
     }

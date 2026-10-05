@@ -22,6 +22,7 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 class GrenadeThrowBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private var nextThrowTick = 0
+
     /** Picked when deciding to throw, thrown in [start]. */
     private var kind: com.sbwnpc.squad.domain.port.GrenadeKind? = null
 

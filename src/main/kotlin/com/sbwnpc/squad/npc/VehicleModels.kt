@@ -9,7 +9,8 @@ import com.sbwnpc.squad.domain.port.VehicleModel
 enum class TransportVehicle(val label: String) : VehicleModel {
     LAV_25("LAV-25"),
     LAV_150("LAV-150"),
-    BMP_2("BMP-2");
+    BMP_2("BMP-2"),
+    ;
 
     /** Cycles only within the choices FIVE actually offers (LAV_25/LAV_150) — BMP_2 is assigned
      *  directly for SEVEN, never reached by clicking through. */
@@ -26,7 +27,8 @@ enum class TransportVehicle(val label: String) : VehicleModel {
 enum class TankModel(val label: String) : VehicleModel {
     ZTZ_99A("ZTZ-99A"),
     T_90A("T90-A"),
-    M1A2("M1A2");
+    M1A2("M1A2"),
+    ;
 
     fun next(): TankModel = entries[(ordinal + 1) % entries.size]
 
@@ -48,7 +50,8 @@ enum class TankModel(val label: String) : VehicleModel {
  */
 enum class HelicopterModel(val label: String, val crew: List<NpcClass>) : VehicleModel {
     MI_28("Mi-28", listOf(NpcClass.HELICOPTER_PILOT, NpcClass.HELICOPTER_GUNNER)),
-    AH_6("AH-6", listOf(NpcClass.HELICOPTER_PILOT) + List(3) { NpcClass.MACHINE_GUNNER });
+    AH_6("AH-6", listOf(NpcClass.HELICOPTER_PILOT) + List(3) { NpcClass.MACHINE_GUNNER }),
+    ;
 
     fun next(): HelicopterModel = entries[(ordinal + 1) % entries.size]
 

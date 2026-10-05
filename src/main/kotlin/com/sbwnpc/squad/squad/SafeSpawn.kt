@@ -17,13 +17,19 @@ import net.minecraft.world.phys.Vec3
  */
 object SafeSpawn {
     private const val SEARCH_RANGE = 6
+
     /** How far out [findClearSpot] is willing to look before giving up. */
     private const val DEFAULT_CLEAR_RADIUS = 16.0
     private const val RING_STEP = 2.0
 
     fun findSafeY(
-        level: ServerLevel, x: Double, z: Double, aroundY: Int, dimensions: EntityDimensions,
-        range: Int = SEARCH_RANGE, requireSolidFloor: Boolean = false
+        level: ServerLevel,
+        x: Double,
+        z: Double,
+        aroundY: Int,
+        dimensions: EntityDimensions,
+        range: Int = SEARCH_RANGE,
+        requireSolidFloor: Boolean = false,
     ): Double? {
         if (isSafe(level, x, aroundY.toDouble(), z, dimensions, requireSolidFloor)) return aroundY.toDouble()
         for (offset in 1..range) {
@@ -50,7 +56,7 @@ object SafeSpawn {
         aroundY: Int,
         dimensions: EntityDimensions,
         radius: Double = DEFAULT_CLEAR_RADIUS,
-        requireSolidFloor: Boolean = false
+        requireSolidFloor: Boolean = false,
     ): Vec3? {
         findSafeY(level, preferredX, preferredZ, aroundY, dimensions, requireSolidFloor = requireSolidFloor)
             ?.let { return Vec3(preferredX, it, preferredZ) }
@@ -81,8 +87,13 @@ object SafeSpawn {
      * here, then the full climb, and null only when there is truly nowhere.
      */
     fun findStandingSpot(
-        level: ServerLevel, x: Double, z: Double, aroundY: Int, dimensions: EntityDimensions,
-        radius: Double = STANDING_RADIUS, requireSolidFloor: Boolean = false
+        level: ServerLevel,
+        x: Double,
+        z: Double,
+        aroundY: Int,
+        dimensions: EntityDimensions,
+        radius: Double = STANDING_RADIUS,
+        requireSolidFloor: Boolean = false,
     ): Vec3? {
         findSafeY(level, x, z, aroundY, dimensions, LEVEL_RANGE, requireSolidFloor)?.let { return Vec3(x, it, z) }
         var ring = 1.0
@@ -103,14 +114,22 @@ object SafeSpawn {
     private const val LEVEL_RANGE = 2
     private const val STANDING_RADIUS = 8.0
 
-    private fun isSafe(level: ServerLevel, x: Double, y: Double, z: Double, dimensions: EntityDimensions,
-                       requireSolidFloor: Boolean): Boolean {
+    private fun isSafe(
+        level: ServerLevel,
+        x: Double,
+        y: Double,
+        z: Double,
+        dimensions: EntityDimensions,
+        requireSolidFloor: Boolean,
+    ): Boolean {
         val floor = BlockPos.containing(x, y - 0.1, z)
         if (requireSolidFloor && !level.hasChunkAt(floor)) return false
         val state = level.getBlockState(floor)
         if (requireSolidFloor) {
             if (!state.isFaceSturdy(level, floor, net.minecraft.core.Direction.UP)) return false
-        } else if (state.isAir) return false
+        } else if (state.isAir) {
+            return false
+        }
         return level.noCollision(dimensions.makeBoundingBox(x, y, z))
     }
 }

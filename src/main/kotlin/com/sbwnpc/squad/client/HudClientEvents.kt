@@ -55,9 +55,13 @@ object HudClientEvents {
                     rest.map { row -> "   ${label(row)}" to argb(row.faction.rgb) } +
                     listOf("[0] Order ALL" to 0xAAAAAA)
             }
+
             HudOverlayState.Mode.ORDERS -> {
-                header = if (HudOverlayState.selectedAll) "ALL SQUADS (${HudOverlayState.allTargetRows.size})"
-                else HudOverlayState.selected?.name ?: return
+                header = if (HudOverlayState.selectedAll) {
+                    "ALL SQUADS (${HudOverlayState.allTargetRows.size})"
+                } else {
+                    HudOverlayState.selected?.name ?: return
+                }
                 lines = HudOverlayState.availableOrders().mapIndexed { i, order -> "${i + 1}. ${order.name}" to 0xFFFFFF }
             }
         }

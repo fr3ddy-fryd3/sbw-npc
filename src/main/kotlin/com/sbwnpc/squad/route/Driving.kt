@@ -33,44 +33,48 @@ class Driving(
 
     override fun known(x: Int, z: Int) = ground.known(x, z)
 
-    override fun open(x: Int, z: Int): Boolean = fits.getOrPut(BlockPos.asLong(x, 0, z)) {
-        if (!ground(x, z)) return@getOrPut false
-        for (dx in -clearance..clearance) for (dz in -clearance..clearance) {
-            if (dx == 0 && dz == 0) continue
-            if (!ground(x + dx, z + dz)) return@getOrPut false
+    override fun open(x: Int, z: Int): Boolean =
+        fits.getOrPut(BlockPos.asLong(x, 0, z)) {
+            if (!ground(x, z)) return@getOrPut false
+            for (dx in -clearance..clearance) {
+                for (dz in -clearance..clearance) {
+                    if (dx == 0 && dz == 0) continue
+                    if (!ground(x + dx, z + dz)) return@getOrPut false
+                }
+            }
+            true
         }
-        true
-    }
 
     private fun ground(x: Int, z: Int): Boolean {
         val kind = ground.kind(x, z)
-        return (kind == GroundMap.Kind.GROUND || kind == GroundMap.Kind.NO_ROOM ||
-            (canCrossWater && kind == GroundMap.Kind.WATER)) && ground.room(x, z) >= headroom
+        return (
+            kind == GroundMap.Kind.GROUND || kind == GroundMap.Kind.NO_ROOM ||
+                (canCrossWater && kind == GroundMap.Kind.WATER)
+            ) && ground.room(x, z) >= headroom
     }
 
     override fun step(ax: Int, az: Int, bx: Int, bz: Int): Boolean {
         // Step height limits a change while the hull moves, not the total rise across its width.
         // A five-block footprint on a climbable slope can span four blocks of height. Comparing
         // every corner with its middle incorrectly cut that slope into isolated flat patches.
-        for (dx in -clearance..clearance) for (dz in -clearance..clearance) {
-            if (Math.abs(ground.height(bx + dx, bz + dz) - ground.height(ax + dx, az + dz)) > climb) return false
+        for (dx in -clearance..clearance) {
+            for (dz in -clearance..clearance) {
+                if (Math.abs(ground.height(bx + dx, bz + dz) - ground.height(ax + dx, az + dz)) > climb) return false
+            }
         }
         return true
     }
 
     override fun extraCost(x: Int, z: Int) = 0.0
 
-    override fun exitAt(x: Int, z: Int, goal: Vec3): Vec3? =
-        if (ground.kind(x, z) == GroundMap.Kind.WATER) null else Vec3(x + 0.5, pointY(x, z), z + 0.5)
+    override fun exitAt(x: Int, z: Int, goal: Vec3): Vec3? = if (ground.kind(x, z) == GroundMap.Kind.WATER) null else Vec3(x + 0.5, pointY(x, z), z + 0.5)
 
-    override fun preferredExit(exit: Vec3, goal: Vec3): Boolean =
-        Math.hypot(exit.x - goal.x, exit.z - goal.z) <= GOAL_RADIUS
+    override fun preferredExit(exit: Vec3, goal: Vec3): Boolean = Math.hypot(exit.x - goal.x, exit.z - goal.z) <= GOAL_RADIUS
 
     // A known detour is fine. Driving back to an unknown frontier farther from the objective
     // just guesses that the water or cliff ahead will vanish on the other side of it; walk on
     // from the best reachable bank instead. Walking and boat exploration keep their own rules.
-    override fun canExplore(from: Vec3, frontier: Vec3, goal: Vec3): Boolean =
-        Math.hypot(frontier.x - goal.x, frontier.z - goal.z) < Math.hypot(from.x - goal.x, from.z - goal.z)
+    override fun canExplore(from: Vec3, frontier: Vec3, goal: Vec3): Boolean = Math.hypot(frontier.x - goal.x, frontier.z - goal.z) < Math.hypot(from.x - goal.x, from.z - goal.z)
 
     override fun pointY(x: Int, z: Int) = ground.height(x, z).toDouble()
 

@@ -118,8 +118,7 @@ object Helicopters {
     }
 
     /** Ground level under a point, as the flight code measures it. */
-    fun groundY(level: ServerLevel, x: Double, z: Double): Int =
-        level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, x.toInt(), z.toInt())
+    fun groundY(level: ServerLevel, x: Double, z: Double): Int = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, x.toInt(), z.toInt())
 
     private const val ROTOR_CLEARANCE = 6
     private const val RETREAT_HEALTH_FRACTION = 0.35f
@@ -128,6 +127,7 @@ object Helicopters {
     private const val LZ_SEARCH_RADIUS = 24
     private const val LZ_STEP = 6
     private const val LZ_SAMPLES = 8
+
     /** A parked AH-6 reads about a block up from the heightmap surface; a landing flare starts at
      *  three. This sits between them. */
     private const val ON_DECK_HEIGHT = 2.0

@@ -69,15 +69,17 @@ class PlayerFactionRegistry : SavedData() {
             return reg
         }
 
-        private fun readFaction(tag: CompoundTag, key: String): SquadFaction? = when {
-            tag.contains(key, Tag.TAG_STRING.toInt()) -> runCatching { SquadFaction.valueOf(tag.getString(key)) }.getOrNull()
-            tag.contains(key, Tag.TAG_INT.toInt()) -> SquadFaction.byOrdinal(tag.getInt(key))
-            else -> null
-        }
+        private fun readFaction(tag: CompoundTag, key: String): SquadFaction? =
+            when {
+                tag.contains(key, Tag.TAG_STRING.toInt()) -> runCatching { SquadFaction.valueOf(tag.getString(key)) }.getOrNull()
+                tag.contains(key, Tag.TAG_INT.toInt()) -> SquadFaction.byOrdinal(tag.getInt(key))
+                else -> null
+            }
 
         fun get(server: MinecraftServer): PlayerFactionRegistry =
             server.overworld().dataStorage.computeIfAbsent(
-                SavedData.Factory({ PlayerFactionRegistry() }, ::load, null), FILE
+                SavedData.Factory({ PlayerFactionRegistry() }, ::load, null),
+                FILE,
             )
 
         fun get(level: ServerLevel): PlayerFactionRegistry = get(level.server)

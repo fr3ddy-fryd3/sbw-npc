@@ -52,7 +52,9 @@ class TacticalPhaseMachine(private val owner: TacticalState) {
             next.enter(context, previous.id)
             context.state.phaseEntered(context, previous.id)
             lifecycle(context, "phase_enter", trigger)
-        } finally { transitioning = false }
+        } finally {
+            transitioning = false
+        }
     }
 
     internal fun exit(context: TacticalContext, trigger: String) {
@@ -63,8 +65,7 @@ class TacticalPhaseMachine(private val owner: TacticalState) {
         entered = false
     }
 
-    private fun lifecycle(context: TacticalContext, action: String, trigger: String) =
-        context.plan.events.emit(TacticalEvent.Lifecycle(context.plan.id, context.view.now, action, context.plan.pattern, current.id, trigger))
+    private fun lifecycle(context: TacticalContext, action: String, trigger: String) = context.plan.events.emit(TacticalEvent.Lifecycle(context.plan.id, context.view.now, action, context.plan.pattern, current.id, trigger))
 
     private fun allowed(from: TacticalPhase, to: TacticalPhase): Boolean {
         if (from == TacticalPhase.COMPLETED || from == TacticalPhase.FAILED) return false
@@ -85,7 +86,9 @@ abstract class TacticalPhaseState(val id: TacticalPhase, val status: TacticalSta
         if (from != null) context.state.phaseSince = context.view.now
     }
     abstract fun tick(context: TacticalContext)
-    open fun exit(context: TacticalContext, to: TacticalPhase?) { context.state.phaseExited(context, to) }
+    open fun exit(context: TacticalContext, to: TacticalPhase?) {
+        context.state.phaseExited(context, to)
+    }
 }
 
 class PreparingPhase : TacticalPhaseState(TacticalPhase.PREPARING, TacticalStatus.PREPARING) {
@@ -113,13 +116,17 @@ class PausedPhase(private val activeSince: Long) : TacticalPhaseState(TacticalPh
     var pausedAt = Long.MIN_VALUE
         private set
 
-    override fun enter(context: TacticalContext, from: TacticalPhase?) { pausedAt = context.view.now }
+    override fun enter(context: TacticalContext, from: TacticalPhase?) {
+        pausedAt = context.view.now
+    }
     override fun tick(context: TacticalContext) {
         val state = context.state as CoveredManeuverState
         val cover = context.view.members.filter { context.plan.tasks[it.id]?.job == TacticalJob.COVER }
-        if (context.view.visible.isEmpty() || cover.any { state.maintainsCover(context, it) })
+        if (context.view.visible.isEmpty() || cover.any { state.maintainsCover(context, it) }) {
             state.phases.transition(ExecutingPhase(activeSince + context.view.now - pausedAt), context, "cover_restored")
-        else if (context.view.now - pausedAt >= 160) context.fail(TacticalFailure.COVER_LOST)
+        } else if (context.view.now - pausedAt >= 160) {
+            context.fail(TacticalFailure.COVER_LOST)
+        }
     }
 }
 
@@ -134,15 +141,22 @@ class OpeningLanePhase(private val members: List<UUID>) : TacticalPhaseState(Tac
             val toward = context.plan.focus!!.subtract(member.position).multiply(1.0, 0.0, 1.0).normalize()
                 .let { if (it.lengthSqr() < 0.01) Vec3(0.0, 0.0, 1.0) else it }
             val side = Vec3(-toward.z, 0.0, toward.x).scale(if (index % 2 == 0) 12.0 else -12.0)
-            context.tasks.put(member.id, TacticalTask(TacticalJob.SEARCH, member.position.add(side), context.plan.focus, context.plan.id)
-                .also { it.opensLane = true }, context.view.now, "opening_lane_probe")
+            context.tasks.put(
+                member.id,
+                TacticalTask(TacticalJob.SEARCH, member.position.add(side), context.plan.focus, context.plan.id)
+                    .also { it.opensLane = true },
+                context.view.now,
+                "opening_lane_probe",
+            )
         }
     }
 
     override fun tick(context: TacticalContext) {
         val scouts = context.view.members.filter { it.id in members && context.plan.tasks[it.id]?.opensLane == true }
-        val shooters = context.view.members.count { TacticalEvidence.firesCover(it, context.plan.tasks[it.id]) &&
-            (context.plan.tasks[it.id]?.job == TacticalJob.COVER || it.id in members) }
+        val shooters = context.view.members.count {
+            TacticalEvidence.firesCover(it, context.plan.tasks[it.id]) &&
+                (context.plan.tasks[it.id]?.job == TacticalJob.COVER || it.id in members)
+        }
         val trigger = when {
             shooters >= TacticalFlanks.requiredCover(context.view) -> "probe_found_cover"
             scouts.all { TacticalEvidence.settled(it, context.plan.tasks[it.id]) } -> "probe_arrived"
@@ -153,10 +167,17 @@ class OpeningLanePhase(private val members: List<UUID>) : TacticalPhaseState(Tac
     }
 
     override fun exit(context: TacticalContext, to: TacticalPhase?) {
-        if (to == TacticalPhase.PREPARING) for (member in context.view.members.filter { it.id in members && it.id !in context.plan.failedMembers }) {
-            context.tasks.put(member.id, TacticalTask(TacticalJob.COVER, member.position, context.plan.focus, context.plan.id)
-                .also { it.position = member.position }, context.view.now, "opening_lane_finished")
-            (context.state as CoveredManeuverState).probeFinished(member.id)
+        if (to == TacticalPhase.PREPARING) {
+            for (member in context.view.members.filter { it.id in members && it.id !in context.plan.failedMembers }) {
+                context.tasks.put(
+                    member.id,
+                    TacticalTask(TacticalJob.COVER, member.position, context.plan.focus, context.plan.id)
+                        .also { it.position = member.position },
+                    context.view.now,
+                    "opening_lane_finished",
+                )
+                (context.state as CoveredManeuverState).probeFinished(member.id)
+            }
         }
         super.exit(context, to)
     }

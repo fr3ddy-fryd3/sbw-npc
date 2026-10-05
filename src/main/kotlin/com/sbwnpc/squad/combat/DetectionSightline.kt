@@ -20,22 +20,18 @@ import net.neoforged.neoforge.common.Tags
 object DetectionSightline {
     private const val FOLIAGE_BLOCKS_TO_HIDE = 3
 
-    fun canSeeWithin(observer: Entity,target: Entity,range: Double): Boolean =
-        observer.distanceToSqr(target) <= range*range && canSee(observer,target)
+    fun canSeeWithin(observer: Entity, target: Entity, range: Double): Boolean = observer.distanceToSqr(target) <= range * range && canSee(observer, target)
 
-    fun canSee(observer: Entity, target: Entity): Boolean =
-        observer.level() === target.level() && visible(observer.level(), observer.eyePosition, target.eyePosition, observer)
+    fun canSee(observer: Entity, target: Entity): Boolean = observer.level() === target.level() && visible(observer.level(), observer.eyePosition, target.eyePosition, observer)
 
-    fun visible(level: BlockGetter, from: Vec3, to: Vec3, observer: Entity): Boolean =
-        visible(level, from, to, CollisionContext.of(observer))
+    fun visible(level: BlockGetter, from: Vec3, to: Vec3, observer: Entity): Boolean = visible(level, from, to, CollisionContext.of(observer))
 
     internal fun visible(level: BlockGetter, from: Vec3, to: Vec3, collision: CollisionContext): Boolean {
         if (level is ServerLevel) TickBudget.chargeRaycast(level)
         return level.clip(DetectionContext(from, to, collision)).type == HitResult.Type.MISS
     }
 
-    private class DetectionContext(from: Vec3, to: Vec3, collision: CollisionContext) :
-        ClipContext(from, to, Block.COLLIDER, Fluid.NONE, collision) {
+    private class DetectionContext(from: Vec3, to: Vec3, collision: CollisionContext) : ClipContext(from, to, Block.COLLIDER, Fluid.NONE, collision) {
         private var foliage = 0
 
         override fun getBlockShape(state: BlockState, level: BlockGetter, pos: BlockPos): VoxelShape {

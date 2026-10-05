@@ -22,8 +22,16 @@ abstract class BoundingState : CoveredManeuverState() {
         if (bounds < 3 && (context.plan.focus?.distanceTo(context.view.center) ?: 0.0) > 24.0) {
             movingHalf = 1 - movingHalf
             phases.transition(PreparingPhase(), context, "bound_group_arrived")
-        } else for (member in movers) context.tasks.put(member.id,
-            TacticalTask(TacticalJob.COVER, member.position, context.plan.focus, context.plan.id), context.view.now, "bound_limit_reached")
+        } else {
+            for (member in movers) {
+                context.tasks.put(
+                    member.id,
+                    TacticalTask(TacticalJob.COVER, member.position, context.plan.focus, context.plan.id),
+                    context.view.now,
+                    "bound_limit_reached",
+                )
+            }
+        }
     }
 }
 

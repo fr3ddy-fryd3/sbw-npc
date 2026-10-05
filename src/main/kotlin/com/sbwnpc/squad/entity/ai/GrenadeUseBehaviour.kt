@@ -78,8 +78,8 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
         val since = entity.blockedSightSince ?: return null
         if (entity.tickCount - since < BLOCKED_TICKS) return null
         val known = entity.currentSquad()?.tactics?.contacts?.get(target.uuid)
-        if (known != null && entity.level().gameTime-known.seenAt <= 100) return known.position
-        return target.position().takeIf { com.sbwnpc.squad.combat.DetectionSightline.canSee(entity,target) }
+        if (known != null && entity.level().gameTime - known.seenAt <= 100) return known.position
+        return target.position().takeIf { com.sbwnpc.squad.combat.DetectionSightline.canSee(entity, target) }
     }
 
     /**
@@ -92,9 +92,12 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
         nextClusterScanTick = entity.tickCount + CLUSTER_SCAN_TICKS
         val reach = GrenadeThrower.MAX_RANGE + CLUSTER_RADIUS
         val enemies = level.getEntitiesOfClass(
-            net.minecraft.world.entity.LivingEntity::class.java, entity.boundingBox.inflate(reach, 6.0, reach)
-        ) { it.isAlive && it !== entity && entity.isEnemy(it) && !VehicleTargeting.isAircrew(it) &&
-            com.sbwnpc.squad.combat.DetectionSightline.canSee(entity,it) }
+            net.minecraft.world.entity.LivingEntity::class.java,
+            entity.boundingBox.inflate(reach, 6.0, reach),
+        ) {
+            it.isAlive && it !== entity && entity.isEnemy(it) && !VehicleTargeting.isAircrew(it) &&
+                com.sbwnpc.squad.combat.DetectionSightline.canSee(entity, it)
+        }
         if (enemies.size < CLUSTER_SIZE) return null
         val radiusSqr = CLUSTER_RADIUS * CLUSTER_RADIUS
         var best: List<net.minecraft.world.entity.LivingEntity>? = null
@@ -119,8 +122,8 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
         // Pinned down from the air: the fire comes from somewhere a grenade can't go.
         val target = entity.target ?: return null
         val known = entity.currentSquad()?.tactics?.contacts?.get(target.uuid)
-        val from = known?.position?.takeIf { entity.level().gameTime-known.seenAt <= 100 }
-            ?: target.position().takeIf { com.sbwnpc.squad.combat.DetectionSightline.canSee(entity,target) } ?: return null
+        val from = known?.position?.takeIf { entity.level().gameTime - known.seenAt <= 100 }
+            ?: target.position().takeIf { com.sbwnpc.squad.combat.DetectionSightline.canSee(entity, target) } ?: return null
         if (from.y - entity.y > AIR_THREAT_HEIGHT) return null
         entity.target?.takeIf { VehicleTargeting.isAircrew(it) }?.let { return null }
         return from
@@ -146,11 +149,13 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
          *  momentarily behind a tree. */
         private const val BLOCKED_TICKS = 60
         private const val SELF_COOLDOWN_TICKS = 200
+
         /** Enemies that make a bunch worth a grenade, and how close together they have to be. */
         private const val CLUSTER_SIZE = 3
         private const val CLUSTER_RADIUS = 3.5
         private const val CLUSTER_SCAN_TICKS = 20
         private const val SQUAD_COOLDOWN_TICKS = 120L
+
         /** Fire from this far overhead is coming from the air. */
         private const val AIR_THREAT_HEIGHT = 8.0
 

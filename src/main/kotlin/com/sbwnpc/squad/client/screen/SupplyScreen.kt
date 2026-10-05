@@ -33,22 +33,24 @@ class SupplyScreen(private val pos: BlockPos, snapshot: CompoundTag) : Screen(Co
     private val radius = snapshot.getInt("Radius")
     private val kits = snapshot.getList("Kits", Tag.TAG_COMPOUND.toInt()).map { k ->
         val kit = k as CompoundTag
-        Kit(kit.getString("Name"), kit.getList("Options", Tag.TAG_COMPOUND.toInt()).map { o ->
-            val option = o as CompoundTag
-            Option(
-                stackOf(option.getString("Weapon")),
-                option.getList("Items", Tag.TAG_COMPOUND.toInt()).map {
-                    val item = it as CompoundTag
-                    stackOf(item.getString("Item")) to item.getInt("Count")
-                }
-            )
-        })
+        Kit(
+            kit.getString("Name"),
+            kit.getList("Options", Tag.TAG_COMPOUND.toInt()).map { o ->
+                val option = o as CompoundTag
+                Option(
+                    stackOf(option.getString("Weapon")),
+                    option.getList("Items", Tag.TAG_COMPOUND.toInt()).map {
+                        val item = it as CompoundTag
+                        stackOf(item.getString("Item")) to item.getInt("Count")
+                    },
+                )
+            },
+        )
     }
 
     private val weaponButtons = mutableListOf<Pair<Button, Option>>()
 
-    private fun send(action: Int, kit: Int = 0, option: Int = 0) =
-        PacketDistributor.sendToServer(SupplyCmdPayload(pos, action, kit, option))
+    private fun send(action: Int, kit: Int = 0, option: Int = 0) = PacketDistributor.sendToServer(SupplyCmdPayload(pos, action, kit, option))
 
     private val kit get() = kits.getOrNull(selected.coerceIn(0, (kits.size - 1).coerceAtLeast(0)))
     private val left get() = width / 2 - WIDTH / 2
@@ -73,15 +75,24 @@ class SupplyScreen(private val pos: BlockPos, snapshot: CompoundTag) : Screen(Co
             }
         }
 
-        val spawn = if (spawnHere) Component.literal("You respawn here").withStyle(ChatFormatting.GREEN)
-            else Component.literal("Respawn here")
-        addRenderableWidget(Button.builder(spawn) { send(SupplyCmdPayload.SET_SPAWN) }
-            .tooltip(Tooltip.create(Component.literal(
-                "Like a bed: you come back here while this Supply stands, serves your side and has room on top. " +
-                    "Otherwise at the world spawn. A bed or anchor replaces it."
-            )))
-            .bounds(left, y + 32, WIDTH, 20).build()
-            .also { it.active = !spawnHere })
+        val spawn = if (spawnHere) {
+            Component.literal("You respawn here").withStyle(ChatFormatting.GREEN)
+        } else {
+            Component.literal("Respawn here")
+        }
+        addRenderableWidget(
+            Button.builder(spawn) { send(SupplyCmdPayload.SET_SPAWN) }
+                .tooltip(
+                    Tooltip.create(
+                        Component.literal(
+                            "Like a bed: you come back here while this Supply stands, serves your side and has room on top. " +
+                                "Otherwise at the world spawn. A bed or anchor replaces it.",
+                        ),
+                    ),
+                )
+                .bounds(left, y + 32, WIDTH, 20).build()
+                .also { it.active = !spawnHere },
+        )
         addRenderableWidget(Button.builder(Component.literal("Close")) { onClose() }.bounds(left, y + 56, WIDTH, 20).build())
     }
 
@@ -95,9 +106,12 @@ class SupplyScreen(private val pos: BlockPos, snapshot: CompoundTag) : Screen(Co
         super.render(g, mouseX, mouseY, partial)
         g.drawCenteredString(font, Component.literal("Supply — $side"), width / 2, top, 0xFFFFFF)
         g.drawCenteredString(
-            font, Component.literal("Your side's NPCs within $radius blocks are resupplied on their own")
+            font,
+            Component.literal("Your side's NPCs within $radius blocks are resupplied on their own")
                 .withStyle(ChatFormatting.GRAY),
-            width / 2, top + 14, 0xFFFFFF
+            width / 2,
+            top + 14,
+            0xFFFFFF,
         )
         val kit = kit ?: return
         g.drawCenteredString(font, Component.literal(kit.name).withStyle(ChatFormatting.YELLOW), width / 2, top + 42, 0xFFFFFF)
@@ -108,7 +122,7 @@ class SupplyScreen(private val pos: BlockPos, snapshot: CompoundTag) : Screen(Co
         g.drawString(font, shown.weapon.hoverName, left + 4, y, 0xFFFFFF)
         y += LINE
         for ((stack, count) in shown.items) {
-            g.drawString(font, Component.literal("${count}× ").append(stack.hoverName).withStyle(ChatFormatting.GRAY), left + 4, y, -1)
+            g.drawString(font, Component.literal("$count× ").append(stack.hoverName).withStyle(ChatFormatting.GRAY), left + 4, y, -1)
             y += LINE
         }
         g.drawString(font, Component.literal("Helmet and vest of your side").withStyle(ChatFormatting.GRAY), left + 4, y, -1)
@@ -119,6 +133,7 @@ class SupplyScreen(private val pos: BlockPos, snapshot: CompoundTag) : Screen(Co
     private companion object {
         const val WIDTH = 240
         const val LINE = 11
+
         /** Room for the longest kit: the weapon, seven lines of kit, the uniform. */
         const val LIST_HEIGHT = LINE * 9 + 6
         const val HEIGHT = 62 + LIST_HEIGHT + 76

@@ -65,8 +65,11 @@ internal class GroundRouteProgress {
             val a = route[i]
             val b = route[i + 1]
             val length = distances[i + 1] - distances[i]
-            val t = if (length < 1e-6) 0.0 else
+            val t = if (length < 1e-6) {
+                0.0
+            } else {
                 (((position.x - a.x) * (b.x - a.x) + (position.z - a.z) * (b.z - a.z)) / (length * length)).coerceIn(0.0, 1.0)
+            }
             val candidate = distances[i] + t * length
             if (candidate < along) continue
             val error = distance(position, a.lerp(b, t))

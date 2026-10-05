@@ -41,7 +41,7 @@ class AllianceRegistry : SavedData() {
         val target: SquadFaction,
         val expiresAt: Long,
         /** Players in favour, by faction ordinal. */
-        val yes: HashMap<Int, MutableSet<UUID>> = HashMap()
+        val yes: HashMap<Int, MutableSet<UUID>> = HashMap(),
     )
 
     override fun save(tag: CompoundTag, registries: HolderLookup.Provider): CompoundTag {
@@ -105,8 +105,12 @@ class AllianceRegistry : SavedData() {
                 val proposer = runCatching { SquadFaction.valueOf(pt.getString("Proposer")) }.getOrNull() ?: continue
                 val target = runCatching { SquadFaction.valueOf(pt.getString("Target")) }.getOrNull() ?: continue
                 reg.proposals += Proposal(
-                    pt.getInt("Id"), pt.getInt("Members"), proposer, target, pt.getLong("Expires"),
-                    readVotes(pt.getCompound("Yes"))
+                    pt.getInt("Id"),
+                    pt.getInt("Members"),
+                    proposer,
+                    target,
+                    pt.getLong("Expires"),
+                    readVotes(pt.getCompound("Yes")),
                 )
             }
             reg.leaveVotes.putAll(readVotes(tag.getCompound("Leave")))
@@ -115,7 +119,8 @@ class AllianceRegistry : SavedData() {
 
         fun get(server: MinecraftServer): AllianceRegistry =
             server.overworld().dataStorage.computeIfAbsent(
-                SavedData.Factory({ AllianceRegistry() }, ::load, null), FILE
+                SavedData.Factory({ AllianceRegistry() }, ::load, null),
+                FILE,
             )
     }
 }

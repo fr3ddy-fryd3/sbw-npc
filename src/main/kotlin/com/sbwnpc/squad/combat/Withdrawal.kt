@@ -23,16 +23,22 @@ import java.util.UUID
 object Withdrawal {
     /** How far one half runs before stopping to cover the other. */
     private const val BOUND_DISTANCE = 12.0
+
     /** Gap between men in a bound's line. */
     private const val LATERAL_SPACING = 4.0
+
     /** Close enough to a bound position to count as having made it. */
     private const val ARRIVED = 3.0
+
     /** A path that ended this near counts too: the exact spot may not be standable. */
     private const val SETTLED = 6.0
+
     /** A bound that takes longer than this has stalled — someone is stuck; swap anyway. */
     private const val MAX_BOUND_TICKS = 60L
+
     /** A runner stopped this long into a bound has got as far as he will this bound. */
     private const val STOPPED_AFTER_TICKS = 20L
+
     /** An enemy someone can see within this is contact worth covering against; anything else is
      *  a contact the squad has only heard of, and it runs. */
     private const val CONTACT_RANGE = 64.0
@@ -42,9 +48,11 @@ object Withdrawal {
         /** Which half (slot parity) is running. */
         var moving = 0
         var boundStart = 0L
+
         /** Each runner's position for the current bound. Empty between bounds. */
         val targets = HashMap<UUID, Vec3>()
         var updatedTick = -1L
+
         /** Anyone in the squad has an enemy to shoot at. Without contact there is nothing to
          *  cover against, and everyone simply runs. */
         var inContact = false
@@ -97,9 +105,13 @@ object Withdrawal {
             state.lastStatusTick = level.gameTime
             // Where each man is and what he is doing: a squad "stuck" on the way back reads as one
             // of these not changing between lines.
-            DebugFlags.log(LogGroup.RETREAT,
+            DebugFlags.log(
+                LogGroup.RETREAT,
                 "squad {} status: contact={} moving half {} bound {} ticks old: {}",
-                squad.name, state.inContact, state.moving, level.gameTime - state.boundStart,
+                squad.name,
+                state.inContact,
+                state.moving,
+                level.gameTime - state.boundStart,
                 members.joinToString("; ") { m ->
                     val spot = state.targets[m.uuid]
                     "${m.uuid.toString().take(8)} half ${half(m, squad)} at ${m.blockPosition().toShortString()} " +
@@ -107,7 +119,7 @@ object Withdrawal {
                         (spot?.let { "spot ${m.position().distanceTo(it).toInt()} " } ?: "no spot ") +
                         "target=${m.target != null} navDone=${m.navigation.isDone} speed=${"%.2f".format(m.deltaMovement.horizontalDistance())} " +
                         "suppressed=${m.isSuppressed()} pinned=${m.combatLockedByCover()} dug=${m.diggedIn}"
-                }
+                },
             )
         }
         if (!state.inContact) {
@@ -137,7 +149,9 @@ object Withdrawal {
         state.targets.clear()
         val unsorted = members.filter { half(it, squad) == state.moving }.ifEmpty { members }
         val from = Vec3(
-            unsorted.sumOf { it.x } / unsorted.size, unsorted.sumOf { it.y } / unsorted.size, unsorted.sumOf { it.z } / unsorted.size
+            unsorted.sumOf { it.x } / unsorted.size,
+            unsorted.sumOf { it.y } / unsorted.size,
+            unsorted.sumOf { it.z } / unsorted.size,
         )
         val toPoint = state.point.subtract(from)
         // Places are handed out left to right in the order the men already stand across the line
@@ -149,9 +163,14 @@ object Withdrawal {
         val length = toPoint.horizontalDistance()
         val anchor = if (length <= BOUND_DISTANCE) state.point else from.add(toPoint.scale(BOUND_DISTANCE / length))
         runners.forEachIndexed { i, m -> state.targets[m.uuid] = lineSpot(anchor, toPoint, i, runners.size) }
-        DebugFlags.log(LogGroup.RETREAT,
+        DebugFlags.log(
+            LogGroup.RETREAT,
             "squad {} half {} bounds {} blocks toward {} ({} men)",
-            squad.name, state.moving, "%.1f".format(minOf(length, BOUND_DISTANCE)), state.point, runners.size
+            squad.name,
+            state.moving,
+            "%.1f".format(minOf(length, BOUND_DISTANCE)),
+            state.point,
+            runners.size,
         )
     }
 

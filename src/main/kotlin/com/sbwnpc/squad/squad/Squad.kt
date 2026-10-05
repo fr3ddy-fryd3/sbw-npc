@@ -40,7 +40,7 @@ class Squad(
     /** The fixed rally point for the current MOVE command. */
     var moveAssembly: BlockPos? = null,
     /** True once every member has reached its slot at [moveAssembly]. */
-    var moveFormationReady: Boolean = false
+    var moveFormationReady: Boolean = false,
 ) {
     /** Bumped on every new order or objective, so members can tell a fresh command from the one
      *  they're already carrying out. Not saved: a reload is a fresh start anyway. */
@@ -97,10 +97,14 @@ class Squad(
                 NbtUtils.readBlockPos(tag, "BarracksPos").orElse(null)?.let { pos ->
                     val dimension = if (tag.contains("BarracksDim", Tag.TAG_STRING.toInt())) {
                         ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(tag.getString("BarracksDim")))
-                    } else Level.OVERWORLD
+                    } else {
+                        Level.OVERWORLD
+                    }
                     BarracksRef(dimension, pos)
                 }
-            } else null
+            } else {
+                null
+            }
             val squad = Squad(
                 id = tag.getUUID("Id"),
                 name = tag.getString("Name"),
@@ -115,7 +119,7 @@ class Squad(
                 rank = runCatching { NpcRank.valueOf(tag.getString("Rank")) }.getOrDefault(NpcRank.DEFAULT),
                 routeId = if (tag.hasUUID("RouteId")) tag.getUUID("RouteId") else null,
                 moveAssembly = if (tag.contains("MoveAssembly")) NbtUtils.readBlockPos(tag, "MoveAssembly").orElse(null) else null,
-                moveFormationReady = tag.getBoolean("MoveFormationReady")
+                moveFormationReady = tag.getBoolean("MoveFormationReady"),
             )
             if (tag.contains("LastSeen")) squad.lastSeen = NbtUtils.readBlockPos(tag, "LastSeen").orElse(null)
             if (tag.contains("LastSeenDim", Tag.TAG_STRING.toInt())) {
@@ -127,12 +131,15 @@ class Squad(
             return squad
         }
 
-        private fun loadOrder(tag: CompoundTag): SquadOrder = when {
-            tag.contains("Order", Tag.TAG_STRING.toInt()) ->
-                runCatching { SquadOrder.valueOf(tag.getString("Order")) }.getOrDefault(SquadOrder.MOVE)
-            tag.contains("Order", Tag.TAG_INT.toInt()) -> SquadOrder.byOrdinal(tag.getInt("Order"))
-            else -> SquadOrder.MOVE
-        }
+        private fun loadOrder(tag: CompoundTag): SquadOrder =
+            when {
+                tag.contains("Order", Tag.TAG_STRING.toInt()) ->
+                    runCatching { SquadOrder.valueOf(tag.getString("Order")) }.getOrDefault(SquadOrder.MOVE)
+
+                tag.contains("Order", Tag.TAG_INT.toInt()) -> SquadOrder.byOrdinal(tag.getInt("Order"))
+
+                else -> SquadOrder.MOVE
+            }
 
         private fun loadComposition(tag: CompoundTag): List<NpcClass> {
             val names = tag.getList("OriginalComposition", Tag.TAG_STRING.toInt())

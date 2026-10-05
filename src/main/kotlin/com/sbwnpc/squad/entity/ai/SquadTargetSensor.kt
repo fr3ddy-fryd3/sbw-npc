@@ -1,13 +1,13 @@
 package com.sbwnpc.squad.entity.ai
 
-import com.sbwnpc.squad.combat.FireAllocation
 import com.sbwnpc.squad.combat.CombatPosition
 import com.sbwnpc.squad.combat.DetectionSightline
-import com.sbwnpc.squad.combat.TeamAwareness
-import com.sbwnpc.squad.combat.tactics.SquadTactics
-import com.sbwnpc.squad.combat.Vision
+import com.sbwnpc.squad.combat.FireAllocation
 import com.sbwnpc.squad.combat.TankWeaponSelection
+import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.combat.VehicleTargeting
+import com.sbwnpc.squad.combat.Vision
+import com.sbwnpc.squad.combat.tactics.SquadTactics
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModSensors
@@ -48,8 +48,13 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     // N raycasts in one tick, nothing on the other 19. Randomising the interval per scan
     // decorrelates them within a few cycles. Average is still ~20 ticks.
     init {
-        setScanRate { entity -> if (entity.target?.let { entity.distanceToSqr(it)<=36.0 }==true) 4
-            else SCAN_RATE_MIN + entity.random.nextInt(SCAN_RATE_JITTER) }
+        setScanRate { entity ->
+            if (entity.target?.let { entity.distanceToSqr(it) <= 36.0 } == true) {
+                4
+            } else {
+                SCAN_RATE_MIN + entity.random.nextInt(SCAN_RATE_JITTER)
+            }
+        }
     }
 
     override fun type(): SensorType<out ExtendedSensor<*>> = ModSensors.SQUAD_TARGET.get()
@@ -59,9 +64,9 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     override fun doTick(level: ServerLevel, entity: NpcEntity) {
         val target = computeDesired(entity, level)
         BrainUtils.setTargetOfEntity(entity, target)
-        if (target != null && DetectionSightline.canSeeWithin(entity,target,NpcEntity.DETECTION_RANGE)) {
+        if (target != null && DetectionSightline.canSeeWithin(entity, target, NpcEntity.DETECTION_RANGE)) {
             entity.rememberVisible(target)
-            SquadTactics.observe(entity,target)
+            SquadTactics.observe(entity, target)
         }
         if (target != null) TankWeaponSelection.update(entity, target)
     }
@@ -77,7 +82,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             VehicleTargeting.closestVisibleHostileAircrew(mob, level, NpcEntity.DETECTION_RANGE)?.let { return it }
         }
 
-        if (!isMortarCrew && mob.vehicle==null) closeThreat(mob,level)?.let { return it }
+        if (!isMortarCrew && mob.vehicle == null) closeThreat(mob, level)?.let { return it }
 
         if (!isMortarCrew) {
             squadFocusTarget(mob, level)?.takeIf { allowed(mob) }?.let { return it }
@@ -126,21 +131,25 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         if (!focus.isAlive) return null
         return when (squad.order) {
             SquadOrder.ATTACK -> focus
+
             SquadOrder.DEFEND -> focus.lastHurtByMob?.takeIf {
                 it.isAlive && it !== mob && SquadTeams.isHostile(mob, it)
             }
+
             else -> null
         }
     }
 
     /** A local visible threat outranks a distant ordered/relayed target, without seeing through cover. */
-    private fun closeThreat(mob: NpcEntity,level: ServerLevel): LivingEntity? {
-        val candidates=level.getEntitiesOfClass(LivingEntity::class.java,mob.boundingBox.inflate(6.0)) {
-            it!==mob && it.isAlive && SquadTeams.isHostile(mob,it) && Vision.noticesClose(mob.position(),mob.yHeadRot,it.position())
+    private fun closeThreat(mob: NpcEntity, level: ServerLevel): LivingEntity? {
+        val candidates = level.getEntitiesOfClass(LivingEntity::class.java, mob.boundingBox.inflate(6.0)) {
+            it !== mob && it.isAlive && SquadTeams.isHostile(mob, it) && Vision.noticesClose(mob.position(), mob.yHeadRot, it.position())
         }.sortedBy { mob.distanceToSqr(it) }
-        for (candidate in candidates) if (DetectionSightline.canSee(mob,candidate)) {
-            SquadTactics.observe(mob,candidate)
-            return candidate
+        for (candidate in candidates) {
+            if (DetectionSightline.canSee(mob, candidate)) {
+                SquadTactics.observe(mob, candidate)
+                return candidate
+            }
         }
         return null
     }
@@ -215,7 +224,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             if (!allRound && !Vision.inCone(mob.position(), mob.yHeadRot, candidate.position())) continue
             val sees = DetectionSightline.canSee(mob, candidate)
             if (sees) {
-                SquadTactics.observe(mob,candidate)
+                SquadTactics.observe(mob, candidate)
                 visible += candidate
                 if (visible.size >= MAX_SPREAD_CANDIDATES || mob.currentSquad() == null) break
             }
@@ -227,6 +236,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         private const val SCAN_RATE_MIN = 15
         private const val SCAN_RATE_JITTER = 11 // 15..25 ticks, mean 20 — same average as before
         private const val DETECTION_HEIGHT = 24.0
+
         /** How many visible enemies a scan considers when spreading the squad's fire. */
         private const val MAX_SPREAD_CANDIDATES = 4
 

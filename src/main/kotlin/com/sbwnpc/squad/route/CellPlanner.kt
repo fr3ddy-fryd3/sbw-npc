@@ -35,16 +35,22 @@ import java.util.PriorityQueue
 object CellPlanner {
     /** Blocks along a side of a cell of the first pass. */
     const val CELL = 4
+
     /** Ground not yet seen costs this many times as much to cross — a guess, made good on arrival. */
     const val UNSEEN = 1.3
+
     /** Cells searched at most. */
     private const val MAX_CELLS = 80_000
+
     /** Columns of the second pass at most. */
     private const val MAX_COLUMNS = 60_000
+
     /** Nor farther than this from the start. */
     private const val MAX_RANGE = 768
+
     /** A cell of the first pass counts as this many units of a tick's budget. */
     private const val CELL_COST = 12
+
     /** Straight stretches of the route are kept as one leg up to this many columns. */
     private const val MAX_LEG = 24
     private val DIAGONAL = Math.sqrt(2.0)
@@ -54,23 +60,32 @@ object CellPlanner {
     interface Medium {
         /** Blocks walked one block of travel is worth: a boat's 0.4, a man's 1. */
         val pace: Double
+
         /** Whether anything is known of the ground at this column. */
         fun known(x: Int, z: Int): Boolean
+
         /** The traveller fits with its middle over this column. */
         fun open(x: Int, z: Int): Boolean
+
         /** It can get from one open column to the next — a step not too high, say. */
         fun step(ax: Int, az: Int, bx: Int, bz: Int): Boolean
+
         /** Extra blocks of travel stepping onto this column costs: by a bank, in water... */
         fun extraCost(x: Int, z: Int): Double
+
         /** Where the traveller gets off if the trip ends at this column, or null if it can't. */
         fun exitAt(x: Int, z: Int, goal: Vec3): Vec3?
+
         /** Whether this exit competes with continuing the trip. Other exits are fallbacks used
          *  only if neither a preferred exit nor a continuation can be found. */
         fun preferredExit(exit: Vec3, goal: Vec3): Boolean = true
+
         /** Blocks walked from getting off at [exit] to the goal. */
         fun remaining(exit: Vec3, goal: Vec3): Double = Math.hypot(exit.x - goal.x, exit.z - goal.z)
+
         /** Whether to leave known ground here in search of a continuation. */
         fun canExplore(from: Vec3, frontier: Vec3, goal: Vec3): Boolean = true
+
         /** The height of a route point over this column. */
         fun pointY(x: Int, z: Int): Double
     }
@@ -101,9 +116,13 @@ object CellPlanner {
     fun search(medium: Medium, from: Vec3, goal: Vec3): Search? {
         val x = Math.floor(from.x).toInt()
         val z = Math.floor(from.z).toInt()
-        for (r in 0..3) for (dx in -r..r) for (dz in -r..r) {
-            if (Math.max(Math.abs(dx), Math.abs(dz)) != r) continue
-            if (medium.known(x + dx, z + dz) && medium.open(x + dx, z + dz)) return Search(medium, x + dx, z + dz, goal)
+        for (r in 0..3) {
+            for (dx in -r..r) {
+                for (dz in -r..r) {
+                    if (Math.max(Math.abs(dx), Math.abs(dz)) != r) continue
+                    if (medium.known(x + dx, z + dz) && medium.open(x + dx, z + dz)) return Search(medium, x + dx, z + dz, goal)
+                }
+            }
         }
         return null
     }
@@ -156,6 +175,7 @@ object CellPlanner {
             private set
         var finished = false
             private set
+
         /** How it ended — see [finish]. */
         var stoppedBy = ""
             private set
@@ -180,43 +200,43 @@ object CellPlanner {
         private fun columnIndex(x: Int, z: Int) = Math.floorMod(x, CELL) * CELL + Math.floorMod(z, CELL)
         private fun cellH(c: Long) = Math.hypot(kx(c) * CELL + CELL / 2.0 - goal.x, kz(c) * CELL + CELL / 2.0 - goal.z) * medium.pace
         private fun known(c: Long) = cellKnown.getOrPut(cellOfNode(c)) { medium.known(kx(c) * CELL, kz(c) * CELL) }
-        private fun inRange(c: Long) =
-            Math.abs(kx(c) * CELL - startX) <= MAX_RANGE && Math.abs(kz(c) * CELL - startZ) <= MAX_RANGE
+        private fun inRange(c: Long) = Math.abs(kx(c) * CELL - startX) <= MAX_RANGE && Math.abs(kz(c) * CELL - startZ) <= MAX_RANGE
 
         /** The parts of a known [cell]: open columns joined wherever the traveller can step from
          *  one to the other and back. */
-        private fun partsOf(cell: Long): IntArray = parts.getOrPut(cellOfNode(cell)) {
-            val x0 = kx(cell) * CELL
-            val z0 = kz(cell) * CELL
-            val ids = IntArray(CELL * CELL) { -1 }
-            var count = 0
-            val stack = ArrayDeque<Int>()
-            for (s in 0 until CELL * CELL) {
-                if (ids[s] >= 0 || !medium.open(x0 + s / CELL, z0 + s % CELL)) continue
-                ids[s] = count
-                stack.addLast(s)
-                while (stack.isNotEmpty()) {
-                    val c = stack.removeLast()
-                    val ax = x0 + c / CELL
-                    val az = z0 + c % CELL
-                    for ((dx, dz) in SIDES) {
-                        val i = c / CELL + dx
-                        val j = c % CELL + dz
-                        if (i !in 0 until CELL || j !in 0 until CELL) continue
-                        val t = i * CELL + j
-                        if (ids[t] >= 0) continue
-                        val bx = x0 + i
-                        val bz = z0 + j
-                        if (!medium.open(bx, bz) || !medium.step(ax, az, bx, bz) || !medium.step(bx, bz, ax, az)) continue
-                        ids[t] = count
-                        stack.addLast(t)
+        private fun partsOf(cell: Long): IntArray =
+            parts.getOrPut(cellOfNode(cell)) {
+                val x0 = kx(cell) * CELL
+                val z0 = kz(cell) * CELL
+                val ids = IntArray(CELL * CELL) { -1 }
+                var count = 0
+                val stack = ArrayDeque<Int>()
+                for (s in 0 until CELL * CELL) {
+                    if (ids[s] >= 0 || !medium.open(x0 + s / CELL, z0 + s % CELL)) continue
+                    ids[s] = count
+                    stack.addLast(s)
+                    while (stack.isNotEmpty()) {
+                        val c = stack.removeLast()
+                        val ax = x0 + c / CELL
+                        val az = z0 + c % CELL
+                        for ((dx, dz) in SIDES) {
+                            val i = c / CELL + dx
+                            val j = c % CELL + dz
+                            if (i !in 0 until CELL || j !in 0 until CELL) continue
+                            val t = i * CELL + j
+                            if (ids[t] >= 0) continue
+                            val bx = x0 + i
+                            val bz = z0 + j
+                            if (!medium.open(bx, bz) || !medium.step(ax, az, bx, bz) || !medium.step(bx, bz, ax, az)) continue
+                            ids[t] = count
+                            stack.addLast(t)
+                        }
                     }
+                    count++
                 }
-                count++
+                partCount[cellOfNode(cell)] = count
+                ids
             }
-            partCount[cellOfNode(cell)] = count
-            ids
-        }
 
         /** Searches on for up to [budget] units of work; true once the search is over. */
         fun step(budget: Int): Boolean {
@@ -251,23 +271,34 @@ object CellPlanner {
                 if (f > cg + Math.hypot((x - tx).toDouble(), (z - tz).toDouble()) + 1e-9) continue // stale entry
                 left--
                 expanded++
-                if (current == t) return finish(
-                    if (!complete) "to the next stretch" else if (usingFallback) "no continuation; crew walks on" else "to the end", current
-                )
-                for (dx in -1..1) for (dz in -1..1) {
-                    if (dx == 0 && dz == 0) continue
-                    val nx = x + dx
-                    val nz = z + dz
-                    if (cellOf(nx, nz) !in corridor!!) continue
-                    if (!medium.open(nx, nz) || !medium.step(x, z, nx, nz)) continue
-                    // No cutting a corner.
-                    if (dx != 0 && dz != 0 && (!medium.open(x + dx, z) || !medium.open(x, z + dz))) continue
-                    val ng = cg + (if (dx != 0 && dz != 0) DIAGONAL else 1.0) + medium.extraCost(nx, nz)
-                    val nk = key(nx, nz)
-                    if (ng < (g[nk] ?: Double.MAX_VALUE)) {
-                        g[nk] = ng
-                        parent[nk] = current
-                        open.add(nk to ng + Math.hypot((nx - tx).toDouble(), (nz - tz).toDouble()))
+                if (current == t) {
+                    return finish(
+                        if (!complete) {
+                            "to the next stretch"
+                        } else if (usingFallback) {
+                            "no continuation; crew walks on"
+                        } else {
+                            "to the end"
+                        },
+                        current,
+                    )
+                }
+                for (dx in -1..1) {
+                    for (dz in -1..1) {
+                        if (dx == 0 && dz == 0) continue
+                        val nx = x + dx
+                        val nz = z + dz
+                        if (cellOf(nx, nz) !in corridor!!) continue
+                        if (!medium.open(nx, nz) || !medium.step(x, z, nx, nz)) continue
+                        // No cutting a corner.
+                        if (dx != 0 && dz != 0 && (!medium.open(x + dx, z) || !medium.open(x, z + dz))) continue
+                        val ng = cg + (if (dx != 0 && dz != 0) DIAGONAL else 1.0) + medium.extraCost(nx, nz)
+                        val nk = key(nx, nz)
+                        if (ng < (g[nk] ?: Double.MAX_VALUE)) {
+                            g[nk] = ng
+                            parent[nk] = current
+                            open.add(nk to ng + Math.hypot((nx - tx).toDouble(), (nz - tz).toDouble()))
+                        }
                     }
                 }
             }
@@ -281,25 +312,27 @@ object CellPlanner {
             val here = known(n)
             if (here) {
                 val ids = partsOf(n)
-                for (i in 0 until CELL) for (j in 0 until CELL) {
-                    if (ids[i * CELL + j] != partOf(n)) continue
-                    val x = cx * CELL + i
-                    val z = cz * CELL + j
-                    val exit = medium.exitAt(x, z, goal) ?: continue
-                    val cost = cg + medium.remaining(exit, goal)
-                    if (!medium.preferredExit(exit, goal)) {
-                        if (cost < fallbackCost) {
-                            fallbackCost = cost
-                            fallbackCell = n
-                            fallbackColumn = key(x, z)
-                            fallbackExit = exit
+                for (i in 0 until CELL) {
+                    for (j in 0 until CELL) {
+                        if (ids[i * CELL + j] != partOf(n)) continue
+                        val x = cx * CELL + i
+                        val z = cz * CELL + j
+                        val exit = medium.exitAt(x, z, goal) ?: continue
+                        val cost = cg + medium.remaining(exit, goal)
+                        if (!medium.preferredExit(exit, goal)) {
+                            if (cost < fallbackCost) {
+                                fallbackCost = cost
+                                fallbackCell = n
+                                fallbackColumn = key(x, z)
+                                fallbackExit = exit
+                            }
+                        } else if (cost < bestCost) {
+                            bestCost = cost
+                            bestCell = n
+                            bestColumn = key(x, z)
+                            bestExit = exit
+                            bestUnseen = false
                         }
-                    } else if (cost < bestCost) {
-                        bestCost = cost
-                        bestCell = n
-                        bestColumn = key(x, z)
-                        bestExit = exit
-                        bestUnseen = false
                     }
                 }
                 // Down a ledge to another part of the same cell: a way only that way round.
@@ -330,7 +363,8 @@ object CellPlanner {
                     }
                     if (here && onward && medium.canExplore(
                             Vec3(startX + 0.5, 0.0, startZ + 0.5),
-                            Vec3(kx(next) * CELL + CELL / 2.0, 0.0, kz(next) * CELL + CELL / 2.0), goal
+                            Vec3(kx(next) * CELL + CELL / 2.0, 0.0, kz(next) * CELL + CELL / 2.0),
+                            goal,
                         )
                     ) {
                         val cost = cg + cellH(n) * UNSEEN
@@ -348,9 +382,12 @@ object CellPlanner {
                 if (!known(next)) {
                     if (here && !medium.canExplore(
                             Vec3(startX + 0.5, 0.0, startZ + 0.5),
-                            Vec3(kx(next) * CELL + CELL / 2.0, 0.0, kz(next) * CELL + CELL / 2.0), goal
+                            Vec3(kx(next) * CELL + CELL / 2.0, 0.0, kz(next) * CELL + CELL / 2.0),
+                            goal,
                         )
-                    ) continue
+                    ) {
+                        continue
+                    }
                     relax(n, next, ng)
                     continue
                 }
@@ -368,17 +405,20 @@ object CellPlanner {
          * no more than the meadow round it, and the column pass, held to the cells it picked, swam
          * two hundred blocks where the walk round cost two thirds as much.
          */
-        private fun extraOf(n: Long): Double = partExtra.getOrPut(n) {
-            val ids = partsOf(n)
-            var sum = 0.0
-            var count = 0
-            for (i in 0 until CELL) for (j in 0 until CELL) {
-                if (ids[i * CELL + j] != partOf(n)) continue
-                sum += medium.extraCost(kx(n) * CELL + i, kz(n) * CELL + j)
-                count++
+        private fun extraOf(n: Long): Double =
+            partExtra.getOrPut(n) {
+                val ids = partsOf(n)
+                var sum = 0.0
+                var count = 0
+                for (i in 0 until CELL) {
+                    for (j in 0 until CELL) {
+                        if (ids[i * CELL + j] != partOf(n)) continue
+                        sum += medium.extraCost(kx(n) * CELL + i, kz(n) * CELL + j)
+                        count++
+                    }
+                }
+                if (count == 0) 0.0 else sum / count * CELL * medium.pace
             }
-            if (count == 0) 0.0 else sum / count * CELL * medium.pace
-        }
 
         private fun relax(from: Long, to: Long, ng: Double) {
             if (ng < (cellG[to] ?: Double.MAX_VALUE)) {
@@ -479,14 +519,16 @@ object CellPlanner {
             val ids = partsOf(n)
             var best: Long? = null
             var bestD = Double.MAX_VALUE
-            for (i in 0 until CELL) for (j in 0 until CELL) {
-                if (ids[i * CELL + j] != partOf(n)) continue
-                val x = kx(n) * CELL + i
-                val z = kz(n) * CELL + j
-                val d = Math.hypot(x + 0.5 - cx, z + 0.5 - cz)
-                if (d < bestD) {
-                    bestD = d
-                    best = key(x, z)
+            for (i in 0 until CELL) {
+                for (j in 0 until CELL) {
+                    if (ids[i * CELL + j] != partOf(n)) continue
+                    val x = kx(n) * CELL + i
+                    val z = kz(n) * CELL + j
+                    val d = Math.hypot(x + 0.5 - cx, z + 0.5 - cz)
+                    if (d < bestD) {
+                        bestD = d
+                        best = key(x, z)
+                    }
                 }
             }
             return best

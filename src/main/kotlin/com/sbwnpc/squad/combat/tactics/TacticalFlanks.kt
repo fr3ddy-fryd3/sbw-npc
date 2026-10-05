@@ -11,12 +11,13 @@ object TacticalFlanks {
     fun pending(plan: TacticalPlan, view: TacticalSnapshot): List<UUID> {
         val state = plan.behavior as FlankingState
         val alive = view.fighting.map { it.id }.toSet()
-        return state.order.filter { it in alive && it !in state.arrived && it !in plan.failedMembers &&
-            it !in state.support && it != state.medicGuard }
+        return state.order.filter {
+            it in alive && it !in state.arrived && it !in plan.failedMembers &&
+                it !in state.support && it != state.medicGuard
+        }
     }
 
-    fun anchor(plan: TacticalPlan, view: TacticalSnapshot, slot: Int): Vec3 =
-        (plan.behavior as FlankingState).anchor(plan, view, slot)
+    fun anchor(plan: TacticalPlan, view: TacticalSnapshot, slot: Int): Vec3 = (plan.behavior as FlankingState).anchor(plan, view, slot)
 
     fun shoulder(plan: TacticalPlan, view: TacticalSnapshot, slot: Int, weakSector: Boolean = false): Vec3 {
         val state = plan.behavior as FlankingState
@@ -29,8 +30,15 @@ object TacticalFlanks {
         val right = maxOf(20.0, (projections.maxOrNull() ?: 0.0) + 12.0)
         val both = state.order.size >= 8 && !weakSector
         val weak = if (kotlin.math.abs(left) <= right) -1.0 else 1.0
-        val direction = if (both) (if (slot % 2 == 0) -1.0 else 1.0) else if (weakSector) weak
-            else if (plan.flankSide < 0.0) -1.0 else 1.0
+        val direction = if (both) {
+            (if (slot % 2 == 0) -1.0 else 1.0)
+        } else if (weakSector) {
+            weak
+        } else if (plan.flankSide < 0.0) {
+            -1.0
+        } else {
+            1.0
+        }
         val lane = slot / (if (both) 2 else 1)
         val sideways = (if (direction < 0) left else right) + direction * (lane % 3) * 4.0
         val depth = maxOf(10.0, focus.subtract(origin).horizontalDistance() - 20.0 - (lane / 3) * 4.0)
@@ -49,8 +57,9 @@ object TacticalFlanks {
         return focus.add(forward.scale(kotlin.math.cos(angle) * 24.0)).add(side.scale(kotlin.math.sin(angle) * 24.0))
     }
 
-    private fun forward(origin: Vec3, focus: Vec3): Vec3 = focus.subtract(origin).multiply(1.0, 0.0, 1.0).normalize()
-        .let { if (it.lengthSqr() < 0.01) Vec3(0.0, 0.0, 1.0) else it }
+    private fun forward(origin: Vec3, focus: Vec3): Vec3 =
+        focus.subtract(origin).multiply(1.0, 0.0, 1.0).normalize()
+            .let { if (it.lengthSqr() < 0.01) Vec3(0.0, 0.0, 1.0) else it }
 
     fun requiredCover(view: TacticalSnapshot): Int = if (view.fighting.size >= 12) 2 else 1
 }

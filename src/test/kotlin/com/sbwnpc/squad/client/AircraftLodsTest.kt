@@ -4,9 +4,9 @@ import com.atsuishio.superbwarfare.client.model.entity.VehicleModelInstance
 import com.atsuishio.superbwarfare.entity.vehicle.VehicleModelEntry
 import com.github.mcmodderanchor.simplebedrockmodel.v2.common.model.baked.BakedBedrockModel
 import com.google.gson.JsonParser
-import net.minecraft.resources.ResourceLocation
 import com.sbwnpc.squad.integration.sbw.client.AircraftLods
 import com.sbwnpc.squad.integration.sbw.client.AircraftVisibility
+import net.minecraft.resources.ResourceLocation
 import org.joml.Matrix4f
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue

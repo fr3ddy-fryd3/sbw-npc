@@ -9,6 +9,5 @@ object VehiclePower {
     /** Roughly 30 seconds of driving at full power. Enough to be worth boarding for. */
     const val DRIVE_RESERVE_TICKS = 600.0
 
-    fun hasReserve(vehicle: Entity, ticks: Double = DRIVE_RESERVE_TICKS): Boolean =
-        Ports.vehicles.hasPowerFor(vehicle, ticks)
+    fun hasReserve(vehicle: Entity, ticks: Double = DRIVE_RESERVE_TICKS): Boolean = Ports.vehicles.hasPowerFor(vehicle, ticks)
 }

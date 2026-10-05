@@ -36,7 +36,7 @@ class VehicleCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
             val vehicle = entity.vehicle?.takeIf(::isT90)
                 ?: Ports.vehicles.within(
                     level,
-                    AABB.ofSize(entity.position(), RECOVERY_RANGE * 2, RECOVERY_RANGE * 2, RECOVERY_RANGE * 2)
+                    AABB.ofSize(entity.position(), RECOVERY_RANGE * 2, RECOVERY_RANGE * 2, RECOVERY_RANGE * 2),
                 ).filter(::isT90)
                     .filter { SquadTeams.factionOf(it) == SquadTeams.factionOf(entity) }
                     .minByOrNull { entity.distanceToSqr(it) }
@@ -53,15 +53,16 @@ class VehicleCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
         // Still assigned: once it's quiet the crew goes back to it.
         if (vehicle != null && entity.vehicle !== vehicle && entity.target != null &&
             Helicopters.isHelicopter(vehicle) && !Helicopters.canFly(vehicle)
-        ) return null
+        ) {
+            return null
+        }
         return vehicle
     }
 
     private fun isT90(vehicle: Entity): Boolean = Ports.vehicles.modelOf(vehicle) == TankModel.T_90A
 
     private val startCheck = StartCheckThrottle(START_CHECK_INTERVAL_TICKS)
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
-        startCheck.check(entity) { assignedVehicle(entity) != null }
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = startCheck.check(entity) { assignedVehicle(entity) != null }
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = assignedVehicle(entity) != null
 
     override fun start(entity: NpcEntity) {
@@ -91,7 +92,7 @@ class VehicleCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
                 entity.x.coerceIn(hull.minX, hull.maxX),
                 entity.y.coerceIn(hull.minY, hull.maxY),
                 entity.z.coerceIn(hull.minZ, hull.maxZ),
-                BOARD_SPEED
+                BOARD_SPEED,
             )
             return
         }

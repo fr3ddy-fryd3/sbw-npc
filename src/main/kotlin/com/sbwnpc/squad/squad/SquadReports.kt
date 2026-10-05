@@ -29,6 +29,7 @@ object SquadReports {
     }
 
     private val lastSent = HashMap<Pair<UUID, Kind>, Long>()
+
     /** The order stamp a MOVE arrival was last called in for, per squad. */
     private val arrivalCalled = HashMap<UUID, Int>()
 
@@ -38,13 +39,16 @@ object SquadReports {
 
     /** Most men each squad has had — what "half" is half of. */
     private val strength = HashMap<UUID, Int>()
+
     /** Squads whose half-strength call has gone out and that haven't been topped back up since. */
     private val halfCalled = HashSet<UUID>()
 
     private const val CHECK_TICKS = 100
     private const val LOW_AMMO_FRACTION = 0.3
+
     /** Squads of one commander this near an ongoing fight don't call it in again. */
     private const val CONTACT_AREA = 100.0
+
     /** A fight nobody has seen the enemy in for this long is over; the next sighting is news. */
     private const val CONTACT_QUIET_TICKS = 600L
 
@@ -58,7 +62,7 @@ object SquadReports {
         lastSent[key] = now
         owner.sendSystemMessage(
             Component.literal("[${squad.name}] ").withStyle(squad.faction.accentStyle)
-                .append(Component.literal(text).withStyle(kind.color))
+                .append(Component.literal(text).withStyle(kind.color)),
         )
     }
 
@@ -132,8 +136,7 @@ object SquadReports {
     }
 
     /** "MACHINE_GUNNER" -> "Machine gunner". */
-    private fun className(npc: NpcEntity): String =
-        npc.npcClass.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }
+    private fun className(npc: NpcEntity): String = npc.npcClass.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }
 
     private fun bearing(v: Vec3): String {
         val deg = Math.toDegrees(Math.atan2(v.x, -v.z)).let { if (it < 0) it + 360 else it }

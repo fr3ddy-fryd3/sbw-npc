@@ -6,18 +6,20 @@ import org.junit.jupiter.api.Test
 
 class IncomingFireTest {
     @Test fun `an old hit can finish its reply without making the squad treat it as a current rear attack`() {
-        val fire=IncomingFire()
-        fire.record(Vec3.ZERO,Vec3(1.0,0.0,0.0),null,100)
+        val fire = IncomingFire()
+        fire.record(Vec3.ZERO, Vec3(1.0, 0.0, 0.0), null, 100)
         assertNotNull(fire.recentPoint(159))
         assertNull(fire.recentPoint(160))
         assertTrue(fire.pending(300))
-        fire.record(Vec3.ZERO,Vec3(1.0,0.0,0.0),null,310)
+        fire.record(Vec3.ZERO, Vec3(1.0, 0.0, 0.0), null, 310)
         assertNotNull(fire.recentPoint(311))
     }
+
     @Test fun `projectile trajectory wins over exact damage source coordinates`() {
         assertEquals(Vec3(-1.0, -0.0, -0.0), IncomingFire.direction(Vec3.ZERO, Vec3(2.0, 0.0, 0.0), Vec3(0.0, 0.0, 20.0)))
         assertNull(IncomingFire.direction(Vec3.ZERO, Vec3.ZERO, Vec3.ZERO))
     }
+
     @Test fun `sustained hits do not replenish the two burst budget`() {
         val fire = IncomingFire()
         fire.record(Vec3.ZERO, Vec3(-1.0, 0.0, 0.0), null, 100)
@@ -31,6 +33,7 @@ class IncomingFireTest {
         fire.record(Vec3.ZERO, Vec3(-1.0, 0.0, 0.0), null, 300)
         assertTrue(fire.pending(300))
     }
+
     @Test fun `shots require a peek and stale directions expire`() {
         val fire = IncomingFire()
         fire.record(Vec3.ZERO, null, Vec3(123.0, 17.0, 6.0), 0)
@@ -44,9 +47,9 @@ class IncomingFireTest {
     }
 
     @Test fun `an uncertain far sector only requires a clear local muzzle lane`() {
-        val origin=Vec3(0.0,65.5,0.0)
-        val aim=Vec3(120.0,65.5,0.0)
-        assertEquals(Vec3(12.0,65.5,0.0),IncomingFire.laneEnd(origin,aim))
-        assertEquals(Vec3(4.0,65.5,0.0),IncomingFire.laneEnd(origin,Vec3(4.0,65.5,0.0)))
+        val origin = Vec3(0.0, 65.5, 0.0)
+        val aim = Vec3(120.0, 65.5, 0.0)
+        assertEquals(Vec3(12.0, 65.5, 0.0), IncomingFire.laneEnd(origin, aim))
+        assertEquals(Vec3(4.0, 65.5, 0.0), IncomingFire.laneEnd(origin, Vec3(4.0, 65.5, 0.0)))
     }
 }

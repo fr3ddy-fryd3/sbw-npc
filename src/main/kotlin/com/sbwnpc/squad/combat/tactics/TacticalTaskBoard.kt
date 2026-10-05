@@ -13,8 +13,10 @@ class TacticalTaskBoard(private val plan: Int, private val events: TacticalEvent
     fun replace(desired: Map<UUID, TacticalTask>, now: Long, trigger: String, retainCover: Boolean = false) {
         require(desired.values.all { it.plan == plan }) { "Assignments must belong to plan $plan" }
         val next = desired.filterKeys { it !in failed }.toMutableMap()
-        if (retainCover) for ((id, old) in active) {
-            if (old.job == TacticalJob.COVER && next[id]?.job == TacticalJob.COVER) next[id] = old
+        if (retainCover) {
+            for ((id, old) in active) {
+                if (old.job == TacticalJob.COVER && next[id]?.job == TacticalJob.COVER) next[id] = old
+            }
         }
         for ((id, old) in active.toMap()) if (next[id] !== old) release(id, now, trigger)
         for ((id, task) in next) if (active[id] !== task) put(id, task, now, trigger)

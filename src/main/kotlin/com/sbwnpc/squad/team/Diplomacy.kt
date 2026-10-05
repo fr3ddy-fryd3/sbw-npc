@@ -27,12 +27,14 @@ import net.minecraft.server.level.ServerPlayer
 object Diplomacy {
     /** Three minutes. */
     const val TRUCE_TICKS = 3L * 60 * 20
+
     /** An offer nobody acts on lapses after five minutes. */
     const val PROPOSAL_TICKS = 5L * 60 * 20
     const val MAX_MEMBERS = 4
     private const val RESOLVE_INTERVAL = 20L
 
     @Volatile private var registry: AllianceRegistry? = null
+
     @Volatile private var now = 0L
 
     fun attach(server: MinecraftServer) {
@@ -79,8 +81,7 @@ object Diplomacy {
 
     fun proposals(): List<AllianceRegistry.Proposal> = registry?.proposals ?: emptyList()
 
-    fun wantsOut(faction: SquadFaction, player: java.util.UUID): Boolean =
-        registry?.leaveVotes?.get(faction.ordinal)?.contains(player) == true
+    fun wantsOut(faction: SquadFaction, player: java.util.UUID): Boolean = registry?.leaveVotes?.get(faction.ordinal)?.contains(player) == true
 
     // --- Commands, all from a player. Each returns what to tell them. ---
 
@@ -98,8 +99,12 @@ object Diplomacy {
         proposal.yes.getOrPut(own.ordinal) { HashSet() } += player.uuid
         reg.proposals += proposal
         reg.setDirty()
-        announce(server, members, Component.literal("${own.label} propose an alliance: ${names(members)}. ")
-            .append(Component.literal("Vote in Diplomacy.").withStyle(ChatFormatting.YELLOW)))
+        announce(
+            server,
+            members,
+            Component.literal("${own.label} propose an alliance: ${names(members)}. ")
+                .append(Component.literal("Vote in Diplomacy.").withStyle(ChatFormatting.YELLOW)),
+        )
         resolve(server, reg)
         return ok("Alliance proposed to ${target.label}.")
     }
@@ -129,8 +134,11 @@ object Diplomacy {
     }
 
     private fun vote(
-        server: MinecraftServer, reg: AllianceRegistry, proposal: AllianceRegistry.Proposal,
-        own: SquadFaction, player: ServerPlayer
+        server: MinecraftServer,
+        reg: AllianceRegistry,
+        proposal: AllianceRegistry.Proposal,
+        own: SquadFaction,
+        player: ServerPlayer,
     ): Component {
         if (!proposal.yes.getOrPut(own.ordinal) { HashSet() }.add(player.uuid)) return fail("You already agreed.")
         reg.setDirty()
@@ -207,9 +215,10 @@ object Diplomacy {
             setTruce(reg, faction, f, now + TRUCE_TICKS)
         }
         announce(
-            server, old,
+            server,
+            old,
             Component.literal("${faction.label} left the alliance. Truce for ${TRUCE_TICKS / 20 / 60} minutes.")
-                .withStyle(ChatFormatting.GOLD)
+                .withStyle(ChatFormatting.GOLD),
         )
     }
 
@@ -218,17 +227,14 @@ object Diplomacy {
         reg.truceUntil[b.ordinal * FACTIONS + a.ordinal] = until
     }
 
-    private fun blocMask(reg: AllianceRegistry, f: SquadFaction): Int =
-        reg.blocOf[f.ordinal].takeIf { it != 0 } ?: bit(f)
+    private fun blocMask(reg: AllianceRegistry, f: SquadFaction): Int = reg.blocOf[f.ordinal].takeIf { it != 0 } ?: bit(f)
 
     /** Every alliance any of [members] already belongs to. */
-    private fun blocUnion(reg: AllianceRegistry, members: Int): Int =
-        membersOf(members).fold(0) { acc, f -> acc or blocMask(reg, f) }
+    private fun blocUnion(reg: AllianceRegistry, members: Int): Int = membersOf(members).fold(0) { acc, f -> acc or blocMask(reg, f) }
 
     // --- Players ---
 
-    private fun factionOf(server: MinecraftServer, player: ServerPlayer): SquadFaction? =
-        PlayerFactionRegistry.get(server).get(player.uuid)
+    private fun factionOf(server: MinecraftServer, player: ServerPlayer): SquadFaction? = PlayerFactionRegistry.get(server).get(player.uuid)
 
     private fun onlineByFaction(server: MinecraftServer): Array<MutableSet<java.util.UUID>> {
         val factions = PlayerFactionRegistry.get(server)

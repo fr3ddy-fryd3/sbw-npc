@@ -11,8 +11,8 @@ import com.sbwnpc.squad.team.Diplomacy
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity
-import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.entity.ai.attributes.AttributeModifier
+import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
@@ -51,6 +51,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private var healTargetId: UUID? = null
     private var nextTreatTick = 0
+
     // MIN_VALUE / 2, not MIN_VALUE: `tickCount - MIN_VALUE` overflows to a negative number, which
     // read as "rescanned a moment ago" forever — the medic never looked for anyone to treat.
     private var candidateTick = Int.MIN_VALUE / 2
@@ -60,10 +61,12 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     companion object {
         private const val SCAN_RADIUS = 16.0
+
         // The ally scan used to run once per tick per medic (SmartBrainLib re-checks a stopped
         // behaviour's start condition every tick). A wounded ally doesn't appear/vanish faster than
         // this; the cached pick is still re-validated (alive + still needs healing) on every read.
         private const val CANDIDATE_RESCAN_TICKS = 10
+
         // navigation.moveTo to a MOVING ally re-runs A* every tick the ally crosses a block edge.
         private const val REPATH_INTERVAL_TICKS = 10
         private const val CRITICAL_HEALTH_FRACTION = 0.3f
@@ -152,9 +155,11 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
             entity.target != null -> "in a fight, only below ${(CRITICAL_HEALTH_FRACTION * 100).toInt()}%"
             else -> "not hurt enough"
         }
-        com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.MEDIC, "{} sees {} side={} mine={} hp={}/{} creative={} target={} -> {}",
+        com.sbwnpc.squad.combat.DebugFlags.log(
+            com.sbwnpc.squad.combat.LogGroup.MEDIC, "{} sees {} side={} mine={} hp={}/{} creative={} target={} -> {}",
             entity.uuid, player.name.string, side, mine, "%.1f".format(player.health), player.maxHealth,
-            player.isCreative, entity.target?.type?.descriptionId, verdict)
+            player.isCreative, entity.target?.type?.descriptionId, verdict,
+        )
     }
 
     private fun eligible(entity: NpcEntity): Boolean = !entity.evadingGrenade() && candidate(entity) != null
@@ -164,7 +169,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun start(entity: NpcEntity) {
         healTargetId = candidate(entity)?.uuid
-        if (healTargetId != null) BrainUtils.setMemory(entity,ModMemories.MEDIC_HEALING.get(),true)
+        if (healTargetId != null) BrainUtils.setMemory(entity, ModMemories.MEDIC_HEALING.get(), true)
     }
 
     override fun stop(entity: NpcEntity) {
@@ -226,7 +231,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun markHeal(level: ServerLevel, ally: LivingEntity) {
         level.sendParticles(
             net.minecraft.core.particles.DustParticleOptions(HEAL_COLOR, 1.5f),
-            ally.x, ally.y + 1.0, ally.z, 12, 0.3, 0.5, 0.3, 0.0
+            ally.x, ally.y + 1.0, ally.z, 12, 0.3, 0.5, 0.3, 0.0,
         )
     }
 }

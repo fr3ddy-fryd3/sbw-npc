@@ -25,7 +25,7 @@ object ClientPayloadHandlers {
     /** The Barracks' garrison config — the same screen, sent back to the block instead of the tool. */
     fun openBarracksScreen(pos: BlockPos, config: CompoundTag) {
         net.minecraft.client.Minecraft.getInstance().setScreen(
-            RecruitScreen.forBarracks(pos, SquadToolItem.readConfig(config), config.getCompound("Recruitment"))
+            RecruitScreen.forBarracks(pos, SquadToolItem.readConfig(config), config.getCompound("Recruitment")),
         )
     }
 

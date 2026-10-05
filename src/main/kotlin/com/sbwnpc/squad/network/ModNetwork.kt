@@ -18,10 +18,10 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.entity.EquipmentSlot
 import net.minecraft.world.phys.Vec3
+import net.neoforged.api.distmarker.Dist
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.fml.loading.FMLEnvironment
-import net.neoforged.api.distmarker.Dist
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent
 import net.neoforged.neoforge.network.handling.IPayloadContext
 import java.util.UUID
@@ -30,10 +30,13 @@ import java.util.UUID
 object ModNetwork {
 
     private const val OBJECTIVE_RAYCAST_RANGE = 1024.0
+
     /** Generous, but bounded — a config packet has to come from someone standing at the block. */
     private const val BARRACKS_REACH_SQR = 64.0 * 64.0
+
     /** Standing at the block — the screen is only opened from there. */
     private const val SUPPLY_REACH_SQR = 8.0 * 8.0
+
     /** Each point of a map-drawn route loads its chunk to find the ground; this keeps that bounded. */
     private const val MAX_MAP_ROUTE_POINTS = 32
 
@@ -127,8 +130,8 @@ object ModNetwork {
                             p.vehicle,
                             com.sbwnpc.squad.npc.TransportVehicle.byOrdinal(p.vehicleModel),
                             com.sbwnpc.squad.npc.TankModel.byOrdinal(p.tankModel),
-                            com.sbwnpc.squad.npc.HelicopterModel.byOrdinal(p.heliModel)
-                        )
+                            com.sbwnpc.squad.npc.HelicopterModel.byOrdinal(p.heliModel),
+                        ),
                     )
                 }
             }
@@ -145,7 +148,8 @@ object ModNetwork {
                 StackData.update(stack) { it.putInt(SquadToolItem.KEY_MODE, next) }
                 val name = if (next == SquadToolItem.MODE_COMMAND) "COMMAND" else "RECRUIT"
                 player.displayClientMessage(
-                    net.minecraft.network.chat.Component.literal("Mode: $name").withStyle(net.minecraft.ChatFormatting.YELLOW), true
+                    net.minecraft.network.chat.Component.literal("Mode: $name").withStyle(net.minecraft.ChatFormatting.YELLOW),
+                    true,
                 )
                 return@enqueueWork
             }
@@ -189,6 +193,7 @@ object ModNetwork {
             fun bar(msg: String) = player.displayClientMessage(net.minecraft.network.chat.Component.literal(msg), true)
             // Set by the actions that change which squads exist — see the end of this handler.
             var reopen = false
+
             // Only ever resolves to a squad the sender actually owns — a squad id in a packet is
             // just a string the client chose to send, so this is the one place that matters.
             fun ownedSid(): UUID? {
@@ -213,12 +218,19 @@ object ModNetwork {
                     SquadSelection.selectSquad(player.uuid, squad.id)
                     bar("Squad ${squad.name} formed")
                 }
-                SquadCmdPayload.DISBAND -> ownedSid()?.let { mgr.disband(level, it); reopen = true }
+
+                SquadCmdPayload.DISBAND -> ownedSid()?.let {
+                    mgr.disband(level, it)
+                    reopen = true
+                }
+
                 SquadCmdPayload.SET_ORDER -> ownedSid()?.let { mgr.setOrder(it, SquadOrder.byOrdinal(p.value)) }
+
                 SquadCmdPayload.TOGGLE_REPORTS -> {
                     val on = com.sbwnpc.squad.squad.ReportMutes.get(player.server).toggle(player.uuid)
                     bar(if (on) "Squad reports on" else "Squad reports off")
                 }
+
                 SquadCmdPayload.MAP_ORDER -> {
                     val (x, z) = p.text.split(' ').mapNotNull { it.toIntOrNull() }.takeIf { it.size == 2 }
                         ?: return@enqueueWork
@@ -228,21 +240,26 @@ object ModNetwork {
                     if (ids.isEmpty()) return@enqueueWork
                     bar(com.sbwnpc.squad.squad.GroupOrders.apply(level, mgr, ids, SquadOrder.byOrdinal(p.value), x, z).joinToString(", "))
                 }
+
                 SquadCmdPayload.RENAME -> ownedSid()?.let { mgr.rename(it, p.text) }
+
                 SquadCmdPayload.SELECT -> ownedSid()?.let {
                     SquadSelection.selectSquad(player.uuid, it)
                     bar("Commanding ${mgr.get(it)?.name ?: "squad"}")
                 }
+
                 SquadCmdPayload.ARM_OBJECTIVE -> ownedSid()?.let {
                     SquadSelection.selectSquad(player.uuid, it)
                     SquadSelection.armObjective(player.uuid, it)
                     bar("Aim and right-click to set ${mgr.get(it)?.name ?: "squad"}'s objective")
                 }
+
                 SquadCmdPayload.ARM_FOCUS -> ownedSid()?.let {
                     SquadSelection.selectSquad(player.uuid, it)
                     SquadSelection.armFocus(player.uuid, it)
                     bar("Right-click anything (including your own NPCs) to focus ${mgr.get(it)?.name ?: "squad"} on it")
                 }
+
                 SquadCmdPayload.DELETE_SQUAD -> ownedSid()?.let { id ->
                     mgr.deleteSquad(level, id)
                     SquadSelection.clear(player.uuid)
@@ -255,8 +272,10 @@ object ModNetwork {
             // Send the fresh list instead; the client swaps the screen out under them.
             if (reopen) {
                 val snap = buildSquadSnapshot(
-                    mgr, player.uuid, SquadSelection.looseOf(player.uuid).size,
-                    !com.sbwnpc.squad.squad.ReportMutes.get(player.server).isMuted(player.uuid)
+                    mgr,
+                    player.uuid,
+                    SquadSelection.looseOf(player.uuid).size,
+                    !com.sbwnpc.squad.squad.ReportMutes.get(player.server).isMuted(player.uuid),
                 )
                 sendToClient(player, OpenCommandScreenPayload(snap))
             }
@@ -268,8 +287,10 @@ object ModNetwork {
             val player = ctx.player() as? ServerPlayer ?: return@enqueueWork
             val level = player.level() as? ServerLevel ?: return@enqueueWork
             val snap = buildSquadSnapshot(
-                SquadManager.get(level), player.uuid, 0,
-                !com.sbwnpc.squad.squad.ReportMutes.get(player.server).isMuted(player.uuid)
+                SquadManager.get(level),
+                player.uuid,
+                0,
+                !com.sbwnpc.squad.squad.ReportMutes.get(player.server).isMuted(player.uuid),
             )
             // Lets the client show an accurate "ALL SQUADS (N)" count for the `0` key, which
             // (see onHudOrderAll) only actually orders squads matching this — not every squad the
@@ -292,9 +313,13 @@ object ModNetwork {
             mgr.setOrder(id, SquadOrder.byOrdinal(p.order))
             val pos = Terrain.lookedAtPos(player, level, OBJECTIVE_RAYCAST_RANGE)
             mgr.setObjective(level, id, pos)
-            com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER,
+            com.sbwnpc.squad.combat.DebugFlags.log(
+                com.sbwnpc.squad.combat.LogGroup.ORDER,
                 "HUD: {} -> {} at {} (asked {})",
-                mgr.get(id)?.name, mgr.get(id)?.order, pos, SquadOrder.byOrdinal(p.order)
+                mgr.get(id)?.name,
+                mgr.get(id)?.order,
+                pos,
+                SquadOrder.byOrdinal(p.order),
             )
         }
     }
@@ -333,13 +358,18 @@ object ModNetwork {
                 SupplyCmdPayload.TAKE_KIT -> {
                     val name = supplyPort.kits.getOrNull(p.kit)?.name ?: return@enqueueWork
                     val faction = PlayerFactionRegistry.get(level).get(player.uuid)
-                    if (supplyPort.issueKit(player, p.kit, p.option, faction)) "$name kit issued"
-                    else "You already carry the $name kit"
+                    if (supplyPort.issueKit(player, p.kit, p.option, faction)) {
+                        "$name kit issued"
+                    } else {
+                        "You already carry the $name kit"
+                    }
                 }
+
                 SupplyCmdPayload.SET_SPAWN -> {
                     com.sbwnpc.squad.block.SupplySpawns.get(player.server).set(player, level, p.pos)
                     "You will respawn at this Supply"
                 }
+
                 else -> return@enqueueWork
             }
             player.displayClientMessage(net.minecraft.network.chat.Component.literal(reply), true)
@@ -354,8 +384,11 @@ object ModNetwork {
             val reply = when (p.action) {
                 DiplomacyCmdPayload.PROPOSE ->
                     SquadFaction.entries.getOrNull(p.faction)?.let { com.sbwnpc.squad.team.Diplomacy.propose(server, player, it) }
+
                 DiplomacyCmdPayload.ACCEPT -> com.sbwnpc.squad.team.Diplomacy.accept(server, player, p.proposal)
+
                 DiplomacyCmdPayload.TOGGLE_LEAVE -> com.sbwnpc.squad.team.Diplomacy.voteLeave(server, player)
+
                 else -> null
             }
             reply?.let { player.displayClientMessage(it, true) }
@@ -376,6 +409,7 @@ object ModNetwork {
                     RouteRecording.start(player.uuid)
                     bar("Recording route — right-click blocks to add points, air-click to finish")
                 }
+
                 RouteCmdPayload.FINISH -> {
                     val points = RouteRecording.finish(player.uuid)
                     if (points.isNullOrEmpty()) {
@@ -385,10 +419,12 @@ object ModNetwork {
                         bar("Route ${route.name} saved (${points.size} points)")
                     }
                 }
+
                 RouteCmdPayload.CANCEL -> {
                     RouteRecording.cancel(player.uuid)
                     bar("Recording cancelled")
                 }
+
                 RouteCmdPayload.ASSIGN -> {
                     val routeId = runCatching { UUID.fromString(p.route) }.getOrNull() ?: return@enqueueWork
                     val squadId = runCatching { UUID.fromString(p.text) }.getOrNull() ?: return@enqueueWork
@@ -396,11 +432,13 @@ object ModNetwork {
                     squads.assignRoute(squadId, routeId)
                     bar("${squads.get(squadId)?.name ?: "Squad"} now patrols ${routes.get(routeId)?.name ?: "route"}")
                 }
+
                 RouteCmdPayload.DELETE -> {
                     val routeId = runCatching { UUID.fromString(p.route) }.getOrNull() ?: return@enqueueWork
                     if (!routes.ownedBy(routeId, player.uuid)) return@enqueueWork
                     routes.delete(routeId)
                 }
+
                 RouteCmdPayload.MAP_ROUTE -> {
                     val coords = p.text.split(' ').mapNotNull { it.toIntOrNull() }
                     val points = coords.chunked(2).filter { it.size == 2 }.map { it[0] to it[1] }.take(MAX_MAP_ROUTE_POINTS)
@@ -411,11 +449,11 @@ object ModNetwork {
                     if (ids.isEmpty()) return@enqueueWork
                     bar(com.sbwnpc.squad.squad.GroupOrders.patrol(level, squads, routes, player.uuid, ids, points).joinToString(", "))
                 }
+
                 RouteCmdPayload.REQUEST_LIST -> {
                     sendToClient(player, OpenRoutesScreenPayload(buildRouteSnapshot(routes, squads, player.uuid)))
                 }
             }
         }
     }
-
 }

@@ -58,7 +58,7 @@ class StaticGunMeshTest {
                 ]
               }]
             }
-            """.reader()
+            """.reader(),
         )
         val vertices = RecordingVertices()
         val pose = PoseStack().apply { translate(4.0f, 5.0f, 6.0f) }
@@ -83,7 +83,7 @@ class StaticGunMeshTest {
                 "pivot": [16, 0, 0], "rotation": [0, 0, 90]
               }]}]
             }]}
-            """.reader()
+            """.reader(),
         )
         val first = RecordingVertices()
         val second = RecordingVertices()
@@ -106,7 +106,11 @@ class StaticGunMeshTest {
 
         override fun addVertex(x: Float, y: Float, z: Float): VertexConsumer = apply { positions += Vector3f(x, y, z) }
         override fun setNormal(x: Float, y: Float, z: Float): VertexConsumer = apply { normals += Vector3f(x, y, z) }
-        override fun setUv(u: Float, v: Float): VertexConsumer = apply { uvs += u; uvs += v }
+        override fun setUv(u: Float, v: Float): VertexConsumer =
+            apply {
+                uvs += u
+                uvs += v
+            }
         override fun setUv2(u: Int, v: Int): VertexConsumer = apply { lights += u or (v shl 16) }
         override fun setUv1(u: Int, v: Int): VertexConsumer = this
         override fun setColor(red: Int, green: Int, blue: Int, alpha: Int): VertexConsumer = this

@@ -13,19 +13,21 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 
 /** Only cover's deliberate peek window permits a finite response to an unseen shooter. */
 class BlindReturnFireBehaviour : ExtendedBehaviour<NpcEntity>() {
-    private var nextLogTick=0
-    init { noTimeout() }
+    private var nextLogTick = 0
+    init {
+        noTimeout()
+    }
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
     private fun eligible(entity: NpcEntity): Boolean =
         entity.target?.let { com.sbwnpc.squad.combat.DetectionSightline.canSeeWithin(entity, it, NpcEntity.DETECTION_RANGE) } != true &&
-        entity.incomingFire.replying(entity.level().gameTime) && !entity.busyWithRole() &&
-        !entity.combatLockedByCover() && !entity.combatLockedByMedic() && !entity.resupplying && entity.vehicle == null
+            entity.incomingFire.replying(entity.level().gameTime) && !entity.busyWithRole() &&
+            !entity.combatLockedByCover() && !entity.combatLockedByMedic() && !entity.resupplying && entity.vehicle == null
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity) = eligible(entity)
     override fun shouldKeepRunning(entity: NpcEntity) = eligible(entity)
     override fun tick(entity: NpcEntity) {
         val now = entity.level().gameTime
         val aim = entity.incomingFire.point(now) ?: return
-        com.sbwnpc.squad.combat.AntiArmourKit.wield(entity,launcher=false)
+        com.sbwnpc.squad.combat.AntiArmourKit.wield(entity, launcher = false)
         val gun = Ports.guns.inHand(entity) ?: return
         // Uncertain contacts never authorize grenades, rockets, or simulated hits.
         if (gun.explosionRadius > 0.0 || !gun.hasAmmo()) return
@@ -38,14 +40,25 @@ class BlindReturnFireBehaviour : ExtendedBehaviour<NpcEntity>() {
         val level = entity.level() as ServerLevel
         val spread = maxOf(entity.spread, 9.0)
         val hulls = Sightline.vehicleHulls(level, AABB(entity.eyePosition, aim).inflate(2.0), entity, null)
-        val terrainBlocked=Sightline.blockedBy(level,entity.eyePosition,
-            com.sbwnpc.squad.combat.IncomingFire.laneEnd(entity.eyePosition,aim),entity,hulls,spread)
-        val allyBlocked=!FriendlyFireGuard.hasClearLineOfFire(entity,aim,spread)
+        val terrainBlocked = Sightline.blockedBy(
+            level,
+            entity.eyePosition,
+            com.sbwnpc.squad.combat.IncomingFire.laneEnd(entity.eyePosition, aim),
+            entity,
+            hulls,
+            spread,
+        )
+        val allyBlocked = !FriendlyFireGuard.hasClearLineOfFire(entity, aim, spread)
         if (terrainBlocked || allyBlocked) {
-            if (entity.tickCount>=nextLogTick) {
-                nextLogTick=entity.tickCount+20
-                com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER,
-                    "[return-fire] {} held: terrain={} allies={}",entity.uuid,terrainBlocked,allyBlocked)
+            if (entity.tickCount >= nextLogTick) {
+                nextLogTick = entity.tickCount + 20
+                com.sbwnpc.squad.combat.DebugFlags.log(
+                    com.sbwnpc.squad.combat.LogGroup.ORDER,
+                    "[return-fire] {} held: terrain={} allies={}",
+                    entity.uuid,
+                    terrainBlocked,
+                    allyBlocked,
+                )
             }
             return
         }
@@ -54,7 +67,11 @@ class BlindReturnFireBehaviour : ExtendedBehaviour<NpcEntity>() {
         gun.shootAt(spread, aim)
         entity.lastShotTick = entity.tickCount
         entity.incomingFire.shot(now, interval)
-        com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER,
-            "[return-fire] {} shot, remaining={}",entity.uuid,entity.incomingFire.roundsLeft)
+        com.sbwnpc.squad.combat.DebugFlags.log(
+            com.sbwnpc.squad.combat.LogGroup.ORDER,
+            "[return-fire] {} shot, remaining={}",
+            entity.uuid,
+            entity.incomingFire.roundsLeft,
+        )
     }
 }

@@ -35,6 +35,7 @@ object BoatTrips {
 
     private class Decision(val stamp: Int, val goal: BlockPos, val madeAt: Long, val walk: Double, val pending: ArrayDeque<UUID>) {
         val trips = ArrayList<Trip>()
+
         /** The boat being weighed now, and its search under way. */
         var current: kotlin.Pair<Entity, CellPlanner.Search>? = null
     }
@@ -44,21 +45,29 @@ object BoatTrips {
 
     /** A boat must save this share of the walk to be worth the boarding and landing. */
     private const val ADVANTAGE = 0.2
+
     /** Voyages shorter than this aren't worth getting in for. */
     private const val MIN_VOYAGE = 24.0
+
     /** Water on the squad's own route counts as this many times the straight walk. */
     private const val SWIM_PENALTY = 1.6
+
     /** A block of water on the straight line to the goal costs this many blocks of walking. */
     private const val SWIM_COST = 3.0
+
     /** Blocks between the samples of the straight line taken for [walkCost]. */
     private const val WALK_SAMPLE = 4.0
+
     /** Boats weighed per squad, nearest first. */
     private const val MAX_BOATS = 3
     private const val SEARCH_RADIUS = 60.0
+
     /** Nearer than this, nobody gets in a boat. */
     private const val MIN_TRIP = 40.0
+
     /** A goal moved less than this is the same one — an attack's goal is the enemy, and moves. */
     private const val SAME_GOAL = 16.0
+
     /** A decision is looked at again after this long — boats move, get taken, sink. */
     private const val DECISION_TICKS = 600L
 
@@ -154,9 +163,13 @@ object BoatTrips {
         }
         if (!advance(level, replan.search)) return null
         replans.remove(boat.uuid)
-        DebugFlags.log(LogGroup.BOAT,
-            "boat {} searched {} columns over {} ticks ({})", boat.uuid.toString().take(8),
-            replan.search.expanded, level.gameTime - replan.startedAt + 1, replan.search.stoppedBy
+        DebugFlags.log(
+            LogGroup.BOAT,
+            "boat {} searched {} columns over {} ticks ({})",
+            boat.uuid.toString().take(8),
+            replan.search.expanded,
+            level.gameTime - replan.startedAt + 1,
+            replan.search.stoppedBy,
         )
         return replan.search.result()
     }
@@ -170,11 +183,12 @@ object BoatTrips {
         }
         val cost = npc.position().distanceTo(boat.position()) + route.length / WaterRoutes.BOAT_PACE + route.remaining(goal)
         val worth = route.length >= MIN_VOYAGE && cost <= decision.walk * (1 - ADVANTAGE)
-        DebugFlags.log(LogGroup.BOAT,
+        DebugFlags.log(
+            LogGroup.BOAT,
             "{} boat {}: voyage {} {} {} ({} from goal), trip {} vs walk {} -> {} ({})",
             squadName, boat.uuid.toString().take(8), route.length.toInt(), if (route.complete) "to land at" else "and on past",
             BlockPos.containing(route.shore), route.shore.distanceTo(goal).toInt(), cost.toInt(), decision.walk.toInt(),
-            if (worth) "take it" else "walk", how
+            if (worth) "take it" else "walk", how,
         )
         if (worth) decision.trips += Trip(boat.uuid, goal, route, cost)
     }

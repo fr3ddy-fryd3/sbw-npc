@@ -10,7 +10,7 @@ import net.minecraft.server.packs.resources.ResourceManager
 data class StaticGunModel(
     val geometry: ResourceLocation,
     val texture: ResourceLocation,
-    val mesh: StaticGunMesh
+    val mesh: StaticGunMesh,
 )
 
 internal object StaticGunModels {

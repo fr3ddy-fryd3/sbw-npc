@@ -15,6 +15,7 @@ class VehicleTransportClaimsTest {
     private val rider = UUID.randomUUID()
 
     @BeforeEach fun reset() = VehicleTransportClaims.clearAll()
+
     @AfterEach fun cleanup() = VehicleTransportClaims.clearAll()
 
     @Test

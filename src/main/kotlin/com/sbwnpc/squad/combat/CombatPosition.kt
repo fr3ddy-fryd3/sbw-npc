@@ -34,8 +34,7 @@ object CombatPosition {
         return from.add(delta.scale(MAX_ADVANCE_DISTANCE / distance))
     }
 
-    fun defendRadius(cls: NpcClass, squadSize: Int): Double =
-        maxOf(SquadFormation.perimeterRadius(squadSize), cls.attackStandoffDistance) + LOCAL_MOVE_RADIUS
+    fun defendRadius(cls: NpcClass, squadSize: Int): Double = maxOf(SquadFormation.perimeterRadius(squadSize), cls.attackStandoffDistance) + LOCAL_MOVE_RADIUS
 
     fun withinArea(center: Vec3, point: Vec3, radius: Double): Boolean {
         val dx = center.x - point.x

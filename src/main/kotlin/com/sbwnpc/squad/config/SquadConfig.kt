@@ -15,7 +15,7 @@ object SquadConfig {
             "a player on a small patch of the world. Assigned barracks also stay loaded at their",
             "own positions so reinforcements spawn; they do not count against the squad limit.",
             "Each independent NPC returning to Supply counts as one squad against this limit.",
-            "0 turns off both squad and barracks tickets."
+            "0 turns off both squad and barracks tickets.",
         )
         .defineInRange("activeSquadChunkLimit", 8, 0, 64)
 
@@ -24,21 +24,20 @@ object SquadConfig {
             "How far away, in blocks, players see NPCs. Past the server's own view-distance they",
             "are not sent however high this is: a dedicated server needs view-distance of this",
             "divided by 16 or more. Shots past 128 blocks from every player are simulated rather",
-            "than fired, whatever this is set to. Higher costs network and client frame rate."
+            "than fired, whatever this is set to. Higher costs network and client frame rate.",
         )
         .defineInRange("npcViewDistance", 256, 64, 512)
 
     val RECRUIT_INTERVAL_SECONDS: ModConfigSpec.IntValue = builder
         .comment(
             "Seconds of loaded barracks time between individual NPC recruits, including the first.",
-            "Initial recruitment and replacements share this limit. Unloading pauses the clock."
+            "Initial recruitment and replacements share this limit. Unloading pauses the clock.",
         )
         .defineInRange("recruitIntervalSeconds", 10, 1, 3600)
 
     val SPEC: ModConfigSpec = builder.build()
 
-    fun recruitIntervalTicks(): Int =
-        (if (SPEC.isLoaded) RECRUIT_INTERVAL_SECONDS.get() else RECRUIT_INTERVAL_SECONDS.default) * 20
+    fun recruitIntervalTicks(): Int = (if (SPEC.isLoaded) RECRUIT_INTERVAL_SECONDS.get() else RECRUIT_INTERVAL_SECONDS.default) * 20
 
     /** [NPC_VIEW_DISTANCE], or its default while no world's config is loaded — the client asks
      *  before it has joined one, and a config value read then throws. */

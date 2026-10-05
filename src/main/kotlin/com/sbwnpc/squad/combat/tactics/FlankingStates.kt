@@ -37,11 +37,16 @@ abstract class FlankingState : CoveredManeuverState() {
 
     override fun promoteLateSupport(context: TacticalContext) {
         if (bounds != 0) return
-        val cover = context.view.members.count { context.plan.tasks[it.id]?.job == TacticalJob.COVER &&
-            TacticalEvidence.firesCover(it, context.plan.tasks[it.id]) }
+        val cover = context.view.members.count {
+            context.plan.tasks[it.id]?.job == TacticalJob.COVER &&
+                TacticalEvidence.firesCover(it, context.plan.tasks[it.id])
+        }
         if (cover >= TacticalFlanks.requiredCover(context.view) || context.view.members.none {
-            context.plan.tasks[it.id]?.job == TacticalJob.WAIT && TacticalEvidence.firesCover(it, context.plan.tasks[it.id])
-        }) return
+                context.plan.tasks[it.id]?.job == TacticalJob.WAIT && TacticalEvidence.firesCover(it, context.plan.tasks[it.id])
+            }
+        ) {
+            return
+        }
         support.clear()
         order.clear()
         assign(context, trigger = "late_cover_shooter")
@@ -51,33 +56,47 @@ abstract class FlankingState : CoveredManeuverState() {
         }
     }
 
-    override fun probeFinished(member: UUID) { support.add(member); order.remove(member) }
+    override fun probeFinished(member: UUID) {
+        support.add(member)
+        order.remove(member)
+    }
     override fun noMovers(context: TacticalContext) = arrived(context, emptyList())
 
     override fun arrived(context: TacticalContext, movers: List<TacticalMember>) {
         arrivedMembers.addAll(movers.map { it.id })
-        for (member in movers) context.tasks.put(member.id,
-            TacticalTask(TacticalJob.COVER, member.position, context.plan.focus, context.plan.id).also { it.position = member.position },
-            context.view.now, "flank_member_arrived")
+        for (member in movers) {
+            context.tasks.put(
+                member.id,
+                TacticalTask(TacticalJob.COVER, member.position, context.plan.focus, context.plan.id).also { it.position = member.position },
+                context.view.now,
+                "flank_member_arrived",
+            )
+        }
         bounds++
         val done = TacticalFlanks.pending(context.plan, context.view).isEmpty()
         phases.transition(if (done) CompletedPhase() else PreparingPhase(), context, if (done) "flank_complete" else "flank_wave_arrived")
     }
 
     override fun phaseEntered(context: TacticalContext, from: TacticalPhase?) {
-        if (from == TacticalPhase.EXECUTING && context.plan.phase in setOf(TacticalPhase.PREPARING, TacticalPhase.COMPLETED))
+        if (from == TacticalPhase.EXECUTING && context.plan.phase in setOf(TacticalPhase.PREPARING, TacticalPhase.COMPLETED)) {
             assign(context, retainCover = true, trigger = "flank_wave_finished")
-        else super.phaseEntered(context, from)
+        } else {
+            super.phaseEntered(context, from)
+        }
     }
 }
 
-class FlankState : FlankingState() { override val alternatesSideAfterFailure = true }
+class FlankState : FlankingState() {
+    override val alternatesSideAfterFailure = true
+}
 class EncircleState : FlankingState() {
     override val positions = EncirclePositions
     override val firingLaneExtension = 24.0
     override fun anchor(plan: TacticalPlan, view: TacticalSnapshot, slot: Int) = TacticalFlanks.encircle(plan, view, slot)
 }
-class DislodgeState : FlankingState() { override val alternatesSideAfterFailure = true }
+class DislodgeState : FlankingState() {
+    override val alternatesSideAfterFailure = true
+}
 class FocusSectorState : FlankingState() {
     override fun anchor(plan: TacticalPlan, view: TacticalSnapshot, slot: Int) = TacticalFlanks.shoulder(plan, view, slot, weakSector = true)
 }

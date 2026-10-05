@@ -4,8 +4,8 @@ import com.sbwnpc.squad.domain.port.Ports
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.level.ClipContext
-import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.AABB
+import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
 
 /**
@@ -21,6 +21,7 @@ import net.minecraft.world.phys.Vec3
 object Sightline {
     /** See [crosses]: how far past a hull's own faces a shot still counts as hitting it. */
     private const val MAX_CONE_ALLOWANCE = 1.0
+
     /** A hull has to start ahead of the muzzle by at least this to count as being in the way. */
     private const val AHEAD_EPSILON = 1.0e-4
 
@@ -42,7 +43,7 @@ object Sightline {
         to: Vec3,
         passer: Entity,
         hulls: List<AABB>,
-        spreadDegrees: Double = 0.0
+        spreadDegrees: Double = 0.0,
     ): Boolean = crosses(hulls, from, to, spreadDegrees) || blocked(level, from, to, passer)
 
     /**
@@ -86,8 +87,11 @@ object Sightline {
         if (hulls.isEmpty()) return false
         val fan = if (spreadDegrees <= 0.0) 0.0 else Math.tan(Math.toRadians(spreadDegrees))
         return hulls.any { hull ->
-            val reach = if (fan <= 0.0) 0.0
-                else Math.min(from.distanceTo(hull.center) * fan, MAX_CONE_ALLOWANCE)
+            val reach = if (fan <= 0.0) {
+                0.0
+            } else {
+                Math.min(from.distanceTo(hull.center) * fan, MAX_CONE_ALLOWANCE)
+            }
             entersAhead(hull.inflate(reach), from, to)
         }
     }

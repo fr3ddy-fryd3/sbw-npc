@@ -20,7 +20,8 @@ enum class SquadFaction(val label: String, val accentColor: ChatFormatting, val 
     PANDA("Pandas", ChatFormatting.YELLOW),
     CAT("Cats", ChatFormatting.GOLD),
     ENDER("Enders", ChatFormatting.LIGHT_PURPLE),
-    WITHER("Withers", ChatFormatting.AQUA);
+    WITHER("Withers", ChatFormatting.AQUA),
+    ;
 
     val accentStyle: Style = Style.EMPTY.withColor(rgb)
 

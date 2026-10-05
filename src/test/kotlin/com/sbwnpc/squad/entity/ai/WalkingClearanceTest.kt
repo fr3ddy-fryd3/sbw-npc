@@ -37,13 +37,16 @@ class WalkingClearanceTest {
 
     // The test registry is already frozen. Fixture states reuse registered owners without adding
     // synthetic blocks to the game, while vanilla BlockCollisions still traverses their voxels.
-    private fun obstacle(shape: VoxelShape, owner: Block = Blocks.STONE): BlockState = object : BlockState(
-        owner, Reference2ObjectArrayMap(owner.defaultBlockState().values), MapCodec.unit(owner.defaultBlockState())
-    ) {
-        override fun getCollisionShape(level: BlockGetter, pos: BlockPos, context: CollisionContext) = shape
-        override fun getCollisionShape(level: BlockGetter, pos: BlockPos) = shape
-        override fun hasLargeCollisionShape() = true
-    }
+    private fun obstacle(shape: VoxelShape, owner: Block = Blocks.STONE): BlockState =
+        object : BlockState(
+            owner,
+            Reference2ObjectArrayMap(owner.defaultBlockState().values),
+            MapCodec.unit(owner.defaultBlockState()),
+        ) {
+            override fun getCollisionShape(level: BlockGetter, pos: BlockPos, context: CollisionContext) = shape
+            override fun getCollisionShape(level: BlockGetter, pos: BlockPos) = shape
+            override fun hasLargeCollisionShape() = true
+        }
 
     // Dynamic Trees 1.7.2 non-vanilla leaf collision: inset sides, bottom half of the block.
     private val leaves = obstacle(Shapes.box(0.125, 0.0, 0.125, 0.875, 0.5, 0.875), Blocks.OAK_LEAVES)
@@ -92,11 +95,13 @@ class WalkingClearanceTest {
     @Test
     fun `jumping headroom is checked while the supporting ground stays intact`() {
         val overhead = BlockPos(1, 66, 0)
-        val world = Terrain(mapOf(
-            overhead to Blocks.OAK_LEAVES.defaultBlockState(),
-            BlockPos(0, 63, 0) to Blocks.DIRT.defaultBlockState(),
-            BlockPos(1, 63, 0) to Blocks.DIRT.defaultBlockState()
-        ))
+        val world = Terrain(
+            mapOf(
+                overhead to Blocks.OAK_LEAVES.defaultBlockState(),
+                BlockPos(0, 63, 0) to Blocks.DIRT.defaultBlockState(),
+                BlockPos(1, 63, 0) to Blocks.DIRT.defaultBlockState(),
+            ),
+        )
         assertTrue(world.noBlockCollision(null, body))
         assertEquals(listOf(overhead), WalkingClearance.clearingCandidates(world, null, body, Vec3(1.0, 0.0, 0.0)))
     }

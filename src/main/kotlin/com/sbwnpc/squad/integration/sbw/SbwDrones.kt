@@ -53,12 +53,14 @@ object SbwDrones : Drones {
         return DroneEntity(ModEntities.DRONE.get(), level)
     }
 
-    override fun blowsUpOnCrash(drone: Entity): Boolean =
-        drone is DroneEntity && drone.type !== ModEntities.DRONE.get()
+    override fun blowsUpOnCrash(drone: Entity): Boolean = drone is DroneEntity && drone.type !== ModEntities.DRONE.get()
 
     override fun warheadRadius(blowsUpOnCrash: Boolean): Double =
-        if (blowsUpOnCrash) ADDON_FPV_BLAST_RADIUS
-        else CustomData.DRONE_ATTACHMENT[DroneEntity.getItemId(ItemStack(WARHEAD_ITEM.get()))]?.explosionRadius?.toDouble() ?: 0.0
+        if (blowsUpOnCrash) {
+            ADDON_FPV_BLAST_RADIUS
+        } else {
+            CustomData.DRONE_ATTACHMENT[DroneEntity.getItemId(ItemStack(WARHEAD_ITEM.get()))]?.explosionRadius?.toDouble() ?: 0.0
+        }
 
     /** destroy() is what the addon's crash-explosion mixin hooks; it discards the entity itself. */
     override fun crash(drone: Entity) {

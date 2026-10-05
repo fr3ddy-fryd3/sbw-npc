@@ -3,19 +3,19 @@ package com.sbwnpc.squad.block
 import com.mojang.serialization.MapCodec
 import com.sbwnpc.squad.block.entity.SupplyBlockEntity
 import com.sbwnpc.squad.block.entity.SupplyPoints
-import com.sbwnpc.squad.init.ModBlockEntities
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.init.ModBlockEntities
 import com.sbwnpc.squad.network.OpenSupplyScreenPayload
 import com.sbwnpc.squad.network.sendToClient
 import com.sbwnpc.squad.squad.PlayerFactionRegistry
-import net.minecraft.nbt.CompoundTag
-import net.minecraft.nbt.ListTag
-import net.minecraft.server.level.ServerPlayer
 import net.minecraft.ChatFormatting
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.minecraft.nbt.CompoundTag
+import net.minecraft.nbt.ListTag
 import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.player.Player
@@ -45,9 +45,10 @@ import net.minecraft.world.phys.BlockHitResult
  *
  * Blocks placed before it did anything have no block entity and stay inert until put down again.
  */
-class SupplyBlock : BaseEntityBlock(
-    Properties.of().mapColor(MapColor.COLOR_GRAY).strength(4.0f, 8.0f).sound(SoundType.METAL)
-) {
+class SupplyBlock :
+    BaseEntityBlock(
+        Properties.of().mapColor(MapColor.COLOR_GRAY).strength(4.0f, 8.0f).sound(SoundType.METAL),
+    ) {
     init {
         registerDefaultState(stateDefinition.any().setValue(FACING, Direction.NORTH))
     }
@@ -80,35 +81,33 @@ class SupplyBlock : BaseEntityBlock(
         builder.add(FACING)
     }
 
-    override fun getStateForPlacement(context: BlockPlaceContext): BlockState =
-        defaultBlockState().setValue(FACING, context.horizontalDirection.opposite)
+    override fun getStateForPlacement(context: BlockPlaceContext): BlockState = defaultBlockState().setValue(FACING, context.horizontalDirection.opposite)
 
-    override fun rotate(state: BlockState, rotation: Rotation): BlockState =
-        state.setValue(FACING, rotation.rotate(state.getValue(FACING)))
+    override fun rotate(state: BlockState, rotation: Rotation): BlockState = state.setValue(FACING, rotation.rotate(state.getValue(FACING)))
 
-    override fun mirror(state: BlockState, mirror: Mirror): BlockState =
-        state.rotate(mirror.getRotation(state.getValue(FACING)))
+    override fun mirror(state: BlockState, mirror: Mirror): BlockState = state.rotate(mirror.getRotation(state.getValue(FACING)))
 
     override fun useWithoutItem(
         state: BlockState,
         level: Level,
         pos: BlockPos,
         player: Player,
-        hitResult: BlockHitResult
+        hitResult: BlockHitResult,
     ): InteractionResult {
         if (level !is ServerLevel || player !is ServerPlayer) return InteractionResult.SUCCESS
         val be = level.getBlockEntity(pos) as? SupplyBlockEntity
         when {
             be == null -> actionbar(player, "Supply point — place it again to use it", ChatFormatting.GRAY)
+
             !be.serves(PlayerFactionRegistry.get(level).get(player.uuid)) ->
                 actionbar(player, "${be.faction?.label ?: "Another side"}'s Supply", ChatFormatting.RED)
+
             else -> sendToClient(player, OpenSupplyScreenPayload(pos.immutable(), snapshot(player, level, pos, be)))
         }
         return InteractionResult.SUCCESS
     }
 
-    private fun actionbar(player: Player, text: String, color: ChatFormatting) =
-        player.displayClientMessage(Component.literal(text).withStyle(color), true)
+    private fun actionbar(player: Player, text: String, color: ChatFormatting) = player.displayClientMessage(Component.literal(text).withStyle(color), true)
 
     companion object {
         val FACING = BlockStateProperties.HORIZONTAL_FACING
@@ -127,20 +126,26 @@ class SupplyBlock : BaseEntityBlock(
                 for (option in kit.options) {
                     val items = ListTag()
                     option.items.forEach { (id, count) ->
-                        items.add(CompoundTag().apply {
-                            putString("Item", id.toString())
-                            putInt("Count", count)
-                        })
+                        items.add(
+                            CompoundTag().apply {
+                                putString("Item", id.toString())
+                                putInt("Count", count)
+                            },
+                        )
                     }
-                    options.add(CompoundTag().apply {
-                        putString("Weapon", option.weapon.toString())
-                        put("Items", items)
-                    })
+                    options.add(
+                        CompoundTag().apply {
+                            putString("Weapon", option.weapon.toString())
+                            put("Items", items)
+                        },
+                    )
                 }
-                kits.add(CompoundTag().apply {
-                    putString("Name", kit.name)
-                    put("Options", options)
-                })
+                kits.add(
+                    CompoundTag().apply {
+                        putString("Name", kit.name)
+                        put("Options", options)
+                    },
+                )
             }
             tag.put("Kits", kits)
             return tag

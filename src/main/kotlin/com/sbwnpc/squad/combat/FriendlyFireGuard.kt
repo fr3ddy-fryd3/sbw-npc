@@ -2,8 +2,8 @@ package com.sbwnpc.squad.combat
 
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
-import net.minecraft.server.level.ServerLevel
 import com.sbwnpc.squad.team.SquadTeams
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.phys.AABB
@@ -62,8 +62,14 @@ object FriendlyFireGuard {
     /** One pass answering both "is the firing cone toward [aimPoint] clear" and "is the blast
      *  radius around [impactPoint] clear" — GunAttackBehaviour needs both every time it evaluates a
      *  shot, and they used to be two separate entity queries per tick per shooter. */
-    fun assess(shooter: NpcEntity, aimPoint: Vec3, spread: Double, impactPoint: Vec3, blastRadius: Double,
-               from: Vec3 = shooter.eyePosition): Assessment {
+    fun assess(
+        shooter: NpcEntity,
+        aimPoint: Vec3,
+        spread: Double,
+        impactPoint: Vec3,
+        blastRadius: Double,
+        from: Vec3 = shooter.eyePosition,
+    ): Assessment {
         val toAim = aimPoint.subtract(from)
         val aimDist = toAim.length()
         val aimDir = if (aimDist < 1.0e-6) null else toAim.scale(1.0 / aimDist)
@@ -82,7 +88,9 @@ object FriendlyFireGuard {
         forEachAlly(shooter, { coneBox.intersects(it.boundingBox) || (checkBlast && blastBox.contains(it.position())) }) { ally ->
             if (lineClear && aimDir != null && coneBox.intersects(ally.boundingBox) &&
                 inFiringCone(ally, from, aimDir, aimDist, maxAngle)
-            ) lineClear = false
+            ) {
+                lineClear = false
+            }
             if (blastClear && checkBlast && canBeHurt(ally) && ally.position().distanceTo(impactPoint) <= blastRadius) blastClear = false
             if (!lineClear && !blastClear) return Assessment(false, false)
         }
@@ -106,14 +114,12 @@ object FriendlyFireGuard {
     /** True if no ally sits inside the actual firing cone toward [aimPoint] at the given [spread]
      *  (SBW's gun-spread units — pass 0.0 for an unspread/lobbed throw, which collapses this to a
      *  thin-line check plus each ally's own body-radius margin). */
-    fun hasClearLineOfFire(shooter: NpcEntity, aimPoint: Vec3, spread: Double = 0.0): Boolean =
-        assess(shooter, aimPoint, spread, aimPoint, 0.0).lineClear
+    fun hasClearLineOfFire(shooter: NpcEntity, aimPoint: Vec3, spread: Double = 0.0): Boolean = assess(shooter, aimPoint, spread, aimPoint, 0.0).lineClear
 
     /** True if no ally sits within [blastRadius] of [impactPoint] — a separate check from the
      *  firing cone above, for weapons that damage an area at the target rather than just along
      *  the shot's path (M79 grenade rounds, thrown M67). */
-    fun hasClearBlastRadius(shooter: NpcEntity, impactPoint: Vec3, blastRadius: Double): Boolean =
-        allyInBlast(shooter, impactPoint, blastRadius) == null
+    fun hasClearBlastRadius(shooter: NpcEntity, impactPoint: Vec3, blastRadius: Double): Boolean = allyInBlast(shooter, impactPoint, blastRadius) == null
 
     /** The first ally within [blastRadius] of [impactPoint], or null — [hasClearBlastRadius] with
      *  the answer to "who, then?" for callers that report why they held fire. */
@@ -129,8 +135,7 @@ object FriendlyFireGuard {
     /** A creative or spectating player takes no blast damage, so holding an explosive for one is
      *  holding it for nobody — and the one watching a fight up close is usually the tester. It
      *  still counts for the firing cone: a round stops on a creative player's body all the same. */
-    private fun canBeHurt(ally: LivingEntity): Boolean =
-        ally !is Player || (!ally.isCreative && !ally.isSpectator)
+    private fun canBeHurt(ally: LivingEntity): Boolean = ally !is Player || (!ally.isCreative && !ally.isSpectator)
 
     /** Steps [shooter] a short distance perpendicular to the shooter->[aimPoint] line, trying for
      *  an angle clear of whatever ally is currently in the way. Picks whichever side is currently

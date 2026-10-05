@@ -191,6 +191,39 @@ tasks.withType<Test> {
     systemProperty("sbwnpc.projectDir", projectDir.absolutePath)
 }
 
+// Development tooling has its own classpath and is never included in the mod's runtime or jar.
+val kotlinStyle: Configuration by configurations.creating {
+    isCanBeConsumed = false
+}
+dependencies {
+    kotlinStyle("com.pinterest.ktlint:ktlint-cli:1.8.0:all") { isTransitive = false }
+}
+
+val kotlinStyleFiles = fileTree("src") {
+    include("main/kotlin/**/*.kt", "test/kotlin/**/*.kt")
+}
+
+val checkKotlinStyle = tasks.register<JavaExec>("checkKotlinStyle") {
+    group = "verification"
+    description = "Check Kotlin source formatting using the project's .editorconfig."
+    classpath = kotlinStyle
+    mainClass.set("com.pinterest.ktlint.Main")
+    workingDir = projectDir
+    inputs.files(kotlinStyleFiles, ".editorconfig")
+    args("--relative", "src/main/kotlin/**/*.kt", "src/test/kotlin/**/*.kt")
+}
+
+tasks.register<JavaExec>("formatKotlin") {
+    group = "formatting"
+    description = "Format this project's Kotlin sources; excludes generated code and SuperbWarfare."
+    classpath = kotlinStyle
+    mainClass.set("com.pinterest.ktlint.Main")
+    workingDir = projectDir
+    args("--format", "--relative", "src/main/kotlin/**/*.kt", "src/test/kotlin/**/*.kt")
+}
+
+tasks.named("check") { dependsOn(checkKotlinStyle) }
+
 tasks.withType<JavaCompile> {
     options.encoding = "UTF-8"
 }

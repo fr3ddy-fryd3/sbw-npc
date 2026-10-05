@@ -32,24 +32,30 @@ class RoutesScreen(snapshot: CompoundTag) : Screen(Component.literal("Patrol Rou
         val x = width / 2 - 150
         var y = height / 2 - 90
 
-        addRenderableWidget(Button.builder(Component.literal("+ Add route")) {
-            PacketDistributor.sendToServer(RouteCmdPayload(RouteCmdPayload.START_RECORDING, "", ""))
-            onClose()
-        }.bounds(x, y, 300, 20).build())
+        addRenderableWidget(
+            Button.builder(Component.literal("+ Add route")) {
+                PacketDistributor.sendToServer(RouteCmdPayload(RouteCmdPayload.START_RECORDING, "", ""))
+                onClose()
+            }.bounds(x, y, 300, 20).build(),
+        )
 
         y += 26
         if (routes.isEmpty()) {
             // Just a label — no widget needed, drawn in render().
         }
         for (route in routes) {
-            addRenderableWidget(Button.builder(Component.literal("Assign")) {
-                Minecraft.getInstance().setScreen(AssignRouteScreen(route.id, squads, this))
-            }.bounds(x + 210, y, 60, 20).build())
+            addRenderableWidget(
+                Button.builder(Component.literal("Assign")) {
+                    Minecraft.getInstance().setScreen(AssignRouteScreen(route.id, squads, this))
+                }.bounds(x + 210, y, 60, 20).build(),
+            )
 
-            addRenderableWidget(Button.builder(Component.literal("X").withStyle(ChatFormatting.RED)) {
-                PacketDistributor.sendToServer(RouteCmdPayload(RouteCmdPayload.DELETE, route.id, ""))
-                onClose()
-            }.bounds(x + 276, y, 24, 20).build())
+            addRenderableWidget(
+                Button.builder(Component.literal("X").withStyle(ChatFormatting.RED)) {
+                    PacketDistributor.sendToServer(RouteCmdPayload(RouteCmdPayload.DELETE, route.id, ""))
+                    onClose()
+                }.bounds(x + 276, y, 24, 20).build(),
+            )
 
             y += 24
         }

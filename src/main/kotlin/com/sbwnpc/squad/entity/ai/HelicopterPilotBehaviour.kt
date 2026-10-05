@@ -43,6 +43,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
     private enum class Phase { TAKEOFF, TRANSIT, STATION, LANDING }
 
     private var phase = Phase.TAKEOFF
+
     /** Roll one tick ago, so the trim can steer on the rate as well as the angle. The engine's own
      *  roll rate lives in `deltaRot`, which it resets and reuses internally, so measure it here. */
     private var lastRoll = 0f
@@ -51,9 +52,11 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var loiterAngle = 0.0
     private var boardingSince = Int.MIN_VALUE / 2
     private var nextScoutTick = 0
+
     /** Other helicopters near enough to matter, refreshed on an interval rather than per tick —
      *  see [refreshTraffic]. */
     private var trafficPositions: List<Vec3> = emptyList()
+
     /** Only the aircraft actually flying nearby — what the altitude bands are computed against. */
     private var layerIds: List<java.util.UUID> = emptyList()
     private var nextTrafficTick = 0
@@ -66,8 +69,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
-        entity.npcClass == NpcClass.HELICOPTER_PILOT && flyable(entity) != null
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = entity.npcClass == NpcClass.HELICOPTER_PILOT && flyable(entity) != null
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = flyable(entity) != null
 
@@ -163,7 +165,8 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         // Guarded rather than left to DebugFlags.log alone, because the formatting below would
         // otherwise still run on every sample with the flag off.
         if (DebugFlags.on(LogGroup.HELI) && entity.tickCount % TELEMETRY_INTERVAL == 0) {
-            DebugFlags.log(LogGroup.HELI,
+            DebugFlags.log(
+                LogGroup.HELI,
                 "{} phase={} h={} y={} power={} rotor={} pitch={} roll={} vy={} spd={} target={} reloc={} toHome={} boarding={} seats={}",
                 entity.uuid, phase, "%.1f".format(height), "%.1f".format(heli.y),
                 "%.4f".format(Ports.vehicles.throttle(heli)), "%.4f".format(Ports.vehicles.rotorSpeed(heli)),
@@ -171,7 +174,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
                 "%.3f".format(heli.deltaMovement.y), "%.3f".format(heli.deltaMovement.horizontalDistance()),
                 target?.name?.string ?: "none", relocating,
                 "%.1f".format(HelicopterFlightController.horizontalDistance(heli.position(), home)),
-                boarding, "${Ports.vehicles.seating(heli).count { it != null }}/${Ports.vehicles.seating(heli).size}"
+                boarding, "${Ports.vehicles.seating(heli).count { it != null }}/${Ports.vehicles.seating(heli).size}",
             )
         }
 
@@ -189,6 +192,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
                     DebugFlags.log(LogGroup.HELI, "{} airborne, transiting to {}", entity.uuid, station)
                 }
             }
+
             Phase.TRANSIT -> {
                 fly(level, heli, station, facing, mission.speed, rollRate, clearance)
                 if (!mission.attackOrbit && HelicopterFlightController.horizontalDistance(heli.position(), station) <= ON_STATION_RADIUS) {
@@ -196,6 +200,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
                     phase = if (mission.landOnArrival) Phase.LANDING else Phase.STATION
                 }
             }
+
             Phase.STATION -> {
                 if (mission.attackOrbit) {
                     phase = Phase.TRANSIT
@@ -211,6 +216,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
                     onStationReached(mission)
                 }
             }
+
             Phase.LANDING -> {
                 if (heli.onGround() || height < ON_DECK_HEIGHT) {
                     idleOnPad(heli, rollRate)
@@ -241,7 +247,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
          *  seen; anything else keeps the safe margin. */
         val clearance: Double = CRUISE_CLEARANCE,
         val patrol: Boolean = false,
-        val attackOrbit: Boolean = false
+        val attackOrbit: Boolean = false,
     )
 
     /**
@@ -262,7 +268,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         heli: Entity,
         target: LivingEntity?,
         home: Vec3,
-        airworthy: Boolean
+        airworthy: Boolean,
     ): Mission {
         val level = entity.level() as? ServerLevel
         // Mi-28 lays its turret on a target; AH-6 positions the aircraft for its bench gunners.
@@ -280,9 +286,13 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
                 orbitDirection = BenchAttackOrbit.direction(seats.getOrNull(2) != null, seats.getOrNull(3) != null)
             }
             return Mission(
-                BenchAttackOrbit.waypoint(heli.position(), home, orbitDirection, heli.yRot), null,
-                false, BenchAttackOrbit.SPEED, anchor = home, clearance = BenchAttackOrbit.CLEARANCE,
-                attackOrbit = true
+                BenchAttackOrbit.waypoint(heli.position(), home, orbitDirection, heli.yRot),
+                null,
+                false,
+                BenchAttackOrbit.SPEED,
+                anchor = home,
+                clearance = BenchAttackOrbit.CLEARANCE,
+                attackOrbit = true,
             )
         }
         if (gunship && target != null) {
@@ -294,12 +304,19 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         return when (entity.currentSquad()?.order) {
             SquadOrder.DEFEND, SquadOrder.PATROL -> Mission(
-                loiterPoint(home), null, false, LOITER_SPEED,
-                anchor = home, clearance = PATROL_CLEARANCE, patrol = true
+                loiterPoint(home),
+                null,
+                false,
+                LOITER_SPEED,
+                anchor = home,
+                clearance = PATROL_CLEARANCE,
+                patrol = true,
             )
+
             // A gunship retires once contact clears. AH-6 holds its commanded orbit above.
             SquadOrder.ATTACK ->
                 if (gunship) landingMission(level, retirePoint(home)) else landingMission(level, home)
+
             else -> landingMission(level, home)
         }
     }
@@ -405,11 +422,12 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         return battle.add(dir.scale(RETIRE_DISTANCE))
     }
 
-    private fun loiterPoint(home: Vec3): Vec3 = Vec3(
-        home.x + Math.cos(loiterAngle) * LOITER_RADIUS,
-        home.y,
-        home.z + Math.sin(loiterAngle) * LOITER_RADIUS
-    )
+    private fun loiterPoint(home: Vec3): Vec3 =
+        Vec3(
+            home.x + Math.cos(loiterAngle) * LOITER_RADIUS,
+            home.y,
+            home.z + Math.sin(loiterAngle) * LOITER_RADIUS,
+        )
 
     /** Only the loiter has anywhere further to go once it arrives. */
     private fun onStationReached(mission: Mission) {
@@ -426,8 +444,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         return vehicle
     }
 
-    private fun engagementTarget(entity: NpcEntity): LivingEntity? =
-        entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) }
+    private fun engagementTarget(entity: NpcEntity): LivingEntity? = entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) }
 
     /** Nearest point on the standoff ring around [target] — recomputed every tick, so the aircraft
      *  closes to gun range and then simply stops rather than orbiting or overflying. */
@@ -438,15 +455,22 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun fly(
-        level: ServerLevel, heli: Entity, station: Vec3, facing: Vec3?, speed: Double,
-        rollRate: Float, clearance: Double
+        level: ServerLevel,
+        heli: Entity,
+        station: Vec3,
+        facing: Vec3?,
+        speed: Double,
+        rollRate: Float,
+        clearance: Double,
     ) {
         val desiredY = DroneFlightController.cruiseAltitude(
-            terrainAhead(level, heli, station), clearance, heli.y
+            terrainAhead(level, heli, station),
+            clearance,
+            heli.y,
         )
         val cmd = HelicopterFlightController.steer(
             heli.position(), heli.yRot, heli.xRot, Ports.vehicles.roll(heli), rollRate, heli.deltaMovement,
-            station, desiredY, speed, tuningOf(heli), facing
+            station, desiredY, speed, tuningOf(heli), facing,
         )
         apply(heli, cmd)
     }
@@ -487,7 +511,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
             heli,
             climb = collective == HelicopterFlightController.Collective.CLIMB,
             sinkSlow = collective == HelicopterFlightController.Collective.SINK_SLOW,
-            sinkFast = collective == HelicopterFlightController.Collective.SINK_FAST
+            sinkFast = collective == HelicopterFlightController.Collective.SINK_FAST,
         )
     }
 
@@ -510,12 +534,11 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         return HelicopterFlightController.Tuning(
             authority = Ports.vehicles.rotorSpeed(heli),
             yawSpeed = rates?.yaw ?: 1f,
-            pitchSpeed = rates?.pitch ?: 1f
+            pitchSpeed = rates?.pitch ?: 1f,
         )
     }
 
-    private fun groundY(level: ServerLevel, x: Double, z: Double): Int =
-        level.getHeight(Heightmap.Types.MOTION_BLOCKING, x.toInt(), z.toInt())
+    private fun groundY(level: ServerLevel, x: Double, z: Double): Int = level.getHeight(Heightmap.Types.MOTION_BLOCKING, x.toInt(), z.toInt())
 
     private fun terrainAhead(level: ServerLevel, heli: Entity, toward: Vec3): List<Int> {
         val pos = heli.position()
@@ -530,6 +553,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
     private companion object {
         /** Higher than the drone's, on purpose: this one is supposed to survive the trip. */
         const val CRUISE_CLEARANCE = 28.0
+
         /** No cyclic below this height over the terrain — see the check in tick(). */
         const val MIN_TRANSLATE_HEIGHT = 6.0
         const val ON_DECK_HEIGHT = 0.6
@@ -537,23 +561,29 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         const val TRAFFIC_INTERVAL_TICKS = 10
         const val CRUISE_SPEED = 0.85
         const val HOLD_SPEED = 0.15
+
         /** Close enough for the turret to do real work, far enough not to be parked overhead. */
         const val STANDOFF_RANGE = 20.0
+
         /** How far the squad's objective has to be before flying there beats sitting on the pad. */
         const val RELOCATE_DISTANCE = 24.0
+
         /** Clear this far from the last fight before putting down. */
         const val RETIRE_DISTANCE = 80.0
+
         /** Keep treating the area as hot for this long after the last confirmed target. */
         const val COMBAT_HOLD_TICKS = 200
         const val LOITER_RADIUS = 70.0
         const val LOITER_SPEED = 0.35
         const val LOITER_STEP = Math.PI / 4
+
         /** Half the transit margin: high enough to clear the trees, low enough to be part of the
          *  fight rather than a dot nobody trades fire with. */
         const val PATROL_CLEARANCE = 14.0
         const val SCOUT_RANGE = 75.0
         const val SCOUT_INTERVAL_TICKS = 20
         const val MAX_SCOUT_SIGHT_CHECKS = 6
+
         /** How long a transport holds on the pad for its squad before going without them. */
         const val BOARDING_TIMEOUT_TICKS = 400
         const val BOARDING_WAIT_RANGE = 40.0

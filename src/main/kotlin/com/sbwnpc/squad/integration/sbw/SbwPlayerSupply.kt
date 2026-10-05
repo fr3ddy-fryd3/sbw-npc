@@ -38,9 +38,12 @@ object SbwPlayerSupply : PlayerSupply {
         val launcher: Boolean = false,
     )
 
-    private fun fighter(medkits: Int = 1) = listOf(
-        ModItems.HAND_GRENADE to 2, ModItems.RGO_GRENADE to 2, ModItems.MEDICAL_KIT to medkits
-    )
+    private fun fighter(medkits: Int = 1) =
+        listOf(
+            ModItems.HAND_GRENADE to 2,
+            ModItems.RGO_GRENADE to 2,
+            ModItems.MEDICAL_KIT to medkits,
+        )
 
     /** Drone Warfare addon's FPV goggles: its FPV drone is flown only with them on, plus a Monitor. */
     private val ADDON_FPV_GOGGLES_ID = ResourceLocation.fromNamespaceAndPath("sbwdroneconfig", "fpv_goggles")
@@ -52,39 +55,46 @@ object SbwPlayerSupply : PlayerSupply {
     private fun droneKit(): List<Pair<Supplier<out Item>, Int>> {
         val fpv = addonItem(SbwDrones.ADDON_FPV_DRONE_ID)
         val goggles = addonItem(ADDON_FPV_GOGGLES_ID)
-        val drones = if (fpv != null && goggles != null) listOf(Supplier { fpv } to 10, Supplier { goggles } to 1)
-            else listOf(ModItems.DRONE to 10)
+        val drones = if (fpv != null && goggles != null) {
+            listOf(Supplier { fpv } to 10, Supplier { goggles } to 1)
+        } else {
+            listOf(ModItems.DRONE to 10)
+        }
         return drones + listOf(ModItems.MONITOR to 1, ModItems.MEDICAL_KIT to 1)
     }
 
     /** Built on first use: the addon's items are looked up in the item registry. */
-    private val SPECS by lazy { listOf(
-        Spec("Rifleman", NpcClass.RIFLEMAN, fighter()),
-        // Fresh RPGs select TBG by default; supply rounds they can reload without switching types.
-        Spec("Machine gunner", NpcClass.MACHINE_GUNNER, fighter() + (ModItems.RPG_ROCKET_TBG to 2), launcher = true),
-        Spec("Sniper", NpcClass.SNIPER, fighter()),
-        Spec("Grenadier", NpcClass.GRENADIER, fighter()),
-        Spec("Medic", NpcClass.MEDIC, fighter(medkits = 10)),
-        Spec("Drone operator", NpcClass.DRONE_OPERATOR, droneKit()),
-    ) }
+    private val SPECS by lazy {
+        listOf(
+            Spec("Rifleman", NpcClass.RIFLEMAN, fighter()),
+            // Fresh RPGs select TBG by default; supply rounds they can reload without switching types.
+            Spec("Machine gunner", NpcClass.MACHINE_GUNNER, fighter() + (ModItems.RPG_ROCKET_TBG to 2), launcher = true),
+            Spec("Sniper", NpcClass.SNIPER, fighter()),
+            Spec("Grenadier", NpcClass.GRENADIER, fighter()),
+            Spec("Medic", NpcClass.MEDIC, fighter(medkits = 10)),
+            Spec("Drone operator", NpcClass.DRONE_OPERATOR, droneKit()),
+        )
+    }
 
     /** Built on first use: the gun data behind the ammunition lines needs the registries. */
     override val kits: List<Kit> by lazy {
         SPECS.map { spec ->
-            Kit(spec.name, spec.cls.weaponPool.map { weapon ->
-                val items = mutableListOf<Pair<ResourceLocation, Int>>()
-                ammoFor(spec.cls, weapon)?.let { (ammo, count) -> items += key(ammo) to count }
-                if (spec.launcher) items += RPG to 1
-                spec.extras.forEach { (item, count) -> items += key(item.get()) to count }
-                KitOption(weapon, items)
-            })
+            Kit(
+                spec.name,
+                spec.cls.weaponPool.map { weapon ->
+                    val items = mutableListOf<Pair<ResourceLocation, Int>>()
+                    ammoFor(spec.cls, weapon)?.let { (ammo, count) -> items += key(ammo) to count }
+                    if (spec.launcher) items += RPG to 1
+                    spec.extras.forEach { (item, count) -> items += key(item.get()) to count }
+                    KitOption(weapon, items)
+                },
+            )
         }
     }
 
     private fun key(item: Item) = BuiltInRegistries.ITEM.getKey(item)
 
-    private fun gunItem(id: ResourceLocation): GunItem? =
-        BuiltInRegistries.ITEM.getOptional(id).orElse(null) as? GunItem
+    private fun gunItem(id: ResourceLocation): GunItem? = BuiltInRegistries.ITEM.getOptional(id).orElse(null) as? GunItem
 
     /** A gun of [item] with its magazine full. */
     private fun loaded(item: GunItem): ItemStack {
@@ -104,8 +114,10 @@ object SbwPlayerSupply : PlayerSupply {
         if (rounds <= 0) return null
         return when (consumer.type) {
             AmmoConsumer.AmmoConsumeType.PLAYER_AMMO -> consumer.playerAmmoType?.let { it.item to rounds }
+
             AmmoConsumer.AmmoConsumeType.ITEM ->
                 consumer.stack().takeUnless { it.isEmpty }?.let { it.item to rounds / consumer.loadAmount.coerceAtLeast(1) }
+
             else -> null
         }
     }
@@ -153,10 +165,12 @@ object SbwPlayerSupply : PlayerSupply {
                 variable.sync(player)
                 true
             }
+
             AmmoConsumer.AmmoConsumeType.ITEM -> {
                 val stack = consumer.stack()
                 !stack.isEmpty && topUpItems(player, stack.item, rounds / consumer.loadAmount.coerceAtLeast(1))
             }
+
             else -> false
         }
     }

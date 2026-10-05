@@ -53,9 +53,12 @@ object PerfProbe {
         val npcs = event.server.allLevels.sumOf { NpcRegistry.all(it).size }
         // Measured here rather than read off the server's own tick-time array so the number means
         // the same thing on an integrated server as on a dedicated one.
-        DebugFlags.log(LogGroup.PERF,
+        DebugFlags.log(
+            LogGroup.PERF,
             "server: {} ms/tick over {} ticks, {} NPCs loaded",
-            "%.2f".format(tickNanos / 1_000_000.0 / ticks), ticks, npcs
+            "%.2f".format(tickNanos / 1_000_000.0 / ticks),
+            ticks,
+            npcs,
         )
         tickNanos = 0
         ticks = 0
@@ -99,11 +102,12 @@ object PerfProbe {
             val elapsed = now - lastReport
             if (elapsed < REPORT_INTERVAL_MS) return
             val perFrame = frames.coerceAtLeast(1).toDouble()
-            DebugFlags.log(LogGroup.PERF,
+            DebugFlags.log(
+                LogGroup.PERF,
                 "client: {} fps, {} NPC renders per frame ({} with weapons)",
                 "%.1f".format(frames * 1000.0 / elapsed),
                 "%.1f".format(rendered / perFrame),
-                "%.1f".format(weapons / perFrame)
+                "%.1f".format(weapons / perFrame),
             )
             lastReport = now
             frames = 0

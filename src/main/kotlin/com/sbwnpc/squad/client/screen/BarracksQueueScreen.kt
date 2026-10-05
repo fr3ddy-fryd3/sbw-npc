@@ -14,14 +14,16 @@ import net.neoforged.neoforge.network.PacketDistributor
 class BarracksQueueScreen(
     private val parent: RecruitScreen,
     private val pos: BlockPos,
-    private var snapshot: CompoundTag
+    private var snapshot: CompoundTag,
 ) : Screen(Component.literal("Barracks recruitment queue")) {
     private var refreshTicks = 20
     private var scroll = 0
 
     override fun init() {
-        addRenderableWidget(Button.builder(Component.literal("Back")) { onClose() }
-            .bounds(width / 2 - 75, height - 28, 150, 20).build())
+        addRenderableWidget(
+            Button.builder(Component.literal("Back")) { onClose() }
+                .bounds(width / 2 - 75, height - 28, 150, 20).build(),
+        )
     }
 
     fun updateQueue(pos: BlockPos, data: CompoundTag) {
@@ -48,7 +50,10 @@ class BarracksQueueScreen(
         val reason = snapshot.getString("Reason")
         val reasonLines = font.split(Component.literal(reason), maxOf(100, width - 24))
         var top = 46
-        reasonLines.forEach { line -> g.drawString(font, line, 12, top, 0xFFAA55); top += 11 }
+        reasonLines.forEach { line ->
+            g.drawString(font, line, 12, top, 0xFFAA55)
+            top += 11
+        }
         if (reason.isNotEmpty()) top += 4
         val visible = maxOf(1, (height - 42 - top) / 22)
         scroll = scroll.coerceIn(0, maxOf(0, entries.size - visible))
@@ -67,6 +72,8 @@ class BarracksQueueScreen(
         return true
     }
 
-    override fun onClose() { minecraft?.setScreen(parent) }
+    override fun onClose() {
+        minecraft?.setScreen(parent)
+    }
     override fun isPauseScreen() = false
 }

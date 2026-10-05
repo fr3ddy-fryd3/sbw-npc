@@ -21,15 +21,15 @@ object Vision {
     const val CONE_DEGREES = 150.0
 
     /** Body-distance threats are noticed all round; more distant enemies still need the cone. */
-    fun noticesClose(viewerPos: Vec3,yaw: Float,targetPos: Vec3): Boolean =
-        viewerPos.distanceToSqr(targetPos)<=36.0 &&
-            (viewerPos.distanceToSqr(targetPos)<=6.25 || inCone(viewerPos,yaw,targetPos))
+    fun noticesClose(viewerPos: Vec3, yaw: Float, targetPos: Vec3): Boolean =
+        viewerPos.distanceToSqr(targetPos) <= 36.0 &&
+            (viewerPos.distanceToSqr(targetPos) <= 6.25 || inCone(viewerPos, yaw, targetPos))
 
     fun inCone(
         viewerPos: Vec3,
         viewYawDegrees: Float,
         targetPos: Vec3,
-        coneDegrees: Double = CONE_DEGREES
+        coneDegrees: Double = CONE_DEGREES,
     ): Boolean {
         val dx = targetPos.x - viewerPos.x
         val dz = targetPos.z - viewerPos.z

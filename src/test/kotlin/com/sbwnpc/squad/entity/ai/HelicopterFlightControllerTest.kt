@@ -5,14 +5,15 @@ import com.sbwnpc.squad.entity.ai.HelicopterFlightController.Tuning
 import net.minecraft.util.Mth
 import net.minecraft.world.phys.Vec3
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import kotlin.math.cos
 import kotlin.math.sin
 
 class HelicopterFlightControllerTest {
     private val origin = Vec3(0.0, 80.0, 0.0)
+
     /** Rotor spun up to roughly the hover point, Mi-28 engine tuning. */
     private val cruising = Tuning(authority = 0.09f, yawSpeed = 0.85f, pitchSpeed = 0.75f)
 
@@ -55,7 +56,7 @@ class HelicopterFlightControllerTest {
         val target = Vec3(0.0, 80.0, 200.0) // due south, yaw 0
         val facingAway = HelicopterFlightController.steer(
             origin, yaw = 180f, pitch = 0f, roll = 0f, rollRate = 0f, velocity = Vec3.ZERO,
-            target = target, desiredY = 80.0, cruiseSpeed = 0.8, tuning = cruising
+            target = target, desiredY = 80.0, cruiseSpeed = 0.8, tuning = cruising,
         )
         // Pointed the wrong way: no nose-down command yet, but the stick is turning us around.
         assertEquals(0f, facingAway.mouseY, 1e-6f)
@@ -63,7 +64,7 @@ class HelicopterFlightControllerTest {
 
         val pointed = HelicopterFlightController.steer(
             origin, yaw = 0f, pitch = 0f, roll = 0f, rollRate = 0f, velocity = Vec3.ZERO,
-            target = target, desiredY = 80.0, cruiseSpeed = 0.8, tuning = cruising
+            target = target, desiredY = 80.0, cruiseSpeed = 0.8, tuning = cruising,
         )
         assertTrue(pointed.mouseY > 0f, "should command nose-down to accelerate")
     }
@@ -71,12 +72,12 @@ class HelicopterFlightControllerTest {
     @Test
     fun `hover mode only engages on arrival`() {
         val far = HelicopterFlightController.steer(
-            origin, 0f, 0f, 0f, 0f, Vec3(0.0, 0.0, 0.5), Vec3(0.0, 80.0, 100.0), 80.0, 0.8, cruising
+            origin, 0f, 0f, 0f, 0f, Vec3(0.0, 0.0, 0.5), Vec3(0.0, 80.0, 100.0), 80.0, 0.8, cruising,
         )
         assertFalse(far.hoverMode)
 
         val onStation = HelicopterFlightController.steer(
-            origin, 0f, 0f, 0f, 0f, Vec3(0.0, 0.0, 0.05), Vec3(0.0, 80.0, 2.0), 80.0, 0.8, cruising
+            origin, 0f, 0f, 0f, 0f, Vec3(0.0, 0.0, 0.05), Vec3(0.0, 80.0, 2.0), 80.0, 0.8, cruising,
         )
         assertTrue(onStation.hoverMode)
     }
@@ -110,7 +111,7 @@ class HelicopterFlightControllerTest {
         // lift vector further backwards — the aircraft then reverses away indefinitely.
         val reversing = HelicopterFlightController.steer(
             origin, yaw = 0f, pitch = 0f, roll = 0f, rollRate = 0f, velocity = Vec3(0.0, 0.0, -0.9),
-            target = target, desiredY = 80.0, cruiseSpeed = 0.35, tuning = cruising
+            target = target, desiredY = 80.0, cruiseSpeed = 0.35, tuning = cruising,
         )
         assertTrue(reversing.mouseY > 0f, "must command nose-down to stop going backwards")
     }
@@ -133,7 +134,7 @@ class HelicopterFlightControllerTest {
         repeat(1200) {
             val cmd = HelicopterFlightController.steer(
                 sim.pos, sim.yaw, sim.pitch, sim.roll, sim.rollRate(), sim.motion,
-                target, 90.0, 0.8, sim.tuning()
+                target, 90.0, 0.8, sim.tuning(),
             )
             sim.step(cmd)
             worstRetreat = minOf(worstRetreat, sim.pos.z)
@@ -153,7 +154,7 @@ class HelicopterFlightControllerTest {
         repeat(900) {
             val cmd = HelicopterFlightController.steer(
                 sim.pos, sim.yaw, sim.pitch, sim.roll, sim.rollRate(), sim.motion,
-                Vec3(-150.0, 0.0, -150.0), 90.0, 0.8, sim.tuning()
+                Vec3(-150.0, 0.0, -150.0), 90.0, 0.8, sim.tuning(),
             )
             sim.step(cmd)
             worst = maxOf(worst, kotlin.math.abs(sim.roll))
@@ -172,7 +173,7 @@ class HelicopterFlightControllerTest {
         val target = Vec3(120.0, 0.0, 90.0)
         repeat(1200) {
             val cmd = HelicopterFlightController.steer(
-                sim.pos, sim.yaw, sim.pitch, sim.roll, sim.rollRate(), sim.motion, target, 95.0, 0.8, sim.tuning()
+                sim.pos, sim.yaw, sim.pitch, sim.roll, sim.rollRate(), sim.motion, target, 95.0, 0.8, sim.tuning(),
             )
             sim.step(cmd)
         }
@@ -189,7 +190,7 @@ class HelicopterFlightControllerTest {
         val sim = Heli(pos = Vec3(0.0, 64.0, 0.0), yaw = 0f)
         repeat(400) {
             val cmd = HelicopterFlightController.steer(
-                sim.pos, sim.yaw, sim.pitch, sim.roll, sim.rollRate(), sim.motion, Vec3(0.0, 0.0, 0.0), 84.0, 0.8, sim.tuning()
+                sim.pos, sim.yaw, sim.pitch, sim.roll, sim.rollRate(), sim.motion, Vec3(0.0, 0.0, 0.0), 84.0, 0.8, sim.tuning(),
             )
             sim.step(cmd)
         }
@@ -200,8 +201,15 @@ class HelicopterFlightControllerTest {
     fun `AH-6 keeps circling with the firing bench facing the ground target`() {
         for (direction in listOf(1, -1)) {
             val center = Vec3(0.0, 66.0, 0.0)
-            val sim = Heli(Vec3(40.0, 90.0, 0.0), if (direction == 1) 0f else 180f,
-                increment = 1f, decrement = 1f, yawSpeed = 1f, pitchSpeed = 1f, rollSpeed = 0.75f)
+            val sim = Heli(
+                Vec3(40.0, 90.0, 0.0),
+                if (direction == 1) 0f else 180f,
+                increment = 1f,
+                decrement = 1f,
+                yawSpeed = 1f,
+                pitchSpeed = 1f,
+                rollSpeed = 0.75f,
+            )
             var angle = 0.0
             var goodArcTicks = 0
             var worstBank = 0f
@@ -210,7 +218,7 @@ class HelicopterFlightControllerTest {
                 val target = BenchAttackOrbit.waypoint(sim.pos, center, direction, sim.yaw)
                 val cmd = HelicopterFlightController.steer(
                     sim.pos, sim.yaw, sim.pitch, sim.roll, sim.rollRate(), sim.motion,
-                    target, 90.0, BenchAttackOrbit.SPEED, sim.tuning()
+                    target, 90.0, BenchAttackOrbit.SPEED, sim.tuning(),
                 )
                 assertFalse(cmd.hoverMode)
                 sim.step(cmd)
@@ -228,10 +236,14 @@ class HelicopterFlightControllerTest {
 
     /** Minimal model of VehicleEngineUtils.helicopterEngine — only the parts the controller drives. */
     private class Heli(
-        var pos: Vec3, var yaw: Float,
-        private val increment: Float = 0.8f, private val decrement: Float = 0.8f,
-        private val liftSpeed: Float = 1f, private val yawSpeed: Float = 0.85f,
-        private val pitchSpeed: Float = 0.75f, private val rollSpeed: Float = 0.6f
+        var pos: Vec3,
+        var yaw: Float,
+        private val increment: Float = 0.8f,
+        private val decrement: Float = 0.8f,
+        private val liftSpeed: Float = 1f,
+        private val yawSpeed: Float = 0.85f,
+        private val pitchSpeed: Float = 0.75f,
+        private val rollSpeed: Float = 0.6f,
     ) {
         var pitch = 0f
         var roll = 0f
@@ -264,18 +276,21 @@ class HelicopterFlightControllerTest {
                         minOf(power + 0.0012f * increment, 0.045f)
                     }
                 }
+
                 Collective.SINK_SLOW -> {
                     holdPowerTick++
                     if (engineStartOver) {
                         power = maxOf(power - 0.001f * decrement * minOf(holdPowerTick, 5), 0.058f / liftSpeed)
                     }
                 }
+
                 Collective.SINK_FAST -> {
                     holdPowerTick++
                     if (engineStartOver) {
                         power = maxOf(power - 0.001f * decrement * minOf(holdPowerTick, 5), 0.035f / liftSpeed)
                     }
                 }
+
                 Collective.HOLD -> {
                     holdPowerTick = 0
                     if (engineStartOver) {

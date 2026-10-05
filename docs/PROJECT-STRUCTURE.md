@@ -146,6 +146,8 @@ rg -n 'SquadTactics.move|movementLockedByCover' src/main/kotlin
 | `./gradlew test --console=plain` | Автоматические тесты; HTML-отчёт — `build/reports/tests/test/index.html`, XML — `build/test-results/test/` |
 | `./gradlew test --tests '*TacticalLifecycleTest' --console=plain` | Выбранный класс тестов |
 | `./gradlew compileKotlin --console=plain` | Проверка компиляции Kotlin |
+| `./gradlew formatKotlin --console=plain` | Единое оформление исходников и тестов Kotlin по `.editorconfig` |
+| `./gradlew checkKotlinStyle --console=plain` | Проверка оформления; также входит в `check` и `build` |
 | `./gradlew buildDevelop --console=plain` | Сборка для игровых тестов с доступной отладкой; результат — `build/libs/` |
 | `./gradlew buildProduction --console=plain` | Сборка с отключённой отладкой; обычный `build` использует тот же режим |
 | `git diff --check` | Проверка ошибок пробелов в изменениях |

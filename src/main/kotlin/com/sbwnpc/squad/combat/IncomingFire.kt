@@ -33,8 +33,9 @@ class IncomingFire {
     }
 
     fun point(now: Long): Vec3? = aim?.takeIf { now < expires }
+
     /** Recent bearings inform squad manoeuvres; the longer memory only finishes a cover reply. */
-    fun recentPoint(now: Long): Vec3? = point(now)?.takeIf { now-lastHit < 60 }
+    fun recentPoint(now: Long): Vec3? = point(now)?.takeIf { now - lastHit < 60 }
     fun pending(now: Long): Boolean = point(now) != null && bursts > 0
     fun beginReply(now: Long) {
         if (pending(now)) replyUntil = now + 60
@@ -51,14 +52,23 @@ class IncomingFire {
             nextShot = maxOf(nextShot, now + 10)
         }
     }
-    fun endReply() { replyUntil = Long.MIN_VALUE }
-    fun clear() { aim = null; bursts = 0; endReply() }
-    val roundsLeft: Int get() = bursts*3-rounds
+    fun endReply() {
+        replyUntil = Long.MIN_VALUE
+    }
+    fun clear() {
+        aim = null
+        bursts = 0
+        endReply()
+    }
+    val roundsLeft: Int get() = bursts * 3 - rounds
 
     companion object {
         /** A distant wall in an uncertain sector is an impact surface, not a blocked muzzle. */
-        fun laneEnd(from: Vec3, aim: Vec3): Vec3 = from.add(aim.subtract(from).normalize()
-            .scale(minOf(12.0,from.distanceTo(aim))))
+        fun laneEnd(from: Vec3, aim: Vec3): Vec3 =
+            from.add(
+                aim.subtract(from).normalize()
+                    .scale(minOf(12.0, from.distanceTo(aim))),
+            )
 
         fun direction(origin: Vec3, velocity: Vec3?, source: Vec3?): Vec3? {
             val towardsSource = velocity?.takeIf { it.lengthSqr() > 1.0e-6 }?.scale(-1.0)

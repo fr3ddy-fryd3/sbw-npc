@@ -1,17 +1,17 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
+import com.sbwnpc.squad.combat.DeathSites
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
-import com.sbwnpc.squad.combat.DeathSites
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.core.BlockPos
-import net.minecraft.world.phys.Vec3
-import com.sbwnpc.squad.init.ModMemories
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
+import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 import net.tslat.smartbrainlib.util.BrainUtils
 
@@ -39,13 +39,17 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     companion object {
         private const val ARRIVE_DISTANCE = 3.0
+
         /** A path that ended at least this much nearer than the last one began is worth another. */
         private const val PROGRESS = 2.0
+
         /** The spot moved farther than this: the way to the old one is no way to the new. */
         private const val SPOT_SHIFT = 16.0
+
         /** A moved spot is asked the way to at most this often: in a big fight the shots move it
          *  every second, and each ask is a long path search for every man sent to look. */
         private const val REPLAN_TICKS = 60
+
         /** The look at a death site is a raycast — twice a second is plenty. */
         private const val DEATH_SITE_CHECK_INTERVAL = 10
 
@@ -103,12 +107,15 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
             askedFrom = Double.MAX_VALUE
             entity.navigation.stop()
         }
-        log(entity, "$what ${BlockPos.containing(pos)} (${Math.sqrt(entity.distanceToSqr(pos)).toInt()} blocks)" +
-            when {
-                going -> ", ${pathTrace(entity, pos)}"
-                inAir -> ", in the air: asks once he lands"
-                else -> ", no path"
-            })
+        log(
+            entity,
+            "$what ${BlockPos.containing(pos)} (${Math.sqrt(entity.distanceToSqr(pos)).toInt()} blocks)" +
+                when {
+                    going -> ", ${pathTrace(entity, pos)}"
+                    inAir -> ", in the air: asks once he lands"
+                    else -> ", no path"
+                },
+        )
     }
 
     override fun tick(entity: NpcEntity) {
@@ -125,8 +132,13 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
                 // Still on his way: the new spot waits a little, so a run of shots is one new
                 // path rather than one each. The old spot stays the one to count from meanwhile.
                 if (end != null && entity.tickCount - askedAt < REPLAN_TICKS) {
-                    if (!deferring) log(entity, "spot moved ${Math.sqrt(pos.distanceToSqr(old)).toInt()} blocks, " +
-                        "path ends ${Math.sqrt(end.distToCenterSqr(pos)).toInt()} from it: asks in ${REPLAN_TICKS - (entity.tickCount - askedAt)} ticks")
+                    if (!deferring) {
+                        log(
+                            entity,
+                            "spot moved ${Math.sqrt(pos.distanceToSqr(old)).toInt()} blocks, " +
+                                "path ends ${Math.sqrt(end.distToCenterSqr(pos)).toInt()} from it: asks in ${REPLAN_TICKS - (entity.tickCount - askedAt)} ticks",
+                        )
+                    }
                     deferring = true
                     return
                 }
@@ -146,16 +158,25 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
                 val before = askedFrom
                 askedFrom = now
                 val going = entity.navigation.moveTo(pos.x, pos.y, pos.z, 1.0)
-                log(entity, "stretch ended ${now.toInt()} blocks off (asked from ${if (before == Double.MAX_VALUE) "the air" else before.toInt()}), asks again: " +
-                    if (going) pathTrace(entity, pos) else "no path")
+                log(
+                    entity,
+                    "stretch ended ${now.toInt()} blocks off (asked from ${if (before == Double.MAX_VALUE) "the air" else before.toInt()}), asks again: " +
+                        if (going) pathTrace(entity, pos) else "no path",
+                )
                 if (going) return
             } else {
                 log(entity, "stretch ended ${now.toInt()} blocks off, no nearer than the ${askedFrom.toInt()} it was asked from")
             }
         }
         if (entity.position().closerThan(pos, ARRIVE_DISTANCE) || entity.navigation.isDone) {
-            log(entity, if (entity.position().closerThan(pos, ARRIVE_DISTANCE)) "got there, nothing seen"
-                else "path ended ${Math.sqrt(entity.distanceToSqr(pos)).toInt()} blocks short, gives up")
+            log(
+                entity,
+                if (entity.position().closerThan(pos, ARRIVE_DISTANCE)) {
+                    "got there, nothing seen"
+                } else {
+                    "path ended ${Math.sqrt(entity.distanceToSqr(pos)).toInt()} blocks short, gives up"
+                },
+            )
             entity.clearAlert()
             return
         }
@@ -169,24 +190,28 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun stop(entity: NpcEntity) {
         // Stopped with the alert still up: something else took over.
         if (entity.isAlert()) {
-            log(entity, when {
-                entity.target != null -> "found a target"
-                entity.combatLockedByCover() -> "taken for cover"
-                entity.diggedIn -> "dug in"
-                entity.busyWithRole() -> "busy with a role"
-                entity.retreatPoint() != null -> "falling back"
-                entity.resupplying -> "off to resupply"
-                else -> "stopped"
-            })
+            log(
+                entity,
+                when {
+                    entity.target != null -> "found a target"
+                    entity.combatLockedByCover() -> "taken for cover"
+                    entity.diggedIn -> "dug in"
+                    entity.busyWithRole() -> "busy with a role"
+                    entity.retreatPoint() != null -> "falling back"
+                    entity.resupplying -> "off to resupply"
+                    else -> "stopped"
+                },
+            )
         }
     }
 
     private fun canPlan(entity: NpcEntity) = (entity.navigation as? VehicleAwareNavigation)?.canPlan != false
 
-    private fun pathTrace(entity: NpcEntity, pos: Vec3): String = entity.navigation.path?.let {
-        "path of ${it.nodeCount} nodes ends ${it.endNode?.asBlockPos()}, " +
-            "${it.endNode?.let { end -> Math.sqrt(end.asBlockPos().distToCenterSqr(pos)).toInt() }} blocks from the spot, reach=${it.canReach()}"
-    } ?: "no path kept"
+    private fun pathTrace(entity: NpcEntity, pos: Vec3): String =
+        entity.navigation.path?.let {
+            "path of ${it.nodeCount} nodes ends ${it.endNode?.asBlockPos()}, " +
+                "${it.endNode?.let { end -> Math.sqrt(end.asBlockPos().distToCenterSqr(pos)).toInt() }} blocks from the spot, reach=${it.canReach()}"
+        } ?: "no path kept"
 
     private fun log(entity: NpcEntity, what: String) {
         DebugFlags.log(LogGroup.HEARING, "{} investigating: {}", entity.uuid.toString().take(8), what)

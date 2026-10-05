@@ -30,14 +30,11 @@ class DetectionSightlineTest {
         override fun getMinBuildHeight() = -64
     }
 
-    private fun terrain(block: Block, count: Int): Terrain =
-        Terrain((1..count).associate { BlockPos(it, 64, 0) to block.defaultBlockState() })
+    private fun terrain(block: Block, count: Int): Terrain = Terrain((1..count).associate { BlockPos(it, 64, 0) to block.defaultBlockState() })
 
-    private fun seen(world: Terrain, start: Vec3 = from, end: Vec3 = to): Boolean =
-        DetectionSightline.visible(world, start, end, collision)
+    private fun seen(world: Terrain, start: Vec3 = from, end: Vec3 = to): Boolean = DetectionSightline.visible(world, start, end, collision)
 
-    private fun colliderClear(world: Terrain): Boolean =
-        world.clip(ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, collision)).type == HitResult.Type.MISS
+    private fun colliderClear(world: Terrain): Boolean = world.clip(ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, collision)).type == HitResult.Type.MISS
 
     @Test
     fun `two foliage blocks can be seen through but the third conceals the target`() {
@@ -83,10 +80,12 @@ class DetectionSightlineTest {
 
     @Test
     fun `a wall behind a window still blocks detection`() {
-        val world = Terrain(mapOf(
-            BlockPos(1, 64, 0) to Blocks.GLASS.defaultBlockState(),
-            BlockPos(4, 64, 0) to Blocks.STONE.defaultBlockState()
-        ))
+        val world = Terrain(
+            mapOf(
+                BlockPos(1, 64, 0) to Blocks.GLASS.defaultBlockState(),
+                BlockPos(4, 64, 0) to Blocks.STONE.defaultBlockState(),
+            ),
+        )
         assertFalse(seen(world))
         assertFalse(colliderClear(world))
     }

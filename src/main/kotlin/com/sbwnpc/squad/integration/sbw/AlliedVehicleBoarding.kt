@@ -31,12 +31,17 @@ object AlliedVehicleBoarding {
             vehicle.onCrowbarInteract(stack, player, hand)
         } else if (item is IVehicleInteract) {
             item.onInteractVehicle(vehicle, stack, player, hand)
-        } else null
+        } else {
+            null
+        }
         if (itemResult != null) return itemResult
         // A null tool result means "continue to boarding", especially for a crowbar used without
         // shift. Do not fall through to SBW and invoke the tool twice or eject the driver.
         if ((item is NameTagItem && stack.has(DataComponents.CUSTOM_NAME)) ||
-            stack.`is`(ModItems.C4_BOMB.get()) || stack.`is`(ModItems.DETONATOR.get())) return null
+            stack.`is`(ModItems.C4_BOMB.get()) || stack.`is`(ModItems.DETONATOR.get())
+        ) {
+            return null
+        }
 
         if (player.level().isClientSide) {
             // SBW also ejects its NPC driver on the client, before its server-side mount check.

@@ -121,24 +121,32 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
         return CompoundTag().apply {
             putInt("RemainingTicks", queue.remainingTicks)
             putInt("IntervalTicks", SquadConfig.recruitIntervalTicks())
-            putString("Reason", when {
-                owner == null -> "No owner assigned"
-                blockedReason.isNotEmpty() -> blockedReason
-                unresolvedRoster -> "Legacy squads with unknown member roles are waiting for those members to load"
-                else -> ""
-            })
-            put("Entries", ListTag().also { entries ->
-                queue.ordered().forEach { request ->
-                    val squad = mgr.get(request.squad) ?: return@forEach
-                    val slot = squad.recruitmentRoster?.slots?.firstOrNull { it.id == request.slot } ?: return@forEach
-                    entries.add(CompoundTag().apply {
-                        putString("Squad", squad.name)
-                        putString("Role", slot.role.name)
-                        putString("Faction", squad.faction.label)
-                        putBoolean("Replacement", request.replacement)
-                    })
-                }
-            })
+            putString(
+                "Reason",
+                when {
+                    owner == null -> "No owner assigned"
+                    blockedReason.isNotEmpty() -> blockedReason
+                    unresolvedRoster -> "Legacy squads with unknown member roles are waiting for those members to load"
+                    else -> ""
+                },
+            )
+            put(
+                "Entries",
+                ListTag().also { entries ->
+                    queue.ordered().forEach { request ->
+                        val squad = mgr.get(request.squad) ?: return@forEach
+                        val slot = squad.recruitmentRoster?.slots?.firstOrNull { it.id == request.slot } ?: return@forEach
+                        entries.add(
+                            CompoundTag().apply {
+                                putString("Squad", squad.name)
+                                putString("Role", slot.role.name)
+                                putString("Faction", squad.faction.label)
+                                putBoolean("Replacement", request.replacement)
+                            },
+                        )
+                    }
+                },
+            )
         }
     }
 
@@ -179,7 +187,10 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
                 be.queue.tick()
                 be.setChanged()
             }
-            if (be.retryTicks > 0) { be.retryTicks--; return }
+            if (be.retryTicks > 0) {
+                be.retryTicks--
+                return
+            }
             if (be.queue.remainingTicks > 0) return
             val request = be.queue.next() ?: return
             val reason = SquadManager.get(level).recruitAtBarracks(level, be.ref(level), request)
@@ -187,7 +198,9 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
             if (reason == null) {
                 be.queue.complete(request, SquadConfig.recruitIntervalTicks())
                 be.setChanged()
-            } else be.retryTicks = 20
+            } else {
+                be.retryTicks = 20
+            }
         }
     }
 }

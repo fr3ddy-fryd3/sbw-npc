@@ -34,8 +34,10 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var mortar: Entity? = null
     private var nextCheckTick = 0
     private var nextMortarSearchTick = 0
+
     /** The squadmate currently carrying the crew's mortar, if it is being displaced. */
     private var carrier: NpcEntity? = null
+
     /** Picked once per mortar: the tube turns as it is laid, and a post that turned with it would
      *  have the loader walking circles round it. */
     private var postOf: kotlin.Pair<Entity, Vec3>? = null
@@ -45,20 +47,27 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val MORTAR_SEARCH_INTERVAL_TICKS = 40
         private const val START_CHECK_INTERVAL_TICKS = 5
         private const val SELF_DEFENSE_RANGE_SQR = 6.0 * 6.0
+
         /** How close the loader keeps to an operator carrying the mortar. */
         private const val FOLLOW_DISTANCE_SQR = 5.0 * 5.0
+
         /** At a run, like the operator carrying the tube, or he falls behind it. */
         private const val FOLLOW_SPEED = 1.3
+
         /** Fetching shells: the tube is silent until he's back. */
         private const val ERRAND_SPEED = 1.3
+
         /** Farther than this from his post, he runs back to it. */
         private const val RUN_BACK_DISTANCE = 8.0
+
         /** The loader's place beside the tube. The operator takes the tube itself; two men walking
          *  to the same point shove each other off it and both keep walking back. */
         private const val POST_OFFSET = 1.8
         private const val POST_TOLERANCE = 1.2
+
         /** This near the tube he can load it — the reach the operator lays it from too. */
         private const val LOAD_REACH = 2.5
+
         /** Inside a Supply's reach, so the next issue round catches him. */
         private const val SUPPLY_ARRIVE_DISTANCE = com.sbwnpc.squad.block.entity.SupplyBlockEntity.RADIUS - 3.0
     }
@@ -89,7 +98,8 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.tickCount < nextMortarSearchTick) return false
         nextMortarSearchTick = entity.tickCount + MORTAR_SEARCH_INTERVAL_TICKS
         val found = Ports.mortars.within(
-            level, AABB.ofSize(entity.position(), SEARCH_RANGE * 2, SEARCH_RANGE * 2, SEARCH_RANGE * 2)
+            level,
+            AABB.ofSize(entity.position(), SEARCH_RANGE * 2, SEARCH_RANGE * 2, SEARCH_RANGE * 2),
         ).firstOrNull {
             Ports.vehicles.isOperational(it) && entity.distanceToSqr(it) <= SEARCH_RANGE * SEARCH_RANGE &&
                 !MortarClaims.isLoaderClaimedByOther(it.uuid, entity.uuid)
@@ -104,8 +114,7 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private val startCheck = StartCheckThrottle(START_CHECK_INTERVAL_TICKS)
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
-        startCheck.check(entity) { eligible(entity) }
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = startCheck.check(entity) { eligible(entity) }
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = eligible(entity)
 
     /** A squadmate with the mortar on its back. Only ever a handful of members to check, and only
@@ -158,8 +167,11 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
             if (supply != null) {
                 // Still the crew's errand: squad orders keep off him until he's back at the tube.
                 entity.servingMortar = true
-                if (entity.position().closerThan(supply, SUPPLY_ARRIVE_DISTANCE)) entity.navigation.stop()
-                else entity.navigateTo(supply, ERRAND_SPEED)
+                if (entity.position().closerThan(supply, SUPPLY_ARRIVE_DISTANCE)) {
+                    entity.navigation.stop()
+                } else {
+                    entity.navigateTo(supply, ERRAND_SPEED)
+                }
                 return
             }
         }
