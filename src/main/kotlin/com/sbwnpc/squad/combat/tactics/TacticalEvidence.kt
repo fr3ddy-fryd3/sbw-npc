@@ -13,11 +13,11 @@ object TacticalEvidence {
 
     fun settled(member: TacticalMember, task: TacticalTask?): Boolean =
         task?.position?.let {
-            member.position.distanceTo(it) <= 2.5 && (task.job == TacticalJob.COVER || member.position.distanceTo(task.anchor) <= 10.0)
+            member.position.distanceTo(it) <= 2.5 && (task.job in TacticalJob.FIRE_SUPPORT || member.position.distanceTo(task.anchor) <= 10.0)
         } == true
 
     fun transition(plan: TacticalPlan, view: TacticalSnapshot): TacticalTransitionEvidence {
-        val cover = view.members.filter { plan.tasks[it.id]?.job == TacticalJob.COVER }
+        val cover = view.members.filter { plan.tasks[it.id]?.job in TacticalJob.FIRE_SUPPORT }
         val movers = view.members.filter { plan.tasks[it.id]?.job in setOf(TacticalJob.FLANK, TacticalJob.ADVANCE, TacticalJob.RETREAT) }
         return TacticalTransitionEvidence(
             view.members.size,

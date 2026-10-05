@@ -10,6 +10,9 @@ object TacticalRoutes {
         point.subtract(from).horizontalDistance() <= 16.0 &&
             point.subtract(focus).horizontalDistance() >= from.subtract(focus).horizontalDistance() - 4.0
 
+    /** A flank route stays out of close combat; a member already too close may move away. */
+    fun safeFlankDistance(from: Vec3, point: Vec3, threat: Vec3): Boolean = point.subtract(threat).horizontalDistance() >= minOf(24.0, from.subtract(threat).horizontalDistance()) - 0.01
+
     fun leg(from: Vec3, task: TacticalTask): Vec3 {
         val focus = task.focus
         if (task.job == TacticalJob.FLANK && focus != null) {

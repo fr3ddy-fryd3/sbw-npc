@@ -44,6 +44,8 @@ enum class TacticalJob {
 
     companion object {
         val RUNNING = setOf(ADVANCE, FLANK, REGROUP, RETREAT)
+        val FIRE_SUPPORT = setOf(COVER, WAIT)
+        val FIRING_POSITIONS = FIRE_SUPPORT + setOf(ANTI_ARMOUR, OVERWATCH)
     }
 }
 enum class TacticalReason {

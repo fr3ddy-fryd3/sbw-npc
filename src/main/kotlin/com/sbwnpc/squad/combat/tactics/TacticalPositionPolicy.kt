@@ -12,7 +12,7 @@ interface TacticalPositionPolicy {
 
 object DefaultTacticalPositions : TacticalPositionPolicy
 object EncirclePositions : TacticalPositionPolicy {
-    override val permitsExposedFlankAdvance = true
+    override fun candidate(view: TacticalSnapshot, task: TacticalTask, point: Vec3, localAnchor: Vec3): Boolean = task.job != TacticalJob.FLANK || task.focus?.let { point.subtract(it).horizontalDistance() >= 40.0 } != false
 }
 object WithdrawalPositions : TacticalPositionPolicy {
     override fun score(view: TacticalSnapshot, task: TacticalTask, point: Vec3, exposure: Int) = exposure * 10.0

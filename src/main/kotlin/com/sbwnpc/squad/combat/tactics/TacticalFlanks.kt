@@ -54,7 +54,8 @@ object TacticalFlanks {
         val wing = if (slot % 2 == 0) 1.0 else -1.0
         val progress = (slot / 2 + 1).toDouble() / ((state.order.size + 1) / 2 + 1)
         val angle = Math.PI + wing * progress * Math.PI * 0.85
-        return focus.add(forward.scale(kotlin.math.cos(angle) * 24.0)).add(side.scale(kotlin.math.sin(angle) * 24.0))
+        val radius = maxOf(48.0, view.fighting.filter { it.role !in TacticalLayout.SUPPORT_ROLES }.minOfOrNull { it.role.assaultDistance } ?: 48.0)
+        return focus.add(forward.scale(kotlin.math.cos(angle) * radius)).add(side.scale(kotlin.math.sin(angle) * radius))
     }
 
     private fun forward(origin: Vec3, focus: Vec3): Vec3 =

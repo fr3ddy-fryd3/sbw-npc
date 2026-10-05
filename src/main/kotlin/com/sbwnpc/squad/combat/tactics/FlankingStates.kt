@@ -19,6 +19,15 @@ abstract class FlankingState : CoveredManeuverState() {
     private var wave = emptySet<UUID>()
     internal open fun anchor(plan: TacticalPlan, view: TacticalSnapshot, slot: Int) = TacticalFlanks.shoulder(plan, view, slot)
 
+    override fun beforeTick(context: TacticalContext) {
+        super.beforeTick(context)
+        if (context.plan.phase != TacticalPhase.EXECUTING) return
+        val settled = context.view.members.filter {
+            context.plan.tasks[it.id]?.job == TacticalJob.FLANK && TacticalEvidence.settled(it, context.plan.tasks[it.id])
+        }
+        recordArrivals(context, settled)
+    }
+
     override fun prepareAssignments(layout: TacticalLayout) {
         support.retainAll(layout.fighters.map { it.id }.toSet())
         if (support.isEmpty()) support.addAll(layout.support)
@@ -62,6 +71,13 @@ abstract class FlankingState : CoveredManeuverState() {
     override fun noMovers(context: TacticalContext) = arrived(context, emptyList())
 
     override fun arrived(context: TacticalContext, movers: List<TacticalMember>) {
+        recordArrivals(context, movers)
+        bounds++
+        val done = TacticalFlanks.pending(context.plan, context.view).isEmpty()
+        phases.transition(if (done) CompletedPhase() else PreparingPhase(), context, if (done) "flank_complete" else "flank_wave_arrived")
+    }
+
+    private fun recordArrivals(context: TacticalContext, movers: List<TacticalMember>) {
         arrivedMembers.addAll(movers.map { it.id })
         for (member in movers) {
             context.tasks.put(
@@ -71,9 +87,19 @@ abstract class FlankingState : CoveredManeuverState() {
                 "flank_member_arrived",
             )
         }
-        bounds++
-        val done = TacticalFlanks.pending(context.plan, context.view).isEmpty()
-        phases.transition(if (done) CompletedPhase() else PreparingPhase(), context, if (done) "flank_complete" else "flank_wave_arrived")
+    }
+
+    override fun movementTimedOut(context: TacticalContext, movers: List<TacticalMember>) {
+        val settled = movers.filter { TacticalEvidence.settled(it, context.plan.tasks[it.id]) }
+        if (settled.isEmpty() && wave.none { it in arrived }) {
+            super.movementTimedOut(context, movers)
+            return
+        }
+        for (member in movers.filter { it !in settled }) {
+            context.owner?.holdAfterFailure?.set(member.id, context.view.now + 120)
+            context.tasks.abandon(member.id, context.view.now, "flank_straggler_timeout")
+        }
+        arrived(context, settled)
     }
 
     override fun phaseEntered(context: TacticalContext, from: TacticalPhase?) {

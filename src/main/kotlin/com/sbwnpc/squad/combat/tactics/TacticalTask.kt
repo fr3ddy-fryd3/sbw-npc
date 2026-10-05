@@ -12,6 +12,10 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
     var nextValidation = Long.MIN_VALUE
     var staging: Vec3? = null
     var opensLane = false
+
+    /** Retains assignment/sector while the individual shooter searches a bounded local post. */
+    var localFirePost: Vec3? = null
+    val localFireRecovery get() = localFirePost != null
     var pausedAt: Long? = null
         private set
     private var pauseReason: String? = null

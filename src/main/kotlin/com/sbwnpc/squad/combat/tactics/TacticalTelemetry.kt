@@ -5,7 +5,7 @@ object TacticalTelemetry {
     data class Cover(val assigned: Int, val ready: Int, val settledReady: Int, val firedRecently: Int)
 
     fun cover(plan: TacticalPlan, view: TacticalSnapshot): Cover {
-        val members = view.members.filter { plan.tasks[it.id]?.job == TacticalJob.COVER }
+        val members = view.members.filter { plan.tasks[it.id]?.job in TacticalJob.FIRE_SUPPORT }
         return Cover(
             members.size,
             members.count { TacticalEvidence.covers(it, plan.tasks[it.id]) },

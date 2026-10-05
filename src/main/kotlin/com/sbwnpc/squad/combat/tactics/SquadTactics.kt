@@ -38,6 +38,8 @@ object SquadTactics {
             priority = 1.0 + (if (dangerous) 1.0 else 0.0) + (if (target.uuid == squad.focusEntity) 5.0 else 0.0),
             airborne = target.vehicle?.let { Ports.vehicles.mobility(it) == Mobility.AIR } == true,
         )
+        // Discovery is shared even before this observer can start its gun behavior.
+        TeamAwareness.report(squad.faction, target.uuid, target.position(), now, "${npc.npcClass} ${npc.uuid.toString().take(8)}")
     }
 
     fun refresh(entity: NpcEntity) {
@@ -105,6 +107,7 @@ object SquadTactics {
             (plan.behavior as? CoveredManeuverState)?.laneAttempts ?: 0,
             plan.tasks.values.count { it.position != null },
             plan.failedMembers.size,
+            plan.tasks.values.count { it.localFireRecovery },
             jobs(plan),
         )
     }
@@ -142,21 +145,17 @@ object SquadTactics {
     fun repositionForFire(entity: NpcEntity) = TacticalMovement.repositionForFire(entity)
 
     fun preferredTarget(entity: NpcEntity, level: ServerLevel): LivingEntity? {
-        val task = task(entity) ?: return null
+        val task = task(entity)
         val view = entity.currentSquad()?.tactics?.snapshot ?: return null
-        val visible = view.visible.asSequence().filter { !it.armoured || AntiArmourKit.loaded(entity) }
+        val known = TacticalTargets.candidates(view, task, entity.position(), AntiArmourKit.loaded(entity)).asSequence()
             .mapNotNull { level.getEntity(it.id) as? LivingEntity }
-            .filter { it.isAlive && entity.isEnemy(it) && DetectionSightline.canSee(entity, it) }
-            .filter { task.job != TacticalJob.ANTI_ARMOUR || AntiArmourKit.worthARocket(entity, it) }
+            .filter { it.isAlive && entity.isEnemy(it) }
+            .filter { task?.job != TacticalJob.ANTI_ARMOUR || AntiArmourKit.worthARocket(entity, it) }
             .toList()
-        val nearest = visible.minOfOrNull { it.position().distanceTo(task.focus ?: entity.position()) } ?: return null
-        return FireAllocation.pick(
-            entity,
-            level,
-            visible.filter {
-                it.position().distanceTo(task.focus ?: entity.position()) <= nearest + 12.0
-            }.sortedBy { entity.distanceToSqr(it) },
-        )
+        if (known.isEmpty()) return null
+        val visible = known.take(4).filter { DetectionSightline.canSee(entity, it) }
+        // Keep a reported target behind cover so position work can open a lane; firing still checks LOS.
+        return FireAllocation.pick(entity, level, visible.ifEmpty { known })
     }
 
     fun permitsFire(entity: NpcEntity, target: LivingEntity): Boolean {
@@ -172,8 +171,8 @@ object SquadTactics {
     private const val SNAPSHOT_FORMAT = "[tactics] {} snapshot squad={} tick={} plan={} pattern={} state={} statePhase={} phase={} reason={} " +
         "proposed={} proposedReason={} effective={} cooldown={} order={} stamp={} members={} peak={} fighting={} " +
         "visible={} remembered={} incoming={} suppressed={} narrow={} open={} stalled={} heightDelta={} cover={} " +
-        "shotsLast40Ticks={} coverAge={} phaseAge={} bounds={} openingLane={} laneAttempts={} positioned={} failed={} " +
-        "jobs={}"
+        "shootersLast40Ticks={} coverAge={} phaseAge={} bounds={} openingLane={} laneAttempts={} positioned={} failed={} " +
+        "recoveringFirePosts={} jobs={}"
 
     private val SUPPORT_ROLES = setOf(NpcClass.MACHINE_GUNNER, NpcClass.SNIPER)
     private val GROUND_ROLES = setOf(NpcClass.RIFLEMAN, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.DRONE_OPERATOR)

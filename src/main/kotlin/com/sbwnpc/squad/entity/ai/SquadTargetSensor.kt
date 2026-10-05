@@ -1,8 +1,10 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.sbwnpc.squad.combat.CombatPosition
+import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.FireAllocation
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.TankWeaponSelection
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.combat.VehicleTargeting
@@ -60,8 +62,20 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     override fun memoriesUsed(): List<MemoryModuleType<*>> = MEMORIES
 
     override fun doTick(level: ServerLevel, entity: NpcEntity) {
-        val target = computeDesired(entity, level)
+        val previous = entity.target
+        // Observation continues while engaging a reported/ordered target; target priority cannot blind the squad.
+        val directTarget = nearestDirectTarget(entity, level)
+        val target = computeDesired(entity, level, directTarget)
         BrainUtils.setTargetOfEntity(entity, target)
+        if (DebugFlags.on(LogGroup.ORDER) && previous?.uuid != target?.uuid) {
+            val squad = entity.currentSquad()
+            DebugFlags.log(
+                LogGroup.ORDER,
+                "[tactics] {} squad={} plan={} event=target_changed previous={} target={} distance={} sharedContact={}",
+                entity.uuid, squad?.id, squad?.tactics?.plan?.id, previous?.uuid, target?.uuid,
+                target?.let { entity.distanceTo(it) }, target?.uuid in squad?.tactics?.contacts.orEmpty(),
+            )
+        }
         if (target != null && DetectionSightline.canSeeWithin(entity, target, NpcEntity.DETECTION_RANGE)) {
             entity.rememberVisible(target)
             SquadTactics.observe(entity, target)
@@ -70,7 +84,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     }
 
     /** Priority is explicit here: later queries run only when earlier sources have no target. */
-    private fun computeDesired(mob: NpcEntity, level: ServerLevel): LivingEntity? {
+    private fun computeDesired(mob: NpcEntity, level: ServerLevel, directTarget: LivingEntity?): LivingEntity? {
         val vehicleAttacker = mob.vehicleAttacker()
         if (vehicleAttacker != null && allowed(mob)) return vehicleAttacker
         val mortarCrew = mob.npcClass in setOf(NpcClass.MORTAR_OPERATOR, NpcClass.MORTAR_LOADER)
@@ -90,14 +104,14 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
 
         val retainedTarget = retainedDefensiveTarget(mob)
         if (retainedTarget != null) return retainedTarget
-        if (!mortarCrew && mob.retreatPoint() != null) return withdrawalTarget(mob, level)
+        if (!mortarCrew && mob.retreatPoint() != null) return withdrawalTarget(mob, level, directTarget)
         if (!mortarCrew) {
             val tacticalTarget = SquadTactics.preferredTarget(mob, level)
             if (tacticalTarget != null) return tacticalTarget
             val relayedTarget = relayedTarget(mob, level)
             if (relayedTarget != null) return relayedTarget
         }
-        return nearestDirectTarget(mob, level)
+        return directTarget
     }
 
     private fun armedVehicleTarget(mob: NpcEntity, level: ServerLevel): LivingEntity? {
@@ -116,9 +130,9 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         }
     }
 
-    private fun withdrawalTarget(mob: NpcEntity, level: ServerLevel): LivingEntity? {
+    private fun withdrawalTarget(mob: NpcEntity, level: ServerLevel, directTarget: LivingEntity?): LivingEntity? {
         // Covering members need a target visible from their position, including squad callouts.
-        return nearestDirectTarget(mob, level) ?: squadmateTarget(mob, level) ?: relayedTarget(mob, level)
+        return directTarget ?: squadmateTarget(mob, level) ?: relayedTarget(mob, level)
     }
 
     private fun allowed(mob: NpcEntity): Boolean {
@@ -163,12 +177,11 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
      *  they shoot at, so this skips the vision cone the way a relayed contact does. */
     private fun squadmateTarget(mob: NpcEntity, level: ServerLevel): LivingEntity? {
         val squad = mob.currentSquad() ?: return null
-        val rangeSqr = NpcEntity.DETECTION_RANGE * NpcEntity.DETECTION_RANGE
         val seen = HashSet<LivingEntity>()
         for (id in squad.members) {
             if (id == mob.uuid) continue
             val target = (level.getEntity(id) as? NpcEntity)?.target ?: continue
-            if (target.isAlive && SquadTeams.isHostile(mob, target) && mob.distanceToSqr(target) <= rangeSqr && allowed(mob)) seen += target
+            if (target.isAlive && SquadTeams.isHostile(mob, target) && allowed(mob)) seen += target
         }
         val visible = seen.sortedBy { mob.distanceToSqr(it) }.filter { DetectionSightline.canSee(mob, it) }
         return FireAllocation.pick(mob, level, visible)
@@ -197,6 +210,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     private fun nearestDirectTarget(mob: NpcEntity, level: ServerLevel): LivingEntity? {
         val ground = nearestGroundTarget(mob, level)
         val air = VehicleTargeting.closestVisibleHostileAircrew(mob, level, NpcEntity.DETECTION_RANGE)?.takeIf { allowed(mob) }
+        if (air != null) SquadTactics.observe(mob, air)
         if (ground == null || air == null) return ground ?: air
         return if (mob.distanceToSqr(air.vehicle ?: air) < mob.distanceToSqr(ground)) air else ground
     }

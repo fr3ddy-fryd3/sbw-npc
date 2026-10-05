@@ -19,6 +19,7 @@ import com.sbwnpc.squad.combat.TickBudget
 import com.sbwnpc.squad.combat.Withdrawal
 import com.sbwnpc.squad.combat.tactics.DefensiveOverwatch
 import com.sbwnpc.squad.combat.tactics.SquadTactics
+import com.sbwnpc.squad.combat.tactics.TacticalFirePosts
 import com.sbwnpc.squad.domain.port.HandGun
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.domain.port.TriggerMode
@@ -221,7 +222,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.busyWithRole()) return false
         if (entity.combatLockedByCover() || entity.combatLockedByMedic()) return false
         val target = entity.target ?: return false
-        if (entity.incomingFire.replying(entity.level().gameTime) && !DetectionSightline.canSeeWithin(entity, target, NpcEntity.DETECTION_RANGE)) return false
+        if (entity.incomingFire.replying(entity.level().gameTime) && !canTrackTarget(entity, target)) return false
         val gun = currentGun(entity) ?: return false
         return target.isAlive && gun.hasAmmo()
     }
@@ -564,6 +565,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /** Optional firing shifts stay near the defend point or the patrol's original contact post. */
     private fun canRelocate(entity: NpcEntity, point: Vec3): Boolean {
+        val recoveryPost = SquadTactics.task(entity)?.localFirePost
+        if (recoveryPost != null && !TacticalFirePosts.withinPost(recoveryPost, point)) return false
         val squad = entity.currentSquad() ?: return true
         if (!CombatPosition.holdsPosition(squad.order)) return true
         val post = firingOrigin ?: entity.position()
@@ -644,7 +647,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun tick(entity: NpcEntity) {
         val target = entity.target ?: return
         val replyingToIncoming = entity.incomingFire.replying(entity.level().gameTime)
-        if (replyingToIncoming && !DetectionSightline.canSeeWithin(entity, target, NpcEntity.DETECTION_RANGE)) return
+        if (replyingToIncoming && !canTrackTarget(entity, target)) return
 
         val squad = entity.currentSquad()
         resetForChangedOrder(entity, squad)
@@ -653,7 +656,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         chooseWeapon(entity, target)
         val gun = currentGun(entity) ?: return
 
-        val visible = DetectionSightline.canSeeWithin(entity, target, NpcEntity.DETECTION_RANGE)
+        val visible = canTrackTarget(entity, target)
         val clearShot = visible && hasClearShot(entity, target)
         if (visible) reportVisibleTarget(entity, target)
         updateAim(entity, target, gun, clearShot)
@@ -662,6 +665,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (movement == CombatMovement.RETURNING_TO_POST) return
         // Movement uses the previous safety assessment; refresh it before the next shot.
         updateFiringLane(entity, target, gun)
+        if (!clearShot && movement == CombatMovement.TACTICAL && entity.tickCount % 40 == 0) {
+            SquadTactics.repositionForFire(entity)
+        }
         clearBlockedFiringLane(entity, target, movement == CombatMovement.TACTICAL)
         gun.operate()
         tickShooting(entity, target, gun, clearShot)
@@ -688,6 +694,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             entity.sensing.hasLineOfSight(target)
         }
     }
+
+    private fun canTrackTarget(entity: NpcEntity, target: LivingEntity): Boolean = DetectionSightline.canSee(entity, target)
 
     private fun reportVisibleTarget(entity: NpcEntity, target: LivingEntity) {
         entity.rememberVisible(target)
@@ -762,6 +770,10 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             return CombatMovement.LOCAL
         }
         if (SquadTactics.holdsAfterFailure(entity)) {
+            holdFiringPosition(entity, target)
+            return CombatMovement.LOCAL
+        }
+        if (SquadTactics.task(entity)?.localFireRecovery == true) {
             holdFiringPosition(entity, target)
             return CombatMovement.LOCAL
         }
@@ -873,15 +885,49 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
     }
 
-    private fun canFireNow(entity: NpcEntity, target: LivingEntity, gun: HandGun, clearShot: Boolean, pausedBetweenBursts: Boolean): Boolean =
-        clearShot && SquadTactics.permitsFire(entity, target) && !pausedBetweenBursts &&
-            lineIsClear && blastClear && gun.canShoot() && aimTime >= entity.maxAimTime
+    private enum class FireBlocker { SIGHT_BLOCKED, ARMOUR, BURST_PAUSE, FRIENDLY_OR_VEHICLE, BLAST_SAFETY, WEAPON_CYCLE, AIMING }
+    private var lastFireBlocker: FireBlocker? = null
+    private var lastFireTarget: java.util.UUID? = null
+
+    private fun fireBlocker(entity: NpcEntity, target: LivingEntity, gun: HandGun, clearShot: Boolean, pausedBetweenBursts: Boolean): FireBlocker? =
+        when {
+            !clearShot -> FireBlocker.SIGHT_BLOCKED
+            !SquadTactics.permitsFire(entity, target) -> FireBlocker.ARMOUR
+            pausedBetweenBursts -> FireBlocker.BURST_PAUSE
+            !lineIsClear -> FireBlocker.FRIENDLY_OR_VEHICLE
+            !blastClear -> FireBlocker.BLAST_SAFETY
+            !gun.canShoot() -> FireBlocker.WEAPON_CYCLE
+            aimTime < entity.maxAimTime -> FireBlocker.AIMING
+            else -> null
+        }
+
+    private fun traceFireBlocker(entity: NpcEntity, target: LivingEntity, blocker: FireBlocker?) {
+        if (!DebugFlags.on(LogGroup.ORDER)) return
+        if (lastFireTarget == target.uuid && lastFireBlocker == blocker) return
+        lastFireTarget = target.uuid
+        lastFireBlocker = blocker
+        val squad = entity.currentSquad()
+        val plan = squad?.tactics?.plan
+        DebugFlags.log(
+            LogGroup.ORDER,
+            "[tactics] {} squad={} plan={} event=fire_gate job={} target={} reason={} distance={}",
+            entity.uuid,
+            squad?.id,
+            plan?.id,
+            plan?.tasks?.get(entity.uuid)?.job,
+            target.uuid,
+            blocker ?: "READY",
+            entity.distanceTo(target),
+        )
+    }
 
     private fun tickShooting(entity: NpcEntity, target: LivingEntity, gun: HandGun, canShootTarget: Boolean) {
         val pausedBetweenBursts = entity.tickCount < burstPauseUntilTick
         entity.readyToCover = canShootTarget && lineIsClear && blastClear && gun.hasAmmo() &&
             aimTime >= entity.maxAimTime && SquadTactics.permitsFire(entity, target)
-        if (canFireNow(entity, target, gun, canShootTarget, pausedBetweenBursts)) {
+        val blocker = fireBlocker(entity, target, gun, canShootTarget, pausedBetweenBursts)
+        traceFireBlocker(entity, target, blocker)
+        if (blocker == null) {
             val rps = gun.roundsPerMinute / 60.0
             var cooldown = Math.round(1000 / rps).coerceAtLeast(1)
 

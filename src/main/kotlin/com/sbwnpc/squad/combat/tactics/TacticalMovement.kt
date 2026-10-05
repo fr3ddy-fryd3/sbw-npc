@@ -36,6 +36,11 @@ object TacticalMovement {
         val squad = entity.currentSquad() ?: return false
         val state = squad.tactics
         val view = state.snapshot ?: return false
+        if (task.localFireRecovery) {
+            if (entity.readyToCover || entity.firedRecently(40)) task.position = entity.position()
+            if (entity.target == null) entity.navigation.stop()
+            return entity.target == null
+        }
         if (state.plan?.phase == TacticalPhase.PAUSED && task.job in RUNNING_JOBS) {
             if (task.suspend(entity.level().gameTime, "cover_lost")) {
                 state.events.emit(TacticalEvent.TaskPaused(task.plan, entity.level().gameTime, entity.uuid, true, "cover_lost"))
@@ -152,6 +157,20 @@ object TacticalMovement {
     private fun failedTask(entity: NpcEntity, task: TacticalTask, reason: String): Boolean {
         if (++task.failures < if (task.job == TacticalJob.OVERWATCH) 1 else 3) return false
         val plan = entity.currentSquad()?.tactics?.plan ?: return true
+        if (TacticalFirePosts.recover(task, entity.position())) {
+            task.releaseNavigation(entity.navigation.path) { entity.navigation.stop() }
+            FiringSpots.release(entity.uuid)
+            DebugFlags.log(
+                LogGroup.ORDER,
+                "[tactics] {} plan={} event=fire_post_recovery job={} reason={} failures={}",
+                entity.uuid,
+                task.plan,
+                task.job,
+                reason,
+                task.failures,
+            )
+            return false
+        }
         if (plan.behavior.holdsFailedMembers) {
             entity.currentSquad()?.tactics?.holdAfterFailure?.set(entity.uuid, entity.level().gameTime + 120)
         }
@@ -172,7 +191,7 @@ object TacticalMovement {
     fun repositionForFire(entity: NpcEntity) {
         val task = SquadTactics.task(entity) ?: return
         val position = task.position ?: return
-        if (task.job !in setOf(TacticalJob.COVER, TacticalJob.ANTI_ARMOUR, TacticalJob.OVERWATCH) || entity.position().distanceTo(position) > 2.0) return
+        if (task.job !in TacticalJob.FIRING_POSITIONS || entity.position().distanceTo(position) > 2.0) return
         task.position = null
         task.search = null
         task.nextSearch = entity.level().gameTime + 10

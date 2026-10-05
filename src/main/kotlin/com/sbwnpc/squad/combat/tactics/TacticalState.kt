@@ -14,6 +14,7 @@ data class TacticalStability(
     val keepsThreatSector: Boolean = false,
     val canLeaveImmediately: Boolean = false,
     val carriesOrigin: Boolean = false,
+    val expires: Boolean = true,
 )
 
 /** An immutable assessment plus the plan's owned assignments; no world queries here. */
@@ -58,6 +59,7 @@ abstract class TacticalState {
 
     fun tick(context: TacticalContext) {
         context.tasks.prune(context.view.members.map { it.id }.toSet(), context.view.now)
+        if (!stability.expires) reconcileHoldingAssignments(context)
         beforeTick(context)
         phases.tick(context)
         afterTick(context)
@@ -69,6 +71,19 @@ abstract class TacticalState {
     }
     protected open fun onEnter(context: TacticalContext) {}
     protected open fun beforeTick(context: TacticalContext) {}
+
+    /** Reinforcements and recovered members join a lasting defence without resetting existing posts. */
+    private fun reconcileHoldingAssignments(context: TacticalContext) {
+        val layout = TacticalLayout(context)
+        for ((index, member) in context.view.members.withIndex()) {
+            if (member.id in context.plan.failedMembers || !layout.eligible(member)) continue
+            val desired = layout.applyRoles(member, index, task(layout, member, index))
+            val current = context.plan.tasks[member.id]
+            if (current == null || current.job != desired.job) {
+                context.tasks.put(member.id, desired, context.view.now, "holding_member_role_changed")
+            }
+        }
+    }
     protected open fun afterTick(context: TacticalContext) {}
     protected open fun onExit(context: TacticalContext, trigger: String) {}
     open fun refreshSectors(context: TacticalContext) {}
@@ -162,6 +177,7 @@ class TacticalLayout(val context: TacticalContext) {
                 intent.focus,
             )
         }
+        if (intent.job == TacticalJob.WAIT && intent.staging == null) intent.staging = member.position
         return intent
     }
 

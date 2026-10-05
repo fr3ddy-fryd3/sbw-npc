@@ -15,7 +15,7 @@ class TacticalTaskBoard(private val plan: Int, private val events: TacticalEvent
         val next = desired.filterKeys { it !in failed }.toMutableMap()
         if (retainCover) {
             for ((id, old) in active) {
-                if (old.job == TacticalJob.COVER && next[id]?.job == TacticalJob.COVER) next[id] = old
+                if (old.job in TacticalJob.FIRE_SUPPORT && next[id]?.job == old.job) next[id] = old
             }
         }
         for ((id, old) in active.toMap()) if (next[id] !== old) release(id, now, trigger)

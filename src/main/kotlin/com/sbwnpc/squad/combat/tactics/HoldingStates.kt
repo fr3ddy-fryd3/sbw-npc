@@ -10,6 +10,7 @@ class FollowOrderState : TacticalState() {
 }
 
 class HoldHeightState : TacticalState() {
+    override val stability = TacticalStability(expires = false)
     override val positions = HoldHeightPositions
     override val supportsDefensiveOverwatch = true
     override fun task(layout: TacticalLayout, member: TacticalMember, index: Int) = layout.cover(member)
@@ -17,7 +18,7 @@ class HoldHeightState : TacticalState() {
 
 class ReorientState : TacticalState() {
     override val supportsDefensiveOverwatch = true
-    override val stability = TacticalStability(passive = true, keepsThreatSector = true)
+    override val stability = TacticalStability(passive = true, keepsThreatSector = true, expires = false)
     override fun task(layout: TacticalLayout, member: TacticalMember, index: Int): TacticalTask =
         layout.intent(
             TacticalJob.COVER,
@@ -75,7 +76,7 @@ class EvadeState : TacticalState() {
 
 class ConsolidateState : TacticalState() {
     override val supportsDefensiveOverwatch = true
-    override val stability = TacticalStability(passive = true, quickReplacement = true)
+    override val stability = TacticalStability(passive = true, quickReplacement = true, expires = false)
     override fun task(layout: TacticalLayout, member: TacticalMember, index: Int): TacticalTask {
         val angle = index * Math.PI * 2.0 / layout.view.members.size.coerceAtLeast(1)
         return layout.intent(

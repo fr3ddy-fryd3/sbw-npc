@@ -31,7 +31,8 @@ class TacticalDiagnosticsTest {
         plan.tasks.values.filter { it.job == TacticalJob.COVER }.forEach { it.position = origin }
         TacticalCoordinator.advance(squad, state, plan, view(10, true))
         val started = events.filterIsInstance<TacticalEvent.Transition>().last()
-        assertEquals(3, started.evidence.coverReady)
+        assertEquals(6, started.evidence.coverReady, "the waiting half can also cover before it starts moving")
+        assertEquals(6, started.evidence.coverAssigned)
         assertEquals(0, started.evidence.coverFired)
         TacticalCoordinator.advance(squad, state, plan, view(110, false))
         val paused = events.filterIsInstance<TacticalEvent.Transition>().last()

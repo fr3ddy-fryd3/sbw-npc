@@ -3,6 +3,7 @@ package com.sbwnpc.squad.combat.tactics
 import com.sbwnpc.squad.combat.AntiArmourKit
 import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.GrenadeHazard
+import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
@@ -31,7 +32,7 @@ internal object TacticalSnapshotCollector {
             center = center,
             home = reference.homeCenter(),
             members = members,
-            contacts = state.contacts.values.filter { it.position.distanceTo(center) <= CONTACT_RADIUS },
+            contacts = state.contacts.values.toList(),
             incoming = npcs.mapNotNull { it.incomingFire.recentPoint(now) },
             grenade = npcs.any { it.evadingGrenade() || GrenadeHazard.threatens(level, it.position()) },
             narrow = terrain.narrow,
@@ -45,7 +46,7 @@ internal object TacticalSnapshotCollector {
         val visibleTargetIds = HashSet<UUID>()
         for (npc in members) {
             val target = npc.target ?: continue
-            if (!target.isAlive || !npc.isEnemy(target) || npc.distanceToSqr(target) > NpcEntity.DETECTION_RANGE * NpcEntity.DETECTION_RANGE) continue
+            if (!target.isAlive || !npc.isEnemy(target)) continue
             if (target.uuid in visibleTargetIds || !DetectionSightline.canSee(npc, target)) continue
             visibleTargetIds += target.uuid
             SquadTactics.observe(npc, target)
@@ -59,7 +60,7 @@ internal object TacticalSnapshotCollector {
         val ready = (gun?.hasAmmo() == true || AntiArmourKit.loaded(npc)) &&
             !npc.busyWithRole() && !npc.resupplying && !npc.combatLockedByMedic() && !npc.evadingGrenade()
         val canFire = ready && !npc.combatLockedByCover() && (npc.readyToCover || npc.firedRecently(RECENT_FIRE_TICKS)) &&
-            target != null && target.uuid in visibleTargetIds && DetectionSightline.canSee(npc, target) && npc.sensing.hasLineOfSight(target)
+            target != null && target.uuid in visibleTargetIds && DetectionSightline.canSee(npc, target) && hasFiringSight(npc, target)
         return TacticalMember(
             id = npc.uuid,
             position = npc.position(),
@@ -77,6 +78,13 @@ internal object TacticalSnapshotCollector {
 
     private fun hasBlockedShot(npc: NpcEntity): Boolean = !npc.firedRecently(RECENT_FIRE_TICKS) && npc.blockedSightSince?.let { npc.tickCount - it >= BLOCKED_SIGHT_TICKS } == true
 
+    private fun hasFiringSight(npc: NpcEntity, target: net.minecraft.world.entity.LivingEntity): Boolean =
+        if (npc.distanceToSqr(target) > 128.0 * 128.0) {
+            !Sightline.blocked(npc.level() as ServerLevel, npc.eyePosition, target.eyePosition, npc)
+        } else {
+            npc.sensing.hasLineOfSight(target)
+        }
+
     // Coordinate-wise upper median keeps distant stragglers from pulling the squad center away.
     private fun medianCenter(points: List<Vec3>): Vec3 {
         val middle = points.size / 2
@@ -87,5 +95,4 @@ internal object TacticalSnapshotCollector {
     private const val VISIBLE_CONTACT_TICKS = 40
     private const val RECENT_FIRE_TICKS = 40
     private const val BLOCKED_SIGHT_TICKS = 80
-    private const val CONTACT_RADIUS = 96.0
 }

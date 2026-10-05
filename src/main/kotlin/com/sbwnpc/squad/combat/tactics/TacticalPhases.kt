@@ -121,7 +121,7 @@ class PausedPhase(private val activeSince: Long) : TacticalPhaseState(TacticalPh
     }
     override fun tick(context: TacticalContext) {
         val state = context.state as CoveredManeuverState
-        val cover = context.view.members.filter { context.plan.tasks[it.id]?.job == TacticalJob.COVER }
+        val cover = context.view.members.filter { context.plan.tasks[it.id]?.job in TacticalJob.FIRE_SUPPORT }
         if (context.view.visible.isEmpty() || cover.any { state.maintainsCover(context, it) }) {
             state.phases.transition(ExecutingPhase(activeSince + context.view.now - pausedAt), context, "cover_restored")
         } else if (context.view.now - pausedAt >= 160) {
@@ -155,7 +155,7 @@ class OpeningLanePhase(private val members: List<UUID>) : TacticalPhaseState(Tac
         val scouts = context.view.members.filter { it.id in members && context.plan.tasks[it.id]?.opensLane == true }
         val shooters = context.view.members.count {
             TacticalEvidence.firesCover(it, context.plan.tasks[it.id]) &&
-                (context.plan.tasks[it.id]?.job == TacticalJob.COVER || it.id in members)
+                (context.plan.tasks[it.id]?.job in TacticalJob.FIRE_SUPPORT || it.id in members)
         }
         val trigger = when {
             shooters >= TacticalFlanks.requiredCover(context.view) -> "probe_found_cover"

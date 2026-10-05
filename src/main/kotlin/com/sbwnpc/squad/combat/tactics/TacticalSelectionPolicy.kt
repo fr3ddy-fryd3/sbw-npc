@@ -30,8 +30,8 @@ object TacticalSelectionPolicy {
     private fun canReplaceImmediately(plan: TacticalPlan, choice: TacticalChoice, now: Long): Boolean {
         val policy = plan.behavior.stability
         val transientStateEnded = policy.canLeaveImmediately && choice.pattern != plan.pattern
-        val lifetimeExpired = now - plan.started >= MAXIMUM_PLAN_TICKS
-        val phaseExpired = now - plan.phaseSince >= policy.phaseLimit
+        val lifetimeExpired = policy.expires && now - plan.started >= MAXIMUM_PLAN_TICKS
+        val phaseExpired = policy.expires && now - plan.phaseSince >= policy.phaseLimit
         return transientStateEnded || lifetimeExpired || phaseExpired
     }
 

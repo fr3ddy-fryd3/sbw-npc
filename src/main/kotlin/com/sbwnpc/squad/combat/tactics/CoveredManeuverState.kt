@@ -17,7 +17,7 @@ abstract class CoveredManeuverState : TacticalState() {
         if (context.plan.phase != TacticalPhase.OPENING_LANE) {
             for (member in context.view.members) {
                 val task = context.plan.tasks[member.id] ?: continue
-                if (task.job == TacticalJob.COVER && TacticalEvidence.firesCover(member, task)) task.position = member.position
+                if (task.job in TacticalJob.FIRE_SUPPORT && TacticalEvidence.firesCover(member, task)) task.position = member.position
             }
         }
     }
@@ -34,7 +34,7 @@ abstract class CoveredManeuverState : TacticalState() {
         }
 
     internal override fun prepare(context: TacticalContext) {
-        val cover = context.view.members.filter { context.plan.tasks[it.id]?.job == TacticalJob.COVER }
+        val cover = context.view.members.filter { context.plan.tasks[it.id]?.job in TacticalJob.FIRE_SUPPORT }
         if (coverReady(context, cover) || readyWithoutCover(context)) {
             phases.transition(if (withdrawal) WithdrawingPhase() else ExecutingPhase(), context, "cover_ready")
             return
@@ -64,7 +64,7 @@ abstract class CoveredManeuverState : TacticalState() {
             noMovers(context)
             return
         }
-        val cover = context.view.members.filter { context.plan.tasks[it.id]?.job == TacticalJob.COVER }
+        val cover = context.view.members.filter { context.plan.tasks[it.id]?.job in TacticalJob.FIRE_SUPPORT }
         if (cover.any { maintainsCover(context, it) }) lastCover = context.view.now
         if (!withdrawal && context.view.now - lastCover > COVER_LOST_DELAY && context.view.visible.isNotEmpty()) {
             phases.transition(PausedPhase(phaseSince), context, "cover_lost_pause")
@@ -73,8 +73,12 @@ abstract class CoveredManeuverState : TacticalState() {
         if (movers.all { TacticalEvidence.settled(it, context.plan.tasks[it.id]) }) {
             arrived(context, movers)
         } else if (context.view.now - phaseSince > movementTimeout) {
-            context.fail(TacticalFailure.MOVEMENT_TIMEOUT)
+            movementTimedOut(context, movers)
         }
+    }
+
+    protected open fun movementTimedOut(context: TacticalContext, movers: List<TacticalMember>) {
+        context.fail(TacticalFailure.MOVEMENT_TIMEOUT)
     }
 
     protected open fun noMovers(context: TacticalContext) {}

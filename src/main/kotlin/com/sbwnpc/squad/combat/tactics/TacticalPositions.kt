@@ -51,8 +51,9 @@ object TacticalPositions {
 
     private fun existingCoverPosition(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, level: ServerLevel, homeRadius: Double): Vec3? {
         val member = view.members.firstOrNull { it.id == entity.uuid }
-        val canKeepPosition = task.job == TacticalJob.COVER && member != null && TacticalEvidence.covers(member, task) &&
-            member.position.distanceTo(task.anchor) <= 10.0 &&
+        val post = task.staging ?: task.anchor
+        val canKeepPosition = task.job in TacticalJob.FIRE_SUPPORT && member != null && TacticalEvidence.covers(member, task) &&
+            TacticalFirePosts.withinPost(post, member.position) &&
             TacticalRules.withinOrder(view, member.position, homeRadius) && !GrenadeHazard.threatens(level, member.position)
         return if (canKeepPosition) member?.position else null
     }
@@ -70,12 +71,16 @@ object TacticalPositions {
         if (overwatch && task.search == null) entity.navigation.stop()
         val search = task.search ?: TacticalPositionSearch(
             entity.position(),
-            if (overwatch) DefensiveOverwatch.probes(task.anchor) else OFFSETS.map { localAnchor.add(it) },
+            when {
+                overwatch -> DefensiveOverwatch.probes(task.anchor)
+                task.job in TacticalJob.FIRING_POSITIONS -> TacticalFirePosts.probes(localAnchor)
+                else -> OFFSETS.map { localAnchor.add(it) }
+            },
         ).also { task.search = it }
         val plan = entity.currentSquad()?.tactics?.plan
         val policy = plan?.behavior?.positions ?: DefaultTacticalPositions
         val covered = plan != null && view.members.count { member ->
-            plan.tasks[member.id]?.job == TacticalJob.COVER && TacticalEvidence.firesCover(member, plan.tasks[member.id])
+            plan.tasks[member.id]?.job in TacticalJob.FIRE_SUPPORT && TacticalEvidence.firesCover(member, plan.tasks[member.id])
         } >= TacticalFlanks.requiredCover(view)
         return SearchContext(entity, task, view, level, homeRadius, overwatch, taken, threats, hulls, localAnchor, search, policy, covered)
     }
@@ -116,7 +121,12 @@ object TacticalPositions {
             return
         }
         if (context.overwatch && !DefensiveOverwatch.within(task.anchor, candidate)) return
+        if (task.job in TacticalJob.FIRING_POSITIONS && !context.overwatch && !TacticalFirePosts.withinPost(context.localAnchor, candidate)) return
         if (!context.policy.candidate(context.view, task, candidate, context.localAnchor)) return
+        if (task.job == TacticalJob.FLANK && context.view.visible.any { !TacticalRoutes.safeFlankDistance(entity.position(), candidate, it.position) }) {
+            search.reject("close_enemy")
+            return
+        }
         if (!context.overwatch && (kotlin.math.abs(candidate.y - entity.y) > 12.0 || candidate.distanceTo(entity.position()) > 48.0)) return
         if (task.opensLane && focus != null && !TacticalRoutes.safeLaneProbe(search.origin, candidate, focus)) return
         val body = entity.getDimensions(entity.pose).makeBoundingBox(candidate)
@@ -201,9 +211,9 @@ object TacticalPositions {
                 return RouteSafety.UNSAFE
             }
             if (task.opensLane && focus != null && !TacticalRoutes.safeLaneProbe(context.search.origin, foot, focus)) return RouteSafety.UNSAFE
+            if (task.job == TacticalJob.FLANK && context.view.visible.any { !TacticalRoutes.safeFlankDistance(context.entity.position(), foot, it.position) }) return RouteSafety.UNSAFE
             if (index % 4 == 0 && task.job == TacticalJob.FLANK) {
                 if (!TickBudget.hasRaycasts(context.level)) return RouteSafety.DEFERRED
-                if (context.threats.any { it.position.distanceTo(foot) < 8.0 }) return RouteSafety.UNSAFE
                 if (hasUncoveredApproach(context, foot)) return RouteSafety.UNSAFE
             }
         }
@@ -253,9 +263,9 @@ object TacticalPositions {
             hulls.none { it.intersects(body) } && !GrenadeHazard.threatens(entity.level() as ServerLevel, point) && !FiringSpots.crowded(point, taken)
     private fun friendlyLane(entity: NpcEntity, eye: Vec3, focus: Vec3?): Boolean =
         focus == null ||
-            FriendlyFireGuard.assess(entity, focus.add(0.0, 1.5, 0.0), 3.0, focus, 0.0, eye).lineClear
+            FriendlyFireGuard.assess(entity, focus.add(0.0, 1.5, 0.0), entity.spread, focus, 0.0, eye).lineClear
     private const val MAX_PROBES_PER_TICK = 24
-    private val SHOOTING_JOBS = setOf(TacticalJob.COVER, TacticalJob.ANTI_ARMOUR, TacticalJob.OVERWATCH)
+    private val SHOOTING_JOBS = TacticalJob.FIRING_POSITIONS
     private val RUNNING_JOBS = TacticalJob.RUNNING
     private val OFFSETS = listOf(
         Vec3.ZERO, Vec3(0.8, 0.0, 0.0), Vec3(-0.8, 0.0, 0.0), Vec3(0.0, 0.0, 0.8), Vec3(0.0, 0.0, -0.8),
