@@ -136,6 +136,50 @@ class TacticalLifecycleTest {
         assertThrows(IllegalStateException::class.java) { TacticalPlan(2, TacticalPattern.FLANK, focus, 0, 1, behavior = behavior) }
     }
 
+    @Test fun `an invalid state factory leaves the running plan and its resources intact`() {
+        val calls = mutableListOf<String>()
+        val shared = RecordingState(calls)
+        val registry = TacticalStates.registry.replacing(TacticalPattern.FOLLOW_ORDER) { shared }
+        val events = mutableListOf<TacticalEvent>()
+        val state = SquadTacticalState(TacticalEventSink(events::add), registry, TacticalDecisionPolicy {
+            TacticalChoice(TacticalPattern.FOLLOW_ORDER, null)
+        })
+        state.assess(squad, view())
+        val old = state.plan!!
+        val tasks = old.tasks.toMap()
+        events.clear()
+        assertThrows(IllegalStateException::class.java) { state.assess(squad, view(10, 2)) }
+        assertSame(old, state.plan)
+        tasks.forEach { (id, task) -> assertSame(task, old.tasks[id]) }
+        assertTrue(events.none { it is TacticalEvent.TaskReleased })
+        state.assess(squad, view(20))
+        assertEquals(2, calls.count { it.startsWith("tick:") })
+        assertEquals(0, calls.count { it.startsWith("exit:") })
+    }
+
+    @Test fun `a failure during state entry sets recovery policy without assigning or ticking terminal work`() {
+        val events = mutableListOf<TacticalEvent>()
+        var ticks = 0
+        val registry = TacticalStates.registry.replacing(TacticalPattern.BOUND) {
+            object : TacticalState() {
+                override fun onEnter(context: TacticalContext) = context.fail(TacticalFailure.MOVEMENT_TIMEOUT)
+                override fun beforeTick(context: TacticalContext) { ticks++ }
+                override fun task(layout: TacticalLayout, member: TacticalMember, index: Int) = layout.cover(member)
+            }
+        }
+        val state = SquadTacticalState(TacticalEventSink(events::add), registry, TacticalDecisionPolicy {
+            TacticalChoice(TacticalPattern.BOUND, focus)
+        })
+        state.assess(squad, view())
+        assertEquals(TacticalPhase.FAILED, state.plan!!.phase)
+        assertEquals(TacticalFailure.MOVEMENT_TIMEOUT, state.plan!!.failure)
+        assertEquals(120L, state.blocked[TacticalPattern.BOUND])
+        assertEquals(0, ticks)
+        assertTrue(events.none { it is TacticalEvent.TaskAssigned })
+        state.assess(squad, view(10))
+        assertNotEquals(TacticalPattern.BOUND, state.plan!!.pattern)
+    }
+
     @Test fun `a registered state can enable defensive support posts without changing the layout dispatcher`() {
         val registry = TacticalStates.registry.replacing(TacticalPattern.FOLLOW_ORDER) {
             object : TacticalState() {

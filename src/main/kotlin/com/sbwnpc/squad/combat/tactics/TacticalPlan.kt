@@ -36,9 +36,9 @@ class TacticalPlan(
         behavior.phases.initialize(initialStatus)
     }
 
-    internal fun assign(squad: UUID, view: TacticalSnapshot) {
+    internal fun assign(squad: UUID, view: TacticalSnapshot, owner: SquadTacticalState? = null) {
         if (exited || status in setOf(TacticalStatus.FAILED, TacticalStatus.COMPLETED)) return
-        val next = TacticalContext(squad, this, view)
+        val next = TacticalContext(squad, this, view, owner)
         context = next
         if (!entered) {
             entered = true
@@ -49,7 +49,8 @@ class TacticalPlan(
 
     internal fun tick(squad: UUID, owner: SquadTacticalState, view: TacticalSnapshot) {
         if (exited || status == TacticalStatus.FAILED || status == TacticalStatus.COMPLETED) return
-        if (!entered) assign(squad, view)
+        if (!entered) assign(squad, view, owner)
+        if (exited || status in setOf(TacticalStatus.FAILED, TacticalStatus.COMPLETED)) return
         val next = TacticalContext(squad, this, view, owner)
         context = next
         behavior.refreshSectors(next)

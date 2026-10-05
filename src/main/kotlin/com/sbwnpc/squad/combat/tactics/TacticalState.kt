@@ -46,7 +46,8 @@ abstract class TacticalState {
         if (origin == null) origin = context.view.center
         phases.enter(context)
         onEnter(context)
-        assign(context, trigger = "state_enter")
+        if (context.plan.status !in setOf(TacticalStatus.FAILED, TacticalStatus.COMPLETED))
+            assign(context, trigger = "state_enter")
     }
 
     fun tick(context: TacticalContext) {

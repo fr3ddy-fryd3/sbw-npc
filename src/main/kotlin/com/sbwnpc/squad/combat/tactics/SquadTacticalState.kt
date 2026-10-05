@@ -47,7 +47,7 @@ class SquadTacticalState(
         val retainDefence = !movedHome && old?.stamp == view.stamp && old.behavior.supportsDefensiveOverwatch
         val selected = select(effective, view.stamp, view.now)
         if (selected) plan?.let {
-            TacticalCoordinator.assign(squad, it, view)
+            TacticalCoordinator.assign(squad, it, view, this)
             if (retainDefence) DefensiveOverwatch.preservePosts(it, previous, view)
         }
         plan?.let { TacticalCoordinator.advance(squad, this, it, view) }
@@ -75,14 +75,17 @@ class SquadTacticalState(
         }
         decision as TacticalSelection.Replace
         val changedOrder = old != null && old.stamp != stamp
-        if (changedOrder) { blockedPattern = null; blocked.clear(); holdAfterFailure.clear() }
-        old?.exit(now, decision.trigger)
-        plan = TacticalPlan(++serial, choice.pattern, choice.focus, now, stamp, events = events,
+        // Validate the new state before cancelling any work owned by the current plan.
+        val next = TacticalPlan(serial + 1, choice.pattern, choice.focus, now, stamp, events = events,
             behavior = registry.create(choice.pattern), reason = choice.reason, flankSide = flankSide).also {
             if (old?.pattern == choice.pattern && it.behavior.stability.carriesOrigin && !changedOrder)
                 it.behavior.origin = old.origin
         }
-        events.emit(TacticalEvent.PlanSelected(plan!!.id, now, choice, old?.id, old?.phase, stamp, decision.trigger))
+        if (changedOrder) { blockedPattern = null; blocked.clear(); holdAfterFailure.clear() }
+        old?.exit(now, decision.trigger)
+        serial++
+        plan = next
+        events.emit(TacticalEvent.PlanSelected(next.id, now, choice, old?.id, old?.phase, stamp, decision.trigger))
         lastHeld = null
         nextHeldTrace = Long.MIN_VALUE
         return true
