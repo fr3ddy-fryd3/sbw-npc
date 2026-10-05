@@ -50,14 +50,15 @@ class HeightAttackState : CoveredManeuverState() {
     }
 
     override fun promoteLateSupport(context: TacticalContext) {
-        if (bounds != 0 || context.view.members.any {
-                context.plan.tasks[it.id]?.job == TacticalJob.COVER && TacticalEvidence.covers(it, context.plan.tasks[it.id])
-            } || context.view.members.none {
-                context.plan.tasks[it.id]?.job == TacticalJob.WAIT && TacticalEvidence.covers(it, context.plan.tasks[it.id])
-            }
-        ) {
-            return
+        if (bounds != 0) return
+        val coverAvailable = context.view.members.any { member ->
+            context.plan.tasks[member.id]?.job == TacticalJob.COVER && TacticalEvidence.covers(member, context.plan.tasks[member.id])
         }
+        if (coverAvailable) return
+        val waitingCoverAvailable = context.view.members.any { member ->
+            context.plan.tasks[member.id]?.job == TacticalJob.WAIT && TacticalEvidence.covers(member, context.plan.tasks[member.id])
+        }
+        if (!waitingCoverAvailable) return
         covering.clear()
         assign(context, trigger = "late_height_cover")
         for (member in context.view.members) {

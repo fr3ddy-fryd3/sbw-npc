@@ -728,7 +728,12 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         val defendHome = if (squad?.order == SquadOrder.DEFEND) entity.homeCenter() else null
         val retreatTo = entity.retreatPoint()
         val resupplyAt = if (retreatTo == null) entity.lowAmmoFallback() else null
-        val opening = openingFire.hold(target.uuid, entity.tickCount, clearShot && lineIsClear && blastClear, gun.triggerMode == TriggerMode.AUTO)
+        val opening = openingFire.hold(
+            target.uuid,
+            entity.tickCount,
+            clearShot && lineIsClear && blastClear,
+            gun.triggerMode == TriggerMode.AUTO,
+        )
         fallingBack = false
 
         if (retreatTo != null) {
@@ -868,11 +873,15 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
     }
 
+    private fun canFireNow(entity: NpcEntity, target: LivingEntity, gun: HandGun, clearShot: Boolean, pausedBetweenBursts: Boolean): Boolean =
+        clearShot && SquadTactics.permitsFire(entity, target) && !pausedBetweenBursts &&
+            lineIsClear && blastClear && gun.canShoot() && aimTime >= entity.maxAimTime
+
     private fun tickShooting(entity: NpcEntity, target: LivingEntity, gun: HandGun, canShootTarget: Boolean) {
         val pausedBetweenBursts = entity.tickCount < burstPauseUntilTick
         entity.readyToCover = canShootTarget && lineIsClear && blastClear && gun.hasAmmo() &&
             aimTime >= entity.maxAimTime && SquadTactics.permitsFire(entity, target)
-        if (canShootTarget && SquadTactics.permitsFire(entity, target) && !pausedBetweenBursts && lineIsClear && blastClear && gun.canShoot() && aimTime >= entity.maxAimTime) {
+        if (canFireNow(entity, target, gun, canShootTarget, pausedBetweenBursts)) {
             val rps = gun.roundsPerMinute / 60.0
             var cooldown = Math.round(1000 / rps).coerceAtLeast(1)
 

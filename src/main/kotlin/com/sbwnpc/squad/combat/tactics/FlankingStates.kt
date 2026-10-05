@@ -41,12 +41,11 @@ abstract class FlankingState : CoveredManeuverState() {
             context.plan.tasks[it.id]?.job == TacticalJob.COVER &&
                 TacticalEvidence.firesCover(it, context.plan.tasks[it.id])
         }
-        if (cover >= TacticalFlanks.requiredCover(context.view) || context.view.members.none {
-                context.plan.tasks[it.id]?.job == TacticalJob.WAIT && TacticalEvidence.firesCover(it, context.plan.tasks[it.id])
-            }
-        ) {
-            return
+        if (cover >= TacticalFlanks.requiredCover(context.view)) return
+        val waitingShooterAvailable = context.view.members.any { member ->
+            context.plan.tasks[member.id]?.job == TacticalJob.WAIT && TacticalEvidence.firesCover(member, context.plan.tasks[member.id])
         }
+        if (!waitingShooterAvailable) return
         support.clear()
         order.clear()
         assign(context, trigger = "late_cover_shooter")

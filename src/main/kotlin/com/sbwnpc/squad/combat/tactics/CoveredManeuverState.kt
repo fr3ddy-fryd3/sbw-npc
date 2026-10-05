@@ -35,28 +35,28 @@ abstract class CoveredManeuverState : TacticalState() {
 
     internal override fun prepare(context: TacticalContext) {
         val cover = context.view.members.filter { context.plan.tasks[it.id]?.job == TacticalJob.COVER }
-        val ready = (
-            if (actualCoverRequired) {
-                cover.count {
-                    maintainsCover(context, it) && TacticalEvidence.settled(it, context.plan.tasks[it.id])
-                } >= TacticalFlanks.requiredCover(context.view)
-            } else {
-                cover.any {
-                    maintainsCover(context, it) && TacticalEvidence.settled(it, context.plan.tasks[it.id])
-                }
-            }
-            ) || readyWithoutCover(context)
-        if (ready) {
+        if (coverReady(context, cover) || readyWithoutCover(context)) {
             phases.transition(if (withdrawal) WithdrawingPhase() else ExecutingPhase(), context, "cover_ready")
-        } else if (context.view.now - phaseSince >= 80 && canProbe && cover.none {
-                TacticalEvidence.firesCover(it, context.plan.tasks[it.id])
-            } && openLane(context)
-        ) {
             return
-        } else if (context.view.now - phaseSince > 100) {
+        }
+        if (shouldOpenLane(context, cover) && openLane(context)) return
+        if (context.view.now - phaseSince > COVER_READY_TIMEOUT) {
             context.fail(TacticalFailure.COVER_NOT_READY_TIMEOUT)
         }
     }
+
+    private fun coverReady(context: TacticalContext, cover: List<TacticalMember>): Boolean {
+        fun ready(member: TacticalMember): Boolean = maintainsCover(context, member) && TacticalEvidence.settled(member, context.plan.tasks[member.id])
+        return if (actualCoverRequired) {
+            cover.count { ready(it) } >= TacticalFlanks.requiredCover(context.view)
+        } else {
+            cover.any { ready(it) }
+        }
+    }
+
+    private fun shouldOpenLane(context: TacticalContext, cover: List<TacticalMember>): Boolean =
+        context.view.now - phaseSince >= COVER_PROBE_DELAY && canProbe &&
+            cover.none { TacticalEvidence.firesCover(it, context.plan.tasks[it.id]) }
 
     internal override fun execute(context: TacticalContext) {
         val movers = context.view.members.filter { context.plan.tasks[it.id]?.job in setOf(TacticalJob.FLANK, TacticalJob.ADVANCE, TacticalJob.RETREAT) }
@@ -66,7 +66,7 @@ abstract class CoveredManeuverState : TacticalState() {
         }
         val cover = context.view.members.filter { context.plan.tasks[it.id]?.job == TacticalJob.COVER }
         if (cover.any { maintainsCover(context, it) }) lastCover = context.view.now
-        if (!withdrawal && context.view.now - lastCover > 80 && context.view.visible.isNotEmpty()) {
+        if (!withdrawal && context.view.now - lastCover > COVER_LOST_DELAY && context.view.visible.isNotEmpty()) {
             phases.transition(PausedPhase(phaseSince), context, "cover_lost_pause")
             return
         }
@@ -89,7 +89,7 @@ abstract class CoveredManeuverState : TacticalState() {
     }
 
     private fun openLane(context: TacticalContext): Boolean {
-        if (laneAttempts >= 2 || context.plan.focus == null) return false
+        if (laneAttempts >= MAX_LANE_ATTEMPTS || context.plan.focus == null) return false
         val scouts = context.view.fighting.filter {
             it.role != NpcClass.MEDIC && !it.suppressed && it.id != medicGuard &&
                 context.plan.tasks[it.id]?.job in setOf(TacticalJob.COVER, TacticalJob.WAIT)
@@ -100,5 +100,12 @@ abstract class CoveredManeuverState : TacticalState() {
         if (scouts.isEmpty()) return false
         phases.transition(OpeningLanePhase(scouts.map { it.id }), context, "cover_lane_blocked")
         return true
+    }
+
+    private companion object {
+        const val COVER_PROBE_DELAY = 80
+        const val COVER_READY_TIMEOUT = 100
+        const val COVER_LOST_DELAY = 80
+        const val MAX_LANE_ATTEMPTS = 2
     }
 }
