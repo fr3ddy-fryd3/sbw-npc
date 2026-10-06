@@ -310,7 +310,7 @@ class TacticalFlanksTest {
         assertFalse(plan.tasks.values.any { it.job == TacticalJob.FLANK })
     }
 
-    @Test fun `a real firing peek replaces a stale covering endpoint before launching the wave`() {
+    @Test fun `a firing peek updates its endpoint while the remaining line finishes deployment`() {
         val view = view()
         val (state, plan) = setup(view)
         val cover = plan.tasks.filterValues { it.job == TacticalJob.COVER }.keys.take(2).toSet()
@@ -321,8 +321,12 @@ class TacticalFlanksTest {
             },
         )
         TacticalCoordinator.advance(squad, state, plan, ready)
-        assertEquals(TacticalStatus.EXECUTING, plan.status)
+        assertEquals(TacticalStatus.PREPARING, plan.status)
         for (id in cover) assertEquals(ready.members.first { it.id == id }.position, plan.tasks[id]?.position)
+        TacticalCoordinator.advance(squad, state, plan, ready.copy(now = 30).assumingFrontArrival(plan))
+        assertEquals(TacticalStatus.PREPARING, plan.status)
+        TacticalCoordinator.advance(squad, state, plan, ready.copy(now = 70).assumingFrontArrival(plan))
+        assertEquals(TacticalStatus.EXECUTING, plan.status)
     }
 
     @Test fun `shooting while walking cannot replace the assigned cover endpoint`() {

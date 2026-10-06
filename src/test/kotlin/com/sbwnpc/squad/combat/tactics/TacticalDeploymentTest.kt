@@ -84,4 +84,44 @@ class TacticalDeploymentTest {
         assertTrue(deployment.progressing(599))
         assertFalse(deployment.progressing(600))
     }
+
+    @Test fun `two settled shooters cannot start the maneuver while the remaining line is deploying`() {
+        val state = SquadTacticalState(decisions = TacticalDecisionPolicy { TacticalChoice(TacticalPattern.FLANK, enemy) })
+        val initial = view()
+        state.assess(squad, initial)
+        val plan = state.plan!!
+        val preparing = initial.copy(
+            now = 10,
+            members = initial.members.mapIndexed { index, member ->
+                if (index == 15 || index == 16) {
+                    member.copy(
+                        position = origin.add(0.0, 0.0, (index - 15.5) * 6.0),
+                        canFire = true,
+                        firingAt = enemy,
+                        recentFire = true,
+                        recentFireAt = enemy,
+                    )
+                } else {
+                    member.copy(moving = true)
+                }
+            },
+        )
+        state.assess(squad, preparing)
+        assertSame(plan, state.plan)
+        assertEquals(TacticalPhase.PREPARING, plan.phase)
+
+        val deployed = preparing.copy(
+            now = 90,
+            members = preparing.members.mapIndexed { index, member ->
+                member.copy(position = origin.add(0.0, 0.0, (index - 15.5) * 6.0), moving = false)
+            },
+        )
+        state.assess(squad, deployed)
+        assertSame(plan, state.plan)
+        assertEquals(TacticalPhase.PREPARING, plan.phase)
+        state.assess(squad, deployed.copy(now = 129))
+        assertEquals(TacticalPhase.PREPARING, plan.phase)
+        state.assess(squad, deployed.copy(now = 130))
+        assertEquals(TacticalPhase.EXECUTING, plan.phase)
+    }
 }

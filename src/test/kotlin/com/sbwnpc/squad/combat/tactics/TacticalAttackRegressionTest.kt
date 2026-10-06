@@ -96,14 +96,15 @@ class TacticalAttackRegressionTest {
         state.select(TacticalChoice(TacticalPattern.FLANK, focus), 1, 0)
         val plan = state.plan!!
         TacticalCoordinator.assign(squad, plan, view())
-        TacticalCoordinator.advance(squad, state, plan, view().assumingFrontArrival(plan))
+        val deployed = view().assumingFrontArrival(plan)
+        TacticalCoordinator.advance(squad, state, plan, deployed)
         val wave = plan.tasks.filterValues { it.job == TacticalJob.FLANK }.keys.toList()
         assertEquals(6, wave.size)
         val arrived = wave.take(5).toSet()
         val positions = arrived.associateWith { plan.tasks[it]!!.anchor }
         fun arrivedView(now: Long) =
             view(now).copy(
-                members = members.map { member ->
+                members = deployed.members.map { member ->
                     positions[member.id]?.let { point ->
                         plan.tasks[member.id]?.position = point
                         member.copy(position = point)

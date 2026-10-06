@@ -121,6 +121,8 @@ class TacticalFrontageTest {
         assertEquals(0, TacticalTelemetry.front(plan, initial).onLine)
         val deployed = initial.assumingFrontArrival(plan)
         TacticalCoordinator.advance(squad, state, plan, deployed)
+        assertEquals(TacticalPhase.PREPARING, plan.phase)
+        TacticalCoordinator.advance(squad, state, plan, deployed.copy(now = 40))
         assertEquals(TacticalPhase.EXECUTING, plan.phase)
         assertEquals(6, plan.tasks.values.count { it.job == TacticalJob.FLANK })
         assertEquals(plan.tasks.values.count { it.frontage != null }, TacticalTelemetry.front(plan, deployed).onLine)

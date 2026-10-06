@@ -22,6 +22,8 @@ object TacticalEventFormat {
 
             is TacticalEvent.SelectionHeld -> "event=selection_held proposed=${event.proposed} active=${event.active} reason=${event.reason}"
 
+            is TacticalEvent.PreparationHeld -> "event=preparation_${if (event.reason == null) "released" else "held"} reason=${event.reason}"
+
             is TacticalEvent.TaskAssigned ->
                 "event=task_assigned npc=${event.member} job=${event.job} anchor=${event.anchor} trigger=${event.trigger} " +
                     "frontSlot=${event.frontage?.point} frontDirection=${event.frontage?.forward}"

@@ -53,6 +53,12 @@ sealed interface TacticalEvent {
         val reason: TacticalSelectionHold,
     ) : TacticalEvent
 
+    data class PreparationHeld(
+        override val plan: Int,
+        override val tick: Long,
+        val reason: TacticalPreparationHold?,
+    ) : TacticalEvent
+
     data class TaskAssigned(
         override val plan: Int,
         override val tick: Long,
@@ -89,6 +95,7 @@ sealed interface TacticalEvent {
 }
 
 enum class TacticalMovementBlocker { VEHICLE, ROLE_TASK, SUPPLY, DUG_IN, GRENADE, COVER, MEDIC, RETREAT }
+enum class TacticalPreparationHold { DEPLOYMENT, SETTLING }
 
 data class TacticalTransitionEvidence(
     val members: Int,

@@ -12,8 +12,9 @@ abstract class CoveredManeuverState : TacticalState() {
     var laneAttempts = 0
         internal set
     private val deployment = TacticalDeployment()
+    private var preparationHold: TacticalPreparationHold? = null
 
-    override fun extendsPreparation(now: Long): Boolean = phases.current.id == TacticalPhase.PREPARING && deployment.progressing(now)
+    override fun extendsPreparation(now: Long): Boolean = phases.current.id == TacticalPhase.PREPARING && deployment.holdingPreparation(now)
 
     override fun beforeTick(context: TacticalContext) {
         if (context.plan.phase == TacticalPhase.PREPARING) promoteLateSupport(context)
@@ -42,12 +43,19 @@ abstract class CoveredManeuverState : TacticalState() {
         }
 
     internal override fun prepare(context: TacticalContext) {
+        // Covering fire does not mean that the rest of the attack line has deployed.
+        // Keep their current assignments until deployment finishes or its progress expires.
+        val hold = deployment.holdReason(context.view.now)
+        if (hold != preparationHold) {
+            preparationHold = hold
+            context.plan.events.emit(TacticalEvent.PreparationHeld(context.plan.id, context.view.now, hold))
+        }
+        if (hold != null) return
         val cover = context.view.members.filter { context.plan.tasks[it.id]?.job in TacticalJob.FIRE_SUPPORT }
         if (coverReady(context, cover) || readyWithoutCover(context)) {
             phases.transition(if (withdrawal) WithdrawingPhase() else ExecutingPhase(), context, "cover_ready")
             return
         }
-        if (deployment.progressing(context.view.now)) return
         if (shouldOpenLane(context, cover) && openLane(context)) return
         if (context.view.now - phaseSince > COVER_READY_TIMEOUT) {
             context.fail(TacticalFailure.COVER_NOT_READY_TIMEOUT)
