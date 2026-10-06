@@ -121,7 +121,8 @@
 | Группа | Расположение |
 |---|---|
 | Тесты тактики | [src/test/kotlin/com/sbwnpc/squad/combat/tactics/](../src/test/kotlin/com/sbwnpc/squad/combat/tactics/) |
-| Проверки линии атаки и развёртывания | [TacticalFrontageTest.kt](../src/test/kotlin/com/sbwnpc/squad/combat/tactics/TacticalFrontageTest.kt), [TacticalDeploymentTest.kt](../src/test/kotlin/com/sbwnpc/squad/combat/tactics/TacticalDeploymentTest.kt); прибытие на позиции в фазовых сценариях — `TacticalNavigationFixture.kt` |
+| Проверки линии атаки и развёртывания | [TacticalFrontageTest.kt](../src/test/kotlin/com/sbwnpc/squad/combat/tactics/TacticalFrontageTest.kt), [TacticalDeploymentTest.kt](../src/test/kotlin/com/sbwnpc/squad/combat/tactics/TacticalDeploymentTest.kt); предпосылки фазовых сценариев — `TacticalScenarioFixtures.kt` |
+| Покрытие и ограничения тестов тактики | [TACTICAL-TESTS.md](TACTICAL-TESTS.md) |
 | Тесты остальных модулей | [src/test/kotlin/com/sbwnpc/squad/](../src/test/kotlin/com/sbwnpc/squad/) — каталоги соответствуют основному коду |
 | Задачи сборки, форматирования и тестов | [build.gradle.kts](../build.gradle.kts) |
 | Настройки форматирования | [.editorconfig](../.editorconfig) |
