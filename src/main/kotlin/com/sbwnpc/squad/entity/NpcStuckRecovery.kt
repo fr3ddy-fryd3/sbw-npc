@@ -64,7 +64,7 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
         }
         val boxedIn = nowhereSinceTick >= 0 && tick - nowhereLastTick <= NOWHERE_FRESH_TICKS && !moved
         val toward: Vec3 = when {
-            walkingInPlace && tick - stuckSinceTick >= STUCK_BREAK_TICKS -> Vec3.atBottomCenterOf(path!!.target)
+            walkingInPlace && tick - stuckSinceTick >= STUCK_BREAK_TICKS -> Vec3.atCenterOf(path!!.nextNodePos)
             boxedIn && tick - nowhereSinceTick >= STUCK_BREAK_TICKS -> Vec3.atCenterOf(nowhereToward ?: return)
             else -> return
         }
@@ -99,8 +99,6 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
         // Relax descent only to get off a crown. A blocked upward step is no reason to drop
         // several blocks below the route, and clearing dirt underfoot excavated deeper traps.
         if (supports.any { WalkingClearance.leaves(level.getBlockState(it)) }) npc.allowRecoveryDescent()
-        val navigation = npc.navigation as? com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
-        if (walkingInPlace) navigation?.avoidBlockedStep(path!!.nextNodePos)
         npc.navigation.stop()
         npc.navigation.moveTo(npc.navigation.createPath(BlockPos.containing(toward), 0), 1.0)
         DebugFlags.log(

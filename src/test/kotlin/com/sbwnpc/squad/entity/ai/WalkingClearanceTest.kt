@@ -138,24 +138,6 @@ class WalkingClearanceTest {
         assertEquals(listOf(ahead), WalkingClearance.clearingCandidates(world, null, body, Vec3(1.0, 0.0, 0.0)))
     }
 
-    @Test fun `three to five block drops are accepted only when the return query succeeds for every drop`() {
-        val nodes = listOf(
-            net.minecraft.world.level.pathfinder.Node(0, 64, 0),
-            net.minecraft.world.level.pathfinder.Node(1, 61, 0),
-            net.minecraft.world.level.pathfinder.Node(2, 56, 0),
-        )
-        val path = net.minecraft.world.level.pathfinder.Path(nodes, BlockPos(2, 56, 0), true)
-        val checked = mutableListOf<Pair<BlockPos, BlockPos>>()
-        assertNull(
-            WalkingClearance.firstIrreversibleDrop(path) { below, above ->
-                checked += below to above
-                true
-            },
-        )
-        assertEquals(listOf(BlockPos(1, 61, 0) to BlockPos(0, 64, 0), BlockPos(2, 56, 0) to BlockPos(1, 61, 0)), checked)
-        assertEquals(BlockPos(2, 56, 0), WalkingClearance.firstIrreversibleDrop(path) { below, _ -> below.y != 56 })
-    }
-
     private fun normalFallDamage(distance: Float) = maxOf(0, ceil(distance - 3f).toInt())
 
     @Test

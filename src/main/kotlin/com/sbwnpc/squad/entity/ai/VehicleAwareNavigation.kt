@@ -29,47 +29,6 @@ import net.minecraft.world.phys.AABB
  * be told directly.
  */
 class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob, level) {
-    private val blockedSteps = mutableMapOf<BlockPos, Int>()
-    private var checkedPath: Path? = null
-
-    /** A physically failed step is temporarily excluded from the next vanilla A* searches. */
-    fun avoidBlockedStep(pos: BlockPos) {
-        blockedSteps[pos.immutable()] = mob.tickCount + 100
-    }
-
-    internal fun blockedSteps(): Set<BlockPos> {
-        blockedSteps.entries.removeIf { it.value <= mob.tickCount }
-        return blockedSteps.keys.toSet()
-    }
-
-    override fun createPath(targets: Set<BlockPos>, offset: Int, useHead: Boolean, accuracy: Int, range: Float): Path? {
-        val found = super.createPath(targets, offset, useHead, accuracy, range) ?: return null
-        if (found === checkedPath) return found
-        val unsafeDrop = WalkingClearance.firstIrreversibleDrop(found, ::returnRouteExists)
-        if (unsafeDrop != null) {
-            avoidBlockedStep(unsafeDrop)
-            com.sbwnpc.squad.combat.DebugFlags.log(
-                com.sbwnpc.squad.combat.LogGroup.STUCK,
-                "{} rejected drop at {}: no return route to the upper step; target={}",
-                mob.uuid,
-                unsafeDrop,
-                found.target,
-            )
-            return null
-        }
-        checkedPath = found
-        return found
-    }
-
-    private fun returnRouteExists(below: BlockPos, above: BlockPos): Boolean {
-        val padding = 16
-        val region = PathNavigationRegion(level, below.offset(-padding, -padding, -padding), below.offset(padding, padding, padding))
-        val evaluator = VehicleAwareNodeEvaluator(below).also { it.setCanPassDoors(true) }
-        // Vanilla A* from a hypothetical start; the live NPC and its navigator stay in place.
-        val back = PathFinder(evaluator, 2048).findPath(region, mob, setOf(above), 32f, 0, 1f)
-        return back?.canReach() == true && back.endNode?.asBlockPos() == above
-    }
-
     /** Tactical posts need their exact height, rather than a march waypoint on the surface. */
     fun createPositionPath(pos: BlockPos): Path? {
         if (!canPlan) return null
@@ -172,22 +131,6 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         if (path == null && !canPlan && this.path?.isDone == false) {
             traceAir("asked mid-jump, keeps walking the path to ${this.path?.target}")
             return false
-        }
-        // Shared march paths and role errands may hand in paths computed outside this navigator.
-        if (path != null && path !== checkedPath) {
-            val unsafeDrop = WalkingClearance.firstIrreversibleDrop(path, ::returnRouteExists)
-            if (unsafeDrop != null) {
-                avoidBlockedStep(unsafeDrop)
-                com.sbwnpc.squad.combat.DebugFlags.log(
-                    com.sbwnpc.squad.combat.LogGroup.STUCK,
-                    "{} rejected supplied path at {}: no return route",
-                    mob.uuid,
-                    unsafeDrop,
-                )
-                super.stop()
-                return false
-            }
-            checkedPath = path
         }
         if (path == null || !path.sameAs(this.path)) traceHandover(if (path == null) "path dropped, none in its place" else "new path to ${path.target}")
         return super.moveTo(path, speed)
@@ -422,9 +365,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
     }
 }
 
-internal open class VehicleAwareNodeEvaluator(private val planningStart: BlockPos? = null) : WalkNodeEvaluator() {
-    override fun getStart(): net.minecraft.world.level.pathfinder.Node = planningStart?.let { getStartNode(it) } ?: super.getStart()
-
+internal open class VehicleAwareNodeEvaluator : WalkNodeEvaluator() {
     // Vanilla caches the aggregate type of a mob-sized node, but neighboring nodes repeatedly
     // evaluate overlapping cells and their 24 surrounding hazards. Keep the final cell type
     // for this search only; raw block types in PathfindingContext do not cache those hazards.
@@ -435,7 +376,6 @@ internal open class VehicleAwareNodeEvaluator(private val planningStart: BlockPo
     private var standingOn: BlockPos? = null
     private var start: BlockPos? = null
     private var escapingCanopy = false
-    private var blockedSteps: Set<BlockPos> = emptySet()
 
     /**
      * One entity query for the whole path computation. [done] drops it again, and the evaluator's
@@ -460,11 +400,10 @@ internal open class VehicleAwareNodeEvaluator(private val planningStart: BlockPo
         // valid start at all, which is precisely the situation of a mob that has already been
         // pushed up onto a hull and now needs a route off it.
         standingOn = if (hulls.isEmpty()) null else mob.blockPosition()
-        start = planningStart ?: mob.blockPosition()
-        blockedSteps = (mob.navigation as? VehicleAwareNavigation)?.blockedSteps() ?: emptySet()
+        start = mob.blockPosition()
         // A man already on a crown needs a way off it, but ground routes must not climb crowns.
         escapingCanopy = (-1..0).any { dy ->
-            WalkingClearance.leaves(level.getBlockState(start!!.offset(0, dy, 0)))
+            WalkingClearance.leaves(level.getBlockState(mob.blockPosition().offset(0, dy, 0)))
         }
     }
 
@@ -474,7 +413,6 @@ internal open class VehicleAwareNodeEvaluator(private val planningStart: BlockPo
         standingOn = null
         start = null
         escapingCanopy = false
-        blockedSteps = emptySet()
         super.done()
     }
 
@@ -517,7 +455,6 @@ internal open class VehicleAwareNodeEvaluator(private val planningStart: BlockPo
     }
 
     override fun getPathTypeOfMob(context: PathfindingContext, x: Int, y: Int, z: Int, mob: Mob): PathType {
-        if (BlockPos(x, y, z) in blockedSteps && BlockPos(x, y, z) != start) return PathType.BLOCKED
         if (hulls.isNotEmpty() && !isStandingOn(x, y, z) && occupied(x, y, z)) {
             return PathType.BLOCKED
         }
@@ -530,15 +467,13 @@ internal open class VehicleAwareNodeEvaluator(private val planningStart: BlockPo
         // can occupy an otherwise empty neighboring node, and roots can catch the legs there.
         // Keep the start usable for an NPC who was already pushed into an obstacle.
         val origin = start
-        if (origin != null && origin.x == x && origin.z == z && origin.y == y) return type
+        if (origin != null && origin.x == x && origin.z == z && kotlin.math.abs(origin.y - y) <= 1) return type
         val floor = if (type == PathType.OPEN || type == PathType.WATER) {
             y.toDouble()
         } else {
             getFloorLevel(pos)
         }
-        // Crouching at a firing post must not make the next walk a crawl under a low ceiling.
-        val height = if (mob is com.sbwnpc.squad.entity.NpcEntity) mob.getDimensions(net.minecraft.world.entity.Pose.STANDING).height else mob.bbHeight
-        val box = WalkingClearance.body(x, floor, z, mob.bbWidth, height)
+        val box = WalkingClearance.body(x, floor, z, mob.bbWidth, mob.bbHeight)
         return if (context.level().noBlockCollision(mob, box)) type else PathType.BLOCKED
     }
 

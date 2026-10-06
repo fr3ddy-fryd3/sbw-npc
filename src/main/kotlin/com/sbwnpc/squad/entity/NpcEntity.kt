@@ -751,11 +751,14 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         descentRecoveryUntil = tickCount + 100
     }
 
-    /** Health bounds the fall; VehicleAwareNavigation also proves a route back up each drop. */
-    override fun getMaxFallDistance(): Int =
-        com.sbwnpc.squad.entity.ai.WalkingClearance.recoveryFallDistance(health) {
+    /** Ordinary marches avoid damaging drops; a stranded NPC can use a bounded descent. */
+    override fun getMaxFallDistance(): Int {
+        val normal = super.getMaxFallDistance()
+        if (!recoveringNavigation) return normal
+        return com.sbwnpc.squad.entity.ai.WalkingClearance.recoveryFallDistance(health) {
             calculateFallDamage(it, 1f)
         }
+    }
 
     /** See [NpcStuckRecovery.notePathGoesNowhere]; the navigation reports every path it plans. */
     fun notePathGoesNowhere(toward: BlockPos, goesNowhere: Boolean) = stuckRecovery.notePathGoesNowhere(toward, goesNowhere)
