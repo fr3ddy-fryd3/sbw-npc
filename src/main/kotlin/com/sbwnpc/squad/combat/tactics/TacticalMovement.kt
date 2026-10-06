@@ -72,7 +72,20 @@ object TacticalMovement {
             )
             return true
         }
-        if (task.job in TacticalJob.FIRING_POSITIONS && task.position != null && entity.target?.uuid != task.firingTarget) {
+        val previousTarget = task.firingTarget
+        val postReview = TacticalPostReview.review(task, entity.target?.uuid, entity.level().gameTime) {
+            val level = entity.level() as ServerLevel
+            if (!TickBudget.hasRaycasts(level)) {
+                null
+            } else {
+                val point = task.position!!
+                val requiresCover = task.job == TacticalJob.OVERWATCH && !task.localFireRecovery
+                !GrenadeHazard.threatens(level, point) &&
+                    (!requiresCover || TacticalPositions.protected(entity, task, point)) &&
+                    TacticalPositions.firingReady(entity, task, point)
+            }
+        }
+        if (postReview == TacticalPostReview.Result.INVALIDATED) {
             task.releaseNavigation(entity.navigation.path) { entity.navigation.stop() }
             FiringSpots.release(entity.uuid)
             task.position = null
@@ -80,12 +93,19 @@ object TacticalMovement {
             task.nextSearch = entity.level().gameTime
             DebugFlags.log(
                 LogGroup.ORDER, "[tactics] {} squad={} tick={} plan={} event=position_invalidated job={} reason=target_changed previous={} target={}",
-                entity.uuid, squad.id, entity.level().gameTime, task.plan, task.job, task.firingTarget, entity.target?.uuid,
+                entity.uuid, squad.id, entity.level().gameTime, task.plan, task.job, previousTarget, entity.target?.uuid,
+            )
+        } else if (postReview == TacticalPostReview.Result.RETAINED) {
+            DebugFlags.log(
+                LogGroup.ORDER, "[tactics] {} squad={} tick={} plan={} event=position_retained job={} reason=target_changed previous={} target={} position={}",
+                entity.uuid, squad.id, entity.level().gameTime, task.plan, task.job, previousTarget, entity.target?.uuid, task.position,
             )
         }
         val reviewDue = task.job in TacticalJob.FIRE_SUPPORT && entity.level().gameTime >= task.nextValidation &&
             task.position?.let { FiringPostArrival.reached(entity.position(), it) } == true
-        if ((task.position == null || task.search != null || reviewDue) && entity.level().gameTime >= task.nextSearch) {
+        if (postReview != TacticalPostReview.Result.DEFERRED &&
+            (task.position == null || task.search != null || reviewDue) && entity.level().gameTime >= task.nextSearch
+        ) {
             val result = TacticalPositions.find(entity, task, view)
             when (result.outcome) {
                 TacticalPositions.Outcome.DEFERRED -> {
