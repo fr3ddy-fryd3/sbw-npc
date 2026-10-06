@@ -21,6 +21,18 @@ class NpcMoveControl(mob: Mob) : MoveControl(mob) {
         val x = wantedX
         val y = wantedY
         val z = wantedZ
+        if (moving && mob.onGround() && !mob.isInWater && needsJump(x, y, z) &&
+            (
+                floorAt(BlockPos.containing(x, y, z)) - mob.y > 1.25 ||
+                    !mob.level().noBlockCollision(mob, mob.boundingBox.expandTowards(0.0, 1.25, 0.0).deflate(0.001))
+                )
+        ) {
+            // A higher node or blocked headroom cannot be solved by repeating the same jump.
+            // Keep the path active so stuck recovery can exclude this step and try another route.
+            operation = Operation.WAIT
+            mob.setZza(0f)
+            return
+        }
         super.tick()
         // Only when actually held up: a stair's shape goes a whole block up, but its lower step is
         // walked up without a jump, and a man hopping up every staircase looked broken too.
@@ -33,6 +45,10 @@ class NpcMoveControl(mob: Mob) : MoveControl(mob) {
             operation = Operation.JUMPING
         }
     }
+
+    private fun needsJump(x: Double, y: Double, z: Double): Boolean =
+        (x - mob.x) * (x - mob.x) + (z - mob.z) * (z - mob.z) < maxOf(1f, mob.bbWidth).toDouble() &&
+            floorAt(BlockPos.containing(x, y, z)) - mob.y > mob.maxUpStep()
 
     /** Where a man stands in the block at [pos]: on top of whatever lies there, or on the block below. */
     private fun floorAt(pos: BlockPos): Double {

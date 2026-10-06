@@ -50,7 +50,10 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
         if (tick % STUCK_CHECK_TICKS != 0 || npc.isPassenger) return
         val here = npc.position()
         val path = npc.navigation.path
-        val moved = stuckCheckPos?.let { it.distanceToSqr(here) > STUCK_MOVE_SQR } ?: true
+        // Bouncing vertically against a ledge is not travel progress. A completed upward step is.
+        val moved = stuckCheckPos?.let {
+            here.subtract(it).horizontalDistanceSqr() > STUCK_MOVE_SQR || (npc.onGround() && here.y > it.y + 0.5)
+        } ?: true
         stuckCheckPos = here
         if (moved) recoveryAttempts = 0
         val walkingInPlace = path != null && !npc.navigation.isDone && !moved
@@ -61,7 +64,7 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
         }
         val boxedIn = nowhereSinceTick >= 0 && tick - nowhereLastTick <= NOWHERE_FRESH_TICKS && !moved
         val toward: Vec3 = when {
-            walkingInPlace && tick - stuckSinceTick >= STUCK_BREAK_TICKS -> Vec3.atCenterOf(path!!.nextNodePos)
+            walkingInPlace && tick - stuckSinceTick >= STUCK_BREAK_TICKS -> Vec3.atBottomCenterOf(path!!.target)
             boxedIn && tick - nowhereSinceTick >= STUCK_BREAK_TICKS -> Vec3.atCenterOf(nowhereToward ?: return)
             else -> return
         }
@@ -72,11 +75,13 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
         val direction = if (len < 1.0e-3) Vec3.ZERO else Vec3(dx / len, 0.0, dz / len)
         val candidates = WalkingClearance.clearingCandidates(level, npc, npc.boundingBox, direction) +
             listOfNotNull(WalkingClearance.lowerCrownLayer(level, npc, npc.boundingBox))
+        val supports = WalkingClearance.supports(level, npc, npc.boundingBox)
         val pos = if (net.neoforged.neoforge.event.EventHooks.canEntityGrief(level, npc)) {
             candidates.firstOrNull { candidate ->
                 val state = level.getBlockState(candidate)
                 val hardness = state.getDestroySpeed(level, candidate)
-                state.fluidState.isEmpty && level.getBlockEntity(candidate) == null &&
+                (candidate !in supports || candidate == WalkingClearance.lowerCrownLayer(level, npc, npc.boundingBox)) &&
+                    state.fluidState.isEmpty && level.getBlockEntity(candidate) == null &&
                     hardness >= 0f && hardness <= SOFT_BLOCK_HARDNESS && !state.requiresCorrectToolForDrops()
             }
         } else {
@@ -91,9 +96,13 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
             level.destroyBlock(pos, true, npc)
             DebugFlags.log(LogGroup.STUCK, "{} broke {} at {} to get unstuck", npc.uuid, state.block.descriptionId, pos)
         }
-        npc.allowRecoveryDescent()
+        // Relax descent only to get off a crown. A blocked upward step is no reason to drop
+        // several blocks below the route, and clearing dirt underfoot excavated deeper traps.
+        if (supports.any { WalkingClearance.leaves(level.getBlockState(it)) }) npc.allowRecoveryDescent()
+        val navigation = npc.navigation as? com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
+        if (walkingInPlace) navigation?.avoidBlockedStep(path!!.nextNodePos)
         npc.navigation.stop()
-        npc.navigation.moveTo(npc.navigation.createPath(BlockPos.containing(toward), 1), 1.0)
+        npc.navigation.moveTo(npc.navigation.createPath(BlockPos.containing(toward), 0), 1.0)
         DebugFlags.log(
             LogGroup.STUCK,
             "{} replanned from {} toward {} with fall limit {}",

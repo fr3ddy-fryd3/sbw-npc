@@ -28,6 +28,19 @@ internal object WalkingClearance {
 
     fun blockers(level: CollisionGetter, entity: Entity?, box: AABB): List<BlockPos> = BlockCollisions(level, entity, box, false) { pos, _ -> pos.immutable() }.asSequence().toList()
 
+    /** Blocks touching the soles, including the real top of partial roots and leaves. */
+    fun supports(level: CollisionGetter, entity: Entity?, body: AABB): List<BlockPos> = blockers(level, entity, AABB(body.minX, body.minY - 0.05, body.minZ, body.maxX, body.minY, body.maxZ))
+
+    /** One-block descents can be climbed directly; larger ones require a real route back. */
+    fun firstIrreversibleDrop(path: net.minecraft.world.level.pathfinder.Path, returns: (BlockPos, BlockPos) -> Boolean): BlockPos? {
+        for (i in maxOf(1, path.nextNodeIndex) until path.nodeCount) {
+            val above = path.getNode(i - 1).asBlockPos()
+            val below = path.getNode(i).asBlockPos()
+            if (above.y - below.y > 1 && !returns(below, above)) return below
+        }
+        return null
+    }
+
     /** Body first, then feet through head in front, then the headroom needed to jump. */
     fun clearingCandidates(level: CollisionGetter, entity: Entity?, body: AABB, direction: Vec3): List<BlockPos> {
         val ahead = body.move(direction.scale(0.8))
