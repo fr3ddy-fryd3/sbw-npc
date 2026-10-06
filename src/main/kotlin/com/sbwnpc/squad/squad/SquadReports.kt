@@ -116,9 +116,11 @@ object SquadReports {
             if (full != null && squad.members.size * 2 > full) halfCalled.remove(squad.id)
             val members = squad.members.mapNotNull { SquadManager.findEntity(server, it) as? NpcEntity }.filter { it.isAlive }
             if (members.isEmpty()) continue
-            val short = members.count { it.ammoFraction() < LOW_AMMO_FRACTION }
+            val ammunition = members.map { it.ammoFraction() }
+            val short = ammunition.count { it < LOW_AMMO_FRACTION }
+            val empty = ammunition.count { it <= 0.0 }
             if (short > 0 && members.none { it.nearestSupply() != null }) {
-                send(server, squad, Kind.LOW_AMMO, "$short low on ammo, no Supply in reach")
+                send(server, squad, Kind.LOW_AMMO, "$short low on ammo ($empty out of ammo), no Supply in reach")
             }
             moveArrival(server, squad, members)
         }
