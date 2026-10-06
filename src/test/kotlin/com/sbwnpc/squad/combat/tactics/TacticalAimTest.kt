@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test
 import java.util.UUID
 
 class TacticalAimTest {
-    @Test fun `budget deferral preserves the search cursor until the target or geometry changes`() {
+    @Test fun `search restart predicate preserves the cursor and detects changed aim or origin`() {
         val origin = Vec3(0.5, 64.0, 0.5)
         val target = TacticalAim(UUID(0, 1), origin.add(80.0, 0.0, 0.0), origin.add(80.0, 1.62, 0.0))
         val search = TacticalPositionSearch(origin, TacticalFirePosts.probes(origin, recovery = true), target)
@@ -20,7 +20,7 @@ class TacticalAimTest {
         assertTrue(search.needsRestart(origin, null))
     }
 
-    @Test fun `positions use the actual gun target including its height instead of the sector center`() {
+    @Test fun `aim selection prefers the supplied gun target over the sector center`() {
         val sector = Vec3(80.0, 64.0, 0.0)
         val target = TacticalAim(UUID(0, 1), Vec3(80.0, 68.0, 30.0), Vec3(80.0, 69.62, 30.0))
         assertSame(target, TacticalAim.choose(target, sector))

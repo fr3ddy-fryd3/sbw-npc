@@ -78,7 +78,7 @@ class TacticalAttackRegressionTest {
         state.select(TacticalChoice(TacticalPattern.FLANK, focus), 1, 0)
         val plan = state.plan!!
         TacticalCoordinator.assign(squad, plan, view())
-        TacticalCoordinator.advance(squad, state, plan, view().atFrontPosts(plan))
+        TacticalCoordinator.advance(squad, state, plan, view().assumingFrontArrival(plan))
         assertEquals(TacticalPhase.EXECUTING, plan.phase)
         val waiter = plan.tasks.entries.first { it.value.job == TacticalJob.WAIT }.key
         val onlyWaitingFire = view(100).copy(
@@ -96,7 +96,7 @@ class TacticalAttackRegressionTest {
         state.select(TacticalChoice(TacticalPattern.FLANK, focus), 1, 0)
         val plan = state.plan!!
         TacticalCoordinator.assign(squad, plan, view())
-        TacticalCoordinator.advance(squad, state, plan, view().atFrontPosts(plan))
+        TacticalCoordinator.advance(squad, state, plan, view().assumingFrontArrival(plan))
         val wave = plan.tasks.filterValues { it.job == TacticalJob.FLANK }.keys.toList()
         assertEquals(6, wave.size)
         val arrived = wave.take(5).toSet()

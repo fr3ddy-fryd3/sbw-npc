@@ -43,7 +43,7 @@ class TacticalFlanksTest {
         val (state, plan) = setup(view)
         val staging = plan.tasks.values.mapNotNull { it.staging }
         assertEquals(staging.size, staging.distinct().size)
-        TacticalCoordinator.advance(squad, state, plan, view.atFrontPosts(plan))
+        TacticalCoordinator.advance(squad, state, plan, view.assumingFrontArrival(plan))
         val movers = plan.tasks.filterValues { it.job == TacticalJob.FLANK }
         assertEquals(6, movers.size)
         assertTrue(plan.tasks.values.any { it.job == TacticalJob.WAIT })
@@ -55,16 +55,16 @@ class TacticalFlanksTest {
     @Test fun `available firing lanes alone cannot launch a large wave and one shooter is insufficient`() {
         val view = view().copy(members = members.map { it.copy(recentFire = false) })
         val (state, plan) = setup(view)
-        TacticalCoordinator.advance(squad, state, plan, view.atFrontPosts(plan))
+        TacticalCoordinator.advance(squad, state, plan, view.assumingFrontArrival(plan))
         assertEquals(TacticalStatus.PREPARING, plan.status)
         val shooter = plan.tasks.entries.first { it.value.job == TacticalJob.COVER }.key
         val one = view.copy(members = view.members.map { it.copy(recentFire = it.id == shooter) })
-        TacticalCoordinator.advance(squad, state, plan, one.atFrontPosts(plan))
+        TacticalCoordinator.advance(squad, state, plan, one.assumingFrontArrival(plan))
         assertEquals(TacticalStatus.PREPARING, plan.status)
         assertFalse(plan.tasks.values.any { it.job == TacticalJob.FLANK })
         val other = plan.tasks.entries.last { it.value.job == TacticalJob.COVER }.key
         val two = view.copy(members = view.members.map { it.copy(recentFire = it.id == shooter || it.id == other) })
-        TacticalCoordinator.advance(squad, state, plan, two.atFrontPosts(plan))
+        TacticalCoordinator.advance(squad, state, plan, two.assumingFrontArrival(plan))
         assertEquals(TacticalStatus.EXECUTING, plan.status)
         assertEquals(6, plan.tasks.values.count { it.job == TacticalJob.FLANK })
     }
@@ -72,7 +72,7 @@ class TacticalFlanksTest {
     @Test fun `arrival releases the next six and preserves covering posts including distant flankers`() {
         val view = view()
         val (state, plan) = setup(view)
-        TacticalCoordinator.advance(squad, state, plan, view.atFrontPosts(plan))
+        TacticalCoordinator.advance(squad, state, plan, view.assumingFrontArrival(plan))
         val first = plan.tasks.filterValues { it.job == TacticalJob.FLANK }.keys.toSet()
         val cover = plan.tasks.filterValues { it.job == TacticalJob.COVER }.toMap()
         val arrived = view.copy(
@@ -88,12 +88,12 @@ class TacticalFlanksTest {
                 }
             },
         )
-        TacticalCoordinator.advance(squad, state, plan, arrived.atFrontPosts(plan))
+        TacticalCoordinator.advance(squad, state, plan, arrived.assumingFrontArrival(plan))
         assertEquals(first, (plan.behavior as FlankingState).arrived)
         assertEquals(TacticalStatus.PREPARING, plan.status)
         cover.forEach { (id, task) -> assertSame(task, plan.tasks[id]) }
         first.forEach { assertEquals(TacticalJob.COVER, plan.tasks[it]?.job) }
-        TacticalCoordinator.advance(squad, state, plan, arrived.atFrontPosts(plan))
+        TacticalCoordinator.advance(squad, state, plan, arrived.assumingFrontArrival(plan))
         val next = plan.tasks.filterValues { it.job == TacticalJob.FLANK }.keys
         assertEquals(6, next.size)
         assertTrue(next.none { it in first })
@@ -105,7 +105,7 @@ class TacticalFlanksTest {
         val (state, plan) = setup(initial)
         val shooters = plan.tasks.filterValues { it.job == TacticalJob.WAIT }.keys.toList().takeLast(2).toSet()
         val ready = initial.copy(now = 20, members = initial.members.map { it.copy(recentFire = it.id in shooters) })
-        TacticalCoordinator.advance(squad, state, plan, ready.atFrontPosts(plan))
+        TacticalCoordinator.advance(squad, state, plan, ready.assumingFrontArrival(plan))
         assertEquals(TacticalStatus.EXECUTING, plan.status)
         shooters.forEach { assertEquals(TacticalJob.COVER, plan.tasks[it]?.job) }
         assertEquals(6, plan.tasks.values.count { it.job == TacticalJob.FLANK })
@@ -114,7 +114,7 @@ class TacticalFlanksTest {
     @Test fun `one failed route does not block the remaining wave or release it into frontal movement`() {
         val view = view()
         val (state, plan) = setup(view)
-        TacticalCoordinator.advance(squad, state, plan, view.atFrontPosts(plan))
+        TacticalCoordinator.advance(squad, state, plan, view.assumingFrontArrival(plan))
         val wave = plan.tasks.filterValues { it.job == TacticalJob.FLANK }.keys.toSet()
         val failed = wave.first()
         TacticalCoordinator.abandon(plan, failed)
@@ -131,27 +131,32 @@ class TacticalFlanksTest {
                 }
             },
         )
-        TacticalCoordinator.advance(squad, state, plan, arrived.atFrontPosts(plan))
+        TacticalCoordinator.advance(squad, state, plan, arrived.assumingFrontArrival(plan))
         assertEquals(wave - failed, (plan.behavior as FlankingState).arrived)
         assertNull(plan.tasks[failed])
-        TacticalCoordinator.advance(squad, state, plan, arrived.atFrontPosts(plan))
+        TacticalCoordinator.advance(squad, state, plan, arrived.assumingFrontArrival(plan))
         assertEquals(6, plan.tasks.values.count { it.job == TacticalJob.FLANK })
         assertNull(plan.tasks[failed])
         state.snapshot = arrived
         assertTrue(state.holdsAfterFailure(failed, 1, 40))
     }
 
-    @Test fun `new distant sector proposals preserve a running route while a new player order overrides it`() {
+    @Test fun `nearby and distant maneuver proposals retain executing assignments until a new player order`() {
         val (state, plan) = setup()
         plan.tasks.values.filter { it.job == TacticalJob.COVER }.forEach { it.position = it.anchor }
-        TacticalCoordinator.advance(squad, state, plan, view().atFrontPosts(plan))
+        TacticalCoordinator.advance(squad, state, plan, view().assumingFrontArrival(plan))
+        assertEquals(TacticalPhase.EXECUTING, plan.phase)
         val task = plan.tasks.values.first()
+        assertFalse(state.select(TacticalChoice(TacticalPattern.BOUND, focus.add(1.0, 0.0, 0.0)), 1, 20))
+        assertSame(plan, state.plan)
+        assertSame(task, plan.tasks.values.first())
         assertFalse(state.select(TacticalChoice(TacticalPattern.FOCUS_SECTOR, focus.add(0.0, 0.0, 60.0)), 1, 120))
         assertSame(plan, state.plan)
         assertSame(task, plan.tasks.values.first())
         assertFalse(state.select(TacticalChoice(TacticalPattern.DISLODGE, focus.add(0.0, 0.0, 60.0)), 1, 130))
         assertSame(plan, state.plan)
-        assertTrue(state.select(TacticalChoice(TacticalPattern.FOLLOW_ORDER, null), 2, 121))
+        assertTrue(state.select(TacticalChoice(TacticalPattern.FOLLOW_ORDER, null), 2, 131))
+        assertNotSame(plan, state.plan)
     }
 
     @Test fun `failed members hold in combat instead of resuming assault and fresh orders release them`() {
@@ -184,7 +189,7 @@ class TacticalFlanksTest {
     @Test fun `one continuing shooter sustains a wave after two released it`() {
         val view = view()
         val (state, plan) = setup(view)
-        TacticalCoordinator.advance(squad, state, plan, view.atFrontPosts(plan))
+        TacticalCoordinator.advance(squad, state, plan, view.assumingFrontArrival(plan))
         val shooter = plan.tasks.filterValues { it.job == TacticalJob.COVER }.keys.first()
         val sustained = view.copy(
             now = 200,
@@ -193,7 +198,7 @@ class TacticalFlanksTest {
                 it.copy(canFire = it.id == shooter, recentFire = it.id == shooter)
             },
         )
-        TacticalCoordinator.advance(squad, state, plan, sustained.atFrontPosts(plan))
+        TacticalCoordinator.advance(squad, state, plan, sustained.assumingFrontArrival(plan))
         assertEquals(TacticalStatus.EXECUTING, plan.status)
         assertEquals(200L, plan.lastCover)
         assertEquals(6, plan.tasks.values.count { it.job == TacticalJob.FLANK })
@@ -202,7 +207,7 @@ class TacticalFlanksTest {
     @Test fun `lost covering fire pauses and resumes the same wave without replacing its tasks`() {
         val view = view()
         val (state, plan) = setup(view)
-        TacticalCoordinator.advance(squad, state, plan, view.atFrontPosts(plan))
+        TacticalCoordinator.advance(squad, state, plan, view.assumingFrontArrival(plan))
         val tasks = plan.tasks.toMap()
         val lost = view.copy(
             now = 90,
@@ -211,7 +216,7 @@ class TacticalFlanksTest {
                 it.copy(canFire = false, recentFire = false)
             },
         )
-        TacticalCoordinator.advance(squad, state, plan, lost.atFrontPosts(plan))
+        TacticalCoordinator.advance(squad, state, plan, lost.assumingFrontArrival(plan))
         assertEquals(TacticalStatus.REGROUPING, plan.status)
         assertEquals(TacticalFailure.NONE, plan.failure)
         tasks.forEach { (id, task) -> assertSame(task, plan.tasks[id]) }
@@ -224,7 +229,7 @@ class TacticalFlanksTest {
                 it.copy(canFire = it.id == shooter, recentFire = it.id == shooter)
             },
         )
-        TacticalCoordinator.advance(squad, state, plan, resumed.atFrontPosts(plan))
+        TacticalCoordinator.advance(squad, state, plan, resumed.assumingFrontArrival(plan))
         assertEquals(TacticalStatus.EXECUTING, plan.status)
         assertEquals(40L, plan.phaseSince, "paused ticks must not consume the movement deadline")
         tasks.forEach { (id, task) -> assertSame(task, plan.tasks[id]) }
@@ -234,7 +239,7 @@ class TacticalFlanksTest {
         val view = view().copy(members = members.map { it.copy(canFire = false, recentFire = false) })
         val (state, plan) = setup(view)
         val old = plan.tasks.toMap()
-        val deployed = view.copy(now = 80, contacts = view.contacts.map { it.copy(seenAt = 80) }).atFrontPosts(plan)
+        val deployed = view.copy(now = 80, contacts = view.contacts.map { it.copy(seenAt = 80) }).assumingFrontArrival(plan)
         TacticalCoordinator.advance(squad, state, plan, deployed)
         assertTrue((plan.phase == TacticalPhase.OPENING_LANE))
         val probes = plan.tasks.filterValues { it.opensLane }
@@ -253,16 +258,16 @@ class TacticalFlanksTest {
                 if (it.id in probes) it.copy(position = plan.tasks[it.id]!!.anchor, canFire = true, recentFire = true) else it
             },
         )
-        TacticalCoordinator.advance(squad, state, plan, shooters.atFrontPosts(plan))
+        TacticalCoordinator.advance(squad, state, plan, shooters.assumingFrontArrival(plan))
         assertFalse((plan.phase == TacticalPhase.OPENING_LANE))
         assertEquals(TacticalStatus.PREPARING, plan.status)
         probes.keys.forEach { assertEquals(TacticalJob.COVER, plan.tasks[it]?.job) }
-        TacticalCoordinator.advance(squad, state, plan, shooters.atFrontPosts(plan))
+        TacticalCoordinator.advance(squad, state, plan, shooters.assumingFrontArrival(plan))
         assertEquals(TacticalStatus.EXECUTING, plan.status)
         assertEquals(6, plan.tasks.values.count { it.job == TacticalJob.FLANK })
     }
 
-    @Test fun `waiting fighters deploy into separate front slots instead of keeping the initial crowd`() {
+    @Test fun `waiting fighters are assigned separate staging slots`() {
         val view = view()
         val (_, plan) = setup(view)
         for (member in view.members) {
@@ -278,7 +283,7 @@ class TacticalFlanksTest {
         repeat(2) {
             now += 80
             view = view.copy(now = now, contacts = view.contacts.map { it.copy(seenAt = now) })
-            TacticalCoordinator.advance(squad, state, plan, view.atFrontPosts(plan))
+            TacticalCoordinator.advance(squad, state, plan, view.assumingFrontArrival(plan))
             assertTrue((plan.phase == TacticalPhase.OPENING_LANE))
             now += 40
             view = view.copy(
@@ -294,12 +299,12 @@ class TacticalFlanksTest {
                     }
                 },
             )
-            TacticalCoordinator.advance(squad, state, plan, view.atFrontPosts(plan))
+            TacticalCoordinator.advance(squad, state, plan, view.assumingFrontArrival(plan))
             assertFalse((plan.phase == TacticalPhase.OPENING_LANE))
         }
         assertEquals(2, (plan.behavior as CoveredManeuverState).laneAttempts)
         now += 110
-        TacticalCoordinator.advance(squad, state, plan, view.copy(now = now, contacts = view.contacts.map { it.copy(seenAt = now) }).atFrontPosts(plan))
+        TacticalCoordinator.advance(squad, state, plan, view.copy(now = now, contacts = view.contacts.map { it.copy(seenAt = now) }).assumingFrontArrival(plan))
         assertEquals(TacticalStatus.FAILED, plan.status)
         assertEquals(TacticalFailure.COVER_NOT_READY_TIMEOUT, plan.failure)
         assertFalse(plan.tasks.values.any { it.job == TacticalJob.FLANK })
@@ -331,7 +336,7 @@ class TacticalFlanksTest {
                 if (it.id in cover) it.copy(position = it.position.add(0.0, 0.0, 2.0), moving = true) else it.copy(canFire = false, recentFire = false)
             },
         )
-        TacticalCoordinator.advance(squad, state, plan, walking.atFrontPosts(plan))
+        TacticalCoordinator.advance(squad, state, plan, walking.assumingFrontArrival(plan))
         assertEquals(TacticalStatus.PREPARING, plan.status)
         posts.forEach { (id, post) -> assertEquals(post, plan.tasks[id]?.position) }
     }

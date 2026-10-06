@@ -21,37 +21,45 @@ class TacticalDeploymentTest {
             listOf(TacticalContact(UUID(1, 1), enemy, 0)),
         )
 
-    @Test fun `line deployment preserves preparation while members actually approach their slots`() {
-        val state = SquadTacticalState()
-        state.select(TacticalChoice(TacticalPattern.FLANK, enemy), 1, 0)
-        val plan = state.plan!!
+    @Test fun `reported movement towards the front preserves the same plan and assignments across assessments`() {
+        var proposal = TacticalChoice(TacticalPattern.FLANK, enemy)
+        val state = SquadTacticalState(decisions = TacticalDecisionPolicy { proposal })
         val initial = view()
-        TacticalCoordinator.assign(squad, plan, initial, state)
-        TacticalCoordinator.advance(squad, state, plan, initial)
+        state.assess(squad, initial)
+        val plan = state.plan!!
+        val assignments = plan.tasks.toMap()
+        proposal = TacticalChoice(TacticalPattern.FOCUS_SECTOR, enemy)
         for (now in 80L..480L step 80) {
             val moving = initial.copy(
                 now = now,
-                members = initial.members.map { member ->
-                    val post = plan.tasks[member.id]!!.frontage!!.point
-                    member.copy(position = TacticalLayout.towards(origin, post, now / 10.0), moving = true)
+                members = initial.members.mapIndexed { index, member ->
+                    // Input telemetry for a six-block line; do not derive the expected motion from the planner.
+                    val column = (index - 15.5) * 6.0
+                    val travelled = minOf(kotlin.math.abs(column), now / 10.0)
+                    member.copy(position = origin.add(0.0, 0.0, kotlin.math.sign(column) * travelled), moving = true)
                 },
             )
-            TacticalCoordinator.advance(squad, state, plan, moving)
+            state.assess(squad, moving)
+            assertSame(plan, state.plan)
             assertEquals(TacticalPhase.PREPARING, plan.phase)
             assertTrue(plan.behavior.extendsPreparation(now))
-            assertTrue(TacticalSelectionPolicy.evaluate(plan, TacticalChoice(TacticalPattern.FOCUS_SECTOR, enemy), 1, now, TacticalStates.registry) is TacticalSelection.Keep)
+            assignments.forEach { (id, task) -> assertSame(task, plan.tasks[id]) }
         }
         assertEquals(0, (plan.behavior as CoveredManeuverState).laneAttempts)
     }
 
-    @Test fun `an immobile deployment still opens a firing lane rather than waiting forever`() {
-        val state = SquadTacticalState()
-        state.select(TacticalChoice(TacticalPattern.FLANK, enemy), 1, 0)
+    @Test fun `a moving flag without coordinate progress cannot postpone opening a firing lane`() {
+        val state = SquadTacticalState(decisions = TacticalDecisionPolicy { TacticalChoice(TacticalPattern.FLANK, enemy) })
+        val initial = view().copy(members = view().members.map { it.copy(moving = true) })
+        state.assess(squad, initial)
         val plan = state.plan!!
-        val initial = view()
-        TacticalCoordinator.assign(squad, plan, initial, state)
-        TacticalCoordinator.advance(squad, state, plan, initial)
-        TacticalCoordinator.advance(squad, state, plan, initial.copy(now = 100))
+        for (now in 10L..90L step 10) {
+            state.assess(squad, initial.copy(now = now))
+            assertSame(plan, state.plan)
+            assertEquals(TacticalPhase.PREPARING, plan.phase)
+        }
+        state.assess(squad, initial.copy(now = 100))
+        assertSame(plan, state.plan)
         assertEquals(TacticalPhase.OPENING_LANE, plan.phase)
         assertFalse(plan.behavior.extendsPreparation(100))
     }
@@ -61,17 +69,19 @@ class TacticalDeploymentTest {
         val initial = view()
         TacticalCoordinator.assign(squad, plan, initial)
         val deployment = TacticalDeployment()
-        for (now in 0L..600L step 80) {
+        for (now in 0L..560L step 80) {
             deployment.observe(
                 plan,
                 initial.copy(
                     now = now,
-                    members = initial.members.map { member ->
-                        member.copy(position = TacticalLayout.towards(origin, plan.tasks[member.id]!!.frontage!!.point, now / 40.0))
+                    members = initial.members.mapIndexed { index, member ->
+                        if (index == 0) member.copy(position = origin.add(0.0, 0.0, -now / 40.0)) else member
                     },
                 ),
             )
+            assertTrue(deployment.progressing(now), "Progress must still extend preparation at tick $now")
         }
+        assertTrue(deployment.progressing(599))
         assertFalse(deployment.progressing(600))
     }
 }

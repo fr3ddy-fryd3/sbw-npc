@@ -131,7 +131,7 @@ class TacticalSituationsTest {
         assertNotEquals(task.anchor, first)
     }
 
-    @Test fun `position searches defer on budget exhaustion and resume on the next tick`() {
+    @Test fun `path budget rejects a fifth grant and resets on the next tick`() {
         assertTrue((0..3).all { TacticalBudget.path(42) })
         assertFalse(TacticalBudget.path(42))
         assertTrue(TacticalBudget.path(43))

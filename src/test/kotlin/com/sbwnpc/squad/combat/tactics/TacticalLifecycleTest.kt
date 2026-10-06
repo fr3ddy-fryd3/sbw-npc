@@ -309,7 +309,7 @@ class TacticalLifecycleTest {
         state.select(TacticalChoice(TacticalPattern.FLANK, focus), 1, 0)
         val plan = state.plan!!
         TacticalCoordinator.assign(squad, plan, initial)
-        TacticalCoordinator.advance(squad, state, plan, initial.copy(now = 80, contacts = initial.contacts.map { it.copy(seenAt = 80) }).atFrontPosts(plan))
+        TacticalCoordinator.advance(squad, state, plan, initial.copy(now = 80, contacts = initial.contacts.map { it.copy(seenAt = 80) }).assumingFrontArrival(plan))
         assertEquals(TacticalPhase.OPENING_LANE, plan.phase)
         val transition = events.filterIsInstance<TacticalEvent.Transition>().last()
         assertEquals(TacticalPhase.PREPARING, transition.from)
@@ -333,14 +333,26 @@ class TacticalLifecycleTest {
             it.position = it.anchor
             it.failures = 2
             it.nextSearch = 91
+            it.closest = 3.0
+            it.lastProgress = 7
+            it.search = TacticalPositionSearch(origin, listOf(it.anchor)).apply { probeIndex = 1 }
+            val block = BlockPos.containing(it.anchor)
+            it.navigationPath = Path(listOf(Node(block.x, block.y, block.z)), block, true)
         }
+        val searches = cover.mapValues { it.value.search }
+        val paths = cover.mapValues { it.value.navigationPath }
         events.clear()
-        TacticalCoordinator.advance(squad, state, plan, view(10).atFrontPosts(plan))
+        TacticalCoordinator.advance(squad, state, plan, view(10).assumingFrontArrival(plan))
         assertEquals(TacticalPhase.EXECUTING, plan.phase)
         cover.forEach { (id, task) ->
             assertSame(task, plan.tasks[id])
             assertEquals(2, task.failures)
             assertEquals(91L, task.nextSearch)
+            assertEquals(3.0, task.closest)
+            assertEquals(7L, task.lastProgress)
+            assertSame(searches[id], task.search)
+            assertEquals(1, task.search!!.probeIndex)
+            assertSame(paths[id], task.navigationPath)
         }
         assertFalse(events.filterIsInstance<TacticalEvent.TaskReleased>().any { it.member in cover })
     }

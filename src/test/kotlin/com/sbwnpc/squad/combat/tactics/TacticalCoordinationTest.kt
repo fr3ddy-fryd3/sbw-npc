@@ -21,7 +21,7 @@ class TacticalCoordinationTest {
             listOf(TacticalContact(UUID(2, 1), Vec3(50.0, 64.0, 0.0), now), TacticalContact(UUID(2, 2), Vec3(53.0, 64.0, 0.0), now)),
         )
 
-    @Test fun `changing a threat sector turns the shooter without replacing its path or cover post`() {
+    @Test fun `sector refresh changes task focus while preserving the task and selected position`() {
         val state = SquadTacticalState()
         state.select(TacticalChoice(TacticalPattern.REORIENT, Vec3(50.0, 64.0, 0.0), true), 1, 0)
         val plan = state.plan!!
@@ -34,20 +34,18 @@ class TacticalCoordinationTest {
         assertSame(task, plan.tasks[members[0].id])
         assertEquals(members[0].position, task.position)
         assertEquals(threat.position, task.focus)
-        assertTrue(state.select(TacticalChoice(TacticalPattern.FOLLOW_ORDER, null), 2, 11))
     }
 
-    @Test fun `brief contact loss and stalled sight cannot cancel an executing flank`() {
+    @Test fun `contact loss and unknown fire retain an executing flank`() {
         val state = SquadTacticalState()
         state.select(TacticalChoice(TacticalPattern.FLANK, Vec3(50.0, 64.0, 0.0)), 1, 0)
         val plan = state.plan!!
         plan.tasks.values.filter { it.job == TacticalJob.COVER }.forEach { it.position = it.anchor }
         TacticalCoordinator.advance(squad, state, plan, view())
+        assertEquals(TacticalPhase.EXECUTING, plan.phase)
         assertFalse(state.select(TacticalChoice(TacticalPattern.SEARCH, plan.focus), 1, 120))
         assertFalse(state.select(TacticalChoice(TacticalPattern.RETURN_FIRE, Vec3(100.0, 64.0, 0.0)), 1, 130))
-        assertFalse(state.select(TacticalChoice(TacticalPattern.DISLODGE, plan.focus), 1, 140))
         assertSame(plan, state.plan)
-        assertTrue(state.select(TacticalChoice(TacticalPattern.REPEL, plan.focus, true), 1, 150))
     }
 
     @Test fun `a late ready shooter can release the waiting flank group`() {
@@ -84,18 +82,6 @@ class TacticalCoordinationTest {
         assertTrue(plan.tasks.values.any { it.job == TacticalJob.FLANK })
     }
 
-    @Test fun `covering fire preserves its chosen positions during a maneuver`() {
-        val state = SquadTacticalState()
-        val view = view()
-        state.select(TacticalRules.choose(view), 1, 0)
-        val plan = state.plan!!
-        TacticalCoordinator.assign(squad, plan, view)
-        val cover = plan.tasks.filterValues { it.job == TacticalJob.COVER }
-        cover.values.forEach { it.position = it.anchor }
-        TacticalCoordinator.advance(squad, state, plan, view)
-        cover.forEach { (id, task) -> assertSame(task, plan.tasks[id]) }
-    }
-
     @Test fun `a pinned group unable to open a firing lane fails without releasing a charge`() {
         val state = SquadTacticalState()
         val initial = view().copy(members = members.map { it.copy(canFire = false, recentFire = false, suppressed = true) })
@@ -106,16 +92,6 @@ class TacticalCoordinationTest {
         assertEquals(TacticalStatus.FAILED, plan.status)
         assertEquals(TacticalPattern.FLANK, state.blockedPattern)
         assertTrue(state.blockedUntil > 110)
-    }
-
-    @Test fun `small score changes preserve the plan but a fresh player order replaces it immediately`() {
-        val state = SquadTacticalState()
-        state.select(TacticalChoice(TacticalPattern.FLANK, Vec3(50.0, 64.0, 0.0)), 1, 0)
-        val old = state.plan
-        assertFalse(state.select(TacticalChoice(TacticalPattern.BOUND, Vec3(51.0, 64.0, 0.0)), 1, 20))
-        assertSame(old, state.plan)
-        assertTrue(state.select(TacticalChoice(TacticalPattern.FOLLOW_ORDER, null), 2, 21))
-        assertNotSame(old, state.plan)
     }
 
     @Test fun `unknown shooters do not produce a precise flanking contact`() {

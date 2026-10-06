@@ -1,7 +1,12 @@
 package com.sbwnpc.squad.combat.tactics
 
-/** Planner scenarios omit Minecraft navigation; explicitly finish front deployment before testing later phases. */
-internal fun TacticalSnapshot.atFrontPosts(plan: TacticalPlan): TacticalSnapshot =
+/**
+ * Preconditions for phase tests: assume the listed NPCs already reached their assigned front posts.
+ * This fixture changes snapshot coordinates and selected endpoints directly. It runs no world queries,
+ * navigation, movement or firing, and cannot establish whether those endpoints are usable in-game.
+ * Deployment and failure scenarios must supply their own coordinates rather than call this helper.
+ */
+internal fun TacticalSnapshot.assumingFrontArrival(plan: TacticalPlan): TacticalSnapshot =
     copy(
         members = members.map { member ->
             val task = plan.tasks[member.id]

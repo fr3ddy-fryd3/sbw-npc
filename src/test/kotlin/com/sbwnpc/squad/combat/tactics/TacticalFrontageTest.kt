@@ -25,7 +25,7 @@ class TacticalFrontageTest {
             listOf(TacticalContact(UUID(1, 1), enemy, 0)),
         )
 
-    @Test fun `six sixteen and thirty two attackers receive a full line rather than three repeated columns`() {
+    @Test fun `six sixteen and thirty two attackers are assigned a full line of distinct slots`() {
         for (count in listOf(6, 16, 32)) {
             val state = SquadTacticalState()
             state.select(TacticalChoice(TacticalPattern.REORIENT, enemy), 1, 0)
@@ -119,14 +119,14 @@ class TacticalFrontageTest {
         assertEquals(TacticalPhase.PREPARING, plan.phase)
         assertFalse(plan.tasks.values.any { it.job == TacticalJob.FLANK })
         assertEquals(0, TacticalTelemetry.front(plan, initial).onLine)
-        val deployed = initial.atFrontPosts(plan)
+        val deployed = initial.assumingFrontArrival(plan)
         TacticalCoordinator.advance(squad, state, plan, deployed)
         assertEquals(TacticalPhase.EXECUTING, plan.phase)
         assertEquals(6, plan.tasks.values.count { it.job == TacticalJob.FLANK })
         assertEquals(plan.tasks.values.count { it.frontage != null }, TacticalTelemetry.front(plan, deployed).onLine)
     }
 
-    @Test fun `distant line slots deploy through short progressing legs and cannot be mistaken for an arrived post`() {
+    @Test fun `deployment geometry proposes bounded progressing legs that do not count as settled posts`() {
         val post = TacticalFrontPost(Vec3(0.0, 64.0, 93.0), Vec3(1.0, 0.0, 0.0))
         var position = origin
         val task = TacticalTask(TacticalJob.COVER, post.point, enemy, 1).apply { frontage = post }
@@ -178,7 +178,7 @@ class TacticalFrontageTest {
         val initial = view()
         TacticalCoordinator.assign(squad, plan, initial, state)
         val columns = initial.members.associate { it.id to plan.tasks[it.id]!!.frontage!!.point.z }
-        val shifted = initial.atFrontPosts(plan).copy(center = origin.add(0.0, 0.0, 3.0))
+        val shifted = initial.assumingFrontArrival(plan).copy(center = origin.add(0.0, 0.0, 3.0))
         TacticalCoordinator.advance(squad, state, plan, shifted)
         val moving = plan.tasks.filterValues { it.job == TacticalJob.ADVANCE }
         assertEquals(16, moving.size)
@@ -189,7 +189,7 @@ class TacticalFrontageTest {
         }
     }
 
-    @Test fun `blocked nominal firing posts can recover along the same lane and count as settled`() {
+    @Test fun `recovery permits depth adjustment in the same lane and recognises a selected post`() {
         val post = TacticalFrontPost(origin, Vec3(1.0, 0.0, 0.0))
         val task = TacticalTask(TacticalJob.WAIT, enemy, enemy, 1).apply {
             staging = origin

@@ -29,7 +29,7 @@ class TacticalDiagnosticsTest {
         val plan = state.plan!!
         TacticalCoordinator.assign(squad, plan, view(0, true))
         plan.tasks.values.filter { it.job == TacticalJob.COVER }.forEach { it.position = origin }
-        TacticalCoordinator.advance(squad, state, plan, view(10, true).atFrontPosts(plan))
+        TacticalCoordinator.advance(squad, state, plan, view(10, true).assumingFrontArrival(plan))
         val started = events.filterIsInstance<TacticalEvent.Transition>().last()
         assertEquals(6, started.evidence.coverReady, "the waiting half can also cover before it starts moving")
         assertEquals(6, started.evidence.coverAssigned)
