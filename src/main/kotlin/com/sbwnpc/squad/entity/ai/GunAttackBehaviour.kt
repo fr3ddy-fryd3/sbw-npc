@@ -112,9 +112,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var witnessed = true
 
     // Sustained-fire pacing for AUTO weapons — see the shoot block in tick().
-    private var roundsInBurst = 0
-    private var burstLimit = MAX_BURST_ROUNDS
-    private var burstPauseUntilTick = 0
+    private val automaticBurst = com.sbwnpc.squad.combat.AutomaticBurst()
 
     companion object {
         private const val LAUNCHER_SPREAD_FACTOR = 0.25
@@ -146,18 +144,6 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         // once a second is indistinguishable in effect.
         private const val ALARM_INTERVAL_TICKS = 20
         private const val WITNESS_CHECK_INTERVAL = 20
-
-        // Sustained-fire pacing for AUTO fire mode only (SEMI/BURST are already paced by
-        // semiFireInterval / the gun's own burst count): after MAX_BURST_ROUNDS(+jitter)
-        // consecutive rounds, hold fire for BURST_PAUSE_TICKS(+jitter). Each round is a live SBW
-        // projectile entity with its own physics + network sync, and a big fight was sustaining
-        // hundreds of them at once — this is the single largest external cost of many NPCs. Also
-        // reads more like real fire discipline than a never-ending trigger pull. Tune or set
-        // MAX_BURST_ROUNDS very high to effectively disable.
-        private const val MAX_BURST_ROUNDS = 8
-        private const val BURST_ROUNDS_JITTER = 6
-        private const val BURST_PAUSE_TICKS = 10
-        private const val BURST_PAUSE_JITTER = 15
 
         // Was a flat 20 ticks (~1s) — per user request, a firing pause (whether between advance
         // bounds, or holding a chosen partial-cover spot — see holdFiringPosition) should last long
@@ -278,8 +264,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         nextFallBackTick = 0
         nextWitnessCheckTick = 0
         witnessed = true
-        roundsInBurst = 0
-        burstPauseUntilTick = 0
+        automaticBurst.reset()
     }
 
     private fun advanceOrHold(entity: NpcEntity, target: LivingEntity) {
@@ -968,7 +953,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun tickShooting(entity: NpcEntity, target: LivingEntity, gun: HandGun, canShootTarget: Boolean) {
-        val pausedBetweenBursts = entity.tickCount < burstPauseUntilTick
+        val pausedBetweenBursts = gun.triggerMode == TriggerMode.AUTO && automaticBurst.paused(entity.tickCount)
         entity.readyToCover = canShootTarget && lineIsClear && blastClear && gun.hasAmmo() &&
             aimTime >= entity.maxAimTime && SquadTactics.permitsFire(entity, target)
         val blocker = fireBlocker(entity, target, gun, canShootTarget, pausedBetweenBursts)
@@ -1006,9 +991,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                         gun.shootAt(spread, zoom = false, target.uuid)
                     }
                     newProgress -= cooldown
-                    roundsInBurst++
+                    if (fireMode == TriggerMode.AUTO) automaticBurst.fired(entity.npcClass, entity.tickCount, entity.random)
                     openingFire.fired()
-                } while (newProgress - cooldown > 0)
+                } while (newProgress - cooldown > 0 && (fireMode != TriggerMode.AUTO || !automaticBurst.paused(entity.tickCount)))
                 shootTimer.progress = newProgress
                 entity.lastShotTick = entity.tickCount
                 entity.lastFireAt = target.position()
@@ -1019,15 +1004,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                     // shot nobody watches (OffscreenFire) never raises.
                     (entity.level() as? ServerLevel)?.let { com.sbwnpc.squad.combat.Hearing.gunshot(it, entity, gun.hearingRadius) }
                 }
-                if (fireMode == TriggerMode.AUTO && roundsInBurst >= burstLimit) {
-                    roundsInBurst = 0
-                    burstLimit = MAX_BURST_ROUNDS + entity.random.nextInt(BURST_ROUNDS_JITTER)
-                    burstPauseUntilTick = entity.tickCount + BURST_PAUSE_TICKS + entity.random.nextInt(BURST_PAUSE_JITTER)
-                }
             }
         } else {
             shootTimer.stop()
-            if (!pausedBetweenBursts) roundsInBurst = 0
         }
     }
 }
