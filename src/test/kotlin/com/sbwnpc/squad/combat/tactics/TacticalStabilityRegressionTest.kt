@@ -135,4 +135,18 @@ class TacticalStabilityRegressionTest {
         state.assess(squad, low.copy(now = 220, contacts = low.contacts.map { it.copy(seenAt = 220) }))
         movers.forEach { assertEquals(TacticalJob.COVER, plan.tasks[it]?.job) }
     }
+
+    @Test fun `an unreachable regrouping member cannot resume the attack when contacts disappear`() {
+        val state = SquadTacticalState()
+        val low = view().copy(members = members.take(7), peakStrength = 16)
+        state.assess(squad, low)
+        val plan = state.plan!!
+        val member = members.first().id
+        state.holdAfterFailure[member] = 120
+        TacticalCoordinator.abandon(plan, member, 0, "unreachable")
+        state.assess(squad, low.copy(now = 200, contacts = emptyList()))
+        assertSame(plan, state.plan)
+        assertTrue(state.holdsAfterFailure(member, 1, 200))
+        assertFalse(state.holdsAfterFailure(member, 2, 200))
+    }
 }

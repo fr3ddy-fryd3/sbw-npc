@@ -249,8 +249,9 @@ object TacticalMovement {
         if (DebugFlags.on(LogGroup.ORDER)) {
             DebugFlags.log(
                 LogGroup.ORDER,
-                "[tactics] {} plan={} pattern={} job={} reason={} failures={} individual fallback, remaining={}",
-                entity.uuid, plan.id, plan.pattern, task.job, reason, task.failures, jobs(plan),
+                "[tactics] {} plan={} event=task_failed pattern={} job={} reason={} failures={} fallback={} remaining={}",
+                entity.uuid, plan.id, plan.pattern, task.job, reason, task.failures,
+                if (plan.behavior.holdsFailedMembers) "hold_position" else "individual", jobs(plan),
             )
         }
         return true

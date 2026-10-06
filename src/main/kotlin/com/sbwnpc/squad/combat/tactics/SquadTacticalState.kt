@@ -149,7 +149,10 @@ class SquadTacticalState(
         if (current.stamp != stamp) return false
         if (current.status != TacticalStatus.FAILED && member in current.tasks) return false
         return now < (holdAfterFailure[member] ?: Long.MIN_VALUE) ||
-            (current.behavior.holdsFailedMembers && member in current.failedMembers && snapshot?.visible?.isNotEmpty() == true)
+            (
+                current.behavior.holdsFailedMembers && member in current.failedMembers &&
+                    (snapshot?.visible?.isNotEmpty() == true || reorganization.active)
+                )
     }
 
     fun fail(now: Long, reason: TacticalFailure = TacticalFailure.UNSPECIFIED) {
