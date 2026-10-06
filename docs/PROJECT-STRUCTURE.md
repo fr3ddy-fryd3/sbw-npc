@@ -53,6 +53,7 @@
 | Что нужно изменить | Где смотреть |
 |---|---|
 | Выбор и обнаружение противника | [SquadTargetSensor.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/SquadTargetSensor.kt), [DetectionSightline.kt](../src/main/kotlin/com/sbwnpc/squad/combat/DetectionSightline.kt), [Vision.kt](../src/main/kotlin/com/sbwnpc/squad/combat/Vision.kt) |
+| Выбор доступной для стрельбы известной цели | [TacticalTargets.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalTargets.kt), [TacticalTargetSelection.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalTargetSelection.kt), [FiringOpportunity.kt](../src/main/kotlin/com/sbwnpc/squad/combat/FiringOpportunity.kt) |
 | Лучи для стрельбы и укрытий | [Sightline.kt](../src/main/kotlin/com/sbwnpc/squad/combat/Sightline.kt); сравни с отдельным `DetectionSightline` перед изменением |
 | Стрельба, дистанции, очереди, перезарядка | [GunAttackBehaviour.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/GunAttackBehaviour.kt), [OpeningFire.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/OpeningFire.kt), [npc/NpcClass.kt](../src/main/kotlin/com/sbwnpc/squad/npc/NpcClass.kt) |
 | Вызовы оружейного API SBW | [integration/sbw/SbwGuns.kt](../src/main/kotlin/com/sbwnpc/squad/integration/sbw/SbwGuns.kt), [domain/port/Guns.kt](../src/main/kotlin/com/sbwnpc/squad/domain/port/Guns.kt) |
@@ -60,6 +61,8 @@
 | Реакция на попадания и неизвестного стрелка | [IncomingFire.kt](../src/main/kotlin/com/sbwnpc/squad/combat/IncomingFire.kt), [BlindReturnFireBehaviour.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/BlindReturnFireBehaviour.kt), [SuppressionEvents.kt](../src/main/kotlin/com/sbwnpc/squad/combat/SuppressionEvents.kt) |
 | Безопасность стрельбы рядом с союзниками | [FriendlyFireGuard.kt](../src/main/kotlin/com/sbwnpc/squad/combat/FriendlyFireGuard.kt), [FireAllocation.kt](../src/main/kotlin/com/sbwnpc/squad/combat/FireAllocation.kt) |
 | Разведение стрелков по позициям | [FiringSpots.kt](../src/main/kotlin/com/sbwnpc/squad/combat/FiringSpots.kt), `TacticalPositions.kt`, `CoverSearch.kt` |
+| Цель поиска позиции и точное занятие огневого поста | [TacticalAim.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalAim.kt), [FiringPostArrival.kt](../src/main/kotlin/com/sbwnpc/squad/combat/FiringPostArrival.kt) |
+| Продолжение поиска заблокированного огневого поста | [TacticalFirePosts.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalFirePosts.kt), [TacticalTask.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalTask.kt), [TacticalMovement.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalMovement.kt) |
 | Дистанция боевой позиции от известных врагов, безопасность маршрута | [CombatPositionSafety.kt](../src/main/kotlin/com/sbwnpc/squad/combat/CombatPositionSafety.kt), [TacticalClearance.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalClearance.kt) |
 | Приоритет укрытия перед открытой позицией | [TacticalPositionScore.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalPositionScore.kt), `TacticalPositions.kt`; индивидуальный поиск — `GunAttackBehaviour.bestFiringSpot` |
 | Лечение | [MedicHealBehaviour.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/MedicHealBehaviour.kt), [SelfTreatBehaviour.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/SelfTreatBehaviour.kt) |
