@@ -10,6 +10,7 @@
 | Фазы манёвра, задания и освобождение ресурсов | `TacticalLifecycleTest.kt`, `TacticalFlanksTest.kt`, `TacticalCoordinationTest.kt` | Состояния и события по заданным снимкам; оружие и навигатор не исполняются |
 | Поверхность земли и лучи | `TacticalGroundTest.kt`, `DetectionSightlineTest.kt` | Настоящие collision shapes и voxel traversal Minecraft в заданном `BlockGetter`; серверные сущности не обновляются |
 | Конечная точка пути | `TacticalPathTest.kt` | Проверка заданного объекта `Path`; построение пути не запускается |
+| Одиночный MOVE и подъём на полный блок | `src/gameTest/.../InfantryMovementGameTests.kt` | Настоящие NPC, сервер, мозг, коллизии и навигация; бой и развёртывание отряда пока не проверяются. Запуск: [HEADLESS-TESTS.md](HEADLESS-TESTS.md) |
 
 Основной каталог: [src/test/kotlin/com/sbwnpc/squad/combat/tactics/](../src/test/kotlin/com/sbwnpc/squad/combat/tactics/). Проверки земли, лучей и прибытия находятся уровнем выше, в [combat/](../src/test/kotlin/com/sbwnpc/squad/combat/).
 

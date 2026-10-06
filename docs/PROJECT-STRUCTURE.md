@@ -123,11 +123,13 @@
 | Тесты тактики | [src/test/kotlin/com/sbwnpc/squad/combat/tactics/](../src/test/kotlin/com/sbwnpc/squad/combat/tactics/) |
 | Проверки линии атаки и развёртывания | [TacticalFrontageTest.kt](../src/test/kotlin/com/sbwnpc/squad/combat/tactics/TacticalFrontageTest.kt), [TacticalDeploymentTest.kt](../src/test/kotlin/com/sbwnpc/squad/combat/tactics/TacticalDeploymentTest.kt); предпосылки фазовых сценариев — `TacticalScenarioFixtures.kt` |
 | Покрытие и ограничения тестов тактики | [TACTICAL-TESTS.md](TACTICAL-TESTS.md) |
+| Серверные сцены с настоящими NPC | [src/gameTest/kotlin/com/sbwnpc/squad/gametest/](../src/gameTest/kotlin/com/sbwnpc/squad/gametest/); шаблоны — [src/gameTest/resources/data/sbwnpc/structure/](../src/gameTest/resources/data/sbwnpc/structure/), запуск — [HEADLESS-TESTS.md](HEADLESS-TESTS.md) |
 | Тесты остальных модулей | [src/test/kotlin/com/sbwnpc/squad/](../src/test/kotlin/com/sbwnpc/squad/) — каталоги соответствуют основному коду |
 | Задачи сборки, форматирования и тестов | [build.gradle.kts](../build.gradle.kts) |
 | Настройки форматирования | [.editorconfig](../.editorconfig) |
 | JAR-файлы | `build/libs/` |
 | Отчёты тестов | `build/reports/tests/test/`, `build/test-results/test/` |
+| Мир и отчёты headless GameTest | `build/gametest/server/`, `build/reports/gameTest/` |
 | Генерация BuildFlags | `build.gradle.kts`; результат — `build/generated/buildFlags/` |
 | Группы диагностических сообщений | [combat/LogGroup.kt](../src/main/kotlin/com/sbwnpc/squad/combat/LogGroup.kt) |
 | Настройки диагностики | [combat/DebugFlags.kt](../src/main/kotlin/com/sbwnpc/squad/combat/DebugFlags.kt); в игре — `config/sbwnpc-debug.toml` |

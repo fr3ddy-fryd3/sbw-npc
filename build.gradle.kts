@@ -58,12 +58,33 @@ java {
     }
 }
 
+// Real server/world tests have their own sources and are never packaged in the mod jar.
+val gameTest by sourceSets.creating {
+    compileClasspath += sourceSets.main.get().output
+    runtimeClasspath += sourceSets.main.get().output
+}
+val gameTestReportName = providers.gradleProperty("gameTestReportName").orElse("latest").get()
+require(gameTestReportName.matches(Regex("[A-Za-z0-9_-]+"))) { "gameTestReportName must be a simple directory name" }
+configurations[gameTest.implementationConfigurationName].extendsFrom(configurations.implementation.get())
+configurations[gameTest.compileOnlyConfigurationName].extendsFrom(configurations.compileOnly.get())
+configurations[gameTest.runtimeOnlyConfigurationName].extendsFrom(configurations.runtimeOnly.get())
+
 neoForge {
     version = project.property("neo_version") as String
 
     parchment {
         mappingsVersion = project.property("parchment_mappings_version") as String
         minecraftVersion = project.property("parchment_minecraft_version") as String
+    }
+
+    mods {
+        create(project.property("mod_id") as String) {
+            sourceSet(sourceSets.main.get())
+        }
+        create("sbwnpcGameTest") {
+            sourceSet(sourceSets.main.get())
+            sourceSet(gameTest)
+        }
     }
 
     runs {
@@ -76,6 +97,16 @@ neoForge {
             server()
             programArgument("--nogui")
             systemProperty("neoforge.enabledGameTestNamespaces", project.property("mod_id") as String)
+        }
+
+        create("gameTestServer") {
+            type = "gameTestServer"
+            sourceSet = gameTest
+            gameDirectory = layout.buildDirectory.dir("gametest/server").get().asFile
+            systemProperty("neoforge.enabledGameTestNamespaces", project.property("mod_id") as String)
+            systemProperty("sbwnpc.gameTestReports", layout.buildDirectory.dir("reports/gameTest/$gameTestReportName").get().asFile.absolutePath)
+            systemProperty("sbwnpc.gameTestNegativeControl", providers.gradleProperty("gameTestNegativeControl").orElse("false").get())
+            logLevel = org.slf4j.event.Level.INFO
         }
 
         create("data") {
@@ -92,25 +123,43 @@ neoForge {
         }
 
         configureEach {
+            // The combined main + GameTest mod is selected only for the headless run.
+            loadedMods.set(listOf(mods.getByName(if (name == "gameTestServer") "sbwnpcGameTest" else project.property("mod_id") as String)))
             jvmArguments = listOf(
                 "-XX:+IgnoreUnrecognizedVMOptions",
                 "-XX:+AllowEnhancedClassRedefinition"
             )
             systemProperty("forge.logging.markers", "REGISTRIES")
-            logLevel = org.slf4j.event.Level.DEBUG
+            if (name != "gameTestServer") logLevel = org.slf4j.event.Level.DEBUG
         }
     }
 
-    mods {
-        create(project.property("mod_id") as String) {
-            sourceSet(sourceSets.main.get())
-        }
-    }
+    addModdingDependenciesTo(gameTest)
 
     unitTest {
         enable()
         testedMod.set(mods.named(project.property("mod_id") as String))
+        loadedMods.set(listOf(mods.getByName(project.property("mod_id") as String)))
     }
+}
+
+var gameTestStartedAt: Long? = null
+val archiveGameTestLog = tasks.register("archiveGameTestLog") {
+    // A Copy task owns its destination directory; Gradle's stale-output cleanup can delete the
+    // CSV files written there by the server. Copy just the log without declaring that ownership.
+    doLast {
+        val startedAt = gameTestStartedAt ?: return@doLast
+        val log = layout.buildDirectory.file("gametest/server/logs/latest.log").get().asFile
+        if (log.exists() && log.lastModified() >= startedAt) {
+            val reports = layout.buildDirectory.dir("reports/gameTest/$gameTestReportName").get().asFile
+            reports.mkdirs()
+            log.copyTo(reports.resolve("server.log"), overwrite = true)
+        }
+    }
+}
+tasks.named("runGameTestServer") {
+    doFirst { gameTestStartedAt = System.currentTimeMillis() }
+    finalizedBy(archiveGameTestLog)
 }
 
 sourceSets.main.get().resources {
@@ -164,6 +213,11 @@ dependencies {
     // указанная здесь версия ни на что не влияет (Gradle подставит локальный проект).
     compileOnly("com.atsuishio.superbwarfare:superbwarfare:${project.property("superbwarfare_version")}")
     gameRuntimeOnly("com.atsuishio.superbwarfare:superbwarfare:${project.property("superbwarfare_version")}")
+    // SBW's published runtime variant also lists its optional development modpack. Its jar already
+    // embeds the required libraries; headless tests need that jar, not the client test modpack.
+    add(gameTest.runtimeOnlyConfigurationName, "com.atsuishio.superbwarfare:superbwarfare:${project.property("superbwarfare_version")}") {
+        isTransitive = false
+    }
     // Regression tests exercise SBW's resource decoder alongside our static model loader.
     testCompileOnly("com.atsuishio.superbwarfare:superbwarfare:${project.property("superbwarfare_version")}") {
         isTransitive = false
@@ -200,7 +254,7 @@ dependencies {
 }
 
 val kotlinStyleFiles = fileTree("src") {
-    include("main/kotlin/**/*.kt", "test/kotlin/**/*.kt")
+    include("main/kotlin/**/*.kt", "test/kotlin/**/*.kt", "gameTest/kotlin/**/*.kt")
 }
 
 val checkKotlinStyle = tasks.register<JavaExec>("checkKotlinStyle") {
@@ -210,7 +264,7 @@ val checkKotlinStyle = tasks.register<JavaExec>("checkKotlinStyle") {
     mainClass.set("com.pinterest.ktlint.Main")
     workingDir = projectDir
     inputs.files(kotlinStyleFiles, ".editorconfig")
-    args("--relative", "src/main/kotlin/**/*.kt", "src/test/kotlin/**/*.kt")
+    args("--relative", "src/main/kotlin/**/*.kt", "src/test/kotlin/**/*.kt", "src/gameTest/kotlin/**/*.kt")
 }
 
 tasks.register<JavaExec>("formatKotlin") {
@@ -219,7 +273,7 @@ tasks.register<JavaExec>("formatKotlin") {
     classpath = kotlinStyle
     mainClass.set("com.pinterest.ktlint.Main")
     workingDir = projectDir
-    args("--format", "--relative", "src/main/kotlin/**/*.kt", "src/test/kotlin/**/*.kt")
+    args("--format", "--relative", "src/main/kotlin/**/*.kt", "src/test/kotlin/**/*.kt", "src/gameTest/kotlin/**/*.kt")
 }
 
 tasks.named("check") { dependsOn(checkKotlinStyle) }
