@@ -14,6 +14,7 @@ import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.GrenadeHazard
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.OffscreenFire
+import com.sbwnpc.squad.combat.ShotAim
 import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.combat.TeamAwareness
@@ -751,7 +752,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         aimTime = if (canShootTarget) minOf(entity.maxAimTime, aimTime + 1) else 0
 
         entity.lookAt(target, 30f, 30f)
-        // Rotation aims the shot; lookControl also turns the rendered head and body.
+        // Rendered facing can lag behind aim while MoveControl turns the body along a path.
         entity.lookControl.setLookAt(target.x, target.eyeY, target.z)
         // Arc compensation uses the hull/low body point rather than the target eyes.
         gun.arcPitch(entity.eyePosition, rocketAimPoint(target))?.let { entity.xRot = it }
@@ -844,14 +845,14 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         return CombatMovement.LOCAL
     }
 
-    private fun updateFiringLane(entity: NpcEntity, target: LivingEntity, gun: HandGun) {
-        if (entity.tickCount >= nextFriendlyFireCheckTick) {
+    private fun updateFiringLane(entity: NpcEntity, target: LivingEntity, gun: HandGun, force: Boolean = false, aimPoint: Vec3 = SquadTactics.firingLaneEnd(entity, target)) {
+        if (force || entity.tickCount >= nextFriendlyFireCheckTick) {
             nextFriendlyFireCheckTick = entity.tickCount + FRIENDLY_FIRE_CHECK_INTERVAL
             val explosionRadius = gun.explosionRadius
             shotSpread = DroneCombat.spreadForTarget(entity.spread, target)
             val assessment = FriendlyFireGuard.assess(
                 entity,
-                SquadTactics.firingLaneEnd(entity, target),
+                aimPoint,
                 shotSpread,
                 target.position(),
                 explosionRadius,
@@ -859,10 +860,10 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             // A vehicle in the way counts as "line not clear" too, but it is answered differently
             // from an ally in the way — see the block further down.
             val level = entity.level() as ServerLevel
-            val lane = AABB(entity.eyePosition, target.eyePosition).inflate(VEHICLE_LANE_MARGIN)
+            val lane = AABB(entity.eyePosition, aimPoint).inflate(VEHICLE_LANE_MARGIN)
             val hulls = Sightline.vehicleHulls(level, lane, entity, target)
             val hullInTheWay =
-                Sightline.crosses(hulls, entity.eyePosition, target.eyePosition, shotSpread)
+                Sightline.crosses(hulls, entity.eyePosition, aimPoint, shotSpread)
             lineIsClear = assessment.lineClear && !hullInTheWay
             hullBlocked = hullInTheWay
             if (DebugFlags.on(LogGroup.FIRE) && hulls.isNotEmpty()) {
@@ -973,6 +974,18 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
 
             if (shootTimer.progress >= cooldown) {
+                val from = entity.eyePosition
+                val direction = ShotAim.direction(from, target.eyePosition, gun.arcPitch(from, rocketAimPoint(target)))
+                val laneLength = SquadTactics.firingLaneEnd(entity, target).distanceTo(from)
+                // Cached answers guide movement, but cannot authorise a later shot: an ally
+                // may have entered the lane since that check. Check the actual weapon aim now.
+                updateFiringLane(entity, target, gun, force = true, aimPoint = from.add(direction.scale(laneLength)))
+                if (!lineIsClear || !blastClear) {
+                    entity.readyToCover = false
+                    traceFireBlocker(entity, target, if (!lineIsClear) FireBlocker.FRIENDLY_OR_VEHICLE else FireBlocker.BLAST_SAFETY)
+                    shootTimer.stop()
+                    return
+                }
                 if (entity.tickCount >= nextWitnessCheckTick) {
                     nextWitnessCheckTick = entity.tickCount + WITNESS_CHECK_INTERVAL
                     val level = entity.level() as ServerLevel
@@ -988,7 +1001,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                     if (simulate) {
                         OffscreenFire.fire(entity, gun, target, spread)
                     } else {
-                        gun.shootAt(spread, zoom = false, target.uuid)
+                        gun.shootAt(spread, zoom = false, target.uuid, direction)
                     }
                     newProgress -= cooldown
                     if (fireMode == TriggerMode.AUTO) automaticBurst.fired(entity.npcClass, entity.tickCount, entity.random)

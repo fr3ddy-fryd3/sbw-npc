@@ -4,6 +4,7 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
@@ -48,7 +49,8 @@ interface HandGun {
      *  a straight aim is good enough, or when the round can't reach [to] at all. */
     fun arcPitch(from: Vec3, to: Vec3): Float?
 
-    fun shootAt(spread: Double, zoom: Boolean, target: UUID)
+    /** [direction] overrides the holder's body rotation; [target] also serves guided weapons. */
+    fun shootAt(spread: Double, zoom: Boolean, target: UUID, direction: Vec3? = null)
 
     fun shootAt(spread: Double, point: Vec3)
 
@@ -61,6 +63,9 @@ interface HandGun {
 }
 
 interface Guns {
+    /** Body bounds relevant to projectiles, including hitbox rewind and movement during flight. */
+    fun firingSafetyBounds(entity: LivingEntity, flightTicks: Double): AABB
+
     fun inHand(holder: LivingEntity): HandGun?
 
     fun isGun(stack: ItemStack): Boolean

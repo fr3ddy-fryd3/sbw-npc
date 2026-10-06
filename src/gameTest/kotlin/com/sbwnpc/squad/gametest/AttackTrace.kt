@@ -15,6 +15,7 @@ import java.nio.file.Path
 import java.nio.file.StandardOpenOption.APPEND
 import java.util.Locale
 import java.util.UUID
+import kotlin.math.acos
 import kotlin.math.hypot
 
 /** Read actual entities without altering their assignment, navigation or weapons. */
@@ -32,6 +33,12 @@ class AttackTrace(private val helper: GameTestHelper, private val squad: Squad, 
         private set
     var maxAligned = 0
         private set
+    var maxShotAngle = 0.0
+        private set
+    var unsafeRounds = 0
+        private set
+    var friendlyHits = 0
+        private set
     val projectileShooters get() = rounds.size
     val ammoSpent get() = initialAmmo - issuedWeapons.sumOf { Ports.guns.roundsLeft(it) }
 
@@ -40,7 +47,7 @@ class AttackTrace(private val helper: GameTestHelper, private val squad: Squad, 
         Files.writeString(directory.resolve("attack-squad.csv"), "tick,elapsedMs,alive,targets,aligned,lineWidth,minSpacing,lineHold,projectileShooters,rounds,ammoSpent,plan,pattern,phase,status\n")
         Files.writeString(directory.resolve("attack-members.csv"), "tick,npc,x,y,z,health,target,lastShotTick,ammo,pathDone,nextNode,nodeCount,job,position,frontPost,failures,coverLocked,medicLocked\n")
         Files.writeString(directory.resolve("attack-damage.csv"), "tick,npc,health,damage,death,type,causer,directEntity,causerFaction,friendly\n")
-        Files.writeString(directory.resolve("attack-rounds.csv"), "tick,round,shooter,target,freshGuardClear,x,y,z,vx,vy,vz,eyeHeight\n")
+        Files.writeString(directory.resolve("attack-rounds.csv"), "tick,round,shooter,target,freshGuardClear,x,y,z,vx,vy,vz,eyeHeight,angleToTarget\n")
         Files.writeString(directory.resolve("attack-shot-allies.csv"), "tick,round,ally,minX,minY,minZ,maxX,maxY,maxZ\n")
         com.mojang.logging.LogUtils.getLogger().info("Headless attack squad={}, members={}, reports={}", squad.id, members.size, directory)
     }
@@ -55,9 +62,12 @@ class AttackTrace(private val helper: GameTestHelper, private val squad: Squad, 
         }
         val p = helper.relativeVec(projectile.position())
         val v = projectile.deltaMovement
+        val angle = target?.let { Math.toDegrees(acos(v.normalize().dot(it.eyePosition.subtract(shooter.eyePosition).normalize()).coerceIn(-1.0, 1.0))) } ?: 180.0
+        maxShotAngle = maxOf(maxShotAngle, angle)
+        if (freshGuard != true) unsafeRounds++
         Files.writeString(
             directory.resolve("attack-rounds.csv"),
-            "${helper.tick},${projectile.uuid},${shooter.uuid},${target?.uuid},$freshGuard,${p.x},${p.y},${p.z},${v.x},${v.y},${v.z},${shooter.eyeHeight}\n",
+            "${helper.tick},${projectile.uuid},${shooter.uuid},${target?.uuid},$freshGuard,${p.x},${p.y},${p.z},${v.x},${v.y},${v.z},${shooter.eyeHeight},$angle\n",
             APPEND,
         )
         for (ally in members.filter { it !== shooter && it.isAlive }) {
@@ -79,6 +89,7 @@ class AttackTrace(private val helper: GameTestHelper, private val squad: Squad, 
     fun damage(victim: LivingEntity, source: DamageSource, damage: Float, death: Boolean) {
         val causer = source.entity
         val friendly = causer != null && SquadTeams.factionOf(causer) == SquadTeams.factionOf(victim)
+        if (friendly && damage > 0.0f) friendlyHits++
         Files.writeString(
             directory.resolve("attack-damage.csv"),
             "${helper.tick},${victim.uuid},${victim.health},$damage,$death,${source.msgId},${causer?.uuid},${source.directEntity?.uuid},${causer?.let { SquadTeams.factionOf(it) }},$friendly\n",
@@ -122,7 +133,7 @@ class AttackTrace(private val helper: GameTestHelper, private val squad: Squad, 
     fun finish() {
         Files.writeString(
             directory.resolve("attack-summary.txt"),
-            "squad=${squad.id}\nmaxAligned=$maxAligned\nlongestLineHold=$longestLineHold\nprojectileShooters=$projectileShooters\nrounds=${rounds.values.sum()}\nenemyRounds=$enemyRounds\nalive=${members.count { it.isAlive }}\nammoSpent=$ammoSpent\n" +
+            "squad=${squad.id}\nmaxAligned=$maxAligned\nlongestLineHold=$longestLineHold\nprojectileShooters=$projectileShooters\nrounds=${rounds.values.sum()}\nenemyRounds=$enemyRounds\nalive=${members.count { it.isAlive }}\nammoSpent=$ammoSpent\nmaxShotAngle=$maxShotAngle\nunsafeRounds=$unsafeRounds\nfriendlyHits=$friendlyHits\n" +
                 rounds.entries.joinToString("\n") { "${it.key}=${it.value}" } + "\n",
         )
     }

@@ -37,6 +37,33 @@ import java.util.function.Consumer
 @GameTestHolder("sbwnpc")
 @PrefixGameTestTemplate(false)
 object AttackDeploymentGameTests {
+    /** Use SBW damage sources directly to distinguish damage from reporting a hostile contact. */
+    @JvmStatic
+    @GameTest(template = "movement_arena", timeoutTicks = 40)
+    fun friendlyBulletDoesNotCreateEnemyContact(helper: GameTestHelper) {
+        for (x in 0..23) for (z in 0..11) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        val victim = spawn(helper, Vec3(6.5, 1.0, 6.5), SquadFaction.PIG).apply { isNoAi = true }
+        val ally = spawn(helper, Vec3(3.5, 1.0, 6.5), SquadFaction.PIG).apply { isNoAi = true }
+        val enemy = spawn(helper, Vec3(10.5, 1.0, 6.5), SquadFaction.COW).apply { isNoAi = true }
+        try {
+            val beforeFriendly = victim.health
+            Ports.guns.inHand(ally)!!.inflictHit(victim, 1.0f)
+            helper.assertTrue(victim.health < beforeFriendly, "Friendly damage was disabled rather than its retaliation being fixed")
+            helper.assertTrue(!victim.incomingFire.pending(helper.level.gameTime), "Friendly bullet created a return-fire episode")
+            helper.assertTrue(victim.incomingFire.recentPoint(helper.level.gameTime) == null, "Friendly bullet created an enemy bearing")
+
+            victim.invulnerableTime = 0
+            val beforeHostile = victim.health
+            Ports.guns.inHand(enemy)!!.inflictHit(victim, 1.0f)
+            helper.assertTrue(victim.health < beforeHostile, "Hostile control hit was rejected")
+            helper.assertTrue(victim.incomingFire.pending(helper.level.gameTime), "Hostile bullet did not create a return-fire episode")
+            helper.assertTrue(victim.incomingFire.recentPoint(helper.level.gameTime) != null, "Hostile bullet did not report an incoming bearing")
+            helper.succeed()
+        } finally {
+            listOf(victim, ally, enemy).forEach { it.discard() }
+        }
+    }
+
     /** No return fire: isolate natural detection, attack deployment and weapon participation. */
     @JvmStatic
     @GameTest(template = "attack_arena", timeoutTicks = 900)
@@ -101,6 +128,9 @@ object AttackDeploymentGameTests {
                 trace.finish()
                 helper.assertTrue(trace.enemyRounds == 0 && targets.none { it.lastShotTick >= 0 }, "Stationary targets unexpectedly fired: invalid isolation scenario")
                 helper.assertTrue(attackers.all { it.isAlive }, "Attackers died without enemy return fire; see attack-damage.csv")
+                helper.assertTrue(trace.friendlyHits == 0, "Attackers were hit by friendly rounds; see attack-damage.csv")
+                helper.assertTrue(trace.maxShotAngle <= 15.0, "Rifle projectile direction diverged from its target by more than 15 degrees; see attack-rounds.csv")
+                helper.assertTrue(trace.unsafeRounds == 0, "A round was fired despite a blocked friendly lane; see attack-rounds.csv")
                 helper.assertTrue(trace.longestLineHold >= 40, "Attack did not sustain a spaced line of at least 12/16 NPCs for 40 ticks; see attack-summary.txt")
                 helper.assertTrue(trace.projectileShooters >= 12, "Fewer than 12/16 NPCs fired real SBW rounds; see attack-summary.txt")
                 helper.assertTrue(trace.ammoSpent >= 12, "Weapon ammunition was not consumed")

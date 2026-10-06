@@ -544,6 +544,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         // Not vanilla's DamageTypeTags.IS_PROJECTILE: SBW's gunfire isn't in it, so that tag left
         // suppression coming only from explosions — see the Gear adapter.
         if (result && !level().isClientSide && Ports.gear.isBulletDamage(source)) {
+            // A known ally's stray round is damage, but is not a new enemy contact.
+            if (source.entity?.let { SquadTeams.sameSide(this, it) } == true) return result
             incomingFire.record(eyePosition, source.directEntity?.takeIf { it !== source.entity }?.deltaMovement, source.entity?.eyePosition ?: source.sourcePosition, level().gameTime)
             suppress(incomingFire.point(level().gameTime) ?: source.sourcePosition ?: position())
             com.sbwnpc.squad.combat.DebugFlags.log(

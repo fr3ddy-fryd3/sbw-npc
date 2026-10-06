@@ -5,6 +5,7 @@ import com.atsuishio.superbwarfare.data.gun.AmmoConsumer
 import com.atsuishio.superbwarfare.data.gun.FireMode
 import com.atsuishio.superbwarfare.data.gun.GunData
 import com.atsuishio.superbwarfare.data.gun.GunProp
+import com.atsuishio.superbwarfare.data.gun.ShootParameters
 import com.atsuishio.superbwarfare.entity.projectile.ProjectileEntity
 import com.atsuishio.superbwarfare.init.ModDamageTypes
 import com.atsuishio.superbwarfare.init.ModItems
@@ -16,13 +17,17 @@ import net.minecraft.core.component.DataComponents
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.nbt.Tag
 import net.minecraft.resources.ResourceLocation
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
 object SbwGuns : Guns {
+    override fun firingSafetyBounds(entity: LivingEntity, flightTicks: Double): AABB = SbwProjectileSafety.bounds(entity, flightTicks)
+
     override fun inHand(holder: LivingEntity): HandGun? {
         val stack = holder.mainHandItem
         if (stack.item !is GunItem) return null
@@ -198,7 +203,14 @@ private class SbwHandGun(private val holder: LivingEntity, private val data: Gun
         return (-high).toFloat()
     }
 
-    override fun shootAt(spread: Double, zoom: Boolean, target: UUID) = data.shoot(holder, spread, zoom, target)
+    override fun shootAt(spread: Double, zoom: Boolean, target: UUID, direction: Vec3?) {
+        if (direction == null) {
+            data.shoot(holder, spread, zoom, target)
+            return
+        }
+        val level = holder.level() as? ServerLevel ?: return
+        data.shoot(ShootParameters(holder, holder, level, holder.eyePosition, direction, data, spread, zoom, target, null))
+    }
 
     override fun shootAt(spread: Double, point: Vec3) = data.shoot(holder, spread, false, null, point)
 
