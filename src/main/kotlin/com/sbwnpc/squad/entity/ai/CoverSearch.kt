@@ -29,7 +29,7 @@ object CoverSearch {
      *  actually shipped before and, per user feedback in-game, mostly just resulted in NPCs backing
      *  straight away from the threat (`SeekCoverBehaviour`'s fallback retreat) instead of finding real cover — because
      *  purely random points rarely land next to a wall by chance within a small sample. */
-    fun find(entity: NpcEntity, level: ServerLevel, threat: Vec3, excluded: Set<BlockPos> = emptySet()): BlockPos? {
+    fun find(entity: NpcEntity, level: ServerLevel, threat: Vec3, excluded: Set<BlockPos> = emptySet(), permitted: (Vec3) -> Boolean = { true }): BlockPos? {
         val origin = entity.blockPosition()
         val candidates = ArrayList<BlockPos>(64)
 
@@ -74,6 +74,7 @@ object CoverSearch {
             }
             .distinct()
             .filterNot { it in excluded }
+            .filter { permitted(it.bottomCenter) }
             .filterNot { GrenadeHazard.threatens(level, it) }
             .filterNot { FiringSpots.crowded(it.bottomCenter, taken) }
             .sortedBy { it.distSqr(origin) }
