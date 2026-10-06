@@ -73,6 +73,7 @@ internal object TacticalSnapshotCollector {
             firingAt = if (npc.readyToCover && target?.uuid in visibleTargetIds) target?.position() else npc.lastFireAt,
             recentFire = npc.firedRecently(RECENT_FIRE_TICKS),
             recentFireAt = npc.lastFireAt,
+            moving = !npc.navigation.isDone || npc.deltaMovement.horizontalDistanceSqr() > 0.0025,
         )
     }
 

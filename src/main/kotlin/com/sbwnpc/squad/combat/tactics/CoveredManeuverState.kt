@@ -17,7 +17,11 @@ abstract class CoveredManeuverState : TacticalState() {
         if (context.plan.phase != TacticalPhase.OPENING_LANE) {
             for (member in context.view.members) {
                 val task = context.plan.tasks[member.id] ?: continue
-                if (task.job in TacticalJob.FIRE_SUPPORT && TacticalEvidence.firesCover(member, task)) task.position = member.position
+                if (task.job in TacticalJob.FIRE_SUPPORT && TacticalEvidence.firesCover(member, task) &&
+                    !member.moving
+                ) {
+                    task.position = member.position
+                }
             }
         }
     }

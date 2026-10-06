@@ -89,6 +89,7 @@ data class TacticalMember(
     val firingAt: Vec3? = null,
     val recentFire: Boolean = canFire,
     val recentFireAt: Vec3? = firingAt,
+    val moving: Boolean = false,
 )
 data class TacticalContact(
     val id: UUID,

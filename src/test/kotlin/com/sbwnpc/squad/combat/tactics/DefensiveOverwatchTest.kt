@@ -71,6 +71,15 @@ class DefensiveOverwatchTest {
         assertFalse(DefensiveOverwatch.protected(home, 1.62, Vec3(20.5, 64.0, 0.5), farWall::blocked))
     }
 
+    @Test fun `nearby cover distinguishes a real one block parapet from distant occlusion`() {
+        val enemyEye = Vec3(20.5, 65.5, 0.5)
+        assertTrue(DefensiveOverwatch.nearbyCover(home, enemyEye, wall(64)::blocked))
+        assertFalse(wall(64).blocked(home.add(0.0, 1.62, 0.0), enemyEye))
+        assertFalse(DefensiveOverwatch.nearbyCover(home.add(-2.0, 0.0, 0.0), enemyEye, wall(64)::blocked))
+        val hill = World(mapOf(BlockPos(10, 64, 0) to Blocks.STONE.defaultBlockState()))
+        assertFalse(DefensiveOverwatch.nearbyCover(home, enemyEye, hill::blocked))
+    }
+
     @Test fun `height takes priority among protected posts within the 32 block assignment radius`() {
         val high = home.add(20.0, 12.0, 0.0)
         assertTrue(DefensiveOverwatch.within(home, high))

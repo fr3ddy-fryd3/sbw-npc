@@ -4,6 +4,7 @@ import net.minecraft.world.phys.Vec3
 
 class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val plan: Int) {
     var position: Vec3? = null
+    var firingTarget: java.util.UUID? = null
     var nextSearch = Long.MIN_VALUE
     var failures = 0
     var lastProgress = 0L
@@ -54,13 +55,20 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
 }
 
 /** Keeps progress across tick budgets, including candidates after an unreachable first choice. */
-class TacticalPositionSearch(val origin: Vec3, val probes: List<Vec3>) {
+class TacticalPositionSearch(val origin: Vec3, val probes: List<Vec3>, val aim: TacticalAim? = null) {
     var probeIndex = 0
     val scored = LinkedHashMap<Vec3, TacticalPositionScore>()
     val visited = HashSet<Vec3>()
     var destinations: List<Vec3>? = null
     var destinationIndex = 0
     val rejections = LinkedHashMap<String, Int>()
+
+    fun needsRestart(position: Vec3, currentAim: TacticalAim?): Boolean {
+        if (origin.distanceTo(position) > 4.0 || aim?.target != currentAim?.target) return true
+        if (aim == null || currentAim == null) return aim != currentAim
+        return aim.eye.distanceTo(currentAim.eye) > 2.0
+    }
+
     fun reject(reason: String) {
         rejections[reason] = (rejections[reason] ?: 0) + 1
     }

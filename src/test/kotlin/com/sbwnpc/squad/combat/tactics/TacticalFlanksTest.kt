@@ -319,6 +319,22 @@ class TacticalFlanksTest {
         for (id in cover) assertEquals(ready.members.first { it.id == id }.position, plan.tasks[id]?.position)
     }
 
+    @Test fun `shooting while walking cannot replace the assigned cover endpoint`() {
+        val view = view()
+        val (state, plan) = setup(view)
+        val cover = plan.tasks.filterValues { it.job == TacticalJob.COVER }.keys.toSet()
+        val posts = cover.associateWith { plan.tasks[it]!!.position }
+        val walking = view.copy(
+            now = 20,
+            members = view.members.map {
+                if (it.id in cover) it.copy(position = it.position.add(0.0, 0.0, 2.0), moving = true) else it.copy(canFire = false, recentFire = false)
+            },
+        )
+        TacticalCoordinator.advance(squad, state, plan, walking)
+        assertEquals(TacticalStatus.PREPARING, plan.status)
+        posts.forEach { (id, post) -> assertEquals(post, plan.tasks[id]?.position) }
+    }
+
     @Test fun `a distant covering fighter is still assigned instead of falling back to individual assault`() {
         val view = view().copy(
             members = members.mapIndexed { index, it ->

@@ -1,5 +1,7 @@
 package com.sbwnpc.squad.combat.tactics
 
+import com.sbwnpc.squad.combat.FiringPostArrival
+
 /** Readiness is separate from actual fire, and both refer to the assigned threat sector. */
 object TacticalEvidence {
     fun covers(member: TacticalMember, task: TacticalTask?): Boolean {
@@ -13,7 +15,8 @@ object TacticalEvidence {
 
     fun settled(member: TacticalMember, task: TacticalTask?): Boolean =
         task?.position?.let {
-            member.position.distanceTo(it) <= 2.5 && (task.job in TacticalJob.FIRE_SUPPORT || member.position.distanceTo(task.anchor) <= 10.0)
+            (if (task.job in TacticalJob.FIRING_POSITIONS || task.job == TacticalJob.FLANK) FiringPostArrival.reached(member.position, it) else member.position.distanceTo(it) <= 2.5) &&
+                (task.job in TacticalJob.FIRE_SUPPORT || member.position.distanceTo(task.anchor) <= 10.0)
         } == true
 
     fun transition(plan: TacticalPlan, view: TacticalSnapshot): TacticalTransitionEvidence {

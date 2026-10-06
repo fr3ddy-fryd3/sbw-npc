@@ -144,7 +144,7 @@ object SquadTactics {
     fun move(entity: NpcEntity): Boolean = TacticalMovement.move(entity)
     fun repositionForFire(entity: NpcEntity) = TacticalMovement.repositionForFire(entity)
 
-    fun preferredTarget(entity: NpcEntity, level: ServerLevel): LivingEntity? {
+    fun preferredTarget(entity: NpcEntity, level: ServerLevel, probeCursor: Int = 0): LivingEntity? {
         val task = task(entity)
         val view = entity.currentSquad()?.tactics?.snapshot ?: return null
         val known = TacticalTargets.candidates(view, task, entity.position(), AntiArmourKit.loaded(entity)).asSequence()
@@ -153,9 +153,13 @@ object SquadTactics {
             .filter { task?.job != TacticalJob.ANTI_ARMOUR || AntiArmourKit.worthARocket(entity, it) }
             .toList()
         if (known.isEmpty()) return null
-        val visible = known.take(4).filter { DetectionSightline.canSee(entity, it) }
-        // Keep a reported target behind cover so position work can open a lane; firing still checks LOS.
-        return FireAllocation.pick(entity, level, visible.ifEmpty { known })
+        return TacticalTargetSelection.choose(
+            known,
+            entity.target,
+            probeCursor,
+            assess = { if (TickBudget.hasRaycasts(level)) FiringOpportunity.assess(entity, it) else TacticalTargetSelection.Opportunity.BLOCKED },
+            allocate = { FireAllocation.pick(entity, level, it) },
+        )
     }
 
     fun permitsFire(entity: NpcEntity, target: LivingEntity): Boolean {

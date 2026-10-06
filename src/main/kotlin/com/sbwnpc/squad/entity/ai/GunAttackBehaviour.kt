@@ -8,6 +8,7 @@ import com.sbwnpc.squad.combat.CombatPositionSafety
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.DroneCombat
+import com.sbwnpc.squad.combat.FiringPostArrival
 import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.GrenadeHazard
@@ -334,9 +335,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         return Math.sqrt(dx * dx + dz * dz)
     }
 
-    /** Close enough to call it there. Horizontal only: a spot on a slab or a step reads half a
-     *  block off in height, and a 3D check then never quite arrives. */
-    private fun atSpot(entity: NpcEntity, pos: Vec3): Boolean = horizontalDistance(entity.position(), pos) <= ARRIVE_DISTANCE && Math.abs(entity.y - pos.y) < 1.5
+    /** Confirm the block-sized firing post, allowing a slab's height difference. */
+    private fun atSpot(entity: NpcEntity, pos: Vec3): Boolean = FiringPostArrival.reached(entity.position(), pos)
 
     private fun rocketAimPoint(target: LivingEntity): Vec3 = target.vehicle?.boundingBox?.center ?: target.position().add(0.0, target.bbHeight * 0.3, 0.0)
 
@@ -422,14 +422,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (pos != null && entity.tickCount < nextPositionCheckTick) {
             if (atSpot(entity, pos)) {
                 entity.navigation.stop()
-            } else if (entity.navigation.isDone && horizontalDistance(entity.position(), pos) <= SETTLE_DISTANCE) {
-                // The path ended a block or so short — the spot itself can't be stood on exactly.
-                // Asking again only gets the same path back, and the mob turns on the spot
-                // re-walking it until the next position check. Where it stands will do.
-                val here = entity.position()
-                firingPos = here
-                FiringSpots.claim(entity.uuid, here)
-                entity.navigation.stop()
+            } else if (safeCombatPosition(entity, target, pos) && FiringPostArrival.steer(entity, pos, 1.0)) {
+                // Finish the actual post after vanilla consumes its last waypoint.
             } else {
                 navigateCombat(entity, target, pos)
             }
@@ -574,7 +568,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     ): Double? {
         if (!canRelocate(entity, pos) || !safeCombatPosition(entity, target, pos)) return null
         val myEye = Vec3(pos.x, pos.y + eyeHeight, pos.z)
-        if (Sightline.blocked(level, target.eyePosition, myEye, entity)) return null
+        if (Sightline.blocked(level, target.eyePosition, myEye, entity) || !DetectionSightline.visible(level, myEye, target.eyePosition, entity)) return null
         // Standing behind armour is cover from the enemy, but it is not a firing position.
         if (Sightline.crosses(vehicleHulls, myEye, target.eyePosition, entity.spread)) return null
         // Nor is standing ON one. Vehicles have collision, so a mob that walks into a hull rides up
@@ -590,7 +584,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** Optional firing shifts stay near the defend point or the patrol's original contact post. */
     private fun canRelocate(entity: NpcEntity, point: Vec3): Boolean {
         val recoveryPost = SquadTactics.task(entity)?.localFirePost
-        if (recoveryPost != null && !TacticalFirePosts.withinPost(recoveryPost, point)) return false
+        if (recoveryPost != null && !TacticalFirePosts.withinPost(recoveryPost, point, recovery = true)) return false
         val squad = entity.currentSquad() ?: return true
         if (!CombatPosition.holdsPosition(squad.order)) return true
         val post = firingOrigin ?: entity.position()
@@ -824,10 +818,6 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             return CombatMovement.LOCAL
         }
         if (SquadTactics.holdsAfterFailure(entity)) {
-            holdFiringPosition(entity, target)
-            return CombatMovement.LOCAL
-        }
-        if (SquadTactics.task(entity)?.localFireRecovery == true) {
             holdFiringPosition(entity, target)
             return CombatMovement.LOCAL
         }

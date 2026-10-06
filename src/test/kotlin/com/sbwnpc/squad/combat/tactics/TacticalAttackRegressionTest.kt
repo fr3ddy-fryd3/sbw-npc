@@ -55,6 +55,24 @@ class TacticalAttackRegressionTest {
         assertEquals(candidates.size, candidates.distinct().size)
     }
 
+    @Test fun `wall searches include adjacent blocks and recovery stays within a fixed post`() {
+        val post = Vec3(0.5, 64.0, 0.5)
+        val ordinary = TacticalFirePosts.probes(post)
+        for (x in -2..2) for (z in -2..2) assertTrue(post.add(x.toDouble(), 0.0, z.toDouble()) in ordinary)
+        val recovery = TacticalFirePosts.probes(post, recovery = true)
+        assertTrue(recovery.any { it.subtract(post).horizontalDistance() > 20.0 })
+        assertTrue(recovery.all { TacticalFirePosts.withinPost(post, it, recovery = true) })
+        assertFalse(TacticalFirePosts.withinPost(post, post.add(25.0, 0.0, 0.0), recovery = true))
+        assertEquals(recovery.size, recovery.distinct().size)
+    }
+
+    @Test fun `a sector preference does not discard other reported enemies`() {
+        val local = view().contacts.single()
+        val other = local.copy(id = UUID(9, 2), position = focus.add(0.0, 0.0, 50.0))
+        val task = TacticalTask(TacticalJob.COVER, Vec3.ZERO, focus, 1)
+        assertEquals(listOf(local, other), TacticalTargets.candidates(view().copy(contacts = listOf(other, local)), task, Vec3.ZERO, false))
+    }
+
     @Test fun `waiting shooters keep a moving wave covered when the designated support loses its lane`() {
         val state = SquadTacticalState()
         state.select(TacticalChoice(TacticalPattern.FLANK, focus), 1, 0)

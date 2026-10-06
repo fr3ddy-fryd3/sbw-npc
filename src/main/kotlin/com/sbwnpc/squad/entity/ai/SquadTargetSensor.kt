@@ -4,12 +4,14 @@ import com.sbwnpc.squad.combat.CombatPosition
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.FireAllocation
+import com.sbwnpc.squad.combat.FiringOpportunity
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.TankWeaponSelection
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.combat.VehicleTargeting
 import com.sbwnpc.squad.combat.Vision
 import com.sbwnpc.squad.combat.tactics.SquadTactics
+import com.sbwnpc.squad.combat.tactics.TacticalTargetSelection
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModSensors
@@ -41,6 +43,7 @@ import net.tslat.smartbrainlib.util.BrainUtils
  * rest of the code reads.
  */
 class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
+    private var tacticalProbeCursor = 0
 
     // ExtendedSensor's default is a flat 20 ticks with NO initial offset (nextTickTime starts at 0
     // — confirmed via javap), so every NPC deployed in the same tick (a whole preset squad, a
@@ -100,18 +103,20 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             if (orderedTarget != null && allowed(mob)) return orderedTarget
         }
         val attacker = mob.lastHurtByMob
-        if (attacker != null && attacker.isAlive && SquadTeams.isHostile(mob, attacker) && allowed(mob)) return attacker
+        val hostileAttacker = attacker?.takeIf { it.isAlive && SquadTeams.isHostile(mob, it) && allowed(mob) }
+        if (hostileAttacker != null && FiringOpportunity.assess(mob, hostileAttacker) == TacticalTargetSelection.Opportunity.SHOOTABLE) return hostileAttacker
 
         val retainedTarget = retainedDefensiveTarget(mob)
         if (retainedTarget != null) return retainedTarget
         if (!mortarCrew && mob.retreatPoint() != null) return withdrawalTarget(mob, level, directTarget)
         if (!mortarCrew) {
-            val tacticalTarget = SquadTactics.preferredTarget(mob, level)
+            val tacticalTarget = SquadTactics.preferredTarget(mob, level, tacticalProbeCursor)
+            tacticalProbeCursor = (tacticalProbeCursor + TacticalTargetSelection.PROBES_PER_SCAN) and Int.MAX_VALUE
             if (tacticalTarget != null) return tacticalTarget
             val relayedTarget = relayedTarget(mob, level)
             if (relayedTarget != null) return relayedTarget
         }
-        return directTarget
+        return directTarget ?: hostileAttacker
     }
 
     private fun armedVehicleTarget(mob: NpcEntity, level: ServerLevel): LivingEntity? {
@@ -126,7 +131,8 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         if (!CombatPosition.holdsPosition(mob.currentSquad()?.order)) return null
         // A holding order may retain a visible target beyond the ordinary detection radius.
         return mob.target?.takeIf { target ->
-            target.isAlive && SquadTeams.isHostile(mob, target) && allowed(mob) && DetectionSightline.canSee(mob, target)
+            target.isAlive && SquadTeams.isHostile(mob, target) && allowed(mob) &&
+                FiringOpportunity.assess(mob, target) == TacticalTargetSelection.Opportunity.SHOOTABLE
         }
     }
 

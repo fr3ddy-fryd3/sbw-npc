@@ -36,11 +36,6 @@ object TacticalMovement {
         val squad = entity.currentSquad() ?: return false
         val state = squad.tactics
         val view = state.snapshot ?: return false
-        if (task.localFireRecovery) {
-            if (entity.readyToCover || entity.firedRecently(40)) task.position = entity.position()
-            if (entity.target == null) entity.navigation.stop()
-            return entity.target == null
-        }
         if (state.plan?.phase == TacticalPhase.PAUSED && task.job in RUNNING_JOBS) {
             if (task.suspend(entity.level().gameTime, "cover_lost")) {
                 state.events.emit(TacticalEvent.TaskPaused(task.plan, entity.level().gameTime, entity.uuid, true, "cover_lost"))
@@ -77,7 +72,19 @@ object TacticalMovement {
             )
             return true
         }
-        val reviewDue = task.job in TacticalJob.FIRE_SUPPORT && entity.level().gameTime >= task.nextValidation
+        if (task.job in TacticalJob.FIRING_POSITIONS && task.position != null && entity.target?.uuid != task.firingTarget) {
+            task.releaseNavigation(entity.navigation.path) { entity.navigation.stop() }
+            FiringSpots.release(entity.uuid)
+            task.position = null
+            task.search = null
+            task.nextSearch = entity.level().gameTime
+            DebugFlags.log(
+                LogGroup.ORDER, "[tactics] {} squad={} tick={} plan={} event=position_invalidated job={} reason=target_changed previous={} target={}",
+                entity.uuid, squad.id, entity.level().gameTime, task.plan, task.job, task.firingTarget, entity.target?.uuid,
+            )
+        }
+        val reviewDue = task.job in TacticalJob.FIRE_SUPPORT && entity.level().gameTime >= task.nextValidation &&
+            task.position?.let { FiringPostArrival.reached(entity.position(), it) } == true
         if ((task.position == null || task.search != null || reviewDue) && entity.level().gameTime >= task.nextSearch) {
             val result = TacticalPositions.find(entity, task, view)
             when (result.outcome) {
@@ -97,6 +104,8 @@ object TacticalMovement {
 
                 TacticalPositions.Outcome.FOUND -> {
                     task.position = result.position
+                    task.firingTarget = entity.target?.uuid
+                    task.failures = 0
                     task.closest = Double.MAX_VALUE
                     task.lastProgress = entity.level().gameTime
                     task.nextSearch = entity.level().gameTime + 20
@@ -121,12 +130,25 @@ object TacticalMovement {
             task.closest = distance
             task.lastProgress = entity.level().gameTime
         }
-        if (distance <= if (task.job == TacticalJob.OVERWATCH) 0.9 else 2.0) {
-            if (task.job == TacticalJob.OVERWATCH && entity.level().gameTime >= task.nextValidation &&
+        val firingPost = task.job in TacticalJob.FIRING_POSITIONS || (task.job == TacticalJob.FLANK && position.distanceTo(task.anchor) <= 10.0)
+        val arrived = if (firingPost) FiringPostArrival.reached(entity.position(), position) else distance <= 2.0
+        if (arrived) {
+            if (task.job in TacticalJob.FIRING_POSITIONS && entity.level().gameTime >= task.nextValidation &&
                 TickBudget.hasRaycasts(entity.level() as ServerLevel)
             ) {
                 task.nextValidation = entity.level().gameTime + 40
-                if (GrenadeHazard.threatens(entity.level() as ServerLevel, position) || !TacticalPositions.protected(entity, task, entity.position())) {
+                val invalidCover = task.job == TacticalJob.OVERWATCH && !task.localFireRecovery && !TacticalPositions.protected(entity, task, entity.position())
+                if (GrenadeHazard.threatens(entity.level() as ServerLevel, position) || invalidCover || !TacticalPositions.firingReady(entity, task, entity.position())) {
+                    DebugFlags.log(
+                        LogGroup.ORDER,
+                        "[tactics] {} squad={} tick={} plan={} event=position_invalidated job={} reason=firing_post_changed target={}",
+                        entity.uuid,
+                        squad.id,
+                        entity.level().gameTime,
+                        task.plan,
+                        task.job,
+                        entity.target?.uuid,
+                    )
                     task.position = null
                     task.search = null
                     task.nextSearch = entity.level().gameTime + 10
@@ -155,6 +177,7 @@ object TacticalMovement {
             task.nextSearch = entity.level().gameTime + 20
             return !failedTask(entity, task, "no movement progress for 100 ticks")
         }
+        if (firingPost && FiringPostArrival.steer(entity, position, TacticalPositions.speed(task))) return true
         if (entity.navigation.isDone && entity.level().gameTime >= task.nextSearch) {
             task.nextSearch = entity.level().gameTime + 20
             if ((entity.navigation as? com.sbwnpc.squad.entity.ai.VehicleAwareNavigation)?.canPlan == false) {
@@ -178,6 +201,11 @@ object TacticalMovement {
     }
 
     private fun failedTask(entity: NpcEntity, task: TacticalTask, reason: String): Boolean {
+        if (task.localFireRecovery) {
+            task.nextSearch = entity.level().gameTime + 100
+            DebugFlags.log(LogGroup.ORDER, "[tactics] {} plan={} event=fire_post_retry job={} reason={}", entity.uuid, task.plan, task.job, reason)
+            return false
+        }
         if (++task.failures < if (task.job == TacticalJob.OVERWATCH) 1 else 3) return false
         val plan = entity.currentSquad()?.tactics?.plan ?: return true
         if (TacticalFirePosts.recover(task, entity.position())) {

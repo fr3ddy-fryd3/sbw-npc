@@ -40,12 +40,17 @@ object DefensiveOverwatch {
         if (focus != null) {
             val enemyEye = focus.add(0.0, 1.5, 0.0)
             if (blocked(eye, enemyEye)) return false
-            val toward = enemyEye.subtract(body).normalize().scale(2.5)
-            return blocked(body, body.add(toward))
+            return nearbyCover(point, enemyEye, blocked)
         }
         val directions = (0..7).map { Vec3(kotlin.math.cos(it * Math.PI / 4), 0.0, kotlin.math.sin(it * Math.PI / 4)).scale(2.5) }
         val sheltered = directions.filter { blocked(body, body.add(it)) }
         return sheltered.size >= 2 && sheltered.any { !blocked(eye, eye.add(it.scale(6.0))) }
+    }
+
+    fun nearbyCover(point: Vec3, enemyEye: Vec3, blocked: (Vec3, Vec3) -> Boolean): Boolean {
+        val body = point.add(0.0, 0.9, 0.0)
+        val toward = enemyEye.subtract(body).normalize().scale(2.5)
+        return blocked(body, body.add(toward))
     }
 
     fun score(anchor: Vec3, origin: Vec3, point: Vec3, exposure: Int): Double = -point.y * 1000.0 + point.distanceTo(anchor) + point.distanceTo(origin) * 0.2 + exposure * 5.0
