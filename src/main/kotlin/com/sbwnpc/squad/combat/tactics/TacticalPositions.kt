@@ -90,7 +90,7 @@ object TacticalPositions {
             when {
                 overwatch -> DefensiveOverwatch.probes(task.anchor)
                 deployment -> OFFSETS.map { localAnchor.add(it) }
-                task.frontage != null -> task.frontage!!.probes(task.localFireRecovery)
+                task.frontage != null -> task.frontage!!.probes(recovery = true)
                 task.job in TacticalJob.FIRING_POSITIONS -> listOf(entity.position()) + TacticalFirePosts.probes(localAnchor, task.localFireRecovery)
                 else -> OFFSETS.map { localAnchor.add(it) }
             },
@@ -145,7 +145,7 @@ object TacticalPositions {
         if (!context.policy.candidate(context.view, task, candidate, context.localAnchor)) return
         val front = task.frontage
         if (front != null) {
-            val permitted = if (context.deployment) front.acceptsDeployment(search.origin, candidate, task.localFireRecovery) else task.permitsFront(candidate)
+            val permitted = if (context.deployment) front.acceptsDeployment(search.origin, candidate, task.localFireRecovery) else front.permits(candidate, recovery = true)
             if (!permitted) {
                 search.reject("outside_front_slot")
                 return
@@ -181,6 +181,10 @@ object TacticalPositions {
             return
         }
         val nearbyCover = aim?.let { DefensiveOverwatch.nearbyCover(candidate, it.eye) { from, to -> Sightline.blockedBy(level, from, to, entity, context.hulls) } } == true
+        if (!context.deployment && front != null && !front.permitsFiringPost(candidate, nearbyCover, task.localFireRecovery)) {
+            search.reject("open_depth_adjustment")
+            return
+        }
         search.scored[candidate] = score(context, candidate, exposure, firing, mustShoot, nearbyCover)
     }
 
@@ -216,7 +220,7 @@ object TacticalPositions {
                 task.navigationPath = null
                 FiringSpots.claim(entity.uuid, entity.position())
                 tracePosition(context, entity.position(), search.scored[candidate])
-                return finish(task, entity.position())
+                return finish(task, entity.position(), allowDepthAdjustment = !context.deployment)
             }
             if (!TacticalBudget.path(context.level.gameTime)) return Result(Outcome.DEFERRED)
             val path = pathToCandidate(context, candidate)
@@ -227,7 +231,7 @@ object TacticalPositions {
                     task.navigationPath = path
                     FiringSpots.claim(entity.uuid, candidate)
                     tracePosition(context, candidate, search.scored[candidate])
-                    return finish(task, candidate)
+                    return finish(task, candidate, allowDepthAdjustment = !context.deployment)
                 }
                 search.reject(if (safety == RouteSafety.SAFE) "navigation" else "unsafe_route")
             } else {
@@ -323,7 +327,8 @@ object TacticalPositions {
             Sightline.blockedBy(entity.level() as ServerLevel, from, to, entity, hulls)
         } && friendlyLane(entity, point.add(0.0, entity.eyeHeight.toDouble(), 0.0), TacticalAim.resolve(entity, task)?.eye)
 
-    private fun finish(task: TacticalTask, point: Vec3): Result {
+    private fun finish(task: TacticalTask, point: Vec3, allowDepthAdjustment: Boolean = false): Result {
+        if (allowDepthAdjustment && task.frontage?.contains(point) == false) task.localFirePost = task.frontage!!.point
         task.search = null
         return Result(Outcome.FOUND, point)
     }

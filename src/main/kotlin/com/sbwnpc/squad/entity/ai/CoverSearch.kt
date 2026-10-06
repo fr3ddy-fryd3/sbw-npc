@@ -33,6 +33,14 @@ object CoverSearch {
         val origin = entity.blockPosition()
         val candidates = ArrayList<BlockPos>(64)
 
+        // A wall one or two blocks away must be tried before a long run across incoming fire.
+        for (x in -4..4) {
+            for (z in -4..4) {
+                val ground = Terrain.groundAt(level, origin.offset(x, 0, z))
+                if (hasAdjacentSolidWall(level, ground)) candidates += ground
+            }
+        }
+
         var dx = -MAX_RADIUS.toInt()
         while (dx <= MAX_RADIUS.toInt()) {
             var dz = -MAX_RADIUS.toInt()

@@ -88,6 +88,9 @@ data class TacticalFrontPost(val point: Vec3, val forward: Vec3) {
 
     fun contains(candidate: Vec3): Boolean = permits(candidate, recovery = false)
 
+    /** Look for a wall along the owned lane before settling for open ground on the nominal line. */
+    fun permitsFiringPost(candidate: Vec3, covered: Boolean, recovery: Boolean): Boolean = permits(candidate, recovery) || (covered && permits(candidate, recovery = true))
+
     /** A failed firing query may adjust depth without taking a neighboring member's lane. */
     fun permits(candidate: Vec3, recovery: Boolean): Boolean {
         val delta = candidate.subtract(point)
