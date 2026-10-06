@@ -253,9 +253,12 @@ object TacticalPositions {
         )
     }
 
-    private fun requiresFiringLane(context: SearchContext, point: Vec3): Boolean =
-        (context.task.job in SHOOTING_JOBS && (!context.deployment || context.task.permitsFront(point))) ||
-            (context.task.job == TacticalJob.FLANK && point.distanceTo(context.task.anchor) <= 10.0)
+    private fun requiresFiringLane(context: SearchContext, point: Vec3): Boolean = requiresFiringLane(context.task, context.deployment, point)
+
+    /** Reaching the line is movement. The subsequent firing-post query checks the shot. */
+    internal fun requiresFiringLane(task: TacticalTask, deploying: Boolean, point: Vec3): Boolean =
+        (task.job in SHOOTING_JOBS && !deploying) ||
+            (task.job == TacticalJob.FLANK && point.distanceTo(task.anchor) <= 10.0)
 
     private fun pathToCandidate(context: SearchContext, candidate: Vec3): Path? {
         val entity = context.entity
