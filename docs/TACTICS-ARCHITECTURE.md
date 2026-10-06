@@ -52,6 +52,7 @@ Strategy выделяет заменяемый алгоритм за интер�
 | [TacticalTaskBoard.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalTaskBoard.kt) | Единственный владелец состава заданий: замена, сохранение, отмена и исключение участника |
 | [TacticalTask.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalTask.kt) | Задание и прогресс его индивидуального исполнения, поиска и маршрута |
 | [TacticalFrontage.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalFrontage.kt) | Закрепление боковых мест атаки за UUID; `TacticalFrontPost` — полоса одного места, пробы и короткие переходы развёртывания |
+| [TacticalDeployment.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalDeployment.kt) | Прогресс развёртывания по снимкам позиций, предел ожидания и защита подготовки от преждевременного сброса |
 | [TacticalTargets.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalTargets.kt) | Выбирает сообщённые цели отряда независимо от расстояния и наличия задания у получателя |
 | [TacticalFirePosts.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalFirePosts.kt) | Локальный поиск огневого места и сохранение задания при отказе совместного поиска |
 | [TacticalMovement.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalMovement.kt) | Движение, приоритеты других поведений, повторные попытки и отказ конкретного задания |
