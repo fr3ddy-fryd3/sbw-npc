@@ -19,10 +19,11 @@ internal class TacticalSituation(val view: TacticalSnapshot) {
     val firstArmouredContact get() = visible.firstOrNull { it.armoured || it.airborne }
 
     fun attackedFromMultipleFronts(): Boolean {
+        val origin = view.threatOrigin ?: view.center
         val directions = (visible.map { it.position } + view.incoming)
-            .map { horizontalDirection(view.center, it) }
+            .map { horizontalDirection(origin, it) }
             .filter { it.lengthSqr() > MIN_DIRECTION_LENGTH_SQUARED }
-        val attackDirection = horizontalDirection(view.center, view.home ?: focus ?: view.center)
+        val attackDirection = horizontalDirection(origin, view.home ?: focus ?: origin)
         val allThreatsAhead = view.offensive && attackDirection.lengthSqr() > MIN_DIRECTION_LENGTH_SQUARED &&
             directions.all { it.dot(attackDirection) >= FORWARD_SECTOR_DOT }
         if (allThreatsAhead) return false

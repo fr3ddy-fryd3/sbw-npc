@@ -6,10 +6,15 @@ abstract class WithdrawalState : CoveredManeuverState() {
     open val limited = false
     open val avoidsArmour = false
     private var movingHalf = 0
+    private val halves = HashMap<java.util.UUID, Int>()
+
+    override fun prepareAssignments(layout: TacticalLayout) {
+        for (member in layout.fighters) halves.getOrPut(member.id) { halves.size % 2 }
+    }
 
     override fun readyWithoutCover(context: TacticalContext): Boolean = avoidsArmour || context.view.now - phaseSince >= 40
     override fun task(layout: TacticalLayout, member: TacticalMember, index: Int): TacticalTask {
-        val half = layout.fighters.indexOf(member).coerceAtLeast(0) % 2
+        val half = halves.getOrPut(member.id) { halves.size % 2 }
         var job = if (half != movingHalf && member.ready && !avoidsArmour) {
             TacticalJob.COVER
         } else if (layout.plan.status == TacticalStatus.PREPARING && !avoidsArmour) {
@@ -37,21 +42,36 @@ abstract class WithdrawalState : CoveredManeuverState() {
             movingHalf = 1 - movingHalf
             phases.transition(PreparingPhase(), context, "withdrawal_group_arrived")
         } else {
-            for (member in movers) {
-                context.tasks.put(
-                    member.id,
-                    TacticalTask(TacticalJob.COVER, member.position, context.plan.focus, context.plan.id),
-                    context.view.now,
-                    "withdrawal_limit_reached",
-                )
-            }
+            holdMovers(context, movers, "withdrawal_limit_reached")
+        }
+    }
+
+    protected open fun holdMovers(context: TacticalContext, movers: List<TacticalMember>, reason: String) {
+        for (member in movers) {
+            context.tasks.put(member.id, TacticalTask(TacticalJob.COVER, member.position, context.plan.focus, context.plan.id), context.view.now, reason)
         }
     }
 }
 
 class ReorganizeState : WithdrawalState() {
     override val limited = true
-    override val stability = TacticalStability(carriesOrigin = true)
+    override val holdsFailedMembers = true
+    override val stability = TacticalStability(carriesOrigin = true, keepsThreatSector = true, expires = false)
+    private val holding = HashSet<java.util.UUID>()
+
+    override fun task(layout: TacticalLayout, member: TacticalMember, index: Int): TacticalTask {
+        if (member.position.distanceTo(origin!!) >= 30.0) holding.add(member.id)
+        return if (member.id in holding) layout.cover(member) else super.task(layout, member, index)
+    }
+
+    override fun holdMovers(context: TacticalContext, movers: List<TacticalMember>, reason: String) {
+        holding.addAll(movers.map { it.id })
+        super.holdMovers(context, movers, reason)
+    }
+
+    override fun movementTimedOut(context: TacticalContext, movers: List<TacticalMember>) {
+        holdMovers(context, movers, "regroup_movement_timeout_hold")
+    }
 }
 class BreakContactState : WithdrawalState()
 class AvoidArmourState : WithdrawalState() {

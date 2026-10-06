@@ -8,6 +8,15 @@ sealed interface TacticalEvent {
     val plan: Int
     val tick: Long
 
+    data class ReorganizationChanged(
+        override val plan: Int,
+        override val tick: Long,
+        val active: Boolean,
+        val origin: Vec3?,
+        val capable: Int,
+        val peak: Int,
+    ) : TacticalEvent
+
     data class PlanSelected(
         override val plan: Int,
         override val tick: Long,

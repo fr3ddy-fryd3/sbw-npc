@@ -114,6 +114,8 @@ data class TacticalSnapshot(
     val open: Boolean = false,
     val stalled: Boolean = false,
     val peakStrength: Int = members.size,
+    val threatOrigin: Vec3? = null,
+    val regrouping: Boolean? = null,
 ) {
     val visible get() = contacts.filter { now - it.seenAt < 40 }
     val fighting get() = members.filter { it.ready && it.health >= 0.3 }

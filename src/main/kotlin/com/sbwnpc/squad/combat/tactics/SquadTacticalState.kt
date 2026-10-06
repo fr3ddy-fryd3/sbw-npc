@@ -32,6 +32,8 @@ class SquadTacticalState(
     private var lastHeld: Pair<TacticalPattern, TacticalSelectionHold>? = null
     private var nextHeldTrace = Long.MIN_VALUE
     private var selecting = false
+    private val threats = TacticalThreatConfirmation()
+    private val reorganization = TacticalReorganization()
 
     fun assess(squad: UUID, view: TacticalSnapshot): TacticalAssessment {
         val old = plan
@@ -40,11 +42,20 @@ class SquadTacticalState(
         val movedHome = view.order == SquadOrder.DEFEND && snapshot?.home != null && view.home != null &&
             snapshot!!.home!!.distanceTo(view.home) > 8.0
         if (movedHome) old?.complete(view.now, "defensive_home_changed")
-        snapshot = view
-        val proposed = decisions.choose(view)
+        val wasRegrouping = reorganization.active
+        val regrouping = reorganization.observe(view)
+        val decisionView = view.copy(
+            regrouping = regrouping,
+            threatOrigin = old?.origin?.takeIf { view.offensive && old.behavior.stability.committed },
+        )
+        snapshot = decisionView
+        if (wasRegrouping != regrouping) {
+            events.emit(TacticalEvent.ReorganizationChanged(old?.id ?: 0, view.now, regrouping, reorganization.origin, view.fighting.size, view.peakStrength))
+        }
+        val proposed = decisions.choose(decisionView)
         val effective = if (proposed.pattern != TacticalPattern.EVADE && view.now < (blocked[proposed.pattern] ?: Long.MIN_VALUE)) {
             TacticalChoice(
-                if (view.visible.isNotEmpty()) TacticalPattern.REORIENT else TacticalPattern.FOLLOW_ORDER,
+                if (view.visible.isNotEmpty() || regrouping) TacticalPattern.REORIENT else TacticalPattern.FOLLOW_ORDER,
                 proposed.focus,
                 reason = TacticalReason.PATTERN_COOLDOWN,
             )
@@ -76,7 +87,11 @@ class SquadTacticalState(
 
     private fun selectPlan(choice: TacticalChoice, stamp: Int, now: Long): Boolean {
         val old = plan
-        val decision = TacticalSelectionPolicy.evaluate(old, choice, stamp, now, registry)
+        val decision = if (threats.allows(old, choice, stamp, now)) {
+            TacticalSelectionPolicy.evaluate(old, choice, stamp, now, registry)
+        } else {
+            TacticalSelection.Keep(TacticalSelectionHold.THREAT_CONFIRMATION)
+        }
         if (decision is TacticalSelection.Keep) {
             val key = choice.pattern to decision.reason
             if (key != lastHeld || now >= nextHeldTrace) {
@@ -93,8 +108,9 @@ class SquadTacticalState(
             serial + 1, choice.pattern, choice.focus, now, stamp, events = events,
             behavior = registry.create(choice.pattern), reason = choice.reason, flankSide = flankSide,
         ).also {
-            if (old?.pattern == choice.pattern && it.behavior.stability.carriesOrigin && !changedOrder) {
-                it.behavior.origin = old.origin
+            if (it.behavior.stability.carriesOrigin && !changedOrder) {
+                it.behavior.origin = reorganization.origin?.takeIf { choice.pattern == TacticalPattern.REORGANIZE }
+                    ?: old?.origin?.takeIf { old.pattern == choice.pattern }
             }
         }
         if (changedOrder) {

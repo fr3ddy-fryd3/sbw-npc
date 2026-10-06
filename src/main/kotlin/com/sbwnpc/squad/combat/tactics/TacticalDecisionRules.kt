@@ -17,6 +17,9 @@ internal object TacticalDecisionRules {
     fun handleNoVisibleContacts(situation: TacticalSituation): TacticalChoice? {
         if (situation.visible.isNotEmpty()) return null
         val view = situation.view
+        if (view.regrouping == true) {
+            return TacticalChoice(TacticalPattern.REORGANIZE, situation.focus, emergency = true, reason = TacticalReason.LOW_STRENGTH)
+        }
         val rememberedEnemy = view.contacts.isNotEmpty()
         // A ridge may conceal the last contact while the squad is climbing towards it.
         if (view.offensive && rememberedEnemy && situation.enemyHasHeightAdvantage) {
@@ -39,7 +42,7 @@ internal object TacticalDecisionRules {
     }
 
     fun reorganizeDepletedSquad(situation: TacticalSituation): TacticalChoice? {
-        if (!situation.lostHalfStrength) return null
+        if (!(situation.view.regrouping ?: situation.lostHalfStrength)) return null
         return TacticalChoice(TacticalPattern.REORGANIZE, situation.focus, emergency = true, reason = TacticalReason.LOW_STRENGTH)
     }
 

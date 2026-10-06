@@ -1,6 +1,6 @@
 package com.sbwnpc.squad.combat.tactics
 
-enum class TacticalSelectionHold { STICKY_SECTOR, COMMITTED_MANEUVER, MINIMUM_DURATION, SAME_PLAN }
+enum class TacticalSelectionHold { STICKY_SECTOR, COMMITTED_MANEUVER, MINIMUM_DURATION, SAME_PLAN, THREAT_CONFIRMATION }
 sealed interface TacticalSelection {
     data class Replace(val trigger: String) : TacticalSelection
     data class Keep(val reason: TacticalSelectionHold) : TacticalSelection

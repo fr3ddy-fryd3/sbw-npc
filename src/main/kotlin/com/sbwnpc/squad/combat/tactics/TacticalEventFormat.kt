@@ -4,6 +4,9 @@ package com.sbwnpc.squad.combat.tactics
 object TacticalEventFormat {
     fun detail(event: TacticalEvent): String =
         when (event) {
+            is TacticalEvent.ReorganizationChanged ->
+                "event=reorganization_episode active=${event.active} origin=${event.origin} capable=${event.capable} peak=${event.peak}"
+
             is TacticalEvent.PlanSelected ->
                 "event=plan_selected pattern=${event.choice.pattern} reason=${event.choice.reason} previousPlan=${event.previous} " +
                     "previousPhase=${event.previousPhase} stamp=${event.orderStamp} trigger=${event.trigger} " +
