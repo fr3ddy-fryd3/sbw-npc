@@ -2,6 +2,18 @@ package com.sbwnpc.squad.combat.tactics
 
 /** Diagnostics distinguish an available firing lane from shots actually fired in that sector. */
 object TacticalTelemetry {
+    data class Front(val assigned: Int, val onLine: Int, val deploying: Int, val lateralSpan: Double, val depthSpan: Double)
+
+    fun front(plan: TacticalPlan, view: TacticalSnapshot): Front {
+        val posts = view.members.mapNotNull { member -> plan.tasks[member.id]?.frontage?.let { member to it } }
+        val direction = posts.firstOrNull()?.second?.forward ?: return Front(0, 0, 0, 0.0, 0.0)
+        val side = net.minecraft.world.phys.Vec3(-direction.z, 0.0, direction.x)
+        val lateral = posts.map { it.first.position.dot(side) }
+        val depth = posts.map { it.first.position.dot(direction) }
+        val onLine = posts.count { (member, post) -> post.contains(member.position) }
+        return Front(posts.size, onLine, posts.size - onLine, lateral.max() - lateral.min(), depth.max() - depth.min())
+    }
+
     data class Cover(val assigned: Int, val ready: Int, val settledReady: Int, val firedRecently: Int)
 
     fun cover(plan: TacticalPlan, view: TacticalSnapshot): Cover {

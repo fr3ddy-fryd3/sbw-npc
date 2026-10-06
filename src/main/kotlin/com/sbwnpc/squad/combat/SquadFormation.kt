@@ -14,9 +14,8 @@ import net.minecraft.world.phys.Vec3
  * causing both the "everyone piles onto one spot and shoves past each other" pileup and the
  * resulting "snake" of NPCs re-routing around each other every tick.
  *
- * Shape is picked from the squad's current order rather than exposed as a player choice — matches
- * real infantry doctrine roughly (wedge to advance into unclear contact / ATTACK, line abreast to
- * hold a wide front / DEFEND, staggered column to travel a route / PATROL) without needing new UI.
+ * ATTACK deploys abreast, DEFEND uses a perimeter on arrival, and PATROL travels in a staggered
+ * column. Tactical combat keeps its own per-member slots on this shared formation geometry.
  *
  * All members rotate their slot offset by the SAME heading — member 0 (the squad's "leader" slot)
  * position to the anchor — rather than each mob computing its own facing from its own current
@@ -35,6 +34,9 @@ object SquadFormation {
 
     /** Interval for a squad advancing on an enemy — see GunAttackBehaviour. */
     const val COMBAT_SPACING = 6.0
+
+    /** A centered firing line: every slot has a unique lateral position and the same depth. */
+    fun lineOffset(slotIndex: Int, squadSize: Int, spacing: Double = COMBAT_SPACING): Vec3 = Vec3((slotIndex - (squadSize.coerceAtLeast(1) - 1) / 2.0) * spacing, 0.0, 0.0)
     private const val RING_RADIUS = 4.0
     private const val MIN_HEADING_LENGTH = 2.0
 
@@ -99,7 +101,7 @@ object SquadFormation {
             }
         }
         return when (order) {
-            SquadOrder.ATTACK -> Shape.WEDGE
+            SquadOrder.ATTACK -> Shape.LINE
             SquadOrder.DEFEND, SquadOrder.BARRAGE, SquadOrder.RETREAT -> Shape.LINE
             SquadOrder.PATROL -> Shape.COLUMN
             SquadOrder.MOVE -> Shape.GRID
@@ -246,7 +248,7 @@ object SquadFormation {
         squadSize: Int,
         spacing: Double = SLOT_SPACING,
     ): Vec3 {
-        if (cls.attackStandoffDistance == 0.0) return localOffset(Shape.WEDGE, slotIndex, squadSize, spacing)
+        if (cls.attackStandoffDistance == 0.0) return localOffset(Shape.LINE, slotIndex, squadSize, spacing)
         // Twelve distinct rear posts cover the largest preset's twelve support members. Bound
         // the sideways spread so their posts stay within the 72-block engagement range.
         val post = slotIndex.mod(12)

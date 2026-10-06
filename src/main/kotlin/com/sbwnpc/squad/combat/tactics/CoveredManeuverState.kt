@@ -18,7 +18,7 @@ abstract class CoveredManeuverState : TacticalState() {
             for (member in context.view.members) {
                 val task = context.plan.tasks[member.id] ?: continue
                 if (task.job in TacticalJob.FIRE_SUPPORT && TacticalEvidence.firesCover(member, task) &&
-                    !member.moving
+                    !member.moving && !task.deployingFront(member.position)
                 ) {
                     task.position = member.position
                 }

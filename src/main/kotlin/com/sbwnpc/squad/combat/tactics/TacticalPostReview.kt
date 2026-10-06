@@ -8,7 +8,7 @@ object TacticalPostReview {
 
     /** A null validation result means the world-query budget is exhausted, not that the post failed. */
     fun review(task: TacticalTask, target: UUID?, now: Long, usable: () -> Boolean?): Result {
-        if (task.job !in TacticalJob.FIRING_POSITIONS || task.position == null || target == task.firingTarget) {
+        if (task.job !in TacticalJob.FIRING_POSITIONS || task.position == null || task.deployingFront(task.position!!) || target == task.firingTarget) {
             return Result.UNCHANGED
         }
         if (target != null) {

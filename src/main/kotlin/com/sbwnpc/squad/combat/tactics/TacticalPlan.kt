@@ -17,6 +17,7 @@ class TacticalPlan(
     val flankSide: Double = 0.0,
 ) {
     val assignments = TacticalTaskBoard(id, events)
+    internal var frontage = TacticalFrontage()
     val tasks get() = assignments.tasks
     val failedMembers get() = assignments.failedMembers
     val status get() = behavior.phases.current.status
@@ -42,6 +43,7 @@ class TacticalPlan(
 
     internal fun assign(squad: UUID, view: TacticalSnapshot, owner: SquadTacticalState? = null) {
         if (exited || status in setOf(TacticalStatus.FAILED, TacticalStatus.COMPLETED)) return
+        bindFrontage(owner)
         val next = TacticalContext(squad, this, view, owner)
         context = next
         if (!entered) {
@@ -55,6 +57,7 @@ class TacticalPlan(
 
     internal fun tick(squad: UUID, owner: SquadTacticalState, view: TacticalSnapshot) {
         if (exited || status == TacticalStatus.FAILED || status == TacticalStatus.COMPLETED) return
+        bindFrontage(owner)
         if (!entered) assign(squad, view, owner)
         if (exited || status in setOf(TacticalStatus.FAILED, TacticalStatus.COMPLETED)) return
         val next = TacticalContext(squad, this, view, owner)
@@ -100,5 +103,11 @@ class TacticalPlan(
         } else {
             behavior.phases.initialize(next.status)
         }
+    }
+
+    private fun bindFrontage(owner: SquadTacticalState?) {
+        if (owner == null) return
+        if (!owner.frontage.initialized && frontage.initialized) owner.frontage = frontage
+        frontage = owner.frontage
     }
 }

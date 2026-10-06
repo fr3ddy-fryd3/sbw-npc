@@ -101,7 +101,7 @@ object TacticalMovement {
                 entity.uuid, squad.id, entity.level().gameTime, task.plan, task.job, previousTarget, entity.target?.uuid, task.position,
             )
         }
-        val reviewDue = task.job in TacticalJob.FIRE_SUPPORT && entity.level().gameTime >= task.nextValidation &&
+        val reviewDue = task.job in TacticalJob.FIRE_SUPPORT && !task.deployingFront(entity.position()) && entity.level().gameTime >= task.nextValidation &&
             task.position?.let { FiringPostArrival.reached(entity.position(), it) } == true
         if (postReview != TacticalPostReview.Result.DEFERRED &&
             (task.position == null || task.search != null || reviewDue) && entity.level().gameTime >= task.nextSearch
@@ -150,9 +150,16 @@ object TacticalMovement {
             task.closest = distance
             task.lastProgress = entity.level().gameTime
         }
-        val firingPost = task.job in TacticalJob.FIRING_POSITIONS || (task.job == TacticalJob.FLANK && position.distanceTo(task.anchor) <= 10.0)
+        val firingPost = task.frontage != null || task.job in TacticalJob.FIRING_POSITIONS || (task.job == TacticalJob.FLANK && position.distanceTo(task.anchor) <= 10.0)
         val arrived = if (firingPost) FiringPostArrival.reached(entity.position(), position) else distance <= 2.0
         if (arrived) {
+            if (task.deployingFront(position)) {
+                task.position = null
+                task.search = null
+                task.nextSearch = entity.level().gameTime + 2
+                FiringSpots.release(entity.uuid)
+                return true
+            }
             if (task.job in TacticalJob.FIRING_POSITIONS && entity.level().gameTime >= task.nextValidation &&
                 TickBudget.hasRaycasts(entity.level() as ServerLevel)
             ) {
@@ -263,6 +270,7 @@ object TacticalMovement {
     fun repositionForFire(entity: NpcEntity) {
         val task = SquadTactics.task(entity) ?: return
         val position = task.position ?: return
+        if (task.deployingFront(position)) return
         if (task.job !in TacticalJob.FIRING_POSITIONS || entity.position().distanceTo(position) > 2.0) return
         task.position = null
         task.search = null

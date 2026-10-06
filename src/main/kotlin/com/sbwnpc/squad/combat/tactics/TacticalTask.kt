@@ -12,6 +12,8 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
     var search: TacticalPositionSearch? = null
     var nextValidation = Long.MIN_VALUE
     var staging: Vec3? = null
+    var frontage: TacticalFrontPost? = null
+    fun deployingFront(point: Vec3): Boolean = frontage?.contains(point) == false
     var opensLane = false
 
     /** Retains assignment/sector while the individual shooter searches a bounded local post. */
@@ -55,7 +57,7 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
 }
 
 /** Keeps progress across tick budgets, including candidates after an unreachable first choice. */
-class TacticalPositionSearch(val origin: Vec3, val probes: List<Vec3>, val aim: TacticalAim? = null) {
+class TacticalPositionSearch(val origin: Vec3, val probes: List<Vec3>, val aim: TacticalAim? = null, val deployment: Boolean = false) {
     var probeIndex = 0
     val scored = LinkedHashMap<Vec3, TacticalPositionScore>()
     val visited = HashSet<Vec3>()
@@ -63,7 +65,8 @@ class TacticalPositionSearch(val origin: Vec3, val probes: List<Vec3>, val aim: 
     var destinationIndex = 0
     val rejections = LinkedHashMap<String, Int>()
 
-    fun needsRestart(position: Vec3, currentAim: TacticalAim?): Boolean {
+    fun needsRestart(position: Vec3, currentAim: TacticalAim?, deployment: Boolean = this.deployment): Boolean {
+        if (this.deployment != deployment) return true
         if (origin.distanceTo(position) > 4.0 || aim?.target != currentAim?.target) return true
         if (aim == null || currentAim == null) return aim != currentAim
         return aim.eye.distanceTo(currentAim.eye) > 2.0

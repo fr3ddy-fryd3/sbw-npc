@@ -40,7 +40,7 @@ class SquadMarchTest {
 
     @Test
     fun `a following member still holds its place behind an advancing lead`() {
-        val local = SquadFormation.transitOffset(SquadOrder.ATTACK, 2, 32)
+        val local = SquadFormation.transitOffset(SquadOrder.PATROL, 2, 32)
         val anchor = SquadMarch.formationAnchorIndex(longRoute, 100, 80, local.z)
         assertEquals(116, anchor)
         assertEquals(113.0, longRoute[anchor].x + local.z)
@@ -49,7 +49,7 @@ class SquadMarchTest {
     @Test
     fun `rear depth is measured in blocks on diagonal trails`() {
         val diagonal = (0..1500).map { BlockPos(it, 64, it) }
-        val local = SquadFormation.transitOffset(SquadOrder.ATTACK, 31, 32)
+        val local = SquadFormation.transitOffset(SquadOrder.PATROL, 31, 32)
         val anchor = SquadMarch.formationAnchorIndex(diagonal, 0, 60, local.z)
         val depth = (anchor - 60) * Math.sqrt(2.0) + local.z
         assertTrue(depth >= 16.0 * Math.sqrt(2.0))
@@ -67,7 +67,7 @@ class SquadMarchTest {
         val partial = longRoute.take(160)
         val progress = MarchProgress(2000).apply { append(partial) }
         val walker = UUID.randomUUID()
-        val local = SquadFormation.transitOffset(SquadOrder.ATTACK, 31, 32)
+        val local = SquadFormation.transitOffset(SquadOrder.PATROL, 31, 32)
         var position = Vec3(90.5, 64.5, local.x)
         repeat(68) {
             val here = progress.index(walker, position)

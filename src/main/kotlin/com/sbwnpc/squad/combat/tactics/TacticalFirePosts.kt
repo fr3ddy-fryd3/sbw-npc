@@ -37,7 +37,7 @@ object TacticalFirePosts {
     /** An unsuccessful coordinated search still owns the member's job and threat sector. */
     fun recover(task: TacticalTask, post: Vec3): Boolean {
         if (task.job !in TacticalJob.FIRING_POSITIONS) return false
-        task.localFirePost = post
+        task.localFirePost = task.frontage?.point ?: post
         task.position = null
         task.search = null
         return true

@@ -9,7 +9,7 @@ import java.util.UUID
 
 class TacticalCoordinationTest {
     private val squad = UUID(0, 2)
-    private val members = (0..5).map { TacticalMember(UUID(0, it.toLong()), Vec3(it * 5.0, 64.0, 0.0), canFire = true) }
+    private val members = (0..5).map { TacticalMember(UUID(0, it.toLong()), Vec3(12.5, 64.0, (it - 2.5) * 6.0), canFire = true) }
     private fun view(now: Long = 0, order: SquadOrder = SquadOrder.ATTACK) =
         TacticalSnapshot(
             now,
@@ -18,7 +18,7 @@ class TacticalCoordinationTest {
             Vec3(12.5, 64.0, 0.0),
             Vec3(12.5, 64.0, 0.0),
             members,
-            listOf(TacticalContact(UUID(2, 1), Vec3(50.0, 64.0, 0.0), now), TacticalContact(UUID(2, 2), Vec3(53.0, 64.0, 1.0), now)),
+            listOf(TacticalContact(UUID(2, 1), Vec3(50.0, 64.0, 0.0), now), TacticalContact(UUID(2, 2), Vec3(53.0, 64.0, 0.0), now)),
         )
 
     @Test fun `changing a threat sector turns the shooter without replacing its path or cover post`() {

@@ -109,6 +109,7 @@ object SquadTactics {
             plan.failedMembers.size,
             plan.tasks.values.count { it.localFireRecovery },
             jobs(plan),
+            TacticalTelemetry.front(plan, view),
         )
     }
 
@@ -121,6 +122,17 @@ object SquadTactics {
     }
 
     fun hasTask(entity: NpcEntity): Boolean = task(entity) != null
+
+    /** Unassigned attack members use the same front instead of an independent wedge around their target. */
+    fun frontPost(entity: NpcEntity): TacticalFrontPost? {
+        val squad = entity.currentSquad() ?: return null
+        val view = squad.tactics.snapshot ?: return null
+        val member = view.members.firstOrNull { it.id == entity.uuid } ?: return null
+        if (!view.offensive || squad.tactics.plan?.behavior?.usesAttackFront(member) == false) return null
+        val frontage = squad.tactics.frontage
+        frontage.observe(view)
+        return frontage.post(entity.uuid, view.center)
+    }
 
     private fun jobs(plan: TacticalPlan) = plan.tasks.values.groupingBy { it.job }.eachCount()
 
@@ -176,7 +188,7 @@ object SquadTactics {
         "proposed={} proposedReason={} effective={} cooldown={} order={} stamp={} members={} peak={} fighting={} " +
         "visible={} remembered={} incoming={} suppressed={} narrow={} open={} stalled={} heightDelta={} cover={} " +
         "shootersLast40Ticks={} coverAge={} phaseAge={} bounds={} openingLane={} laneAttempts={} positioned={} failed={} " +
-        "recoveringFirePosts={} jobs={}"
+        "recoveringFirePosts={} jobs={} front={}"
 
     private val SUPPORT_ROLES = setOf(NpcClass.MACHINE_GUNNER, NpcClass.SNIPER)
     private val GROUND_ROLES = setOf(NpcClass.RIFLEMAN, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.DRONE_OPERATOR)

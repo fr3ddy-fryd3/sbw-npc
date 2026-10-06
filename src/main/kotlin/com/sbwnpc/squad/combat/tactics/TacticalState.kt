@@ -41,6 +41,8 @@ abstract class TacticalState {
     open val firingLaneExtension = 0.0
     open val holdsFailedMembers = false
     open val alternatesSideAfterFailure = false
+    open fun usesAttackFront(member: TacticalMember): Boolean = true
+    open fun attackFrontCenter(context: TacticalContext): Vec3 = context.view.center
     internal var attached = false
     internal var origin: Vec3? = null
     internal var medicGuard: UUID? = null
@@ -123,6 +125,7 @@ class TacticalLayout(val context: TacticalContext) {
     val forward = focus.subtract(view.center).multiply(1.0, 0.0, 1.0).normalize()
         .let { if (it.lengthSqr() < 0.01) Vec3(0.0, 0.0, 1.0) else it }
     val side = Vec3(-forward.z, 0.0, forward.x)
+    private val frontage = plan.frontage.also { it.observe(view) }
     val fighters = view.members.filter { it.ready && it.health >= 0.3 && it.role != NpcClass.MEDIC && it.id !in plan.failedMembers }
         .sortedWith(
             compareBy<TacticalMember> { if (state is FlankingState && it.recentFire && it.canFire) 0 else 1 }
@@ -142,7 +145,13 @@ class TacticalLayout(val context: TacticalContext) {
         state.medicGuard = guard
     }
 
-    fun lateral(index: Int): Vec3 = side.scale((index % 3 - 1) * 5.0)
+    fun lateral(index: Int, center: Vec3 = view.center): Vec3 {
+        val member = view.members.getOrNull(index)
+        if (view.offensive && member != null && member.role != NpcClass.MEDIC && state.usesAttackFront(member)) {
+            return frontage.offsetFrom(member.id, center) ?: side.scale(SquadFormation.lineOffset(index, view.members.size).x)
+        }
+        return side.scale((index % 3 - 1) * 5.0)
+    }
     fun intent(job: TacticalJob, anchor: Vec3, focus: Vec3? = plan.focus): TacticalTask = TacticalTask(job, anchor, focus, plan.id)
     fun cover(member: TacticalMember): TacticalTask = intent(TacticalJob.COVER, member.position)
 
@@ -151,7 +160,7 @@ class TacticalLayout(val context: TacticalContext) {
         val range = if (overwatch) {
             80.0
         } else if (view.offensive) {
-            state.assignmentRange
+            if (state.usesAttackFront(member)) maxOf(state.assignmentRange, frontage.halfWidth + 24.0) else state.assignmentRange
         } else {
             48.0
         }
@@ -185,6 +194,21 @@ class TacticalLayout(val context: TacticalContext) {
             if (safeAnchor != intent.anchor) intent = intent(intent.job, safeAnchor, intent.focus)
         }
         if (intent.job == TacticalJob.WAIT && intent.staging == null) intent.staging = member.position
+        if (view.offensive && state.usesAttackFront(member) && intent.job in TacticalJob.FIRING_POSITIONS + TacticalJob.ADVANCE &&
+            member.ready && member.health >= 0.3 && member.role != NpcClass.MEDIC && member.id != guard
+        ) {
+            val post = if (intent.job == TacticalJob.ADVANCE) {
+                TacticalFrontPost(intent.anchor, frontage.forward)
+            } else {
+                frontage.post(member.id, state.attackFrontCenter(context))
+            }
+            if (post != null) {
+                intent = TacticalTask(intent.job, if (intent.job == TacticalJob.WAIT) intent.anchor else post.point, intent.focus, intent.plan).also {
+                    it.staging = if (intent.job == TacticalJob.WAIT) post.point else null
+                    it.frontage = post
+                }
+            }
+        }
         return intent
     }
 

@@ -15,6 +15,7 @@ abstract class FlankingState : CoveredManeuverState() {
     internal val order = ArrayList<UUID>()
     private val arrivedMembers = HashSet<UUID>()
     val arrived: Set<UUID> = Collections.unmodifiableSet(arrivedMembers)
+    override fun usesAttackFront(member: TacticalMember): Boolean = member.id !in arrived
     private val waitingPosts = HashMap<UUID, net.minecraft.world.phys.Vec3>()
     private var wave = emptySet<UUID>()
     internal open fun anchor(plan: TacticalPlan, view: TacticalSnapshot, slot: Int) = TacticalFlanks.shoulder(plan, view, slot)
@@ -60,7 +61,7 @@ abstract class FlankingState : CoveredManeuverState() {
         assign(context, trigger = "late_cover_shooter")
         for (member in context.view.members) {
             val task = context.plan.tasks[member.id] ?: continue
-            if (task.job == TacticalJob.COVER && TacticalEvidence.covers(member, task)) task.position = member.position
+            if (task.job == TacticalJob.COVER && TacticalEvidence.covers(member, task) && !task.deployingFront(member.position)) task.position = member.position
         }
     }
 

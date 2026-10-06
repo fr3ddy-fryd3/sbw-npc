@@ -17,6 +17,7 @@ class SquadTacticalState(
 ) {
     val events = TacticalEventStream(observer)
     val contacts = LinkedHashMap<UUID, TacticalContact>()
+    internal var frontage = TacticalFrontage()
     var snapshot: TacticalSnapshot? = null
     var plan: TacticalPlan? = null
         private set

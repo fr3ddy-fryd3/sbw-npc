@@ -16,6 +16,7 @@ class HeightAttackState : CoveredManeuverState() {
     val support: Set<UUID> = Collections.unmodifiableSet(covering)
     var front: Vec3? = null
         private set
+    override fun attackFrontCenter(context: TacticalContext): Vec3 = front ?: context.view.center
 
     override fun guardsPatient(): Boolean = bounds % 2 == 0
     override fun prepareAssignments(layout: TacticalLayout) {
@@ -29,7 +30,7 @@ class HeightAttackState : CoveredManeuverState() {
         val job = if (layout.plan.status == TacticalStatus.PREPARING) TacticalJob.WAIT else TacticalJob.ADVANCE
         val point = front ?: layout.view.center
         val anchor = if (catchingUp) {
-            point.add(layout.lateral(index))
+            point.add(layout.lateral(index, point))
         } else {
             val uphill = layout.focus.subtract(point).multiply(1.0, 0.0, 1.0).normalize()
                 .let { if (it.lengthSqr() < 0.01) layout.forward else it }
@@ -41,9 +42,9 @@ class HeightAttackState : CoveredManeuverState() {
                 -1.0
             }
             val approach = if (bounds == 0) {
-                layout.side.scale(direction * (10.0 + index % 2 * 4.0)).add(layout.lateral(index))
+                layout.side.scale(direction * 10.0).add(layout.lateral(index, point))
             } else {
-                layout.lateral(index)
+                layout.lateral(index, point)
             }
             point.add(uphill.scale(minOf(12.0, layout.focus.subtract(point).horizontalDistance())))
                 .add(approach).add(0.0, minOf(8.0, maxOf(0.0, layout.focus.y - point.y)), 0.0)
@@ -65,7 +66,7 @@ class HeightAttackState : CoveredManeuverState() {
         assign(context, trigger = "late_height_cover")
         for (member in context.view.members) {
             val task = context.plan.tasks[member.id] ?: continue
-            if (task.job == TacticalJob.COVER && TacticalEvidence.covers(member, task)) task.position = member.position
+            if (task.job == TacticalJob.COVER && TacticalEvidence.covers(member, task) && !task.deployingFront(member.position)) task.position = member.position
         }
     }
 

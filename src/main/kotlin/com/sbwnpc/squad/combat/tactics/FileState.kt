@@ -3,6 +3,7 @@ package com.sbwnpc.squad.combat.tactics
 import java.util.UUID
 
 class FileState : CoveredManeuverState() {
+    override fun usesAttackFront(member: TacticalMember) = false
     override val positions = FilePositions
     private val passed = HashSet<UUID>()
     private var cover: UUID? = null

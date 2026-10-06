@@ -15,7 +15,8 @@ class TacticalTaskBoard(private val plan: Int, private val events: TacticalEvent
         val next = desired.filterKeys { it !in failed }.toMutableMap()
         if (retainCover) {
             for ((id, old) in active) {
-                if (old.job in TacticalJob.FIRE_SUPPORT && next[id]?.job == old.job) next[id] = old
+                val replacement = next[id]
+                if (old.job in TacticalJob.FIRE_SUPPORT && replacement?.job == old.job && old.frontage == replacement.frontage) next[id] = old
             }
         }
         for ((id, old) in active.toMap()) if (next[id] !== old) release(id, now, trigger)
@@ -27,7 +28,7 @@ class TacticalTaskBoard(private val plan: Int, private val events: TacticalEvent
         require(task.plan == plan) { "Task belongs to plan ${task.plan}, expected $plan" }
         release(id, now, trigger)
         active[id] = task
-        events.emit(TacticalEvent.TaskAssigned(plan, now, id, task.job, task.anchor, trigger))
+        events.emit(TacticalEvent.TaskAssigned(plan, now, id, task.job, task.anchor, trigger, task.frontage))
     }
 
     fun prune(alive: Set<UUID>, now: Long) {

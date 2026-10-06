@@ -583,7 +583,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /** Optional firing shifts stay near the defend point or the patrol's original contact post. */
     private fun canRelocate(entity: NpcEntity, point: Vec3): Boolean {
-        val recoveryPost = SquadTactics.task(entity)?.localFirePost
+        val task = SquadTactics.task(entity)
+        if (task?.frontage?.contains(point) == false) return false
+        val recoveryPost = task?.localFirePost
         if (recoveryPost != null && !TacticalFirePosts.withinPost(recoveryPost, point, recovery = true)) return false
         val squad = entity.currentSquad() ?: return true
         if (!CombatPosition.holdsPosition(squad.order)) return true
@@ -645,7 +647,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun moveTowardFormationSlot(entity: NpcEntity, target: LivingEntity) {
         val targetPos = target.position()
         // Opened out under fire: the marching interval puts the whole squad in one burst.
-        val slot = SquadFormation.slotTarget(
+        val slot = SquadTactics.frontPost(entity)?.point ?: SquadFormation.slotTarget(
             entity,
             targetPos,
             targetPos.subtract(entity.position()),

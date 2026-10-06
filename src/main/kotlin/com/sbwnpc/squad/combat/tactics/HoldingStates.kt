@@ -17,6 +17,9 @@ class HoldHeightState : TacticalState() {
 }
 
 class ReorientState : TacticalState() {
+    override fun onEnter(context: TacticalContext) {
+        if (context.view.offensive) context.plan.frontage.reorient(context.view)
+    }
     override val supportsDefensiveOverwatch = true
     override val stability = TacticalStability(passive = true, keepsThreatSector = true, expires = false)
     override fun task(layout: TacticalLayout, member: TacticalMember, index: Int): TacticalTask =
@@ -66,6 +69,7 @@ class AntiArmourState : TacticalState() {
 }
 
 class EvadeState : TacticalState() {
+    override fun usesAttackFront(member: TacticalMember) = false
     override val stability = TacticalStability(canLeaveImmediately = true)
     override fun guardsPatient() = false
     override fun task(layout: TacticalLayout, member: TacticalMember, index: Int): TacticalTask {

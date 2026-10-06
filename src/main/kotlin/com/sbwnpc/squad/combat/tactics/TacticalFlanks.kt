@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.combat.tactics
 
 import com.sbwnpc.squad.combat.CombatPositionSafety
+import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.npc.NpcClass
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
@@ -42,10 +43,10 @@ object TacticalFlanks {
             1.0
         }
         val lane = slot / (if (both) 2 else 1)
-        val sideways = (if (direction < 0) left else right) + direction * (lane % 3) * 4.0
+        val sideways = (if (direction < 0) left else right) + direction * lane * SquadFormation.COMBAT_SPACING
         val member = view.members.firstOrNull { it.id == state.order.getOrNull(slot) }
         val clearance = CombatPositionSafety.clearance(member?.role ?: NpcClass.RIFLEMAN) + CombatPositionSafety.FLANK_MARGIN
-        val depth = focus.subtract(origin).horizontalDistance() - clearance - (lane / 3) * 4.0
+        val depth = focus.subtract(origin).horizontalDistance() - clearance
         return origin.add(forward.scale(depth)).add(side.scale(sideways))
     }
 

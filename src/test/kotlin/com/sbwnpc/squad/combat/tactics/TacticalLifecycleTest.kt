@@ -335,7 +335,7 @@ class TacticalLifecycleTest {
             it.nextSearch = 91
         }
         events.clear()
-        TacticalCoordinator.advance(squad, state, plan, view(10))
+        TacticalCoordinator.advance(squad, state, plan, view(10).atFrontPosts(plan))
         assertEquals(TacticalPhase.EXECUTING, plan.phase)
         cover.forEach { (id, task) ->
             assertSame(task, plan.tasks[id])

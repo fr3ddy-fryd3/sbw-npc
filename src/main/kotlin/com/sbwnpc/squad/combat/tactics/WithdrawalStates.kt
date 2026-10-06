@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.combat.tactics
 
 abstract class WithdrawalState : CoveredManeuverState() {
+    override fun usesAttackFront(member: TacticalMember) = false
     override val positions = WithdrawalPositions
     override val withdrawal = true
     open val limited = false
