@@ -234,13 +234,14 @@ class TacticalFlanksTest {
         val view = view().copy(members = members.map { it.copy(canFire = false, recentFire = false) })
         val (state, plan) = setup(view)
         val old = plan.tasks.toMap()
-        TacticalCoordinator.advance(squad, state, plan, view.copy(now = 80, contacts = view.contacts.map { it.copy(seenAt = 80) }))
+        val deployed = view.copy(now = 80, contacts = view.contacts.map { it.copy(seenAt = 80) }).atFrontPosts(plan)
+        TacticalCoordinator.advance(squad, state, plan, deployed)
         assertTrue((plan.phase == TacticalPhase.OPENING_LANE))
         val probes = plan.tasks.filterValues { it.opensLane }
         assertEquals(2, probes.size)
         assertFalse(plan.tasks.values.any { it.job in setOf(TacticalJob.FLANK, TacticalJob.ADVANCE) })
         for ((id, task) in probes) {
-            val from = view.members.first { it.id == id }.position
+            val from = deployed.members.first { it.id == id }.position
             assertEquals(12.0, from.distanceTo(task.anchor), 0.01)
             assertTrue(task.anchor.distanceTo(focus) >= from.distanceTo(focus))
         }
@@ -298,7 +299,7 @@ class TacticalFlanksTest {
         }
         assertEquals(2, (plan.behavior as CoveredManeuverState).laneAttempts)
         now += 110
-        TacticalCoordinator.advance(squad, state, plan, view.copy(now = now, contacts = view.contacts.map { it.copy(seenAt = now) }))
+        TacticalCoordinator.advance(squad, state, plan, view.copy(now = now, contacts = view.contacts.map { it.copy(seenAt = now) }).atFrontPosts(plan))
         assertEquals(TacticalStatus.FAILED, plan.status)
         assertEquals(TacticalFailure.COVER_NOT_READY_TIMEOUT, plan.failure)
         assertFalse(plan.tasks.values.any { it.job == TacticalJob.FLANK })

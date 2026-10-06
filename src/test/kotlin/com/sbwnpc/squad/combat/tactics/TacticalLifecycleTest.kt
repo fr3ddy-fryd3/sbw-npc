@@ -309,7 +309,7 @@ class TacticalLifecycleTest {
         state.select(TacticalChoice(TacticalPattern.FLANK, focus), 1, 0)
         val plan = state.plan!!
         TacticalCoordinator.assign(squad, plan, initial)
-        TacticalCoordinator.advance(squad, state, plan, initial.copy(now = 80, contacts = initial.contacts.map { it.copy(seenAt = 80) }))
+        TacticalCoordinator.advance(squad, state, plan, initial.copy(now = 80, contacts = initial.contacts.map { it.copy(seenAt = 80) }).atFrontPosts(plan))
         assertEquals(TacticalPhase.OPENING_LANE, plan.phase)
         val transition = events.filterIsInstance<TacticalEvent.Transition>().last()
         assertEquals(TacticalPhase.PREPARING, transition.from)

@@ -11,9 +11,13 @@ abstract class CoveredManeuverState : TacticalState() {
     open val movementTimeout = 160L
     var laneAttempts = 0
         internal set
+    private val deployment = TacticalDeployment()
+
+    override fun extendsPreparation(now: Long): Boolean = phases.current.id == TacticalPhase.PREPARING && deployment.progressing(now)
 
     override fun beforeTick(context: TacticalContext) {
         if (context.plan.phase == TacticalPhase.PREPARING) promoteLateSupport(context)
+        if (context.plan.phase == TacticalPhase.PREPARING) deployment.observe(context.plan, context.view)
         if (context.plan.phase != TacticalPhase.OPENING_LANE) {
             for (member in context.view.members) {
                 val task = context.plan.tasks[member.id] ?: continue
@@ -43,6 +47,7 @@ abstract class CoveredManeuverState : TacticalState() {
             phases.transition(if (withdrawal) WithdrawingPhase() else ExecutingPhase(), context, "cover_ready")
             return
         }
+        if (deployment.progressing(context.view.now)) return
         if (shouldOpenLane(context, cover) && openLane(context)) return
         if (context.view.now - phaseSince > COVER_READY_TIMEOUT) {
             context.fail(TacticalFailure.COVER_NOT_READY_TIMEOUT)

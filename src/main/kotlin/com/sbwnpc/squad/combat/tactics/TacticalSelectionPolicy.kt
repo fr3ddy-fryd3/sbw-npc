@@ -31,7 +31,7 @@ object TacticalSelectionPolicy {
         val policy = plan.behavior.stability
         val transientStateEnded = policy.canLeaveImmediately && choice.pattern != plan.pattern
         val lifetimeExpired = policy.expires && now - plan.started >= MAXIMUM_PLAN_TICKS
-        val phaseExpired = policy.expires && now - plan.phaseSince >= policy.phaseLimit
+        val phaseExpired = policy.expires && now - plan.phaseSince >= policy.phaseLimit && !plan.behavior.extendsPreparation(now)
         return transientStateEnded || lifetimeExpired || phaseExpired
     }
 

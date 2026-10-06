@@ -41,6 +41,7 @@ abstract class TacticalState {
     open val firingLaneExtension = 0.0
     open val holdsFailedMembers = false
     open val alternatesSideAfterFailure = false
+    open fun extendsPreparation(now: Long): Boolean = false
     open fun usesAttackFront(member: TacticalMember): Boolean = true
     open fun attackFrontCenter(context: TacticalContext): Vec3 = context.view.center
     internal var attached = false
