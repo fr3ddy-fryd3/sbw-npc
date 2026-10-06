@@ -584,7 +584,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** Optional firing shifts stay near the defend point or the patrol's original contact post. */
     private fun canRelocate(entity: NpcEntity, point: Vec3): Boolean {
         val task = SquadTactics.task(entity)
-        if (task?.frontage?.contains(point) == false) return false
+        if (task?.permitsFront(point) == false) return false
         val recoveryPost = task?.localFirePost
         if (recoveryPost != null && !TacticalFirePosts.withinPost(recoveryPost, point, recovery = true)) return false
         val squad = entity.currentSquad() ?: return true

@@ -13,7 +13,8 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
     var nextValidation = Long.MIN_VALUE
     var staging: Vec3? = null
     var frontage: TacticalFrontPost? = null
-    fun deployingFront(point: Vec3): Boolean = frontage?.contains(point) == false
+    fun permitsFront(point: Vec3): Boolean = frontage?.permits(point, localFireRecovery) != false
+    fun deployingFront(point: Vec3): Boolean = !permitsFront(point)
     var opensLane = false
 
     /** Retains assignment/sector while the individual shooter searches a bounded local post. */

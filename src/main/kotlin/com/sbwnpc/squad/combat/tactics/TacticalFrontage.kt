@@ -86,24 +86,32 @@ class TacticalFrontage {
 data class TacticalFrontPost(val point: Vec3, val forward: Vec3) {
     private val side = Vec3(-forward.z, 0.0, forward.x)
 
-    fun contains(candidate: Vec3): Boolean {
+    fun contains(candidate: Vec3): Boolean = permits(candidate, recovery = false)
+
+    /** A failed firing query may adjust depth without taking a neighboring member's lane. */
+    fun permits(candidate: Vec3, recovery: Boolean): Boolean {
         val delta = candidate.subtract(point)
-        return abs(delta.dot(side)) <= LATERAL_TOLERANCE + POSITION_EPSILON && abs(delta.dot(forward)) <= DEPTH_TOLERANCE + POSITION_EPSILON
+        val depth = if (recovery) RECOVERY_DEPTH else DEPTH_TOLERANCE
+        return abs(delta.dot(side)) <= LATERAL_TOLERANCE + POSITION_EPSILON && abs(delta.dot(forward)) <= depth + POSITION_EPSILON
     }
 
-    fun acceptsDeployment(from: Vec3, candidate: Vec3): Boolean = contains(candidate) || candidate.subtract(point).horizontalDistance() < from.subtract(point).horizontalDistance() - 0.5
+    fun acceptsDeployment(from: Vec3, candidate: Vec3, recovery: Boolean = false): Boolean = permits(candidate, recovery) || candidate.subtract(point).horizontalDistance() < from.subtract(point).horizontalDistance() - 0.5
 
     fun leg(from: Vec3): Vec3 = TacticalLayout.towards(from, point, DEPLOYMENT_LEG_BLOCKS)
 
     /** Local block-sized probes in this member's strip, rather than overlapping circular searches. */
-    fun probes(): List<Vec3> =
-        (-1..1).flatMap { depth ->
-            (-1..1).map { lateral -> point.add(forward.scale(depth.toDouble())).add(side.scale(lateral.toDouble())) }
+    fun probes(recovery: Boolean = false): List<Vec3> {
+        val reach = (if (recovery) RECOVERY_DEPTH else DEPTH_TOLERANCE).toInt()
+        return (-reach..reach).sortedBy { abs(it) }.flatMap { depth ->
+            // Half-block lateral probes survive rounding to block centers on diagonal fronts.
+            listOf(0.0, -0.5, 0.5).map { lateral -> point.add(forward.scale(depth.toDouble())).add(side.scale(lateral)) }
         }
+    }
 
     companion object {
         const val LATERAL_TOLERANCE = 1.0
         const val DEPTH_TOLERANCE = 2.0
+        const val RECOVERY_DEPTH = 12.0
         const val DEPLOYMENT_LEG_BLOCKS = 24.0
         private const val POSITION_EPSILON = 1.0e-6
     }

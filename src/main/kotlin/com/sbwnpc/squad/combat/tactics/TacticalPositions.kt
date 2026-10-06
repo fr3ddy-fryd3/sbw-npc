@@ -90,7 +90,7 @@ object TacticalPositions {
             when {
                 overwatch -> DefensiveOverwatch.probes(task.anchor)
                 deployment -> OFFSETS.map { localAnchor.add(it) }
-                task.frontage != null -> task.frontage!!.probes()
+                task.frontage != null -> task.frontage!!.probes(task.localFireRecovery)
                 task.job in TacticalJob.FIRING_POSITIONS -> listOf(entity.position()) + TacticalFirePosts.probes(localAnchor, task.localFireRecovery)
                 else -> OFFSETS.map { localAnchor.add(it) }
             },
@@ -145,7 +145,7 @@ object TacticalPositions {
         if (!context.policy.candidate(context.view, task, candidate, context.localAnchor)) return
         val front = task.frontage
         if (front != null) {
-            val permitted = if (context.deployment) front.acceptsDeployment(search.origin, candidate) else front.contains(candidate)
+            val permitted = if (context.deployment) front.acceptsDeployment(search.origin, candidate, task.localFireRecovery) else task.permitsFront(candidate)
             if (!permitted) {
                 search.reject("outside_front_slot")
                 return
@@ -242,15 +242,15 @@ object TacticalPositions {
     private fun tracePosition(context: SearchContext, point: Vec3, quality: TacticalPositionScore?) {
         if (!DebugFlags.on(LogGroup.ORDER)) return
         DebugFlags.log(
-            LogGroup.ORDER, "[tactics] {} squad={} tick={} plan={} event=position_selected job={} target={} position={} quality={} nearestEnemy={} rejected={} frontSlot={} deploying={}",
+            LogGroup.ORDER, "[tactics] {} squad={} tick={} plan={} event=position_selected job={} target={} position={} quality={} nearestEnemy={} rejected={} frontSlot={} deploying={} recovery={}",
             context.entity.uuid, context.entity.currentSquad()?.id, context.level.gameTime, context.task.plan, context.task.job, context.aim?.target, point, quality,
             TacticalClearance.threats(context.view).minOfOrNull { point.subtract(it).horizontalDistance() }, context.search.rejections,
-            context.task.frontage?.point, context.deployment,
+            context.task.frontage?.point, context.deployment, context.task.localFireRecovery,
         )
     }
 
     private fun requiresFiringLane(context: SearchContext, point: Vec3): Boolean =
-        (context.task.job in SHOOTING_JOBS && (!context.deployment || context.task.frontage!!.contains(point))) ||
+        (context.task.job in SHOOTING_JOBS && (!context.deployment || context.task.permitsFront(point))) ||
             (context.task.job == TacticalJob.FLANK && point.distanceTo(context.task.anchor) <= 10.0)
 
     private fun pathToCandidate(context: SearchContext, candidate: Vec3): Path? {

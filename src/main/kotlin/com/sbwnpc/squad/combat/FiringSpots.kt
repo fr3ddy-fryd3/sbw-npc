@@ -63,7 +63,8 @@ object FiringSpots {
     fun nearbyWithBodies(level: ServerLevel, shooter: NpcEntity, radius: Double): List<Vec3> {
         val result = ArrayList(nearby(shooter.position(), radius, shooter.uuid))
         NpcRegistry.forEachWithin(level, shooter.position(), radius + MIN_SPACING, exclude = shooter) {
-            if (it.isAlive && !SquadTeams.isHostile(shooter, it) && claims[it.uuid] == null) result += it.position()
+            // A destination reservation does not vacate the NPC's current standing position.
+            if (it.isAlive && !SquadTeams.isHostile(shooter, it)) result += it.position()
         }
         return result
     }

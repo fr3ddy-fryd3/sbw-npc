@@ -188,4 +188,25 @@ class TacticalFrontageTest {
             assertFalse(task.frontage!!.contains(task.anchor.add(0.0, 0.0, 6.0)))
         }
     }
+
+    @Test fun `blocked nominal firing posts can recover along the same lane and count as settled`() {
+        val post = TacticalFrontPost(origin, Vec3(1.0, 0.0, 0.0))
+        val task = TacticalTask(TacticalJob.WAIT, enemy, enemy, 1).apply {
+            staging = origin
+            frontage = post
+        }
+        // The original two-block-deep strip is behind a rise. Its crest is eight blocks ahead.
+        val crest = origin.add(8.0, 2.0, 0.0)
+        assertTrue(task.deployingFront(crest))
+        assertFalse(post.probes().any { it.x >= crest.x })
+        assertTrue(TacticalFirePosts.recover(task, origin))
+        assertTrue(post.probes(recovery = true).contains(origin.add(8.0, 0.0, 0.0)))
+        assertTrue(task.permitsFront(crest))
+        assertFalse(task.permitsFront(crest.add(0.0, 0.0, 6.0)))
+        assertFalse(task.permitsFront(origin.add(13.0, 0.0, 0.0)))
+        task.position = crest
+        val member = view(1).members.single().copy(position = crest)
+        assertTrue(TacticalEvidence.settled(member, task))
+        assertEquals(TacticalPostReview.Result.RETAINED, TacticalPostReview.review(task, UUID(1, 2), 20) { true })
+    }
 }

@@ -2,7 +2,7 @@ package com.sbwnpc.squad.combat.tactics
 
 /** Diagnostics distinguish an available firing lane from shots actually fired in that sector. */
 object TacticalTelemetry {
-    data class Front(val assigned: Int, val onLine: Int, val deploying: Int, val lateralSpan: Double, val depthSpan: Double)
+    data class Front(val assigned: Int, val onLine: Int, val deploying: Int, val lateralSpan: Double, val depthSpan: Double, val adjusted: Int = 0)
 
     fun front(plan: TacticalPlan, view: TacticalSnapshot): Front {
         val posts = view.members.mapNotNull { member -> plan.tasks[member.id]?.frontage?.let { member to it } }
@@ -11,7 +11,8 @@ object TacticalTelemetry {
         val lateral = posts.map { it.first.position.dot(side) }
         val depth = posts.map { it.first.position.dot(direction) }
         val onLine = posts.count { (member, post) -> post.contains(member.position) }
-        return Front(posts.size, onLine, posts.size - onLine, lateral.max() - lateral.min(), depth.max() - depth.min())
+        val deploying = posts.count { (member, _) -> plan.tasks[member.id]!!.deployingFront(member.position) }
+        return Front(posts.size, onLine, deploying, lateral.max() - lateral.min(), depth.max() - depth.min(), posts.size - onLine - deploying)
     }
 
     data class Cover(val assigned: Int, val ready: Int, val settledReady: Int, val firedRecently: Int)

@@ -116,8 +116,8 @@ object TacticalMovement {
                 TacticalPositions.Outcome.UNREACHABLE -> {
                     task.nextSearch = entity.level().gameTime + 30
                     DebugFlags.log(
-                        LogGroup.ORDER, "[tactics] {} plan={} job={} unreachable={} from={} staging={} opensLane={} rejected={} attempt={}",
-                        entity.uuid, task.plan, task.job, task.anchor, entity.position(), task.staging, task.opensLane, result.rejections, task.failures + 1,
+                        LogGroup.ORDER, "[tactics] {} squad={} tick={} plan={} event=position_search_failed job={} unreachable={} from={} staging={} opensLane={} rejected={} attempt={} frontSlot={} recovery={}",
+                        entity.uuid, squad.id, entity.level().gameTime, task.plan, task.job, task.anchor, entity.position(), task.staging, task.opensLane, result.rejections, task.failures + 1, task.frontage?.point, task.localFireRecovery,
                     )
                     return !failedTask(entity, task, "no reachable position")
                 }
