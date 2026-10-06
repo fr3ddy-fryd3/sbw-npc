@@ -171,7 +171,9 @@ sourceSets.main.get().resources {
 // build stays quiet by default. `./gradlew buildDevelop` flips it on; plain `build` (and the
 // explicit `buildProduction` alias) leave it off.
 val generateBuildFlags = tasks.register("generateBuildFlags") {
-    val debugDefault = gradle.startParameter.taskNames.any { it.equals("buildDevelop", ignoreCase = true) }
+    val debugDefault = gradle.startParameter.taskNames.any {
+        it.equals("buildDevelop", ignoreCase = true) || it.equals("runGameTestServer", ignoreCase = true)
+    }
     val outputDir = layout.buildDirectory.dir("generated/buildFlags/kotlin")
     inputs.property("debugDefault", debugDefault)
     outputs.dir(outputDir)
