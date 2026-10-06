@@ -61,6 +61,7 @@
 | Реакция на попадания и неизвестного стрелка | [IncomingFire.kt](../src/main/kotlin/com/sbwnpc/squad/combat/IncomingFire.kt), [BlindReturnFireBehaviour.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/BlindReturnFireBehaviour.kt), [SuppressionEvents.kt](../src/main/kotlin/com/sbwnpc/squad/combat/SuppressionEvents.kt) |
 | Безопасность стрельбы рядом с союзниками | [FriendlyFireGuard.kt](../src/main/kotlin/com/sbwnpc/squad/combat/FriendlyFireGuard.kt), [FireAllocation.kt](../src/main/kotlin/com/sbwnpc/squad/combat/FireAllocation.kt) |
 | Разведение стрелков по позициям | [FiringSpots.kt](../src/main/kotlin/com/sbwnpc/squad/combat/FiringSpots.kt), `TacticalPositions.kt`, `CoverSearch.kt` |
+| Линия атаки, интервалы, закреплённые места и границы их поиска | [TacticalFrontage.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalFrontage.kt), назначения в `TacticalLayout.applyRoles`, геометрия в [SquadFormation.kt](../src/main/kotlin/com/sbwnpc/squad/combat/SquadFormation.kt) |
 | Цель поиска позиции и точное занятие огневого поста | [TacticalAim.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalAim.kt), [FiringPostArrival.kt](../src/main/kotlin/com/sbwnpc/squad/combat/FiringPostArrival.kt) |
 | Сохранение или замена огневого поста при смене цели | [TacticalPostReview.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalPostReview.kt), вызов в `TacticalMovement.move` |
 | Продолжение поиска заблокированного огневого поста | [TacticalFirePosts.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalFirePosts.kt), [TacticalTask.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalTask.kt), [TacticalMovement.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalMovement.kt) |
@@ -119,6 +120,7 @@
 | Группа | Расположение |
 |---|---|
 | Тесты тактики | [src/test/kotlin/com/sbwnpc/squad/combat/tactics/](../src/test/kotlin/com/sbwnpc/squad/combat/tactics/) |
+| Проверки линии атаки и развёртывания | [TacticalFrontageTest.kt](../src/test/kotlin/com/sbwnpc/squad/combat/tactics/TacticalFrontageTest.kt); прибытие на позиции в фазовых сценариях — `TacticalNavigationFixture.kt` |
 | Тесты остальных модулей | [src/test/kotlin/com/sbwnpc/squad/](../src/test/kotlin/com/sbwnpc/squad/) — каталоги соответствуют основному коду |
 | Задачи сборки, форматирования и тестов | [build.gradle.kts](../build.gradle.kts) |
 | Настройки форматирования | [.editorconfig](../.editorconfig) |
