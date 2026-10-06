@@ -14,13 +14,31 @@ object TacticalFlanks {
     fun pending(plan: TacticalPlan, view: TacticalSnapshot): List<UUID> {
         val state = plan.behavior as FlankingState
         val alive = view.fighting.map { it.id }.toSet()
+        val focus = plan.focus ?: view.center
         return state.order.filter {
             it in alive && it !in state.arrived && it !in plan.failedMembers &&
                 it !in state.support && it != state.medicGuard
+        }.sortedByDescending { id ->
+            kotlin.math.abs(anchor(plan, view, state.order.indexOf(id)).subtract(focus).dot(plan.frontage.side))
         }
     }
 
     fun anchor(plan: TacticalPlan, view: TacticalSnapshot, slot: Int): Vec3 = (plan.behavior as FlankingState).anchor(plan, view, slot)
+
+    /** Match both spatial orders before launching waves, so UUID order cannot swap left/right wings. */
+    internal fun spatialOrder(plan: TacticalPlan, view: TacticalSnapshot): List<UUID> {
+        val state = plan.behavior as FlankingState
+        val side = plan.frontage.side
+        val slots = state.order.indices.sortedBy { anchor(plan, view, it).dot(side) }
+        val members = state.order.sortedWith(
+            compareBy<UUID> { id ->
+                (plan.frontage.offset(id) ?: view.members.first { it.id == id }.position).dot(side)
+            }.thenBy { it },
+        )
+        val assigned = state.order.toMutableList()
+        for ((member, slot) in members.zip(slots)) assigned[slot] = member
+        return assigned
+    }
 
     fun shoulder(plan: TacticalPlan, view: TacticalSnapshot, slot: Int, weakSector: Boolean = false): Vec3 {
         val state = plan.behavior as FlankingState

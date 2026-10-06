@@ -32,7 +32,12 @@ abstract class FlankingState : CoveredManeuverState() {
     override fun prepareAssignments(layout: TacticalLayout) {
         support.retainAll(layout.fighters.map { it.id }.toSet())
         if (support.isEmpty()) support.addAll(layout.support)
-        if (order.isEmpty()) order.addAll(layout.fighters.filter { it.id !in support && it.id != layout.guard }.map { it.id })
+        if (order.isEmpty()) {
+            order.addAll(layout.fighters.filter { it.id !in support && it.id != layout.guard }.map { it.id })
+            val spatial = TacticalFlanks.spatialOrder(layout.plan, layout.view)
+            order.clear()
+            order.addAll(spatial)
+        }
         wave = TacticalFlanks.pending(layout.plan, layout.view).take(TacticalFlanks.TEAM_SIZE).toSet()
     }
 

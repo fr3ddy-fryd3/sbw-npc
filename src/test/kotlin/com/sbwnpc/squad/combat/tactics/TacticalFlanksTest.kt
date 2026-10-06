@@ -38,6 +38,28 @@ class TacticalFlanksTest {
         return state to plan
     }
 
+    @Test fun `flank destinations preserve spatial order instead of UUID order`() {
+        val view = view()
+        val (state, plan) = setup(view)
+        TacticalCoordinator.advance(squad, state, plan, view.assumingFrontArrival(plan))
+        val flank = plan.behavior as FlankingState
+        val ordered = flank.order.sortedBy { plan.frontage.offset(it)!!.dot(plan.frontage.side) }
+        val anchors = ordered.map { TacticalFlanks.anchor(plan, view, flank.order.indexOf(it)) }
+        assertTrue(anchors.zipWithNext().all { (a, b) -> b.subtract(a).dot(plan.frontage.side) > 0.0 && b.distanceTo(a) >= 5.9 }, "Spatially ordered members must receive spatially ordered, separated destinations: $anchors")
+    }
+
+    @Test fun `outer flank slots leave first so inner waves do not cross waiting fighters`() {
+        val view = view()
+        val (state, plan) = setup(view)
+        TacticalCoordinator.advance(squad, state, plan, view.assumingFrontArrival(plan))
+        fun distance(task: TacticalTask) = kotlin.math.abs(task.anchor.subtract(focus).dot(plan.frontage.side))
+        val moving = plan.tasks.values.filter { it.job == TacticalJob.FLANK }
+        val waiting = plan.tasks.values.filter { it.job == TacticalJob.WAIT }
+        assertEquals(6, moving.size)
+        assertTrue(waiting.isNotEmpty())
+        assertTrue(moving.minOf { distance(it) } >= waiting.maxOf { distance(it) })
+    }
+
     @Test fun `wide enemy front is approached from its weaker side by no more than six movers`() {
         val view = view()
         val (state, plan) = setup(view)
