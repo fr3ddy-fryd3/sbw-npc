@@ -63,6 +63,8 @@ val gameTest by sourceSets.creating {
     compileClasspath += sourceSets.main.get().output
     runtimeClasspath += sourceSets.main.get().output
 }
+// Custom tests use the same internal access as JUnit, without exposing implementation in the mod API.
+kotlin.target.compilations.getByName("gameTest").associateWith(kotlin.target.compilations.getByName("main"))
 val gameTestReportName = providers.gradleProperty("gameTestReportName").orElse("latest").get()
 require(gameTestReportName.matches(Regex("[A-Za-z0-9_-]+"))) { "gameTestReportName must be a simple directory name" }
 configurations[gameTest.implementationConfigurationName].extendsFrom(configurations.implementation.get())

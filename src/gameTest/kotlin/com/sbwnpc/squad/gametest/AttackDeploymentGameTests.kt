@@ -156,7 +156,7 @@ object AttackDeploymentGameTests {
         }
     }
 
-    private fun spawn(helper: GameTestHelper, at: Vec3, faction: SquadFaction): NpcEntity =
+    internal fun spawn(helper: GameTestHelper, at: Vec3, faction: SquadFaction): NpcEntity =
         helper.spawn(ModEntities.NPC.get(), at).apply {
             npcClass = NpcClass.RIFLEMAN
             npcRank = NpcRank.DEFAULT

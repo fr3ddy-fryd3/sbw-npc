@@ -1,5 +1,10 @@
 package com.sbwnpc.squad.gametest
 
+import com.sbwnpc.squad.combat.SquadFormation
+import com.sbwnpc.squad.combat.tactics.TacticalEvent
+import com.sbwnpc.squad.combat.tactics.TacticalJob
+import com.sbwnpc.squad.combat.tactics.TacticalRuntimeEvents
+import com.sbwnpc.squad.combat.tactics.TacticalTask
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModEntities
 import com.sbwnpc.squad.npc.NpcClass
@@ -41,13 +46,36 @@ object InfantryMovementGameTests {
         march(helper, "one-block-platform", BlockPos(20, 2, 6), needsClimb = true)
     }
 
+    @JvmStatic
+    @GameTest(template = "movement_arena", timeoutTicks = 400)
+    fun taskReleaseDuringJumpKeepsCurrentPath(helper: GameTestHelper) {
+        floor(helper)
+        for (x in 12..23) for (z in 0..11) helper.setBlock(BlockPos(x, 1, z), Blocks.STONE)
+        march(helper, "task-release-in-air", BlockPos(20, 2, 6), needsClimb = true, releaseInAir = true)
+    }
+
+    @JvmStatic
+    @GameTest(template = "movement_arena", timeoutTicks = 400)
+    fun marchRecoversPastChangedHeadroom(helper: GameTestHelper) {
+        floor(helper)
+        for (x in 12..23) for (z in 0..11) helper.setBlock(BlockPos(x, 1, z), Blocks.STONE)
+        march(helper, "blocked-headroom", BlockPos(20, 2, 6), needsClimb = true, blockHeadroom = true)
+    }
+
     private fun floor(helper: GameTestHelper) {
         for (x in 0..23) {
             for (z in 0..11) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
         }
     }
 
-    private fun march(helper: GameTestHelper, scenario: String, destination: BlockPos, needsClimb: Boolean) {
+    private fun march(
+        helper: GameTestHelper,
+        scenario: String,
+        destination: BlockPos,
+        needsClimb: Boolean,
+        releaseInAir: Boolean = false,
+        blockHeadroom: Boolean = false,
+    ) {
         val level = helper.level
         val npc = helper.spawn(ModEntities.NPC.get(), Vec3(3.5, 1.0, 6.5))
         npc.npcClass = NpcClass.RIFLEMAN
@@ -62,12 +90,45 @@ object InfantryMovementGameTests {
         // This switch exists only in the test source set, never in the shipped mod.
         if (scenario == "flat-ground" && java.lang.Boolean.getBoolean("sbwnpc.gameTestNegativeControl")) npc.isNoAi = true
 
-        val goal = helper.absoluteVec(Vec3.atBottomCenterOf(destination))
+        val objective = helper.absoluteVec(Vec3.atBottomCenterOf(destination))
+        val assembly = squad.moveAssembly?.center ?: objective
+        // MOVE ends in the member's grid slot; even a one-man squad has an offset from the map point.
+        val goal = SquadFormation.moveSlotTarget(npc, objective, objective.subtract(assembly))
         helper.assertTrue(npc.currentSquad()?.id == squad.id, "Test NPC was not registered in its squad")
         helper.assertTrue(!npc.mainHandItem.isEmpty, "SBW failed to issue the rifleman's weapon")
         val trace = MovementTrace(scenario, npc)
         var climbed = false
+        var released = false
+        var blocked = false
+        TacticalRuntimeEvents.bind(squad, level)
         helper.onEachTick {
+            val relative = helper.relativeVec(npc.position())
+            if (blockHeadroom && !blocked && relative.x >= 10.0 && npc.navigation.path != null) {
+                // Change the world after the live route was chosen. The ends remain open for a detour.
+                for (z in 4..8) helper.setBlock(BlockPos(11, 3, z), Blocks.STONE)
+                blocked = true
+            }
+            if (releaseInAir && !released && !npc.onGround() && npc.deltaMovement.y > 0.0 && relative.x > 10.0) {
+                val path = npc.navigation.path
+                helper.assertTrue(path != null && !path.isDone, "Jump must be following a live route")
+                val task = TacticalTask(
+                    TacticalJob.COVER,
+                    goal,
+                    null,
+                    1,
+                ).also { it.navigationPath = path }
+                squad.tactics.events.emit(
+                    TacticalEvent.TaskReleased(
+                        1,
+                        level.gameTime,
+                        npc.uuid,
+                        task,
+                        "test_phase_changed",
+                    ),
+                )
+                helper.assertTrue(npc.navigation.path === path, "Ordinary task release interrupted a physical jump")
+                released = true
+            }
             trace.sample(helper.tick, helper.relativeVec(npc.position()), npc, goal)
             if (npc.y >= helper.absolutePos(BlockPos(0, 2, 0)).y && npc.onGround()) climbed = true
             helper.assertTrue(npc.isAlive, "NPC died on a movement-only route")
@@ -76,8 +137,11 @@ object InfantryMovementGameTests {
             helper.assertTrue(npc.tickCount >= 20, "NPC must actually tick before arrival can pass")
             helper.assertTrue(npc.position().distanceTo(goal) <= 1.5, "NPC did not reach MOVE objective; see $scenario.csv")
             helper.assertTrue(!needsClimb || climbed, "NPC never stood on the raised platform")
+            helper.assertTrue(!releaseInAir || released, "The route never exercised airborne task release")
+            helper.assertTrue(!blockHeadroom || blocked, "The obstruction was never installed")
             trace.success(helper.tick)
             manager.deleteSquad(level, squad.id)
+            npc.discard()
         }
         helper.runAtTickTime(399) {
             trace.failure(helper.tick, npc.position().distanceTo(goal))
