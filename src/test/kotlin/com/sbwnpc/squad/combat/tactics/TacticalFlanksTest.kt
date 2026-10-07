@@ -131,6 +131,11 @@ class TacticalFlanksTest {
         assertEquals(TacticalStatus.EXECUTING, plan.status)
         shooters.forEach { assertEquals(TacticalJob.COVER, plan.tasks[it]?.job) }
         assertEquals(6, plan.tasks.values.count { it.job == TacticalJob.FLANK })
+        val flank = plan.behavior as FlankingState
+        val lateral = plan.frontage.side
+        val ordered = flank.order.sortedBy { plan.frontage.offset(it)!!.dot(lateral) }
+        val destinations = ordered.map { TacticalFlanks.anchor(plan, ready, flank.order.indexOf(it)).dot(lateral) }
+        assertTrue(destinations.zipWithNext().all { (a, b) -> b > a }, "Support exchanges must preserve spatial order before launching a wave: $destinations")
     }
 
     @Test fun `one failed route does not block the remaining wave or release it into frontal movement`() {

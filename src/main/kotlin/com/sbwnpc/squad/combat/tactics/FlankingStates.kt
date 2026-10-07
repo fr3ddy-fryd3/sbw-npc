@@ -35,10 +35,12 @@ abstract class FlankingState : CoveredManeuverState() {
         if (support.isEmpty()) support.addAll(layout.support)
         if (order.isEmpty()) {
             order.addAll(layout.fighters.filter { it.id !in support && it.id != layout.guard }.map { it.id })
-            val spatial = TacticalFlanks.spatialOrder(layout.plan, layout.view)
-            order.clear()
-            order.addAll(spatial)
         }
+        // Role exchanges and completed probes change membership before the first wave.
+        // Match slots again so a replacement cannot inherit the opposite wing's destination.
+        val spatial = TacticalFlanks.spatialOrder(layout.plan, layout.view)
+        order.clear()
+        order.addAll(spatial)
         wave = TacticalFlanks.pending(layout.plan, layout.view).take(TacticalFlanks.TEAM_SIZE).toSet()
     }
 
