@@ -3,6 +3,7 @@ package com.sbwnpc.squad.entity
 import com.sbwnpc.squad.SquadMod
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import com.sbwnpc.squad.entity.ai.WalkingClearance
 import net.minecraft.core.BlockPos
 import net.minecraft.core.registries.BuiltInRegistries
@@ -69,6 +70,10 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
             else -> return
         }
         val level = npc.level() as? ServerLevel ?: return
+        val navigation = npc.navigation as? VehicleAwareNavigation
+        // Recovery must keep a jump's momentum and must continue to the original goal, not its blocked step.
+        if (navigation?.canPlan == false) return
+        val destination = path?.target ?: nowhereToward ?: BlockPos.containing(toward)
         val dx = toward.x - npc.x
         val dz = toward.z - npc.z
         val len = kotlin.math.sqrt(dx * dx + dz * dz)
@@ -96,16 +101,18 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
             level.destroyBlock(pos, true, npc)
             DebugFlags.log(LogGroup.STUCK, "{} broke {} at {} to get unstuck", npc.uuid, state.block.descriptionId, pos)
         }
+        if (pos == null) navigation?.rejectStuckStep()
         // Relax descent only to get off a crown. A blocked upward step is no reason to drop
         // several blocks below the route, and clearing dirt underfoot excavated deeper traps.
         if (supports.any { WalkingClearance.leaves(level.getBlockState(it)) }) npc.allowRecoveryDescent()
         npc.navigation.stop()
-        npc.navigation.moveTo(npc.navigation.createPath(BlockPos.containing(toward), 0), 1.0)
+        npc.navigation.moveTo(npc.navigation.createPath(destination, 0), 1.0)
         DebugFlags.log(
             LogGroup.STUCK,
-            "{} replanned from {} toward {} with fall limit {}",
+            "{} replanned from {} toward {} after blocked step {} with fall limit {}",
             npc.uuid,
             npc.blockPosition(),
+            destination,
             toward,
             npc.maxFallDistance,
         )

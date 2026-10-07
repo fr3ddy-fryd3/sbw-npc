@@ -4,6 +4,7 @@ import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import com.sbwnpc.squad.squad.Squad
 import net.minecraft.server.level.ServerLevel
 
@@ -13,7 +14,14 @@ class TacticalRuntimeEvents private constructor(private var squad: Squad, privat
         if (event is TacticalEvent.TaskReleased) {
             FiringSpots.release(event.member)
             val npc = level.getEntity(event.member) as? NpcEntity
-            event.task.releaseNavigation(npc?.navigation?.path) { npc?.navigation?.stop() }
+            event.task.releaseNavigation(npc?.navigation?.path) {
+                val navigation = npc?.navigation
+                if (navigation is VehicleAwareNavigation && !event.trigger.startsWith("emergency_") && !npc.evadingGrenade()) {
+                    navigation.stopAfterLanding()
+                } else {
+                    navigation?.stop()
+                }
+            }
         }
         if (!DebugFlags.on(LogGroup.ORDER)) return
         val detail = TacticalEventFormat.detail(event)

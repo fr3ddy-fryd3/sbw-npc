@@ -8,6 +8,7 @@ import net.minecraft.world.entity.ai.navigation.GroundPathNavigation
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.PathNavigationRegion
 import net.minecraft.world.level.levelgen.Heightmap
+import net.minecraft.world.level.pathfinder.Node
 import net.minecraft.world.level.pathfinder.Path
 import net.minecraft.world.level.pathfinder.PathFinder
 import net.minecraft.world.level.pathfinder.PathType
@@ -29,6 +30,27 @@ import net.minecraft.world.phys.AABB
  * be told directly.
  */
 class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob, level) {
+    private var stopOnLanding: Path? = null
+    private val failedSteps = FailedWalkingSteps()
+
+    fun rejectStuckStep() {
+        val next = path?.takeUnless { it.isDone }?.nextNodePos ?: return
+        if (!mob.onGround() || !mob.horizontalCollision || next.y <= mob.blockY) return
+        failedSteps.reject(mob.blockPosition(), next, level.gameTime)
+        com.sbwnpc.squad.combat.DebugFlags.log(
+            com.sbwnpc.squad.combat.LogGroup.STUCK,
+            "{} rejected physical step {} -> {} for 200 ticks",
+            mob.uuid,
+            mob.blockPosition(),
+            next,
+        )
+    }
+
+    /** Ordinary task replacement cannot interrupt the physical jump already in progress. */
+    fun stopAfterLanding() {
+        if (canPlan) stop() else stopOnLanding = path
+    }
+
     /** Tactical posts need their exact height, rather than a march waypoint on the surface. */
     fun createPositionPath(pos: BlockPos): Path? {
         if (!canPlan) return null
@@ -43,7 +65,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
     }
 
     override fun createPathFinder(maxVisitedNodes: Int): PathFinder {
-        val evaluator = VehicleAwareNodeEvaluator()
+        val evaluator = VehicleAwareNodeEvaluator { from, to -> failedSteps.permits(from, to, level.gameTime) }
         evaluator.setCanPassDoors(true)
         this.nodeEvaluator = evaluator
         return PathFinder(evaluator, maxVisitedNodes)
@@ -142,6 +164,10 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
     }
 
     override fun tick() {
+        if (canPlan && stopOnLanding != null) {
+            if (path === stopOnLanding) stop()
+            stopOnLanding = null
+        }
         super.tick()
         traceWalk()
     }
@@ -159,8 +185,9 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
             .filterNot { frame -> PLUMBING.any { frame.startsWith(it) } }
             .take(4).joinToString(" <- ")
         com.sbwnpc.squad.combat.DebugFlags.log(
-            com.sbwnpc.squad.combat.LogGroup.PATH, "{} at {} {} (was to {}, node {}/{}) by {}",
-            mob.uuid.toString().take(8), mob.blockPosition(), what, path?.target, path?.nextNodeIndex, path?.nodeCount, from,
+            com.sbwnpc.squad.combat.LogGroup.PATH, "{} at {} {} (was to {}, node {}/{}) ground={} velocity={} wanted=({}, {}, {}) by {}",
+            mob.uuid.toString().take(8), mob.blockPosition(), what, path?.target, path?.nextNodeIndex, path?.nodeCount,
+            mob.onGround(), mob.deltaMovement, mob.moveControl.wantedX, mob.moveControl.wantedY, mob.moveControl.wantedZ, from,
         )
     }
 
@@ -365,7 +392,17 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
     }
 }
 
-internal open class VehicleAwareNodeEvaluator : WalkNodeEvaluator() {
+internal open class VehicleAwareNodeEvaluator(private val permitsStep: (BlockPos, BlockPos) -> Boolean = { _, _ -> true }) : WalkNodeEvaluator() {
+    override fun getNeighbors(output: Array<Node>, node: Node): Int {
+        val count = super.getNeighbors(output, node)
+        var accepted = 0
+        for (index in 0 until count) {
+            val next = output[index]
+            if (permitsStep(node.asBlockPos(), next.asBlockPos())) output[accepted++] = next
+        }
+        return accepted
+    }
+
     // Vanilla caches the aggregate type of a mob-sized node, but neighboring nodes repeatedly
     // evaluate overlapping cells and their 24 surrounding hazards. Keep the final cell type
     // for this search only; raw block types in PathfindingContext do not cache those hazards.
