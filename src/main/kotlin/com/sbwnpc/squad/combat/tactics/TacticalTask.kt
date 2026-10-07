@@ -13,7 +13,12 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
     var nextValidation = Long.MIN_VALUE
     var staging: Vec3? = null
     var frontage: TacticalFrontPost? = null
-    fun permitsFront(point: Vec3): Boolean = frontage?.permits(point, localFireRecovery) != false
+    fun permitsFront(point: Vec3): Boolean =
+        if (expandedFireSearch) {
+            TacticalFirePosts.withinPost(localFirePost!!, point, recovery = true)
+        } else {
+            frontage?.permits(point, localFireRecovery) != false
+        }
     fun deployingFront(point: Vec3): Boolean = !permitsFront(point)
     var opensLane = false
     var probeAdvance = 4.0
@@ -22,6 +27,8 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
     /** Retains assignment/sector while the individual shooter searches a bounded local post. */
     var localFirePost: Vec3? = null
     val localFireRecovery get() = localFirePost != null
+    var expandedFireSearch = false
+        internal set
     var pausedAt: Long? = null
         private set
     private var pauseReason: String? = null
@@ -40,6 +47,7 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
             it.frontage = frontage
             it.staging = if (next == TacticalJob.WAIT) staging ?: position ?: this.anchor else null
             it.localFirePost = localFirePost
+            it.expandedFireSearch = expandedFireSearch
             it.navigationPath = navigationPath
             navigationPath = null
         }

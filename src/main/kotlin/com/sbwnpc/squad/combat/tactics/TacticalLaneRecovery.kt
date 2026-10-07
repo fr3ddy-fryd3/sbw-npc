@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.combat.tactics
 
+import com.sbwnpc.squad.combat.CombatPositionSafety
 import net.minecraft.world.phys.Vec3
 
 /** Opening a blocked lane has an explicit movement goal, distinct from finding a firing post. */
@@ -12,7 +13,15 @@ object TacticalLaneRecovery {
         val post = old.frontage?.point ?: member.position
         val distance = forwardStep(context.view)
         val aheadOfPost = member.position.subtract(post).dot(direction).coerceAtLeast(0.0)
-        val point = post.add(direction.scale(aheadOfPost + distance))
+        val desired = post.add(direction.scale(aheadOfPost + distance))
+        val point = TacticalClearance.threats(context.view).fold(desired) { target, threat ->
+            CombatPositionSafety.approach(
+                member.position,
+                target,
+                threat,
+                CombatPositionSafety.clearance(member.role) + CombatPositionSafety.APPROACH_MARGIN,
+            )
+        }
         return TacticalTask(TacticalJob.SEARCH, point, context.plan.focus, context.plan.id).also {
             it.frontage = TacticalFrontPost(point, direction)
             it.opensLane = true

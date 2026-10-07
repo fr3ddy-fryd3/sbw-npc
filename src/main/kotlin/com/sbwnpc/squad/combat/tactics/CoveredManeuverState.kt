@@ -134,7 +134,10 @@ abstract class CoveredManeuverState : TacticalState() {
         }.sortedWith(
             compareBy<TacticalMember> { if (context.plan.tasks[it.id]?.job == TacticalJob.COVER) 0 else 1 }
                 .thenBy { it.position.distanceToSqr(context.plan.focus) },
-        ).take(minOf(TacticalFlanks.TEAM_SIZE, maxOf(2, context.view.fighting.size / 4)))
+        ).filter { member ->
+            val probe = TacticalLaneRecovery.probe(context, member)
+            probe.anchor.subtract(member.position).dot(context.plan.frontage.forward) >= 1.0
+        }.take(minOf(TacticalFlanks.TEAM_SIZE, maxOf(2, context.view.fighting.size / 4)))
         if (scouts.isEmpty()) return false
         phases.transition(OpeningLanePhase(scouts.map { it.id }), context, "cover_lane_blocked")
         return true

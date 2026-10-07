@@ -72,7 +72,7 @@ object TacticalPositions {
         val targetThreat = aim?.let { TacticalContact(it.target ?: java.util.UUID(0, 0), it.position, view.now) }
         val threats = (listOfNotNull(targetThreat) + known).distinctBy { it.id }.take(3)
         val hulls = Sightline.vehicleHulls(level, entity.boundingBox.inflate(64.0), entity, entity.target)
-        val deployment = task.deployingFront(entity.position())
+        val deployment = !task.expandedFireSearch && task.deployingFront(entity.position())
         val localAnchor = if (deployment) {
             task.frontage!!.leg(entity.position())
         } else {
@@ -89,6 +89,8 @@ object TacticalPositions {
             entity.position(),
             when {
                 overwatch -> DefensiveOverwatch.probes(task.anchor)
+
+                task.expandedFireSearch -> (TacticalFirePosts.probes(entity.position()) + TacticalFirePosts.probes(localAnchor, recovery = true)).distinct()
 
                 deployment -> OFFSETS.map { localAnchor.add(it) }
 
@@ -151,7 +153,7 @@ object TacticalPositions {
         if (task.job in TacticalJob.FIRING_POSITIONS && !context.overwatch && !TacticalFirePosts.withinPost(context.localAnchor, candidate, task.localFireRecovery)) return
         if (!context.policy.candidate(context.view, task, candidate, context.localAnchor)) return
         val front = task.frontage
-        if (front != null) {
+        if (front != null && !task.expandedFireSearch) {
             val permitted = if (context.deployment) front.acceptsDeployment(search.origin, candidate, task.localFireRecovery) else front.permits(candidate, recovery = true)
             if (!permitted) {
                 search.reject("outside_front_slot")
@@ -193,7 +195,7 @@ object TacticalPositions {
             return
         }
         val nearbyCover = aim?.let { DefensiveOverwatch.nearbyCover(candidate, it.eye) { from, to -> Sightline.blockedBy(level, from, to, entity, context.hulls) } } == true
-        if (!context.deployment && front != null && !front.permitsFiringPost(candidate, nearbyCover, task.localFireRecovery)) {
+        if (!context.deployment && front != null && !task.expandedFireSearch && !front.permitsFiringPost(candidate, nearbyCover, task.localFireRecovery)) {
             search.reject("open_depth_adjustment")
             return
         }
@@ -206,6 +208,11 @@ object TacticalPositions {
         }
         var score = candidate.distanceTo(context.localAnchor) + candidate.distanceTo(context.entity.position())
         if (firing && mustShoot) score -= 8.0
+        if (context.task.expandedFireSearch) {
+            val front = context.task.frontage!!
+            val side = Vec3(-front.forward.z, 0.0, front.forward.x)
+            score += kotlin.math.abs(candidate.subtract(front.point).dot(side)) * 2.0
+        }
         score += context.policy.score(context.view, context.task, candidate, exposure)
         if (context.overwatch) return TacticalPositionScore(false, 0, DefensiveOverwatch.score(context.task.anchor, context.search.origin, candidate, exposure))
         return TacticalPositionScore(!nearbyCover, exposure, score)
@@ -248,6 +255,12 @@ object TacticalPositions {
                 search.reject(if (safety == RouteSafety.SAFE) "navigation" else "unsafe_route")
             } else {
                 search.reject("unreachable_route")
+                DebugFlags.log(
+                    LogGroup.PATH,
+                    "[tactics] {} squad={} tick={} plan={} event=post_route_rejected from={} candidate={} reachable={} end={} expanded={}",
+                    entity.uuid, entity.currentSquad()?.id, context.level.gameTime, task.plan, entity.position(), candidate,
+                    path?.canReach(), path?.endNode?.asBlockPos(), task.expandedFireSearch,
+                )
             }
             search.destinationIndex++
         }

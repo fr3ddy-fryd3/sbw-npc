@@ -105,4 +105,38 @@ class TacticalRecoveryRegressionTest {
         assertEquals(TacticalStatus.FAILED, plan.status)
         assertEquals(TacticalFailure.PARTIAL_MANEUVER, plan.failure)
     }
+
+    @Test fun `failed firing strip expands only the affected post and keeps bounded ownership`() {
+        val task = TacticalTask(TacticalJob.WAIT, Vec3.ZERO, focus, 1).apply {
+            frontage = TacticalFrontPost(Vec3.ZERO, Vec3(1.0, 0.0, 0.0))
+        }
+        val aroundBerm = Vec3(6.0, 3.0, 5.0)
+        assertTrue(TacticalFirePosts.recoverAfterSearch(task, Vec3.ZERO))
+        assertFalse(TacticalFirePosts.recoverAfterSearch(task, Vec3(25.0, 0.0, 0.0)))
+        assertFalse(TacticalFirePosts.recoverAfterSearch(task.withJob(TacticalJob.SEARCH, task.anchor), Vec3.ZERO))
+        assertTrue(TacticalFirePosts.recover(task, Vec3.ZERO))
+        assertFalse(task.permitsFront(aroundBerm))
+        assertTrue(TacticalFirePosts.expand(task))
+        assertTrue(task.permitsFront(aroundBerm))
+        assertFalse(task.permitsFront(Vec3(25.0, 0.0, 0.0)))
+        task.position = aroundBerm
+        assertTrue(TacticalEvidence.settled(TacticalMember(UUID(1, 2), aroundBerm), task))
+        assertTrue(TacticalPositions.requiresFiringLane(task, deploying = false, aroundBerm))
+        assertEquals(TacticalJob.WAIT, task.job)
+        assertEquals(focus, task.focus)
+        assertFalse(TacticalFirePosts.expand(task), "The fixed radius must not grow on later failures")
+    }
+
+    @Test fun `probe shortens its approach before the nearest reported enemy`() {
+        val state = SquadTacticalState()
+        state.select(TacticalChoice(TacticalPattern.FLANK, focus), 1, 0)
+        val plan = state.plan!!
+        val view = view().copy(center = Vec3(44.0, 64.0, 0.0), members = view().members.map { it.copy(position = it.position.add(44.0, 0.0, 0.0)) })
+        TacticalCoordinator.assign(UUID(2, 2), plan, view)
+        val member = view.members[15]
+        val task = TacticalLaneRecovery.probe(TacticalContext(UUID(2, 2), plan, view, state), member)
+        assertTrue(task.anchor.subtract(member.position).dot(plan.frontage.forward) in 1.0..7.0)
+        assertTrue(task.anchor.subtract(focus).horizontalDistance() >= 49.9)
+        assertTrue(TacticalRoutes.safeLaneProbe(member.position, task.anchor, focus, task.probeAdvance))
+    }
 }

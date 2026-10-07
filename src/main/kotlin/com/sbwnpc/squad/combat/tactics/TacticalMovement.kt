@@ -122,7 +122,7 @@ object TacticalMovement {
                         LogGroup.ORDER, "[tactics] {} squad={} tick={} plan={} event=position_search_failed job={} unreachable={} from={} staging={} opensLane={} rejected={} attempt={} frontSlot={} recovery={}",
                         entity.uuid, squad.id, entity.level().gameTime, task.plan, task.job, task.anchor, entity.position(), task.staging, task.opensLane, result.rejections, task.failures + 1, task.frontage?.point, task.localFireRecovery,
                     )
-                    return !failedTask(entity, task, "no reachable position")
+                    return !failedTask(entity, task, "no reachable position", completedSearch = true)
                 }
 
                 TacticalPositions.Outcome.FOUND -> {
@@ -231,13 +231,24 @@ object TacticalMovement {
         return true
     }
 
-    private fun failedTask(entity: NpcEntity, task: TacticalTask, reason: String): Boolean {
+    private fun failedTask(entity: NpcEntity, task: TacticalTask, reason: String, completedSearch: Boolean = false): Boolean {
         if (task.localFireRecovery) {
+            if (TacticalFirePosts.expand(task)) {
+                task.nextSearch = entity.level().gameTime + 2
+                DebugFlags.log(
+                    LogGroup.ORDER,
+                    "[tactics] {} squad={} tick={} plan={} event=fire_post_expanded job={} origin={} radius={} reason={}",
+                    entity.uuid, entity.currentSquad()?.id, entity.level().gameTime, task.plan, task.job,
+                    task.localFirePost, TacticalFirePosts.RECOVERY_RADIUS, reason,
+                )
+                return false
+            }
             task.nextSearch = entity.level().gameTime + 100
             DebugFlags.log(LogGroup.ORDER, "[tactics] {} plan={} event=fire_post_retry job={} reason={}", entity.uuid, task.plan, task.job, reason)
             return false
         }
-        if (++task.failures < if (task.job == TacticalJob.OVERWATCH) 1 else 3) return false
+        val recoverNow = completedSearch && TacticalFirePosts.recoverAfterSearch(task, entity.position())
+        if (++task.failures < if (task.job == TacticalJob.OVERWATCH || recoverNow) 1 else 3) return false
         val plan = entity.currentSquad()?.tactics?.plan ?: return true
         if (TacticalFirePosts.recover(task, entity.position())) {
             task.releaseNavigation(entity.navigation.path) { entity.navigation.stop() }
