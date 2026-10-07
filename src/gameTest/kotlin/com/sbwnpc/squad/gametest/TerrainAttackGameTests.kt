@@ -2,7 +2,10 @@ package com.sbwnpc.squad.gametest
 
 import com.mojang.authlib.GameProfile
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.combat.Sightline
+import com.sbwnpc.squad.combat.tactics.TacticalJob
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.SquadManager
@@ -10,11 +13,15 @@ import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
+import net.minecraft.gametest.framework.GameTestInfo
+import net.minecraft.gametest.framework.GameTestListener
+import net.minecraft.gametest.framework.GameTestRunner
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.entity.projectile.Projectile
 import net.minecraft.world.level.GameType
 import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.common.NeoForge
 import net.neoforged.neoforge.common.util.FakePlayerFactory
@@ -25,6 +32,7 @@ import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption.APPEND
+import java.nio.file.StandardOpenOption.CREATE
 import java.util.UUID
 import java.util.function.Consumer
 
@@ -40,17 +48,39 @@ object TerrainAttackGameTests {
     @GameTest(template = "terrain_arena", timeoutTicks = 1200, batch = "terrain-return-fire")
     fun attackPastRidgeUnderFire(helper: GameTestHelper) = ridge(helper, returnFire = true)
 
-    private fun ridge(helper: GameTestHelper, returnFire: Boolean) {
+    @JvmStatic
+    @GameTest(template = "terrain_arena", timeoutTicks = 1200, batch = "broken-posts")
+    fun blockedMinorityResumesFireOnUnevenGround(helper: GameTestHelper) = ridge(helper, returnFire = false, brokenPosts = true)
+
+    private fun ridge(helper: GameTestHelper, returnFire: Boolean, brokenPosts: Boolean = false) {
         for (x in 0..175) for (z in 0..223) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
-        for (x in 34..78) {
-            for (z in 0..198) {
-                val height = minOf(6, (x - 34) / 3 + 1, (78 - x) / 3 + 1)
-                for (y in 1..height) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
+        if (brokenPosts) {
+            // Small asymmetric hills and shallow hollows, rather than one regular ramp.
+            for (x in 44..65) {
+                for (z in 65..145) {
+                    val height = if ((x / 4 + z / 7) % 4 == 0) {
+                        2
+                    } else if ((x + z / 3) % 9 == 0) {
+                        1
+                    } else {
+                        0
+                    }
+                    for (y in 1..height) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
+                    if ((x * 3 + z) % 37 == 0) helper.setBlock(BlockPos(x, 0, z), Blocks.AIR)
+                    helper.setBlock(BlockPos(x, -1, z), Blocks.STONE)
+                }
+            }
+        } else {
+            for (x in 34..78) {
+                for (z in 0..198) {
+                    val height = minOf(6, (x - 34) / 3 + 1, (78 - x) / 3 + 1)
+                    for (y in 1..height) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
+                }
             }
         }
-        for (y in 1..9) helper.setBlock(BlockPos(30, y, 112), Blocks.STONE)
+        if (!brokenPosts) for (y in 1..9) helper.setBlock(BlockPos(30, y, 112), Blocks.STONE)
         val members = (0..31).map { index ->
-            AttackDeploymentGameTests.spawn(helper, Vec3(30.5, if (index == 16) 10.0 else 1.0, 16.5 + index * 6), SquadFaction.PIG)
+            AttackDeploymentGameTests.spawn(helper, Vec3(30.5, if (!brokenPosts && index == 16) 10.0 else 1.0, 16.5 + index * 6), SquadFaction.PIG)
         }
         val enemies = (0..3).map { index ->
             AttackDeploymentGameTests.spawn(helper, Vec3(100.5, 1.0, 92.5 + index * 6), SquadFaction.COW).apply {
@@ -72,7 +102,13 @@ object TerrainAttackGameTests {
         observer.moveTo(at.x, at.y, at.z, 0.0f, 0.0f)
         observer.setNoGravity(true)
         helper.level.addNewPlayer(observer)
-        val name = if (returnFire) "ridge-under-fire" else "ridge-no-fire"
+        val name = if (brokenPosts) {
+            "blocked-minority"
+        } else if (returnFire) {
+            "ridge-under-fire"
+        } else {
+            "ridge-no-fire"
+        }
         val directory = Path.of(System.getProperty("sbwnpc.gameTestReports"))
         Files.createDirectories(directory)
         val csv = directory.resolve("$name.csv")
@@ -80,24 +116,99 @@ object TerrainAttackGameTests {
         val shooters = HashSet<UUID>()
         val advanced = HashSet<UUID>()
         var enemyRounds = 0
+        val obstructed = HashSet<UUID>()
+        val resumedFire = HashSet<UUID>()
+        val idleTicks = HashMap<UUID, Int>()
+        val longestIdle = HashMap<UUID, Int>()
+        val previous = HashMap<UUID, Vec3>()
         val bullets = Consumer<EntityJoinLevelEvent> { event ->
             val round = event.entity as? Projectile
             if (event.level === helper.level && round != null && Ports.guns.isRound(round)) {
                 val owner = round.owner?.uuid
-                if (members.any { it.uuid == owner }) shooters.add(owner!!)
+                if (members.any { it.uuid == owner }) {
+                    shooters.add(owner!!)
+                    if (owner in obstructed && helper.tick > 400) resumedFire.add(owner)
+                }
                 if (enemies.any { it.uuid == owner }) enemyRounds++
             }
         }
         val pacer = CombatTickPacer()
         NeoForge.EVENT_BUS.addListener(bullets)
         NeoForge.EVENT_BUS.addListener<ServerTickEvent.Pre>(pacer)
+        var cleaned = false
+        fun cleanup() {
+            if (cleaned) return
+            cleaned = true
+            NeoForge.EVENT_BUS.unregister(bullets)
+            NeoForge.EVENT_BUS.unregister(pacer)
+            manager.deleteSquad(helper.level, squad.id)
+            if (defenders != null) manager.deleteSquad(helper.level, defenders.id)
+            (members + enemies).forEach { it.discard() }
+            helper.level.removePlayerImmediately(observer, Entity.RemovalReason.DISCARDED)
+        }
+        helper.testInfo.addListener(object : GameTestListener {
+            override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
+            override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
+            override fun testFailed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
+            override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) = cleanup()
+        })
         DebugFlags.enabledGroups = setOf(LogGroup.ORDER, LogGroup.PATH, LogGroup.STUCK)
         manager.setOrder(squad.id, SquadOrder.ATTACK)
         manager.setObjective(helper.level, squad.id, helper.absolutePos(BlockPos(100, 1, 101)))
+        if (brokenPosts) {
+            helper.runAtTickTime(300) {
+                val covering = ArrayList<com.sbwnpc.squad.entity.NpcEntity>()
+                val candidates = members.filter { npc ->
+                    npc.isAlive && npc.onGround() && npc.firedRecently(60) && npc.navigation.isDone &&
+                        squad.tactics.plan?.tasks?.get(npc.uuid)?.job in TacticalJob.FIRE_SUPPORT && npc.target != null
+                }.sortedBy { helper.relativeVec(it.position()).z }
+                for (npc in candidates) {
+                    if (covering.all { it.position().subtract(npc.position()).horizontalDistance() >= 24.0 }) covering.add(npc)
+                    if (covering.size == 4) break
+                }
+                helper.assertTrue(covering.size == 4, "Scene needs four working cover posts before obstruction")
+                for (npc in covering) {
+                    val p = helper.relativeVec(npc.position())
+                    val target = helper.relativeVec(npc.target!!.position())
+                    val direction = target.subtract(p).multiply(1.0, 0.0, 1.0).normalize()
+                    val side = Vec3(-direction.z, 0.0, direction.x)
+                    // A small irregular berm closes this shooter's strip; neighboring lanes remain usable.
+                    for (depth in 2..16) {
+                        for (lateral in -3..3) {
+                            val base = BlockPos.containing(p.add(direction.scale(depth.toDouble())).add(side.scale(lateral.toDouble())))
+                            for (dy in 0..3) {
+                                val block = base.above(dy)
+                                val body = AABB(helper.absolutePos(block))
+                                // Construct terrain ahead of actors; leave exits around actors while building the scene.
+                                if ((members + enemies).none { it.isAlive && it.boundingBox.inflate(4.0).intersects(body) }) helper.setBlock(block, Blocks.STONE)
+                            }
+                        }
+                    }
+                    obstructed.add(npc.uuid)
+                    Files.writeString(csv.resolveSibling("$name-obstructions.txt"), "npc=${npc.uuid} position=$p target=$target\n", CREATE, APPEND)
+                }
+                helper.assertTrue(
+                    covering.all { npc ->
+                        !DetectionSightline.canSee(npc, npc.target!!) || Sightline.blocked(helper.level, npc.eyePosition, npc.target!!.eyePosition, npc)
+                    },
+                    "Berms did not block the selected shooters",
+                )
+            }
+        }
         helper.onEachTick {
             for (npc in members) {
                 val p = helper.relativeVec(npc.position())
                 if (p.x >= 42.0 && npc.onGround()) advanced.add(npc.uuid)
+                if (brokenPosts && helper.tick >= 450 && npc.uuid in obstructed && npc.isAlive && Ports.guns.inHand(npc)?.hasAmmo() == true) {
+                    val last = previous.getOrPut(npc.uuid) { npc.position() }
+                    val target = npc.target
+                    val blind = target == null || !DetectionSightline.canSee(npc, target) || Sightline.blocked(helper.level, npc.eyePosition, target.eyePosition, npc)
+                    val idle = blind && last.subtract(npc.position()).horizontalDistanceSqr() < 4.0 && !npc.firedRecently(60)
+                    if (!idle) previous[npc.uuid] = npc.position()
+                    val duration = if (idle) (idleTicks[npc.uuid] ?: 0) + 1 else 0
+                    idleTicks[npc.uuid] = duration
+                    longestIdle[npc.uuid] = maxOf(longestIdle[npc.uuid] ?: 0, duration)
+                }
                 if (helper.tick % 10 == 0L) {
                     val plan = squad.tactics.plan
                     Files.writeString(csv, "${helper.tick},${npc.uuid},${p.x},${p.y},${p.z},${npc.onGround()},${npc.navigation.isDone},${plan?.tasks?.get(npc.uuid)?.job},${plan?.id},${plan?.phase},${Ports.guns.roundsLeft(npc.mainHandItem)},${npc.lastShotTick}\n", APPEND)
@@ -109,17 +220,18 @@ object TerrainAttackGameTests {
                 Files.writeString(directory.resolve("$name.txt"), "shooters=${shooters.size}\nadvanced=${advanced.size}\nalive=${members.count { it.isAlive }}\nenemyRounds=$enemyRounds\n")
                 helper.assertTrue(!returnFire || enemyRounds > 0, "Return-fire control did not fire real rounds")
                 helper.assertTrue(returnFire || enemyRounds == 0, "Isolation control fired unexpectedly")
-                helper.assertTrue(advanced.size >= if (returnFire) 12 else 24, "Attack failed to advance past the ridge; see $name.csv")
+                if (brokenPosts) {
+                    Files.writeString(directory.resolve("$name.txt"), "obstructed=${obstructed.size}\nresumedFire=${resumedFire.size}\nlongestBlindIdle=${longestIdle.values.maxOrNull() ?: 0}\n", APPEND)
+                    helper.assertTrue(resumedFire.size == 4, "Blocked shooters did not resume real fire; see $name.csv")
+                    helper.assertTrue(longestIdle.values.none { it >= 200 }, "A shooter stayed blind and idle for ten seconds; see $name.csv")
+                } else {
+                    helper.assertTrue(advanced.size >= if (returnFire) 12 else 24, "Attack failed to advance past the ridge; see $name.csv")
+                }
                 helper.assertTrue(shooters.size >= if (returnFire) 12 else 24, "Most of the attack never fired real rounds; see $name.txt")
                 helper.assertTrue(returnFire || members.all { it.isAlive }, "Attack lost NPCs without return fire")
                 helper.succeed()
             } finally {
-                NeoForge.EVENT_BUS.unregister(bullets)
-                NeoForge.EVENT_BUS.unregister(pacer)
-                manager.deleteSquad(helper.level, squad.id)
-                if (defenders != null) manager.deleteSquad(helper.level, defenders.id)
-                (members + enemies).forEach { it.discard() }
-                helper.level.removePlayerImmediately(observer, Entity.RemovalReason.DISCARDED)
+                cleanup()
             }
         }
     }
