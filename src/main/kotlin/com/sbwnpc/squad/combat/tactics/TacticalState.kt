@@ -99,7 +99,15 @@ abstract class TacticalState {
         for ((index, member) in context.view.members.withIndex()) {
             if (member.id in context.plan.failedMembers || !layout.eligible(member)) continue
             val intent = task(layout, member, index)
-            desired[member.id] = layout.applyRoles(member, index, intent)
+            val next = layout.applyRoles(member, index, intent)
+            val previous = context.plan.tasks[member.id]
+            desired[member.id] = if (retainCover && previous?.job == next.job && next.job in TacticalJob.FIRE_SUPPORT &&
+                member.grounded && TacticalEvidence.covers(member, previous) && TacticalEvidence.settled(member, previous)
+            ) {
+                previous
+            } else {
+                next
+            }
         }
         context.tasks.replace(desired, context.view.now, trigger, retainCover)
     }

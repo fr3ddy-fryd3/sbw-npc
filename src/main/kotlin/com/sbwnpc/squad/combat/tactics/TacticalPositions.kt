@@ -13,7 +13,7 @@ import net.minecraft.world.phys.Vec3
 /** Local positions are validated through the existing navigation and collider raycasts. */
 object TacticalPositions {
     enum class Outcome { FOUND, DEFERRED, UNREACHABLE }
-    data class Result(val outcome: Outcome, val position: Vec3? = null, val rejections: Map<String, Int> = emptyMap())
+    data class Result(val outcome: Outcome, val position: Vec3? = null, val rejections: Map<String, Int> = emptyMap(), val maneuverPost: Boolean = false)
 
     fun find(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot): Result {
         val level = entity.level() as ServerLevel
@@ -89,9 +89,16 @@ object TacticalPositions {
             entity.position(),
             when {
                 overwatch -> DefensiveOverwatch.probes(task.anchor)
+
                 deployment -> OFFSETS.map { localAnchor.add(it) }
+
                 task.frontage != null -> task.frontage!!.probes(recovery = true)
+
+                task.job == TacticalJob.FLANK && localAnchor.subtract(task.anchor).horizontalDistance() < 1.0 ->
+                    TacticalFrontPost(task.anchor, (task.focus ?: view.home ?: task.anchor).subtract(view.center).multiply(1.0, 0.0, 1.0).normalize()).probes(recovery = true)
+
                 task.job in TacticalJob.FIRING_POSITIONS -> listOf(entity.position()) + TacticalFirePosts.probes(localAnchor, task.localFireRecovery)
+
                 else -> OFFSETS.map { localAnchor.add(it) }
             },
             aim,
@@ -151,12 +158,17 @@ object TacticalPositions {
                 return
             }
         }
+        if (task.job == TacticalJob.FLANK && context.localAnchor.subtract(task.anchor).horizontalDistance() < 1.0 &&
+            candidate.subtract(task.anchor).horizontalDistance() > 14.0
+        ) {
+            return
+        }
         if (!safeDistance(entity, context.view, candidate)) {
             search.reject("close_enemy")
             return
         }
         if (!context.overwatch && (kotlin.math.abs(candidate.y - entity.y) > 12.0 || candidate.distanceTo(entity.position()) > 48.0)) return
-        if (task.opensLane && focus != null && !TacticalRoutes.safeLaneProbe(search.origin, candidate, focus)) return
+        if (task.opensLane && focus != null && !TacticalRoutes.safeLaneProbe(search.origin, candidate, focus, task.probeAdvance)) return
         val body = entity.getDimensions(entity.pose).makeBoundingBox(candidate)
         if (!safeBody(entity, candidate, body, context.hulls, context.taken)) {
             search.reject("occupied_or_hazard")
@@ -220,7 +232,7 @@ object TacticalPositions {
                 task.navigationPath = null
                 FiringSpots.claim(entity.uuid, entity.position())
                 tracePosition(context, entity.position(), search.scored[candidate])
-                return finish(task, entity.position(), allowDepthAdjustment = !context.deployment)
+                return finish(task, entity.position(), allowDepthAdjustment = !context.deployment, maneuverPost = task.job == TacticalJob.FLANK && mustShoot)
             }
             if (!TacticalBudget.path(context.level.gameTime)) return Result(Outcome.DEFERRED)
             val path = pathToCandidate(context, candidate)
@@ -231,7 +243,7 @@ object TacticalPositions {
                     task.navigationPath = path
                     FiringSpots.claim(entity.uuid, candidate)
                     tracePosition(context, candidate, search.scored[candidate])
-                    return finish(task, candidate, allowDepthAdjustment = !context.deployment)
+                    return finish(task, candidate, allowDepthAdjustment = !context.deployment, maneuverPost = task.job == TacticalJob.FLANK && mustShoot)
                 }
                 search.reject(if (safety == RouteSafety.SAFE) "navigation" else "unsafe_route")
             } else {
@@ -253,7 +265,9 @@ object TacticalPositions {
         )
     }
 
-    private fun requiresFiringLane(context: SearchContext, point: Vec3): Boolean = requiresFiringLane(context.task, context.deployment, point)
+    private fun requiresFiringLane(context: SearchContext, point: Vec3): Boolean =
+        requiresFiringLane(context.task, context.deployment, point) ||
+            (context.task.job == TacticalJob.FLANK && context.localAnchor.subtract(context.task.anchor).horizontalDistance() < 1.0)
 
     /** Reaching the line is movement. The subsequent firing-post query checks the shot. */
     internal fun requiresFiringLane(task: TacticalTask, deploying: Boolean, point: Vec3): Boolean =
@@ -282,7 +296,7 @@ object TacticalPositions {
             ) {
                 return RouteSafety.UNSAFE
             }
-            if (task.opensLane && focus != null && !TacticalRoutes.safeLaneProbe(context.search.origin, foot, focus)) return RouteSafety.UNSAFE
+            if (task.opensLane && focus != null && !TacticalRoutes.safeLaneProbe(context.search.origin, foot, focus, task.probeAdvance)) return RouteSafety.UNSAFE
             if (index % 4 == 0 && task.job == TacticalJob.FLANK) {
                 if (!TickBudget.hasRaycasts(context.level)) return RouteSafety.DEFERRED
                 if (hasUncoveredApproach(context, foot)) return RouteSafety.UNSAFE
@@ -330,10 +344,10 @@ object TacticalPositions {
             Sightline.blockedBy(entity.level() as ServerLevel, from, to, entity, hulls)
         } && friendlyLane(entity, point.add(0.0, entity.eyeHeight.toDouble(), 0.0), TacticalAim.resolve(entity, task)?.eye)
 
-    private fun finish(task: TacticalTask, point: Vec3, allowDepthAdjustment: Boolean = false): Result {
+    private fun finish(task: TacticalTask, point: Vec3, allowDepthAdjustment: Boolean = false, maneuverPost: Boolean = false): Result {
         if (allowDepthAdjustment && task.frontage?.contains(point) == false) task.localFirePost = task.frontage!!.point
         task.search = null
-        return Result(Outcome.FOUND, point)
+        return Result(Outcome.FOUND, point, maneuverPost = maneuverPost)
     }
     private fun safeBody(entity: NpcEntity, point: Vec3, body: AABB, hulls: List<AABB>, taken: List<Vec3>): Boolean =
         entity.level().getFluidState(BlockPos.containing(point)).isEmpty && entity.level().noCollision(entity, body) &&

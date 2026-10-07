@@ -257,7 +257,7 @@ class TacticalFlanksTest {
         tasks.forEach { (id, task) -> assertSame(task, plan.tasks[id]) }
     }
 
-    @Test fun `blocked fire releases only two short lateral probes and leaves the assault wave waiting`() {
+    @Test fun `blocked fire releases six short probes in owned lanes and leaves the assault wave waiting`() {
         val view = view().copy(members = members.map { it.copy(canFire = false, recentFire = false) })
         val (state, plan) = setup(view)
         val old = plan.tasks.toMap()
@@ -265,14 +265,16 @@ class TacticalFlanksTest {
         TacticalCoordinator.advance(squad, state, plan, deployed)
         assertTrue((plan.phase == TacticalPhase.OPENING_LANE))
         val probes = plan.tasks.filterValues { it.opensLane }
-        assertEquals(2, probes.size)
+        assertEquals(6, probes.size)
         assertFalse(plan.tasks.values.any { it.job in setOf(TacticalJob.FLANK, TacticalJob.ADVANCE) })
         for ((id, task) in probes) {
             val from = deployed.members.first { it.id == id }.position
             assertEquals(12.0, from.distanceTo(task.anchor), 0.01)
-            assertTrue(task.anchor.distanceTo(focus) >= from.distanceTo(focus))
+            assertTrue(task.anchor.subtract(from).dot(plan.frontage.forward) > 0.0)
+            assertEquals(0.0, task.anchor.subtract(from).dot(plan.frontage.side), 0.01)
         }
         old.filterKeys { it !in probes }.forEach { (id, task) -> assertSame(task, plan.tasks[id]) }
+        probes.values.forEach { it.position = it.anchor }
         val shooters = view.copy(
             now = 100,
             contacts = view.contacts.map { it.copy(seenAt = 100) },

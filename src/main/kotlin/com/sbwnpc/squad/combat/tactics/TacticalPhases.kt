@@ -1,7 +1,5 @@
 package com.sbwnpc.squad.combat.tactics
 
-import com.sbwnpc.squad.npc.NpcClass
-import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
 enum class TacticalPhase { PREPARING, OPENING_LANE, EXECUTING, PAUSED, WITHDRAWING, COMPLETED, FAILED }
@@ -137,14 +135,10 @@ class OpeningLanePhase(private val members: List<UUID>) : TacticalPhaseState(Tac
         val state = context.state as CoveredManeuverState
         state.laneAttempts++
         val scouts = context.view.members.filter { it.id in members }
-        for ((index, member) in scouts.withIndex()) {
-            val toward = context.plan.focus!!.subtract(member.position).multiply(1.0, 0.0, 1.0).normalize()
-                .let { if (it.lengthSqr() < 0.01) Vec3(0.0, 0.0, 1.0) else it }
-            val side = Vec3(-toward.z, 0.0, toward.x).scale(if (index % 2 == 0) 12.0 else -12.0)
+        for (member in scouts) {
             context.tasks.put(
                 member.id,
-                TacticalTask(TacticalJob.SEARCH, member.position.add(side), context.plan.focus, context.plan.id)
-                    .also { it.opensLane = true },
+                TacticalLaneRecovery.probe(context, member),
                 context.view.now,
                 "opening_lane_probe",
             )
@@ -158,9 +152,14 @@ class OpeningLanePhase(private val members: List<UUID>) : TacticalPhaseState(Tac
                 (context.plan.tasks[it.id]?.job in TacticalJob.FIRE_SUPPORT || it.id in members)
         }
         val trigger = when {
-            shooters >= TacticalFlanks.requiredCover(context.view) -> "probe_found_cover"
+            shooters >= TacticalFlanks.requiredCover(context.view) && scouts.any {
+                TacticalEvidence.firesCover(it, context.plan.tasks[it.id]) && TacticalEvidence.settled(it, context.plan.tasks[it.id])
+            } -> "probe_found_cover"
+
             scouts.all { TacticalEvidence.settled(it, context.plan.tasks[it.id]) } -> "probe_arrived"
+
             context.view.now - context.state.phaseSince >= 160 -> "probe_timeout"
+
             else -> return
         }
         context.state.phases.transition(PreparingPhase(), context, trigger)
@@ -168,16 +167,23 @@ class OpeningLanePhase(private val members: List<UUID>) : TacticalPhaseState(Tac
 
     override fun exit(context: TacticalContext, to: TacticalPhase?) {
         if (to == TacticalPhase.PREPARING) {
-            for (member in context.view.members.filter { it.id in members && it.id !in context.plan.failedMembers }) {
+            val scouts = context.view.members.filter { it.id in members && it.id !in context.plan.failedMembers }
+            val front = TacticalLaneRecovery.nextFront(context, scouts)
+            for (member in scouts) {
+                val post = context.plan.tasks[member.id]?.frontage
                 context.tasks.put(
                     member.id,
                     TacticalTask(TacticalJob.COVER, member.position, context.plan.focus, context.plan.id)
-                        .also { it.position = member.position },
+                        .also {
+                            it.position = member.position
+                            it.frontage = post
+                        },
                     context.view.now,
                     "opening_lane_finished",
                 )
                 (context.state as CoveredManeuverState).probeFinished(member.id)
             }
+            if (front != null) (context.state as CoveredManeuverState).advanceFront(context, front)
         }
         super.exit(context, to)
     }

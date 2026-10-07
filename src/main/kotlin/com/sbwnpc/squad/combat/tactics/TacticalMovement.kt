@@ -2,6 +2,7 @@ package com.sbwnpc.squad.combat.tactics
 
 import com.sbwnpc.squad.combat.*
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import net.minecraft.server.level.ServerLevel
 
 /** Executes owned movement tasks through the existing navigator, cover and medical priorities. */
@@ -33,6 +34,8 @@ object TacticalMovement {
         observe(entity)
         if (blocker(entity) != null) return false
         val task = SquadTactics.task(entity) ?: return false
+        // Finish the physical jump before ordinary post validation or phase changes own the feet.
+        if ((entity.navigation as? VehicleAwareNavigation)?.canPlan == false) return true
         val squad = entity.currentSquad() ?: return false
         val state = squad.tactics
         val view = state.snapshot ?: return false
@@ -124,6 +127,7 @@ object TacticalMovement {
 
                 TacticalPositions.Outcome.FOUND -> {
                     task.position = result.position
+                    task.maneuverPost = result.maneuverPost
                     task.firingTarget = entity.target?.uuid
                     task.failures = 0
                     task.closest = Double.MAX_VALUE
@@ -150,7 +154,7 @@ object TacticalMovement {
             task.closest = distance
             task.lastProgress = entity.level().gameTime
         }
-        val firingPost = task.frontage != null || task.job in TacticalJob.FIRING_POSITIONS || (task.job == TacticalJob.FLANK && position.distanceTo(task.anchor) <= 10.0)
+        val firingPost = task.frontage != null || task.job in TacticalJob.FIRING_POSITIONS || (task.job == TacticalJob.FLANK && (task.maneuverPost || position.distanceTo(task.anchor) <= 10.0))
         val arrived = if (firingPost) FiringPostArrival.reached(entity.position(), position) else distance <= 2.0
         if (arrived) {
             if (task.deployingFront(position)) {
@@ -183,7 +187,7 @@ object TacticalMovement {
                     return true
                 }
             }
-            if (task.job in RUNNING_JOBS + TacticalJob.SEARCH && entity.position().distanceTo(task.anchor) > 10.0) {
+            if (task.job in RUNNING_JOBS + TacticalJob.SEARCH && !task.maneuverPost && entity.position().distanceTo(task.anchor) > 10.0) {
                 task.position = null
                 task.search = null
                 task.nextSearch = entity.level().gameTime + 5
@@ -198,7 +202,7 @@ object TacticalMovement {
             return true
         }
         if (entity.level().gameTime - task.lastProgress >= 100) {
-            if ((entity.navigation as? com.sbwnpc.squad.entity.ai.VehicleAwareNavigation)?.canPlan == false) return true
+            if ((entity.navigation as? VehicleAwareNavigation)?.canPlan == false) return true
             task.position = null
             task.search = null
             task.nextSearch = entity.level().gameTime + 20
@@ -207,7 +211,7 @@ object TacticalMovement {
         if (firingPost && FiringPostArrival.steer(entity, position, TacticalPositions.speed(task))) return true
         if (entity.navigation.isDone && entity.level().gameTime >= task.nextSearch) {
             task.nextSearch = entity.level().gameTime + 20
-            if ((entity.navigation as? com.sbwnpc.squad.entity.ai.VehicleAwareNavigation)?.canPlan == false) {
+            if ((entity.navigation as? VehicleAwareNavigation)?.canPlan == false) {
                 task.nextSearch = entity.level().gameTime + 2
                 return true
             }

@@ -17,7 +17,7 @@ object TacticalEvidence {
         task?.position?.let {
             !task.deployingFront(member.position) &&
                 (if (task.job in TacticalJob.FIRING_POSITIONS || task.job == TacticalJob.FLANK) FiringPostArrival.reached(member.position, it) else member.position.distanceTo(it) <= 2.5) &&
-                (task.job in TacticalJob.FIRE_SUPPORT || member.position.distanceTo(task.anchor) <= 10.0)
+                (task.job in TacticalJob.FIRE_SUPPORT || task.maneuverPost || member.position.distanceTo(task.anchor) <= 10.0)
         } == true
 
     fun transition(plan: TacticalPlan, view: TacticalSnapshot): TacticalTransitionEvidence {

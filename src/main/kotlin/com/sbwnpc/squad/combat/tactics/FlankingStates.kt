@@ -18,6 +18,7 @@ abstract class FlankingState : CoveredManeuverState() {
     override fun usesAttackFront(member: TacticalMember): Boolean = member.id !in arrived
     private val waitingPosts = HashMap<UUID, net.minecraft.world.phys.Vec3>()
     private var wave = emptySet<UUID>()
+    private var nextSupportReview = Long.MIN_VALUE
     internal open fun anchor(plan: TacticalPlan, view: TacticalSnapshot, slot: Int) = TacticalFlanks.shoulder(plan, view, slot)
 
     override fun beforeTick(context: TacticalContext) {
@@ -51,23 +52,38 @@ abstract class FlankingState : CoveredManeuverState() {
     }
 
     override fun promoteLateSupport(context: TacticalContext) {
-        if (bounds != 0) return
+        if (bounds != 0 || context.view.now < nextSupportReview) return
         val cover = context.view.members.count {
             context.plan.tasks[it.id]?.job == TacticalJob.COVER &&
                 TacticalEvidence.firesCover(it, context.plan.tasks[it.id])
         }
         if (cover >= TacticalFlanks.requiredCover(context.view)) return
-        val waitingShooterAvailable = context.view.members.any { member ->
-            context.plan.tasks[member.id]?.job == TacticalJob.WAIT && TacticalEvidence.firesCover(member, context.plan.tasks[member.id])
+        val missing = TacticalFlanks.requiredCover(context.view) - cover
+        val shooters = context.view.members.filter { member ->
+            member.grounded && context.plan.tasks[member.id]?.job == TacticalJob.WAIT &&
+                TacticalEvidence.firesCover(member, context.plan.tasks[member.id]) &&
+                !context.plan.tasks.getValue(member.id).deployingFront(member.position)
+        }.take(missing)
+        var exchanged = false
+        for (shooter in shooters) {
+            val replaced = context.view.members.firstOrNull { member ->
+                member.grounded && member.id in support && context.plan.tasks[member.id]?.job == TacticalJob.COVER &&
+                    !TacticalEvidence.firesCover(member, context.plan.tasks[member.id])
+            } ?: break
+            val slot = order.indexOf(shooter.id)
+            if (slot < 0) continue
+            support.remove(replaced.id)
+            support.add(shooter.id)
+            order[slot] = replaced.id
+            val oldCover = context.plan.tasks.getValue(replaced.id)
+            val oldWait = context.plan.tasks.getValue(shooter.id)
+            val promoted = oldWait.withJob(TacticalJob.COVER, oldWait.staging ?: oldWait.anchor)
+            if (!shooter.moving) promoted.position = shooter.position
+            context.tasks.put(shooter.id, promoted, context.view.now, "late_cover_shooter")
+            context.tasks.put(replaced.id, oldCover.withJob(TacticalJob.WAIT, TacticalFlanks.anchor(context.plan, context.view, slot)), context.view.now, "late_cover_replaced")
+            exchanged = true
         }
-        if (!waitingShooterAvailable) return
-        support.clear()
-        order.clear()
-        assign(context, trigger = "late_cover_shooter")
-        for (member in context.view.members) {
-            val task = context.plan.tasks[member.id] ?: continue
-            if (task.job == TacticalJob.COVER && TacticalEvidence.covers(member, task) && !task.deployingFront(member.position)) task.position = member.position
-        }
+        if (exchanged) nextSupportReview = context.view.now + 80
     }
 
     override fun probeFinished(member: UUID) {
@@ -80,6 +96,10 @@ abstract class FlankingState : CoveredManeuverState() {
         recordArrivals(context, movers)
         bounds++
         val done = TacticalFlanks.pending(context.plan, context.view).isEmpty()
+        if (done && order.any { it in context.plan.failedMembers }) {
+            context.fail(TacticalFailure.PARTIAL_MANEUVER)
+            return
+        }
         phases.transition(if (done) CompletedPhase() else PreparingPhase(), context, if (done) "flank_complete" else "flank_wave_arrived")
     }
 

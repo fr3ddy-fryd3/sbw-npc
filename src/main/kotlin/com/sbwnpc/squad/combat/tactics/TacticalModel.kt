@@ -75,7 +75,7 @@ enum class TacticalReason {
     NORMAL_ADVANCE,
     PATTERN_COOLDOWN,
 }
-enum class TacticalFailure { NONE, UNSPECIFIED, COVER_NOT_READY_TIMEOUT, COVER_LOST, MOVEMENT_TIMEOUT }
+enum class TacticalFailure { NONE, UNSPECIFIED, COVER_NOT_READY_TIMEOUT, COVER_LOST, MOVEMENT_TIMEOUT, PARTIAL_MANEUVER }
 
 data class TacticalMember(
     val id: UUID,
@@ -90,6 +90,7 @@ data class TacticalMember(
     val recentFire: Boolean = canFire,
     val recentFireAt: Vec3? = firingAt,
     val moving: Boolean = false,
+    val grounded: Boolean = true,
 )
 data class TacticalContact(
     val id: UUID,

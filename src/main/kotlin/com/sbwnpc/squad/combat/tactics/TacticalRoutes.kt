@@ -6,9 +6,9 @@ import kotlin.math.*
 /** Short route legs prevent a rear flank destination from routing straight through the enemy. */
 object TacticalRoutes {
     /** A firing-lane probe opens the angle without becoming an unsupported charge. */
-    fun safeLaneProbe(from: Vec3, point: Vec3, focus: Vec3): Boolean =
+    fun safeLaneProbe(from: Vec3, point: Vec3, focus: Vec3, approach: Double = 4.0): Boolean =
         point.subtract(from).horizontalDistance() <= 16.0 &&
-            point.subtract(focus).horizontalDistance() >= from.subtract(focus).horizontalDistance() - 4.0
+            point.subtract(focus).horizontalDistance() >= from.subtract(focus).horizontalDistance() - approach
 
     fun leg(from: Vec3, task: TacticalTask): Vec3 {
         val focus = task.focus

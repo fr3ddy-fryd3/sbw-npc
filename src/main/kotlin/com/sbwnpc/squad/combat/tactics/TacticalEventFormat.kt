@@ -4,6 +4,8 @@ package com.sbwnpc.squad.combat.tactics
 object TacticalEventFormat {
     fun detail(event: TacticalEvent): String =
         when (event) {
+            is TacticalEvent.FrontAdvanced -> "event=front_advanced position=${event.position} reason=blocked_firing_lanes"
+
             is TacticalEvent.ReorganizationChanged ->
                 "event=reorganization_episode active=${event.active} origin=${event.origin} capable=${event.capable} peak=${event.peak}"
 

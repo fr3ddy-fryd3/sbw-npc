@@ -122,6 +122,8 @@ class TacticalDeploymentTest {
         state.assess(squad, deployed.copy(now = 129))
         assertEquals(TacticalPhase.PREPARING, plan.phase)
         state.assess(squad, deployed.copy(now = 130))
-        assertEquals(TacticalPhase.EXECUTING, plan.phase)
+        assertEquals(TacticalPhase.OPENING_LANE, plan.phase)
+        assertEquals(6, plan.tasks.values.count { it.opensLane })
+        assertFalse(plan.tasks.values.any { it.job == TacticalJob.FLANK })
     }
 }

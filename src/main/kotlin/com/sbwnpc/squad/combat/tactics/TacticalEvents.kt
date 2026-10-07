@@ -8,6 +8,8 @@ sealed interface TacticalEvent {
     val plan: Int
     val tick: Long
 
+    data class FrontAdvanced(override val plan: Int, override val tick: Long, val position: Vec3) : TacticalEvent
+
     data class ReorganizationChanged(
         override val plan: Int,
         override val tick: Long,

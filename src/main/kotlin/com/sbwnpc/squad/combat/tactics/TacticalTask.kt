@@ -16,6 +16,8 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
     fun permitsFront(point: Vec3): Boolean = frontage?.permits(point, localFireRecovery) != false
     fun deployingFront(point: Vec3): Boolean = !permitsFront(point)
     var opensLane = false
+    var probeAdvance = 4.0
+    var maneuverPost = false
 
     /** Retains assignment/sector while the individual shooter searches a bounded local post. */
     var localFirePost: Vec3? = null
@@ -25,6 +27,22 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
     private var pauseReason: String? = null
     internal var navigationPath: net.minecraft.world.level.pathfinder.Path? = null
     private var movementBlocker: TacticalMovementBlocker? = null
+
+    /** A support-role exchange keeps the physical post and owned route of each actor. */
+    internal fun withJob(next: TacticalJob, anchor: Vec3): TacticalTask =
+        TacticalTask(next, anchor, focus, plan).also {
+            it.position = position
+            it.firingTarget = firingTarget
+            it.nextSearch = nextSearch
+            it.nextValidation = nextValidation
+            it.lastProgress = lastProgress
+            it.closest = closest
+            it.frontage = frontage
+            it.staging = if (next == TacticalJob.WAIT) staging ?: position ?: this.anchor else null
+            it.localFirePost = localFirePost
+            it.navigationPath = navigationPath
+            navigationPath = null
+        }
 
     /** Observations explain individual preemption without changing timers or navigation. */
     internal fun observeBlocker(member: java.util.UUID, now: Long, blocker: TacticalMovementBlocker?, events: TacticalEventSink) {
