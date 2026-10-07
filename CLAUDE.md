@@ -35,6 +35,9 @@ tested" as two different claims; see Workflow below.
 
 ## Workflow requirements
 
+- After checks pass, build with `buildDevelop` and replace the local Minecraft mod jar by default.
+  An explicit instruction not to build or not to install overrides this default; otherwise no
+  separate deployment confirmation is needed.
 - **Never push a fix on the strength of "it should work" or "it compiles."** Build, deploy, and
   wait for the user to confirm it works in-game before it leaves the machine.
 - **Pushing** needs the user's say-so for that specific push. Permission given for one push doesn't
