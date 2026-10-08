@@ -31,6 +31,12 @@ abstract class FlankingState : CoveredManeuverState() {
     }
 
     override fun prepareAssignments(layout: TacticalLayout) {
+        // The frontage drops missing actors when it observes the snapshot. Match membership
+        // before sorting wings so a casualty cannot leave a slot without a live position.
+        val alive = layout.view.members.map { it.id }.toSet()
+        order.retainAll(alive)
+        arrivedMembers.retainAll(alive)
+        waitingPosts.keys.retainAll(alive)
         support.retainAll(layout.fighters.map { it.id }.toSet())
         if (support.isEmpty()) support.addAll(layout.support)
         if (order.isEmpty()) {

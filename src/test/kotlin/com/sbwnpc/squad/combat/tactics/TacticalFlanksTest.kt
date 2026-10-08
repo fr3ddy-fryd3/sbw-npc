@@ -38,6 +38,28 @@ class TacticalFlanksTest {
         return state to plan
     }
 
+    @Test fun `losing a waiting flanker before launch removes stale membership and preserves surviving frontage`() {
+        for (pattern in listOf(TacticalPattern.FLANK, TacticalPattern.ENCIRCLE, TacticalPattern.FOCUS_SECTOR)) {
+            val initial = view().copy(members = members.take(16))
+            val owner = SquadTacticalState()
+            owner.select(TacticalChoice(pattern, focus), 1, 0)
+            val plan = owner.plan!!
+            TacticalCoordinator.assign(squad, plan, initial)
+            plan.tasks.values.filter { it.job == TacticalJob.COVER }.forEach { it.position = it.anchor }
+            val flank = plan.behavior as FlankingState
+            val dead = flank.order.first()
+            val slots = initial.members.filter { it.id != dead }.associate { it.id to plan.frontage.offset(it.id) }
+            val survivors = initial.copy(now = 20, members = initial.members.filter { it.id != dead }).assumingFrontArrival(plan)
+            TacticalCoordinator.advance(squad, owner, plan, survivors)
+            assertEquals(TacticalPhase.EXECUTING, plan.phase, pattern.toString())
+            assertFalse(dead in flank.order)
+            assertNull(plan.tasks[dead])
+            assertFalse(dead in TacticalFlanks.pending(plan, survivors))
+            assertEquals(6, plan.tasks.values.count { it.job == TacticalJob.FLANK })
+            slots.forEach { (id, offset) -> assertEquals(offset, plan.frontage.offset(id), "A casualty must not renumber surviving firing lanes") }
+        }
+    }
+
     @Test fun `flank destinations preserve spatial order instead of UUID order`() {
         val view = view()
         val (state, plan) = setup(view)
