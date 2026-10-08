@@ -37,6 +37,17 @@ class DetectionSightlineTest {
     private fun colliderClear(world: Terrain): Boolean = world.clip(ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, collision)).type == HitResult.Type.MISS
 
     @Test
+    fun `visibility reports the first obstruction rather than mistaking any grass for concealment`() {
+        val grass = (2..4).associate { BlockPos(it, 64, 0) to Blocks.TALL_GRASS.defaultBlockState() }
+        val behindWall = Terrain(grass + (BlockPos(1, 64, 0) to Blocks.STONE.defaultBlockState()))
+        val beforeWall = Terrain(grass + (BlockPos(7, 64, 0) to Blocks.STONE.defaultBlockState()))
+        assertEquals(DetectionSightline.Visibility.OBSTACLE, DetectionSightline.trace(behindWall, from, to, collision))
+        assertEquals(DetectionSightline.Visibility.FOLIAGE, DetectionSightline.trace(beforeWall, from, to, collision))
+        assertFalse(colliderClear(beforeWall), "Grass must not make the solid wall behind it transparent to bullets")
+        assertEquals(DetectionSightline.Visibility.VISIBLE, DetectionSightline.trace(terrain(Blocks.GLASS, 1), from, to, collision))
+    }
+
+    @Test
     fun `two foliage blocks can be seen through but the third conceals the target`() {
         for (plant in listOf(Blocks.SHORT_GRASS, Blocks.TALL_GRASS, Blocks.FERN, Blocks.LARGE_FERN)) {
             assertTrue(seen(terrain(plant, 2)), "two ${plant.name} blocks should be transparent")

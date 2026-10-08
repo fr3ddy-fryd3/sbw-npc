@@ -107,6 +107,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // SmartBrainLib TTL memory — expires on its own, and shows in the brain's memory
     // (e.g. /data get entity <e> Brain).
     val incomingFire = com.sbwnpc.squad.combat.IncomingFire()
+    val lastSeenFire = com.sbwnpc.squad.combat.LastSeenFire()
 
     fun isSuppressed(): Boolean = BrainUtils.hasMemory(this, ModMemories.SUPPRESSING_THREAT.get())
     val threatPos: Vec3? get() = BrainUtils.getMemory(this, ModMemories.SUPPRESSING_THREAT.get())
@@ -245,9 +246,23 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     private var sightedUntil = Long.MIN_VALUE
 
     fun rememberVisible(target: LivingEntity) {
+        lastSeenFire.observe(target.uuid, target.eyePosition, level().gameTime)
         sightedTarget = target.uuid
         sightedEye = target.eyePosition
         sightedUntil = level().gameTime + 200
+    }
+
+    fun noticeHidden(target: LivingEntity, visibility: com.sbwnpc.squad.combat.DetectionSightline.Visibility) {
+        if (lastSeenFire.hidden(target.uuid, visibility, level().gameTime)) {
+            com.sbwnpc.squad.combat.DebugFlags.log(
+                com.sbwnpc.squad.combat.LogGroup.ORDER,
+                "[foliage-fire] {} started: target={} lastSeen={} rounds={}",
+                uuid,
+                target.uuid,
+                lastSeenFire.point(level().gameTime),
+                lastSeenFire.roundsLeft,
+            )
+        }
     }
 
     fun rememberedEye(target: LivingEntity): Vec3? =

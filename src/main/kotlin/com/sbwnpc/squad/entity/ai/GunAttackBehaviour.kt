@@ -554,7 +554,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     ): Double? {
         if (!canRelocate(entity, pos) || !safeCombatPosition(entity, target, pos)) return null
         val myEye = Vec3(pos.x, pos.y + eyeHeight, pos.z)
-        if (Sightline.blocked(level, target.eyePosition, myEye, entity) || !DetectionSightline.visible(level, myEye, target.eyePosition, entity)) return null
+        if (Sightline.blocked(level, target.eyePosition, myEye, entity)) return null
         // Standing behind armour is cover from the enemy, but it is not a firing position.
         if (Sightline.crosses(vehicleHulls, myEye, target.eyePosition, entity.spread)) return null
         // Nor is standing ON one. Vehicles have collision, so a mob that walks into a hull rides up
@@ -688,22 +688,26 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         val squad = entity.currentSquad()
         resetForChangedOrder(entity, squad)
         val holding = CombatPosition.holdsPosition(squad?.order)
-        // Weapon selection must happen before reading the active gun.
-        chooseWeapon(entity, target)
+        val visibility = DetectionSightline.trace(entity, target)
+        val visible = visibility == DetectionSightline.Visibility.VISIBLE
+        val foliageHidden = visibility == DetectionSightline.Visibility.FOLIAGE
+        // Do not fight the CORE executor by repeatedly swapping back to a launcher for a hidden tank.
+        if (foliageHidden) AntiArmourKit.wield(entity, launcher = false) else chooseWeapon(entity, target)
         val gun = currentGun(entity) ?: return
-
-        val visible = canTrackTarget(entity, target)
-        val clearShot = visible && hasClearShot(entity, target)
-        if (visible) reportVisibleTarget(entity, target)
-        updateAim(entity, target, gun, clearShot)
+        val terrainClear = hasClearShot(entity, target)
+        val clearShot = visible && terrainClear
+        if (visible) reportVisibleTarget(entity, target) else entity.noticeHidden(target, visibility)
+        updateAim(entity, target, gun, clearShot, foliageHidden)
 
         val movement = updateCombatMovement(entity, target, squad, holding, gun, clearShot)
         if (movement == CombatMovement.RETURNING_TO_POST) return
-        // Movement uses the previous safety assessment; refresh it before the next shot.
-        updateFiringLane(entity, target, gun)
-        if (!clearShot && movement == CombatMovement.TACTICAL && entity.tickCount % 40 == 0) {
+        if (!terrainClear && movement == CombatMovement.TACTICAL && entity.tickCount % 40 == 0) {
             SquadTactics.repositionForFire(entity)
         }
+        // The CORE blind-fire executor owns the gun and cached aim while vegetation hides the target.
+        if (foliageHidden) return
+        // Movement uses the previous safety assessment; refresh it before the next shot.
+        updateFiringLane(entity, target, gun)
         clearBlockedFiringLane(entity, target, movement == CombatMovement.TACTICAL)
         gun.operate()
         tickShooting(entity, target, gun, clearShot)
@@ -741,8 +745,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         com.sbwnpc.squad.squad.SquadReports.contact(entity, target)
     }
 
-    private fun updateAim(entity: NpcEntity, target: LivingEntity, gun: HandGun, canShootTarget: Boolean) {
-        if (canShootTarget) {
+    private fun updateAim(entity: NpcEntity, target: LivingEntity, gun: HandGun, canShootTarget: Boolean, foliageHidden: Boolean) {
+        if (canShootTarget || foliageHidden) {
             entity.blockedSightSince = null
         } else if (entity.blockedSightSince == null) {
             // Stamped once, on the tick sight was lost — GrenadeUseBehaviour measures from here.
@@ -751,6 +755,11 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         // Losing sight starts the aim over.
         aimTime = if (canShootTarget) minOf(entity.maxAimTime, aimTime + 1) else 0
 
+        if (foliageHidden) {
+            entity.readyToCover = false
+            shootTimer.stop()
+            return
+        }
         entity.lookAt(target, 30f, 30f)
         // Rendered facing can lag behind aim while MoveControl turns the body along a path.
         entity.lookControl.setLookAt(target.x, target.eyeY, target.z)

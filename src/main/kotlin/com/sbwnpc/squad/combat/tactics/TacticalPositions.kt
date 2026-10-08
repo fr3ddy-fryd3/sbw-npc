@@ -186,7 +186,7 @@ object TacticalPositions {
         val mustShoot = requiresFiringLane(context, candidate)
         val aim = context.aim
         val firing = aim?.let {
-            !Sightline.blockedBy(level, eye, it.eye, entity, context.hulls) && DetectionSightline.visible(level, eye, it.eye, entity)
+            !Sightline.blockedBy(level, eye, it.eye, entity, context.hulls)
         } ?: true
         if (mustShoot && !firing) {
             search.reject("blocked_shot")
@@ -385,13 +385,14 @@ object TacticalPositions {
             hulls.none { it.intersects(body) } && !GrenadeHazard.threatens(entity.level() as ServerLevel, point) && !FiringSpots.crowded(point, taken)
     private fun friendlyLane(entity: NpcEntity, eye: Vec3, targetEye: Vec3?): Boolean = targetEye == null || FriendlyFireGuard.assess(entity, targetEye, entity.spread, targetEye, 0.0, eye).lineClear
 
+    /** Physical post suitability only; personal visibility must still authorize aimed fire at the weapon. */
     fun firingReady(entity: NpcEntity, task: TacticalTask, point: Vec3): Boolean {
         val aim = TacticalAim.resolve(entity, task) ?: return true
         val eye = point.add(0.0, entity.eyeHeight.toDouble(), 0.0)
         val level = entity.level() as ServerLevel
         val hulls = Sightline.vehicleHulls(level, AABB(eye, aim.eye).inflate(2.0), entity, entity.target)
         return !Sightline.blockedBy(level, eye, aim.eye, entity, hulls, entity.spread) &&
-            DetectionSightline.visible(level, eye, aim.eye, entity) && friendlyLane(entity, eye, aim.eye)
+            friendlyLane(entity, eye, aim.eye)
     }
     private const val MAX_PROBES_PER_TICK = 24
     private const val DENSE_CANDIDATE_BATCH = 16

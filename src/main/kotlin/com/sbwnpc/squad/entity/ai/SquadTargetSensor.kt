@@ -69,6 +69,10 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         // Observation continues while engaging a reported/ordered target; target priority cannot blind the squad.
         val directTarget = nearestDirectTarget(entity, level)
         val target = computeDesired(entity, level, directTarget)
+        // Capture sight loss before target selection can discard the personally observed enemy.
+        if (previous != null && entity.lastSeenFire.observed(previous.uuid)) {
+            entity.noticeHidden(previous, DetectionSightline.trace(entity, previous))
+        }
         BrainUtils.setTargetOfEntity(entity, target)
         if (DebugFlags.on(LogGroup.ORDER) && previous?.uuid != target?.uuid) {
             val squad = entity.currentSquad()
