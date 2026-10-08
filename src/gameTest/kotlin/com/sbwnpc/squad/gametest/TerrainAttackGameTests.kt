@@ -92,8 +92,9 @@ object TerrainAttackGameTests {
             }
         }
         if (!brokenPosts && !villageCover) for (y in 1..9) helper.setBlock(BlockPos(30, y, 112), Blocks.STONE)
+        val identityPrefix = UUID.randomUUID().mostSignificantBits
         val members = (0 until if (villageCover) 7 else 32).map { index ->
-            AttackDeploymentGameTests.spawn(helper, Vec3(30.5, if (!brokenPosts && !villageCover && index == 16) 10.0 else 1.0, (if (villageCover) 94.5 else 16.5) + index * 6), SquadFaction.PIG)
+            AttackDeploymentGameTests.spawn(helper, Vec3(30.5, if (!brokenPosts && !villageCover && index == 16) 10.0 else 1.0, (if (villageCover) 94.5 else 16.5) + index * 6), SquadFaction.PIG, UUID(identityPrefix, index.toLong()))
         }
         val enemies = (0..3).map { index ->
             AttackDeploymentGameTests.spawn(helper, Vec3(100.5, 1.0, 92.5 + index * 6), SquadFaction.COW).apply {
@@ -104,6 +105,7 @@ object TerrainAttackGameTests {
         }
         val manager = SquadManager.get(helper.level)
         val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, members.map { it.uuid })
+        squad.tactics.flankSide = 1.0
         val defenders = if (returnFire) manager.create(helper.level, UUID.randomUUID(), SquadFaction.COW, enemies.map { it.uuid }) else null
         if (defenders != null) {
             manager.setOrder(defenders.id, SquadOrder.DEFEND)

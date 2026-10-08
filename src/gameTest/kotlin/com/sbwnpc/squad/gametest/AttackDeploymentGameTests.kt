@@ -154,8 +154,19 @@ object AttackDeploymentGameTests {
         }
     }
 
-    internal fun spawn(helper: GameTestHelper, at: Vec3, faction: SquadFaction): NpcEntity =
-        helper.spawn(ModEntities.NPC.get(), at).apply {
+    internal fun spawn(helper: GameTestHelper, at: Vec3, faction: SquadFaction, identity: UUID? = null): NpcEntity {
+        val entity = if (identity == null) {
+            helper.spawn(ModEntities.NPC.get(), at)
+        } else {
+            ModEntities.NPC.get().create(helper.level)!!.apply {
+                uuid = identity
+                setPersistenceRequired()
+                val point = helper.absoluteVec(at)
+                moveTo(point.x, point.y, point.z, yRot, xRot)
+                check(helper.level.addFreshEntity(this)) { "Fixture entity could not be added to the server" }
+            }
+        }
+        return entity.apply {
             npcClass = NpcClass.RIFLEMAN
             npcRank = NpcRank.DEFAULT
             spawnFaction = faction
@@ -167,4 +178,5 @@ object AttackDeploymentGameTests {
             yRot = -90.0f
             yHeadRot = -90.0f
         }
+    }
 }
