@@ -99,7 +99,7 @@ class SquadTacticalState(
     private fun selectPlan(choice: TacticalChoice, stamp: Int, now: Long): Boolean {
         val old = plan
         val decision = if (threats.allows(old, choice, stamp, now)) {
-            TacticalSelectionPolicy.evaluate(old, choice, stamp, now, registry)
+            TacticalSelectionPolicy.evaluate(old, choice, stamp, now, registry, snapshot)
         } else {
             TacticalSelection.Keep(TacticalSelectionHold.THREAT_CONFIRMATION)
         }

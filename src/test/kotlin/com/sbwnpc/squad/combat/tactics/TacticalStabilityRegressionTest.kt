@@ -13,6 +13,39 @@ class TacticalStabilityRegressionTest {
     private val members = (0L..15L).map { TacticalMember(UUID(0, it), origin.add(0.0, 0.0, it.toDouble()), canFire = true, firingAt = enemy) }
     private fun view(now: Long = 0) = TacticalSnapshot(now, SquadOrder.ATTACK, 1, origin, enemy, members, listOf(TacticalContact(UUID(1, 1), enemy, now)))
 
+    @Test fun `a resumed advance waits for local firing recovery but stalls and emergencies release it`() {
+        var choice = TacticalChoice(TacticalPattern.REORIENT, enemy)
+        val state = SquadTacticalState(decisions = TacticalDecisionPolicy { choice })
+        state.assess(squad, view())
+        val plan = state.plan!!
+        val task = plan.tasks.getValue(members.first().id)
+        task.localFirePost = origin
+        task.position = origin.add(12.0, 0.0, 0.0)
+        task.lastProgress = 90
+        choice = TacticalChoice(TacticalPattern.BOUND, enemy)
+        state.assess(squad, view(120))
+        assertSame(plan, state.plan)
+        assertSame(task, state.plan!!.tasks[members.first().id])
+        task.lastProgress = 160
+        state.assess(
+            squad,
+            view(200).copy(
+                members = members.mapIndexed { index, member ->
+                    if (index == 0) member.copy(position = origin.add(4.0, 0.0, 0.0)) else member
+                },
+            ),
+        )
+        assertSame(plan, state.plan)
+        val danger = TacticalChoice(TacticalPattern.EVADE, enemy, emergency = true, reason = TacticalReason.GRENADE_DANGER)
+        assertTrue(TacticalSelectionPolicy.evaluate(plan, danger, 1, 210, TacticalStates.registry, view(210)) is TacticalSelection.Replace)
+        assertTrue(TacticalSelectionPolicy.evaluate(plan, choice, 2, 210, TacticalStates.registry, view(210)) is TacticalSelection.Replace)
+        task.lastProgress = 590
+        assertTrue(TacticalSelectionPolicy.evaluate(plan, choice, 1, 600, TacticalStates.registry, view(600)) is TacticalSelection.Replace)
+        task.lastProgress = 160
+        state.assess(squad, view(260))
+        assertNotSame(plan, state.plan, "A stationary recovery must not hold the squad indefinitely")
+    }
+
     @Test fun `suppression around half the squad cannot alternate withdrawal and reorientation`() {
         val state = SquadTacticalState()
         fun battle(now: Long, suppressed: Int) =
