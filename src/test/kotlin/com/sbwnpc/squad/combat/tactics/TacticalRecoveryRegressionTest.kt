@@ -19,6 +19,30 @@ class TacticalRecoveryRegressionTest {
             listOf(TacticalContact(UUID(1, 1), focus, now)),
         )
 
+    @Test fun `a phase assignment keeps an ongoing cover recovery when line height changes`() {
+        val events = mutableListOf<TacticalEvent>()
+        val plan = TacticalPlan(1, TacticalPattern.FLANK, focus, 0, 1, events = TacticalEventSink(events::add))
+        val initial = view()
+        val squad = UUID(2, 2)
+        TacticalCoordinator.assign(squad, plan, initial)
+        val (id, task) = plan.tasks.entries.first { it.value.job == TacticalJob.COVER }
+        val member = initial.members.first { it.id == id }
+        task.localFirePost = member.position
+        task.expandedFireSearch = true
+        task.position = member.position.add(0.0, 0.0, 4.0)
+        task.lastProgress = 20
+        val next = initial.copy(now = 30, center = initial.center.add(0.0, 0.25, 0.0))
+        (plan.behavior as CoveredManeuverState).advanceFront(TacticalContext(squad, plan, next), next.center)
+        plan.behavior.assign(TacticalContext(squad, plan, next), retainCover = true, trigger = "movement_started")
+        assertSame(task, plan.tasks[id], "Another wave starting must not cancel this shooter's local route")
+        assertTrue(events.filterIsInstance<TacticalEvent.TaskReleased>().none { it.member == id })
+        task.position = null
+        task.search = TacticalPositionSearch(member.position, listOf(member.position.add(0.0, 0.0, 8.0))).apply { probeIndex = 1 }
+        plan.behavior.assign(TacticalContext(squad, plan, next.copy(now = 40)), retainCover = true, trigger = "next_movement_group")
+        assertSame(task, plan.tasks[id], "Budgeted post search must continue across the phase")
+        assertEquals(1, task.search!!.probeIndex)
+    }
+
     @Test fun `late support exchanges only the two roles and preserves every other task`() {
         val events = mutableListOf<TacticalEvent>()
         val state = SquadTacticalState(TacticalEventSink(events::add))

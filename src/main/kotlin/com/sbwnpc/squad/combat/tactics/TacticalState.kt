@@ -101,8 +101,10 @@ abstract class TacticalState {
             val intent = task(layout, member, index)
             val next = layout.applyRoles(member, index, intent)
             val previous = context.plan.tasks[member.id]
+            val recovering = previous?.localFireRecovery == true && (previous.position != null || previous.search != null)
+            val holding = member.grounded && TacticalEvidence.covers(member, previous) && TacticalEvidence.settled(member, previous)
             desired[member.id] = if (retainCover && previous?.job == next.job && next.job in TacticalJob.FIRE_SUPPORT &&
-                member.grounded && TacticalEvidence.covers(member, previous) && TacticalEvidence.settled(member, previous)
+                (recovering || holding)
             ) {
                 previous
             } else {
