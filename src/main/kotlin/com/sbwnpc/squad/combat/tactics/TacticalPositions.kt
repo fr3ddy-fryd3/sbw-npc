@@ -221,6 +221,9 @@ object TacticalPositions {
         if (context.deployment) {
             return TacticalPositionScore(false, 0, candidate.subtract(context.task.frontage!!.point).horizontalDistance())
         }
+        if (context.task.job == TacticalJob.FLANK && context.covered && !mustShoot) {
+            return TacticalPositionScore.coveredFlankStep(context.entity.position(), context.task.anchor, candidate)
+        }
         var score = candidate.distanceTo(context.localAnchor) + candidate.distanceTo(context.entity.position())
         if (firing && mustShoot) score -= 8.0
         if (context.task.expandedFireSearch) {
