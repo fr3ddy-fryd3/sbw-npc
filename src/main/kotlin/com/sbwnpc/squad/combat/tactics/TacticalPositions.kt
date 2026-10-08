@@ -117,11 +117,13 @@ object TacticalPositions {
     /** The probe cursor advances before validation, including rejected candidates. */
     private fun collectCandidates(context: SearchContext): Boolean {
         val search = context.search
+        if (search.destinations != null) return true
         var probesThisTick = 0
         while (search.probeIndex < search.probes.size) {
             if (!TickBudget.hasRaycasts(context.level) || probesThisTick++ >= MAX_PROBES_PER_TICK) return false
             val raw = search.probes[search.probeIndex++]
             scoreCandidate(context, raw)
+            if (search.denseRecovery && search.scored.size >= DENSE_CANDIDATE_BATCH) return true
         }
         return true
     }
@@ -264,6 +266,22 @@ object TacticalPositions {
             }
             search.destinationIndex++
         }
+        if (search.denseRecovery && search.probeIndex < search.probes.size) {
+            search.clearCandidates()
+            return Result(Outcome.DEFERRED)
+        }
+        if (task.expandedFireSearch && search.extendRecovery(task.localFirePost!!)) {
+            DebugFlags.log(
+                LogGroup.ORDER,
+                "[tactics] {} plan={} event=fire_post_dense_search origin={} radius={} probes={}",
+                entity.uuid,
+                task.plan,
+                task.localFirePost,
+                TacticalFirePosts.RECOVERY_RADIUS,
+                search.probes.size,
+            )
+            return Result(Outcome.DEFERRED)
+        }
         task.search = null
         return Result(Outcome.UNREACHABLE, rejections = search.rejections.toMap())
     }
@@ -358,7 +376,7 @@ object TacticalPositions {
         } && friendlyLane(entity, point.add(0.0, entity.eyeHeight.toDouble(), 0.0), TacticalAim.resolve(entity, task)?.eye)
 
     private fun finish(task: TacticalTask, point: Vec3, allowDepthAdjustment: Boolean = false, maneuverPost: Boolean = false): Result {
-        if (allowDepthAdjustment && task.frontage?.contains(point) == false) task.localFirePost = task.frontage!!.point
+        if (allowDepthAdjustment && !task.expandedFireSearch && task.frontage?.contains(point) == false) task.localFirePost = task.frontage!!.point
         task.search = null
         return Result(Outcome.FOUND, point, maneuverPost = maneuverPost)
     }
@@ -376,6 +394,7 @@ object TacticalPositions {
             DetectionSightline.visible(level, eye, aim.eye, entity) && friendlyLane(entity, eye, aim.eye)
     }
     private const val MAX_PROBES_PER_TICK = 24
+    private const val DENSE_CANDIDATE_BATCH = 16
     private val SHOOTING_JOBS = TacticalJob.FIRING_POSITIONS
     private val RUNNING_JOBS = TacticalJob.RUNNING
     private val OFFSETS = listOf(

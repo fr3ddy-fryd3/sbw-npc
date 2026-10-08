@@ -9,6 +9,15 @@ import kotlin.math.sin
 object TacticalFirePosts {
     const val RECOVERY_RADIUS = 24.0
 
+    /** Nearby candidates come first so a reachable gap can be used before scanning the disk. */
+    fun denseProbes(anchor: Vec3): List<Vec3> {
+        val radius = RECOVERY_RADIUS.toInt()
+        return (-radius..radius).flatMap { x ->
+            (-radius..radius).filter { z -> x * x + z * z <= radius * radius }
+                .map { z -> Vec3(x.toDouble(), 0.0, z.toDouble()) }
+        }.sortedBy { it.lengthSqr() }.map { anchor.add(it) }
+    }
+
     fun probes(anchor: Vec3, recovery: Boolean = false): List<Vec3> =
         buildSet {
             add(anchor)

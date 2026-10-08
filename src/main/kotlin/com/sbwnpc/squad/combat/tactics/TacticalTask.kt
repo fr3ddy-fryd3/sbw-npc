@@ -84,13 +84,32 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
 }
 
 /** Keeps progress across tick budgets, including candidates after an unreachable first choice. */
-class TacticalPositionSearch(val origin: Vec3, val probes: List<Vec3>, val aim: TacticalAim? = null, val deployment: Boolean = false) {
+class TacticalPositionSearch(val origin: Vec3, probes: List<Vec3>, val aim: TacticalAim? = null, val deployment: Boolean = false) {
+    var probes = probes
+        private set
+    var denseRecovery = false
+        private set
     var probeIndex = 0
     val scored = LinkedHashMap<Vec3, TacticalPositionScore>()
     val visited = HashSet<Vec3>()
     var destinations: List<Vec3>? = null
     var destinationIndex = 0
     val rejections = LinkedHashMap<String, Int>()
+
+    /** Exhaust the cheap rings first, then inspect block-sized gaps within the same radius. */
+    fun extendRecovery(post: Vec3): Boolean {
+        if (denseRecovery) return false
+        denseRecovery = true
+        probes = probes + TacticalFirePosts.denseProbes(post)
+        clearCandidates()
+        return true
+    }
+
+    fun clearCandidates() {
+        scored.clear()
+        destinations = null
+        destinationIndex = 0
+    }
 
     fun needsRestart(position: Vec3, currentAim: TacticalAim?, deployment: Boolean = this.deployment): Boolean {
         if (this.deployment != deployment) return true
