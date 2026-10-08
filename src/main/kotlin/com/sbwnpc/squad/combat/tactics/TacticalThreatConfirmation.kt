@@ -7,7 +7,8 @@ class TacticalThreatConfirmation {
     private var lastSeen = Long.MIN_VALUE
 
     fun allows(old: TacticalPlan?, choice: TacticalChoice, stamp: Int, now: Long): Boolean {
-        val needsConfirmation = old != null && old.stamp == stamp && old.behavior.stability.committed &&
+        val needsConfirmation = old != null && old.stamp == stamp &&
+            (old.behavior.stability.committed || old.pattern == TacticalPattern.BREAK_CONTACT) &&
             old.status !in setOf(TacticalStatus.FAILED, TacticalStatus.COMPLETED) &&
             choice.pattern == TacticalPattern.REORIENT && choice.reason == TacticalReason.MULTIPLE_FRONTS
         if (!needsConfirmation) {

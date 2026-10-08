@@ -13,6 +13,30 @@ class TacticalStabilityRegressionTest {
     private val members = (0L..15L).map { TacticalMember(UUID(0, it), origin.add(0.0, 0.0, it.toDouble()), canFire = true, firingAt = enemy) }
     private fun view(now: Long = 0) = TacticalSnapshot(now, SquadOrder.ATTACK, 1, origin, enemy, members, listOf(TacticalContact(UUID(1, 1), enemy, now)))
 
+    @Test fun `suppression around half the squad cannot alternate withdrawal and reorientation`() {
+        val state = SquadTacticalState()
+        fun battle(now: Long, suppressed: Int) =
+            view(now).copy(
+                order = SquadOrder.DEFEND,
+                members = members.take(8).mapIndexed { index, member -> member.copy(suppressed = index < suppressed) },
+                peakStrength = 8,
+                contacts = listOf(TacticalContact(UUID(1, 1), enemy, now), TacticalContact(UUID(1, 2), origin.add(-80.0, 0.0, 0.0), now)),
+            )
+        state.assess(squad, battle(0, 4))
+        val withdrawal = state.plan!!
+        assertEquals(TacticalPattern.BREAK_CONTACT, withdrawal.pattern)
+        for (now in 10L..100L step 10) {
+            state.assess(squad, battle(now, if (now % 20L == 0L) 4 else 3))
+            assertSame(withdrawal, state.plan, "Suppression jitter must preserve assignments")
+        }
+        for (now in 110L..140L step 10) {
+            state.assess(squad, battle(now, 1))
+            assertSame(withdrawal, state.plan, "Recovery needs sustained evidence")
+        }
+        state.assess(squad, battle(150, 1))
+        assertEquals(TacticalPattern.REORIENT, state.plan!!.pattern)
+    }
+
     @Test fun `a one frame angle change cannot cancel a committed flank but sustained rear threats can`() {
         val events = mutableListOf<TacticalEvent>()
         val state = SquadTacticalState(TacticalEventSink(events::add))

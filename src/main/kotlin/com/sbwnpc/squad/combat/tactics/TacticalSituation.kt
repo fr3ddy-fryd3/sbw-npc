@@ -15,7 +15,10 @@ internal class TacticalSituation(val view: TacticalSnapshot) {
     val hasRockets get() = fighters.any { it.rockets }
     val hasTooFewAttackers get() = fighters.count { it.role != NpcClass.MEDIC } < 2
     val lostHalfStrength get() = fighters.size < maxOf(1, view.peakStrength / 2)
-    val majoritySuppressed get() = view.members.count { it.suppressed } * 2 >= view.members.size
+
+    // Enter withdrawal at half suppressed; leave only below a quarter, not at the same threshold.
+    val majoritySuppressed get() = view.members.count { it.suppressed } * (if (view.suppressionWithdrawal) 4 else 2) >= view.members.size
+
     val firstArmouredContact get() = visible.firstOrNull { it.armoured || it.airborne }
 
     fun attackedFromMultipleFronts(): Boolean {

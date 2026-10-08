@@ -47,6 +47,8 @@ class SquadTacticalState(
         val regrouping = reorganization.observe(view)
         val decisionView = view.copy(
             regrouping = regrouping,
+            suppressionWithdrawal = old?.pattern == TacticalPattern.BREAK_CONTACT && old.stamp == view.stamp &&
+                old.status !in setOf(TacticalStatus.FAILED, TacticalStatus.COMPLETED),
             threatOrigin = old?.origin?.takeIf { view.offensive && old.behavior.stability.committed },
         )
         snapshot = decisionView
