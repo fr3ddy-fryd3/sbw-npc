@@ -24,7 +24,8 @@ abstract class CoveredManeuverState : TacticalState() {
         context.plan.events.emit(TacticalEvent.FrontAdvanced(context.plan.id, context.view.now, point))
     }
 
-    override fun extendsPreparation(now: Long): Boolean = phases.current.id == TacticalPhase.PREPARING && deployment.holdingPreparation(now)
+    // This phase owns its deployment/readiness deadlines. The global plan lifetime still applies.
+    override fun extendsPreparation(now: Long): Boolean = phases.current.id == TacticalPhase.PREPARING
 
     override fun beforeTick(context: TacticalContext) {
         if (context.plan.phase == TacticalPhase.PREPARING) promoteLateSupport(context)

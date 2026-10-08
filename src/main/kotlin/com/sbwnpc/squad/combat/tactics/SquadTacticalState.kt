@@ -5,6 +5,7 @@ import java.util.UUID
 
 fun interface TacticalDecisionPolicy {
     fun choose(view: TacticalSnapshot): TacticalChoice
+    fun alternative(view: TacticalSnapshot, blocked: Set<TacticalPattern>): TacticalChoice? = null
 }
 
 data class TacticalAssessment(val proposed: TacticalChoice, val effective: TacticalChoice, val selected: Boolean, val changed: Boolean)
@@ -59,7 +60,9 @@ class SquadTacticalState(
         }
         val proposed = decisions.choose(decisionView)
         val effective = if (proposed.pattern != TacticalPattern.EVADE && view.now < (blocked[proposed.pattern] ?: Long.MIN_VALUE)) {
-            TacticalChoice(
+            val unavailable = blocked.filterValues { view.now < it }.keys
+            val alternative = if (proposed.pattern == TacticalPattern.ATTACK_HEIGHT) decisions.alternative(decisionView, unavailable) else null
+            alternative ?: TacticalChoice(
                 if (view.visible.isNotEmpty() || regrouping) TacticalPattern.REORIENT else TacticalPattern.FOLLOW_ORDER,
                 proposed.focus,
                 reason = TacticalReason.PATTERN_COOLDOWN,
@@ -71,6 +74,7 @@ class SquadTacticalState(
         val retainDefence = !movedHome && old?.stamp == view.stamp && old.behavior.supportsDefensiveOverwatch
         val selected = select(effective, view.stamp, view.now)
         if (selected) {
+            if (effective != proposed) events.emit(TacticalEvent.AlternativeChosen(plan!!.id, view.now, proposed.pattern, effective))
             plan?.let {
                 TacticalCoordinator.assign(squad, it, view, this)
                 if (retainDefence) DefensiveOverwatch.preservePosts(it, previous, view)

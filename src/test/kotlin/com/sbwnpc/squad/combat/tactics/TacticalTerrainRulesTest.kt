@@ -120,7 +120,68 @@ class TacticalTerrainRulesTest {
         val plan = state.plan
         assertFalse(state.select(choice, 1, 300))
         assertSame(plan, state.plan)
-        assertTrue(state.select(choice, 1, 480))
+        assertFalse(state.select(choice, 1, 480))
+        assertTrue(state.select(choice, 1, 1200))
+    }
+
+    @Test fun `a majority that climbed keeps the front while a timed out straggler is released`() {
+        val state = SquadTacticalState()
+        val initial = view(90.0).copy(contacts = listOf(TacticalContact(UUID(2, 1), Vec3(200.0, 90.0, 0.0), 0)))
+        state.select(TacticalRules.choose(initial), 1, 0)
+        val plan = state.plan!!
+        TacticalCoordinator.assign(UUID(0, 2), plan, initial)
+        settleCover(plan)
+        TacticalCoordinator.advance(UUID(0, 2), state, plan, initial.assumingFrontArrival(plan))
+        val movers = plan.tasks.filterValues { it.job == TacticalJob.ADVANCE }.keys
+        val straggler = movers.last()
+        val partial = initial.copy(
+            now = 401,
+            contacts = initial.contacts.map { it.copy(seenAt = 401) },
+            members = initial.members.map { member ->
+                val task = plan.tasks.getValue(member.id)
+                if (member.id in movers && member.id != straggler) {
+                    task.position = task.anchor
+                    member.copy(position = task.anchor)
+                } else {
+                    member
+                }
+            },
+        )
+        TacticalCoordinator.advance(UUID(0, 2), state, plan, partial)
+        assertEquals(TacticalPhase.PREPARING, plan.phase)
+        assertEquals(1, plan.bounds)
+        assertEquals(setOf(straggler), plan.failedMembers)
+        assertFalse(straggler in plan.tasks)
+        assertTrue((plan.behavior as HeightAttackState).front!!.y > initial.center.y)
+    }
+
+    @Test fun `an uphill wave without any remaining movers fails instead of looping`() {
+        val state = SquadTacticalState()
+        val initial = view(90.0)
+        state.select(TacticalRules.choose(initial), 1, 0)
+        val plan = state.plan!!
+        TacticalCoordinator.assign(UUID(0, 2), plan, initial)
+        settleCover(plan)
+        TacticalCoordinator.advance(UUID(0, 2), state, plan, initial.assumingFrontArrival(plan))
+        plan.tasks.filterValues { it.job == TacticalJob.ADVANCE }.keys.toList().forEach { TacticalCoordinator.abandon(plan, it, 10) }
+        TacticalCoordinator.advance(UUID(0, 2), state, plan, initial.copy(now = 20))
+        assertEquals(TacticalFailure.PARTIAL_MANEUVER, plan.failure)
+    }
+
+    @Test fun `a failed height approach selects a different applicable maneuver without ignoring emergencies`() {
+        val state = SquadTacticalState()
+        val initial = view(90.0).copy(stalled = true)
+        state.assess(UUID(0, 2), initial)
+        assertEquals(TacticalPattern.ATTACK_HEIGHT, state.plan!!.pattern)
+        state.fail(20, TacticalFailure.MOVEMENT_TIMEOUT)
+        val changed = state.assess(UUID(0, 2), initial.copy(now = 30, contacts = initial.contacts.map { it.copy(seenAt = 30) }))
+        assertEquals(TacticalPattern.ATTACK_HEIGHT, changed.proposed.pattern)
+        assertEquals(TacticalPattern.DISLODGE, changed.effective.pattern)
+        assertEquals(TacticalPattern.DISLODGE, state.plan!!.pattern)
+        state.assess(UUID(0, 2), initial.copy(now = 40, grenade = true))
+        assertEquals(TacticalPattern.EVADE, state.plan!!.pattern)
+        state.assess(UUID(0, 2), initial.copy(now = 50, stamp = 2, order = SquadOrder.RETREAT))
+        assertEquals(TacticalPattern.FOLLOW_ORDER, state.plan!!.pattern)
     }
 
     @Test fun `a ridge hiding the last seen enemy does not reduce the uphill attack to two searchers`() {

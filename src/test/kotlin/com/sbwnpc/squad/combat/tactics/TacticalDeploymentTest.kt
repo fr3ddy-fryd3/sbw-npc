@@ -127,6 +127,32 @@ class TacticalDeploymentTest {
         assertFalse(plan.tasks.values.any { it.job == TacticalJob.FLANK })
     }
 
+    @Test fun `normal assessment lets late height deployment finish readiness before replacing the plan`() {
+        val focus = enemy.add(0.0, 30.0, 0.0)
+        val initial = view().copy(members = view().members.take(8), contacts = listOf(TacticalContact(UUID(1, 1), focus, 0)))
+        val state = SquadTacticalState(decisions = TacticalDecisionPolicy { TacticalChoice(TacticalPattern.ATTACK_HEIGHT, focus) })
+        state.assess(squad, initial)
+        val plan = state.plan!!
+        fun deployedAt(now: Long, fraction: Double) =
+            initial.copy(
+                now = now,
+                contacts = initial.contacts.map { it.copy(seenAt = now) },
+                members = initial.members.mapIndexed { index, member ->
+                    member.copy(position = origin.add(0.0, 0.0, (index - 3.5) * 6.0 * fraction))
+                },
+            )
+        for (now in 80L..400L step 80) state.assess(squad, deployedAt(now, now / 440.0))
+        state.assess(squad, deployedAt(440, 1.0))
+        state.assess(squad, deployedAt(480, 1.0))
+        assertSame(plan, state.plan, "The selection deadline must respect the state's bounded readiness wait")
+        assertEquals(TacticalPhase.PREPARING, plan.phase)
+        state.assess(squad, deployedAt(580, 1.0))
+        assertSame(plan, state.plan)
+        state.assess(squad, deployedAt(590, 1.0))
+        assertEquals(TacticalPhase.FAILED, plan.phase)
+        assertEquals(TacticalFailure.COVER_NOT_READY_TIMEOUT, plan.failure)
+    }
+
     @Test fun `cover readiness gets its bounded wait after deployment and settling`() {
         val focus = enemy.add(0.0, 8.0, 0.0)
         val initial = view().copy(members = view().members.take(8), contacts = listOf(TacticalContact(UUID(1, 1), focus, 0)))

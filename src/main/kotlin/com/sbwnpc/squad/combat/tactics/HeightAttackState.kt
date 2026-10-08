@@ -71,13 +71,37 @@ class HeightAttackState : CoveredManeuverState() {
     }
 
     override fun readyWithoutCover(context: TacticalContext): Boolean = context.view.visible.isEmpty()
+
+    override fun noMovers(context: TacticalContext) {
+        context.fail(TacticalFailure.PARTIAL_MANEUVER)
+    }
+
+    override fun movementTimedOut(context: TacticalContext, movers: List<TacticalMember>) {
+        val settled = movers.filter { TacticalEvidence.settled(it, context.plan.tasks[it.id]) }
+        val arrivedFront = settled.takeIf { it.isNotEmpty() }?.let(::groupCenter)
+        val baseline = front ?: origin ?: context.view.center
+        val uphill = (context.plan.focus ?: baseline).subtract(baseline).multiply(1.0, 0.0, 1.0).normalize()
+        val progressed = bounds % 2 == 1 || arrivedFront?.subtract(baseline)?.dot(uphill)?.let { it >= 1.0 } == true
+        if (settled.size < (movers.size + 1) / 2 || !progressed) {
+            context.fail(TacticalFailure.MOVEMENT_TIMEOUT)
+            return
+        }
+        val stragglers = movers.filter { it !in settled }
+        context.plan.events.emit(TacticalEvent.WaveReduced(context.plan.id, context.view.now, bounds, settled.map { it.id }, stragglers.map { it.id }))
+        stragglers.forEach { context.tasks.abandon(it.id, context.view.now, "height_wave_timeout") }
+        arrived(context, settled)
+    }
+
+    private fun groupCenter(members: List<TacticalMember>) =
+        Vec3(
+            members.map { it.position.x }.sorted()[members.size / 2],
+            members.map { it.position.y }.sorted()[members.size / 2],
+            members.map { it.position.z }.sorted()[members.size / 2],
+        )
+
     override fun arrived(context: TacticalContext, movers: List<TacticalMember>) {
         if (bounds % 2 == 0) {
-            front = Vec3(
-                movers.map { it.position.x }.sorted()[movers.size / 2],
-                movers.map { it.position.y }.sorted()[movers.size / 2],
-                movers.map { it.position.z }.sorted()[movers.size / 2],
-            )
+            front = groupCenter(movers)
         }
         bounds++
         val point = front!!

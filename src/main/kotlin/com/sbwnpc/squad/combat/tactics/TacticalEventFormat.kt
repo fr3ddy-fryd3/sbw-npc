@@ -6,6 +6,10 @@ object TacticalEventFormat {
         when (event) {
             is TacticalEvent.FrontAdvanced -> "event=front_advanced position=${event.position} reason=blocked_firing_lanes"
 
+            is TacticalEvent.AlternativeChosen -> "event=pattern_fallback blocked=${event.blocked} alternative=${event.choice.pattern} reason=${event.choice.reason}"
+
+            is TacticalEvent.WaveReduced -> "event=height_wave_reduced bound=${event.bound} arrived=${event.arrived} released=${event.released} reason=movement_timeout"
+
             is TacticalEvent.ReorganizationChanged ->
                 "event=reorganization_episode active=${event.active} origin=${event.origin} capable=${event.capable} peak=${event.peak} baseline=${event.baseline}"
 

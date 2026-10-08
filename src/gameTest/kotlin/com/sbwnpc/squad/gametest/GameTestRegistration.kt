@@ -19,6 +19,7 @@ object GameTestRegistration {
             HearingGameTests::class.java,
             FlankCombatGameTests::class.java,
             TacticalExecutionGameTests::class.java,
+            HeightAttackGameTests::class.java,
         )
         val methods = classes.flatMap { it.declaredMethods.toList() }.filter { it.isAnnotationPresent(GameTest::class.java) }
         val selected = System.getProperty("sbwnpc.gameTestFilter", "").split(',').filter { it.isNotBlank() }.toSet()

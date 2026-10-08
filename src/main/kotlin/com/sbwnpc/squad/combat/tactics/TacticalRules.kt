@@ -25,12 +25,17 @@ object TacticalRules : TacticalDecisionPolicy {
         TacticalDecisionRules::flankCompactEnemy,
     )
 
-    override fun choose(view: TacticalSnapshot): TacticalChoice {
+    override fun choose(view: TacticalSnapshot): TacticalChoice = chooseAvailable(view, emptySet())!!
+
+    override fun alternative(view: TacticalSnapshot, blocked: Set<TacticalPattern>): TacticalChoice? = chooseAvailable(view, blocked)
+
+    private fun chooseAvailable(view: TacticalSnapshot, blocked: Set<TacticalPattern>): TacticalChoice? {
         val situation = TacticalSituation(view)
         for (rule in priorityOrder) {
             val choice = rule(situation)
-            if (choice != null) return choice
+            if (choice != null && choice.pattern !in blocked) return choice
         }
+        if (TacticalPattern.BOUND in blocked) return null
         return TacticalChoice(TacticalPattern.BOUND, situation.focus, reason = TacticalReason.NORMAL_ADVANCE)
     }
 
