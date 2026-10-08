@@ -49,6 +49,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var routeIndex = 0
     private var routeWaitUntil = 0
     private var moveAnchor: BlockPos? = null
+    private var assemblingMove = false
     private var orderStamp = -1
 
     /** A defender's chosen place — see [holdDefendPost]. Kept until the point or the order changes. */
@@ -191,7 +192,13 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
 
         val heading = home.subtract(assembly)
-        if (!squad.moveFormationReady) {
+        val assembling = !squad.moveFormationReady
+        if (assembling != assemblingMove) {
+            assemblingMove = assembling
+            // Every member switches destinations, including those that did not finish the rally.
+            repathCooldown = 0
+        }
+        if (assembling) {
             val rallySlot = SquadFormation.moveSlotTarget(entity, assembly, heading)
             moveToSlot(entity, rallySlot, fallIn = true)
             // The rally is for looks; it must never hold the order up. It used to wait for every
