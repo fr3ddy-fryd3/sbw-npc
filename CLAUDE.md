@@ -35,6 +35,8 @@ tested" as two different claims; see Workflow below.
 
 ## Workflow requirements
 
+- Read the local `TODO.md` at the start of a session and keep incoming tasks, status and evidence
+  there. It is intentionally excluded through `.git/info/exclude`; never stage or commit it.
 - Before implementing a feature, trace its callers and shared state through adjacent behaviors.
   Check the interactions it can affect (navigation, targeting, cover, weapon ownership, supply and
   role locks), not only its isolated happy path. Preserve existing contracts or explicitly test
