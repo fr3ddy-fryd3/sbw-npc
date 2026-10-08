@@ -35,6 +35,7 @@ class SquadTacticalState(
     private var selecting = false
     private val threats = TacticalThreatConfirmation()
     private val reorganization = TacticalReorganization()
+    internal val regroupHolding get() = reorganization.holding
 
     fun assess(squad: UUID, view: TacticalSnapshot): TacticalAssessment {
         val old = plan
@@ -44,6 +45,7 @@ class SquadTacticalState(
             snapshot!!.home!!.distanceTo(view.home) > 8.0
         if (movedHome) old?.complete(view.now, "defensive_home_changed")
         val wasRegrouping = reorganization.active
+        val previousBaseline = reorganization.baseline
         val regrouping = reorganization.observe(view)
         val decisionView = view.copy(
             regrouping = regrouping,
@@ -52,8 +54,8 @@ class SquadTacticalState(
             threatOrigin = old?.origin?.takeIf { view.offensive && old.behavior.stability.committed },
         )
         snapshot = decisionView
-        if (wasRegrouping != regrouping) {
-            events.emit(TacticalEvent.ReorganizationChanged(old?.id ?: 0, view.now, regrouping, reorganization.origin, view.fighting.size, view.peakStrength))
+        if (wasRegrouping != regrouping || previousBaseline != reorganization.baseline) {
+            events.emit(TacticalEvent.ReorganizationChanged(old?.id ?: 0, view.now, regrouping, reorganization.origin, view.fighting.size, view.peakStrength, reorganization.baseline))
         }
         val proposed = decisions.choose(decisionView)
         val effective = if (proposed.pattern != TacticalPattern.EVADE && view.now < (blocked[proposed.pattern] ?: Long.MIN_VALUE)) {
@@ -76,6 +78,12 @@ class SquadTacticalState(
         }
         plan?.let { TacticalCoordinator.advance(squad, this, it, view) }
         return TacticalAssessment(proposed, effective, selected, selected || plan?.phase != oldPhase || plan?.bounds != oldBounds)
+    }
+
+    internal fun settleReorganization(view: TacticalSnapshot) {
+        if (reorganization.settle(view)) {
+            events.emit(TacticalEvent.ReorganizationChanged(plan?.id ?: 0, view.now, reorganization.active, reorganization.origin, view.fighting.size, view.peakStrength, reorganization.baseline))
+        }
     }
 
     fun select(choice: TacticalChoice, stamp: Int, now: Long): Boolean {

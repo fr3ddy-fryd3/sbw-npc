@@ -60,7 +60,12 @@ class ReorganizeState : WithdrawalState() {
     override val stability = TacticalStability(carriesOrigin = true, keepsThreatSector = true, expires = false)
     private val holding = HashSet<java.util.UUID>()
 
+    override fun onEnter(context: TacticalContext) {
+        if (context.owner?.regroupHolding == true) phases.transition(RegroupHoldingPhase(), context, "regroup_hold_restored")
+    }
+
     override fun task(layout: TacticalLayout, member: TacticalMember, index: Int): TacticalTask {
+        if (layout.plan.phase == TacticalPhase.HOLDING) return layout.cover(member)
         if (member.position.distanceTo(origin!!) >= 30.0) holding.add(member.id)
         return if (member.id in holding) layout.cover(member) else super.task(layout, member, index)
     }
@@ -68,7 +73,11 @@ class ReorganizeState : WithdrawalState() {
     override fun holdMovers(context: TacticalContext, movers: List<TacticalMember>, reason: String) {
         holding.addAll(movers.map { it.id })
         super.holdMovers(context, movers, reason)
+        context.owner?.settleReorganization(context.view)
+        phases.transition(RegroupHoldingPhase(), context, reason)
     }
+
+    override fun noMovers(context: TacticalContext) = holdMovers(context, emptyList(), "regroup_no_movers_hold")
 
     override fun movementTimedOut(context: TacticalContext, movers: List<TacticalMember>) {
         holdMovers(context, movers, "regroup_movement_timeout_hold")

@@ -17,6 +17,7 @@ sealed interface TacticalEvent {
         val origin: Vec3?,
         val capable: Int,
         val peak: Int,
+        val baseline: Int = peak,
     ) : TacticalEvent
 
     data class PlanSelected(

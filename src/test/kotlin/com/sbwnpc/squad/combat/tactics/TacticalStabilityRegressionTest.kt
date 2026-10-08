@@ -155,9 +155,44 @@ class TacticalStabilityRegressionTest {
         state.assess(squad, low.copy(now = 210, contacts = low.contacts.map { it.copy(seenAt = 210) }))
         assertSame(plan, state.plan)
         assertEquals(TacticalFailure.NONE, plan.failure)
+        assertEquals("HOLDING", plan.phase.name)
         movers.forEach { assertEquals(TacticalJob.COVER, plan.tasks[it]?.job) }
         state.assess(squad, low.copy(now = 220, contacts = low.contacts.map { it.copy(seenAt = 220) }))
         movers.forEach { assertEquals(TacticalJob.COVER, plan.tasks[it]?.job) }
+    }
+
+    @Test fun `survivors finish regrouping without requiring dead members to return`() {
+        val state = SquadTacticalState()
+        fun battle(now: Long) = view(now).copy(members = members.take(7), peakStrength = 16)
+        state.assess(squad, battle(0))
+        state.assess(squad, battle(40))
+        state.assess(squad, battle(210))
+        assertEquals("HOLDING", state.plan!!.phase.name)
+        val survivors = battle(220).copy(members = members.take(3).mapIndexed { index, it -> it.copy(ready = index < 2) })
+        state.assess(squad, survivors)
+        state.assess(squad, survivors.copy(now = 320, contacts = view(320).contacts))
+        assertFalse(state.snapshot!!.regrouping!!)
+        assertNotEquals(TacticalPattern.REORGANIZE, state.plan!!.pattern)
+        state.assess(squad, survivors.copy(now = 500, contacts = view(500).contacts))
+        assertFalse(state.snapshot!!.regrouping!!, "Historical peak must not immediately start another withdrawal")
+    }
+
+    @Test fun `empty survivors settle instead of withdrawing forever and wait for ammunition`() {
+        val state = SquadTacticalState()
+        val empty = view().copy(members = members.take(3).map { it.copy(ready = false, canFire = false) }, peakStrength = 7)
+        state.assess(squad, empty)
+        state.assess(squad, empty.copy(now = 40, contacts = view(40).contacts))
+        state.assess(squad, empty.copy(now = 80, contacts = view(80).contacts))
+        state.assess(squad, empty.copy(now = 90, contacts = view(90).contacts))
+        assertEquals("HOLDING", state.plan!!.phase.name)
+        state.assess(squad, empty.copy(now = 1000, contacts = view(1000).contacts))
+        assertTrue(state.snapshot!!.regrouping!!)
+        assertEquals("HOLDING", state.plan!!.phase.name)
+        assertTrue(state.plan!!.tasks.values.all { it.job == TacticalJob.RESERVE })
+        state.assess(squad, empty.copy(now = 1010, grenade = true, contacts = view(1010).contacts))
+        assertEquals(TacticalPattern.EVADE, state.plan!!.pattern)
+        state.assess(squad, empty.copy(now = 1020, contacts = view(1020).contacts))
+        assertEquals("HOLDING", state.plan!!.phase.name, "Grenade evasion must not start another withdrawal")
     }
 
     @Test fun `an unreachable regrouping member cannot resume the attack when contacts disappear`() {

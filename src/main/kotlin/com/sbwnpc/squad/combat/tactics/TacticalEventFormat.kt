@@ -7,7 +7,7 @@ object TacticalEventFormat {
             is TacticalEvent.FrontAdvanced -> "event=front_advanced position=${event.position} reason=blocked_firing_lanes"
 
             is TacticalEvent.ReorganizationChanged ->
-                "event=reorganization_episode active=${event.active} origin=${event.origin} capable=${event.capable} peak=${event.peak}"
+                "event=reorganization_episode active=${event.active} origin=${event.origin} capable=${event.capable} peak=${event.peak} baseline=${event.baseline}"
 
             is TacticalEvent.PlanSelected ->
                 "event=plan_selected pattern=${event.choice.pattern} reason=${event.choice.reason} previousPlan=${event.previous} " +

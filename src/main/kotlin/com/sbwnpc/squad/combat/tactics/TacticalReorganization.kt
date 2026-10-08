@@ -11,6 +11,10 @@ class TacticalReorganization {
     private var stamp: Int? = null
     private var lowSince: Long? = null
     private var restoredSince: Long? = null
+    var baseline = 0
+        private set
+    var holding = false
+        private set
 
     fun observe(view: TacticalSnapshot): Boolean {
         if (stamp != view.stamp) {
@@ -19,8 +23,16 @@ class TacticalReorganization {
             origin = null
             lowSince = null
             restoredSince = null
+            baseline = view.peakStrength
+            holding = false
         }
-        val minimum = maxOf(1, view.peakStrength / 2)
+        // Reinforcements can raise capability again after a settled, smaller squad resumes work.
+        if (!active) baseline = maxOf(baseline, view.members.size)
+        if (holding && view.members.size < baseline) {
+            baseline = maxOf(1, view.members.size)
+            restoredSince = null
+        }
+        val minimum = maxOf(1, baseline / 2)
         val capable = view.fighting.size
         if (!active) {
             if (capable >= minimum || view.visible.isEmpty()) {
@@ -30,13 +42,15 @@ class TacticalReorganization {
             val since = lowSince ?: view.now.also { lowSince = it }
             if (view.members.size >= minimum && view.now - since < LOSS_CONFIRM_TICKS) return false
             active = true
+            holding = false
             origin = view.center
         }
-        val restored = capable >= maxOf(1, kotlin.math.ceil(view.peakStrength * 0.625).toInt())
+        val restored = capable >= maxOf(1, kotlin.math.ceil(baseline * 0.625).toInt())
         if (restored) {
             val since = restoredSince ?: view.now.also { restoredSince = it }
             if (view.now - since >= RECOVERY_CONFIRM_TICKS) {
                 active = false
+                holding = false
                 origin = null
                 lowSince = null
                 restoredSince = null
@@ -45,6 +59,16 @@ class TacticalReorganization {
             restoredSince = null
         }
         return active
+    }
+
+    /** Re-evaluate survivors only after physical withdrawal finishes, never during a transient role lock. */
+    fun settle(view: TacticalSnapshot): Boolean {
+        if (!active) return false
+        val changed = !holding || view.members.size < baseline
+        holding = true
+        baseline = maxOf(1, minOf(baseline, view.members.size))
+        restoredSince = null
+        return changed
     }
 
     companion object {

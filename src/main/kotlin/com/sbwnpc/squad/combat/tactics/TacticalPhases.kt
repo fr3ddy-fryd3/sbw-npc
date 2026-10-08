@@ -2,7 +2,7 @@ package com.sbwnpc.squad.combat.tactics
 
 import java.util.UUID
 
-enum class TacticalPhase { PREPARING, OPENING_LANE, EXECUTING, PAUSED, WITHDRAWING, COMPLETED, FAILED }
+enum class TacticalPhase { PREPARING, OPENING_LANE, EXECUTING, PAUSED, WITHDRAWING, HOLDING, COMPLETED, FAILED }
 
 /** Phase objects own temporary phase data. Only this machine commits a transition. */
 class TacticalPhaseMachine(private val owner: TacticalState) {
@@ -69,11 +69,12 @@ class TacticalPhaseMachine(private val owner: TacticalState) {
         if (from == TacticalPhase.COMPLETED || from == TacticalPhase.FAILED) return false
         if (to == TacticalPhase.COMPLETED || to == TacticalPhase.FAILED) return true
         return when (from) {
-            TacticalPhase.PREPARING -> to in setOf(TacticalPhase.EXECUTING, TacticalPhase.WITHDRAWING, TacticalPhase.OPENING_LANE)
+            TacticalPhase.PREPARING -> to in setOf(TacticalPhase.EXECUTING, TacticalPhase.WITHDRAWING, TacticalPhase.OPENING_LANE, TacticalPhase.HOLDING)
             TacticalPhase.OPENING_LANE -> to == TacticalPhase.PREPARING
             TacticalPhase.EXECUTING -> to in setOf(TacticalPhase.PREPARING, TacticalPhase.PAUSED, TacticalPhase.EXECUTING)
             TacticalPhase.PAUSED -> to == TacticalPhase.EXECUTING
-            TacticalPhase.WITHDRAWING -> to in setOf(TacticalPhase.PREPARING, TacticalPhase.WITHDRAWING)
+            TacticalPhase.WITHDRAWING -> to in setOf(TacticalPhase.PREPARING, TacticalPhase.WITHDRAWING, TacticalPhase.HOLDING)
+            TacticalPhase.HOLDING -> false
             TacticalPhase.COMPLETED, TacticalPhase.FAILED -> false
         }
     }
@@ -108,6 +109,11 @@ class WithdrawingPhase : TacticalPhaseState(TacticalPhase.WITHDRAWING, TacticalS
         if (from == TacticalPhase.PREPARING) context.state.lastCover = context.view.now
     }
     override fun tick(context: TacticalContext) = context.state.execute(context)
+}
+
+/** Withdrawal has ended; individual fire, cover and supply work continue at the settled posts. */
+class RegroupHoldingPhase : TacticalPhaseState(TacticalPhase.HOLDING, TacticalStatus.REGROUPING) {
+    override fun tick(context: TacticalContext) {}
 }
 
 class PausedPhase(private val activeSince: Long) : TacticalPhaseState(TacticalPhase.PAUSED, TacticalStatus.REGROUPING) {
