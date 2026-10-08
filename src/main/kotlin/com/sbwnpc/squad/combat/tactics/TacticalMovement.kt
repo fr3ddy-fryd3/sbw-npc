@@ -284,13 +284,18 @@ object TacticalMovement {
     /** Moving groups keep their path; stationary shooters request a new coordinated position. */
     fun repositionForFire(entity: NpcEntity) {
         val task = SquadTactics.task(entity) ?: return
-        val position = task.position ?: return
-        if (task.deployingFront(position)) return
-        if (task.job !in TacticalJob.FIRING_POSITIONS || entity.position().distanceTo(position) > 2.0) return
+        if (!invalidateReachedFirePost(task, entity.position(), entity.onGround(), entity.level().gameTime)) return
+        FiringSpots.release(entity.uuid)
+    }
+
+    internal fun invalidateReachedFirePost(task: TacticalTask, actual: net.minecraft.world.phys.Vec3, grounded: Boolean, now: Long): Boolean {
+        val position = task.position ?: return false
+        if (task.deployingFront(position)) return false
+        if (task.job !in TacticalJob.FIRING_POSITIONS || !grounded || !FiringPostArrival.reached(actual, position)) return false
         task.position = null
         task.search = null
-        task.nextSearch = entity.level().gameTime + 10
-        FiringSpots.release(entity.uuid)
+        task.nextSearch = now + 10
+        return true
     }
 
     private val RUNNING_JOBS = TacticalJob.RUNNING
