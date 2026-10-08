@@ -3,13 +3,16 @@ package com.sbwnpc.squad.gametest
 import com.mojang.authlib.GameProfile
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.DetectionSightline
+import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.combat.tactics.TacticalJob
+import com.sbwnpc.squad.combat.tactics.TacticalPositions
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
+import com.sbwnpc.squad.util.Terrain
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
@@ -28,7 +31,6 @@ import net.neoforged.neoforge.common.util.FakePlayerFactory
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent
 import net.neoforged.neoforge.event.tick.ServerTickEvent
-import net.neoforged.neoforge.gametest.GameTestHolder
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import java.nio.file.Files
 import java.nio.file.Path
@@ -38,24 +40,40 @@ import java.util.UUID
 import java.util.function.Consumer
 
 /** A few exposed scouts see the enemy, while the ridge blocks most of an already spread line. */
-@GameTestHolder("sbwnpc")
 @PrefixGameTestTemplate(false)
 object TerrainAttackGameTests {
     @JvmStatic
-    @GameTest(template = "terrain_arena", timeoutTicks = 1200, batch = "terrain")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1200, batch = "terrain")
     fun attackPastRidgeWithoutReturnFire(helper: GameTestHelper) = ridge(helper, returnFire = false)
 
     @JvmStatic
-    @GameTest(template = "terrain_arena", timeoutTicks = 1200, batch = "terrain-return-fire")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1200, batch = "terrain-return-fire")
     fun attackPastRidgeUnderFire(helper: GameTestHelper) = ridge(helper, returnFire = true)
 
     @JvmStatic
-    @GameTest(template = "terrain_arena", timeoutTicks = 1200, batch = "broken-posts")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1200, batch = "broken-posts")
     fun blockedMinorityResumesFireOnUnevenGround(helper: GameTestHelper) = ridge(helper, returnFire = false, brokenPosts = true)
 
     @JvmStatic
-    @GameTest(template = "terrain_arena", timeoutTicks = 1200, batch = "village-cover")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1200, batch = "village-cover")
     fun smallSquadFindsFireAroundVillageCover(helper: GameTestHelper) = ridge(helper, returnFire = false, villageCover = true)
+
+    internal fun unevenGround(helper: GameTestHelper) {
+        for (x in 44..65) {
+            for (z in 65..145) {
+                val height = if ((x / 4 + z / 7) % 4 == 0) {
+                    2
+                } else if ((x + z / 3) % 9 == 0) {
+                    1
+                } else {
+                    0
+                }
+                for (y in 1..height) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
+                if ((x * 3 + z) % 37 == 0) helper.setBlock(BlockPos(x, 0, z), Blocks.AIR)
+                helper.setBlock(BlockPos(x, -1, z), Blocks.STONE)
+            }
+        }
+    }
 
     private fun ridge(helper: GameTestHelper, returnFire: Boolean, brokenPosts: Boolean = false, villageCover: Boolean = false) {
         for (x in 0..175) for (z in 0..223) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
@@ -64,20 +82,7 @@ object TerrainAttackGameTests {
             for (x in 50..51) for (z in 96..128) for (y in 1..4) helper.setBlock(BlockPos(x, y, z), Blocks.OAK_PLANKS)
         } else if (brokenPosts) {
             // Small asymmetric hills and shallow hollows, rather than one regular ramp.
-            for (x in 44..65) {
-                for (z in 65..145) {
-                    val height = if ((x / 4 + z / 7) % 4 == 0) {
-                        2
-                    } else if ((x + z / 3) % 9 == 0) {
-                        1
-                    } else {
-                        0
-                    }
-                    for (y in 1..height) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
-                    if ((x * 3 + z) % 37 == 0) helper.setBlock(BlockPos(x, 0, z), Blocks.AIR)
-                    helper.setBlock(BlockPos(x, -1, z), Blocks.STONE)
-                }
-            }
+            unevenGround(helper)
         } else {
             for (x in 34..78) {
                 for (z in 0..198) {
@@ -122,7 +127,7 @@ object TerrainAttackGameTests {
         val directory = Path.of(System.getProperty("sbwnpc.gameTestReports"))
         Files.createDirectories(directory)
         val csv = directory.resolve("$name.csv")
-        Files.writeString(csv, "tick,npc,x,y,z,onGround,pathDone,job,plan,phase,ammo,lastShotTick,health,alive\n")
+        Files.writeString(csv, "tick,npc,x,y,z,onGround,pathDone,job,plan,phase,ammo,lastShotTick,health,alive,pose,target,blockedSightSince\n")
         val damageCsv = directory.resolve("$name-damage.csv")
         Files.writeString(damageCsv, "tick,npc,health,damage,source,causer,direct\n")
         val damage = Consumer<LivingDamageEvent.Post> { event ->
@@ -243,7 +248,7 @@ object TerrainAttackGameTests {
                 }
                 if (helper.tick % 10 == 0L) {
                     val plan = squad.tactics.plan
-                    Files.writeString(csv, "${helper.tick},${npc.uuid},${p.x},${p.y},${p.z},${npc.onGround()},${npc.navigation.isDone},${plan?.tasks?.get(npc.uuid)?.job},${plan?.id},${plan?.phase},${Ports.guns.roundsLeft(npc.mainHandItem)},${npc.lastShotTick},${npc.health},${npc.isAlive}\n", APPEND)
+                    Files.writeString(csv, "${helper.tick},${npc.uuid},${p.x},${p.y},${p.z},${npc.onGround()},${npc.navigation.isDone},${plan?.tasks?.get(npc.uuid)?.job},${plan?.id},${plan?.phase},${Ports.guns.roundsLeft(npc.mainHandItem)},${npc.lastShotTick},${npc.health},${npc.isAlive},${npc.pose},${npc.target?.uuid},${npc.blockedSightSince}\n", APPEND)
                 }
             }
         }
@@ -253,6 +258,30 @@ object TerrainAttackGameTests {
                 helper.assertTrue(!returnFire || enemyRounds > 0, "Return-fire control did not fire real rounds")
                 helper.assertTrue(returnFire || enemyRounds == 0, "Isolation control fired unexpectedly")
                 if (brokenPosts) {
+                    for (npc in members.filter { it.uuid in obstructed && (it.uuid !in resumedFire || (longestIdle[it.uuid] ?: 0) >= 200) }) {
+                        val audit = directory.resolve("lost-post-search.txt")
+                        val task = squad.tactics.plan?.tasks?.get(npc.uuid)
+                        val view = squad.tactics.snapshot
+                        if (task == null || view == null) {
+                            Files.writeString(audit, "npc=${npc.uuid} position=${helper.relativeVec(npc.position())} task=${task?.job} snapshot=${view != null} longestBlindIdle=${longestIdle[npc.uuid]}\n", CREATE, APPEND)
+                            continue
+                        }
+                        val taken = FiringSpots.nearbyWithBodies(helper.level, npc, 64.0)
+                        val free = (-24..24).flatMap { x ->
+                            (-24..24).mapNotNull { z ->
+                                if (x * x + z * z > 24 * 24) return@mapNotNull null
+                                val point = Terrain.feetAt(helper.level, npc.position().add(x.toDouble(), 0.0, z.toDouble())) {
+                                    helper.level.noCollision(npc, npc.getDimensions(npc.pose).makeBoundingBox(it))
+                                } ?: return@mapNotNull null
+                                point.takeIf { !FiringSpots.crowded(it, taken) && TacticalPositions.safeDistance(npc, view, it) && TacticalPositions.firingReady(npc, task, it) }
+                            }
+                        }.distinct().sortedBy { it.distanceToSqr(npc.position()) }
+                        val reachable = free.filter { point ->
+                            val path = TacticalPositions.pathToPosition(npc, point)
+                            TacticalPositions.reaches(path, point) && TacticalPositions.safePath(npc, view, path!!)
+                        }
+                        Files.writeString(audit, "npc=${npc.uuid} pose=${npc.pose} target=${npc.target?.uuid} expanded=${task.expandedFireSearch} origin=${task.localFirePost?.let(helper::relativeVec)} longestBlindIdle=${longestIdle[npc.uuid]} free=${free.size} reachable=${reachable.map(helper::relativeVec)}\n", CREATE, APPEND)
+                    }
                     Files.writeString(directory.resolve("$name.txt"), "obstructed=${obstructed.size}\nresumedFire=${resumedFire.size}\nlongestBlindIdle=${longestIdle.values.maxOrNull() ?: 0}\n", APPEND)
                     helper.assertTrue(resumedFire.size == 4, "Blocked shooters did not resume real fire; see $name.csv")
                     helper.assertTrue(longestIdle.values.none { it >= 200 }, "A shooter stayed blind and idle for ten seconds; see $name.csv")

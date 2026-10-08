@@ -29,17 +29,15 @@ import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent
 import net.neoforged.neoforge.event.tick.ServerTickEvent
-import net.neoforged.neoforge.gametest.GameTestHolder
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import java.util.UUID
 import java.util.function.Consumer
 
-@GameTestHolder("sbwnpc")
 @PrefixGameTestTemplate(false)
 object AttackDeploymentGameTests {
     /** Use SBW damage sources directly to distinguish damage from reporting a hostile contact. */
     @JvmStatic
-    @GameTest(template = "movement_arena", timeoutTicks = 40)
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 40)
     fun friendlyBulletDoesNotCreateEnemyContact(helper: GameTestHelper) {
         for (x in 0..23) for (z in 0..11) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
         val victim = spawn(helper, Vec3(6.5, 1.0, 6.5), SquadFaction.PIG).apply { isNoAi = true }
@@ -66,7 +64,7 @@ object AttackDeploymentGameTests {
 
     /** No return fire: isolate natural detection, attack deployment and weapon participation. */
     @JvmStatic
-    @GameTest(template = "attack_arena", timeoutTicks = 900)
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 900)
     fun attackDeploysAndFiresOnOpenGround(helper: GameTestHelper) {
         for (x in 0..159) {
             for (z in 0..127) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)

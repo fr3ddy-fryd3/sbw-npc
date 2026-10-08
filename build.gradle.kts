@@ -108,6 +108,7 @@ neoForge {
             systemProperty("neoforge.enabledGameTestNamespaces", project.property("mod_id") as String)
             systemProperty("sbwnpc.gameTestReports", layout.buildDirectory.dir("reports/gameTest/$gameTestReportName").get().asFile.absolutePath)
             systemProperty("sbwnpc.gameTestNegativeControl", providers.gradleProperty("gameTestNegativeControl").orElse("false").get())
+            systemProperty("sbwnpc.gameTestFilter", providers.gradleProperty("gameTestFilter").orElse("").get())
             logLevel = org.slf4j.event.Level.INFO
         }
 
@@ -145,22 +146,28 @@ neoForge {
     }
 }
 
-var gameTestStartedAt: Long? = null
+val gameTestStartMarker = layout.buildDirectory.file("gametest/server/run-started-at.txt")
 val archiveGameTestLog = tasks.register("archiveGameTestLog") {
     // A Copy task owns its destination directory; Gradle's stale-output cleanup can delete the
     // CSV files written there by the server. Copy just the log without declaring that ownership.
     doLast {
-        val startedAt = gameTestStartedAt ?: return@doLast
+        val marker = gameTestStartMarker.get().asFile
+        check(marker.exists()) { "Missing GameTest start marker" }
+        val startedAt = marker.readText().toLong()
         val log = layout.buildDirectory.file("gametest/server/logs/latest.log").get().asFile
-        if (log.exists() && log.lastModified() >= startedAt) {
-            val reports = layout.buildDirectory.dir("reports/gameTest/$gameTestReportName").get().asFile
-            reports.mkdirs()
-            log.copyTo(reports.resolve("server.log"), overwrite = true)
-        }
+        check(log.exists() && log.lastModified() >= startedAt) { "GameTest server produced no fresh log" }
+        val reports = layout.buildDirectory.dir("reports/gameTest/$gameTestReportName").get().asFile
+        reports.mkdirs()
+        log.copyTo(reports.resolve("server.log"), overwrite = true)
+        check(log.readText().contains("GAME TESTS COMPLETE")) { "GameTest server stopped before completing tests; see ${reports.resolve("server.log")}" }
     }
 }
 tasks.named("runGameTestServer") {
-    doFirst { gameTestStartedAt = System.currentTimeMillis() }
+    doFirst {
+        val marker = gameTestStartMarker.get().asFile
+        marker.parentFile.mkdirs()
+        marker.writeText(System.currentTimeMillis().toString())
+    }
     finalizedBy(archiveGameTestLog)
 }
 

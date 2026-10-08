@@ -22,7 +22,6 @@ import net.minecraft.gametest.framework.GameTestRunner
 import net.minecraft.world.entity.MobSpawnType
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.phys.Vec3
-import net.neoforged.neoforge.gametest.GameTestHolder
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import java.nio.file.Files
 import java.nio.file.Path
@@ -30,18 +29,17 @@ import java.util.Locale
 import java.util.UUID
 
 /** Exercises the production brain, order behaviour, navigator and movement controller together. */
-@GameTestHolder("sbwnpc")
 @PrefixGameTestTemplate(false)
 object InfantryMovementGameTests {
     @JvmStatic
-    @GameTest(template = "movement_arena", timeoutTicks = 600)
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 600)
     fun moveAcrossFlatGround(helper: GameTestHelper) {
         floor(helper)
         march(helper, "flat-ground", BlockPos(20, 1, 6), needsClimb = false)
     }
 
     @JvmStatic
-    @GameTest(template = "movement_arena", timeoutTicks = 600)
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 600)
     fun moveOntoOneBlockPlatform(helper: GameTestHelper) {
         floor(helper)
         for (x in 12..23) {
@@ -51,7 +49,7 @@ object InfantryMovementGameTests {
     }
 
     @JvmStatic
-    @GameTest(template = "movement_arena", timeoutTicks = 600)
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 600)
     fun taskReleaseDuringJumpKeepsCurrentPath(helper: GameTestHelper) {
         floor(helper)
         for (x in 12..23) for (z in 0..11) helper.setBlock(BlockPos(x, 1, z), Blocks.STONE)
@@ -59,7 +57,7 @@ object InfantryMovementGameTests {
     }
 
     @JvmStatic
-    @GameTest(template = "movement_arena", timeoutTicks = 600)
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 600)
     fun marchRecoversPastChangedHeadroom(helper: GameTestHelper) {
         floor(helper)
         for (x in 12..23) for (z in 0..11) helper.setBlock(BlockPos(x, 1, z), Blocks.STONE)
@@ -67,7 +65,7 @@ object InfantryMovementGameTests {
     }
 
     @JvmStatic
-    @GameTest(template = "movement_arena", timeoutTicks = 600)
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 600)
     fun marchRecoversPastChangedHeadroomOnFarmland(helper: GameTestHelper) {
         for (x in 0..23) for (z in 0..11) helper.setBlock(BlockPos(x, 0, z), Blocks.FARMLAND)
         for (x in 12..23) for (z in 0..11) helper.setBlock(BlockPos(x, 1, z), Blocks.STONE)
