@@ -103,10 +103,12 @@ abstract class TacticalState {
             val previous = context.plan.tasks[member.id]
             val recovering = previous?.localFireRecovery == true && (previous.position != null || previous.search != null)
             val holding = member.grounded && TacticalEvidence.covers(member, previous) && TacticalEvidence.settled(member, previous)
-            desired[member.id] = if (retainCover && previous?.job == next.job && next.job in TacticalJob.FIRE_SUPPORT &&
+            val exchangingCoverAndWait = (previous?.job == TacticalJob.COVER && next.job == TacticalJob.WAIT) ||
+                (previous?.job == TacticalJob.WAIT && next.job == TacticalJob.COVER)
+            desired[member.id] = if (retainCover && previous != null && (previous.job == next.job || exchangingCoverAndWait) && next.job in TacticalJob.FIRE_SUPPORT &&
                 (recovering || holding)
             ) {
-                previous
+                if (previous.job == next.job) previous else previous.withJob(next.job, previous.anchor)
             } else {
                 next
             }

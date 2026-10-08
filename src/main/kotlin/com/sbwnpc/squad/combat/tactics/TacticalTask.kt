@@ -42,6 +42,8 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
             it.firingTarget = firingTarget
             it.nextSearch = nextSearch
             it.nextValidation = nextValidation
+            it.search = search
+            it.failures = failures
             it.lastProgress = lastProgress
             it.closest = closest
             it.frontage = frontage

@@ -19,6 +19,35 @@ class TacticalRecoveryRegressionTest {
             listOf(TacticalContact(UUID(1, 1), focus, now)),
         )
 
+    @Test fun `cover and wait exchanges preserve unfinished fire recovery and its owned path`() {
+        for (desired in listOf(TacticalJob.COVER, TacticalJob.WAIT)) {
+            val plan = TacticalPlan(1, TacticalPattern.FLANK, focus, 0, 1)
+            val initial = view()
+            val squad = UUID(2, 2)
+            TacticalCoordinator.assign(squad, plan, initial)
+            val (id, original) = plan.tasks.entries.first { it.value.job == desired }
+            val previous = original.withJob(if (desired == TacticalJob.COVER) TacticalJob.WAIT else TacticalJob.COVER, original.anchor)
+            previous.localFirePost = initial.members.first { it.id == id }.position
+            previous.position = previous.localFirePost!!.add(0.0, 0.0, 4.0)
+            previous.search = TacticalPositionSearch(previous.localFirePost!!, listOf(previous.position!!)).apply { probeIndex = 1 }
+            previous.nextSearch = 65
+            previous.lastProgress = 20
+            previous.closest = 4.0
+            previous.navigationPath = net.minecraft.world.level.pathfinder.Path(mutableListOf(), net.minecraft.core.BlockPos.ZERO, true)
+            val path = previous.navigationPath
+            plan.assignments.put(id, previous, 10, "support_role_changed")
+            plan.behavior.assign(TacticalContext(squad, plan, initial.copy(now = 30)), retainCover = true, trigger = "next_movement_group")
+            val retained = plan.tasks.getValue(id)
+            assertEquals(desired, retained.job)
+            assertEquals(previous.position, retained.position)
+            assertSame(previous.search, retained.search)
+            assertSame(path, retained.navigationPath, "The old task must release ownership without stopping the transferred path")
+            assertEquals(65, retained.nextSearch)
+            assertEquals(20, retained.lastProgress)
+            assertEquals(4.0, retained.closest)
+        }
+    }
+
     @Test fun `a phase assignment keeps an ongoing cover recovery when line height changes`() {
         val events = mutableListOf<TacticalEvent>()
         val plan = TacticalPlan(1, TacticalPattern.FLANK, focus, 0, 1, events = TacticalEventSink(events::add))
