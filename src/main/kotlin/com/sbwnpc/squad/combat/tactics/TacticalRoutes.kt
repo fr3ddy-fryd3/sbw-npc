@@ -1,10 +1,35 @@
 package com.sbwnpc.squad.combat.tactics
 
+import com.sbwnpc.squad.combat.CombatPositionSafety
+import com.sbwnpc.squad.npc.NpcClass
 import net.minecraft.world.phys.Vec3
 import kotlin.math.*
 
 /** Short route legs prevent a rear flank destination from routing straight through the enemy. */
 object TacticalRoutes {
+    private val DETOUR_DISTANCES = listOf(24.0, 16.0, 8.0)
+    private const val DETOUR_DIRECTIONS = 24
+    private const val CLEARANCE_TOLERANCE = 0.05
+
+    /** Nearby alternatives must respect every contact, including one closer than the focus. */
+    fun flankProbes(from: Vec3, task: TacticalTask, view: TacticalSnapshot, role: NpcClass): List<Vec3> {
+        val preferred = leg(from, task)
+        val threats = TacticalClearance.threats(view)
+        val clearance = CombatPositionSafety.clearance(role)
+        val direction = preferred.subtract(from).multiply(1.0, 0.0, 1.0).normalize()
+        if (direction.lengthSqr() < 1.0e-6) return emptyList()
+        val candidates = ArrayList<Vec3>()
+        for (distance in DETOUR_DISTANCES) {
+            for (turn in 0 until DETOUR_DIRECTIONS) {
+                val angle = turn * 2.0 * Math.PI / DETOUR_DIRECTIONS
+                val rotated = Vec3(direction.x * cos(angle) - direction.z * sin(angle), 0.0, direction.x * sin(angle) + direction.z * cos(angle))
+                val point = from.add(rotated.scale(distance))
+                if (threats.all { CombatPositionSafety.permitsSegment(from, from, point, it, clearance, CLEARANCE_TOLERANCE) }) candidates += point
+            }
+        }
+        return candidates.sortedBy { it.distanceTo(task.anchor) + it.distanceTo(from) }
+    }
+
     /** A firing-lane probe opens the angle without becoming an unsupported charge. */
     fun safeLaneProbe(from: Vec3, point: Vec3, focus: Vec3, approach: Double = 4.0): Boolean =
         point.subtract(from).horizontalDistance() <= 16.0 &&

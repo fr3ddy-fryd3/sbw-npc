@@ -30,6 +30,59 @@ import java.nio.file.Path
 @PrefixGameTestTemplate(false)
 object FiringPostSearchGameTests {
     @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 100, batch = "flank-search")
+    fun flankSearchGoesAroundSecondaryContact(helper: GameTestHelper) {
+        for (x in 0..175) for (z in 0..223) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        val npc = AttackDeploymentGameTests.spawn(helper, Vec3(30.5, 1.0, 112.5), SquadFaction.PIG).apply { isNoAi = true }
+        val enemies = listOf(Vec3(130.5, 1.0, 112.5), Vec3(60.5, 1.0, 109.5)).map {
+            AttackDeploymentGameTests.spawn(helper, it, SquadFaction.COW).apply { isNoAi = true }
+        }
+        val task = TacticalTask(TacticalJob.FLANK, helper.absoluteVec(Vec3(74.5, 1.0, 48.5)), enemies.first().position(), 1)
+        fun view() =
+            TacticalSnapshot(
+                helper.level.gameTime,
+                SquadOrder.ATTACK,
+                1,
+                npc.position(),
+                task.focus,
+                listOf(TacticalMember(npc.uuid, npc.position())),
+                enemies.map { TacticalContact(it.uuid, it.position(), helper.level.gameTime) },
+            )
+        helper.testInfo.addListener(object : GameTestListener {
+            override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
+            override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
+            override fun testFailed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
+            override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) = cleanup()
+            private fun cleanup() =
+                (listOf(npc) + enemies).forEach {
+                    FiringSpots.release(it.uuid)
+                    it.discard()
+                }
+        })
+        helper.runAtTickTime(20) {
+            npc.setOnGround(true)
+            BrainUtils.setTargetOfEntity(npc, enemies.first())
+            // Verify a real safe detour before asking the production search to find its next leg.
+            val detour = npc.position().add(-4.0, 0.0, -20.0)
+            val path = TacticalPositions.pathToPosition(npc, detour)
+            helper.assertTrue(TacticalPositions.safeDistance(npc, view(), detour), "Fixture has no safe detour point")
+            helper.assertTrue(TacticalPositions.reaches(path, detour) && TacticalPositions.safePath(npc, view(), path!!), "Fixture has no reachable safe detour")
+        }
+        helper.onEachTick {
+            if (helper.tick <= 20) return@onEachTick
+            val result = TacticalPositions.find(npc, task, view())
+            helper.assertTrue(result.outcome != TacticalPositions.Outcome.UNREACHABLE, "Flank rejected a reachable detour: ${result.rejections}")
+            if (result.outcome == TacticalPositions.Outcome.FOUND) {
+                val point = result.position!!
+                helper.assertTrue(TacticalPositions.safeDistance(npc, view(), point), "Flank approached a secondary contact")
+                helper.assertTrue(TacticalPositions.safePath(npc, view(), npc.navigation.path!!), "Flank route crosses a secondary contact")
+                helper.assertTrue(point.distanceTo(npc.position()) >= 4.0, "Flank search returned no travel progress")
+                helper.succeed()
+            }
+        }
+    }
+
+    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 200, batch = "firing-search")
     fun firingSearchFindsReachablePostBesideBlockedHill(helper: GameTestHelper) {
         for (x in 0..175) for (z in 0..223) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)

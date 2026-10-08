@@ -421,4 +421,29 @@ class TacticalFlanksTest {
         assertEquals(start.distanceTo(focus), leg.distanceTo(focus), 0.01)
         assertTrue(kotlin.math.abs(leg.z) > 10.0)
     }
+
+    @Test fun `flank alternatives avoid a secondary contact when the direct leg approaches it`() {
+        val from = Vec3(30.5, 64.0, 112.5)
+        val focus = Vec3(130.5, 64.0, 112.5)
+        val task = TacticalTask(TacticalJob.FLANK, Vec3(74.5, 64.0, 48.5), focus, 1)
+        val view = view().copy(center = from, contacts = listOf(TacticalContact(UUID(2, 1), focus, 0), TacticalContact(UUID(2, 2), Vec3(60.5, 64.0, 109.5), 0)))
+        val role = com.sbwnpc.squad.npc.NpcClass.RIFLEMAN
+        assertFalse(TacticalClearance.permitsPosition(role, from, TacticalRoutes.leg(from, task), view))
+        val probes = TacticalRoutes.flankProbes(from, task, view, role)
+        assertTrue(probes.isNotEmpty())
+        assertTrue(probes.any { it.distanceTo(task.anchor) < from.distanceTo(task.anchor) })
+        for (point in probes) {
+            assertTrue(point.distanceTo(from) <= 24.01)
+            assertTrue(TacticalClearance.permitsPosition(role, from, point, view))
+            assertTrue(TacticalClearance.threats(view).all { com.sbwnpc.squad.combat.CombatPositionSafety.permitsSegment(from, from, point, it, 48.0) })
+        }
+    }
+
+    @Test fun `flank alternatives cannot escape a surrounding enemy ring by crossing its safety boundary`() {
+        val from = Vec3(0.0, 64.0, 0.0)
+        val task = TacticalTask(TacticalJob.FLANK, Vec3(80.0, 64.0, 80.0), focus, 1)
+        val contacts = listOf(Vec3(20.0, 64.0, 0.0), Vec3(-20.0, 64.0, 0.0), Vec3(0.0, 64.0, 20.0), Vec3(0.0, 64.0, -20.0))
+        val view = view().copy(center = from, contacts = contacts.mapIndexed { index, point -> TacticalContact(UUID(2, index.toLong()), point, 0) })
+        assertTrue(TacticalRoutes.flankProbes(from, task, view, com.sbwnpc.squad.npc.NpcClass.RIFLEMAN).isEmpty())
+    }
 }

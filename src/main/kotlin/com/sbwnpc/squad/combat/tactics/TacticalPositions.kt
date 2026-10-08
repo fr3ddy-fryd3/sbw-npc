@@ -101,11 +101,24 @@ object TacticalPositions {
 
                 task.job in TacticalJob.FIRING_POSITIONS -> listOf(entity.position()) + TacticalFirePosts.probes(localAnchor, task.localFireRecovery)
 
+                task.job == TacticalJob.FLANK -> OFFSETS.map { localAnchor.add(it) } +
+                    TacticalRoutes.flankProbes(entity.position(), task, view, entity.npcClass)
+
                 else -> OFFSETS.map { localAnchor.add(it) }
             },
             aim,
             deployment,
-        ).also { task.search = it }
+        ).also { search ->
+            task.search = search
+            if (task.job == TacticalJob.FLANK && DebugFlags.on(LogGroup.ORDER)) {
+                DebugFlags.log(
+                    LogGroup.ORDER,
+                    "[tactics] {} squad={} tick={} plan={} event=flank_search_context origin={} preferredLeg={} goal={} aim={} probes={} contacts={}",
+                    entity.uuid, entity.currentSquad()?.id, level.gameTime, task.plan, entity.position(),
+                    localAnchor, task.anchor, aim?.position, search.probes.size, known.map { it.id to it.position },
+                )
+            }
+        }
         val plan = entity.currentSquad()?.tactics?.plan
         val policy = plan?.behavior?.positions ?: DefaultTacticalPositions
         val covered = plan != null && view.members.count { member ->
