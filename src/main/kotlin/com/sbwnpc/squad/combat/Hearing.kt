@@ -22,7 +22,7 @@ object Hearing {
     const val GUNSHOT_SCALE = 4.5
 
     /** Allied callouts after gunfire; the threat point is supplied by the firing NPC. */
-    const val ALLIED_GUNSHOT_RADIUS = 45.0
+    const val ALLIED_GUNSHOT_RADIUS = 70.0
 
     /** A suppressor on top of the quieter radius SBW already gives it. */
     const val SUPPRESSED_SCALE = 0.5

@@ -41,7 +41,8 @@ object HearingGameTests {
         shooter.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, Ports.guns.issue(ResourceLocation.fromNamespaceAndPath("superbwarfare", "ak_12"), shooter, 100))
         val extended = actor(55.5, SquadFaction.COW)
         val outside = actor(70.5, SquadFaction.COW)
-        val ally = actor(50.5, SquadFaction.PIG)
+        val ally = actor(80.5, SquadFaction.PIG)
+        val outsideAlly = actor(81.5, SquadFaction.PIG)
         cleanup(helper) { actors.forEach { it.discard() } }
         helper.runAtTickTime(1) {
             // AK-12: formerly 36 blocks; the 45-block listener must now hear, the 60-block one must not.
@@ -52,7 +53,8 @@ object HearingGameTests {
             helper.assertTrue(!ally.listening(), "Hostile-noise handling treated an ally as an enemy")
             val threat = helper.absoluteVec(Vec3(90.5, 1.0, 64.5))
             Alarm.raise(shooter, shooter.position(), threat, Hearing.ALLIED_GUNSHOT_RADIUS)
-            helper.assertTrue(BrainUtils.getMemory(ally, ModMemories.ALERT_POSITION.get()) == threat, "Extended allied alarm lost the threat location or did not reach 40 blocks")
+            helper.assertTrue(BrainUtils.getMemory(ally, ModMemories.ALERT_POSITION.get()) == threat, "Allied alarm lost the threat location or did not reach its 70-block boundary")
+            helper.assertTrue(!outsideAlly.isAlert(), "Allied alarm leaked beyond 70 blocks")
         }
         helper.runAtTickTime(25) {
             val data = GunData.from(shooter.mainHandItem)
