@@ -90,6 +90,33 @@ object InfantryMovementGameTests {
         }
     }
 
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 600)
+    fun marchAvoidsPowderSnowPatch(helper: GameTestHelper) {
+        floor(helper)
+        for (x in 9..13) {
+            for (z in 4..8) {
+                helper.setBlock(BlockPos(x, -1, z), Blocks.STONE)
+                helper.setBlock(BlockPos(x, 0, z), Blocks.POWDER_SNOW)
+            }
+        }
+        march(helper, "powder-snow-detour", BlockPos(20, 1, 6), needsClimb = false, avoidPowderSnow = true)
+    }
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 600)
+    fun marchEscapesDeepPowderSnowWithoutBreakingBlocks(helper: GameTestHelper) {
+        floor(helper)
+        for (x in 0..23) {
+            for (z in 0..11) {
+                for (y in 1..3) {
+                    helper.setBlock(BlockPos(x, y, z), if (x in 8..12 && z in 4..8) Blocks.POWDER_SNOW else Blocks.STONE)
+                }
+            }
+        }
+        march(helper, "powder-snow-escape", BlockPos(20, 4, 6), needsClimb = true, start = Vec3(10.5, 1.0, 6.5), preservePowderSnow = true)
+    }
+
     private fun march(
         helper: GameTestHelper,
         scenario: String,
@@ -99,6 +126,8 @@ object InfantryMovementGameTests {
         blockHeadroom: Boolean = false,
         partialFloor: Boolean = false,
         opposedAim: Boolean = false,
+        avoidPowderSnow: Boolean = false,
+        preservePowderSnow: Boolean = false,
         start: Vec3 = Vec3(3.5, 1.0, 6.5),
     ) {
         val level = helper.level
@@ -190,6 +219,16 @@ object InfantryMovementGameTests {
             helper.assertTrue(helper.tick - lastProgress < 150 || npc.position().distanceTo(goal) <= 1.5, "MOVE stood still for 150 ticks; see $scenario.csv")
             if (npc.y >= helper.absolutePos(BlockPos(0, 2, 0)).y && npc.onGround()) climbed = true
             helper.assertTrue(npc.isAlive, "NPC died on a movement-only route")
+            if (avoidPowderSnow) helper.assertTrue(!npc.isInPowderSnow, "MOVE entered a powder snow patch despite a dry detour")
+            if (preservePowderSnow) {
+                for (x in 8..12) {
+                    for (z in 4..8) {
+                        for (y in 1..3) {
+                            helper.assertTrue(helper.getBlockState(BlockPos(x, y, z)).`is`(Blocks.POWDER_SNOW), "Snow escape broke terrain")
+                        }
+                    }
+                }
+            }
         }
         helper.succeedWhen {
             helper.assertTrue(npc.tickCount >= 20, "NPC must actually tick before arrival can pass")

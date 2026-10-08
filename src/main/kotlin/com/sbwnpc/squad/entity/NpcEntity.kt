@@ -43,11 +43,13 @@ import net.minecraft.world.entity.Pose
 import net.minecraft.world.entity.SpawnGroupData
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier
 import net.minecraft.world.entity.ai.attributes.Attributes
+import net.minecraft.world.entity.ai.goal.ClimbOnTopOfPowderSnowGoal
 import net.minecraft.world.entity.ai.goal.FloatGoal
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.ServerLevelAccessor
+import net.minecraft.world.level.pathfinder.PathType
 import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.util.BrainUtils
 import java.util.UUID
@@ -59,7 +61,7 @@ import java.util.UUID
  *
  *
  * The AI is a SmartBrainLib brain (sensors and behaviours under `entity/ai`). [registerGoals] keeps
- * three small vanilla-style goals — float/swim, looking about ([IdleLookAroundGoal], which stands
+ * environmental recovery goals, looking about ([IdleLookAroundGoal], which stands
  * down in combat so it doesn't fight GunAttackBehaviour for the head) and wandering.
  */
 open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
@@ -668,12 +670,16 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     init {
         moveControl = com.sbwnpc.squad.entity.ai.NpcMoveControl(this)
+        // Vanilla forbids snow-filled nodes but gives the empty node above snow zero cost.
+        // Avoid that unsupported surface; the climbing goal handles an accidental fall into it.
+        setPathfindingMalus(PathType.DANGER_POWDER_SNOW, -1f)
     }
 
-    // Three small vanilla-style goals beside the brain — see the class doc comment.
+    // Environmental recovery and idle goals beside the brain — see the class doc comment.
     override fun registerGoals() {
         super.registerGoals()
         this.goalSelector.addGoal(0, FloatGoal(this))
+        this.goalSelector.addGoal(1, ClimbOnTopOfPowderSnowGoal(this, level()))
         this.goalSelector.addGoal(6, IdleLookAroundGoal(this))
         this.goalSelector.addGoal(7, IdleWanderGoal(this, SquadOrderBehaviour.WALK_SPEED_MODIFIER))
     }

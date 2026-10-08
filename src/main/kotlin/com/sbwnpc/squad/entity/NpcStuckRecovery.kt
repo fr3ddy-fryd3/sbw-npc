@@ -29,6 +29,7 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
     private var nowhereLastTick = -1
     private var recoveryAttempts = 0
     private var lastWarningTick = -600
+    private var wasInPowderSnow = false
 
     /**
      * Called by the navigation for every ground search: [goesNowhere] means no path, or a local
@@ -49,6 +50,18 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
     fun tick() {
         val tick = npc.tickCount
         if (tick % STUCK_CHECK_TICKS != 0 || npc.isPassenger) return
+        if (npc.isInPowderSnow != wasInPowderSnow) {
+            wasInPowderSnow = npc.isInPowderSnow
+            DebugFlags.log(
+                LogGroup.STUCK,
+                "{} powder snow {} at {} pathDone={} frozenTicks={}",
+                npc.uuid,
+                if (wasInPowderSnow) "entered" else "exited",
+                npc.blockPosition(),
+                npc.navigation.isDone,
+                npc.ticksFrozen,
+            )
+        }
         val here = npc.position()
         val path = npc.navigation.path
         // Bouncing vertically against a ledge is not travel progress. A completed upward step is.
