@@ -58,6 +58,18 @@ object InfantryMovementGameTests {
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 600)
+    fun aimingSidewaysDoesNotTrapNpcInShallowHole(helper: GameTestHelper) {
+        floor(helper)
+        helper.setBlock(BlockPos(11, 0, 6), Blocks.AIR)
+        helper.setBlock(BlockPos(11, -1, 6), Blocks.STONE)
+        for (y in 1..2) helper.setBlock(BlockPos(12, y, 6), Blocks.STONE)
+        helper.setBlock(BlockPos(11, 1, 5), Blocks.STONE)
+        for (x in 0..23) for (z in 7..11) helper.setBlock(BlockPos(x, 1, z), Blocks.STONE)
+        march(helper, "side-aim-hole", BlockPos(10, 2, 8), needsClimb = true, opposedAim = true, start = Vec3(11.7, 0.0, 6.3))
+    }
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 600)
     fun marchRecoversPastChangedHeadroom(helper: GameTestHelper) {
         floor(helper)
         for (x in 12..23) for (z in 0..11) helper.setBlock(BlockPos(x, 1, z), Blocks.STONE)
@@ -86,9 +98,11 @@ object InfantryMovementGameTests {
         releaseInAir: Boolean = false,
         blockHeadroom: Boolean = false,
         partialFloor: Boolean = false,
+        opposedAim: Boolean = false,
+        start: Vec3 = Vec3(3.5, 1.0, 6.5),
     ) {
         val level = helper.level
-        val npc = helper.spawn(ModEntities.NPC.get(), Vec3(3.5, 1.0, 6.5))
+        val npc = helper.spawn(ModEntities.NPC.get(), start)
         npc.npcClass = NpcClass.RIFLEMAN
         npc.npcRank = NpcRank.DEFAULT
         npc.spawnFaction = SquadFaction.PIG
@@ -108,12 +122,14 @@ object InfantryMovementGameTests {
         helper.assertTrue(npc.currentSquad()?.id == squad.id, "Test NPC was not registered in its squad")
         helper.assertTrue(!npc.mainHandItem.isEmpty, "SBW failed to issue the rifleman's weapon")
         val trace = MovementTrace(scenario, npc)
+        val aim = if (opposedAim) helper.spawn(net.minecraft.world.entity.EntityType.MARKER, Vec3(20.5, 1.0, 6.5)) else null
         var cleaned = false
         fun cleanup() {
             if (cleaned) return
             cleaned = true
             manager.deleteSquad(level, squad.id)
             npc.discard()
+            aim?.discard()
         }
         helper.testInfo.addListener(object : GameTestListener {
             override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
@@ -135,6 +151,10 @@ object InfantryMovementGameTests {
         var progressPosition = npc.position()
         TacticalRuntimeEvents.bind(squad, level)
         helper.onEachTick {
+            // Reproduce the same body-turn request used by GunAttackBehaviour.updateAim,
+            // while the normal MOVE brain and vanilla physics climb in the opposite direction.
+            aim?.let { npc.lookAt(it, 30f, 30f) }
+            if (aim != null) npc.navigation.setSpeedModifier(1.0)
             val relative = helper.relativeVec(npc.position())
             if (blockHeadroom && !blocked && relative.x >= 10.0 && npc.navigation.path != null) {
                 // Change the world after the live route was chosen. The ends remain open for a detour.
@@ -193,7 +213,7 @@ object InfantryMovementGameTests {
         init {
             com.mojang.logging.LogUtils.getLogger().info("Headless movement scenario={}, reports={}, noAi={}", scenario, file.toAbsolutePath(), npc.isNoAi)
             Files.createDirectories(file.parent)
-            Files.writeString(file, "tick,npcTicks,x,y,z,distance,speed,vx,vy,vz,onGround,horizontalCollision,pose,pathDone,nextNode,nodeCount,canReach,wantedX,wantedY,wantedZ,gameTime,formationReady,rallySince,target,alert,resupply,coverLocked,medicLocked\n")
+            Files.writeString(file, "tick,npcTicks,x,y,z,distance,speed,vx,vy,vz,onGround,horizontalCollision,pose,pathDone,nextNode,nodeCount,canReach,wantedX,wantedY,wantedZ,gameTime,formationReady,rallySince,target,alert,resupply,coverLocked,medicLocked,bodyYaw,headYaw\n")
             Files.writeString(file.resolveSibling("$scenario.txt"), "npc=${npc.uuid}\nscenario=$scenario\nnoAi=${npc.isNoAi}\nnavigation=${npc.navigation.javaClass.name}\nmoveControl=${npc.moveControl.javaClass.name}\n")
         }
 
@@ -210,7 +230,7 @@ object InfantryMovementGameTests {
                 control.wantedX, control.wantedY, control.wantedZ,
             )
             val squad = npc.currentSquad()
-            val diagnostics = "${npc.level().gameTime},${squad?.moveFormationReady},${squad?.moveRallySince},${npc.target?.uuid},${npc.isAlert()},${npc.resupplying},${npc.movementLockedByCover()},${npc.combatLockedByMedic()}\n"
+            val diagnostics = "${npc.level().gameTime},${squad?.moveFormationReady},${squad?.moveRallySince},${npc.target?.uuid},${npc.isAlert()},${npc.resupplying},${npc.movementLockedByCover()},${npc.combatLockedByMedic()},${npc.yRot},${npc.yHeadRot}\n"
             Files.writeString(file, line.trimEnd() + "," + diagnostics, java.nio.file.StandardOpenOption.APPEND)
         }
 
