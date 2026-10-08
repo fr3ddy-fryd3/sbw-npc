@@ -148,6 +148,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     private var heardAt: Vec3? = null
     private var heardUntilTick = 0
+    private var heardDuringCombat = false
 
     /**
      * Gunfire or an explosion of the other side's, heard at [at] — see [com.sbwnpc.squad.combat.Hearing].
@@ -155,11 +156,20 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      * to see. Holding means dug in, at a crew post, defending, barraging, on the move or falling
      * back to an objective, or off to a Supply — none of those drop what they're doing for a noise.
      */
-    fun hear(at: Vec3) {
-        if (target != null) {
-            logHearing(at, "ignored, already fighting")
+    fun hear(at: Vec3, nearbyFootstep: Boolean = false) {
+        val currentTarget = target
+        if (currentTarget != null) {
+            if (!nearbyFootstep || com.sbwnpc.squad.combat.DetectionSightline.canSee(this, currentTarget)) {
+                logHearing(at, "ignored, already fighting")
+                return
+            }
+            heardAt = at
+            heardUntilTick = tickCount + HEARD_LOOK_TICKS
+            heardDuringCombat = true
+            logHearing(at, "nearby footsteps queued, retains hidden target")
             return
         }
+        heardDuringCombat = false
         heardAt = at
         heardUntilTick = tickCount + HEARD_LOOK_TICKS
         val order = currentSquad()?.order
@@ -199,12 +209,19 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     /** Turned toward what it last heard for a few seconds, over the idle look-around. */
     fun listening(): Boolean = heardAt != null && tickCount < heardUntilTick
 
+    fun checkingNearbyNoise(): Boolean = heardDuringCombat && listening()
+
     private fun faceHeardNoise() {
         val at = heardAt ?: return
-        if (target != null || tickCount >= heardUntilTick) {
+        val currentTarget = target
+        val visuallyEngaged = currentTarget != null && (!heardDuringCombat || com.sbwnpc.squad.combat.DetectionSightline.canSee(this, currentTarget))
+        if (visuallyEngaged || tickCount >= heardUntilTick) {
             heardAt = null
+            heardDuringCombat = false
             return
         }
+        // Active role/vehicle/medical controllers keep ownership of their look direction.
+        if (busyWithRole() || vehicle != null || combatLockedByMedic()) return
         lookControl.setLookAt(at.x, at.y, at.z)
     }
 
@@ -736,7 +753,6 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     override fun customServerAiStep() {
         super.customServerAiStep()
         takeNewOrders()
-        faceHeardNoise()
         if (equipmentResyncTicksRemaining > 0) {
             equipmentResyncTicksRemaining--
             resyncEquipmentForNewlySpawnedNpc()
@@ -751,6 +767,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         }
         // Offset by entity id so throttled NPCs don't all take their turn on the same tick.
         if (brainTickInterval == 1 || (tickCount + id) % brainTickInterval == 0) tickBrain(this)
+        // Hearing's head check follows idle/blocked aiming; an unseen target cannot overwrite it.
+        faceHeardNoise()
         posture.tick()
         stuckRecovery.tick()
     }

@@ -19,7 +19,10 @@ import java.util.UUID
  */
 object Hearing {
     /** A gun's own sound radius (SBW's `SoundRadius`, 8–32) is this many times how far it's heard. */
-    const val GUNSHOT_SCALE = 3.0
+    const val GUNSHOT_SCALE = 4.5
+
+    /** Allied callouts after gunfire; the threat point is supplied by the firing NPC. */
+    const val ALLIED_GUNSHOT_RADIUS = 45.0
 
     /** A suppressor on top of the quieter radius SBW already gives it. */
     const val SUPPRESSED_SCALE = 0.5
@@ -38,6 +41,7 @@ object Hearing {
     private const val WALK_RADIUS = 4.0
     private const val SPRINT_RADIUS = 8.0
     private const val LANDING_RADIUS = 3.0
+    private const val CLOSE_FOOTSTEP_RADIUS = 6.0
 
     /** Blocks a tick over which an NPC is taken to be running rather than walking. */
     private const val NPC_RUN_SPEED = 0.2
@@ -85,6 +89,7 @@ object Hearing {
             } else {
                 "walking"
             },
+            footstep = true,
         )
     }
 
@@ -93,14 +98,14 @@ object Hearing {
         noise(level, at, (power * EXPLOSION_SCALE).coerceIn(MIN_EXPLOSION, MAX_EXPLOSION), source, "explosion $power")
     }
 
-    private fun noise(level: ServerLevel, at: Vec3, radius: Double, source: Entity?, kind: String) {
+    private fun noise(level: ServerLevel, at: Vec3, radius: Double, source: Entity?, kind: String, footstep: Boolean = false) {
         var heard = 0
         var inRange = 0
         NpcRegistry.forEachWithin(level, at, radius, exclude = source) { npc ->
             inRange++
             // Nobody's noise is everybody's; a known one only the other side's.
             if (npc.isAlive && (source == null || SquadTeams.isHostile(npc, source))) {
-                npc.hear(at)
+                npc.hear(at, nearbyFootstep = footstep && npc.distanceToSqr(at) <= CLOSE_FOOTSTEP_RADIUS * CLOSE_FOOTSTEP_RADIUS)
                 heard++
             }
         }
@@ -108,13 +113,14 @@ object Hearing {
         if ((heard > 0 || source is net.minecraft.world.entity.player.Player) && DebugFlags.on(LogGroup.HEARING)) {
             DebugFlags.log(
                 LogGroup.HEARING,
-                "{} by {} at {} radius {} heard by {} of {} NPCs in range",
+                "{} by {} at {} radius {} heard by {} of {} NPCs in range sourceFaction={}",
                 kind,
                 source?.let { it.uuid.toString().take(8) + " " + it.type.descriptionId } ?: "nobody",
                 BlockPos.containing(at),
                 "%.0f".format(radius),
                 heard,
                 inRange,
+                source?.let { SquadTeams.sideOf(it) },
             )
         }
     }

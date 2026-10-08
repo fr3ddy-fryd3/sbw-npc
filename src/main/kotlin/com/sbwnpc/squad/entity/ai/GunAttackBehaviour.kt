@@ -12,6 +12,7 @@ import com.sbwnpc.squad.combat.FiringPostArrival
 import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.GrenadeHazard
+import com.sbwnpc.squad.combat.Hearing
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.OffscreenFire
 import com.sbwnpc.squad.combat.ShotAim
@@ -121,7 +122,6 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val MAX_SIDESTEP_ATTEMPTS = 3
         private const val SIDESTEP_BATCH_COOLDOWN = 40
         private const val BOUND_MOVE_TICKS = 25
-        private const val GUNFIRE_HEARING_RADIUS = 30.0
 
         /** A downed pilot with a sidearm has no business closing in: it backs off to this far,
          *  shooting as it goes. */
@@ -697,7 +697,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         val terrainClear = hasClearShot(entity, target)
         val clearShot = visible && terrainClear
         if (visible) reportVisibleTarget(entity, target) else entity.noticeHidden(target, visibility)
-        updateAim(entity, target, gun, clearShot, foliageHidden)
+        updateAim(entity, target, gun, clearShot, visibility)
 
         val movement = updateCombatMovement(entity, target, squad, holding, gun, clearShot)
         if (movement == CombatMovement.RETURNING_TO_POST) return
@@ -745,7 +745,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         com.sbwnpc.squad.squad.SquadReports.contact(entity, target)
     }
 
-    private fun updateAim(entity: NpcEntity, target: LivingEntity, gun: HandGun, canShootTarget: Boolean, foliageHidden: Boolean) {
+    private fun updateAim(entity: NpcEntity, target: LivingEntity, gun: HandGun, canShootTarget: Boolean, visibility: DetectionSightline.Visibility) {
+        val foliageHidden = visibility == DetectionSightline.Visibility.FOLIAGE
         if (canShootTarget || foliageHidden) {
             entity.blockedSightSince = null
         } else if (entity.blockedSightSince == null) {
@@ -755,7 +756,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         // Losing sight starts the aim over.
         aimTime = if (canShootTarget) minOf(entity.maxAimTime, aimTime + 1) else 0
 
-        if (foliageHidden) {
+        if (foliageHidden || (visibility != DetectionSightline.Visibility.VISIBLE && entity.checkingNearbyNoise())) {
             entity.readyToCover = false
             shootTimer.stop()
             return
@@ -1021,7 +1022,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                 entity.lastFireAt = target.position()
                 if (entity.tickCount >= nextAlarmTick) {
                     nextAlarmTick = entity.tickCount + ALARM_INTERVAL_TICKS
-                    Alarm.raise(entity, entity.position(), target.position(), GUNFIRE_HEARING_RADIUS)
+                    Alarm.raise(entity, entity.position(), target.position(), Hearing.ALLIED_GUNSHOT_RADIUS)
                     // The other side hears it too — here rather than off SBW's shot event, which a
                     // shot nobody watches (OffscreenFire) never raises.
                     (entity.level() as? ServerLevel)?.let { com.sbwnpc.squad.combat.Hearing.gunshot(it, entity, gun.hearingRadius) }

@@ -3,6 +3,7 @@ package com.sbwnpc.squad.entity.ai
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.FriendlyFireGuard
+import com.sbwnpc.squad.combat.Hearing
 import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
@@ -84,6 +85,8 @@ class BlindReturnFireBehaviour : ExtendedBehaviour<NpcEntity>() {
         val interval = kotlin.math.ceil(1200.0 / gun.roundsPerMinute.coerceAtLeast(1.0)).toLong() +
             if (gun.needsTriggerReset) kotlin.math.ceil(entity.npcRank.semiFireIntervalMs / 50.0).toLong() else 0L
         gun.shootAt(spread, aim)
+        // SBW's hearing hook excludes NPCs; every NPC firing mode must publish its own noise.
+        Hearing.gunshot(level, entity, gun.hearingRadius)
         entity.lastShotTick = entity.tickCount
         if (incoming) {
             entity.incomingFire.shot(now, interval)
