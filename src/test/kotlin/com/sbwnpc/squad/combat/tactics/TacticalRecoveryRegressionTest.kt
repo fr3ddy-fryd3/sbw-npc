@@ -108,15 +108,16 @@ class TacticalRecoveryRegressionTest {
 
     @Test fun `failed firing strip expands only the affected post and keeps bounded ownership`() {
         val task = TacticalTask(TacticalJob.WAIT, Vec3.ZERO, focus, 1).apply {
-            frontage = TacticalFrontPost(Vec3.ZERO, Vec3(1.0, 0.0, 0.0))
+            frontage = TacticalFrontPost(Vec3(12.0, 0.0, 0.0), Vec3(1.0, 0.0, 0.0))
         }
         val aroundBerm = Vec3(6.0, 3.0, 5.0)
         assertTrue(TacticalFirePosts.recoverAfterSearch(task, Vec3.ZERO))
-        assertFalse(TacticalFirePosts.recoverAfterSearch(task, Vec3(25.0, 0.0, 0.0)))
+        assertFalse(TacticalFirePosts.recoverAfterSearch(task, Vec3(37.0, 0.0, 0.0)))
         assertFalse(TacticalFirePosts.recoverAfterSearch(task.withJob(TacticalJob.SEARCH, task.anchor), Vec3.ZERO))
         assertTrue(TacticalFirePosts.recover(task, Vec3.ZERO))
         assertFalse(task.permitsFront(aroundBerm))
-        assertTrue(TacticalFirePosts.expand(task))
+        assertTrue(TacticalFirePosts.expand(task, Vec3.ZERO))
+        assertEquals(Vec3.ZERO, task.localFirePost)
         assertTrue(task.permitsFront(aroundBerm))
         assertFalse(task.permitsFront(Vec3(25.0, 0.0, 0.0)))
         task.position = aroundBerm
@@ -124,7 +125,8 @@ class TacticalRecoveryRegressionTest {
         assertTrue(TacticalPositions.requiresFiringLane(task, deploying = false, aroundBerm))
         assertEquals(TacticalJob.WAIT, task.job)
         assertEquals(focus, task.focus)
-        assertFalse(TacticalFirePosts.expand(task), "The fixed radius must not grow on later failures")
+        assertFalse(TacticalFirePosts.expand(task, aroundBerm), "The fixed radius must not grow on later failures")
+        assertEquals(Vec3.ZERO, task.localFirePost, "Retries must not move the escape origin with the actor")
     }
 
     @Test fun `probe shortens its approach before the nearest reported enemy`() {

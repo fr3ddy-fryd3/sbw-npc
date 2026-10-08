@@ -233,7 +233,7 @@ object TacticalMovement {
 
     private fun failedTask(entity: NpcEntity, task: TacticalTask, reason: String, completedSearch: Boolean = false): Boolean {
         if (task.localFireRecovery) {
-            if (TacticalFirePosts.expand(task)) {
+            if (TacticalFirePosts.expand(task, entity.position())) {
                 task.nextSearch = entity.level().gameTime + 2
                 DebugFlags.log(
                     LogGroup.ORDER,
