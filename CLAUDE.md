@@ -35,6 +35,10 @@ tested" as two different claims; see Workflow below.
 
 ## Workflow requirements
 
+- Before implementing a feature, trace its callers and shared state through adjacent behaviors.
+  Check the interactions it can affect (navigation, targeting, cover, weapon ownership, supply and
+  role locks), not only its isolated happy path. Preserve existing contracts or explicitly test
+  the changed contract. Record which scenarios actually ran; compilation is not behavioral proof.
 - After checks pass, build with `buildDevelop` and replace the local Minecraft mod jar by default.
   An explicit instruction not to build or not to install overrides this default; otherwise no
   separate deployment confirmation is needed.
