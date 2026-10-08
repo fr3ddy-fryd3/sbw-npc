@@ -26,6 +26,7 @@ import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.common.NeoForge
 import net.neoforged.neoforge.common.util.FakePlayerFactory
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent
+import net.neoforged.neoforge.event.entity.living.LivingDamageEvent
 import net.neoforged.neoforge.event.tick.ServerTickEvent
 import net.neoforged.neoforge.gametest.GameTestHolder
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
@@ -52,9 +53,16 @@ object TerrainAttackGameTests {
     @GameTest(template = "terrain_arena", timeoutTicks = 1200, batch = "broken-posts")
     fun blockedMinorityResumesFireOnUnevenGround(helper: GameTestHelper) = ridge(helper, returnFire = false, brokenPosts = true)
 
-    private fun ridge(helper: GameTestHelper, returnFire: Boolean, brokenPosts: Boolean = false) {
+    @JvmStatic
+    @GameTest(template = "terrain_arena", timeoutTicks = 1200, batch = "village-cover")
+    fun smallSquadFindsFireAroundVillageCover(helper: GameTestHelper) = ridge(helper, returnFire = false, villageCover = true)
+
+    private fun ridge(helper: GameTestHelper, returnFire: Boolean, brokenPosts: Boolean = false, villageCover: Boolean = false) {
         for (x in 0..175) for (z in 0..223) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
-        if (brokenPosts) {
+        if (villageCover) {
+            for (x in 20..49) for (z in 88..136) helper.setBlock(BlockPos(x, 0, z), Blocks.FARMLAND)
+            for (x in 50..51) for (z in 96..128) for (y in 1..4) helper.setBlock(BlockPos(x, y, z), Blocks.OAK_PLANKS)
+        } else if (brokenPosts) {
             // Small asymmetric hills and shallow hollows, rather than one regular ramp.
             for (x in 44..65) {
                 for (z in 65..145) {
@@ -78,9 +86,9 @@ object TerrainAttackGameTests {
                 }
             }
         }
-        if (!brokenPosts) for (y in 1..9) helper.setBlock(BlockPos(30, y, 112), Blocks.STONE)
-        val members = (0..31).map { index ->
-            AttackDeploymentGameTests.spawn(helper, Vec3(30.5, if (!brokenPosts && index == 16) 10.0 else 1.0, 16.5 + index * 6), SquadFaction.PIG)
+        if (!brokenPosts && !villageCover) for (y in 1..9) helper.setBlock(BlockPos(30, y, 112), Blocks.STONE)
+        val members = (0 until if (villageCover) 7 else 32).map { index ->
+            AttackDeploymentGameTests.spawn(helper, Vec3(30.5, if (!brokenPosts && !villageCover && index == 16) 10.0 else 1.0, (if (villageCover) 94.5 else 16.5) + index * 6), SquadFaction.PIG)
         }
         val enemies = (0..3).map { index ->
             AttackDeploymentGameTests.spawn(helper, Vec3(100.5, 1.0, 92.5 + index * 6), SquadFaction.COW).apply {
@@ -102,7 +110,9 @@ object TerrainAttackGameTests {
         observer.moveTo(at.x, at.y, at.z, 0.0f, 0.0f)
         observer.setNoGravity(true)
         helper.level.addNewPlayer(observer)
-        val name = if (brokenPosts) {
+        val name = if (villageCover) {
+            "village-cover"
+        } else if (brokenPosts) {
             "blocked-minority"
         } else if (returnFire) {
             "ridge-under-fire"
@@ -112,7 +122,14 @@ object TerrainAttackGameTests {
         val directory = Path.of(System.getProperty("sbwnpc.gameTestReports"))
         Files.createDirectories(directory)
         val csv = directory.resolve("$name.csv")
-        Files.writeString(csv, "tick,npc,x,y,z,onGround,pathDone,job,plan,phase,ammo,lastShotTick\n")
+        Files.writeString(csv, "tick,npc,x,y,z,onGround,pathDone,job,plan,phase,ammo,lastShotTick,health,alive\n")
+        val damageCsv = directory.resolve("$name-damage.csv")
+        Files.writeString(damageCsv, "tick,npc,health,damage,source,causer,direct\n")
+        val damage = Consumer<LivingDamageEvent.Post> { event ->
+            if (members.any { it.uuid == event.entity.uuid }) {
+                Files.writeString(damageCsv, "${helper.tick},${event.entity.uuid},${event.entity.health},${event.newDamage},${event.source.msgId},${event.source.entity?.uuid},${event.source.directEntity?.uuid}\n", APPEND)
+            }
+        }
         val shooters = HashSet<UUID>()
         val advanced = HashSet<UUID>()
         var enemyRounds = 0
@@ -134,12 +151,14 @@ object TerrainAttackGameTests {
         }
         val pacer = CombatTickPacer()
         NeoForge.EVENT_BUS.addListener(bullets)
+        NeoForge.EVENT_BUS.addListener(damage)
         NeoForge.EVENT_BUS.addListener<ServerTickEvent.Pre>(pacer)
         var cleaned = false
         fun cleanup() {
             if (cleaned) return
             cleaned = true
             NeoForge.EVENT_BUS.unregister(bullets)
+            NeoForge.EVENT_BUS.unregister(damage)
             NeoForge.EVENT_BUS.unregister(pacer)
             manager.deleteSquad(helper.level, squad.id)
             if (defenders != null) manager.deleteSquad(helper.level, defenders.id)
@@ -155,35 +174,47 @@ object TerrainAttackGameTests {
         DebugFlags.enabledGroups = setOf(LogGroup.ORDER, LogGroup.PATH, LogGroup.STUCK)
         manager.setOrder(squad.id, SquadOrder.ATTACK)
         manager.setObjective(helper.level, squad.id, helper.absolutePos(BlockPos(100, 1, 101)))
+        helper.runAtTickTime(600) {
+            if (enemies.any { it.isAlive } && squad.tactics.contacts.isNotEmpty()) {
+                helper.assertTrue(squad.order == SquadOrder.ATTACK, "Formation arrival cancelled an attack during enemy contact")
+            }
+        }
         if (brokenPosts) {
             helper.runAtTickTime(300) {
                 val covering = ArrayList<com.sbwnpc.squad.entity.NpcEntity>()
+                fun berm(npc: com.sbwnpc.squad.entity.NpcEntity): List<BlockPos> {
+                    val p = helper.relativeVec(npc.position())
+                    val direction = npc.target!!.position().subtract(npc.position()).multiply(1.0, 0.0, 1.0).normalize()
+                    val side = Vec3(-direction.z, 0.0, direction.x)
+                    return buildList {
+                        for (depth in 2..16) {
+                            for (lateral in -3..3) {
+                                val base = BlockPos.containing(p.add(direction.scale(depth.toDouble())).add(side.scale(lateral.toDouble())))
+                                for (dy in 0..3) {
+                                    val block = base.above(dy)
+                                    val body = AABB(helper.absolutePos(block))
+                                    if ((members + enemies).none { it.isAlive && it.boundingBox.inflate(4.0).intersects(body) }) add(block)
+                                }
+                            }
+                        }
+                    }.distinct()
+                }
                 val candidates = members.filter { npc ->
                     npc.isAlive && npc.onGround() && npc.firedRecently(60) && npc.navigation.isDone &&
-                        squad.tactics.plan?.tasks?.get(npc.uuid)?.job in TacticalJob.FIRE_SUPPORT && npc.target != null
+                        squad.tactics.plan?.tasks?.get(npc.uuid)?.job in TacticalJob.FIRE_SUPPORT && npc.target != null &&
+                        DetectionSightline.canSee(npc, npc.target!!) && !Sightline.blocked(helper.level, npc.eyePosition, npc.target!!.eyePosition, npc)
                 }.sortedBy { helper.relativeVec(it.position()).z }
                 for (npc in candidates) {
-                    if (covering.all { it.position().subtract(npc.position()).horizontalDistance() >= 24.0 }) covering.add(npc)
+                    val closesShot = berm(npc).any { AABB(helper.absolutePos(it)).clip(npc.eyePosition, npc.target!!.eyePosition).isPresent }
+                    if (closesShot && covering.all { it.position().subtract(npc.position()).horizontalDistance() >= 24.0 }) covering.add(npc)
                     if (covering.size == 4) break
                 }
                 helper.assertTrue(covering.size == 4, "Scene needs four working cover posts before obstruction")
                 for (npc in covering) {
                     val p = helper.relativeVec(npc.position())
                     val target = helper.relativeVec(npc.target!!.position())
-                    val direction = target.subtract(p).multiply(1.0, 0.0, 1.0).normalize()
-                    val side = Vec3(-direction.z, 0.0, direction.x)
                     // A small irregular berm closes this shooter's strip; neighboring lanes remain usable.
-                    for (depth in 2..16) {
-                        for (lateral in -3..3) {
-                            val base = BlockPos.containing(p.add(direction.scale(depth.toDouble())).add(side.scale(lateral.toDouble())))
-                            for (dy in 0..3) {
-                                val block = base.above(dy)
-                                val body = AABB(helper.absolutePos(block))
-                                // Construct terrain ahead of actors; leave exits around actors while building the scene.
-                                if ((members + enemies).none { it.isAlive && it.boundingBox.inflate(4.0).intersects(body) }) helper.setBlock(block, Blocks.STONE)
-                            }
-                        }
-                    }
+                    berm(npc).forEach { helper.setBlock(it, Blocks.STONE) }
                     obstructed.add(npc.uuid)
                     Files.writeString(csv.resolveSibling("$name-obstructions.txt"), "npc=${npc.uuid} position=$p target=$target\n", CREATE, APPEND)
                 }
@@ -199,7 +230,8 @@ object TerrainAttackGameTests {
             for (npc in members) {
                 val p = helper.relativeVec(npc.position())
                 if (p.x >= 42.0 && npc.onGround()) advanced.add(npc.uuid)
-                if (brokenPosts && helper.tick >= 450 && npc.uuid in obstructed && npc.isAlive && Ports.guns.inHand(npc)?.hasAmmo() == true) {
+                val trackedPost = villageCover || (brokenPosts && npc.uuid in obstructed)
+                if (trackedPost && helper.tick >= 450 && npc.isAlive && Ports.guns.inHand(npc)?.hasAmmo() == true) {
                     val last = previous.getOrPut(npc.uuid) { npc.position() }
                     val target = npc.target
                     val blind = target == null || !DetectionSightline.canSee(npc, target) || Sightline.blocked(helper.level, npc.eyePosition, target.eyePosition, npc)
@@ -211,7 +243,7 @@ object TerrainAttackGameTests {
                 }
                 if (helper.tick % 10 == 0L) {
                     val plan = squad.tactics.plan
-                    Files.writeString(csv, "${helper.tick},${npc.uuid},${p.x},${p.y},${p.z},${npc.onGround()},${npc.navigation.isDone},${plan?.tasks?.get(npc.uuid)?.job},${plan?.id},${plan?.phase},${Ports.guns.roundsLeft(npc.mainHandItem)},${npc.lastShotTick}\n", APPEND)
+                    Files.writeString(csv, "${helper.tick},${npc.uuid},${p.x},${p.y},${p.z},${npc.onGround()},${npc.navigation.isDone},${plan?.tasks?.get(npc.uuid)?.job},${plan?.id},${plan?.phase},${Ports.guns.roundsLeft(npc.mainHandItem)},${npc.lastShotTick},${npc.health},${npc.isAlive}\n", APPEND)
                 }
             }
         }
@@ -224,10 +256,22 @@ object TerrainAttackGameTests {
                     Files.writeString(directory.resolve("$name.txt"), "obstructed=${obstructed.size}\nresumedFire=${resumedFire.size}\nlongestBlindIdle=${longestIdle.values.maxOrNull() ?: 0}\n", APPEND)
                     helper.assertTrue(resumedFire.size == 4, "Blocked shooters did not resume real fire; see $name.csv")
                     helper.assertTrue(longestIdle.values.none { it >= 200 }, "A shooter stayed blind and idle for ten seconds; see $name.csv")
+                } else if (villageCover) {
+                    Files.writeString(directory.resolve("$name.txt"), "longestBlindIdle=${longestIdle.values.maxOrNull() ?: 0}\n", APPEND)
+                    helper.assertTrue(longestIdle.values.none { it >= 200 }, "A village attacker stayed blind and idle for ten seconds; see $name.csv")
                 } else {
                     helper.assertTrue(advanced.size >= if (returnFire) 12 else 24, "Attack failed to advance past the ridge; see $name.csv")
                 }
-                helper.assertTrue(shooters.size >= if (returnFire) 12 else 24, "Most of the attack never fired real rounds; see $name.txt")
+                helper.assertTrue(
+                    shooters.size >= if (villageCover) {
+                        6
+                    } else if (returnFire) {
+                        12
+                    } else {
+                        24
+                    },
+                    "Most of the attack never fired real rounds; see $name.txt",
+                )
                 helper.assertTrue(returnFire || members.all { it.isAlive }, "Attack lost NPCs without return fire")
                 helper.succeed()
             } finally {
