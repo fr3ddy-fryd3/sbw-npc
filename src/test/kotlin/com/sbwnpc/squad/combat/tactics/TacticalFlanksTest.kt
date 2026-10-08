@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.combat.tactics
 
+import com.sbwnpc.squad.combat.CombatPositionSafety
 import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.world.phys.Vec3
 import org.junit.jupiter.api.Assertions.*
@@ -36,6 +37,76 @@ class TacticalFlanksTest {
         TacticalCoordinator.assign(squad, plan, view)
         plan.tasks.values.filter { it.job == TacticalJob.COVER }.forEach { it.position = it.anchor }
         return state to plan
+    }
+
+    @Test fun `encirclement destinations keep their margin from the whole compact enemy group`() {
+        val contacts = (0..2).map { TacticalContact(UUID(2, it.toLong()), focus.add(0.0, 0.0, it * 6.0), 0) }
+        val initial = view().copy(members = members.take(8), contacts = contacts)
+        val plan = TacticalPlan(1, TacticalPattern.ENCIRCLE, focus, 0, 1)
+        TacticalCoordinator.assign(squad, plan, initial)
+        val slots = (plan.behavior as FlankingState).order.indices
+        val anchors = slots.map { TacticalFlanks.anchor(plan, initial, it) }
+        val margin = CombatPositionSafety.clearance(com.sbwnpc.squad.npc.NpcClass.RIFLEMAN) + CombatPositionSafety.FLANK_MARGIN
+        assertTrue(anchors.all { point -> contacts.all { point.subtract(it.position).horizontalDistance() >= margin - 0.0001 } })
+        val distant = initial.copy(contacts = contacts + TacticalContact(UUID(2, 99), focus.add(1000.0, 0.0, 0.0), 0))
+        assertEquals(anchors, slots.map { TacticalFlanks.anchor(plan, distant, it) }, "An unrelated distant contact must not inflate the circle")
+    }
+
+    @Test fun `a progressing final approach gets a short grace but never an unbounded extension`() {
+        val initial = view().copy(members = members.take(8))
+        val owner = SquadTacticalState()
+        owner.select(TacticalChoice(TacticalPattern.ENCIRCLE, focus), 1, 0)
+        val plan = owner.plan!!
+        TacticalCoordinator.assign(squad, plan, initial)
+        val deployed = initial.copy(now = 10).assumingFrontArrival(plan)
+        TacticalCoordinator.advance(squad, owner, plan, deployed)
+        assertEquals(TacticalPhase.EXECUTING, plan.phase)
+        for (member in deployed.members) {
+            val task = plan.tasks.getValue(member.id)
+            if (task.job == TacticalJob.FLANK) {
+                task.position = member.position.add(3.0, 0.0, 0.0)
+                task.maneuverPost = true
+                task.lastProgress = 410
+            }
+        }
+        val approaching = deployed.copy(now = 421, contacts = initial.contacts.map { it.copy(seenAt = 421) })
+        TacticalCoordinator.advance(squad, owner, plan, approaching)
+        assertEquals(TacticalPhase.EXECUTING, plan.phase)
+        assertEquals(0, (plan.behavior as FlankingState).arrived.size)
+        plan.tasks.values.forEach { it.lastProgress = 490 }
+        TacticalCoordinator.advance(squad, owner, plan, approaching.copy(now = 491, contacts = initial.contacts.map { it.copy(seenAt = 491) }))
+        assertEquals(TacticalPhase.FAILED, plan.phase)
+        assertEquals(TacticalFailure.MOVEMENT_TIMEOUT, plan.failure)
+    }
+
+    @Test fun `actual goal progress extends a long route only to its hard movement deadline`() {
+        val initial = view().copy(members = members.take(8))
+        val owner = SquadTacticalState()
+        owner.select(TacticalChoice(TacticalPattern.ENCIRCLE, focus), 1, 0)
+        val plan = owner.plan!!
+        TacticalCoordinator.assign(squad, plan, initial)
+        var moving = initial.copy(now = 10).assumingFrontArrival(plan)
+        TacticalCoordinator.advance(squad, owner, plan, moving)
+        for (member in moving.members) {
+            plan.tasks[member.id]?.takeIf { it.job == TacticalJob.FLANK }?.position = member.position.add(12.0, 0.0, 0.0)
+        }
+        TacticalCoordinator.advance(squad, owner, plan, moving.copy(now = 20))
+        for (now in listOf(421L, 600L, 821L)) {
+            moving = moving.copy(
+                now = now,
+                contacts = initial.contacts.map { it.copy(seenAt = now) },
+                members = moving.members.map { member ->
+                    val task = plan.tasks.getValue(member.id)
+                    if (task.job != TacticalJob.FLANK) return@map member
+                    val position = TacticalLayout.towards(member.position, task.anchor, 2.0)
+                    task.position = position.add(12.0, 0.0, 0.0)
+                    member.copy(position = position)
+                },
+            )
+            TacticalCoordinator.advance(squad, owner, plan, moving)
+            assertEquals(if (now < 821) TacticalPhase.EXECUTING else TacticalPhase.FAILED, plan.phase)
+        }
+        assertEquals(TacticalFailure.MOVEMENT_TIMEOUT, plan.failure)
     }
 
     @Test fun `losing a waiting flanker before launch removes stale membership and preserves surviving frontage`() {

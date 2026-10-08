@@ -5,11 +5,11 @@ import java.util.UUID
 
 /** Common wave protocol; each concrete maneuver has its own state instance and geometry. */
 abstract class FlankingState : CoveredManeuverState() {
-    override val stability = TacticalStability(committed = true, phaseLimit = 480)
+    override val stability = TacticalStability(committed = true, phaseLimit = BASE_MOVEMENT_TICKS + MAX_PROGRESS_EXTENSION_TICKS + FINAL_APPROACH_GRACE_TICKS)
     override val assignmentRange = 160.0
     override val actualCoverRequired = true
     override val canProbe = true
-    override val movementTimeout = 400L
+    override val movementTimeout = BASE_MOVEMENT_TICKS
     override val holdsFailedMembers = true
     internal val support = HashSet<UUID>()
     internal val order = ArrayList<UUID>()
@@ -19,6 +19,9 @@ abstract class FlankingState : CoveredManeuverState() {
     private val waitingPosts = HashMap<UUID, net.minecraft.world.phys.Vec3>()
     private var wave = emptySet<UUID>()
     private var nextSupportReview = Long.MIN_VALUE
+    private var gracePhase = Long.MIN_VALUE
+    private data class Approach(val closest: Double, val progressAge: Long? = null)
+    private val approaches = HashMap<UUID, Approach>()
     internal open fun anchor(plan: TacticalPlan, view: TacticalSnapshot, slot: Int) = TacticalFlanks.shoulder(plan, view, slot)
 
     override fun beforeTick(context: TacticalContext) {
@@ -28,6 +31,22 @@ abstract class FlankingState : CoveredManeuverState() {
             context.plan.tasks[it.id]?.job == TacticalJob.FLANK && TacticalEvidence.settled(it, context.plan.tasks[it.id])
         }
         recordArrivals(context, settled)
+        observeApproaches(context)
+    }
+
+    private fun observeApproaches(context: TacticalContext) {
+        val age = context.view.now - phaseSince
+        for (member in context.view.members) {
+            val task = context.plan.tasks[member.id] ?: continue
+            if (task.job != TacticalJob.FLANK) continue
+            val distance = member.position.distanceTo(task.anchor)
+            val previous = approaches[member.id]
+            approaches[member.id] = when {
+                previous == null -> Approach(distance)
+                distance < previous.closest - GOAL_PROGRESS_DISTANCE -> Approach(distance, age)
+                else -> previous
+            }
+        }
     }
 
     override fun prepareAssignments(layout: TacticalLayout) {
@@ -124,6 +143,25 @@ abstract class FlankingState : CoveredManeuverState() {
     }
 
     override fun movementTimedOut(context: TacticalContext, movers: List<TacticalMember>) {
+        val finishingPosts = movers.isNotEmpty() && movers.all { member ->
+            val task = context.plan.tasks[member.id]
+            task?.position?.distanceTo(member.position)?.let { it <= FINAL_APPROACH_RADIUS } == true &&
+                (task.maneuverPost || member.position.distanceTo(task.anchor) <= 10.0) &&
+                context.view.now - task.lastProgress <= FINAL_APPROACH_PROGRESS_TICKS
+        }
+        val age = context.view.now - phaseSince
+        val progressingGoals = movers.isNotEmpty() && movers.all { member ->
+            approaches[member.id]?.progressAge?.let { age - it <= GOAL_PROGRESS_STALE_TICKS } == true
+        }
+        val shortApproach = finishingPosts && age <= movementTimeout + FINAL_APPROACH_GRACE_TICKS
+        val longerRoute = progressingGoals && age <= movementTimeout + MAX_PROGRESS_EXTENSION_TICKS
+        if (shortApproach || longerRoute) {
+            if (gracePhase != phaseSince) {
+                gracePhase = phaseSince
+                context.plan.events.emit(TacticalEvent.Lifecycle(context.plan.id, context.view.now, "movement_deadline_extended", context.plan.pattern, context.plan.phase, if (longerRoute) "flank_goal_progress" else "final_post_progress"))
+            }
+            return
+        }
         val settled = movers.filter { TacticalEvidence.settled(it, context.plan.tasks[it.id]) }
         if (settled.isEmpty() && wave.none { it in arrived }) {
             super.movementTimedOut(context, movers)
@@ -137,11 +175,22 @@ abstract class FlankingState : CoveredManeuverState() {
     }
 
     override fun phaseEntered(context: TacticalContext, from: TacticalPhase?) {
+        if (from == TacticalPhase.PREPARING && context.plan.phase == TacticalPhase.EXECUTING) approaches.clear()
         if (from == TacticalPhase.EXECUTING && context.plan.phase in setOf(TacticalPhase.PREPARING, TacticalPhase.COMPLETED)) {
             assign(context, retainCover = true, trigger = "flank_wave_finished")
         } else {
             super.phaseEntered(context, from)
         }
+    }
+
+    private companion object {
+        const val BASE_MOVEMENT_TICKS = 400L
+        const val FINAL_APPROACH_RADIUS = 8.0
+        const val FINAL_APPROACH_PROGRESS_TICKS = 40L
+        const val FINAL_APPROACH_GRACE_TICKS = 80L
+        const val GOAL_PROGRESS_DISTANCE = 0.5
+        const val GOAL_PROGRESS_STALE_TICKS = 80L
+        const val MAX_PROGRESS_EXTENSION_TICKS = 400L
     }
 }
 

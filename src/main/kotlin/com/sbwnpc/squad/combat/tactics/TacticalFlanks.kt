@@ -78,8 +78,27 @@ object TacticalFlanks {
         val progress = (slot / 2 + 1).toDouble() / ((state.order.size + 1) / 2 + 1)
         val angle = Math.PI + wing * progress * Math.PI * 0.85
         val member = view.members.firstOrNull { it.id == state.order.getOrNull(slot) }
-        val radius = CombatPositionSafety.clearance(member?.role ?: NpcClass.RIFLEMAN) + CombatPositionSafety.FLANK_MARGIN
-        return focus.add(forward.scale(kotlin.math.cos(angle) * radius)).add(side.scale(kotlin.math.sin(angle) * radius))
+        val clearance = CombatPositionSafety.clearance(member?.role ?: NpcClass.RIFLEMAN) + CombatPositionSafety.FLANK_MARGIN
+        val direction = forward.scale(kotlin.math.cos(angle)).add(side.scale(kotlin.math.sin(angle)))
+        val radius = encircleRadius(focus, direction, clearance, TacticalClearance.threats(view))
+        return focus.add(direction.scale(radius))
+    }
+
+    /** Move outward only when the intended radius intersects another known enemy's clearance disk. */
+    private fun encircleRadius(focus: Vec3, direction: Vec3, clearance: Double, threats: List<Vec3>): Double {
+        val intervals = threats.mapNotNull { threat ->
+            val relative = threat.subtract(focus).multiply(1.0, 0.0, 1.0)
+            val along = relative.dot(direction)
+            val acrossSquared = relative.lengthSqr() - along * along
+            if (acrossSquared >= clearance * clearance) return@mapNotNull null
+            val halfChord = kotlin.math.sqrt(clearance * clearance - acrossSquared)
+            (along - halfChord) to (along + halfChord)
+        }.sortedBy { it.first }
+        var radius = clearance
+        for ((enter, exit) in intervals) {
+            if (radius >= enter && radius < exit) radius = exit
+        }
+        return radius
     }
 
     private fun forward(origin: Vec3, focus: Vec3): Vec3 =
