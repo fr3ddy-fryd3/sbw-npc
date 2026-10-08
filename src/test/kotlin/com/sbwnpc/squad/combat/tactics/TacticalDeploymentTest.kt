@@ -126,4 +126,32 @@ class TacticalDeploymentTest {
         assertEquals(6, plan.tasks.values.count { it.opensLane })
         assertFalse(plan.tasks.values.any { it.job == TacticalJob.FLANK })
     }
+
+    @Test fun `cover readiness gets its bounded wait after deployment and settling`() {
+        val focus = enemy.add(0.0, 8.0, 0.0)
+        val initial = view().copy(members = view().members.take(8), contacts = listOf(TacticalContact(UUID(1, 1), focus, 0)))
+        val state = SquadTacticalState(decisions = TacticalDecisionPolicy { TacticalChoice(TacticalPattern.ATTACK_HEIGHT, focus) })
+        state.assess(squad, initial)
+        val plan = state.plan!!
+        val deployed = initial.copy(
+            now = 150,
+            members = initial.members.mapIndexed { index, member -> member.copy(position = origin.add(0.0, 0.0, (index - 3.5) * 6.0)) },
+            contacts = initial.contacts.map { it.copy(seenAt = 150) },
+        )
+        TacticalCoordinator.advance(squad, state, plan, deployed)
+        TacticalCoordinator.advance(squad, state, plan, deployed.copy(now = 190, contacts = initial.contacts.map { it.copy(seenAt = 190) }))
+        assertEquals(TacticalPhase.PREPARING, plan.phase, "Deployment must not exhaust the readiness wait")
+
+        val ready = deployed.copy(
+            now = 220,
+            members = deployed.members.map { member ->
+                plan.tasks[member.id]?.let { it.position = member.position }
+                member.copy(canFire = plan.tasks[member.id]?.job == TacticalJob.COVER, firingAt = focus)
+            },
+            contacts = initial.contacts.map { it.copy(seenAt = 220) },
+        )
+        TacticalCoordinator.advance(squad, state, plan, ready)
+        assertEquals(TacticalPhase.EXECUTING, plan.phase)
+        assertEquals(6, plan.tasks.values.count { it.job == TacticalJob.ADVANCE })
+    }
 }

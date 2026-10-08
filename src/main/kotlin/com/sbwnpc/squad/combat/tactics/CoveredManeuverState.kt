@@ -14,6 +14,8 @@ abstract class CoveredManeuverState : TacticalState() {
         internal set
     private val deployment = TacticalDeployment()
     private var preparationHold: TacticalPreparationHold? = null
+    private var readinessPhase = Long.MIN_VALUE
+    private var readinessSince: Long? = null
     private var recoveredFront: Vec3? = null
     override fun attackFrontCenter(context: TacticalContext) = recoveredFront ?: origin ?: context.view.center
 
@@ -58,14 +60,23 @@ abstract class CoveredManeuverState : TacticalState() {
             preparationHold = hold
             context.plan.events.emit(TacticalEvent.PreparationHeld(context.plan.id, context.view.now, hold))
         }
-        if (hold != null) return
+        if (readinessPhase != phaseSince) {
+            readinessPhase = phaseSince
+            readinessSince = phaseSince
+        }
+        // Deploying the line and settling at its posts precede the bounded readiness wait.
+        if (hold != null) {
+            readinessSince = null
+            return
+        }
+        if (readinessSince == null) readinessSince = context.view.now
         val cover = context.view.members.filter { context.plan.tasks[it.id]?.job in TacticalJob.FIRE_SUPPORT }
         if (shouldOpenLane(context, cover) && openLane(context)) return
         if (coverReady(context, cover) || readyWithoutCover(context)) {
             phases.transition(if (withdrawal) WithdrawingPhase() else ExecutingPhase(), context, "cover_ready")
             return
         }
-        if (context.view.now - phaseSince > COVER_READY_TIMEOUT) {
+        if (context.view.now - readinessSince!! > COVER_READY_TIMEOUT) {
             context.fail(TacticalFailure.COVER_NOT_READY_TIMEOUT)
         }
     }
