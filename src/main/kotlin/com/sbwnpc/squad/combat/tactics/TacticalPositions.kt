@@ -160,6 +160,10 @@ object TacticalPositions {
             return
         }
         if (!search.visited.add(candidate)) return
+        if (!TacticalGoalProgress.permitsAdvance(task, search.origin, candidate, context.deployment)) {
+            search.reject("no_goal_progress")
+            return
+        }
         if (!TacticalRules.withinOrder(context.view, candidate, context.homeRadius)) {
             search.reject("order")
             return

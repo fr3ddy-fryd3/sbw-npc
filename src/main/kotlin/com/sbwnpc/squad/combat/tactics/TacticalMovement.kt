@@ -187,7 +187,7 @@ object TacticalMovement {
                     return true
                 }
             }
-            if (task.job in RUNNING_JOBS + TacticalJob.SEARCH && !task.maneuverPost && entity.position().distanceTo(task.anchor) > 10.0) {
+            if (task.job in RUNNING_JOBS + TacticalJob.SEARCH && !task.maneuverPost && !TacticalGoalProgress.reached(task, entity.position())) {
                 task.position = null
                 task.search = null
                 task.nextSearch = entity.level().gameTime + 5

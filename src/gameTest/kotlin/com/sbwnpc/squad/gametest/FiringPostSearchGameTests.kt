@@ -1,11 +1,13 @@
 package com.sbwnpc.squad.gametest
 
 import com.sbwnpc.squad.combat.FiringSpots
+import com.sbwnpc.squad.combat.tactics.TacticalAim
 import com.sbwnpc.squad.combat.tactics.TacticalContact
 import com.sbwnpc.squad.combat.tactics.TacticalFirePosts
 import com.sbwnpc.squad.combat.tactics.TacticalFrontPost
 import com.sbwnpc.squad.combat.tactics.TacticalJob
 import com.sbwnpc.squad.combat.tactics.TacticalMember
+import com.sbwnpc.squad.combat.tactics.TacticalPositionSearch
 import com.sbwnpc.squad.combat.tactics.TacticalPositions
 import com.sbwnpc.squad.combat.tactics.TacticalSnapshot
 import com.sbwnpc.squad.combat.tactics.TacticalTask
@@ -29,6 +31,49 @@ import java.nio.file.Path
 /** Replays the blocked three-block hill from the failed battle, without randomized deployment. */
 @PrefixGameTestTemplate(false)
 object FiringPostSearchGameTests {
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 120, batch = "advance-progress")
+    fun advanceSearchRejectsAlreadyReachedIntermediatePost(helper: GameTestHelper) {
+        for (x in 0..175) for (z in 0..223) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        val npc = AttackDeploymentGameTests.spawn(helper, Vec3(30.5, 1.0, 100.5), SquadFaction.PIG).apply { isNoAi = true }
+        val enemy = AttackDeploymentGameTests.spawn(helper, Vec3(140.5, 1.0, 20.5), SquadFaction.COW).apply { isNoAi = true }
+        helper.setBlock(BlockPos(32, 1, 99), Blocks.STONE)
+        helper.setBlock(BlockPos(32, 1, 100), Blocks.STONE)
+        val origin = npc.position()
+        val goal = origin.add(6.433, 10.0, -6.555)
+        val task = TacticalTask(TacticalJob.ADVANCE, goal, enemy.position(), 1).apply {
+            localFirePost = goal
+            frontage = TacticalFrontPost(goal, Vec3(0.664, 0.0, -0.748).normalize())
+            // Isolate validation of a reached post; the natural scene exercises probe generation.
+            search = TacticalPositionSearch(origin, listOf(origin), TacticalAim.choose(null, enemy.position()))
+        }
+        helper.testInfo.addListener(object : GameTestListener {
+            override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
+            override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
+            override fun testFailed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
+            override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) = cleanup()
+            private fun cleanup() {
+                FiringSpots.release(npc.uuid)
+                npc.discard()
+                enemy.discard()
+            }
+        })
+        helper.onEachTick {
+            npc.setOnGround(true)
+            val view = TacticalSnapshot(helper.level.gameTime, SquadOrder.ATTACK, 1, origin, enemy.position(), listOf(TacticalMember(npc.uuid, origin)), listOf(TacticalContact(enemy.uuid, enemy.position(), helper.level.gameTime)))
+            val result = TacticalPositions.find(npc, task, view)
+            if (result.outcome == TacticalPositions.Outcome.DEFERRED) return@onEachTick
+            Files.writeString(Path.of(System.getProperty("sbwnpc.gameTestReports")).resolve("advance-progress.txt"), "origin=$origin\ngoal=$goal\nresult=$result\n")
+            if (result.outcome == TacticalPositions.Outcome.FOUND) {
+                val point = result.position!!
+                helper.assertTrue(point.distanceTo(goal) <= 10.0 || point.distanceTo(origin) >= 0.5, "Search returned the already reached intermediate post outside arrival tolerance: $point")
+            } else {
+                helper.assertTrue(result.rejections["no_goal_progress"] == 1, "Reached post was rejected for an unrelated reason: ${result.rejections}")
+            }
+            helper.succeed()
+        }
+    }
+
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 100, batch = "flank-search")
     fun flankSearchGoesAroundSecondaryContact(helper: GameTestHelper) {
