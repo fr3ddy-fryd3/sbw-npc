@@ -38,6 +38,15 @@ object OrderArrival {
             // Every role marches to the objective once enemy contact has ended.
             val there = members.count { SquadFormation.reachedPoint(it, point, squad.members.size) }
             if (there * 4 < members.size * 3) continue
+            // A spread attack line can satisfy the formation tolerance while still fighting.
+            // Changing to DEFEND here cancels maneuvers and drags the outer shooters back inside its leash.
+            val now = members.first().level().gameTime
+            val engaged = members.any { npc -> npc.target?.let { it.isAlive && npc.isEnemy(it) } == true } ||
+                squad.tactics.contacts.values.any { now - it.seenAt <= 200 }
+            if (squad.order == SquadOrder.ATTACK && engaged) {
+                DebugFlags.log(LogGroup.ORDER, "{} event=arrival_held reason=enemy_contact arrived={} members={}", squad.name, there, members.size)
+                continue
+            }
             DebugFlags.log(LogGroup.ORDER, "{} took its point ({}), defending", squad.name, squad.order)
             val was = squad.order
             mgr.setOrder(squad.id, SquadOrder.DEFEND)
