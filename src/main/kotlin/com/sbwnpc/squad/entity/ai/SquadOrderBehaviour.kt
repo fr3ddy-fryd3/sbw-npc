@@ -1,6 +1,8 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
+import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.squad.RouteManager
@@ -197,6 +199,14 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
             assemblingMove = assembling
             // Every member switches destinations, including those that did not finish the rally.
             repathCooldown = 0
+            DebugFlags.log(
+                LogGroup.ORDER,
+                "{} MOVE phase={} assembly={} objective={}",
+                entity.uuid,
+                if (assembling) "ASSEMBLING" else "MARCHING",
+                assembly,
+                home,
+            )
         }
         if (assembling) {
             val rallySlot = SquadFormation.moveSlotTarget(entity, assembly, heading)
