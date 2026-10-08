@@ -15,6 +15,7 @@ import net.minecraft.world.level.pathfinder.PathType
 import net.minecraft.world.level.pathfinder.PathfindingContext
 import net.minecraft.world.level.pathfinder.WalkNodeEvaluator
 import net.minecraft.world.phys.AABB
+import net.minecraft.world.phys.Vec3
 
 /**
  * Ground navigation that treats parked vehicles as terrain.
@@ -35,13 +36,16 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
 
     fun rejectStuckStep() {
         val next = path?.takeUnless { it.isDone }?.nextNodePos ?: return
-        if (!mob.onGround() || !mob.horizontalCollision || next.y <= mob.blockY) return
-        failedSteps.reject(mob.blockPosition(), next, level.gameTime)
+        // WalkNodeEvaluator.getStart rounds a grounded mob's feet, unlike Entity.blockPosition.
+        // On farmland the two differ by one block; rejecting the latter never bans the real edge.
+        val from = walkingNode(mob.position())
+        if (!mob.onGround() || !mob.horizontalCollision || next.y <= from.y) return
+        failedSteps.reject(from, next, level.gameTime)
         com.sbwnpc.squad.combat.DebugFlags.log(
             com.sbwnpc.squad.combat.LogGroup.STUCK,
             "{} rejected physical step {} -> {} for 200 ticks",
             mob.uuid,
-            mob.blockPosition(),
+            from,
             next,
         )
     }
@@ -347,27 +351,30 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         super.resetMaxVisitedNodesMultiplier()
     }
 
-    private companion object {
+    companion object {
+        /** Same grounded-node height as vanilla WalkNodeEvaluator.getStart, including partial floors. */
+        internal fun walkingNode(feet: Vec3): BlockPos = BlockPos.containing(feet.x, feet.y + 0.5, feet.z)
+
         /** Closer than this, a path ending where it stands is just being there. */
-        const val NOWHERE_MIN_DISTANCE = 3.0
+        private const val NOWHERE_MIN_DISTANCE = 3.0
 
         /** The NPC's own follow range: nearer than this, vanilla's own search is enough. */
-        const val NEAR_RANGE = 48.0
+        private const val NEAR_RANGE = 48.0
 
         /** A goal this near the squad's objective is the squad's march: a place in its formation there. */
-        const val MARCH_GOAL_RANGE = 48.0
-        const val FAR_RANGE = 100.0
+        private const val MARCH_GOAL_RANGE = 48.0
+        private const val FAR_RANGE = 100.0
 
         /** 768 nodes at follow range 48 — three times that for a search twice as far. */
-        const val FAR_NODE_MULTIPLIER = 3f
-        const val MIN_LEG = 8.0
+        private const val FAR_NODE_MULTIPLIER = 3f
+        private const val MIN_LEG = 8.0
 
         /** A leg ending this near its end point got there — see SquadMarch's LEG_REACH. */
-        const val LEG_REACH = 8
-        const val GOAL_DRIFT = 4.0
+        private const val LEG_REACH = 8
+        private const val GOAL_DRIFT = 4.0
 
         /** A near goal or formation place moved less than this keeps the path already walked. */
-        const val NEAR_DRIFT = 2.0
+        private const val NEAR_DRIFT = 2.0
 
         /**
          * The same on the march, for both his formation place and the route point. Both sit sixteen
@@ -376,14 +383,14 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
          * legs were fixed. A place eight blocks behind where it has moved to still leads him the
          * same way, and the next ask after he gets there catches up.
          */
-        const val MARCH_DRIFT = 8.0
+        private const val MARCH_DRIFT = 8.0
 
         /** A path ending nearer its goal than this just can't stand on the exact block. */
-        const val SHORT_OF_GOAL = 4f
-        const val PATH_LOG_TICKS = 40
-        const val AIR_LOG_TICKS = 10
-        const val WALK_LOG_TICKS = 20
-        val PLUMBING = listOf(
+        private const val SHORT_OF_GOAL = 4f
+        private const val PATH_LOG_TICKS = 40
+        private const val AIR_LOG_TICKS = 10
+        private const val WALK_LOG_TICKS = 20
+        private val PLUMBING = listOf(
             "VehicleAwareNavigation.traceHandover",
             "VehicleAwareNavigation.moveTo",
             "VehicleAwareNavigation.stop",

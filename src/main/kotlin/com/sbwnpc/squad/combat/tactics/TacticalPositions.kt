@@ -339,7 +339,7 @@ object TacticalPositions {
     fun pathToPosition(entity: NpcEntity, point: Vec3): Path? {
         val navigation = entity.navigation
         return if (navigation is VehicleAwareNavigation) {
-            navigation.createPositionPath(BlockPos.containing(point))
+            navigation.createPositionPath(VehicleAwareNavigation.walkingNode(point))
         } else {
             navigation.createPath(point.x, point.y, point.z, 0)
         }
