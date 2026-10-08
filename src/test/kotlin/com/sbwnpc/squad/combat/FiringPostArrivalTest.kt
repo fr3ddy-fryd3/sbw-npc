@@ -9,6 +9,19 @@ import java.util.UUID
 class FiringPostArrivalTest {
     private val post = Vec3(0.5, 64.0, 0.5)
 
+    @Test fun `a flank leg at the anchor boundary cannot stop before its waypoint`() {
+        val anchor = Vec3(45.735257, 0.9375, 136.346262)
+        val waypoint = Vec3(47.5, 0.9375, 126.5)
+        val actual = Vec3(47.564970, 0.9375, 127.639077)
+        val task = TacticalTask(TacticalJob.FLANK, anchor, Vec3(100.5, 1.0, 110.5), 1).apply { position = waypoint }
+        val member = TacticalMember(UUID(0, 1), actual, canFire = false)
+        assertTrue(waypoint.distanceTo(anchor) > 10.0)
+        assertTrue(actual.distanceTo(anchor) < 10.0)
+        assertFalse(TacticalMovement.reachedTaskPosition(task, actual), "Stopping here leaves neither a finished leg nor a settled firing post")
+        assertFalse(TacticalEvidence.settled(member, task))
+        assertTrue(TacticalMovement.reachedTaskPosition(task, waypoint))
+    }
+
     @Test fun `lost sight during the final approach does not repeatedly restart the firing route`() {
         val task = TacticalTask(TacticalJob.WAIT, post, Vec3(100.0, 64.0, 0.5), 1).apply {
             position = post

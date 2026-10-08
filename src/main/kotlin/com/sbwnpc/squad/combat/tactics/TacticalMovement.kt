@@ -154,8 +154,8 @@ object TacticalMovement {
             task.closest = distance
             task.lastProgress = entity.level().gameTime
         }
-        val firingPost = task.frontage != null || task.job in TacticalJob.FIRING_POSITIONS || (task.job == TacticalJob.FLANK && (task.maneuverPost || position.distanceTo(task.anchor) <= 10.0))
-        val arrived = if (firingPost) FiringPostArrival.reached(entity.position(), position) else distance <= 2.0
+        val firingPost = requiresPreciseArrival(task)
+        val arrived = reachedTaskPosition(task, entity.position())
         if (arrived) {
             if (task.deployingFront(position)) {
                 task.position = null
@@ -280,6 +280,13 @@ object TacticalMovement {
     }
 
     private fun jobs(plan: TacticalPlan) = plan.tasks.values.groupingBy { it.job }.eachCount()
+
+    private fun requiresPreciseArrival(task: TacticalTask): Boolean = task.frontage != null || task.job in TacticalJob.FIRING_POSITIONS || task.job == TacticalJob.FLANK
+
+    internal fun reachedTaskPosition(task: TacticalTask, actual: net.minecraft.world.phys.Vec3): Boolean {
+        val position = task.position ?: return false
+        return if (requiresPreciseArrival(task)) FiringPostArrival.reached(actual, position) else actual.distanceTo(position) <= 2.0
+    }
 
     /** Moving groups keep their path; stationary shooters request a new coordinated position. */
     fun repositionForFire(entity: NpcEntity) {
