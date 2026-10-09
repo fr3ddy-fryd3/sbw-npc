@@ -32,6 +32,58 @@ import java.nio.file.Path
 @PrefixGameTestTemplate(false)
 object FiringPostSearchGameTests {
     @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 120, batch = "support-score")
+    fun coverDeploymentMeasuresRealShelter(helper: GameTestHelper) = supportDeployment(helper, TacticalJob.COVER)
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 120, batch = "support-score")
+    fun waitDeploymentMeasuresRealShelter(helper: GameTestHelper) = supportDeployment(helper, TacticalJob.WAIT)
+
+    private fun supportDeployment(helper: GameTestHelper, job: TacticalJob) {
+        Files.createDirectories(Path.of(System.getProperty("sbwnpc.gameTestReports")))
+        for (x in 0..175) for (z in 0..223) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        val npc = AttackDeploymentGameTests.spawn(helper, Vec3(30.5, 1.0, 100.5), SquadFaction.PIG).apply { isNoAi = true }
+        val enemy = AttackDeploymentGameTests.spawn(helper, Vec3(140.5, 1.0, 100.5), SquadFaction.COW).apply { isNoAi = true }
+        val open = helper.absoluteVec(Vec3(47.5, 1.0, 100.5))
+        val sheltered = helper.absoluteVec(Vec3(45.5, 1.0, 105.5))
+        helper.setBlock(BlockPos(46, 1, 105), Blocks.STONE)
+        val task = TacticalTask(job, open, enemy.position(), 1).apply {
+            frontage = TacticalFrontPost(open, Vec3(1.0, 0.0, 0.0))
+        }
+        helper.testInfo.addListener(object : GameTestListener {
+            override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
+            override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
+            override fun testFailed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
+            override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) = cleanup()
+            private fun cleanup() {
+                FiringSpots.release(npc.uuid)
+                npc.discard()
+                enemy.discard()
+            }
+        })
+        helper.runAtTickTime(20) {
+            npc.setOnGround(true)
+            BrainUtils.setTargetOfEntity(npc, enemy)
+            // A returned probe has no contact coverOrigin. Both posts have a real firing lane;
+            // the exposed post is closer to the assigned front, the other has a one-block wall.
+            task.search = TacticalPositionSearch(npc.position(), listOf(open, sheltered), TacticalAim.resolve(npc, task), deployment = true)
+        }
+        helper.onEachTick {
+            if (helper.tick <= 20) return@onEachTick
+            npc.setOnGround(true)
+            val view = TacticalSnapshot(helper.level.gameTime, SquadOrder.ATTACK, 1, npc.position(), enemy.position(), listOf(TacticalMember(npc.uuid, npc.position())), listOf(TacticalContact(enemy.uuid, enemy.position(), helper.level.gameTime)))
+            val search = task.search!!
+            val result = TacticalPositions.find(npc, task, view)
+            if (result.outcome == TacticalPositions.Outcome.DEFERRED) return@onEachTick
+            Files.writeString(Path.of(System.getProperty("sbwnpc.gameTestReports")).resolve("support-score-$job.txt"), "result=$result\nscores=${search.scored}\n")
+            helper.assertTrue(search.scored.size == 2, "Fixture did not admit both posts: ${search.rejections}")
+            helper.assertTrue(search.scored[open]?.open == true, "Exposed $job post received synthetic shelter: ${search.scored}")
+            helper.assertTrue(result.position == sheltered, "$job selected an exposed post despite reachable shelter: $result")
+            helper.succeed()
+        }
+    }
+
+    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 120, batch = "advance-progress")
     fun advanceSearchRejectsAlreadyReachedIntermediatePost(helper: GameTestHelper) {
         for (x in 0..175) for (z in 0..223) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)

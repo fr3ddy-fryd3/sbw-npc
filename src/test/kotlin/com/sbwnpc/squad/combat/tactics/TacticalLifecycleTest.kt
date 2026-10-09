@@ -322,6 +322,39 @@ class TacticalLifecycleTest {
         assertTrue(state.select(choice, 1, 1080L + 5000L + 200L), "The accumulated execution budget must still expire at 1200 ticks")
     }
 
+    @Test fun `cover pause has its own deadline and resumes the remaining execution time`() {
+        val state = SquadTacticalState()
+        val choice = TacticalChoice(TacticalPattern.BOUND, focus)
+        state.select(choice, 1, 0)
+        val plan = state.plan!!
+        TacticalCoordinator.assign(squad, plan, view())
+        fun transition(phase: TacticalPhaseState, now: Long) = plan.behavior.phases.transition(phase, TacticalContext(squad, plan, view(now)), "test_cover")
+        transition(ExecutingPhase(), 100)
+        transition(PausedPhase(100), 240)
+        assertFalse(state.select(choice, 1, 340), "100 paused ticks must not consume the 240-tick execution deadline")
+        assertEquals(140L, plan.behavior.lifetimeElapsed(plan.started, 340))
+        val context = TacticalContext(squad, plan, view(340))
+        plan.behavior.phases.tick(context)
+        assertEquals(TacticalPhase.EXECUTING, plan.phase)
+        assertEquals(200L, plan.phaseSince)
+        assertFalse(state.select(choice, 1, 439))
+        assertTrue(state.select(choice, 1, 440), "The original execution deadline must still apply after cover returns")
+    }
+
+    @Test fun `cover pause still fails at its own deadline without covering fire`() {
+        val state = SquadTacticalState()
+        val choice = TacticalChoice(TacticalPattern.BOUND, focus)
+        state.select(choice, 1, 0)
+        val plan = state.plan!!
+        TacticalCoordinator.assign(squad, plan, view())
+        plan.behavior.phases.transition(ExecutingPhase(), TacticalContext(squad, plan, view(100)), "test_cover")
+        plan.behavior.phases.transition(PausedPhase(100), TacticalContext(squad, plan, view(240)), "test_cover_lost")
+        val silent = view(400).copy(members = members.map { it.copy(canFire = false, recentFire = false) })
+        assertFalse(state.select(choice, 1, 400))
+        TacticalCoordinator.advance(squad, state, plan, silent)
+        assertEquals(TacticalFailure.COVER_LOST, plan.failure)
+    }
+
     @Test fun `a short firing lane probe produces explicit transitions with readiness evidence`() {
         val events = mutableListOf<TacticalEvent>()
         val state = SquadTacticalState(TacticalEventSink(events::add))

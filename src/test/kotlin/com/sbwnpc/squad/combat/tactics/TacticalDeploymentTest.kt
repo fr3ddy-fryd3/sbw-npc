@@ -42,7 +42,7 @@ class TacticalDeploymentTest {
             state.assess(squad, moving)
             assertSame(plan, state.plan)
             assertEquals(TacticalPhase.PREPARING, plan.phase)
-            assertTrue(plan.behavior.extendsPreparation(now))
+            assertTrue(plan.behavior.ownsPhaseDeadline())
             assignments.forEach { (id, task) -> assertSame(task, plan.tasks[id]) }
         }
         assertEquals(0, (plan.behavior as CoveredManeuverState).laneAttempts)
@@ -61,7 +61,7 @@ class TacticalDeploymentTest {
         state.assess(squad, initial.copy(now = 100))
         assertSame(plan, state.plan)
         assertEquals(TacticalPhase.OPENING_LANE, plan.phase)
-        assertFalse(plan.behavior.extendsPreparation(100))
+        assertFalse(plan.behavior.ownsPhaseDeadline())
     }
 
     @Test fun `deployment progress has a hard deadline even if one member moves a little`() {

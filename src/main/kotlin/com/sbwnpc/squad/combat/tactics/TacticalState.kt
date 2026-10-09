@@ -41,7 +41,9 @@ abstract class TacticalState {
     open val firingLaneExtension = 0.0
     open val holdsFailedMembers = false
     open val alternatesSideAfterFailure = false
-    open fun extendsPreparation(now: Long): Boolean = false
+
+    /** A phase with its own bounded deadline must not also consume the execution deadline. */
+    open fun ownsPhaseDeadline(): Boolean = false
     open fun lifetimeElapsed(started: Long, now: Long): Long = now - started
     open fun usesAttackFront(member: TacticalMember): Boolean = true
     open fun attackFrontCenter(context: TacticalContext): Vec3 = context.view.center

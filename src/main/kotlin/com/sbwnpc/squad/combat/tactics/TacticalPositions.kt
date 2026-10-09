@@ -276,7 +276,7 @@ object TacticalPositions {
             return TacticalPositionScore(false, exposure, candidate.distanceTo(context.search.origin))
         }
         if (context.deployment) {
-            if (context.task.coverOrigin == null) {
+            if (context.task.job == TacticalJob.ADVANCE) {
                 // An explicit advance joins the moving group. Its transit endpoint is ranked
                 // by route progress; the covering group owns selection of sheltered fire posts.
                 return TacticalPositionScore.coveredTransitStep(context.search.origin, context.task.frontage!!.point, candidate)

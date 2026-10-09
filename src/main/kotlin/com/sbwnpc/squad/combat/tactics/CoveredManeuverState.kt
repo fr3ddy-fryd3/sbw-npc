@@ -26,7 +26,7 @@ abstract class CoveredManeuverState : TacticalState() {
 
     // Preparation and pauses have their own bounded deadlines. The plan's shared movement
     // budget counts execution across all waves, rather than recalling a freshly deployed wave.
-    override fun extendsPreparation(now: Long): Boolean = phases.current.id == TacticalPhase.PREPARING
+    override fun ownsPhaseDeadline(): Boolean = phases.current.id in setOf(TacticalPhase.PREPARING, TacticalPhase.PAUSED)
     override fun lifetimeElapsed(started: Long, now: Long): Long = if (phaseTimingStarted) executionElapsed(now) else super.lifetimeElapsed(started, now)
 
     override fun beforeTick(context: TacticalContext) {
