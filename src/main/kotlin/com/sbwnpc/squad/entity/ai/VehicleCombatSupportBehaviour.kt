@@ -165,7 +165,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun eligible(entity: NpcEntity): Boolean =
         !entity.vehicleTransport && !entity.operatingDrone && !entity.antiDroneEngaged && !entity.diggedIn && !entity.isSuppressed() &&
-            entity.npcClass != NpcClass.MORTAR_OPERATOR && entity.npcClass != NpcClass.MORTAR_LOADER &&
+            entity.npcClass != NpcClass.MORTAR &&
             threat(entity) != null
 
     // The hostile-vehicle scan (an entity query + raycasts) used to run from this behaviour's

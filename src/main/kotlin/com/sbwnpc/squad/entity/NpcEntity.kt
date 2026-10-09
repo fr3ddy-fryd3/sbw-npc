@@ -8,8 +8,7 @@ import com.sbwnpc.squad.entity.ai.IdleWanderGoal
 import com.sbwnpc.squad.entity.ai.InvestigateBehaviour
 import com.sbwnpc.squad.entity.ai.MedicHealBehaviour
 import com.sbwnpc.squad.entity.ai.MortarClaims
-import com.sbwnpc.squad.entity.ai.MortarLoaderBehaviour
-import com.sbwnpc.squad.entity.ai.MortarOperatorBehaviour
+import com.sbwnpc.squad.entity.ai.MortarCrewBehaviour
 import com.sbwnpc.squad.entity.ai.SeekCoverBehaviour
 import com.sbwnpc.squad.entity.ai.SquadOrderBehaviour
 import com.sbwnpc.squad.entity.ai.VehicleCombatSupportBehaviour
@@ -71,7 +70,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     var npcClass: NpcClass
         get() = NpcClass.byOrdinal(entityData.get(DATA_CLASS))
-        set(value) = entityData.set(DATA_CLASS, value.ordinal)
+        set(value) = entityData.set(DATA_CLASS, value.canonical.ordinal)
 
     var npcRank: NpcRank
         get() = NpcRank.byOrdinal(entityData.get(DATA_RANK))
@@ -343,7 +342,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             rgoLeft = maxOf(rgoLeft, GRENADES_OF_EACH)
             topped = true
         }
-        if (npcClass == NpcClass.MORTAR_LOADER && mortarShellsLeft < MORTAR_SHELLS) {
+        if (npcClass == NpcClass.MORTAR && mortarShellsLeft < MORTAR_SHELLS) {
             mortarShellsLeft = MORTAR_SHELLS
             topped = true
         }
@@ -389,7 +388,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      *  Looked up every couple of seconds, or immediately when the search range changes. */
     fun nearestSupply(): Vec3? {
         val level = level() as? ServerLevel ?: return null
-        val unlimited = ammoFraction() <= 0.0 || (npcClass == NpcClass.MORTAR_LOADER && mortarShellsLeft <= 0)
+        val unlimited = ammoFraction() <= 0.0 || (npcClass == NpcClass.MORTAR && mortarShellsLeft <= 0)
         if (unlimited != supplySearchUnlimited || tickCount - supplyCheckTick >= SUPPLY_CHECK_INTERVAL) {
             supplyCheckTick = tickCount
             supplySearchUnlimited = unlimited
@@ -419,7 +418,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     /** Classes that carry hand grenades at all: not the crews, whose hands are on something else. */
     private fun carriesGrenades(): Boolean =
-        npcClass != NpcClass.MORTAR_OPERATOR && npcClass != NpcClass.MORTAR_LOADER &&
+        npcClass != NpcClass.MORTAR &&
             npcClass != NpcClass.TANK_CREW && npcClass != NpcClass.DRONE_OPERATOR
 
     // Set/cleared only by SeekCoverBehaviour (enterDugInHolding/stop) while the mob is holding a
@@ -466,7 +465,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     var medkitsLeft: Int = MEDKITS
 
     /** Shells a mortar loader carries for its crew's tube — see
-     *  [com.sbwnpc.squad.entity.ai.MortarLoaderBehaviour]. Persisted; zero for every other class. */
+     *  [com.sbwnpc.squad.entity.ai.MortarCrewBehaviour]. Persisted; zero for every other class. */
     var mortarShellsLeft: Int = 0
 
     /** Kamikaze drones this operator still carries; refilled by SquadManager.resupplyAtBarracks.
@@ -478,9 +477,12 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      *  the ground if the carrier dies, so a displacing crew can never simply lose its mortar. */
     var carryingMortar: Boolean = false
 
+    var assignedMortarId: UUID? = null
+    var packedMortarState: CompoundTag = CompoundTag()
+
     /** The mortar crew's own behaviour is walking this man somewhere — after the carried tube, to
-     *  a Supply for shells, back to the tube — see [com.sbwnpc.squad.entity.ai.MortarLoaderBehaviour]
-     *  and [com.sbwnpc.squad.entity.ai.MortarOperatorBehaviour]. Runtime only. */
+     *  a Supply for shells, back to the tube — see [com.sbwnpc.squad.entity.ai.MortarCrewBehaviour]
+     *  and [com.sbwnpc.squad.entity.ai.MortarCrewBehaviour]. Runtime only. */
     var mortarErrand: Boolean = false
 
     /** The crew's errand, not the squad order, sets where and how fast it goes. Both used to steer
@@ -938,8 +940,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             net.tslat.smartbrainlib.api.core.behaviour.custom.move.InteractWithDoor<NpcEntity>(),
             SeekCoverBehaviour(),
             com.sbwnpc.squad.entity.ai.BlindReturnFireBehaviour(),
-            MortarOperatorBehaviour(),
-            MortarLoaderBehaviour(),
+            MortarCrewBehaviour(),
             com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour(),
             com.sbwnpc.squad.entity.ai.AntiDroneBehaviour(),
             VehicleCrewBehaviour(),
@@ -1052,7 +1053,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         rgnLeft = if (carriesGrenades()) GRENADES_OF_EACH else 0
         rgoLeft = rgnLeft
         medkitsLeft = MEDKITS
-        mortarShellsLeft = if (npcClass == NpcClass.MORTAR_LOADER) MORTAR_SHELLS else 0
+        mortarShellsLeft = if (npcClass == NpcClass.MORTAR) MORTAR_SHELLS else 0
         if (npcClass == NpcClass.DRONE_OPERATOR) dronesLeft = com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES
 
         // A belt-fed gun does nothing to a tank, and the machine gunner is the one member of an
@@ -1075,6 +1076,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         compound.putInt("Medkits", medkitsLeft)
         compound.putInt("MortarShells", mortarShellsLeft)
         if (carryingMortar) compound.putBoolean("CarryingMortar", true)
+        assignedMortarId?.let { compound.putUUID("AssignedMortar", it) }
+        if (!packedMortarState.isEmpty) compound.put("PackedMortar", packedMortarState.copy())
         compound.putInt("DronesLeft", dronesLeft)
         if (!stowedWeapon.isEmpty) compound.put("StowedWeapon", stowedWeapon.save(registryAccess()))
         if (!antiArmourWeapon.isEmpty) compound.put("AntiArmourWeapon", antiArmourWeapon.save(registryAccess()))
@@ -1086,7 +1089,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         super.readAdditionalSaveData(compound)
         // Saved attributes carry the old base; NPCs from before the change swim at the new pace too.
         getAttribute(net.neoforged.neoforge.common.NeoForgeMod.SWIM_SPEED)?.baseValue = SWIM_SPEED
-        runCatching { npcClass = NpcClass.valueOf(compound.getString("NpcClass")) }
+        runCatching { npcClass = NpcClass.byName(compound.getString("NpcClass")) }
         runCatching { npcRank = NpcRank.valueOf(compound.getString("NpcRank")) }
         squadId = if (compound.hasUUID("SquadId")) compound.getUUID("SquadId") else null
         assignedVehicleId = if (compound.hasUUID("AssignedVehicle")) compound.getUUID("AssignedVehicle") else null
@@ -1107,14 +1110,19 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         }
         // Saved before NPCs carried one: issued now.
         medkitsLeft = if (compound.contains("Medkits")) compound.getInt("Medkits") else MEDKITS
-        mortarShellsLeft = if (compound.contains("MortarShells")) {
+        mortarShellsLeft = if (compound.getString("NpcClass") == "MORTAR_OPERATOR" && compound.getInt("MortarShells") <= 0) {
+            // Legacy operators never carried shells; new unified crew receive their initial kit.
+            MORTAR_SHELLS
+        } else if (compound.contains("MortarShells")) {
             compound.getInt("MortarShells")
-        } else if (npcClass == NpcClass.MORTAR_LOADER) {
+        } else if (npcClass == NpcClass.MORTAR) {
             MORTAR_SHELLS
         } else {
             0
         }
         carryingMortar = compound.getBoolean("CarryingMortar")
+        assignedMortarId = if (compound.hasUUID("AssignedMortar")) compound.getUUID("AssignedMortar") else null
+        packedMortarState = compound.getCompound("PackedMortar").copy()
         dronesLeft = if (compound.contains("DronesLeft")) {
             compound.getInt("DronesLeft")
         } else if (npcClass == NpcClass.DRONE_OPERATOR) {

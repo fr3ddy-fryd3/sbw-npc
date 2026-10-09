@@ -24,6 +24,7 @@ import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.entity.projectile.Projectile
+import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.GameType
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.phys.Vec3
@@ -50,18 +51,14 @@ object SidearmGameTests {
             for (npc in npcs) {
                 helper.assertTrue(Ports.guns.magazineSize(npc.sidearmWeapon) == 17 && Ports.guns.reserve(npc.sidearmWeapon) == 68, "Missing loaded MP443 + four reserve magazines for ${npc.npcClass}")
                 val primary = npc.mainHandItem
-                GunData.from(primary).ammo.set(0)
-                GunData.from(primary).virtualAmmo.set(12)
-                Ports.guns.persist(primary)
+                ammunition(primary, 0, 12)
                 SidearmKit.update(npc)
                 helper.assertTrue(!npc.usingSidearm && npc.mainHandItem === primary, "Ordinary reload was mistaken for exhaustion")
-                GunData.from(primary).virtualAmmo.set(0)
-                Ports.guns.persist(primary)
+                ammunition(primary, 0, 0)
                 SidearmKit.update(npc)
                 helper.assertTrue(npc.usingSidearm && npc.primaryGun() === primary && npc.ammoFraction() == 0.0, "Pistol replaced primary ammo accounting")
                 helper.assertTrue(Ports.guns.inHand(npc)?.triggerMode == TriggerMode.SEMI, "Backup pistol is automatic")
-                GunData.from(npc.mainHandItem).ammo.set(1)
-                GunData.from(npc.mainHandItem).virtualAmmo.set(2)
+                ammunition(npc.mainHandItem, 1, 2)
                 if (npc.npcClass == NpcClass.MACHINE_GUNNER) {
                     helper.assertTrue(AntiArmourKit.wield(npc, true) && !npc.usingSidearm, "Launcher did not restore primary ownership")
                     helper.assertTrue(AntiArmourKit.isLauncher(npc.mainHandItem) && npc.antiArmourWeapon === primary, "Launcher exchange lost the rifle")
@@ -106,9 +103,7 @@ object SidearmGameTests {
             AttackDeploymentGameTests.spawn(helper, Vec3(20.5, 1.0, 40.5 + index * 16), SquadFaction.PIG).apply {
                 diggedIn = true
                 sidearmWeapon = Ports.guns.issue(ResourceLocation.fromNamespaceAndPath("superbwarfare", name), this, if (name == "m_1911") 70 else 85)
-                GunData.from(mainHandItem).ammo.set(0)
-                GunData.from(mainHandItem).virtualAmmo.set(0)
-                Ports.guns.persist(mainHandItem)
+                ammunition(mainHandItem, 0, 0)
             }
         }
         val origins = shooters.map { it.position() }
@@ -167,9 +162,7 @@ object SidearmGameTests {
         (helper.getBlockEntity(supply) as SupplyBlockEntity).faction = SquadFaction.PIG
         val npc = AttackDeploymentGameTests.spawn(helper, Vec3(25.5, 1.0, 64.5), SquadFaction.PIG)
         val origin = npc.position()
-        GunData.from(npc.mainHandItem).ammo.set(0)
-        GunData.from(npc.mainHandItem).virtualAmmo.set(0)
-        Ports.guns.persist(npc.mainHandItem)
+        ammunition(npc.mainHandItem, 0, 0)
         val enemy = AttackDeploymentGameTests.spawn(helper, Vec3(80.5, 1.0, 64.5), SquadFaction.COW).apply { isNoAi = true }
         var drewPistol = false
         cleanup(helper) {
@@ -188,6 +181,14 @@ object SidearmGameTests {
                 helper.succeed()
             }
         }
+    }
+
+    /** SBW uses weak GunData cache values; write fixture ammunition as one persisted transaction. */
+    private fun ammunition(stack: ItemStack, loaded: Int, reserve: Int) {
+        val data = GunData.from(stack)
+        data.ammo.set(loaded)
+        data.virtualAmmo.set(reserve)
+        data.save()
     }
 
     private fun floor(helper: GameTestHelper, width: Int, depth: Int) {
@@ -226,9 +227,7 @@ object SidearmGameTests {
         val npc = AttackDeploymentGameTests.spawn(helper, Vec3(65.5, 1.0, 64.5), SquadFaction.PIG)
         val origin = npc.position()
         for (stack in listOf(npc.mainHandItem, npc.sidearmWeapon)) {
-            GunData.from(stack).ammo.set(0)
-            GunData.from(stack).virtualAmmo.set(0)
-            Ports.guns.persist(stack)
+            ammunition(stack, 0, 0)
         }
         val enemy = AttackDeploymentGameTests.spawn(helper, Vec3(110.5, 1.0, 64.5), SquadFaction.COW).apply { isNoAi = true }
         val manager = SquadManager.get(helper.level)

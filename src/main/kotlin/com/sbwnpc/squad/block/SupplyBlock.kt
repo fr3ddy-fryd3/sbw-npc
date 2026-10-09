@@ -40,7 +40,7 @@ import net.minecraft.world.phys.BlockHitResult
 /**
  * Squad logistics point: NPCs of the placer's side and its allies standing by it are topped back
  * up to what they were issued with — see [SupplyBlockEntity]. Mortar shells still come out of thin
- * air ([com.sbwnpc.squad.entity.ai.MortarLoaderBehaviour]) and vehicles are recharged by
+ * air ([com.sbwnpc.squad.entity.ai.MortarCrewBehaviour]) and vehicles are recharged by
  * SuperbWarfare's own charging station.
  *
  * Blocks placed before it did anything have no block entity and stay inert until put down again.

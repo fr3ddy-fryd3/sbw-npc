@@ -99,7 +99,7 @@ object CoverSearch {
      *  one threat it's certain is real. Approximated at the same "+1.5 eye height" heuristic the old
      *  single-threat check always used (threatPos is a stored position, not a live entity to read an
      *  exact eyePosition from). Same hostile-detection idiom as
-     *  `MortarOperatorBehaviour.scanForEnemy` (NpcEntity/Player, [SquadTeams.isHostile], alive). */
+     *  `MortarCrewBehaviour.scanForEnemy` (NpcEntity/Player, [SquadTeams.isHostile], alive). */
     private fun nearbyThreats(entity: NpcEntity, level: ServerLevel, primary: Vec3): List<Vec3> {
         val threats = Hostiles.within(level, entity, THREAT_SCAN_RADIUS).mapTo(ArrayList()) { it.eyePosition }
         threats += primary.add(0.0, 1.5, 0.0)

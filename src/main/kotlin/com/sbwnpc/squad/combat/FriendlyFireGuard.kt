@@ -26,7 +26,7 @@ import net.minecraft.world.phys.Vec3
  * risk, and needs its own gate at the target's position rather than anywhere along the shooter's
  * aim.
  *
- * The mortar's own indirect-fire feasibility check (`MortarOperatorBehaviour.canHitTarget`) is
+ * The mortar's own indirect-fire feasibility check (`MortarCrewBehaviour.canHitTarget`) is
  * unrelated — arcing fire onto a called-in point is handled by that goal's own logic already.
  */
 object FriendlyFireGuard {

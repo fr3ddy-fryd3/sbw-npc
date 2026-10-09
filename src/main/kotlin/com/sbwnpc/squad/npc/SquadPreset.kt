@@ -27,7 +27,7 @@ enum class SquadPreset(
         List(10) { NpcClass.RIFLEMAN } + List(2) { NpcClass.SNIPER } + List(2) { NpcClass.MACHINE_GUNNER } + List(2) { NpcClass.MEDIC },
         grid = true,
     ),
-    MORTAR_CREW("Mortar Crew", listOf(NpcClass.MORTAR_OPERATOR, NpcClass.MORTAR_LOADER)),
+    MORTAR_CREW("Mortar Crew", listOf(NpcClass.MORTAR, NpcClass.MORTAR)),
 
     // Label stayed generic ("Tank Crew") once TankModel let the GUI pick which of the three
     // models the crew actually rides; the enum name is kept as-is, only ordinal position matters.

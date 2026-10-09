@@ -202,7 +202,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         when (entity.npcClass) {
             NpcClass.RIFLEMAN, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC -> true
 
-            NpcClass.MORTAR_OPERATOR, NpcClass.MORTAR_LOADER, NpcClass.TANK_CREW,
+            NpcClass.MORTAR, NpcClass.MORTAR_OPERATOR, NpcClass.MORTAR_LOADER, NpcClass.TANK_CREW,
             NpcClass.HELICOPTER_PILOT, NpcClass.HELICOPTER_GUNNER, NpcClass.DRONE_OPERATOR,
             -> false
         }

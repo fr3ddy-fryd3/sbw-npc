@@ -131,7 +131,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
             // stays past the slots it assigns (see the oscillation note on ARRIVAL_RADIUS).
             // A barraging crew shells the objective from where its tube stands: the objective is
             // the target, not a place to go. Moving the tube within reach of it is
-            // MortarOperatorBehaviour's business; taken for a point to hold, it walked the crew
+            // MortarCrewBehaviour's business; taken for a point to hold, it walked the crew
             // off toward the shelling whenever they stepped away from the tube.
             SquadOrder.BARRAGE -> entity.navigation.stop()
 

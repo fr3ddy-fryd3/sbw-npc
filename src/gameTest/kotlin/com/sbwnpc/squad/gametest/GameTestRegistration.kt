@@ -15,6 +15,7 @@ object GameTestRegistration {
             LadderNavigationGameTests::class.java,
             ScaffoldingGameTests::class.java,
             SidearmGameTests::class.java,
+            MortarCrewGameTests::class.java,
             DefensiveOverwatchGameTests::class.java,
             RoofedOverwatchGameTests::class.java,
             AttackDeploymentGameTests::class.java,

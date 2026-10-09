@@ -22,22 +22,8 @@ import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 
-/**
- * In the Core tasks (`NpcEntity.getCoreTasks()`): a mortar crew member mans its post whichever of
- * Fight or Idle is active, stepping aside only for a genuine personal threat, which it checks
- * itself below.
- *
- * Requires the mortar to actually have shells loaded (normally kept topped up by a squadmate
- * running [MortarLoaderBehaviour]). Two ways to get a fire mission:
- *  - commanded: squad order ATTACK with an objective/focus set (always wins).
- *  - autonomous: the nearest hostile its crew can see within the rank-scaled detection radius, or
- *    else where the side last saw one ([com.sbwnpc.squad.combat.TeamAwareness.sightings]), even
- *    under DEFEND/PATROL/MOVE — a mortar crew doesn't just sit idle while enemies close in.
- *
- * Minimum range / friendly-safety-radius are heuristics, not a faithful read of the mortar's own
- * internal aim-solver state — needs in-game tuning.
- */
-class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
+/** One persistent soldier class; the tube assigns operator/loader posts at runtime. */
+class MortarCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     // ExtendedBehaviour defaults to a 60-tick runtime cap (confirmed via javap — see
     // SeekCoverBehaviour's doc comment for the full story); manning a mortar post is meant to be
@@ -47,11 +33,12 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private var mortar: Entity? = null
+    private var carrier: NpcEntity? = null
+    private var postOf: kotlin.Pair<Entity, Vec3>? = null
     private var nextAimTick = 0
     private var nextScanTick = 0
     private var nextBarrageShiftTick = 0
     private var barrageAim: BlockPos? = null
-    private var nextFireTick = 0
     private var lastScanResult: BlockPos? = null
 
     /** Consecutive ticks the fire mission has been out of reach — see [outOfReach]. */
@@ -72,9 +59,6 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val MAX_DETECTION = 160.0
         private const val MIN_SCATTER = 5.0
         private const val MAX_SCATTER = 10.0
-
-        /** One round every 5s — halved from every 2.5s per user call. */
-        private const val FIRE_COOLDOWN_TICKS = 100
 
         // With no mortar in range, eligible() used to run the mortar box query every single
         // tick for the rest of the operator's life (SmartBrainLib re-checks stopped behaviours'
@@ -117,44 +101,34 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
     private fun eligible(entity: NpcEntity): Boolean {
-        if (entity.npcClass != NpcClass.MORTAR_OPERATOR) return false
-        // A dug-in operator (badly hurt, took cover) must stay put like everything else that
-        // respects NpcEntity.diggedIn (PM review finding — this was one of two Core tasks that
-        // still didn't) — manning the mortar can wait until it's healed/no longer holding.
-        if (entity.diggedIn) return false
-        if (entity.vehicleTransport) return false
-        // Genuine personal danger only (an enemy right on top of the operator) — NOT just "some
-        // sensor set ATTACK_TARGET", which also happens from the generic squad-target sensor every
-        // NpcEntity has regardless of class. Bailing out on ANY target used to silently disable the
-        // whole mortar fire-mission/TeamAwareness path in ordinary combat conditions, not just real
-        // self-defense.
-        val personalThreat = entity.target?.takeIf { it.isAlive && entity.distanceToSqr(it) <= SELF_DEFENSE_RANGE_SQR }
-        if (personalThreat != null) return false
-        // Mid-displacement there is no mortar to find or claim — the crew is the mortar. Checked
-        // before the fire mission, because a crew whose target has just died still has to put the
-        // tube down somewhere; bailing out here would leave it carrying it forever.
+        if (entity.npcClass != NpcClass.MORTAR || !MortarClaims.available(entity)) return false
         if (entity.carryingMortar) return true
-        // Being sent somewhere is reason enough to go to the tube: it has to be packed and carried.
-        if (relocationPoint(entity) == null && fireTarget(entity) == null) return false
-
-        val current = mortar
-        if (current != null && Ports.vehicles.isOperational(current) && !MortarClaims.isOperatorClaimedByOther(current.uuid, entity.uuid)) return true
-
         val level = entity.level() as? ServerLevel ?: return false
+        MortarClaims.refresh(level)
+        carrier = NpcRegistry.all(level).firstOrNull {
+            it !== entity && it.isAlive && it.carryingMortar &&
+                (
+                    (entity.assignedMortarId != null && it.assignedMortarId == entity.assignedMortarId) ||
+                        (entity.assignedMortarId == null && entity.squadId != null && it.squadId == entity.squadId)
+                    )
+        }
+        if (carrier != null) return true
+        val assigned = entity.assignedMortarId?.let(level::getEntity)
+        val current = assigned ?: mortar
+        if (current != null && Ports.vehicles.isOperational(current) &&
+            !SquadTeams.isHostile(entity, current) && MortarClaims.assign(current, entity) != null
+        ) {
+            mortar = current
+            return true
+        }
         if (entity.tickCount < nextMortarSearchTick) return false
         nextMortarSearchTick = entity.tickCount + MORTAR_SEARCH_INTERVAL_TICKS
-        val found = Ports.mortars.within(
-            level,
-            AABB.ofSize(entity.position(), SEARCH_RANGE * 2, SEARCH_RANGE * 2, SEARCH_RANGE * 2),
-        ).firstOrNull {
-            Ports.vehicles.isOperational(it) && entity.distanceToSqr(it) <= SEARCH_RANGE * SEARCH_RANGE &&
-                !MortarClaims.isOperatorClaimedByOther(it.uuid, entity.uuid)
-        } ?: return false
-
-        MortarClaims.claimOperator(found.uuid, entity.uuid)
+        val found = Ports.mortars.within(level, AABB.ofSize(entity.position(), SEARCH_RANGE * 2, SEARCH_RANGE * 2, SEARCH_RANGE * 2)) {
+            Ports.vehicles.isOperational(it) && !SquadTeams.isHostile(entity, it) &&
+                entity.distanceToSqr(it) <= SEARCH_RANGE * SEARCH_RANGE && MortarClaims.hasPlace(it.uuid, entity.uuid)
+        }.minByOrNull { entity.distanceToSqr(it) } ?: return false
+        if (MortarClaims.assign(found, entity) == null) return false
         mortar = found
-        // See MortarLoaderBehaviour: a loaded shell must not fire by itself, even if we claim the
-        // mortar before a loader ever does.
         Ports.mortars.takeControl(found)
         return true
     }
@@ -165,8 +139,10 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun stop(entity: NpcEntity) {
         startCheck.reset()
-        MortarClaims.releaseOperator(entity.uuid)
+        MortarClaims.release(entity.uuid)
         mortar = null
+        carrier = null
+        postOf = null
         entity.servingMortar = false
         entity.mortarErrand = false
     }
@@ -179,32 +155,60 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             tickDisplacing(entity, level)
             return
         }
+        carrier?.takeIf { it.isAlive && it.carryingMortar }?.let { with ->
+            entity.servingMortar = true
+            entity.mortarErrand = true
+            if (entity.distanceToSqr(with) > 25.0) entity.navigateTo(with.position(), DISPLACE_SPEED) else entity.navigation.stop()
+            return
+        }
         val m = mortar ?: return
-        relocationPoint(entity)?.let { point ->
-            if (m.position().distanceTo(point) > RELOCATE_RANGE) {
-                packForRelocation(entity, m)
+        val role = MortarClaims.assign(m, entity) ?: return
+        if (role == MortarClaims.Role.OPERATOR) {
+            relocationPoint(entity)?.let { point ->
+                if (m.position().distanceTo(point) > RELOCATE_RANGE) {
+                    packForRelocation(entity, m)
+                    return
+                }
+            }
+        }
+        if (entity.mortarShellsLeft <= 0) {
+            entity.nearestSupply()?.let { supply ->
+                MortarClaims.handOver(m, entity)
+                entity.servingMortar = true
+                entity.mortarErrand = true
+                if (entity.position().closerThan(supply, com.sbwnpc.squad.block.entity.SupplyBlockEntity.RADIUS - 3.0)) {
+                    entity.navigation.stop()
+                } else {
+                    entity.navigateTo(supply, DISPLACE_SPEED)
+                }
                 return
             }
         }
-        val target = fireTarget(entity) ?: return
-
-        val dist = entity.position().distanceTo(m.position())
+        val post = if (role == MortarClaims.Role.OPERATOR) m.position() else loadingPost(entity, m)
+        val dist = entity.distanceTo(m)
         if (dist > 2.5) {
-            entity.servingMortar = false
+            entity.servingMortar = true
             entity.mortarErrand = true
-            entity.navigateTo(m.x, m.y, m.z, if (dist > RUN_TO_TUBE_DISTANCE) DISPLACE_SPEED else 1.0)
+            val speed = if (dist > RUN_TO_TUBE_DISTANCE) DISPLACE_SPEED else 1.0
+            if (!com.sbwnpc.squad.combat.FiringPostArrival.steer(entity, post, speed)) entity.navigateTo(post, speed)
             return
         }
         entity.servingMortar = true
         entity.navigation.stop()
+        entity.lookControl.setLookAt(m.x, m.y + 0.5, m.z)
+        if (!Ports.mortars.hasShell(m) && !Ports.mortars.isFiring(m) && entity.mortarShellsLeft > 0) {
+            Ports.mortars.loadShell(m)
+            entity.mortarShellsLeft--
+        }
+        if (role != MortarClaims.Role.OPERATOR) return
+        val target = fireTarget(entity) ?: return
 
         // Can't reach the fire mission from here: pick the tube up and walk it closer rather than
         // standing over it lobbing shells that fall short.
         if (outOfReach(m, target)) {
             if (++unreachableTicks >= DISPLACE_AFTER_TICKS) {
                 unreachableTicks = 0
-                MortarDeployment.pack(m, entity)
-                mortar = null
+                if (MortarDeployment.pack(m, entity)) mortar = null
             }
             return
         }
@@ -223,10 +227,7 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             Ports.mortars.lay(m, target, scatterRadius(entity), entity)
             nextAimTick = entity.tickCount + 20
         }
-        if (entity.tickCount >= nextFireTick) {
-            Ports.mortars.fire(m, entity)
-            nextFireTick = entity.tickCount + FIRE_COOLDOWN_TICKS
-        }
+        MortarCycle.fireIfReady(m, entity)
     }
 
     /**
@@ -264,14 +265,21 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             entity.navigateTo(m.x, m.y, m.z, DISPLACE_SPEED)
             return
         }
-        MortarDeployment.pack(m, entity)
-        mortar = null
+        if (MortarDeployment.pack(m, entity)) mortar = null
+    }
+
+    private fun loadingPost(entity: NpcEntity, m: Entity): Vec3 {
+        postOf?.takeIf { it.first === m }?.let { return it.second }
+        val yaw = Math.toRadians(m.yRot.toDouble())
+        val post = com.sbwnpc.squad.util.Terrain.standableOrNull(entity.level(), m.x + Math.cos(yaw) * 1.8, m.y + 1.0, m.z + Math.sin(yaw) * 1.8) ?: m.position()
+        postOf = kotlin.Pair(m, post)
+        return post
     }
 
     private fun tickDisplacing(entity: NpcEntity, level: ServerLevel) {
         // Sent somewhere: the tube goes there, and is set up once the crew arrives.
         relocationPoint(entity)?.let { point ->
-            if (entity.position().distanceTo(point) <= RELOCATE_RANGE) {
+            if (entity.position().distanceTo(point) <= RELOCATE_RANGE - 2.0) {
                 entity.navigation.stop()
                 if (MortarDeployment.deploy(level, entity, fireTarget(entity)?.center) != null) return
             }

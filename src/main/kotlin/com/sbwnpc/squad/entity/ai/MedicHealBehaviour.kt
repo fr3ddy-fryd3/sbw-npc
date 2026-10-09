@@ -23,7 +23,7 @@ import java.util.UUID
 
 /**
  * A MEDIC's shoot-vs-heal decision. Placed in `NpcEntity.getCoreTasks()` (like
- * `SeekCoverBehaviour`/`MortarOperatorBehaviour`) so it can act whether or not the medic currently
+ * `SeekCoverBehaviour`/`MortarCrewBehaviour`) so it can act whether or not the medic currently
  * has a combat target of its own — a real Fight-activity behaviour would only ever run alongside
  * `ATTACK_TARGET`, which would rule out the "no target, heal opportunistically" case entirely.
  *

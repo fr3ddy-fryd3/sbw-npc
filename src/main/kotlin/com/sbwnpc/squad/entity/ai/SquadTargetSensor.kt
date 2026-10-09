@@ -94,7 +94,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     private fun computeDesired(mob: NpcEntity, level: ServerLevel, directTarget: LivingEntity?): LivingEntity? {
         val vehicleAttacker = mob.vehicleAttacker()
         if (vehicleAttacker != null && allowed(mob)) return vehicleAttacker
-        val mortarCrew = mob.npcClass in setOf(NpcClass.MORTAR_OPERATOR, NpcClass.MORTAR_LOADER)
+        val mortarCrew = mob.npcClass == NpcClass.MORTAR
 
         val mountedTarget = armedVehicleTarget(mob, level)
         if (mountedTarget != null) return mountedTarget

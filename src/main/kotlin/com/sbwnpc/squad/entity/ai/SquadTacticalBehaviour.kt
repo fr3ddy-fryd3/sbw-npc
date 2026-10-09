@@ -20,8 +20,7 @@ class SquadTacticalBehaviour : ExtendedBehaviour<NpcEntity>() {
                 com.sbwnpc.squad.npc.NpcClass.TANK_CREW,
                 com.sbwnpc.squad.npc.NpcClass.HELICOPTER_PILOT,
                 com.sbwnpc.squad.npc.NpcClass.HELICOPTER_GUNNER,
-                com.sbwnpc.squad.npc.NpcClass.MORTAR_OPERATOR,
-                com.sbwnpc.squad.npc.NpcClass.MORTAR_LOADER,
+                com.sbwnpc.squad.npc.NpcClass.MORTAR,
             )
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity) = eligible(entity)
     override fun shouldKeepRunning(entity: NpcEntity) = eligible(entity)

@@ -143,7 +143,7 @@ class Squad(
 
         private fun loadComposition(tag: CompoundTag): List<NpcClass> {
             val names = tag.getList("OriginalComposition", Tag.TAG_STRING.toInt())
-            if (names.isNotEmpty()) return names.mapNotNull { runCatching { NpcClass.valueOf(it.asString) }.getOrNull() }
+            if (names.isNotEmpty()) return names.mapNotNull { runCatching { NpcClass.byName(it.asString) }.getOrNull() }
             return tag.getList("OriginalComposition", Tag.TAG_INT.toInt()).map { NpcClass.byOrdinal((it as IntTag).asInt) }
         }
     }

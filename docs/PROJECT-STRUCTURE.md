@@ -100,7 +100,7 @@
 | Стрелки и пассажиры вертолёта | [HelicopterGunnerBehaviour.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/HelicopterGunnerBehaviour.kt), [HelicopterRideBehaviour.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/HelicopterRideBehaviour.kt) |
 | Авиация: дальность показа и LOD | [integration/sbw/client/AircraftVisibility.kt](../src/main/kotlin/com/sbwnpc/squad/integration/sbw/client/AircraftVisibility.kt), [AircraftLods.kt](../src/main/kotlin/com/sbwnpc/squad/integration/sbw/client/AircraftLods.kt), [SbwAircraftRendering.kt](../src/main/kotlin/com/sbwnpc/squad/integration/sbw/client/SbwAircraftRendering.kt), mixin `EntityTrackingRangeMixin.java` |
 | Дроны | [DroneOperatorBehaviour.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/DroneOperatorBehaviour.kt), [DroneFlightController.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/DroneFlightController.kt), [AntiDroneBehaviour.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/AntiDroneBehaviour.kt) |
-| Миномёт | [MortarOperatorBehaviour.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/MortarOperatorBehaviour.kt), [MortarLoaderBehaviour.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/MortarLoaderBehaviour.kt), [MortarDeployment.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/MortarDeployment.kt) |
+| Миномёт | [MortarCrewBehaviour.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/MortarCrewBehaviour.kt), [MortarClaims.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/MortarClaims.kt), [MortarCycle.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/MortarCycle.kt), [MortarDeployment.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/MortarDeployment.kt) |
 
 ### Состав, снабжение и отображение
 

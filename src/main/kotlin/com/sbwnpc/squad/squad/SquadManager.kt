@@ -165,7 +165,7 @@ class SquadManager : SavedData() {
 
     fun isMortarSquad(squad: Squad): Boolean =
         squad.originalComposition.any {
-            it == NpcClass.MORTAR_OPERATOR || it == NpcClass.MORTAR_LOADER
+            it.canonical == NpcClass.MORTAR
         }
 
     /** Sets the objective; only an owner on the squad's faction sees the world particle marker. */

@@ -4,7 +4,7 @@ import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
-import com.sbwnpc.squad.entity.ai.MortarOperatorBehaviour
+import com.sbwnpc.squad.entity.ai.MortarCrewBehaviour
 import com.sbwnpc.squad.network.MapFeedPayload
 import com.sbwnpc.squad.network.sendToClient
 import com.sbwnpc.squad.npc.SquadFaction
@@ -110,7 +110,7 @@ object MapFeed {
                 t.putIntArray("Men", members.flatMap { listOf(it.blockX, it.blockZ) }.toIntArray())
             }
             squad.objective?.let { t.putIntArray("Obj", intArrayOf(it.x, it.y, it.z)) }
-            if (squad.order == SquadOrder.BARRAGE) t.putInt("Zone", MortarOperatorBehaviour.BARRAGE_RADIUS.toInt())
+            if (squad.order == SquadOrder.BARRAGE) t.putInt("Zone", MortarCrewBehaviour.BARRAGE_RADIUS.toInt())
             if (squad.order == SquadOrder.PATROL) {
                 routes.get(squad.routeId)?.points?.let { pts ->
                     t.putIntArray("Route", pts.flatMap { listOf(it.x, it.z) }.toIntArray())

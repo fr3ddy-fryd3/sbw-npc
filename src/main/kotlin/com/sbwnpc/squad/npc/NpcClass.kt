@@ -40,12 +40,8 @@ enum class NpcClass(
      *  someone — see that class. */
     MEDIC(listOf(loc("mp_5"), loc("vector")), shootDistanceMultiplier = 3.0, speedMultiplier = 1.3, attackStandoffDistance = 64.0),
 
-    /** The medic's SMGs for self-defence; its real job (MortarOperatorBehaviour) is manning a nearby
-     *  placed MortarEntity, which the MORTAR_LOADER on the same squad keeps supplied. */
+    /** Reserved legacy save/network IDs; selection and loading map both to MORTAR. */
     MORTAR_OPERATOR(listOf(loc("mp_5"), loc("vector"))),
-
-    /** Keeps its squad's manned mortar loaded (MortarLoaderBehaviour) from the shells it carries, and
-     *  fetches more from a Supply — no combat job. Same SMGs as the operator. */
     MORTAR_LOADER(listOf(loc("mp_5"), loc("vector"))),
 
     /** Permanent vehicle crewman. Its sidearm is only for the brief period after its vehicle is destroyed. */
@@ -62,12 +58,17 @@ enum class NpcClass(
     // Same rifles as RIFLEMAN (per user request): once the drones are spent it fights on as an
     // ordinary rifleman rather than plinking with a sidearm.
     DRONE_OPERATOR(listOf(loc("ak_47"), loc("ak_12")), shootDistanceMultiplier = 2.0, speedMultiplier = 1.3),
+
+    /** The same soldier can lay, load and fire; crew roles belong to the mortar. */
+    MORTAR(listOf(loc("mp_5"), loc("vector"))),
     ;
 
     /** Ordinary assault stops at this range; holding orders can shoot out to twice it. */
     val assaultDistance: Double get() = 24.0 * shootDistanceMultiplier
 
-    fun next(): NpcClass = entries[(ordinal + 1) % entries.size]
+    val canonical: NpcClass get() = if (this == MORTAR_OPERATOR || this == MORTAR_LOADER) MORTAR else this
+
+    fun next(): NpcClass = selectable[(selectable.indexOf(canonical) + 1) % selectable.size]
 
     /**
      * Every round this class starts with for [weapon], the loaded magazine included (it is filled
@@ -80,7 +81,7 @@ enum class NpcClass(
             MACHINE_GUNNER -> if (weapon.path == "m_60") 400 else 320
             SNIPER -> if (weapon.path == "awm") 50 else 60
             GRENADIER -> 20
-            MEDIC, MORTAR_OPERATOR, MORTAR_LOADER -> 180
+            MEDIC, MORTAR, MORTAR_OPERATOR, MORTAR_LOADER -> 180
             DRONE_OPERATOR -> 120
             TANK_CREW, HELICOPTER_PILOT, HELICOPTER_GUNNER -> 85
         }
@@ -88,6 +89,9 @@ enum class NpcClass(
     companion object {
         val DEFAULT = RIFLEMAN
 
-        fun byOrdinal(i: Int): NpcClass = entries.getOrElse(i) { DEFAULT }
+        val selectable = entries.filter { it != MORTAR_OPERATOR && it != MORTAR_LOADER }
+
+        fun byOrdinal(i: Int): NpcClass = entries.getOrElse(i) { DEFAULT }.canonical
+        fun byName(name: String): NpcClass = valueOf(name).canonical
     }
 }

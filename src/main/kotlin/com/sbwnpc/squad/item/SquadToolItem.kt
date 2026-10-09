@@ -270,7 +270,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
 
         fun readConfig(tag: CompoundTag): Config =
             Config(
-                readEnum(tag, KEY_CLASS, NpcClass.DEFAULT, { NpcClass.valueOf(it) }, { NpcClass.byOrdinal(it) }),
+                readEnum(tag, KEY_CLASS, NpcClass.DEFAULT, { NpcClass.byName(it) }, { NpcClass.byOrdinal(it) }),
                 readEnum(tag, KEY_RANK, NpcRank.DEFAULT, { NpcRank.valueOf(it) }, { NpcRank.byOrdinal(it) }),
                 readEnum(tag, KEY_FACTION, SquadFaction.DEFAULT, { SquadFaction.valueOf(it) }, { SquadFaction.byOrdinal(it) }),
                 readEnum(tag, KEY_PRESET, SquadPreset.DEFAULT, { SquadPreset.valueOf(it) }, { SquadPreset.byOrdinal(it) }),

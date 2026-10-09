@@ -71,7 +71,7 @@ class RecruitmentRoster(val slots: MutableList<Slot>) {
                     val tag = raw as CompoundTag
                     Slot(
                         tag.getUUID("Id"),
-                        NpcClass.valueOf(tag.getString("Role")),
+                        NpcClass.byName(tag.getString("Role")),
                         if (tag.hasUUID("Occupant")) tag.getUUID("Occupant") else null,
                         tag.getBoolean("Recruited"),
                         tag.getBoolean("Active"),

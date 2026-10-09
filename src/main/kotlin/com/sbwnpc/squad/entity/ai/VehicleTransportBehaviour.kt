@@ -1447,10 +1447,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun shouldPrioritizeMortar(entity: NpcEntity, order: SquadOrder): Boolean {
         if (order != SquadOrder.ATTACK || entity.homeCenter() == null) return false
-        val claimable: (Entity) -> Boolean = when (entity.npcClass) {
-            NpcClass.MORTAR_OPERATOR -> { mortar -> !MortarClaims.isOperatorClaimedByOther(mortar.uuid, entity.uuid) }
-            NpcClass.MORTAR_LOADER -> { mortar -> !MortarClaims.isLoaderClaimedByOther(mortar.uuid, entity.uuid) }
-            else -> return false
+        if (entity.npcClass != NpcClass.MORTAR) return false
+        val claimable: (Entity) -> Boolean = { mortar ->
+            !SquadTeams.isHostile(entity, mortar) && MortarClaims.hasPlace(mortar.uuid, entity.uuid)
         }
         val level = entity.level() as? ServerLevel ?: return false
         // Reached from eligible() every tick for mortar crew under ATTACK — cache the box query.
