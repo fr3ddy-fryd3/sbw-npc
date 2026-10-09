@@ -1,5 +1,79 @@
 # Серверные GameTest
 
+## Быстрая установка в облачном Linux
+
+Из корня клона этой ветки:
+
+```bash
+bash setup-minecraft-headless.sh
+```
+
+[setup-minecraft-headless.sh](../setup-minecraft-headless.sh) подготавливает Java 21,
+Gradle 8.14.2, исходники SuperbWarfare и зависимости NeoForge. Затем запускает
+три реальные серверные сцены: ровный марш, подъём/спуск по лестнице и размещение
+пулемётчиков/снайперов в небольшой дозорке. Код возврата ненулевой при ошибке
+скачивания, сборки или обязательного сценария. Это smoke-проверка окружения;
+полный набор запускается отдельно.
+
+Поддерживаются Linux x86_64/aarch64 с glibc. Для первичной настройки нужен доступ
+к сети. Практический ориентир для облачной машины — 8 ГБ RAM и 10 ГБ свободного
+диска; это рекомендация, а не проверенная нижняя граница. Minecraft-клиент,
+графическая сессия, Xvfb, GPU и установленная игра не требуются. Зависимости
+и тестовый мир создаёт существующая конфигурация ModDevGradle.
+
+Если отсутствуют `curl`, `python3`, `unzip`, `tar`, `sha256sum` или системные CA,
+скрипт устанавливает нужные пакеты через `apt-get` с root/passwordless sudo.
+Для другого дистрибутива установите эти инструменты своим пакетным менеджером.
+`--no-system-install` запрещает установку системных пакетов. Java берётся из
+`JAVA_HOME` или стандартной установки JDK 21; при отсутствии скачивается
+Temurin 21 через [официальный API Adoptium](https://api.adoptium.net/q/swagger-ui/)
+с проверкой SHA256 из метаданных. Выбранный архив и метаданные сохраняются для
+повторных запусков. Gradle скачивается из официального дистрибутива с закреплённой
+SHA256; настройки wrapper с зеркалом Tencent не меняются.
+
+При отсутствии `SuperbWarfare/` скачивается именно
+[commit 5b92ebe1da5daad9cc5e8ae28e3e06f1636f5816](https://github.com/Mercurows/SuperbWarfare/tree/5b92ebe1da5daad9cc5e8ae28e3e06f1636f5816)
+версии 0.8.9.1 для Minecraft 1.21.1, включая Rhino из `libs/`.
+Архив проверяется по закреплённой SHA256. Его содержимое сравнено с рабочим
+локальным снимком зависимости: отличий нет. Уже существующий каталог SBW
+сохраняется без обновления; его совместимость проверит сборка. Если каталог
+неполный, скрипт выдаст ошибку, а не затрёт его.
+
+```bash
+# Подготовка в setup-фазе облачного агента, без выполнения сцен:
+bash setup-minecraft-headless.sh --prepare
+
+# Работа агента после настройки:
+bash setup-minecraft-headless.sh --unit
+bash setup-minecraft-headless.sh --filter attackPastRidgeUnderFire,blockedMinorityResumesFireOnUnevenGround --report cloud-attack
+bash setup-minecraft-headless.sh --all --report cloud-full
+
+# Повтор ранее подготовленных сцен без сети:
+bash setup-minecraft-headless.sh --offline --report cloud-repeat
+```
+
+`--prepare` прогревает зависимости серверного запуска. JUnit имеет дополнительные
+зависимости: перед первым `--unit --offline` выполните обычный `--unit` с сетью.
+Для сохранения Gradle-кэша между облачными сессиями задайте `GRADLE_USER_HOME` до
+запуска. Локальные инструменты/архивы находятся в `build/headless/`; они также
+могут сохраняться кэшем. `HEADLESS_GRADLE_HEAP=4G` задаёт память Gradle,
+`HEADLESS_GRADLE_BIN=/путь/gradle` позволяет использовать готовый Gradle 8.14.2.
+Скрипт ограничивает сборку двумя workers и отключает параллельные задачи.
+
+Лог установки и запуска: `build/headless/logs/<report>.log`.
+Серверный лог, CSV и TXT сцен: `build/reports/gameTest/<report>/`.
+JUnit XML/HTML: `build/test-results/test/`, `build/reports/tests/test/`.
+Для ручных команд можно выполнить `source build/headless/env.sh`, затем
+`"$HEADLESS_GRADLE_BIN" runGameTestServer -PgameTestFilter=moveAcrossFlatGround`.
+Скрипт не копирует JAR в установленный Minecraft и не меняет пользовательские миры.
+Не запускайте одновременно несколько GameTest-процессов в одном клоне:
+они используют общий `build/gametest/server/`.
+
+В облачном setup агента используйте `bash setup-minecraft-headless.sh --prepare`,
+а проверку запуска оставьте командой без аргументов. Полный набор может выявить
+ошибки поведения мода; успешная установка сама по себе не означает, что все
+тактические сценарии проходят.
+
 | Файл или каталог | Назначение |
 |---|---|
 | [InfantryMovementGameTests.kt](../src/gameTest/kotlin/com/sbwnpc/squad/gametest/InfantryMovementGameTests.kt) | Сцены движения, создание NPC и отряда, выдача MOVE, проверки прибытия, запись состояния навигации |

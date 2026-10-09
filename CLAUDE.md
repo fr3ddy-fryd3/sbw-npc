@@ -21,6 +21,10 @@ tested" as two different claims; see Workflow below.
   baked into the jar at build time by the generated `BuildFlags` object (see
   `generateBuildFlags` in `build.gradle.kts`) — it's not something to pass at runtime.
 - Tests only: `./gradlew test`
+- Cloud/headless setup: `bash setup-minecraft-headless.sh --prepare`. Then run
+  `bash setup-minecraft-headless.sh` for three real server smoke scenes, `--unit`
+  for JUnit, or `--filter methodA,methodB --report name` for selected GameTests.
+  See `docs/HEADLESS-TESTS.md` for dependencies, caches, logs and full-suite runs.
 - Compiling (`compileKotlin`) is **not** a testable artifact — a real jar requires `build`.
 - Deploy for in-game testing: copy the built jar into the **flat** `~/.minecraft/mods/` folder:
   ```
