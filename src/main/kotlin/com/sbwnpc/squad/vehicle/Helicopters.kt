@@ -17,7 +17,8 @@ import net.minecraft.world.phys.Vec3
  *  - Mi-28 has two seats and declares `TurretControllerIndex: 1`, so seat 1 is a real auto-aimable
  *    turret (30mm cannon plus missiles) — the same mechanism tank and IFV gunners already use.
  *  - AH-6 has no turret at all: its cannon and rockets are fixed to the airframe, which means
- *    aiming them is a flying problem, not a gunnery one. Its other three seats are bare benches.
+ *    aiming them is a flying problem, not a gunnery one. It has a forward-facing cockpit passenger
+ *    and two side benches, whose occupants fire their carried weapons.
  *    It is therefore a transport here, not a gunship.
  */
 object Helicopters {

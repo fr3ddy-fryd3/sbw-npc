@@ -26,6 +26,10 @@ import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
 object SbwGuns : Guns {
+    // IAdvancedHitDetection.findEntitiesOnPath excludes the owner and its entire root vehicle.
+    // FastThrowableProjectile (including grenades) and ProjectileEntity share that filter.
+    override fun canHitEntity(shooter: LivingEntity, target: LivingEntity): Boolean = target !== shooter && target.rootVehicle !== shooter.rootVehicle
+
     override fun firingSafetyBounds(entity: LivingEntity, flightTicks: Double): AABB = SbwProjectileSafety.bounds(entity, flightTicks)
 
     override fun inHand(holder: LivingEntity): HandGun? {

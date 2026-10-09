@@ -61,6 +61,9 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var layerIds: List<java.util.UUID> = emptyList()
     private var nextTrafficTick = 0
     private var orbitOrderStamp = Int.MIN_VALUE
+    private var orbitSeats = -1
+    private var nextOrbitObservation = 0
+    private val orbitContact = BenchOrbitContact()
     private var orbitDirection = 1
 
     init {
@@ -258,7 +261,8 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
      * line of sight comes and goes, and trying to land in the middle of that was putting the
      * aircraft on the deck with enemies still up. When it does break off it clears the area first
      * rather than landing on the contested point.
-     * AH-6 ATTACK keeps a continuous orbit with a firing bench facing the objective.
+     * AH-6 ATTACK keeps a continuous orbit around confirmed contacts, with an occupied firing
+     * bench toward the centre. Without contact it circles the ordered objective.
      *
      * DEFEND (and PATROL, which needs nothing of its own here — a helicopter has no use for
      * walking a route) circles the objective slowly instead of parking over it.
@@ -280,17 +284,30 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.currentSquad()?.order == SquadOrder.RETREAT) return landingMission(level, home)
         if (!gunship && entity.currentSquad()?.order == SquadOrder.ATTACK && entity.homeCenter() != null) {
             val stamp = entity.currentSquad()!!.orderStamp
-            if (stamp != orbitOrderStamp || phase == Phase.TAKEOFF) {
+            val seats = Ports.vehicles.seating(heli)
+            val mask = (if (seats.getOrNull(2)?.isAlive == true) 1 else 0) + (if (seats.getOrNull(3)?.isAlive == true) 2 else 0)
+            if (stamp != orbitOrderStamp || mask != orbitSeats) {
                 orbitOrderStamp = stamp
-                val seats = Ports.vehicles.seating(heli)
-                orbitDirection = BenchAttackOrbit.direction(seats.getOrNull(2) != null, seats.getOrNull(3) != null)
+                orbitSeats = mask
+                orbitDirection = BenchAttackOrbit.direction(mask and 1 != 0, mask and 2 != 0)
+                DebugFlags.log(LogGroup.HELI, "{} event=orbit_direction direction={} occupiedBenches={} stamp={}", entity.uuid, orbitDirection, mask, stamp)
+            }
+            val observation = if (entity.tickCount >= nextOrbitObservation) {
+                nextOrbitObservation = entity.tickCount + 20
+                confirmedBenchContact(entity, heli, target)
+            } else {
+                null
+            }
+            val center = orbitContact.resolve(entity.level().gameTime, stamp, home, observation)
+            if (DebugFlags.on(LogGroup.HELI) && entity.tickCount % TELEMETRY_INTERVAL == 0) {
+                DebugFlags.log(LogGroup.HELI, "{} event=attack_orbit center={} radius={} direction={} contactAge={} objective={}", entity.uuid, center, heli.position().subtract(center).horizontalDistance(), orbitDirection, orbitContact.observedAt?.let { entity.level().gameTime - it }, home)
             }
             return Mission(
-                BenchAttackOrbit.waypoint(heli.position(), home, orbitDirection, heli.yRot),
+                BenchAttackOrbit.waypoint(heli.position(), center, orbitDirection, heli.yRot),
                 null,
                 false,
                 BenchAttackOrbit.SPEED,
-                anchor = home,
+                anchor = center,
                 clearance = BenchAttackOrbit.CLEARANCE,
                 attackOrbit = true,
             )
@@ -319,6 +336,17 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
 
             else -> landingMission(level, home)
         }
+    }
+
+    /** Personally visible crew targets, clustered around one contact instead of across the map. */
+    private fun confirmedBenchContact(pilot: NpcEntity, heli: Entity, preferred: LivingEntity?): Vec3? {
+        val candidates = (listOfNotNull(preferred) + Ports.vehicles.seating(heli).filterIsInstance<NpcEntity>().mapNotNull { it.target })
+            .distinctBy { it.uuid }
+            .filter { it.isAlive && SquadTeams.isHostile(pilot, it) }
+            .filter { com.sbwnpc.squad.combat.DetectionSightline.canSee(pilot, it) }
+        val first = candidates.firstOrNull() ?: return null
+        val cluster = candidates.filter { it.position().distanceToSqr(first.position()) <= 24.0 * 24.0 }
+        return Vec3(cluster.sumOf { it.x } / cluster.size, cluster.sumOf { it.y } / cluster.size, cluster.sumOf { it.z } / cluster.size)
     }
 
     /** Puts down on ground that can actually be stood on, not on whatever the heightmap reports —

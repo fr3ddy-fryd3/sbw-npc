@@ -4,7 +4,9 @@ import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.vehicle.Helicopters
 import net.minecraft.server.MinecraftServer
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.phys.Vec3
 
 /**
@@ -36,7 +38,13 @@ object OrderArrival {
                 .filter { it.isAlive }
             if (members.isEmpty()) continue
             // Every role marches to the objective once enemy contact has ended.
-            val there = members.count { SquadFormation.reachedPoint(it, point, squad.members.size) }
+            val there = members.count { npc ->
+                // Formation tolerance includes height: it can accept passengers during the flare.
+                // DEFEND would then cancel LANDING and launch a loiter with everyone still aboard.
+                val ride = npc.vehicle
+                val landed = ride == null || !Helicopters.isHelicopter(ride) || Helicopters.isGrounded(npc.level() as ServerLevel, ride)
+                landed && SquadFormation.reachedPoint(npc, point, squad.members.size)
+            }
             if (there * 4 < members.size * 3) continue
             // A spread attack line can satisfy the formation tolerance while still fighting.
             // Changing to DEFEND here cancels maneuvers and drags the outer shooters back inside its leash.

@@ -44,9 +44,8 @@ enum class TankModel(val label: String) : VehicleModel {
  *
  *  - Mi-28 is a gunship with a real auto-aimable turret in seat 1, so it carries a gunner and goes
  *    hunting.
- *  - AH-6 has no turret — its guns are bolted to the airframe — but it has three bench seats, so
- *    it carries machine gunners and flies them where the squad is ordered, firing their own
- *    weapons from the benches on the way.
+ *  - AH-6 has no turret — its guns are bolted to the airframe — but has a cockpit passenger and
+ *    two side benches. It carries machine gunners, with the side seats firing their own weapons.
  */
 enum class HelicopterModel(val label: String, val crew: List<NpcClass>) : VehicleModel {
     MI_28("Mi-28", listOf(NpcClass.HELICOPTER_PILOT, NpcClass.HELICOPTER_GUNNER)),

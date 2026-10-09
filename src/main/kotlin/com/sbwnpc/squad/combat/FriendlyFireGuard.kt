@@ -73,7 +73,7 @@ object FriendlyFireGuard {
         var blastClear = true
         val blastBox = AABB(impactPoint, impactPoint).inflate(blastRadius)
         forEachAlly(shooter, { cone.bounds.intersects(Ports.guns.firingSafetyBounds(it, flightTicks)) || (checkBlast && blastBox.contains(it.position())) }) { ally ->
-            if (lineClear && cone.intersects(Ports.guns.firingSafetyBounds(ally, flightTicks))) {
+            if (lineClear && Ports.guns.canHitEntity(shooter, ally) && cone.intersects(Ports.guns.firingSafetyBounds(ally, flightTicks))) {
                 lineClear = false
             }
             if (blastClear && checkBlast && canBeHurt(ally) && ally.position().distanceTo(impactPoint) <= blastRadius) blastClear = false

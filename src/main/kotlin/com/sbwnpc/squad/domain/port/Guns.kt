@@ -63,6 +63,9 @@ interface HandGun {
 }
 
 interface Guns {
+    /** Whether a fired round can collide with this entity; blast damage is independent. */
+    fun canHitEntity(shooter: LivingEntity, target: LivingEntity): Boolean
+
     /** Body bounds relevant to projectiles, including hitbox rewind and movement during flight. */
     fun firingSafetyBounds(entity: LivingEntity, flightTicks: Double): AABB
 
