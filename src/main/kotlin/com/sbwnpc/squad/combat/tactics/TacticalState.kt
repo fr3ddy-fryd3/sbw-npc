@@ -42,6 +42,7 @@ abstract class TacticalState {
     open val holdsFailedMembers = false
     open val alternatesSideAfterFailure = false
     open fun extendsPreparation(now: Long): Boolean = false
+    open fun lifetimeElapsed(started: Long, now: Long): Long = now - started
     open fun usesAttackFront(member: TacticalMember): Boolean = true
     open fun attackFrontCenter(context: TacticalContext): Vec3 = context.view.center
     internal var attached = false
@@ -51,6 +52,22 @@ abstract class TacticalState {
     internal var bounds = 0
     internal var lastCover = 0L
     val phases = TacticalPhaseMachine(this)
+    private var executedTicks = 0L
+    private var executingSince: Long? = null
+    protected var phaseTimingStarted = false
+        private set
+
+    internal fun phaseTimingEntered(phase: TacticalPhase, now: Long) {
+        phaseTimingStarted = true
+        executingSince = if (phase in setOf(TacticalPhase.EXECUTING, TacticalPhase.WITHDRAWING)) now else null
+    }
+
+    internal fun phaseTimingExited(now: Long) {
+        executingSince?.let { executedTicks += (now - it).coerceAtLeast(0) }
+        executingSince = null
+    }
+
+    protected fun executionElapsed(now: Long): Long = executedTicks + (executingSince?.let { (now - it).coerceAtLeast(0) } ?: 0)
 
     fun enter(context: TacticalContext) {
         if (origin == null) origin = context.view.center

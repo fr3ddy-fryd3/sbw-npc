@@ -26,6 +26,7 @@ class TacticalPhaseMachine(private val owner: TacticalState) {
         check(context.state === owner) { "A phase machine cannot run another plan" }
         if (entered) return
         entered = true
+        owner.phaseTimingEntered(current.id, context.view.now)
         current.enter(context, null)
         lifecycle(context, "phase_enter", "state_enter")
     }
@@ -44,8 +45,10 @@ class TacticalPhaseMachine(private val owner: TacticalState) {
         transitioning = true
         try {
             previous.exit(context, next.id)
+            owner.phaseTimingExited(context.view.now)
             lifecycle(context, "phase_exit", trigger)
             current = next
+            owner.phaseTimingEntered(next.id, context.view.now)
             context.plan.events.emit(TacticalEvent.Transition(context.plan.id, context.view.now, previous.id, next.id, trigger, evidence))
             next.enter(context, previous.id)
             context.state.phaseEntered(context, previous.id)
@@ -59,6 +62,7 @@ class TacticalPhaseMachine(private val owner: TacticalState) {
         check(context.state === owner) { "A phase machine cannot exit another plan" }
         if (!entered) return
         current.exit(context, null)
+        owner.phaseTimingExited(context.view.now)
         lifecycle(context, "phase_exit", trigger)
         entered = false
     }

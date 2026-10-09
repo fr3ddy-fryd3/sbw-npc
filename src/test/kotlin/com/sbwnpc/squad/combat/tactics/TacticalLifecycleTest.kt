@@ -302,6 +302,26 @@ class TacticalLifecycleTest {
         }
     }
 
+    @Test fun `late preparation preserves the bounded execution budget across successive waves`() {
+        val state = SquadTacticalState()
+        val choice = TacticalChoice(TacticalPattern.ENCIRCLE, focus)
+        state.select(choice, 1, 0)
+        val plan = state.plan!!
+        TacticalCoordinator.assign(squad, plan, view())
+        fun transition(phase: TacticalPhaseState, now: Long) = plan.behavior.phases.transition(phase, TacticalContext(squad, plan, view(now)), "test_wave")
+        for (wave in 0..5) {
+            val start = 1080L + wave * 1000L
+            transition(ExecutingPhase(), start)
+            // Long preparation is excluded; completed waves still consume their budget.
+            assertFalse(state.select(choice, 1, start + 119))
+            assertEquals(wave * 200L + 119, plan.behavior.lifetimeElapsed(plan.started, start + 119))
+            assertTrue(TacticalSelectionPolicy.evaluate(plan, choice, 2, start + 119, TacticalStates.registry) is TacticalSelection.Replace)
+            assertTrue(TacticalSelectionPolicy.evaluate(plan, TacticalChoice(TacticalPattern.EVADE, focus, emergency = true), 1, start + 119, TacticalStates.registry) is TacticalSelection.Replace)
+            if (wave < 5) transition(PreparingPhase(), start + 200)
+        }
+        assertTrue(state.select(choice, 1, 1080L + 5000L + 200L), "The accumulated execution budget must still expire at 1200 ticks")
+    }
+
     @Test fun `a short firing lane probe produces explicit transitions with readiness evidence`() {
         val events = mutableListOf<TacticalEvent>()
         val state = SquadTacticalState(TacticalEventSink(events::add))

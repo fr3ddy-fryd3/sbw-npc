@@ -24,8 +24,10 @@ abstract class CoveredManeuverState : TacticalState() {
         context.plan.events.emit(TacticalEvent.FrontAdvanced(context.plan.id, context.view.now, point))
     }
 
-    // This phase owns its deployment/readiness deadlines. The global plan lifetime still applies.
+    // Preparation and pauses have their own bounded deadlines. The plan's shared movement
+    // budget counts execution across all waves, rather than recalling a freshly deployed wave.
     override fun extendsPreparation(now: Long): Boolean = phases.current.id == TacticalPhase.PREPARING
+    override fun lifetimeElapsed(started: Long, now: Long): Long = if (phaseTimingStarted) executionElapsed(now) else super.lifetimeElapsed(started, now)
 
     override fun beforeTick(context: TacticalContext) {
         if (context.plan.phase == TacticalPhase.PREPARING) promoteLateSupport(context)

@@ -102,6 +102,7 @@ object SquadTactics {
             view.members.count { it.recentFire },
             view.now - plan.lastCover,
             view.now - plan.phaseSince,
+            plan.behavior.lifetimeElapsed(plan.started, view.now),
             plan.bounds,
             plan.phase == TacticalPhase.OPENING_LANE,
             (plan.behavior as? CoveredManeuverState)?.laneAttempts ?: 0,
@@ -187,7 +188,7 @@ object SquadTactics {
     private const val SNAPSHOT_FORMAT = "[tactics] {} snapshot squad={} tick={} plan={} pattern={} state={} statePhase={} phase={} reason={} " +
         "proposed={} proposedReason={} effective={} cooldown={} order={} stamp={} members={} peak={} fighting={} " +
         "visible={} remembered={} incoming={} suppressed={} narrow={} open={} stalled={} heightDelta={} cover={} " +
-        "shootersLast40Ticks={} coverAge={} phaseAge={} bounds={} openingLane={} laneAttempts={} positioned={} failed={} " +
+        "shootersLast40Ticks={} coverAge={} phaseAge={} lifetimeElapsed={} bounds={} openingLane={} laneAttempts={} positioned={} failed={} " +
         "recoveringFirePosts={} jobs={} front={}"
 
     private val SUPPORT_ROLES = setOf(NpcClass.MACHINE_GUNNER, NpcClass.SNIPER)
