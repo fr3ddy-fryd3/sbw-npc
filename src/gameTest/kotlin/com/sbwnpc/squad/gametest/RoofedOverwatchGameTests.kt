@@ -23,6 +23,7 @@ import net.minecraft.gametest.framework.GameTestInfo
 import net.minecraft.gametest.framework.GameTestListener
 import net.minecraft.gametest.framework.GameTestRunner
 import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.level.block.ScaffoldingBlock
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
@@ -61,12 +62,24 @@ object RoofedOverwatchGameTests {
     @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 2400, batch = "roofed-supply")
     fun sentryResuppliesAndReturnsToPlayerRoofedTower(helper: GameTestHelper) = departure(helper, SquadOrder.DEFEND, Departure.SUPPLY, NpcClass.MACHINE_GUNNER)
 
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1600, batch = "scaffold-post")
+    fun supportReservesAndHoldsScaffoldTower(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND, scaffolding = true)
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 2000, batch = "scaffold-fall")
+    fun fallenSupportReturnsToScaffoldTower(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND, fall = true, scaffolding = true)
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 2400, batch = "scaffold-supply")
+    fun patrolSniperResuppliesAndReturnsToScaffoldTower(helper: GameTestHelper) = departure(helper, SquadOrder.PATROL, Departure.SUPPLY, NpcClass.SNIPER, scaffolding = true)
+
     private enum class Departure { MARCH, RETREAT, SUPPLY }
 
     /** Only orders and real gun ammunition change; the brain owns every path and physical step. */
-    private fun departure(helper: GameTestHelper, order: SquadOrder, mode: Departure, onlySupport: NpcClass? = null) {
+    private fun departure(helper: GameTestHelper, order: SquadOrder, mode: Departure, onlySupport: NpcClass? = null, scaffolding: Boolean = false) {
         val report = Path.of(System.getProperty("sbwnpc.gameTestReports"))
-        val name = "roofed-exit-$order-$mode-${onlySupport ?: "mixed"}"
+        val name = "${if (scaffolding) "scaffold" else "roofed"}-exit-$order-$mode-${onlySupport ?: "mixed"}"
         val trace = StringBuilder("tick,x,y,z,ladder,ground,collision,dy,nextX,nextY,nextZ,done,health,ammo,resupplying\n")
         val destination = BlockPos(43, 2, 69)
         var sentry: NpcEntity? = null
@@ -75,7 +88,7 @@ object RoofedOverwatchGameTests {
         var descended = false
         var supplied = false
         var returnSince: Long? = null
-        occupy(helper, order, onlySupport = onlySupport, onOccupied = { npc, post ->
+        occupy(helper, order, onlySupport = onlySupport, scaffolding = scaffolding, onOccupied = { npc, post ->
             sentry = npc
             previousPost = post
             departureTick = helper.tick
@@ -164,9 +177,12 @@ object RoofedOverwatchGameTests {
 
     private fun relativeNode(helper: GameTestHelper, pos: BlockPos): BlockPos = BlockPos.containing(helper.relativeVec(Vec3.atLowerCornerOf(pos)))
 
-    private fun occupy(helper: GameTestHelper, order: SquadOrder, fall: Boolean = false, onlySupport: NpcClass? = null, onOccupied: ((NpcEntity, Vec3) -> Unit)? = null) {
+    private fun occupy(helper: GameTestHelper, order: SquadOrder, fall: Boolean = false, onlySupport: NpcClass? = null, scaffolding: Boolean = false, supportIndex: Int = 5, onOccupied: ((NpcEntity, Vec3) -> Unit)? = null) {
         // Template blocks start one block above the structure origin used by GameTestHelper.
         helper.assertTrue(helper.getBlockState(BlockPos(44, 1, 39)).`is`(Blocks.GRASS_BLOCK), "Copied ground is at the wrong height")
+        if (scaffolding) {
+            for (y in 2..6) helper.setBlock(BlockPos(44, y, 43), Blocks.SCAFFOLDING.defaultBlockState().setValue(ScaffoldingBlock.DISTANCE, 0).setValue(ScaffoldingBlock.BOTTOM, y == 2))
+        }
         val roles = listOf(NpcClass.RIFLEMAN, NpcClass.RIFLEMAN, NpcClass.RIFLEMAN, NpcClass.RIFLEMAN, NpcClass.SNIPER, NpcClass.MACHINE_GUNNER, NpcClass.MEDIC)
         val places = listOf(
             Vec3(-12.286, -60.0, 26.408),
@@ -187,8 +203,7 @@ object RoofedOverwatchGameTests {
                     roles[index]
                 } else {
                     when (index) {
-                        4 -> NpcClass.RIFLEMAN
-                        5 -> onlySupport
+                        4, 5 -> if (index == supportIndex) onlySupport else NpcClass.RIFLEMAN
                         else -> roles[index]
                     }
                 },
@@ -203,7 +218,7 @@ object RoofedOverwatchGameTests {
         val report = Path.of(System.getProperty("sbwnpc.gameTestReports"))
         Files.createDirectories(report)
         val trace = StringBuilder("tick,role,x,y,z,postX,postY,postZ,job,recovery,closest,lastProgress\n")
-        val name = "roofed-tower-$order${if (fall) "-fall" else ""}${onlySupport?.let { "-$it" } ?: ""}"
+        val name = "${if (scaffolding) "scaffold" else "roofed"}-tower-$order${if (fall) "-fall" else ""}${onlySupport?.let { "-$it" } ?: ""}"
         var climbed = false
         var settledSince: Long? = null
         var displaced: NpcEntity? = null

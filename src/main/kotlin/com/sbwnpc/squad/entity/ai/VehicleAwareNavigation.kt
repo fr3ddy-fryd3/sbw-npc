@@ -6,8 +6,11 @@ import net.minecraft.core.BlockPos
 import net.minecraft.tags.BlockTags
 import net.minecraft.world.entity.Mob
 import net.minecraft.world.entity.ai.navigation.GroundPathNavigation
+import net.minecraft.world.level.BlockCollisions
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.PathNavigationRegion
+import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.level.block.ScaffoldingBlock
 import net.minecraft.world.level.levelgen.Heightmap
 import net.minecraft.world.level.pathfinder.Node
 import net.minecraft.world.level.pathfinder.Path
@@ -32,6 +35,17 @@ import net.minecraft.world.phys.Vec3
  * be told directly.
  */
 class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob, level) {
+    /** Collision intent belongs to the active route, never to combat posture or a stale order. */
+    val descendingScaffolding: Boolean
+        get() {
+            val current = path?.takeUnless { it.isDone } ?: return false
+            val feet = mob.blockPosition()
+            if (!level.getBlockState(feet).`is`(Blocks.SCAFFOLDING) && !level.getBlockState(feet.below()).`is`(Blocks.SCAFFOLDING)) return false
+            val next = current.nextNodePos
+            val previous = if (current.nextNodeIndex > 0) current.getNode(current.nextNodeIndex - 1) else null
+            return next.y < feet.y || (previous != null && previous.y > next.y)
+        }
+
     override fun canUpdatePath(): Boolean = mob.onClimbable() || super.canUpdatePath()
 
     override fun getTempMobPos(): Vec3 = if (mob.onClimbable()) mob.position() else super.getTempMobPos()
@@ -192,9 +206,9 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         lastLadderLogTick = mob.tickCount
         com.sbwnpc.squad.combat.DebugFlags.log(
             com.sbwnpc.squad.combat.LogGroup.PATH,
-            "{} ladder at {} next={} node={}/{} ground={} collision={} dy={} wantedY={}",
+            "{} ladder at {} next={} node={}/{} ground={} collision={} dy={} wantedY={} descending={}",
             mob.uuid.toString().take(8), mob.position(), current.nextNodePos, current.nextNodeIndex, current.nodeCount,
-            mob.onGround(), mob.horizontalCollision, mob.deltaMovement.y, mob.moveControl.wantedY,
+            mob.onGround(), mob.horizontalCollision, mob.deltaMovement.y, mob.moveControl.wantedY, descendingScaffolding,
         )
     }
 
@@ -568,12 +582,22 @@ internal open class VehicleAwareNodeEvaluator(private val permitsStep: (BlockPos
         // Keep the start usable for an NPC who was already pushed into an obstacle.
         val origin = start
         if (origin != null && origin.x == x && origin.z == z && kotlin.math.abs(origin.y - y) <= 1) return type
-        val floor = if (type == PathType.OPEN || type == PathType.WATER) {
+        val floor = if (type == PathType.OPEN || type == PathType.WATER || climbable(pos)) {
             y.toDouble()
         } else {
             getFloorLevel(pos)
         }
         val box = WalkingClearance.body(x, floor, z, mob.bbWidth, mob.bbHeight)
+        if (context.getBlockState(pos).`is`(Blocks.SCAFFOLDING)) {
+            // The real entity is still above the candidate: its collision context would
+            // falsely turn every lower scaffold into a solid floor. Supported shaft decks
+            // can be passed in either direction; all other colliders remain obstacles.
+            val collisions = BlockCollisions(context.level(), mob, box, false) { at, _ ->
+                val state = context.getBlockState(at)
+                !state.`is`(Blocks.SCAFFOLDING) || state.getValue(ScaffoldingBlock.DISTANCE) != 0
+            }
+            return if (collisions.asSequence().any { it }) PathType.BLOCKED else type
+        }
         return if (context.level().noBlockCollision(mob, box)) type else PathType.BLOCKED
     }
 

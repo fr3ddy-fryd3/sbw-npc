@@ -668,6 +668,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      *  [com.sbwnpc.squad.entity.ai.VehicleAwareNavigation]. */
     override fun createNavigation(level: Level): net.minecraft.world.entity.ai.navigation.PathNavigation = com.sbwnpc.squad.entity.ai.VehicleAwareNavigation(this, level)
 
+    override fun isDescending(): Boolean =
+        super.isDescending() ||
+            (navigation as? com.sbwnpc.squad.entity.ai.VehicleAwareNavigation)?.descendingScaffolding == true
+
     init {
         moveControl = com.sbwnpc.squad.entity.ai.NpcMoveControl(this)
         // Vanilla forbids snow-filled nodes but gives the empty node above snow zero cost.

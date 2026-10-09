@@ -21,7 +21,7 @@ import java.util.UUID
 @PrefixGameTestTemplate(false)
 object LadderNavigationGameTests {
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 500, batch = "ladder")
+    @GameTest(templateNamespace = "sbwnpc", template = "scaffolding_arena", timeoutTicks = 500, batch = "ladder")
     fun marchClimbsAndDescendsLadder(helper: GameTestHelper) {
         tower(helper)
         val npc = AttackDeploymentGameTests.spawn(helper, Vec3(4.5, 1.0, 6.5), SquadFaction.PIG)
@@ -75,7 +75,7 @@ object LadderNavigationGameTests {
     }
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 40, batch = "broken-ladder")
+    @GameTest(templateNamespace = "sbwnpc", template = "scaffolding_arena", timeoutTicks = 40, batch = "broken-ladder")
     fun brokenLadderDoesNotInventClimbingEdges(helper: GameTestHelper) {
         tower(helper)
         for (y in 4..6) helper.setBlock(BlockPos(11, y, 6), Blocks.AIR)
