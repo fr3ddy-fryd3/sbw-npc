@@ -233,6 +233,9 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun moveToSlot(entity: NpcEntity, slot: Vec3, speed: Double = WALK_SPEED_MODIFIER, fallIn: Boolean = false) {
         if (entity.position().distanceTo(slot) > 1.5) {
             val pace = if (fallIn) paceTo(entity, slot, speed) else holdPace(entity, speed)
+            // Vanilla may finish a block-rounded path just outside this fractional grid slot.
+            // Complete only the short, unobstructed final approach using the shared post guard.
+            if (com.sbwnpc.squad.combat.FiringPostArrival.steer(entity, slot, pace)) return
             repathWhenDue(entity, slot, pace)
         } else {
             entity.navigation.stop()

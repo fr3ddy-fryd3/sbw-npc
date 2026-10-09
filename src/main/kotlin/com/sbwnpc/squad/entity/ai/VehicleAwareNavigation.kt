@@ -3,6 +3,7 @@ package com.sbwnpc.squad.entity.ai
 import com.sbwnpc.squad.domain.port.Ports
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap
 import net.minecraft.core.BlockPos
+import net.minecraft.tags.BlockTags
 import net.minecraft.world.entity.Mob
 import net.minecraft.world.entity.ai.navigation.GroundPathNavigation
 import net.minecraft.world.level.Level
@@ -31,6 +32,10 @@ import net.minecraft.world.phys.Vec3
  * be told directly.
  */
 class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob, level) {
+    override fun canUpdatePath(): Boolean = mob.onClimbable() || super.canUpdatePath()
+
+    override fun getTempMobPos(): Vec3 = if (mob.onClimbable()) mob.position() else super.getTempMobPos()
+
     private var stopOnLanding: Path? = null
     private val failedSteps = FailedWalkingSteps()
 
@@ -39,7 +44,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         // WalkNodeEvaluator.getStart rounds a grounded mob's feet, unlike Entity.blockPosition.
         // On farmland the two differ by one block; rejecting the latter never bans the real edge.
         val from = walkingNode(mob.position())
-        if (!mob.onGround() || !mob.horizontalCollision || next.y <= from.y) return
+        if (mob.onClimbable() || !mob.onGround() || !mob.horizontalCollision || next.y <= from.y) return
         failedSteps.reject(from, next, level.gameTime)
         com.sbwnpc.squad.combat.DebugFlags.log(
             com.sbwnpc.squad.combat.LogGroup.STUCK,
@@ -400,6 +405,8 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
 }
 
 internal open class VehicleAwareNodeEvaluator(private val permitsStep: (BlockPos, BlockPos) -> Boolean = { _, _ -> true }) : WalkNodeEvaluator() {
+    override fun getStart(): Node = if (mob.onClimbable()) getStartNode(mob.blockPosition()) else super.getStart()
+
     override fun getNeighbors(output: Array<Node>, node: Node): Int {
         val count = super.getNeighbors(output, node)
         var accepted = 0
@@ -407,8 +414,23 @@ internal open class VehicleAwareNodeEvaluator(private val permitsStep: (BlockPos
             val next = output[index]
             if (permitsStep(node.asBlockPos(), next.asBlockPos())) output[accepted++] = next
         }
+        val from = node.asBlockPos()
+        if (climbable(from)) {
+            for (next in listOf(from.above(), from.below())) {
+                if (!climbable(next) || !permitsStep(from, next)) continue
+                val type = getPathTypeOfMob(currentContext, next.x, next.y, next.z, mob)
+                if (type != PathType.WALKABLE || mob.getPathfindingMalus(type) < 0f) continue
+                val neighbor = getNode(next)
+                if (neighbor.closed) continue
+                neighbor.type = type
+                neighbor.costMalus = mob.getPathfindingMalus(type)
+                if ((0 until accepted).none { output[it] === neighbor }) output[accepted++] = neighbor
+            }
+        }
         return accepted
     }
+
+    private fun climbable(pos: BlockPos): Boolean = currentContext.getBlockState(pos).isLadder(mob.level(), pos, mob)
 
     // Vanilla caches the aggregate type of a mob-sized node, but neighboring nodes repeatedly
     // evaluate overlapping cells and their 24 surrounding hazards. Keep the final cell type
@@ -476,6 +498,10 @@ internal open class VehicleAwareNodeEvaluator(private val permitsStep: (BlockPos
     }
 
     private fun calculatePathType(context: PathfindingContext, x: Int, y: Int, z: Int): PathType {
+        val pos = BlockPos(x, y, z)
+        val state = context.getBlockState(pos)
+        val ladder = if (mob != null) state.isLadder(mob.level(), pos, mob) else state.`is`(BlockTags.CLIMBABLE)
+        if (ladder) return PathType.WALKABLE
         if (bodyHigh(context, x, y, z)) return PathType.BLOCKED
         val type = super.getPathType(context, x, y, z)
         if (type == PathType.OPEN) {

@@ -66,7 +66,8 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
         val path = npc.navigation.path
         // Bouncing vertically against a ledge is not travel progress. A completed upward step is.
         val moved = stuckCheckPos?.let {
-            here.subtract(it).horizontalDistanceSqr() > STUCK_MOVE_SQR || (npc.onGround() && here.y > it.y + 0.5)
+            here.subtract(it).horizontalDistanceSqr() > STUCK_MOVE_SQR || (npc.onGround() && here.y > it.y + 0.5) ||
+                (npc.onClimbable() && kotlin.math.abs(here.y - it.y) > 0.5)
         } ?: true
         stuckCheckPos = here
         if (moved) recoveryAttempts = 0
