@@ -179,6 +179,23 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         }
         super.tick()
         traceWalk()
+        traceLadder()
+    }
+
+    private var lastLadderLogTick = Int.MIN_VALUE / 2
+
+    private fun traceLadder() {
+        if (!com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.PATH) || mob.tickCount - lastLadderLogTick < WALK_LOG_TICKS) return
+        val current = path?.takeUnless { it.isDone } ?: return
+        val feet = mob.blockPosition()
+        if (!mob.onClimbable() && !level.getBlockState(feet.below()).isLadder(level, feet.below(), mob)) return
+        lastLadderLogTick = mob.tickCount
+        com.sbwnpc.squad.combat.DebugFlags.log(
+            com.sbwnpc.squad.combat.LogGroup.PATH,
+            "{} ladder at {} next={} node={}/{} ground={} collision={} dy={} wantedY={}",
+            mob.uuid.toString().take(8), mob.position(), current.nextNodePos, current.nextNodeIndex, current.nodeCount,
+            mob.onGround(), mob.horizontalCollision, mob.deltaMovement.y, mob.moveControl.wantedY,
+        )
     }
 
     private fun investigating() =
@@ -412,12 +429,16 @@ internal open class VehicleAwareNodeEvaluator(private val permitsStep: (BlockPos
         var accepted = 0
         for (index in 0 until count) {
             val next = output[index]
+            // WalkNodeEvaluator may cut sideways to ground several blocks below a rung.
+            // Keep descending the shaft instead: a mob can be almost a block above that
+            // integer node when it detaches, making the nominal safe drop cause fall damage.
+            if (climbable(node.asBlockPos()) && !climbable(next.asBlockPos()) && next.y < node.y - 1) continue
             if (permitsStep(node.asBlockPos(), next.asBlockPos())) output[accepted++] = next
         }
         val from = node.asBlockPos()
-        if (climbable(from)) {
+        if (climbable(from) || climbable(from.below())) {
             for (next in listOf(from.above(), from.below())) {
-                if (!climbable(next) || !permitsStep(from, next)) continue
+                if (!ladderEdge(from, next) || !permitsStep(from, next)) continue
                 val type = getPathTypeOfMob(currentContext, next.x, next.y, next.z, mob)
                 if (type != PathType.WALKABLE || mob.getPathfindingMalus(type) < 0f) continue
                 val neighbor = getNode(next)
@@ -431,6 +452,15 @@ internal open class VehicleAwareNodeEvaluator(private val permitsStep: (BlockPos
     }
 
     private fun climbable(pos: BlockPos): Boolean = currentContext.getBlockState(pos).isLadder(mob.level(), pos, mob)
+
+    /** A platform can open onto the air cell immediately above the last ladder rung. */
+    private fun ladderEdge(from: BlockPos, to: BlockPos): Boolean {
+        if (climbable(from) && climbable(to)) return true
+        val lower = if (from.y < to.y) from else to
+        val upper = lower.above()
+        // Only the top exit is open air. This cannot connect across a missing rung in the shaft.
+        return climbable(lower) && currentContext.getBlockState(upper).getCollisionShape(currentContext.level(), upper).isEmpty
+    }
 
     // Vanilla caches the aggregate type of a mob-sized node, but neighboring nodes repeatedly
     // evaluate overlapping cells and their 24 surrounding hazards. Keep the final cell type
