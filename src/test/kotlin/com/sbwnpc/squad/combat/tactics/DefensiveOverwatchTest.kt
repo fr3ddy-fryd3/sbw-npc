@@ -56,6 +56,34 @@ class DefensiveOverwatchTest {
         assertFalse(DefensiveOverwatch.enabled(view(), members[0], TacticalPattern.EVADE))
     }
 
+    @Test fun `free patrol holds support posts while riflemen and routed patrol remain mobile`() {
+        val state = SquadTacticalState()
+        val patrol = view(SquadOrder.PATROL)
+        state.assess(UUID(0, 2), patrol)
+        val plan = state.plan!!
+        assertEquals(TacticalPattern.FOLLOW_ORDER, plan.pattern)
+        assertEquals(2, plan.tasks.size)
+        assertTrue(plan.tasks.values.all { it.job == TacticalJob.OVERWATCH })
+        assertFalse(members[2].id in plan.tasks)
+        val task = plan.tasks[members[0].id]!!
+        task.position = task.anchor.add(4.0, 10.0, 0.0)
+        state.assess(UUID(0, 2), patrol.copy(now = 1300, narrow = true))
+        assertSame(task, plan.tasks[members[0].id], "Quiet assessments must preserve reservations and ascent progress")
+        state.assess(UUID(0, 2), patrol.copy(now = 1310, hasPatrolRoute = true))
+        assertTrue(plan.tasks.isEmpty(), "A route must not leave its support NPCs in the old tower")
+        assertFalse(DefensiveOverwatch.enabled(patrol.copy(hasPatrolRoute = true), members[0], TacticalPattern.HOLD_HEIGHT))
+    }
+
+    @Test fun `only area orders assign support posts and unavailable specialists relinquish them`() {
+        val state = SquadTacticalState()
+        val patrol = view(SquadOrder.PATROL)
+        state.assess(UUID(0, 2), patrol)
+        state.assess(UUID(0, 2), patrol.copy(now = 10, members = members.map { it.copy(ready = false) }))
+        assertTrue(state.plan!!.tasks.isEmpty())
+        state.assess(UUID(0, 2), patrol.copy(now = 20, order = SquadOrder.MOVE, stamp = 2))
+        assertTrue(state.plan!!.tasks.isEmpty())
+    }
+
     @Test fun `a low parapet protects the body and leaves an actual firing lane above it`() {
         val focus = Vec3(20.5, 64.0, 0.5)
         assertTrue(DefensiveOverwatch.protected(home, 1.62, focus, wall(64)::blocked))

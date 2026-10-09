@@ -11,6 +11,9 @@ import net.minecraft.server.level.ServerLevel
 /** Direct world subscriber: cleanup is unconditional, verbose event logging is build/config gated. */
 class TacticalRuntimeEvents private constructor(private var squad: Squad, private var level: ServerLevel) : TacticalEventSink {
     override fun emit(event: TacticalEvent) {
+        if (event is TacticalEvent.TaskAssigned && event.reservedPost != null) {
+            FiringSpots.claim(event.member, event.reservedPost)
+        }
         if (event is TacticalEvent.TaskReleased) {
             FiringSpots.release(event.member)
             val npc = level.getEntity(event.member) as? NpcEntity

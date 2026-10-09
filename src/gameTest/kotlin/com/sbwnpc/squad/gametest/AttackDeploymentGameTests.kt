@@ -154,7 +154,7 @@ object AttackDeploymentGameTests {
         }
     }
 
-    internal fun spawn(helper: GameTestHelper, at: Vec3, faction: SquadFaction, identity: UUID? = null, randomSeed: Long? = null): NpcEntity {
+    internal fun spawn(helper: GameTestHelper, at: Vec3, faction: SquadFaction, identity: UUID? = null, randomSeed: Long? = null, role: NpcClass = NpcClass.RIFLEMAN): NpcEntity {
         val entity = if (identity == null) {
             helper.spawn(ModEntities.NPC.get(), at)
         } else {
@@ -168,7 +168,7 @@ object AttackDeploymentGameTests {
         }
         return entity.apply {
             randomSeed?.let { random.setSeed(it) }
-            npcClass = NpcClass.RIFLEMAN
+            npcClass = role
             npcRank = NpcRank.DEFAULT
             spawnFaction = faction
             finalizeSpawn(helper.level, helper.level.getCurrentDifficultyAt(blockPosition()), MobSpawnType.COMMAND, null)

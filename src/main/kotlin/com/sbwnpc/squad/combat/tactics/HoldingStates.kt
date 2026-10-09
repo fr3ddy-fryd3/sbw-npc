@@ -4,8 +4,23 @@ import com.sbwnpc.squad.combat.SquadFormation
 import net.minecraft.world.phys.Vec3
 
 class FollowOrderState : TacticalState() {
-    override val stability = TacticalStability(passive = true, quickReplacement = true)
-    override fun assign(context: TacticalContext, retainCover: Boolean, trigger: String) = context.tasks.replace(emptyMap(), context.view.now, trigger)
+    override val supportsDefensiveOverwatch = true
+
+    // Delegating an unchanged player order has no finite maneuver to time out. New orders and
+    // contact assessments still replace this passive state immediately.
+    override val stability = TacticalStability(passive = true, quickReplacement = true, expires = false)
+    override fun assign(context: TacticalContext, retainCover: Boolean, trigger: String) {
+        val layout = TacticalLayout(context)
+        val posts = context.view.members.mapIndexedNotNull { index, member ->
+            if (!layout.eligible(member) || !DefensiveOverwatch.enabled(context.view, member, this)) return@mapIndexedNotNull null
+            val next = layout.applyRoles(member, index, task(layout, member, index))
+            if (next.job != TacticalJob.OVERWATCH) return@mapIndexedNotNull null
+            val old = context.plan.tasks[member.id]
+            member.id to if (old?.job == next.job && old.anchor == next.anchor && old.focus == next.focus) old else next
+        }.toMap()
+        context.tasks.replace(posts, context.view.now, trigger)
+    }
+    override fun beforeTick(context: TacticalContext) = assign(context, retainCover = true, trigger = "quiet_support_posts")
     override fun task(layout: TacticalLayout, member: TacticalMember, index: Int) = layout.cover(member)
 }
 

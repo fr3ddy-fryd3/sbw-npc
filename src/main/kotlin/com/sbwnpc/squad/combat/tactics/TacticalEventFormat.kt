@@ -32,7 +32,7 @@ object TacticalEventFormat {
 
             is TacticalEvent.TaskAssigned ->
                 "event=task_assigned npc=${event.member} job=${event.job} anchor=${event.anchor} trigger=${event.trigger} " +
-                    "frontSlot=${event.frontage?.point} frontDirection=${event.frontage?.forward}"
+                    "frontSlot=${event.frontage?.point} frontDirection=${event.frontage?.forward} reservedPost=${event.reservedPost}"
 
             is TacticalEvent.TaskReleased ->
                 "event=task_released npc=${event.member} job=${event.task.job} position=${event.task.position} " +

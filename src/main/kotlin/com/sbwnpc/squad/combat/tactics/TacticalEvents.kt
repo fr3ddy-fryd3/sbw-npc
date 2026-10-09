@@ -74,6 +74,7 @@ sealed interface TacticalEvent {
         val anchor: Vec3,
         val trigger: String,
         val frontage: TacticalFrontPost? = null,
+        val reservedPost: Vec3? = null,
     ) : TacticalEvent
 
     data class TaskReleased(

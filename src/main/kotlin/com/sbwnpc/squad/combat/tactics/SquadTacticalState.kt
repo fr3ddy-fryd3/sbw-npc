@@ -42,7 +42,7 @@ class SquadTacticalState(
         val old = plan
         val oldPhase = old?.phase
         val oldBounds = old?.bounds
-        val movedHome = view.order == SquadOrder.DEFEND && snapshot?.home != null && view.home != null &&
+        val movedHome = DefensiveOverwatch.holdsArea(view) && snapshot?.home != null && view.home != null &&
             snapshot!!.home!!.distanceTo(view.home) > 8.0
         if (movedHome) old?.complete(view.now, "defensive_home_changed")
         val wasRegrouping = reorganization.active

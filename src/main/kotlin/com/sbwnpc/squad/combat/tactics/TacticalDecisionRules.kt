@@ -31,7 +31,7 @@ internal object TacticalDecisionRules {
         if (rememberedEnemy && view.offensive) {
             return TacticalChoice(TacticalPattern.SEARCH, situation.focus, reason = TacticalReason.LOST_CONTACT)
         }
-        if (view.narrow && view.order != SquadOrder.DEFEND) {
+        if (view.narrow && !DefensiveOverwatch.holdsArea(view)) {
             return TacticalChoice(TacticalPattern.FILE, view.home, reason = TacticalReason.NARROW_ROUTE)
         }
         return if (view.order == SquadOrder.DEFEND) {

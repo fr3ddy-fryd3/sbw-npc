@@ -28,7 +28,7 @@ class TacticalTaskBoard(private val plan: Int, private val events: TacticalEvent
         require(task.plan == plan) { "Task belongs to plan ${task.plan}, expected $plan" }
         release(id, now, trigger)
         active[id] = task
-        events.emit(TacticalEvent.TaskAssigned(plan, now, id, task.job, task.anchor, trigger, task.frontage))
+        events.emit(TacticalEvent.TaskAssigned(plan, now, id, task.job, task.anchor, trigger, task.frontage, task.position))
     }
 
     fun prune(alive: Set<UUID>, now: Long) {

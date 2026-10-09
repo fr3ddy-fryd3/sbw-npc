@@ -14,8 +14,10 @@ object DefensiveOverwatch {
     fun enabled(view: TacticalSnapshot, member: TacticalMember, state: TacticalState): Boolean = enabled(view, member, state.supportsDefensiveOverwatch)
 
     private fun enabled(view: TacticalSnapshot, member: TacticalMember, supported: Boolean): Boolean =
-        view.order == SquadOrder.DEFEND && supported && member.ready && member.health >= 0.3 &&
+        holdsArea(view) && supported && member.ready && member.health >= 0.3 &&
             member.role in setOf(NpcClass.SNIPER, NpcClass.MACHINE_GUNNER)
+
+    fun holdsArea(view: TacticalSnapshot): Boolean = view.order == SquadOrder.DEFEND || (view.order == SquadOrder.PATROL && !view.hasPatrolRoute)
 
     fun within(anchor: Vec3, point: Vec3): Boolean =
         point.subtract(anchor).horizontalDistance() <= RADIUS &&
@@ -56,7 +58,7 @@ object DefensiveOverwatch {
     fun score(anchor: Vec3, origin: Vec3, point: Vec3, exposure: Int): Double = -point.y * 1000.0 + point.distanceTo(anchor) + point.distanceTo(origin) * 0.2 + exposure * 5.0
 
     fun preservePosts(plan: TacticalPlan, previous: Map<java.util.UUID, TacticalTask>, view: TacticalSnapshot) {
-        if (view.order != SquadOrder.DEFEND || !plan.behavior.supportsDefensiveOverwatch) return
+        if (!holdsArea(view) || !plan.behavior.supportsDefensiveOverwatch) return
         val desired = plan.tasks.toMutableMap()
         for ((id, next) in plan.tasks.toMap()) {
             val old = previous[id] ?: continue

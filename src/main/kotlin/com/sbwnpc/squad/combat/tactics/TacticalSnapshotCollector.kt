@@ -7,6 +7,7 @@ import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
+import com.sbwnpc.squad.squad.RouteManager
 import com.sbwnpc.squad.squad.Squad
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.phys.Vec3
@@ -39,6 +40,7 @@ internal object TacticalSnapshotCollector {
             open = terrain.open,
             stalled = TacticalRules.stalled(engaged.count { hasBlockedShot(it) }, engaged.size),
             peakStrength = state.peakStrength,
+            hasPatrolRoute = squad.routeId?.let { RouteManager.get(level).get(it)?.points?.isNotEmpty() } == true,
         )
     }
 

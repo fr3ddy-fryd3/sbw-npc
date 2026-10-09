@@ -13,6 +13,7 @@ object GameTestRegistration {
         val classes = listOf(
             InfantryMovementGameTests::class.java,
             LadderNavigationGameTests::class.java,
+            DefensiveOverwatchGameTests::class.java,
             AttackDeploymentGameTests::class.java,
             TerrainAttackGameTests::class.java,
             FiringPostSearchGameTests::class.java,

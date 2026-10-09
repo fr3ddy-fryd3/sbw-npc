@@ -1,6 +1,10 @@
 package com.sbwnpc.squad.entity
 
+import com.sbwnpc.squad.combat.Sightline
+import com.sbwnpc.squad.combat.TickBudget
+import com.sbwnpc.squad.combat.tactics.TacticalJob
 import com.sbwnpc.squad.squad.SquadOrder
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.EntityDimensions
 import net.minecraft.world.entity.Pose
 
@@ -28,7 +32,24 @@ class NpcPosture(private val npc: NpcEntity) {
         if (npc.isCrouching && npc.target != null && blockedSince != null && tick - blockedSince >= SIGHT_LOST_STAND_TICKS) {
             standUntilTick = tick + STAND_TO_SHOOT_TICKS
         }
-        val crouch = stillTicks >= CROUCH_AFTER_TICKS && tick >= standUntilTick
+        val squad = npc.currentSquad()
+        val task = squad?.tactics?.plan?.takeIf { it.stamp == squad.orderStamp }?.tasks?.get(npc.uuid)
+        // A quiet sentry must be able to discover enemies below its parapet. Waiting for a
+        // blocked target to stand up cannot work when crouching prevents first discovery.
+        val overwatch = task?.job == TacticalJob.OVERWATCH && !task.localFireRecovery
+        val scanningOverwatch = overwatch && npc.target == null
+        var crouch = stillTicks >= CROUCH_AFTER_TICKS && tick >= standUntilTick && !scanningOverwatch
+        if (crouch && overwatch && !npc.isCrouching && npc.target != null) {
+            val level = npc.level() as? ServerLevel
+            if (level != null) {
+                if (!TickBudget.hasRaycasts(level)) {
+                    crouch = false
+                } else if (Sightline.blocked(level, npc.position().add(0.0, CROUCHING_DIMENSIONS.eyeHeight().toDouble(), 0.0), npc.target!!.eyePosition, npc)) {
+                    crouch = false
+                    standUntilTick = tick + STAND_TO_SHOOT_TICKS
+                }
+            }
+        }
         if (crouch && !npc.isCrouching) {
             npc.pose = Pose.CROUCHING
         } else if (!crouch && npc.isCrouching && canStandUp()) {
