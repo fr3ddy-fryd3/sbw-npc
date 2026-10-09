@@ -1,7 +1,9 @@
 package com.sbwnpc.squad.integration.sbw
 
+import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.entity.LivingEntity
+import net.minecraft.world.entity.Pose
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
@@ -17,11 +19,10 @@ internal object SbwProjectileSafety {
 
     fun bounds(entity: LivingEntity, flightTicks: Double): AABB {
         val motion = Vec3(entity.x - entity.xOld, entity.y - entity.yOld, entity.z - entity.zOld)
-        val body = if (entity is Player && !entity.isCrouching) {
-            entity.boundingBox.expandTowards(0.0, STANDING_PLAYER_EXTRA_HEIGHT, 0.0)
-        } else {
-            entity.boundingBox
-        }
+        // NPC posture can change after authorization but before the round's collision tick.
+        // A crouched head is not a durable firing lane above a squadmate.
+        val postureBody = if (entity is NpcEntity) entity.boundingBox.minmax(entity.getDimensions(Pose.STANDING).makeBoundingBox(entity.position())) else entity.boundingBox
+        val body = if (entity is Player && !entity.isCrouching) postureBody.expandTowards(0.0, STANDING_PLAYER_EXTRA_HEIGHT, 0.0) else postureBody
         var offset = -REWIND_TICKS
         if (entity is ServerPlayer) {
             offset += PLAYER_OFFSET_TICKS
