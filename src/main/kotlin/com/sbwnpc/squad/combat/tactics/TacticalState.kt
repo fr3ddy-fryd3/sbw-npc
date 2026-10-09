@@ -96,7 +96,7 @@ abstract class TacticalState {
     protected open fun beforeTick(context: TacticalContext) {}
 
     /** Reinforcements and recovered members join a lasting defence without resetting existing posts. */
-    private fun reconcileHoldingAssignments(context: TacticalContext) {
+    protected open fun reconcileHoldingAssignments(context: TacticalContext) {
         val layout = TacticalLayout(context)
         for ((index, member) in context.view.members.withIndex()) {
             if (member.id in context.plan.failedMembers || !layout.eligible(member)) continue

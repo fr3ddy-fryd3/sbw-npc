@@ -57,7 +57,8 @@ class DefensiveOverwatchTest {
     }
 
     @Test fun `free patrol holds support posts while riflemen and routed patrol remain mobile`() {
-        val state = SquadTacticalState()
+        val events = mutableListOf<TacticalEvent>()
+        val state = SquadTacticalState(TacticalEventSink(events::add))
         val patrol = view(SquadOrder.PATROL)
         state.assess(UUID(0, 2), patrol)
         val plan = state.plan!!
@@ -65,6 +66,7 @@ class DefensiveOverwatchTest {
         assertEquals(2, plan.tasks.size)
         assertTrue(plan.tasks.values.all { it.job == TacticalJob.OVERWATCH })
         assertFalse(members[2].id in plan.tasks)
+        assertFalse(events.filterIsInstance<TacticalEvent.TaskAssigned>().any { it.member == members[2].id }, "Free patrol must never issue temporary cover commands to riflemen")
         val task = plan.tasks[members[0].id]!!
         task.position = task.anchor.add(4.0, 10.0, 0.0)
         state.assess(UUID(0, 2), patrol.copy(now = 1300, narrow = true))

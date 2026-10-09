@@ -20,7 +20,7 @@ class FollowOrderState : TacticalState() {
         }.toMap()
         context.tasks.replace(posts, context.view.now, trigger)
     }
-    override fun beforeTick(context: TacticalContext) = assign(context, retainCover = true, trigger = "quiet_support_posts")
+    override fun reconcileHoldingAssignments(context: TacticalContext) = assign(context, retainCover = true, trigger = "quiet_support_posts")
     override fun task(layout: TacticalLayout, member: TacticalMember, index: Int) = layout.cover(member)
 }
 

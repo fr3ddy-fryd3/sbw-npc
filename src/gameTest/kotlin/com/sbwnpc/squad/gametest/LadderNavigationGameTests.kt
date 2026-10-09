@@ -50,7 +50,9 @@ object LadderNavigationGameTests {
                     helper.assertTrue(nav.canPlan, "Ladder ascent was treated as a ballistic jump")
                     val path = nav.createPositionPath(helper.absolutePos(BlockPos(14, 11, 6)))
                     helper.assertTrue(path?.canReach() == true && path.nodeCount < 30, "Mid-ladder replanning fell back to the ground: $path")
-                    replanned = true
+                    helper.assertTrue(kotlin.math.abs(path!!.getNode(0).y - npc.y) <= 1.0, "Replanned route starts at the bottom instead of the NPC's current height")
+                    replanned = nav.moveTo(path, 0.5)
+                    helper.assertTrue(replanned, "Mid-ladder path handoff was refused")
                 }
             }
             if (!climbed && pos.y >= 10.5 && pos.x >= 13.5 && npc.onGround()) {
