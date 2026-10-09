@@ -59,7 +59,15 @@ object DefensiveOverwatchGameTests {
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 900, batch = "unreachable-tower")
     fun supportsChooseGroundCoverWhenTowerIsUnreachable(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND, ladder = false)
 
-    private fun occupy(helper: GameTestHelper, order: SquadOrder, contact: Boolean = false, ladder: Boolean = true) {
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1200, batch = "tower-fall")
+    fun fallenSentryReturnsToReservedTower(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND, fall = true)
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1200, batch = "patrol-tower-fall")
+    fun fallenPatrolSentryReturnsToReservedTower(helper: GameTestHelper) = occupy(helper, SquadOrder.PATROL, fall = true)
+
+    private fun occupy(helper: GameTestHelper, order: SquadOrder, contact: Boolean = false, ladder: Boolean = true, fall: Boolean = false) {
         for (x in 0..175) for (z in 0..95) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
         for (y in 1..10) {
             helper.setBlock(BlockPos(72, y, 64), Blocks.STONE)
@@ -92,10 +100,12 @@ object DefensiveOverwatchGameTests {
             "-fire"
         } else if (!ladder) {
             "-unreachable"
+        } else if (fall) {
+            "-fall"
         } else {
             ""
         }}"
-        val trace = StringBuilder("tick,member,x,y,z,job,postX,postY,postZ,ladder,pattern\n")
+        val trace = StringBuilder("tick,member,x,y,z,job,postX,postY,postZ,ladder,pattern,closest,lastProgress,recovery\n")
         var reservedBeforeAscent = false
         var climbedLadder = false
         var stableSince: Long? = null
@@ -104,8 +114,12 @@ object DefensiveOverwatchGameTests {
         var heldPost: Vec3? = null
         var roundsFromTower = 0
         var contactSince = Long.MAX_VALUE
+        var displacedAt: Long? = null
+        var landedAt: Long? = null
+        var returnedSince: Long? = null
         val oldGroups = DebugFlags.enabledGroups
         if (contact) DebugFlags.enabledGroups = oldGroups + setOf(LogGroup.ORDER, LogGroup.FIRE)
+        if (fall) DebugFlags.enabledGroups = oldGroups + LogGroup.ORDER
         val witness = if (contact) {
             FakePlayerFactory.get(helper.level, GameProfile(UUID.randomUUID(), "tower-observer")).apply {
                 gameMode.changeGameModeForPlayer(GameType.CREATIVE)
@@ -163,9 +177,28 @@ object DefensiveOverwatchGameTests {
                     val task = squad.tactics.plan?.tasks?.get(npc.uuid)
                     val at = helper.relativeVec(npc.position())
                     val post = task?.position?.let(helper::relativeVec)
-                    trace.append("${helper.tick},${npc.uuid},${at.x},${at.y},${at.z},${task?.job},${post?.x},${post?.y},${post?.z},${npc.onClimbable()},${squad.tactics.plan?.pattern}\n")
+                    trace.append("${helper.tick},${npc.uuid},${at.x},${at.y},${at.z},${task?.job},${post?.x},${post?.y},${post?.z},${npc.onClimbable()},${squad.tactics.plan?.pattern},${task?.closest},${task?.lastProgress},${task?.localFireRecovery}\n")
                 }
                 Files.writeString(report.resolve("$name.csv"), trace)
+            }
+            if (displacedAt != null) {
+                val sentry = holder!!
+                val point = heldPost!!
+                helper.assertTrue(sentry.isAlive, "Sentry died during the controlled fall")
+                val task = squad.tactics.plan?.tasks?.get(sentry.uuid)
+                helper.assertTrue(task?.position == point && task.job == TacticalJob.OVERWATCH && !task.localFireRecovery, "Fall lost the assigned tower post: task=${task?.job} post=${task?.position} recovery=${task?.localFireRecovery}")
+                helper.assertTrue(point in FiringSpots.nearby(point, 1.0, UUID(0, 0)), "Fall released the reserved tower slot")
+                if (sentry.onGround() && helper.relativeVec(sentry.position()).y < 3.0 && landedAt == null) landedAt = helper.tick
+                if (landedAt != null && FiringPostArrival.reached(sentry.position(), point) && sentry.onGround()) {
+                    if (returnedSince == null) returnedSince = helper.tick
+                    if (helper.tick - returnedSince!! >= 100) {
+                        Files.writeString(report.resolve("$name-result.txt"), "displacedAt=$displacedAt\nlandedAt=$landedAt\nreturnedAt=$returnedSince\npostRetained=true\nreservationRetained=true\n")
+                        helper.succeed()
+                    }
+                } else {
+                    returnedSince = null
+                }
+                return@onEachTick
             }
             if (enemy != null) {
                 if (helper.tick % 20L == 0L) Files.writeString(report.resolve("$name-sight.txt"), "tick=${helper.tick}\nposition=${helper.relativeVec(holder!!.position())}\npose=${holder!!.pose} eye=${holder!!.eyeHeight}\nyaw=${holder!!.yHeadRot} look=${holder!!.lookAngle}\nenemy=${helper.relativeVec(enemy!!.position())} alive=${enemy!!.isAlive}\nvisible=${DetectionSightline.trace(holder!!, enemy!!)}\ntarget=${holder!!.target?.uuid}\nfireReady=${TacticalPositions.firingReady(holder!!, squad.tactics.plan!!.tasks[holder!!.uuid]!!, holder!!.position())}\n")
@@ -188,6 +221,14 @@ object DefensiveOverwatchGameTests {
                     helper.assertTrue(!ladder || (reservedBeforeAscent && climbedLadder), "Tower occupation did not exercise reservation and ladder ascent")
                     val occupied = posts.map { it.second }
                     for (a in occupied.indices) for (b in 0 until a) helper.assertTrue(occupied[a].distanceTo(occupied[b]) >= FiringSpots.MIN_SPACING, "Support posts overlap")
+                    if (fall) {
+                        holder = high.single().first
+                        heldPost = high.single().second
+                        displacedAt = helper.tick
+                        // A physical shove through the ladder opening; no teleport or return path injection.
+                        holder!!.push(-1.2, 0.15, 0.0)
+                        return@onEachTick
+                    }
                     if (contact) {
                         holder = high.single().first
                         contactSince = helper.tick

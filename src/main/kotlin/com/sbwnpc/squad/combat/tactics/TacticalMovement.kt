@@ -169,6 +169,9 @@ object TacticalMovement {
         val firingPost = requiresPreciseArrival(task)
         val arrived = reachedTaskPosition(task, entity.position())
         if (arrived) {
+            // Holding is not an approach. A later fall/shove starts from its new distance,
+            // rather than timing out against the minimum recorded before reaching this post.
+            task.closest = Double.MAX_VALUE
             if (task.deployingFront(position)) {
                 task.position = null
                 task.search = null
