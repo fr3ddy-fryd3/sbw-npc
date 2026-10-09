@@ -8,11 +8,24 @@ class TacticalPositionScoreTest {
     @Test fun `a covered flank prefers progress and a necessary sideways step over retreat`() {
         val origin = Vec3.ZERO
         val goal = Vec3(64.0, 0.0, 0.0)
-        val forward = TacticalPositionScore.coveredFlankStep(origin, goal, Vec3(24.0, 0.0, 0.0))
-        val sideways = TacticalPositionScore.coveredFlankStep(origin, goal, Vec3(0.0, 0.0, 24.0))
-        val backward = TacticalPositionScore.coveredFlankStep(origin, goal, Vec3(-8.0, 0.0, 0.0))
+        val forward = TacticalPositionScore.coveredTransitStep(origin, goal, Vec3(24.0, 0.0, 0.0))
+        val sideways = TacticalPositionScore.coveredTransitStep(origin, goal, Vec3(0.0, 0.0, 24.0))
+        val backward = TacticalPositionScore.coveredTransitStep(origin, goal, Vec3(-8.0, 0.0, 0.0))
         assertTrue(forward < sideways)
         assertTrue(sideways < backward)
+    }
+
+    @Test fun `straight deployment favors approaching the goal over standing anywhere along its route`() {
+        val origin = Vec3.ZERO
+        val goal = Vec3(12.0, 0.0, 0.0)
+        val idle = TacticalPositionScore.coveredTransitStep(origin, goal, origin)
+        val middle = TacticalPositionScore.coveredTransitStep(origin, goal, Vec3(6.0, 0.0, 0.0))
+        val arrived = TacticalPositionScore.coveredTransitStep(origin, goal, goal)
+        assertTrue(middle < idle)
+        assertTrue(arrived < middle)
+        // A catch-up assignment can lead backward; explicit movement still follows its goal.
+        val catchingUp = TacticalPositionScore.coveredTransitStep(goal, origin, Vec3(6.0, 0.0, 0.0))
+        assertTrue(catchingUp < TacticalPositionScore.coveredTransitStep(goal, origin, goal))
     }
 
     @Test fun `shelter ranks before exposure and movement cost`() {

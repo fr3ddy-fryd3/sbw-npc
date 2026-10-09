@@ -54,6 +54,22 @@ class TacticalFrontageTest {
         assertTrue(gap >= FiringSpots.MIN_SPACING)
     }
 
+    @Test fun `first contact does not recall leading shooters to the center of a marching squad`() {
+        val initial = view(8)
+        val members = initial.members.mapIndexed { index, member ->
+            member.copy(position = origin.add(if (index % 2 == 0) 20.0 else -20.0, 0.0, (index - 3.5) * 6.0))
+        }
+        for (pattern in listOf(TacticalPattern.ENCIRCLE, TacticalPattern.FLANK, TacticalPattern.ATTACK_HEIGHT, TacticalPattern.REORIENT)) {
+            val state = SquadTacticalState()
+            state.select(TacticalChoice(pattern, enemy), 1, 0)
+            TacticalCoordinator.assign(squad, state.plan!!, initial.copy(members = members), state)
+            for (member in members) {
+                val post = state.plan!!.tasks[member.id]?.frontage ?: continue
+                assertTrue(post.point.subtract(member.position).dot(post.forward) >= -1.0e-8, "$pattern recalled ${member.id}")
+            }
+        }
+    }
+
     @Test fun `diagonal attacks share one orientation and every local probe stays in its owners strip`() {
         val enemy = Vec3(100.0, 64.0, 100.0)
         val view = view().copy(home = enemy, contacts = listOf(TacticalContact(UUID(1, 1), enemy, 0)))
@@ -106,6 +122,19 @@ class TacticalFrontageTest {
         assertTrue(posts.all { it.forward == Vec3(0.0, 0.0, 1.0) })
         assertTrue(posts.all { abs(it.point.z) < 1.0e-8 })
         assertEquals(32, posts.map { it.point.x }.distinct().size)
+    }
+
+    @Test fun `later maneuver assignments do not restart completed first contact deployment`() {
+        val state = SquadTacticalState()
+        state.select(TacticalChoice(TacticalPattern.BOUND, enemy), 1, 0)
+        val plan = state.plan!!
+        val initial = view()
+        TacticalCoordinator.assign(squad, plan, initial, state)
+        assertTrue(plan.tasks.values.any { it.coverOrigin != null })
+        plan.tasks.values.forEach { it.finishDeployment(TacticalPhase.EXECUTING) }
+        plan.behavior.phases.transition(ExecutingPhase(), TacticalContext(squad, plan, initial.copy(now = 40)), "test_deployed")
+        assertTrue(plan.tasks.values.any { it.job == TacticalJob.ADVANCE })
+        assertTrue(plan.tasks.values.none { it.coverOrigin != null })
     }
 
     @Test fun `a crowded group shooting from its spawn is not treated as deployed covering fire`() {

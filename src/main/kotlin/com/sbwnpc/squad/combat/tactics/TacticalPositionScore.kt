@@ -4,12 +4,12 @@ import net.minecraft.world.phys.Vec3
 
 /** Firing posts prioritize shelter; covered transit uses neutral shelter ranks and goal distance. */
 data class TacticalPositionScore(val open: Boolean, val exposure: Int, val cost: Double, val purpose: Purpose = Purpose.FIRING_POST) : Comparable<TacticalPositionScore> {
-    enum class Purpose { FIRING_POST, COVERED_TRANSIT }
+    enum class Purpose { FIRING_POST, DEPLOYMENT, COVERED_TRANSIT }
     override fun compareTo(other: TacticalPositionScore): Int = compareValuesBy(this, other, { it.open }, { it.exposure }, { it.cost })
 
     companion object {
         /** Under actual covering fire, transit should converge; shelter ranks the final firing post. */
-        fun coveredFlankStep(origin: Vec3, goal: Vec3, point: Vec3) = TacticalPositionScore(false, 0, point.distanceTo(goal) + point.distanceTo(origin) * STEP_LENGTH_WEIGHT, Purpose.COVERED_TRANSIT)
+        fun coveredTransitStep(origin: Vec3, goal: Vec3, point: Vec3) = TacticalPositionScore(false, 0, point.distanceTo(goal) + point.distanceTo(origin) * STEP_LENGTH_WEIGHT, Purpose.COVERED_TRANSIT)
 
         private const val STEP_LENGTH_WEIGHT = 0.1
     }

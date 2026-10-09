@@ -131,7 +131,7 @@ object SquadTactics {
         if (!view.offensive || squad.tactics.plan?.behavior?.usesAttackFront(member) == false) return null
         val frontage = squad.tactics.frontage
         frontage.observe(view)
-        return frontage.post(entity.uuid, view.center)
+        return frontage.post(entity.uuid, view.center, entity.position())
     }
 
     private fun jobs(plan: TacticalPlan) = plan.tasks.values.groupingBy { it.job }.eachCount()

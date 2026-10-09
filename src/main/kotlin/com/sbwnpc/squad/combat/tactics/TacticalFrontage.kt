@@ -72,11 +72,12 @@ class TacticalFrontage {
             .let { if (it.lengthSqr() < 0.01) Vec3(0.0, 0.0, 1.0) else it }
     }
 
-    fun post(member: UUID, center: Vec3): TacticalFrontPost? {
+    fun post(member: UUID, center: Vec3, occupied: Vec3? = null): TacticalFrontPost? {
         val start = origin ?: return null
         val offset = offset(member) ?: return null
-        // The common depth follows the maneuver; the lateral axis stays fixed throughout the order.
-        val depth = center.subtract(start).dot(forward)
+        // A leading shooter keeps the depth already gained on the march. Common maneuver
+        // progress may bring the rear forward, but assembling a front must not recall the lead.
+        val depth = maxOf(center.subtract(start).dot(forward), occupied?.subtract(start)?.dot(forward) ?: Double.NEGATIVE_INFINITY)
         val baseline = start.add(forward.scale(depth))
         return TacticalFrontPost(Vec3(baseline.x, center.y, baseline.z).add(offset), forward)
     }

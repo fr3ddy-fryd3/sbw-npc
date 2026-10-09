@@ -305,8 +305,15 @@ class TacticalLifecycleTest {
     @Test fun `a short firing lane probe produces explicit transitions with readiness evidence`() {
         val events = mutableListOf<TacticalEvent>()
         val state = SquadTacticalState(TacticalEventSink(events::add))
-        val initial = view().copy(members = members.map { it.copy(canFire = false, recentFire = false) })
-        state.select(TacticalChoice(TacticalPattern.FLANK, focus), 1, 0)
+        // Keep both scouts outside the approach limit. Leading members must not first be
+        // teleported back to the center just to make the second scout eligible to approach.
+        val distantFocus = origin.add(120.0, 0.0, 0.0)
+        val initial = view().copy(
+            home = distantFocus,
+            contacts = listOf(TacticalContact(UUID(1, 1), distantFocus, 0)),
+            members = members.map { it.copy(canFire = false, recentFire = false) },
+        )
+        state.select(TacticalChoice(TacticalPattern.FLANK, distantFocus), 1, 0)
         val plan = state.plan!!
         TacticalCoordinator.assign(squad, plan, initial)
         TacticalCoordinator.advance(squad, state, plan, initial.copy(now = 80, contacts = initial.contacts.map { it.copy(seenAt = 80) }).assumingFrontArrival(plan))

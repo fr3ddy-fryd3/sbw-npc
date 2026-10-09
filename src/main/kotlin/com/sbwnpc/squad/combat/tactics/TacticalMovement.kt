@@ -39,6 +39,18 @@ object TacticalMovement {
         val squad = entity.currentSquad() ?: return false
         val state = squad.tactics
         val view = state.snapshot ?: return false
+        if (task.beginDeployment(entity.navigation.path) { entity.navigation.stop() }) {
+            FiringSpots.release(entity.uuid)
+            DebugFlags.log(
+                LogGroup.ORDER,
+                "[tactics] {} squad={} tick={} plan={} event=deployment_handoff job={} reason=previous_route_released",
+                entity.uuid,
+                squad.id,
+                entity.level().gameTime,
+                task.plan,
+                task.job,
+            )
+        }
         if (state.plan?.phase == TacticalPhase.PAUSED && task.job in RUNNING_JOBS) {
             if (task.suspend(entity.level().gameTime, "cover_lost")) {
                 state.events.emit(TacticalEvent.TaskPaused(task.plan, entity.level().gameTime, entity.uuid, true, "cover_lost"))
@@ -193,6 +205,18 @@ object TacticalMovement {
                 task.nextSearch = entity.level().gameTime + 5
             } else {
                 entity.navigation.stop()
+            }
+            if (task.finishDeployment(state.plan?.phase ?: TacticalPhase.PREPARING)) {
+                DebugFlags.log(
+                    LogGroup.ORDER,
+                    "[tactics] {} squad={} tick={} plan={} event=deployment_complete job={} position={}",
+                    entity.uuid,
+                    squad.id,
+                    entity.level().gameTime,
+                    task.plan,
+                    task.job,
+                    entity.position(),
+                )
             }
             if (task.job in setOf(TacticalJob.OBSERVE, TacticalJob.SEARCH, TacticalJob.RESERVE)) {
                 val aim = task.focus ?: position.add(entity.lookAngle.scale(8.0))

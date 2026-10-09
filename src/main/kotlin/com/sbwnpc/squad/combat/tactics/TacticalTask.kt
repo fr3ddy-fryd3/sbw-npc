@@ -13,6 +13,9 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
     var nextValidation = Long.MIN_VALUE
     var staging: Vec3? = null
     var frontage: TacticalFrontPost? = null
+
+    /** Local shelter takes precedence over assembling on an exposed nominal attack line. */
+    var coverOrigin: Vec3? = null
     fun permitsFront(point: Vec3): Boolean =
         if (expandedFireSearch) {
             TacticalFirePosts.withinPost(localFirePost!!, point, recovery = true)
@@ -33,6 +36,7 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
         private set
     private var pauseReason: String? = null
     internal var navigationPath: net.minecraft.world.level.pathfinder.Path? = null
+    private var deploymentStarted = false
     private var movementBlocker: TacticalMovementBlocker? = null
 
     /** A support-role exchange keeps the physical post and owned route of each actor. */
@@ -47,10 +51,12 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
             it.lastProgress = lastProgress
             it.closest = closest
             it.frontage = frontage
+            it.coverOrigin = coverOrigin
             it.staging = if (next == TacticalJob.WAIT) staging ?: position ?: this.anchor else null
             it.localFirePost = localFirePost
             it.expandedFireSearch = expandedFireSearch
             it.navigationPath = navigationPath
+            it.deploymentStarted = deploymentStarted
             navigationPath = null
         }
 
@@ -82,6 +88,23 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
     internal fun releaseNavigation(current: net.minecraft.world.level.pathfinder.Path?, stop: () -> Unit) {
         if (navigationPath != null && navigationPath === current) stop()
         navigationPath = null
+    }
+
+    /** Call after airborne/emergency guards: a new contact search must not ride the march route. */
+    internal fun beginDeployment(current: net.minecraft.world.level.pathfinder.Path?, stop: () -> Unit): Boolean {
+        if (coverOrigin == null || job !in TacticalJob.FIRE_SUPPORT || deploymentStarted) return false
+        deploymentStarted = true
+        if (current == null || current.isDone || current === navigationPath) return false
+        stop()
+        return true
+    }
+
+    /** Initial contact constraints end at the reached post, before ordinary fire-post recovery. */
+    internal fun finishDeployment(phase: TacticalPhase): Boolean {
+        if (phase in setOf(TacticalPhase.PREPARING, TacticalPhase.OPENING_LANE)) return false
+        if (coverOrigin == null || job !in TacticalJob.FIRE_SUPPORT) return false
+        coverOrigin = null
+        return true
     }
 }
 
