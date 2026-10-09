@@ -166,7 +166,15 @@ object TacticalPositions {
             return
         }
         val candidate = Terrain.feetAt(level, raw, if (context.overwatch) 9 else 12) {
-            level.noCollision(entity, entity.getDimensions(entity.pose).makeBoundingBox(it))
+            if (!level.noCollision(entity, entity.getDimensions(entity.pose).makeBoundingBox(it))) {
+                false
+            } else if (context.overwatch && !protected(entity, task, it, context.hulls)) {
+                // An exposed roof must not hide a sheltered, walkable floor below it.
+                search.reject("unprotected_overwatch_floor")
+                false
+            } else {
+                true
+            }
         }
         if (candidate == null) {
             search.reject("terrain")
@@ -218,7 +226,6 @@ object TacticalPositions {
             return
         }
         val eye = candidate.add(0.0, entity.eyeHeight.toDouble(), 0.0)
-        if (context.overwatch && !protected(entity, task, candidate, context.hulls)) return
         val exposure = context.threats.count {
             !Sightline.blockedBy(level, if (it.id == context.aim?.target) context.aim.eye else it.position.add(0.0, 1.5, 0.0), candidate.add(0.0, 0.9, 0.0), entity, context.hulls)
         }
