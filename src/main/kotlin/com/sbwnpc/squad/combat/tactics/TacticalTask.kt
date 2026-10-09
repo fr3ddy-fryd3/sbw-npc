@@ -112,6 +112,11 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
 class TacticalPositionSearch(val origin: Vec3, probes: List<Vec3>, val aim: TacticalAim? = null, val deployment: Boolean = false) {
     var probes = probes
         private set
+    private val probedCells = probes.mapTo(HashSet()) { net.minecraft.core.BlockPos.containing(it) }
+
+    fun refineOverwatch(anchor: Vec3, floor: Vec3) {
+        probes = probes + DefensiveOverwatch.refinements(anchor, floor).filter { probedCells.add(net.minecraft.core.BlockPos.containing(it)) }
+    }
     var denseRecovery = false
         private set
     var probeIndex = 0

@@ -74,6 +74,10 @@ object RoofedOverwatchGameTests {
     @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 2400, batch = "scaffold-supply")
     fun patrolSniperResuppliesAndReturnsToScaffoldTower(helper: GameTestHelper) = departure(helper, SquadOrder.PATROL, Departure.SUPPLY, NpcClass.SNIPER, scaffolding = true)
 
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1600, batch = "narrow-sniper")
+    fun originalSniperFindsNarrowTower(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND, onlySupport = NpcClass.SNIPER, supportIndex = 4)
+
     private enum class Departure { MARCH, RETREAT, SUPPLY }
 
     /** Only orders and real gun ammunition change; the brain owns every path and physical step. */

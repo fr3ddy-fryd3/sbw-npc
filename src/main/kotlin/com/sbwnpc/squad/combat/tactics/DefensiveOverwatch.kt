@@ -35,6 +35,13 @@ object DefensiveOverwatch {
         return offsets.flatMap { offset -> listOf(24.0, 8.0, -8.0, -24.0).map { anchor.add(offset).add(0.0, it, 0.0) } }
     }
 
+    /** Refine the neighborhood of an exposed raised floor, where a narrow parapet may hide. */
+    fun refinements(anchor: Vec3, floor: Vec3): List<Vec3> =
+        (-2..2).flatMap { x ->
+            (-2..2).map { z -> Vec3(floor.x + x, anchor.y, floor.z + z) }
+        }.filter { within(anchor, it) }
+            .flatMap { column -> listOf(24.0, 8.0, -8.0, -24.0).map { column.add(0.0, it, 0.0) } }
+
     /** Body protected, eyes able to fire; a distant hill alone does not make an open post cover. */
     fun protected(point: Vec3, eyeHeight: Double, focus: Vec3?, blocked: (Vec3, Vec3) -> Boolean): Boolean {
         val body = point.add(0.0, 0.9, 0.0)

@@ -170,6 +170,7 @@ object TacticalPositions {
                 false
             } else if (context.overwatch && !protected(entity, task, it, context.hulls)) {
                 // An exposed roof must not hide a sheltered, walkable floor below it.
+                if (it.y > task.anchor.y + 2.0) search.refineOverwatch(task.anchor, it)
                 search.reject("unprotected_overwatch_floor")
                 false
             } else {
