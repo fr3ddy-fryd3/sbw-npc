@@ -36,6 +36,10 @@ object SbwGuns : Guns {
 
     override fun isGun(stack: ItemStack): Boolean = stack.item is GunItem
 
+    override fun persist(stack: ItemStack) {
+        if (isGun(stack)) GunData.from(stack).save()
+    }
+
     override fun isRound(entity: Entity): Boolean = entity is ProjectileEntity
 
     override fun issue(item: ResourceLocation, holder: LivingEntity, reserve: Int): ItemStack {

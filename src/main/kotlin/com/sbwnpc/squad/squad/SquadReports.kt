@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.squad
 
+import com.sbwnpc.squad.combat.SidearmKit
 import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.ChatFormatting
@@ -118,9 +119,10 @@ object SquadReports {
             if (members.isEmpty()) continue
             val ammunition = members.map { it.ammoFraction() }
             val short = ammunition.count { it < LOW_AMMO_FRACTION }
-            val empty = ammunition.count { it <= 0.0 }
+            val primaryEmpty = ammunition.count { it <= 0.0 }
+            val empty = members.count { !SidearmKit.hasSmallArmsAmmo(it) }
             if (short > 0 && members.none { it.nearestSupply() != null }) {
-                send(server, squad, Kind.LOW_AMMO, "$short low on ammo ($empty out of ammo), no Supply in reach")
+                send(server, squad, Kind.LOW_AMMO, "$short low on ammo ($primaryEmpty primary empty, $empty out of ammo), no Supply in reach")
             }
             moveArrival(server, squad, members)
         }

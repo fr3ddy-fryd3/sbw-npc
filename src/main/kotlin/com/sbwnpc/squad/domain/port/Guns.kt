@@ -70,9 +70,11 @@ interface Guns {
 
     fun isGun(stack: ItemStack): Boolean
 
-    /** A gun of [item] with a full magazine and [reserve] rounds behind it, or empty if [item] is
-     *  not a gun. */
+    /** A gun with [reserve] total rounds; its first magazine is filled from this allocation. */
     fun issue(item: ResourceLocation, holder: LivingEntity, reserve: Int): ItemStack
+
+    /** Flush pending weapon state before stowing, copying or serializing its stack. */
+    fun persist(stack: ItemStack)
 
     /** Magazine plus reserve carried with the gun itself; zero for anything that isn't a gun. */
     fun roundsLeft(stack: ItemStack): Int

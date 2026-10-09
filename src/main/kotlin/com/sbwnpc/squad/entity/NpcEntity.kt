@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.entity
 
+import com.sbwnpc.squad.combat.SidearmKit
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.ai.GrenadeThrowBehaviour
 import com.sbwnpc.squad.entity.ai.IdleLookAroundGoal
@@ -324,11 +325,14 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      * [com.sbwnpc.squad.block.entity.SupplyBlockEntity].
      */
     fun resupply(): Boolean {
+        SidearmKit.sync(this)
         var topped = false
-        for (stack in listOf(mainHandItem, antiArmourWeapon, stowedWeapon)) {
+        for (stack in listOf(mainHandItem, antiArmourWeapon, stowedWeapon, sidearmWeapon, sidearmPrimaryWeapon).distinct()) {
             if (!Ports.guns.isGun(stack)) continue
             val full = if (com.sbwnpc.squad.combat.AntiArmourKit.isLauncher(stack)) {
                 com.sbwnpc.squad.combat.AntiArmourKit.ROCKETS
+            } else if (stack === sidearmWeapon) {
+                SidearmKit.reserveRounds(stack)
             } else {
                 npcClass.startingRounds(net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.item))
             }
@@ -357,7 +361,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     /** The gun this NPC fights with, wherever it is right now: in hand, or put away for the
      *  launcher or the drone monitor. */
-    private fun primaryGun(): ItemStack {
+    internal fun primaryGun(): ItemStack {
+        if (usingSidearm) return sidearmPrimaryWeapon
         val hand = mainHandItem
         if (Ports.guns.isGun(hand) && !com.sbwnpc.squad.combat.AntiArmourKit.isLauncher(hand)) return hand
         return listOf(antiArmourWeapon, stowedWeapon).firstOrNull { Ports.guns.isGun(it) && !com.sbwnpc.squad.combat.AntiArmourKit.isLauncher(it) }
@@ -491,6 +496,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      *  mid-flight doesn't leave the operator with a monitor and no weapon (see
      *  DroneOperatorBehaviour.holdMonitor/restoreWeapon). */
     var stowedWeapon: ItemStack = ItemStack.EMPTY
+
+    /** The backup pistol; while drawn this is the same stack as the hand/monitor stow. */
+    var sidearmWeapon: ItemStack = ItemStack.EMPTY
+    var sidearmPrimaryWeapon: ItemStack = ItemStack.EMPTY
+    val usingSidearm: Boolean get() = !sidearmPrimaryWeapon.isEmpty
 
     /** The vehicle this NPC permanently crews. It remounts while the vehicle remains operational. */
     var assignedVehicleId: UUID? = null
@@ -762,6 +772,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     override fun customServerAiStep() {
         super.customServerAiStep()
+        SidearmKit.update(this)
         takeNewOrders()
         if (equipmentResyncTicksRemaining > 0) {
             equipmentResyncTicksRemaining--
@@ -1021,6 +1032,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         val weaponId = npcClass.weaponPool[random.nextInt(npcClass.weaponPool.size)]
         val gun = Ports.guns.issue(weaponId, this, npcClass.startingRounds(weaponId))
         if (!gun.isEmpty) setItemInHand(InteractionHand.MAIN_HAND, gun)
+        sidearmPrimaryWeapon = ItemStack.EMPTY
+        sidearmWeapon = SidearmKit.issue(this)
 
         // Green (RU) kit for CREEPER/CAT/PIG/COW, sand (US) kit for the other 4 factions — per user
         // request, applies to every class without exception. spawnFaction (not
@@ -1050,6 +1063,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     }
 
     override fun addAdditionalSaveData(compound: CompoundTag) {
+        SidearmKit.sync(this)
+        listOf(mainHandItem, antiArmourWeapon, stowedWeapon, sidearmWeapon, sidearmPrimaryWeapon).distinct().forEach(Ports.guns::persist)
         super.addAdditionalSaveData(compound)
         compound.putString("NpcClass", npcClass.name)
         compound.putString("NpcRank", npcRank.name)
@@ -1063,6 +1078,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         compound.putInt("DronesLeft", dronesLeft)
         if (!stowedWeapon.isEmpty) compound.put("StowedWeapon", stowedWeapon.save(registryAccess()))
         if (!antiArmourWeapon.isEmpty) compound.put("AntiArmourWeapon", antiArmourWeapon.save(registryAccess()))
+        if (!sidearmWeapon.isEmpty) compound.put("Sidearm", sidearmWeapon.save(registryAccess()))
+        if (!sidearmPrimaryWeapon.isEmpty) compound.put("SidearmPrimary", sidearmPrimaryWeapon.save(registryAccess()))
     }
 
     override fun readAdditionalSaveData(compound: CompoundTag) {
@@ -1121,6 +1138,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             setItemInHand(InteractionHand.MAIN_HAND, stowedWeapon)
             stowedWeapon = ItemStack.EMPTY
         }
+        sidearmWeapon = if (compound.contains("Sidearm")) ItemStack.parseOptional(registryAccess(), compound.getCompound("Sidearm")) else SidearmKit.issue(this)
+        sidearmPrimaryWeapon = if (compound.contains("SidearmPrimary")) ItemStack.parseOptional(registryAccess(), compound.getCompound("SidearmPrimary")) else ItemStack.EMPTY
+        if (usingSidearm) setItemInHand(InteractionHand.MAIN_HAND, sidearmWeapon)
     }
 
     override fun die(cause: net.minecraft.world.damagesource.DamageSource) {
@@ -1168,6 +1188,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     override fun dropCustomDeathLoot(level: ServerLevel, damageSource: DamageSource, recentlyHit: Boolean) {
         super.dropCustomDeathLoot(level, damageSource, recentlyHit)
         val rolls = ArrayList<String>(LOOTABLE_SLOTS.size + 1)
+        SidearmKit.sync(this)
+        for (stack in listOf(sidearmWeapon, sidearmPrimaryWeapon).distinct().filter { !it.isEmpty && it !== mainHandItem }) {
+            if (random.nextFloat() < WEAPON_DROP_CHANCE) spawnAtLocation(Ports.guns.withoutReserve(stack))
+        }
         dropAmmo(rolls)
         dropGrenade(rolls)
         for (slot in LOOTABLE_SLOTS) {

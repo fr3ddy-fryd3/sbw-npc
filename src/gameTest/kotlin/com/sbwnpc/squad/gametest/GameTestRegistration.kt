@@ -14,6 +14,7 @@ object GameTestRegistration {
             InfantryMovementGameTests::class.java,
             LadderNavigationGameTests::class.java,
             ScaffoldingGameTests::class.java,
+            SidearmGameTests::class.java,
             DefensiveOverwatchGameTests::class.java,
             RoofedOverwatchGameTests::class.java,
             AttackDeploymentGameTests::class.java,

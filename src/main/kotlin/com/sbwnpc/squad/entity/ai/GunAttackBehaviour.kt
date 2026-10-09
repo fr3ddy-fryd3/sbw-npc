@@ -16,6 +16,7 @@ import com.sbwnpc.squad.combat.Hearing
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.OffscreenFire
 import com.sbwnpc.squad.combat.ShotAim
+import com.sbwnpc.squad.combat.SidearmKit
 import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.combat.TeamAwareness
@@ -205,6 +206,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.antiArmourWeapon.isEmpty && !AntiArmourKit.isLauncher(entity.mainHandItem)) return
         val wantLauncher = AntiArmourKit.worthARocket(entity, target) && AntiArmourKit.loaded(entity)
         AntiArmourKit.wield(entity, wantLauncher)
+        if (!wantLauncher) SidearmKit.update(entity)
     }
 
     private fun currentGun(entity: NpcEntity): HandGun? = Ports.guns.inHand(entity)

@@ -259,6 +259,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun holdMonitor(entity: NpcEntity) {
         if (Ports.drones.isMonitor(entity.mainHandItem)) return
+        Ports.guns.persist(entity.mainHandItem)
         entity.stowedWeapon = entity.mainHandItem.copy()
         entity.setItemInHand(InteractionHand.MAIN_HAND, Ports.drones.monitor())
     }
