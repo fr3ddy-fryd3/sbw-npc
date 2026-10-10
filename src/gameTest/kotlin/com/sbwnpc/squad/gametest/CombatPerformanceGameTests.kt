@@ -7,197 +7,24 @@ import com.sbwnpc.squad.domain.port.Guns
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
-import com.sbwnpc.squad.entity.ai.PathBlockCache
 import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
-import com.sbwnpc.squad.entity.ai.VehicleAwareNodeEvaluator
-import com.sbwnpc.squad.entity.ai.WalkingClearance
 import com.sbwnpc.squad.gametest.CombatIdleGameTests.Scene
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.core.BlockPos
-import net.minecraft.core.Direction
-import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.server.level.ServerLevel
-import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
-import net.minecraft.world.entity.Mob
 import net.minecraft.world.entity.Pose
 import net.minecraft.world.entity.player.Player
-import net.minecraft.world.level.BlockCollisions
-import net.minecraft.world.level.BlockGetter
-import net.minecraft.world.level.CollisionGetter
-import net.minecraft.world.level.PathNavigationRegion
 import net.minecraft.world.level.block.Blocks
-import net.minecraft.world.level.block.piston.PistonHeadBlock
-import net.minecraft.world.level.block.state.BlockState
-import net.minecraft.world.level.block.state.properties.IntegerProperty
-import net.minecraft.world.level.pathfinder.PathFinder
-import net.minecraft.world.level.pathfinder.PathType
-import net.minecraft.world.level.pathfinder.PathfindingContext
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
-import net.minecraft.world.phys.shapes.VoxelShape
-import net.neoforged.fml.ModList
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
-import java.lang.management.ManagementFactory
 
 /** Real-world measurements; timings are evidence, deterministic work counts are assertions. */
 @PrefixGameTestTemplate(false)
 object CombatPerformanceGameTests {
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 100, batch = "path-block-reads")
-    fun pathBlockCacheReducesReadsWithoutChangingRoutes(helper: GameTestHelper) {
-        val scene = Scene(helper, "path-block-reads")
-        val npc = scene.spawn(Vec3(30.5, 1.0, 100.5)).apply { isNoAi = true }
-        for (x in 45..46) for (z in 60..140) for (y in 1..5) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
-        for (x in 35..39) for (z in 104..108) helper.setBlock(BlockPos(x, 1, z), Blocks.STONE)
-        helper.setBlock(BlockPos(34, 1, 96), Blocks.OAK_LEAVES)
-        helper.setBlock(BlockPos(35, 1, 96), Blocks.MANGROVE_ROOTS)
-        helper.setBlock(BlockPos(36, 1, 96), Blocks.OAK_SLAB)
-        helper.setBlock(BlockPos(37, 0, 96), Blocks.POWDER_SNOW)
-        // These are beyond the unreachable wall, so they cannot alter the benchmark routes.
-        helper.setBlock(BlockPos(60, 2, 101), Blocks.PISTON_HEAD.defaultBlockState().setValue(PistonHeadBlock.FACING, Direction.EAST))
-        helper.setBlock(BlockPos(60, 2, 105), Blocks.OAK_SLAB)
-        val dynamicBlocks = mutableListOf<String>()
-        if (ModList.get().isLoaded("dynamictrees")) {
-            val entries = BuiltInRegistries.BLOCK.keySet().filter { it.namespace == "dynamictrees" }
-            for ((index, type) in listOf("BasicBranchBlock", "SurfaceRootBlock").withIndex()) {
-                val id = entries.firstOrNull { BuiltInRegistries.BLOCK.get(it).javaClass.simpleName == type } ?: error("Dynamic Trees has no $type")
-                val block = BuiltInRegistries.BLOCK.get(id)
-                val radius = block.stateDefinition.getProperty("radius") as? IntegerProperty ?: error("No radius on $id")
-                helper.setBlock(BlockPos(34 + index, 1, 96), block.defaultBlockState().setValue(radius, radius.possibleValues.max().coerceAtMost(8)))
-                dynamicBlocks += id.toString()
-            }
-        }
-        helper.runAtTickTime(10) {
-            npc.setOnGround(true)
-            val origin = npc.blockPosition()
-            val region = PathNavigationRegion(helper.level, origin.offset(-56, -56, -56), origin.offset(56, 56, 56))
-            val collisionCache = PathBlockCache(region)
-            for (probe in listOf(BlockPos(59, 1, 101), BlockPos(60, 1, 105))) {
-                val at = helper.absolutePos(probe)
-                val box = WalkingClearance.body(at.x, at.y.toDouble(), at.z, npc.bbWidth, npc.bbHeight)
-                helper.assertTrue(!region.noBlockCollision(npc, box), "Protruding/partial collider fixture does not intersect at $probe")
-                helper.assertTrue(!collisionCache.noBlockCollision(npc, box), "Deferred body shape missed protruding/partial collider at $probe")
-            }
-            val goals = listOf(BlockPos(60, 1, 100), BlockPos(42, 1, 110), BlockPos(38, 2, 105)).map(helper::absolutePos)
-            val cpuClock = ManagementFactory.getThreadMXBean()
-            fun signature(path: net.minecraft.world.level.pathfinder.Path?): String = "${path?.canReach()}:${path?.let { p -> (0 until p.nodeCount).map { p.getNode(it).let { n -> "${n.asBlockPos()}/${n.type}/${n.costMalus}" } } }}"
-            fun measure(cached: Boolean, countReads: Boolean = true): ReadMeasurement {
-                val evaluator = CountingEvaluator(cached, countReads).apply { setCanPassDoors(true) }
-                val finder = PathFinder(evaluator, 768)
-                val results = mutableListOf<String>()
-                var nanos = 0L
-                var cpuNanos = 0L
-                repeat(4) {
-                    for (goal in goals) {
-                        val started = System.nanoTime()
-                        val startedCpu = cpuClock.currentThreadCpuTime
-                        val path = finder.findPath(region, npc, setOf(goal), 48f, 0, 1f)
-                        cpuNanos += cpuClock.currentThreadCpuTime - startedCpu
-                        nanos += System.nanoTime() - started
-                        results += signature(path)
-                    }
-                }
-                return ReadMeasurement(evaluator.reads, evaluator.chunkReads, evaluator.typeChecks, evaluator.duplicateChecks, nanos, cpuNanos, results)
-            }
-            measure(false)
-            measure(true)
-            val before = measure(false)
-            val after = measure(true)
-            // Let both native paths compile before comparing CPU time. The counting
-            // getter intentionally changes dispatch and is not a timing baseline.
-            repeat(12) {
-                measure(false, false)
-                measure(true, false)
-            }
-            val baselineTimes = mutableListOf<Long>()
-            val cachedTimes = mutableListOf<Long>()
-            val baselineCpuTimes = mutableListOf<Long>()
-            val cachedCpuTimes = mutableListOf<Long>()
-            repeat(7) { iteration ->
-                for (cached in if (iteration % 2 == 0) listOf(false, true) else listOf(true, false)) {
-                    val measured = measure(cached, false)
-                    helper.assertTrue(measured.routes == before.routes, "Removing counters changed route signatures")
-                    (if (cached) cachedTimes else baselineTimes).add(measured.nanos)
-                    (if (cached) cachedCpuTimes else baselineCpuTimes).add(measured.cpuNanos)
-                }
-            }
-            val timing = "referenceMedianMillis=${baselineTimes.sorted()[3] / 1_000_000.0} cachedMedianMillis=${cachedTimes.sorted()[3] / 1_000_000.0} referenceCpuMedianMillis=${baselineCpuTimes.sorted()[3] / 1_000_000.0} cachedCpuMedianMillis=${cachedCpuTimes.sorted()[3] / 1_000_000.0} referenceSamples=$baselineTimes cachedSamples=$cachedTimes referenceCpuSamples=$baselineCpuTimes cachedCpuSamples=$cachedCpuTimes lithium=${ModList.get().isLoaded("lithium")} dynamicBlocks=$dynamicBlocks"
-            helper.assertTrue(before.routes == after.routes, "Cached block reads changed complete reachable/unreachable path signatures")
-            val counts = "referenceReads=${before.reads} cachedReads=${after.reads} referenceCollisionReads=${before.collisionReads} cachedCollisionReads=${after.collisionReads} typeChecks=${before.checks} duplicateTypeChecks=${before.duplicates}"
-            scene.result("MEASURED", "$counts $timing routes=${before.routes.take(3)}")
-            helper.assertTrue(after.collisionReads * 2 < before.collisionReads && after.reads < before.reads, "Collision cache did not halve its underlying reads: $counts")
-
-            // A new search must see edits immediately, even with the same evaluator and target.
-            val evaluator = CountingEvaluator(true).apply { setCanPassDoors(true) }
-            val finder = PathFinder(evaluator, 768)
-            val goal = helper.absolutePos(BlockPos(42, 1, 110))
-            val first = finder.findPath(region, npc, setOf(goal), 48f, 0, 1f)
-            helper.assertTrue(first?.canReach() == true, "Terrain-change fixture did not start with a reachable post")
-            helper.setBlock(BlockPos(42, 1, 110), Blocks.STONE)
-            helper.setBlock(BlockPos(42, 2, 110), Blocks.STONE)
-            val closed = finder.findPath(region, npc, setOf(goal), 48f, 0, 1f)
-            helper.assertTrue(closed?.canReach() != true, "Cached block states outlived their search and hid a new collider")
-            helper.setBlock(BlockPos(42, 1, 110), Blocks.AIR)
-            helper.setBlock(BlockPos(42, 2, 110), Blocks.AIR)
-            helper.assertTrue(finder.findPath(region, npc, setOf(goal), 48f, 0, 1f)?.canReach() == true, "Search did not see a reopened post")
-            scene.result("PASS", "$counts $timing terrainInvalidation=PASS")
-            helper.succeed()
-        }
-    }
-
-    private data class ReadMeasurement(val reads: Int, val collisionReads: Int, val checks: Int, val duplicates: Int, val nanos: Long, val cpuNanos: Long, val routes: List<String>)
-
-    private class CountingEvaluator(private val cached: Boolean, private val countReads: Boolean = true) : VehicleAwareNodeEvaluator() {
-        var reads = 0
-        var chunkReads = 0
-        var typeChecks = 0
-        var duplicateChecks = 0
-        private val checked = HashSet<Long>()
-
-        override fun prepare(level: PathNavigationRegion, mob: Mob) {
-            super.prepare(level, mob)
-            checked.clear()
-            val counted = if (countReads) ReadCounter(level, { reads++ }, { chunkReads++ }) else level
-            currentContext = PathfindingContext(counted, mob)
-            collisionBlocks = if (cached) PathBlockCache(counted) else counted
-        }
-
-        override fun getPathTypeOfMob(context: PathfindingContext, x: Int, y: Int, z: Int, mob: Mob): PathType {
-            if (countReads) {
-                typeChecks++
-                if (!checked.add(BlockPos.asLong(x, y, z))) duplicateChecks++
-            }
-            return super.getPathTypeOfMob(context, x, y, z, mob)
-        }
-    }
-
-    /** Counts reads from the real region/chunks, including reads inside vanilla BlockCollisions. */
-    private class ReadCounter(private val source: CollisionGetter, private val read: () -> Unit, private val collisionRead: () -> Unit) : CollisionGetter by source {
-        override fun getBlockState(pos: BlockPos): BlockState {
-            read()
-            return source.getBlockState(pos)
-        }
-
-        override fun getChunkForCollisions(chunkX: Int, chunkZ: Int): BlockGetter? {
-            val chunk = source.getChunkForCollisions(chunkX, chunkZ) ?: return null
-            return object : BlockGetter by chunk {
-                override fun getBlockState(pos: BlockPos): BlockState {
-                    read()
-                    collisionRead()
-                    return chunk.getBlockState(pos)
-                }
-            }
-        }
-
-        override fun getBlockCollisions(entity: Entity?, box: AABB): Iterable<VoxelShape> = Iterable { BlockCollisions(this, entity, box, false) { _, shape -> shape } }
-
-        override fun noBlockCollision(entity: Entity?, box: AABB): Boolean = super<CollisionGetter>.noBlockCollision(entity, box)
-        override fun noCollision(entity: Entity?, box: AABB): Boolean = super<CollisionGetter>.noCollision(entity, box)
-    }
-
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 400, batch = "failed-combat-path")
     fun failedBlindApproachBacksOffAndResumesAfterTerrainOpens(helper: GameTestHelper) {

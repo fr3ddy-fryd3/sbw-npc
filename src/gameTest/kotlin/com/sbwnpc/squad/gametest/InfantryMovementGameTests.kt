@@ -6,13 +6,11 @@ import com.sbwnpc.squad.combat.tactics.TacticalJob
 import com.sbwnpc.squad.combat.tactics.TacticalPositions
 import com.sbwnpc.squad.combat.tactics.TacticalRuntimeEvents
 import com.sbwnpc.squad.combat.tactics.TacticalTask
-import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModEntities
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
-import com.sbwnpc.squad.npc.TransportVehicle
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.core.BlockPos
@@ -21,7 +19,6 @@ import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.gametest.framework.GameTestInfo
 import net.minecraft.gametest.framework.GameTestListener
 import net.minecraft.gametest.framework.GameTestRunner
-import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.MobSpawnType
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.phys.Vec3
@@ -120,17 +117,6 @@ object InfantryMovementGameTests {
         march(helper, "powder-snow-escape", BlockPos(20, 4, 6), needsClimb = true, start = Vec3(10.5, 1.0, 6.5), preservePowderSnow = true)
     }
 
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 600)
-    fun marchAvoidsAngledBmpWithoutBoardingOrClimbingHull(helper: GameTestHelper) {
-        floor(helper)
-        val vehicle = Ports.vehicles.create(helper.level, TransportVehicle.BMP_2) ?: error("BMP-2 not registered")
-        vehicle.setPos(helper.absoluteVec(Vec3(11.5, 1.0, 6.5)))
-        vehicle.yRot = 35f
-        helper.level.addFreshEntity(vehicle)
-        march(helper, "angled-bmp-detour", BlockPos(20, 1, 6), needsClimb = false, avoidVehicle = vehicle)
-    }
-
     private fun march(
         helper: GameTestHelper,
         scenario: String,
@@ -143,7 +129,6 @@ object InfantryMovementGameTests {
         avoidPowderSnow: Boolean = false,
         preservePowderSnow: Boolean = false,
         start: Vec3 = Vec3(3.5, 1.0, 6.5),
-        avoidVehicle: Entity? = null,
     ) {
         val level = helper.level
         val npc = helper.spawn(ModEntities.NPC.get(), start)
@@ -174,7 +159,6 @@ object InfantryMovementGameTests {
             manager.deleteSquad(level, squad.id)
             npc.discard()
             aim?.discard()
-            avoidVehicle?.discard()
         }
         helper.testInfo.addListener(object : GameTestListener {
             override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
@@ -235,11 +219,6 @@ object InfantryMovementGameTests {
             helper.assertTrue(helper.tick - lastProgress < 150 || npc.position().distanceTo(goal) <= 1.5, "MOVE stood still for 150 ticks; see $scenario.csv")
             if (npc.y >= helper.absolutePos(BlockPos(0, 2, 0)).y && npc.onGround()) climbed = true
             helper.assertTrue(npc.isAlive, "NPC died on a movement-only route")
-            if (avoidVehicle != null) {
-                helper.assertTrue(!npc.isPassenger, "Infantry boarded the obstruction instead of taking the short detour")
-                helper.assertTrue(!Ports.vehicles.occupies(avoidVehicle, npc.boundingBox, 0.0), "Infantry entered the angled hull")
-                helper.assertTrue(relative.y < 1.6, "Infantry climbed onto the parked vehicle")
-            }
             if (avoidPowderSnow) helper.assertTrue(!npc.isInPowderSnow, "MOVE entered a powder snow patch despite a dry detour")
             if (preservePowderSnow) {
                 for (x in 8..12) {

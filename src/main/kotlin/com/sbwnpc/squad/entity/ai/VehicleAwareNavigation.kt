@@ -7,7 +7,6 @@ import net.minecraft.tags.BlockTags
 import net.minecraft.world.entity.Mob
 import net.minecraft.world.entity.ai.navigation.GroundPathNavigation
 import net.minecraft.world.level.BlockCollisions
-import net.minecraft.world.level.CollisionGetter
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.PathNavigationRegion
 import net.minecraft.world.level.block.Blocks
@@ -488,7 +487,6 @@ internal open class VehicleAwareNodeEvaluator(private val permitsStep: (BlockPos
     // evaluate overlapping cells and their 24 surrounding hazards. Keep the final cell type
     // for this search only; raw block types in PathfindingContext do not cache those hazards.
     private val cellTypes = Long2ObjectOpenHashMap<PathType>()
-    protected var collisionBlocks: CollisionGetter? = null
 
     /** Vehicles near the mob, each with the box round its hull for a quick first test. */
     private var hulls: List<Pair<net.minecraft.world.entity.Entity, AABB>> = emptyList()
@@ -504,9 +502,6 @@ internal open class VehicleAwareNodeEvaluator(private val permitsStep: (BlockPos
     override fun prepare(level: PathNavigationRegion, mob: Mob) {
         cellTypes.clear()
         super.prepare(level, mob)
-        // Keep the native context (including Lithium's section access) for path types.
-        // Cache only the block reads used by overlapping physical node-body checks.
-        collisionBlocks = PathBlockCache(level)
         val ridden = mob.vehicle
         hulls = Ports.vehicles
             .within(mob.level(), mob.boundingBox.inflate(SEARCH_RADIUS)) { vehicle ->
@@ -531,7 +526,6 @@ internal open class VehicleAwareNodeEvaluator(private val permitsStep: (BlockPos
 
     override fun done() {
         cellTypes.clear()
-        collisionBlocks = null
         hulls = emptyList()
         standingOn = null
         start = null
@@ -601,18 +595,17 @@ internal open class VehicleAwareNodeEvaluator(private val permitsStep: (BlockPos
             getFloorLevel(pos)
         }
         val box = WalkingClearance.body(x, floor, z, mob.bbWidth, mob.bbHeight)
-        val collisionWorld = if (context === currentContext) collisionBlocks ?: context.level() else context.level()
         if (context.getBlockState(pos).`is`(Blocks.SCAFFOLDING)) {
             // The real entity is still above the candidate: its collision context would
             // falsely turn every lower scaffold into a solid floor. Supported shaft decks
             // can be passed in either direction; all other colliders remain obstacles.
-            val collisions = BlockCollisions(collisionWorld, mob, box, false) { at, _ ->
+            val collisions = BlockCollisions(context.level(), mob, box, false) { at, _ ->
                 val state = context.getBlockState(at)
                 !state.`is`(Blocks.SCAFFOLDING) || state.getValue(ScaffoldingBlock.DISTANCE) != 0
             }
             return if (collisions.asSequence().any { it }) PathType.BLOCKED else type
         }
-        return if (collisionWorld.noBlockCollision(mob, box)) type else PathType.BLOCKED
+        return if (context.level().noBlockCollision(mob, box)) type else PathType.BLOCKED
     }
 
     private fun isStandingOn(x: Int, y: Int, z: Int): Boolean {
