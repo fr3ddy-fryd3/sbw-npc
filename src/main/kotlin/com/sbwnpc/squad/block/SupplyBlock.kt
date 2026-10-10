@@ -81,7 +81,12 @@ class SupplyBlock :
         builder.add(FACING)
     }
 
-    override fun getStateForPlacement(context: BlockPlaceContext): BlockState = defaultBlockState().setValue(FACING, context.horizontalDirection.opposite)
+    override fun getStateForPlacement(context: BlockPlaceContext): BlockState? {
+        val level = context.level
+        val player = context.player
+        if (level is ServerLevel && player is ServerPlayer && PlayerFactionRegistry.get(level).requireOrPrompt(player) == null) return null
+        return defaultBlockState().setValue(FACING, context.horizontalDirection.opposite)
+    }
 
     override fun rotate(state: BlockState, rotation: Rotation): BlockState = state.setValue(FACING, rotation.rotate(state.getValue(FACING)))
 
@@ -99,7 +104,7 @@ class SupplyBlock :
         when {
             be == null -> actionbar(player, "Supply point — place it again to use it", ChatFormatting.GRAY)
 
-            !be.serves(PlayerFactionRegistry.get(level).get(player.uuid)) ->
+            !player.isCreative && !be.serves(PlayerFactionRegistry.get(level).get(player.uuid)) ->
                 actionbar(player, "${be.faction?.label ?: "Another side"}'s Supply", ChatFormatting.RED)
 
             else -> sendToClient(player, OpenSupplyScreenPayload(pos.immutable(), snapshot(player, level, pos, be)))
@@ -117,6 +122,9 @@ class SupplyBlock :
             val supply = Ports.playerSupply
             val tag = CompoundTag()
             tag.putString("Side", be.faction?.label ?: "Any side")
+            tag.putInt("Faction", be.faction?.ordinal ?: -1)
+            tag.putBoolean("CanChangeFaction", player.isCreative)
+            tag.putBoolean("CanSetSpawn", be.serves(PlayerFactionRegistry.get(level).get(player.uuid)))
             val spawn = SupplySpawns.get(level.server).of(player.uuid)
             tag.putBoolean("SpawnHere", spawn != null && spawn.dimension() == level.dimension() && spawn.pos() == pos)
             tag.putInt("Radius", SupplyBlockEntity.RADIUS.toInt())

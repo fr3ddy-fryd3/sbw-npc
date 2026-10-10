@@ -109,7 +109,8 @@ class BarracksBlock :
         // and the Barracks is a second way into deploying, so it cannot skip it.
         val own = PlayerFactionRegistry.get(level as ServerLevel).requireOrPrompt(serverPlayer)
             ?: return InteractionResult.SUCCESS
-        val config = SquadToolItem.configTag(be.configOrDefault(own))
+        val configured = be.configOrDefault(own)
+        val config = SquadToolItem.configTag(if (serverPlayer.isCreative) configured else configured.copy(faction = own))
         config.put("Recruitment", be.recruitmentSnapshot(level))
         sendToClient(serverPlayer, OpenBarracksScreenPayload(pos.immutable(), config))
         return InteractionResult.SUCCESS

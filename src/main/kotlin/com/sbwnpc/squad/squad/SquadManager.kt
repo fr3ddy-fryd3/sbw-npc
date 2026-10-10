@@ -412,6 +412,8 @@ class SquadManager : SavedData() {
     ): String? {
         val squad = get(request.squad) ?: return "Squad removed"
         if (squad.barracks != barracks) return "Squad moved to another barracks"
+        val be = level.getBlockEntity(barracks.pos) as? com.sbwnpc.squad.block.entity.BarracksBlockEntity
+        be?.recruitmentProblem(level, squad.faction)?.let { return it }
         val slot = squad.recruitmentRoster?.slots?.firstOrNull { it.id == request.slot && it.active && it.occupant == null }
             ?: return "Place no longer vacant"
         val npc = ModEntities.NPC.get().create(level) ?: return "NPC unavailable"

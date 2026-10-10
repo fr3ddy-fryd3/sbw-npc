@@ -10,6 +10,7 @@ import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.npc.SquadPreset
 import com.sbwnpc.squad.squad.BarracksRecruitmentQueue
 import com.sbwnpc.squad.squad.BarracksRef
+import com.sbwnpc.squad.squad.PlayerFactionRegistry
 import com.sbwnpc.squad.squad.SquadDeployment
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
@@ -36,6 +37,8 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
     private var blockedReason = ""
     private var unresolvedRoster = false
     private var reconfigurePending = false
+
+    fun recruitmentProblem(level: ServerLevel, faction: SquadFaction): String? = PlayerFactionRegistry.get(level).recruitmentProblem(level.server, owner, faction)
 
     fun configOrDefault(ownFaction: SquadFaction): SquadToolItem.Config =
         config?.let { SquadToolItem.readConfig(it) }
@@ -69,7 +72,8 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
             setChanged()
         }
         val cfg = config?.let { SquadToolItem.readConfig(it) }
-        if (cfg != null && garrison == null && owner != null) {
+        val permissionProblem = cfg?.let { recruitmentProblem(level, it.faction) }
+        if (cfg != null && garrison == null && owner != null && permissionProblem == null) {
             garrison = mgr.createAtBarracks(level, ref(level), owner!!, cfg).id
             supportDeployed = false
             reconfigurePending = false
@@ -98,12 +102,13 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
         val before = queue.save()
         queue.synchronize(wanted, SquadConfig.recruitIntervalTicks())
         if (queue.save() != before) setChanged()
-        if (queue.next() == null) blockedReason = ""
+        if (queue.next() == null) blockedReason = permissionProblem ?: ""
     }
 
     private fun deploySupport(level: ServerLevel) {
         if (supportDeployed) return
         val cfg = config?.let { SquadToolItem.readConfig(it) } ?: return
+        if (recruitmentProblem(level, cfg.faction) != null) return
         val squad = SquadManager.get(level).get(garrison) ?: return
         val roster = squad.recruitmentRoster ?: return
         if (roster.slots.any { it.active && (!it.recruited || it.occupant == null) }) return

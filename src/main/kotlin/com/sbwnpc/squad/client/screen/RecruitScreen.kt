@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.client.screen
 
+import com.sbwnpc.squad.client.FactionBanner
 import com.sbwnpc.squad.item.SquadToolItem
 import com.sbwnpc.squad.network.ConfigureBarracksPayload
 import com.sbwnpc.squad.network.ConfigureToolPayload
@@ -13,6 +14,7 @@ import net.minecraft.ChatFormatting
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.Button
 import net.minecraft.client.gui.components.Checkbox
+import net.minecraft.client.gui.components.Tooltip
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
@@ -54,11 +56,13 @@ class RecruitScreen(
     private var heliModel = cfg.heliModel
 
     private lateinit var classBtn: Button
+    private lateinit var factionBtn: Button
     private var presetRowY = 0
     private var queueButton: Button? = null
     private var refreshTicks = 0
 
     override fun init() {
+        if (minecraft?.player?.isCreative != true) FactionBanner.faction?.let { faction = it }
         val cx = width / 2
         var y = height / 2 - 62
 
@@ -156,17 +160,15 @@ class RecruitScreen(
         addRenderableWidget(classBtn)
 
         y += 24
-        // Free choice of ANY faction stays available during development, per the user's explicit
-        // call — the mandatory one-time picker (PlayerFactionRegistry/ChooseFactionScreen) only
-        // records a default identity, it doesn't restrict this. Locking it down for real is a
-        // deferred future step (server-admin override permission), not implemented yet.
-        addRenderableWidget(
+        factionBtn = addRenderableWidget(
             Button.builder(factionLabel()) {
                 faction = faction.next()
                 it.message = factionLabel()
                 changed()
-            }.bounds(cx - 100, y, 200, 20).build(),
+            }.tooltip(Tooltip.create(Component.literal("Survival recruits your faction; creative can choose any faction.")))
+                .bounds(cx - 100, y, 200, 20).build(),
         )
+        factionBtn.active = minecraft?.player?.isCreative == true
 
         y += 34
         val label = deployLabel
@@ -216,6 +218,16 @@ class RecruitScreen(
 
     override fun tick() {
         super.tick()
+        factionBtn.active = minecraft?.player?.isCreative == true
+        if (!factionBtn.active) {
+            FactionBanner.faction?.let {
+                if (faction != it) {
+                    faction = it
+                    factionBtn.message = factionLabel()
+                    changed()
+                }
+            }
+        }
         if (barracksPos != null && ++refreshTicks >= 20) {
             refreshTicks = 0
             PacketDistributor.sendToServer(RequestBarracksQueuePayload(barracksPos))

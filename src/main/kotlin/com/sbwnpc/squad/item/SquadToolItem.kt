@@ -137,11 +137,11 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         }
 
         // RECRUIT: deploy — a single NPC, or a whole preset squad lined up abreast of the click point.
-        // Gated on having picked a default once (mandatory first-interaction screen), but the
-        // faction actually used to deploy is whatever the tool is currently set to — free choice
-        // of ANY faction stays available during development, per explicit user call.
-        PlayerFactionRegistry.get(serverLevel).requireOrPrompt(serverPlayer) ?: return InteractionResult.CONSUME
-        val cfg = readConfig(stack) ?: Config(NpcClass.DEFAULT, NpcRank.DEFAULT, SquadFaction.DEFAULT, SquadPreset.DEFAULT)
+        val configured = readConfig(stack) ?: Config(NpcClass.DEFAULT, NpcRank.DEFAULT, SquadFaction.DEFAULT, SquadPreset.DEFAULT)
+        val faction = PlayerFactionRegistry.get(serverLevel).recruitmentFaction(serverPlayer, configured.faction)
+            ?: return InteractionResult.CONSUME
+        val cfg = configured.copy(faction = faction)
+        if (cfg != configured) writeConfig(stack, cfg)
         val pos = context.clickedPos.relative(context.clickedFace)
         val deployed = SquadDeployment.deploy(serverLevel, pos, player.yRot, cfg, player.uuid)
             ?: return InteractionResult.FAIL

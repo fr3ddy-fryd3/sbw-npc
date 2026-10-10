@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.client.screen
 
 import com.sbwnpc.squad.network.SupplyCmdPayload
+import com.sbwnpc.squad.npc.SquadFaction
 import net.minecraft.ChatFormatting
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.Button
@@ -29,6 +30,9 @@ class SupplyScreen(private val pos: BlockPos, snapshot: CompoundTag) : Screen(Co
     private class Kit(val name: String, val options: List<Option>)
 
     private val side = snapshot.getString("Side")
+    private val faction = SquadFaction.entries.getOrNull(snapshot.getInt("Faction"))
+    private val canChangeFaction = snapshot.getBoolean("CanChangeFaction")
+    private val canUseSupply = snapshot.getBoolean("CanSetSpawn")
     private val spawnHere = snapshot.getBoolean("SpawnHere")
     private val radius = snapshot.getInt("Radius")
     private val kits = snapshot.getList("Kits", Tag.TAG_COMPOUND.toInt()).map { k ->
@@ -54,13 +58,23 @@ class SupplyScreen(private val pos: BlockPos, snapshot: CompoundTag) : Screen(Co
 
     private val kit get() = kits.getOrNull(selected.coerceIn(0, (kits.size - 1).coerceAtLeast(0)))
     private val left get() = width / 2 - WIDTH / 2
-    private val top get() = height / 2 - HEIGHT / 2
-    private val listTop get() = top + 62
+    private val factionRowHeight get() = if (canChangeFaction) 26 else 0
+    private val top get() = height / 2 - (HEIGHT + factionRowHeight) / 2
+    private val contentTop get() = top + factionRowHeight
+    private val listTop get() = contentTop + 62
 
     override fun init() {
         weaponButtons.clear()
-        addRenderableWidget(Button.builder(Component.literal("<")) { flip(-1) }.bounds(left, top + 36, 20, 20).build())
-        addRenderableWidget(Button.builder(Component.literal(">")) { flip(1) }.bounds(left + WIDTH - 20, top + 36, 20, 20).build())
+        if (canChangeFaction) {
+            addRenderableWidget(
+                Button.builder(Component.literal("Faction: $side").withStyle(faction?.accentStyle ?: net.minecraft.network.chat.Style.EMPTY)) {
+                    send(SupplyCmdPayload.SET_FACTION, (faction?.next() ?: SquadFaction.DEFAULT).ordinal)
+                }.tooltip(Tooltip.create(Component.literal("Change the faction that owns this Supply. Creative only.")))
+                    .bounds(left, top + 28, WIDTH, 20).build(),
+            )
+        }
+        addRenderableWidget(Button.builder(Component.literal("<")) { flip(-1) }.bounds(left, contentTop + 36, 20, 20).build())
+        addRenderableWidget(Button.builder(Component.literal(">")) { flip(1) }.bounds(left + WIDTH - 20, contentTop + 36, 20, 20).build())
 
         val options = kit?.options.orEmpty()
         val y = listTop + LIST_HEIGHT
@@ -71,6 +85,7 @@ class SupplyScreen(private val pos: BlockPos, snapshot: CompoundTag) : Screen(Co
                     .tooltip(Tooltip.create(Component.literal("Take the kit with this weapon — only what you don't already have")))
                     .bounds(left + i * (w + 4), y, w, 20).build()
                 addRenderableWidget(button)
+                button.active = canUseSupply
                 weaponButtons += button to option
             }
         }
@@ -91,7 +106,7 @@ class SupplyScreen(private val pos: BlockPos, snapshot: CompoundTag) : Screen(Co
                     ),
                 )
                 .bounds(left, y + 32, WIDTH, 20).build()
-                .also { it.active = !spawnHere },
+                .also { it.active = canUseSupply && !spawnHere },
         )
         addRenderableWidget(Button.builder(Component.literal("Close")) { onClose() }.bounds(left, y + 56, WIDTH, 20).build())
     }
@@ -107,14 +122,14 @@ class SupplyScreen(private val pos: BlockPos, snapshot: CompoundTag) : Screen(Co
         g.drawCenteredString(font, Component.literal("Supply — $side"), width / 2, top, 0xFFFFFF)
         g.drawCenteredString(
             font,
-            Component.literal("Your side's NPCs within $radius blocks are resupplied on their own")
+            Component.literal("NPC resupply radius: $radius blocks")
                 .withStyle(ChatFormatting.GRAY),
             width / 2,
             top + 14,
             0xFFFFFF,
         )
         val kit = kit ?: return
-        g.drawCenteredString(font, Component.literal(kit.name).withStyle(ChatFormatting.YELLOW), width / 2, top + 42, 0xFFFFFF)
+        g.drawCenteredString(font, Component.literal(kit.name).withStyle(ChatFormatting.YELLOW), width / 2, contentTop + 42, 0xFFFFFF)
 
         // What comes with the weapon under the mouse, or with the first one.
         val shown = weaponButtons.firstOrNull { it.first.isHovered }?.second ?: kit.options.firstOrNull() ?: return

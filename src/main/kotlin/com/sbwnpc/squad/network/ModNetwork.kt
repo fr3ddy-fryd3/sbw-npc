@@ -116,10 +116,8 @@ object ModNetwork {
         ctx.enqueueWork {
             val player = ctx.player() as? ServerPlayer ?: return@enqueueWork
             val level = player.level() as? ServerLevel ?: return@enqueueWork
-            // Gate on having picked a default once — but during development everyone may freely
-            // choose ANY faction per deploy after that (explicit user call: keep free choice for
-            // now, the lock is only meant to bite once an admin-override permission exists later).
-            PlayerFactionRegistry.get(level).requireOrPrompt(player) ?: return@enqueueWork
+            val faction = PlayerFactionRegistry.get(level).recruitmentFaction(player, SquadFaction.byOrdinal(p.faction))
+                ?: return@enqueueWork
             for (slot in listOf(EquipmentSlot.MAINHAND, EquipmentSlot.OFFHAND)) {
                 val stack = player.getItemBySlot(slot)
                 if (stack.item is SquadToolItem) {
@@ -128,7 +126,7 @@ object ModNetwork {
                         SquadToolItem.Config(
                             NpcClass.byOrdinal(p.cls),
                             NpcRank.RECRUIT,
-                            SquadFaction.byOrdinal(p.faction),
+                            faction,
                             com.sbwnpc.squad.npc.SquadPreset.byOrdinal(p.preset),
                             p.vehicle,
                             com.sbwnpc.squad.npc.TransportVehicle.byOrdinal(p.vehicleModel),
@@ -184,7 +182,10 @@ object ModNetwork {
             if (player.distanceToSqr(Vec3.atCenterOf(p.pos)) > BARRACKS_REACH_SQR || !level.hasChunkAt(p.pos)) return@enqueueWork
             val be = level.getBlockEntity(p.pos) as? BarracksBlockEntity ?: return@enqueueWork
             if (be.owner != player.uuid) return@enqueueWork
-            be.configure(level, SquadToolItem.readConfig(p.config).copy(rank = NpcRank.RECRUIT))
+            val requested = SquadToolItem.readConfig(p.config)
+            val faction = PlayerFactionRegistry.get(level).recruitmentFaction(player, requested.faction)
+                ?: return@enqueueWork
+            be.configure(level, requested.copy(rank = NpcRank.RECRUIT, faction = faction))
         }
     }
 
@@ -375,11 +376,13 @@ object ModNetwork {
             val player = ctx.player() as? ServerPlayer ?: return@enqueueWork
             val level = player.level() as? ServerLevel ?: return@enqueueWork
             if (player.distanceToSqr(p.pos.center) > SUPPLY_REACH_SQR) return@enqueueWork
+            if (!level.hasChunkAt(p.pos)) return@enqueueWork
             val supply = level.getBlockEntity(p.pos) as? com.sbwnpc.squad.block.entity.SupplyBlockEntity ?: return@enqueueWork
-            if (!supply.serves(PlayerFactionRegistry.get(level).get(player.uuid))) return@enqueueWork
+            if (!player.isCreative && !supply.serves(PlayerFactionRegistry.get(level).get(player.uuid))) return@enqueueWork
             val supplyPort = com.sbwnpc.squad.domain.port.Ports.playerSupply
             val reply = when (p.action) {
                 SupplyCmdPayload.TAKE_KIT -> {
+                    if (!supply.serves(PlayerFactionRegistry.get(level).get(player.uuid))) return@enqueueWork
                     val name = supplyPort.kits.getOrNull(p.kit)?.name ?: return@enqueueWork
                     val faction = PlayerFactionRegistry.get(level).get(player.uuid)
                     if (supplyPort.issueKit(player, p.kit, p.option, faction)) {
@@ -390,8 +393,19 @@ object ModNetwork {
                 }
 
                 SupplyCmdPayload.SET_SPAWN -> {
+                    if (!supply.serves(PlayerFactionRegistry.get(level).get(player.uuid))) return@enqueueWork
                     com.sbwnpc.squad.block.SupplySpawns.get(player.server).set(player, level, p.pos)
                     "You will respawn at this Supply"
+                }
+
+                SupplyCmdPayload.SET_FACTION -> {
+                    if (!player.isCreative) return@enqueueWork
+                    val faction = SquadFaction.entries.getOrNull(p.kit) ?: return@enqueueWork
+                    val previous = supply.faction
+                    supply.faction = faction
+                    supply.setChanged()
+                    com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.SUPPLY, "Supply {} faction {} -> {} by {}", p.pos, previous, faction, player.uuid)
+                    "Supply now belongs to ${faction.label}"
                 }
 
                 else -> return@enqueueWork
