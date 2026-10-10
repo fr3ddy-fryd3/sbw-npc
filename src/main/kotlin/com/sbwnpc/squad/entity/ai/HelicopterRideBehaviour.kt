@@ -175,7 +175,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.lookAt(EntityAnchorArgument.Anchor.EYES, aim)
         val dist = entity.distanceTo(target)
         if (dist > BENCH_RANGE) return "target ${dist.toInt()} blocks off (range ${BENCH_RANGE.toInt()})"
-        if (!com.sbwnpc.squad.combat.SidearmKit.inRange(entity, entity.eyePosition, aim)) return "target outside pistol range"
+        if (!com.sbwnpc.squad.combat.WeaponReach.inRange(entity, entity.eyePosition, aim)) return "target outside weapon range"
         if (!com.sbwnpc.squad.combat.DetectionSightline.visible(entity.level(), entity.eyePosition, aim, entity)) return "target concealed"
         // Not hasLineOfSight: vanilla gives up past 128 blocks, and from cruising height that is
         // most of the ground a passenger can see.
@@ -203,7 +203,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** Ordinary infantry only: every other class has a post of its own to man. */
     private fun canRide(entity: NpcEntity): Boolean =
         when (entity.npcClass) {
-            NpcClass.RIFLEMAN, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC -> true
+            NpcClass.RIFLEMAN, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.SHOTGUNNER -> true
 
             NpcClass.MORTAR, NpcClass.MORTAR_OPERATOR, NpcClass.MORTAR_LOADER, NpcClass.TANK_CREW,
             NpcClass.HELICOPTER_PILOT, NpcClass.HELICOPTER_GUNNER, NpcClass.DRONE_OPERATOR,

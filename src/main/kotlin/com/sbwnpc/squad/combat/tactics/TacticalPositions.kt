@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.combat.tactics
 
 import com.sbwnpc.squad.combat.*
+import com.sbwnpc.squad.combat.WeaponReach
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import com.sbwnpc.squad.util.Terrain
@@ -404,7 +405,7 @@ object TacticalPositions {
     }
 
     private fun requiresFiringLane(context: SearchContext, point: Vec3): Boolean =
-        (context.aim == null || SidearmKit.inRange(context.entity, point.add(0.0, context.entity.eyeHeight.toDouble(), 0.0), context.aim.eye)) &&
+        (context.aim == null || WeaponReach.inRange(context.entity, point.add(0.0, context.entity.eyeHeight.toDouble(), 0.0), context.aim.eye)) &&
             (
                 requiresFiringLane(context.task, context.deployment, point) ||
                     (context.task.job == TacticalJob.FLANK && context.localAnchor.subtract(context.task.anchor).horizontalDistance() < 1.0)
@@ -529,7 +530,7 @@ object TacticalPositions {
     fun firingReady(entity: NpcEntity, task: TacticalTask, point: Vec3): Boolean {
         val aim = TacticalAim.resolve(entity, task) ?: return true
         val eye = point.add(0.0, entity.eyeHeight.toDouble(), 0.0)
-        if (!SidearmKit.inRange(entity, eye, aim.eye)) return true
+        if (!WeaponReach.inRange(entity, eye, aim.eye)) return true
         val level = entity.level() as ServerLevel
         val hulls = Sightline.vehicleHulls(level, AABB(eye, aim.eye).inflate(2.0), entity, entity.target)
         return !Sightline.blockedBy(level, eye, aim.eye, entity, hulls, entity.spread) &&

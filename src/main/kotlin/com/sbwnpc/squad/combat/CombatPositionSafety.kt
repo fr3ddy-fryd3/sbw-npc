@@ -6,13 +6,12 @@ import net.minecraft.world.phys.Vec3
 
 /** Movement clearance from known enemies, independent of detection and weapon range. */
 object CombatPositionSafety {
-    private const val INFANTRY_CLEARANCE = 48.0
     private const val POSITION_TOLERANCE = 0.05
     private const val PATH_NODE_TOLERANCE = 0.75
     const val APPROACH_MARGIN = 2.0
     const val FLANK_MARGIN = 8.0
 
-    fun clearance(role: NpcClass): Double = maxOf(INFANTRY_CLEARANCE, role.attackStandoffDistance)
+    fun clearance(role: NpcClass): Double = maxOf(role.combatClearance, role.attackStandoffDistance)
 
     /** An approaching enemy does not force a defender to leave; further approach is forbidden. */
     fun permits(from: Vec3, point: Vec3, threat: Vec3, clearance: Double): Boolean = point.subtract(threat).horizontalDistance() >= minOf(clearance, from.subtract(threat).horizontalDistance()) - POSITION_TOLERANCE

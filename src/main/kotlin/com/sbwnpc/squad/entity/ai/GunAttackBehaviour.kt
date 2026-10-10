@@ -21,6 +21,7 @@ import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.combat.TickBudget
+import com.sbwnpc.squad.combat.WeaponReach
 import com.sbwnpc.squad.combat.Withdrawal
 import com.sbwnpc.squad.combat.tactics.DefensiveOverwatch
 import com.sbwnpc.squad.combat.tactics.SquadTactics
@@ -557,10 +558,10 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     ): Double? {
         if (!canRelocate(entity, pos) || !safeCombatPosition(entity, target, pos)) return null
         val myEye = Vec3(pos.x, pos.y + eyeHeight, pos.z)
-        val waitingWithPistol = !SidearmKit.inRange(entity, myEye, target.eyePosition)
-        if (!waitingWithPistol && Sightline.blocked(level, target.eyePosition, myEye, entity)) return null
+        val outsideWeaponRange = !WeaponReach.inRange(entity, myEye, target.eyePosition)
+        if (!outsideWeaponRange && Sightline.blocked(level, target.eyePosition, myEye, entity)) return null
         // Standing behind armour is cover from the enemy, but it is not a firing position.
-        if (!waitingWithPistol && Sightline.crosses(vehicleHulls, myEye, target.eyePosition, entity.spread)) return null
+        if (!outsideWeaponRange && Sightline.crosses(vehicleHulls, myEye, target.eyePosition, entity.spread)) return null
         // Nor is standing ON one. Vehicles have collision, so a mob that walks into a hull rides up
         // onto it, and a spot inside the box is a spot on the roof of an APC.
         if (vehicleHulls.any { it.contains(Vec3(pos.x, pos.y + 0.5, pos.z)) }) return null
@@ -711,7 +712,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             (entity.navigation as? VehicleAwareNavigation)?.stopAfterLanding() ?: entity.navigation.stop()
         }
         val terrainClear = hasClearShot(entity, target)
-        val clearShot = visible && terrainClear && SidearmKit.inRange(entity, entity.eyePosition, target.eyePosition)
+        val clearShot = visible && terrainClear && WeaponReach.inRange(entity, entity.eyePosition, target.eyePosition)
         if (visible) reportVisibleTarget(entity, target) else entity.noticeHidden(target, visibility)
         updateAim(entity, target, gun, clearShot, visibility)
 
@@ -949,13 +950,13 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
     }
 
-    private enum class FireBlocker { PISTOL_RANGE, SIGHT_BLOCKED, ARMOUR, BURST_PAUSE, FRIENDLY_OR_VEHICLE, BLAST_SAFETY, WEAPON_CYCLE, AIMING }
+    private enum class FireBlocker { WEAPON_RANGE, SIGHT_BLOCKED, ARMOUR, BURST_PAUSE, FRIENDLY_OR_VEHICLE, BLAST_SAFETY, WEAPON_CYCLE, AIMING }
     private var lastFireBlocker: FireBlocker? = null
     private var lastFireTarget: java.util.UUID? = null
 
     private fun fireBlocker(entity: NpcEntity, target: LivingEntity, gun: HandGun, clearShot: Boolean, pausedBetweenBursts: Boolean): FireBlocker? =
         when {
-            !SidearmKit.inRange(entity, entity.eyePosition, target.eyePosition) -> FireBlocker.PISTOL_RANGE
+            !WeaponReach.inRange(entity, entity.eyePosition, target.eyePosition) -> FireBlocker.WEAPON_RANGE
             !clearShot -> FireBlocker.SIGHT_BLOCKED
             !SquadTactics.permitsFire(entity, target) -> FireBlocker.ARMOUR
             pausedBetweenBursts -> FireBlocker.BURST_PAUSE

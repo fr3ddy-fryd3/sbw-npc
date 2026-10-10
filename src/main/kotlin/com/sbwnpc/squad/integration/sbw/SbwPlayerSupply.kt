@@ -76,6 +76,7 @@ object SbwPlayerSupply : PlayerSupply {
             Spec("Grenadier", NpcClass.GRENADIER, fighter()),
             Spec("Medic", NpcClass.MEDIC, fighter(medkits = 10)),
             Spec("Drone operator", NpcClass.DRONE_OPERATOR, droneKit()),
+            Spec("Shotgunner", NpcClass.SHOTGUNNER, fighter()),
         )
     }
 

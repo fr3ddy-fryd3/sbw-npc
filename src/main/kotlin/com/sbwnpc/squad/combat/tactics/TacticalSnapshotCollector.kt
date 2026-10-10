@@ -5,6 +5,7 @@ import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.GrenadeHazard
 import com.sbwnpc.squad.combat.SidearmKit
 import com.sbwnpc.squad.combat.Sightline
+import com.sbwnpc.squad.combat.WeaponReach
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
@@ -63,7 +64,7 @@ internal object TacticalSnapshotCollector {
         val ready = (gun?.hasAmmo() == true || AntiArmourKit.loaded(npc)) &&
             !npc.busyWithRole() && !npc.resupplying && !npc.combatLockedByMedic() && !npc.evadingGrenade()
         val canFire = ready && !npc.combatLockedByCover() && (npc.readyToCover || npc.firedRecently(RECENT_FIRE_TICKS)) &&
-            target != null && target.uuid in visibleTargetIds && SidearmKit.inRange(npc, npc.eyePosition, target.eyePosition) &&
+            target != null && target.uuid in visibleTargetIds && WeaponReach.inRange(npc, npc.eyePosition, target.eyePosition) &&
             DetectionSightline.canSee(npc, target) && hasFiringSight(npc, target)
         return TacticalMember(
             id = npc.uuid,

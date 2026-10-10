@@ -8,6 +8,7 @@ import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.SidearmKit
+import com.sbwnpc.squad.combat.WeaponReach
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.domain.port.TriggerMode
 import com.sbwnpc.squad.entity.ai.AmmoRetreat
@@ -16,6 +17,7 @@ import com.sbwnpc.squad.init.ModEntities
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.SquadManager
+import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.*
 import net.minecraft.nbt.CompoundTag
@@ -40,6 +42,128 @@ import java.util.function.Consumer
 
 @PrefixGameTestTemplate(false)
 object SidearmGameTests {
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 600, batch = "primary-gun-variety")
+    fun rifleVariantsAndShotgunFireReloadAndKeepTheirSavedWeapon(helper: GameTestHelper) {
+        floor(helper, 160, 128)
+        val weapons = NpcClass.RIFLEMAN.weaponPool + NpcClass.SHOTGUNNER.weaponPool
+        val shooters = weapons.mapIndexed { index, weapon ->
+            val role = if (weapon in NpcClass.SHOTGUNNER.weaponPool) NpcClass.SHOTGUNNER else NpcClass.RIFLEMAN
+            AttackDeploymentGameTests.spawn(helper, Vec3(20.5, 1.0, 12.5 + index * 16), SquadFaction.PIG, role = role).apply {
+                diggedIn = true
+                setItemInHand(InteractionHand.MAIN_HAND, Ports.guns.issue(weapon, this, role.startingRounds(weapon)))
+                helper.assertTrue(!mainHandItem.isEmpty, "Unregistered weapon: $weapon")
+                ammunition(mainHandItem, 1, role.startingRounds(weapon) - 1)
+                val saved = CompoundTag().also { saveWithoutId(it) }
+                val restored = ModEntities.NPC.get().create(helper.level)!!.apply { load(saved) }
+                helper.assertTrue(restored.npcClass == role && net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(restored.primaryGun().item) == weapon, "Save/load replaced $weapon")
+                helper.assertTrue(Ports.guns.roundsLeft(restored.primaryGun()) == role.startingRounds(weapon), "Save/load changed ammo for $weapon")
+            }
+        }
+        val enemies = shooters.mapIndexed { index, _ ->
+            AttackDeploymentGameTests.spawn(helper, Vec3(40.5, 1.0, 12.5 + index * 16), SquadFaction.COW).apply {
+                isNoAi = true
+                getAttribute(Attributes.MAX_HEALTH)!!.baseValue = 50000.0
+                health = maxHealth
+            }
+        }
+        val witness = FakePlayerFactory.get(helper.level, GameProfile(UUID.randomUUID(), "primary-observer")).apply {
+            gameMode.changeGameModeForPlayer(GameType.CREATIVE)
+            setPos(helper.absoluteVec(Vec3(30.5, 5.0, 5.5)))
+            setNoGravity(true)
+            helper.level.addNewPlayer(this)
+        }
+        val rounds = IntArray(shooters.size)
+        val reserve = shooters.map { Ports.guns.reserve(it.primaryGun()) }
+        val pellets = shooters.map { Ports.guns.inHand(it)!!.pellets }
+        helper.assertTrue(pellets.last() == 12, "M870 must use SBW's twelve pellets")
+        val listener = Consumer<EntityJoinLevelEvent> { event ->
+            val round = event.entity as? Projectile ?: return@Consumer
+            val index = shooters.indexOf(round.owner)
+            if (event.level === helper.level && index >= 0 && Ports.guns.isRound(round)) rounds[index]++
+        }
+        val pacer = CombatTickPacer()
+        NeoForge.EVENT_BUS.addListener(listener)
+        NeoForge.EVENT_BUS.addListener<ServerTickEvent.Pre>(pacer)
+        cleanup(helper) {
+            NeoForge.EVENT_BUS.unregister(listener)
+            NeoForge.EVENT_BUS.unregister(pacer)
+            (shooters + enemies).forEach { it.discard() }
+            helper.level.removePlayerImmediately(witness, Entity.RemovalReason.DISCARDED)
+            val report = Path.of(System.getProperty("sbwnpc.gameTestReports"), "primary-variants.txt")
+            Files.createDirectories(report.parent)
+            Files.writeString(report, weapons.indices.joinToString("\n") { "${weapons[it]} pellets=${pellets[it]} rounds=${rounds[it]} reserve=${reserve[it]}->${Ports.guns.reserve(shooters[it].primaryGun())}" })
+        }
+        helper.onEachTick {
+            if (weapons.indices.all { rounds[it] >= 3 * pellets[it] }) {
+                shooters.indices.forEach { index ->
+                    helper.assertTrue(Ports.guns.reserve(shooters[index].primaryGun()) < reserve[index], "${weapons[index]} fired without reloading the single loaded round")
+                    helper.assertTrue(!shooters[index].usingSidearm, "${weapons[index]} switched instead of reloading")
+                }
+                helper.succeed()
+            }
+        }
+    }
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 800, batch = "shotgun-contact-approach")
+    fun shotgunWaitsOutsideRangeThenAttacksInsideRifleClearance(helper: GameTestHelper) {
+        floor(helper, 160, 128)
+        val shooter = AttackDeploymentGameTests.spawn(helper, Vec3(20.5, 1.0, 60.5), SquadFaction.PIG, role = NpcClass.SHOTGUNNER)
+        val enemy = AttackDeploymentGameTests.spawn(helper, Vec3(100.5, 1.0, 60.5), SquadFaction.COW).apply {
+            isNoAi = true
+            getAttribute(Attributes.MAX_HEALTH)!!.baseValue = 50000.0
+            health = maxHealth
+        }
+        val manager = SquadManager.get(helper.level)
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(shooter.uuid))
+        manager.setOrder(squad.id, SquadOrder.DEFEND)
+        manager.setObjective(helper.level, squad.id, shooter.blockPosition())
+        manager.setFocus(squad.id, enemy.uuid)
+        val witness = FakePlayerFactory.get(helper.level, GameProfile(UUID.randomUUID(), "shotgun-observer")).apply {
+            gameMode.changeGameModeForPlayer(GameType.CREATIVE)
+            setPos(helper.absoluteVec(Vec3(30.5, 5.0, 5.5)))
+            setNoGravity(true)
+            helper.level.addNewPlayer(this)
+        }
+        var rounds = 0
+        var attack = false
+        var closeShots = 0
+        val listener = Consumer<EntityJoinLevelEvent> { event ->
+            val round = event.entity as? Projectile ?: return@Consumer
+            if (event.level === helper.level && round.owner === shooter && Ports.guns.isRound(round)) {
+                helper.assertTrue(WeaponReach.inRange(shooter, shooter.eyePosition, enemy.eyePosition), "Shotgun fired beyond effective range")
+                rounds++
+                if (shooter.distanceTo(enemy) < 42.0) closeShots++
+            }
+        }
+        val pacer = CombatTickPacer()
+        NeoForge.EVENT_BUS.addListener(listener)
+        NeoForge.EVENT_BUS.addListener<ServerTickEvent.Pre>(pacer)
+        cleanup(helper) {
+            NeoForge.EVENT_BUS.unregister(listener)
+            NeoForge.EVENT_BUS.unregister(pacer)
+            manager.deleteSquad(helper.level, squad.id)
+            listOf(shooter, enemy).forEach { it.discard() }
+            helper.level.removePlayerImmediately(witness, Entity.RemovalReason.DISCARDED)
+            val report = Path.of(System.getProperty("sbwnpc.gameTestReports"), "shotgun-contact.txt")
+            Files.createDirectories(report.parent)
+            Files.writeString(report, "rounds=$rounds closePellets=$closeShots distance=${shooter.distanceTo(enemy)} attack=$attack")
+        }
+        helper.runAtTickTime(120) {
+            helper.assertTrue(rounds == 0 && shooter.distanceTo(enemy) > 48.0, "Defending shotgunner chased or shot the remote contact")
+            manager.setOrder(squad.id, SquadOrder.ATTACK)
+            manager.setObjective(helper.level, squad.id, enemy.blockPosition())
+            attack = true
+        }
+        helper.onEachTick {
+            if (attack && closeShots >= 24) {
+                helper.assertTrue(shooter.distanceTo(enemy) >= 15.0, "Shotgunner ran into its enemy")
+                helper.succeed()
+            }
+        }
+    }
+
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 500, batch = "sniper-cadence")
     fun sniperPrimaryFiresAtHalfRateWithoutSlowingBackupPistol(helper: GameTestHelper) {

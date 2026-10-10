@@ -3,6 +3,7 @@ package com.sbwnpc.squad.npc
 import net.minecraft.resources.ResourceLocation
 
 private fun loc(path: String) = ResourceLocation.fromNamespaceAndPath("superbwarfare", path)
+private val rifles = listOf("ak_47", "ak_12", "m_4", "hk_416", "qbz_95").map(::loc)
 
 /**
  * Combat role. Determines the weapon pool (one is picked at random per NPC in
@@ -19,8 +20,12 @@ enum class NpcClass(
     val speedMultiplier: Double = 1.4, // "everyone else" default per user request — was the one global value before
     /** Rear offset from a contacted enemy; ordinary order movement still reaches its objective. */
     val attackStandoffDistance: Double = 0.0,
+    /** Movement clearance; short-range assault weapons need to approach closer than rifles. */
+    val combatClearance: Double = 48.0,
+    /** Most primaries can fire at shared contacts beyond detection range. */
+    val maxFireDistance: Double = Double.POSITIVE_INFINITY,
 ) {
-    RIFLEMAN(listOf(loc("ak_47"), loc("ak_12")), shootDistanceMultiplier = 2.0),
+    RIFLEMAN(rifles, shootDistanceMultiplier = 2.0),
     MACHINE_GUNNER(listOf(loc("rpk"), loc("m_60")), shootDistanceMultiplier = 3.0, speedMultiplier = 1.3, attackStandoffDistance = 56.0),
     SNIPER(listOf(loc("svd"), loc("awm")), shootDistanceMultiplier = 3.0, accuracyMultiplier = 1.0 / 1.4, speedMultiplier = 1.3, attackStandoffDistance = 64.0), // a bit tighter spread per user request (was /1.2)
 
@@ -57,10 +62,13 @@ enum class NpcClass(
     // Flies kamikaze drones at targets 80-150 blocks out (by rank) — see DroneOperatorBehaviour.
     // Same rifles as RIFLEMAN (per user request): once the drones are spent it fights on as an
     // ordinary rifleman rather than plinking with a sidearm.
-    DRONE_OPERATOR(listOf(loc("ak_47"), loc("ak_12")), shootDistanceMultiplier = 2.0, speedMultiplier = 1.3),
+    DRONE_OPERATOR(rifles, shootDistanceMultiplier = 2.0, speedMultiplier = 1.3),
 
     /** The same soldier can lay, load and fire; crew roles belong to the mortar. */
     MORTAR(listOf(loc("mp_5"), loc("vector"))),
+
+    /** Appended to preserve existing class ordinals in saved equipment and network packets. */
+    SHOTGUNNER(listOf(loc("m_870")), combatClearance = 16.0, maxFireDistance = 48.0),
     ;
 
     /** Ordinary assault stops at this range; holding orders can shoot out to twice it. */
@@ -86,6 +94,7 @@ enum class NpcClass(
             GRENADIER -> 20
             MEDIC, MORTAR, MORTAR_OPERATOR, MORTAR_LOADER -> 180
             DRONE_OPERATOR -> 120
+            SHOTGUNNER -> 64
             TANK_CREW, HELICOPTER_PILOT, HELICOPTER_GUNNER -> 85
         }
 

@@ -88,7 +88,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun isShooter(entity: NpcEntity): Boolean =
         when (entity.npcClass) {
-            NpcClass.RIFLEMAN, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.TANK_CREW, NpcClass.DRONE_OPERATOR -> true
+            NpcClass.RIFLEMAN, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.TANK_CREW, NpcClass.DRONE_OPERATOR, NpcClass.SHOTGUNNER -> true
 
             // Helicopter crew carry a sidearm and are strapped into an aircraft; the gunship's own
             // turret is what deals with a drone, through the ordinary targeting path.
@@ -213,7 +213,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         gun.operate()
 
-        if (dist > SHOOT_RANGE || !com.sbwnpc.squad.combat.SidearmKit.inRange(entity, entity.eyePosition, aim) || !entity.sensing.hasLineOfSight(drone)) return
+        if (dist > SHOOT_RANGE || !com.sbwnpc.squad.combat.WeaponReach.inRange(entity, entity.eyePosition, aim) || !entity.sensing.hasLineOfSight(drone)) return
         if (entity.tickCount < nextShotTick || !gun.canShoot()) return
         // A drone is a small, fast, evasive target — the same aim a rifleman holds on a person
         // shouldn't land on it as reliably.
