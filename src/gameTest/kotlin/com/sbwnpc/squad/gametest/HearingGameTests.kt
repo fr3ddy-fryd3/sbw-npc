@@ -28,6 +28,28 @@ import java.util.UUID
 @PrefixGameTestTemplate(false)
 object HearingGameTests {
     @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 40, batch = "player-shot-interest")
+    fun playerGunshotsInterestBothSidesWithoutMakingAlliedFootstepsThreats(helper: GameTestHelper) {
+        for (x in 0..23) for (z in 0..11) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        val ally = AttackDeploymentGameTests.spawn(helper, Vec3(7.5, 1.0, 6.5), SquadFaction.PIG).apply { isNoAi = true }
+        val hostile = AttackDeploymentGameTests.spawn(helper, Vec3(13.5, 1.0, 6.5), SquadFaction.COW).apply { isNoAi = true }
+        val player = FakePlayerFactory.get(helper.level, GameProfile(UUID.randomUUID(), "shot-interest"))
+        player.gameMode.changeGameModeForPlayer(GameType.SURVIVAL)
+        player.setPos(helper.absoluteVec(Vec3(10.5, 1.0, 6.5)))
+        PlayerFactionRegistry.get(helper.level).set(player.uuid, SquadFaction.PIG)
+        cleanup(helper) { listOf(ally, hostile).forEach { it.discard() } }
+        helper.runAtTickTime(5) {
+            Hearing.footstep(helper.level, player, landing = true)
+            helper.assertTrue(!ally.listening() && hostile.listening(), "Allied footsteps became a threat or hostile footsteps stopped working")
+            hostile.clearAlert()
+            Hearing.gunshot(helper.level, player, 20.0)
+            helper.assertTrue(listOf(ally, hostile).all { it.listening() && it.isAlert() && it.target == null }, "Player shot did not interest both sides without granting targets")
+            helper.assertTrue(BrainUtils.getMemory(ally, ModMemories.ALERT_POSITION.get()) == player.eyePosition, "Allied investigation did not use the player's shot location")
+            helper.succeed()
+        }
+    }
+
+    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 40, batch = "hearing")
     fun gunshotsReachExtendedRingWithoutGrantingTargets(helper: GameTestHelper) {
         for (x in 0..159) for (z in 0..127) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
