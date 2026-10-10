@@ -69,6 +69,16 @@ object ClientPayloadHandlers {
         net.minecraft.client.Minecraft.getInstance().setScreen(CommandScreen(snapshot))
     }
 
+    fun squadDetails(snapshot: CompoundTag) {
+        val client = net.minecraft.client.Minecraft.getInstance()
+        val screen = client.screen as? com.sbwnpc.squad.client.screen.SquadDetailsScreen
+        if (snapshot.getBoolean("Refresh")) {
+            if (screen?.squadId == snapshot.getString("Id")) screen.update(snapshot)
+        } else {
+            client.setScreen(com.sbwnpc.squad.client.screen.SquadDetailsScreen(snapshot))
+        }
+    }
+
     fun openHud(snapshot: CompoundTag) {
         HudOverlayState.onSnapshot(snapshot)
     }

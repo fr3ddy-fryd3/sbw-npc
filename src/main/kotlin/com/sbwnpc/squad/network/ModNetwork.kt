@@ -42,7 +42,7 @@ object ModNetwork {
 
     @SubscribeEvent
     fun register(event: RegisterPayloadHandlersEvent) {
-        val r = event.registrar("1")
+        val r = event.registrar("2")
 
         r.playToServer(ConfigureToolPayload.TYPE, ConfigureToolPayload.CODEC) { p, ctx -> onConfigureTool(p, ctx) }
         r.playToServer(ToggleToolModePayload.TYPE, ToggleToolModePayload.CODEC) { _, ctx -> onToggleToolMode(ctx) }
@@ -71,6 +71,9 @@ object ModNetwork {
 
         r.playToClient(OpenCommandScreenPayload.TYPE, OpenCommandScreenPayload.CODEC) { p, _ ->
             if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openCommandScreen(p.data)
+        }
+        r.playToClient(SquadDetailsPayload.TYPE, SquadDetailsPayload.CODEC) { p, ctx ->
+            if (FMLEnvironment.dist == Dist.CLIENT) ctx.enqueueWork { ClientPayloadHandlers.squadDetails(p.data) }
         }
         r.playToClient(OpenHudPayload.TYPE, OpenHudPayload.CODEC) { p, _ ->
             if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openHud(p.data)
@@ -205,6 +208,27 @@ object ModNetwork {
                 return id
             }
             when (p.action) {
+                SquadCmdPayload.REQUEST_LIST -> reopen = true
+
+                SquadCmdPayload.REQUEST_DETAILS -> ownedSid()?.let { id ->
+                    buildSquadDetailsSnapshot(mgr, player.server, player.uuid, id, refresh = p.value == 1)?.let {
+                        sendToClient(player, SquadDetailsPayload(it))
+                    }
+                }
+
+                SquadCmdPayload.MERGE -> ownedSid()?.let { source ->
+                    val destination = runCatching { UUID.fromString(p.text) }.getOrNull() ?: return@let
+                    val problem = mgr.merge(level, source, destination, player.uuid)
+                    if (problem != null) {
+                        bar(problem)
+                    } else {
+                        bar("Squads merged into ${mgr.get(destination)?.name}")
+                        buildSquadDetailsSnapshot(mgr, player.server, player.uuid, destination)?.let {
+                            sendToClient(player, SquadDetailsPayload(it))
+                        }
+                    }
+                }
+
                 SquadCmdPayload.CREATE -> {
                     val members = SquadSelection.looseOf(player.uuid).toList()
                     if (members.isEmpty()) return@enqueueWork

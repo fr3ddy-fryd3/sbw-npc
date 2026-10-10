@@ -53,6 +53,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var moveAnchor: BlockPos? = null
     private var assemblingMove = false
     private var orderStamp = -1
+    private var orderSquad: java.util.UUID? = null
 
     /** A defender's chosen place — see [holdDefendPost]. Kept until the point or the order changes. */
     private var defendPost: Vec3? = null
@@ -110,9 +111,10 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         val order = squad.order
         val home = entity.homeCenter() ?: return
         val dist = entity.position().distanceTo(home)
-        if (squad.orderStamp != orderStamp) {
+        if (squad.id != orderSquad || squad.orderStamp != orderStamp) {
             // Fresh command: path to it now, not after the cooldown left over from the last one.
             orderStamp = squad.orderStamp
+            orderSquad = squad.id
             repathCooldown = 0
             defendPost = null
         }

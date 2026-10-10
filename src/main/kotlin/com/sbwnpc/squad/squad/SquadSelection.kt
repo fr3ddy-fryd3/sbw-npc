@@ -35,6 +35,13 @@ object SquadSelection {
         awaitingFocus.remove(player)
     }
 
+    fun replace(previous: UUID, next: UUID) {
+        squad.replaceAll { _, id -> if (id == previous) next else id }
+        // One-shot map/tool targeting was armed against the old composition; cancel it.
+        awaitingObjective.entries.removeIf { it.value == previous || it.value == next }
+        awaitingFocus.entries.removeIf { it.value == previous || it.value == next }
+    }
+
     fun clearAll() {
         loose.clear()
         squad.clear()

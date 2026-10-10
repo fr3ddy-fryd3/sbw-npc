@@ -85,6 +85,9 @@ class SquadCmdPayload(val action: Int, val squad: String, val value: Int, val te
 
         /** Radio calls from all the sender's squads on or off. */
         const val TOGGLE_REPORTS = 9
+        const val REQUEST_DETAILS = 10
+        const val MERGE = 11
+        const val REQUEST_LIST = 12
 
         val TYPE = CustomPacketPayload.Type<SquadCmdPayload>(SquadMod.loc("squad_cmd"))
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, SquadCmdPayload> = StreamCodec.composite(
@@ -107,6 +110,20 @@ class OpenCommandScreenPayload(val data: CompoundTag) : CustomPacketPayload {
             ByteBufCodecs.COMPOUND_TAG,
             OpenCommandScreenPayload::data,
             ::OpenCommandScreenPayload,
+        )
+    }
+}
+
+/** Server -> client: one owned squad, its loaded soldiers and legal merge destinations. */
+class SquadDetailsPayload(val data: CompoundTag) : CustomPacketPayload {
+    override fun type() = TYPE
+
+    companion object {
+        val TYPE = CustomPacketPayload.Type<SquadDetailsPayload>(SquadMod.loc("squad_details"))
+        val CODEC: StreamCodec<RegistryFriendlyByteBuf, SquadDetailsPayload> = StreamCodec.composite(
+            ByteBufCodecs.COMPOUND_TAG,
+            SquadDetailsPayload::data,
+            ::SquadDetailsPayload,
         )
     }
 }

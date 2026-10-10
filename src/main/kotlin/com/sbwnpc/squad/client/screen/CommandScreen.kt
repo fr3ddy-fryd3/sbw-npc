@@ -85,32 +85,20 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
         y += HEADER_HEIGHT
         listTop = y - 2
         for (row in rows.drop(scroll).take(visibleRows)) {
+            val label = "${if (row.barracks != null) GARRISON_MARK else ""}${row.name} (${row.members}) [${row.faction.label}]"
             addRenderableWidget(
-                Button.builder(Component.literal("Order: ${row.order.name}")) {
-                    row.order = row.order.next(SquadOrder.availableFor(row.tank, row.mortar, row.gunship, row.transport))
-                    it.message = Component.literal("Order: ${row.order.name}")
-                    send(SquadCmdPayload.SET_ORDER, row.id, row.order.ordinal)
-                }.bounds(x + 92, y, 90, 20).build(),
-            )
-
-            addRenderableWidget(
-                Button.builder(Component.literal("Objective")) {
-                    send(SquadCmdPayload.ARM_OBJECTIVE, row.id)
-                    onClose()
-                }.bounds(x + 186, y, 58, 20).build(),
-            )
-
-            addRenderableWidget(
-                Button.builder(Component.literal("Focus")) {
-                    send(SquadCmdPayload.ARM_FOCUS, row.id)
-                    onClose()
-                }.bounds(x + 248, y, 44, 20).build(),
+                Button.builder(Component.literal(label).withStyle(row.faction.accentStyle)) {
+                    scrollMemory = scroll
+                    send(SquadCmdPayload.REQUEST_DETAILS, row.id)
+                }.bounds(x, y, 208, 20)
+                    .tooltip(Tooltip.create(Component.literal("$label\nOpen squad: soldiers, rank, experience and commands"))).build(),
             )
 
             addRenderableWidget(
                 Button.builder(Component.literal("R")) {
                     Minecraft.getInstance().setScreen(RenameScreen(row.id, row.name))
-                }.bounds(x + 296, y, 14, 20).build(),
+                }.bounds(x + 296, y, 14, 20)
+                    .tooltip(Tooltip.create(Component.literal("Rename squad"))).build(),
             )
 
             // Disband/Delete keep the screen up — the server re-sends the list (see class doc).
@@ -182,20 +170,7 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
             g.drawString(font, Component.literal(shown), listX, top - 12, 0xAAAAAA)
         }
         rows.drop(scroll).take(visibleRows).forEachIndexed { i, row ->
-            val y = listTop + 4 + i * ROW_HEIGHT + 6
-            val label = "${if (row.barracks != null) GARRISON_MARK else ""}${row.name} (${row.members}) [${row.faction.label}]"
-            // The label shares its line with the Order button — cut it rather than draw under it,
-            // and put the whole thing in a tooltip.
-            val fitted = font.plainSubstrByWidth(label, LABEL_WIDTH)
-            g.drawString(font, Component.literal(fitted).withStyle(row.faction.accentStyle), listX, y, -1)
-            if (mouseX in listX until listX + LABEL_WIDTH && mouseY in y - 6 until y + ROW_HEIGHT - 6) {
-                val lines = mutableListOf<Component>(Component.literal(label))
-                row.barracks?.let {
-                    lines += Component.literal("Garrison of the Barracks at ${it.x} ${it.y} ${it.z}")
-                        .withStyle(ChatFormatting.GOLD)
-                }
-                g.renderComponentTooltip(font, lines, mouseX, mouseY)
-            }
+            g.drawString(font, Component.literal(row.order.name), listX + 214, listTop + 8 + i * ROW_HEIGHT, 0xBBBBBB)
         }
     }
 
@@ -215,7 +190,7 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
         const val VERTICAL_CHROME = 130
 
         /** Room left of the Order button for the squad's name. */
-        const val LABEL_WIDTH = 88
+        const val LABEL_WIDTH = 208
 
         /** Marks a squad a Barracks keeps up. */
         const val GARRISON_MARK = "\u2302 "

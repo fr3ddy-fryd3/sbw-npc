@@ -12,6 +12,7 @@ object GameTestRegistration {
     fun register(event: RegisterGameTestsEvent) {
         val classes = listOf(
             ExperienceGameTests::class.java,
+            SquadProgressionGameTests::class.java,
             InfantryMovementGameTests::class.java,
             LadderNavigationGameTests::class.java,
             ScaffoldingGameTests::class.java,

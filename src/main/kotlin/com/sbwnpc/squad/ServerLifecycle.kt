@@ -31,6 +31,7 @@ object ServerLifecycle {
         } else {
             (event.entity as? com.sbwnpc.squad.entity.NpcEntity)?.let {
                 val manager = SquadManager.get(level)
+                manager.reconcileMembership(it)
                 manager.deliverExperience(it)
             }
         }

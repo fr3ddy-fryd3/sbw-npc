@@ -156,6 +156,51 @@ class SquadManager : SavedData() {
         setDirty()
     }
 
+    fun mergeProblem(source: UUID, destination: UUID, owner: UUID): String? = SquadMerging.problem(get(source), get(destination), owner)
+
+    fun merge(level: ServerLevel, source: UUID, destination: UUID, owner: UUID): String? {
+        val from = get(source) ?: return "Squad no longer exists"
+        val into = get(destination) ?: return "Squad no longer exists"
+        if (from.owner != owner || into.owner != owner) return "Both squads must belong to you"
+        ensureRecruitmentRoster(level, from)
+        ensureRecruitmentRoster(level, into)
+        mergeProblem(source, destination, owner)?.let { return it }
+        val moved = from.members.toList()
+        mergeMembership(from, into, level.gameTime)
+        into.members.forEach { id ->
+            (findEntity(level.server, id) as? NpcEntity)?.let {
+                it.squadId = into.id
+                it.invalidateOrders()
+            }
+        }
+        com.sbwnpc.squad.combat.DebugFlags.log(
+            com.sbwnpc.squad.combat.LogGroup.ORDER,
+            "[squad] event=merge source={} destination={} moved={} members={}",
+            source,
+            destination,
+            moved.size,
+            into.members.size,
+        )
+        return null
+    }
+
+    internal fun mergeMembership(source: Squad, destination: Squad, now: Long) {
+        SquadMerging.transfer(source, destination, now)
+        squads.remove(source.id)
+        setDirty()
+    }
+
+    /** The saved member list is authoritative even when the old entity was unloaded at merge. */
+    fun reconcileMembership(npc: NpcEntity) {
+        val group = squads.values.firstOrNull { npc.uuid in it.members }
+        if (group != null && npc.squadId != group.id) {
+            npc.squadId = group.id
+            npc.invalidateOrders()
+        } else if (group == null && npc.squadId != null && get(npc.squadId) == null) {
+            npc.squadId = null
+        }
+    }
+
     /** Player command, including map/group/HUD orders. Internal transitions use [setOrder]. */
     fun issueOrder(id: UUID, order: SquadOrder) {
         setOrder(id, order)

@@ -31,6 +31,7 @@
 | Бой | Общие расчёты видимости, угроз, огня, формаций и безопасных позиций | [combat/](../src/main/kotlin/com/sbwnpc/squad/combat/) |
 | Тактика отряда | Выбор манёвра, состояния, фазы, назначения и диагностика | [combat/tactics/](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/) |
 | Отряды и приказы | Состав, владелец, приказы, выделение, развёртывание, сохранение | [squad/Squad.kt](../src/main/kotlin/com/sbwnpc/squad/squad/Squad.kt), [squad/SquadManager.kt](../src/main/kotlin/com/sbwnpc/squad/squad/SquadManager.kt) |
+| Опыт бойцов | Начисление, вклад в поражение цели, боевые раны, пороги рангов | [experience/](../src/main/kotlin/com/sbwnpc/squad/experience/) |
 | Описания NPC | Классы, ранги, пресеты, фракции и модели техники | [npc/](../src/main/kotlin/com/sbwnpc/squad/npc/) |
 | Фракции и дипломатия | Команды scoreboard, враждебность, союзы | [team/](../src/main/kotlin/com/sbwnpc/squad/team/), [squad/PlayerFactionRegistry.kt](../src/main/kotlin/com/sbwnpc/squad/squad/PlayerFactionRegistry.kt) |
 | Длинные маршруты | Планирование движения по местности и ограничения вычислений | [route/](../src/main/kotlin/com/sbwnpc/squad/route/) |
@@ -107,6 +108,9 @@
 | Что нужно изменить | Где смотреть |
 |---|---|
 | Оружие, характеристики и боевые дистанции класса | [npc/NpcClass.kt](../src/main/kotlin/com/sbwnpc/squad/npc/NpcClass.kt), выдача снаряжения в `NpcEntity.applyRole` и `integration/sbw/SbwGear.kt` |
+| Имя, опыт и повышение NPC | [experience/ExperienceRules.kt](../src/main/kotlin/com/sbwnpc/squad/experience/ExperienceRules.kt), `NpcEntity.gainExperience` / сохранение NBT; пороги в [SquadConfig.kt](../src/main/kotlin/com/sbwnpc/squad/config/SquadConfig.kt) |
+| Начисление за урон, ассисты и лечение | [ExperienceAwards.kt](../src/main/kotlin/com/sbwnpc/squad/experience/ExperienceAwards.kt), [ExperienceEvents.kt](../src/main/kotlin/com/sbwnpc/squad/experience/ExperienceEvents.kt); mixin `VehicleExperienceMixin` и `ExperienceHealingMixin` |
+| Карточка и объединение отрядов | [SquadDetailsScreen.kt](../src/main/kotlin/com/sbwnpc/squad/client/screen/SquadDetailsScreen.kt), [SquadDetailsSnapshot.kt](../src/main/kotlin/com/sbwnpc/squad/network/SquadDetailsSnapshot.kt), [SquadMerging.kt](../src/main/kotlin/com/sbwnpc/squad/squad/SquadMerging.kt), `SquadManager.merge` / `reconcileMembership` |
 | Ранг и наборы отрядов | [npc/NpcRank.kt](../src/main/kotlin/com/sbwnpc/squad/npc/NpcRank.kt), [npc/SquadPreset.kt](../src/main/kotlin/com/sbwnpc/squad/npc/SquadPreset.kt) |
 | Спавн и выбор безопасного места | [SquadDeployment.kt](../src/main/kotlin/com/sbwnpc/squad/squad/SquadDeployment.kt), [SafeSpawn.kt](../src/main/kotlin/com/sbwnpc/squad/squad/SafeSpawn.kt) |
 | Производительность казарм и очередь | [BarracksBlockEntity.kt](../src/main/kotlin/com/sbwnpc/squad/block/entity/BarracksBlockEntity.kt), [BarracksRecruitmentQueue.kt](../src/main/kotlin/com/sbwnpc/squad/squad/BarracksRecruitmentQueue.kt), [RecruitmentRoster.kt](../src/main/kotlin/com/sbwnpc/squad/squad/RecruitmentRoster.kt) |

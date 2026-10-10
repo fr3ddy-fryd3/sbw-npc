@@ -101,13 +101,18 @@ Two modes, switched with **Ctrl + right-click on air**. The current one is on th
 
 **Recruit mode — what gets deployed**
 
-- **Right-click air** opens the deploy config: preset, class (Single only), rank, faction, and the
+- **Right-click air** opens the deploy config: preset, class (Single only), faction, and the
   vehicle or airframe where the preset has one.
 - **Right-click a block** deploys it there, lined up abreast and facing you.
 - Presets: `Single`, `5: Riflemen`, `7: Standard`, `16: Large`, `32: Company`, `Mortar Crew`, `Tank Crew`
   (ZTZ-99A / T-90A / M1A2), `Drone Team`, `Heli Crew` — Mi-28 gunship or AH-6 transport, and the
   airframe decides which crew comes with it. `5` and `7` can bring a LAV-25 / LAV-150 / BMP-2.
-- Ranks go `RECRUIT → REGULAR → VETERAN → ELITE`: more health, tighter spread, quicker reactions.
+- New soldiers start as `RECRUIT`, with a persistent name and personal experience. Ranks progress
+  `RECRUIT → REGULAR → VETERAN → ELITE`, at 0 / 300 / 1200 / 3500 cumulative XP by default
+  (`regularExperience`, `veteranExperience`, `eliteExperience` in the server config).
+  Hostile damage, kill contributions, combat treatment and useful combat participation earn XP.
+  Promotion improves rank statistics while preserving current health, weapons and ammunition.
+  Existing soldiers keep their rank; replacements start from zero.
 - Anything bigger than a single NPC is formed into a squad automatically, holding where it landed.
 
 **Command mode — what they do**
@@ -124,9 +129,13 @@ Two modes, switched with **Ctrl + right-click on air**. The current one is on th
 
 One row per squad, scrollable, with the footer buttons under the list:
 
-- **Order** cycles through the orders that squad can actually carry out.
-- **Objective** arms a click: the next block you right-click is where the squad works from.
-- **Focus** arms the same thing on an entity instead.
+- **Squad name** opens a live detail page: order, tactical state, objective, and each loaded soldier's
+  name, role, rank, experience, health and primary/pistol ammunition. Unloaded data is marked unavailable.
+- In that page, **Order** cycles available orders; **Objective** arms the next block click;
+  **Focus** arms an entity click.
+- **Merge** joins the squad into a selected infantry squad with the same owner and faction;
+  neither may be assigned to barracks. The destination keeps its identity, order and objective.
+  Soldiers keep their UUIDs, names, experience, rank and kit, including across chunk unloads.
 - **R** renames · **X** disbands (the NPCs stay, the squad doesn't) · **DEL** deletes the squad
   and everything in it, vehicles included.
 - **Routes** opens patrol routes: add one, right-click blocks to drop waypoints, finish, then

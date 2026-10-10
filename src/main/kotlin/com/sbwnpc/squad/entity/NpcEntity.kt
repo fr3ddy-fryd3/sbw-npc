@@ -780,6 +780,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     private var seenOrderStamp = 0
 
+    fun invalidateOrders() {
+        seenOrderStamp = Int.MIN_VALUE
+    }
+
     /** A new command beats whatever the NPC was idly busy with: an alarm it was going to
      *  investigate held the squad's orders off for up to ten seconds, and a path to the old
      *  objective kept being walked until its next repath. */
