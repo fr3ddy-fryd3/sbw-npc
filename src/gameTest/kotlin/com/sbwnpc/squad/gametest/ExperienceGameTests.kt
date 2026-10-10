@@ -26,6 +26,64 @@ import kotlin.math.abs
 @PrefixGameTestTemplate(false)
 object ExperienceGameTests {
     @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 40, batch = "player-kill-experience")
+    fun playerKillsTripleTheSharedBountyWithoutBoostingWoundsOrFriendlyKills(helper: GameTestHelper) {
+        val rifleman = npc(helper, 3.5, SquadFaction.PIG)
+        val sniper = npc(helper, 6.5, SquadFaction.PIG, NpcClass.SNIPER)
+        val enemy = npc(helper, 15.5, SquadFaction.COW)
+        val players = mutableListOf<net.minecraft.server.level.ServerPlayer>()
+        fun player(faction: SquadFaction, mode: net.minecraft.world.level.GameType): net.minecraft.server.level.ServerPlayer {
+            val profile = com.mojang.authlib.GameProfile(UUID.randomUUID(), "xp-target-${players.size}")
+            // FakePlayer is permanently invulnerable and suppresses die(). Use vanilla ServerPlayer
+            // with only the headless connection borrowed from NeoForge's fake-player fixture.
+            return net.minecraft.server.level.ServerPlayer(helper.level.server, helper.level, profile, net.minecraft.server.level.ClientInformation.createDefault()).apply {
+                connection = net.neoforged.neoforge.common.util.FakePlayerFactory.get(helper.level, profile).connection
+                gameMode.changeGameModeForPlayer(mode)
+                // Exercise established players rather than vanilla's 60-tick login protection.
+                net.minecraft.server.level.ServerPlayer::class.java.getDeclaredField("spawnInvulnerableTime").apply { isAccessible = true }.setInt(this, 0)
+                setPos(helper.absoluteVec(Vec3(20.5, 1.0, 5.5)))
+                helper.level.addNewPlayer(this)
+                SquadTeams.assign(this, faction)
+                players += this
+            }
+        }
+        val hostile = player(SquadFaction.COW, net.minecraft.world.level.GameType.SURVIVAL)
+        val allied = player(SquadFaction.PIG, net.minecraft.world.level.GameType.SURVIVAL)
+        val creative = player(SquadFaction.COW, net.minecraft.world.level.GameType.CREATIVE)
+        val spectator = player(SquadFaction.COW, net.minecraft.world.level.GameType.SPECTATOR)
+        cleanup(helper) {
+            players.forEach {
+                SquadTeams.clear(it)
+                helper.level.removePlayerImmediately(it, net.minecraft.world.entity.Entity.RemovalReason.DISCARDED)
+            }
+            listOf(rifleman, sniper, enemy).forEach { it.discard() }
+        }
+        helper.runAtTickTime(5) {
+            val before = hostile.health
+            Ports.guns.inHand(rifleman)!!.inflictHit(hostile, 4f)
+            val fraction = (before - hostile.health) / before
+            helper.assertTrue(fraction > 0 && hostile.isAlive, "Player control did no nonlethal damage")
+            near(helper, rifleman.experience, fraction * 70.0, "Player wounds must retain ordinary XP")
+            hostile.invulnerableTime = 0
+            Ports.guns.inHand(sniper)!!.inflictHit(hostile, hostile.health * 2)
+            helper.assertTrue(!hostile.isAlive, "Actual hostile player kill did not happen")
+            near(helper, rifleman.experience, fraction * 300.0, "Player kill assist lost its triple bounty")
+            val coefficient = com.sbwnpc.squad.config.SquadConfig.experienceMultiplier(NpcClass.SNIPER)
+            near(helper, sniper.experience, (1.0 - fraction) * 300.0 * coefficient, "Player bounty must apply the sniper coefficient exactly once")
+            val prior = rifleman.experience
+            Ports.guns.inHand(rifleman)!!.inflictHit(enemy, enemy.health * 2)
+            near(helper, rifleman.experience - prior, 100.0, "NPC kill budget changed")
+            val complete = rifleman.experience
+            Ports.guns.inHand(rifleman)!!.inflictHit(allied, allied.health * 2)
+            Ports.guns.inHand(rifleman)!!.inflictHit(creative, 100f)
+            Ports.guns.inHand(rifleman)!!.inflictHit(spectator, 100f)
+            Ports.guns.inHand(rifleman)!!.inflictHit(hostile, 100f)
+            near(helper, rifleman.experience, complete, "Friendly, creative, spectator or repeated death paid XP")
+            helper.succeed()
+        }
+    }
+
+    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 40, batch = "class-experience")
     fun classMultipliersApplyOnceToKillsDeferredRewardsAndSavedExperience(helper: GameTestHelper) {
         val roles = listOf(NpcClass.RIFLEMAN, NpcClass.SNIPER, NpcClass.MACHINE_GUNNER)

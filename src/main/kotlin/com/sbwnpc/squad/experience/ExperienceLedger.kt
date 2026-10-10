@@ -19,14 +19,16 @@ class ExperienceLedger(private val tag: CompoundTag) {
         return rewards
     }
 
-    fun finish(budget: Double): Map<UUID, Double> {
+    /** Damage retains its ordinary 70% cap; a larger kill bounty is unlocked only on death. */
+    fun finish(budget: Double, killMultiplier: Double = 1.0): Map<UUID, Double> {
         if (tag.getBoolean("Finished")) return emptyMap()
         tag.putBoolean("Finished", true)
         val credits = tag.getCompound("Credits")
         val sum = credits.allKeys.sumOf { credits.getDouble(it) }
         if (sum <= 0) return emptyMap()
+        val completionBudget = budget * (killMultiplier - 0.7)
         return credits.allKeys.mapNotNull { key ->
-            runCatching { UUID.fromString(key) }.getOrNull()?.let { it to budget * 0.3 * credits.getDouble(key) / sum }
+            runCatching { UUID.fromString(key) }.getOrNull()?.let { it to completionBudget * credits.getDouble(key) / sum }
         }.toMap()
     }
 }

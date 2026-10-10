@@ -72,7 +72,7 @@ object ExperienceAwards {
             (SquadManager.findEntity(level.server, id) as? NpcEntity)?.let(::confirm)
         }
         if (dead) {
-            ledger.finish(budget).filterKeys { eligible.getBoolean(it.toString()) }.forEach { (id, xp) ->
+            ledger.finish(budget, killMultiplier = if (victim is Player) 3.0 else 1.0).filterKeys { eligible.getBoolean(it.toString()) }.forEach { (id, xp) ->
                 SquadManager.get(level).creditExperience(level.server, id, xp, "assist")
             }
         }
