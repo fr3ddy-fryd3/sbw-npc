@@ -101,7 +101,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             }
             server?.let { srv ->
                 currentSquad()?.let { squad ->
-                    srv.playerList.getPlayer(squad.owner)?.sendSystemMessage(Component.literal("${squad.name}: ${name.string} promoted to ${npcRank.name}"))
+                    srv.playerList.getPlayer(squad.owner)?.sendSystemMessage(
+                        Component.literal("${squad.name}: ${name.string} promoted to ${npcRank.name}")
+                            .withStyle((com.sbwnpc.squad.team.SquadTeams.factionOf(this) ?: squad.faction).accentStyle),
+                    )
                 }
             }
             com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER, "[experience] npc={} event=promotion from={} to={} xp={}", uuid, old, npcRank, experience)

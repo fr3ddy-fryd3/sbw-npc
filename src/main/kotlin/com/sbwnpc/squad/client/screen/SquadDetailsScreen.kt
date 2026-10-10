@@ -16,6 +16,7 @@ import net.neoforged.neoforge.network.PacketDistributor
 class SquadDetailsScreen(private var snapshot: CompoundTag) : Screen(Component.literal("Squad")) {
     val squadId: String get() = snapshot.getString("Id")
     private val members get() = snapshot.getList("Members", Tag.TAG_COMPOUND.toInt()).map { it as CompoundTag }
+        .sortedWith(compareByDescending<CompoundTag> { it.getBoolean("Loaded") }.thenByDescending { it.getDouble("Experience") })
     private val candidates get() = snapshot.getList("MergeCandidates", Tag.TAG_COMPOUND.toInt()).map { it as CompoundTag }
     private var destination = candidates.firstOrNull()?.getString("Id")
     private var scroll = 0
