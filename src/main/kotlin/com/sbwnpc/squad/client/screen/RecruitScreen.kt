@@ -275,7 +275,7 @@ class RecruitScreen(
             RecruitScreen(
                 Component.literal("Barracks Garrison"),
                 cfg,
-                "Apply recruitment",
+                "Deploy",
                 pos,
                 queue,
             ) { updated ->

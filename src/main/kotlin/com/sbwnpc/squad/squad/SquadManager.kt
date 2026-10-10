@@ -404,6 +404,64 @@ class SquadManager : SavedData() {
         return roster
     }
 
+    /** Plan the complete initial group before publishing entities; a blocked deploy stays pending. */
+    fun deployInitialAtBarracks(
+        level: ServerLevel,
+        barracks: BarracksRef,
+        squadId: UUID,
+        cfg: com.sbwnpc.squad.item.SquadToolItem.Config,
+        yaw: Float,
+    ): String? {
+        val squad = get(squadId) ?: return "Squad removed"
+        if (squad.barracks != barracks) return "Squad moved to another barracks"
+        val slots = squad.recruitmentRoster?.slots?.filter { it.active } ?: return "Recruitment roster unavailable"
+        data class Planned(val slot: RecruitmentRoster.Slot, val npc: NpcEntity, val position: Vec3)
+        val planned = mutableListOf<Planned>()
+        val radians = Math.toRadians(yaw.toDouble())
+        val rightX = kotlin.math.cos(radians)
+        val rightZ = kotlin.math.sin(radians)
+        val forwardX = -rightZ
+        val forwardZ = rightX
+        for ((index, slot) in slots.withIndex()) {
+            if (slot.occupant != null || slot.recruited) continue
+            val npc = ModEntities.NPC.get().create(level) ?: return "NPC unavailable"
+            val offset = if (cfg.preset.grid) {
+                com.sbwnpc.squad.combat.SquadFormation.gridOffset(index, slots.size)
+            } else {
+                Vec3((index - (slots.size - 1) / 2.0) * cfg.preset.spacing, 0.0, 0.0)
+            }
+            val dimensions = npc.getDimensions(Pose.STANDING)
+            val spot = SafeSpawn.findStandingSpot(
+                level,
+                barracks.pos.x + 0.5 + rightX * offset.x + forwardX * (offset.z + 2.0),
+                barracks.pos.z + 0.5 + rightZ * offset.x + forwardZ * (offset.z + 2.0),
+                barracks.pos.y,
+                dimensions,
+                requireSolidFloor = true,
+                acceptsPosition = { candidate ->
+                    val bounds = dimensions.makeBoundingBox(candidate)
+                    planned.none { it.npc.getDimensions(Pose.STANDING).makeBoundingBox(it.position).intersects(bounds) }
+                },
+            ) ?: return "Not enough safe space for the full garrison"
+            planned += Planned(slot, npc, spot)
+        }
+        if (planned.isEmpty()) return null
+        for (recruit in planned) {
+            if (!addRecruit(level, squad, recruit.slot, recruit.npc, recruit.position, yaw)) {
+                planned.forEach {
+                    squad.members.remove(it.npc.uuid)
+                    it.slot.occupant = null
+                    it.slot.recruited = false
+                    it.npc.discard()
+                }
+                setDirty()
+                return "Garrison spawn rejected"
+            }
+        }
+        com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER, "Barracks {} deployed {} new NPCs into {} ({})", barracks.pos, planned.size, squad.name, squad.faction)
+        return null
+    }
+
     /** Returns a reason when the head of the shared queue cannot spawn; never uses an unsafe fallback. */
     fun recruitAtBarracks(
         level: ServerLevel,
@@ -412,8 +470,6 @@ class SquadManager : SavedData() {
     ): String? {
         val squad = get(request.squad) ?: return "Squad removed"
         if (squad.barracks != barracks) return "Squad moved to another barracks"
-        val be = level.getBlockEntity(barracks.pos) as? com.sbwnpc.squad.block.entity.BarracksBlockEntity
-        be?.recruitmentProblem(level, squad.faction)?.let { return it }
         val slot = squad.recruitmentRoster?.slots?.firstOrNull { it.id == request.slot && it.active && it.occupant == null }
             ?: return "Place no longer vacant"
         val npc = ModEntities.NPC.get().create(level) ?: return "NPC unavailable"
@@ -427,18 +483,24 @@ class SquadManager : SavedData() {
             npc.getDimensions(Pose.STANDING),
             requireSolidFloor = true,
         ) ?: return "No safe space near the barracks"
-        npc.moveTo(spot.x, spot.y, spot.z, level.random.nextFloat() * 360f, 0f)
+        if (!addRecruit(level, squad, slot, npc, spot, level.random.nextFloat() * 360f)) return "NPC spawn rejected"
+        com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER, "Barracks {} replaced {} in {} ({}) with {}", barracks.pos, slot.role, squad.name, squad.faction, npc.uuid)
+        return null
+    }
+
+    private fun addRecruit(level: ServerLevel, squad: Squad, slot: RecruitmentRoster.Slot, npc: NpcEntity, spot: Vec3, yaw: Float): Boolean {
+        npc.moveTo(spot.x, spot.y, spot.z, yaw, 0f)
         npc.npcClass = slot.role
         npc.npcRank = NpcRank.RECRUIT
         npc.spawnFaction = squad.faction
         npc.squadId = squad.id
-        npc.finalizeSpawn(level, level.getCurrentDifficultyAt(barracks.pos), MobSpawnType.SPAWN_EGG, null)
-        if (!level.addFreshEntity(npc)) return "NPC spawn rejected"
+        npc.finalizeSpawn(level, level.getCurrentDifficultyAt(npc.blockPosition()), MobSpawnType.SPAWN_EGG, null)
+        if (!level.addFreshEntity(npc)) return false
         slot.occupant = npc.uuid
         slot.recruited = true
         squad.members.add(npc.uuid)
         setDirty()
-        return null
+        return true
     }
 
     /** Resupply is independent of the production clock and never creates entities. */

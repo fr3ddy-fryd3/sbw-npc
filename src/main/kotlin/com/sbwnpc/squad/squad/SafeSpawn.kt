@@ -57,9 +57,10 @@ object SafeSpawn {
         dimensions: EntityDimensions,
         radius: Double = DEFAULT_CLEAR_RADIUS,
         requireSolidFloor: Boolean = false,
+        acceptsPosition: (Vec3) -> Boolean = { true },
     ): Vec3? {
         findSafeY(level, preferredX, preferredZ, aroundY, dimensions, requireSolidFloor = requireSolidFloor)
-            ?.let { return Vec3(preferredX, it, preferredZ) }
+            ?.let { Vec3(preferredX, it, preferredZ) }?.takeIf(acceptsPosition)?.let { return it }
 
         var ring = RING_STEP
         while (ring <= radius) {
@@ -70,7 +71,8 @@ object SafeSpawn {
                 val angle = 2 * Math.PI * i / samples
                 val x = preferredX + Math.cos(angle) * ring
                 val z = preferredZ + Math.sin(angle) * ring
-                findSafeY(level, x, z, aroundY, dimensions, requireSolidFloor = requireSolidFloor)?.let { return Vec3(x, it, z) }
+                findSafeY(level, x, z, aroundY, dimensions, requireSolidFloor = requireSolidFloor)
+                    ?.let { Vec3(x, it, z) }?.takeIf(acceptsPosition)?.let { return it }
             }
             ring += RING_STEP
         }
@@ -94,8 +96,10 @@ object SafeSpawn {
         dimensions: EntityDimensions,
         radius: Double = STANDING_RADIUS,
         requireSolidFloor: Boolean = false,
+        acceptsPosition: (Vec3) -> Boolean = { true },
     ): Vec3? {
-        findSafeY(level, x, z, aroundY, dimensions, LEVEL_RANGE, requireSolidFloor)?.let { return Vec3(x, it, z) }
+        findSafeY(level, x, z, aroundY, dimensions, LEVEL_RANGE, requireSolidFloor)
+            ?.let { Vec3(x, it, z) }?.takeIf(acceptsPosition)?.let { return it }
         var ring = 1.0
         while (ring <= radius) {
             val samples = Math.max(8, Math.round(2 * Math.PI * ring).toInt())
@@ -103,11 +107,12 @@ object SafeSpawn {
                 val angle = 2 * Math.PI * i / samples
                 val cx = x + Math.cos(angle) * ring
                 val cz = z + Math.sin(angle) * ring
-                findSafeY(level, cx, cz, aroundY, dimensions, LEVEL_RANGE, requireSolidFloor)?.let { return Vec3(cx, it, cz) }
+                findSafeY(level, cx, cz, aroundY, dimensions, LEVEL_RANGE, requireSolidFloor)
+                    ?.let { Vec3(cx, it, cz) }?.takeIf(acceptsPosition)?.let { return it }
             }
             ring += 1.0
         }
-        return findClearSpot(level, x, z, aroundY, dimensions, radius, requireSolidFloor)
+        return findClearSpot(level, x, z, aroundY, dimensions, radius, requireSolidFloor, acceptsPosition)
     }
 
     /** How far up or down counts as "about the same height" for [findStandingSpot]. */

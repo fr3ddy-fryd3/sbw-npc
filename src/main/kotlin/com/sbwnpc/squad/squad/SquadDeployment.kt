@@ -24,8 +24,8 @@ import java.util.UUID
  * around them.
  *
  * Lifted out of [SquadToolItem] when the Barracks gained the same settings the deploy tool has:
- * both describe their composition the same way. The tool deploys immediately; barracks recruit
- * individuals through their own queue and reuse only the support-equipment deployment here.
+ * both describe their composition the same way. Barracks deploy their initial roster together,
+ * queue casualty replacements, and reuse the support-equipment deployment here.
  */
 object SquadDeployment {
 
@@ -73,7 +73,7 @@ object SquadDeployment {
         return Result(spawned, squad, vehicleBlocked = !vehiclePlaced)
     }
 
-    /** Places support once the crew is present; barracks build that crew one member at a time. */
+    /** Places support once the complete crew is present. */
     fun deploySupport(
         level: ServerLevel,
         pos: BlockPos,

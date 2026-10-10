@@ -10,7 +10,6 @@ import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.npc.SquadPreset
 import com.sbwnpc.squad.squad.BarracksRecruitmentQueue
 import com.sbwnpc.squad.squad.BarracksRef
-import com.sbwnpc.squad.squad.PlayerFactionRegistry
 import com.sbwnpc.squad.squad.SquadDeployment
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
@@ -24,7 +23,7 @@ import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.state.BlockState
 import java.util.UUID
 
-/** Initial recruitment and replacements share one saved queue and production clock. */
+/** Deploy releases new places together; only replacements use the saved production clock. */
 class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlockEntities.BARRACKS.get(), pos, state) {
     var owner: UUID? = null
     var config: CompoundTag? = null
@@ -37,8 +36,6 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
     private var blockedReason = ""
     private var unresolvedRoster = false
     private var reconfigurePending = false
-
-    fun recruitmentProblem(level: ServerLevel, faction: SquadFaction): String? = PlayerFactionRegistry.get(level).recruitmentProblem(level.server, owner, faction)
 
     fun configOrDefault(ownFaction: SquadFaction): SquadToolItem.Config =
         config?.let { SquadToolItem.readConfig(it) }
@@ -57,6 +54,8 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
         config = SquadToolItem.configTag(cfg)
         reconfigurePending = true
         refresh(level)
+        deployInitial(level)
+        deploySupport(level)
         setChanged()
     }
 
@@ -72,8 +71,7 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
             setChanged()
         }
         val cfg = config?.let { SquadToolItem.readConfig(it) }
-        val permissionProblem = cfg?.let { recruitmentProblem(level, it.faction) }
-        if (cfg != null && garrison == null && owner != null && permissionProblem == null) {
+        if (cfg != null && garrison == null && owner != null) {
             garrison = mgr.createAtBarracks(level, ref(level), owner!!, cfg).id
             supportDeployed = false
             reconfigurePending = false
@@ -94,7 +92,7 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
                     mgr.setDirty()
                     setChanged()
                 }
-                roster.vacancies().forEach { slot ->
+                roster.vacancies().filter { it.recruited }.forEach { slot ->
                     wanted += BarracksRecruitmentQueue.Request(squad.id, slot.id, slot.recruited)
                 }
             }
@@ -102,13 +100,31 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
         val before = queue.save()
         queue.synchronize(wanted, SquadConfig.recruitIntervalTicks())
         if (queue.save() != before) setChanged()
-        if (queue.next() == null) blockedReason = permissionProblem ?: ""
+        val pendingInitial = mgr.get(garrison)?.recruitmentRoster?.vacancies()?.any { !it.recruited } == true
+        if (queue.next() == null && !pendingInitial) blockedReason = ""
+    }
+
+    /** Also finishes old saved initial queues; no opening screen can bypass a casualty's delay. */
+    private fun deployInitial(level: ServerLevel) {
+        val cfg = config?.let { SquadToolItem.readConfig(it) } ?: return
+        val squad = SquadManager.get(level).get(garrison) ?: return
+        val roster = squad.recruitmentRoster ?: return
+        if (roster.vacancies().none { !it.recruited }) return
+        val yaw = blockState.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.HORIZONTAL_FACING).toYRot()
+        productionResult(SquadManager.get(level).deployInitialAtBarracks(level, ref(level), squad.id, cfg, yaw))
+    }
+
+    private fun productionResult(reason: String?) {
+        val next = reason ?: ""
+        if (next != blockedReason) {
+            com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER, "Barracks {} production: {}", blockPos, next.ifEmpty { "ready" })
+        }
+        blockedReason = next
     }
 
     private fun deploySupport(level: ServerLevel) {
         if (supportDeployed) return
         val cfg = config?.let { SquadToolItem.readConfig(it) } ?: return
-        if (recruitmentProblem(level, cfg.faction) != null) return
         val squad = SquadManager.get(level).get(garrison) ?: return
         val roster = squad.recruitmentRoster ?: return
         if (roster.slots.any { it.active && (!it.recruited || it.occupant == null) }) return
@@ -184,6 +200,7 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
             if (be.needsRefresh || level.gameTime % 20L == 0L) {
                 be.refresh(level)
                 be.needsRefresh = false
+                be.deployInitial(level)
                 SquadManager.get(level).resupplyAtBarracks(level, be.ref(level))
                 be.deploySupport(level)
             }
@@ -199,7 +216,7 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
             if (be.queue.remainingTicks > 0) return
             val request = be.queue.next() ?: return
             val reason = SquadManager.get(level).recruitAtBarracks(level, be.ref(level), request)
-            be.blockedReason = reason ?: ""
+            be.productionResult(reason)
             if (reason == null) {
                 be.queue.complete(request, SquadConfig.recruitIntervalTicks())
                 be.setChanged()

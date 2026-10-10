@@ -13,10 +13,10 @@ import java.util.UUID
 
 class BarracksRecruitmentTest {
     private val interval = 600
-    private fun request(squad: UUID = UUID.randomUUID(), replacement: Boolean = false) = BarracksRecruitmentQueue.Request(squad, UUID.randomUUID(), replacement)
+    private fun request(squad: UUID = UUID.randomUUID(), replacement: Boolean = true) = BarracksRecruitmentQueue.Request(squad, UUID.randomUUID(), replacement)
 
     @Test
-    fun `seven initial soldiers need seven full intervals including the first`() {
+    fun `seven casualty replacements need seven full intervals including the first`() {
         val queue = BarracksRecruitmentQueue()
         val waiting = MutableList(7) { request() }
         queue.synchronize(waiting, interval)
@@ -79,9 +79,9 @@ class BarracksRecruitmentTest {
     }
 
     @Test
-    fun `three replacements precede an initial recruit then initial gets its turn after reload`() {
+    fun `legacy mixed queue preserves initial entry fairness after reload`() {
         var queue = BarracksRecruitmentQueue()
-        val initial = request()
+        val initial = request(replacement = false)
         val replacements = List(6) { request(replacement = true) }
         queue.synchronize(listOf(initial) + replacements, interval)
         assertEquals(replacements.take(3) + initial + replacements.drop(3), queue.ordered())

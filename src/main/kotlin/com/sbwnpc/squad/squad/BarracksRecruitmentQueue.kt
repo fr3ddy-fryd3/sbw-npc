@@ -27,7 +27,7 @@ class BarracksRecruitmentQueue {
         if (remainingTicks > 0) remainingTicks--
     }
 
-    /** Three replacements, then one initial recruit when both kinds keep waiting. */
+    /** Preserves fairness when loading legacy mixed queues, before barracks migrate initial slots. */
     fun ordered(): List<Request> {
         val remaining = requests.toMutableList()
         val result = mutableListOf<Request>()

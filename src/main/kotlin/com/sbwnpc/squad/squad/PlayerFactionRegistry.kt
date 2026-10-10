@@ -24,7 +24,6 @@ import java.util.UUID
 class PlayerFactionRegistry : SavedData() {
 
     private val factions = HashMap<UUID, SquadFaction>()
-    private val creativeRecruiters = HashSet<UUID>()
 
     fun get(player: UUID): SquadFaction? = factions[player]
 
@@ -52,24 +51,8 @@ class PlayerFactionRegistry : SavedData() {
         return if (player.isCreative) requested else own
     }
 
-    /** Logout records the actual mode even if the owner's barracks chunks are unloaded. */
-    fun recordRecruitmentMode(player: ServerPlayer) {
-        val changed = if (player.isCreative) creativeRecruiters.add(player.uuid) else creativeRecruiters.remove(player.uuid)
-        if (changed) setDirty()
-    }
-
-    /** Offline production uses the mode saved at logout; legacy saves default to own-faction recruitment. */
-    fun recruitmentProblem(server: MinecraftServer, owner: UUID?, faction: SquadFaction): String? {
-        if (owner == null) return "No owner assigned"
-        server.playerList.getPlayer(owner)?.let(::recordRecruitmentMode)
-        if (owner in creativeRecruiters) return null
-        val own = factions[owner] ?: return "Owner must choose a faction"
-        return if (faction == own) null else "Survival barracks can recruit only the owner's faction"
-    }
-
     override fun save(tag: CompoundTag, registries: HolderLookup.Provider): CompoundTag {
         factions.forEach { (uuid, faction) -> tag.putString(uuid.toString(), faction.name) }
-        tag.put("CreativeRecruiters", CompoundTag().apply { creativeRecruiters.forEach { putBoolean(it.toString(), true) } })
         return tag
     }
 
@@ -81,11 +64,6 @@ class PlayerFactionRegistry : SavedData() {
             for (key in tag.allKeys) {
                 val uuid = runCatching { UUID.fromString(key) }.getOrNull() ?: continue
                 readFaction(tag, key)?.let { reg.factions[uuid] = it }
-            }
-            val creative = tag.getCompound("CreativeRecruiters")
-            for (key in creative.allKeys) {
-                val uuid = runCatching { UUID.fromString(key) }.getOrNull() ?: continue
-                if (uuid in reg.factions && creative.getBoolean(key)) reg.creativeRecruiters.add(uuid)
             }
             return reg
         }
