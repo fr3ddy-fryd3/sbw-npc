@@ -114,6 +114,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     val fireIntervalMultiplier: Int get() = if (usingSidearm) 1 else npcClass.fireIntervalMultiplier
 
+    /** A class multiplier slows the effective mechanical cadence, including manual bolts. */
+    fun fireIntervalMillis(gun: com.sbwnpc.squad.domain.port.HandGun, normal: Long): Long = if (fireIntervalMultiplier == 1) normal else maxOf(normal, gun.boltCycleTicks * 50L) * fireIntervalMultiplier
+
     /** Faction to put the NPC on its scoreboard team; set before finalizeSpawn. null = leave unteamed. */
     var spawnFaction: SquadFaction? = null
 

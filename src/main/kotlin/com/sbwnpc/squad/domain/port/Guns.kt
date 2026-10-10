@@ -18,6 +18,9 @@ enum class TriggerMode { SEMI, BURST, AUTO }
 interface HandGun {
     val roundsPerMinute: Double
 
+    /** Mechanical bolt cycle including its start tick; zero for guns without a manual bolt. */
+    val boltCycleTicks: Int get() = 0
+
     /** Blocks per tick. */
     val muzzleVelocity: Double
 

@@ -128,6 +128,7 @@ private const val ARC_SEARCH_STEPS = 16
 
 private class SbwHandGun(private val holder: LivingEntity, private val data: GunData) : HandGun {
     override val roundsPerMinute: Double get() = data.get(GunProp.RPM).toDouble()
+    override val boltCycleTicks: Int get() = data.get(GunProp.BOLT_ACTION_TIME).let { if (it > 0) it + 1 else 0 }
     override val muzzleVelocity: Double get() = data.get(GunProp.VELOCITY).toDouble()
     override val explosionRadius: Double get() = data.get(GunProp.EXPLOSION_RADIUS)
     override val hearingRadius: Double get() = SbwHearing.radius(data)

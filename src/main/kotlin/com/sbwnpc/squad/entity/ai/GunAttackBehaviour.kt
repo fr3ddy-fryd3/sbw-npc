@@ -1000,7 +1000,10 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             if (gun.needsTriggerReset) {
                 cooldown += entity.semiFireInterval
             }
-            cooldown *= entity.fireIntervalMultiplier
+            cooldown = entity.fireIntervalMillis(gun, cooldown)
+            // A bolt or reload stops shootTimer; becoming mechanically ready must not grant
+            // a fresh opening shot before this class's interval since the previous shot.
+            if (entity.fireIntervalMultiplier > 1 && entity.tickCount - entity.lastShotTick < kotlin.math.ceil(cooldown / 50.0).toInt()) return
 
             if (!shootTimer.started()) {
                 shootTimer.start()

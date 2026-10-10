@@ -44,12 +44,12 @@ object SidearmGameTests {
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 500, batch = "sniper-cadence")
     fun sniperPrimaryFiresAtHalfRateWithoutSlowingBackupPistol(helper: GameTestHelper) {
         floor(helper, 160, 128)
-        val roles = listOf(NpcClass.RIFLEMAN, NpcClass.SNIPER, NpcClass.RIFLEMAN, NpcClass.SNIPER)
+        val roles = listOf(NpcClass.RIFLEMAN, NpcClass.SNIPER, NpcClass.RIFLEMAN, NpcClass.SNIPER, NpcClass.RIFLEMAN, NpcClass.SNIPER)
         val shooters = roles.mapIndexed { index, role ->
             AttackDeploymentGameTests.spawn(helper, Vec3(20.5, 1.0, 32.5 + index * 16), SquadFaction.PIG, role = role).apply {
                 diggedIn = true
-                setItemInHand(InteractionHand.MAIN_HAND, Ports.guns.issue(ResourceLocation.fromNamespaceAndPath("superbwarfare", "svd"), this, 100))
-                if (index >= 2) ammunition(mainHandItem, 0, 0)
+                setItemInHand(InteractionHand.MAIN_HAND, Ports.guns.issue(ResourceLocation.fromNamespaceAndPath("superbwarfare", if (index >= 4) "awm" else "svd"), this, 100))
+                if (index in 2..3) ammunition(mainHandItem, 0, 0)
             }
         }
         val enemies = shooters.mapIndexed { index, _ ->
@@ -84,7 +84,7 @@ object SidearmGameTests {
             Files.writeString(
                 report,
                 shots.mapIndexed { index, times ->
-                    "${roles[index]} sidearm=${index >= 2} intervals_ms=${times.zipWithNext { a, b -> (b - a) / 1_000_000.0 }}"
+                    "${roles[index]} weapon=${if (index >= 4) "awm" else "svd"} sidearm=${index in 2..3} intervals_ms=${times.zipWithNext { a, b -> (b - a) / 1_000_000.0 }}"
                 }.joinToString("\n"),
             )
         }
@@ -93,6 +93,7 @@ object SidearmGameTests {
                 val intervals = shots.map { times -> times.zipWithNext { a, b -> (b - a) / 1_000_000.0 }.sorted().let { it[it.size / 2] } }
                 helper.assertTrue(intervals[1] / intervals[0] in 1.8..2.2, "Sniper primary cadence did not halve: $intervals")
                 helper.assertTrue(intervals[3] / intervals[2] in 0.85..1.15, "Sniper class slowed the same backup pistol: $intervals")
+                helper.assertTrue(intervals[5] / intervals[4] in 1.8..2.2, "Sniper bolt-action cadence did not halve: $intervals")
                 helper.assertTrue(shooters[2].usingSidearm && shooters[3].usingSidearm, "Pistol comparison was not using backup weapons")
                 helper.succeed()
             }
