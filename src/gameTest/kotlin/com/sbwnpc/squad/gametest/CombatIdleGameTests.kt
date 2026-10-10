@@ -199,7 +199,7 @@ object CombatIdleGameTests {
         }
     }
 
-    internal class Scene(val helper: GameTestHelper, val name: String) {
+    internal class Scene(val helper: GameTestHelper, val name: String, depth: Int = 224) {
         private val entities = mutableListOf<NpcEntity>()
         private val squads = mutableListOf<Squad>()
         private val oldGroups = DebugFlags.enabledGroups
@@ -210,7 +210,7 @@ object CombatIdleGameTests {
         private var cleaned = false
         var onClose: () -> Unit = {}
         init {
-            for (x in 0..175) for (z in 0..223) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+            for (x in 0..175) for (z in 0 until depth) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
             Files.createDirectories(report)
             Files.writeString(report.resolve("$name.csv"), "tick,npc,role,x,y,z,job,pathDone,shot,search,phase\n")
             DebugFlags.enabledGroups = oldGroups + setOf(LogGroup.ORDER, LogGroup.PATH)
@@ -227,7 +227,7 @@ object CombatIdleGameTests {
                 override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) = cleanup()
             })
         }
-        fun spawn(at: Vec3, role: NpcClass = NpcClass.RIFLEMAN): NpcEntity = AttackDeploymentGameTests.spawn(helper, at, SquadFaction.PIG, role = role).also { entities += it }
+        fun spawn(at: Vec3, role: NpcClass = NpcClass.RIFLEMAN, faction: SquadFaction = SquadFaction.PIG): NpcEntity = AttackDeploymentGameTests.spawn(helper, at, faction, role = role).also { entities += it }
         fun deploy(preset: SquadPreset, at: Vec3): List<NpcEntity> {
             val config = SquadToolItem.Config(NpcClass.RIFLEMAN, NpcRank.RECRUIT, SquadFaction.PIG, preset)
             val result = SquadDeployment.deploy(helper.level, BlockPos.containing(helper.absoluteVec(at)), 0f, config, UUID.randomUUID())!!
@@ -246,12 +246,17 @@ object CombatIdleGameTests {
                 health = maxHealth
                 entities += this
             }
-        fun squad(members: List<NpcEntity>, pattern: TacticalPattern, isolated: Boolean = true): Squad =
-            manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, members.map { it.uuid }).also {
+        fun squad(members: List<NpcEntity>, pattern: TacticalPattern, isolated: Boolean = true, contact: NpcEntity? = null, order: SquadOrder = SquadOrder.ATTACK): Squad =
+            manager.create(helper.level, UUID.randomUUID(), requireNotNull(members.first().spawnFaction), members.map { it.uuid }).also {
                 squads += it
-                manager.setOrder(it.id, SquadOrder.ATTACK)
-                val enemy = entities.last { npc -> npc.spawnFaction == SquadFaction.COW }
-                manager.setObjective(helper.level, it.id, enemy.blockPosition())
+                manager.setOrder(it.id, order)
+                val enemy = contact ?: entities.last { npc -> npc.spawnFaction != members.first().spawnFaction }
+                val objective = if (order == SquadOrder.DEFEND || order == SquadOrder.PATROL) {
+                    BlockPos.containing(members.fold(Vec3.ZERO) { sum, member -> sum.add(member.position()) }.scale(1.0 / members.size))
+                } else {
+                    enemy.blockPosition()
+                }
+                manager.setObjective(helper.level, it.id, objective)
                 TacticalRuntimeEvents.bind(it, helper.level)
                 // Start with a reported contact. Detection/target selection and the actual gun still
                 // run normally; this fixture isolates post recovery rather than scout placement.

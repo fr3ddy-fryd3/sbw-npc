@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.mixin.PathNavigationAccessor
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap
 import net.minecraft.core.BlockPos
 import net.minecraft.tags.BlockTags
@@ -20,6 +21,7 @@ import net.minecraft.world.level.pathfinder.PathfindingContext
 import net.minecraft.world.level.pathfinder.WalkNodeEvaluator
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
+import java.util.WeakHashMap
 
 /**
  * Ground navigation that treats parked vehicles as terrain.
@@ -77,6 +79,40 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
     /** Optional scoped measurement; ordinary navigation does not read the clock. */
     internal var positionPathObserver: ((BlockPos, Long, Boolean) -> Unit)? = null
 
+    private data class PathIntent(val accuracy: Int, val near: BlockPos? = null, val far: BlockPos? = null)
+    private val pathIntents = WeakHashMap<Path, PathIntent>()
+
+    /** A native search is a proposal. Only moveTo commits its goal and resets movement timers. */
+    override fun createPath(targets: Set<BlockPos>, regionOffset: Int, offsetUpward: Boolean, accuracy: Int, followRange: Float): Path? {
+        val moving = path
+        val state = this as PathNavigationAccessor
+        val goal = state.sbwnpcGetTarget()
+        val reach = state.sbwnpcGetReachRange()
+        val cachedNode = timeoutCachedNode
+        val timer = timeoutTimer
+        val limit = timeoutLimit
+        val stuck = state.sbwnpcIsStuck()
+        // Vanilla keys its reuse by targetPos, which may describe a different proposal.
+        // Exact posts also cannot reuse a march path that stops short of the requested block.
+        val endsWithinAccuracy = moving?.endNode?.asBlockPos()?.let { it.distManhattan(moving.target) <= accuracy } ?: false
+        if (moving != null && (moving.target != goal || !endsWithinAccuracy)) {
+            path = null
+        }
+        try {
+            return super.createPath(targets, regionOffset, offsetUpward, accuracy, followRange).also {
+                if (it != null && it !== moving) pathIntents[it] = PathIntent(accuracy)
+            }
+        } finally {
+            path = moving
+            state.sbwnpcSetTarget(goal)
+            state.sbwnpcSetReachRange(reach)
+            timeoutCachedNode = cachedNode
+            timeoutTimer = timer
+            timeoutLimit = limit
+            state.sbwnpcSetStuck(stuck)
+        }
+    }
+
     /** Tactical posts need their exact height, rather than a march waypoint on the surface. */
     fun createPositionPath(pos: BlockPos): Path? = createPositionPath(setOf(pos))
 
@@ -127,7 +163,18 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         // about the way — so the branch state (the goals the path being walked was planned to)
         // is left as it is, not set to a goal nothing was planned to.
         val result = if (canPlan) {
-            choosePath(pos, accuracy)
+            val previousNear = nearGoal
+            val previousFar = farGoal
+            try {
+                choosePath(pos, accuracy).also {
+                    if (it != null && it !== path) {
+                        pathIntents[it] = PathIntent(pathIntents[it]?.accuracy ?: accuracy, nearGoal, farGoal)
+                    }
+                }
+            } finally {
+                nearGoal = previousNear
+                farGoal = previousFar
+            }
         } else {
             branch = "in the air"
             null
@@ -178,7 +225,9 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
             hasDelayedRecomputation = true
             return
         }
+        val previous = path
         super.recomputePath()
+        if (path !== previous) commitRoute(previous)
     }
 
     /** An empty answer mid-jump keeps the path he's walking; the caller still hears there was none. */
@@ -188,7 +237,22 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
             return false
         }
         if (path == null || !path.sameAs(this.path)) traceHandover(if (path == null) "path dropped, none in its place" else "new path to ${path.target}")
-        return super.moveTo(path, speed)
+        val previous = this.path
+        val started = super.moveTo(path, speed)
+        if (started) commitRoute(previous)
+        return started
+    }
+
+    /** Vanilla recomputation installs a path directly, so it shares the same commit as moveTo. */
+    private fun commitRoute(previous: Path?) {
+        val active = path ?: return
+        val state = this as PathNavigationAccessor
+        if (active !== previous) state.sbwnpcResetStuckTimeout()
+        state.sbwnpcSetTarget(active.target)
+        val intent = pathIntents[active]
+        if (intent != null) state.sbwnpcSetReachRange(intent.accuracy)
+        nearGoal = intent?.near ?: active.target.takeIf { intent?.far == null }
+        farGoal = intent?.far
     }
 
     override fun stop() {

@@ -373,10 +373,16 @@ object TacticalPositions {
             if (search.routeValidation == null) {
                 if (!TacticalBudget.path(entity)) return Result(Outcome.DEFERRED)
                 val batch = routeBatch(context, candidate, destinations)
+                if (batch.isEmpty()) return Result(Outcome.DEFERRED)
                 val path = pathToCandidates(entity, batch)
                 search.pathAttempts++
                 if (path?.canReach() == true) {
-                    candidate = batch.first { VehicleAwareNavigation.walkingNode(it) == path.target }
+                    val selected = batch.firstOrNull { VehicleAwareNavigation.walkingNode(it) == path.target }
+                    if (selected == null) {
+                        DebugFlags.log(LogGroup.PATH, "[tactics] {} plan={} event=unexpected_route_target target={} candidates={}", entity.uuid, task.plan, path.target, batch)
+                        return Result(Outcome.DEFERRED)
+                    }
+                    candidate = selected
                     search.routeValidation = TacticalRouteValidation(path, context.level.gameTime, candidate)
                 } else {
                     search.rejectedRoutes.addAll(batch)
