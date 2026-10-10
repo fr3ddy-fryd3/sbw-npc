@@ -78,6 +78,39 @@ object RoofedOverwatchGameTests {
     @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1600, batch = "narrow-sniper")
     fun originalSniperFindsNarrowTower(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND, onlySupport = NpcClass.SNIPER, supportIndex = 4)
 
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1800, batch = "empty-sniper-tower")
+    fun emptySniperWaitsBelowTowerUntilActualSupply(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND, onlySupport = NpcClass.SNIPER, supportIndex = 4, emptyPrimary = true)
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1800, batch = "empty-gunner-tower")
+    fun emptyPatrolGunnerWaitsBelowTowerUntilActualSupply(helper: GameTestHelper) = occupy(helper, SquadOrder.PATROL, onlySupport = NpcClass.MACHINE_GUNNER, emptyPrimary = true)
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1600, batch = "tower-ammo-release")
+    fun exhaustedSentryReleasesOccupiedTowerReservation(helper: GameTestHelper) {
+        var sentry: NpcEntity? = null
+        var post: Vec3? = null
+        var emptiedAt = 0L
+        occupy(helper, SquadOrder.DEFEND, onlySupport = NpcClass.MACHINE_GUNNER, onOccupied = { npc, at ->
+            sentry = npc
+            post = at
+            emptiedAt = helper.tick
+            val data = GunData.from(npc.primaryGun())
+            data.ammo.set(0)
+            data.virtualAmmo.set(0)
+            data.save()
+        })
+        helper.onEachTick {
+            val npc = sentry ?: return@onEachTick
+            if (helper.tick - emptiedAt < 30) return@onEachTick
+            helper.assertTrue(npc.usingSidearm && npc.ammoFraction() == 0.0, "Sentry did not switch from exhausted primary")
+            helper.assertTrue(npc.currentSquad()!!.tactics.plan?.tasks?.get(npc.uuid)?.job != TacticalJob.OVERWATCH, "Empty primary retained overwatch duty")
+            helper.assertTrue(post !in FiringSpots.nearby(post!!, 1.0, UUID(0, 0)), "Empty primary retained the old tower reservation")
+            helper.succeed()
+        }
+    }
+
     private enum class Departure { MARCH, RETREAT, SUPPLY }
 
     /** Only orders and real gun ammunition change; the brain owns every path and physical step. */
@@ -181,7 +214,9 @@ object RoofedOverwatchGameTests {
 
     private fun relativeNode(helper: GameTestHelper, pos: BlockPos): BlockPos = BlockPos.containing(helper.relativeVec(Vec3.atLowerCornerOf(pos)))
 
-    private fun occupy(helper: GameTestHelper, order: SquadOrder, fall: Boolean = false, onlySupport: NpcClass? = null, scaffolding: Boolean = false, supportIndex: Int = 5, onOccupied: ((NpcEntity, Vec3) -> Unit)? = null) {
+    private fun occupy(helper: GameTestHelper, order: SquadOrder, fall: Boolean = false, onlySupport: NpcClass? = null, scaffolding: Boolean = false, supportIndex: Int = 5, emptyPrimary: Boolean = false, onOccupied: ((NpcEntity, Vec3) -> Unit)? = null) {
+        val supplyScope = if (emptyPrimary) IsolatedSupplyPoints(helper.level) else null
+        val issuedSupplies = mutableListOf<BlockPos>()
         // Template blocks start one block above the structure origin used by GameTestHelper.
         helper.assertTrue(helper.getBlockState(BlockPos(44, 1, 39)).`is`(Blocks.GRASS_BLOCK), "Copied ground is at the wrong height")
         if (scaffolding) {
@@ -215,6 +250,26 @@ object RoofedOverwatchGameTests {
         }
         val manager = SquadManager.get(helper.level)
         val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.CAT, npcs.map { it.uuid })
+        if (emptyPrimary) {
+            val supports = npcs.filter { it.npcClass in setOf(NpcClass.SNIPER, NpcClass.MACHINE_GUNNER) }
+            supports.forEach { npc ->
+                val data = GunData.from(npc.primaryGun())
+                data.ammo.set(0)
+                data.virtualAmmo.set(0)
+                data.save()
+            }
+            helper.runAtTickTime(200) {
+                supports.forEach { npc ->
+                    helper.assertTrue(npc.usingSidearm && npc.ammoFraction() == 0.0, "Empty support fixture lost primary/pistol state")
+                    helper.assertTrue(npc.nearestSupply() == null, "No-supply control discovered a Supply from another scene")
+                    helper.assertTrue(squad.tactics.plan?.tasks?.get(npc.uuid)?.job != TacticalJob.OVERWATCH && helper.relativeVec(npc.position()).y < 3.0, "Empty specialist took an elevated post")
+                    val supply = npc.blockPosition().offset(1, 0, 0)
+                    issuedSupplies += supply
+                    helper.level.setBlockAndUpdate(supply, ModBlocks.SUPPLY.get().defaultBlockState())
+                    (helper.level.getBlockEntity(supply) as SupplyBlockEntity).faction = SquadFaction.CAT
+                }
+            }
+        }
         manager.setOrder(squad.id, order)
         manager.setObjective(helper.level, squad.id, helper.absolutePos(BlockPos(43, 1, 42)))
         val oldGroups = DebugFlags.enabledGroups
@@ -222,7 +277,7 @@ object RoofedOverwatchGameTests {
         val report = Path.of(System.getProperty("sbwnpc.gameTestReports"))
         Files.createDirectories(report)
         val trace = StringBuilder("tick,role,x,y,z,postX,postY,postZ,job,recovery,closest,lastProgress\n")
-        val name = "${if (scaffolding) "scaffold" else "roofed"}-tower-$order${if (fall) "-fall" else ""}${onlySupport?.let { "-$it" } ?: ""}"
+        val name = "${if (scaffolding) "scaffold" else "roofed"}-tower-$order${if (fall) "-fall" else ""}${onlySupport?.let { "-$it" } ?: ""}${if (emptyPrimary) "-empty" else ""}"
         var climbed = false
         var settledSince: Long? = null
         var displaced: NpcEntity? = null
@@ -238,6 +293,8 @@ object RoofedOverwatchGameTests {
             override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) = cleanup()
             private fun cleanup() {
                 DebugFlags.enabledGroups = oldGroups
+                issuedSupplies.forEach { helper.level.setBlockAndUpdate(it, Blocks.AIR.defaultBlockState()) }
+                supplyScope?.close()
                 manager.disband(helper.level, squad.id)
                 npcs.forEach {
                     FiringSpots.release(it.uuid)

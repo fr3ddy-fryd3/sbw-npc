@@ -96,7 +96,7 @@ object SidearmGameTests {
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 400, batch = "sidearm-fire")
-    fun backupPistolsFireWithoutAdvancingOrRefillingPrimary(helper: GameTestHelper) {
+    fun backupPistolsWaitForCloseTargetsWithoutAdvancingOrRefillingPrimary(helper: GameTestHelper) {
         floor(helper, 160, 128)
         val names = listOf("mp_443", "glock_17", "m_1911")
         val shooters = names.mapIndexed { index, name ->
@@ -139,11 +139,18 @@ object SidearmGameTests {
             Files.writeString(report, names.zip(rounds.toList()).joinToString("\n") { "${it.first}=${it.second}" })
         }
         helper.onEachTick {
+            if (helper.tick == 120L) {
+                helper.assertTrue(rounds.all { it == 0 }, "Pistol fired at a target 60 blocks away: ${rounds.toList()}")
+                enemies.forEachIndexed { index, enemy ->
+                    val close = helper.absoluteVec(Vec3(40.5, 1.0, 40.5 + index * 16))
+                    enemy.setPos(close)
+                }
+            }
             shooters.forEachIndexed { index, npc ->
                 if (helper.tick > 5) helper.assertTrue(npc.usingSidearm && npc.ammoFraction() == 0.0, "Pistol made empty primary appear replenished")
                 helper.assertTrue(npc.position().distanceTo(origins[index]) < 1.0, "Pistol forced support to leave its held position")
             }
-            if (rounds.all { it >= 2 }) {
+            if (helper.tick > 120 && rounds.all { it >= 2 }) {
                 shooters.forEach { npc ->
                     helper.assertTrue(Ports.guns.inHand(npc)?.triggerMode == TriggerMode.SEMI, "Automatic backup pistol")
                     helper.assertTrue(Ports.guns.reserve(npc.sidearmWeapon) == SidearmKit.reserveRounds(npc.sidearmWeapon), "Wrong spare-magazine budget")

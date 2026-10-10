@@ -396,8 +396,11 @@ object TacticalPositions {
     }
 
     private fun requiresFiringLane(context: SearchContext, point: Vec3): Boolean =
-        requiresFiringLane(context.task, context.deployment, point) ||
-            (context.task.job == TacticalJob.FLANK && context.localAnchor.subtract(context.task.anchor).horizontalDistance() < 1.0)
+        (context.aim == null || SidearmKit.inRange(context.entity, point.add(0.0, context.entity.eyeHeight.toDouble(), 0.0), context.aim.eye)) &&
+            (
+                requiresFiringLane(context.task, context.deployment, point) ||
+                    (context.task.job == TacticalJob.FLANK && context.localAnchor.subtract(context.task.anchor).horizontalDistance() < 1.0)
+                )
 
     /** A transit leg may be blind; a post in the owned strip must already allow a shot. */
     internal fun requiresFiringLane(task: TacticalTask, deploying: Boolean, point: Vec3): Boolean =
@@ -506,6 +509,7 @@ object TacticalPositions {
     fun firingReady(entity: NpcEntity, task: TacticalTask, point: Vec3): Boolean {
         val aim = TacticalAim.resolve(entity, task) ?: return true
         val eye = point.add(0.0, entity.eyeHeight.toDouble(), 0.0)
+        if (!SidearmKit.inRange(entity, eye, aim.eye)) return true
         val level = entity.level() as ServerLevel
         val hulls = Sightline.vehicleHulls(level, AABB(eye, aim.eye).inflate(2.0), entity, entity.target)
         return !Sightline.blockedBy(level, eye, aim.eye, entity, hulls, entity.spread) &&

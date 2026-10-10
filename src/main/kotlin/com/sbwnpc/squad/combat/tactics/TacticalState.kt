@@ -82,6 +82,7 @@ abstract class TacticalState {
 
     fun tick(context: TacticalContext) {
         context.tasks.prune(context.view.members.map { it.id }.toSet(), context.view.now)
+        reconcileWeapons(context)
         if (!stability.expires) reconcileHoldingAssignments(context)
         beforeTick(context)
         phases.tick(context)
@@ -95,10 +96,31 @@ abstract class TacticalState {
     protected open fun onEnter(context: TacticalContext) {}
     protected open fun beforeTick(context: TacticalContext) {}
 
+    private fun reconcileWeapons(context: TacticalContext) {
+        val layout = TacticalLayout(context)
+        for (member in context.view.members) {
+            val current = context.plan.tasks[member.id] ?: continue
+            if (current.job == TacticalJob.OVERWATCH && !member.primaryAmmo) {
+                context.tasks.remove(member.id, context.view.now, "primary_ammo_exhausted")
+            } else if (member.sidearmOnly && member.ready && member.health >= 0.3 && member.role != NpcClass.MEDIC &&
+                this !is WithdrawalState && this !is EvadeState && layout.eligible(member) &&
+                (
+                    current.job in setOf(TacticalJob.ADVANCE, TacticalJob.FLANK, TacticalJob.SEARCH, TacticalJob.ANTI_ARMOUR, TacticalJob.WAIT) ||
+                        (current.job == TacticalJob.COVER && current.frontage != null)
+                    )
+            ) {
+                context.tasks.put(member.id, layout.cover(member), context.view.now, "pistol_local_defence")
+            }
+        }
+    }
+
     /** Reinforcements and recovered members join a lasting defence without resetting existing posts. */
     protected open fun reconcileHoldingAssignments(context: TacticalContext) {
         val layout = TacticalLayout(context)
         for ((index, member) in context.view.members.withIndex()) {
+            if (context.plan.tasks[member.id]?.job == TacticalJob.OVERWATCH && !DefensiveOverwatch.enabled(context.view, member, this)) {
+                context.tasks.remove(member.id, context.view.now, "overwatch_member_unavailable")
+            }
             if (member.id in context.plan.failedMembers || !layout.eligible(member)) continue
             val desired = layout.applyRoles(member, index, task(layout, member, index))
             val current = context.plan.tasks[member.id]
@@ -158,7 +180,7 @@ class TacticalLayout(val context: TacticalContext) {
         .let { if (it.lengthSqr() < 0.01) Vec3(0.0, 0.0, 1.0) else it }
     val side = Vec3(-forward.z, 0.0, forward.x)
     private val frontage = plan.frontage.also { it.observe(view) }
-    val fighters = view.members.filter { it.ready && it.health >= 0.3 && it.role != NpcClass.MEDIC && it.id !in plan.failedMembers }
+    val fighters = view.members.filter { it.ready && it.primaryAmmo && it.health >= 0.3 && it.role != NpcClass.MEDIC && it.id !in plan.failedMembers }
         .sortedWith(
             compareBy<TacticalMember> { if (state is FlankingState && it.recentFire && it.canFire) 0 else 1 }
                 .thenBy { if (it.canFire) 0 else 1 }.thenBy { if (it.role in SUPPORT_ROLES) 0 else 1 }.thenBy { it.id },
@@ -210,6 +232,11 @@ class TacticalLayout(val context: TacticalContext) {
         if (member.id == guard && patient != null && state.guardsPatient()) {
             intent = intent(TacticalJob.COVER, patient.position.subtract(forward.scale(4.0)).add(side.scale(4.0)))
         }
+        if (member.sidearmOnly && member.ready && member.health >= 0.3 && member.role != NpcClass.MEDIC &&
+            original.job !in setOf(TacticalJob.RETREAT, TacticalJob.REGROUP) && state !is WithdrawalState
+        ) {
+            intent = cover(member)
+        }
         if (DefensiveOverwatch.enabled(view, member, state) && member.id != guard) {
             val angle = index * Math.PI * 2.0 / view.members.size.coerceAtLeast(1)
             intent = intent(
@@ -226,7 +253,7 @@ class TacticalLayout(val context: TacticalContext) {
             if (safeAnchor != intent.anchor) intent = intent(intent.job, safeAnchor, intent.focus)
         }
         if (intent.job == TacticalJob.WAIT && intent.staging == null) intent.staging = member.position
-        if (view.offensive && state.usesAttackFront(member) && intent.job in TacticalJob.FIRING_POSITIONS + TacticalJob.ADVANCE &&
+        if (view.offensive && member.primaryAmmo && state.usesAttackFront(member) && intent.job in TacticalJob.FIRING_POSITIONS + TacticalJob.ADVANCE &&
             member.ready && member.health >= 0.3 && member.role != NpcClass.MEDIC && member.id != guard
         ) {
             val post = if (intent.job == TacticalJob.ADVANCE) {

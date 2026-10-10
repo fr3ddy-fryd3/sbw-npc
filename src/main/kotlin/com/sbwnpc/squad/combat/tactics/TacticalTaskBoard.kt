@@ -44,6 +44,8 @@ class TacticalTaskBoard(private val plan: Int, private val events: TacticalEvent
         for (id in active.keys.toList()) release(id, now, trigger)
     }
 
+    fun remove(id: UUID, now: Long, trigger: String) = release(id, now, trigger)
+
     private fun release(id: UUID, now: Long, trigger: String) {
         val old = active.remove(id) ?: return
         events.emit(TacticalEvent.TaskReleased(plan, now, id, old, trigger))

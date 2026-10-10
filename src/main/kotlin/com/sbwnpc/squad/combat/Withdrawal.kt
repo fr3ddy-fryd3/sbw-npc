@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.combat
 
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.squad.Squad
 import net.minecraft.server.level.ServerLevel
@@ -99,7 +100,8 @@ object Withdrawal {
         // for 10s) had the squad bounding the whole two hundred blocks back, twelve at a time.
         state.inContact = members.any { m ->
             val t = m.target
-            t != null && t.isAlive && m.distanceToSqr(t) <= CONTACT_RANGE * CONTACT_RANGE && m.sensing.hasLineOfSight(t)
+            t != null && t.isAlive && Ports.guns.inHand(m)?.hasAmmo() == true &&
+                SidearmKit.inRange(m, m.eyePosition, t.eyePosition) && m.distanceToSqr(t) <= CONTACT_RANGE * CONTACT_RANGE && m.sensing.hasLineOfSight(t)
         }
         if (DebugFlags.on(LogGroup.RETREAT) && level.gameTime - state.lastStatusTick >= STATUS_LOG_TICKS) {
             state.lastStatusTick = level.gameTime

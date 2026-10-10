@@ -213,7 +213,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         gun.operate()
 
-        if (dist > SHOOT_RANGE || !entity.sensing.hasLineOfSight(drone)) return
+        if (dist > SHOOT_RANGE || !com.sbwnpc.squad.combat.SidearmKit.inRange(entity, entity.eyePosition, aim) || !entity.sensing.hasLineOfSight(drone)) return
         if (entity.tickCount < nextShotTick || !gun.canShoot()) return
         // A drone is a small, fast, evasive target — the same aim a rifleman holds on a person
         // shouldn't land on it as reliably.

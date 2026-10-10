@@ -94,6 +94,50 @@ class DefensiveOverwatchTest {
         assertFalse(DefensiveOverwatch.protected(home, 1.62, null, World(emptyMap())::blocked))
     }
 
+    @Test fun `empty primaries release high posts even though backup pistols remain ready`() {
+        for (order in listOf(SquadOrder.DEFEND, SquadOrder.PATROL)) {
+            val state = SquadTacticalState()
+            val initial = view(order)
+            state.assess(UUID(0, 2), initial)
+            val old = state.plan!!.tasks[members[0].id]!!
+            old.position = old.anchor.add(0.0, 12.0, 0.0)
+            val empty = initial.copy(now = 10, members = members.map { it.copy(primaryAmmo = false, sidearmOnly = true, canFire = false) })
+            state.assess(UUID(0, 2), empty)
+            assertTrue(state.plan!!.tasks.values.none { it.job == TacticalJob.OVERWATCH })
+            assertFalse(DefensiveOverwatch.enabled(empty, empty.members[0], TacticalPattern.REORIENT))
+            state.assess(UUID(0, 2), initial.copy(now = 20))
+            assertEquals(TacticalJob.OVERWATCH, state.plan!!.tasks[members[0].id]!!.job)
+        }
+    }
+
+    @Test fun `switching to pistol cancels a committed assault assignment without borrowing its front`() {
+        val view = view(SquadOrder.ATTACK).copy(
+            members = (0..7).map { TacticalMember(UUID(0, it.toLong()), home.add(0.0, 0.0, it * 4.0)) },
+            contacts = listOf(TacticalContact(UUID(1, 0), home.add(100.0, 0.0, 0.0), 0)),
+        )
+        val plan = TacticalPlan(1, TacticalPattern.BOUND, view.contacts.first().position, 0, view.stamp)
+        val context = TacticalContext(UUID(0, 2), plan, view)
+        plan.behavior.enter(context)
+        val member = view.members.first()
+        val assault = TacticalTask(TacticalJob.ADVANCE, home.add(20.0, 0.0, 0.0), plan.focus, plan.id)
+        assault.frontage = TacticalFrontPost(assault.anchor, Vec3(1.0, 0.0, 0.0))
+        plan.assignments.put(member.id, assault, 0, "control_assault")
+        plan.tick(
+            UUID(0, 2),
+            SquadTacticalState(),
+            view.copy(
+                now = 10,
+                members = view.members.map {
+                    if (it.id == member.id) it.copy(primaryAmmo = false, sidearmOnly = true) else it
+                },
+            ),
+        )
+        val pistol = plan.tasks[member.id]!!
+        assertEquals(TacticalJob.COVER, pistol.job)
+        assertEquals(member.position, pistol.anchor)
+        assertNull(pistol.frontage)
+    }
+
     @Test fun `foliage and a distant wall do not make an exposed high position protected`() {
         val grass = World((-1..1).associate { BlockPos(1, 64, it) to Blocks.TALL_GRASS.defaultBlockState() })
         assertFalse(DefensiveOverwatch.protected(home, 1.62, null, grass::blocked))

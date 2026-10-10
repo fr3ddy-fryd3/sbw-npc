@@ -8,9 +8,17 @@ import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.phys.Vec3
 
 /** Persistent backup small arms; supply readiness continues to describe the primary weapon. */
 object SidearmKit {
+    const val FIRE_RANGE = 32.0
+
+    fun hasPrimaryAmmo(npc: NpcEntity): Boolean = Ports.guns.roundsLeft(npc.primaryGun()) > 0
+
+    /** Primary weapons retain their existing firing reach; pistols are for close defence. */
+    fun inRange(npc: NpcEntity, from: Vec3, target: Vec3): Boolean = !npc.usingSidearm || from.distanceToSqr(target) <= FIRE_RANGE * FIRE_RANGE
+
     fun issue(npc: NpcEntity): ItemStack {
         val green = (SquadTeams.factionOf(npc) ?: npc.spawnFaction ?: SquadFaction.DEFAULT).greenUniform
         val name = if (green) {

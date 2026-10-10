@@ -12,11 +12,13 @@ class FollowOrderState : TacticalState() {
     override fun assign(context: TacticalContext, retainCover: Boolean, trigger: String) {
         val layout = TacticalLayout(context)
         val posts = context.view.members.mapIndexedNotNull { index, member ->
-            if (!layout.eligible(member) || !DefensiveOverwatch.enabled(context.view, member, this)) return@mapIndexedNotNull null
+            val pistolPost = member.sidearmOnly && member.ready && member.health >= 0.3 &&
+                member.role != com.sbwnpc.squad.npc.NpcClass.MEDIC && DefensiveOverwatch.holdsArea(context.view)
+            if (!layout.eligible(member) || (!pistolPost && !DefensiveOverwatch.enabled(context.view, member, this))) return@mapIndexedNotNull null
             val next = layout.applyRoles(member, index, task(layout, member, index))
-            if (next.job != TacticalJob.OVERWATCH) return@mapIndexedNotNull null
+            if (next.job !in setOf(TacticalJob.OVERWATCH, TacticalJob.COVER)) return@mapIndexedNotNull null
             val old = context.plan.tasks[member.id]
-            member.id to if (old?.job == next.job && old.anchor == next.anchor && old.focus == next.focus) old else next
+            member.id to if (old?.job == next.job && old.focus == next.focus && (pistolPost || old.anchor == next.anchor)) old else next
         }.toMap()
         context.tasks.replace(posts, context.view.now, trigger)
     }

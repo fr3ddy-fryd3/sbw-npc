@@ -76,6 +76,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** Patrol combat stays around the place contact began, including on a long assigned route. */
     private var firingOrigin: Vec3? = null
     private var combatOrderStamp = -1
+    private var pistolDrawn = false
     private var advancingFromPost = false
     private var holdingAdvanceGoal: Vec3? = null
     private var holdingAdvanceComplete = false
@@ -192,7 +193,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private val NpcEntity.maxAimTime get() = npcRank.aimTimeTicks
     private val NpcEntity.semiFireInterval get() = npcRank.semiFireIntervalMs
-    private val NpcEntity.shootDistance get() = npcClass.assaultDistance
+    private val NpcEntity.shootDistance get() = if (usingSidearm) SidearmKit.FIRE_RANGE else npcClass.assaultDistance
 
     /**
      * Swaps a machine gunner onto its launcher for an armoured target and back off it again.
@@ -556,12 +557,14 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     ): Double? {
         if (!canRelocate(entity, pos) || !safeCombatPosition(entity, target, pos)) return null
         val myEye = Vec3(pos.x, pos.y + eyeHeight, pos.z)
-        if (Sightline.blocked(level, target.eyePosition, myEye, entity)) return null
+        val waitingWithPistol = !SidearmKit.inRange(entity, myEye, target.eyePosition)
+        if (!waitingWithPistol && Sightline.blocked(level, target.eyePosition, myEye, entity)) return null
         // Standing behind armour is cover from the enemy, but it is not a firing position.
-        if (Sightline.crosses(vehicleHulls, myEye, target.eyePosition, entity.spread)) return null
+        if (!waitingWithPistol && Sightline.crosses(vehicleHulls, myEye, target.eyePosition, entity.spread)) return null
         // Nor is standing ON one. Vehicles have collision, so a mob that walks into a hull rides up
         // onto it, and a spot inside the box is a spot on the roof of an APC.
         if (vehicleHulls.any { it.contains(Vec3(pos.x, pos.y + 0.5, pos.z)) }) return null
+        if (entity.usingSidearm && !DefensiveOverwatch.nearbyCover(pos, target.eyePosition) { from, to -> Sightline.blocked(level, from, to, entity) }) return 0.0
         for (height in CONCEALMENT_HEIGHTS) {
             val point = Vec3(pos.x, pos.y + height, pos.z)
             if (Sightline.blocked(level, target.eyePosition, point, entity)) return height
@@ -604,7 +607,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun tryHoldingAdvance(entity: NpcEntity, target: LivingEntity): Boolean {
-        if (entity.diggedIn || holdingAdvanceComplete) return false
+        if (entity.usingSidearm || entity.diggedIn || holdingAdvanceComplete) return false
         val order = entity.currentSquad()?.order
         if (!CombatPosition.mayAdvance(order, entity.npcClass, entity.position(), target.position())) return false
         // Pick one endpoint for this approach. Following every movement of a distant target
@@ -696,8 +699,19 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         // Do not fight the CORE executor by repeatedly swapping back to a launcher for a hidden tank.
         if (foliageHidden) AntiArmourKit.wield(entity, launcher = false) else chooseWeapon(entity, target)
         val gun = currentGun(entity) ?: return
+        if (pistolDrawn != entity.usingSidearm) {
+            pistolDrawn = entity.usingSidearm
+            firingOrigin = entity.position()
+            firingPos = null
+            nextPositionCheckTick = 0
+            holdingAdvanceGoal = null
+            advancingFromPost = false
+            boundPhaseStarted = false
+            FiringSpots.release(entity.uuid)
+            (entity.navigation as? VehicleAwareNavigation)?.stopAfterLanding() ?: entity.navigation.stop()
+        }
         val terrainClear = hasClearShot(entity, target)
-        val clearShot = visible && terrainClear
+        val clearShot = visible && terrainClear && SidearmKit.inRange(entity, entity.eyePosition, target.eyePosition)
         if (visible) reportVisibleTarget(entity, target) else entity.noticeHidden(target, visibility)
         updateAim(entity, target, gun, clearShot, visibility)
 
@@ -821,6 +835,12 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             holdFiringPosition(entity, target)
             return CombatMovement.LOCAL
         }
+        if (entity.usingSidearm) {
+            finishHoldingAdvance(entity)
+            if (holding) return holdOrderedPosition(entity, target, squad, defendHome, opening = false)
+            holdFiringPosition(entity, target)
+            return CombatMovement.LOCAL
+        }
         if (SquadTactics.move(entity)) {
             bounding = true
             boundPhaseStarted = false
@@ -840,7 +860,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun holdOrderedPosition(entity: NpcEntity, target: LivingEntity, squad: Squad?, defendHome: Vec3?, opening: Boolean): CombatMovement {
-        val overwatchRadius = if (entity.npcClass in setOf(NpcClass.SNIPER, NpcClass.MACHINE_GUNNER)) DefensiveOverwatch.RADIUS else 0.0
+        val overwatchRadius = if (SidearmKit.hasPrimaryAmmo(entity) && entity.npcClass in setOf(NpcClass.SNIPER, NpcClass.MACHINE_GUNNER)) DefensiveOverwatch.RADIUS else 0.0
         val leash = CombatPosition.defendRadius(entity.npcClass, squad?.members?.size ?: 1) + overwatchRadius
         if (defendHome != null && !CombatPosition.withinArea(defendHome, entity.position(), leash)) {
             BrainUtils.setTargetOfEntity(entity, null)
@@ -929,12 +949,13 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
     }
 
-    private enum class FireBlocker { SIGHT_BLOCKED, ARMOUR, BURST_PAUSE, FRIENDLY_OR_VEHICLE, BLAST_SAFETY, WEAPON_CYCLE, AIMING }
+    private enum class FireBlocker { PISTOL_RANGE, SIGHT_BLOCKED, ARMOUR, BURST_PAUSE, FRIENDLY_OR_VEHICLE, BLAST_SAFETY, WEAPON_CYCLE, AIMING }
     private var lastFireBlocker: FireBlocker? = null
     private var lastFireTarget: java.util.UUID? = null
 
     private fun fireBlocker(entity: NpcEntity, target: LivingEntity, gun: HandGun, clearShot: Boolean, pausedBetweenBursts: Boolean): FireBlocker? =
         when {
+            !SidearmKit.inRange(entity, entity.eyePosition, target.eyePosition) -> FireBlocker.PISTOL_RANGE
             !clearShot -> FireBlocker.SIGHT_BLOCKED
             !SquadTactics.permitsFire(entity, target) -> FireBlocker.ARMOUR
             pausedBetweenBursts -> FireBlocker.BURST_PAUSE

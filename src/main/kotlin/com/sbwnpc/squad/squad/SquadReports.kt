@@ -27,6 +27,7 @@ object SquadReports {
         LOW_AMMO(1200, ChatFormatting.YELLOW),
         RESUPPLY(600, ChatFormatting.GRAY),
         ARRIVED(0, ChatFormatting.GREEN),
+        ATTACK_FAILED(0, ChatFormatting.GOLD),
     }
 
     private val lastSent = HashMap<Pair<UUID, Kind>, Long>()
@@ -101,6 +102,10 @@ object SquadReports {
         val squad = npc.currentSquad() ?: return
         val server = npc.server ?: return
         send(server, squad, Kind.RESUPPLY, "${className(npc)} going to resupply")
+    }
+
+    fun attackFailedAmmo(server: MinecraftServer, squad: Squad, empty: Int, infantry: Int) {
+        send(server, squad, Kind.ATTACK_FAILED, "Attack failed: primary ammunition exhausted ($empty/$infantry). Falling back 100 m")
     }
 
     /** [squad] has taken its point, or fallen back to it, and holds it now. */

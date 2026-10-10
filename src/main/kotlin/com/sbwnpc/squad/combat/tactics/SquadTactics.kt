@@ -57,7 +57,10 @@ object SquadTactics {
             return
         }
         if (state.flankSide == 0.0) state.flankSide = if (squad.id.leastSignificantBits and 1L == 0L) 1.0 else -1.0
-        val view = TacticalSnapshotCollector.collect(squad, level, npcs, entity)
+        var view = TacticalSnapshotCollector.collect(squad, level, npcs, entity)
+        if (AttackAmmoWithdrawal.apply(squad, level, view)) {
+            view = TacticalSnapshotCollector.collect(squad, level, npcs, entity)
+        }
         val assessment = state.assess(squad.id, view)
         trace(squad, view, assessment.proposed, assessment.effective, assessment.changed)
     }

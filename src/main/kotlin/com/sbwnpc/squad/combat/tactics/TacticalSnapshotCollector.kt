@@ -3,6 +3,7 @@ package com.sbwnpc.squad.combat.tactics
 import com.sbwnpc.squad.combat.AntiArmourKit
 import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.GrenadeHazard
+import com.sbwnpc.squad.combat.SidearmKit
 import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
@@ -62,7 +63,8 @@ internal object TacticalSnapshotCollector {
         val ready = (gun?.hasAmmo() == true || AntiArmourKit.loaded(npc)) &&
             !npc.busyWithRole() && !npc.resupplying && !npc.combatLockedByMedic() && !npc.evadingGrenade()
         val canFire = ready && !npc.combatLockedByCover() && (npc.readyToCover || npc.firedRecently(RECENT_FIRE_TICKS)) &&
-            target != null && target.uuid in visibleTargetIds && DetectionSightline.canSee(npc, target) && hasFiringSight(npc, target)
+            target != null && target.uuid in visibleTargetIds && SidearmKit.inRange(npc, npc.eyePosition, target.eyePosition) &&
+            DetectionSightline.canSee(npc, target) && hasFiringSight(npc, target)
         return TacticalMember(
             id = npc.uuid,
             position = npc.position(),
@@ -77,6 +79,8 @@ internal object TacticalSnapshotCollector {
             recentFireAt = npc.lastFireAt,
             moving = !npc.navigation.isDone || npc.deltaMovement.horizontalDistanceSqr() > 0.0025,
             grounded = npc.onGround() || npc.isInLiquid,
+            primaryAmmo = SidearmKit.hasPrimaryAmmo(npc),
+            sidearmOnly = npc.usingSidearm,
         )
     }
 

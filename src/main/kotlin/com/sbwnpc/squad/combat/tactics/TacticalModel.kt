@@ -91,6 +91,8 @@ data class TacticalMember(
     val recentFireAt: Vec3? = firingAt,
     val moving: Boolean = false,
     val grounded: Boolean = true,
+    val primaryAmmo: Boolean = true,
+    val sidearmOnly: Boolean = false,
 )
 data class TacticalContact(
     val id: UUID,
@@ -121,7 +123,7 @@ data class TacticalSnapshot(
     val hasPatrolRoute: Boolean = false,
 ) {
     val visible get() = contacts.filter { now - it.seenAt < 40 }
-    val fighting get() = members.filter { it.ready && it.health >= 0.3 }
+    val fighting get() = members.filter { it.ready && it.health >= 0.3 && (!offensive || it.primaryAmmo) }
     val offensive get() = order == SquadOrder.ATTACK
 }
 data class TacticalChoice(

@@ -14,7 +14,7 @@ object DefensiveOverwatch {
     fun enabled(view: TacticalSnapshot, member: TacticalMember, state: TacticalState): Boolean = enabled(view, member, state.supportsDefensiveOverwatch)
 
     private fun enabled(view: TacticalSnapshot, member: TacticalMember, supported: Boolean): Boolean =
-        holdsArea(view) && supported && member.ready && member.health >= 0.3 &&
+        holdsArea(view) && supported && member.ready && member.primaryAmmo && member.health >= 0.3 &&
             member.role in setOf(NpcClass.SNIPER, NpcClass.MACHINE_GUNNER)
 
     fun holdsArea(view: TacticalSnapshot): Boolean = view.order == SquadOrder.DEFEND || (view.order == SquadOrder.PATROL && !view.hasPatrolRoute)

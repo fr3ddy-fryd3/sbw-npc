@@ -4,6 +4,7 @@ import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.Hearing
+import com.sbwnpc.squad.combat.SidearmKit
 import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
@@ -50,6 +51,7 @@ class BlindReturnFireBehaviour : ExtendedBehaviour<NpcEntity>() {
         // Uncertain contacts never authorize grenades, rockets, or simulated hits.
         if (gun.explosionRadius > 0.0 || !gun.hasAmmo()) return
         gun.operate()
+        if (!SidearmKit.inRange(entity, entity.eyePosition, aim)) return
         entity.lookControl.setLookAt(aim.x, aim.y, aim.z)
         val delta = aim.subtract(entity.eyePosition)
         entity.yRot = Math.toDegrees(kotlin.math.atan2(delta.z, delta.x)).toFloat() - 90f
