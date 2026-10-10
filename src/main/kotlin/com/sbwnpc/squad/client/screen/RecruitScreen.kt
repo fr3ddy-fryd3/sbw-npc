@@ -47,7 +47,7 @@ class RecruitScreen(
     val forTool get() = deployLabel == null
 
     private var preset = cfg.preset
-    private var cls = cfg.cls
+    private var cls = cfg.cls.takeIf { it in NpcClass.selectable } ?: NpcClass.DEFAULT
     private val rank = NpcRank.RECRUIT
     private var faction = cfg.faction
     private var vehicle = cfg.vehicle

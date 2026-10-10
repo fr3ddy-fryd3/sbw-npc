@@ -1000,6 +1000,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             if (gun.needsTriggerReset) {
                 cooldown += entity.semiFireInterval
             }
+            cooldown *= entity.fireIntervalMultiplier
 
             if (!shootTimer.started()) {
                 shootTimer.start()

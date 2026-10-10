@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.config
 
+import com.sbwnpc.squad.npc.NpcClass
 import net.neoforged.neoforge.common.ModConfigSpec
 
 /** Server settings (`serverconfig/sbwnpc-server.toml` in each world). */
@@ -38,6 +39,27 @@ object SquadConfig {
     val REGULAR_XP = builder.defineInRange("regularExperience", 300, 1, 1000000)
     val VETERAN_XP = builder.defineInRange("veteranExperience", 1200, 2, 1000000)
     val ELITE_XP = builder.defineInRange("eliteExperience", 3500, 3, 1000000)
+
+    private val CLASS_EXPERIENCE = run {
+        builder.comment("Class reward multipliers. Applied once to new XP, including deferred rewards; saved XP is unchanged.").push("experienceMultipliers")
+        val defaults = mapOf(
+            NpcClass.MACHINE_GUNNER to 0.65,
+            NpcClass.SNIPER to 0.5,
+            NpcClass.GRENADIER to 0.75,
+            NpcClass.DRONE_OPERATOR to 0.65,
+            NpcClass.MORTAR to 0.35,
+            NpcClass.TANK_CREW to 0.5,
+            NpcClass.HELICOPTER_PILOT to 0.5,
+            NpcClass.HELICOPTER_GUNNER to 0.5,
+        )
+        val values = NpcClass.entries.filter { it.canonical == it }.associateWith {
+            builder.defineInRange(it.name.lowercase(), defaults[it] ?: 1.0, 0.01, 10.0)
+        }
+        builder.pop()
+        values
+    }
+
+    fun experienceMultiplier(cls: NpcClass): Double = CLASS_EXPERIENCE.getValue(cls.canonical).let { if (SPEC.isLoaded) it.get() else it.default }
 
     fun experienceThresholds(): List<Int> {
         fun value(v: ModConfigSpec.IntValue) = if (SPEC.isLoaded) v.get() else v.default

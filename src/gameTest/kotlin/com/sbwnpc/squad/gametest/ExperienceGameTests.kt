@@ -26,6 +26,41 @@ import kotlin.math.abs
 @PrefixGameTestTemplate(false)
 object ExperienceGameTests {
     @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 40, batch = "class-experience")
+    fun classMultipliersApplyOnceToKillsDeferredRewardsAndSavedExperience(helper: GameTestHelper) {
+        val roles = listOf(NpcClass.RIFLEMAN, NpcClass.SNIPER, NpcClass.MACHINE_GUNNER)
+        val shooters = roles.mapIndexed { i, role -> npc(helper, 3.5 + i * 3, SquadFaction.PIG, role) }
+        val enemies = roles.mapIndexed { i, _ -> npc(helper, 15.5 + i * 3, SquadFaction.COW) }
+        var restored: NpcEntity? = null
+        cleanup(helper) { (shooters + enemies + listOfNotNull(restored)).forEach { it.discard() } }
+        helper.runAtTickTime(5) {
+            shooters.zip(enemies).forEach { (shooter, enemy) ->
+                Ports.guns.inHand(shooter)!!.inflictHit(enemy, enemy.health * 2)
+                val multiplier = com.sbwnpc.squad.config.SquadConfig.experienceMultiplier(shooter.npcClass)
+                near(helper, shooter.experience, 100.0 * multiplier, "Actual kill did not apply the class coefficient once")
+            }
+            helper.assertTrue(shooters[1].experience < shooters[0].experience && shooters[2].experience < shooters[0].experience, "High-power roles received the rifleman's progression rate")
+            val sniper = shooters[1]
+            val previous = sniper.experience
+            val saved = CompoundTag().also { sniper.saveWithoutId(it) }
+            sniper.discard()
+            val manager = SquadManager.get(helper.level)
+            manager.creditExperience(helper.level.server, sniper.uuid, 80.0, "assist")
+            restored = ModEntities.NPC.get().create(helper.level)!!.apply {
+                load(saved)
+                isNoAi = true
+            }
+            near(helper, restored!!.experience, previous, "Loading multiplied saved XP again")
+            helper.level.addFreshEntity(restored!!)
+            manager.deliverExperience(restored!!)
+            near(helper, restored!!.experience, previous + 80.0 * com.sbwnpc.squad.config.SquadConfig.experienceMultiplier(NpcClass.SNIPER), "Deferred XP lost or doubled its class coefficient")
+            manager.deliverExperience(restored!!)
+            near(helper, restored!!.experience, previous + 80.0 * com.sbwnpc.squad.config.SquadConfig.experienceMultiplier(NpcClass.SNIPER), "Deferred reward was delivered twice")
+            helper.succeed()
+        }
+    }
+
+    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 40, batch = "experience-contribution")
     fun playerContributionsAndTargetPromotionKeepTheFiniteLifeBudget(helper: GameTestHelper) {
         val shooter = npc(helper, 3.5, SquadFaction.PIG)
@@ -264,12 +299,13 @@ object ExperienceGameTests {
             loader.moveTo(helper.absoluteVec(Vec3(3.5, 1.0, 5.5)).x, loader.y, loader.z)
             helper.assertTrue(enemy.health == enemy.maxHealth, "Mortar target lost environmental health before the controlled hit: hp=${enemy.health}/${enemy.maxHealth} ledger=${enemy.persistentData}")
             enemy.hurt(helper.level.damageSources().explosion(projectile, gunner), enemy.health * 2)
-            near(helper, gunner.experience, 50.0, "Gunner's shell share")
-            near(helper, loader.experience, 50.0, "Loader's captured shell share")
+            val multiplier = com.sbwnpc.squad.config.SquadConfig.experienceMultiplier(NpcClass.MORTAR)
+            near(helper, gunner.experience, 50.0 * multiplier, "Gunner's shell share with class coefficient")
+            near(helper, loader.experience, 50.0 * multiplier, "Loader's captured shell share with class coefficient")
             projectile.discard()
             Ports.guns.inHand(gunner)!!.inflictHit(second, second.health * 2)
-            near(helper, gunner.experience, 150.0, "Personal firearm must belong entirely to its shooter")
-            near(helper, loader.experience, 50.0, "Loader received XP for somebody else's personal weapon")
+            near(helper, gunner.experience, 150.0 * multiplier, "Personal firearm must belong entirely to its shooter")
+            near(helper, loader.experience, 50.0 * multiplier, "Loader received XP for somebody else's personal weapon")
             helper.succeed()
         }
     }

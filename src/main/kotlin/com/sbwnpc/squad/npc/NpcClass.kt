@@ -68,6 +68,9 @@ enum class NpcClass(
 
     val canonical: NpcClass get() = if (this == MORTAR_OPERATOR || this == MORTAR_LOADER) MORTAR else this
 
+    /** Snipers take twice as long between primary-weapon shots, independently of rank. */
+    val fireIntervalMultiplier: Int get() = if (canonical == SNIPER) 2 else 1
+
     fun next(): NpcClass = selectable[(selectable.indexOf(canonical) + 1) % selectable.size]
 
     /**
@@ -89,7 +92,8 @@ enum class NpcClass(
     companion object {
         val DEFAULT = RIFLEMAN
 
-        val selectable = entries.filter { it != MORTAR_OPERATOR && it != MORTAR_LOADER }
+        // Crew IDs remain valid for saved NPCs and full crew presets, but are not standalone recruits.
+        val selectable = entries.filter { it !in setOf(MORTAR_OPERATOR, MORTAR_LOADER, TANK_CREW, HELICOPTER_PILOT, HELICOPTER_GUNNER) }
 
         fun byOrdinal(i: Int): NpcClass = entries.getOrElse(i) { DEFAULT }.canonical
         fun byName(name: String): NpcClass = valueOf(name).canonical

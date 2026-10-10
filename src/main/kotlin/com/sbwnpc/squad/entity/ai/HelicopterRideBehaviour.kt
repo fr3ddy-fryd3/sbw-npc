@@ -194,7 +194,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (gun.needsTriggerReset) {
             cooldown += (entity.npcRank.semiFireIntervalMs / 50).toInt()
         }
-        nextShotTick = entity.tickCount + cooldown
+        nextShotTick = entity.tickCount + cooldown * entity.fireIntervalMultiplier
         return null
     }
 

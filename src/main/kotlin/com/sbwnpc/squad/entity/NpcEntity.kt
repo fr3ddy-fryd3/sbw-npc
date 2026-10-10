@@ -89,7 +89,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     fun gainExperience(amount: Double, reason: String) {
         if (level().isClientSide || !amount.isFinite() || amount <= 0 || !isAlive) return
         ensureExperienceIdentity()
-        experience = (experience + amount).coerceAtMost(1.0e12)
+        val multiplier = com.sbwnpc.squad.config.SquadConfig.experienceMultiplier(npcClass)
+        val earned = amount * multiplier
+        experience = (experience + earned).coerceAtMost(1.0e12)
         val promoted = ExperienceRules.rank(experience)
         if (promoted.ordinal > npcRank.ordinal) {
             val old = npcRank
@@ -104,11 +106,13 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             }
             com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER, "[experience] npc={} event=promotion from={} to={} xp={}", uuid, old, npcRank, experience)
         }
-        com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER, "[experience] npc={} event=award reason={} amount={} total={}", uuid, reason, amount, experience)
+        com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER, "[experience] npc={} event=award reason={} class={} base={} multiplier={} amount={} total={}", uuid, reason, npcClass, amount, multiplier, earned, experience)
     }
 
     /** Weapon spread before any target-specific adjustment: the rank's, scaled by the class. */
     val spread: Double get() = npcRank.spread * npcClass.accuracyMultiplier
+
+    val fireIntervalMultiplier: Int get() = if (usingSidearm) 1 else npcClass.fireIntervalMultiplier
 
     /** Faction to put the NPC on its scoreboard team; set before finalizeSpawn. null = leave unteamed. */
     var spawnFaction: SquadFaction? = null
@@ -184,7 +188,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     private var heardDuringCombat = false
 
     /**
-     * Gunfire or an explosion of the other side's, heard at [at] — see [com.sbwnpc.squad.combat.Hearing].
+     * An eligible noise heard at [at], including allied player gunfire — see [com.sbwnpc.squad.combat.Hearing].
      * With nothing to fight, it turns to face the sound; and if nothing holds it where it is, goes
      * to see. Holding means dug in, at a crew post, defending, barraging, on the move or falling
      * back to an objective, or off to a Supply — none of those drop what they're doing for a noise.

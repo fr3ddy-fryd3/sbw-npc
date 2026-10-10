@@ -41,6 +41,65 @@ import java.util.function.Consumer
 @PrefixGameTestTemplate(false)
 object SidearmGameTests {
     @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 500, batch = "sniper-cadence")
+    fun sniperPrimaryFiresAtHalfRateWithoutSlowingBackupPistol(helper: GameTestHelper) {
+        floor(helper, 160, 128)
+        val roles = listOf(NpcClass.RIFLEMAN, NpcClass.SNIPER, NpcClass.RIFLEMAN, NpcClass.SNIPER)
+        val shooters = roles.mapIndexed { index, role ->
+            AttackDeploymentGameTests.spawn(helper, Vec3(20.5, 1.0, 32.5 + index * 16), SquadFaction.PIG, role = role).apply {
+                diggedIn = true
+                setItemInHand(InteractionHand.MAIN_HAND, Ports.guns.issue(ResourceLocation.fromNamespaceAndPath("superbwarfare", "svd"), this, 100))
+                if (index >= 2) ammunition(mainHandItem, 0, 0)
+            }
+        }
+        val enemies = shooters.mapIndexed { index, _ ->
+            AttackDeploymentGameTests.spawn(helper, Vec3(40.5, 1.0, 32.5 + index * 16), SquadFaction.COW).apply {
+                isNoAi = true
+                getAttribute(Attributes.MAX_HEALTH)!!.baseValue = 50000.0
+                health = maxHealth
+            }
+        }
+        val witness = FakePlayerFactory.get(helper.level, GameProfile(UUID.randomUUID(), "cadence-observer"))
+        witness.gameMode.changeGameModeForPlayer(GameType.CREATIVE)
+        val at = helper.absoluteVec(Vec3(30.5, 5.0, 5.5))
+        witness.moveTo(at.x, at.y, at.z, 0f, 0f)
+        witness.setNoGravity(true)
+        helper.level.addNewPlayer(witness)
+        val shots = List(shooters.size) { mutableListOf<Long>() }
+        val listener = Consumer<EntityJoinLevelEvent> { event ->
+            val projectile = event.entity as? Projectile ?: return@Consumer
+            val index = shooters.indexOf(projectile.owner)
+            if (event.level === helper.level && index >= 0 && Ports.guns.isRound(projectile)) shots[index].add(System.nanoTime())
+        }
+        val pacer = CombatTickPacer()
+        NeoForge.EVENT_BUS.addListener(listener)
+        NeoForge.EVENT_BUS.addListener<ServerTickEvent.Pre>(pacer)
+        cleanup(helper) {
+            NeoForge.EVENT_BUS.unregister(listener)
+            NeoForge.EVENT_BUS.unregister(pacer)
+            (shooters + enemies).forEach { it.discard() }
+            helper.level.removePlayerImmediately(witness, Entity.RemovalReason.DISCARDED)
+            val report = Path.of(System.getProperty("sbwnpc.gameTestReports"), "sniper-cadence.txt")
+            Files.createDirectories(report.parent)
+            Files.writeString(
+                report,
+                shots.mapIndexed { index, times ->
+                    "${roles[index]} sidearm=${index >= 2} intervals_ms=${times.zipWithNext { a, b -> (b - a) / 1_000_000.0 }}"
+                }.joinToString("\n"),
+            )
+        }
+        helper.onEachTick {
+            if (shots.all { it.size >= 5 }) {
+                val intervals = shots.map { times -> times.zipWithNext { a, b -> (b - a) / 1_000_000.0 }.sorted().let { it[it.size / 2] } }
+                helper.assertTrue(intervals[1] / intervals[0] in 1.8..2.2, "Sniper primary cadence did not halve: $intervals")
+                helper.assertTrue(intervals[3] / intervals[2] in 0.85..1.15, "Sniper class slowed the same backup pistol: $intervals")
+                helper.assertTrue(shooters[2].usingSidearm && shooters[3].usingSidearm, "Pistol comparison was not using backup weapons")
+                helper.succeed()
+            }
+        }
+    }
+
+    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 40, batch = "sidearm-storage")
     fun sidearmsSurviveSaveSupplyAndRoleOwnership(helper: GameTestHelper) {
         floor(helper, 24, 12)

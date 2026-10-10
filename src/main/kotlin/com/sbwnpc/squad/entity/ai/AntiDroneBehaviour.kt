@@ -227,7 +227,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (gun.needsTriggerReset) {
             cooldownTicks += (entity.npcRank.semiFireIntervalMs / 50).toInt()
         }
-        nextShotTick = entity.tickCount + cooldownTicks
+        nextShotTick = entity.tickCount + cooldownTicks * entity.fireIntervalMultiplier
     }
 
     companion object {
