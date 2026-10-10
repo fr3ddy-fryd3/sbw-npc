@@ -13,18 +13,18 @@ enum class SquadPreset(
     val grid: Boolean = false,
 ) {
     SINGLE("Single", emptyList()),
-    FIVE("5: Riflemen", List(4) { NpcClass.RIFLEMAN } + NpcClass.MEDIC, grid = true),
+    FIVE("5: Infantry", List(3) { NpcClass.RIFLEMAN } + NpcClass.SHOTGUNNER + NpcClass.MEDIC, grid = true),
 
     // Keep the removed preset's ordinal reserved: recruit-tool configurations persist ordinals.
     REMOVED_SIX("", emptyList()),
     SEVEN(
         "7: Standard",
-        List(4) { NpcClass.RIFLEMAN } + NpcClass.SNIPER + NpcClass.MACHINE_GUNNER + NpcClass.MEDIC,
+        List(3) { NpcClass.RIFLEMAN } + NpcClass.SHOTGUNNER + NpcClass.SNIPER + NpcClass.MACHINE_GUNNER + NpcClass.MEDIC,
         grid = true,
     ),
     SIXTEEN(
         "16: Large",
-        List(10) { NpcClass.RIFLEMAN } + List(2) { NpcClass.SNIPER } + List(2) { NpcClass.MACHINE_GUNNER } + List(2) { NpcClass.MEDIC },
+        List(9) { NpcClass.RIFLEMAN } + NpcClass.SHOTGUNNER + List(2) { NpcClass.SNIPER } + List(2) { NpcClass.MACHINE_GUNNER } + List(2) { NpcClass.MEDIC },
         grid = true,
     ),
     MORTAR_CREW("Mortar Crew", listOf(NpcClass.MORTAR, NpcClass.MORTAR)),
@@ -41,7 +41,7 @@ enum class SquadPreset(
     // Added last to keep the saved ordinals of everything above; shown after SIXTEEN (see ORDER).
     THIRTY_TWO(
         "32: Company",
-        List(20) { NpcClass.RIFLEMAN } + List(4) { NpcClass.SNIPER } + List(4) { NpcClass.MACHINE_GUNNER } + List(4) { NpcClass.MEDIC },
+        List(18) { NpcClass.RIFLEMAN } + List(2) { NpcClass.SHOTGUNNER } + List(4) { NpcClass.SNIPER } + List(4) { NpcClass.MACHINE_GUNNER } + List(4) { NpcClass.MEDIC },
         grid = true,
     ),
     ;

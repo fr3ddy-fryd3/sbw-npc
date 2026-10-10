@@ -152,10 +152,11 @@ object FactionLogisticsGameTests {
             helper.assertTrue(group.members.size == 32, "Deploy queued or partially released the initial 32 NPCs")
             val deployed = group.members.map { helper.level.getEntity(it) as NpcEntity }
             deployed.forEach { it.isNoAi = true }
+            helper.assertTrue(deployed.count { it.npcClass == NpcClass.SHOTGUNNER } == 2 && deployed.count { it.npcClass == NpcClass.MEDIC } == 4, "Barracks did not deploy the mixed company roster")
             helper.assertTrue(deployed.all { helper.level.noCollision(it.boundingBox) }, "Deploy placed a recruit in terrain")
             helper.assertTrue(deployed.withIndex().all { (index, npc) -> deployed.drop(index + 1).none { npc.boundingBox.intersects(it.boundingBox) } }, "Deploy overlapped recruits at fallback positions")
             helper.assertTrue(barracks.recruitmentSnapshot(helper.level).getList("Entries", net.minecraft.nbt.Tag.TAG_COMPOUND.toInt()).isEmpty(), "Initial group entered the replacement queue")
-            dead = group.members.take(2).toSet()
+            dead = listOf(deployed.first { it.npcClass == NpcClass.SHOTGUNNER }.uuid, deployed.first { it.npcClass == NpcClass.RIFLEMAN }.uuid).toSet()
             survivors = group.members.toSet() - dead
             veteran = helper.level.getEntity(survivors.first()) as NpcEntity
             veteran!!.gainExperience(37.0, "test_existing_garrison")
@@ -185,6 +186,7 @@ object FactionLogisticsGameTests {
                 helper.assertTrue(group.members.containsAll(survivors) && group.members.none { it in dead }, "Replacement resurrected the dead or lost survivors")
                 helper.assertTrue(veteran!!.experience == 37.0, "Deploy or replacement reset veteran experience")
                 val recruits = group.members.filter { it !in survivors }.map { helper.level.getEntity(it) as NpcEntity }
+                helper.assertTrue(recruits.map { it.npcClass }.toSet() == setOf(NpcClass.SHOTGUNNER, NpcClass.RIFLEMAN), "Casualty replacements lost the shotgunner's roster slot")
                 helper.assertTrue(recruits.all { it.spawnFaction == SquadFaction.COW && it.experience == 0.0 && it.npcRank == NpcRank.RECRUIT }, "Automatic replacements changed faction or inherited the dead's XP")
                 helper.succeed()
             }
