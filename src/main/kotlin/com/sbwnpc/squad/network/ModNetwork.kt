@@ -224,7 +224,7 @@ object ModNetwork {
                     reopen = true
                 }
 
-                SquadCmdPayload.SET_ORDER -> ownedSid()?.let { mgr.setOrder(it, SquadOrder.byOrdinal(p.value)) }
+                SquadCmdPayload.SET_ORDER -> ownedSid()?.let { mgr.issueOrder(it, SquadOrder.byOrdinal(p.value)) }
 
                 SquadCmdPayload.TOGGLE_REPORTS -> {
                     val on = com.sbwnpc.squad.squad.ReportMutes.get(player.server).toggle(player.uuid)
@@ -310,7 +310,7 @@ object ModNetwork {
             val mgr = SquadManager.get(level)
             val id = runCatching { UUID.fromString(p.squad) }.getOrNull() ?: return@enqueueWork
             if (!mgr.ownedBy(id, player.uuid)) return@enqueueWork
-            mgr.setOrder(id, SquadOrder.byOrdinal(p.order))
+            mgr.issueOrder(id, SquadOrder.byOrdinal(p.order))
             val pos = Terrain.lookedAtPos(player, level, OBJECTIVE_RAYCAST_RANGE)
             mgr.setObjective(level, id, pos)
             com.sbwnpc.squad.combat.DebugFlags.log(
@@ -339,7 +339,7 @@ object ModNetwork {
             mgr.forOwner(player.uuid)
                 .filter { defaultFaction == null || it.faction == defaultFaction }
                 .forEach { squad ->
-                    mgr.setOrder(squad.id, order)
+                    mgr.issueOrder(squad.id, order)
                     mgr.setObjective(level, squad.id, pos)
                     com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER, "HUD all: {} -> {} at {}", squad.name, squad.order, pos)
                 }

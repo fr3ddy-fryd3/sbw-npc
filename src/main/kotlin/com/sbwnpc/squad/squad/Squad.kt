@@ -59,12 +59,17 @@ class Squad(
     /** Null only for a pre-1.0 save whose member roles have not been resolved yet. */
     var recruitmentRoster: RecruitmentRoster? = null
 
+    /** Saved separately from transient tactics so arrival and reload preserve an offered retry. */
+    var attackAmmoPolicy: AttackAmmoPolicy = AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY
+        internal set
+
     fun save(): CompoundTag {
         val tag = CompoundTag()
         tag.putUUID("Id", id)
         tag.putString("Name", name)
         tag.putString("Faction", faction.name)
         tag.putString("Order", order.name)
+        tag.putString("AttackAmmoPolicy", attackAmmoPolicy.name)
         tag.putString("Rank", rank.name)
         val list = ListTag()
         members.forEach { list.add(NbtUtils.createUUID(it)) }
@@ -127,6 +132,11 @@ class Squad(
             }
             if (tag.contains("RecruitmentRoster", Tag.TAG_LIST.toInt())) {
                 squad.recruitmentRoster = RecruitmentRoster.load(tag.getList("RecruitmentRoster", Tag.TAG_COMPOUND.toInt()))
+            }
+            squad.attackAmmoPolicy = runCatching { AttackAmmoPolicy.valueOf(tag.getString("AttackAmmoPolicy")) }
+                .getOrDefault(AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY)
+            if (squad.order != SquadOrder.ATTACK && squad.attackAmmoPolicy == AttackAmmoPolicy.PRESS_ON) {
+                squad.attackAmmoPolicy = AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY
             }
             return squad
         }

@@ -47,7 +47,7 @@ object GroupOrders {
             val bx = Math.floor(px).toInt()
             val bz = Math.floor(pz).toInt()
             val by = groundY(level, bx, bz)
-            mgr.setOrder(squad.id, given)
+            mgr.issueOrder(squad.id, given)
             mgr.setObjective(level, squad.id, BlockPos(bx, by, bz))
             mgr.setFocus(squad.id, null)
             "${squad.name}: ${squad.order.name.lowercase()}"
@@ -72,7 +72,7 @@ object GroupOrders {
         val previous = walkers.mapNotNull { it.routeId }.toSet()
         for (squad in walkers) {
             mgr.assignRoute(squad.id, route.id)
-            mgr.setOrder(squad.id, SquadOrder.PATROL)
+            mgr.issueOrder(squad.id, SquadOrder.PATROL)
             mgr.setObjective(level, squad.id, route.points.first())
             mgr.setFocus(squad.id, null)
         }

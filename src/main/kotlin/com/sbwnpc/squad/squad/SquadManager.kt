@@ -138,6 +138,29 @@ class SquadManager : SavedData() {
         setDirty()
     }
 
+    /** Player command, including map/group/HUD orders. Internal transitions use [setOrder]. */
+    fun issueOrder(id: UUID, order: SquadOrder) {
+        setOrder(id, order)
+        val squad = squads[id] ?: return
+        if (squad.order == SquadOrder.ATTACK && squad.attackAmmoPolicy == AttackAmmoPolicy.RETRY_AVAILABLE) {
+            squad.attackAmmoPolicy = AttackAmmoPolicy.PRESS_ON
+            setDirty()
+            com.sbwnpc.squad.combat.DebugFlags.log(
+                com.sbwnpc.squad.combat.LogGroup.ORDER,
+                "[tactics] {} squad={} event=attack_retry source=player ammo_policy=PRESS_ON",
+                squad.name,
+                squad.id,
+            )
+        }
+    }
+
+    /** The ammunition failure, unlike a manual retreat, arms the next explicit attack retry. */
+    fun withdrawForAmmo(id: UUID) {
+        val squad = squads[id] ?: return
+        squad.attackAmmoPolicy = AttackAmmoPolicy.RETRY_AVAILABLE
+        setOrder(id, SquadOrder.RETREAT)
+    }
+
     fun setOrder(id: UUID, order: SquadOrder) {
         squads[id]?.let {
             val available = SquadOrder.availableFor(
@@ -150,6 +173,9 @@ class SquadManager : SavedData() {
                 order in available -> order
                 isTankSquad(it) -> SquadOrder.MOVE
                 else -> SquadOrder.DEFEND
+            }
+            if (it.order != SquadOrder.ATTACK && it.attackAmmoPolicy == AttackAmmoPolicy.PRESS_ON) {
+                it.attackAmmoPolicy = AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY
             }
             it.orderStamp++
             setDirty()

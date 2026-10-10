@@ -6,9 +6,9 @@ import com.sbwnpc.squad.combat.SidearmKit
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
+import com.sbwnpc.squad.squad.AttackAmmoPolicy
 import com.sbwnpc.squad.squad.Squad
 import com.sbwnpc.squad.squad.SquadManager
-import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.squad.SquadReports
 import com.sbwnpc.squad.util.Terrain
 import net.minecraft.core.BlockPos
@@ -20,7 +20,7 @@ internal object AttackAmmoWithdrawal {
     const val DISTANCE = 100.0
 
     fun apply(squad: Squad, level: ServerLevel, view: TacticalSnapshot): Boolean {
-        if (!view.offensive) return false
+        if (!view.offensive || squad.attackAmmoPolicy == AttackAmmoPolicy.PRESS_ON) return false
         // Never infer a squad-wide shortage from only the loaded/nearby part of its roster.
         val members = squad.members.mapNotNull { level.getEntity(it) as? NpcEntity }.filter { it.isAlive }
         if (members.size != squad.members.size || members.any { it.vehicle != null }) return false
@@ -38,7 +38,7 @@ internal object AttackAmmoWithdrawal {
         val desired = view.center.add(direction.scale(DISTANCE))
         val destination = rally(level, infantry.first(), view.center, desired, direction)
         val manager = SquadManager.get(level)
-        manager.setOrder(squad.id, SquadOrder.RETREAT)
+        manager.withdrawForAmmo(squad.id)
         manager.setObjective(level, squad.id, BlockPos.containing(destination))
         SquadReports.attackFailedAmmo(level.server, squad, empty, infantry.size)
         DebugFlags.log(

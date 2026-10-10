@@ -89,6 +89,59 @@ class SquadManagerTest {
         )
 
     @Test
+    fun `ammo withdrawal offers a saved retry consumed only by an explicit attack`() {
+        val source = garrison(listOf(RIFLEMAN))
+        var mgr = manager(source)
+        mgr.issueOrder(source.id, SquadOrder.ATTACK)
+        assertEquals(AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY, mgr.get(source.id)!!.attackAmmoPolicy)
+        mgr.withdrawForAmmo(source.id)
+        assertEquals(SquadOrder.RETREAT, mgr.get(source.id)!!.order)
+        mgr = SquadManager.load(mgr.saveState(CompoundTag()))
+        mgr.setOrder(source.id, SquadOrder.DEFEND) // Ordinary arrival, including after Supply.
+        assertEquals(AttackAmmoPolicy.RETRY_AVAILABLE, mgr.get(source.id)!!.attackAmmoPolicy)
+        mgr.setOrder(source.id, SquadOrder.ATTACK) // An internal update is not the player's retry.
+        assertEquals(AttackAmmoPolicy.RETRY_AVAILABLE, mgr.get(source.id)!!.attackAmmoPolicy)
+        mgr = SquadManager.load(mgr.saveState(CompoundTag()))
+        mgr.issueOrder(source.id, SquadOrder.ATTACK)
+        assertEquals(AttackAmmoPolicy.PRESS_ON, mgr.get(source.id)!!.attackAmmoPolicy)
+        mgr = SquadManager.load(mgr.saveState(CompoundTag()))
+        mgr.issueOrder(source.id, SquadOrder.ATTACK) // Moving the attack target does not rearm retreat.
+        assertEquals(AttackAmmoPolicy.PRESS_ON, mgr.get(source.id)!!.attackAmmoPolicy)
+        mgr.issueOrder(source.id, SquadOrder.RETREAT)
+        assertEquals(SquadOrder.RETREAT, mgr.get(source.id)!!.order)
+        assertEquals(AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY, mgr.get(source.id)!!.attackAmmoPolicy)
+        mgr.issueOrder(source.id, SquadOrder.ATTACK)
+        assertEquals(AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY, mgr.get(source.id)!!.attackAmmoPolicy)
+    }
+
+    @Test
+    fun `manual retreat and rejected tank attacks do not grant an ammunition override`() {
+        for (composition in listOf(listOf(RIFLEMAN), listOf(NpcClass.TANK_CREW))) {
+            val source = garrison(composition)
+            val mgr = manager(source)
+            mgr.issueOrder(source.id, SquadOrder.RETREAT)
+            mgr.issueOrder(source.id, SquadOrder.ATTACK)
+            assertEquals(AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY, mgr.get(source.id)!!.attackAmmoPolicy)
+            if (NpcClass.TANK_CREW in composition) {
+                mgr.withdrawForAmmo(source.id)
+                mgr.issueOrder(source.id, SquadOrder.ATTACK)
+                assertEquals(SquadOrder.MOVE, mgr.get(source.id)!!.order)
+                assertEquals(AttackAmmoPolicy.RETRY_AVAILABLE, mgr.get(source.id)!!.attackAmmoPolicy)
+            }
+        }
+    }
+
+    @Test
+    fun `missing or invalid saved ammo policy defaults to normal attack`() {
+        val source = garrison(listOf(RIFLEMAN))
+        for (value in listOf(null, "UNKNOWN", "PRESS_ON")) {
+            val tag = source.save()
+            if (value == null) tag.remove("AttackAmmoPolicy") else tag.putString("AttackAmmoPolicy", value)
+            assertEquals(AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY, Squad.load(tag).attackAmmoPolicy)
+        }
+    }
+
+    @Test
     fun `deleting a squad or pruning its last member cancels owned tactical work`() {
         for (delete in listOf(true, false)) {
             val source = garrison(List(3) { RIFLEMAN })

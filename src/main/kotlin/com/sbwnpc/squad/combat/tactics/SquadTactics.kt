@@ -89,6 +89,7 @@ object SquadTactics {
             effective.pattern,
             effective.reason == TacticalReason.PATTERN_COOLDOWN,
             view.order,
+            squad.attackAmmoPolicy,
             view.stamp,
             view.members.size,
             view.peakStrength,
@@ -189,7 +190,7 @@ object SquadTactics {
     }
 
     private const val SNAPSHOT_FORMAT = "[tactics] {} snapshot squad={} tick={} plan={} pattern={} state={} statePhase={} phase={} reason={} " +
-        "proposed={} proposedReason={} effective={} cooldown={} order={} stamp={} members={} peak={} fighting={} " +
+        "proposed={} proposedReason={} effective={} cooldown={} order={} ammoPolicy={} stamp={} members={} peak={} fighting={} " +
         "visible={} remembered={} incoming={} suppressed={} narrow={} open={} stalled={} heightDelta={} cover={} " +
         "shootersLast40Ticks={} coverAge={} phaseAge={} lifetimeElapsed={} bounds={} openingLane={} laneAttempts={} positioned={} failed={} " +
         "recoveringFirePosts={} jobs={} front={}"

@@ -5,10 +5,12 @@ import com.mojang.authlib.GameProfile
 import com.sbwnpc.squad.block.entity.SupplyBlockEntity
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.combat.SidearmKit
 import com.sbwnpc.squad.combat.tactics.DefensiveOverwatch
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.init.ModBlocks
 import com.sbwnpc.squad.npc.SquadFaction
+import com.sbwnpc.squad.squad.AttackAmmoPolicy
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.core.BlockPos
@@ -34,7 +36,14 @@ import java.util.function.Consumer
 object AmmunitionTacticsGameTests {
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 1600, batch = "ammo-withdrawal")
-    fun halfEmptyAttackWithdrawsAndDoesNotRestartAfterSupply(helper: GameTestHelper) {
+    fun halfEmptyAttackWithdrawsAndDoesNotRestartAfterSupply(helper: GameTestHelper) = withdrawal(helper, retry = false)
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 1600, batch = "ammo-retry")
+    fun reissuedAttackAdvancesWithoutAnotherAmmoRetreat(helper: GameTestHelper) = withdrawal(helper, retry = true)
+
+    private fun withdrawal(helper: GameTestHelper, retry: Boolean) {
+        val supplyScope = IsolatedSupplyPoints(helper.level)
         floor(helper)
         val members = (0..3).map {
             AttackDeploymentGameTests.spawn(helper, Vec3(120.5, 1.0, 55.5 + it * 4), SquadFaction.PIG)
@@ -54,12 +63,16 @@ object AmmunitionTacticsGameTests {
         (helper.getBlockEntity(forwardSupply) as SupplyBlockEntity).faction = SquadFaction.PIG
         val manager = SquadManager.get(helper.level)
         val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, members.map { it.uuid })
-        manager.setOrder(squad.id, SquadOrder.ATTACK)
+        manager.issueOrder(squad.id, SquadOrder.ATTACK)
         manager.setObjective(helper.level, squad.id, helper.absolutePos(BlockPos(155, 1, 61)))
         val origins = members.map { it.position() }
         var abortedAt: Long? = null
         var rally: BlockPos? = null
         var heldSince: Long? = null
+        var retriedAt: Long? = null
+        var retryOrigins: List<Vec3> = emptyList()
+        var retryAmmo: List<Double> = emptyList()
+        val reportName = if (retry) "ammo-retry" else "ammo-withdrawal"
         val trace = StringBuilder("tick,order,member,x,y,z,primary,sidearm,resupplying\n")
         cleanup(helper) {
             DebugFlags.enabledGroups = oldGroups
@@ -67,14 +80,15 @@ object AmmunitionTacticsGameTests {
             (members + enemy).forEach { it.discard() }
             helper.setBlock(forwardSupply, Blocks.AIR)
             rally?.let { helper.level.setBlockAndUpdate(it, Blocks.AIR.defaultBlockState()) }
-            report("ammo-withdrawal.csv", trace.toString())
+            supplyScope.close()
+            report("$reportName.csv", trace.toString())
         }
         helper.onEachTick {
             if (helper.tick == 20L) {
                 helper.assertTrue(squad.order == SquadOrder.ATTACK, "One empty primary out of four aborted the attack")
                 ammunition(members[1].primaryGun(), 0, 0)
             }
-            if (helper.tick >= 50L) helper.assertTrue(squad.order != SquadOrder.ATTACK, "Half-empty attack did not abort, or restarted without a player order")
+            if (helper.tick >= 50L && retriedAt == null) helper.assertTrue(squad.order != SquadOrder.ATTACK, "Half-empty attack did not abort, or restarted without a player order")
             if (squad.order == SquadOrder.RETREAT && abortedAt == null) {
                 abortedAt = helper.tick
                 rally = squad.objective!!
@@ -86,16 +100,43 @@ object AmmunitionTacticsGameTests {
                 helper.level.setBlockAndUpdate(rally!!, ModBlocks.SUPPLY.get().defaultBlockState())
                 (helper.level.getBlockEntity(rally!!) as SupplyBlockEntity).faction = SquadFaction.PIG
             }
-            if (rally != null) helper.assertTrue(squad.objective == rally, "The retreat point drifted with the moving squad")
+            if (rally != null && retriedAt == null) helper.assertTrue(squad.objective == rally, "The retreat point drifted with the moving squad")
             members.forEachIndexed { index, npc ->
                 if (helper.tick % 10L == 0L) trace.append("${helper.tick},${squad.order},$index,${npc.x},${npc.y},${npc.z},${npc.ammoFraction()},${npc.usingSidearm},${npc.resupplying}\n")
+            }
+            if (retriedAt != null) {
+                helper.assertTrue(squad.order == SquadOrder.ATTACK && squad.attackAmmoPolicy == AttackAmmoPolicy.PRESS_ON, "Explicit retry was automatically aborted again")
+                helper.assertTrue(members.take(2).all { !SidearmKit.hasPrimaryAmmo(it) }, "Retry test accidentally refilled its empty primaries")
+                if (helper.tick - retriedAt!! >= 200L) {
+                    // A covered bound has a moving rifleman and a firing rifleman, not two runners.
+                    val progress = members.drop(2).mapIndexed { index, npc -> npc.x - retryOrigins[index].x }
+                    helper.assertTrue(progress.max() >= 10.0 && progress.min() >= -5.0, "Retry did not advance under cover, or riflemen fled: $progress")
+                    helper.assertTrue(members.drop(2).withIndex().all { (index, npc) -> npc.ammoFraction() < retryAmmo[index] }, "Moving/covering riflemen did not fire during retry")
+                    manager.issueOrder(squad.id, SquadOrder.RETREAT)
+                    manager.setObjective(helper.level, squad.id, rally)
+                    helper.assertTrue(squad.order == SquadOrder.RETREAT && squad.attackAmmoPolicy == AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY, "Manual retreat did not cancel the retry")
+                    report("$reportName-result.txt", "abort=$abortedAt\nheld=$heldSince\nretry=$retriedAt\nfinished=${helper.tick}\nprogress=$progress\nmanualRetreat=${squad.order}\n")
+                    helper.succeed()
+                }
+                return@onEachTick
             }
             val arrived = squad.order == SquadOrder.DEFEND && members.all { it.ammoFraction() > 0.8 && it.position().subtract(origins[members.indexOf(it)]).horizontalDistance() >= 70.0 }
             if (arrived) {
                 if (heldSince == null) heldSince = helper.tick
                 if (helper.tick - heldSince!! >= 100) {
-                    report("ammo-withdrawal-result.txt", "abort=$abortedAt\nheld=$heldSince\nfinished=${helper.tick}\norder=${squad.order}\nrally=$rally\n")
-                    helper.succeed()
+                    if (retry) {
+                        helper.setBlock(forwardSupply, Blocks.AIR)
+                        helper.level.setBlockAndUpdate(rally!!, Blocks.AIR.defaultBlockState())
+                        members.take(2).forEach { ammunition(it.primaryGun(), 0, 0) }
+                        retryOrigins = members.drop(2).map { it.position() }
+                        retryAmmo = members.drop(2).map { it.ammoFraction() }
+                        retriedAt = helper.tick
+                        manager.issueOrder(squad.id, SquadOrder.ATTACK)
+                        manager.setObjective(helper.level, squad.id, enemy.blockPosition())
+                    } else {
+                        report("$reportName-result.txt", "abort=$abortedAt\nheld=$heldSince\nfinished=${helper.tick}\norder=${squad.order}\nrally=$rally\n")
+                        helper.succeed()
+                    }
                 }
             } else {
                 heldSince = null
