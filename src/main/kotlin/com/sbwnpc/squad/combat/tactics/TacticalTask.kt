@@ -129,6 +129,14 @@ class TacticalPositionSearch(val origin: Vec3, probes: List<Vec3>, val aim: Tact
     val visited = HashSet<Vec3>()
     var destinations: List<Vec3>? = null
     var destinationIndex = 0
+    internal var routeValidation: TacticalRouteValidation? = null
+    internal val rejectedRoutes = HashSet<Vec3>()
+    internal var pathAttempts = 0
+
+    internal fun skipRejectedRoutes() {
+        val ordered = destinations ?: return
+        while (destinationIndex < ordered.size && ordered[destinationIndex] in rejectedRoutes) destinationIndex++
+    }
     val rejections = LinkedHashMap<String, Int>()
 
     /** Exhaust the cheap rings first, then inspect block-sized gaps within the same radius. */
@@ -141,6 +149,7 @@ class TacticalPositionSearch(val origin: Vec3, probes: List<Vec3>, val aim: Tact
     }
 
     fun clearCandidates() {
+        routeValidation = null
         scored.clear()
         destinations = null
         destinationIndex = 0

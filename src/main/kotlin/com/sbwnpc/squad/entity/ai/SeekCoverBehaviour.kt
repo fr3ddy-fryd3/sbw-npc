@@ -265,7 +265,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         // and standing still either way, one tick of delay is invisible.
         if (!TickBudget.hasRaycasts(level)) return
         if ((entity.navigation as? VehicleAwareNavigation)?.canPlan == false ||
-            !com.sbwnpc.squad.combat.tactics.TacticalBudget.path(level.gameTime)
+            !com.sbwnpc.squad.combat.tactics.TacticalBudget.path(entity)
         ) {
             return
         }

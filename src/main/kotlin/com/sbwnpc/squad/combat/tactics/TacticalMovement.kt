@@ -127,7 +127,11 @@ object TacticalMovement {
             val result = TacticalPositions.find(entity, task, view)
             when (result.outcome) {
                 TacticalPositions.Outcome.DEFERRED -> {
-                    task.nextSearch = entity.level().gameTime + 2
+                    // A completely blind local disk need not delay a covered bound while the
+                    // dense fallback scans thousands of cells. Holding orders keep that scan.
+                    if (!result.coarseExhausted || !tryFireAdvance(entity, task, "coarse_search_exhausted")) {
+                        task.nextSearch = entity.level().gameTime + 2
+                    }
                     return true
                 }
 
@@ -256,7 +260,7 @@ object TacticalMovement {
                 task.nextSearch = entity.level().gameTime + 2
                 return true
             }
-            if (!TacticalBudget.path(entity.level().gameTime)) {
+            if (!TacticalBudget.path(entity)) {
                 task.nextSearch = entity.level().gameTime + 2
                 return true
             }
@@ -284,14 +288,7 @@ object TacticalMovement {
                 )
                 return false
             }
-            val squad = entity.currentSquad()
-            val view = squad?.tactics?.snapshot
-            val member = view?.members?.firstOrNull { it.id == entity.uuid }
-            val plan = squad?.tactics?.plan
-            if (completedSearch && view != null && member != null && plan != null && TacticalFireAdvance.begin(task, member, view, plan)) {
-                DebugFlags.log(LogGroup.ORDER, "[tactics] {} plan={} event=fire_transit_started job={} from={} goal={} reason={}", entity.uuid, task.plan, task.job, entity.position(), task.fireTransit, reason)
-                return false
-            }
+            if (completedSearch && tryFireAdvance(entity, task, reason)) return false
             task.fireTransit = null
             task.nextSearch = entity.level().gameTime + 100
             DebugFlags.log(LogGroup.ORDER, "[tactics] {} plan={} event=fire_post_retry job={} reason={}", entity.uuid, task.plan, task.job, reason)
@@ -330,6 +327,16 @@ object TacticalMovement {
     }
 
     private fun jobs(plan: TacticalPlan) = plan.tasks.values.groupingBy { it.job }.eachCount()
+
+    private fun tryFireAdvance(entity: NpcEntity, task: TacticalTask, reason: String): Boolean {
+        val squad = entity.currentSquad() ?: return false
+        val view = squad.tactics.snapshot ?: return false
+        val member = view.members.firstOrNull { it.id == entity.uuid } ?: return false
+        val plan = squad.tactics.plan ?: return false
+        if (!TacticalFireAdvance.begin(task, member, view, plan)) return false
+        DebugFlags.log(LogGroup.ORDER, "[tactics] {} plan={} event=fire_transit_started job={} from={} goal={} reason={}", entity.uuid, task.plan, task.job, entity.position(), task.fireTransit, reason)
+        return true
+    }
 
     private fun requiresPreciseArrival(task: TacticalTask): Boolean = task.frontage != null || task.job in TacticalJob.FIRING_POSITIONS || task.job == TacticalJob.FLANK
 

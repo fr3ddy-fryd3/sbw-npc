@@ -132,9 +132,11 @@ class TacticalSituationsTest {
     }
 
     @Test fun `path budget rejects a fifth grant and resets on the next tick`() {
-        assertTrue((0..3).all { TacticalBudget.path(42) })
-        assertFalse(TacticalBudget.path(42))
-        assertTrue(TacticalBudget.path(43))
+        val budget = TacticalPathBudget()
+        assertTrue((0..3).all { budget.acquire(UUID(0, it.toLong()), 42) })
+        val next = UUID(0, 4)
+        assertFalse(budget.acquire(next, 42))
+        assertTrue(budget.acquire(next, 43))
     }
 
     @Test fun `the first contact interrupts marching immediately`() {

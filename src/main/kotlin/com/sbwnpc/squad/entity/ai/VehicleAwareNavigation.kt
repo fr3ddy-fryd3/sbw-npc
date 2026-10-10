@@ -78,19 +78,22 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
     internal var positionPathObserver: ((BlockPos, Long, Boolean) -> Unit)? = null
 
     /** Tactical posts need their exact height, rather than a march waypoint on the surface. */
-    fun createPositionPath(pos: BlockPos): Path? {
-        if (!canPlan) return null
+    fun createPositionPath(pos: BlockPos): Path? = createPositionPath(setOf(pos))
+
+    /** Vanilla searches one terrain graph for a small set of equally suitable destinations. */
+    fun createPositionPath(positions: Set<BlockPos>): Path? {
+        if (!canPlan || positions.isEmpty()) return null
         val observer = positionPathObserver
         val started = if (observer != null) System.nanoTime() else 0L
         var reached = false
         val saved = nodeMultiplier
         super.setMaxVisitedNodesMultiplier(maxOf(1f, saved))
         try {
-            val range = (kotlin.math.sqrt(pos.distToCenterSqr(mob.x, mob.y, mob.z)) + 8.0).coerceIn(48.0, 80.0).toFloat()
-            return createPath(setOf(pos), 8, false, 0, range).also { reached = it?.canReach() == true }
+            val range = (kotlin.math.sqrt(positions.maxOf { it.distToCenterSqr(mob.x, mob.y, mob.z) }) + 8.0).coerceIn(48.0, 80.0).toFloat()
+            return createPath(positions, 8, false, 0, range).also { reached = it?.canReach() == true }
         } finally {
             super.setMaxVisitedNodesMultiplier(saved)
-            observer?.invoke(pos, System.nanoTime() - started, reached)
+            observer?.invoke(positions.first(), System.nanoTime() - started, reached)
         }
     }
 

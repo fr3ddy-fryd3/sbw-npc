@@ -14,7 +14,7 @@ import net.minecraft.world.phys.Vec3
 /** Local positions are validated through the existing navigation and collider raycasts. */
 object TacticalPositions {
     enum class Outcome { FOUND, DEFERRED, UNREACHABLE }
-    data class Result(val outcome: Outcome, val position: Vec3? = null, val rejections: Map<String, Int> = emptyMap(), val maneuverPost: Boolean = false)
+    data class Result(val outcome: Outcome, val position: Vec3? = null, val rejections: Map<String, Int> = emptyMap(), val maneuverPost: Boolean = false, val coarseExhausted: Boolean = false)
 
     fun find(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot): Result {
         val level = entity.level() as ServerLevel
@@ -335,19 +335,32 @@ object TacticalPositions {
         val task = context.task
         val destinations = search.destinations ?: search.scored.entries.sortedBy { it.value }.map { it.key }
             .also { search.destinations = it }
+        search.skipRejectedRoutes()
         while (search.destinationIndex < destinations.size) {
             if (!TickBudget.hasRaycasts(context.level)) return Result(Outcome.DEFERRED)
-            val candidate = destinations[search.destinationIndex]
+            if (search.routeValidation?.fresh(context.level.gameTime) == false) search.routeValidation = null
+            var candidate = search.routeValidation?.candidate ?: destinations[search.destinationIndex]
             val mustShoot = requiresFiringLane(context, candidate)
             if (mustShoot && !firingReady(entity, task, candidate)) {
+                search.routeValidation = null
                 search.reject("changed_firing_lane")
-                search.destinationIndex++
+                search.rejectedRoutes += candidate
+                search.skipRejectedRoutes()
                 continue
             }
             val body = entity.getDimensions(entity.pose).makeBoundingBox(candidate)
             if (!safeBody(entity, candidate, body, context.hulls, context.taken)) {
+                search.routeValidation = null
                 search.reject("occupied_on_review")
-                search.destinationIndex++
+                search.rejectedRoutes += candidate
+                search.skipRejectedRoutes()
+                continue
+            }
+            if (search.routeValidation != null && context.overwatch && !protected(entity, task, candidate, context.hulls)) {
+                search.routeValidation = null
+                search.reject("changed_overwatch_cover")
+                search.rejectedRoutes += candidate
+                search.skipRejectedRoutes()
                 continue
             }
             if (FiringPostArrival.reached(entity.position(), candidate) && safeDistance(entity, context.view, candidate)) {
@@ -357,18 +370,36 @@ object TacticalPositions {
                 tracePosition(context, entity.position(), search.scored[candidate])
                 return finish(task, entity.position(), allowDepthAdjustment = canAdjustPostDepth(context, candidate), maneuverPost = task.job == TacticalJob.FLANK && mustShoot, nearbyShelter = isContactShelter(context, candidate))
             }
-            if (!TacticalBudget.path(context.level.gameTime)) return Result(Outcome.DEFERRED)
-            val path = pathToCandidate(context, candidate)
+            if (search.routeValidation == null) {
+                if (!TacticalBudget.path(entity)) return Result(Outcome.DEFERRED)
+                val batch = routeBatch(context, candidate, destinations)
+                val path = pathToCandidates(entity, batch)
+                search.pathAttempts++
+                if (path?.canReach() == true) {
+                    candidate = batch.first { VehicleAwareNavigation.walkingNode(it) == path.target }
+                    search.routeValidation = TacticalRouteValidation(path, context.level.gameTime, candidate)
+                } else {
+                    search.rejectedRoutes.addAll(batch)
+                    DebugFlags.log(LogGroup.PATH, "[tactics] {} plan={} event=post_route_batch_rejected candidates={} attempts={} end={}", entity.uuid, task.plan, batch.size, search.pathAttempts, path?.endNode?.asBlockPos())
+                }
+            }
+            val validation = search.routeValidation
+            val path = validation?.path
             if (reaches(path, candidate)) {
-                val safety = checkRoute(context, path!!)
-                if (safety == RouteSafety.DEFERRED) return Result(Outcome.DEFERRED)
-                if (safety == RouteSafety.SAFE && entity.navigation.moveTo(path, speed(task, entity.position()))) {
+                val wasDeferred = validation!!.deferred
+                val safety = checkRoute(context, validation)
+                if (safety == TacticalRouteValidation.Outcome.DEFERRED) {
+                    if (!wasDeferred) DebugFlags.log(LogGroup.PATH, "[tactics] {} plan={} event=post_route_deferred candidate={} node={}/{}", entity.uuid, task.plan, candidate, validation.nextNode, path!!.nodeCount)
+                    return Result(Outcome.DEFERRED)
+                }
+                if (safety == TacticalRouteValidation.Outcome.SAFE && entity.navigation.moveTo(path, speed(task, entity.position()))) {
+                    if (wasDeferred) DebugFlags.log(LogGroup.PATH, "[tactics] {} plan={} event=post_route_resumed candidate={} age={}", entity.uuid, task.plan, candidate, context.level.gameTime - validation.builtAt)
                     task.navigationPath = path
                     FiringSpots.claim(entity.uuid, candidate)
                     tracePosition(context, candidate, search.scored[candidate])
                     return finish(task, candidate, allowDepthAdjustment = canAdjustPostDepth(context, candidate), maneuverPost = task.job == TacticalJob.FLANK && mustShoot, nearbyShelter = isContactShelter(context, candidate))
                 }
-                search.reject(if (safety == RouteSafety.SAFE) "navigation" else "unsafe_route")
+                search.reject(if (safety == TacticalRouteValidation.Outcome.SAFE) "navigation" else "unsafe_route")
             } else {
                 search.reject("unreachable_route")
                 DebugFlags.log(
@@ -378,12 +409,15 @@ object TacticalPositions {
                     path?.canReach(), path?.endNode?.asBlockPos(), task.expandedFireSearch,
                 )
             }
-            search.destinationIndex++
+            search.routeValidation = null
+            search.rejectedRoutes += candidate
+            search.skipRejectedRoutes()
         }
         if (search.denseRecovery && search.probeIndex < search.probes.size) {
             search.clearCandidates()
             return Result(Outcome.DEFERRED)
         }
+        val coarseExhausted = search.scored.isEmpty()
         if (task.expandedFireSearch && search.extendRecovery(task.localFirePost!!)) {
             DebugFlags.log(
                 LogGroup.ORDER,
@@ -394,7 +428,7 @@ object TacticalPositions {
                 TacticalFirePosts.RECOVERY_RADIUS,
                 search.probes.size,
             )
-            return Result(Outcome.DEFERRED)
+            return Result(Outcome.DEFERRED, coarseExhausted = coarseExhausted)
         }
         task.search = null
         return Result(Outcome.UNREACHABLE, rejections = search.rejections.toMap())
@@ -438,33 +472,66 @@ object TacticalPositions {
 
     private fun isContactShelter(context: SearchContext, point: Vec3): Boolean = nearContact(context.task, point) && context.search.scored[point]?.open == false
 
-    private fun pathToCandidate(context: SearchContext, candidate: Vec3): Path? {
-        val entity = context.entity
-        if (context.overwatch && !protected(entity, context.task, candidate, context.hulls)) return null
-        return pathToPosition(entity, candidate)
+    /** Preserve shelter/exposure tiers, and the height tier of a defensive overwatch post. */
+    private fun routeBatch(context: SearchContext, first: Vec3, destinations: List<Vec3>): List<Vec3> {
+        val result = ArrayList<Vec3>()
+        val firstScore = context.search.scored[first]
+        for (index in context.search.destinationIndex until destinations.size) {
+            val point = destinations[index]
+            if (point in context.search.rejectedRoutes) continue
+            val score = context.search.scored[point]
+            if (score?.open != firstScore?.open || score?.exposure != firstScore?.exposure ||
+                (context.overwatch && kotlin.math.abs(point.y - first.y) > 0.01)
+            ) {
+                break
+            }
+            if (!TickBudget.hasRaycasts(context.level)) break
+            val body = context.entity.getDimensions(context.entity.pose).makeBoundingBox(point)
+            val valid = safeBody(context.entity, point, body, context.hulls, context.taken) &&
+                (!requiresFiringLane(context, point) || firingReady(context.entity, context.task, point)) &&
+                (!context.overwatch || protected(context.entity, context.task, point, context.hulls))
+            if (valid) {
+                result += point
+                if (result.size == 16) break
+            } else {
+                context.search.rejectedRoutes += point
+                context.search.reject("changed_batch_post")
+            }
+        }
+        return result
     }
 
-    private enum class RouteSafety { SAFE, UNSAFE, DEFERRED }
+    fun pathToCandidates(entity: NpcEntity, points: List<Vec3>): Path? =
+        TacticalBudget.measure(entity) {
+            val targets = points.mapTo(LinkedHashSet()) { VehicleAwareNavigation.walkingNode(it) }
+            val navigation = entity.navigation
+            if (navigation is VehicleAwareNavigation) navigation.createPositionPath(targets) else navigation.createPath(targets, 0)
+        }
 
-    private fun checkRoute(context: SearchContext, path: Path): RouteSafety {
+    private fun checkRoute(context: SearchContext, validation: TacticalRouteValidation): TacticalRouteValidation.Outcome {
+        val path = validation.path
         val task = context.task
         val focus = context.focus
-        if (!safePath(context.entity, context.view, path)) return RouteSafety.UNSAFE
+        if (!safePath(context.entity, context.view, path)) return TacticalRouteValidation.Outcome.UNSAFE
         for (index in path.nextNodeIndex until path.nodeCount) {
             val node = path.getNode(index)
             val foot = Vec3(node.x + 0.5, node.y.toDouble(), node.z + 0.5)
             if (!TacticalRules.withinOrder(context.view, foot, context.homeRadius) || GrenadeHazard.threatens(context.level, foot) ||
                 !context.policy.route(context.view, foot)
             ) {
-                return RouteSafety.UNSAFE
+                return TacticalRouteValidation.Outcome.UNSAFE
             }
-            if (task.opensLane && focus != null && !TacticalRoutes.safeLaneProbe(context.search.origin, foot, focus, task.probeAdvance)) return RouteSafety.UNSAFE
-            if (index % 4 == 0 && task.job == TacticalJob.FLANK) {
-                if (!TickBudget.hasRaycasts(context.level)) return RouteSafety.DEFERRED
-                if (hasUncoveredApproach(context, foot)) return RouteSafety.UNSAFE
-            }
+            if (task.opensLane && focus != null && !TacticalRoutes.safeLaneProbe(context.search.origin, foot, focus, task.probeAdvance)) return TacticalRouteValidation.Outcome.UNSAFE
         }
-        return RouteSafety.SAFE
+        return validation.resume { index ->
+            if (index % 4 == 0 && task.job == TacticalJob.FLANK) {
+                if (!TickBudget.hasRaycasts(context.level)) return@resume TacticalRouteValidation.Outcome.DEFERRED
+                val node = path.getNode(index)
+                val foot = Vec3(node.x + 0.5, node.y.toDouble(), node.z + 0.5)
+                if (hasUncoveredApproach(context, foot)) return@resume TacticalRouteValidation.Outcome.UNSAFE
+            }
+            TacticalRouteValidation.Outcome.SAFE
+        }
     }
 
     fun safeDistance(entity: NpcEntity, view: TacticalSnapshot, point: Vec3): Boolean = TacticalClearance.permitsPosition(entity.npcClass, entity.position(), point, view)
@@ -487,10 +554,12 @@ object TacticalPositions {
 
     fun pathToPosition(entity: NpcEntity, point: Vec3): Path? {
         val navigation = entity.navigation
-        return if (navigation is VehicleAwareNavigation) {
-            navigation.createPositionPath(VehicleAwareNavigation.walkingNode(point))
-        } else {
-            navigation.createPath(point.x, point.y, point.z, 0)
+        return TacticalBudget.measure(entity) {
+            if (navigation is VehicleAwareNavigation) {
+                navigation.createPositionPath(VehicleAwareNavigation.walkingNode(point))
+            } else {
+                navigation.createPath(point.x, point.y, point.z, 0)
+            }
         }
     }
 
