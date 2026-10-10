@@ -292,7 +292,7 @@ object TacticalPositions {
             return TacticalPositionScore(
                 !nearbyCover,
                 exposure,
-                candidate.distanceTo(context.search.origin) + candidate.subtract(context.task.frontage!!.point).horizontalDistance(),
+                candidate.distanceTo(context.search.origin) * 0.1 + candidate.subtract(context.task.frontage!!.point).horizontalDistance(),
                 TacticalPositionScore.Purpose.DEPLOYMENT,
             )
         }
@@ -481,6 +481,14 @@ object TacticalPositions {
     fun protected(entity: NpcEntity, task: TacticalTask, point: Vec3): Boolean {
         val level = entity.level() as ServerLevel
         return protected(entity, task, point, Sightline.vehicleHulls(level, entity.boundingBox.inflate(64.0), entity, entity.target))
+    }
+
+    /** A held sentry post needs physical shelter, not a clear shot at every new reported target. */
+    fun protectedHeldOverwatch(entity: NpcEntity, point: Vec3): Boolean {
+        val level = entity.level() as ServerLevel
+        return level.noCollision(entity, entity.getDimensions(entity.pose).makeBoundingBox(point)) &&
+            !GrenadeHazard.threatens(level, point) &&
+            DefensiveOverwatch.protected(point, entity.eyeHeight.toDouble(), null) { from, to -> Sightline.blocked(level, from, to, entity) }
     }
 
     private fun protected(entity: NpcEntity, task: TacticalTask, point: Vec3, hulls: List<AABB>): Boolean =

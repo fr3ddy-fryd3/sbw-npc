@@ -8,7 +8,13 @@ object TacticalGoalProgress {
     fun reached(task: TacticalTask, point: Vec3): Boolean = point.distanceTo(task.anchor) <= GOAL_RADIUS
 
     fun permitsAdvance(task: TacticalTask, origin: Vec3, point: Vec3, deploying: Boolean): Boolean {
-        if (task.job != TacticalJob.ADVANCE) return true
+        val front = task.frontage
+        if (deploying && front != null) {
+            if (task.permitsFront(point)) return true
+            return !FiringPostArrival.reached(origin, point) &&
+                point.subtract(front.point).horizontalDistance() < origin.subtract(front.point).horizontalDistance() - MINIMUM_GAIN
+        }
+        if (task.job != TacticalJob.ADVANCE && task.job != TacticalJob.SEARCH) return true
         // Arrival near the anchor is insufficient while still outside the assigned lane.
         // Deployment must not repeatedly select the actor's current intermediate position.
         if (reached(task, point) && (!deploying || task.permitsFront(point))) return true

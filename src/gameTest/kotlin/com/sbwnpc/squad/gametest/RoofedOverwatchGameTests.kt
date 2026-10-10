@@ -35,6 +35,50 @@ import java.util.UUID
 @PrefixGameTestTemplate(false)
 object RoofedOverwatchGameTests {
     @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1600, batch = "roofed-hidden-contact")
+    fun sentryKeepsShelteredTowerWhenSharedContactHasNoFiringLane(helper: GameTestHelper) {
+        var sentry: NpcEntity? = null
+        var post: Vec3? = null
+        var enemy: NpcEntity? = null
+        var since = 0L
+        occupy(helper, SquadOrder.DEFEND, onlySupport = NpcClass.MACHINE_GUNNER, onOccupied = { npc, point ->
+            sentry = npc
+            post = point
+            since = helper.tick
+            val relative = helper.relativeVec(point)
+            for (z in -4..4) for (y in 2..10) helper.setBlock(BlockPos.containing(relative.x + 6.0, y.toDouble(), relative.z + z), Blocks.STONE)
+            enemy = AttackDeploymentGameTests.spawn(helper, Vec3(relative.x + 12.0, 2.0, relative.z), SquadFaction.PIG).apply { isNoAi = true }
+        })
+        helper.testInfo.addListener(object : GameTestListener {
+            override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
+            override fun testPassed(test: GameTestInfo, runner: GameTestRunner) {
+                enemy?.discard()
+            }
+            override fun testFailed(test: GameTestInfo, runner: GameTestRunner) {
+                enemy?.discard()
+            }
+            override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) {
+                enemy?.discard()
+            }
+        })
+        helper.onEachTick {
+            val npc = sentry ?: return@onEachTick
+            val target = enemy ?: return@onEachTick
+            if (helper.tick % 20L == 0L) {
+                // A shared report, not personal visual confirmation through the wall.
+                com.sbwnpc.squad.combat.tactics.SquadTactics.observe(npc, target)
+                net.tslat.smartbrainlib.util.BrainUtils.setTargetOfEntity(npc, target)
+            }
+            helper.assertTrue(npc.isAlive && npc.position().distanceTo(post!!) < 2.0, "Sentry abandoned an intact sheltered tower solely because a reported target was hidden")
+            if (helper.tick - since >= 220) {
+                helper.assertTrue(npc.lastShotTick < 0, "Sentry fired through the obstructing wall")
+                helper.assertTrue(post in FiringSpots.nearby(post!!, 1.0, UUID(0, 0)), "Hidden contact lost the tower reservation")
+                helper.succeed()
+            }
+        }
+    }
+
+    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1200, batch = "roofed-tower")
     fun supportOccupiesPlayerRoofedTower(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND)
 
@@ -186,8 +230,10 @@ object RoofedOverwatchGameTests {
                     val heldNewPost = squad.order == SquadOrder.DEFEND && task?.position?.let {
                         it != previousPost && FiringPostArrival.reached(npc.position(), it)
                     } == true
+                    // RETREAT can complete for the squad before this member takes a new DEFEND
+                    // post. Formation arrival is broader than the individual approach radius.
                     at.y < 3.0 && npc.onGround() && npc.navigation.isDone &&
-                        (npc.position().distanceTo(npc.homeCenter()!!) <= SquadFormation.ARRIVAL_RADIUS || heldNewPost)
+                        (SquadFormation.reachedPoint(npc, npc.homeCenter()!!, squad.members.size) || heldNewPost)
                 }
 
                 Departure.SUPPLY -> {

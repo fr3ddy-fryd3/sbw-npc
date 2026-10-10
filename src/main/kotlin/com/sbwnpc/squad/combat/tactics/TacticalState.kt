@@ -220,7 +220,9 @@ class TacticalLayout(val context: TacticalContext) {
         }
         val homeRadius = SquadFormation.perimeterRadius(view.members.size) + 10.0 + if (overwatch) DefensiveOverwatch.RADIUS else 0.0
         val home = view.home
-        return member.position.distanceTo(view.center) <= range &&
+        // Reinforcements and stragglers are still squad members. Their route is planned in short
+        // legs; proximity to the current median is not a prerequisite for joining the attack front.
+        return (view.offensive || member.position.distanceTo(view.center) <= range) &&
             (view.order != SquadOrder.DEFEND || home == null || member.position.distanceTo(home) <= homeRadius)
     }
 

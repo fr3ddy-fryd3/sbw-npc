@@ -95,9 +95,11 @@ object TacticalMovement {
             } else {
                 val point = task.position!!
                 val requiresCover = task.job == TacticalJob.OVERWATCH && !task.localFireRecovery
-                !GrenadeHazard.threatens(level, point) &&
-                    (!requiresCover || TacticalPositions.protected(entity, task, point)) &&
-                    TacticalPositions.firingReady(entity, task, point)
+                if (requiresCover) {
+                    TacticalPositions.protectedHeldOverwatch(entity, point)
+                } else {
+                    !GrenadeHazard.threatens(level, point) && TacticalPositions.firingReady(entity, task, point)
+                }
             }
         }
         if (postReview == TacticalPostReview.Result.INVALIDATED) {
@@ -183,8 +185,9 @@ object TacticalMovement {
                 TickBudget.hasRaycasts(entity.level() as ServerLevel)
             ) {
                 task.nextValidation = entity.level().gameTime + 40
-                val invalidCover = task.job == TacticalJob.OVERWATCH && !task.localFireRecovery && !TacticalPositions.protected(entity, task, entity.position())
-                if (GrenadeHazard.threatens(entity.level() as ServerLevel, position) || invalidCover || !TacticalPositions.firingReady(entity, task, entity.position())) {
+                val holdingOverwatch = task.job == TacticalJob.OVERWATCH && !task.localFireRecovery
+                val invalidCover = holdingOverwatch && !TacticalPositions.protectedHeldOverwatch(entity, entity.position())
+                if (GrenadeHazard.threatens(entity.level() as ServerLevel, position) || invalidCover || (!holdingOverwatch && !TacticalPositions.firingReady(entity, task, entity.position()))) {
                     DebugFlags.log(
                         LogGroup.ORDER,
                         "[tactics] {} squad={} tick={} plan={} event=position_invalidated job={} reason=firing_post_changed target={}",
@@ -318,6 +321,8 @@ object TacticalMovement {
     /** Moving groups keep their path; stationary shooters request a new coordinated position. */
     fun repositionForFire(entity: NpcEntity) {
         val task = SquadTactics.task(entity) ?: return
+        // A temporary blocked lane does not evict a sentry from an intact protected platform.
+        if (task.job == TacticalJob.OVERWATCH && !task.localFireRecovery) return
         if (!invalidateReachedFirePost(task, entity.position(), entity.onGround(), entity.level().gameTime)) return
         FiringSpots.release(entity.uuid)
     }

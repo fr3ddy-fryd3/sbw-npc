@@ -35,6 +35,45 @@ import java.util.function.Consumer
 
 @PrefixGameTestTemplate(false)
 object AttackDeploymentGameTests {
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 2400, batch = "remote-contact-advance")
+    fun remoteContactBringsRearMembersPastTerrainToFiringRange(helper: GameTestHelper) {
+        for (x in 0..159) for (z in 0..127) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        // Blocks all direct fire from the starting area; the squad must really approach it.
+        for (z in 20..100) for (y in 1..4) helper.setBlock(BlockPos(60, y, z), Blocks.STONE)
+        val rear = (0..1).map { spawn(helper, Vec3(12.5, 1.0, 45.5 + it * 4), SquadFaction.PIG, randomSeed = it.toLong()) }
+        val lead = (0..5).map { spawn(helper, Vec3(114.5 + it % 2 * 3, 1.0, 41.5 + it / 2 * 8), SquadFaction.PIG) }
+        val scout = lead.first()
+        val enemy = spawn(helper, Vec3(140.5, 1.0, 50.5), SquadFaction.COW).apply {
+            isNoAi = true
+            getAttribute(Attributes.MAX_HEALTH)!!.baseValue = 50000.0
+            health = maxHealth
+        }
+        val manager = SquadManager.get(helper.level)
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, (rear + lead).map { it.uuid })
+        manager.setOrder(squad.id, SquadOrder.ATTACK)
+        manager.setObjective(helper.level, squad.id, enemy.blockPosition())
+        manager.setFocus(squad.id, enemy.uuid)
+        var observed = false
+        val fired = mutableSetOf<UUID>()
+        helper.testInfo.addListener(object : net.minecraft.gametest.framework.GameTestListener {
+            override fun testStructureLoaded(testInfo: net.minecraft.gametest.framework.GameTestInfo) = Unit
+            override fun testPassed(test: net.minecraft.gametest.framework.GameTestInfo, runner: net.minecraft.gametest.framework.GameTestRunner) = cleanup()
+            override fun testFailed(test: net.minecraft.gametest.framework.GameTestInfo, runner: net.minecraft.gametest.framework.GameTestRunner) = cleanup()
+            override fun testAddedForRerun(oldTest: net.minecraft.gametest.framework.GameTestInfo, newTest: net.minecraft.gametest.framework.GameTestInfo, runner: net.minecraft.gametest.framework.GameTestRunner) = cleanup()
+            private fun cleanup() {
+                manager.deleteSquad(helper.level, squad.id)
+                (rear + lead + enemy).forEach { it.discard() }
+            }
+        })
+        helper.onEachTick {
+            if (scout.target === enemy) observed = true
+            rear.filter { it.lastShotTick >= 0 }.forEach { fired += it.uuid }
+            val arrived = rear.count { it.distanceTo(enemy) <= NpcClass.RIFLEMAN.assaultDistance + 12.0 }
+            if (observed && arrived == rear.size && fired.size == rear.size) helper.succeed()
+        }
+    }
+
     /** Use SBW damage sources directly to distinguish damage from reporting a hostile contact. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 40)
