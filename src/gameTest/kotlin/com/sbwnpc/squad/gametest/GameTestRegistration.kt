@@ -11,6 +11,7 @@ object GameTestRegistration {
     @SubscribeEvent
     fun register(event: RegisterGameTestsEvent) {
         val classes = listOf(
+            FactionLogisticsGameTests::class.java,
             ExperienceGameTests::class.java,
             SquadProgressionGameTests::class.java,
             InfantryMovementGameTests::class.java,
