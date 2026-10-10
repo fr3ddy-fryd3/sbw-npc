@@ -90,6 +90,11 @@ class SupplyScreen(private val pos: BlockPos, snapshot: CompoundTag) : Screen(Co
             }
         }
 
+        addRenderableWidget(
+            Button.builder(Component.literal("Resupply ammo")) { send(SupplyCmdPayload.RESUPPLY_AMMO, selected) }
+                .tooltip(Tooltip.create(Component.literal("Top up ammunition for ${kit?.name ?: "this class"}, including its weapon variants. Weapons and equipment are not issued.")))
+                .bounds(left, y + 24, WIDTH, 20).build().also { it.active = canUseSupply && kit != null },
+        )
         val spawn = if (spawnHere) {
             Component.literal("You respawn here").withStyle(ChatFormatting.GREEN)
         } else {
@@ -100,15 +105,15 @@ class SupplyScreen(private val pos: BlockPos, snapshot: CompoundTag) : Screen(Co
                 .tooltip(
                     Tooltip.create(
                         Component.literal(
-                            "Like a bed: you come back here while this Supply stands, serves your side and has room on top. " +
+                            "Like a bed: you come back here while this Supply stands, serves your side and has a safe place nearby. " +
                                 "Otherwise at the world spawn. A bed or anchor replaces it.",
                         ),
                     ),
                 )
-                .bounds(left, y + 32, WIDTH, 20).build()
+                .bounds(left, y + 56, WIDTH, 20).build()
                 .also { it.active = canUseSupply && !spawnHere },
         )
-        addRenderableWidget(Button.builder(Component.literal("Close")) { onClose() }.bounds(left, y + 56, WIDTH, 20).build())
+        addRenderableWidget(Button.builder(Component.literal("Close")) { onClose() }.bounds(left, y + 80, WIDTH, 20).build())
     }
 
     private fun flip(step: Int) {
@@ -151,7 +156,7 @@ class SupplyScreen(private val pos: BlockPos, snapshot: CompoundTag) : Screen(Co
 
         /** Room for the longest kit: the weapon, seven lines of kit, the uniform. */
         const val LIST_HEIGHT = LINE * 9 + 6
-        const val HEIGHT = 62 + LIST_HEIGHT + 76
+        const val HEIGHT = 62 + LIST_HEIGHT + 100
 
         /** The class last looked at, kept while the screen is refreshed after taking a kit. */
         var selected = 0

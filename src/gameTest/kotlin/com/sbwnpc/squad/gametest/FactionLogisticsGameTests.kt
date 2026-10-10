@@ -49,6 +49,48 @@ import java.util.function.Supplier
 @PrefixGameTestTemplate(false)
 object FactionLogisticsGameTests {
     @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 40, batch = "supply-class-ammo")
+    fun supplyAmmoUsesSelectedClassWithoutIssuingOrDuplicatingEquipment(helper: GameTestHelper) {
+        floor(helper)
+        val player = player(helper, "class-ammo")
+        PlayerFactionRegistry.get(helper.level).set(player.uuid, SquadFaction.PIG)
+        val pos = helper.absolutePos(BlockPos(8, 1, 6))
+        helper.level.setBlockAndUpdate(pos, ModBlocks.SUPPLY.get().defaultBlockState())
+        val supply = helper.level.getBlockEntity(pos) as SupplyBlockEntity
+        supply.faction = SquadFaction.PIG
+        cleanup(helper) { helper.level.setBlockAndUpdate(pos, Blocks.AIR.defaultBlockState()) }
+        helper.runAtTickTime(5) {
+            val kit = Ports.playerSupply.kits.indexOfFirst { it.name == "Sniper" }
+            val guns = NpcClass.SNIPER.weaponPool.map {
+                GunData.from(ItemStack(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(it)))
+            }
+            val reserves = player.getData(com.atsuishio.superbwarfare.init.ModAttachments.PLAYER_VARIABLE).watch()
+            guns.forEach { gun -> gun.selectedAmmoConsumer().also { if (!it.initialized()) it.init() }.playerAmmoType!!.set(reserves, 0) }
+            player.setData(com.atsuishio.superbwarfare.init.ModAttachments.PLAYER_VARIABLE, reserves)
+            handle("onSupplyCmd", SupplyCmdPayload(pos, SupplyCmdPayload.RESUPPLY_AMMO, kit, 0), player)
+            // SVD and AWM share SBW's SniperAmmo store: use the larger class reserve, not their sum.
+            val expectedByType = guns.withIndex().groupBy { it.value.selectedAmmoConsumer().playerAmmoType!! }
+                .mapValues { (_, entries) ->
+                    entries.maxOf { (index, gun) ->
+                        NpcClass.SNIPER.startingRounds(NpcClass.SNIPER.weaponPool[index]) - gun.get(com.atsuishio.superbwarfare.data.gun.GunProp.MAGAZINE)
+                    }
+                }
+            expectedByType.forEach { (type, expected) ->
+                val actual = type.get(player.getData(com.atsuishio.superbwarfare.init.ModAttachments.PLAYER_VARIABLE))
+                helper.assertTrue(actual == expected, "Selected class reserve incorrect: expected=$expected actual=$actual")
+            }
+            helper.assertTrue(player.inventory.isEmpty, "Ammo-only request issued weapons, armour or utility gear")
+            helper.assertTrue(!Ports.playerSupply.issueAmmo(player, kit), "Repeated resupply accumulated ammunition")
+            guns.forEach { gun -> gun.selectedAmmoConsumer().playerAmmoType!!.set(reserves, 0) }
+            player.setData(com.atsuishio.superbwarfare.init.ModAttachments.PLAYER_VARIABLE, reserves)
+            supply.faction = SquadFaction.COW
+            handle("onSupplyCmd", SupplyCmdPayload(pos, SupplyCmdPayload.RESUPPLY_AMMO, kit, 0), player)
+            helper.assertTrue(guns.all { it.selectedAmmoConsumer().playerAmmoType!!.get(player.getData(com.atsuishio.superbwarfare.init.ModAttachments.PLAYER_VARIABLE)) == 0 }, "Foreign Supply issued class ammunition in survival")
+            helper.succeed()
+        }
+    }
+
+    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 1400, batch = "barracks-casualties")
     fun barracksDeploysWholeGarrisonAndOnlyQueuesCasualties(helper: GameTestHelper) {
         for (x in 0 until 40) for (z in 0 until 40) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)

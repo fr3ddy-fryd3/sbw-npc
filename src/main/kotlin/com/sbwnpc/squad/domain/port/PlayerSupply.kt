@@ -19,4 +19,7 @@ interface PlayerSupply {
      *  empty armour slots only, so a Supply can't be milked by clicking. True when anything was
      *  handed over. */
     fun issueKit(player: ServerPlayer, kit: Int, option: Int, faction: SquadFaction?): Boolean
+
+    /** Tops up only the selected class's ammunition, without issuing weapons, armour or utility gear. */
+    fun issueAmmo(player: ServerPlayer, kit: Int): Boolean
 }

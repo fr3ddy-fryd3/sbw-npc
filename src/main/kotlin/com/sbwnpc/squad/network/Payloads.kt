@@ -384,6 +384,7 @@ class SupplyCmdPayload(val pos: BlockPos, val action: Int, val kit: Int, val opt
         const val TAKE_KIT = 1 // kit = its index, option = the weapon's
         const val SET_SPAWN = 2
         const val SET_FACTION = 3 // creative only; kit = the faction's ordinal
+        const val RESUPPLY_AMMO = 4 // kit = the class currently shown in the Supply screen
 
         val TYPE = CustomPacketPayload.Type<SupplyCmdPayload>(SquadMod.loc("supply_cmd"))
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, SupplyCmdPayload> = StreamCodec.composite(

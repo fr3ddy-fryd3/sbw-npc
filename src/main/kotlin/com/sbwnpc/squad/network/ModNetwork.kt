@@ -392,6 +392,12 @@ object ModNetwork {
                     }
                 }
 
+                SupplyCmdPayload.RESUPPLY_AMMO -> {
+                    if (!supply.serves(PlayerFactionRegistry.get(level).get(player.uuid))) return@enqueueWork
+                    val name = supplyPort.kits.getOrNull(p.kit)?.name ?: return@enqueueWork
+                    if (supplyPort.issueAmmo(player, p.kit)) "$name ammunition resupplied" else "$name ammunition already full"
+                }
+
                 SupplyCmdPayload.SET_SPAWN -> {
                     if (!supply.serves(PlayerFactionRegistry.get(level).get(player.uuid))) return@enqueueWork
                     com.sbwnpc.squad.block.SupplySpawns.get(player.server).set(player, level, p.pos)

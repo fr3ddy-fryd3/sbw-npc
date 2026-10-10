@@ -122,6 +122,17 @@ object SbwPlayerSupply : PlayerSupply {
         }
     }
 
+    override fun issueAmmo(player: ServerPlayer, kit: Int): Boolean {
+        val spec = SPECS.getOrNull(kit) ?: return false
+        var given = false
+        spec.cls.weaponPool.forEach { weapon ->
+            gunItem(weapon)?.let { given = topUpAmmo(player, it, spec.cls.startingRounds(weapon)) || given }
+        }
+        if (spec.launcher) given = topUpItems(player, ModItems.RPG_ROCKET_TBG.get(), 2) || given
+        if (given) player.level().playSound(null, player.blockPosition(), ModSounds.BULLET_SUPPLY.get(), SoundSource.PLAYERS, 1f, 1f)
+        return given
+    }
+
     override fun issueKit(player: ServerPlayer, kit: Int, option: Int, faction: SquadFaction?): Boolean {
         val spec = SPECS.getOrNull(kit) ?: return false
         val weapon = spec.cls.weaponPool.getOrNull(option) ?: return false
