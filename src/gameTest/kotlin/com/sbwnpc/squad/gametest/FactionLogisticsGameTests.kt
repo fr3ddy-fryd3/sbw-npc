@@ -49,6 +49,34 @@ import java.util.function.Supplier
 @PrefixGameTestTemplate(false)
 object FactionLogisticsGameTests {
     @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 40, batch = "class-rations")
+    fun everyPlayerClassKitIncludesRefillableRations(helper: GameTestHelper) {
+        floor(helper)
+        val player = player(helper, "class-rations")
+        PlayerFactionRegistry.get(helper.level).set(player.uuid, SquadFaction.PIG)
+        val pos = helper.absolutePos(BlockPos(8, 1, 6))
+        helper.level.setBlockAndUpdate(pos, ModBlocks.SUPPLY.get().defaultBlockState())
+        (helper.level.getBlockEntity(pos) as SupplyBlockEntity).faction = SquadFaction.PIG
+        cleanup(helper) { helper.level.setBlockAndUpdate(pos, Blocks.AIR.defaultBlockState()) }
+        helper.runAtTickTime(5) {
+            Ports.playerSupply.kits.forEachIndexed { index, kit ->
+                player.inventory.clearContent()
+                handle("onSupplyCmd", SupplyCmdPayload(pos, SupplyCmdPayload.TAKE_KIT, index, 0), player)
+                helper.assertTrue(player.inventory.countItem(net.minecraft.world.item.Items.BREAD) == 8, "${kit.name} did not issue eight rations")
+                helper.assertTrue(kit.options.all { option -> option.items.any { it.first.path == "bread" && it.second == 8 } }, "${kit.name} menu omitted rations")
+                handle("onSupplyCmd", SupplyCmdPayload(pos, SupplyCmdPayload.TAKE_KIT, index, 0), player)
+                helper.assertTrue(player.inventory.countItem(net.minecraft.world.item.Items.BREAD) == 8, "Repeated kit request accumulated rations")
+                player.inventory.items.first { it.`is`(net.minecraft.world.item.Items.BREAD) }.shrink(3)
+                handle("onSupplyCmd", SupplyCmdPayload(pos, SupplyCmdPayload.RESUPPLY_AMMO, index, 0), player)
+                helper.assertTrue(player.inventory.countItem(net.minecraft.world.item.Items.BREAD) == 5, "Ammo-only request refilled food")
+                handle("onSupplyCmd", SupplyCmdPayload(pos, SupplyCmdPayload.TAKE_KIT, index, 0), player)
+                helper.assertTrue(player.inventory.countItem(net.minecraft.world.item.Items.BREAD) == 8, "${kit.name} did not replace eaten rations")
+            }
+            helper.succeed()
+        }
+    }
+
+    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 40, batch = "supply-class-ammo")
     fun supplyAmmoUsesSelectedClassWithoutIssuingOrDuplicatingEquipment(helper: GameTestHelper) {
         floor(helper)

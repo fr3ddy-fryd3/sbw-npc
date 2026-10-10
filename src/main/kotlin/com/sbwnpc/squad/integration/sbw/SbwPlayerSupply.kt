@@ -19,6 +19,7 @@ import net.minecraft.sounds.SoundSource
 import net.minecraft.world.entity.EquipmentSlot
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.Items
 import java.util.function.Supplier
 
 /**
@@ -34,9 +35,11 @@ object SbwPlayerSupply : PlayerSupply {
     private class Spec(
         val name: String,
         val cls: NpcClass,
-        val extras: List<Pair<Supplier<out Item>, Int>>,
+        extras: List<Pair<Supplier<out Item>, Int>>,
         val launcher: Boolean = false,
-    )
+    ) {
+        val extras = extras + (Supplier { Items.BREAD } to 8)
+    }
 
     private fun fighter(medkits: Int = 1) =
         listOf(

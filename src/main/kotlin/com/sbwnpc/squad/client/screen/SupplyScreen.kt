@@ -154,8 +154,8 @@ class SupplyScreen(private val pos: BlockPos, snapshot: CompoundTag) : Screen(Co
         const val WIDTH = 240
         const val LINE = 11
 
-        /** Room for the longest kit: the weapon, seven lines of kit, the uniform. */
-        const val LIST_HEIGHT = LINE * 9 + 6
+        /** Room for the longest kit: the weapon, eight lines of kit including rations, the uniform. */
+        const val LIST_HEIGHT = LINE * 10 + 6
         const val HEIGHT = 62 + LIST_HEIGHT + 100
 
         /** The class last looked at, kept while the screen is refreshed after taking a kit. */
