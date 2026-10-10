@@ -43,13 +43,16 @@ object FriendlyFireGuard {
      *  chunk sections of a shooter→target box, and it's the same for every box size. [near] is the
      *  caller's cheap geometric test and runs first: with hundreds of NPCs in a level, a faction
      *  lookup for each of them, per shooter, was the costly part of the pass. */
-    private inline fun forEachAlly(shooter: NpcEntity, near: (LivingEntity) -> Boolean, action: (LivingEntity) -> Unit) {
+    private inline fun <T : Any> forEachAlly(shooter: NpcEntity, near: (LivingEntity) -> T?, action: (LivingEntity, T) -> Unit) {
         val level = shooter.level() as? ServerLevel ?: return
         for (npc in NpcRegistry.all(level)) {
-            if (npc !== shooter && near(npc) && !SquadTeams.isHostile(shooter, npc)) action(npc)
+            if (npc === shooter) continue
+            val data = near(npc) ?: continue
+            if (!SquadTeams.isHostile(shooter, npc)) action(npc, data)
         }
         for (player in level.players()) {
-            if (near(player) && !SquadTeams.isHostile(shooter, player)) action(player)
+            val data = near(player) ?: continue
+            if (!SquadTeams.isHostile(shooter, player)) action(player, data)
         }
     }
 
@@ -72,12 +75,15 @@ object FriendlyFireGuard {
         var lineClear = true
         var blastClear = true
         val blastBox = AABB(impactPoint, impactPoint).inflate(blastRadius)
-        forEachAlly(shooter, { cone.bounds.intersects(Ports.guns.firingSafetyBounds(it, flightTicks)) || (checkBlast && blastBox.contains(it.position())) }) { ally ->
-            if (lineClear && Ports.guns.canHitEntity(shooter, ally) && cone.intersects(Ports.guns.firingSafetyBounds(ally, flightTicks))) {
+        forEachAlly(shooter, { ally ->
+            val bounds = Ports.guns.firingSafetyBounds(ally, flightTicks)
+            bounds.takeIf { cone.bounds.intersects(it) || (checkBlast && blastBox.contains(ally.position())) }
+        }) { ally, bounds ->
+            if (lineClear && Ports.guns.canHitEntity(shooter, ally) && cone.intersects(bounds)) {
                 lineClear = false
             }
             if (blastClear && checkBlast && canBeHurt(ally) && ally.position().distanceTo(impactPoint) <= blastRadius) blastClear = false
-            if (!lineClear && !blastClear) return Assessment(false, false)
+            if (!lineClear && (!checkBlast || !blastClear)) return Assessment(false, blastClear)
         }
         return Assessment(lineClear, blastClear)
     }
@@ -97,7 +103,7 @@ object FriendlyFireGuard {
     fun allyInBlast(shooter: NpcEntity, impactPoint: Vec3, blastRadius: Double): LivingEntity? {
         if (blastRadius <= 0.0) return null
         val blastBox = AABB(impactPoint, impactPoint).inflate(blastRadius)
-        forEachAlly(shooter, { blastBox.contains(it.position()) }) { ally ->
+        forEachAlly(shooter, { ally -> Unit.takeIf { blastBox.contains(ally.position()) } }) { ally, _ ->
             if (canBeHurt(ally) && ally.position().distanceTo(impactPoint) <= blastRadius) return ally
         }
         return null
@@ -127,7 +133,7 @@ object FriendlyFireGuard {
         fun crowding(p: Vec3): Int {
             var n = 0
             val r2 = SIDESTEP_CHECK_RADIUS * SIDESTEP_CHECK_RADIUS
-            forEachAlly(shooter, { it.position().distanceToSqr(p) <= r2 }) { n++ }
+            forEachAlly(shooter, { ally -> Unit.takeIf { ally.position().distanceToSqr(p) <= r2 } }) { _, _ -> n++ }
             return n
         }
 

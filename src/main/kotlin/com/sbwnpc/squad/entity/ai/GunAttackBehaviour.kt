@@ -73,6 +73,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var aimTime = 0
     private val shootTimer = MillisTimer()
     private val openingFire = OpeningFire()
+    private val pathRetry = CombatPathRetry()
 
     /** Patrol combat stays around the place contact began, including on a long assigned route. */
     private var firingOrigin: Vec3? = null
@@ -270,6 +271,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         nextWitnessCheckTick = 0
         witnessed = true
         automaticBurst.reset()
+        pathRetry.reset()
     }
 
     private fun advanceOrHold(entity: NpcEntity, target: LivingEntity, canCover: Boolean) {
@@ -687,12 +689,26 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         val current = entity.navigation.path
         if (current != null && !current.isDone && TacticalPositions.reaches(current, point) && safeCombatPath(entity, target, current)) return true
         if (current != null && !current.isDone && !safeCombatPath(entity, target, current)) entity.navigation.stop()
-        if ((entity.navigation as? VehicleAwareNavigation)?.canPlan == false || !TacticalBudget.path(entity.level().gameTime)) return false
-        val path = TacticalPositions.pathToPosition(entity, point)
-        if (!safeCombatPosition(entity, target, point) || !TacticalPositions.reaches(path, point) || !safeCombatPath(entity, target, path!!)) {
+        // Validate cheap geometry before paying for A*. A completed post needs no new path.
+        if (!safeCombatPosition(entity, target, point)) {
             entity.navigation.stop()
             return false
         }
+        if (atSpot(entity, point)) {
+            entity.navigation.stop()
+            pathRetry.reset()
+            return true
+        }
+        val request = CombatPathRetry.Request(entity.position(), point, target.uuid, target.position())
+        if (!pathRetry.permits(request, entity.level().gameTime)) return false
+        if ((entity.navigation as? VehicleAwareNavigation)?.canPlan == false || !TacticalBudget.path(entity.level().gameTime)) return false
+        val path = TacticalPositions.pathToPosition(entity, point)
+        if (!TacticalPositions.reaches(path, point) || !safeCombatPath(entity, target, path!!)) {
+            pathRetry.reject(request, entity.level().gameTime)
+            entity.navigation.stop()
+            return false
+        }
+        pathRetry.reset()
         return entity.navigation.moveTo(path, 1.0)
     }
 
@@ -751,6 +767,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         advancingFromPost = false
         holdingAdvanceGoal = null
         holdingAdvanceComplete = false
+        pathRetry.reset()
     }
 
     private fun hasClearShot(entity: NpcEntity, target: LivingEntity): Boolean {
