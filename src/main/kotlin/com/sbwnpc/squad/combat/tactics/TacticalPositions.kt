@@ -90,7 +90,10 @@ object TacticalPositions {
             }
         }
         val oldSearch = task.search
-        if (oldSearch?.needsRestart(entity.position(), aim, deployment) == true) task.search = null
+        // Terrain and protection define a sentry post. Switching reported targets must not
+        // restart its multi-tick height scan before it ever reaches the ladder.
+        val searchAim = if (overwatch) null else aim
+        if (oldSearch?.needsRestart(entity.position(), searchAim, deployment) == true) task.search = null
         if (overwatch && task.search == null) entity.navigation.stop()
         val search = task.search ?: TacticalPositionSearch(
             entity.position(),
@@ -100,7 +103,10 @@ object TacticalPositions {
 
                     task.expandedFireSearch -> (TacticalFirePosts.probes(entity.position()) + TacticalFirePosts.probes(localAnchor, recovery = true)).distinct()
 
-                    deployment -> (OFFSETS.map { localAnchor.add(it) } + task.frontage!!.probes(recovery = true)).distinct()
+                    deployment -> (
+                        OFFSETS.map { localAnchor.add(it) } +
+                            if (entity.position().distanceTo(task.frontage!!.point) <= 48.0) task.frontage!!.probes(recovery = true) else emptyList()
+                        ).distinct()
 
                     task.frontage != null -> task.frontage!!.probes(recovery = true)
 
@@ -114,12 +120,14 @@ object TacticalPositions {
 
                     else -> OFFSETS.map { localAnchor.add(it) }
                 } + (
-                    task.coverOrigin?.takeUnless { task.expandedFireSearch }?.let {
+                    task.coverOrigin?.takeUnless {
+                        task.expandedFireSearch || (deployment && !TacticalContactApproach.searchesOriginShelter(view, entity.npcClass, it))
+                    }?.let {
                         TacticalFirePosts.denseProbes(it, CombatPosition.LOCAL_MOVE_RADIUS.toInt())
                     } ?: emptyList()
                     )
                 ).distinct(),
-            aim,
+            searchAim,
             deployment,
         ).also { search ->
             task.search = search
@@ -345,7 +353,7 @@ object TacticalPositions {
             if (reaches(path, candidate)) {
                 val safety = checkRoute(context, path!!)
                 if (safety == RouteSafety.DEFERRED) return Result(Outcome.DEFERRED)
-                if (safety == RouteSafety.SAFE && entity.navigation.moveTo(path, speed(task))) {
+                if (safety == RouteSafety.SAFE && entity.navigation.moveTo(path, speed(task, entity.position()))) {
                     task.navigationPath = path
                     FiringSpots.claim(entity.uuid, candidate)
                     tracePosition(context, candidate, search.scored[candidate])
@@ -404,7 +412,7 @@ object TacticalPositions {
 
     /** A transit leg may be blind; a post in the owned strip must already allow a shot. */
     internal fun requiresFiringLane(task: TacticalTask, deploying: Boolean, point: Vec3): Boolean =
-        (task.job in SHOOTING_JOBS && (!deploying || nearContact(task, point) || task.frontage?.permits(point, recovery = true) == true)) ||
+        (task.job in SHOOTING_JOBS && task.job != TacticalJob.OVERWATCH && (!deploying || nearContact(task, point) || task.frontage?.permits(point, recovery = true) == true)) ||
             (task.job == TacticalJob.FLANK && point.distanceTo(task.anchor) <= 10.0)
 
     private fun canAdjustPostDepth(context: SearchContext, point: Vec3): Boolean =
@@ -476,7 +484,7 @@ object TacticalPositions {
         }
     }
 
-    fun speed(task: TacticalTask): Double = if (task.job in RUNNING_JOBS + TacticalJob.OVERWATCH) 1.3 else 1.0
+    fun speed(task: TacticalTask, from: Vec3): Double = if (task.job in RUNNING_JOBS + setOf(TacticalJob.OVERWATCH, TacticalJob.SEARCH) || task.deployingFront(from)) 1.3 else 1.0
 
     fun protected(entity: NpcEntity, task: TacticalTask, point: Vec3): Boolean {
         val level = entity.level() as ServerLevel
@@ -492,9 +500,13 @@ object TacticalPositions {
     }
 
     private fun protected(entity: NpcEntity, task: TacticalTask, point: Vec3, hulls: List<AABB>): Boolean =
-        DefensiveOverwatch.protected(point, entity.eyeHeight.toDouble(), TacticalAim.resolve(entity, task)?.position) { from, to ->
+        DefensiveOverwatch.protected(point, entity.eyeHeight.toDouble(), null) { from, to ->
             Sightline.blockedBy(entity.level() as ServerLevel, from, to, entity, hulls)
-        } && friendlyLane(entity, point.add(0.0, entity.eyeHeight.toDouble(), 0.0), TacticalAim.resolve(entity, task)?.eye)
+        } || (
+            DefensiveOverwatch.protected(point, entity.eyeHeight.toDouble(), TacticalAim.resolve(entity, task)?.position) { from, to ->
+                Sightline.blockedBy(entity.level() as ServerLevel, from, to, entity, hulls)
+            } && friendlyLane(entity, point.add(0.0, entity.eyeHeight.toDouble(), 0.0), TacticalAim.resolve(entity, task)?.eye)
+            )
 
     private fun finish(task: TacticalTask, point: Vec3, allowDepthAdjustment: Boolean = false, maneuverPost: Boolean = false, nearbyShelter: Boolean = false): Result {
         if (nearbyShelter && task.frontage?.contains(point) == false) {

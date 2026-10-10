@@ -36,6 +36,77 @@ import java.util.function.Consumer
 @PrefixGameTestTemplate(false)
 object AttackDeploymentGameTests {
     @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 1200, batch = "rear-contact-pace")
+    fun rearMajorityJoinsDistantScoutContactAndFires(helper: GameTestHelper) {
+        for (x in 0..159) for (z in 0..127) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        val rear = (0..9).map { index -> spawn(helper, Vec3(8.5 + index / 5 * 4, 1.0, 42.5 + index % 5 * 8), SquadFaction.PIG, randomSeed = index.toLong()) }
+        val scouts = (0..1).map { index -> spawn(helper, Vec3(114.5, 1.0, 50.5 + index * 12), SquadFaction.PIG) }
+        val enemy = spawn(helper, Vec3(145.5, 1.0, 62.5), SquadFaction.COW).apply {
+            isNoAi = true
+            getAttribute(Attributes.MAX_HEALTH)!!.baseValue = 50000.0
+            health = maxHealth
+        }
+        val manager = SquadManager.get(helper.level)
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, (rear + scouts).map { it.uuid })
+        val oldGroups = DebugFlags.enabledGroups
+        DebugFlags.enabledGroups = oldGroups + LogGroup.ORDER
+        val report = java.nio.file.Path.of(System.getProperty("sbwnpc.gameTestReports"))
+        java.nio.file.Files.createDirectories(report)
+        val trace = StringBuilder("tick,npc,x,y,z,distance,job,postX,postZ,moving,shots\n")
+        val witness = FakePlayerFactory.get(helper.level, GameProfile(UUID.randomUUID(), "rear-contact-observer"))
+        witness.gameMode.changeGameModeForPlayer(GameType.CREATIVE)
+        val observer = helper.absoluteVec(Vec3(90.5, 5.0, 5.5))
+        witness.moveTo(observer.x, observer.y, observer.z, 0.0f, 0.0f)
+        witness.setNoGravity(true)
+        helper.level.addNewPlayer(witness)
+        val pacer = CombatTickPacer()
+        NeoForge.EVENT_BUS.addListener<ServerTickEvent.Pre>(pacer)
+        val rounds = mutableSetOf<UUID>()
+        val ids = rear.map { it.uuid }.toSet()
+        val listener = Consumer<EntityJoinLevelEvent> { event ->
+            val projectile = event.entity as? Projectile
+            if (event.level === helper.level && projectile != null && Ports.guns.isRound(projectile) && projectile.owner?.uuid in ids) rounds += projectile.owner!!.uuid
+        }
+        NeoForge.EVENT_BUS.addListener(listener)
+        helper.testInfo.addListener(object : net.minecraft.gametest.framework.GameTestListener {
+            override fun testStructureLoaded(testInfo: net.minecraft.gametest.framework.GameTestInfo) = Unit
+            override fun testPassed(test: net.minecraft.gametest.framework.GameTestInfo, runner: net.minecraft.gametest.framework.GameTestRunner) = cleanup()
+            override fun testFailed(test: net.minecraft.gametest.framework.GameTestInfo, runner: net.minecraft.gametest.framework.GameTestRunner) = cleanup()
+            override fun testAddedForRerun(oldTest: net.minecraft.gametest.framework.GameTestInfo, newTest: net.minecraft.gametest.framework.GameTestInfo, runner: net.minecraft.gametest.framework.GameTestRunner) = cleanup()
+            private fun cleanup() {
+                DebugFlags.enabledGroups = oldGroups
+                NeoForge.EVENT_BUS.unregister(pacer)
+                NeoForge.EVENT_BUS.unregister(listener)
+                manager.deleteSquad(helper.level, squad.id)
+                (rear + scouts + enemy).forEach { it.discard() }
+                helper.level.removePlayerImmediately(witness, Entity.RemovalReason.DISCARDED)
+            }
+        })
+        manager.setOrder(squad.id, SquadOrder.ATTACK)
+        manager.setObjective(helper.level, squad.id, enemy.blockPosition())
+        var reported = false
+        var approachedAt: Long? = null
+        helper.onEachTick {
+            if (scouts.any { it.target === enemy }) reported = true
+            if (helper.tick % 20L == 0L) {
+                rear.forEach { npc ->
+                    val task = squad.tactics.plan?.tasks?.get(npc.uuid)
+                    val at = helper.relativeVec(npc.position())
+                    val post = task?.position?.let(helper::relativeVec)
+                    trace.append("${helper.tick},${npc.uuid},${at.x},${at.y},${at.z},${npc.position().subtract(enemy.position()).horizontalDistance()},${task?.job},${post?.x},${post?.z},${!npc.navigation.isDone},${npc.lastShotTick}\n")
+                }
+                java.nio.file.Files.writeString(report.resolve("rear-contact.csv"), trace)
+            }
+            if (reported && rear.all { it.position().subtract(enemy.position()).horizontalDistance() <= 80.0 } && approachedAt == null) approachedAt = helper.tick
+            if (approachedAt != null && rounds.size == rear.size) {
+                java.nio.file.Files.writeString(report.resolve("rear-contact-result.txt"), "approached=$approachedAt\nallFired=${helper.tick}\nshooters=${rounds.size}/${rear.size}\n")
+                helper.assertTrue(approachedAt!! <= 700, "Rear took more than 35 seconds to close a 140-block contact on open ground")
+                helper.succeed()
+            }
+        }
+    }
+
+    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 2400, batch = "remote-contact-advance")
     fun remoteContactBringsRearMembersPastTerrainToFiringRange(helper: GameTestHelper) {
         for (x in 0..159) for (z in 0..127) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)

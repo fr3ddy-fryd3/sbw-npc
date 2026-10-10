@@ -261,7 +261,9 @@ class TacticalLayout(val context: TacticalContext) {
             val post = if (intent.job == TacticalJob.ADVANCE) {
                 TacticalFrontPost(intent.anchor, frontage.forward)
             } else {
-                frontage.post(member.id, state.attackFrontCenter(context), member.position)
+                frontage.post(member.id, state.attackFrontCenter(context), member.position)?.let {
+                    TacticalContactApproach.post(view, member, it, intent.focus)
+                }
             }
             if (post != null) {
                 intent = TacticalTask(intent.job, if (intent.job == TacticalJob.WAIT) intent.anchor else post.point, intent.focus, intent.plan).also {

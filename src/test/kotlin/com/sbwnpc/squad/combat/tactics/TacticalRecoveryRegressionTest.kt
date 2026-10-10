@@ -82,7 +82,9 @@ class TacticalRecoveryRegressionTest {
         val shooter = old.entries.first { it.value.job == TacticalJob.WAIT }.key
         val next = view(20).copy(
             members = view().members.map {
-                if (it.id == shooter) it.copy(canFire = true, recentFire = true, firingAt = focus, recentFireAt = focus) else it
+                // Supply readiness at the actual joined front, 58 blocks from this contact;
+                // a shooter still 100 blocks behind its post is not a settled replacement.
+                if (it.id == shooter) it.copy(position = Vec3(42.0, it.position.y, it.position.z), canFire = true, recentFire = true, firingAt = focus, recentFireAt = focus) else it
             },
         )
         events.clear()

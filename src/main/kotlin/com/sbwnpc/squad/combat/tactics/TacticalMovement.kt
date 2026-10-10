@@ -238,7 +238,7 @@ object TacticalMovement {
             task.nextSearch = entity.level().gameTime + 20
             return !failedTask(entity, task, "no movement progress for 100 ticks")
         }
-        if (firingPost && FiringPostArrival.steer(entity, position, TacticalPositions.speed(task))) return true
+        if (firingPost && FiringPostArrival.steer(entity, position, TacticalPositions.speed(task, entity.position()))) return true
         if (entity.navigation.isDone && entity.level().gameTime >= task.nextSearch) {
             task.nextSearch = entity.level().gameTime + 20
             if ((entity.navigation as? VehicleAwareNavigation)?.canPlan == false) {
@@ -251,7 +251,7 @@ object TacticalMovement {
             }
             val path = TacticalPositions.pathToPosition(entity, position)
             if (TacticalPositions.reaches(path, position) && TacticalPositions.safePath(entity, view, path!!)) {
-                if (entity.navigation.moveTo(path, TacticalPositions.speed(task))) task.navigationPath = path
+                if (entity.navigation.moveTo(path, TacticalPositions.speed(task, entity.position()))) task.navigationPath = path
             } else {
                 task.position = null
                 task.search = null

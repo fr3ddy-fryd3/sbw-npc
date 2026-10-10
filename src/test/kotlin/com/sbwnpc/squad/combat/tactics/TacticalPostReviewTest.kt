@@ -72,6 +72,23 @@ class TacticalPostReviewTest {
         assertSame(post, task.position)
     }
 
+    @Test fun `sentry target changes preserve the ongoing height scan and its review deadline`() {
+        val task = TacticalTask(TacticalJob.OVERWATCH, post, post, 1).apply {
+            position = post
+            firingTarget = first
+            search = TacticalPositionSearch(post, listOf(post.add(0.0, 8.0, 0.0)))
+            nextValidation = 40
+        }
+        val terrainSearch = task.search
+        for (now in 20L..100L step 20) {
+            val target = if (now % 40 == 0L) first else second
+            assertEquals(TacticalPostReview.Result.RETAINED, TacticalPostReview.review(task, target, now) { true })
+            assertSame(terrainSearch, task.search)
+            assertEquals(40L, task.nextValidation, "Contact updates indefinitely postponed scanning higher ground")
+        }
+        assertEquals(TacticalPostReview.Result.INVALIDATED, TacticalPostReview.review(task, first, 120) { false }, "A destroyed post still needs immediate invalidation")
+    }
+
     @Test fun `first contact releases the march route once and preserves subsequent owned and preempting paths`() {
         fun path() = Path(listOf(Node(10, 64, 0)), BlockPos.containing(post), true)
         val contact = TacticalTask(TacticalJob.COVER, post, post, 1).apply { coverOrigin = post }

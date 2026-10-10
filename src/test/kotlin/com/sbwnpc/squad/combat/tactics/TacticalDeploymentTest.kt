@@ -95,7 +95,9 @@ class TacticalDeploymentTest {
             members = initial.members.mapIndexed { index, member ->
                 if (index == 15 || index == 16) {
                     member.copy(
-                        position = origin.add(0.0, 0.0, (index - 15.5) * 6.0),
+                        // A reported enemy 200 blocks away now requires forward deployment
+                        // as well as lateral spacing: the rifle front is 58 blocks from it.
+                        position = origin.add(142.0, 0.0, (index - 15.5) * 6.0),
                         canFire = true,
                         firingAt = enemy,
                         recentFire = true,
@@ -113,7 +115,7 @@ class TacticalDeploymentTest {
         val deployed = preparing.copy(
             now = 90,
             members = preparing.members.mapIndexed { index, member ->
-                member.copy(position = origin.add(0.0, 0.0, (index - 15.5) * 6.0), moving = false)
+                member.copy(position = origin.add(142.0, 0.0, (index - 15.5) * 6.0), moving = false)
             },
         )
         state.assess(squad, deployed)
@@ -161,7 +163,7 @@ class TacticalDeploymentTest {
         val plan = state.plan!!
         val deployed = initial.copy(
             now = 150,
-            members = initial.members.mapIndexed { index, member -> member.copy(position = origin.add(0.0, 0.0, (index - 3.5) * 6.0)) },
+            members = initial.members.mapIndexed { index, member -> member.copy(position = origin.add(142.0, 0.0, (index - 3.5) * 6.0)) },
             contacts = initial.contacts.map { it.copy(seenAt = 150) },
         )
         TacticalCoordinator.advance(squad, state, plan, deployed)

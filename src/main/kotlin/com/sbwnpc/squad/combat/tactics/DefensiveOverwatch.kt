@@ -72,7 +72,7 @@ object DefensiveOverwatch {
             if (next.job != TacticalJob.OVERWATCH || old.job != TacticalJob.OVERWATCH) continue
             desired[id] = TacticalTask(next.job, old.anchor, next.focus, plan.id).also {
                 it.position = old.position
-                it.search = if (old.focus == next.focus) old.search else null
+                it.search = old.search
                 it.nextSearch = if (it.search != null || it.position != null) old.nextSearch else view.now
                 it.lastProgress = old.lastProgress
                 it.closest = old.closest

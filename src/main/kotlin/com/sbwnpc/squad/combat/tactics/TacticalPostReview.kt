@@ -18,10 +18,13 @@ object TacticalPostReview {
                 true -> Unit
             }
         }
-        // Keep the owned path and progress timers; discard only the obsolete background search.
+        // The sentry's terrain scan is independent of its current target; keep its deadline
+        // too, otherwise frequent contacts postpone looking for a better high post forever.
         task.firingTarget = target
-        task.search = null
-        task.nextValidation = maxOf(task.nextValidation, now + VALIDATION_INTERVAL_TICKS)
+        if (task.job != TacticalJob.OVERWATCH || task.localFireRecovery) {
+            task.search = null
+            task.nextValidation = maxOf(task.nextValidation, now + VALIDATION_INTERVAL_TICKS)
+        }
         return Result.RETAINED
     }
 

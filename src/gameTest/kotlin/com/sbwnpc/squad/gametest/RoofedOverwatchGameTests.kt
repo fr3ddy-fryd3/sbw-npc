@@ -35,6 +35,28 @@ import java.util.UUID
 @PrefixGameTestTemplate(false)
 object RoofedOverwatchGameTests {
     @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1600, batch = "tower-changing-contact")
+    fun gunnerFindsTowerWhileSharedTargetsKeepChanging(helper: GameTestHelper) {
+        for (x in 110..115) for (z in 24..76) helper.setBlock(BlockPos(x, 1, z), Blocks.STONE)
+        val enemies = (0..1).map { index ->
+            val point = Vec3(112.5, 2.0, 38.5 + index * 12)
+            helper.setBlock(BlockPos.containing(point).below(), Blocks.STONE)
+            AttackDeploymentGameTests.spawn(helper, point, SquadFaction.PIG).apply {
+                isNoAi = true
+                isInvulnerable = true
+            }
+        }
+        helper.testInfo.addListener(object : GameTestListener {
+            override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
+            override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
+            override fun testFailed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
+            override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) = cleanup()
+            private fun cleanup() = enemies.forEach { it.discard() }
+        })
+        occupy(helper, SquadOrder.DEFEND, onlySupport = NpcClass.MACHINE_GUNNER, changingContacts = enemies)
+    }
+
+    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1600, batch = "roofed-hidden-contact")
     fun sentryKeepsShelteredTowerWhenSharedContactHasNoFiringLane(helper: GameTestHelper) {
         var sentry: NpcEntity? = null
@@ -260,7 +282,7 @@ object RoofedOverwatchGameTests {
 
     private fun relativeNode(helper: GameTestHelper, pos: BlockPos): BlockPos = BlockPos.containing(helper.relativeVec(Vec3.atLowerCornerOf(pos)))
 
-    private fun occupy(helper: GameTestHelper, order: SquadOrder, fall: Boolean = false, onlySupport: NpcClass? = null, scaffolding: Boolean = false, supportIndex: Int = 5, emptyPrimary: Boolean = false, onOccupied: ((NpcEntity, Vec3) -> Unit)? = null) {
+    private fun occupy(helper: GameTestHelper, order: SquadOrder, fall: Boolean = false, onlySupport: NpcClass? = null, scaffolding: Boolean = false, supportIndex: Int = 5, emptyPrimary: Boolean = false, changingContacts: List<NpcEntity> = emptyList(), onOccupied: ((NpcEntity, Vec3) -> Unit)? = null) {
         val supplyScope = if (emptyPrimary) IsolatedSupplyPoints(helper.level) else null
         val issuedSupplies = mutableListOf<BlockPos>()
         // Template blocks start one block above the structure origin used by GameTestHelper.
@@ -351,6 +373,18 @@ object RoofedOverwatchGameTests {
         helper.onEachTick {
             if (completed) return@onEachTick
             val supports = npcs.filter { it.npcClass in setOf(NpcClass.SNIPER, NpcClass.MACHINE_GUNNER) }
+            if (changingContacts.isNotEmpty() && helper.tick % 20L == 0L) {
+                val phase = (helper.tick / 20L % changingContacts.size).toInt()
+                changingContacts.forEachIndexed { index, enemy ->
+                    val point = helper.absoluteVec(Vec3(112.5, 2.0, 26.5 + index * 12 + phase * 24))
+                    enemy.moveTo(point.x, point.y, point.z, enemy.yRot, enemy.xRot)
+                }
+                val enemy = changingContacts[phase]
+                supports.forEach { npc ->
+                    changingContacts.forEach { com.sbwnpc.squad.combat.tactics.SquadTactics.observe(npc, it) }
+                    net.tslat.smartbrainlib.util.BrainUtils.setTargetOfEntity(npc, enemy)
+                }
+            }
             if (supports.any { it.onClimbable() }) climbed = true
             val high = supports.filter { npc ->
                 val task = squad.tactics.plan?.tasks?.get(npc.uuid) ?: return@filter false

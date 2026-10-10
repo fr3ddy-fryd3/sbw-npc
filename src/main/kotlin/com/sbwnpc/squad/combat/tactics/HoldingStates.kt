@@ -50,7 +50,7 @@ class ReorientState : TacticalState() {
         for (member in context.view.members) {
             val task = context.plan.tasks[member.id] ?: continue
             val focus = context.view.visible.minByOrNull { it.position.distanceToSqr(member.position) }?.position ?: continue
-            if (task.position == null && task.focus?.distanceTo(focus)?.let { it > 8.0 } == true) task.search = null
+            if (task.job != TacticalJob.OVERWATCH && task.position == null && task.focus?.distanceTo(focus)?.let { it > 8.0 } == true) task.search = null
             task.focus = focus
         }
     }
