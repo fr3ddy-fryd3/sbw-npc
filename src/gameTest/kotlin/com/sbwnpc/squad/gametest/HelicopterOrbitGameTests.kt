@@ -7,9 +7,13 @@ import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.BenchAttackOrbit
+import com.sbwnpc.squad.item.SquadToolItem
 import com.sbwnpc.squad.npc.HelicopterModel
 import com.sbwnpc.squad.npc.NpcClass
+import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
+import com.sbwnpc.squad.npc.SquadPreset
+import com.sbwnpc.squad.squad.SquadDeployment
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
@@ -38,6 +42,37 @@ import kotlin.math.atan2
 
 @PrefixGameTestTemplate(false)
 object HelicopterOrbitGameTests {
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 40, batch = "helicopter-deployment")
+    fun bothHelicopterPresetsDeployWithPilotAndFaction(helper: GameTestHelper) {
+        val manager = SquadManager.get(helper.level)
+        val vehicles = mutableListOf<Entity>()
+        val deployments = HelicopterModel.entries.mapIndexed { index, model ->
+            val config = SquadToolItem.Config(NpcClass.RIFLEMAN, NpcRank.RECRUIT, SquadFaction.PIG, SquadPreset.HELI_CREW, heliModel = model)
+            val result = SquadDeployment.deploy(helper.level, helper.absolutePos(BlockPos(40 + index * 60, 1, 80)), 0f, config, UUID.randomUUID())
+                ?: throw AssertionError("Failed to deploy $model")
+            helper.assertTrue(!result.vehicleBlocked, "No aircraft deployed for $model")
+            helper.assertTrue(result.members.map { it.npcClass } == model.crew, "Incorrect crew for $model")
+            val pilot = result.members.first { it.npcClass == NpcClass.HELICOPTER_PILOT }
+            val aircraft = pilot.vehicle ?: throw AssertionError("Pilot did not board $model")
+            vehicles += aircraft
+            helper.assertTrue(Ports.vehicles.modelOf(aircraft) == model, "Wrong helicopter model")
+            helper.assertTrue(aircraft.firstPassenger === pilot, "Pilot did not take the controls")
+            helper.assertTrue(SquadTeams.factionOf(aircraft) == SquadFaction.PIG, "Aircraft lost its faction")
+            helper.assertTrue(Helicopters.canFly(aircraft), "Aircraft is not fuelled and healthy")
+            result
+        }
+        helper.runAtTickTime(5) {
+            helper.assertTrue(vehicles.all { it.isAlive && it.firstPassenger is NpcEntity }, "Aircraft or pilot lost during first ticks")
+            deployments.forEach { result ->
+                result.squad?.let { manager.disband(helper.level, it.id) }
+                result.members.forEach { it.discard() }
+            }
+            vehicles.forEach { it.discard() }
+            helper.succeed()
+        }
+    }
+
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 100, batch = "mounted-firing-safety")
     fun mountedBulletSafetyStillProtectsBlastAndDismountedAllies(helper: GameTestHelper) {

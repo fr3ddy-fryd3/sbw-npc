@@ -28,11 +28,14 @@ tested" as two different claims; see Workflow below.
 - Compiling (`compileKotlin`) is **not** a testable artifact — a real jar requires `build`.
 - Deploy for in-game testing: copy the built jar into the **flat** `~/.minecraft/mods/` folder:
   ```
-  cp build/libs/sbwnpc-<version>-mc1.21.1.jar ~/.minecraft/mods/
+  python3 install-local-mod.py build/libs/sbwnpc-<version>-mc1.21.1.jar
   ```
   Do NOT put it in a `~/.minecraft/mods/1.21.1/` subfolder — that path isn't read by the
   launcher, it's an unrelated personal archive folder. Remove any stale-version jar from
   `mods/` first so two versions of the same mod don't both load at once.
+  Never overwrite an existing JAR in place while Minecraft is running: the JVM caches ZIP
+  offsets and later class loading can fail. The installer stages the new archive and replaces
+  its directory entry atomically. A full Minecraft restart loads the new build.
 - This addon depends on a local SuperbWarfare checkout via `includeBuild("SuperbWarfare")` in
   `settings.gradle.kts` (it needs SBW's internal APIs, not just its published jar). `/SuperbWarfare/`
   is gitignored — pulled and maintained separately, not part of this repo.
