@@ -7,7 +7,7 @@ import net.minecraft.world.phys.Vec3
 internal object TacticalFireAdvance {
     fun begin(task: TacticalTask, member: TacticalMember, view: TacticalSnapshot, plan: TacticalPlan): Boolean {
         if (!view.offensive || !member.ready || !member.primaryAmmo || member.suppressed || member.canFire ||
-            task.job !in TacticalJob.FIRE_SUPPORT || task.frontage == null || !task.expandedFireSearch || task.fireTransit != null
+            task.job !in TacticalJob.FIRE_SUPPORT || !task.expandedFireSearch || task.fireTransit != null
         ) {
             return false
         }
@@ -21,12 +21,16 @@ internal object TacticalFireAdvance {
         ) {
             return false
         }
-        val forward = task.frontage!!.forward
+        // Reorienting squads also own covering posts. Without a formation strip, an exhausted
+        // post used to repeat its blocked query forever instead of joining the actual fight.
+        val front = task.frontage ?: TacticalFrontPost(member.position, (task.focus ?: threats.first()).subtract(member.position).multiply(1.0, 0.0, 1.0).normalize())
+        val forward = front.forward
         val desired = member.position.add(forward.scale(if (underFire) 4.0 else 12.0))
         val goal = threats.fold(desired) { point, threat ->
             CombatPositionSafety.approach(member.position, point, threat, CombatPositionSafety.clearance(member.role) + CombatPositionSafety.APPROACH_MARGIN)
         }
         if (goal.subtract(member.position).dot(forward) < 2.0) return false
+        task.frontage = front
         task.fireTransit = goal
         task.position = null
         task.search = null

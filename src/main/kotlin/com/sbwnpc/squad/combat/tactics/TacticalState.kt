@@ -142,7 +142,8 @@ abstract class TacticalState {
             val intent = task(layout, member, index)
             val next = layout.applyRoles(member, index, intent)
             val previous = context.plan.tasks[member.id]
-            val recovering = previous?.localFireRecovery == true && (previous.position != null || previous.search != null)
+            val recovering = previous?.localFireRecovery == true &&
+                (previous.position != null || previous.search != null || previous.expandedFireSearch || previous.fireTransit != null)
             val holding = member.grounded && TacticalEvidence.covers(member, previous) && TacticalEvidence.settled(member, previous)
             val exchangingCoverAndWait = (previous?.job == TacticalJob.COVER && next.job == TacticalJob.WAIT) ||
                 (previous?.job == TacticalJob.WAIT && next.job == TacticalJob.COVER)

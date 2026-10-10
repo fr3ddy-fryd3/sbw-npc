@@ -47,6 +47,14 @@ class TacticalRecoveryRegressionTest {
             assertEquals(20, retained.lastProgress)
             assertEquals(4.0, retained.closest)
             assertEquals(previous.fireTransit, retained.fireTransit)
+            // Arrival clears both path and search before the next tick creates a new query.
+            // A phase exchange during that gap must retain the advanced origin and failures.
+            retained.position = null
+            retained.search = null
+            retained.fireTransit = null
+            retained.expandedFireSearch = true
+            plan.behavior.assign(TacticalContext(squad, plan, initial.copy(now = 40)), retainCover = true, trigger = "next_movement_group")
+            assertSame(retained, plan.tasks.getValue(id), "Phase exchange discarded recovery between successive searches")
         }
     }
 
@@ -68,6 +76,11 @@ class TacticalRecoveryRegressionTest {
         val covered = initial.copy(members = listOf(actor, support.copy(recentFire = true, recentFireAt = focus)))
         val task = post()
         assertTrue(TacticalFireAdvance.begin(task, actor, covered, plan))
+        val reorienting = post().apply { frontage = null }
+        assertFalse(TacticalFireAdvance.begin(reorienting, actor, initial, plan), "A blocked unformed post still requires covering fire")
+        assertNull(reorienting.frontage, "A refused bound must not assign movement")
+        assertTrue(TacticalFireAdvance.begin(reorienting, actor, covered, plan), "A reorienting shooter must not repeat an exhausted disk forever")
+        assertNotNull(reorienting.frontage)
         assertEquals(4.0, task.fireTransit!!.distanceTo(actor.position), 0.001)
         for (order in listOf(SquadOrder.DEFEND, SquadOrder.PATROL)) {
             assertFalse(TacticalFireAdvance.begin(post(), actor, covered.copy(order = order), plan), "Holding orders cannot become assaults")
