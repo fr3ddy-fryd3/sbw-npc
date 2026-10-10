@@ -46,7 +46,7 @@ object TacticalFirePosts {
 
     /** A failed strip search may use nearby terrain without losing the job or its fixed search origin. */
     fun expand(task: TacticalTask, from: Vec3): Boolean {
-        if (!task.localFireRecovery || task.expandedFireSearch || task.frontage == null) return false
+        if (!task.localFireRecovery || task.expandedFireSearch) return false
         // A failed deployment may leave the actor behind its requested slot. Escape from where
         // the actor actually stands, keeping this origin fixed on subsequent retries.
         task.localFirePost = from

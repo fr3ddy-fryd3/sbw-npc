@@ -32,6 +32,10 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
     val localFireRecovery get() = localFirePost != null
     var expandedFireSearch = false
         internal set
+
+    /** A blind attack post may join the next strip after exhausting its local firing search. */
+    var fireTransit: Vec3? = null
+        internal set
     var pausedAt: Long? = null
         private set
     private var pauseReason: String? = null
@@ -55,6 +59,7 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
             it.staging = if (next == TacticalJob.WAIT) staging ?: position ?: this.anchor else null
             it.localFirePost = localFirePost
             it.expandedFireSearch = expandedFireSearch
+            it.fireTransit = fireTransit
             it.navigationPath = navigationPath
             it.deploymentStarted = deploymentStarted
             navigationPath = null

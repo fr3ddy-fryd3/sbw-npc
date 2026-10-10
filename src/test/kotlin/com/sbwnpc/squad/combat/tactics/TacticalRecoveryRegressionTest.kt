@@ -33,6 +33,7 @@ class TacticalRecoveryRegressionTest {
             previous.nextSearch = 65
             previous.lastProgress = 20
             previous.closest = 4.0
+            previous.fireTransit = previous.localFirePost!!.add(4.0, 0.0, 0.0)
             previous.navigationPath = net.minecraft.world.level.pathfinder.Path(mutableListOf(), net.minecraft.core.BlockPos.ZERO, true)
             val path = previous.navigationPath
             plan.assignments.put(id, previous, 10, "support_role_changed")
@@ -45,7 +46,34 @@ class TacticalRecoveryRegressionTest {
             assertEquals(65, retained.nextSearch)
             assertEquals(20, retained.lastProgress)
             assertEquals(4.0, retained.closest)
+            assertEquals(previous.fireTransit, retained.fireTransit)
         }
+    }
+
+    @Test fun `blind transit under fire requires actual support in the same threat sector`() {
+        val actor = TacticalMember(UUID(8, 1), Vec3(0.0, 64.0, 0.0))
+        val support = TacticalMember(UUID(8, 2), Vec3(-4.0, 64.0, 6.0), canFire = true, recentFire = false, firingAt = focus)
+        val initial = view().copy(center = actor.position, members = listOf(actor, support), incoming = listOf(focus))
+        val plan = TacticalPlan(1, TacticalPattern.REORIENT, focus, 0, 1)
+        fun post() =
+            TacticalTask(TacticalJob.COVER, actor.position, focus, 1).apply {
+                frontage = TacticalFrontPost(actor.position, Vec3(1.0, 0.0, 0.0))
+                localFirePost = actor.position
+                expandedFireSearch = true
+            }
+        plan.assignments.put(support.id, TacticalTask(TacticalJob.COVER, support.position, focus, 1), 0, "test_support")
+        assertFalse(TacticalFireAdvance.begin(post(), actor, initial, plan), "Aiming is not covering fire")
+        val unrelated = initial.copy(members = listOf(actor, support.copy(recentFire = true, recentFireAt = focus.add(0.0, 0.0, 60.0))))
+        assertFalse(TacticalFireAdvance.begin(post(), actor, unrelated, plan), "Fire in another sector is not support")
+        val covered = initial.copy(members = listOf(actor, support.copy(recentFire = true, recentFireAt = focus)))
+        val task = post()
+        assertTrue(TacticalFireAdvance.begin(task, actor, covered, plan))
+        assertEquals(4.0, task.fireTransit!!.distanceTo(actor.position), 0.001)
+        for (order in listOf(SquadOrder.DEFEND, SquadOrder.PATROL)) {
+            assertFalse(TacticalFireAdvance.begin(post(), actor, covered.copy(order = order), plan), "Holding orders cannot become assaults")
+        }
+        assertFalse(TacticalFireAdvance.begin(post(), actor.copy(suppressed = true), covered, plan))
+        assertFalse(TacticalFireAdvance.begin(post(), actor.copy(primaryAmmo = false, sidearmOnly = true), covered, plan))
     }
 
     @Test fun `a phase assignment keeps an ongoing cover recovery when line height changes`() {

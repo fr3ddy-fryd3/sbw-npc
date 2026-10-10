@@ -89,6 +89,7 @@ object TacticalMovement {
         }
         val previousTarget = task.firingTarget
         val postReview = TacticalPostReview.review(task, entity.target?.uuid, entity.level().gameTime) {
+            if (task.fireTransit != null) return@review true
             val level = entity.level() as ServerLevel
             if (!TickBudget.hasRaycasts(level)) {
                 null
@@ -171,6 +172,16 @@ object TacticalMovement {
         val firingPost = requiresPreciseArrival(task)
         val arrived = reachedTaskPosition(task, entity.position())
         if (arrived) {
+            if (task.fireTransit != null) {
+                task.fireTransit = null
+                task.localFirePost = entity.position()
+                task.position = null
+                task.search = null
+                task.nextSearch = entity.level().gameTime
+                FiringSpots.release(entity.uuid)
+                DebugFlags.log(LogGroup.ORDER, "[tactics] {} plan={} event=fire_transit_arrived job={} position={}", entity.uuid, task.plan, task.job, entity.position())
+                return true
+            }
             // Holding is not an approach. A later fall/shove starts from its new distance,
             // rather than timing out against the minimum recorded before reaching this post.
             task.closest = Double.MAX_VALUE
@@ -205,7 +216,7 @@ object TacticalMovement {
                     return true
                 }
             }
-            if (task.job in RUNNING_JOBS + TacticalJob.SEARCH && !task.maneuverPost && !TacticalGoalProgress.reached(task, entity.position())) {
+            if (task.job in TacticalRoutes.TRANSIT_JOBS && !task.maneuverPost && !TacticalGoalProgress.reached(task, entity.position())) {
                 task.position = null
                 task.search = null
                 task.nextSearch = entity.level().gameTime + 5
@@ -273,6 +284,15 @@ object TacticalMovement {
                 )
                 return false
             }
+            val squad = entity.currentSquad()
+            val view = squad?.tactics?.snapshot
+            val member = view?.members?.firstOrNull { it.id == entity.uuid }
+            val plan = squad?.tactics?.plan
+            if (completedSearch && view != null && member != null && plan != null && TacticalFireAdvance.begin(task, member, view, plan)) {
+                DebugFlags.log(LogGroup.ORDER, "[tactics] {} plan={} event=fire_transit_started job={} from={} goal={} reason={}", entity.uuid, task.plan, task.job, entity.position(), task.fireTransit, reason)
+                return false
+            }
+            task.fireTransit = null
             task.nextSearch = entity.level().gameTime + 100
             DebugFlags.log(LogGroup.ORDER, "[tactics] {} plan={} event=fire_post_retry job={} reason={}", entity.uuid, task.plan, task.job, reason)
             return false

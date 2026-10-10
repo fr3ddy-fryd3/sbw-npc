@@ -7,6 +7,8 @@ import kotlin.math.*
 
 /** Short route legs prevent a rear flank destination from routing straight through the enemy. */
 object TacticalRoutes {
+    /** Reserves and observers still have to reach their assigned area before holding it. */
+    val TRANSIT_JOBS = TacticalJob.RUNNING + setOf(TacticalJob.SEARCH, TacticalJob.RESERVE, TacticalJob.OBSERVE)
     private val DETOUR_DISTANCES = listOf(24.0, 16.0, 8.0)
     private const val DETOUR_DIRECTIONS = 24
     private const val CLEARANCE_TOLERANCE = 0.05

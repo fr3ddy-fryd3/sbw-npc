@@ -272,7 +272,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         automaticBurst.reset()
     }
 
-    private fun advanceOrHold(entity: NpcEntity, target: LivingEntity) {
+    private fun advanceOrHold(entity: NpcEntity, target: LivingEntity, canCover: Boolean) {
         val path = entity.navigation.path
         if (path != null && !path.isDone && !safeCombatPath(entity, target, path)) {
             entity.navigation.stop()
@@ -296,6 +296,14 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             holdFiringPosition(entity, target)
             bounding = true
             boundPhaseStarted = false
+            return
+        }
+        // A bound's pause is for covering fire. A blind runner must keep joining the firing
+        // area, including when a previously clear target vanishes during the pause.
+        if (!canCover) {
+            bounding = true
+            boundPhaseStarted = false
+            if (entity.navigation.isDone) moveTowardFormationSlot(entity, target)
             return
         }
         if (!boundPhaseStarted) {
@@ -639,7 +647,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun moveTowardFormationSlot(entity: NpcEntity, target: LivingEntity) {
         val targetPos = target.position()
         // Opened out under fire: the marching interval puts the whole squad in one burst.
-        val slot = SquadTactics.frontPost(entity)?.point ?: SquadFormation.slotTarget(
+        val front = SquadTactics.frontPost(entity)
+        // A front owns the lateral lane; its current depth is not an assault destination.
+        val slot = front?.let { it.point.add(it.forward.scale(CombatPosition.MAX_ADVANCE_DISTANCE)) } ?: SquadFormation.slotTarget(
             entity,
             targetPos,
             targetPos.subtract(entity.position()),
@@ -855,7 +865,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             // Finish clearing an ally's lane before replacing the sidestep with an advance.
             holdFiringPosition(entity, target)
         } else {
-            advanceOrHold(entity, target)
+            advanceOrHold(entity, target, clearShot && lineIsClear && blastClear)
         }
         return CombatMovement.LOCAL
     }

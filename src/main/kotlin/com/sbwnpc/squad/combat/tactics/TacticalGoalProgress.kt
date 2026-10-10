@@ -14,7 +14,7 @@ object TacticalGoalProgress {
             return !FiringPostArrival.reached(origin, point) &&
                 point.subtract(front.point).horizontalDistance() < origin.subtract(front.point).horizontalDistance() - MINIMUM_GAIN
         }
-        if (task.job != TacticalJob.ADVANCE && task.job != TacticalJob.SEARCH) return true
+        if (task.job !in setOf(TacticalJob.ADVANCE, TacticalJob.SEARCH, TacticalJob.RESERVE, TacticalJob.OBSERVE)) return true
         // Arrival near the anchor is insufficient while still outside the assigned lane.
         // Deployment must not repeatedly select the actor's current intermediate position.
         if (reached(task, point) && (!deploying || task.permitsFront(point))) return true
