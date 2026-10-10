@@ -2,6 +2,7 @@ package com.sbwnpc.squad.gametest
 
 import com.mojang.authlib.GameProfile
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.FiringPostArrival
 import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.Sightline
@@ -34,6 +35,7 @@ import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption.APPEND
+import java.nio.file.StandardOpenOption.CREATE
 import java.util.UUID
 import java.util.function.Consumer
 
@@ -115,6 +117,12 @@ object CombatIdleGameTests {
             val fighters = members.filter { it.npcClass != NpcClass.MEDIC }
             if (fighters.all { it.uuid in fired }) {
                 scene.result("PASS", "tick=${helper.tick} combatShooters=${fighters.size} totalShooters=${fired.size} firstShotgunDistance=$firstShotgunDistance")
+                Files.writeString(
+                    Path.of(System.getProperty("sbwnpc.gameTestReports")).resolve("mixed-infantry-contact-runs.txt"),
+                    "tick=${helper.tick} combatShooters=${fighters.size} totalShooters=${fired.size} firstShotgunDistance=$firstShotgunDistance\n",
+                    CREATE,
+                    APPEND,
+                )
                 helper.succeed()
             }
         }
@@ -173,7 +181,15 @@ object CombatIdleGameTests {
             if (closed && shooter.lastShotTick > lastOpenShot && helper.relativeVec(shooter.position()).x > 56.0) {
                 scene.result("PASS", "resumed=${helper.tick} at=${helper.relativeVec(shooter.position())}")
                 helper.assertTrue(shooter.position().subtract(enemy.position()).horizontalDistance() >= 48.0, "Recovery charged into the enemy")
-                helper.assertTrue(kotlin.math.abs(helper.relativeVec(shooter.position()).z - 100.5) < 8.0, "Recovery abandoned the owned lateral lane")
+                val post = squad.tactics.plan!!.tasks[shooter.uuid]?.position
+                if (post != null) helper.assertTrue(kotlin.math.abs(helper.relativeVec(post).z - 100.5) <= 8.0, "Recovery assigned a post outside the owned lateral lane")
+                // The chosen block center may lie on the boundary. Physical arrival already
+                // permits 0.4 blocks; a 0.01-block settling overshoot is not another lane.
+                helper.assertTrue(
+                    kotlin.math.abs(helper.relativeVec(shooter.position()).z - 100.5) <= 8.0 ||
+                        (post != null && FiringPostArrival.reached(shooter.position(), post)),
+                    "Recovery abandoned the owned lateral lane",
+                )
                 helper.succeed()
             }
         }

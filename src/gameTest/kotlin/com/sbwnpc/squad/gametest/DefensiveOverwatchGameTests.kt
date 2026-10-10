@@ -44,27 +44,27 @@ import java.util.function.Consumer
 @PrefixGameTestTemplate(false)
 object DefensiveOverwatchGameTests {
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 900, batch = "defend-tower")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 900, batch = "defend-tower")
     fun defendingSupportsReserveSmallTower(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND)
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 900, batch = "patrol-tower")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 900, batch = "patrol-tower")
     fun freePatrolSupportsReserveSmallTower(helper: GameTestHelper) = occupy(helper, SquadOrder.PATROL)
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 900, batch = "tower-fire")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 900, batch = "tower-fire")
     fun machineGunnerFiresFromReservedTower(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND, contact = true)
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 900, batch = "unreachable-tower")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 900, batch = "unreachable-tower")
     fun supportsChooseGroundCoverWhenTowerIsUnreachable(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND, ladder = false)
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1200, batch = "tower-fall")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1200, batch = "tower-fall")
     fun fallenSentryReturnsToReservedTower(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND, fall = true)
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1200, batch = "patrol-tower-fall")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1200, batch = "patrol-tower-fall")
     fun fallenPatrolSentryReturnsToReservedTower(helper: GameTestHelper) = occupy(helper, SquadOrder.PATROL, fall = true)
 
     private fun occupy(helper: GameTestHelper, order: SquadOrder, contact: Boolean = false, ladder: Boolean = true, fall: Boolean = false) {
@@ -120,6 +120,7 @@ object DefensiveOverwatchGameTests {
         val oldGroups = DebugFlags.enabledGroups
         if (contact) DebugFlags.enabledGroups = oldGroups + setOf(LogGroup.ORDER, LogGroup.FIRE)
         if (fall) DebugFlags.enabledGroups = oldGroups + LogGroup.ORDER
+        if (!ladder) DebugFlags.enabledGroups = oldGroups + setOf(LogGroup.ORDER, LogGroup.PATH)
         val witness = if (contact) {
             FakePlayerFactory.get(helper.level, GameProfile(UUID.randomUUID(), "tower-observer")).apply {
                 gameMode.changeGameModeForPlayer(GameType.CREATIVE)
@@ -180,6 +181,13 @@ object DefensiveOverwatchGameTests {
                     trace.append("${helper.tick},${npc.uuid},${at.x},${at.y},${at.z},${task?.job},${post?.x},${post?.y},${post?.z},${npc.onClimbable()},${squad.tactics.plan?.pattern},${task?.closest},${task?.lastProgress},${task?.localFireRecovery}\n")
                 }
                 Files.writeString(report.resolve("$name.csv"), trace)
+            }
+            if (!ladder && helper.tick % 100L == 0L) {
+                for (npc in npcs) {
+                    val task = squad.tactics.plan?.tasks?.get(npc.uuid)
+                    val search = task?.search
+                    DebugFlags.log(LogGroup.PATH, "[tactics-test] {} event=unfinished_overwatch tick={} searchAt={} probe={}/{} destinations={}/{} attempts={} rejected={}", npc.uuid, helper.tick, task?.nextSearch, search?.probeIndex, search?.probes?.size, search?.destinationIndex, search?.destinations?.size, search?.pathAttempts, search?.rejections)
+                }
             }
             if (displacedAt != null) {
                 val sentry = holder!!
