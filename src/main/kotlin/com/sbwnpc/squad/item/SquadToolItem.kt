@@ -231,7 +231,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         tooltip.add(Component.literal("Mode: $m").withStyle(ChatFormatting.YELLOW))
         readConfig(stack)?.let { cfg ->
             val what = if (cfg.preset == SquadPreset.SINGLE) cfg.cls.name else cfg.preset.label
-            tooltip.add(Component.literal("Deploy: $what / ${cfg.rank.name}").withStyle(ChatFormatting.GOLD))
+            tooltip.add(Component.literal("Deploy: $what / ${NpcRank.RECRUIT.name}").withStyle(ChatFormatting.GOLD))
             tooltip.add(Component.literal("Faction: ${cfg.faction.label}").withStyle(cfg.faction.accentStyle))
         }
         tooltip.add(Component.literal("ctrl+air: switch mode · air: open GUI").withStyle(ChatFormatting.DARK_GRAY))

@@ -35,6 +35,24 @@ class SquadManager : SavedData() {
     // A deleted member can be asleep in an unloaded chunk. Keep the deletion in SavedData
     // until it loads, including across server restarts; removing its squad alone strands it.
     private val pendingDeletes = LinkedHashSet<UUID>()
+    private val pendingExperience = LinkedHashMap<UUID, Double>()
+
+    fun creditExperience(server: MinecraftServer, id: UUID, amount: Double, reason: String) {
+        if (!amount.isFinite() || amount <= 0) return
+        val npc = findEntity(server, id) as? NpcEntity
+        if (npc != null) {
+            npc.gainExperience(amount, reason)
+        } else if (id !in pendingDeletes) {
+            pendingExperience[id] = (pendingExperience[id] ?: 0.0) + amount
+            setDirty()
+        }
+    }
+    fun deliverExperience(npc: NpcEntity) {
+        pendingExperience.remove(npc.uuid)?.let {
+            npc.gainExperience(it, "deferred_assist")
+            setDirty()
+        }
+    }
 
     fun all(): Collection<Squad> = squads.values
     fun get(id: UUID?): Squad? = id?.let { squads[it] }
@@ -364,7 +382,7 @@ class SquadManager : SavedData() {
         ) ?: return "No safe space near the barracks"
         npc.moveTo(spot.x, spot.y, spot.z, level.random.nextFloat() * 360f, 0f)
         npc.npcClass = slot.role
-        npc.npcRank = squad.rank
+        npc.npcRank = NpcRank.RECRUIT
         npc.spawnFaction = squad.faction
         npc.squadId = squad.id
         npc.finalizeSpawn(level, level.getCurrentDifficultyAt(barracks.pos), MobSpawnType.SPAWN_EGG, null)
@@ -402,6 +420,9 @@ class SquadManager : SavedData() {
         val deleted = ListTag()
         pendingDeletes.forEach { deleted.add(NbtUtils.createUUID(it)) }
         tag.put("PendingDeletes", deleted)
+        val xp = CompoundTag()
+        pendingExperience.forEach { (id, amount) -> xp.putDouble(id.toString(), amount) }
+        tag.put("PendingExperience", xp)
         return tag
     }
 
@@ -439,6 +460,13 @@ class SquadManager : SavedData() {
             }
             tag.getList("PendingDeletes", Tag.TAG_INT_ARRAY.toInt()).forEach { e ->
                 mgr.pendingDeletes.add(NbtUtils.loadUUID(e))
+            }
+            val xp = tag.getCompound("PendingExperience")
+            xp.allKeys.forEach { key ->
+                runCatching { UUID.fromString(key) }.getOrNull()?.let { id ->
+                    val amount = xp.getDouble(key)
+                    if (amount.isFinite() && amount > 0) mgr.pendingExperience[id] = amount
+                }
             }
             return mgr
         }

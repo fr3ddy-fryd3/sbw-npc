@@ -49,9 +49,9 @@ object SquadDeployment {
         val composition = composition(cfg)
         val difficulty = level.getCurrentDifficultyAt(pos)
         val spawned = if (cfg.preset.grid) {
-            deployGrid(level, pos, facingYaw, composition, cfg.rank, cfg.faction, difficulty)
+            deployGrid(level, pos, facingYaw, composition, NpcRank.RECRUIT, cfg.faction, difficulty)
         } else {
-            deployLine(level, pos, facingYaw, composition, cfg.rank, cfg.faction, difficulty, cfg.preset.spacing)
+            deployLine(level, pos, facingYaw, composition, NpcRank.RECRUIT, cfg.faction, difficulty, cfg.preset.spacing)
         }
         if (spawned.isEmpty()) return null
 

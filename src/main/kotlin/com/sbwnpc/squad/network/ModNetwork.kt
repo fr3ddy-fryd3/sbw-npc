@@ -124,7 +124,7 @@ object ModNetwork {
                         stack,
                         SquadToolItem.Config(
                             NpcClass.byOrdinal(p.cls),
-                            NpcRank.byOrdinal(p.rank),
+                            NpcRank.RECRUIT,
                             SquadFaction.byOrdinal(p.faction),
                             com.sbwnpc.squad.npc.SquadPreset.byOrdinal(p.preset),
                             p.vehicle,
@@ -181,7 +181,7 @@ object ModNetwork {
             if (player.distanceToSqr(Vec3.atCenterOf(p.pos)) > BARRACKS_REACH_SQR || !level.hasChunkAt(p.pos)) return@enqueueWork
             val be = level.getBlockEntity(p.pos) as? BarracksBlockEntity ?: return@enqueueWork
             if (be.owner != player.uuid) return@enqueueWork
-            be.configure(level, SquadToolItem.readConfig(p.config))
+            be.configure(level, SquadToolItem.readConfig(p.config).copy(rank = NpcRank.RECRUIT))
         }
     }
 

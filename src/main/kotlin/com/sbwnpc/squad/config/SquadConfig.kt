@@ -35,6 +35,17 @@ object SquadConfig {
         )
         .defineInRange("recruitIntervalSeconds", 10, 1, 3600)
 
+    val REGULAR_XP = builder.defineInRange("regularExperience", 300, 1, 1000000)
+    val VETERAN_XP = builder.defineInRange("veteranExperience", 1200, 2, 1000000)
+    val ELITE_XP = builder.defineInRange("eliteExperience", 3500, 3, 1000000)
+
+    fun experienceThresholds(): List<Int> {
+        fun value(v: ModConfigSpec.IntValue) = if (SPEC.isLoaded) v.get() else v.default
+        val regular = value(REGULAR_XP)
+        val veteran = maxOf(regular + 1, value(VETERAN_XP))
+        return listOf(0, regular, veteran, maxOf(veteran + 1, value(ELITE_XP)))
+    }
+
     val SPEC: ModConfigSpec = builder.build()
 
     fun recruitIntervalTicks(): Int = (if (SPEC.isLoaded) RECRUIT_INTERVAL_SECONDS.get() else RECRUIT_INTERVAL_SECONDS.default) * 20

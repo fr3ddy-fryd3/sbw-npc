@@ -15,6 +15,8 @@ import com.sbwnpc.squad.entity.ai.VehicleCombatSupportBehaviour
 import com.sbwnpc.squad.entity.ai.VehicleCrewBehaviour
 import com.sbwnpc.squad.entity.ai.VehicleTransportBehaviour
 import com.sbwnpc.squad.entity.ai.VehicleTransportClaims
+import com.sbwnpc.squad.experience.ExperienceAwards
+import com.sbwnpc.squad.experience.ExperienceRules
 import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
@@ -25,6 +27,7 @@ import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.network.chat.Component
 import net.minecraft.network.syncher.EntityDataAccessor
 import net.minecraft.network.syncher.EntityDataSerializers
 import net.minecraft.network.syncher.SynchedEntityData
@@ -75,6 +78,34 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     var npcRank: NpcRank
         get() = NpcRank.byOrdinal(entityData.get(DATA_RANK))
         set(value) = entityData.set(DATA_RANK, value.ordinal)
+
+    var experience: Double = 0.0
+        private set
+
+    fun ensureExperienceIdentity() {
+        if (customName == null) customName = Component.literal(ExperienceRules.name(uuid))
+    }
+
+    fun gainExperience(amount: Double, reason: String) {
+        if (level().isClientSide || !amount.isFinite() || amount <= 0 || !isAlive) return
+        ensureExperienceIdentity()
+        experience = (experience + amount).coerceAtMost(1.0e12)
+        val promoted = ExperienceRules.rank(experience)
+        if (promoted.ordinal > npcRank.ordinal) {
+            val old = npcRank
+            npcRank = promoted
+            getAttribute(Attributes.MAX_HEALTH)?.let { attribute ->
+                attribute.baseValue *= npcRank.healthMultiplier / old.healthMultiplier
+            }
+            server?.let { srv ->
+                currentSquad()?.let { squad ->
+                    srv.playerList.getPlayer(squad.owner)?.sendSystemMessage(Component.literal("${squad.name}: ${name.string} promoted to ${npcRank.name}"))
+                }
+            }
+            com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER, "[experience] npc={} event=promotion from={} to={} xp={}", uuid, old, npcRank, experience)
+        }
+        com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER, "[experience] npc={} event=award reason={} amount={} total={}", uuid, reason, amount, experience)
+    }
 
     /** Weapon spread before any target-specific adjustment: the rank's, scaled by the class. */
     val spread: Double get() = npcRank.spread * npcClass.accuracyMultiplier
@@ -672,7 +703,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     override fun defineSynchedData(builder: SynchedEntityData.Builder) {
         super.defineSynchedData(builder)
         builder.define(DATA_CLASS, NpcClass.DEFAULT.ordinal)
-        builder.define(DATA_RANK, NpcRank.DEFAULT.ordinal)
+        builder.define(DATA_RANK, NpcRank.RECRUIT.ordinal)
     }
 
     /** Vehicles are not obstacles to vanilla pathfinding, so routes are plotted straight through
@@ -773,6 +804,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     }
 
     override fun customServerAiStep() {
+        ExperienceAwards.tick(this)
         super.customServerAiStep()
         SidearmKit.update(this)
         takeNewOrders()
@@ -1010,6 +1042,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         spawnType: MobSpawnType,
         spawnGroupData: SpawnGroupData?,
     ): SpawnGroupData? {
+        experience = ExperienceRules.threshold(npcRank)
+        ensureExperienceIdentity()
         applyRole()
         spawnFaction?.let { SquadTeams.assign(this, it) }
         return super.finalizeSpawn(level, difficulty, spawnType, spawnGroupData)
@@ -1069,6 +1103,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         super.addAdditionalSaveData(compound)
         compound.putString("NpcClass", npcClass.name)
         compound.putString("NpcRank", npcRank.name)
+        compound.putDouble("Experience", experience)
         squadId?.let { compound.putUUID("SquadId", it) }
         assignedVehicleId?.let { compound.putUUID("AssignedVehicle", it) }
         compound.putInt("Rgn", rgnLeft)
@@ -1090,7 +1125,15 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         // Saved attributes carry the old base; NPCs from before the change swim at the new pace too.
         getAttribute(net.neoforged.neoforge.common.NeoForgeMod.SWIM_SPEED)?.baseValue = SWIM_SPEED
         runCatching { npcClass = NpcClass.byName(compound.getString("NpcClass")) }
-        runCatching { npcRank = NpcRank.valueOf(compound.getString("NpcRank")) }
+        npcRank = runCatching { NpcRank.valueOf(compound.getString("NpcRank")) }.getOrDefault(NpcRank.DEFAULT)
+        experience = if (compound.contains("Experience")) compound.getDouble("Experience").takeIf { it.isFinite() }?.coerceIn(0.0, 1.0e12) ?: 0.0 else ExperienceRules.threshold(npcRank)
+        experience = maxOf(experience, ExperienceRules.threshold(npcRank))
+        val savedRank = npcRank
+        npcRank = ExperienceRules.rank(experience)
+        getAttribute(Attributes.MAX_HEALTH)?.let { attribute ->
+            attribute.baseValue *= npcRank.healthMultiplier / savedRank.healthMultiplier
+        }
+        ensureExperienceIdentity()
         squadId = if (compound.hasUUID("SquadId")) compound.getUUID("SquadId") else null
         assignedVehicleId = if (compound.hasUUID("AssignedVehicle")) compound.getUUID("AssignedVehicle") else null
         // Saved before grenades were counted: a full set, as for anyone recruited now.

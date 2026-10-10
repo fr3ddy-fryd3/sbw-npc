@@ -33,7 +33,7 @@ class Squad(
     var barracks: BarracksRef? = null,
     /** Classes the squad was formed/last topped up with. */
     var originalComposition: List<NpcClass> = emptyList(),
-    /** Rank preserved for barracks reinforcements. */
+    /** Legacy recruitment setting retained in saved data; new soldiers start as RECRUIT. */
     var rank: NpcRank = NpcRank.DEFAULT,
     /** Patrol route this squad walks when on PATROL order, if any — see `Route`/`SquadOrderBehaviour`. */
     var routeId: UUID? = null,

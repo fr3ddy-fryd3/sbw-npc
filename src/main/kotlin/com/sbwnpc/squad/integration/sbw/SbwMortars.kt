@@ -21,6 +21,8 @@ object SbwMortars : Mortars {
 
     override fun isMortar(entity: Entity?): Boolean = entity is MortarEntity
 
+    override fun isShell(entity: Entity?): Boolean = entity is com.atsuishio.superbwarfare.entity.projectile.MortarShellEntity
+
     override fun within(level: Level, area: AABB, filter: (Entity) -> Boolean): List<Entity> = level.getEntitiesOfClass(MortarEntity::class.java, area) { filter(it) }
 
     override fun create(level: ServerLevel, yaw: Float): Entity = MortarEntity(level, yaw).also { it.intelligent = true }

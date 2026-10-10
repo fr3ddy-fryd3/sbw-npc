@@ -22,7 +22,7 @@ import net.minecraft.world.item.ItemStack
 import net.neoforged.neoforge.network.PacketDistributor
 
 /**
- * Picks what a deployment consists of — preset, class, rank, faction and which vehicle comes with
+ * Picks what a deployment consists of — preset, class, faction and which vehicle comes with
  * it.
  *
  * Used by two things that describe a deployment the same way: the squad tool, and the Barracks
@@ -46,7 +46,7 @@ class RecruitScreen(
 
     private var preset = cfg.preset
     private var cls = cfg.cls
-    private var rank = cfg.rank
+    private val rank = NpcRank.RECRUIT
     private var faction = cfg.faction
     private var vehicle = cfg.vehicle
     private var vehicleModel = cfg.vehicleModel
@@ -156,15 +156,6 @@ class RecruitScreen(
         addRenderableWidget(classBtn)
 
         y += 24
-        addRenderableWidget(
-            Button.builder(rankLabel()) {
-                rank = rank.next()
-                it.message = rankLabel()
-                changed()
-            }.bounds(cx - 100, y, 200, 20).build(),
-        )
-
-        y += 24
         // Free choice of ANY faction stays available during development, per the user's explicit
         // call — the mandatory one-time picker (PlayerFactionRegistry/ChooseFactionScreen) only
         // records a default identity, it doesn't restrict this. Locking it down for real is a
@@ -198,7 +189,6 @@ class RecruitScreen(
 
     private fun presetLabel() = Component.literal("Deploy: ${preset.label}").withStyle(ChatFormatting.WHITE)
     private fun classLabel() = Component.literal("Class: ${cls.name}").withStyle(ChatFormatting.GOLD)
-    private fun rankLabel() = Component.literal("Rank: ${rank.name}").withStyle(ChatFormatting.AQUA)
     private fun factionLabel() = Component.literal("Faction: ${faction.label}").withStyle(faction.accentStyle)
     private fun vehicleModelLabel() = Component.literal("Vehicle: ${vehicleModel.label}").withStyle(ChatFormatting.GOLD)
     private fun tankModelLabel() = Component.literal("Tank: ${tankModel.label}").withStyle(ChatFormatting.GOLD)

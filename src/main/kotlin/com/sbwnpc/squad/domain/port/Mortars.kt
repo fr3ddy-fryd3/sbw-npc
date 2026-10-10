@@ -11,6 +11,8 @@ import net.minecraft.world.phys.AABB
 interface Mortars {
     fun isMortar(entity: Entity?): Boolean
 
+    fun isShell(entity: Entity?): Boolean = false
+
     fun within(level: Level, area: AABB, filter: (Entity) -> Boolean = { true }): List<Entity>
 
     /** A new, unplaced mortar facing [yaw], already under AI control (see [takeControl]). */

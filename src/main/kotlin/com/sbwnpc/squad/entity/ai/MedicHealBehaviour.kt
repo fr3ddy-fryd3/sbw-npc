@@ -288,7 +288,9 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.tickCount < nextTreatTick) return
         nextTreatTick = entity.tickCount + TREAT_COOLDOWN_TICKS
         val before = ally.health
+        val injury = com.sbwnpc.squad.experience.ExperienceAwards.wounds(ally)
         Ports.gear.treat(ally)
+        com.sbwnpc.squad.experience.ExperienceAwards.treated(entity, ally, before, injury)
         DebugFlags.log(LogGroup.ORDER, "[medic] {} event=patient_treated patient={} hpBefore={} hpAfter={} maxHp={}", entity.uuid, ally.uuid, before, ally.health, ally.maxHealth)
         markHeal(level, ally)
     }

@@ -57,6 +57,7 @@ object OrderArrival {
             }
             DebugFlags.log(LogGroup.ORDER, "{} took its point ({}), defending", squad.name, squad.order)
             val was = squad.order
+            if (was == SquadOrder.ATTACK) com.sbwnpc.squad.experience.ExperienceAwards.objective(server, squad)
             mgr.setOrder(squad.id, SquadOrder.DEFEND)
             SquadReports.holding(server, squad, was)
             com.sbwnpc.squad.combat.Withdrawal.forget(squad.id)

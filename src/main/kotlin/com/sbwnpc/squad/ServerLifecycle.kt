@@ -26,7 +26,14 @@ object ServerLifecycle {
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     fun onEntityJoin(event: net.neoforged.neoforge.event.entity.EntityJoinLevelEvent) {
         val level = event.level as? net.minecraft.server.level.ServerLevel ?: return
-        if (SquadManager.get(level).discardDeletedEntity(event.entity)) event.isCanceled = true
+        if (SquadManager.get(level).discardDeletedEntity(event.entity)) {
+            event.isCanceled = true
+        } else {
+            (event.entity as? com.sbwnpc.squad.entity.NpcEntity)?.let {
+                val manager = SquadManager.get(level)
+                manager.deliverExperience(it)
+            }
+        }
     }
 
     @SubscribeEvent
@@ -55,6 +62,7 @@ object ServerLifecycle {
         VehicleTransportClaims.clearAll()
         SquadSelection.clearAll()
         RouteRecording.clearAll()
+        com.sbwnpc.squad.experience.ExperienceEvents.clear()
         SquadManager.clearCache()
         NpcRegistry.clearAll()
         PilotlessHelicopters.clear()
