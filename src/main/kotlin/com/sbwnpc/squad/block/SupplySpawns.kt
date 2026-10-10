@@ -14,6 +14,8 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
+import net.minecraft.world.entity.EntityType
+import net.minecraft.world.entity.vehicle.DismountHelper
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.portal.DimensionTransition
 import net.minecraft.world.level.saveddata.SavedData
@@ -31,7 +33,7 @@ import java.util.UUID
  * Kept here rather than as the vanilla respawn point, because vanilla can't tell that a Supply has
  * since been broken: the point would still be free air and the player would keep coming back there.
  * Checked at the moment of respawning instead — the block still there, still serving the player's
- * side, and room above it; otherwise the player comes back at the world spawn, the vanilla respawn
+ * side, and a safe position above or nearby; otherwise the player comes back at the world spawn, the vanilla respawn
  * point having been cleared when this one was set.
  */
 class SupplySpawns : SavedData() {
@@ -117,26 +119,37 @@ object SupplySpawnEvents {
             tell(player, "Your Supply no longer serves your side")
             return
         }
-        val feet = at.pos().above()
-        if (!roomFor(level, feet)) {
+        val position = safePosition(level, at.pos())
+        if (position == null) {
             tell(player, "Your Supply is blocked")
             return
         }
         event.dimensionTransition = DimensionTransition(
             level,
-            Vec3.atBottomCenterOf(feet),
+            position,
             Vec3.ZERO,
             player.yRot,
             0f,
-            DimensionTransition.DO_NOTHING,
+            event.dimensionTransition.postDimensionTransition(),
         )
     }
 
-    private fun roomFor(level: ServerLevel, feet: BlockPos): Boolean =
-        listOf(feet, feet.above()).all {
-            val state = level.getBlockState(it)
-            state.block.isPossibleToRespawnInThis(state)
+    /** Vanilla's bed/anchor collision and hazard checks, with nearby alternatives to a blocked top. */
+    private fun safePosition(level: ServerLevel, supply: BlockPos): Vec3? {
+        val candidates = buildList {
+            add(supply.above())
+            for (radius in 1..3) {
+                for (height in listOf(1, 0, -1, 2)) {
+                    for (x in -radius..radius) {
+                        for (z in -radius..radius) {
+                            if (kotlin.math.max(kotlin.math.abs(x), kotlin.math.abs(z)) == radius) add(supply.offset(x, height, z))
+                        }
+                    }
+                }
+            }
         }
+        return candidates.firstNotNullOfOrNull { DismountHelper.findSafeDismountLocation(EntityType.PLAYER, level, it, true) }
+    }
 
     private fun tell(player: ServerPlayer, text: String) = player.sendSystemMessage(Component.literal(text).withStyle(ChatFormatting.GRAY))
 }
