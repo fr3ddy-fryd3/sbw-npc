@@ -5,6 +5,16 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 
 class TacticalPositionScoreTest {
+    @Test fun `a native transit batch excludes shorter routes that sacrifice the chosen progress`() {
+        val goal = Vec3(12.0, 0.0, 0.0)
+        val best = TacticalPositionScore.coveredTransitStep(Vec3.ZERO, goal, goal)
+        assertTrue(best.sameRouteTier(TacticalPositionScore.coveredTransitStep(Vec3.ZERO, goal, Vec3(11.0, 0.0, 0.0))))
+        assertFalse(best.sameRouteTier(TacticalPositionScore.coveredTransitStep(Vec3.ZERO, goal, Vec3(4.0, 0.0, 0.0))))
+        // Ordinary firing-post batches still group by actual shelter and exposure.
+        assertTrue(TacticalPositionScore(false, 0, 1.0).sameRouteTier(TacticalPositionScore(false, 0, 20.0)))
+        assertFalse(best.sameRouteTier(TacticalPositionScore(true, 0, 0.0)))
+    }
+
     @Test fun `a covered flank prefers progress and a necessary sideways step over retreat`() {
         val origin = Vec3.ZERO
         val goal = Vec3(64.0, 0.0, 0.0)

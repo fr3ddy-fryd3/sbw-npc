@@ -48,6 +48,8 @@ abstract class CoveredManeuverState : TacticalState() {
     protected open fun promoteLateSupport(context: TacticalContext) {}
     internal open fun probeFinished(member: UUID) {}
     protected open fun readyWithoutCover(context: TacticalContext): Boolean = false
+    protected open fun externalCover(context: TacticalContext): Boolean = false
+    protected open fun shouldPauseForLostCover(context: TacticalContext): Boolean = context.view.visible.isNotEmpty()
 
     internal fun maintainsCover(context: TacticalContext, member: TacticalMember): Boolean =
         if (requiresActualCover(context)) {
@@ -86,6 +88,7 @@ abstract class CoveredManeuverState : TacticalState() {
     }
 
     private fun coverReady(context: TacticalContext, cover: List<TacticalMember>): Boolean {
+        if (externalCover(context)) return true
         fun ready(member: TacticalMember): Boolean = maintainsCover(context, member) && TacticalEvidence.settled(member, context.plan.tasks[member.id])
         return if (requiresActualCover(context)) {
             cover.count { ready(it) } >= TacticalFlanks.requiredCover(context.view)
@@ -111,8 +114,8 @@ abstract class CoveredManeuverState : TacticalState() {
             return
         }
         val cover = context.view.members.filter { context.plan.tasks[it.id]?.job in TacticalJob.FIRE_SUPPORT }
-        if (cover.any { maintainsCover(context, it) }) lastCover = context.view.now
-        if (!withdrawal && context.view.now - lastCover > COVER_LOST_DELAY && context.view.visible.isNotEmpty()) {
+        if (externalCover(context) || cover.any { maintainsCover(context, it) }) lastCover = context.view.now
+        if (!withdrawal && context.view.now - lastCover > COVER_LOST_DELAY && shouldPauseForLostCover(context)) {
             phases.transition(PausedPhase(phaseSince), context, "cover_lost_pause")
             return
         }

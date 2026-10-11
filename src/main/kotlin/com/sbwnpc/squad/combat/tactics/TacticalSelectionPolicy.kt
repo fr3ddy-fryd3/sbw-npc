@@ -15,6 +15,12 @@ object TacticalSelectionPolicy {
         if (old.stamp != stamp) return TacticalSelection.Replace("player_order_changed")
         val policy = old.behavior.stability
         if (old.status in TERMINAL_STATUSES) return TacticalSelection.Replace("plan_terminal")
+        if (choice.pattern == TacticalPattern.COORDINATED_ATTACK && old.pattern != choice.pattern && view?.attackAssignment != null) {
+            return TacticalSelection.Replace("operation_joined")
+        }
+        if (old.pattern == TacticalPattern.COORDINATED_ATTACK && view?.attackAssignment == null) {
+            return TacticalSelection.Replace("operation_released")
+        }
         if (recoveringFiringPost(old, choice, view, now)) {
             return TacticalSelection.Keep(TacticalSelectionHold.FIRING_POST_RECOVERY)
         }

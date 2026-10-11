@@ -163,6 +163,23 @@ class TacticalRecoveryRegressionTest {
         )
     }
 
+    @Test fun `a rear scout probes from its feet rather than an unreachable distant formation slot`() {
+        val state = SquadTacticalState()
+        state.select(TacticalChoice(TacticalPattern.FLANK, focus), 1, 0)
+        val plan = state.plan!!
+        val view = view()
+        TacticalCoordinator.assign(UUID(2, 2), plan, view)
+        val member = view.members[10]
+        plan.tasks.getValue(member.id).frontage = TacticalFrontPost(
+            member.position.add(plan.frontage.forward.scale(60.0)).add(plan.frontage.side.scale(20.0)),
+            plan.frontage.forward,
+        )
+        val probe = TacticalLaneRecovery.probe(TacticalContext(UUID(2, 2), plan, view, state), member)
+        assertEquals(12.0, probe.anchor.subtract(member.position).horizontalDistance(), 0.001)
+        assertEquals(0.0, probe.anchor.subtract(member.position).dot(plan.frontage.side), 0.001)
+        assertTrue(TacticalRoutes.safeLaneProbe(member.position, probe.anchor, focus, probe.probeAdvance))
+    }
+
     @Test fun `existing cover cannot cancel a blocked lane probe before it moves`() {
         val state = SquadTacticalState()
         state.select(TacticalChoice(TacticalPattern.FLANK, focus), 1, 0)

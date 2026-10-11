@@ -16,7 +16,46 @@ object TacticalPositions {
     enum class Outcome { FOUND, DEFERRED, UNREACHABLE }
     data class Result(val outcome: Outcome, val position: Vec3? = null, val rejections: Map<String, Int> = emptyMap(), val maneuverPost: Boolean = false, val coarseExhausted: Boolean = false)
 
+    /** Optional work counter; disabled during ordinary gameplay. True marks a fresh cursor. */
+    internal var searchWorkObserver: ((NpcEntity, Boolean) -> Unit)? = null
+
     fun find(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot): Result {
+        searchWorkObserver?.invoke(entity, false)
+        val search = task.search
+        val pending = search?.pendingPath
+        if (pending != null) {
+            // Native A* admission is independent of the raycast queue. A request that only
+            // reappears on its next ray turn can expire and block every successor meanwhile.
+            if ((entity.navigation as? VehicleAwareNavigation)?.canPlan == false) return Result(Outcome.DEFERRED)
+            val overwatch = task.job == TacticalJob.OVERWATCH && !task.localFireRecovery
+            val deployment = !task.expandedFireSearch && task.deployingFront(entity.position())
+            if (search.needsRestart(entity.position(), if (overwatch) null else TacticalAim.resolve(entity, task), deployment)) {
+                task.search = null
+            } else {
+                if (!TacticalBudget.path(entity)) return Result(Outcome.DEFERRED)
+                val path = pathToCandidates(entity, pending)
+                recordPath(entity, task, search, pending, path)
+                // Recheck bodies, aim, cover and every route node in the normal ray turn.
+                // A queued proposal never directly commits navigation or skips live safety.
+                return Result(Outcome.DEFERRED)
+            }
+        }
+        return TickBudget.search(entity, TickBudget.Work.POSITIONS, Result(Outcome.DEFERRED)) { findInTurn(entity, task, view) }
+    }
+
+    private fun recordPath(entity: NpcEntity, task: TacticalTask, search: TacticalPositionSearch, batch: List<Vec3>, path: Path?) {
+        search.pendingPath = null
+        search.pathAttempts++
+        val selected = path?.takeIf { it.canReach() }?.let { route -> batch.firstOrNull { VehicleAwareNavigation.walkingNode(it) == route.target } }
+        if (selected != null) {
+            search.routeValidation = TacticalRouteValidation(path!!, entity.level().gameTime, selected)
+        } else {
+            search.rejectedRoutes.addAll(batch)
+            DebugFlags.log(LogGroup.PATH, "[tactics] {} plan={} event=post_route_batch_rejected candidates={} attempts={} end={}", entity.uuid, task.plan, batch.size, search.pathAttempts, path?.endNode?.asBlockPos())
+        }
+    }
+
+    private fun findInTurn(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot): Result {
         val level = entity.level() as ServerLevel
         if ((entity.navigation as? VehicleAwareNavigation)?.canPlan == false) return Result(Outcome.DEFERRED)
         val overwatch = task.job == TacticalJob.OVERWATCH && !task.localFireRecovery
@@ -93,11 +132,14 @@ object TacticalPositions {
             }
         }
         val oldSearch = task.search
+        val plan = entity.currentSquad()?.tactics?.plan
+        val policy = plan?.behavior?.positions ?: DefaultTacticalPositions
         // Terrain and protection define a sentry post. Switching reported targets must not
         // restart its multi-tick height scan before it ever reaches the ladder.
         val searchAim = if (overwatch) null else aim
         if (oldSearch?.needsRestart(entity.position(), searchAim, deployment) == true) task.search = null
         if (overwatch && task.search == null) entity.navigation.stop()
+        if (task.search == null) searchWorkObserver?.invoke(entity, true)
         val search = task.search ?: TacticalPositionSearch(
             entity.position(),
             (
@@ -124,7 +166,7 @@ object TacticalPositions {
                         TacticalRoutes.flankProbes(entity.position(), task, view, entity.npcClass)
 
                     else -> OFFSETS.map { localAnchor.add(it) }
-                } + (
+                } + policy.additionalProbes(view, task, entity.position(), entity.npcClass) + (
                     task.coverOrigin?.takeUnless {
                         task.fireTransit != null || task.expandedFireSearch || (deployment && !TacticalContactApproach.searchesOriginShelter(view, entity.npcClass, it))
                     }?.let {
@@ -145,11 +187,11 @@ object TacticalPositions {
                 )
             }
         }
-        val plan = entity.currentSquad()?.tactics?.plan
-        val policy = plan?.behavior?.positions ?: DefaultTacticalPositions
-        val covered = plan != null && view.members.count { member ->
-            plan.tasks[member.id]?.job in TacticalJob.FIRE_SUPPORT && TacticalEvidence.firesCover(member, plan.tasks[member.id])
-        } >= TacticalFlanks.requiredCover(view)
+        val covered = (plan?.behavior is CoordinatedAttackState && view.attackAssignment?.externalCover == true) || (
+            plan != null && view.members.count { member ->
+                plan.tasks[member.id]?.job in TacticalJob.FIRE_SUPPORT && TacticalEvidence.firesCover(member, plan.tasks[member.id])
+            } >= TacticalFlanks.requiredCover(view)
+            )
         return SearchContext(entity, task, view, level, homeRadius, overwatch, deployment, taken, threats, hulls, localAnchor, search, policy, covered, aim)
     }
 
@@ -159,7 +201,9 @@ object TacticalPositions {
         if (search.destinations != null) return true
         var probesThisTick = 0
         while (search.probeIndex < search.probes.size) {
-            if (!TickBudget.hasRaycasts(context.level) || probesThisTick++ >= MAX_PROBES_PER_TICK) return false
+            if (!TickBudget.hasRaycasts(context.level) || probesThisTick++ >= MAX_PROBES_PER_TICK) {
+                return search.readyBatch(context.overwatch) || context.policy.readyBatch(context.task, context.localAnchor, search.scored)
+            }
             val raw = search.probes[search.probeIndex++]
             scoreCandidate(context, raw)
             if (search.denseRecovery && search.scored.size >= DENSE_CANDIDATE_BATCH) return true
@@ -320,6 +364,12 @@ object TacticalPositions {
         if (context.task.job == TacticalJob.FLANK && context.covered && !mustShoot) {
             return TacticalPositionScore.coveredTransitStep(context.entity.position(), context.task.anchor, candidate)
         }
+        if (context.policy === CoordinatedAttackPositions && context.task.job in TacticalRoutes.TRANSIT_JOBS && !mustShoot) {
+            // Lane deployment is a journey, not a local firing-post adjustment. Summing
+            // distance from origin and to goal makes every point on the leg equally good
+            // and repeatedly picks a tiny step. Live shelter/clearance checks ran above.
+            return TacticalPositionScore.coveredTransitStep(context.search.origin, context.localAnchor, candidate)
+        }
         var score = candidate.distanceTo(context.localAnchor) + candidate.distanceTo(context.entity.position())
         if (firing && mustShoot) score -= 8.0
         val front = context.task.frontage
@@ -360,6 +410,18 @@ object TacticalPositions {
                 search.skipRejectedRoutes()
                 continue
             }
+            if (context.policy.requiresShelter(context.view, task) && context.aim?.let { aim ->
+                    DefensiveOverwatch.nearbyCover(candidate, aim.eye) { from, to -> Sightline.blockedBy(context.level, from, to, entity, context.hulls) }
+                } != true
+            ) {
+                // Incoming fire can begin while the scored batch waits for native A*.
+                // Never commit an old open-ground proposal as a protected advance.
+                search.routeValidation = null
+                search.reject("changed_advance_cover")
+                search.rejectedRoutes += candidate
+                search.skipRejectedRoutes()
+                continue
+            }
             if (search.routeValidation != null && context.overwatch && !protected(entity, task, candidate, context.hulls)) {
                 search.routeValidation = null
                 search.reject("changed_overwatch_cover")
@@ -375,23 +437,15 @@ object TacticalPositions {
                 return finish(task, entity.position(), allowDepthAdjustment = canAdjustPostDepth(context, candidate), maneuverPost = task.job == TacticalJob.FLANK && mustShoot, nearbyShelter = isContactShelter(context, candidate))
             }
             if (search.routeValidation == null) {
-                if (!TacticalBudget.path(entity)) return Result(Outcome.DEFERRED)
                 val batch = routeBatch(context, candidate, destinations)
                 if (batch.isEmpty()) return Result(Outcome.DEFERRED)
-                val path = pathToCandidates(entity, batch)
-                search.pathAttempts++
-                if (path?.canReach() == true) {
-                    val selected = batch.firstOrNull { VehicleAwareNavigation.walkingNode(it) == path.target }
-                    if (selected == null) {
-                        DebugFlags.log(LogGroup.PATH, "[tactics] {} plan={} event=unexpected_route_target target={} candidates={}", entity.uuid, task.plan, path.target, batch)
-                        return Result(Outcome.DEFERRED)
-                    }
-                    candidate = selected
-                    search.routeValidation = TacticalRouteValidation(path, context.level.gameTime, candidate)
-                } else {
-                    search.rejectedRoutes.addAll(batch)
-                    DebugFlags.log(LogGroup.PATH, "[tactics] {} plan={} event=post_route_batch_rejected candidates={} attempts={} end={}", entity.uuid, task.plan, batch.size, search.pathAttempts, path?.endNode?.asBlockPos())
+                if (!TacticalBudget.path(entity)) {
+                    search.pendingPath = batch
+                    return Result(Outcome.DEFERRED)
                 }
+                val path = pathToCandidates(entity, batch)
+                recordPath(entity, task, search, batch, path)
+                candidate = search.routeValidation?.candidate ?: candidate
             }
             val validation = search.routeValidation
             val path = validation?.path
@@ -423,7 +477,7 @@ object TacticalPositions {
             search.rejectedRoutes += candidate
             search.skipRejectedRoutes()
         }
-        if (search.denseRecovery && search.probeIndex < search.probes.size) {
+        if (search.probeIndex < search.probes.size) {
             search.clearCandidates()
             return Result(Outcome.DEFERRED)
         }
@@ -490,7 +544,7 @@ object TacticalPositions {
             val point = destinations[index]
             if (point in context.search.rejectedRoutes) continue
             val score = context.search.scored[point]
-            if (score?.open != firstScore?.open || score?.exposure != firstScore?.exposure ||
+            if (firstScore == null || score == null || !firstScore.sameRouteTier(score) ||
                 (context.overwatch && kotlin.math.abs(point.y - first.y) > 0.01)
             ) {
                 break
@@ -527,7 +581,7 @@ object TacticalPositions {
             val node = path.getNode(index)
             val foot = Vec3(node.x + 0.5, node.y.toDouble(), node.z + 0.5)
             if (!TacticalRules.withinOrder(context.view, foot, context.homeRadius) || GrenadeHazard.threatens(context.level, foot) ||
-                !context.policy.route(context.view, foot)
+                !context.policy.route(context.view, task, context.search.origin, foot)
             ) {
                 return TacticalRouteValidation.Outcome.UNSAFE
             }
@@ -547,7 +601,15 @@ object TacticalPositions {
     fun safeDistance(entity: NpcEntity, view: TacticalSnapshot, point: Vec3): Boolean = TacticalClearance.permitsPosition(entity.npcClass, entity.position(), point, view)
 
     /** Repaths and already-running paths must respect newly reported or approaching enemies too. */
-    fun safePath(entity: NpcEntity, view: TacticalSnapshot, path: Path): Boolean = TacticalClearance.permitsPath(entity.npcClass, entity.position(), path, view)
+    fun safePath(entity: NpcEntity, view: TacticalSnapshot, path: Path): Boolean {
+        if (!TacticalClearance.permitsPath(entity.npcClass, entity.position(), path, view)) return false
+        val assignment = view.attackAssignment
+        if (entity.currentSquad()?.tactics?.plan?.behavior !is CoordinatedAttackState || assignment == null || assignment.holding) return true
+        return (path.nextNodeIndex until path.nodeCount).all {
+            val node = path.getNode(it)
+            assignment.corridor.permitsRoute(entity.position(), Vec3(node.x + 0.5, node.y.toDouble(), node.z + 0.5))
+        }
+    }
 
     private fun hasUncoveredApproach(context: SearchContext, foot: Vec3): Boolean {
         val threat = context.threats.firstOrNull()

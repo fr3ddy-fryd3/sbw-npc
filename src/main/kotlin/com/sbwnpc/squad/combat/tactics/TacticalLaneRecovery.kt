@@ -8,12 +8,12 @@ object TacticalLaneRecovery {
     fun forwardStep(view: TacticalSnapshot): Double = if (view.incoming.isEmpty() && view.members.none { it.suppressed }) 12.0 else 4.0
 
     fun probe(context: TacticalContext, member: TacticalMember): TacticalTask {
-        val old = context.plan.tasks.getValue(member.id)
         val direction = context.plan.frontage.forward
-        val post = old.frontage?.point ?: member.position
         val distance = forwardStep(context.view)
-        val aheadOfPost = member.position.subtract(post).dot(direction).coerceAtLeast(0.0)
-        val desired = post.add(direction.scale(aheadOfPost + distance))
+        // A short physical probe starts at the actor, including rear members that have not
+        // reached the common front. An anchor on that front can be >16 blocks away, which
+        // makes every local candidate fail safeLaneProbe before a route is even attempted.
+        val desired = member.position.add(direction.scale(distance))
         val point = TacticalClearance.threats(context.view).fold(desired) { target, threat ->
             CombatPositionSafety.approach(
                 member.position,

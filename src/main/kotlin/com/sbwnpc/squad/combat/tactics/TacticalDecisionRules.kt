@@ -4,6 +4,10 @@ import com.sbwnpc.squad.squad.SquadOrder
 
 /** A null result lets the next rule run; a choice ends the assessment. See TacticalRules for priority. */
 internal object TacticalDecisionRules {
+    fun followAttackOperation(situation: TacticalSituation): TacticalChoice? {
+        if (!situation.view.offensive || situation.view.attackAssignment == null) return null
+        return TacticalChoice(TacticalPattern.COORDINATED_ATTACK, situation.focus, reason = TacticalReason.OPERATION_ASSIGNED)
+    }
     fun evadeGrenade(situation: TacticalSituation): TacticalChoice? {
         if (!situation.view.grenade) return null
         return TacticalChoice(TacticalPattern.EVADE, situation.focus, emergency = true, reason = TacticalReason.GRENADE_DANGER)
@@ -28,6 +32,7 @@ internal object TacticalDecisionRules {
         if (view.incoming.isNotEmpty()) {
             return TacticalChoice(TacticalPattern.RETURN_FIRE, view.incoming.first(), reason = TacticalReason.UNSEEN_INCOMING_FIRE)
         }
+        followAttackOperation(situation)?.let { return it }
         if (rememberedEnemy && view.offensive) {
             return TacticalChoice(TacticalPattern.SEARCH, situation.focus, reason = TacticalReason.LOST_CONTACT)
         }

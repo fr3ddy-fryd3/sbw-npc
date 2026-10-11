@@ -3,6 +3,7 @@ package com.sbwnpc.squad.combat.tactics
 import net.minecraft.world.phys.Vec3
 
 class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val plan: Int) {
+    internal var operationMember: java.util.UUID? = null
     var position: Vec3? = null
     var firingTarget: java.util.UUID? = null
     var nextSearch = Long.MIN_VALUE
@@ -47,6 +48,7 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
     internal fun withJob(next: TacticalJob, anchor: Vec3): TacticalTask =
         TacticalTask(next, anchor, focus, plan).also {
             it.position = position
+            it.operationMember = operationMember
             it.firingTarget = firingTarget
             it.nextSearch = nextSearch
             it.nextValidation = nextValidation
@@ -130,6 +132,7 @@ class TacticalPositionSearch(val origin: Vec3, probes: List<Vec3>, val aim: Tact
     var destinations: List<Vec3>? = null
     var destinationIndex = 0
     internal var routeValidation: TacticalRouteValidation? = null
+    internal var pendingPath: List<Vec3>? = null
     internal val rejectedRoutes = HashSet<Vec3>()
     internal var pathAttempts = 0
 
@@ -150,10 +153,15 @@ class TacticalPositionSearch(val origin: Vec3, probes: List<Vec3>, val aim: Tact
 
     fun clearCandidates() {
         routeValidation = null
+        pendingPath = null
         scored.clear()
         destinations = null
         destinationIndex = 0
     }
+
+    /** Use a real nearby covered candidate before a moving target invalidates a long scan.
+     * Height searches still finish their full scan before ranking the highest protected floor. */
+    internal fun readyBatch(overwatch: Boolean): Boolean = !overwatch && scored.values.any { !it.open && it.purpose != TacticalPositionScore.Purpose.COVERED_TRANSIT }
 
     fun needsRestart(position: Vec3, currentAim: TacticalAim?, deployment: Boolean = this.deployment): Boolean {
         if (this.deployment != deployment) return true

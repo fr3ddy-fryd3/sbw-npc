@@ -133,6 +133,9 @@ abstract class TacticalState {
     protected open fun onExit(context: TacticalContext, trigger: String) {}
     open fun refreshSectors(context: TacticalContext) {}
 
+    /** A temporary occupied destination can wait without abandoning a long-lived assignment. */
+    open fun searchFailureRetry(task: TacticalTask, rejections: Map<String, Int>): Long? = null
+
     open fun assign(context: TacticalContext, retainCover: Boolean = false, trigger: String = "reassign") {
         val layout = TacticalLayout(context)
         prepareAssignments(layout)
@@ -274,6 +277,7 @@ class TacticalLayout(val context: TacticalContext) {
                 }
             }
         }
+        if (state is CoordinatedAttackState) intent.operationMember = member.id
         return intent
     }
 

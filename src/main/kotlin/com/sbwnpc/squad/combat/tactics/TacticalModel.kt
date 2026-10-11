@@ -26,6 +26,7 @@ enum class TacticalPattern {
     AVOID_ARMOUR,
     EVADE,
     CONSOLIDATE,
+    COORDINATED_ATTACK,
 }
 enum class TacticalStatus { PREPARING, EXECUTING, REGROUPING, COMPLETED, FAILED }
 enum class TacticalJob {
@@ -74,6 +75,7 @@ enum class TacticalReason {
     COMPACT_ENEMY,
     NORMAL_ADVANCE,
     PATTERN_COOLDOWN,
+    OPERATION_ASSIGNED,
 }
 enum class TacticalFailure { NONE, UNSPECIFIED, COVER_NOT_READY_TIMEOUT, COVER_LOST, MOVEMENT_TIMEOUT, PARTIAL_MANEUVER }
 
@@ -121,6 +123,7 @@ data class TacticalSnapshot(
     val regrouping: Boolean? = null,
     val suppressionWithdrawal: Boolean = false,
     val hasPatrolRoute: Boolean = false,
+    val attackAssignment: com.sbwnpc.squad.combat.tactics.operation.AttackAssignment? = null,
 ) {
     val visible get() = contacts.filter { now - it.seenAt < 40 }
     val fighting get() = members.filter { it.ready && it.health >= 0.3 && (!offensive || it.primaryAmmo) }

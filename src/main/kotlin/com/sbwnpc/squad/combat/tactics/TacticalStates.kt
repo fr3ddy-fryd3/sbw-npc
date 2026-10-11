@@ -41,6 +41,7 @@ object TacticalStates {
             TacticalPattern.AVOID_ARMOUR to ::AvoidArmourState,
             TacticalPattern.EVADE to ::EvadeState,
             TacticalPattern.CONSOLIDATE to ::ConsolidateState,
+            TacticalPattern.COORDINATED_ATTACK to ::CoordinatedAttackState,
         ),
     )
     fun create(pattern: TacticalPattern) = registry.create(pattern)

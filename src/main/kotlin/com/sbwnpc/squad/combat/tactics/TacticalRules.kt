@@ -16,6 +16,7 @@ object TacticalRules : TacticalDecisionPolicy {
         TacticalDecisionRules::holdWithTooFewFighters,
         TacticalDecisionRules::holdHigherGround,
         TacticalDecisionRules::holdDefensiveOrder,
+        TacticalDecisionRules::followAttackOperation,
         TacticalDecisionRules::attackHigherGround,
         TacticalDecisionRules::crossNarrowRoute,
         TacticalDecisionRules::dislodgeBlockedEnemy,

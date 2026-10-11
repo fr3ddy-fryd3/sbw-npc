@@ -61,6 +61,7 @@ object SquadTactics {
         if (AttackAmmoWithdrawal.apply(squad, level, view)) {
             view = TacticalSnapshotCollector.collect(squad, level, npcs, entity)
         }
+        view = view.copy(attackAssignment = com.sbwnpc.squad.combat.tactics.operation.AttackOperations.assignment(level, squad))
         val assessment = state.assess(squad.id, view)
         trace(squad, view, assessment.proposed, assessment.effective, assessment.changed)
     }
@@ -116,6 +117,9 @@ object SquadTactics {
             jobs(plan),
             TacticalTelemetry.front(plan, view),
         )
+        view.attackAssignment?.let {
+            DebugFlags.log(LogGroup.ORDER, "[operation] squad={} id={} role={} stage={} revision={} waypoint={} sector={} deployed={} blocked={} externalCover={}", squad.id, it.operation, it.role, it.stage, it.revision, it.waypoint, it.sector, it.deployed, it.blocked, it.externalCover)
+        }
     }
 
     fun task(entity: NpcEntity): TacticalTask? {
@@ -174,7 +178,7 @@ object SquadTactics {
             known,
             entity.target,
             probeCursor,
-            assess = { if (TickBudget.hasRaycasts(level)) FiringOpportunity.assess(entity, it) else TacticalTargetSelection.Opportunity.BLOCKED },
+            assess = { FiringOpportunity.assess(entity, it) },
             allocate = { FireAllocation.pick(entity, level, it) },
         )
     }

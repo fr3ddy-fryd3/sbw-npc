@@ -141,6 +141,12 @@ object TacticalMovement {
                         LogGroup.ORDER, "[tactics] {} squad={} tick={} plan={} event=position_search_failed job={} unreachable={} from={} staging={} opensLane={} rejected={} attempt={} frontSlot={} recovery={}",
                         entity.uuid, squad.id, entity.level().gameTime, task.plan, task.job, task.anchor, entity.position(), task.staging, task.opensLane, result.rejections, task.failures + 1, task.frontage?.point, task.localFireRecovery,
                     )
+                    val retry = state.plan?.behavior?.searchFailureRetry(task, result.rejections)
+                    if (retry != null) {
+                        task.nextSearch = entity.level().gameTime + retry
+                        DebugFlags.log(LogGroup.ORDER, "[tactics] {} plan={} event=occupied_route_wait job={} retryIn={} rejected={}", entity.uuid, task.plan, task.job, retry, result.rejections)
+                        return true
+                    }
                     return !failedTask(entity, task, "no reachable position", completedSearch = true)
                 }
 
