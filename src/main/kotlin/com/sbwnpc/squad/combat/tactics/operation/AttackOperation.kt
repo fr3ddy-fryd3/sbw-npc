@@ -69,7 +69,6 @@ class AttackOperation(
         for (lane in lanes.values) {
             if (lane.deployed || lane.blocked || lane.role == AttackRole.RESERVE) continue
             val force = forces[lane.squad] ?: continue
-            val distance = force.center.subtract(lane.waypoint).horizontalDistance()
             val facing = focus.subtract(lane.sector).multiply(1.0, 0.0, 1.0).normalize()
             val side = Vec3(-facing.z, 0.0, facing.x)
             val remaining = force.fighters.map { member ->
@@ -79,11 +78,19 @@ class AttackOperation(
                 lane.closest = remaining
                 lane.progressAt = now
             }
-            val arrived = force.fighters.count { member ->
+            val arrived = force.fighters.filter { member ->
                 val point = lane.waypoint.add(side.scale(lane.slots[member.id] ?: 0.0))
                 member.position.subtract(point).horizontalDistance() <= 16.0
             }
-            if (distance <= 10.0 && arrived * 4 >= force.fighters.size * 3) {
+            // Medics, guards and a depleted wing make the raw squad median drift along
+            // a deployed line. Measure the reference frame of actual reached slots.
+            val aligned = arrived.fold(Vec3.ZERO) { sum, member ->
+                sum.add(member.position.subtract(side.scale(lane.slots[member.id] ?: 0.0)))
+            }.scale(1.0 / arrived.size.coerceAtLeast(1))
+            val distance = aligned.subtract(lane.waypoint).horizontalDistance()
+            val legLength = lane.waypoint.subtract(lane.route[(lane.next - 1).coerceAtLeast(0)]).horizontalDistance()
+            val arrivalTolerance = minOf(10.0, maxOf(4.0, legLength / 2.0))
+            if (distance <= arrivalTolerance && arrived.size * 4 >= force.fighters.size * 3) {
                 lane.next++
                 lane.revision++
                 lane.closest = Double.POSITIVE_INFINITY

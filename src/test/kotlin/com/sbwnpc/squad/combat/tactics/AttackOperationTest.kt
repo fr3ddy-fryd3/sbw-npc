@@ -104,6 +104,33 @@ class AttackOperationTest {
         assertFalse(operation.assignment(forces[1].id, reports.map { it.copy(covering = 0) })!!.externalCover)
     }
 
+    @Test fun `medics and a guarding soldier cannot hide a physically deployed firing line`() {
+        val wing = force(2, 32, -24.0).let { force ->
+            force.copy(
+                members = force.members.mapIndexed { index, member ->
+                    if (index >= 28) member.copy(role = com.sbwnpc.squad.npc.NpcClass.MEDIC) else member
+                },
+            )
+        }
+        val forces = listOf(force(1, 32), wing, force(3, 7, 24.0))
+        val operation = AttackOperation(1, focus, forces, 0)
+        val lane = operation.lanes.getValue(wing.id)
+        val waypoint = lane.waypoint
+        val facing = focus.subtract(lane.sector).multiply(1.0, 0.0, 1.0).normalize()
+        val side = Vec3(-facing.z, 0.0, facing.x)
+        val guard = lane.slots.maxBy { it.value }.key
+        val members = wing.members.map { member ->
+            val offset = if (member.id == guard || member.role == com.sbwnpc.squad.npc.NpcClass.MEDIC) -60.0 else lane.slots.getValue(member.id)
+            member.copy(position = waypoint.add(side.scale(offset)))
+        }
+        val median = Vec3(members.map { it.position.x }.sorted()[16], waypoint.y, members.map { it.position.z }.sorted()[16])
+        assertTrue(median.subtract(waypoint).horizontalDistance() > 10.0, "Fixture must reproduce the shifted squad median")
+        val deployed = wing.copy(center = median, members = members)
+        operation.tick(listOf(forces[0], deployed, forces[2]), 10)
+        assertEquals(2, lane.next, "Reached firing slots must advance the route despite rear medical roles")
+        assertFalse(lane.blocked)
+    }
+
     @Test fun `corridor accepts joining stragglers but rejects paths through another strip`() {
         val corridor = AttackCorridor(listOf(Vec3(0.0, 64.0, 0.0), Vec3(40.0, 64.0, 0.0)), 8.0)
         val straggler = Vec3(0.0, 64.0, 24.0)

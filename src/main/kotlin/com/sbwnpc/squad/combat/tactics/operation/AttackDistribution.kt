@@ -102,7 +102,8 @@ object CenterAndWings : AttackDistribution {
         val route = mutableListOf(force.center)
         if (role == AttackRole.LEFT || role == AttackRole.RIGHT) {
             // First open the lateral angle at the starting depth; don't cross the central gun line.
-            val lateral = maxOf(kotlin.math.abs(goal.subtract(origin).dot(side)), halfWidth(central) + width + 8.0)
+            val projectedWingWidth = width * cos(angle)
+            val lateral = maxOf(kotlin.math.abs(goal.subtract(origin).dot(side)), halfWidth(central) + projectedWingWidth + 8.0)
             route += force.center.add(side.scale(sign * lateral - force.center.subtract(origin).dot(side)))
         }
         route += goal

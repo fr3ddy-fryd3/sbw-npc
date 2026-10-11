@@ -61,6 +61,9 @@ data class AttackCorridor(val points: List<Vec3>, val halfWidth: Double) {
 
     /** Scattered survivors can join their strip, but cannot use the next squad's strip as a shortcut. */
     fun permits(from: Vec3, point: Vec3): Boolean = distance(point) <= halfWidth + 4.0 || distance(point) < distance(from) - 0.5
+
+    /** Minecraft's first path node is the actor's current block center, not a proposed post. */
+    fun permitsRoute(from: Vec3, point: Vec3): Boolean = point.subtract(from).horizontalDistance() <= 1.0 || permits(from, point)
 }
 
 data class AttackOperationEvent(val operation: Long, val tick: Long, val action: String, val squad: UUID?, val role: AttackRole?, val reason: String, val point: Vec3? = null)
