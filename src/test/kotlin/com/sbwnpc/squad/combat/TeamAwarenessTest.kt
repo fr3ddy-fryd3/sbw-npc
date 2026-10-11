@@ -54,4 +54,21 @@ class TeamAwarenessTest {
         assertEquals(there, sighting.pos)
         assertEquals(later, sighting.tick)
     }
+
+    @Test
+    fun `forgetting a life clears every faction and support sighting but preserves other enemies`() {
+        val other = UUID.randomUUID()
+        for (side in listOf(SquadFaction.PIG, SquadFaction.COW)) {
+            TeamAwareness.report(side, enemy, here, 10_000, "old life")
+            TeamAwareness.report(side, other, here, 10_000, "other")
+        }
+        TeamAwareness.forget(enemy)
+        for (side in listOf(SquadFaction.PIG, SquadFaction.COW)) {
+            assertEquals(setOf(other), TeamAwareness.knownContacts(side, 10_060))
+            assertEquals(listOf(other), TeamAwareness.relayedContacts(side, 10_060, TeamAwareness.MEMORY_TICKS))
+            org.junit.jupiter.api.Assertions.assertNull(TeamAwareness.lastSighting(side, enemy, 10_020))
+        }
+        TeamAwareness.report(faction, enemy, here, 10_061, "new sighting")
+        assertTrue(enemy !in TeamAwareness.relayedContacts(faction, 10_061, TeamAwareness.MEMORY_TICKS), "A new life must restart the relay delay")
+    }
 }

@@ -17,6 +17,14 @@ class LastSeenFire {
 
     fun observed(id: UUID): Boolean = target == id
 
+    fun forget(id: UUID) {
+        if (target != id) return
+        target = null
+        eye = null
+        seenAt = Long.MIN_VALUE
+        cancel()
+    }
+
     fun observe(id: UUID, point: Vec3, now: Long) {
         target = id
         eye = point

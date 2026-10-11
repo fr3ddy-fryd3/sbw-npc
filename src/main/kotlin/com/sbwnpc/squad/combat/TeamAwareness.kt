@@ -151,6 +151,11 @@ object TeamAwareness {
         byFaction.entries.removeIf { it.value.isEmpty() }
     }
 
+    /** A player's profile UUID survives death and reconnect; sightings belong to the old life. */
+    fun forget(target: UUID) {
+        byFaction.values.forEach { it.remove(target) }
+    }
+
     fun clearAll() {
         byFaction.clear()
         lastSweepTick = -SWEEP_INTERVAL_TICKS

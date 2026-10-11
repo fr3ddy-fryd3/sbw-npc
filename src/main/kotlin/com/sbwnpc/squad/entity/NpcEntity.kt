@@ -312,6 +312,16 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         sightedUntil = level().gameTime + 200
     }
 
+    internal fun forgetContact(id: UUID) {
+        lastSeenFire.forget(id)
+        forgetVehicleAttacker(id)
+        if (sightedTarget == id) {
+            sightedTarget = null
+            sightedEye = null
+            sightedUntil = Long.MIN_VALUE
+        }
+    }
+
     fun noticeHidden(target: LivingEntity, visibility: com.sbwnpc.squad.combat.DetectionSightline.Visibility) {
         if (lastSeenFire.hidden(target.uuid, visibility, level().gameTime)) {
             com.sbwnpc.squad.combat.DebugFlags.log(
@@ -554,6 +564,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     fun rememberVehicleAttacker(attacker: LivingEntity) {
         vehicleAttackerId = attacker.uuid
         vehicleAttackerUntilTick = tickCount + VEHICLE_ATTACKER_MEMORY_TICKS
+    }
+
+    internal fun forgetVehicleAttacker(id: UUID) {
+        if (vehicleAttackerId == id) vehicleAttackerId = null
     }
 
     internal fun vehicleAttacker(): LivingEntity? {

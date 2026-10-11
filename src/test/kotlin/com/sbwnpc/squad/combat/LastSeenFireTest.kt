@@ -66,4 +66,19 @@ class LastSeenFireTest {
         assertNull(fire.point(301))
         assertFalse(fire.hidden(target, DetectionSightline.Visibility.FOLIAGE, 400))
     }
+
+    @Test
+    fun `forgetting another life preserves fire while forgetting the observed life removes its aim and bursts`() {
+        val fire = LastSeenFire()
+        fire.observe(target, oldEye, 0)
+        fire.hidden(target, DetectionSightline.Visibility.FOLIAGE, 1)
+        fire.forget(UUID.randomUUID())
+        assertEquals(oldEye, fire.point(2))
+        assertEquals(6, fire.roundsLeft)
+        fire.forget(target)
+        assertFalse(fire.observed(target))
+        assertNull(fire.point(2))
+        assertEquals(0, fire.roundsLeft)
+        assertFalse(fire.hidden(target, DetectionSightline.Visibility.FOLIAGE, 3))
+    }
 }
