@@ -165,7 +165,7 @@ object SquadTactics {
     fun move(entity: NpcEntity): Boolean = TacticalMovement.move(entity)
     fun repositionForFire(entity: NpcEntity) = TacticalMovement.repositionForFire(entity)
 
-    fun preferredTarget(entity: NpcEntity, level: ServerLevel, probeCursor: Int = 0): LivingEntity? {
+    fun preferredTarget(entity: NpcEntity, level: ServerLevel, probeCursor: Int = 0, reconsiderCurrent: Boolean = false): LivingEntity? {
         val task = task(entity)
         val view = entity.currentSquad()?.tactics?.snapshot ?: return null
         val known = TacticalTargets.candidates(view, task, entity.position(), AntiArmourKit.loaded(entity)).asSequence()
@@ -179,7 +179,8 @@ object SquadTactics {
             entity.target,
             probeCursor,
             assess = { FiringOpportunity.assess(entity, it) },
-            allocate = { FireAllocation.pick(entity, level, it) },
+            allocate = { FireAllocation.pick(entity, level, it.sortedBy(entity::distanceToSqr)) },
+            reconsiderCurrent = reconsiderCurrent,
         )
     }
 

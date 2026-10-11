@@ -34,7 +34,7 @@ import net.tslat.smartbrainlib.util.BrainUtils
  * 1. The vehicle attacker, then hostile vehicle occupants / aircrew for an armed seat.
  * 2. A nearby visible threat for dismounted non-mortar members.
  * 3. The ordered focus for non-mortar members, then whoever last hurt this NPC.
- * 4. A visible current target retained by a holding order.
+ * 4. A visible current target retained by a holding order between allocation reviews.
  * 5. During withdrawal: direct sight, squadmate callout, then faction relay.
  * 6. Otherwise: tactical assignment, faction relay, then nearest direct target.
  * Mortar crew skip ordinary focus, close-threat, withdrawal and tactical/relay selection.
@@ -44,6 +44,7 @@ import net.tslat.smartbrainlib.util.BrainUtils
  */
 class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     private var tacticalProbeCursor = 0
+    private var nextReallocationTick = Long.MIN_VALUE
 
     // ExtendedSensor's default is a flat 20 ticks with NO initial offset (nextTickTime starts at 0
     // — confirmed via javap), so every NPC deployed in the same tick (a whole preset squad, a
@@ -68,7 +69,9 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         val previous = entity.target
         // Observation continues while engaging a reported/ordered target; target priority cannot blind the squad.
         val directTarget = nearestDirectTarget(entity, level)
-        val target = computeDesired(entity, level, directTarget)
+        val reconsider = level.gameTime >= nextReallocationTick
+        if (reconsider) nextReallocationTick = level.gameTime + REALLOCATION_MIN + entity.random.nextInt(REALLOCATION_JITTER)
+        val target = computeDesired(entity, level, directTarget, reconsider)
         // Capture sight loss before target selection can discard the personally observed enemy.
         if (previous != null && entity.lastSeenFire.observed(previous.uuid)) {
             entity.noticeHidden(previous, DetectionSightline.trace(entity, previous))
@@ -78,9 +81,9 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             val squad = entity.currentSquad()
             DebugFlags.log(
                 LogGroup.ORDER,
-                "[tactics] {} squad={} plan={} event=target_changed previous={} target={} distance={} sharedContact={}",
+                "[tactics] {} squad={} plan={} event=target_changed previous={} target={} distance={} sharedContact={} allocationReview={}",
                 entity.uuid, squad?.id, squad?.tactics?.plan?.id, previous?.uuid, target?.uuid,
-                target?.let { entity.distanceTo(it) }, target?.uuid in squad?.tactics?.contacts.orEmpty(),
+                target?.let { entity.distanceTo(it) }, target?.uuid in squad?.tactics?.contacts.orEmpty(), reconsider,
             )
         }
         if (target != null && DetectionSightline.canSeeWithin(entity, target, NpcEntity.DETECTION_RANGE)) {
@@ -91,7 +94,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     }
 
     /** Priority is explicit here: later queries run only when earlier sources have no target. */
-    private fun computeDesired(mob: NpcEntity, level: ServerLevel, directTarget: LivingEntity?): LivingEntity? {
+    private fun computeDesired(mob: NpcEntity, level: ServerLevel, directTarget: LivingEntity?, reconsider: Boolean): LivingEntity? {
         val vehicleAttacker = mob.vehicleAttacker()
         if (vehicleAttacker != null && allowed(mob)) return vehicleAttacker
         val mortarCrew = mob.npcClass == NpcClass.MORTAR
@@ -110,16 +113,18 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         val hostileAttacker = attacker?.takeIf { it.isAlive && SquadTeams.isHostile(mob, it) && allowed(mob) }
         if (hostileAttacker != null && FiringOpportunity.assess(mob, hostileAttacker) == TacticalTargetSelection.Opportunity.SHOOTABLE) return hostileAttacker
 
-        val retainedTarget = retainedDefensiveTarget(mob)
+        val retainedTarget = if (reconsider) null else retainedDefensiveTarget(mob)
         if (retainedTarget != null) return retainedTarget
         if (!mortarCrew && mob.retreatPoint() != null) return withdrawalTarget(mob, level, directTarget)
         if (!mortarCrew) {
-            val tacticalTarget = SquadTactics.preferredTarget(mob, level, tacticalProbeCursor)
+            val tacticalTarget = SquadTactics.preferredTarget(mob, level, tacticalProbeCursor, reconsider)
             tacticalProbeCursor = (tacticalProbeCursor + TacticalTargetSelection.PROBES_PER_SCAN) and Int.MAX_VALUE
             if (tacticalTarget != null) return tacticalTarget
             val relayedTarget = relayedTarget(mob, level)
             if (relayedTarget != null) return relayedTarget
         }
+        // A holding member without a current squad snapshot can still finish a known distant contact.
+        if (reconsider) retainedDefensiveTarget(mob)?.let { return it }
         return directTarget ?: hostileAttacker
     }
 
@@ -264,6 +269,8 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     companion object {
         private const val SCAN_RATE_MIN = 15
         private const val SCAN_RATE_JITTER = 11 // 15..25 ticks, mean 20 — same average as before
+        private const val REALLOCATION_MIN = 80L
+        private const val REALLOCATION_JITTER = 41 // 4..6s, independent for each NPC; aim stays stable between reviews.
         private const val DETECTION_HEIGHT = 24.0
 
         /** How many visible enemies a scan considers when spreading the squad's fire. */

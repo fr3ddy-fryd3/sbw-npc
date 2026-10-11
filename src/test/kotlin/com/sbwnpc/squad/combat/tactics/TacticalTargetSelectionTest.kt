@@ -45,4 +45,31 @@ class TacticalTargetSelectionTest {
         assertEquals(1, TacticalTargetSelection.choose(listOf(1, 2), 99, 0, { Opportunity.BLOCKED }, { it.first() }))
         assertNull(TacticalTargetSelection.choose(emptyList<Int>(), 99, 0, { error("no contact") }, { error("no contact") }))
     }
+
+    @Test fun `periodic review reallocates a shootable target using bounded probes and includes the current target`() {
+        val assessed = mutableListOf<Int>()
+        var offered = emptyList<Int>()
+        val selected = TacticalTargetSelection.choose((1..12).toList(), 12, 0, {
+            assessed += it
+            Opportunity.SHOOTABLE
+        }, {
+            offered = it
+            it.minOrNull()
+        }, reconsiderCurrent = true)
+        assertEquals(1, selected)
+        assertEquals(setOf(1, 2, 3, 4, 12), assessed.toSet())
+        assertEquals(5, assessed.size, "Each opportunity is checked at most once")
+        assertTrue(12 in offered, "The good current target remains eligible outside the probe window")
+    }
+
+    @Test fun `periodic review does not replace usable fire with a blocked or merely visible target`() {
+        val chosen = TacticalTargetSelection.choose((1..12).toList(), 12, 0, {
+            when (it) {
+                12 -> Opportunity.SHOOTABLE
+                1 -> Opportunity.VISIBLE
+                else -> Opportunity.BLOCKED
+            }
+        }, { it.first() }, reconsiderCurrent = true)
+        assertEquals(12, chosen)
+    }
 }
