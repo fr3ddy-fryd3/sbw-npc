@@ -8,6 +8,7 @@ import java.util.UUID
 abstract class CoveredManeuverState : TacticalState() {
     open val withdrawal = false
     open val actualCoverRequired = false
+    internal open fun requiresActualCover(context: TacticalContext): Boolean = actualCoverRequired
     open val canProbe = false
     open val movementTimeout = 160L
     var laneAttempts = 0
@@ -49,7 +50,7 @@ abstract class CoveredManeuverState : TacticalState() {
     protected open fun readyWithoutCover(context: TacticalContext): Boolean = false
 
     internal fun maintainsCover(context: TacticalContext, member: TacticalMember): Boolean =
-        if (actualCoverRequired) {
+        if (requiresActualCover(context)) {
             TacticalEvidence.firesCover(member, context.plan.tasks[member.id])
         } else {
             TacticalEvidence.covers(member, context.plan.tasks[member.id])
@@ -86,7 +87,7 @@ abstract class CoveredManeuverState : TacticalState() {
 
     private fun coverReady(context: TacticalContext, cover: List<TacticalMember>): Boolean {
         fun ready(member: TacticalMember): Boolean = maintainsCover(context, member) && TacticalEvidence.settled(member, context.plan.tasks[member.id])
-        return if (actualCoverRequired) {
+        return if (requiresActualCover(context)) {
             cover.count { ready(it) } >= TacticalFlanks.requiredCover(context.view)
         } else {
             cover.any { ready(it) }
@@ -96,7 +97,7 @@ abstract class CoveredManeuverState : TacticalState() {
     private fun shouldOpenLane(context: TacticalContext, cover: List<TacticalMember>): Boolean {
         if (context.view.now - phaseSince < COVER_PROBE_DELAY || !canProbe) return false
         val ready = cover.count { maintainsCover(context, it) && TacticalEvidence.settled(it, context.plan.tasks[it.id]) }
-        if (ready < if (actualCoverRequired) TacticalFlanks.requiredCover(context.view) else 1) return true
+        if (ready < if (requiresActualCover(context)) TacticalFlanks.requiredCover(context.view) else 1) return true
         // Enough covering fire can launch a wave while most of the line still cannot shoot.
         // Give those blocked lanes a physical approach, rather than another identical local search.
         val blocked = cover.count { !TacticalEvidence.covers(it, context.plan.tasks[it.id]) }

@@ -66,7 +66,8 @@ class TacticalSituationsTest {
     }
 
     @Test fun `pursuit is bounded and forbidden for defenders`() {
-        val view = view(listOf(enemy(velocity = Vec3(0.2, 0.0, 0.0))))
+        // A reachable pursuit bound, outside the enemy-clearance circle.
+        val view = view(listOf(enemy(x = 150.0, velocity = Vec3(0.2, 0.0, 0.0))))
         assertEquals(TacticalPattern.PURSUE, TacticalRules.choose(view).pattern)
         assertNotEquals(TacticalPattern.PURSUE, TacticalRules.choose(view.copy(order = SquadOrder.DEFEND)).pattern)
         val plan = TacticalPlan(1, TacticalPattern.PURSUE, Vec3(150.0, 64.0, 0.0), 0, 1, TacticalStatus.EXECUTING)

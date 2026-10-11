@@ -12,7 +12,7 @@ sealed interface TacticalEvent {
 
     data class AlternativeChosen(override val plan: Int, override val tick: Long, val blocked: TacticalPattern, val choice: TacticalChoice) : TacticalEvent
 
-    data class WaveReduced(override val plan: Int, override val tick: Long, val bound: Int, val arrived: List<UUID>, val released: List<UUID>) : TacticalEvent
+    data class WaveReduced(override val plan: Int, override val tick: Long, val bound: Int, val arrived: List<UUID>, val released: List<UUID>, val pattern: TacticalPattern = TacticalPattern.ATTACK_HEIGHT) : TacticalEvent
 
     data class ReorganizationChanged(
         override val plan: Int,

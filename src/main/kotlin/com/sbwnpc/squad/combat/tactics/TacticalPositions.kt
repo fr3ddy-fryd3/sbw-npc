@@ -261,6 +261,10 @@ object TacticalPositions {
             return
         }
         val nearbyCover = aim?.let { DefensiveOverwatch.nearbyCover(candidate, it.eye) { from, to -> Sightline.blockedBy(level, from, to, entity, context.hulls) } } == true
+        if (context.policy.requiresShelter(context.view, task) && !nearbyCover) {
+            search.reject("exposed_advance_under_fire")
+            return
+        }
         val formationRejection = if (task.fireTransit == null) formationRejection(context, candidate, nearbyCover) else null
         if (formationRejection != null) {
             search.reject(formationRejection)

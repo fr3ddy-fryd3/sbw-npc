@@ -58,6 +58,10 @@ object TerrainAttackGameTests {
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1200, batch = "village-cover")
     fun smallSquadFindsFireAroundVillageCover(helper: GameTestHelper) = ridge(helper, returnFire = false, villageCover = true)
 
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1600, batch = "sustained-attack")
+    fun attackContinuesAfterFirstCoveredPositions(helper: GameTestHelper) = ridge(helper, returnFire = false, sustained = true)
+
     internal fun unevenGround(helper: GameTestHelper) {
         for (x in 44..65) {
             for (z in 65..145) {
@@ -75,9 +79,14 @@ object TerrainAttackGameTests {
         }
     }
 
-    private fun ridge(helper: GameTestHelper, returnFire: Boolean, brokenPosts: Boolean = false, villageCover: Boolean = false) {
+    private fun ridge(helper: GameTestHelper, returnFire: Boolean, brokenPosts: Boolean = false, villageCover: Boolean = false, sustained: Boolean = false) {
         for (x in 0..175) for (z in 0..223) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
-        if (villageCover) {
+        if (sustained) {
+            // Several reachable rows of chest-high shelter, with gaps for ordinary navigation.
+            for (x in listOf(36, 56, 76, 96)) {
+                for (z in 14..206 step 6) for (side in -1..1) helper.setBlock(BlockPos(x, 1, z + side), Blocks.STONE)
+            }
+        } else if (villageCover) {
             for (x in 20..49) for (z in 88..136) helper.setBlock(BlockPos(x, 0, z), Blocks.FARMLAND)
             for (x in 50..51) for (z in 96..128) for (y in 1..4) helper.setBlock(BlockPos(x, y, z), Blocks.OAK_PLANKS)
         } else if (brokenPosts) {
@@ -91,13 +100,14 @@ object TerrainAttackGameTests {
                 }
             }
         }
-        if (!brokenPosts && !villageCover) for (y in 1..9) helper.setBlock(BlockPos(30, y, 112), Blocks.STONE)
+        if (!brokenPosts && !villageCover && !sustained) for (y in 1..9) helper.setBlock(BlockPos(30, y, 112), Blocks.STONE)
         val identityPrefix = UUID.randomUUID().mostSignificantBits
         val members = (0 until if (villageCover) 7 else 32).map { index ->
-            AttackDeploymentGameTests.spawn(helper, Vec3(30.5, if (!brokenPosts && !villageCover && index == 16) 10.0 else 1.0, (if (villageCover) 94.5 else 16.5) + index * 6), SquadFaction.PIG, UUID(identityPrefix, index.toLong()))
+            AttackDeploymentGameTests.spawn(helper, Vec3(if (sustained) 20.5 else 30.5, if (!brokenPosts && !villageCover && !sustained && index == 16) 10.0 else 1.0, (if (villageCover) 94.5 else 16.5) + index * 6), SquadFaction.PIG, UUID(identityPrefix, index.toLong()))
         }
-        val enemies = (0..3).map { index ->
-            AttackDeploymentGameTests.spawn(helper, Vec3(100.5, 1.0, 92.5 + index * 6), SquadFaction.COW).apply {
+        val enemies = (0 until if (sustained) 32 else 4).map { index ->
+            val point = if (sustained) Vec3(144.5 + index / 8 * 3, 1.0, 94.5 + index % 8 * 3) else Vec3(100.5, 1.0, 92.5 + index * 6)
+            AttackDeploymentGameTests.spawn(helper, point, SquadFaction.COW).apply {
                 isNoAi = !returnFire
                 getAttribute(Attributes.MAX_HEALTH)!!.baseValue = 5000.0
                 health = maxHealth
@@ -117,7 +127,9 @@ object TerrainAttackGameTests {
         observer.moveTo(at.x, at.y, at.z, 0.0f, 0.0f)
         observer.setNoGravity(true)
         helper.level.addNewPlayer(observer)
-        val name = if (villageCover) {
+        val name = if (sustained) {
+            "sustained-attack"
+        } else if (villageCover) {
             "village-cover"
         } else if (brokenPosts) {
             "blocked-minority"
@@ -145,6 +157,9 @@ object TerrainAttackGameTests {
         val idleTicks = HashMap<UUID, Int>()
         val longestIdle = HashMap<UUID, Int>()
         val previous = HashMap<UUID, Vec3>()
+        val firstPosts = HashMap<UUID, Vec3>()
+        val continued = HashSet<UUID>()
+        val completedWaves = HashMap<Int, Int>()
         val bullets = Consumer<EntityJoinLevelEvent> { event ->
             val round = event.entity as? Projectile
             if (event.level === helper.level && round != null && Ports.guns.isRound(round)) {
@@ -180,7 +195,7 @@ object TerrainAttackGameTests {
         })
         DebugFlags.enabledGroups = setOf(LogGroup.ORDER, LogGroup.PATH, LogGroup.STUCK)
         manager.setOrder(squad.id, SquadOrder.ATTACK)
-        manager.setObjective(helper.level, squad.id, helper.absolutePos(BlockPos(100, 1, 101)))
+        manager.setObjective(helper.level, squad.id, helper.absolutePos(BlockPos(if (sustained) 150 else 100, 1, 101)))
         helper.runAtTickTime(600) {
             if (enemies.any { it.isAlive } && squad.tactics.contacts.isNotEmpty()) {
                 helper.assertTrue(squad.order == SquadOrder.ATTACK, "Formation arrival cancelled an attack during enemy contact")
@@ -234,8 +249,22 @@ object TerrainAttackGameTests {
             }
         }
         helper.onEachTick {
+            if (sustained) {
+                squad.tactics.plan?.takeIf { it.pattern == com.sbwnpc.squad.combat.tactics.TacticalPattern.BOUND }?.let { plan ->
+                    completedWaves[plan.id] = maxOf(completedWaves[plan.id] ?: 0, plan.bounds)
+                }
+            }
             for (npc in members) {
                 val p = helper.relativeVec(npc.position())
+                if (sustained) {
+                    val task = squad.tactics.plan?.tasks?.get(npc.uuid)
+                    if (npc.onGround() && npc.navigation.isDone && npc.firedRecently(60) && task?.job in TacticalJob.FIRE_SUPPORT) {
+                        firstPosts.putIfAbsent(npc.uuid, npc.position())
+                    }
+                    val first = firstPosts[npc.uuid]
+                    // The attack axis is +X. Lateral movement and initial deployment do not count.
+                    if (first != null && npc.x - first.x >= 12.0) continued += npc.uuid
+                }
                 if (p.x >= 42.0 && npc.onGround()) advanced.add(npc.uuid)
                 val trackedPost = villageCover || (brokenPosts && npc.uuid in obstructed)
                 if (trackedPost && helper.tick >= 450 && npc.isAlive && Ports.guns.inHand(npc)?.hasAmmo() == true) {
@@ -254,9 +283,15 @@ object TerrainAttackGameTests {
                 }
             }
         }
-        helper.runAtTickTime(1199) {
+        helper.runAtTickTime(if (sustained) 1599 else 1199) {
             try {
                 Files.writeString(directory.resolve("$name.txt"), "shooters=${shooters.size}\nadvanced=${advanced.size}\nalive=${members.count { it.isAlive }}\nenemyRounds=$enemyRounds\n")
+                if (sustained) {
+                    Files.writeString(directory.resolve("$name.txt"), "firstFiringPosts=${firstPosts.size}\ncontinuedAfterFirstPost=${continued.size}\ncompletedWaves=${completedWaves.values.sum()}\n", APPEND)
+                    helper.assertTrue(firstPosts.size >= 24, "Most attackers never established a first physical firing post")
+                    helper.assertTrue(continued.size >= 16, "Half the attack did not cross another 12-block bound after first deployment; see $name.csv")
+                    helper.assertTrue(completedWaves.values.sum() >= 2, "The attack did not complete two coordinated movement waves; see server.log")
+                }
                 helper.assertTrue(!returnFire || enemyRounds > 0, "Return-fire control did not fire real rounds")
                 helper.assertTrue(returnFire || enemyRounds == 0, "Isolation control fired unexpectedly")
                 if (brokenPosts) {

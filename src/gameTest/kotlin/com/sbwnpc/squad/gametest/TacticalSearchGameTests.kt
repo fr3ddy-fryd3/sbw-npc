@@ -20,6 +20,57 @@ import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 /** Real pathfinder and world queries; only the prepared candidate list is fixed by the fixture. */
 @PrefixGameTestTemplate(false)
 object TacticalSearchGameTests {
+    /** Isolated search contract: real colliders/A*, with an explicit incoming-fire observation. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 160, batch = "protected-bound-post")
+    fun advancingUnderFireWaitsForAProtectedNextPost(helper: GameTestHelper) {
+        val scene = Scene(helper, "protected-bound-post")
+        val npc = scene.spawn(Vec3(20.5, 1.0, 100.5)).apply { isNoAi = true }
+        val support = scene.spawn(Vec3(20.5, 1.0, 112.5)).apply { isNoAi = true }
+        val enemy = scene.enemy(Vec3(90.5, 1.0, 100.5))
+        val squad = scene.squad(listOf(npc, support), TacticalPattern.BOUND)
+        npc.target = enemy
+        val plan = squad.tactics.plan!!
+        val goal = helper.absoluteVec(Vec3(32.5, 1.0, 100.5))
+        var task = TacticalTask(TacticalJob.ADVANCE, goal, enemy.position(), plan.id)
+        plan.assignments.put(npc.uuid, task, helper.level.gameTime, "search_fixture")
+        plan.assignments.put(support.uuid, TacticalTask(TacticalJob.COVER, support.position(), enemy.position(), plan.id), helper.level.gameTime, "search_fixture")
+        var shelterAdded = false
+        helper.onEachTick {
+            if (helper.tick < 10 || helper.tick % 2L != 0L) return@onEachTick
+            npc.setOnGround(true)
+            val now = helper.level.gameTime
+            val view = TacticalSnapshot(
+                now,
+                SquadOrder.ATTACK,
+                squad.orderStamp,
+                npc.position(),
+                enemy.position(),
+                listOf(TacticalMember(npc.uuid, npc.position()), TacticalMember(support.uuid, support.position(), canFire = true)),
+                listOf(TacticalContact(enemy.uuid, enemy.position(), now)),
+                incoming = listOf(enemy.position()),
+            )
+            val result = TacticalPositions.find(npc, task, view)
+            if (result.outcome == TacticalPositions.Outcome.DEFERRED) return@onEachTick
+            if (!shelterAdded) {
+                helper.assertTrue(result.outcome == TacticalPositions.Outcome.UNREACHABLE, "An exposed forward post was accepted under incoming fire")
+                helper.assertTrue((result.rejections["exposed_advance_under_fire"] ?: 0) > 0, "Fixture did not exercise the protection gate")
+                for (z in 98..102) helper.setBlock(BlockPos(35, 1, z), Blocks.STONE)
+                task = TacticalTask(TacticalJob.ADVANCE, goal, enemy.position(), plan.id)
+                plan.assignments.put(npc.uuid, task, now, "shelter_added")
+                shelterAdded = true
+            } else {
+                helper.assertTrue(result.outcome == TacticalPositions.Outcome.FOUND, "A reachable protected bound remained blocked")
+                val point = result.position!!
+                helper.assertTrue(point.x - npc.x >= 1.0, "The new post made no forward progress")
+                val relative = helper.relativeVec(point)
+                helper.assertTrue(relative.x in 32.0..35.0 && relative.z in 98.0..103.0, "Selected post is outside the added wall's shelter: $relative")
+                scene.result("PASS", "exposedRejected=true shelteredPost=$relative")
+                helper.succeed()
+            }
+        }
+    }
+
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 60, batch = "post-exact-arrival")
     fun exactPostCannotReuseAMarchPathEndingShortOfItsTarget(helper: GameTestHelper) {

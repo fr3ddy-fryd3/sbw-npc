@@ -8,9 +8,13 @@ interface TacticalPositionPolicy {
     fun route(view: TacticalSnapshot, point: Vec3): Boolean = true
     fun score(view: TacticalSnapshot, task: TacticalTask, point: Vec3, exposure: Int): Double = 0.0
     val permitsExposedFlankAdvance: Boolean get() = false
+    fun requiresShelter(view: TacticalSnapshot, task: TacticalTask): Boolean = false
 }
 
 object DefaultTacticalPositions : TacticalPositionPolicy
+object BoundingPositions : TacticalPositionPolicy {
+    override fun requiresShelter(view: TacticalSnapshot, task: TacticalTask): Boolean = task.job == TacticalJob.ADVANCE && (view.incoming.isNotEmpty() || view.members.any { it.suppressed })
+}
 object EncirclePositions : TacticalPositionPolicy {
     override fun candidate(view: TacticalSnapshot, task: TacticalTask, point: Vec3, localAnchor: Vec3): Boolean = task.job != TacticalJob.FLANK || task.focus?.let { point.subtract(it).horizontalDistance() >= 40.0 } != false
 }
