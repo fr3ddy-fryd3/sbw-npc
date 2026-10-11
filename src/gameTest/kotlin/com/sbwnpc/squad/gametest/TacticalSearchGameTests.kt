@@ -1,5 +1,7 @@
 package com.sbwnpc.squad.gametest
 
+import com.sbwnpc.squad.combat.DetectionSightline
+import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.combat.TickBudget
 import com.sbwnpc.squad.combat.tactics.*
 import com.sbwnpc.squad.entity.NpcEntity
@@ -9,17 +11,88 @@ import com.sbwnpc.squad.mixin.PathNavigationAccessor
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.SquadOrder
+import com.sbwnpc.squad.util.Terrain
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.level.block.SnowLayerBlock
 import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 
 /** Real pathfinder and world queries; only the prepared candidate list is fixed by the fixture. */
 @PrefixGameTestTemplate(false)
 object TacticalSearchGameTests {
+    /** Isolates snow geometry; this is not the multi-squad combat participation acceptance test. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 600, batch = "snow-firing-posts")
+    fun snowLayersAllowNativeFiringPostsAndGunfire(helper: GameTestHelper) {
+        val scene = Scene(helper, "snow-firing-posts")
+        val actors = (0..8).map { layers ->
+            val z = 16 + layers * 22
+            if (layers > 0) {
+                val snow = Blocks.SNOW.defaultBlockState().setValue(SnowLayerBlock.LAYERS, layers)
+                for (x in 12..100) for (row in z - 4..z + 4) helper.setBlock(BlockPos(x, 1, row), snow)
+            }
+            val floor = 1.0 + (layers - 1).coerceAtLeast(0) / 8.0
+            scene.spawn(Vec3(20.5, floor, z + 0.5)).apply { isNoAi = true } to
+                scene.enemy(Vec3(80.5, floor, z + 0.5))
+        }
+        val tasks = actors.map { (npc, enemy) ->
+            npc.target = enemy
+            TacticalTask(TacticalJob.COVER, npc.position().add(10.0, 0.0, 0.0), enemy.position(), 0)
+        }
+        val selected = mutableSetOf<Int>()
+        var squad: com.sbwnpc.squad.squad.Squad? = null
+        helper.onEachTick {
+            if (helper.tick < 20) return@onEachTick
+            if (squad == null) {
+                for ((layers, pair) in actors.withIndex()) {
+                    if (layers in selected) continue
+                    val (npc, enemy) = pair
+                    npc.setOnGround(true)
+                    val expected = helper.absoluteVec(Vec3(20.5, 1.0 + (layers - 1).coerceAtLeast(0) / 8.0, 16.5 + layers * 22))
+                    val feet = Terrain.feetAt(helper.level, expected)!!
+                    helper.assertTrue(kotlin.math.abs(feet.y - expected.y) < 0.001, "Wrong snow collider floor: layers=$layers feet=$feet expected=$expected")
+                    helper.assertTrue(DetectionSightline.canSee(npc, enemy), "Snow alone blocked detection: layers=$layers")
+                    helper.assertTrue(!Sightline.blocked(helper.level, npc.eyePosition, enemy.eyePosition, npc), "Snow alone blocked shooting ray: layers=$layers")
+                    val now = helper.level.gameTime
+                    val view = TacticalSnapshot(
+                        now,
+                        SquadOrder.ATTACK,
+                        0,
+                        npc.position(),
+                        enemy.position(),
+                        listOf(TacticalMember(npc.uuid, npc.position())),
+                        listOf(TacticalContact(enemy.uuid, enemy.position(), now)),
+                    )
+                    val result = TacticalPositions.find(npc, tasks[layers], view)
+                    if (result.outcome == TacticalPositions.Outcome.DEFERRED) continue
+                    helper.assertTrue(result.outcome == TacticalPositions.Outcome.FOUND, "Snow firing post search failed: layers=$layers rejections=${result.rejections}")
+                    selected += layers
+                }
+                if (selected.size == actors.size) {
+                    actors.forEach { (npc, _) -> npc.isNoAi = false }
+                    squad = scene.squad(actors.map { it.first }, TacticalPattern.REORIENT, isolated = false, contact = actors.first().second, order = SquadOrder.PATROL)
+                }
+            } else {
+                scene.tick(squad!!)
+                val fired = actors.mapIndexedNotNull { layers, (npc, _) -> layers.takeIf { npc.lastShotTick >= 0 } }
+                scene.result("RUNNING", "selectedLayers=$selected firedLayers=$fired tick=${helper.tick}")
+                if (fired.size == actors.size) {
+                    scene.result("PASS", "selectedLayers=$selected firedLayers=$fired tick=${helper.tick}; isolated snow geometry and initial gunfire only")
+                    helper.succeed()
+                }
+            }
+        }
+        helper.runAtTickTime(590) {
+            val silent = actors.mapIndexedNotNull { layers, (npc, _) -> layers.takeIf { npc.lastShotTick < 0 } }
+            scene.result("FAIL", "selectedLayers=$selected silentLayers=$silent")
+            helper.fail("Snow geometry or gunfire remained blocked; see snow-firing-posts.csv")
+        }
+    }
+
     /** Isolated search contract: real colliders/A*, with an explicit incoming-fire observation. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 160, batch = "protected-bound-post")
