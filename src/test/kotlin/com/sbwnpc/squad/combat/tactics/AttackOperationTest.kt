@@ -30,6 +30,17 @@ class AttackOperationTest {
         }
     }
 
+    @Test fun `equal forces choose a spatially central squad and rally the reserve behind it`() {
+        val forces = listOf(force(1, 32, 48.0), force(2, 32, -24.0), force(3, 32), force(4, 32, 24.0))
+        for (ordered in listOf(forces, forces.reversed())) {
+            val operation = AttackOperation(1, focus, ordered, 0)
+            assertEquals(AttackRole.CENTER, operation.lanes.getValue(forces[2].id).role)
+            val reserve = operation.lanes.values.single { it.role == AttackRole.RESERVE }
+            assertEquals(-32.0, reserve.sector.x, 0.01)
+            assertTrue(kotlin.math.abs(reserve.sector.z) <= 16.0)
+        }
+    }
+
     @Test fun `casualties preserve surviving roles and soldier slots while a fresh order revokes participation`() {
         val forces = listOf(force(1, 16), force(2, 7, -10.0), force(3, 7, 10.0))
         val operation = AttackOperation(1, focus, forces, 0)
@@ -128,5 +139,18 @@ class AttackOperationTest {
         operation.tick(forces.map { if (it.id == wing.squad) it.copy(center = wing.waypoint) else it }, 10)
         assertEquals(1, wing.next)
         assertFalse(wing.deployed)
+    }
+
+    @Test fun `new barracks recruit takes a casualty vacancy without growing or renumbering the line`() {
+        val forces = listOf(force(1, 16), force(2, 7))
+        val operation = AttackOperation(1, focus, forces, 0)
+        val lane = operation.lanes.getValue(forces[0].id)
+        val original = lane.slots.toMap()
+        val replacement = forces[0].members[4].copy(id = UUID(99, 99))
+        val replenished = forces[0].copy(members = forces[0].members.toMutableList().also { it[4] = replacement })
+        operation.tick(listOf(replenished, forces[1]), 10)
+        assertEquals(original[forces[0].members[4].id], lane.slots[replacement.id])
+        replenished.members.filter { it.id != replacement.id }.forEach { assertEquals(original[it.id], lane.slots[it.id]) }
+        assertEquals(16, lane.slots.size)
     }
 }

@@ -9,7 +9,7 @@ class AttackOperation(
     val focus: Vec3,
     forces: List<AttackForce>,
     started: Long,
-    strategy: AttackDistribution = CenterAndWings,
+    private val strategy: AttackDistribution = CenterAndWings,
     private val events: AttackOperationEvents = AttackOperationEvents.NONE,
 ) {
     val lanes = strategy.distribute(forces, focus).associateByTo(LinkedHashMap()) { it.squad }
@@ -34,6 +34,8 @@ class AttackOperation(
             if (force == null || force.stamp != lane.stamp || force.fighters.isEmpty()) {
                 lanes.remove(lane.squad)
                 emit(now, "released", lane, "order_or_force_changed")
+            } else {
+                lane.reconcileMembers(force, focus.subtract(lane.sector).multiply(1.0, 0.0, 1.0).normalize())
             }
         }
         if (lanes.size < 2) {
@@ -47,7 +49,7 @@ class AttackOperation(
         if (state.stage == AttackStage.COMPLETED) return null
         val lane = lanes[squad] ?: return null
         val externalCover = forces.any { it.id != squad && it.id in lanes && it.covering >= 2 }
-        return AttackAssignment(id, lane.role, state.stage, lane.revision, lane.waypoint, lane.sector, focus.subtract(lane.sector).multiply(1.0, 0.0, 1.0).normalize(), lane.corridor, lane.deployed, lane.blocked, externalCover, lane.slots)
+        return AttackAssignment(id, lane.role, state.stage, lane.revision, lane.waypoint, lane.sector, focus.subtract(lane.sector).multiply(1.0, 0.0, 1.0).normalize(), lane.corridor, lane.deployed, lane.blocked, externalCover, lane.slots.toMap())
     }
 
     /** Late arrivals fill a free wing, then reserve. Active survivors keep their current roles. */
@@ -56,12 +58,11 @@ class AttackOperation(
         val centralLane = lanes.values.firstOrNull { it.role == AttackRole.CENTER } ?: return
         val central = forces.firstOrNull { it.id == centralLane.squad }?.copy(center = centralLane.route.first()) ?: return
         val occupied = lanes.values.map { it.role }.toSet()
-        val role = listOf(AttackRole.LEFT, AttackRole.RIGHT).firstOrNull { it !in occupied } ?: AttackRole.RESERVE
-        val lane = CenterAndWings.lane(force, central, role, focus)
+        val lane = strategy.reinforce(force, central, occupied, focus)
         lane.progressAt = now
         lanes[force.id] = lane
         emit(now, "assigned", lane, "reinforcement_joined", lane.waypoint)
-        if (role != AttackRole.RESERVE) transition(DeployAttack(), now, "new_wing_joined")
+        if (lane.role != AttackRole.RESERVE) transition(DeployAttack(), now, "new_wing_joined")
     }
 
     internal fun deploy(forces: Map<UUID, AttackForce>, now: Long) {
@@ -69,12 +70,15 @@ class AttackOperation(
             if (lane.deployed || lane.blocked || lane.role == AttackRole.RESERVE) continue
             val force = forces[lane.squad] ?: continue
             val distance = force.center.subtract(lane.waypoint).horizontalDistance()
-            if (distance < lane.closest - 2.0) {
-                lane.closest = distance
-                lane.progressAt = now
-            }
             val facing = focus.subtract(lane.sector).multiply(1.0, 0.0, 1.0).normalize()
             val side = Vec3(-facing.z, 0.0, facing.x)
+            val remaining = force.fighters.map { member ->
+                member.position.subtract(lane.waypoint.add(side.scale(lane.slots[member.id] ?: 0.0))).horizontalDistance()
+            }.average()
+            if (remaining < lane.closest - 2.0) {
+                lane.closest = remaining
+                lane.progressAt = now
+            }
             val arrived = force.fighters.count { member ->
                 val point = lane.waypoint.add(side.scale(lane.slots[member.id] ?: 0.0))
                 member.position.subtract(point).horizontalDistance() <= 16.0
