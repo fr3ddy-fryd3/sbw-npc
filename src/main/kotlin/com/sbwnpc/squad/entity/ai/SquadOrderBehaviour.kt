@@ -25,7 +25,7 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
  *    guarded entity), running when more than [DEFEND_RUN_DISTANCE] blocks away, then each man
  *    holds his own post round a perimeter sized to the squad.
  *  - PATROL: walk the squad's assigned Route in sequence if it has one (see RouteManager);
- *    otherwise wander within [ROAM_RADIUS] of home.
+ *    otherwise wander around home in an area sized for the squad.
  *  - ATTACK: advance on home at a run. Taking the point turns the squad to DEFEND —
  *    [com.sbwnpc.squad.squad.OrderArrival].
  *  - RETREAT: fall back to the point, bounding under fire ([com.sbwnpc.squad.combat.Withdrawal]).
@@ -394,15 +394,16 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /**
      * A patrol with no route: every member drifts about the area on its own — a spot somewhere in
-     * [ROAM_RADIUS] of the point, a walk there, a pause to look around, and the next. Picking each
+     * the squad's patrol area, a walk there, a pause to look around, and the next. Picking each
      * spot as "a step toward the point", as this used to, drew the whole squad into a knot at the
      * middle.
      */
     private fun roamAround(entity: NpcEntity, center: Vec3) {
         val level = entity.level() as? ServerLevel ?: return
+        val radius = SquadFormation.patrolRadius(entity.currentSquad()?.members?.size ?: 1)
         repeat(ROAM_ATTEMPTS) {
             val angle = entity.random.nextDouble() * Math.PI * 2
-            val dist = Math.sqrt(entity.random.nextDouble()) * ROAM_RADIUS
+            val dist = Math.sqrt(entity.random.nextDouble()) * radius
             val spot = com.sbwnpc.squad.util.Terrain.standableOrNull(
                 level,
                 center.x + Math.cos(angle) * dist,
@@ -421,7 +422,6 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     companion object {
         private const val REPATH_COOLDOWN_TICKS = 20
         private const val ROUTE_DWELL_TICKS = 40
-        private const val ROAM_RADIUS = 40.0
         private const val ROAM_ATTEMPTS = 4
 
         /** Standing about at a spot before heading for the next. */

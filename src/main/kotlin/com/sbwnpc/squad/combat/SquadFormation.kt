@@ -86,6 +86,9 @@ object SquadFormation {
     private const val PERIMETER_MIN = 5.0
     private const val PERIMETER_MAX = 25.0
 
+    /** Constant patrol density above the minimum area; 32 members retain the 40-block radius. */
+    fun patrolRadius(squadSize: Int): Double = maxOf(24.0, 40.0 * kotlin.math.sqrt(squadSize.coerceAtLeast(1) / 32.0))
+
     /** Transit shape depends on order. MOVE is the exception to the arrival perimeter: it keeps its
      *  ordered infantry grid at the destination. DEFEND arrives into a PERIMETER ring sized to the
      *  squad; BARRAGE and RETREAT into SCATTER — see that shape's own doc note in [localOffset]. */
