@@ -105,8 +105,12 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.tickCount < nextStepTick) return
         nextStepTick = entity.tickCount + REPATH_TICKS
         val level = entity.level() as ServerLevel
-        if (!TickBudget.hasRaycasts(level)) return
-        val cover = CoverSearch.find(entity, level, target.position(), failedCover, retreat::permits)
+        val search = TickBudget.attempt(entity, TickBudget.Work.COVER) { CoverSearch.find(entity, level, target.position(), failedCover, retreat::permits) }
+        if (search == null) {
+            nextStepTick = entity.tickCount + 2
+            return
+        }
+        val cover = search.value
         if (cover != null && move(entity, cover.bottomCenter, hidden = true)) return
         if (cover != null) failedCover += cover
         val away = (1..6).mapNotNull { DefaultRandomPos.getPosAway(entity, STEP, VERTICAL, target.position()) }

@@ -89,6 +89,18 @@ object CoverSearch {
             .firstOrNull { isHiddenFrom(level, entity, threats, it, hulls) }
     }
 
+    /** Revalidate a queued cover proposal when native path admission becomes available. */
+    fun usable(entity: NpcEntity, level: ServerLevel, threat: Vec3, candidate: BlockPos): Boolean {
+        val point = candidate.bottomCenter
+        if (!level.noCollision(entity, entity.getDimensions(entity.pose).makeBoundingBox(point)) ||
+            GrenadeHazard.threatens(level, candidate) || FiringSpots.crowded(point, FiringSpots.nearbyWithBodies(level, entity, MAX_RADIUS))
+        ) {
+            return false
+        }
+        val hulls = Sightline.vehicleHulls(level, entity.boundingBox.inflate(MAX_RADIUS + 4.0), entity, null)
+        return isHiddenFrom(level, entity, nearbyThreats(entity, level, threat), candidate, hulls)
+    }
+
     /** Every currently-known hostile near [entity] (within [THREAT_SCAN_RADIUS]), as eye-height
      *  points — not just [primary] (the specific enemy whose fire triggered suppression). Reported
      *  in-game: the mob would duck out of view of that one attacker while stepping straight into

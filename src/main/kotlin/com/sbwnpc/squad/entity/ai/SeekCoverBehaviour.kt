@@ -85,6 +85,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private var phase = Phase.MOVING_TO_COVER
     private var coverTarget: BlockPos? = null
+    private var pendingCover: BlockPos? = null
     private var phaseUntilTick = 0
     private var isFallbackRetreat = false // coverTarget came from fallbackAwayFrom, not CoverSearch.find
     private var blindPeek = false
@@ -186,6 +187,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun start(entity: NpcEntity) {
         phase = Phase.MOVING_TO_COVER
         coverTarget = null
+        pendingCover = null
         phaseUntilTick = 0
         isFallbackRetreat = false
         blindPeek = false
@@ -204,6 +206,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.coverPeekPoint = null
         entity.incomingFire.endReply()
         coverTarget = null
+        pendingCover = null
         FiringSpots.release(entity.uuid)
         entity.navigation.stop()
         digPos?.let { clearDigProgress(entity) }
@@ -259,17 +262,17 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
             return // still travelling this leg either way
         }
-        // Global raycast budget (TickBudget): one mortar shell suppresses a whole squad on the
-        // same tick, and each cover search is a grid of candidates each raycast against every
-        // nearby threat. If this tick is spent, just try again next tick — the mob is suppressed
-        // and standing still either way, one tick of delay is invisible.
-        if (!TickBudget.hasRaycasts(level)) return
-        if ((entity.navigation as? VehicleAwareNavigation)?.canPlan == false ||
-            !com.sbwnpc.squad.combat.tactics.TacticalBudget.path(entity)
-        ) {
-            return
+        if ((entity.navigation as? VehicleAwareNavigation)?.canPlan == false) return
+        if (pendingCover == null) {
+            val search = TickBudget.attempt(entity, TickBudget.Work.COVER) { CoverSearch.find(entity, level, threat, failedCover) } ?: return
+            pendingCover = search.value
         }
-        CoverSearch.find(entity, level, threat, failedCover)?.let {
+        pendingCover?.let {
+            // Waiting for ray admission must not consume one of the four native A* turns.
+            // Keep the proposal between queues, then review the live threats and bodies.
+            if (!com.sbwnpc.squad.combat.tactics.TacticalBudget.path(entity)) return
+            pendingCover = null
+            if (!CoverSearch.usable(entity, level, threat, it)) return
             val path = com.sbwnpc.squad.combat.tactics.TacticalPositions.pathToPosition(entity, it.bottomCenter)
             if (!com.sbwnpc.squad.combat.tactics.TacticalPositions.reaches(path, it.bottomCenter)) {
                 failedCover.add(it)

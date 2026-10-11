@@ -434,17 +434,11 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
             return
         }
-        // Global raycast budget (TickBudget): a whole squad reaches shoot range on the same tick,
-        // and each search is up to ~64 candidates x 4 raycasts. If this tick is already spent,
-        // keep holding whatever we have and try again in a tick or two — the searches then spread
-        // themselves across ticks instead of all landing on one.
-        if (!TickBudget.hasRaycasts(level)) {
-            nextPositionCheckTick = entity.tickCount + 1 + entity.random.nextInt(3)
-            if (pos == null) entity.navigation.stop()
-            return
+        firingSearchDeferred = true
+        val found = TickBudget.search<Vec3?>(entity, TickBudget.Work.LOCAL_FIRE, null) {
+            firingSearchDeferred = false
+            bestFiringSpot(entity, level, target)
         }
-        firingSearchDeferred = false
-        val found = bestFiringSpot(entity, level, target)
         if (found == null && firingSearchDeferred) {
             nextPositionCheckTick = entity.tickCount + 2
             return
