@@ -30,6 +30,7 @@
 | Индивидуальный AI | Стрельба, укрытия, лечение, снабжение, движение, техника | [entity/ai/](../src/main/kotlin/com/sbwnpc/squad/entity/ai/) |
 | Бой | Общие расчёты видимости, угроз, огня, формаций и безопасных позиций | [combat/](../src/main/kotlin/com/sbwnpc/squad/combat/) |
 | Тактика отряда | Выбор манёвра, состояния, фазы, назначения и диагностика | [combat/tactics/](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/) |
+| Общая атака нескольких отрядов | Модель операции, роли, маршруты, переходы и серверный адаптер | [combat/tactics/operation/](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/operation/), [CoordinatedAttackState.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/CoordinatedAttackState.kt) |
 | Отряды и приказы | Состав, владелец, приказы, выделение, развёртывание, сохранение | [squad/Squad.kt](../src/main/kotlin/com/sbwnpc/squad/squad/Squad.kt), [squad/SquadManager.kt](../src/main/kotlin/com/sbwnpc/squad/squad/SquadManager.kt) |
 | Опыт бойцов | Начисление, вклад в поражение цели, боевые раны, пороги рангов | [experience/](../src/main/kotlin/com/sbwnpc/squad/experience/) |
 | Описания NPC | Классы, ранги, пресеты, фракции и модели техники | [npc/](../src/main/kotlin/com/sbwnpc/squad/npc/) |
@@ -70,11 +71,15 @@
 | Цель поиска позиции и точное занятие огневого поста | [TacticalAim.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalAim.kt), [FiringPostArrival.kt](../src/main/kotlin/com/sbwnpc/squad/combat/FiringPostArrival.kt) |
 | Сохранение или замена огневого поста при смене цели | [TacticalPostReview.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalPostReview.kt), вызов в `TacticalMovement.move` |
 | Продолжение поиска заблокированного огневого поста | [TacticalFirePosts.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalFirePosts.kt), [TacticalTask.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalTask.kt), [TacticalMovement.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalMovement.kt) |
+| Очереди лучей и native A* | [TickBudget.kt](../src/main/kotlin/com/sbwnpc/squad/combat/TickBudget.kt), [TacticalBudget.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalBudget.kt), продолжение между очередями — `TacticalPositions.kt` / `TacticalTask.kt` |
 | Дистанция боевой позиции от известных врагов, безопасность маршрута | [CombatPositionSafety.kt](../src/main/kotlin/com/sbwnpc/squad/combat/CombatPositionSafety.kt), [TacticalClearance.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalClearance.kt) |
 | Приоритет укрытия перед открытой позицией | [TacticalPositionScore.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalPositionScore.kt), `TacticalPositions.kt`; индивидуальный поиск — `GunAttackBehaviour.bestFiringSpot` |
 | Лечение | [MedicHealBehaviour.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/MedicHealBehaviour.kt), [SelfTreatBehaviour.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/SelfTreatBehaviour.kt) |
 | Гранаты и уклонение | [GrenadeUseBehaviour.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/GrenadeUseBehaviour.kt), [GrenadeThrowBehaviour.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/GrenadeThrowBehaviour.kt), [GrenadeEvadeBehaviour.kt](../src/main/kotlin/com/sbwnpc/squad/entity/ai/GrenadeEvadeBehaviour.kt) |
 | Тактические манёвры | [TacticalRules.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalRules.kt) выбирает манёвр; соответствующий класс State выполняет его; [подробная карта](TACTICS-ARCHITECTURE.md) |
+| Выбор центра, флангов, резерва и коридоров | [AttackDistribution.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/operation/AttackDistribution.kt) |
+| Этапы общей атаки, достижение секторов и отказ маршрута | [AttackOperation.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/operation/AttackOperation.kt), типы входов и назначений — [AttackOperationModel.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/operation/AttackOperationModel.kt) |
+| Подключение отрядов к общей атаке и её завершение | [AttackOperations.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/operation/AttackOperations.kt), подключение к оценке — `SquadTactics.refresh` |
 | Подтверждение угроз перед прерыванием манёвра | [TacticalThreatConfirmation.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalThreatConfirmation.kt), [TacticalSelectionPolicy.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalSelectionPolicy.kt) |
 | Потеря и восстановление боеспособности, исходная точка реорганизации | [TacticalReorganization.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalReorganization.kt), [WithdrawalStates.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/WithdrawalStates.kt), [SquadTacticalState.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/SquadTacticalState.kt) |
 | Защищённая высота снайпера и пулемётчика | [DefensiveOverwatch.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/DefensiveOverwatch.kt), [TacticalPositions.kt](../src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalPositions.kt) |
@@ -137,6 +142,8 @@
 | Настройки форматирования | [.editorconfig](../.editorconfig) |
 | JAR-файлы | `build/libs/` |
 | Отчёты тестов | `build/reports/tests/test/`, `build/test-results/test/` |
+| Нативные проверки общей атаки и подсчёт работы | `src/gameTest/kotlin/com/sbwnpc/squad/gametest/AttackOperationGameTests.kt`, `NativeCombatWork.kt` |
+| Воспроизведение сохранённого боя и причины простоя | `src/gameTest/kotlin/com/sbwnpc/squad/gametest/SavedBattleGameTests.kt`, `SavedBattleReplay.kt`, `CombatParticipationTrace.kt` |
 | Мир и отчёты headless GameTest | `build/gametest/server/`, `build/reports/gameTest/` |
 | Генерация BuildFlags | `build.gradle.kts`; результат — `build/generated/buildFlags/` |
 | Группы диагностических сообщений | [combat/LogGroup.kt](../src/main/kotlin/com/sbwnpc/squad/combat/LogGroup.kt) |

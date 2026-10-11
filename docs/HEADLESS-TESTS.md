@@ -268,6 +268,41 @@ CSV каждого боевого сценария сохраняет полож
 
 Независимый [повтор двух сцен потери обзора](../build/reports/gameTest/live-failures-posts-repeat/server.log) также прошёл. У деревянной стенки стреляли и продвигались 7/7, слепой простой ≤117 тиков. На буграх стреляли 31/32, продвигались 32/32, огонь восстановили все четыре выбранных бойца, слепой простой ≤13 тиков. Потерь в обеих сценах нет.
 
+## Общая атака и воспроизведение сохранённого боя
+
+```bash
+./gradlew runGameTestServer --offline \
+  -PgameTestFilter=unequalSquadsDeploySeparateWingsAndKeepFiring,fourLargeSquadsKeepThreeSectorsAndAReserve,blockedWingReportsFailureAndNewOrdersReleaseIt,adjacentSquadFireNeverAuthorizesExposedPostsUnderIncomingFire,nativeOperationTransitBatchKeepsMeaningfulProgress \
+  -PgameTestReportName=operation-check
+
+./gradlew runGameTestServer --offline \
+  -PgameTestReplay=/absolute/path/to/copied-battle \
+  -PgameTestFilter=savedBattleMaintainsCombatParticipation \
+  -PgameTestReportName=saved-battle-check
+```
+
+[AttackOperationGameTests.kt](../src/gameTest/kotlin/com/sbwnpc/squad/gametest/AttackOperationGameTests.kt)
+проверяет распределение 16+7+7 и 4×32, фактическое развёртывание и повторяющиеся
+окна недавних выстрелов. Отдельные сцены проверяют закрытый фланг, новый приказ,
+защиту тела укрытием и продвижение выбранного native A*. Цели этих сцен имеют
+увеличенное HP и отключённый AI; результат не измеряет исход полноценного боя.
+Арена 4×32 имеет собственный расширенный шаблон: расширять только землю нельзя,
+поскольку GameTest создаёт невидимые стены по границе исходного шаблона.
+
+[SavedBattleReplay.kt](../src/gameTest/kotlin/com/sbwnpc/squad/gametest/SavedBattleReplay.kt)
+читает подготовленную копию region/entity-файлов, состава отрядов и фракций.
+Перед чтением она снова копируется в каталог отчёта: исходные файлы не изменяются.
+NPC сохраняют HP, боезапас, снаряжение и приказы; transient Brain, цели и задачи
+запускаются заново. Снимок файлов живой игры не является атомарным продолжением боя.
+Регистрация этого сценария требует явного `gameTestReplay`; обычный набор тестов
+не пытается загрузить пользовательское сохранение. Для блоков стороннего мода
+нужен тот же мод в тестовом сервере.
+
+[CombatParticipationTrace.kt](../src/gameTest/kotlin/com/sbwnpc/squad/gametest/CombatParticipationTrace.kt)
+пишет состояние каждого участника: оружие/боезапас, цель, дальность, видимость,
+свои и другие отряды на огневой линии, движение, задачу и последний выстрел.
+Диагностические проверки не разрешают стрельбу и не заменяют native friendly-fire guard.
+
 ## Проверка чувствительности стенда
 
 ```bash
@@ -287,3 +322,21 @@ CSV каждого боевого сценария сохраняет полож
 Основа конфигурации: [NeoForge GameTest для 1.21.1](https://docs.neoforged.net/docs/1.21.1/misc/gametest/) и [ModDevGradle: отдельные source sets и выбор loadedMods](https://github.com/neoforged/ModDevGradle).
 
 Доступ `gameTest` к внутренним полям основного модуля задан штатным [KotlinCompilation.associateWith](https://kotlinlang.org/api/kotlin-gradle-plugin/kotlin-gradle-plugin-api/org.jetbrains.kotlin.gradle.plugin/-kotlin-compilation/associate-with.html). Тестовые классы не входят в выпускаемый JAR.
+
+Замер общей атаки без подробного debug trace:
+
+```bash
+./gradlew runGameTestServer --offline --console=plain \
+  -PgameTestFilter=largeAttackMeasuresNativeWorkWithoutDebugTrace,failedBlindApproachBacksOffAndResumesAfterTerrainOpens \
+  -PgameTestReportName=operation-performance
+```
+
+`operation-work.csv` содержит для каждого из 128 NPC вызовы навигации, фактические
+запуски native A* (через `NodeEvaluator.prepare`), максимум за тик и 20 тиков,
+повторы одного запроса внутри тика, обращения к поиску позиций и новые курсоры.
+`operation-work.txt` содержит распределения длительности вызовов A* и серверного
+тика после первых 200 тиков; пауза стенда для реального таймера оружия исключена.
+Сцена одновременно проверяет физическое развёртывание трёх секторов, устойчивую
+стрельбу и продвижение, поэтому снижение работы ценой остановки бойцов не проходит.
+Это серверный замер с измерительными накладными расходами, а не клиентский FPS
+и не сравнение производительности двух версий. Наблюдатели снимаются при завершении.
