@@ -109,6 +109,7 @@ neoForge {
             systemProperty("sbwnpc.gameTestReports", layout.buildDirectory.dir("reports/gameTest/$gameTestReportName").get().asFile.absolutePath)
             systemProperty("sbwnpc.gameTestNegativeControl", providers.gradleProperty("gameTestNegativeControl").orElse("false").get())
             systemProperty("sbwnpc.gameTestFilter", providers.gradleProperty("gameTestFilter").orElse("").get())
+            systemProperty("sbwnpc.gameTestReplay", providers.gradleProperty("gameTestReplay").orElse("").get())
             logLevel = org.slf4j.event.Level.INFO
         }
 

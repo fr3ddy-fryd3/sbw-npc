@@ -199,7 +199,7 @@ object CombatIdleGameTests {
         }
     }
 
-    internal class Scene(val helper: GameTestHelper, val name: String, depth: Int = 224) {
+    internal class Scene(val helper: GameTestHelper, val name: String, depth: Int = 224, private val recordTrace: Boolean = true) {
         private val entities = mutableListOf<NpcEntity>()
         private val squads = mutableListOf<Squad>()
         private val oldGroups = DebugFlags.enabledGroups
@@ -213,7 +213,7 @@ object CombatIdleGameTests {
             for (x in 0..175) for (z in 0 until depth) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
             Files.createDirectories(report)
             Files.writeString(report.resolve("$name.csv"), "tick,npc,role,x,y,z,job,pathDone,shot,search,phase\n")
-            DebugFlags.enabledGroups = oldGroups + setOf(LogGroup.ORDER, LogGroup.PATH)
+            DebugFlags.enabledGroups = if (recordTrace) oldGroups + setOf(LogGroup.ORDER, LogGroup.PATH) else emptySet()
             witness.gameMode.changeGameModeForPlayer(GameType.CREATIVE)
             val at = helper.absoluteVec(Vec3(90.5, 20.0, 100.5))
             witness.moveTo(at.x, at.y, at.z, 0f, 0f)
@@ -282,10 +282,12 @@ object CombatIdleGameTests {
                 } else {
                     SquadTactics.refresh(members.first())
                 }
-                for (npc in members) {
-                    val task = squad.tactics.plan!!.tasks[npc.uuid]
-                    val p = helper.relativeVec(npc.position())
-                    Files.writeString(report.resolve("$name.csv"), "${helper.tick},${npc.uuid},${npc.npcClass},${p.x},${p.y},${p.z},${task?.job},${npc.navigation.isDone},${npc.lastShotTick},${task?.search?.probeIndex},${squad.tactics.plan!!.phase}\n", APPEND)
+                if (recordTrace) {
+                    for (npc in members) {
+                        val task = squad.tactics.plan!!.tasks[npc.uuid]
+                        val p = helper.relativeVec(npc.position())
+                        Files.writeString(report.resolve("$name.csv"), "${helper.tick},${npc.uuid},${npc.npcClass},${p.x},${p.y},${p.z},${task?.job},${npc.navigation.isDone},${npc.lastShotTick},${task?.search?.probeIndex},${squad.tactics.plan!!.phase}\n", APPEND)
+                    }
                 }
             }
         }

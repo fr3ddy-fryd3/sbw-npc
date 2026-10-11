@@ -79,11 +79,18 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
     /** Optional scoped measurement; ordinary navigation does not read the clock. */
     internal var positionPathObserver: ((BlockPos, Long, Boolean) -> Unit)? = null
 
+    /** Scoped native-work observer, installed only by headless performance scenes. */
+    internal var pathWorkObserver: ((Set<BlockPos>, Long, Boolean) -> Unit)? = null
+    private var observedSearches = 0L
+
     private data class PathIntent(val accuracy: Int, val near: BlockPos? = null, val far: BlockPos? = null)
     private val pathIntents = WeakHashMap<Path, PathIntent>()
 
     /** A native search is a proposal. Only moveTo commits its goal and resets movement timers. */
     override fun createPath(targets: Set<BlockPos>, regionOffset: Int, offsetUpward: Boolean, accuracy: Int, followRange: Float): Path? {
+        val observer = pathWorkObserver
+        val started = if (observer != null) System.nanoTime() else 0L
+        val searchesBefore = observedSearches
         val moving = path
         val state = this as PathNavigationAccessor
         val goal = state.sbwnpcGetTarget()
@@ -110,6 +117,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
             timeoutTimer = timer
             timeoutLimit = limit
             state.sbwnpcSetStuck(stuck)
+            observer?.invoke(targets, System.nanoTime() - started, observedSearches != searchesBefore)
         }
     }
 
@@ -134,7 +142,10 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
     }
 
     override fun createPathFinder(maxVisitedNodes: Int): PathFinder {
-        val evaluator = VehicleAwareNodeEvaluator { from, to -> failedSteps.permits(from, to, level.gameTime) }
+        val evaluator = VehicleAwareNodeEvaluator(
+            permitsStep = { from, to -> failedSteps.permits(from, to, level.gameTime) },
+            onPrepare = { if (pathWorkObserver != null) observedSearches++ },
+        )
         evaluator.setCanPassDoors(true)
         this.nodeEvaluator = evaluator
         return PathFinder(evaluator, maxVisitedNodes)
@@ -509,7 +520,10 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
     }
 }
 
-internal open class VehicleAwareNodeEvaluator(private val permitsStep: (BlockPos, BlockPos) -> Boolean = { _, _ -> true }) : WalkNodeEvaluator() {
+internal open class VehicleAwareNodeEvaluator(
+    private val permitsStep: (BlockPos, BlockPos) -> Boolean = { _, _ -> true },
+    private val onPrepare: () -> Unit = {},
+) : WalkNodeEvaluator() {
     override fun getStart(): Node = if (mob.onClimbable()) getStartNode(mob.blockPosition()) else super.getStart()
 
     override fun getNeighbors(output: Array<Node>, node: Node): Int {
@@ -567,6 +581,7 @@ internal open class VehicleAwareNodeEvaluator(private val permitsStep: (BlockPos
      * phantom walls behind.
      */
     override fun prepare(level: PathNavigationRegion, mob: Mob) {
+        onPrepare()
         cellTypes.clear()
         super.prepare(level, mob)
         val ridden = mob.vehicle
