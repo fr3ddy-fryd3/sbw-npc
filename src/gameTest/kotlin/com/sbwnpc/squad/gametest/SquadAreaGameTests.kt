@@ -21,6 +21,45 @@ import java.util.UUID
 @PrefixGameTestTemplate(false)
 object SquadAreaGameTests {
     @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "operation_arena", skyAccess = true, timeoutTicks = 1800, batch = "area-distant-wall")
+    fun distantPatrolAreaBehindWallIsReplacedWithoutAbandoningReachableOriginalOrder(helper: GameTestHelper) = distantPatrolArea(helper, wall = true)
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "operation_arena", skyAccess = true, timeoutTicks = 1800, batch = "area-distant-clear")
+    fun reachableDistantPatrolAreaStaysStableUntilTheSquadArrives(helper: GameTestHelper) = distantPatrolArea(helper, wall = false)
+
+    private fun distantPatrolArea(helper: GameTestHelper, wall: Boolean) {
+        val fixture = Fixture(helper, if (wall) "area-distant-wall" else "area-distant-clear")
+        val groups = List(2) { fixture.group(32, SquadOrder.PATROL, Vec3(176.5, 1.0, 192.5)) }
+        groups.flatMap { it.second }.forEach { it.isNoAi = true }
+        if (wall) for (y in 1..6) for (z in 0..383) helper.setBlock(BlockPos(190, y, z), Blocks.STONE)
+        var members: List<NpcEntity>? = null
+        var original: Vec3? = null
+        var settled = 0
+        helper.runAtTickTime(40) {
+            members = groups.single { it.second.first().homeCenter() != it.second.first().orderCenter() }.second
+            original = members!!.first().homeCenter()
+            helper.assertTrue(helper.relativeVec(original!!).x > 260 && members!!.all { it.position().distanceTo(original!!) > 72 }, "Fixture must start farther than the validation threshold with a wall before it")
+            members!!.forEach { it.isNoAi = false }
+        }
+        helper.onEachTick {
+            val active = members ?: return@onEachTick
+            if (helper.tick % 20L != 0L) return@onEachTick
+            val home = active.first().homeCenter()!!
+            val near = active.count { it.position().subtract(home).horizontalDistance() <= SquadFormation.patrolRadius(active.size) + 3 }
+            if (helper.tick % 100L == 0L) fixture.scene.result("CHECK", "tick=${helper.tick} home=${helper.relativeVec(home)} original=${original?.let(helper::relativeVec)} occupied=$near xRange=${active.minOf { helper.relativeVec(it.position()).x }}..${active.maxOf { helper.relativeVec(it.position()).x }} zRange=${active.minOf { helper.relativeVec(it.position()).z }}..${active.maxOf { helper.relativeVec(it.position()).z }} distances=${active.map { it.position().subtract(home).horizontalDistance() }.sorted()}")
+            if (!wall) helper.assertTrue(home == original, "Reachable distant area changed before the squad arrived")
+            val placed = if (wall) home != original && helper.relativeVec(home).x < 190 else home == original
+            if (placed && near >= 24) settled++
+            if (settled >= 5) {
+                helper.assertTrue(active.all { it.isAlive }, "Patrol relocation caused environmental deaths")
+                fixture.scene.result("PASS", "previous=${helper.relativeVec(original!!)} replacement=${helper.relativeVec(home)} occupied=$near stableWindows=$settled tick=${helper.tick}")
+                helper.succeed()
+            }
+        }
+    }
+
+    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "operation_arena", skyAccess = true, timeoutTicks = 100, batch = "area-contact-sensor")
     fun defenderOutsideAssignedAreaDetectsVisibleContactWithoutBeingHit(helper: GameTestHelper) {
         val fixture = Fixture(helper, "area-contact-sensor")

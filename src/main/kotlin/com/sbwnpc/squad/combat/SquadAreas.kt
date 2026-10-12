@@ -115,14 +115,28 @@ object SquadAreas {
         val actor = world.members[area.request.squad].orEmpty().mapNotNull { level.getEntity(it) as? NpcEntity }.filter { !it.busyWithRole() && !it.resupplying && !it.movementLockedByCover() && !it.combatLockedByMedic() }
             .minByOrNull { it.position().distanceToSqr(area.center) } ?: return
         val navigation = actor.navigation as? VehicleAwareNavigation ?: return
-        if (!navigation.canPlan || actor.position().distanceTo(area.center) > 72.0 || !TacticalBudget.path(actor)) return
+        if (!navigation.canPlan || !TacticalBudget.path(actor)) return
         world.validateAt = level.gameTime + 20 // At most one added native search per world per second.
         world.checking = true
         try {
-            val path = TacticalBudget.measure(actor) { navigation.createPositionPath(VehicleAwareNavigation.walkingNode(area.center)) }
+            val delta = area.center.subtract(actor.position())
+            val partial = delta.length() > 72.0
+            // A distant area cannot require the actor to first reach the other side of a
+            // wall. Probe a bounded approach leg; only reaching the full area confirms it.
+            val checkpoint = if (partial) actor.position().add(delta.normalize().scale(48.0)) else area.center
+            val goal = if (partial) {
+                Terrain.feetAt(level, checkpoint, 6) { feet -> level.noCollision(actor, actor.getDimensions(actor.pose).makeBoundingBox(feet)) }
+            } else {
+                checkpoint
+            }
+            val path = goal?.let { TacticalBudget.measure(actor) { navigation.createPositionPath(VehicleAwareNavigation.walkingNode(it)) } }
             if (path?.canReach() == true) {
-                world.confirmed[area.request.squad] = area.center
-                DebugFlags.log(LogGroup.ORDER, "[area] squad={} event=reachable center={}", area.request.squad, area.center)
+                if (partial) {
+                    DebugFlags.log(LogGroup.ORDER, "[area] squad={} event=approach_reachable center={} checkpoint={} remaining={}", area.request.squad, area.center, goal, delta.length())
+                } else {
+                    world.confirmed[area.request.squad] = area.center
+                    DebugFlags.log(LogGroup.ORDER, "[area] squad={} event=reachable center={}", area.request.squad, area.center)
+                }
             } else {
                 world.failures.merge(area.request.squad, 1, Int::plus)
                 val next = world.layout.reject(area.request.squad) { request, point -> ground(level, world, request, point) }
