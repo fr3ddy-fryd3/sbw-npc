@@ -822,7 +822,6 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         updateAim(entity, target, gun, clearShot, visibility)
 
         val movement = updateCombatMovement(entity, target, squad, holding, gun, clearShot)
-        if (movement == CombatMovement.RETURNING_TO_POST) return
         if (!terrainClear && movement == CombatMovement.TACTICAL && entity.tickCount % 40 == 0) {
             SquadTactics.repositionForFire(entity)
         }
@@ -830,7 +829,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (foliageHidden) return
         // Movement uses the previous safety assessment; refresh it before the next shot.
         updateFiringLane(entity, target, gun)
-        clearBlockedFiringLane(entity, target, movement == CombatMovement.TACTICAL)
+        clearBlockedFiringLane(entity, target, movement != CombatMovement.LOCAL)
         gun.operate()
         tickShooting(entity, target, gun, clearShot)
     }
@@ -971,7 +970,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         val overwatchRadius = if (SidearmKit.hasPrimaryAmmo(entity) && entity.npcClass in setOf(NpcClass.SNIPER, NpcClass.MACHINE_GUNNER)) DefensiveOverwatch.RADIUS else 0.0
         val leash = CombatPosition.defendRadius(entity.npcClass, squad?.members?.size ?: 1) + overwatchRadius
         if (defendHome != null && !CombatPosition.withinArea(defendHome, entity.position(), leash)) {
-            BrainUtils.setTargetOfEntity(entity, null)
+            // The order still owns the destination. An encountered enemy remains observable
+            // and shootable on the way there; arriving at the post is not a firing prerequisite.
             entity.navigation.moveTo(defendHome.x, defendHome.y, defendHome.z, 1.0)
             return CombatMovement.RETURNING_TO_POST
         }

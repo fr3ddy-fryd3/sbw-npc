@@ -1,8 +1,10 @@
 package com.sbwnpc.squad.gametest
 
+import com.sbwnpc.squad.combat.CombatPosition
 import com.sbwnpc.squad.combat.SquadAreas
 import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.ai.SquadTargetSensor
 import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.Squad
@@ -18,6 +20,65 @@ import java.util.UUID
 
 @PrefixGameTestTemplate(false)
 object SquadAreaGameTests {
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "operation_arena", skyAccess = true, timeoutTicks = 100, batch = "area-contact-sensor")
+    fun defenderOutsideAssignedAreaDetectsVisibleContactWithoutBeingHit(helper: GameTestHelper) {
+        val fixture = Fixture(helper, "area-contact-sensor")
+        val groups = List(2) { fixture.group(16, SquadOrder.DEFEND, Vec3(176.5, 1.0, 192.5)) }
+        groups.flatMap { it.second }.forEach { it.isNoAi = true }
+        helper.runAtTickTime(40) {
+            val group = groups.single { it.second.first().homeCenter() != it.second.first().orderCenter() }
+            val npc = group.second.first()
+            val home = npc.homeCenter()!!
+            val enemy = fixture.scene.enemy(helper.relativeVec(npc.position()).add(-24.0, 0.0, 0.0))
+            npc.yHeadRot = 90f
+            helper.assertTrue(!CombatPosition.withinArea(home, npc.position(), CombatPosition.defendRadius(npc.npcClass, group.second.size)), "Fixture defender must still be outside its assigned area")
+            helper.assertTrue(npc.lastHurtByMob == null, "Fixture must not grant retaliation through damage")
+            SquadTargetSensor().tick(helper.level, npc)
+            fixture.scene.result("CHECK", "outsideArea=true target=${npc.target?.uuid} enemy=${enemy.uuid} remembered=${enemy.uuid in group.first.tactics.contacts}")
+            helper.assertTrue(npc.target === enemy && enemy.uuid in group.first.tactics.contacts, "Visible enemy was ignored while the defender was approaching its sector")
+            fixture.scene.result("PASS", "outsideArea=true detectedBeforeDamage=true")
+            helper.succeed()
+        }
+    }
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "operation_arena", skyAccess = true, timeoutTicks = 800, batch = "area-contact-fire")
+    fun defendersFireBeforeArrivingInTheirAssignedAreaAndKeepMovingThere(helper: GameTestHelper) {
+        val fixture = Fixture(helper, "area-contact-fire")
+        val groups = List(2) { fixture.group(16, SquadOrder.DEFEND, Vec3(176.5, 1.0, 192.5)) }
+        groups.flatMap { it.second }.forEach { it.isNoAi = true }
+        var members: List<NpcEntity>? = null
+        var home: Vec3? = null
+        var initialDistance = 0.0
+        val firedOutside = mutableSetOf<UUID>()
+        helper.runAtTickTime(40) {
+            members = groups.single { it.second.first().homeCenter() != it.second.first().orderCenter() }.second
+            home = members!!.first().homeCenter()
+            val center = members!!.fold(Vec3.ZERO) { sum, npc -> sum.add(npc.position()) }.scale(1.0 / members!!.size)
+            initialDistance = center.distanceTo(home!!)
+            fixture.scene.enemy(helper.relativeVec(center).add(-40.0, 0.0, 0.0))
+            members!!.forEach { npc ->
+                npc.moveTo(npc.x, npc.y, npc.z, 90f, 0f)
+                npc.yHeadRot = 90f
+                npc.isNoAi = false
+            }
+        }
+        helper.onEachTick {
+            val active = members ?: return@onEachTick
+            active.filter { npc -> npc.firedRecently(1) && !CombatPosition.withinArea(home!!, npc.position(), CombatPosition.defendRadius(npc.npcClass, active.size)) }.forEach { firedOutside += it.uuid }
+            if (helper.tick < 100 || helper.tick % 20L != 0L) return@onEachTick
+            val center = active.fold(Vec3.ZERO) { sum, npc -> sum.add(npc.position()) }.scale(1.0 / active.size)
+            val advanced = initialDistance - center.distanceTo(home!!)
+            fixture.scene.result("CHECK", "tick=${helper.tick} firedOutside=${firedOutside.size} advancedTowardSector=$advanced targets=${active.count { it.target != null }}")
+            if (firedOutside.size >= 8 && advanced >= 12.0) {
+                helper.assertTrue(active.all { it.isAlive && it.lastHurtByMob == null }, "Scene relied on incoming damage or suffered friendly fire")
+                fixture.scene.result("PASS", "firedOutside=${firedOutside.size}/16 advancedTowardSector=$advanced contactBeforeDamage=true")
+                helper.succeed()
+            }
+        }
+    }
+
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "operation_arena", skyAccess = true, timeoutTicks = 240, batch = "area-blocked")
     fun unreachableAreaIsReplacedWithBoundedNativeValidation(helper: GameTestHelper) {
