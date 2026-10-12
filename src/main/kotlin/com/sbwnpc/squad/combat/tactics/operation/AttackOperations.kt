@@ -126,6 +126,14 @@ object AttackOperations {
         val covering = members.count { npc ->
             npc.firedRecently(40) && npc.onGround() && !npc.resupplying && npc.lastFireAt?.let { at -> known.any { at.distanceTo(it.position) <= 18.0 } } == true
         }
-        return AttackForce(squad.id, squad.orderStamp, squad.faction, objective, center, described, covering, squad.tactics.plan?.failedMembers?.size ?: 0, squad.focusEntity)
+        // Read the gun behaviour's existing sustained sight-loss stamp. Aiming, burst pauses,
+        // healing and foliage reply fire must not be mistaken for an unusable sector.
+        val eligible = described.filter { it.ready && it.health >= 0.3 && it.primaryAmmo && !it.sidearmOnly && it.role != NpcClass.MEDIC }.mapTo(HashSet()) { it.id }
+        val blocked = members.count { npc ->
+            npc.uuid in eligible && !npc.firedRecently(40) && npc.target?.isAlive == true &&
+                npc.blockedSightSince?.let { npc.tickCount - it >= 80 } == true
+        }
+        val underFire = members.any { it.isSuppressed() || it.incomingFire.recentPoint(level.gameTime) != null }
+        return AttackForce(squad.id, squad.orderStamp, squad.faction, objective, center, described, covering, squad.tactics.plan?.failedMembers?.size ?: 0, squad.focusEntity, blocked, underFire)
     }
 }

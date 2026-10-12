@@ -28,6 +28,137 @@ import java.util.UUID
 @PrefixGameTestTemplate(false)
 object AttackOperationGameTests {
     @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1000, batch = "attack-short-range")
+    fun attackingShotgunnerApproachesFromOutOfRangeAndFires(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "attack-short-range")
+        val npc = scene.spawn(Vec3(30.5, 1.0, 100.5), com.sbwnpc.squad.npc.NpcClass.SHOTGUNNER)
+        val enemy = scene.enemy(Vec3(140.5, 1.0, 100.5))
+        val scout = scene.spawn(Vec3(140.5, 1.0, 160.5), com.sbwnpc.squad.npc.NpcClass.MEDIC).apply { isNoAi = true }
+        val squad = scene.squad(listOf(npc, scout), TacticalPattern.REORIENT, contact = enemy)
+        helper.onEachTick {
+            if (helper.tick % 40L == 0L) {
+                helper.assertTrue(DetectionSightline.canSeeWithin(scout, enemy, 72.0), "Scout lost actual contact")
+                SquadTactics.observe(scout, enemy)
+            }
+            scene.tick(squad)
+            if (npc.lastShotTick >= 0) {
+                val distance = npc.position().distanceTo(enemy.position())
+                helper.assertTrue(distance <= 49.0 && distance >= 17.0, "Shotgunner fired outside its range or charged into contact: $distance")
+                helper.assertTrue(helper.relativeVec(npc.position()).x >= 91.0, "No physical approach into shotgun range")
+                scene.result("PASS", "tick=${helper.tick} distance=$distance at=${helper.relativeVec(npc.position())}")
+                helper.succeed()
+            }
+        }
+    }
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 900, batch = "operation-held-bound")
+    fun deployedSquadPhysicallyAdvancesAfterLongSectorHold(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "operation-held-bound")
+        val members = List(12) { scene.spawn(Vec3(30.5, 1.0, 76.5 + it * 6)) }
+        val enemy = scene.enemy(Vec3(150.5, 1.0, 109.5))
+        val squad = scene.squad(members, TacticalPattern.COORDINATED_ATTACK, contact = enemy)
+        val plan = requireNotNull(squad.tactics.plan)
+        val held = helper.absoluteVec(Vec3(30.5, 1.0, 109.5))
+        val goal = held.add(18.0, 0.0, 0.0)
+        val slots = members.associate { it.uuid to (it.position().z - held.z) }
+        var starts = emptyMap<UUID, Vec3>()
+        fun assess() {
+            val moving = helper.tick >= 450
+            val assignment = AttackAssignment(
+                1, AttackRole.CENTER, if (moving) AttackStage.DEPLOYING else AttackStage.ENGAGING,
+                if (moving) 1 else 0, if (moving) goal else held, if (moving) goal else held, Vec3(1.0, 0.0, 0.0),
+                AttackCorridor(listOf(held, goal), 40.0), !moving, false, false, slots,
+            )
+            val view = TacticalSnapshotCollector.collect(squad, helper.level, members, members.first()).copy(attackAssignment = assignment)
+            squad.tactics.snapshot = view
+            plan.tick(squad.id, squad.tactics, view)
+        }
+        assess()
+        helper.onEachTick {
+            if (helper.tick == 450L) starts = members.associate { it.uuid to it.position() }
+            if (helper.tick % 10L == 0L) assess()
+            helper.assertTrue(plan.status != TacticalStatus.FAILED, "New bound failed at tick ${helper.tick}: ${plan.failure}, phaseSince=${plan.phaseSince}")
+            if (helper.tick > 450 && helper.tick % 20L == 0L) {
+                val advanced = members.count { it.position().x - starts.getValue(it.uuid).x >= 10.0 }
+                scene.result("CHECK", "tick=${helper.tick} advanced=$advanced phase=${plan.phase} phaseSince=${plan.phaseSince}")
+                if (advanced >= 9) {
+                    helper.assertTrue(members.all { it.isAlive }, "Quiet bound lost soldiers")
+                    scene.result("PASS", "held450=true advanced=$advanced tick=${helper.tick} phaseSince=${plan.phaseSince}")
+                    helper.succeed()
+                }
+            }
+        }
+    }
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "operation_arena", skyAccess = true, timeoutTicks = 2400, batch = "operation-blind-ridge")
+    fun coordinatedSquadsLeaveBlindSectorsOnUnevenGroundAndSustainFire(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "operation-blind-ridge", depth = 384)
+        scene.onClose = { AttackOperations.clear(helper.level) }
+        for (x in 0..351) for (z in 0..383) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        for (x in 150..205) {
+            for (z in 0..383) {
+                val height = minOf(8, (x - 150) / 2 + 1, (205 - x) / 2 + 1)
+                for (y in 1..height) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
+            }
+        }
+        val groups = listOf(32 to 192.5, 16 to 240.5).map { (size, center) ->
+            List(size) { index ->
+                if (index == size - 1) {
+                    // One fixed scout in each squad maintains a real reported contact.
+                    scene.spawn(Vec3(248.5, 1.0, if (size == 32) 130.5 else 254.5)).apply { isNoAi = true }
+                } else {
+                    scene.spawn(Vec3(110.5, 1.0, center + (index - (size - 1) / 2.0) * 6))
+                }
+            }
+        }
+        val enemy = scene.enemy(Vec3(248.5, 1.0, 192.5))
+        val squads = groups.map { scene.squad(it, TacticalPattern.BOUND, isolated = false, contact = enemy) }
+        val before = groups.flatten().associate { it.uuid to it.position() }
+        var windows = 0
+        var approachOrders = 0
+        val revisions = mutableMapOf<UUID, Int>()
+        val report = Path.of(System.getProperty("sbwnpc.gameTestReports"))
+        val trace = CombatParticipationTrace(helper.level, report.resolve("blind-ridge-participation.csv"))
+        val close = scene.onClose
+        scene.onClose = {
+            trace.close()
+            close()
+        }
+        helper.onEachTick {
+            if (helper.tick % 40L == 0L) {
+                groups.forEach { group ->
+                    val scout = group.last()
+                    helper.assertTrue(DetectionSightline.canSeeWithin(scout, enemy, 72.0), "Fixed scout lost real visual contact")
+                    SquadTactics.observe(scout, enemy)
+                }
+            }
+            squads.forEach(scene::tick)
+            groups.flatten().forEachIndexed { i, npc -> if (helper.tick % 40L == i % 40L) trace.sample(helper.tick, npc) }
+            if (helper.tick % 20L != 0L) return@onEachTick
+            val assignments = squads.mapNotNull { AttackOperations.assignment(helper.level, it) }
+            squads.forEach { squad ->
+                val assignment = AttackOperations.assignment(helper.level, squad) ?: return@forEach
+                val previous = revisions.put(squad.id, assignment.revision)
+                if (previous != null && previous != assignment.revision && !assignment.deployed) approachOrders++
+            }
+            val active = groups.first()
+            val advanced = active.count { it.position().x - before.getValue(it.uuid).x >= 50.0 }
+            val firing = active.count { it.firedRecently(100) }
+            if (advanced >= 20 && firing >= 20) windows++ else windows = 0
+            if (helper.tick % 100L == 0L) scene.result("CHECK", "tick=${helper.tick} advanced=$advanced firing=$firing windows=$windows approaches=$approachOrders")
+            if (windows >= 5) {
+                helper.assertTrue(approachOrders > 0, "No operation bound was ordered after the line became blind")
+                helper.assertTrue(active.all { it.isAlive }, "Quiet terrain attack lost soldiers")
+                helper.assertTrue(active.all { it.position().subtract(enemy.position()).horizontalDistance() >= 47.0 }, "Attack charged into the target")
+                scene.result("PASS", "tick=${helper.tick} advanced=$advanced firing=$firing windows=$windows approaches=$approachOrders")
+                helper.succeed()
+            }
+        }
+    }
+
+    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "operation_arena", skyAccess = true, timeoutTicks = 1800, batch = "operation-reinforcement")
     fun lateReservePhysicallyReplacesSparseFrontAndStartsFiring(helper: GameTestHelper) {
         val scene = CombatIdleGameTests.Scene(helper, "operation-reinforcement", depth = 384)

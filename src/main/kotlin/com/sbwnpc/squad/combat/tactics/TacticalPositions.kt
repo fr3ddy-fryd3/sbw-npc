@@ -293,6 +293,13 @@ object TacticalPositions {
         }
         val mustShoot = requiresFiringLane(context, candidate)
         val aim = context.aim
+        if (!context.deployment && task.fireTransit == null && context.view.offensive &&
+            !entity.usingSidearm && task.job in TacticalJob.FIRE_SUPPORT &&
+            aim != null && !WeaponReach.inRange(entity, eye, aim.eye)
+        ) {
+            search.reject("weapon_range")
+            return
+        }
         val firing = aim?.let {
             !Sightline.blockedBy(level, eye, it.eye, entity, context.hulls)
         } ?: true
@@ -687,7 +694,12 @@ object TacticalPositions {
     fun firingReady(entity: NpcEntity, task: TacticalTask, point: Vec3): Boolean {
         val aim = TacticalAim.resolve(entity, task) ?: return true
         val eye = point.add(0.0, entity.eyeHeight.toDouble(), 0.0)
-        if (!WeaponReach.inRange(entity, eye, aim.eye)) return true
+        if (!WeaponReach.inRange(entity, eye, aim.eye)) {
+            // A defensive pistol post can wait. An attacking primary gun needs an actual
+            // firing post; otherwise shotgunners repeatedly accept unreachable-range posts.
+            return entity.currentSquad()?.order != com.sbwnpc.squad.squad.SquadOrder.ATTACK ||
+                entity.usingSidearm || task.job !in TacticalJob.FIRE_SUPPORT
+        }
         val level = entity.level() as ServerLevel
         val hulls = Sightline.vehicleHulls(level, AABB(eye, aim.eye).inflate(2.0), entity, entity.target)
         return !Sightline.blockedBy(level, eye, aim.eye, entity, hulls, entity.spread) &&

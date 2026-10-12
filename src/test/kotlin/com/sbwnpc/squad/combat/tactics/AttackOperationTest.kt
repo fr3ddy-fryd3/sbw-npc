@@ -104,6 +104,50 @@ class AttackOperationTest {
         assertFalse(operation.assignment(forces[1].id, reports.map { it.copy(covering = 0) })!!.externalCover)
     }
 
+    @Test fun `a quiet majority of blocked shooters requests a short approach even inside nominal range`() {
+        val forces = listOf(force(1, 16), force(2, 7, -10.0))
+        val events = mutableListOf<AttackOperationEvent>()
+        val operation = AttackOperation(1, focus, forces, 0, events = AttackOperationEvents(events::add))
+        val center = operation.lanes.getValue(forces[0].id)
+        val post = Vec3(52.0, 64.0, 0.0)
+        center.route += post
+        center.next = center.route.size
+        val wing = operation.lanes.getValue(forces[1].id)
+        wing.blocked = true
+        val blind = forces.map { it.copy(blockedShooters = it.fighters.size) }
+        operation.transition(EngageAttack(), 0, "fixture_deployed")
+        operation.tick(blind, 40)
+        assertEquals(AttackStage.ADVANCING, operation.state.stage)
+        operation.tick(blind, 50)
+        assertEquals(8.0, center.waypoint.subtract(post).horizontalDistance(), 0.001)
+        assertFalse(center.deployed)
+        assertTrue(events.any { it.action == "advance_ordered" && it.reason == "quiet_sector_blocked_shots" })
+
+        val next = center.waypoint
+        operation.tick(blind, 60)
+        assertEquals(next, center.waypoint, "A pending bound must not append another goal each update")
+    }
+
+    @Test fun `a blind sector under fire needs real adjacent fire and respects suppression`() {
+        for (suppressed in listOf(false, true)) {
+            val forces = listOf(force(1, 16), force(2, 7, -10.0))
+            val operation = AttackOperation(1, focus, forces, 0)
+            val lane = operation.lanes.getValue(forces[0].id)
+            lane.next = lane.route.size
+            operation.lanes.getValue(forces[1].id).blocked = true
+            operation.transition(AdvanceAttack(), 0, "fixture")
+            val pressured = forces.map { force ->
+                force.copy(blockedShooters = force.fighters.size, underFire = true, members = force.members.map { it.copy(suppressed = suppressed) })
+            }
+            val previous = lane.waypoint
+            operation.tick(pressured, 10)
+            assertEquals(previous, lane.waypoint)
+            val covered = pressured.mapIndexed { index, force -> force.copy(covering = if (index == 1) 2 else 0) }
+            operation.tick(covered, 70)
+            assertEquals(!suppressed, !lane.deployed)
+        }
+    }
+
     @Test fun `medics and a guarding soldier cannot hide a physically deployed firing line`() {
         val wing = force(2, 32, -24.0).let { force ->
             force.copy(

@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.combat.tactics.operation
 
+import com.sbwnpc.squad.combat.CombatPositionSafety
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
@@ -76,7 +77,8 @@ class AttackOperation(
         if (state.stage == AttackStage.COMPLETED) return null
         val lane = lanes[squad] ?: return null
         val externalCover = forces.any { it.id != squad && it.id in lanes && it.covering >= 2 }
-        return AttackAssignment(id, lane.role, state.stage, lane.revision, lane.waypoint, lane.sector, focus.subtract(lane.sector).multiply(1.0, 0.0, 1.0).normalize(), lane.corridor, lane.deployed, lane.blocked, externalCover, lane.slots.toMap())
+        val force = forces.firstOrNull { it.id == squad }
+        return AttackAssignment(id, lane.role, state.stage, lane.revision, lane.waypoint, lane.sector, focus.subtract(lane.sector).multiply(1.0, 0.0, 1.0).normalize(), lane.corridor, lane.deployed, lane.blocked, externalCover, lane.slots.toMap(), force?.blockedShooters ?: 0, force?.covering ?: 0, force?.underFire == true)
     }
 
     /** Late arrivals fill a free wing, then reserve. Active survivors keep their current roles. */
@@ -137,8 +139,11 @@ class AttackOperation(
 
     internal fun engage(forces: Map<UUID, AttackForce>, now: Long) {
         val active = lanes.values.filter { !it.blocked && it.role != AttackRole.RESERVE }
-        if (active.isNotEmpty() && active.all { forces[it.squad]?.covering?.let { count -> count >= 1 } == true } && now - phaseSince >= 40) {
-            transition(AdvanceAttack(), now, "actual_fire_from_deployed_sectors")
+        if (active.isNotEmpty() && active.all { lane ->
+                forces[lane.squad]?.let { it.covering >= 1 || (it.needsFiringApproach && !it.underFire) } == true
+            } && now - phaseSince >= 40
+        ) {
+            transition(AdvanceAttack(), now, "fire_or_quiet_blind_sector_approach")
         }
     }
 
@@ -150,17 +155,23 @@ class AttackOperation(
         val lane = active[advancingLane++ % active.size]
         val covered = forces.values.any { it.id != lane.squad && it.id in lanes && it.covering >= 2 }
         val force = forces[lane.squad] ?: return
-        if (!covered || force.fighters.any { it.suppressed }) return
+        val quietApproach = force.needsFiringApproach && !force.underFire
+        if ((!covered && !quietApproach) || force.fighters.any { it.suppressed }) return
         val delta = focus.subtract(lane.sector).multiply(1.0, 0.0, 1.0)
-        if (delta.length() <= 72.0) return
-        val goal = lane.sector.add(delta.normalize().scale(minOf(8.0, delta.length() - 72.0)))
+        val stopDistance = if (force.needsFiringApproach) {
+            force.fighters.maxOfOrNull { CombatPositionSafety.clearance(it.role) + CombatPositionSafety.APPROACH_MARGIN } ?: 72.0
+        } else {
+            72.0
+        }
+        if (delta.length() <= stopDistance + 0.5) return
+        val goal = lane.sector.add(delta.normalize().scale(minOf(8.0, delta.length() - stopDistance)))
         lane.route += goal
         lane.corridor = AttackCorridor(lane.route.toList(), lane.corridor.halfWidth)
         lane.next = lane.route.lastIndex
         lane.revision++
         lane.closest = Double.POSITIVE_INFINITY
         lane.progressAt = now
-        emit(now, "advance_ordered", lane, "adjacent_sector_actual_cover", goal)
+        emit(now, "advance_ordered", lane, if (quietApproach) "quiet_sector_blocked_shots" else "adjacent_sector_actual_cover", goal)
         transition(DeployAttack(), now, "next_protected_bound")
     }
 
