@@ -40,6 +40,8 @@ object TacticalEventFormat {
 
             is TacticalEvent.TaskPaused -> "event=task_${if (event.paused) "paused" else "resumed"} npc=${event.member} reason=${event.reason}"
 
+            is TacticalEvent.MembersRetried -> "event=members_retried members=${event.members} trigger=${event.trigger}"
+
             is TacticalEvent.MovementBlocked ->
                 "event=movement_${if (event.current == null) "unblocked" else "blocked"} npc=${event.member} " +
                     "previous=${event.previous} reason=${event.current}"

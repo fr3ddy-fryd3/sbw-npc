@@ -93,6 +93,8 @@ sealed interface TacticalEvent {
         val reason: String,
     ) : TacticalEvent
 
+    data class MembersRetried(override val plan: Int, override val tick: Long, val members: List<UUID>, val trigger: String) : TacticalEvent
+
     data class MovementBlocked(
         override val plan: Int,
         override val tick: Long,

@@ -28,6 +28,77 @@ import java.util.UUID
 @PrefixGameTestTemplate(false)
 object AttackOperationGameTests {
     @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 2000, batch = "operation-route-recovery")
+    fun blockedWingUsesAnOpenedRouteWithoutEnemyDeathsOrNewOrders(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "operation-route-recovery")
+        scene.onClose = { AttackOperations.clear(helper.level) }
+        val groups = listOf(
+            scene.deploy(SquadPreset.SEVEN, Vec3(24.5, 1.0, 96.5)),
+            scene.deploy(SquadPreset.SIXTEEN, Vec3(24.5, 1.0, 112.5)),
+            scene.deploy(SquadPreset.SEVEN, Vec3(24.5, 1.0, 128.5)),
+        )
+        for (x in 0..175) for (y in 1..5) helper.setBlock(BlockPos(x, y, 72), Blocks.STONE)
+        val enemy = scene.enemy(Vec3(145.5, 1.0, 112.5))
+        val squads = groups.map { scene.squad(it, TacticalPattern.BOUND, isolated = false, contact = enemy) }
+        var blockedAt = -1L
+        var operation = -1L
+        var recoveredAt = -1L
+        var stamp = -1
+        var windows = 0
+        helper.onEachTick {
+            squads.forEach(scene::tick)
+            val squad = squads.first()
+            val assignment = AttackOperations.assignment(helper.level, squad) ?: return@onEachTick
+            if (assignment.blocked && blockedAt < 0) {
+                blockedAt = helper.tick
+                operation = assignment.operation
+                stamp = squad.orderStamp
+                // Open a real walkable gate after the route has actually failed.
+                for (x in 4..68) for (y in 1..5) helper.setBlock(BlockPos(x, y, 72), Blocks.AIR)
+            }
+            if (blockedAt < 0 || helper.tick % 20L != 0L) return@onEachTick
+            helper.assertTrue(assignment.operation == operation && squad.orderStamp == stamp && enemy.isAlive, "Recovery required a new operation/order or killing the enemy")
+            if (!assignment.blocked && assignment.revision >= 2 && recoveredAt < 0) recoveredAt = helper.tick
+            val crossed = groups.first().count { helper.relativeVec(it.position()).z < 69.0 }
+            val recent = groups.first().count { it.firedRecently(100) }
+            if (recoveredAt >= 0 && crossed >= 5 && recent >= 3) windows++ else windows = 0
+            if (helper.tick % 100L == 0L) scene.result("CHECK", "tick=${helper.tick} blockedAt=$blockedAt recoveredAt=$recoveredAt crossed=$crossed recent=$recent windows=$windows")
+            if (windows >= 3) {
+                helper.assertTrue(groups.flatten().all { it.isAlive }, "Quiet recovery lost soldiers")
+                helper.assertTrue(squads.all { it.order == SquadOrder.ATTACK }, "Recovery changed player orders")
+                scene.result("PASS", "blockedAt=$blockedAt recoveredAt=$recoveredAt crossed=$crossed recent=$recent sameOperation=$operation")
+                helper.succeed()
+            }
+        }
+    }
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 180, batch = "operation-dead-contact")
+    fun deadContactCannotRecreateAnAttackOperation(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "operation-dead-contact")
+        scene.onClose = { AttackOperations.clear(helper.level) }
+        val enemy = scene.enemy(Vec3(120.5, 1.0, 100.5))
+        val squads = List(2) { index ->
+            val members = List(7) { scene.spawn(Vec3(24.5, 1.0, 86.5 + index * 28 + it * 2)).apply { isNoAi = true } }
+            scene.squad(members, TacticalPattern.BOUND, isolated = false, contact = enemy)
+        }
+        helper.runAtTickTime(20) {
+            helper.assertTrue(AttackOperations.assignment(helper.level, squads.first()) != null, "No original live-contact operation")
+            enemy.kill()
+        }
+        helper.onEachTick {
+            if (helper.tick < 40 || helper.tick % 10L != 0L) return@onEachTick
+            squads.forEach { squad ->
+                helper.assertTrue(AttackOperations.assignment(helper.level, squad) == null, "Dead contact recreated an operation at tick ${helper.tick}")
+            }
+            if (helper.tick >= 100) {
+                scene.result("PASS", "deadAndRemoved=true noOperationUntil=${helper.tick}")
+                helper.succeed()
+            }
+        }
+    }
+
+    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1000, batch = "attack-short-range")
     fun attackingShotgunnerApproachesFromOutOfRangeAndFires(helper: GameTestHelper) {
         val scene = CombatIdleGameTests.Scene(helper, "attack-short-range")

@@ -81,6 +81,27 @@ class CoordinatedAttackStateTest {
         assertEquals(TacticalFailure.MOVEMENT_TIMEOUT, plan.failure, "A truly immobile bound must still expire")
     }
 
+    @Test fun `a failed member rejoins a new operation route but not every holding tick`() {
+        val base = view()
+        val owner = SquadTacticalState()
+        val squad = UUID(3, 3)
+        val plan = TacticalPlan(1, TacticalPattern.COORDINATED_ATTACK, focus, 0, 1, TacticalStatus.EXECUTING)
+        val held = base.copy(attackAssignment = base.attackAssignment!!.copy(deployed = true, blocked = true))
+        plan.tick(squad, owner, held)
+        val member = base.members.first().id
+        plan.assignments.abandon(member, 10, "failed old route")
+        plan.tick(squad, owner, held.copy(now = 20))
+        assertTrue(member in plan.failedMembers)
+        assertNull(plan.tasks[member])
+        val recovered = base.copy(now = 200, attackAssignment = base.attackAssignment!!.copy(revision = 1))
+        plan.tick(squad, owner, recovered)
+        assertFalse(member in plan.failedMembers)
+        assertEquals(TacticalJob.ADVANCE, plan.tasks[member]?.job)
+        plan.assignments.abandon(member, 210, "still unavailable")
+        plan.tick(squad, owner, recovered.copy(now = 220))
+        assertNull(plan.tasks[member], "An unchanged revision retried its failed actor repeatedly")
+    }
+
     @Test fun `a new sector never recalls shooters that already recovered farther forward`() {
         val base = view()
         val advanced = base.copy(members = base.members.map { it.copy(position = it.position.add(68.0, 0.0, 0.0), canFire = true, firingAt = focus) })

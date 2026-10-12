@@ -124,9 +124,11 @@ class AttackOperation(
                 lane.revision++
                 lane.closest = Double.POSITIVE_INFINITY
                 lane.progressAt = now
+                if (lane.deployed) lane.retry.settled()
                 emit(now, if (lane.deployed) "sector_reached" else "waypoint_reached", lane, "physical_squad_progress", lane.waypoint)
             } else if (now - lane.progressAt >= 400 || (force.failedRoutes >= maxOf(2, force.fighters.size / 2) && now - lane.progressAt >= 160)) {
                 // An inaccessible flank is a failed maneuver, not a successful deployment.
+                lane.retry.blocked(lane.sector, now)
                 lane.blocked = true
                 lane.route += force.center
                 lane.next = lane.route.size
@@ -135,6 +137,23 @@ class AttackOperation(
             }
         }
         if (lanes.values.all { it.deployed || it.blocked || it.role == AttackRole.RESERVE }) transition(EngageAttack(), now, "deployment_finished")
+    }
+
+    /** The world adapter supplies a natively validated approach, not a fabricated arrival. */
+    internal fun recover(lane: AttackLane, origin: Vec3, checkpoint: Vec3, corridor: List<Vec3>, now: Long) {
+        val target = lane.retry.target ?: return
+        check(lane.blocked && lane.role != AttackRole.RESERVE && lanes[lane.squad] === lane)
+        lane.route.clear()
+        lane.route += listOf(origin, checkpoint, target).distinct()
+        lane.corridor = AttackCorridor(corridor, lane.corridor.halfWidth)
+        lane.next = 1
+        lane.blocked = false
+        lane.revision++
+        lane.closest = Double.POSITIVE_INFINITY
+        lane.progressAt = now
+        lane.retry.accepted()
+        emit(now, "route_recovered", lane, "native_approach_validated", checkpoint)
+        transition(DeployAttack(), now, "blocked_route_recovery")
     }
 
     internal fun engage(forces: Map<UUID, AttackForce>, now: Long) {

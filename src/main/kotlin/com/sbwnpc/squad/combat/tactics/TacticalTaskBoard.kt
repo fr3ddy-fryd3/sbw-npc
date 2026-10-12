@@ -40,6 +40,14 @@ class TacticalTaskBoard(private val plan: Int, private val events: TacticalEvent
         release(id, now, trigger)
     }
 
+    /** A new operation bound can retry live members whose previous route failed. */
+    fun retryFailed(members: Set<UUID>, now: Long, trigger: String) {
+        val retried = failed.filter { it in members }
+        if (retried.isEmpty()) return
+        failed.removeAll(retried.toSet())
+        events.emit(TacticalEvent.MembersRetried(plan, now, retried, trigger))
+    }
+
     fun clear(now: Long, trigger: String) {
         for (id in active.keys.toList()) release(id, now, trigger)
     }

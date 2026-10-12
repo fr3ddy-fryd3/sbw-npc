@@ -21,6 +21,7 @@ object AttackOperations {
         var serial = 0L
         var forces = emptyList<AttackForce>()
         val operations = mutableListOf<AttackOperation>()
+        val recovery = AttackRouteRecovery()
     }
     private val worlds = WeakHashMap<ServerLevel, World>()
     private val infantry = setOf(NpcClass.RIFLEMAN, NpcClass.SHOTGUNNER, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.DRONE_OPERATOR)
@@ -54,7 +55,7 @@ object AttackOperations {
             val central = operation.lanes.values.firstOrNull { it.role == AttackRole.CENTER }?.squad?.let(byId::get)
             val compatible = world.forces.filter { it.id in operation.lanes && central != null && compatible(central, it) }
             val contacts = squads.filter { it.id in operation.lanes }.flatMap { it.tactics.contacts.values }
-                .filter { contact -> now - contact.seenAt <= 200 && level.getEntity(contact.id)?.isAlive != false }
+                .filter { contact -> now - contact.seenAt <= 200 && level.getEntity(contact.id)?.isAlive == true }
             val moved = contacts.isNotEmpty() && contacts.all { it.position.subtract(operation.focus).horizontalDistance() > 48.0 }
             when {
                 contacts.isEmpty() -> operation.transition(FinishedAttack(), now, "contact_memory_expired")
@@ -63,6 +64,7 @@ object AttackOperations {
             }
         }
         world.operations.removeIf { it.state.stage == AttackStage.COMPLETED }
+        world.recovery.update(level, world.operations, world.forces, squads.associateBy { it.id })
         val assigned = world.operations.flatMap { it.lanes.keys }.toMutableSet()
         for (force in world.forces.filter { it.id !in assigned }) {
             val operation = world.operations.firstOrNull { operation ->
@@ -84,7 +86,7 @@ object AttackOperations {
             if (candidates.size < 2) continue
             val candidateSquads = squads.filter { it.id in candidates.map { force -> force.id } }
             // Plans begin only with a real locally known contact, not knowledge of the entire map.
-            val contacts = candidateSquads.flatMap { it.tactics.contacts.values }.filter { now - it.seenAt < 80 }
+            val contacts = candidateSquads.flatMap { it.tactics.contacts.values }.filter { now - it.seenAt < 80 && level.getEntity(it.id)?.isAlive == true }
             val focus = contacts.maxWithOrNull(compareBy<com.sbwnpc.squad.combat.tactics.TacticalContact> { it.priority }.thenBy { it.seenAt })?.position ?: continue
             val operation = AttackOperation(
                 ++world.serial,

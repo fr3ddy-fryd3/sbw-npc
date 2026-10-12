@@ -35,6 +35,7 @@ class AttackLane internal constructor(
         internal set
     internal var closest = Double.POSITIVE_INFINITY
     internal var progressAt = Long.MIN_VALUE
+    internal val retry = AttackRouteRetry()
     val sector get() = route.last()
     val deployed get() = next >= route.size
     val waypoint get() = route.getOrElse(next) { sector }

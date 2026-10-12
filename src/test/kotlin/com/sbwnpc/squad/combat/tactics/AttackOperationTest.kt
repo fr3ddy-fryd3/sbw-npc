@@ -104,6 +104,25 @@ class AttackOperationTest {
         assertFalse(operation.assignment(forces[1].id, reports.map { it.copy(covering = 0) })!!.externalCover)
     }
 
+    @Test fun `validated recovery changes only the blocked lane and does not fabricate arrival`() {
+        val forces = listOf(force(1, 16), force(2, 7, -10.0), force(3, 7, 10.0))
+        val operation = AttackOperation(1, focus, forces, 0)
+        operation.tick(forces, 0)
+        operation.tick(forces, 410)
+        val lane = operation.lanes.getValue(forces[1].id)
+        val others = operation.lanes.filterKeys { it != lane.squad }.mapValues { it.value.route.toList() to it.value.revision }
+        val target = lane.retry.target!!
+        val origin = forces[1].center
+        val checkpoint = origin.add(16.0, 0.0, -16.0)
+        operation.recover(lane, origin, checkpoint, listOf(origin, checkpoint, target), 610)
+        assertFalse(lane.blocked)
+        assertFalse(lane.deployed)
+        assertEquals(target, lane.sector)
+        assertEquals(checkpoint, lane.waypoint)
+        assertEquals(AttackRole.LEFT, lane.role)
+        others.forEach { (id, old) -> assertEquals(old, operation.lanes.getValue(id).route.toList() to operation.lanes.getValue(id).revision) }
+    }
+
     @Test fun `a quiet majority of blocked shooters requests a short approach even inside nominal range`() {
         val forces = listOf(force(1, 16), force(2, 7, -10.0))
         val events = mutableListOf<AttackOperationEvent>()

@@ -65,7 +65,10 @@ class CoordinatedAttackState : CoveredManeuverState() {
             val newBound = assignmentKey != null && !assignment.holding && !assignment.deployed
             assignmentKey = key
             continuing.clear()
-            if (newBound) restartBound(context)
+            if (newBound) {
+                context.tasks.retryFailed(context.view.members.mapTo(HashSet()) { it.id }, context.view.now, "operation_new_bound")
+                restartBound(context)
+            }
             assign(context, trigger = "operation_lane_updated")
         } else if (pressureChanged) {
             // Switching from quiet travel to protected bounds cancels old open-ground
