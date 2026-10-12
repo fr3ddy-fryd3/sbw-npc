@@ -62,8 +62,10 @@ class CoordinatedAttackState : CoveredManeuverState() {
         val pressureChanged = underFireLastTick != null && underFireLastTick != underFire
         underFireLastTick = underFire
         if (assignmentKey != key) {
+            val newBound = assignmentKey != null && !assignment.holding && !assignment.deployed
             assignmentKey = key
             continuing.clear()
+            if (newBound) restartBound(context)
             assign(context, trigger = "operation_lane_updated")
         } else if (pressureChanged) {
             // Switching from quiet travel to protected bounds cancels old open-ground
@@ -74,6 +76,16 @@ class CoordinatedAttackState : CoveredManeuverState() {
         // Holding members can keep an actual protected firing post; the wave protocol still
         // owns movers and all cover/medical/supply behavior priorities remain in force.
         super.beforeTick(context)
+    }
+
+    /** Holding a sector consumes no part of the next operation bound's movement deadline. */
+    private fun restartBound(context: TacticalContext) {
+        if (context.plan.phase == TacticalPhase.PAUSED) {
+            phases.transition(ExecutingPhase(), context, "operation_replaces_paused_bound")
+        }
+        if (context.plan.phase == TacticalPhase.EXECUTING) {
+            phases.transition(PreparingPhase(), context, "operation_new_bound")
+        }
     }
 
     internal override fun prepare(context: TacticalContext) {
@@ -100,7 +112,7 @@ class CoordinatedAttackState : CoveredManeuverState() {
             return layout.intent(TacticalJob.RESERVE, rally)
         }
         val offset = side(assignment.facing).scale(offsets[member.id] ?: 0.0)
-        val sector = assignment.sector.add(offset)
+        val sector = preserveDepth(member, assignment.sector.add(offset), assignment.facing)
         if (assignment.holding || assignment.deployed) {
             return layout.intent(TacticalJob.COVER, if (assignment.blocked) member.position else sector).also {
                 if (!assignment.blocked) it.frontage = TacticalFrontPost(sector, assignment.facing)
@@ -108,7 +120,10 @@ class CoordinatedAttackState : CoveredManeuverState() {
         }
         val underFire = layout.view.incoming.isNotEmpty() || layout.view.members.any { it.suppressed }
         if ((underFire && groups[member.id] != movingHalf) || layout.plan.status == TacticalStatus.PREPARING) return layout.cover(member)
-        val destination = assignment.waypoint.add(offset)
+        val waypoint = assignment.waypoint.add(offset)
+        // The lateral leg of a wing's route is not its firing line. Projecting it along
+        // the final sector's facing would skip the detour and strand that wing.
+        val destination = if (assignment.waypoint == assignment.sector) preserveDepth(member, waypoint, assignment.facing) else waypoint
         if (member.position.subtract(destination).horizontalDistance() <= 3.0) return layout.cover(member)
         var anchor = TacticalLayout.towards(member.position, destination, if (underFire) 12.0 else 24.0)
         anchor = TacticalClearance.threats(layout.view).fold(anchor) { point, threat ->
@@ -166,6 +181,14 @@ class CoordinatedAttackState : CoveredManeuverState() {
     }
 
     private fun side(forward: Vec3) = Vec3(-forward.z, 0.0, forward.x)
+
+    /** Retain a proven leading firing post; an unfinished blind leg still joins its sector. */
+    private fun preserveDepth(member: TacticalMember, point: Vec3, forward: Vec3): Vec3 =
+        if (member.grounded && (member.canFire || member.recentFire)) {
+            point.add(forward.scale(maxOf(0.0, member.position.subtract(point).dot(forward))))
+        } else {
+            point
+        }
 }
 
 object CoordinatedAttackPositions : TacticalPositionPolicy {

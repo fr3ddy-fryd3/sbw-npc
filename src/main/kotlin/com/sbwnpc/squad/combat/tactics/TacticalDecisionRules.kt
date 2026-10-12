@@ -26,7 +26,7 @@ internal object TacticalDecisionRules {
         }
         val rememberedEnemy = view.contacts.isNotEmpty()
         // A ridge may conceal the last contact while the squad is climbing towards it.
-        if (view.offensive && rememberedEnemy && situation.enemyHasHeightAdvantage) {
+        if (view.offensive && view.attackAssignment == null && rememberedEnemy && situation.enemyHasHeightAdvantage) {
             return TacticalChoice(TacticalPattern.ATTACK_HEIGHT, situation.focus, reason = TacticalReason.LAST_CONTACT_HIGHER)
         }
         if (view.incoming.isNotEmpty()) {
