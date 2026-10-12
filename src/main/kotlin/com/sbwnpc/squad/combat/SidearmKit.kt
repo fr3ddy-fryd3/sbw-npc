@@ -12,6 +12,11 @@ import net.minecraft.world.item.ItemStack
 /** Persistent backup small arms; supply readiness continues to describe the primary weapon. */
 object SidearmKit {
     const val FIRE_RANGE = 32.0
+    private val MP443_PRIMARIES = setOf("ak_47", "ak_12", "qbz_95", "qbz_95_1", "rpk", "svd", "mp_5")
+
+    fun playerWeapon(primary: ResourceLocation): ResourceLocation = ResourceLocation.fromNamespaceAndPath("superbwarfare", if (primary.path in MP443_PRIMARIES) "mp_443" else "glock_17")
+
+    fun startingRounds(weapon: ResourceLocation): Int = if (weapon.path == "m_1911") 70 else 85
 
     fun hasPrimaryAmmo(npc: NpcEntity): Boolean = Ports.guns.roundsLeft(npc.primaryGun()) > 0
 
@@ -24,9 +29,8 @@ object SidearmKit {
         } else {
             "m_1911"
         }
-        val magazine = if (name == "m_1911") 7 else 17
-        val reserve = if (name == "m_1911") 63 else 68
-        return Ports.guns.issue(ResourceLocation.fromNamespaceAndPath("superbwarfare", name), npc, magazine + reserve)
+        val weapon = ResourceLocation.fromNamespaceAndPath("superbwarfare", name)
+        return Ports.guns.issue(weapon, npc, startingRounds(weapon))
     }
 
     fun reserveRounds(stack: ItemStack): Int = if (BuiltInRegistries.ITEM.getKey(stack.item).path == "m_1911") 63 else 68

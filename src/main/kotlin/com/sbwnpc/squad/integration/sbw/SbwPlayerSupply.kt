@@ -7,6 +7,7 @@ import com.atsuishio.superbwarfare.init.ModAttachments
 import com.atsuishio.superbwarfare.init.ModItems
 import com.atsuishio.superbwarfare.init.ModSounds
 import com.atsuishio.superbwarfare.item.gun.GunItem
+import com.sbwnpc.squad.combat.SidearmKit
 import com.sbwnpc.squad.domain.port.Kit
 import com.sbwnpc.squad.domain.port.KitOption
 import com.sbwnpc.squad.domain.port.PlayerSupply
@@ -88,9 +89,12 @@ object SbwPlayerSupply : PlayerSupply {
                 spec.cls.weaponPool.map { weapon ->
                     val items = mutableListOf<Pair<ResourceLocation, Int>>()
                     ammoFor(spec.cls, weapon)?.let { (ammo, count) -> items += key(ammo) to count }
+                    val pistol = SidearmKit.playerWeapon(weapon)
+                    items += pistol to 1
+                    ammoFor(SidearmKit.startingRounds(pistol), pistol)?.let { (ammo, count) -> items += key(ammo) to count }
                     if (spec.launcher) items += RPG to 1
                     spec.extras.forEach { (item, count) -> items += key(item.get()) to count }
-                    KitOption(weapon, items)
+                    KitOption(weapon, items.groupBy { it.first }.map { (item, entries) -> item to entries.sumOf { it.second } })
                 },
             )
         }
@@ -104,17 +108,22 @@ object SbwPlayerSupply : PlayerSupply {
     private fun loaded(item: GunItem): ItemStack {
         val data = GunData.from(ItemStack(item))
         data.ammo.set(data.get(GunProp.MAGAZINE))
+        // SBW's ammo setter clears its reserve cache but does not mark state dirty.
+        // Persist the loaded magazine before vanilla copies this stack into inventory.
+        data.nbtVersion.invalidateState()
         data.save()
         return data.stack
     }
 
     /** The class's starting rounds behind a full magazine, as the item that stands for them. */
-    private fun ammoFor(cls: NpcClass, weapon: ResourceLocation): Pair<Item, Int>? {
+    private fun ammoFor(cls: NpcClass, weapon: ResourceLocation): Pair<Item, Int>? = ammoFor(cls.startingRounds(weapon), weapon)
+
+    private fun ammoFor(total: Int, weapon: ResourceLocation): Pair<Item, Int>? {
         val gun = gunItem(weapon) ?: return null
         val data = GunData.from(ItemStack(gun))
         val consumer = data.selectedAmmoConsumer()
         if (!consumer.initialized()) consumer.init()
-        val rounds = cls.startingRounds(weapon) - data.get(GunProp.MAGAZINE)
+        val rounds = total - data.get(GunProp.MAGAZINE)
         if (rounds <= 0) return null
         return when (consumer.type) {
             AmmoConsumer.AmmoConsumeType.PLAYER_AMMO -> consumer.playerAmmoType?.let { it.item to rounds }
@@ -130,7 +139,7 @@ object SbwPlayerSupply : PlayerSupply {
         val spec = SPECS.getOrNull(kit) ?: return false
         var given = false
         spec.cls.weaponPool.forEach { weapon ->
-            gunItem(weapon)?.let { given = topUpAmmo(player, it, spec.cls.startingRounds(weapon)) || given }
+            given = topUpLoadoutAmmo(player, spec, weapon) || given
         }
         if (spec.launcher) given = topUpItems(player, ModItems.RPG_ROCKET_TBG.get(), 2) || given
         if (given) player.level().playSound(null, player.blockPosition(), ModSounds.BULLET_SUPPLY.get(), SoundSource.PLAYERS, 1f, 1f)
@@ -144,8 +153,10 @@ object SbwPlayerSupply : PlayerSupply {
 
         gunItem(weapon)?.let { gun ->
             if (player.inventory.countItem(gun) == 0) given = give(player, loaded(gun)) || given
-            given = topUpAmmo(player, gun, spec.cls.startingRounds(weapon)) || given
         }
+        val pistol = SidearmKit.playerWeapon(weapon)
+        gunItem(pistol)?.let { gun -> if (player.inventory.countItem(gun) == 0) given = give(player, loaded(gun)) || given }
+        given = topUpLoadoutAmmo(player, spec, weapon) || given
         if (spec.launcher) {
             gunItem(RPG)?.let { if (player.inventory.countItem(it) == 0) given = give(player, loaded(it)) || given }
         }
@@ -161,6 +172,26 @@ object SbwPlayerSupply : PlayerSupply {
             player.level().playSound(null, player.blockPosition(), ModSounds.BULLET_SUPPLY.get(), SoundSource.PLAYERS, 1f, 1f)
         }
         return given
+    }
+
+    private fun topUpLoadoutAmmo(player: ServerPlayer, spec: Spec, weapon: ResourceLocation): Boolean {
+        val primary = gunItem(weapon) ?: return false
+        val pistolId = SidearmKit.playerWeapon(weapon)
+        val pistol = gunItem(pistolId) ?: return topUpAmmo(player, primary, spec.cls.startingRounds(weapon))
+        val primaryData = GunData.from(ItemStack(primary))
+        val primaryConsumer = primaryData.selectedAmmoConsumer().also { if (!it.initialized()) it.init() }
+        val pistolConsumer = GunData.from(ItemStack(pistol)).selectedAmmoConsumer().also { if (!it.initialized()) it.init() }
+        // MP5 and its backup draw from one SBW HandgunAmmo store. Include both reserves
+        // in the desired total; never add ammunition to the player's current balance.
+        val sharedReserve = if (primaryConsumer.type == AmmoConsumer.AmmoConsumeType.PLAYER_AMMO &&
+            primaryConsumer.playerAmmoType != null && primaryConsumer.playerAmmoType == pistolConsumer.playerAmmoType
+        ) {
+            (spec.cls.startingRounds(weapon) - primaryData.get(GunProp.MAGAZINE)).coerceAtLeast(0)
+        } else {
+            0
+        }
+        val mainGiven = topUpAmmo(player, primary, spec.cls.startingRounds(weapon))
+        return topUpAmmo(player, pistol, SidearmKit.startingRounds(pistolId) + sharedReserve) || mainGiven
     }
 
     /** Brings the rounds behind [gun] up to [total] less a magazine — into the player's ammunition

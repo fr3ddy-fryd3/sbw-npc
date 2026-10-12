@@ -1,6 +1,8 @@
 package com.sbwnpc.squad.gametest
 
 import com.atsuishio.superbwarfare.data.gun.GunData
+import com.atsuishio.superbwarfare.data.gun.GunProp
+import com.atsuishio.superbwarfare.init.ModAttachments
 import com.mojang.authlib.GameProfile
 import com.sbwnpc.squad.ServerLifecycle
 import com.sbwnpc.squad.block.SupplyBlock
@@ -19,9 +21,11 @@ import com.sbwnpc.squad.npc.*
 import com.sbwnpc.squad.squad.*
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.gametest.framework.*
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
+import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.item.ItemStack
@@ -48,6 +52,50 @@ import java.util.function.Supplier
 
 @PrefixGameTestTemplate(false)
 object FactionLogisticsGameTests {
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 40, batch = "player-backup-pistols")
+    fun everyPlayerWeaponIssuesTheMappedPistolAndReserveWithoutDuplication(helper: GameTestHelper) {
+        floor(helper)
+        val player = player(helper, "player-backup-pistols")
+        val mp443 = setOf("ak_47", "ak_12", "qbz_95", "rpk", "svd", "mp_5")
+        helper.runAtTickTime(5) {
+            Ports.playerSupply.kits.forEachIndexed { kitIndex, kit ->
+                kit.options.forEachIndexed { optionIndex, option ->
+                    player.inventory.clearContent()
+                    val selected = ResourceLocation.fromNamespaceAndPath("superbwarfare", if (option.weapon.path in mp443) "mp_443" else "glock_17")
+                    val item = BuiltInRegistries.ITEM.get(selected)
+                    val pistol = GunData.from(ItemStack(item))
+                    val consumer = pistol.selectedAmmoConsumer().also { if (!it.initialized()) it.init() }
+                    val primary = GunData.from(ItemStack(BuiltInRegistries.ITEM.get(option.weapon)))
+                    val primaryConsumer = primary.selectedAmmoConsumer().also { if (!it.initialized()) it.init() }
+                    val variable = player.getData(ModAttachments.PLAYER_VARIABLE).watch()
+                    consumer.playerAmmoType!!.set(variable, 0)
+                    player.setData(ModAttachments.PLAYER_VARIABLE, variable)
+                    Ports.playerSupply.issueKit(player, kitIndex, optionIndex, null)
+                    helper.assertTrue(player.inventory.countItem(item) == 1, "${option.weapon} omitted mapped pistol $selected")
+                    val issued = player.inventory.items.first { it.`is`(item) }
+                    helper.assertTrue(GunData.from(issued).ammo.get() == 17, "${option.weapon} pistol $selected ammo=${GunData.from(issued).ammo.get()} capacity=${GunData.from(issued).get(GunProp.MAGAZINE)} components=${issued.components}")
+                    val issuedPrimary = player.inventory.items.first { BuiltInRegistries.ITEM.getKey(it.item) == option.weapon }
+                    val primaryData = GunData.from(issuedPrimary.copy())
+                    helper.assertTrue(primaryData.ammo.get() == primaryData.get(GunProp.MAGAZINE), "${option.weapon} lost its loaded magazine when copied")
+                    val displayed = option.items.filter { it.first == consumer.playerAmmoType!!.item.let(BuiltInRegistries.ITEM::getKey) }.sumOf { it.second }
+                    val expected = if (primaryConsumer.playerAmmoType == consumer.playerAmmoType) displayed else 68
+                    helper.assertTrue(expected >= 68 && consumer.playerAmmoType!!.get(player.getData(ModAttachments.PLAYER_VARIABLE)) == expected, "${option.weapon} pistol/shared reserve differs from its kit menu")
+                    Ports.playerSupply.issueKit(player, kitIndex, optionIndex, null)
+                    helper.assertTrue(player.inventory.countItem(item) == 1, "Repeated kit request duplicated the pistol")
+                    helper.assertTrue(consumer.playerAmmoType!!.get(player.getData(ModAttachments.PLAYER_VARIABLE)) == expected, "Repeated kit request accumulated reserve")
+                    consumer.playerAmmoType!!.set(variable, 0)
+                    player.setData(ModAttachments.PLAYER_VARIABLE, variable)
+                    val equipment = player.inventory.items.map { it.copy() }
+                    Ports.playerSupply.issueAmmo(player, kitIndex)
+                    helper.assertTrue(consumer.playerAmmoType!!.get(player.getData(ModAttachments.PLAYER_VARIABLE)) >= expected, "Ammo-only resupply omitted backup rounds")
+                    helper.assertTrue(player.inventory.items.zip(equipment).all { (a, b) -> ItemStack.matches(a, b) }, "Ammo-only resupply altered equipment")
+                }
+            }
+            helper.succeed()
+        }
+    }
+
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 40, batch = "class-rations")
     fun everyPlayerClassKitIncludesRefillableRations(helper: GameTestHelper) {
