@@ -17,7 +17,6 @@ import net.minecraft.tags.BlockTags
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
-import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 import net.tslat.smartbrainlib.util.BrainUtils
@@ -47,7 +46,7 @@ import net.tslat.smartbrainlib.util.BrainUtils
  * A squad that found genuine cover has no need to dig, and digging should never preempt or delay
  * reaching real cover, which is still always tried first.
  *
- * Peeking is a minimal-exposure lean, not a full walk-out (see [findPeekPoint]): tries a handful of
+ * Peeking is a minimal-exposure lean, not a full walk-out (see [CoverPeekSearch]): tries a handful of
  * short steps toward the target (0.5 up to 3 blocks) and takes the first one with a clear line of
  * sight, rather than always closing all the way to the target's own position. This is the standard
  * "smart cover point" idiom from tactical-shooter AI (F.E.A.R.'s cover/lean system is the usual
@@ -86,6 +85,9 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var phase = Phase.MOVING_TO_COVER
     private var coverTarget: BlockPos? = null
     private var pendingCover: BlockPos? = null
+    private var pendingFallback: BlockPos? = null
+    private var fallbackThreat: Vec3? = null
+    private var peekSearch: CoverPeekSearch? = null
     private var phaseUntilTick = 0
     private var isFallbackRetreat = false // coverTarget came from fallbackAwayFrom, not CoverSearch.find
     private var blindPeek = false
@@ -114,13 +116,6 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val DWELL_JITTER = 30 // + up to ~1.5s random, so a squad doesn't peek in lockstep
         private const val PEEK_TICKS = 50 // ~2.5s exposed before ducking back, unless target dies/breaks LOS first
         private const val RECHECK_TICKS = 15 // no target yet — check again soon rather than popping out blind
-
-        // Minimal-exposure peek distances (blocks), tried in order — first one with a clear
-        // raycast to the target wins. Lean-and-peek rather than a full walk-out to the target, per
-        // user request (and how tactical-shooter AI cover systems like F.E.A.R.'s generally do it —
-        // see this class's own doc comment for the research pointer): expose as little as the
-        // terrain requires, not "walk all the way out into the open".
-        private val PEEK_STEP_DISTANCES = listOf(0.5, 1.0, 1.5, 2.0, 2.5, 3.0)
 
         private const val DIG_HEALTH_FRACTION = 0.25f // only badly hurt NPCs bother digging in (was 0.5, per user request)
         private const val DIG_TICKS = 70 // ~3.5s of "digging" before the hole is done
@@ -188,6 +183,9 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         phase = Phase.MOVING_TO_COVER
         coverTarget = null
         pendingCover = null
+        pendingFallback = null
+        fallbackThreat = null
+        peekSearch = null
         phaseUntilTick = 0
         isFallbackRetreat = false
         blindPeek = false
@@ -207,6 +205,9 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.incomingFire.endReply()
         coverTarget = null
         pendingCover = null
+        pendingFallback = null
+        fallbackThreat = null
+        peekSearch = null
         FiringSpots.release(entity.uuid)
         entity.navigation.stop()
         digPos?.let { clearDigProgress(entity) }
@@ -263,7 +264,8 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             return // still travelling this leg either way
         }
         if ((entity.navigation as? VehicleAwareNavigation)?.canPlan == false) return
-        if (pendingCover == null) {
+        if (fallbackThreat?.distanceToSqr(threat)?.let { it > 64.0 } == true) pendingFallback = null
+        if (pendingCover == null && pendingFallback == null) {
             val search = TickBudget.attempt(entity, TickBudget.Work.COVER) { CoverSearch.find(entity, level, threat, failedCover) } ?: return
             pendingCover = search.value
         }
@@ -296,6 +298,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
                     com.sbwnpc.squad.combat.DetectionSightline.canSeeWithin(entity, entity.target!!, NpcEntity.DETECTION_RANGE)
                 )
         ) {
+            pendingFallback = null
             if (digsUsed < MAX_DIGS && canDigIn(entity, level, entity.blockPosition())) {
                 startDigging(entity)
             } else {
@@ -303,7 +306,17 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
             return
         }
-        fallbackAwayFrom(entity, threat)?.let {
+        if (pendingFallback == null) {
+            pendingFallback = fallbackAwayFrom(entity, threat)
+            fallbackThreat = threat
+        }
+        pendingFallback?.let {
+            if (!com.sbwnpc.squad.combat.tactics.TacticalBudget.path(entity)) return
+            pendingFallback = null
+            if (!level.noCollision(entity, entity.getDimensions(entity.pose).makeBoundingBox(it.bottomCenter))) {
+                failedCover.add(it)
+                return
+            }
             val path = com.sbwnpc.squad.combat.tactics.TacticalPositions.pathToPosition(entity, it.bottomCenter)
             if (!com.sbwnpc.squad.combat.tactics.TacticalPositions.reaches(path, it.bottomCenter)) {
                 failedCover.add(it)
@@ -340,6 +353,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  refresh to first-settle-only still closes the real gap (suppression lapsing before the mob
      *  ever gets its first dwell/peek check after arriving) without that drift. */
     private fun enterCover(entity: NpcEntity, refreshSuppression: Boolean = false) {
+        peekSearch = null
         entity.coverPeekPoint = null
         blindPeek = false
         waitingForPeek = false
@@ -697,18 +711,19 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (target != null && target.isAlive) {
             val peekPoint = coverTarget?.let { peekPoint(entity, level, it, known.second, target, false) }
             if (peekPoint == null) {
+                if (peekSearch != null) return // Await admission without restarting the search or dwell.
                 phaseUntilTick = entity.tickCount + RECHECK_TICKS
                 return
             }
             phase = Phase.PEEKING
             blindPeek = false
-            entity.coverPeekPoint = peekPoint
+            entity.coverPeekPoint = peekPoint.point
             phaseUntilTick = entity.tickCount + PEEK_TICKS
             // Unlock — GunAttackBehaviour (no longer locked out, see combatLockedByCover) takes
             // over aiming/approach/fire from here; this is just enough of a nudge to clear
             // whatever's currently blocking sight from the cover point itself.
             BrainUtils.clearMemory(entity, ModMemories.COVER_HOLD.get())
-            entity.navigation.moveTo(peekPoint.x, peekPoint.y, peekPoint.z, 1.0)
+            entity.navigation.moveTo(peekPoint.path, 1.0)
         } else {
             val aim = entity.incomingFire.point(level.gameTime)
             val peek = if (aim != null && entity.incomingFire.pending(level.gameTime) &&
@@ -722,11 +737,13 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
                 phase = Phase.PEEKING
                 blindPeek = true
                 waitingForPeek = true
-                entity.coverPeekPoint = peek
+                entity.coverPeekPoint = peek.point
                 phaseUntilTick = entity.tickCount + 100
-                entity.navigation.moveTo(peek.x, peek.y, peek.z, 1.0)
-                DebugFlags.log(LogGroup.ORDER, "[return-fire] {} moving to peek={}", entity.uuid, peek)
+                entity.navigation.moveTo(peek.path, 1.0)
+                DebugFlags.log(LogGroup.ORDER, "[return-fire] {} moving to peek={}", entity.uuid, peek.point)
             } else {
+                if (peekSearch != null && aim != null && entity.incomingFire.pending(level.gameTime)) return
+                peekSearch = null
                 phaseUntilTick = entity.tickCount + RECHECK_TICKS
                 if (entity.incomingFire.pending(level.gameTime) && entity.tickCount >= nextReplyLogTick) {
                     nextReplyLogTick = entity.tickCount + 40
@@ -746,33 +763,14 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         return entity.rememberedEye(target)?.let { target to it }
     }
 
-    private fun blindPeekPoint(entity: NpcEntity, level: ServerLevel, cover: BlockPos, aim: Vec3): Vec3? = peekPoint(entity, level, cover, aim, null, true)
+    private fun blindPeekPoint(entity: NpcEntity, level: ServerLevel, cover: BlockPos, aim: Vec3) = peekPoint(entity, level, cover, aim, null, true)
 
-    private fun peekPoint(entity: NpcEntity, level: ServerLevel, cover: BlockPos, aim: Vec3, target: LivingEntity?, blind: Boolean): Vec3? {
-        if ((entity.navigation as? VehicleAwareNavigation)?.canPlan == false) return null
-        val base = cover.bottomCenter
-        val flat = aim.subtract(base).multiply(1.0, 0.0, 1.0).normalize()
-        val side = Vec3(-flat.z, 0.0, flat.x)
-        val hulls = Sightline.vehicleHulls(level, AABB(base, aim).inflate(3.0), entity, target)
-        val spread = if (blind) maxOf(entity.spread, 9.0) else entity.spread
-        for (step in PEEK_STEP_DISTANCES) {
-            for (direction in listOf(side, side.scale(-1.0), flat)) {
-                val candidate = Terrain.feetAt(level, base.add(direction.scale(step))) { feet ->
-                    level.noCollision(entity, entity.getDimensions(entity.pose).makeBoundingBox(feet))
-                } ?: continue
-                if (candidate.distanceTo(base) > 3.5 || !level.noCollision(entity, entity.getDimensions(entity.pose).makeBoundingBox(candidate))) continue
-                val eye = candidate.add(0.0, entity.eyeHeight.toDouble(), 0.0)
-                val lane = if (blind) com.sbwnpc.squad.combat.IncomingFire.laneEnd(eye, aim) else aim
-                if (Sightline.blockedBy(level, eye, lane, entity, hulls, spread) ||
-                    !com.sbwnpc.squad.combat.FriendlyFireGuard.assess(entity, aim, spread, aim, 0.0, eye).lineClear
-                ) {
-                    continue
-                }
-                val path = com.sbwnpc.squad.combat.tactics.TacticalPositions.pathToPosition(entity, candidate) ?: continue
-                if (com.sbwnpc.squad.combat.tactics.TacticalPositions.reaches(path, candidate)) return candidate
-            }
-        }
-        return null
+    private fun peekPoint(entity: NpcEntity, level: ServerLevel, cover: BlockPos, aim: Vec3, target: LivingEntity?, blind: Boolean): CoverPeekSearch.Result? {
+        val search = peekSearch?.takeIf { it.matches(cover, aim, target, blind) }
+            ?: CoverPeekSearch(cover, aim, target?.uuid, blind).also { peekSearch = it }
+        val result = search.find(entity, level, aim, target)
+        if (result != null || search.exhausted) peekSearch = null
+        return result
     }
 
     private fun tickPeeking(entity: NpcEntity) {
@@ -818,6 +816,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun duckBackToCover(entity: NpcEntity) {
+        peekSearch = null
         entity.coverPeekPoint = null
         waitingForPeek = false
         entity.incomingFire.endReply()
