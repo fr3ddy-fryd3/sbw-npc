@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.gametest
 
+import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.combat.tactics.*
 import com.sbwnpc.squad.combat.tactics.operation.AttackAssignment
@@ -7,7 +8,9 @@ import com.sbwnpc.squad.combat.tactics.operation.AttackCorridor
 import com.sbwnpc.squad.combat.tactics.operation.AttackOperations
 import com.sbwnpc.squad.combat.tactics.operation.AttackRole
 import com.sbwnpc.squad.combat.tactics.operation.AttackStage
+import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.SquadPreset
+import com.sbwnpc.squad.squad.Squad
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.core.BlockPos
@@ -19,10 +22,87 @@ import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption.APPEND
+import java.util.UUID
 
 /** Geometry is not proof of maneuvering: these scenes run native locomotion, targeting and guns. */
 @PrefixGameTestTemplate(false)
 object AttackOperationGameTests {
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "operation_arena", skyAccess = true, timeoutTicks = 1800, batch = "operation-reinforcement")
+    fun lateReservePhysicallyReplacesSparseFrontAndStartsFiring(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "operation-reinforcement", depth = 384)
+        scene.onClose = { AttackOperations.clear(helper.level) }
+        for (x in 176..351) for (z in 0..383) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        val enemy = scene.enemy(Vec3(300.5, 1.0, 192.5))
+        val groups = List(3) { group ->
+            List(16) { i -> scene.spawn(Vec3(132.5 + i % 4 * 2, 1.0, 166.5 + group * 20 + i / 4 * 2)).apply { isNoAi = true } }
+        }
+        val squads = groups.map { scene.squad(it, TacticalPattern.BOUND, isolated = false, contact = enemy) }
+        var reinforcement: Squad? = null
+        var members = emptyList<NpcEntity>()
+        var starting = Vec3.ZERO
+        var oldCenter: UUID? = null
+        var reserved = false
+        var activatedAt = -1L
+        var firingWindows = 0
+        helper.runAtTickTime(20) {
+            // Model the established front explicitly: two combatants per sector, a visible
+            // scout, and healthy replacements still at the distant barracks. Only the
+            // arriving reinforcement runs normal locomotion and weapons throughout.
+            squads.forEachIndexed { index, squad ->
+                AttackOperations.assignment(helper.level, squad)
+                val lane = requireNotNull(AttackOperations.lane(helper.level, squad.id))
+                if (lane.role == AttackRole.CENTER) oldCenter = squad.id
+                val facing = enemy.position().subtract(lane.sector).multiply(1.0, 0.0, 1.0).normalize()
+                val side = Vec3(-facing.z, 0.0, facing.x)
+                groups[index].take(2).forEach { npc ->
+                    val point = lane.sector.add(side.scale(lane.slots.getValue(npc.uuid)))
+                    npc.moveTo(point.x, point.y, point.z, 0f, 0f)
+                }
+                val scout = groups[index][2]
+                val point = enemy.position().add(-48.0, 0.0, index * 6.0)
+                scout.moveTo(point.x, point.y, point.z, -90f, 0f)
+            }
+        }
+        helper.runAtTickTime(220) {
+            val lane = requireNotNull(AttackOperations.lane(helper.level, requireNotNull(oldCenter)))
+            val origin = helper.relativeVec(lane.route.first()).add(-32.0, 0.0, 0.0)
+            members = List(32) { i -> scene.spawn(origin.add(i % 8 * 2.0, 0.0, i / 8 * 2.0)) }
+            starting = members.fold(Vec3.ZERO) { sum, npc -> sum.add(npc.position()) }.scale(1.0 / members.size)
+            reinforcement = scene.squad(members, TacticalPattern.BOUND, isolated = false, contact = enemy)
+        }
+        helper.onEachTick {
+            squads.forEach(scene::tick)
+            if (helper.tick >= 40 && helper.tick % 40L == 0L) {
+                groups.forEach { group ->
+                    val scout = group[2]
+                    helper.assertTrue(DetectionSightline.canSeeWithin(scout, enemy, 72.0), "Scout lost its physical observation")
+                    SquadTactics.observe(scout, enemy)
+                }
+            }
+            if (helper.tick % 20L != 0L) return@onEachTick
+            val squad = reinforcement ?: return@onEachTick
+            val assignment = AttackOperations.assignment(helper.level, squad) ?: return@onEachTick
+            if (assignment.role == AttackRole.RESERVE) {
+                reserved = true
+            } else if (activatedAt < 0) {
+                helper.assertTrue(reserved, "Late force never joined as a reserve")
+                activatedAt = helper.tick
+            }
+            val recent = members.count { it.firedRecently(100) }
+            if (activatedAt >= 0 && recent >= 8) firingWindows++
+            if (helper.tick % 100L == 0L) scene.result("CHECK", "tick=${helper.tick} role=${assignment.role} activatedAt=$activatedAt recent=$recent firingWindows=$firingWindows")
+            if (activatedAt >= 0 && firingWindows >= 5) {
+                val advanced = members.count { it.position().x - starting.x >= 15.0 }
+                helper.assertTrue(advanced >= 16, "Promoted reserve has not physically advanced: $advanced/32")
+                helper.assertTrue(members.all { it.isAlive }, "Reinforcement suffered friendly fire/environmental deaths")
+                helper.assertTrue(squads.all { it.order == SquadOrder.ATTACK } && squad.order == SquadOrder.ATTACK, "Promotion changed player orders")
+                scene.result("PASS", "reserved=$reserved activatedAt=$activatedAt advanced=$advanced recent=$recent firingWindows=$firingWindows enemyDamage=${enemy.maxHealth - enemy.health}")
+                helper.succeed()
+            }
+        }
+    }
+
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 300, batch = "operation-step")
     fun nativeOperationTransitBatchKeepsMeaningfulProgress(helper: GameTestHelper) {

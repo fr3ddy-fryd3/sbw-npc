@@ -19,6 +19,7 @@ class AttackOperation(
         private set
     private var nextAdvance = started
     private var advancingLane = 0
+    private val reserves = AttackReservePolicy()
 
     init {
         lanes.values.forEach {
@@ -38,11 +39,37 @@ class AttackOperation(
                 lane.reconcileMembers(force, focus.subtract(lane.sector).multiply(1.0, 0.0, 1.0).normalize())
             }
         }
+        reserves.choose(lanes.values, present, focus, now)?.let { activateReserve(it, present, now) }
         if (lanes.size < 2) {
             transition(FinishedAttack(), now, "insufficient_participants")
             return
         }
         state.tick(this, present, now)
+    }
+
+    private fun activateReserve(activation: AttackReservePolicy.Activation, forces: Map<UUID, AttackForce>, now: Long) {
+        val original = lanes.toMap()
+        val oldCenter = original.values.firstOrNull { it.role == AttackRole.CENTER } ?: return
+        val centralId = if (activation.role == AttackRole.CENTER) activation.reserve else oldCenter.squad
+        val central = forces[centralId]?.copy(center = reserves.combatSector(oldCenter)) ?: return
+        for ((id, old) in original) {
+            val role = when (id) {
+                activation.reserve -> activation.role
+                activation.relieved -> AttackRole.RESERVE
+                else -> old.role
+            }
+            val source = forces[id] ?: continue
+            val force = if (old.role == AttackRole.RESERVE) source else source.copy(center = reserves.combatSector(old))
+            // Rebuild the geometry around the actual front: a larger new center must not
+            // overlap the old wing corridors, and remote recruits are not a routing origin.
+            val next = strategy.lane(force, central, role, focus)
+            next.revision = old.revision + 1
+            next.progressAt = now
+            lanes[id] = next
+        }
+        val next = lanes.getValue(activation.reserve)
+        emit(now, "reserve_activated", next, activation.reason, next.sector)
+        transition(DeployAttack(), now, "reserve_replaces_missing_front")
     }
 
     fun assignment(squad: UUID, forces: List<AttackForce>): AttackAssignment? {

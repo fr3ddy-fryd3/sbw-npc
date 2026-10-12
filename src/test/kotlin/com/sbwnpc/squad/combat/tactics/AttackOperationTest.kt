@@ -180,4 +180,33 @@ class AttackOperationTest {
         replenished.members.filter { it.id != replacement.id }.forEach { assertEquals(original[it.id], lane.slots[it.id]) }
         assertEquals(16, lane.slots.size)
     }
+
+    @Test fun `late full reserve replaces a deployed center with only two local fighters despite a distant full roster`() {
+        val initial = listOf(force(1, 16), force(2, 16, -20.0), force(3, 16, 20.0))
+        val events = mutableListOf<AttackOperationEvent>()
+        val operation = AttackOperation(1, focus, initial, 0, events = AttackOperationEvents(events::add))
+        fun placed(forces: List<AttackForce>): List<AttackForce> =
+            forces.map { force ->
+                val lane = operation.lanes.getValue(force.id)
+                val facing = focus.subtract(lane.sector).multiply(1.0, 0.0, 1.0).normalize()
+                val side = Vec3(-facing.z, 0.0, facing.x)
+                force.copy(center = lane.waypoint, members = force.members.map { it.copy(position = lane.waypoint.add(side.scale(lane.slots[it.id] ?: 0.0))) })
+            }
+        operation.tick(placed(initial), 10)
+        val deployed = placed(initial)
+        operation.tick(deployed, 20)
+        val reserve = force(4, 32).let { f -> f.copy(center = Vec3(-24.0, 64.0, 0.0), members = f.members.mapIndexed { index, m -> m.copy(position = Vec3(-24.0 + index % 8 * 2, 64.0, index / 8 * 2.0)) }) }
+        operation.join(reserve, deployed + reserve, 200)
+        val oldCenter = operation.lanes.getValue(initial[0].id)
+        val snapshot = deployed.map { f ->
+            if (f.id != oldCenter.squad) f else f.copy(center = Vec3(-180.0, 64.0, 0.0), members = f.members.mapIndexed { index, member -> if (index < 2) member else member.copy(position = Vec3(-180.0, 64.0, index.toDouble())) })
+        } + reserve
+        operation.tick(snapshot, 210)
+        assertEquals(AttackRole.RESERVE, operation.lanes.getValue(reserve.id).role, "One brief gap must not reshuffle active sectors")
+        operation.tick(snapshot, 420)
+        assertEquals(AttackRole.CENTER, operation.lanes.getValue(reserve.id).role, "Two nearby fighters and distant recruits must not hold a full arrived reserve indefinitely")
+        assertEquals(AttackRole.RESERVE, operation.lanes.getValue(oldCenter.squad).role)
+        assertTrue(operation.lanes.getValue(reserve.id).revision > 0, "The local state must see the changed role")
+        assertTrue(events.any { it.action == "reserve_activated" && it.squad == reserve.id })
+    }
 }

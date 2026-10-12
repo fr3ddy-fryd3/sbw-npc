@@ -11,6 +11,7 @@ import kotlin.math.sin
 
 /** Strategy owns force allocation and geometry; the operation owns its lifetime. */
 interface AttackDistribution {
+    fun lane(force: AttackForce, central: AttackForce, role: AttackRole, focus: Vec3): AttackLane
     fun distribute(forces: List<AttackForce>, focus: Vec3): List<AttackLane>
     fun reinforce(force: AttackForce, central: AttackForce, occupied: Set<AttackRole>, focus: Vec3): AttackLane
 }
@@ -81,7 +82,7 @@ object CenterAndWings : AttackDistribution {
         return selected.map { (force, role) -> lane(force, central, role, focus) }
     }
 
-    internal fun lane(force: AttackForce, central: AttackForce, role: AttackRole, focus: Vec3): AttackLane {
+    override fun lane(force: AttackForce, central: AttackForce, role: AttackRole, focus: Vec3): AttackLane {
         val origin = central.center
         val forward = focus.subtract(origin).multiply(1.0, 0.0, 1.0).normalize().let { if (it.lengthSqr() < 0.01) Vec3(0.0, 0.0, 1.0) else it }
         val side = Vec3(-forward.z, 0.0, forward.x)
