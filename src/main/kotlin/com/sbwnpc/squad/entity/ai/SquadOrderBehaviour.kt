@@ -60,6 +60,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /** On the way to a roaming spot — see [roamAround]. */
     private var roaming = false
+    private var patrolHome: Vec3? = null
     private var defendPostHome: Vec3? = null
 
     // No memory gate needed — eligibility is purely squad/order/target state, same as the old goal's
@@ -157,6 +158,15 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
                     ?.points
                 if (!points.isNullOrEmpty()) {
                     tickRoute(entity, points)
+                } else if (patrolHome != home) {
+                    patrolHome = home
+                    roaming = false
+                    repathCooldown = 0
+                    repathWhenDue(entity, home, WALK_SPEED_MODIFIER)
+                } else if (!roaming && entity.position().subtract(home).horizontalDistance() > SquadFormation.patrolRadius(squad.members.size) + 3.0) {
+                    // A distant patrol area is a fixed transit goal. A short march leg is not
+                    // arrival at a roaming spot; do not pause and pick a different destination.
+                    repathWhenDue(entity, home, WALK_SPEED_MODIFIER)
                 } else if (entity.navigation.isDone && roaming) {
                     // Got there: stand about for a while before the next spot.
                     roaming = false
@@ -171,15 +181,12 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
             // Nobody in sight: just get there at a run. Under fire GunAttackBehaviour takes over
             // and makes it a fighting withdrawal.
             SquadOrder.RETREAT -> {
-                val arrived = dist <= SquadFormation.ARRIVAL_RADIUS
                 // A squadmate is in a fight: this one's half may be the one holding to cover it.
-                val bound = if (arrived) null else com.sbwnpc.squad.combat.Withdrawal.positionFor(entity, squad, home)
-                if (!arrived && bound == null) {
+                val bound = com.sbwnpc.squad.combat.Withdrawal.positionFor(entity, squad, home)
+                if (bound == null) {
                     entity.navigation.stop()
-                } else if (bound != null) {
-                    moveToSlot(entity, bound, RUN_SPEED_MODIFIER)
                 } else {
-                    approachSlot(entity, home, true, RUN_SPEED_MODIFIER)
+                    moveToSlot(entity, bound, RUN_SPEED_MODIFIER)
                 }
             }
         }

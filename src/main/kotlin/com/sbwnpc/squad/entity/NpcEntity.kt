@@ -710,6 +710,12 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     /** Where this NPC "belongs" per its squad: the guarded entity, else the objective point. */
     fun homeCenter(): Vec3? {
+        val requested = orderCenter() ?: return null
+        return com.sbwnpc.squad.combat.SquadAreas.home(this, requested)
+    }
+
+    /** The player's original destination, before local squad-area allocation. */
+    internal fun orderCenter(): Vec3? {
         val squad = currentSquad() ?: return null
         // A point to get to, not an enemy to go after: no focus entity.
         if (squad.order == SquadOrder.MOVE || squad.order == SquadOrder.RETREAT) {

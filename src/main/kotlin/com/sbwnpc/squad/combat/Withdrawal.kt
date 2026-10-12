@@ -82,6 +82,7 @@ object Withdrawal {
             update(level, squad, state)
         }
         if (!state.inContact) {
+            if (member.position().subtract(point).horizontalDistance() <= 24.0) return SquadAreas.rallySlot(member, point)
             // Nothing to cover against: everyone to the point, spread across the line of retreat.
             val order = state.members.indexOf(member).coerceAtLeast(0)
             return lineSpot(point, point.subtract(member.position()), order, state.members.size)

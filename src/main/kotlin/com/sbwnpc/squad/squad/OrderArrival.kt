@@ -43,7 +43,12 @@ object OrderArrival {
                 // DEFEND would then cancel LANDING and launch a loiter with everyone still aboard.
                 val ride = npc.vehicle
                 val landed = ride == null || !Helicopters.isHelicopter(ride) || Helicopters.isGrounded(npc.level() as ServerLevel, ride)
-                landed && SquadFormation.reachedPoint(npc, point, squad.members.size)
+                landed && if (squad.order == SquadOrder.RETREAT && ride == null) {
+                    val home = npc.homeCenter() ?: point
+                    npc.position().distanceTo(com.sbwnpc.squad.combat.SquadAreas.rallySlot(npc, home)) <= 6.0
+                } else {
+                    SquadFormation.reachedPoint(npc, point, squad.members.size)
+                }
             }
             if (there * 4 < members.size * 3) continue
             // A spread attack line can satisfy the formation tolerance while still fighting.
