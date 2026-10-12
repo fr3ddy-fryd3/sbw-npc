@@ -50,13 +50,16 @@ class SquadAreaLayout {
         val old = areas.remove(request.squad)
         val occupied = areas.values.filter { it.request.faction == request.faction }
         val stride = request.radius + (occupied.maxOfOrNull { it.request.radius } ?: request.radius) + GAP
+        // Large patrol areas still need one full spacing step. A fixed distance cap smaller
+        // than both radii would silently put every large squad back on the requested point.
+        val maximumOffset = maxOf(MAX_OFFSET, stride)
         val offsets = listOf(Vec3.ZERO) + (1..2).flatMap { ring ->
             (0 until 16).map { index ->
                 val angle = index * Math.PI / 8.0
                 Vec3(kotlin.math.cos(angle), 0.0, kotlin.math.sin(angle)).scale(stride * ring)
             }
         }
-        val next = offsets.asSequence().filter { it.horizontalDistance() <= MAX_OFFSET }
+        val next = offsets.asSequence().filter { it.horizontalDistance() <= maximumOffset }
             .mapNotNull { ground(request, request.point.add(it)) }
             .firstOrNull { it !in rejected[request.squad].orEmpty() && free(request, it) }
         if (next != null) {

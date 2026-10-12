@@ -60,4 +60,13 @@ class SquadAreaLayoutTest {
         assertNull(layout.area(UUID(0, 1)))
         assertTrue(probes <= 33)
     }
+
+    @Test fun `large patrol areas remain separate when their required spacing exceeds the normal offset limit`() {
+        val radius = SquadFormation.patrolRadius(96) + 2.0
+        val requests = listOf(request(1, radius = radius), request(2, radius = radius))
+        val layout = SquadAreaLayout()
+        layout.reconcile(requests, flat)
+        val centers = requests.map { layout.area(it.squad)!!.center }
+        assertTrue(centers[0].distanceTo(centers[1]) >= radius * 2 + SquadAreaLayout.GAP)
+    }
 }
