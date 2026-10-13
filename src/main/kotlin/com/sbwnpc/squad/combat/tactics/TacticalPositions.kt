@@ -33,7 +33,7 @@ object TacticalPositions {
                 task.search = null
             } else {
                 if (!TacticalBudget.path(entity)) return Result(Outcome.DEFERRED)
-                val path = pathToCandidates(entity, pending)
+                val path = pathToCandidates(entity, pending, task.expandedFireSearch)
                 recordPath(entity, task, search, pending, path)
                 // Recheck bodies, aim, cover and every route node in the normal ray turn.
                 // A queued proposal never directly commits navigation or skips live safety.
@@ -450,7 +450,7 @@ object TacticalPositions {
                     search.pendingPath = batch
                     return Result(Outcome.DEFERRED)
                 }
-                val path = pathToCandidates(entity, batch)
+                val path = pathToCandidates(entity, batch, task.expandedFireSearch)
                 recordPath(entity, task, search, batch, path)
                 candidate = search.routeValidation?.candidate ?: candidate
             }
@@ -572,11 +572,11 @@ object TacticalPositions {
         return result
     }
 
-    fun pathToCandidates(entity: NpcEntity, points: List<Vec3>): Path? =
+    fun pathToCandidates(entity: NpcEntity, points: List<Vec3>, allowDetour: Boolean = false): Path? =
         TacticalBudget.measure(entity) {
             val targets = points.mapTo(LinkedHashSet()) { VehicleAwareNavigation.walkingNode(it) }
             val navigation = entity.navigation
-            if (navigation is VehicleAwareNavigation) navigation.createPositionPath(targets) else navigation.createPath(targets, 0)
+            if (navigation is VehicleAwareNavigation) navigation.createPositionPath(targets, allowDetour) else navigation.createPath(targets, 0)
         }
 
     private fun checkRoute(context: SearchContext, validation: TacticalRouteValidation): TacticalRouteValidation.Outcome {

@@ -9,6 +9,7 @@ import com.sbwnpc.squad.combat.tactics.operation.AttackOperations
 import com.sbwnpc.squad.combat.tactics.operation.AttackRole
 import com.sbwnpc.squad.combat.tactics.operation.AttackStage
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import com.sbwnpc.squad.npc.SquadPreset
 import com.sbwnpc.squad.squad.Squad
 import com.sbwnpc.squad.squad.SquadManager
@@ -67,6 +68,29 @@ object AttackOperationGameTests {
                 scene.result("PASS", "tick=${helper.tick} contactlessWindows=$contactlessWindows moved=$moved recent=$recent")
                 helper.succeed()
             }
+        }
+    }
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 80, batch = "operation-post-detour")
+    fun exhaustedPostSearchCanFollowABoundedDetourToANearbySlot(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "operation-post-detour")
+        for (x in 0..175) for (y in 1..5) helper.setBlock(BlockPos(x, y, 72), Blocks.STONE)
+        for (x in 4..68) for (y in 1..5) helper.setBlock(BlockPos(x, y, 72), Blocks.AIR)
+        val actor = scene.spawn(Vec3(94.5, 1.0, 64.5)).apply { isNoAi = true }
+        val destination = helper.absolutePos(BlockPos(94, 1, 78))
+        helper.runAfterDelay(20) {
+            // NoAI keeps this path-only actor in place, including its initial ground
+            // flag. The fixture's solid floor supplies the grounded navigation start.
+            helper.assertTrue(helper.getBlockState(BlockPos(94, 0, 64)).`is`(Blocks.STONE), "Fixture lost its supporting floor")
+            actor.setOnGround(true)
+            val navigation = actor.navigation as VehicleAwareNavigation
+            val ordinary = navigation.createPositionPath(setOf(destination))
+            val detour = navigation.createPositionPath(setOf(destination), allowDetour = true)
+            helper.assertTrue(ordinary?.canReach() != true, "Fixture did not require a longer detour than the ordinary local search")
+            helper.assertTrue(detour?.canReach() == true && detour.target == destination, "Bounded recovery could not reach the nearby post around the wall")
+            scene.result("PASS", "ordinaryReached=${ordinary?.canReach()} detourNodes=${detour!!.nodeCount}")
+            helper.succeed()
         }
     }
 
