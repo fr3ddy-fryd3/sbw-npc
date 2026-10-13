@@ -19,6 +19,42 @@ class AttackOperationTest {
             (0 until count).map { TacticalMember(UUID(id.toLong(), it.toLong()), Vec3(0.0, 64.0, z + (it - (count - 1) / 2.0) * 6.0)) },
         )
 
+    @Test fun `held post revisions preserve recovery while a new sector or operation releases it`() {
+        val force = force(1, 1)
+        val member = force.members.single()
+        val assignment = AttackAssignment(
+            operation = 1,
+            role = AttackRole.CENTER,
+            stage = AttackStage.ENGAGING,
+            revision = 0,
+            waypoint = member.position,
+            sector = member.position,
+            facing = Vec3(1.0, 0.0, 0.0),
+            corridor = AttackCorridor(listOf(member.position), 32.0),
+            deployed = true,
+            blocked = true,
+            externalCover = false,
+            slots = mapOf(member.id to 0.0),
+        )
+        for (changed in listOf(assignment.copy(operation = 2), assignment.copy(sector = member.position.add(0.0, 0.0, 20.0)))) {
+            val owner = SquadTacticalState()
+            val plan = TacticalPlan(1, TacticalPattern.COORDINATED_ATTACK, focus, 0, 1)
+            val view = TacticalSnapshot(0, com.sbwnpc.squad.squad.SquadOrder.ATTACK, 1, member.position, focus, force.members, emptyList(), attackAssignment = assignment)
+            plan.tick(force.id, owner, view)
+            val held = plan.tasks.getValue(member.id)
+            held.localFirePost = member.position
+            held.expandedFireSearch = true
+            held.search = TacticalPositionSearch(member.position, listOf(member.position.add(0.0, 0.0, 8.0)))
+            val cursor = held.search
+            plan.tick(force.id, owner, view.copy(now = 10, attackAssignment = assignment.copy(revision = 1)))
+            assertSame(held, plan.tasks.getValue(member.id), "Bookkeeping cancelled an unchanged held post")
+            assertSame(cursor, plan.tasks.getValue(member.id).search)
+            plan.tick(force.id, owner, view.copy(now = 20, attackAssignment = changed.copy(revision = 2)))
+            assertNotSame(held, plan.tasks.getValue(member.id), "A genuinely new command retained obsolete recovery")
+            assertNull(plan.tasks.getValue(member.id).search)
+        }
+    }
+
     @Test fun `largest primary armed force owns center regardless of insertion order or position`() {
         val forces = listOf(force(1, 7, -12.0), force(2, 7), force(3, 16, 12.0))
         for (ordered in listOf(forces, forces.reversed(), listOf(forces[1], forces[2], forces[0]))) {

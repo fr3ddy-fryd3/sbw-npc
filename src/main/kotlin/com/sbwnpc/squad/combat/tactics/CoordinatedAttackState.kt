@@ -22,6 +22,7 @@ class CoordinatedAttackState : CoveredManeuverState() {
     private val reserveCells = LinkedHashMap<UUID, Int>()
     private val continuing = HashSet<UUID>()
     private var assignmentKey: Pair<Long, Int>? = null
+    private var previousAssignment: AttackAssignment? = null
     private var underFireLastTick: Boolean? = null
 
     override fun requiresActualCover(context: TacticalContext) = context.view.incoming.isNotEmpty() || context.view.members.any { it.suppressed }
@@ -62,14 +63,23 @@ class CoordinatedAttackState : CoveredManeuverState() {
         val pressureChanged = underFireLastTick != null && underFireLastTick != underFire
         underFireLastTick = underFire
         if (assignmentKey != key) {
+            val retainPost = previousAssignment?.let { previous ->
+                (assignment.holding || assignment.deployed) && previous.operation == assignment.operation &&
+                    previous.role == assignment.role && previous.sector == assignment.sector &&
+                    previous.waypoint == assignment.waypoint && previous.facing == assignment.facing &&
+                    previous.corridor == assignment.corridor && previous.slots == assignment.slots
+            } == true
             val newBound = assignmentKey != null && !assignment.holding && !assignment.deployed
             assignmentKey = key
+            previousAssignment = assignment
             continuing.clear()
             if (newBound) {
                 context.tasks.retryFailed(context.view.members.mapTo(HashSet()) { it.id }, context.view.now, "operation_new_bound")
                 restartBound(context)
             }
-            assign(context, trigger = "operation_lane_updated")
+            // A bookkeeping revision of the same held post must not restart its multi-tick
+            // search. New routes, sectors and member slots still receive fresh assignments.
+            assign(context, retainCover = retainPost, trigger = "operation_lane_updated")
         } else if (pressureChanged) {
             // Switching from quiet travel to protected bounds cancels old open-ground
             // proposals; native release defers interruption until a jumping NPC lands.
