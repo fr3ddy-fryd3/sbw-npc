@@ -849,6 +849,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     override fun customServerAiStep() {
         ExperienceAwards.tick(this)
         super.customServerAiStep()
+        com.sbwnpc.squad.combat.VehicleAmmoSupply.tick(this)
         SidearmKit.update(this)
         takeNewOrders()
         if (equipmentResyncTicksRemaining > 0) {

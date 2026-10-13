@@ -1,11 +1,14 @@
 package com.sbwnpc.squad.integration.sbw
 
+import com.atsuishio.superbwarfare.data.gun.AmmoConsumer
+import com.atsuishio.superbwarfare.data.gun.GunData
 import com.atsuishio.superbwarfare.data.vehicle.subdata.EngineInfo
 import com.atsuishio.superbwarfare.data.vehicle.subdata.EngineType
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.atsuishio.superbwarfare.entity.vehicle.utils.VehicleVecUtils
 import com.atsuishio.superbwarfare.init.ModEntities
 import com.atsuishio.superbwarfare.init.ModItems
+import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.atsuishio.superbwarfare.tools.OBB
 import com.sbwnpc.squad.domain.port.CannonRound
 import com.sbwnpc.squad.domain.port.Mobility
@@ -122,6 +125,31 @@ object SbwVehicles : Vehicles {
 
             else -> {}
         }
+        if (model is HelicopterModel) hold.stow(ModItems.RIFLE_AMMO.get(), RIFLE_ROUNDS)
+        hold.stow(ModItems.HANDGUN_AMMO.get(), 128)
+        hold.stow(ModItems.SNIPER_AMMO.get(), 128)
+        hold.stow(ModItems.SHOTGUN_AMMO.get(), 64)
+    }
+
+    override fun takeSmallArmsAmmo(vehicle: Entity, gun: ItemStack, rounds: Int): Int {
+        if (vehicle !is VehicleEntity || !isOperational(vehicle) || gun.item !is GunItem || rounds <= 0) return 0
+        val consumer = GunData.from(gun).selectedAmmoConsumer().also { if (!it.initialized()) it.init() }
+        if (consumer.type != AmmoConsumer.AmmoConsumeType.PLAYER_AMMO) return 0
+        val item = consumer.playerAmmoType?.item ?: return 0
+        if (item !in setOf(ModItems.RIFLE_AMMO.get(), ModItems.HANDGUN_AMMO.get(), ModItems.SNIPER_AMMO.get(), ModItems.SHOTGUN_AMMO.get())) return 0
+        val amount = consumer.loadAmount.coerceAtLeast(1)
+        var remaining = rounds / amount
+        var taken = 0
+        for (slot in 0 until vehicle.getContainerSize()) {
+            if (remaining == 0) break
+            val stack = vehicle.getItem(slot)
+            if (stack.item != item) continue
+            val removed = vehicle.removeItem(slot, minOf(remaining, stack.count)).count
+            remaining -= removed
+            taken += removed * amount
+        }
+        if (taken > 0) vehicle.setChanged()
+        return taken
     }
 
     /** Fills a vehicle's container from the first slot on, a full stack at a time. */
@@ -131,9 +159,15 @@ object SbwVehicles : Vehicles {
         fun stow(item: net.minecraft.world.item.Item, count: Int) {
             var left = count
             while (left > 0 && slot < vehicle.getContainerSize()) {
-                val stack = ItemStack(item, minOf(left, item.defaultMaxStackSize))
-                vehicle.setItem(slot++, stack)
-                left -= stack.count
+                val existing = vehicle.getItem(slot)
+                if (existing.isEmpty || existing.item == item) {
+                    val added = minOf(left, item.defaultMaxStackSize - existing.count)
+                    if (added > 0) {
+                        vehicle.setItem(slot, ItemStack(item, existing.count + added))
+                        left -= added
+                    }
+                }
+                slot++
             }
         }
     }
