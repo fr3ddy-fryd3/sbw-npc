@@ -185,7 +185,10 @@ class AttackOperation(
         if (delta.length() <= stopDistance + 0.5) return
         val goal = lane.sector.add(delta.normalize().scale(minOf(8.0, delta.length() - stopDistance)))
         lane.route += goal
-        lane.corridor = AttackCorridor(lane.route.toList(), lane.corridor.halfWidth)
+        // Recovery may have added native bends which are not squad waypoints. A new
+        // bound extends that validated corridor; rebuilding from waypoints erases
+        // the only permitted route back around the obstacle for blind shooters.
+        lane.corridor = lane.corridor.copy(points = lane.corridor.points + goal)
         lane.next = lane.route.lastIndex
         lane.revision++
         lane.closest = Double.POSITIVE_INFINITY

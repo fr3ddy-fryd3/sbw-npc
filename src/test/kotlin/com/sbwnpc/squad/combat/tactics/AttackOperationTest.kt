@@ -123,6 +123,27 @@ class AttackOperationTest {
         others.forEach { (id, old) -> assertEquals(old, operation.lanes.getValue(id).route.toList() to operation.lanes.getValue(id).revision) }
     }
 
+    @Test fun `advancing a recovered lane preserves its native detour for late and blind shooters`() {
+        val forces = listOf(force(1, 16), force(2, 7, -10.0))
+        val operation = AttackOperation(1, focus, forces, 0)
+        val lane = operation.lanes.getValue(forces[0].id)
+        val post = Vec3(52.0, 64.0, 0.0)
+        val bend = Vec3(16.0, 64.0, -32.0)
+        lane.route += post
+        lane.next = lane.route.size
+        lane.corridor = AttackCorridor(listOf(forces[0].center, bend, post), 8.0)
+        val old = lane.corridor
+        operation.lanes.getValue(forces[1].id).blocked = true
+        val blind = forces.map { it.copy(blockedShooters = it.fighters.size) }
+        operation.transition(EngageAttack(), 0, "fixture_deployed")
+        operation.tick(blind, 40)
+        operation.tick(blind, 50)
+        assertNotEquals(post, lane.waypoint)
+        assertEquals(old.points + lane.waypoint, lane.corridor.points)
+        assertTrue(lane.corridor.permits(Vec3.ZERO, bend))
+        assertFalse(lane.corridor.permits(Vec3.ZERO, Vec3(16.0, 64.0, 100.0)))
+    }
+
     @Test fun `a quiet majority of blocked shooters requests a short approach even inside nominal range`() {
         for (unlocated in listOf(false, true)) {
             val forces = listOf(force(1, 16), force(2, 7, -10.0))
