@@ -78,7 +78,7 @@ class AttackOperation(
         val lane = lanes[squad] ?: return null
         val externalCover = forces.any { it.id != squad && it.id in lanes && it.covering >= 2 }
         val force = forces.firstOrNull { it.id == squad }
-        return AttackAssignment(id, lane.role, state.stage, lane.revision, lane.waypoint, lane.sector, focus.subtract(lane.sector).multiply(1.0, 0.0, 1.0).normalize(), lane.corridor, lane.deployed, lane.blocked, externalCover, lane.slots.toMap(), force?.blockedShooters ?: 0, force?.covering ?: 0, force?.underFire == true)
+        return AttackAssignment(id, lane.role, state.stage, lane.revision, lane.waypoint, lane.sector, focus.subtract(lane.sector).multiply(1.0, 0.0, 1.0).normalize(), lane.corridor, lane.deployed, lane.blocked, externalCover, lane.slots.toMap(), force?.blockedShooters ?: 0, force?.covering ?: 0, force?.underFire == true, force?.unlocatedShooters ?: 0)
     }
 
     /** Late arrivals fill a free wing, then reserve. Active survivors keep their current roles. */
@@ -190,7 +190,12 @@ class AttackOperation(
         lane.revision++
         lane.closest = Double.POSITIVE_INFINITY
         lane.progressAt = now
-        emit(now, "advance_ordered", lane, if (quietApproach) "quiet_sector_blocked_shots" else "adjacent_sector_actual_cover", goal)
+        val reason = when {
+            !quietApproach -> "adjacent_sector_actual_cover"
+            force.unlocatedShooters > 0 -> "quiet_sector_seeking_contact"
+            else -> "quiet_sector_blocked_shots"
+        }
+        emit(now, "advance_ordered", lane, reason, goal)
         transition(DeployAttack(), now, "next_protected_bound")
     }
 

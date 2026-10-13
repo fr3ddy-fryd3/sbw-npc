@@ -118,7 +118,7 @@ object SquadTactics {
             TacticalTelemetry.front(plan, view),
         )
         view.attackAssignment?.let {
-            DebugFlags.log(LogGroup.ORDER, "[operation] squad={} id={} role={} stage={} revision={} waypoint={} sector={} deployed={} blocked={} externalCover={} blockedShooters={} covering={} underFire={}", squad.id, it.operation, it.role, it.stage, it.revision, it.waypoint, it.sector, it.deployed, it.blocked, it.externalCover, it.blockedShooters, it.covering, it.underFire)
+            DebugFlags.log(LogGroup.ORDER, "[operation] squad={} id={} role={} stage={} revision={} waypoint={} sector={} deployed={} blocked={} externalCover={} blockedShooters={} covering={} underFire={} unlocatedShooters={}", squad.id, it.operation, it.role, it.stage, it.revision, it.waypoint, it.sector, it.deployed, it.blocked, it.externalCover, it.blockedShooters, it.covering, it.underFire, it.unlocatedShooters)
         }
     }
 

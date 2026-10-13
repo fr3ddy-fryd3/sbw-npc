@@ -28,6 +28,49 @@ import java.util.UUID
 @PrefixGameTestTemplate(false)
 object AttackOperationGameTests {
     @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 2000, batch = "operation-unlocated-contact")
+    fun contactlessCenterFindsSightWithoutReceivingAnOmniscientTarget(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "operation-unlocated-contact", depth = 192)
+        scene.onClose = { AttackOperations.clear(helper.level) }
+        for (x in 70..90) {
+            for (z in 0..191) {
+                val height = minOf(5, (x - 70) / 2 + 1, (90 - x) / 2 + 1)
+                for (y in 1..height) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
+            }
+        }
+        val center = scene.deploy(SquadPreset.SIXTEEN, Vec3(30.5, 1.0, 100.5))
+        val scouts = scene.deploy(SquadPreset.SEVEN, Vec3(150.5, 1.0, 160.5)).onEach { it.isNoAi = true }
+        val enemy = scene.enemy(Vec3(150.5, 1.0, 100.5))
+        val central = scene.squad(center, TacticalPattern.BOUND, isolated = false, contact = enemy)
+        val wing = scene.squad(scouts, TacticalPattern.BOUND, isolated = false, contact = enemy)
+        central.tactics.contacts.clear()
+        var contactlessWindows = 0
+        var windows = 0
+        helper.onEachTick {
+            if (helper.tick % 20L == 0L) {
+                helper.assertTrue(DetectionSightline.canSeeWithin(scouts.first(), enemy, 72.0), "Scout lost actual sight")
+                SquadTactics.observe(scouts.first(), enemy)
+            }
+            scene.tick(central)
+            scene.tick(wing)
+            if (helper.tick % 20L != 0L) return@onEachTick
+            if (central.tactics.contacts.isEmpty()) {
+                contactlessWindows++
+                helper.assertTrue(center.all { it.lastShotTick < 0 }, "An unobserved target authorized shooting")
+            }
+            val moved = center.count { helper.relativeVec(it.position()).x >= 75.0 }
+            val recent = center.count { it.firedRecently(100) }
+            if (moved >= 12 && recent >= 10) windows++ else windows = 0
+            if (helper.tick % 100L == 0L) scene.result("CHECK", "tick=${helper.tick} contactlessWindows=$contactlessWindows moved=$moved recent=$recent")
+            if (windows >= 3) {
+                helper.assertTrue(contactlessWindows >= 3, "Fixture never tested absence of the center's own contact")
+                scene.result("PASS", "tick=${helper.tick} contactlessWindows=$contactlessWindows moved=$moved recent=$recent")
+                helper.succeed()
+            }
+        }
+    }
+
+    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 2000, batch = "operation-route-recovery")
     fun blockedWingUsesAnOpenedRouteWithoutEnemyDeathsOrNewOrders(helper: GameTestHelper) {
         val scene = CombatIdleGameTests.Scene(helper, "operation-route-recovery")

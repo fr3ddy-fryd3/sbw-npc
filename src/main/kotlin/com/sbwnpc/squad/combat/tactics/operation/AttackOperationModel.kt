@@ -22,9 +22,10 @@ data class AttackForce(
     val targetId: UUID? = null,
     val blockedShooters: Int = 0,
     val underFire: Boolean = false,
+    val unlocatedShooters: Int = 0,
 ) {
     val fighters get() = members.filter { it.ready && it.health >= 0.3 && it.primaryAmmo && !it.sidearmOnly && it.role != NpcClass.MEDIC }
-    val needsFiringApproach get() = blockedShooters >= maxOf(2, (fighters.size + 1) / 2)
+    val needsFiringApproach get() = blockedShooters + unlocatedShooters >= maxOf(2, (fighters.size + 1) / 2)
 }
 
 /** A versioned order to one squad. Weapon targets remain individual, observed enemies. */
@@ -44,6 +45,7 @@ data class AttackAssignment(
     val blockedShooters: Int = 0,
     val covering: Int = 0,
     val underFire: Boolean = false,
+    val unlocatedShooters: Int = 0,
 ) {
     val holding get() = blocked || role == AttackRole.RESERVE
 }

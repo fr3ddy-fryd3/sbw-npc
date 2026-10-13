@@ -9,6 +9,8 @@ import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.Squad
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
+import com.sbwnpc.squad.util.Terrain
+import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
@@ -100,6 +102,24 @@ object AttackOperations {
             world.operations += operation
             assigned += operation.lanes.keys
         }
+        world.operations.forEach { operation ->
+            operation.lanes.values.filter { !it.blocked && !it.deployed }.forEach { lane ->
+                surfaceWaypoint(level, lane, byId[lane.squad])
+            }
+        }
+    }
+
+    /** Geometric sectors inherit an old altitude; route scoring needs the actual walking surface. */
+    private fun surfaceWaypoint(level: ServerLevel, lane: AttackLane, force: AttackForce?) {
+        val point = lane.waypoint
+        val block = BlockPos.containing(point)
+        if (!level.chunkSource.hasChunk(block.x shr 4, block.z shr 4)) return
+        val actor = force?.fighters?.firstNotNullOfOrNull { level.getEntity(it.id) as? NpcEntity } ?: return
+        val surface = Terrain.feetAt(level, point, 12) { level.noCollision(actor, actor.getDimensions(actor.pose).makeBoundingBox(it)) } ?: return
+        if (kotlin.math.abs(surface.y - point.y) < 0.01) return
+        lane.route[lane.next] = Vec3(point.x, surface.y, point.z)
+        lane.revision++
+        DebugFlags.log(LogGroup.ORDER, "[operation] squad={} event=waypoint_surface_adjusted revision={} from={} to={}", lane.squad, lane.revision, point, lane.waypoint)
     }
 
     private fun compatible(a: AttackForce, b: AttackForce): Boolean =
@@ -135,7 +155,10 @@ object AttackOperations {
             npc.uuid in eligible && !npc.firedRecently(40) && npc.target?.isAlive == true &&
                 npc.blockedSightSince?.let { npc.tickCount - it >= 80 } == true
         }
+        // A lane can have no individual target while a neighboring squad maintains the
+        // operation's contact. It still needs to approach sight; do not invent a gun target.
+        val unlocated = members.count { npc -> npc.uuid in eligible && !npc.firedRecently(40) && npc.target?.isAlive != true }
         val underFire = members.any { it.isSuppressed() || it.incomingFire.recentPoint(level.gameTime) != null }
-        return AttackForce(squad.id, squad.orderStamp, squad.faction, objective, center, described, covering, squad.tactics.plan?.failedMembers?.size ?: 0, squad.focusEntity, blocked, underFire)
+        return AttackForce(squad.id, squad.orderStamp, squad.faction, objective, center, described, covering, squad.tactics.plan?.failedMembers?.size ?: 0, squad.focusEntity, blocked, underFire, unlocated)
     }
 }
