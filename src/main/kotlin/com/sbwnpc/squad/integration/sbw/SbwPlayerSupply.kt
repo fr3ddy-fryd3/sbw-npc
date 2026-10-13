@@ -39,7 +39,7 @@ object SbwPlayerSupply : PlayerSupply {
         extras: List<Pair<Supplier<out Item>, Int>>,
         val launcher: Boolean = false,
     ) {
-        val extras = extras + (Supplier { Items.BREAD } to 8)
+        val extras = extras + listOf(Supplier { Items.BREAD } to 8, ModItems.KNIFE to 1)
     }
 
     private fun fighter(medkits: Int = 1) =
