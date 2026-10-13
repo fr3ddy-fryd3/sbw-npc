@@ -81,10 +81,10 @@ class CoordinatedAttackState : CoveredManeuverState() {
             // search. New routes, sectors and member slots still receive fresh assignments.
             assign(context, retainCover = retainPost, trigger = "operation_lane_updated")
         } else if (pressureChanged) {
-            // Switching from quiet travel to protected bounds cancels old open-ground
-            // proposals; native release defers interruption until a jumping NPC lands.
+            // Movers receive protected-wave jobs, while unchanged support tasks keep their
+            // search. Candidate and route validation still use the current pressure/contacts.
             continuing.clear()
-            assign(context, trigger = "operation_incoming_fire_changed")
+            assign(context, retainCover = true, trigger = "operation_incoming_fire_changed")
         }
         // Holding members can keep an actual protected firing post; the wave protocol still
         // owns movers and all cover/medical/supply behavior priorities remain in force.

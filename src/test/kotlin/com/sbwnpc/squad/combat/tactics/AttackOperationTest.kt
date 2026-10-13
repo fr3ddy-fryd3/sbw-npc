@@ -55,6 +55,33 @@ class AttackOperationTest {
         }
     }
 
+    @Test fun `incoming fire replaces open mover proposals instead of retaining their searches`() {
+        val forces = listOf(force(1, 16), force(2, 16, 120.0))
+        val force = forces.first()
+        val assignment = AttackOperation(1, focus, forces, 0).assignment(force.id, forces)!!.copy(
+            waypoint = Vec3(20.0, 64.0, 0.0),
+            deployed = false,
+            blocked = false,
+        )
+        val owner = SquadTacticalState()
+        val plan = TacticalPlan(1, TacticalPattern.COORDINATED_ATTACK, focus, 0, 1)
+        val view = TacticalSnapshot(0, com.sbwnpc.squad.squad.SquadOrder.ATTACK, 1, force.center, focus, force.members, emptyList(), attackAssignment = assignment)
+        plan.tick(force.id, owner, view)
+        val moving = plan.tasks.toMap()
+        assertTrue(moving.values.all { it.job == TacticalJob.ADVANCE })
+        moving.values.forEach {
+            it.position = it.anchor
+            it.search = TacticalPositionSearch(force.center, listOf(it.anchor))
+        }
+        plan.tick(force.id, owner, view.copy(now = 10, incoming = listOf(focus)))
+        assertTrue(plan.tasks.values.any { it.job == TacticalJob.COVER }, "Incoming fire did not create a covering group")
+        for ((id, task) in plan.tasks) {
+            assertNotSame(moving[id], task, "An open travel proposal survived incoming fire")
+            assertNull(task.position)
+            assertNull(task.search)
+        }
+    }
+
     @Test fun `largest primary armed force owns center regardless of insertion order or position`() {
         val forces = listOf(force(1, 7, -12.0), force(2, 7), force(3, 16, 12.0))
         for (ordered in listOf(forces, forces.reversed(), listOf(forces[1], forces[2], forces[0]))) {

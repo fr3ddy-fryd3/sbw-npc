@@ -49,7 +49,11 @@ object SavedBattleGameTests {
     @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 80, batch = "saved-sniper-revisions")
     fun savedSniperSearchSurvivesHoldingLaneRevisions(helper: GameTestHelper) = sniperSearch(helper, revisionChanges = true)
 
-    private fun sniperSearch(helper: GameTestHelper, revisionChanges: Boolean) {
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 80, batch = "saved-sniper-pressure")
+    fun savedSniperSearchSurvivesPressureChanges(helper: GameTestHelper) = sniperSearch(helper, revisionChanges = false, pressureChanges = true)
+
+    private fun sniperSearch(helper: GameTestHelper, revisionChanges: Boolean, pressureChanges: Boolean = false) {
         val report = Path.of(System.getProperty("sbwnpc.gameTestReports"))
         Files.createDirectories(report)
         val replay = SavedBattleReplay(helper.level, Path.of(System.getProperty("sbwnpc.gameTestReplay")))
@@ -84,7 +88,13 @@ object SavedBattleGameTests {
             localFirePost = sniper.position()
             expandedFireSearch = true
         }
-        val trace = report.resolve(if (revisionChanges) "sniper-search-revisions.csv" else "sniper-search.csv")
+        val trace = report.resolve(
+            when {
+                pressureChanges -> "sniper-search-pressure.csv"
+                revisionChanges -> "sniper-search-revisions.csv"
+                else -> "sniper-search.csv"
+            },
+        )
         Files.writeString(trace, "tick,outcome,probe,probes,scored,rejections,position\n")
         helper.testInfo.addListener(object : GameTestListener {
             override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
@@ -106,9 +116,10 @@ object SavedBattleGameTests {
                 enemy.position(),
                 listOf(TacticalMember(sniper.uuid, sniper.position(), sniper.npcClass)),
                 listOf(TacticalContact(enemy.uuid, enemy.position(), helper.level.gameTime)),
-                attackAssignment = assignment.copy(revision = (helper.tick / 2).toInt()),
+                incoming = if (pressureChanges && helper.tick / 2 % 2 == 1L) listOf(enemy.position()) else emptyList(),
+                attackAssignment = assignment.copy(revision = if (revisionChanges) (helper.tick / 2).toInt() else 0),
             )
-            if (revisionChanges) {
+            if (revisionChanges || pressureChanges) {
                 plan.tick(sniper.currentSquad()!!.id, owner, view)
                 task = plan.tasks.getValue(sniper.uuid)
                 if (helper.tick == 0L) {
