@@ -77,7 +77,10 @@ enum class NpcClass(
     val canonical: NpcClass get() = if (this == MORTAR_OPERATOR || this == MORTAR_LOADER) MORTAR else this
 
     /** Snipers take twice as long between primary-weapon shots, independently of rank. */
-    val fireIntervalMultiplier: Int get() = if (canonical == SNIPER) 2 else 1
+    val fireIntervalMultiplier: Int get() = when (canonical) {
+        SNIPER, SHOTGUNNER -> 2
+        else -> 1
+    }
 
     fun next(): NpcClass = selectable[(selectable.indexOf(canonical) + 1) % selectable.size]
 

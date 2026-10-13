@@ -118,7 +118,14 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     val fireIntervalMultiplier: Int get() = if (usingSidearm) 1 else npcClass.fireIntervalMultiplier
 
     /** A class multiplier slows the effective mechanical cadence, including manual bolts. */
-    fun fireIntervalMillis(gun: com.sbwnpc.squad.domain.port.HandGun, normal: Long): Long = if (fireIntervalMultiplier == 1) normal else maxOf(normal, gun.boltCycleTicks * 50L) * fireIntervalMultiplier
+    fun fireIntervalMillis(gun: com.sbwnpc.squad.domain.port.HandGun, normal: Long): Long {
+        if (fireIntervalMultiplier == 1) return normal
+        val cycle = gun.boltCycleTicks * 50L
+        // A pump already stops the shooting timer. Slow its effective cycle rather
+        // than stacking the generic semiautomatic trigger delay onto that cycle.
+        val base = if (npcClass.canonical == NpcClass.SHOTGUNNER && cycle > 0) cycle else maxOf(normal, cycle)
+        return base * fireIntervalMultiplier
+    }
 
     /** Faction to put the NPC on its scoreboard team; set before finalizeSpawn. null = leave unteamed. */
     var spawnFaction: SquadFaction? = null
@@ -1355,7 +1362,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         /** Chances that a piece of an NPC's kit survives its death — see [dropCustomDeathLoot]. */
         private const val WEAPON_DROP_CHANCE = 0.0375f
         private const val ARMOUR_DROP_CHANCE = 0.0125f
-        private const val AMMO_DROP_CHANCE = 0.1875f
+        private const val AMMO_DROP_CHANCE = 0.28125f
         private const val GRENADE_DROP_CHANCE = 0.0125f
         private val LOOTABLE_SLOTS = listOf(EquipmentSlot.MAINHAND, EquipmentSlot.HEAD, EquipmentSlot.CHEST)
         private const val BASE_HEALTH = 20.0
