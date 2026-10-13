@@ -253,6 +253,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.isAggressive = false
         entity.stopUsingItem()
         aimTime = 0
+        entity.debugAimTicks = 0
+        entity.firingObstruction.reset()
         openingFire.reset()
         firingOrigin = null
         combatOrderStamp = -1
@@ -826,9 +828,13 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             SquadTactics.repositionForFire(entity)
         }
         // The CORE blind-fire executor owns the gun and cached aim while vegetation hides the target.
-        if (foliageHidden) return
+        if (foliageHidden) {
+            entity.firingObstruction.observe(false)
+            return
+        }
         // Movement uses the previous safety assessment; refresh it before the next shot.
         updateFiringLane(entity, target, gun)
+        entity.firingObstruction.observe(clearShot && lineIsClear && blastClear)
         clearBlockedFiringLane(entity, target, movement != CombatMovement.LOCAL)
         gun.operate()
         tickShooting(entity, target, gun, clearShot)
@@ -878,6 +884,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         // Losing sight starts the aim over.
         aimTime = if (canShootTarget) minOf(entity.maxAimTime, aimTime + 1) else 0
+        entity.debugAimTicks = aimTime
 
         if (foliageHidden || (visibility != DetectionSightline.Visibility.VISIBLE && entity.checkingNearbyNoise())) {
             entity.readyToCover = false
@@ -1154,6 +1161,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                 } while (newProgress - cooldown > 0 && (fireMode != TriggerMode.AUTO || !automaticBurst.paused(entity.tickCount)))
                 shootTimer.progress = newProgress
                 entity.lastShotTick = entity.tickCount
+                entity.firingObstruction.reset()
                 entity.lastFireAt = target.position()
                 if (entity.tickCount >= nextAlarmTick) {
                     nextAlarmTick = entity.tickCount + ALARM_INTERVAL_TICKS

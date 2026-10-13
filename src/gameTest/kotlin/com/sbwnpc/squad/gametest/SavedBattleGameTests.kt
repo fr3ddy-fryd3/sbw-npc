@@ -4,6 +4,7 @@ import com.mojang.authlib.GameProfile
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.gametest.framework.GameTestInfo
@@ -26,6 +27,16 @@ object SavedBattleGameTests {
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 1300, batch = "saved-battle", skyAccess = true)
     fun savedBattleMaintainsCombatParticipation(helper: GameTestHelper) {
+        replay(helper, attackersOnly = false)
+    }
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 1300, batch = "saved-battle-attack", skyAccess = true)
+    fun savedBattleAttackersMaintainCombatParticipation(helper: GameTestHelper) {
+        replay(helper, attackersOnly = true)
+    }
+
+    private fun replay(helper: GameTestHelper, attackersOnly: Boolean) {
         val report = Path.of(System.getProperty("sbwnpc.gameTestReports"))
         Files.createDirectories(report)
         val source = Path.of(System.getProperty("sbwnpc.gameTestReplay"))
@@ -60,9 +71,12 @@ object SavedBattleGameTests {
             override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) = cleanup()
         })
         replay.restore()
+        val checked = replay.manager.all().filter { !attackersOnly || it.order == SquadOrder.ATTACK }.mapTo(HashSet()) { it.id }
+        helper.assertTrue(checked.isNotEmpty(), "The fixture contains no squads in the requested scope")
         observer = FakePlayerFactory.get(helper.level, GameProfile(UUID.randomUUID(), "replay-observer")).apply {
             gameMode.changeGameModeForPlayer(GameType.CREATIVE)
-            moveTo(810.0, 110.0, -1000.0, 0f, 0f)
+            val combatants = replay.npcs
+            moveTo(combatants.map { it.x }.average(), combatants.maxOf { it.y } + 24.0, combatants.map { it.z }.average(), 0f, 0f)
             setNoGravity(true)
             helper.level.addNewPlayer(this)
         }
@@ -70,7 +84,7 @@ object SavedBattleGameTests {
         val members = replay.npcs
         val windows = report.resolve("windows.csv")
         Files.writeString(windows, "tick,squad,alive,armed,recent,pattern,phase\n")
-        Files.writeString(report.resolve("fixture-limits.txt"), "Saved reload, not live AI continuation. NPCs=${members.size}, chunks=${replay.chunks}; saved weapons/ammo/health/orders, no replenishment. Brain targets/tasks/stance restart; no player combatant, ordinary biome/light scheduling of isolated server; copied native blocks/vehicles.\n")
+        Files.writeString(report.resolve("fixture-limits.txt"), "Saved reload, not live AI continuation. NPCs=${members.size}, chunks=${replay.chunks}; saved weapons/ammo/health/orders, no replenishment. Brain targets/tasks/stance restart; UUID-seeded NPC random generators; no player combatant, ordinary biome/light scheduling of isolated server; copied native blocks/vehicles. Assert attackersOnly=$attackersOnly; all squads still recorded.\n")
         val stalledWindows = mutableMapOf<UUID, Int>()
         helper.onEachTick {
             for ((index, npc) in members.withIndex()) {
@@ -92,8 +106,9 @@ object SavedBattleGameTests {
             }
             if (helper.tick == 1200L) {
                 val stalled = replay.manager.all().filter { (stalledWindows[it.id] ?: 0) >= 3 }.map { it.name }
-                Files.writeString(report.resolve("result.txt"), "stalledSquads=$stalled samplesAverageMs=${trace!!.averageMillis()}\n")
-                helper.assertTrue(stalled.isEmpty(), "Saved battle has sustained mass inactivity: $stalled; see participation.csv/windows.csv")
+                val failed = replay.manager.all().filter { it.id in checked && (stalledWindows[it.id] ?: 0) >= 3 }.map { it.name }
+                Files.writeString(report.resolve("result.txt"), "stalledSquads=$stalled failedScope=$failed attackersOnly=$attackersOnly samplesAverageMs=${trace!!.averageMillis()}\n")
+                helper.assertTrue(failed.isEmpty(), "Saved battle has sustained mass inactivity in requested scope: $failed; all squads: $stalled; see participation.csv/windows.csv")
                 helper.succeed()
             }
         }

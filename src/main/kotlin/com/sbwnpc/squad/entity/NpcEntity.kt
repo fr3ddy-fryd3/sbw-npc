@@ -306,6 +306,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // target and line of sight. internal (not private) for the same cross-file reason isEnemy() is.
     var lastShotTick: Int = Int.MIN_VALUE / 2
     var readyToCover: Boolean = false
+    internal var debugAimTicks: Int = 0
+    val firingObstruction = com.sbwnpc.squad.combat.FiringObstruction()
     var lastFireAt: Vec3? = null
         internal set
     private var sightedTarget: UUID? = null

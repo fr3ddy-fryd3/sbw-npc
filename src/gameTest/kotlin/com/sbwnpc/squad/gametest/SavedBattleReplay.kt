@@ -124,6 +124,7 @@ internal class SavedBattleReplay(private val level: ServerLevel, private val roo
         }
         for (tag in tags) {
             val entity = EntityType.loadEntityRecursive(tag.copy(), level) { it } ?: error("Cannot load ${tag.getString("id")}")
+            entity.random.setSeed(entity.uuid.mostSignificantBits xor entity.uuid.leastSignificantBits)
             require(level.tryAddFreshEntityWithPassengers(entity)) { "Failed to register ${entity.uuid}" }
             entities += entity
             if (entity is NpcEntity) {

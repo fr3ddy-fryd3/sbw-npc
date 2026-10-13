@@ -24,7 +24,7 @@ internal class CombatParticipationTrace(private val level: ServerLevel, path: Pa
     private var samples = 0
 
     init {
-        writer.appendLine("tick,npc,squad,order,role,alive,x,y,z,target,distance,activity,job,plan,phase,primaryRounds,handRounds,sidearm,lastShotAge,pathDone,grounded,pose,postX,postY,postZ,conditions,rayBlock,rayX,rayY,rayZ,searchId,probeIndex,probes,scored,nextSearch,rayBudget,pathAttempts,routeNode,routeAge,allyBlocker,allyDistance,allyForward,allySameSquad,coveredCandidates,ownSquadBlockers,otherSquadBlockers")
+        writer.appendLine("tick,npc,squad,order,role,alive,x,y,z,target,distance,activity,job,plan,phase,primaryRounds,handRounds,sidearm,lastShotAge,pathDone,grounded,pose,postX,postY,postZ,conditions,rayBlock,rayX,rayY,rayZ,searchId,probeIndex,probes,scored,nextSearch,rayBudget,pathAttempts,routeNode,routeAge,allyBlocker,allyDistance,allyForward,allySameSquad,coveredCandidates,ownSquadBlockers,otherSquadBlockers,aimTicks,aimRequired,postTerrainClear")
     }
 
     fun sample(tick: Long, npc: NpcEntity) {
@@ -92,7 +92,8 @@ internal class CombatParticipationTrace(private val level: ServerLevel, path: Pa
             task?.search?.routeValidation?.let { level.gameTime - it.builtAt },
             ally?.uuid, ally?.distanceTo(npc), ally?.position()?.subtract(npc.position())?.dot(target!!.position().subtract(npc.position()).normalize()),
             ally?.let { it.squadId == npc.squadId }, task?.search?.scored?.values?.count { !it.open },
-            ownSquadBlockers, otherSquadBlockers,
+            ownSquadBlockers, otherSquadBlockers, npc.debugAimTicks, npc.npcRank.aimTimeTicks,
+            if (post != null && target != null) level.clip(ClipContext(post.add(0.0, npc.eyeHeight.toDouble(), 0.0), target.eyePosition, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, npc)).type == HitResult.Type.MISS else null,
         )
         writer.appendLine(fields.joinToString(",") { it?.toString() ?: "" })
         sampleNanos += System.nanoTime() - started
