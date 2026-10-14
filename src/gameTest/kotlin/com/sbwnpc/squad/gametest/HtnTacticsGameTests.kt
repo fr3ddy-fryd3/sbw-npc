@@ -53,6 +53,7 @@ object HtnTacticsGameTests {
                 actors.forEach { it.incomingFire.record(it.position(), Vec3(-1.0, 0.0, 0.0), null, helper.level.gameTime) }
                 injectedAt = helper.tick
             }
+            if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} occupiedAt=$occupiedAt incomingAt=$injectedAt order=${squad.order} actors=${actors.map { helper.relativeVec(it.position()) to NativeTactics.assignment(it) }}")
             helper.assertTrue(squad.command == original, "Internal mode changed the requested order")
             if (squad.order == SquadOrder.DEFEND) {
                 helper.assertTrue(occupiedAt != null && injectedAt != null, "Attack completed before physical occupation and renewed threat")
@@ -60,6 +61,90 @@ object HtnTacticsGameTests {
                 helper.assertTrue(squad.commandOutcome == com.sbwnpc.squad.ai.tactics.CommandOutcome.COMPLETED, "Physical success was not recorded")
                 helper.assertTrue(squad.tactics.plan == null, "Legacy controller completed the attack")
                 scene.result("PASS", "tick=${helper.tick} occupiedAt=$occupiedAt incomingAt=$injectedAt reason=${squad.commandReason}")
+                helper.succeed()
+            }
+        }
+    }
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1300, batch = "htn-600-movement")
+    fun htnSixHundredActiveNpcMovementBudget(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "htn-600", recordTrace = false)
+        val manager = SquadManager.get(helper.level)
+        val groups = (0 until 20).map { group ->
+            val x = 10.5 + group % 4 * 40
+            val z = 10.5 + group / 4 * 40
+            (0 until 30).map { index -> scene.spawn(Vec3(x + index % 6 * 4, 1.0, z + index / 6 * 4)) }
+        }
+        val members = groups.flatten()
+        val origins = members.associate { it.uuid to it.position() }
+        val squads = groups.map { group -> manager.create(helper.level, UUID(90, 600), requireNotNull(group.first().spawnFaction), group.map { it.uuid }) }
+        val work = NativeCombatWork(helper, members)
+        scene.onClose = {
+            work.close()
+            squads.forEach { manager.deleteSquad(helper.level, it.id) }
+        }
+        squads.forEachIndexed { index, squad ->
+            val group = groups[index]
+            val center = Vec3(group.map { it.x }.average(), group.first().y, group.map { it.z }.average())
+            manager.issueOrderAt(helper.level, squad.id, SquadOrder.MOVE, BlockPos.containing(center.add(10.0, 0.0, 0.0)))
+        }
+        helper.runAtTickTime(1200) {
+            val active = members.count { it.isAlive && !it.isNoAi && it.tickCount >= 1100 && NativeTactics.reports(it).isNotEmpty() }
+            val moved = members.count { it.position().distanceTo(origins.getValue(it.uuid)) >= 5 }
+            helper.assertTrue(active == 600, "Some NPCs were unloaded, disabled or did not execute HTN: $active/600")
+            helper.assertTrue(moved >= 450, "Movement benchmark left most NPCs stationary: $moved/600")
+            work.report()
+            scene.result("PASS", "active=$active moved=$moved tick=${helper.tick}; see operation-work.txt for measured tick times; this is movement, not 600-person combat")
+            helper.succeed()
+        }
+    }
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1300, batch = "htn-armed")
+    fun htnJointAttackAgainstArmedDefenders(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "htn-armed")
+        val manager = SquadManager.get(helper.level)
+        val groups = (0..1).map { group -> (0 until 8).map { index -> scene.spawn(Vec3(28.5 + index / 4 * 4, 1.0, 72.5 + group * 32 + index % 4 * 4)) } }
+        val defenders = (0 until 8).map { index -> scene.spawn(Vec3(128.5 + index / 4 * 4, 1.0, 80.5 + index % 4 * 8), faction = com.sbwnpc.squad.npc.SquadFaction.COW) }
+        val squads = groups.map { group -> manager.create(helper.level, UUID(90, 4), requireNotNull(group.first().spawnFaction), group.map { it.uuid }) }
+        val defence = manager.create(helper.level, UUID(91, 4), requireNotNull(defenders.first().spawnFaction), defenders.map { it.uuid })
+        val all = groups.flatten() + defenders
+        val attackerIds = groups.flatten().mapTo(HashSet()) { it.uuid }
+        val defenderIds = defenders.mapTo(HashSet()) { it.uuid }
+        val origins = groups.flatten().associate { it.uuid to it.position() }
+        val shots = HashSet<UUID>()
+        var friendlyHits = 0
+        val rounds = Consumer<EntityJoinLevelEvent> { event ->
+            val round = event.entity as? Projectile ?: return@Consumer
+            val owner = round.owner?.uuid ?: return@Consumer
+            if (event.level === helper.level && Ports.guns.isRound(round)) shots += owner
+        }
+        val damage = Consumer<LivingDamageEvent.Post> { event ->
+            val victim = event.entity.uuid
+            val shooter = event.source.entity?.uuid
+            if (event.newDamage > 0 && ((victim in attackerIds && shooter in attackerIds) || (victim in defenderIds && shooter in defenderIds))) friendlyHits++
+        }
+        NeoForge.EVENT_BUS.addListener(rounds)
+        NeoForge.EVENT_BUS.addListener(damage)
+        scene.onClose = {
+            NeoForge.EVENT_BUS.unregister(rounds)
+            NeoForge.EVENT_BUS.unregister(damage)
+            (squads + defence).forEach { manager.deleteSquad(helper.level, it.id) }
+        }
+        val target = helper.absolutePos(BlockPos(130, 1, 92))
+        manager.issueOrderAt(helper.level, defence.id, SquadOrder.DEFEND, target)
+        GroupOrders.apply(helper.level, manager, squads.map { it.id }, SquadOrder.ATTACK, target.x, target.z)
+        helper.onEachTick {
+            if (helper.tick % 100L != 0L) return@onEachTick
+            val attackShots = shots.count { it in attackerIds }
+            val defenceShots = shots.count { it in defenderIds }
+            val moved = groups.flatten().count { it.position().distanceTo(origins.getValue(it.uuid)) >= 8 }
+            scene.result("RUNNING", "tick=${helper.tick} attackerShooters=$attackShots defenderShooters=$defenceShots moved=$moved alive=${all.count { it.isAlive }} friendlyHits=$friendlyHits")
+            if (helper.tick >= 600 && attackShots >= 8 && defenceShots >= 4 && moved >= 8) {
+                helper.assertTrue(groups.all { group -> group.count { it.uuid in shots } >= 3 }, "One attacking squad did not engage")
+                helper.assertTrue(friendlyHits == 0, "Armed HTN battle caused friendly damage")
+                scene.result("PASS", "tick=${helper.tick} attackerShooters=$attackShots defenderShooters=$defenceShots moved=$moved alive=${all.count { it.isAlive }} friendlyHits=$friendlyHits")
                 helper.succeed()
             }
         }
