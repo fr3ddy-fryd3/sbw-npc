@@ -43,6 +43,35 @@ import kotlin.math.atan2
 @PrefixGameTestTemplate(false)
 object HelicopterOrbitGameTests {
     @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 1800, batch = "transport-empty-attack")
+    fun transportCompletesEmptyAttackWithMoveAndLanding(helper: GameTestHelper) = emptyAttack(helper, HelicopterModel.AH_6)
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 1800, batch = "gunship-empty-attack")
+    fun gunshipCompletesEmptyAttackWithMoveAndLanding(helper: GameTestHelper) = emptyAttack(helper, HelicopterModel.MI_28)
+
+    private fun emptyAttack(helper: GameTestHelper, model: HelicopterModel) {
+        val scene = Scene(helper, model = model, spawnEnemy = false)
+        var moveAt: Long? = null
+        helper.onEachTick {
+            scene.tick()
+            helper.assertTrue(scene.crew.all { it.isAlive }, "Empty attack or landing lost a crew member")
+            helper.assertTrue(scene.squad.order != SquadOrder.DEFEND, "Empty helicopter attack became DEFEND")
+            if (scene.squad.order == SquadOrder.MOVE && moveAt == null) {
+                moveAt = helper.tick
+                helper.assertTrue(helper.tick >= 200, "Empty attack completed before the quiet interval")
+            }
+            if (helper.tick >= 400) helper.assertTrue(moveAt != null, "Empty attack never switched to MOVE")
+            val pilot = scene.crew.first()
+            val arrived = com.sbwnpc.squad.combat.SquadFormation.reachedPoint(pilot, pilot.homeCenter()!!, scene.crew.size)
+            if (moveAt != null && Helicopters.isGrounded(helper.level, scene.heli) && arrived) {
+                scene.result("moveAt=$moveAt landedAt=${helper.tick} order=${scene.squad.order}")
+                helper.succeed()
+            }
+        }
+    }
+
+    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 1800, batch = "transport-attack-completion")
     fun transportCompletesAttackWithMoveAndLanding(helper: GameTestHelper) = completedAttack(helper, HelicopterModel.AH_6)
 
@@ -267,7 +296,7 @@ object HelicopterOrbitGameTests {
         }
     }
 
-    private class Scene(val helper: GameTestHelper, model: HelicopterModel = HelicopterModel.AH_6, private val attack: Boolean = true) {
+    private class Scene(val helper: GameTestHelper, model: HelicopterModel = HelicopterModel.AH_6, private val attack: Boolean = true, private val spawnEnemy: Boolean = true) {
         val pad = helper.absoluteVec(Vec3(28.5, 1.0, 100.5))
         val heli = Ports.vehicles.create(helper.level, model)!!
         val crew = mutableListOf<NpcEntity>()
@@ -315,7 +344,7 @@ object HelicopterOrbitGameTests {
             })
         }
         fun tick() {
-            if (attack && enemy == null && Ports.vehicles.seating(heli).count { it != null } == 4) {
+            if (attack && spawnEnemy && enemy == null && Ports.vehicles.seating(heli).count { it != null } == 4) {
                 enemy = AttackDeploymentGameTests.spawn(helper, Vec3(104.5, 1.0, 100.5), SquadFaction.COW).apply {
                     isNoAi = true
                     getAttribute(Attributes.MAX_HEALTH)!!.baseValue = 100000.0
