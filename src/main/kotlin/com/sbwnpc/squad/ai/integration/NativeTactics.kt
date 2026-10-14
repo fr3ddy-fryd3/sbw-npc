@@ -61,6 +61,8 @@ object NativeTactics {
         val actions = HashMap<UUID, NativePositionAction>()
         val operations = OperationRegistry({ a, b -> Diplomacy.allied(SquadFaction.valueOf(a), SquadFaction.valueOf(b)) }, { _, _ -> true })
         private val snapshots = HashMap<UUID, TacticalSnapshot>()
+        private val sharedViews = HashMap<UUID, TacticalSnapshot>()
+        private val teamAllocators = HashMap<UUID, TaskTeamAllocator>()
         private val children = HashMap<AgentId, Set<AgentId>>()
         private val goals = HashMap<AgentId, PositionIntent>()
         private val assignments = HashMap<AgentId, AssignmentView>()
@@ -69,6 +71,7 @@ object NativeTactics {
         private val unverified = HashMap<UUID, MutableMap<UUID, Vec3>>()
         private val completions = HashMap<UUID, AreaControlTask>()
         private val sequences = HashMap<AssignmentTicket, Long>()
+        private val retiredAssignments = ArrayList<AssignmentTicket>()
         private val leases = ResourceLeases()
         private val knownOrders = HashMap<UUID, Int>()
         private val missions = HashMap<UUID, SquadMission>()
@@ -91,6 +94,7 @@ object NativeTactics {
                         agent.cancel(event.at, event.reason)
                         assignments.remove(view.ticket.child)
                         sequences.remove(view.ticket)
+                        retiredAssignments += view.ticket
                         if (view.ticket.child.level == AgentLevel.NPC) {
                             actions.remove(view.ticket.child.id)
                             goals.remove(view.ticket.child)
@@ -170,6 +174,7 @@ object NativeTactics {
             return result
         }
         fun combatView(squad: UUID): TacticalSnapshot? {
+            sharedViews[squad]?.let { return it }
             val own = snapshots[squad] ?: return null
             val scope = operations.operationOf(squad) ?: operations.pending(squad)?.operation?.let(operations::operation)
             val faction = SquadManager.get(level).get(squad)?.faction ?: return own
@@ -178,7 +183,7 @@ object NativeTactics {
                     snapshots[id]?.takeIf { SquadManager.get(level).get(id)?.let { saved -> Diplomacy.allied(faction, saved.faction) } == true }
                 }
                 ).flatMap { it.contacts }.groupBy { it.id }.values.map { reports -> reports.maxBy { it.seenAt } }
-            return own.copy(contacts = contacts)
+            return own.copy(contacts = contacts).also { sharedViews[squad] = it }
         }
         private fun covering(intent: PositionIntent): Boolean {
             val focus = intent.focus?.native() ?: return false
@@ -200,6 +205,7 @@ object NativeTactics {
             refreshing = true
             try {
                 nextObservation = now + 10
+                sharedViews.clear()
                 val manager = SquadManager.get(level)
                 // Inspect after the complete event dispatch: a cancelled death is not success.
                 val destroyedTargets = pendingDeaths.filterValues { !it.isCanceled && it.entity.isDeadOrDying }.keys.toSet()
@@ -230,7 +236,7 @@ object NativeTactics {
                         manager.setObjective(level, saved.id, net.minecraft.core.BlockPos.containing(view.center))
                     }
                 }
-                val groups = loaded.filter { knownOrders[it.first.id] != it.first.orderStamp }.groupBy { it.first.command?.id ?: it.first.tacticalOperation ?: it.first.id }
+                val groups = loaded.filter { knownOrders[it.first.id] != it.first.orderStamp }.groupBy { (it.first.command?.id ?: it.first.tacticalOperation ?: it.first.id) to it.first.order }
                 groups.forEach { (group, selected) ->
                     val first = selected.first().first
                     val view = snapshots.getValue(first.id)
@@ -238,9 +244,9 @@ object NativeTactics {
                     val direction = objective.center.subtract(view.center).multiply(1.0, 0.0, 1.0).normalize()
                     val entry = objective.center.subtract(direction.scale(48.0))
                     val participants = selected.map { (saved, _) -> SquadParticipant(saved.id, saved.owner, saved.faction.name, level.dimension().location().toString(), saved.orderStamp.toLong()) }
-                    val commandId = UUID.nameUUIDFromBytes("$group:${selected.joinToString { it.first.orderStamp.toString() }}".toByteArray())
-                    val key = first.command?.goal ?: ObjectiveKey.Area(first.objectiveDimension?.location()?.toString() ?: level.dimension().location().toString(), objective.x, objective.y, objective.z)
-                    operations.command(CommandBatch(first.command?.id ?: commandId, first.owner, first.command?.order ?: TacticalOrder.valueOf(first.order.name), key, participants, now, EntryArea(entry.point(), 32.0, 16.0)))
+                    val commandId = UUID.nameUUIDFromBytes("$group:${selected.joinToString { "${it.first.id}:${it.first.orderStamp}" }}".toByteArray())
+                    val key = first.command?.goal?.takeIf { first.commandOutcome == CommandOutcome.ACTIVE && first.command?.order?.name == first.order.name } ?: ObjectiveKey.Area(first.objectiveDimension?.location()?.toString() ?: level.dimension().location().toString(), objective.x, objective.y, objective.z)
+                    operations.command(CommandBatch(commandId, first.owner, TacticalOrder.valueOf(first.order.name), key, participants, now, EntryArea(entry.point(), 32.0, 16.0)))
                     selected.forEach { (saved, _) ->
                         knownOrders[saved.id] = saved.orderStamp
                         missions.remove(saved.id)
@@ -266,20 +272,28 @@ object NativeTactics {
                         now,
                     )
                 }
+                sharedViews.clear()
                 val opGroups = loaded.groupBy { operations.operationOf(it.first.id)?.id ?: it.first.id }
                 val roots = HashSet<AgentId>()
+                val desiredAgents = HashSet<AgentId>()
                 opGroups.forEach { (operation, members) ->
                     val squadMissions = layout(members.map { it.first }, now)
                     val root = AgentId(AgentLevel.OPERATION, operation)
                     roots += root
+                    desiredAgents += root
                     children[root] = squadMissions.mapTo(HashSet()) { it.agent }
                     squadMissions.forEach { mission ->
                         children[mission.agent] = mission.teams.mapTo(HashSet()) { it.agent }
+                        desiredAgents += mission.agent
                         ensure(mission.agent)
                         mission.teams.forEach { team ->
                             children[team.agent] = team.members.mapTo(HashSet()) { it.actor }
+                            desiredAgents += team.agent
                             ensure(team.agent)
-                            team.members.forEach { ensure(it.actor) }
+                            team.members.forEach {
+                                desiredAgents += it.actor
+                                ensure(it.actor)
+                            }
                         }
                     }
                     val active = members.map { it.first }.filter { it.order == SquadOrder.ATTACK && it.commandOutcome == CommandOutcome.ACTIVE }
@@ -300,7 +314,17 @@ object NativeTactics {
                     areaClocks.remove(id.id)
                     areaObservedAt.remove(id.id)
                     unverified.remove(id.id)
+                    areaTasks.remove(id.id)
+                    operations.forget(id.id)
                 }
+                agents.keys.filter { it !in desiredAgents }.toList().forEach { id -> agents.remove(id)?.cancel(now, "actor_not_active") }
+                children.keys.removeIf { it !in desiredAgents }
+                failures.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
+                allocationOrigins.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
+                plannedContact.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
+                teamAllocators.keys.removeIf { manager.get(it) == null }
+                retiredAssignments.forEach(ledger::forget)
+                retiredAssignments.clear()
             } finally {
                 refreshing = false
             }
@@ -362,8 +386,13 @@ object NativeTactics {
             val operation = operations.operationOf(squads.first().id)?.id ?: squads.first().id
             val remembered = unverified.getOrPut(operation, ::LinkedHashMap)
             contacts.forEach { remembered[it.id] = it.position }
-            val inspect = if (focus == null) remembered.values.firstOrNull() else null
-            val scouts = if (inspect != null) squads.flatMap { snapshots.getValue(it.id).members }.filter { it.ready }.sortedBy { it.position.distanceTo(inspect) }.take(2).mapTo(HashSet()) { it.id } else emptySet()
+            val inspect = if (focus == null) {
+                remembered.values.firstOrNull() ?: squads.firstOrNull { it.order == SquadOrder.ATTACK && it.commandOutcome == CommandOutcome.ACTIVE }?.objective?.let { Vec3.atBottomCenterOf(it) }
+            } else {
+                null
+            }
+            val existingScouts = squads.flatMap { missions[it.id]?.teams.orEmpty() }.flatMap { it.members }.filter { it.duty == CombatDuty.SEARCH }.mapTo(HashSet()) { it.actor.id }
+            val scouts = if (inspect != null) squads.flatMap { snapshots.getValue(it.id).members }.filter { it.ready }.sortedWith(compareBy<TacticalMember> { it.id !in existingScouts }.thenBy { it.position.distanceTo(inspect) }).take(2).mapTo(HashSet()) { it.id } else emptySet()
             val proposals = OperationFront.propose(
                 squads.flatMap { saved ->
                     snapshots.getValue(saved.id).members.map { member ->
@@ -416,7 +445,7 @@ object NativeTactics {
                         else -> proposal.anchor.native()
                     }
                     val before = oldIntents[member.id]
-                    val retained = before?.takeIf { it.duty == duty && it.requireCover == (duty == CombatDuty.MOVE && situation.incoming) && (focus?.distanceTo(plannedContact[member.id] ?: focus) ?: 0.0) < 8 }
+                    val retained = before?.takeIf { oldStrategy?.first == selected && it.duty == duty && it.requireCover == (duty == CombatDuty.MOVE && situation.incoming) && (focus?.distanceTo(plannedContact[member.id] ?: focus) ?: 0.0) < 8 }
                     if (retained != null) {
                         retained
                     } else {
@@ -442,9 +471,7 @@ object NativeTactics {
                         )
                     }
                 }
-                val teams = intents.groupBy { it.duty }.map { (duty, actors) ->
-                    TeamMission(AgentId(AgentLevel.TEAM, UUID.nameUUIDFromBytes("${saved.id}:$duty".toByteArray())), actors)
-                }
+                val teams = teamAllocators.getOrPut(saved.id, ::TaskTeamAllocator).assign(saved.id, intents)
                 SquadMission(AgentId(AgentLevel.SQUAD, saved.id), teams).also { missions[saved.id] = it }
             }
         }

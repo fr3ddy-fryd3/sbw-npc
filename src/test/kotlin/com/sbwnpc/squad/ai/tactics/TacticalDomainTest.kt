@@ -51,4 +51,18 @@ class TacticalDomainTest {
         val height = StrategyEvaluation.evaluate(squadFacts, CombatSituation(true, true, true, false, 1.0, 0.0, true))
         assertEquals(CombatStrategy.GAIN_HEIGHT, height.ranked.first().value)
     }
+
+    @Test fun `withdrawal changes execution goal away from known threat without requiring cover fire`() {
+        val squadId = AgentId(AgentLevel.SQUAD, UUID(0, 9))
+        val mission = SquadMission(squadId, listOf(TeamMission(AgentId(AgentLevel.TEAM, UUID(0, 8)), listOf(intent))))
+        val input = FactSnapshot(squadId, 0).observe(TacticalFacts.STRATEGY, CombatStrategy.WITHDRAW)
+        val result = HtnPlanningSession(TacticalDomain.squad, PlanOwner(squadId, UUID(1, 1)), TacticalDomain.SQUAD.call(mission), input).advance(20) as PlanningResult.Ready
+        val delegation = result.plan.tasks.single().spec.action.parameters as com.sbwnpc.squad.ai.coordination.DelegationTask
+        val retreat = (delegation.task.parameters as TeamMission).members.single()
+        assertTrue(retreat.anchor.x < intent.origin.x)
+        assertFalse(retreat.requireCover)
+        assertFalse(retreat.requireShelter)
+        assertEquals(CombatDuty.MOVE, retreat.duty)
+        assertEquals(Point3(50.0, 1.0, 0.0), intent.anchor)
+    }
 }

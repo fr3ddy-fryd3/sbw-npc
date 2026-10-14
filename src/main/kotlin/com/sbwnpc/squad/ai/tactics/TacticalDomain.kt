@@ -7,9 +7,9 @@ import com.sbwnpc.squad.ai.planning.*
 
 enum class CombatDuty { FIRE, MOVE, REAR_GUARD, OBSERVE, SEARCH, FOLLOW_ORDER }
 enum class CombatStrategy { ADVANCE, HOLD, GAIN_HEIGHT, WITHDRAW }
-data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null) {
+data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null, val elevationWeight: Double = 0.0) {
     init {
-        require(actor.level == AgentLevel.NPC && exposureWeight.isFinite() && exposureWeight >= 0)
+        require(actor.level == AgentLevel.NPC && exposureWeight.isFinite() && exposureWeight >= 0 && elevationWeight.isFinite() && elevationWeight >= 0)
     }
 }
 data class TeamMission(val agent: AgentId, val members: List<PositionIntent>)
@@ -82,8 +82,18 @@ object TacticalDomain {
                                     members = team.members.map { intent ->
                                         when (strategy) {
                                             CombatStrategy.HOLD -> if (intent.duty == CombatDuty.MOVE) intent.copy(duty = CombatDuty.FIRE, anchor = intent.origin, requireCover = false) else intent
-                                            CombatStrategy.GAIN_HEIGHT -> intent.copy(minimumHeight = intent.origin.y - 2, requireShelter = true)
-                                            CombatStrategy.WITHDRAW -> intent.copy(requireCover = false, requireShelter = true)
+
+                                            CombatStrategy.GAIN_HEIGHT -> intent.copy(minimumHeight = intent.origin.y - 2, elevationWeight = 3.0)
+
+                                            CombatStrategy.WITHDRAW -> if (intent.duty != CombatDuty.FOLLOW_ORDER) {
+                                                val dx = intent.origin.x - (intent.focus?.x ?: intent.anchor.x)
+                                                val dz = intent.origin.z - (intent.focus?.z ?: intent.anchor.z + 1)
+                                                val length = kotlin.math.hypot(dx, dz).coerceAtLeast(0.01)
+                                                intent.copy(duty = CombatDuty.MOVE, anchor = Point3(intent.origin.x + dx / length * 48, intent.origin.y, intent.origin.z + dz / length * 48), requireCover = false, requireShelter = false, exposureWeight = 10.0)
+                                            } else {
+                                                intent
+                                            }
+
                                             CombatStrategy.ADVANCE -> intent
                                         }
                                     },

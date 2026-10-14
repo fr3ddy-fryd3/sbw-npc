@@ -41,7 +41,7 @@ internal class NativePositionAction(
         intent.hashCode(),
     )
     private val policy = object : TacticalPositionPolicy {
-        override fun score(view: TacticalSnapshot, task: TacticalTask, point: Vec3, exposure: Int) = exposure * intent.exposureWeight
+        override fun score(view: TacticalSnapshot, task: TacticalTask, point: Vec3, exposure: Int) = exposure * intent.exposureWeight - (point.y - intent.origin.y).coerceIn(-2.0, 8.0) * intent.elevationWeight
         override fun requiresShelter(view: TacticalSnapshot, task: TacticalTask) = intent.requireShelter
         override fun candidate(view: TacticalSnapshot, task: TacticalTask, point: Vec3, localAnchor: Vec3): Boolean {
             if (intent.minimumHeight?.let { point.y < it } == true) return false
