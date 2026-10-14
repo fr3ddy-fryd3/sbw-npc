@@ -6,6 +6,7 @@ import com.sbwnpc.squad.combat.FiringOpportunity
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.combat.tactics.SquadTactics
 import com.sbwnpc.squad.combat.tactics.TacticalPattern
+import com.sbwnpc.squad.combat.tactics.TacticalSnapshotCollector
 import com.sbwnpc.squad.combat.tactics.TacticalTargetSelection.Opportunity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.SquadTargetSensor
@@ -148,6 +149,42 @@ object TargetMemoryGameTests {
             }
             if (acquired.size == setups.size && helper.tick >= acquired.values.max() + 30) {
                 scene.result("PASS", "acquired=$acquired stableForAtLeast30Ticks=true")
+                helper.succeed()
+            }
+        }
+    }
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 150, batch = "target-coordinated-relay")
+    fun blockedCoordinatedTargetYieldsToShootableAlliedReport(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "target-coordinated-relay", recordTrace = false)
+        val npc = scene.spawn(Vec3(20.5, 1.0, 100.5)).apply { isNoAi = true }
+        val blocked = scene.enemy(Vec3(100.5, 1.0, 100.5))
+        val report = scene.enemy(Vec3(20.5, 1.0, 20.5))
+        val spotter = scene.spawn(Vec3(32.5, 1.0, 40.5)).apply { isNoAi = true }
+        val squad = scene.squad(listOf(npc), TacticalPattern.COORDINATED_ATTACK, contact = blocked)
+        scene.squad(listOf(spotter), TacticalPattern.FOLLOW_ORDER, contact = report)
+        for (y in 1..4) for (z in 90..110) helper.setBlock(BlockPos(50, y, z), Blocks.STONE)
+        BrainUtils.setTargetOfEntity(npc, blocked)
+        val sensor = SquadTargetSensor()
+        helper.onEachTick {
+            npc.yHeadRot = -90f
+            helper.assertTrue(DetectionSightline.canSee(spotter, report), "Allied report has no actual spotter sightline")
+            TeamAwareness.report(SquadFaction.PIG, report.uuid, report.position(), helper.level.gameTime, spotter.uuid.toString())
+            squad.tactics.snapshot = TacticalSnapshotCollector.collect(squad, helper.level, listOf(npc), npc)
+            val personallyKnown = report.uuid in squad.tactics.contacts
+            if (helper.tick >= 70) {
+                helper.assertTrue(FiringOpportunity.assess(npc, blocked) == Opportunity.BLOCKED, "Old target is not blocked")
+                helper.assertTrue(FiringOpportunity.assess(npc, report) == Opportunity.SHOOTABLE, "Allied report is not shootable: ${FiringOpportunity.assess(npc, report)}")
+                helper.assertTrue(squad.tactics.plan?.behavior is com.sbwnpc.squad.combat.tactics.CoordinatedAttackState, "Fixture lost coordinated state")
+                helper.assertTrue(report.uuid in TeamAwareness.relayedContacts(SquadFaction.PIG, helper.level.gameTime, TeamAwareness.MEMORY_TICKS), "Allied report is not relayed")
+            }
+            sensor.tick(helper.level, npc)
+            if (helper.tick < TeamAwareness.ALERT_DELAY_TICKS) helper.assertTrue(npc.target === blocked, "Relay delay was bypassed")
+            if (npc.target === report) {
+                helper.assertTrue(FiringOpportunity.assess(npc, report) == Opportunity.SHOOTABLE, "Replacement report has no safe shot")
+                helper.assertTrue(!personallyKnown, "Fixture accidentally supplied a personal squad contact before target selection")
+                scene.result("PASS", "acquired=${helper.tick} blockedContactPreserved=${blocked.uuid in squad.tactics.contacts}")
                 helper.succeed()
             }
         }

@@ -10,7 +10,9 @@ import com.sbwnpc.squad.combat.TankWeaponSelection
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.combat.VehicleTargeting
 import com.sbwnpc.squad.combat.Vision
+import com.sbwnpc.squad.combat.tactics.CoordinatedAttackState
 import com.sbwnpc.squad.combat.tactics.SquadTactics
+import com.sbwnpc.squad.combat.tactics.TacticalJob
 import com.sbwnpc.squad.combat.tactics.TacticalTargetSelection
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
@@ -121,7 +123,17 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         if (!mortarCrew) {
             val tacticalTarget = SquadTactics.preferredTarget(mob, level, tacticalProbeCursor, reconsider)
             tacticalProbeCursor = (tacticalProbeCursor + TacticalTargetSelection.PROBES_PER_SCAN) and Int.MAX_VALUE
-            if (tacticalTarget != null) return tacticalTarget
+            if (tacticalTarget != null) {
+                // A remembered enemy behind terrain must not mask another squad's usable
+                // report. Keep ordered targets and specialist jobs in their existing priority.
+                if (mob.currentSquad()?.tactics?.plan?.behavior is CoordinatedAttackState &&
+                    SquadTactics.task(mob)?.job != TacticalJob.ANTI_ARMOUR &&
+                    FiringOpportunity.assess(mob, tacticalTarget) != TacticalTargetSelection.Opportunity.SHOOTABLE
+                ) {
+                    relayedTarget(mob, level, requireShot = true)?.let { return it }
+                }
+                return tacticalTarget
+            }
             val relayedTarget = relayedTarget(mob, level)
             if (relayedTarget != null) return relayedTarget
         }
@@ -196,18 +208,31 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         return FireAllocation.pick(mob, level, visible)
     }
 
-    private fun relayedTarget(mob: NpcEntity, level: ServerLevel): LivingEntity? {
+    private fun relayedTarget(mob: NpcEntity, level: ServerLevel, requireShot: Boolean = false): LivingEntity? {
         val faction = SquadTeams.factionOf(mob) ?: return null
         return TeamAwareness.relayedContacts(faction, level.gameTime, TeamAwareness.MEMORY_TICKS)
             .asSequence()
             .mapNotNull { level.getEntity(it) as? LivingEntity }
             .filter {
-                val range = VehicleTargeting.rangeFor(it, NpcEntity.DETECTION_RANGE)
+                val detection = VehicleTargeting.rangeFor(it, NpcEntity.DETECTION_RANGE)
+                val range = if (requireShot) maxOf(detection, mob.currentSquad()?.tactics?.plan?.behavior?.assignmentRange ?: detection) else detection
                 it.isAlive && it !== mob && SquadTeams.isHostile(mob, it) && mob.distanceToSqr(it) <= range * range
             }
             .sortedBy { mob.distanceToSqr(it) }
             .toList()
-            .let { FireAllocation.pick(mob, level, it) }
+            .let { candidates ->
+                if (!requireShot) {
+                    FireAllocation.pick(mob, level, candidates)
+                } else {
+                    TacticalTargetSelection.choose(
+                        candidates,
+                        mob.target,
+                        tacticalProbeCursor,
+                        assess = { FiringOpportunity.assess(mob, it) },
+                        allocate = { FireAllocation.pick(mob, level, it.sortedBy(mob::distanceToSqr)) },
+                    )?.takeIf { FiringOpportunity.assess(mob, it) == TacticalTargetSelection.Opportunity.SHOOTABLE }
+                }
+            }
     }
 
     // Two cost fixes versus the naive "filter by LOS, then take the nearest" version:
