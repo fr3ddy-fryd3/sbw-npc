@@ -189,9 +189,12 @@ object SquadTactics {
         return view.visible.none { it.id == target.uuid && it.armoured } || AntiArmourKit.loaded(entity)
     }
 
-    fun firingLaneEnd(entity: NpcEntity, target: LivingEntity): Vec3 {
+    fun firingLaneEnd(entity: NpcEntity, target: LivingEntity): Vec3 = firingLaneEnd(entity, target.eyePosition)
+
+    /** Candidate posts use their own eye origin, with the same safety lane as actual shots. */
+    fun firingLaneEnd(entity: NpcEntity, targetEye: Vec3, from: Vec3 = entity.eyePosition): Vec3 {
         val extension = entity.currentSquad()?.tactics?.plan?.behavior?.firingLaneExtension ?: 0.0
-        return target.eyePosition.add(target.eyePosition.subtract(entity.eyePosition).normalize().scale(extension))
+        return targetEye.add(targetEye.subtract(from).normalize().scale(extension))
     }
 
     private const val SNAPSHOT_FORMAT = "[tactics] {} snapshot squad={} tick={} plan={} pattern={} state={} statePhase={} phase={} reason={} " +

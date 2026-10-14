@@ -688,7 +688,7 @@ object TacticalPositions {
     private fun safeBody(entity: NpcEntity, point: Vec3, body: AABB, hulls: List<AABB>, taken: List<Vec3>): Boolean =
         entity.level().getFluidState(BlockPos.containing(point)).isEmpty && entity.level().noCollision(entity, body) &&
             hulls.none { it.intersects(body) } && !GrenadeHazard.threatens(entity.level() as ServerLevel, point) && !FiringSpots.crowded(point, taken)
-    private fun friendlyLane(entity: NpcEntity, eye: Vec3, targetEye: Vec3?): Boolean = targetEye == null || FriendlyFireGuard.assess(entity, targetEye, entity.spread, targetEye, 0.0, eye).lineClear
+    private fun friendlyLane(entity: NpcEntity, eye: Vec3, targetEye: Vec3?): Boolean = targetEye == null || FriendlyFireGuard.assess(entity, SquadTactics.firingLaneEnd(entity, targetEye, eye), entity.spread, targetEye, 0.0, eye).lineClear
 
     /** Physical post suitability only; personal visibility must still authorize aimed fire at the weapon. */
     fun firingReady(entity: NpcEntity, task: TacticalTask, point: Vec3): Boolean {

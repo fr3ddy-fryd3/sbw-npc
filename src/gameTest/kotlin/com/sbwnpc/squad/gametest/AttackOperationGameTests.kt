@@ -29,6 +29,30 @@ import java.util.UUID
 @PrefixGameTestTemplate(false)
 object AttackOperationGameTests {
     @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 40, batch = "operation-behind-contact")
+    fun coordinatedFiringPostsRejectAlliesBehindTarget(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "operation-behind-contact")
+        val actor = scene.spawn(Vec3(24.5, 1.0, 64.5)).apply { isNoAi = true }
+        val enemy = scene.enemy(Vec3(84.5, 1.0, 64.5))
+        val ally = scene.spawn(Vec3(104.5, 1.0, 64.5)).apply { isNoAi = true }
+        val squad = scene.squad(listOf(actor), TacticalPattern.COORDINATED_ATTACK, contact = enemy)
+        net.tslat.smartbrainlib.util.BrainUtils.setTargetOfEntity(actor, enemy)
+        helper.runAtTickTime(5) {
+            helper.assertTrue(ally.position().subtract(actor.position()).dot(enemy.position().subtract(actor.position()).normalize()) > actor.distanceTo(enemy), "Fixture ally is not behind the target")
+            val lane = SquadTactics.firingLaneEnd(actor, enemy)
+            helper.assertTrue(!com.sbwnpc.squad.combat.FriendlyFireGuard.hasClearLineOfFire(actor, lane, actor.spread), "Coordinated guard ignores an ally behind the target")
+            val task = TacticalTask(TacticalJob.COVER, actor.position(), enemy.position(), squad.tactics.plan!!.id)
+            helper.assertTrue(!TacticalPositions.firingReady(actor, task, actor.position()), "Firing-post validation ignores the extended coordinated lane")
+            ally.moveTo(ally.x, ally.y, ally.z + 48.0)
+            ally.xOld = ally.x
+            ally.yOld = ally.y
+            ally.zOld = ally.z
+            helper.assertTrue(com.sbwnpc.squad.combat.FriendlyFireGuard.hasClearLineOfFire(actor, lane, actor.spread), "An ally outside the firing cone blocks a safe shot")
+            helper.succeed()
+        }
+    }
+
+    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 2000, batch = "operation-unlocated-contact")
     fun contactlessCenterFindsSightWithoutReceivingAnOmniscientTarget(helper: GameTestHelper) {
         val scene = CombatIdleGameTests.Scene(helper, "operation-unlocated-contact", depth = 192)

@@ -13,6 +13,9 @@ class CoordinatedAttackState : CoveredManeuverState() {
     override val stability = TacticalStability(committed = true, quickReplacement = true, phaseLimit = 480, expires = false)
     override val movementTimeout = 320L
     override val assignmentRange = 256.0
+
+    // Neighboring wings can stand beyond the contact; missed or penetrating rounds continue there.
+    override val firingLaneExtension get() = assignmentRange
     override val positions = CoordinatedAttackPositions
     override fun usesAttackFront(member: TacticalMember) = false
     override fun guardsPatient() = true

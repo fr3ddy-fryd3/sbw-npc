@@ -22,7 +22,7 @@ object FiringOpportunity {
         val hulls = Sightline.vehicleHulls(level, AABB(entity.eyePosition, target.eyePosition).inflate(2.0), entity, target)
         if (Sightline.crosses(hulls, entity.eyePosition, target.eyePosition, spread)) return Opportunity.VISIBLE
         val gun = Ports.guns.inHand(entity)
-        val safety = FriendlyFireGuard.assess(entity, target.eyePosition, spread, target.position(), gun?.explosionRadius ?: 0.0)
+        val safety = FriendlyFireGuard.assess(entity, com.sbwnpc.squad.combat.tactics.SquadTactics.firingLaneEnd(entity, target), spread, target.position(), gun?.explosionRadius ?: 0.0)
         return if (safety.lineClear && safety.blastClear) Opportunity.SHOOTABLE else Opportunity.VISIBLE
     }
 }
