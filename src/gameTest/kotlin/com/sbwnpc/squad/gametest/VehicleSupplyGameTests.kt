@@ -1,7 +1,9 @@
 package com.sbwnpc.squad.gametest
 
+import com.atsuishio.superbwarfare.data.gun.Ammo
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.atsuishio.superbwarfare.init.ModItems
+import com.atsuishio.superbwarfare.tools.InventoryTool
 import com.mojang.authlib.GameProfile
 import com.sbwnpc.squad.combat.SidearmKit
 import com.sbwnpc.squad.combat.VehicleAmmoSupply
@@ -54,47 +56,54 @@ object VehicleSupplyGameTests {
         })
         helper.runAtTickTime(5) {
             for (vehicle in vehicles) {
-                helper.assertTrue(count(vehicle, ModItems.RIFLE_AMMO.get()) == 512, "${vehicle.type} missing rifle cargo")
-                helper.assertTrue(count(vehicle, ModItems.HANDGUN_AMMO.get()) == 128, "${vehicle.type} missing handgun cargo")
-                helper.assertTrue(count(vehicle, ModItems.SNIPER_AMMO.get()) == 128, "${vehicle.type} missing sniper cargo")
-                helper.assertTrue(count(vehicle, ModItems.SHOTGUN_AMMO.get()) == 64, "${vehicle.type} missing shotgun cargo")
+                helper.assertTrue(count(vehicle, ModItems.AMMO_BOX.get()) == 1, "${vehicle.type} missing ammo box")
+                helper.assertTrue((0 until vehicle.getContainerSize()).none { vehicle.getItem(it).item in setOf(ModItems.RIFLE_AMMO.get(), ModItems.HANDGUN_AMMO.get(), ModItems.SNIPER_AMMO.get(), ModItems.SHOTGUN_AMMO.get(), ModItems.HEAVY_AMMO.get()) }, "${vehicle.type} contains loose small arms ammunition")
+                helper.assertTrue(rounds(vehicle, Ammo.RIFLE) == 512, "${vehicle.type} missing rifle cargo")
+                helper.assertTrue(rounds(vehicle, Ammo.HANDGUN) == 128, "${vehicle.type} missing handgun cargo")
+                helper.assertTrue(rounds(vehicle, Ammo.SNIPER) == 128, "${vehicle.type} missing sniper cargo")
+                helper.assertTrue(rounds(vehicle, Ammo.SHOTGUN) == 64, "${vehicle.type} missing shotgun cargo")
             }
             val cargo = vehicles.last()
             player.inventory.clearContent()
             val menu = cargo.createMenu(1, player.inventory, player)!!
-            val slot = menu.slots.indexOfFirst { it.item.item == ModItems.RIFLE_AMMO.get() }
-            helper.assertTrue(slot >= 0, "Native vehicle menu cannot see cargo")
+            val slot = menu.slots.indexOfFirst { it.item.item == ModItems.AMMO_BOX.get() }
+            helper.assertTrue(slot >= 0, "Native vehicle menu cannot see ammo box")
             menu.quickMoveStack(player, slot)
-            helper.assertTrue(player.inventory.countItem(ModItems.RIFLE_AMMO.get()) == 64, "Player cannot retrieve native cargo")
-            helper.assertTrue(count(cargo, ModItems.RIFLE_AMMO.get()) == 448, "Player retrieval did not consume cargo")
-            for (index in 0 until cargo.getContainerSize()) {
-                if (cargo.getItem(index).item == ModItems.RIFLE_AMMO.get()) cargo.setItem(index, ItemStack.EMPTY)
-            }
+            helper.assertTrue(player.inventory.countItem(ModItems.AMMO_BOX.get()) == 1, "Player cannot retrieve ammo box")
+            val box = player.inventory.items.first { it.`is`(ModItems.AMMO_BOX.get()) }.copy()
+            helper.assertTrue(Ammo.RIFLE.get(box) == 512, "Moving the box lost its contents")
+            helper.assertTrue(rounds(cargo, Ammo.RIFLE) == 0, "Player retrieval duplicated ammunition")
+            Ammo.RIFLE.set(box, 7)
+            Ammo.HANDGUN.set(box, 0)
             val empty = (0 until cargo.getContainerSize()).first { cargo.getItem(it).isEmpty }
-            cargo.setItem(empty, ItemStack(ModItems.RIFLE_AMMO.get(), 7))
+            cargo.setItem(empty, box)
             val gun = Ports.guns.issue(ResourceLocation.fromNamespaceAndPath("superbwarfare", "ak_47"), npc, 0)
             npc.setItemInHand(InteractionHand.MAIN_HAND, gun)
             npc.moveTo(cargo.x, cargo.y, cargo.z + 3.0)
             SquadTeams.assign(cargo, SquadFaction.COW)
             helper.assertTrue(VehicleAmmoSupply.replenish(npc) == 0, "NPC stole hostile cargo")
-            helper.assertTrue(count(cargo, ModItems.RIFLE_AMMO.get()) == 7, "Hostile cargo changed")
+            helper.assertTrue(rounds(cargo, Ammo.RIFLE) == 7, "Hostile cargo changed")
             SquadTeams.assign(cargo, SquadFaction.PIG)
             helper.assertTrue(VehicleAmmoSupply.replenish(npc) == 7, "NPC did not take the finite remainder")
             helper.assertTrue(Ports.guns.reserve(npc.primaryGun().copy()) == 7, "NPC rounds were not persisted")
-            helper.assertTrue(count(cargo, ModItems.RIFLE_AMMO.get()) == 0, "NPC supply did not consume cargo")
+            helper.assertTrue(rounds(cargo, Ammo.RIFLE) == 0, "NPC supply did not consume cargo")
             helper.assertTrue(VehicleAmmoSupply.replenish(npc) == 0, "Empty vehicle created ammunition")
             npc.setItemInHand(InteractionHand.MAIN_HAND, Ports.guns.issue(ResourceLocation.fromNamespaceAndPath("superbwarfare", "ak_47"), npc, 0))
             SidearmKit.update(npc)
             helper.assertTrue(npc.usingSidearm, "Empty primary did not draw the backup")
-            cargo.setItem(empty, ItemStack(ModItems.RIFLE_AMMO.get(), 64))
+            Ammo.RIFLE.set(cargo.getItem(empty), 64)
             helper.assertTrue(npc.startRiding(cargo, false), "NPC cannot board its supply vehicle")
             helper.assertTrue(VehicleAmmoSupply.replenish(npc) == 60, "Passenger did not receive two rifle magazines")
             helper.assertTrue(!npc.usingSidearm && Ports.guns.reserve(npc.primaryGun()) == 60, "Vehicle supply did not restore the primary")
-            helper.assertTrue(count(cargo, ModItems.RIFLE_AMMO.get()) == 4, "Passenger supply spent the wrong amount")
+            helper.assertTrue(rounds(cargo, Ammo.RIFLE) == 4, "Passenger supply spent the wrong amount")
             helper.assertTrue(count(cargo, ModItems.SMALL_SHELL_HE.get()) == 256, "Infantry consumed the helicopter's cannon shells")
+            helper.assertTrue(InventoryTool.consumeAmmoItem(cargo, Ammo.RIFLE, 3) == 3, "Native vehicle cannot consume boxed rounds")
+            helper.assertTrue(rounds(cargo, Ammo.RIFLE) == 1, "Native vehicle consumption was not finite")
             helper.succeed()
         }
     }
+
+    private fun rounds(vehicle: VehicleEntity, type: Ammo) = InventoryTool.countAmmoItem(vehicle, type)
 
     private fun count(vehicle: VehicleEntity, item: Item) = (0 until vehicle.getContainerSize()).sumOf { slot -> vehicle.getItem(slot).let { if (it.item == item) it.count else 0 } }
 }

@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.integration.sbw
 
+import com.atsuishio.superbwarfare.data.gun.Ammo
 import com.atsuishio.superbwarfare.data.gun.AmmoConsumer
 import com.atsuishio.superbwarfare.data.gun.GunData
 import com.atsuishio.superbwarfare.data.vehicle.subdata.EngineInfo
@@ -8,6 +9,7 @@ import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.atsuishio.superbwarfare.entity.vehicle.utils.VehicleVecUtils
 import com.atsuishio.superbwarfare.init.ModEntities
 import com.atsuishio.superbwarfare.init.ModItems
+import com.atsuishio.superbwarfare.item.ammo.AmmoBoxItem
 import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.atsuishio.superbwarfare.tools.OBB
 import com.sbwnpc.squad.domain.port.CannonRound
@@ -90,6 +92,7 @@ object SbwVehicles : Vehicles {
         if (vehicle !is VehicleEntity) return
         vehicle.energy = vehicle.maxEnergy
         val hold = Hold(vehicle)
+        val ammoBox = ItemStack(ModItems.AMMO_BOX.get())
         when (model) {
             // Same main-gun AP/HE + coax rifle ammo + .50cal passenger ammo loadout for all three —
             // verified against each model's own sbw/vehicles/*.json: same four weapon/ammo slots.
@@ -97,8 +100,8 @@ object SbwVehicles : Vehicles {
                 // Main-gun shells stay at a stack each; the scale is for small arms and autocannons.
                 hold.stow(ModItems.LARGE_SHELL_AP.get(), 64)
                 hold.stow(ModItems.LARGE_SHELL_HE.get(), 64)
-                hold.stow(ModItems.RIFLE_AMMO.get(), RIFLE_ROUNDS)
-                hold.stow(ModItems.HEAVY_AMMO.get(), 64 * AMMO_SCALE)
+                Ammo.RIFLE.set(ammoBox, RIFLE_ROUNDS)
+                Ammo.HEAVY.set(ammoBox, 64 * AMMO_SCALE)
             }
 
             // Which round a cannon fires is its selected ammo type, not a slot (see loadRound), so
@@ -119,30 +122,41 @@ object SbwVehicles : Vehicles {
             is TransportVehicle -> {
                 hold.stow(ModItems.SMALL_SHELL_AP.get(), 64 * AMMO_SCALE)
                 hold.stow(ModItems.SMALL_SHELL_HE.get(), 64 * AMMO_SCALE)
-                hold.stow(ModItems.RIFLE_AMMO.get(), RIFLE_ROUNDS)
+                Ammo.RIFLE.set(ammoBox, RIFLE_ROUNDS)
                 if (model != TransportVehicle.LAV_150) hold.stow(ModItems.MEDIUM_ANTI_GROUND_MISSILE.get(), 4)
             }
 
             else -> {}
         }
-        if (model is HelicopterModel) hold.stow(ModItems.RIFLE_AMMO.get(), RIFLE_ROUNDS)
-        hold.stow(ModItems.HANDGUN_AMMO.get(), 128)
-        hold.stow(ModItems.SNIPER_AMMO.get(), 128)
-        hold.stow(ModItems.SHOTGUN_AMMO.get(), 64)
+        if (model is HelicopterModel) Ammo.RIFLE.set(ammoBox, RIFLE_ROUNDS)
+        Ammo.HANDGUN.set(ammoBox, 128)
+        Ammo.SNIPER.set(ammoBox, 128)
+        Ammo.SHOTGUN.set(ammoBox, 64)
+        hold.stow(ammoBox)
     }
 
     override fun takeSmallArmsAmmo(vehicle: Entity, gun: ItemStack, rounds: Int): Int {
         if (vehicle !is VehicleEntity || !isOperational(vehicle) || gun.item !is GunItem || rounds <= 0) return 0
         val consumer = GunData.from(gun).selectedAmmoConsumer().also { if (!it.initialized()) it.init() }
         if (consumer.type != AmmoConsumer.AmmoConsumeType.PLAYER_AMMO) return 0
-        val item = consumer.playerAmmoType?.item ?: return 0
-        if (item !in setOf(ModItems.RIFLE_AMMO.get(), ModItems.HANDGUN_AMMO.get(), ModItems.SNIPER_AMMO.get(), ModItems.SHOTGUN_AMMO.get())) return 0
+        val type = consumer.playerAmmoType ?: return 0
+        if (type !in setOf(Ammo.RIFLE, Ammo.HANDGUN, Ammo.SNIPER, Ammo.SHOTGUN)) return 0
+        val item = type.item
         val amount = consumer.loadAmount.coerceAtLeast(1)
         var remaining = rounds / amount
         var taken = 0
         for (slot in 0 until vehicle.getContainerSize()) {
             if (remaining == 0) break
             val stack = vehicle.getItem(slot)
+            if (stack.item is AmmoBoxItem) {
+                val removed = minOf(type.get(stack) / amount, remaining) * amount
+                if (removed > 0) {
+                    type.add(stack, -removed)
+                    remaining -= removed / amount
+                    taken += removed
+                }
+                continue
+            }
             if (stack.item != item) continue
             val removed = vehicle.removeItem(slot, minOf(remaining, stack.count)).count
             remaining -= removed
@@ -155,6 +169,11 @@ object SbwVehicles : Vehicles {
     /** Fills a vehicle's container from the first slot on, a full stack at a time. */
     private class Hold(private val vehicle: VehicleEntity) {
         private var slot = 0
+
+        fun stow(stack: ItemStack) {
+            while (slot < vehicle.getContainerSize() && !vehicle.getItem(slot).isEmpty) slot++
+            if (slot < vehicle.getContainerSize()) vehicle.setItem(slot++, stack)
+        }
 
         fun stow(item: net.minecraft.world.item.Item, count: Int) {
             var left = count
