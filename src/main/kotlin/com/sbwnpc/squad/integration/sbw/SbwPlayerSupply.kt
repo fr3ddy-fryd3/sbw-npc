@@ -39,7 +39,7 @@ object SbwPlayerSupply : PlayerSupply {
         extras: List<Pair<Supplier<out Item>, Int>>,
         val launcher: Boolean = false,
     ) {
-        val extras = extras + listOf(Supplier { Items.BREAD } to 8, ModItems.KNIFE to 1)
+        val extras = extras + listOf(Supplier { Items.BREAD } to 8)
     }
 
     private fun fighter(medkits: Int = 1) =
@@ -91,6 +91,7 @@ object SbwPlayerSupply : PlayerSupply {
                     ammoFor(spec.cls, weapon)?.let { (ammo, count) -> items += key(ammo) to count }
                     val pistol = SidearmKit.playerWeapon(weapon)
                     items += pistol to 1
+                    items += key(ModItems.KNIFE.get()) to 1
                     ammoFor(SidearmKit.startingRounds(pistol), pistol)?.let { (ammo, count) -> items += key(ammo) to count }
                     if (spec.launcher) items += RPG to 1
                     spec.extras.forEach { (item, count) -> items += key(item.get()) to count }
@@ -156,6 +157,7 @@ object SbwPlayerSupply : PlayerSupply {
         }
         val pistol = SidearmKit.playerWeapon(weapon)
         gunItem(pistol)?.let { gun -> if (player.inventory.countItem(gun) == 0) given = give(player, loaded(gun)) || given }
+        given = topUpItems(player, ModItems.KNIFE.get(), 1) || given
         given = topUpLoadoutAmmo(player, spec, weapon) || given
         if (spec.launcher) {
             gunItem(RPG)?.let { if (player.inventory.countItem(it) == 0) given = give(player, loaded(it)) || given }

@@ -112,6 +112,9 @@ object FactionLogisticsGameTests {
                 handle("onSupplyCmd", SupplyCmdPayload(pos, SupplyCmdPayload.TAKE_KIT, index, 0), player)
                 helper.assertTrue(player.inventory.countItem(net.minecraft.world.item.Items.BREAD) == 8, "${kit.name} did not issue eight rations")
                 helper.assertTrue(player.inventory.countItem(com.atsuishio.superbwarfare.init.ModItems.KNIFE.get()) == 1, "${kit.name} did not issue a knife")
+                val pistol = com.sbwnpc.squad.combat.SidearmKit.playerWeapon(kit.options[0].weapon)
+                val pistolSlot = player.inventory.items.indexOfFirst { net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(it.item) == pistol }
+                helper.assertTrue(player.inventory.getItem(pistolSlot + 1).`is`(com.atsuishio.superbwarfare.init.ModItems.KNIFE.get()), "${kit.name} knife is not immediately after the pistol")
                 helper.assertTrue(kit.options.all { option -> option.items.any { it.first.path == "knife" && it.second == 1 } }, "${kit.name} menu omitted its knife")
                 helper.assertTrue(kit.options.all { option -> option.items.any { it.first.path == "bread" && it.second == 8 } }, "${kit.name} menu omitted rations")
                 handle("onSupplyCmd", SupplyCmdPayload(pos, SupplyCmdPayload.TAKE_KIT, index, 0), player)
