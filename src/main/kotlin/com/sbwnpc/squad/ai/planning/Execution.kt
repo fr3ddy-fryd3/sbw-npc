@@ -77,10 +77,25 @@ class PlanRuntime(
     private var generation = 0L
     private var plan: HtnPlan? = null
     private val entries = LinkedHashMap<String, Entry>()
+    private var held = false
     private var cursor = 0
     private var byNode: Map<String, Entry> = emptyMap()
     val reports get() = entries.mapValues { it.value.report() }
     val completed get() = plan != null && entries.values.all { it.status == ExecutionStatus.COMPLETED }
+
+    fun isLive(ticket: ExecutionTicket): Boolean =
+        entries[ticket.identity]?.let {
+            it.ticket == ticket && it.status !in setOf(ExecutionStatus.COMPLETED, ExecutionStatus.FAILED, ExecutionStatus.CANCELLED)
+        } == true
+
+    fun hold(now: Long, reason: String) {
+        held = true
+        entries.values.filter { it.status !in setOf(ExecutionStatus.COMPLETED, ExecutionStatus.FAILED, ExecutionStatus.CANCELLED) }.forEach { suspend(it, now, reason) }
+    }
+
+    fun releaseHold() {
+        held = false
+    }
 
     fun install(next: HtnPlan, facts: FactSnapshot): Boolean {
         require(facts.owner == next.owner.agent) { "Foreign execution context" }
@@ -111,12 +126,14 @@ class PlanRuntime(
         entries.clear()
         byNode = emptyMap()
         plan = null
+        held = false
     }
 
     fun tick(facts: FactSnapshot, work: Int = 64) {
         require(work > 0)
         val current = plan ?: return
         require(facts.owner == current.owner.agent) { "Foreign execution context" }
+        if (held) return
         val list = entries.values.toList()
         if (list.isEmpty()) return
         val guards = current.guards.associateWith { it.condition.evaluate(facts) }
@@ -168,6 +185,7 @@ class PlanRuntime(
         val entry = entries[ticket.identity] ?: return false
         if (entry.ticket != ticket || !entry.started || entry.status !in setOf(ExecutionStatus.RUNNING, ExecutionStatus.SUSPENDED)) return false
         val current = plan ?: return false
+        if (held) return false
         require(facts.owner == current.owner.agent) { "Foreign execution context" }
         if (entry.task.spec.contract.maintain.evaluate(facts) != Verdict.Allowed || current.guards.any { guard -> entry.task.node.startsWith("${guard.scope}/") && guard.condition.evaluate(facts) != Verdict.Allowed }) return false
         apply(entry, update, facts)

@@ -25,9 +25,14 @@ class HtnPlanningSession(
     private val frontier = ArrayDeque<Candidate>()
     private val unknown = LinkedHashSet<String>()
     private val reasons = ArrayList<String>()
+    private val readDependencies = LinkedHashSet<FactDependency>()
     private var expanded = 0
     private var result: PlanningResult? = null
     val expansions get() = expanded
+    fun inputUnchanged(current: FactSnapshot): Boolean {
+        require(current.owner == owner.agent)
+        return readDependencies.all { it.unchanged(current) }
+    }
 
     init {
         require(maxExpansions > 0 && maxDepth > 0)
@@ -58,7 +63,8 @@ class HtnPlanningSession(
             }
             val projection = projection(candidate, node) ?: return@repeat
             val view = TrackingFacts(facts.project(projection), facts, projection.values.keys)
-            when (val resolution = definition.resolve(node.call, view)) {
+            val resolution = definition.resolve(node.call, view)
+            when (resolution) {
                 is TaskResolution.Primitive -> {
                     val verdict = resolution.spec.planning.evaluate(view)
                     event(PlanningEvent(node.id, null, verdict))
@@ -82,6 +88,7 @@ class HtnPlanningSession(
                     if (resolution.choices.isEmpty() && resolution.excluded.isEmpty()) reject(node.id, "no_methods")
                 }
             }
+            readDependencies += view.dependencies.values
         }
         return PlanningResult.Deferred
     }

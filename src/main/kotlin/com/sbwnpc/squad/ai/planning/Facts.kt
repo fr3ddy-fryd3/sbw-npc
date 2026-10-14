@@ -43,6 +43,7 @@ class FactSnapshot private constructor(override val owner: AgentId, override val
     }
     fun forget(key: FactKey<*>) = FactSnapshot(owner, now, entries - key)
     internal fun signature(key: FactKey<*>, fullRecord: Boolean): Any? = entries[key]?.takeIf { it.usable(now) }?.let { if (fullRecord) it else it.value }
+    internal fun signatureByName(name: String): Any? = entries.keys.firstOrNull { it.name == name }?.let { signature(it, false) }
     internal fun project(effects: Effects): FactView = ProjectedFacts(this, effects)
 }
 
