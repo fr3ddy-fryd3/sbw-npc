@@ -64,6 +64,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var orbitSeats = -1
     private var nextOrbitObservation = 0
     private val orbitContact = BenchOrbitContact()
+    private val attackCompletion = HelicopterAttackCompletion()
     private var orbitDirection = 1
 
     init {
@@ -109,6 +110,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
             lastContactTick = entity.tickCount
             lastContactPos = target.position()
         }
+        completeAttack(entity, heli, level)
         val home = entity.homeCenter() ?: heli.position()
         val airworthy = Helicopters.canFly(heli)
         val mission = decideMission(entity, heli, target, home, airworthy)
@@ -279,6 +281,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         val gunship = Helicopters.hasTurret(heli)
 
         if (!airworthy) return landingMission(level, retirePoint(home))
+        if (entity.currentSquad()?.order == SquadOrder.MOVE) return landingMission(level, home)
 
         // Falling back: fly to the point and put down there, whatever is shooting.
         if (entity.currentSquad()?.order == SquadOrder.RETREAT) return landingMission(level, home)
@@ -336,6 +339,26 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
 
             else -> landingMission(level, home)
         }
+    }
+
+    private fun completeAttack(entity: NpcEntity, heli: Entity, level: ServerLevel) {
+        val squad = entity.currentSquad() ?: return
+        if (squad.order != SquadOrder.ATTACK) return
+        val crewEngaged = Ports.vehicles.seating(heli).filterIsInstance<NpcEntity>().any { member ->
+            member.target?.let { it.isAlive && member.isEnemy(it) } == true
+        }
+        val reported = squad.tactics.contacts.values.any { contact ->
+            level.gameTime - contact.seenAt <= 200 && level.getEntity(contact.id)?.isAlive != false
+        }
+        val focusAlive = squad.focusEntity?.let { level.getEntity(it)?.isAlive } == true
+        if (!attackCompletion.observe(squad.orderStamp, level.gameTime, crewEngaged || reported || focusAlive)) return
+        val destination = squad.objective ?: net.minecraft.core.BlockPos.containing(lastContactPos ?: heli.position())
+        val manager = com.sbwnpc.squad.squad.SquadManager.get(level)
+        com.sbwnpc.squad.experience.ExperienceAwards.objective(level.server, squad)
+        manager.setOrder(squad.id, SquadOrder.MOVE)
+        manager.setObjective(level, squad.id, destination)
+        com.sbwnpc.squad.squad.SquadReports.landing(level.server, squad)
+        DebugFlags.log(LogGroup.HELI, "{} event=attack_completed squad={} order=MOVE destination={}", entity.uuid, squad.id, destination)
     }
 
     /** Personally visible crew targets, clustered around one contact instead of across the map. */

@@ -113,6 +113,10 @@ object SquadReports {
         send(server, squad, Kind.ARRIVED, if (was == SquadOrder.RETREAT) "Fallen back, holding" else "Objective taken, holding")
     }
 
+    fun landing(server: MinecraftServer, squad: Squad) {
+        send(server, squad, Kind.ARRIVED, "Objective taken, landing")
+    }
+
     fun tick(server: MinecraftServer) {
         if (server.tickCount % CHECK_TICKS != 0) return
         val mgr = SquadManager.get(server)

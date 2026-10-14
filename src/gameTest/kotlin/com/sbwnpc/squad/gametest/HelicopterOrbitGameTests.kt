@@ -43,6 +43,49 @@ import kotlin.math.atan2
 @PrefixGameTestTemplate(false)
 object HelicopterOrbitGameTests {
     @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 1800, batch = "transport-attack-completion")
+    fun transportCompletesAttackWithMoveAndLanding(helper: GameTestHelper) = completedAttack(helper, HelicopterModel.AH_6)
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 1800, batch = "gunship-attack-completion")
+    fun gunshipCompletesAttackWithMoveAndLanding(helper: GameTestHelper) = completedAttack(helper, HelicopterModel.MI_28)
+
+    private fun completedAttack(helper: GameTestHelper, model: HelicopterModel) {
+        val scene = Scene(helper, attack = true, model = model)
+        scene.enemy = AttackDeploymentGameTests.spawn(helper, Vec3(104.5, 1.0, 100.5), SquadFaction.COW).apply {
+            isNoAi = true
+            getAttribute(Attributes.MAX_HEALTH)!!.baseValue = 100000.0
+            health = maxHealth
+        }
+        var defeatedAt: Long? = null
+        var moveAt: Long? = null
+        helper.onEachTick {
+            scene.tick()
+            helper.assertTrue(scene.crew.all { it.isAlive }, "Attack or landing lost a crew member")
+            val enemy = scene.enemy!!
+            if (defeatedAt == null) {
+                helper.assertTrue(scene.squad.order == SquadOrder.ATTACK, "Helicopter completed an attack before defeating its contact")
+                if (scene.airborne && helper.tick >= 250 && scene.crew.any { it.target === enemy }) {
+                    enemy.kill()
+                    defeatedAt = helper.tick
+                }
+                return@onEachTick
+            }
+            helper.assertTrue(scene.squad.order != SquadOrder.DEFEND, "Successful helicopter attack became DEFEND")
+            if (scene.squad.order == SquadOrder.MOVE && moveAt == null) {
+                moveAt = helper.tick
+                helper.assertTrue(helper.tick - defeatedAt!! >= 200, "Sensor gap caused premature attack completion")
+            }
+            val pilot = scene.crew.first()
+            val arrived = com.sbwnpc.squad.combat.SquadFormation.reachedPoint(pilot, pilot.homeCenter()!!, scene.crew.size)
+            if (moveAt != null && Helicopters.isGrounded(helper.level, scene.heli) && arrived) {
+                scene.result("defeatedAt=$defeatedAt moveAt=$moveAt landedAt=${helper.tick} order=${scene.squad.order}")
+                helper.succeed()
+            }
+        }
+    }
+
+    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 40, batch = "helicopter-deployment")
     fun bothHelicopterPresetsDeployWithPilotAndFaction(helper: GameTestHelper) {
         val manager = SquadManager.get(helper.level)

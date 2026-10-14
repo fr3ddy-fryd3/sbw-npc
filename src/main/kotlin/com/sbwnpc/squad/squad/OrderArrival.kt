@@ -10,10 +10,10 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.phys.Vec3
 
 /**
- * Turns a squad that has taken its point into one holding it: ATTACK and RETREAT become DEFEND
- * once three in four of the squad are there.
+ * ATTACK and RETREAT become DEFEND once three in four members reach the point. A completed
+ * gunship attack becomes MOVE instead, so the pilot keeps its landing mission.
  *
- * The only place that makes this switch, for the squad as a whole, once a second, through
+ * Resolves ground arrival for the squad once a second, through
  * [SquadManager.setOrder] so every member takes it as a new order and it is saved. It used to be
  * made in three places by three different rules — by each member (every last man within a few
  * blocks, and only while it had nobody to shoot at), by the withdrawal, and here — and the first
@@ -60,11 +60,13 @@ object OrderArrival {
                 DebugFlags.log(LogGroup.ORDER, "{} event=arrival_held reason=enemy_contact arrived={} members={}", squad.name, there, members.size)
                 continue
             }
-            DebugFlags.log(LogGroup.ORDER, "{} took its point ({}), defending", squad.name, squad.order)
             val was = squad.order
+            val next = if (was == SquadOrder.ATTACK && mgr.isGunshipSquad(squad)) SquadOrder.MOVE else SquadOrder.DEFEND
+            DebugFlags.log(LogGroup.ORDER, "{} took its point ({}), order={}", squad.name, was, next)
             if (was == SquadOrder.ATTACK) com.sbwnpc.squad.experience.ExperienceAwards.objective(server, squad)
-            mgr.setOrder(squad.id, SquadOrder.DEFEND)
-            SquadReports.holding(server, squad, was)
+            mgr.setOrder(squad.id, next)
+            if (next == SquadOrder.MOVE) mgr.setObjective(members.first().level() as ServerLevel, squad.id, goal)
+            if (next == SquadOrder.MOVE) SquadReports.landing(server, squad) else SquadReports.holding(server, squad, was)
             com.sbwnpc.squad.combat.Withdrawal.forget(squad.id)
         }
     }
