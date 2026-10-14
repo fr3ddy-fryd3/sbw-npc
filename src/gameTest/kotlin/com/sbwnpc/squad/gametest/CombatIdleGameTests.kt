@@ -203,7 +203,7 @@ object CombatIdleGameTests {
         private val entities = mutableListOf<NpcEntity>()
         private val squads = mutableListOf<Squad>()
         private val oldGroups = DebugFlags.enabledGroups
-        private val manager = SquadManager.get(helper.level)
+        private var manager = SquadManager.get(helper.level)
         private val report = Path.of(System.getProperty("sbwnpc.gameTestReports"))
         private val pacer = CombatTickPacer()
         private val witness = FakePlayerFactory.get(helper.level, GameProfile(UUID.randomUUID(), "idle-observer"))
@@ -239,8 +239,44 @@ object CombatIdleGameTests {
             }
             return result.members
         }
-        fun enemy(at: Vec3): NpcEntity =
-            AttackDeploymentGameTests.spawn(helper, at, SquadFaction.COW).apply {
+        fun deployFixed(preset: SquadPreset, at: Vec3, group: Int): List<NpcEntity> =
+            preset.composition.mapIndexed { index, role ->
+                val identity = UUID.nameUUIDFromBytes("$name:$group:$index".toByteArray())
+                val offset = com.sbwnpc.squad.combat.SquadFormation.gridOffset(index, preset.composition.size)
+                AttackDeploymentGameTests.spawn(helper, at.add(offset), SquadFaction.PIG, identity, 79L + group * 32 + index, role).also {
+                    it.yRot = 180f
+                    it.yHeadRot = 180f
+                    entities += it
+                }
+            }
+
+        /** Stable operation membership as well as stable actors, equipment and initial grid. */
+        fun stabilizeSquads(current: List<Squad>): List<Squad> {
+            val identities = current.mapIndexed { index, squad -> squad.id to UUID.nameUUIDFromBytes("$name:squad:$index".toByteArray()) }.toMap()
+            val saved = manager.saveState(net.minecraft.nbt.CompoundTag())
+            for (entry in saved.getList("Squads", net.minecraft.nbt.Tag.TAG_COMPOUND.toInt())) {
+                val tag = entry as net.minecraft.nbt.CompoundTag
+                identities[tag.getUUID("Id")]?.let { tag.putUUID("Id", it) }
+            }
+            manager = SquadManager.load(saved)
+            helper.level.dataStorage.set("sbwnpc_squads", manager)
+            SquadManager.clearCache()
+            com.sbwnpc.squad.combat.tactics.operation.AttackOperations.clear(helper.level)
+            entities.forEach { npc -> identities[npc.squadId]?.let { npc.squadId = it } }
+            val replacements = current.map { old ->
+                manager.all().single { it.id == identities.getValue(old.id) }.also {
+                    it.tactics.contacts.putAll(old.tactics.contacts)
+                    TacticalRuntimeEvents.bind(it, helper.level)
+                }
+            }
+            squads.clear()
+            squads.addAll(replacements)
+            replacements.forEach { SquadTactics.refresh(entities.first { npc -> npc.squadId == it.id }) }
+            return replacements
+        }
+
+        fun enemy(at: Vec3, identity: UUID? = null): NpcEntity =
+            AttackDeploymentGameTests.spawn(helper, at, SquadFaction.COW, identity, if (identity == null) null else 79L).apply {
                 isNoAi = true
                 getAttribute(Attributes.MAX_HEALTH)!!.baseValue = 50000.0
                 health = maxHealth

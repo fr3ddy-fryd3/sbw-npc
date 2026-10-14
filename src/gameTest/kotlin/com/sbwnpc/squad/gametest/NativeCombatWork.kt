@@ -6,6 +6,7 @@ import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTestHelper
 import net.neoforged.neoforge.common.NeoForge
+import net.neoforged.neoforge.event.entity.living.LivingDamageEvent
 import net.neoforged.neoforge.event.tick.ServerTickEvent
 import java.nio.file.Files
 import java.nio.file.Path
@@ -37,7 +38,18 @@ internal class NativeCombatWork(private val helper: GameTestHelper, members: Lis
         // Scene registered its wall-clock gun pacer before this listener. Sleep is excluded.
         if (helper.tick >= 200 && started != 0L) tickTimes += System.nanoTime() - started
     }
+    private val damageTrace = Files.newBufferedWriter(Path.of(System.getProperty("sbwnpc.gameTestReports"), "operation-damage.csv"))
+    private val damage = Consumer<LivingDamageEvent.Post> { event ->
+        if (event.entity.uuid in actors) {
+            val shooter = event.source.entity as? NpcEntity
+            val weapon = shooter?.mainHandItem?.item?.let { net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(it) }
+            damageTrace.appendLine("${helper.tick},${event.entity.uuid},${shooter?.uuid},${event.source.directEntity?.uuid},$weapon,${event.newDamage},${event.entity.health},${shooter?.spawnFaction},${(event.entity as? NpcEntity)?.spawnFaction}")
+            damageTrace.flush()
+        }
+    }
     init {
+        damageTrace.appendLine("tick,victim,shooter,projectile,weapon,damage,health,shooterFaction,victimFaction")
+        NeoForge.EVENT_BUS.addListener(damage)
         require(TacticalPositions.searchWorkObserver == null && navigators.all { it.pathWorkObserver == null })
         members.forEach { npc ->
             (npc.navigation as VehicleAwareNavigation).pathWorkObserver = { targets, nanos, native ->
@@ -106,6 +118,8 @@ internal class NativeCombatWork(private val helper: GameTestHelper, members: Lis
         closed = true
         navigators.forEach { it.pathWorkObserver = null }
         TacticalPositions.searchWorkObserver = null
+        NeoForge.EVENT_BUS.unregister(damage)
+        damageTrace.close()
         NeoForge.EVENT_BUS.unregister(pre)
         NeoForge.EVENT_BUS.unregister(post)
     }

@@ -40,6 +40,76 @@ import java.util.UUID
 /** Explicit local saved-world replays; never registered without gameTestReplay. */
 @PrefixGameTestTemplate(false)
 object SavedBattleGameTests {
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 500, batch = "saved-delta-search")
+    fun savedDeltaFindsReachableFiringPost(helper: GameTestHelper) = deltaSearch(helper, blocker = false)
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 500, batch = "saved-delta-friendly-blocker")
+    fun savedDeltaFindsPostAroundFriendlyBlocker(helper: GameTestHelper) = deltaSearch(helper, blocker = true)
+
+    private fun deltaSearch(helper: GameTestHelper, blocker: Boolean) {
+        val report = Path.of(System.getProperty("sbwnpc.gameTestReports"))
+        Files.createDirectories(report)
+        val replay = SavedBattleReplay(helper.level, Path.of(System.getProperty("sbwnpc.gameTestReplay")))
+        replay.restore()
+        val actor = replay.npcs.single { it.uuid == UUID.fromString("759990e2-8bf3-4def-a580-7d1c273eb383") }
+        val enemy = replay.npcs.single { it.uuid == UUID.fromString("31c68a47-9b72-4e18-82aa-8f991f95bcc0") }
+        val nearby = replay.npcs.single { it.uuid == UUID.fromString("a8859332-8250-467b-a428-e4057ddf601f") }
+        val ally = replay.npcs.single { it.uuid == UUID.fromString("a2271d9c-4211-44cc-99d7-3661882a48cb") }
+        replay.entities.filter { it !== actor && it !== enemy && it !== nearby && !(blocker && it === ally) }.forEach(Entity::discard)
+        ally.isNoAi = true
+        ally.moveTo(-447.50311383615343, 72.0, -321.61584782529314)
+        listOf(actor, enemy, nearby).forEach { it.isNoAi = true }
+        actor.moveTo(-441.56022599617796, 72.0, -337.01172289231465)
+        enemy.moveTo(-479.77518544040225, 72.0, -220.086437417955)
+        nearby.moveTo(-503.45810541691213, 65.0, -330.6135644769231)
+        BrainUtils.setTargetOfEntity(actor, enemy)
+        val task = TacticalTask(TacticalJob.COVER, actor.position(), enemy.position(), 1).apply {
+            localFirePost = actor.position()
+            expandedFireSearch = true
+        }
+        val trace = report.resolve(
+            when {
+                blocker -> "delta-search-friendly.csv"
+                else -> "delta-search.csv"
+            },
+        )
+        Files.writeString(trace, "tick,outcome,probe,probes,scored,rejections,position\n")
+        helper.testInfo.addListener(object : GameTestListener {
+            override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
+            override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
+            override fun testFailed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
+            override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) = cleanup()
+            private fun cleanup() {
+                FiringSpots.release(actor.uuid)
+                replay.close()
+            }
+        })
+        helper.onEachTick {
+            actor.setOnGround(true)
+            if (blocker && helper.tick == 0L) helper.assertTrue(!com.sbwnpc.squad.combat.FriendlyFireGuard.hasClearLineOfFire(actor, enemy.eyePosition, actor.spread), "Frozen ally does not reproduce the blocked firing lane")
+            val view = TacticalSnapshot(
+                helper.level.gameTime,
+                SquadOrder.ATTACK,
+                1,
+                actor.position(),
+                enemy.position(),
+                listOf(TacticalMember(actor.uuid, actor.position(), actor.npcClass)),
+                listOf(TacticalContact(enemy.uuid, enemy.position(), helper.level.gameTime), TacticalContact(nearby.uuid, nearby.position(), helper.level.gameTime)),
+            )
+            val result = TacticalPositions.find(actor, task, view)
+            if (helper.tick % 10L == 0L || result.outcome != TacticalPositions.Outcome.DEFERRED) {
+                Files.writeString(trace, "${helper.tick},${result.outcome},${task.search?.probeIndex},${task.search?.probes?.size},${task.search?.scored?.size},\"${task.search?.rejections ?: result.rejections}\",\"${result.position}\"\n", APPEND)
+            }
+            if (result.outcome != TacticalPositions.Outcome.DEFERRED) {
+                helper.assertTrue(result.outcome == TacticalPositions.Outcome.FOUND, "Delta has no reachable firing post in frozen scene: $result")
+                helper.assertTrue(TacticalPositions.firingReady(actor, task, result.position!!), "Delta selected post cannot shoot the fixed enemy")
+                helper.succeed()
+            }
+        }
+    }
+
     /** Static search isolation from the failed replay; not a replacement for the battle criterion. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 400, batch = "saved-sniper-search")
@@ -200,9 +270,10 @@ object SavedBattleGameTests {
         val windows = report.resolve("windows.csv")
         Files.writeString(windows, "tick,squad,alive,armed,recent,pattern,phase\n")
         Files.writeString(report.resolve("fixture-limits.txt"), "Saved reload, not live AI continuation. NPCs=${members.size}, chunks=${replay.chunks}; saved weapons/ammo/health/orders, no replenishment. Brain targets/tasks/stance restart; UUID-seeded NPC random generators; no player combatant, ordinary biome/light scheduling of isolated server; copied native blocks/vehicles. Assert attackersOnly=$attackersOnly; all squads still recorded.\n")
-        val sniper = members.firstOrNull { it.uuid == UUID.fromString("f8104e12-9378-4094-8cc7-54145ce8df70") }
+        val watched = UUID.fromString(System.getProperty("sbwnpc.gameTestWatchNpc", "f8104e12-9378-4094-8cc7-54145ce8df70"))
+        val sniper = members.firstOrNull { it.uuid == watched }
         val sniperTrace = report.resolve("sniper-lifecycle.csv")
-        Files.writeString(sniperTrace, "tick,task,job,anchor,search,probe,probes,aimShift,restart,target,position,transit,contacts,phase\n")
+        Files.writeString(sniperTrace, "tick,task,job,anchor,search,probe,probes,aimShift,restart,target,position,transit,contacts,phase,actorPosition,navDone,ownedPath,localPost,expanded,failures,lastProgress,closest,rejections,operation,revision,waypoint,sector,deployed,blocked,externalCover,suppressed,failedMember,medicGuard,isGuard,canFire,ready,localCover,guardFocus\n")
         var lastTask: TacticalTask? = null
         var lastSearch: Any? = null
         val stalledWindows = mutableMapOf<UUID, Int>()
@@ -212,7 +283,7 @@ object SavedBattleGameTests {
             val search = task?.search
             if (helper.tick % 10L == 0L || task !== lastTask || search !== lastSearch) {
                 val aim = task?.let { TacticalAim.resolve(sniper!!, it) }
-                Files.writeString(sniperTrace, "${helper.tick},${task?.let { System.identityHashCode(it) }},${task?.job},\"${task?.anchor}\",${search?.let { System.identityHashCode(it) }},${search?.probeIndex},${search?.probes?.size},${search?.aim?.eye?.let { old -> aim?.eye?.distanceTo(old) }},${search?.needsRestart(sniper!!.position(), aim)},${sniper?.target?.uuid},\"${task?.position}\",\"${task?.fireTransit}\",\"${squad?.tactics?.snapshot?.contacts?.map { it.id to it.position }}\",${squad?.tactics?.plan?.phase}\n", APPEND)
+                Files.writeString(sniperTrace, "${helper.tick},${task?.let { System.identityHashCode(it) }},${task?.job},\"${task?.anchor}\",${search?.let { System.identityHashCode(it) }},${search?.probeIndex},${search?.probes?.size},${search?.aim?.eye?.let { old -> aim?.eye?.distanceTo(old) }},${search?.needsRestart(sniper!!.position(), aim)},${sniper?.target?.uuid},\"${task?.position}\",\"${task?.fireTransit}\",\"${squad?.tactics?.snapshot?.contacts?.map { it.id to it.position }}\",${squad?.tactics?.plan?.phase},\"${sniper?.position()}\",${sniper?.navigation?.isDone},${task?.navigationPath === sniper?.navigation?.path},\"${task?.localFirePost}\",${task?.expandedFireSearch},${task?.failures},${task?.lastProgress},${task?.closest},\"${search?.rejections}\",${squad?.tactics?.snapshot?.attackAssignment?.operation},${squad?.tactics?.snapshot?.attackAssignment?.revision},\"${squad?.tactics?.snapshot?.attackAssignment?.waypoint}\",\"${squad?.tactics?.snapshot?.attackAssignment?.sector}\",${squad?.tactics?.snapshot?.attackAssignment?.deployed},${squad?.tactics?.snapshot?.attackAssignment?.blocked},${squad?.tactics?.snapshot?.attackAssignment?.externalCover},${squad?.tactics?.snapshot?.members?.firstOrNull { it.id == watched }?.suppressed},${squad?.tactics?.plan?.failedMembers?.contains(watched)},${squad?.tactics?.plan?.behavior?.medicGuard},${squad?.tactics?.plan?.behavior?.medicGuard == watched},${squad?.tactics?.snapshot?.members?.firstOrNull { it.id == watched }?.canFire},${squad?.tactics?.snapshot?.members?.firstOrNull { it.id == watched }?.ready},${squad?.tactics?.snapshot?.members?.count { member -> member.id != watched && com.sbwnpc.squad.combat.tactics.TacticalEvidence.firesCover(member, squad.tactics.plan?.tasks?.get(member.id)) }},\"${task?.focus}\"\n", APPEND)
             }
             lastTask = task
             lastSearch = search

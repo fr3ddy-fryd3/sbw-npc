@@ -443,7 +443,11 @@ object AttackOperationGameTests {
     @GameTest(templateNamespace = "sbwnpc", template = "operation_arena", skyAccess = true, timeoutTicks = 1900, batch = "operation-work")
     fun largeAttackMeasuresNativeWorkWithoutDebugTrace(helper: GameTestHelper) = largeAttack(helper, profile = true)
 
-    private fun largeAttack(helper: GameTestHelper, profile: Boolean) {
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "operation_arena", skyAccess = true, timeoutTicks = 1900, batch = "operation-fixed-work")
+    fun fixedLargeAttackKeepsParticipationAndSafety(helper: GameTestHelper) = largeAttack(helper, profile = true, fixed = true)
+
+    private fun largeAttack(helper: GameTestHelper, profile: Boolean, fixed: Boolean = false) {
         val scene = CombatIdleGameTests.Scene(helper, "operation-large", depth = 384, recordTrace = !profile)
         var work: NativeCombatWork? = null
         scene.onClose = {
@@ -452,20 +456,33 @@ object AttackOperationGameTests {
         }
         // Large wing fronts extend in X as they turn toward the target; provide actual ground.
         for (x in 0..351) for (z in 0..383) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
-        val groups = listOf(168.5, 192.5, 216.5, 240.5).map { scene.deploy(SquadPreset.THIRTY_TWO, Vec3(120.5, 1.0, it)) }
-        val enemy = scene.enemy(Vec3(241.5, 1.0, 192.5))
-        val squads = groups.map { scene.squad(it, com.sbwnpc.squad.combat.tactics.TacticalPattern.BOUND, isolated = false, contact = enemy) }
+        val groups = listOf(168.5, 192.5, 216.5, 240.5).mapIndexed { index, z ->
+            if (fixed) scene.deployFixed(SquadPreset.THIRTY_TWO, Vec3(120.5, 1.0, z), index) else scene.deploy(SquadPreset.THIRTY_TWO, Vec3(120.5, 1.0, z))
+        }
+        val enemy = scene.enemy(Vec3(241.5, 1.0, 192.5), if (fixed) UUID.nameUUIDFromBytes("operation-large:enemy".toByteArray()) else null)
+        if (fixed) {
+            // Keep an unarmed contact alive throughout the fixed-equipment participation benchmark.
+            enemy.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH)!!.baseValue = 1000000.0
+            enemy.health = enemy.maxHealth
+        }
+        val initialSquads = groups.map { scene.squad(it, com.sbwnpc.squad.combat.tactics.TacticalPattern.BOUND, isolated = false, contact = enemy) }
+        val squads = if (fixed) scene.stabilizeSquads(initialSquads) else initialSquads
         if (profile) work = NativeCombatWork(helper, groups.flatten())
         val windows = mutableMapOf<java.util.UUID, Int>()
         val reached = mutableSetOf<java.util.UUID>()
         val deployedOrigins = mutableMapOf<java.util.UUID, Pair<Vec3, Vec3>>()
         val report = Path.of(System.getProperty("sbwnpc.gameTestReports"))
         Files.writeString(report.resolve("operation-large-windows.csv"), "tick,squad,role,recent,deployed,blocked\n")
+        if (fixed) Files.writeString(report.resolve("fixed-limits.txt"), "Seeded actors/gear/grid/squad IDs; unarmed target health restored each tick, actual maxHealth=${enemy.maxHealth}. Participation/movement/all128alive thresholds unchanged.\n")
         helper.onEachTick {
+            if (fixed) {
+                helper.assertTrue(enemy.isAlive, "Persistent unarmed target died within one tick")
+                enemy.health = enemy.maxHealth
+            }
             squads.forEach(scene::tick)
             if (helper.tick % 100 != 0L) return@onEachTick
             val assignments = squads.associateWith { AttackOperations.assignment(helper.level, it) }
-            if (helper.tick >= 100) helper.assertTrue(assignments.values.mapNotNull { it?.role }.toSet() == AttackRole.entries.toSet(), "128-NPC operation lacks three sectors and a reserve")
+            if (helper.tick >= 100) helper.assertTrue(assignments.values.mapNotNull { it?.role }.toSet() == AttackRole.entries.toSet(), "128-NPC operation lacks three sectors and a reserve: enemyAlive=${enemy.isAlive} enemyHealth=${enemy.health}")
             for ((squad, assignment) in assignments) {
                 val group = groups[squads.indexOf(squad)]
                 val recent = group.count { it.firedRecently(100) }
