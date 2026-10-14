@@ -13,8 +13,8 @@ data class AssignmentTicket(val id: UUID, val parent: ExecutionTicket, val child
 
 enum class AssignmentStatus { OFFERED, ACTIVE, WAITING, SUCCEEDED, FAILED, REVOKED }
 data class ChildReport(val ticket: AssignmentTicket, val sequence: Long, val observedAt: Long, val status: AssignmentStatus, val evidence: List<ActionEvidence> = emptyList(), val reason: String? = null)
-data class AssignmentView(val ticket: AssignmentTicket, val task: TaskCall<*>, val issuedAt: Long, val status: AssignmentStatus, val report: ChildReport?)
-data class AssignmentEvent(val assignment: AssignmentView, val reason: String)
+data class AssignmentView(val ticket: AssignmentTicket, val task: TaskCall<*>, val issuedAt: Long, val status: AssignmentStatus, val report: ChildReport?, val holdReason: String? = null)
+data class AssignmentEvent(val assignment: AssignmentView, val reason: String, val at: Long)
 sealed interface DelegationResult {
     data class Assigned(val assignment: AssignmentView) : DelegationResult
     data class Rejected(val reason: String) : DelegationResult
@@ -46,7 +46,7 @@ class AssignmentLedger(
         byChild[child] = ticket.id
         byParent.getOrPut(parent, ::LinkedHashSet).add(ticket.id)
         byOwner.getOrPut(parent.owner, ::LinkedHashSet).add(parent)
-        event(AssignmentEvent(assignment, "assigned"))
+        event(AssignmentEvent(assignment, "assigned", now))
         return DelegationResult.Assigned(assignment)
     }
 
@@ -60,11 +60,22 @@ class AssignmentLedger(
         if (report.status == AssignmentStatus.SUCCEEDED && report.evidence.isEmpty()) return false
         val next = current.copy(status = report.status, report = report.copy(evidence = report.evidence.toList()))
         assignments[current.ticket.id] = next
-        event(AssignmentEvent(next, "child_report"))
+        event(AssignmentEvent(next, "child_report", now))
         return true
     }
 
     fun view(ticket: AssignmentTicket): AssignmentView? = assignments[ticket.id]?.takeIf { it.ticket == ticket }
+
+    fun hold(ticket: AssignmentTicket, now: Long, reason: String?): Boolean {
+        val current = view(ticket) ?: return false
+        if (current.status in terminal || !live(ticket.parent)) return false
+        require(now >= current.issuedAt)
+        if (current.holdReason == reason) return true
+        val next = current.copy(holdReason = reason)
+        assignments[ticket.id] = next
+        event(AssignmentEvent(next, if (reason == null) "parent_resumed" else "parent_held", now))
+        return true
+    }
 
     /** Revocation follows assignment owners, so an obsolete operation cannot leave live NPC tasks. */
     fun revoke(ticket: AssignmentTicket, now: Long, reason: String): Boolean {
@@ -86,7 +97,7 @@ class AssignmentLedger(
                 }
             }
         }
-        event(AssignmentEvent(next, reason))
+        event(AssignmentEvent(next, reason, now))
         return true
     }
 
