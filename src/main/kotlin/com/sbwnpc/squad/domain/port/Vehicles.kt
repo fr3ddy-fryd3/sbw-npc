@@ -28,7 +28,8 @@ data class Steering(val right: Boolean, val left: Boolean, val detail: String)
  * non-vehicle is never operational, never a wreck, has no seats and no model.
  */
 interface Vehicles {
-    /** Withdraw ordinary infantry rounds from the real cargo; zero for unsupported weapons. */
+    /** Withdraw ordinary infantry rounds from real cargo; return the actual amount, including
+     *  the surplus from whole supplier boxes. Zero for unsupported weapons. */
     fun takeSmallArmsAmmo(vehicle: Entity, gun: ItemStack, rounds: Int): Int
 
     fun isVehicle(entity: Entity?): Boolean

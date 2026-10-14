@@ -10,6 +10,7 @@ import com.atsuishio.superbwarfare.entity.vehicle.utils.VehicleVecUtils
 import com.atsuishio.superbwarfare.init.ModEntities
 import com.atsuishio.superbwarfare.init.ModItems
 import com.atsuishio.superbwarfare.item.ammo.AmmoBoxItem
+import com.atsuishio.superbwarfare.item.ammo.AmmoSupplierItem
 import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.atsuishio.superbwarfare.tools.OBB
 import com.sbwnpc.squad.domain.port.CannonRound
@@ -92,7 +93,6 @@ object SbwVehicles : Vehicles {
         if (vehicle !is VehicleEntity) return
         vehicle.energy = vehicle.maxEnergy
         val hold = Hold(vehicle)
-        val ammoBox = ItemStack(ModItems.AMMO_BOX.get())
         when (model) {
             // Same main-gun AP/HE + coax rifle ammo + .50cal passenger ammo loadout for all three —
             // verified against each model's own sbw/vehicles/*.json: same four weapon/ammo slots.
@@ -100,8 +100,7 @@ object SbwVehicles : Vehicles {
                 // Main-gun shells stay at a stack each; the scale is for small arms and autocannons.
                 hold.stow(ModItems.LARGE_SHELL_AP.get(), 64)
                 hold.stow(ModItems.LARGE_SHELL_HE.get(), 64)
-                Ammo.RIFLE.set(ammoBox, RIFLE_ROUNDS)
-                Ammo.HEAVY.set(ammoBox, 64 * AMMO_SCALE)
+                hold.stow(ModItems.HEAVY_AMMO.get(), 64 * AMMO_SCALE * 2)
             }
 
             // Which round a cannon fires is its selected ammo type, not a slot (see loadRound), so
@@ -122,17 +121,16 @@ object SbwVehicles : Vehicles {
             is TransportVehicle -> {
                 hold.stow(ModItems.SMALL_SHELL_AP.get(), 64 * AMMO_SCALE)
                 hold.stow(ModItems.SMALL_SHELL_HE.get(), 64 * AMMO_SCALE)
-                Ammo.RIFLE.set(ammoBox, RIFLE_ROUNDS)
                 if (model != TransportVehicle.LAV_150) hold.stow(ModItems.MEDIUM_ANTI_GROUND_MISSILE.get(), 4)
             }
 
             else -> {}
         }
-        if (model is HelicopterModel) Ammo.RIFLE.set(ammoBox, RIFLE_ROUNDS)
-        Ammo.HANDGUN.set(ammoBox, 128)
-        Ammo.SNIPER.set(ammoBox, 128)
-        Ammo.SHOTGUN.set(ammoBox, 64)
-        hold.stow(ammoBox)
+        // Standard supplier boxes contain fixed amounts: round doubled round counts up to whole boxes.
+        hold.stowBoxes(ModItems.RIFLE_AMMO_BOX.get(), RIFLE_ROUNDS * 2)
+        hold.stowBoxes(ModItems.HANDGUN_AMMO_BOX.get(), 128 * 2)
+        hold.stowBoxes(ModItems.SNIPER_AMMO_BOX.get(), 128 * 2)
+        hold.stowBoxes(ModItems.SHOTGUN_AMMO_BOX.get(), 64 * 2)
     }
 
     override fun takeSmallArmsAmmo(vehicle: Entity, gun: ItemStack, rounds: Int): Int {
@@ -141,7 +139,6 @@ object SbwVehicles : Vehicles {
         if (consumer.type != AmmoConsumer.AmmoConsumeType.PLAYER_AMMO) return 0
         val type = consumer.playerAmmoType ?: return 0
         if (type !in setOf(Ammo.RIFLE, Ammo.HANDGUN, Ammo.SNIPER, Ammo.SHOTGUN)) return 0
-        val item = type.item
         val amount = consumer.loadAmount.coerceAtLeast(1)
         var remaining = rounds / amount
         var taken = 0
@@ -157,10 +154,15 @@ object SbwVehicles : Vehicles {
                 }
                 continue
             }
-            if (stack.item != item) continue
-            val removed = vehicle.removeItem(slot, minOf(remaining, stack.count)).count
-            remaining -= removed
-            taken += removed * amount
+            val supplier = stack.item as? AmmoSupplierItem ?: continue
+            if (supplier.type != type) continue
+            val perItem = supplier.ammoToAdd
+            val needed = (remaining + perItem - 1) / perItem
+            val removed = vehicle.removeItem(slot, minOf(needed, stack.count)).count
+            // An opened supplier box goes entirely into the NPC reserve, including surplus rounds.
+            // Returning the actual amount prevents losing its remainder or creating ammunition.
+            remaining = (remaining - removed * perItem).coerceAtLeast(0)
+            taken += removed * perItem * amount
         }
         if (taken > 0) vehicle.setChanged()
         return taken
@@ -170,9 +172,8 @@ object SbwVehicles : Vehicles {
     private class Hold(private val vehicle: VehicleEntity) {
         private var slot = 0
 
-        fun stow(stack: ItemStack) {
-            while (slot < vehicle.getContainerSize() && !vehicle.getItem(slot).isEmpty) slot++
-            if (slot < vehicle.getContainerSize()) vehicle.setItem(slot++, stack)
+        fun stowBoxes(item: AmmoSupplierItem, rounds: Int) {
+            stow(item, (rounds + item.ammoToAdd - 1) / item.ammoToAdd)
         }
 
         fun stow(item: net.minecraft.world.item.Item, count: Int) {
