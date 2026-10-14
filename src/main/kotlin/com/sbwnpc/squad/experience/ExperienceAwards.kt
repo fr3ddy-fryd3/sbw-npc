@@ -131,7 +131,7 @@ object ExperienceAwards {
         npc.persistentData.putLong(BATTLE, now)
         npc.persistentData.putBoolean("sbwnpcExperienceConfirmed", true)
         npc.currentSquad()?.takeIf { it.order == SquadOrder.ATTACK }?.let {
-            npc.persistentData.putString("sbwnpcExperienceAttack", "${it.id}:${it.orderStamp}")
+            npc.persistentData.putString("sbwnpcExperienceAttack", "${it.id}:${it.command?.id ?: it.orderStamp}")
         }
     }
 
@@ -142,7 +142,7 @@ object ExperienceAwards {
         squad.members.forEach { id ->
             val member = (npc.level() as ServerLevel).getEntity(id) as? NpcEntity ?: return@forEach
             val firing = member.lastShotTick >= 0 && member.tickCount - member.lastShotTick < 60
-            val maneuvering = squad.tactics.plan?.tasks?.containsKey(id) == true &&
+            val maneuvering = com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(member) &&
                 !member.navigation.isDone && member.deltaMovement.horizontalDistanceSqr() > 0.0025
             if (member.isAlive && (firing || maneuvering)) markParticipant(member, now)
         }
@@ -159,7 +159,7 @@ object ExperienceAwards {
     }
 
     fun objective(server: MinecraftServer, squad: Squad) {
-        val receipt = "${squad.id}:${squad.orderStamp}"
+        val receipt = "${squad.id}:${squad.command?.id ?: squad.orderStamp}"
         squad.members.mapNotNull { SquadManager.findEntity(server, it) as? NpcEntity }.forEach { npc ->
             if (npc.persistentData.getString("sbwnpcExperienceAttack") != receipt) return@forEach
             npc.persistentData.remove("sbwnpcExperienceAttack")

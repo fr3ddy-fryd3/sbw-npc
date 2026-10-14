@@ -28,6 +28,8 @@ object OrderArrival {
         val mgr = SquadManager.get(server)
         for (squad in mgr.all()) {
             if (squad.order != SquadOrder.ATTACK && squad.order != SquadOrder.RETREAT) continue
+            // Infantry ATTACK completion belongs exclusively to the HTN area-control task.
+            if (squad.order == SquadOrder.ATTACK && !mgr.isGunshipSquad(squad) && !mgr.isTransportSquad(squad) && !mgr.isTankSquad(squad) && !mgr.isMortarSquad(squad)) continue
             // AH-6 keeps orbiting for its gunners instead of finishing the attack on arrival.
             if (squad.order == SquadOrder.ATTACK && mgr.isTransportSquad(squad)) continue
             // Hunting a unit rather than taking a point: nothing to arrive at.
@@ -64,6 +66,7 @@ object OrderArrival {
             val next = if (was == SquadOrder.ATTACK && mgr.isGunshipSquad(squad)) SquadOrder.MOVE else SquadOrder.DEFEND
             DebugFlags.log(LogGroup.ORDER, "{} took its point ({}), order={}", squad.name, was, next)
             if (was == SquadOrder.ATTACK) com.sbwnpc.squad.experience.ExperienceAwards.objective(server, squad)
+            if (was == SquadOrder.RETREAT && squad.command?.order == com.sbwnpc.squad.ai.coordination.TacticalOrder.RETREAT) mgr.completeCommand(squad.id, "physical_retreat_arrival")
             mgr.setOrder(squad.id, next)
             if (next == SquadOrder.MOVE) mgr.setObjective(members.first().level() as ServerLevel, squad.id, goal)
             if (next == SquadOrder.MOVE) SquadReports.landing(server, squad) else SquadReports.holding(server, squad, was)

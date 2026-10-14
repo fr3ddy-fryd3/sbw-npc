@@ -33,7 +33,7 @@ class NpcPosture(private val npc: NpcEntity) {
             standUntilTick = tick + STAND_TO_SHOOT_TICKS
         }
         val squad = npc.currentSquad()
-        val task = squad?.tactics?.plan?.takeIf { it.stamp == squad.orderStamp }?.tasks?.get(npc.uuid)
+        val task = com.sbwnpc.squad.combat.tactics.SquadTactics.task(npc)
         // A quiet sentry must be able to discover enemies below its parapet. Waiting for a
         // blocked target to stand up cannot work when crouching prevents first discovery.
         val overwatch = task?.job == TacticalJob.OVERWATCH && !task.localFireRecovery

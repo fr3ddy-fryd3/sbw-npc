@@ -33,6 +33,15 @@ object GroupOrders {
 
     /** What happened, one entry per squad, for the player's action bar. */
     fun apply(level: ServerLevel, mgr: SquadManager, squadIds: List<UUID>, order: SquadOrder, x: Int, z: Int): List<String> {
+        val selected = squadIds.mapNotNull(mgr::get)
+        if (selected.size != squadIds.size || selected.isEmpty() || selected.map { it.id }.distinct().size != selected.size ||
+            selected.any { it.owner != selected.first().owner } ||
+            selected.any { saved -> saved.lastSeenDim?.let { it != level.dimension() } == true && saved.members.none { level.getEntity(it) != null } } ||
+            selected.any { a -> selected.any { b -> !com.sbwnpc.squad.team.Diplomacy.allied(a.faction, b.faction) } }
+        ) {
+            return listOf("Selection cancelled: incompatible squads")
+        }
+        val operation = UUID.randomUUID()
         val plans = squadIds.mapNotNull { id ->
             val squad = mgr.get(id) ?: return@mapNotNull null
             val (given, placement) = resolve(kindOf(mgr, squad), order) ?: return@mapNotNull squad to null
@@ -47,9 +56,13 @@ object GroupOrders {
             val bx = Math.floor(px).toInt()
             val bz = Math.floor(pz).toInt()
             val by = groundY(level, bx, bz)
-            mgr.issueOrder(squad.id, given)
-            mgr.setObjective(level, squad.id, BlockPos(bx, by, bz))
+            val goal = com.sbwnpc.squad.ai.coordination.ObjectiveKey.Area(level.dimension().location().toString(), x, groundY(level, x, z), z)
+            val issued = com.sbwnpc.squad.ai.tactics.IssuedCommand(operation, squad.owner, com.sbwnpc.squad.ai.coordination.TacticalOrder.valueOf(order.name), goal)
+            mgr.issueOrderAt(level, squad.id, given, BlockPos(bx, by, bz), issued)
             mgr.setFocus(squad.id, null)
+            squad.tacticalOperation = operation
+            squad.tacticalObjective = BlockPos(x, groundY(level, x, z), z)
+            mgr.setDirty()
             "${squad.name}: ${squad.order.name.lowercase()}"
         }
     }

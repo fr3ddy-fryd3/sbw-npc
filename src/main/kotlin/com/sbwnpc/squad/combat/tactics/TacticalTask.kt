@@ -5,6 +5,8 @@ import net.minecraft.world.phys.Vec3
 class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val plan: Int) {
     internal var operationMember: java.util.UUID? = null
     var position: Vec3? = null
+    internal var usesObservedAim = false
+    internal var observedAim: TacticalAim? = null
     var firingTarget: java.util.UUID? = null
     var nextSearch = Long.MIN_VALUE
     var failures = 0

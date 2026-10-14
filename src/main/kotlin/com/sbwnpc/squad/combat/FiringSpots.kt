@@ -25,17 +25,27 @@ object FiringSpots {
     /** How far apart two shooters' chosen positions are kept. */
     const val MIN_SPACING = 3.5
 
+    private val owners = HashMap<UUID, UUID>()
     private val claims = HashMap<UUID, Vec3>()
 
-    fun claim(shooter: UUID, pos: Vec3) {
+    fun claim(shooter: UUID, pos: Vec3, owner: UUID? = null) {
         claims[shooter] = pos
+        if (owner == null) owners.remove(shooter) else owners[shooter] = owner
     }
 
     fun release(shooter: UUID) {
         claims.remove(shooter)
+        owners.remove(shooter)
     }
 
-    fun clearAll() = claims.clear()
+    fun release(shooter: UUID, owner: UUID) {
+        if (owners[shooter] == owner) release(shooter)
+    }
+
+    fun clearAll() {
+        claims.clear()
+        owners.clear()
+    }
 
     /**
      * Claims close enough to [origin] to matter, everyone else's.

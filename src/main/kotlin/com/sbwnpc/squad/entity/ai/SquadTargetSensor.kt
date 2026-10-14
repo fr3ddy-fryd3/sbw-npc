@@ -115,6 +115,15 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         }
         val attacker = mob.lastHurtByMob
         val hostileAttacker = attacker?.takeIf { it.isAlive && SquadTeams.isHostile(mob, it) }
+        val assignment = SquadTactics.task(mob)
+        if (assignment?.job == TacticalJob.RESERVE) {
+            if (hostileAttacker != null && mob.incomingFire.pending(level.gameTime) && FiringOpportunity.assess(mob, hostileAttacker) == TacticalTargetSelection.Opportunity.SHOOTABLE) return hostileAttacker
+            val backwards = assignment.focus?.subtract(mob.position())?.multiply(1.0, 0.0, 1.0)?.normalize() ?: return null
+            val known = com.sbwnpc.squad.ai.integration.NativeTactics.snapshot(mob)?.contacts.orEmpty()
+            val candidates = (known.map { it.id } + listOfNotNull(directTarget?.uuid)).distinct().mapNotNull { level.getEntity(it) as? LivingEntity }
+            val visible = candidates.filter { it.isAlive && mob.isEnemy(it) && DetectionSightline.canSeeWithin(mob, it, NpcEntity.DETECTION_RANGE) && it.position().subtract(mob.position()).dot(backwards) > 0 }
+            return FireAllocation.pick(mob, level, visible)
+        }
         if (hostileAttacker != null && FiringOpportunity.assess(mob, hostileAttacker) == TacticalTargetSelection.Opportunity.SHOOTABLE) return hostileAttacker
 
         val retainedTarget = if (reconsider) null else retainedDefensiveTarget(mob)
@@ -126,7 +135,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             if (tacticalTarget != null) {
                 // A remembered enemy behind terrain must not mask another squad's usable
                 // report. Keep ordered targets and specialist jobs in their existing priority.
-                if (mob.currentSquad()?.tactics?.plan?.behavior is CoordinatedAttackState &&
+                if (com.sbwnpc.squad.ai.integration.NativeTactics.coordinated(mob) &&
                     SquadTactics.task(mob)?.job != TacticalJob.ANTI_ARMOUR &&
                     FiringOpportunity.assess(mob, tacticalTarget) != TacticalTargetSelection.Opportunity.SHOOTABLE
                 ) {

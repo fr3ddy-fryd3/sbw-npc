@@ -260,9 +260,12 @@ object ModNetwork {
                     val (x, z) = p.text.split(' ').mapNotNull { it.toIntOrNull() }.takeIf { it.size == 2 }
                         ?: return@enqueueWork
                     // Every id a string the client chose to send: only the sender's own squads.
-                    val ids = p.squad.split(',').mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }
-                        .filter { mgr.ownedBy(it, player.uuid) }
-                    if (ids.isEmpty()) return@enqueueWork
+                    val entries = p.squad.split(',')
+                    val ids = entries.mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }
+                    if (ids.size != entries.size || ids.isEmpty() || ids.any { !mgr.ownedBy(it, player.uuid) }) {
+                        SquadSelection.clear(player.uuid)
+                        return@enqueueWork
+                    }
                     bar(com.sbwnpc.squad.squad.GroupOrders.apply(level, mgr, ids, SquadOrder.byOrdinal(p.value), x, z).joinToString(", "))
                 }
 
@@ -335,9 +338,8 @@ object ModNetwork {
             val mgr = SquadManager.get(level)
             val id = runCatching { UUID.fromString(p.squad) }.getOrNull() ?: return@enqueueWork
             if (!mgr.ownedBy(id, player.uuid)) return@enqueueWork
-            mgr.issueOrder(id, SquadOrder.byOrdinal(p.order))
             val pos = Terrain.lookedAtPos(player, level, OBJECTIVE_RAYCAST_RANGE)
-            mgr.setObjective(level, id, pos)
+            mgr.issueOrderAt(level, id, SquadOrder.byOrdinal(p.order), pos)
             com.sbwnpc.squad.combat.DebugFlags.log(
                 com.sbwnpc.squad.combat.LogGroup.ORDER,
                 "HUD: {} -> {} at {} (asked {})",
@@ -361,13 +363,8 @@ object ModNetwork {
             val order = SquadOrder.byOrdinal(p.order)
             val pos = Terrain.lookedAtPos(player, level, OBJECTIVE_RAYCAST_RANGE)
             val defaultFaction = PlayerFactionRegistry.get(level).get(player.uuid)
-            mgr.forOwner(player.uuid)
-                .filter { defaultFaction == null || it.faction == defaultFaction }
-                .forEach { squad ->
-                    mgr.issueOrder(squad.id, order)
-                    mgr.setObjective(level, squad.id, pos)
-                    com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER, "HUD all: {} -> {} at {}", squad.name, squad.order, pos)
-                }
+            val selected = mgr.forOwner(player.uuid).filter { defaultFaction == null || it.faction == defaultFaction }
+            com.sbwnpc.squad.squad.GroupOrders.apply(level, mgr, selected.map { it.id }, order, pos.x, pos.z)
         }
     }
 

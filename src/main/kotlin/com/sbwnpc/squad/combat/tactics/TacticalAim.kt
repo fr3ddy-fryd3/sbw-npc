@@ -8,6 +8,7 @@ import java.util.UUID
 data class TacticalAim(val target: UUID?, val position: Vec3, val eye: Vec3) {
     companion object {
         fun resolve(entity: NpcEntity, task: TacticalTask): TacticalAim? {
+            if (task.usesObservedAim) return task.observedAim
             val target = entity.target?.takeIf { it.isAlive && entity.isEnemy(it) }
             return choose(target?.let { TacticalAim(it.uuid, it.position(), it.eyePosition) }, task.focus)
         }

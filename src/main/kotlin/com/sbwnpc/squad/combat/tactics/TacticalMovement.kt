@@ -33,7 +33,7 @@ object TacticalMovement {
     fun move(entity: NpcEntity): Boolean {
         observe(entity)
         if (blocker(entity) != null) return false
-        val task = SquadTactics.task(entity) ?: return false
+        val task = entity.currentSquad()?.tactics?.plan?.tasks?.get(entity.uuid) ?: return false
         // Finish the physical jump before ordinary post validation or phase changes own the feet.
         if ((entity.navigation as? VehicleAwareNavigation)?.canPlan == false) return true
         val squad = entity.currentSquad() ?: return false
@@ -353,7 +353,7 @@ object TacticalMovement {
 
     /** Moving groups keep their path; stationary shooters request a new coordinated position. */
     fun repositionForFire(entity: NpcEntity) {
-        val task = SquadTactics.task(entity) ?: return
+        val task = entity.currentSquad()?.tactics?.plan?.tasks?.get(entity.uuid) ?: return
         // A temporary blocked lane does not evict a sentry from an intact protected platform.
         if (task.job == TacticalJob.OVERWATCH && !task.localFireRecovery) return
         if (!invalidateReachedFirePost(task, entity.position(), entity.onGround(), entity.level().gameTime)) return
