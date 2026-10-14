@@ -12,8 +12,8 @@ data class AssignmentTicket(val id: UUID, val parent: ExecutionTicket, val child
 }
 
 enum class AssignmentStatus { OFFERED, ACTIVE, WAITING, SUCCEEDED, FAILED, REVOKED }
-data class ChildReport(val ticket: AssignmentTicket, val sequence: Long, val observedAt: Long, val status: AssignmentStatus, val evidence: List<ActionEvidence> = emptyList(), val reason: String? = null)
-data class AssignmentView(val ticket: AssignmentTicket, val task: TaskCall<*>, val issuedAt: Long, val status: AssignmentStatus, val report: ChildReport?, val holdReason: String? = null)
+data class ChildReport(val ticket: AssignmentTicket, val sequence: Long, val observedAt: Long, val status: AssignmentStatus, val evidence: List<ActionEvidence> = emptyList(), val reason: String? = null, val revision: Long = 0)
+data class AssignmentView(val ticket: AssignmentTicket, val task: TaskCall<*>, val issuedAt: Long, val status: AssignmentStatus, val report: ChildReport?, val holdReason: String? = null, val revision: Long = 0, val revisedAt: Long = issuedAt, val continuous: Boolean = false)
 data class AssignmentEvent(val assignment: AssignmentView, val reason: String, val at: Long)
 sealed interface DelegationResult {
     data class Assigned(val assignment: AssignmentView) : DelegationResult
@@ -32,16 +32,16 @@ class AssignmentLedger(
     private val byOwner = HashMap<PlanOwner, MutableSet<ExecutionTicket>>()
     private val terminal = setOf(AssignmentStatus.SUCCEEDED, AssignmentStatus.FAILED, AssignmentStatus.REVOKED)
 
-    fun delegate(parent: ExecutionTicket, child: AgentId, task: TaskCall<*>, now: Long): DelegationResult {
+    fun delegate(parent: ExecutionTicket, child: AgentId, task: TaskCall<*>, now: Long, continuous: Boolean = false): DelegationResult {
         if (!live(parent)) return DelegationResult.Rejected("parent_execution_expired")
         if (child.level.ordinal != parent.owner.agent.level.ordinal + 1) return DelegationResult.Rejected("invalid_hierarchy_edge")
         if (!authorized(parent.owner.agent, child)) return DelegationResult.Rejected("no_command_authority")
         val previous = byChild[child]?.let(assignments::getValue)
-        if (previous != null && previous.ticket.parent == parent && previous.task == task && previous.status != AssignmentStatus.REVOKED) return DelegationResult.Assigned(previous)
-        if (previous != null && previous.ticket.parent != parent && previous.status !in terminal && live(previous.ticket.parent)) return DelegationResult.Rejected("child_already_assigned")
+        if (previous != null && previous.ticket.parent == parent && previous.task == task && previous.continuous == continuous && previous.status != AssignmentStatus.REVOKED) return DelegationResult.Assigned(previous)
+        if (previous != null && previous.ticket.parent != parent && previous.status != AssignmentStatus.REVOKED && live(previous.ticket.parent) && authorized(previous.ticket.parent.owner.agent, child)) return DelegationResult.Rejected("child_already_assigned")
         if (previous != null) revoke(previous.ticket, now, "assignment_replaced")
         val ticket = AssignmentTicket(UUID.randomUUID(), parent, child)
-        val assignment = AssignmentView(ticket, task, now, AssignmentStatus.OFFERED, null)
+        val assignment = AssignmentView(ticket, task, now, AssignmentStatus.OFFERED, null, continuous = continuous)
         assignments[ticket.id] = assignment
         byChild[child] = ticket.id
         byParent.getOrPut(parent, ::LinkedHashSet).add(ticket.id)
@@ -52,8 +52,8 @@ class AssignmentLedger(
 
     fun report(report: ChildReport, now: Long): Boolean {
         val current = assignments[report.ticket.id] ?: return false
-        if (current.ticket != report.ticket || current.status in terminal || !live(current.ticket.parent)) return false
-        if (report.sequence <= (current.report?.sequence ?: -1) || report.observedAt !in current.issuedAt..now) return false
+        if (current.ticket != report.ticket || report.revision != current.revision || (current.status in terminal && !(current.continuous && current.status == AssignmentStatus.SUCCEEDED)) || !live(current.ticket.parent)) return false
+        if (report.sequence <= (current.report?.sequence ?: -1) || report.observedAt !in current.revisedAt..now) return false
         if (report.observedAt < (current.report?.observedAt ?: current.issuedAt)) return false
         if (report.status !in setOf(AssignmentStatus.ACTIVE, AssignmentStatus.WAITING, AssignmentStatus.SUCCEEDED, AssignmentStatus.FAILED)) return false
         if (report.evidence.any { it.observedAt > report.observedAt }) return false
@@ -66,9 +66,20 @@ class AssignmentLedger(
 
     fun view(ticket: AssignmentTicket): AssignmentView? = assignments[ticket.id]?.takeIf { it.ticket == ticket }
 
+    fun revise(ticket: AssignmentTicket, task: TaskCall<*>, now: Long): Boolean {
+        val current = view(ticket) ?: return false
+        if ((current.status in terminal && !(current.continuous && current.status == AssignmentStatus.SUCCEEDED)) || !live(ticket.parent) || current.task.key != task.key) return false
+        require(now >= current.issuedAt)
+        if (current.task == task) return true
+        val next = current.copy(task = task, revision = current.revision + 1, revisedAt = now, report = null, status = AssignmentStatus.OFFERED)
+        assignments[ticket.id] = next
+        event(AssignmentEvent(next, "assignment_revised", now))
+        return true
+    }
+
     fun hold(ticket: AssignmentTicket, now: Long, reason: String?): Boolean {
         val current = view(ticket) ?: return false
-        if (current.status in terminal || !live(ticket.parent)) return false
+        if ((current.status in terminal && !(current.continuous && current.status == AssignmentStatus.SUCCEEDED)) || !live(ticket.parent)) return false
         require(now >= current.issuedAt)
         if (current.holdReason == reason) return true
         val next = current.copy(holdReason = reason)

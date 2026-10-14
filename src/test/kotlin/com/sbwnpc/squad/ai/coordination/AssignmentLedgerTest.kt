@@ -78,4 +78,43 @@ class AssignmentLedgerTest {
         assertFalse(ledger.report(active.copy(sequence = 3, observedAt = 13), 13))
         assertEquals(AssignmentStatus.SUCCEEDED, ledger.view(assignment.ticket)!!.status)
     }
+
+    @Test fun `revised goal preserves owner but rejects completion of previous revision`() {
+        val ledger = AssignmentLedger({ true }, { _, _ -> true })
+        val assignment = assigned(ledger.delegate(operation, squad, goal.call("old"), 0))
+        assertTrue(ledger.report(ChildReport(assignment.ticket, 1, 1, AssignmentStatus.ACTIVE), 1))
+        assertTrue(ledger.revise(assignment.ticket, goal.call("new"), 2))
+        val updated = ledger.view(assignment.ticket)!!
+        assertEquals(assignment.ticket.owner, updated.ticket.owner)
+        assertEquals(1, updated.revision)
+        val oldReply = ChildReport(assignment.ticket, 2, 3, AssignmentStatus.SUCCEEDED, listOf(ActionEvidence("old_goal", 3)))
+        assertFalse(ledger.report(oldReply, 3))
+        assertFalse(ledger.report(oldReply.copy(revision = 1, observedAt = 1), 3))
+        assertTrue(ledger.report(oldReply.copy(revision = 1, evidence = listOf(ActionEvidence("new_goal", 3))), 3))
+    }
+
+    @Test fun `revoked command authority permits moving only the affected child to new team`() {
+        val other = operation.copy(identity = "other")
+        var allowedOld = true
+        val ledger = AssignmentLedger({ true }, { parent, _ -> parent != operation.owner.agent || allowedOld })
+        val first = assigned(ledger.delegate(operation, squad, goal.call("old"), 0))
+        allowedOld = false
+        // Both tickets use the same agent, so use an independent parent identity for the new authority.
+        val different = other.copy(owner = other.owner.copy(agent = agent(AgentLevel.OPERATION, 30)))
+        val second = assigned(ledger.delegate(different, squad, goal.call("new"), 1))
+        assertNotEquals(first.ticket, second.ticket)
+        assertEquals(AssignmentStatus.REVOKED, ledger.view(first.ticket)!!.status)
+    }
+
+    @Test fun `continuous post success remains owned and can be lost or revised`() {
+        val ledger = AssignmentLedger({ true }, { _, _ -> true })
+        val assignment = assigned(ledger.delegate(operation, squad, goal.call("post"), 0, continuous = true))
+        assertTrue(ledger.report(ChildReport(assignment.ticket, 1, 1, AssignmentStatus.SUCCEEDED, listOf(ActionEvidence("arrived", 1))), 1))
+        assertEquals(DelegationResult.Rejected("child_already_assigned"), ledger.delegate(operation.copy(identity = "other"), squad, goal.call("steal"), 2))
+        assertTrue(ledger.report(ChildReport(assignment.ticket, 2, 2, AssignmentStatus.ACTIVE), 2))
+        assertTrue(ledger.revise(assignment.ticket, goal.call("next_post"), 3))
+        assertEquals(assignment.ticket.owner, ledger.view(assignment.ticket)!!.ticket.owner)
+        assertTrue(ledger.revoke(assignment.ticket, 4, "new_order"))
+        assertFalse(ledger.report(ChildReport(assignment.ticket, 3, 5, AssignmentStatus.ACTIVE, revision = 1), 5))
+    }
 }

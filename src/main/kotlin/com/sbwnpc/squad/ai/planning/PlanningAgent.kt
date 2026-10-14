@@ -29,7 +29,13 @@ class PlanningAgent(
     fun command(order: java.util.UUID, task: TaskCall<*>, facts: FactSnapshot) {
         require(facts.owner == agent)
         val next = PlanOwner(agent, order)
-        if (next == owner && task == root) return
+        if (next == owner) {
+            if (task != root) {
+                root = task
+                repair(facts)
+            }
+            return
+        }
         runtime.clear(facts.now, "new_command")
         owner = next
         root = task

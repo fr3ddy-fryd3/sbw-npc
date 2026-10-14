@@ -20,6 +20,10 @@ interface ActionExecution {
     fun suspend(now: Long, reason: String)
     fun resume(now: Long)
     fun cancel(now: Long, reason: String)
+    fun dispose(now: Long, reason: String) = Unit
+
+    /** Synchronous adapters may revise intent in place; asynchronous actions use a new execution. */
+    fun revise(spec: ActionSpec<*>, now: Long): Boolean = false
 }
 fun interface ActionFactory {
     fun create(ticket: ExecutionTicket, spec: ActionSpec<*>): ActionExecution
@@ -67,6 +71,7 @@ class PlanRuntime(
         var reason: String? = null
         var instance: ActionExecution? = null
         var started = false
+        var acceptsExternal = true
         var evidence: List<ActionEvidence> = emptyList()
         var activeTicks = 0L
         var lastTick: Long? = null
@@ -105,14 +110,24 @@ class PlanRuntime(
         require(next.tasks.all { task -> task.after.all { dependency -> next.tasks.any { it.node == dependency } } })
         for ((id, entry) in entries.toMap()) {
             val replacement = desired[id]
-            val compatible = next.owner == entry.ticket.owner && replacement?.spec?.action == entry.task.spec.action &&
+            val actionCompatible = replacement != null && (
+                replacement.spec.action == entry.task.spec.action ||
+                    (
+                        next.owner == entry.ticket.owner && entry.status in setOf(ExecutionStatus.RUNNING, ExecutionStatus.SUSPENDED) &&
+                            replacement.spec.action.key == entry.task.spec.action.key && replacement.spec.action.resources == entry.task.spec.action.resources &&
+                            replacement.spec.action.priority == entry.task.spec.action.priority && replacement.spec.action.timeoutTicks == entry.task.spec.action.timeoutTicks &&
+                            entry.instance?.revise(replacement.spec.action, facts.now) == true
+                        )
+                )
+            val compatible = next.owner == entry.ticket.owner && actionCompatible &&
                 entry.status !in setOf(ExecutionStatus.FAILED, ExecutionStatus.CANCELLED)
             val stillComplete = entry.status != ExecutionStatus.COMPLETED || replacement?.spec?.contract?.completed?.evaluate(facts) == Verdict.Allowed
             if (!compatible || !stillComplete) {
                 cancel(entry, facts.now, "assignment_changed")
                 entries.remove(id)
             } else {
-                entry.task = replacement!!
+                if (replacement!!.spec.action != entry.task.spec.action) entry.acceptsExternal = false
+                entry.task = replacement
             }
         }
         for (task in next.tasks) entries.getOrPut(task.spec.identity) { Entry(task, ExecutionTicket(next.owner, task.spec.identity, ++generation, session)) }
@@ -183,7 +198,7 @@ class PlanRuntime(
     /** Delayed completions may only update the exact live execution which issued the request. */
     fun accept(ticket: ExecutionTicket, update: ActionUpdate, facts: FactSnapshot): Boolean {
         val entry = entries[ticket.identity] ?: return false
-        if (entry.ticket != ticket || !entry.started || entry.status !in setOf(ExecutionStatus.RUNNING, ExecutionStatus.SUSPENDED)) return false
+        if (entry.ticket != ticket || !entry.acceptsExternal || !entry.started || entry.status !in setOf(ExecutionStatus.RUNNING, ExecutionStatus.SUSPENDED)) return false
         val current = plan ?: return false
         if (held) return false
         require(facts.owner == current.owner.agent) { "Foreign execution context" }
@@ -230,6 +245,7 @@ class PlanRuntime(
     }
     private fun cancel(entry: Entry, now: Long, reason: String) {
         if (entry.started && entry.status !in setOf(ExecutionStatus.COMPLETED, ExecutionStatus.FAILED, ExecutionStatus.CANCELLED)) entry.instance!!.cancel(now, reason)
+        if (entry.started) entry.instance!!.dispose(now, reason)
         leases.release(entry.ticket)
         change(entry, ExecutionStatus.CANCELLED, reason)
     }

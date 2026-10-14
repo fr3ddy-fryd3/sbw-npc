@@ -195,4 +195,60 @@ class PlanRuntimeTest {
         assertThrows(IllegalArgumentException::class.java) { runtime.tick(foreign) }
         assertEquals(ExecutionStatus.PENDING, runtime.reports.getValue("move").status)
     }
+
+    @Test fun `synchronous intent revision retains cursor but rejects an old external completion`() {
+        var currentGoal = 1
+        var instances = 0
+        val runtime = PlanRuntime({ _, _ ->
+            instances++
+            object : ActionExecution {
+                override fun start(now: Long) = ActionUpdate.Running
+                override fun tick(now: Long) = if (currentGoal == 3) complete(now) else ActionUpdate.Running
+                override fun suspend(now: Long, reason: String) = Unit
+                override fun resume(now: Long) = Unit
+                override fun cancel(now: Long, reason: String) = Unit
+                override fun revise(spec: ActionSpec<*>, now: Long): Boolean {
+                    currentGoal = spec.parameters as Int
+                    return true
+                }
+            }
+        }, ResourceLeases())
+        runtime.install(plan(task("move", goal = 1)), facts(0))
+        runtime.tick(facts(0))
+        val oldTicket = runtime.reports.getValue("move").ticket
+        runtime.install(plan(task("move", goal = 2)), facts(1))
+        assertEquals(oldTicket, runtime.reports.getValue("move").ticket)
+        assertFalse(runtime.accept(oldTicket, complete(1), facts(1)))
+        assertFalse(runtime.completed)
+        runtime.install(plan(task("move", goal = 3)), facts(2))
+        runtime.tick(facts(2))
+        assertTrue(runtime.completed)
+        assertEquals(1, instances)
+    }
+
+    @Test fun `removing completed post disposes its claim without cancelling a finished action`() {
+        var disposed = 0
+        var cancelled = 0
+        val runtime = PlanRuntime({ _, _ ->
+            object : ActionExecution {
+                override fun start(now: Long) = complete(now)
+                override fun tick(now: Long) = complete(now)
+                override fun suspend(now: Long, reason: String) = Unit
+                override fun resume(now: Long) = Unit
+                override fun cancel(now: Long, reason: String) {
+                    cancelled++
+                }
+                override fun dispose(now: Long, reason: String) {
+                    disposed++
+                }
+            }
+        }, ResourceLeases())
+        runtime.install(plan(task("post")), facts(0))
+        runtime.tick(facts(0))
+        assertTrue(runtime.completed)
+        runtime.clear(1, "new_order")
+        runtime.clear(2, "already_removed")
+        assertEquals(1, disposed)
+        assertEquals(0, cancelled)
+    }
 }

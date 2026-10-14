@@ -108,4 +108,21 @@ class PlanningAgentTest {
         assertFalse(runtime.isLive(ticket))
         assertEquals(1, work.cancelled)
     }
+
+    @Test fun `changed root within same order repairs without revoking equivalent live leaf`() {
+        val work = Work()
+        val other = TaskKey("alternative_root", Unit::class.java)
+        val domain = HtnDomain(AgentLevel.SQUAD, listOf(root, other).map { key -> PrimitiveTask(key) { PrimitiveSpec("stable", ActionSpec(action, "same"), TaskContract()) } })
+        val runtime = PlanRuntime({ _, _ -> work }, ResourceLeases())
+        val agent = PlanningAgent(id, domain, runtime)
+        val order = UUID(0, 9)
+        agent.command(order, root.call(Unit), facts(0))
+        agent.tick(facts(0), planningWork = 10)
+        val ticket = runtime.reports.getValue("stable").ticket
+        agent.command(order, other.call(Unit), facts(1))
+        assertEquals(0, work.cancelled)
+        agent.tick(facts(1), planningWork = 10)
+        assertEquals(ticket, runtime.reports.getValue("stable").ticket)
+        assertEquals(1, work.starts)
+    }
 }
