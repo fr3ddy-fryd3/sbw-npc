@@ -45,6 +45,30 @@ class OperationFrontTest {
         assertTrue(result.anchor.horizontalDistanceSquared(focus) < 48.0 * 48.0)
     }
 
+    /** No forward shooter's line to its aim passes within [margin] of another one nearer the enemy. */
+    private fun assertClearLanes(proposals: Map<UUID, FrontProposal>, margin: Double = 1.5, aim: (Point3) -> Point3) {
+        val shooters = proposals.values.filter { it.duty == CombatDuty.MOVE || it.duty == CombatDuty.FIRE }.map { it.anchor }
+        for (from in shooters) {
+            val to = aim(from)
+            val dx = to.x - from.x
+            val dz = to.z - from.z
+            val length = dx * dx + dz * dz
+            for (other in shooters) {
+                if (other === from) continue
+                val t = ((other.x - from.x) * dx + (other.z - from.z) * dz) / length
+                if (t <= 0.0 || t >= 1.0) continue
+                val distance = kotlin.math.hypot(from.x + dx * t - other.x, from.z + dz * t - other.z)
+                assertTrue(distance >= margin, "Shot from $from to $to passes $distance from $other")
+            }
+        }
+    }
+
+    @Test fun `no shooter stands in another one's line of fire`() {
+        assertClearLanes(OperationFront.propose(actors, listOf(focus), focus)) { focus }
+        val wide = listOf(Point3(120.0, 1.0, -64.0), Point3(120.0, 1.0, 128.0))
+        assertClearLanes(OperationFront.propose(actors, wide, focus)) { Point3(120.0, 1.0, it.z.coerceIn(-64.0, 128.0)) }
+    }
+
     @Test fun `reinforcement fills extra capacity without redistributing surviving roles`() {
         val before = OperationFront.propose(actors, listOf(focus), focus)
         val reinforcement = (64L..67L).map { FormationActor(UUID(0, it), UUID(1, 3), Point3(0.0, 1.0, 32.0)) }
