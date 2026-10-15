@@ -32,6 +32,10 @@ two different claims.
 - **Taking a task: assign it to yourself first**, before any work on it, so nobody else takes
   it. Then move it to **In progress** and say in a comment which branch holds the work.
 - Don't start on an issue that has an assignee other than you. Ask in a comment instead.
+- **Keep the `Status` current as the work moves.** Move the issue to **In review** when its PR is
+  open or the change waits for an in-game check, with a comment on what was verified. Move it back
+  to **In progress** if review or the in-game check finds a problem. **Done** only after the
+  change is merged into `develop`, and confirmed in-game where that applies.
 - Something you found mid-task that isn't part of the task, such as a bug or an idea: file a new
   issue (usually **Backlog**) instead of widening the current change.
 - Issues are work items for agents. A question for the person you work for is asked in your
@@ -82,10 +86,11 @@ two different claims.
   GameTest scenes, which in-game scenario, and what you saw. Say plainly what was not checked.
 - **Behaviour changes need an in-game check by a human** before they are merged. Put the steps to
   check in the PR.
-- **Pushing, opening PRs and merging** are publishing steps. An agent does them only with
-  explicit approval from the person it works for, for that specific push. Approval does not
-  carry over to the next push. Don't push directly to `develop` or `master` unless the owner asks
-  for exactly that.
+- **Your own feature branch:** push after every commit, without asking, so the work in progress
+  is visible to everyone.
+- **`develop`, `master` or someone else's branch:** push to it, merge into it or open a PR into it
+  only with explicit approval from the owner for that specific step. Approval does not carry over
+  to the next one.
 - A PR links its issue (`Closes #N`), says what changed and why, and lists how it was verified.
 - When the person you work for says to slow down ("не торопись" or similar), stop and wait.
   Don't keep proposing or making the next change.
