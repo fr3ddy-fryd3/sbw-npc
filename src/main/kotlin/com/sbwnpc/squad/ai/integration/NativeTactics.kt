@@ -275,15 +275,19 @@ object NativeTactics {
                     val view = snapshots.getValue(saved.id)
                     // Squads holding one point get adjacent areas, so a joining squad settles in its
                     // own area beside the point: being inside it is its arrival at the held point.
-                    val joined = operations.operation(pending.operation)?.takeIf { it.order != TacticalOrder.ATTACK }
+                    val target = operations.operation(pending.operation)
+                    val joined = target?.takeIf { it.order != TacticalOrder.ATTACK }
                     val settled = joined != null && SquadAreas.assigned(level, saved.id)?.let { view.center.subtract(it.center).horizontalDistance() <= it.request.radius } == true
+                    // A squad reaches the entry when its nearest ready man does: pinned by fire, its
+                    // centre can stop just outside while the squad already stands at the fight.
+                    val front = target?.let { op -> view.members.filter { it.ready }.minByOrNull { it.position.point().horizontalDistanceSquared(op.entry.center) }?.position }
                     operations.arrive(
                         ArrivalReport(
                             saved.id,
                             saved.orderStamp.toLong(),
                             pending.operation,
                             now,
-                            if (settled) joined!!.entry.center else view.center.point(),
+                            if (settled) joined!!.entry.center else (front ?: view.center).point(),
                             // Reinforcements join a fight in progress: incoming fire does not hold them out.
                             !view.grenade,
                             view.members.any { it.ready },

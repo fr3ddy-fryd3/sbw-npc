@@ -237,8 +237,7 @@ object HtnTacticsGameTests {
             if (joinedAt == null && NativeTactics.coordinated(npc)) {
                 helper.assertTrue(pendingObserved, "Reinforcement was counted before travelling to the operation")
                 val operation = requireNotNull(NativeTactics.operation(original))
-                val position = requireNotNull(NativeTactics.snapshot(npc)).center
-                helper.assertTrue(operation.entry.contains(com.sbwnpc.squad.ai.coordination.Point3(position.x, position.y, position.z)), "Reinforcement joined outside its physical entry area")
+                helper.assertTrue(group.any { operation.entry.contains(com.sbwnpc.squad.ai.coordination.Point3(it.x, it.y, it.z)) }, "Reinforcement joined with nobody inside its physical entry area")
                 joinedAt = helper.tick
             }
             if (joinedAt != null && leftAt == null && helper.tick - joinedAt!! >= 100) {
