@@ -361,7 +361,8 @@ class SquadMapPlugin : IClientPlugin {
             if (own) {
                 val goal = t.getIntArray("Goal").takeIf { it.size == 3 }
                 val goalOrder = runCatching { SquadOrder.valueOf(t.getString("GoalOrder")) }.getOrNull()
-                if (goal != null && goalOrder != null) {
+                // Only an attack, defence or patrol is worth joining; a squad on the move just passes through.
+                if (goal != null && goalOrder != null && goalOrder in JOINABLE) {
                     val at = BlockPos(goal[0], goal[1], goal[2])
                     val mark = operations.getOrPut(goalOrder to at) { OperationMark(goalOrder, at, color, t.getInt("Allies")) }
                     mark.names += name
@@ -672,6 +673,9 @@ class SquadMapPlugin : IClientPlugin {
         const val CIRCLE_POINTS = 32
         const val SELECTION_SIZE = 22.0
         const val OPERATION_SIZE = 18.0
+
+        /** Operations other squads can be sent to join. */
+        val JOINABLE = setOf(SquadOrder.ATTACK, SquadOrder.DEFEND, SquadOrder.PATROL)
 
         /** How close to an operation's point, in screen pixels, a right-click offers to join it. */
         const val JOIN_REACH_PIXELS = 24.0
