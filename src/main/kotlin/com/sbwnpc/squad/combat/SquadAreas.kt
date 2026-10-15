@@ -46,6 +46,9 @@ object SquadAreas {
         return world.layout.area(squad.id)?.takeIf { it.request.point == requested && it.request.faction == squad.faction }?.center ?: requested
     }
 
+    /** The local area [squad] was given beside its requested point, if it holds one. */
+    fun assigned(level: ServerLevel, squad: UUID): SquadArea? = worlds[level]?.layout?.area(squad)
+
     /** Used by arrival as well as movement, so a separated retreat cannot finish at another squad. */
     fun rallySlot(npc: NpcEntity, point: Vec3): Vec3 {
         val squad = npc.currentSquad() ?: return point

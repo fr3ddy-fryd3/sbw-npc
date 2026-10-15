@@ -249,7 +249,9 @@ object NativeTactics {
                     val view = snapshots.getValue(first.id)
                     val objective = first.tacticalObjective ?: first.objective ?: net.minecraft.core.BlockPos.containing(view.home ?: view.center)
                     val direction = objective.center.subtract(view.center).multiply(1.0, 0.0, 1.0).normalize()
-                    val entry = objective.center.subtract(direction.scale(48.0))
+                    // An attack is joined short of the objective, on the side it was approached from.
+                    // A held point (defence, patrol) is already occupied, so it is joined at the point.
+                    val entry = if (first.order == SquadOrder.ATTACK) objective.center.subtract(direction.scale(48.0)) else objective.center
                     val participants = selected.map { (saved, _) -> SquadParticipant(saved.id, saved.owner, saved.faction.name, level.dimension().location().toString(), saved.orderStamp.toLong()) }
                     val commandId = UUID.nameUUIDFromBytes("$group:${selected.joinToString { "${it.first.id}:${it.first.orderStamp}" }}".toByteArray())
                     val key = first.command?.goal?.takeIf { first.commandOutcome == CommandOutcome.ACTIVE && first.command?.order?.name == first.order.name } ?: ObjectiveKey.Area(first.objectiveDimension?.location()?.toString() ?: level.dimension().location().toString(), objective.x, objective.y, objective.z)
@@ -268,13 +270,17 @@ object NativeTactics {
                 loaded.forEach { (saved, _) ->
                     val pending = operations.pending(saved.id) ?: return@forEach
                     val view = snapshots.getValue(saved.id)
+                    // Squads holding one point get adjacent areas, so a joining squad settles in its
+                    // own area beside the point: being inside it is its arrival at the held point.
+                    val joined = operations.operation(pending.operation)?.takeIf { it.order != TacticalOrder.ATTACK }
+                    val settled = joined != null && SquadAreas.assigned(level, saved.id)?.let { view.center.subtract(it.center).horizontalDistance() <= it.request.radius } == true
                     operations.arrive(
                         ArrivalReport(
                             saved.id,
                             saved.orderStamp.toLong(),
                             pending.operation,
                             now,
-                            view.center.point(),
+                            if (settled) joined!!.entry.center else view.center.point(),
                             view.incoming.isEmpty() && !view.grenade,
                             view.members.any { it.ready },
                         ),

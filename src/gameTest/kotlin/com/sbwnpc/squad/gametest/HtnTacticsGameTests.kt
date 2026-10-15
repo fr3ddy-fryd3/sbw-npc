@@ -256,6 +256,42 @@ object HtnTacticsGameTests {
         }
     }
 
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1200, batch = "htn-defend-join")
+    fun htnSquadJoinsHeldDefenceAtItsPoint(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "htn-defend-join")
+        val manager = SquadManager.get(helper.level)
+        val principal = UUID(90, 7)
+        val holders = (0 until 4).map { scene.spawn(Vec3(80.5 + it % 2 * 3, 1.0, 96.5 + it / 2 * 3)) }
+        val squad = manager.create(helper.level, principal, requireNotNull(holders.first().spawnFaction), holders.map { it.uuid })
+        var joiner: com.sbwnpc.squad.squad.Squad? = null
+        var joiners = emptyList<NpcEntity>()
+        scene.onClose = { listOfNotNull(squad, joiner).forEach { manager.deleteSquad(helper.level, it.id) } }
+        val point = helper.absolutePos(BlockPos(82, 1, 98))
+        GroupOrders.apply(helper.level, manager, listOf(squad.id), SquadOrder.DEFEND, point.x, point.z)
+        var pendingObserved = false
+        helper.onEachTick {
+            val operation = NativeTactics.operation(holders.first())
+            if (helper.tick == 100L) {
+                // The map's "Join defend" sends the operation's exact point, here from another side.
+                val area = requireNotNull(operation?.objective as? com.sbwnpc.squad.ai.coordination.ObjectiveKey.Area) { "Defence formed no operation" }
+                joiners = (0 until 4).map { scene.spawn(Vec3(82.5 + it * 3, 1.0, 150.5)) }
+                joiner = manager.create(helper.level, principal, requireNotNull(joiners.first().spawnFaction), joiners.map { it.uuid })
+                GroupOrders.apply(helper.level, manager, listOf(joiner!!.id), SquadOrder.DEFEND, area.x, area.z)
+            }
+            if (joiners.isEmpty()) return@onEachTick
+            if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} pending=$pendingObserved holders=${operation?.members?.size} joiners=${joiners.map { helper.relativeVec(it.position()) }}")
+            if (!NativeTactics.coordinated(joiners.first())) {
+                if (helper.tick > 110) pendingObserved = true
+                return@onEachTick
+            }
+            helper.assertTrue(pendingObserved, "Joining squad was counted before it reached the defended point")
+            helper.assertTrue(NativeTactics.operation(joiners.first())?.id == operation?.id, "Joining squad formed its own defence")
+            scene.result("PASS", "tick=${helper.tick} members=${operation?.members?.size}")
+            helper.succeed()
+        }
+    }
+
     private fun jointAttack(helper: GameTestHelper, wide: Boolean) {
         val name = if (wide) "htn-wide" else "htn-compact"
         val scene = CombatIdleGameTests.Scene(helper, name)
