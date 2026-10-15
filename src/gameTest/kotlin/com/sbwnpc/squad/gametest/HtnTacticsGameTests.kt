@@ -239,6 +239,7 @@ object HtnTacticsGameTests {
                 joinedAt = helper.tick
             }
             if (joinedAt != null && leftAt == null && helper.tick - joinedAt!! >= 100) {
+                helper.assertTrue(group.all { helper.relativeVec(it.position()).x >= 17.5 }, "A reinforcement support member stayed near its distant spawn: ${group.map { helper.relativeVec(it.position()) to NativeTactics.reports(it) }}")
                 retainedTickets = groups.flatten().mapNotNull { actor -> NativeTactics.reports(actor)["position"]?.ticket?.let { actor.uuid to it } }.toMap()
                 manager.issueOrderAt(helper.level, squads.last().id, SquadOrder.MOVE, BlockPos.containing(npc.position().add(-20.0, 0.0, 0.0)))
                 leftAt = helper.tick

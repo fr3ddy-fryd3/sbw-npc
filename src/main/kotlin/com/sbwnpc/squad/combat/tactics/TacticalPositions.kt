@@ -288,7 +288,7 @@ object TacticalPositions {
             search.reject("close_enemy")
             return
         }
-        if (!context.overwatch && (kotlin.math.abs(candidate.y - entity.y) > 12.0 || candidate.distanceTo(entity.position()) > 48.0)) return
+        if (!context.overwatch && (kotlin.math.abs(candidate.y - entity.y) > 12.0 || candidate.distanceTo(entity.position()) > SEARCH_REACH)) return
         if (task.opensLane && focus != null && !TacticalRoutes.safeLaneProbe(search.origin, candidate, focus, task.probeAdvance)) return
         val body = entity.getDimensions(entity.pose).makeBoundingBox(candidate)
         if (!safeBody(entity, candidate, body, context.hulls, context.taken)) {
@@ -713,6 +713,9 @@ object TacticalPositions {
         return !Sightline.blockedBy(level, eye, aim.eye, entity, hulls, entity.spread) &&
             friendlyLane(entity, eye, aim.eye)
     }
+
+    /** Candidates farther from the searching NPC are skipped; a distant post needs an approach first. */
+    const val SEARCH_REACH = 48.0
     private const val MAX_PROBES_PER_TICK = 24
     private const val DENSE_CANDIDATE_BATCH = 16
     private val SHOOTING_JOBS = TacticalJob.FIRING_POSITIONS
