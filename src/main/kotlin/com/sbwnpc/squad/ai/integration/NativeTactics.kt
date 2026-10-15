@@ -19,6 +19,9 @@ import kotlin.math.max
 object NativeTactics {
     /** Farthest fire-post anchor whose local probes still fall inside the position query's reach. */
     private const val FIRE_POST_REACH = TacticalPositions.SEARCH_REACH - CombatPosition.LOCAL_MOVE_RADIUS
+
+    /** Seen enemies this close to an attacked area keep it from counting as held. */
+    private const val AREA_THREAT_RADIUS = 128.0
     private val worlds = HashMap<ServerLevel, World>()
     private fun world(npc: NpcEntity) = worlds.getOrPut(npc.level() as ServerLevel) { World(npc.level() as ServerLevel) }
     fun refresh(npc: NpcEntity) {
@@ -354,7 +357,7 @@ object NativeTactics {
             areaTasks[task.operation] = task
             val point = task.objective.native()
             val observers = squads.flatMap { saved -> saved.members.mapNotNull { level.getEntity(it) as? NpcEntity } }.filter { it.isAlive && it.vehicle == null }
-            val contacts = squads.flatMap { combatView(it.id)?.contacts.orEmpty() }.filter { now - it.seenAt <= 200 && it.position.distanceTo(point) <= 160 }.distinctBy { it.id }
+            val contacts = squads.flatMap { combatView(it.id)?.contacts.orEmpty() }.filter { now - it.seenAt <= 200 && it.position.distanceTo(point) <= AREA_THREAT_RADIUS }.distinctBy { it.id }
             val remaining = unverified.getOrPut(task.operation, ::LinkedHashMap)
             contacts.forEach { remaining[it.id] = it.position }
             val known = contacts.mapTo(HashSet()) { it.id }
