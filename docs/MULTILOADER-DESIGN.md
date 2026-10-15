@@ -25,6 +25,9 @@ Use Mojang names for the 1.21.1 baseline; Fabric's production jar requires Loom 
 Keep ModDevGradle for NeoForge, use Fabric Loom for Fabric, and choose Forge tooling
 after its target is agreed. Prove Kotlin, mappings, resources, mixins and development
 runs in a small build spike before migrating the full tree. Pin compatible tool versions.
+Each loader needs its Kotlin language provider: KotlinForForge for NeoForge/Forge
+and fabric-language-kotlin for Fabric. The spike must prove the shared Kotlin sources
+compile and the mod loads with each enabled loader's provider and entrypoint metadata.
 
     build-logic/             shared Gradle conventions
     common/src/main/         gameplay, contracts, assets and data
@@ -72,7 +75,7 @@ Keep GunPoses/GunRendering and their bootstrap strictly client-only.
 Install mandatory ports before gameplay and fail startup clearly if an adapter is missing.
 Introduce narrow platform contracts only for actual shared needs, such as packet transport
 and settings. Loader events call common handlers; avoid a universal event/registry framework.
-SbwPlayerSupply's getData(ModDataAttachments.PLAYER_VARIABLE) stays inside its adapter;
+SbwPlayerSupply's getData(ModAttachments.PLAYER_VARIABLE) stays inside its adapter;
 Fabric must use its fork's actual storage while preserving the PlayerSupply contract.
 SBW event bridges and mixin targets likewise belong to the relevant adapter.
 
@@ -84,8 +87,9 @@ Allow an explicit local override for development and report it in build output.
 Release CI uses clean pinned inputs and rejects missing/mismatched profiles.
 Isolate composite builds/substitution by selected loader so one fork cannot satisfy another.
 Use a published SBW artifact only if its API suffices; otherwise build pinned upstream source.
-Do not bundle SBW. Resolve SmartBrainLib, Kotlin runtime, GeckoLib, SimpleBedrockModel
-and optional JourneyMap separately for each loader; availability is not assumed.
+Do not bundle SBW. Resolve SmartBrainLib, the loader's Kotlin language provider,
+GeckoLib, SimpleBedrockModel and optional JourneyMap separately for each loader;
+availability is not assumed. Match each provider's Kotlin runtime to the compiler version.
 
 Before #15/#16 implementation, record a compatibility matrix: required port/mixin behaviour,
 upstream symbol, adaptation, test and blocking gap. Cover guns/ammo/ballistics, projectiles,
@@ -156,3 +160,5 @@ the follow-ups. Implementation of the modules and ports belongs to the follow-up
 - [MultiLoader Template](https://github.com/jaredlll08/MultiLoader-Template)
 - [ModDevGradle and vanilla mode](https://github.com/neoforged/ModDevGradle)
 - [Fabric Loom](https://docs.fabricmc.net/develop/loom/)
+- [KotlinForForge](https://github.com/thedarkcolour/KotlinForForge)
+- [fabric-language-kotlin](https://github.com/FabricMC/fabric-language-kotlin)
