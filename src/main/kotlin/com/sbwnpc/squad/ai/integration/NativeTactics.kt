@@ -44,6 +44,9 @@ object NativeTactics {
     fun operation(npc: NpcEntity): OperationView? = npc.currentSquad()?.let { world(npc).operations.operationOf(it.id) }
     fun operationOf(level: ServerLevel, squad: UUID): OperationView? = worlds[level]?.operations?.operationOf(squad)
     fun coordinated(npc: NpcEntity) = (operation(npc)?.members?.size ?: 0) > 1
+
+    /** Whether [squad] currently counts towards some operation's area completion. */
+    fun holdsArea(squad: UUID) = worlds.values.any { it.holdsArea(squad) }
     fun targetDeath(event: net.neoforged.neoforge.event.entity.living.LivingDeathEvent) {
         val entity = event.entity
         val level = entity.level() as? ServerLevel ?: return
@@ -319,7 +322,9 @@ object NativeTactics {
                             }
                         }
                     }
-                    val active = members.map { it.first }.filter { it.order == SquadOrder.ATTACK && it.commandOutcome == CommandOutcome.ACTIVE }
+                    // A reinforcement still on its way only approaches: the area it is going to
+                    // is held and completed by the operation it joins, never by itself.
+                    val active = members.map { it.first }.filter { it.order == SquadOrder.ATTACK && it.commandOutcome == CommandOutcome.ACTIVE && operations.pending(it.id) == null }
                     val first = active.firstOrNull()
                     val area = first?.command?.goal as? ObjectiveKey.Area ?: first?.objective?.let { point ->
                         if (first.command == null) ObjectiveKey.Area(level.dimension().location().toString(), point.x, point.y, point.z) else null
@@ -539,6 +544,7 @@ object NativeTactics {
             report(agent, now)
         }
         private val areaTasks = HashMap<UUID, AreaControlTask>()
+        fun holdsArea(squad: UUID) = areaTasks.values.any { squad in it.commands.keys }
         private fun currentAreaTask(operation: UUID): AreaControlTask? = areaTasks[operation]
         private fun finishAreas() {
             val manager = SquadManager.get(level)

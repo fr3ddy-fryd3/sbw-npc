@@ -231,7 +231,10 @@ object HtnTacticsGameTests {
             val npc = group.first()
             val original = groups.first().first()
             if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} pendingObserved=$pendingObserved joined=$joinedAt left=$leftAt original=${NativeTactics.operation(original)} reinforcement=${NativeTactics.operation(npc)} actors=${group.map { helper.relativeVec(it.position()) }}")
-            if (joinedAt == null && issuedAt != null && helper.tick > issuedAt!! + 10 && !NativeTactics.coordinated(npc)) pendingObserved = true
+            if (joinedAt == null && issuedAt != null && helper.tick > issuedAt!! + 10 && !NativeTactics.coordinated(npc)) {
+                pendingObserved = true
+                helper.assertTrue(!NativeTactics.holdsArea(squads.last().id), "Pending reinforcement runs its own area completion")
+            }
             // A reinforcement joins a fight in progress: once it reaches the fight it is under fire.
             if (joinedAt == null && helper.tick % 20L == 0L && group.any { helper.relativeVec(it.position()).x >= 65.0 }) group.forEach { it.incomingFire.record(it.position(), Vec3(1.0, 0.0, 0.0), null, helper.level.gameTime) }
             if (joinedAt == null && NativeTactics.coordinated(npc)) {
