@@ -13,7 +13,7 @@ data class FrontProposal(val duty: CombatDuty, val anchor: Point3, val watch: Po
 
 /** Proposes a curved front from reported enemy extent; surplus capacity covers depth and rear. */
 object OperationFront {
-    fun propose(actors: List<FormationActor>, enemies: List<Point3>, focus: Point3?): Map<UUID, FrontProposal> {
+    fun propose(actors: List<FormationActor>, enemies: List<Point3>, focus: Point3?, priorDuties: Map<UUID, CombatDuty> = emptyMap()): Map<UUID, FrontProposal> {
         if (actors.isEmpty()) return emptyMap()
         require(actors.map { it.id }.distinct().size == actors.size)
         val center = Point3(actors.map { it.position.x }.average(), actors.map { it.position.y }.average(), actors.map { it.position.z }.average())
@@ -28,17 +28,30 @@ object OperationFront {
         fun projection(point: Point3) = (point.x - origin.x) * sx + (point.z - origin.z) * sz
         val extents = enemies.map(::projection)
         val width = max(48.0, (extents.maxOrNull() ?: 0.0) - (extents.minOrNull() ?: 0.0) + 24)
-        val columns = max(1, ceil(width / 3).toInt())
+        val columns = min(actors.size, max(1, ceil(width / 3).toInt()))
         val minimumSupport = min(actors.size, max(1, actors.size / 3))
         val frontCount = min(actors.size - minimumSupport, columns * 2)
         val supportCount = min(actors.size - frontCount, max(minimumSupport, frontCount / 2))
         // Round-robin the squads before allocating duties, then preserve lateral order per duty.
         val squads = actors.groupBy { it.squad }.toSortedMap(compareBy { it.toString() }).values.map { group -> group.sortedWith(compareBy<FormationActor> { it.engagementDistance }.thenBy { projection(it.position) }.thenBy { it.id.toString() }) }
         val balanced = (0 until squads.maxOf { it.size }).flatMap { index -> squads.mapNotNull { it.getOrNull(index) } }
+        val remaining = balanced.toMutableList()
+        fun take(duty: CombatDuty, count: Int): List<FormationActor> {
+            val selected = remaining.sortedBy { actor ->
+                when (priorDuties[actor.id]) {
+                    duty -> 0
+                    null -> 1
+                    else -> 2
+                }
+            }.take(count)
+            val ids = selected.mapTo(HashSet()) { it.id }
+            remaining.removeIf { it.id in ids }
+            return selected
+        }
         val groups = listOf(
-            balanced.take(frontCount) to CombatDuty.MOVE,
-            balanced.drop(frontCount).take(supportCount) to CombatDuty.FIRE,
-            balanced.drop(frontCount + supportCount) to CombatDuty.REAR_GUARD,
+            take(CombatDuty.MOVE, frontCount) to CombatDuty.MOVE,
+            take(CombatDuty.FIRE, supportCount) to CombatDuty.FIRE,
+            remaining.toList() to CombatDuty.REAR_GUARD,
         )
         val result = LinkedHashMap<UUID, FrontProposal>()
         for ((members, duty) in groups) {

@@ -60,7 +60,7 @@ internal class NativePositionAction(
     val assignment get() = NativeAssignment(task.job, task.anchor, task.focus, task.position, task.localFirePost, task.localFireRecovery)
     fun reached(): Boolean =
         task.position?.let { FiringPostArrival.reached(npc.position(), it) } == true &&
-            (intent.duty != CombatDuty.MOVE || task.position!!.distanceTo(intent.anchor.native()) <= 4 || task.maneuverPost) &&
+            (intent.duty !in setOf(CombatDuty.MOVE, CombatDuty.SEARCH) || task.position!!.distanceTo(intent.anchor.native()) <= 4 || task.maneuverPost) &&
             (intent.inspection?.let { DetectionSightline.visible(npc.level() as ServerLevel, npc.eyePosition, it.native().add(0.0, 1.5, 0.0), npc) } != false)
 
     override fun start(now: Long): ActionUpdate {

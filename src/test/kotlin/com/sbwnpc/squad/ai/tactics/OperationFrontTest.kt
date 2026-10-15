@@ -44,4 +44,12 @@ class OperationFrontTest {
         val result = OperationFront.propose(listOf(actor), listOf(focus), focus).getValue(actor.id)
         assertTrue(result.anchor.horizontalDistanceSquared(focus) < 48.0 * 48.0)
     }
+
+    @Test fun `reinforcement fills extra capacity without redistributing surviving roles`() {
+        val before = OperationFront.propose(actors, listOf(focus), focus)
+        val reinforcement = (64L..67L).map { FormationActor(UUID(0, it), UUID(1, 3), Point3(0.0, 1.0, 32.0)) }
+        val after = OperationFront.propose(actors + reinforcement, listOf(focus), focus, before.mapValues { it.value.duty })
+        actors.forEach { assertEquals(before.getValue(it.id).duty, after.getValue(it.id).duty) }
+        assertTrue(reinforcement.any { after.getValue(it.id).duty == CombatDuty.REAR_GUARD })
+    }
 }

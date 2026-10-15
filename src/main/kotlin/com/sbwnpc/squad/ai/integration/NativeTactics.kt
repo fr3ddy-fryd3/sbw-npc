@@ -78,6 +78,7 @@ object NativeTactics {
         private val strategies = HashMap<UUID, Pair<CombatStrategy, Long>>()
         private val stability = DecisionStability()
         private val allocationOrigins = HashMap<UUID, Point3>()
+        private val formationDuties = HashMap<UUID, CombatDuty>()
         private val plannedContact = HashMap<UUID, Vec3?>()
         private val failures = HashMap<UUID, LocalPositionFailure>()
         private var nextObservation = Long.MIN_VALUE
@@ -252,6 +253,7 @@ object NativeTactics {
                         missions.remove(saved.id)
                         saved.members.forEach {
                             allocationOrigins.remove(it)
+                            formationDuties.remove(it)
                             plannedContact.remove(it)
                         }
                     }
@@ -321,6 +323,7 @@ object NativeTactics {
                 children.keys.removeIf { it !in desiredAgents }
                 failures.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 allocationOrigins.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
+                formationDuties.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 plannedContact.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 teamAllocators.keys.removeIf { manager.get(it) == null }
                 retiredAssignments.forEach(ledger::forget)
@@ -408,7 +411,9 @@ object NativeTactics {
                 },
                 contacts.map { it.position.point() },
                 focus?.point(),
+                formationDuties,
             )
+            proposals.forEach { (id, proposal) -> formationDuties[id] = proposal.duty }
             return squads.map { saved ->
                 val view = snapshots.getValue(saved.id)
                 val situation = CombatSituation(

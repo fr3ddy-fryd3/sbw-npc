@@ -46,9 +46,11 @@ object HtnTacticsGameTests {
         val original = requireNotNull(squad.command)
         var occupiedAt: Long? = null
         var injectedAt: Long? = null
+        var inspectedAt: Long? = null
         helper.onEachTick {
             val occupied = actors.count { it.position().distanceTo(goal.center) <= 24 } >= 2
             if (occupied && occupiedAt == null) occupiedAt = helper.tick
+            if (actors.any { actor -> NativeTactics.assignment(actor)?.job == TacticalJob.SEARCH && actor.position().distanceTo(goal.center) <= 24 && com.sbwnpc.squad.combat.Vision.inCone(actor.position(), actor.yHeadRot, goal.center) && com.sbwnpc.squad.combat.DetectionSightline.visible(helper.level, actor.eyePosition, goal.center.add(0.0, 1.0, 0.0), actor) }) inspectedAt = inspectedAt ?: helper.tick
             if (occupiedAt != null && injectedAt == null && helper.tick - occupiedAt!! >= 300) {
                 actors.forEach { it.incomingFire.record(it.position(), Vec3(-1.0, 0.0, 0.0), null, helper.level.gameTime) }
                 injectedAt = helper.tick
@@ -56,11 +58,11 @@ object HtnTacticsGameTests {
             if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} occupiedAt=$occupiedAt incomingAt=$injectedAt order=${squad.order} actors=${actors.map { helper.relativeVec(it.position()) to NativeTactics.assignment(it) }}")
             helper.assertTrue(squad.command == original, "Internal mode changed the requested order")
             if (squad.order == SquadOrder.DEFEND) {
-                helper.assertTrue(occupiedAt != null && injectedAt != null, "Attack completed before physical occupation and renewed threat")
+                helper.assertTrue(occupiedAt != null && injectedAt != null && inspectedAt != null, "Attack completed before physical occupation and renewed threat")
                 helper.assertTrue(helper.tick - injectedAt!! >= 600, "Renewed incoming fire did not reset success interval")
                 helper.assertTrue(squad.commandOutcome == com.sbwnpc.squad.ai.tactics.CommandOutcome.COMPLETED, "Physical success was not recorded")
                 helper.assertTrue(squad.tactics.plan == null, "Legacy controller completed the attack")
-                scene.result("PASS", "tick=${helper.tick} occupiedAt=$occupiedAt incomingAt=$injectedAt reason=${squad.commandReason}")
+                scene.result("PASS", "tick=${helper.tick} occupiedAt=$occupiedAt incomingAt=$injectedAt inspectedAt=$inspectedAt reason=${squad.commandReason}")
                 helper.succeed()
             }
         }
