@@ -39,6 +39,7 @@ object NativeTactics {
         world(npc).actions[npc.uuid]?.requestFireRecovery(npc.level().gameTime)
     }
     fun operation(npc: NpcEntity): OperationView? = npc.currentSquad()?.let { world(npc).operations.operationOf(it.id) }
+    fun operationOf(level: ServerLevel, squad: UUID): OperationView? = worlds[level]?.operations?.operationOf(squad)
     fun coordinated(npc: NpcEntity) = (operation(npc)?.members?.size ?: 0) > 1
     fun targetDeath(event: net.neoforged.neoforge.event.entity.living.LivingDeathEvent) {
         val entity = event.entity

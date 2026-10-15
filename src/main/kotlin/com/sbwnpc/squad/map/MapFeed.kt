@@ -110,16 +110,18 @@ object MapFeed {
                 t.putIntArray("Men", members.flatMap { listOf(it.blockX, it.blockZ) }.toIntArray())
             }
             squad.objective?.let { t.putIntArray("Obj", intArrayOf(it.x, it.y, it.z)) }
-            // The point the whole operation was ordered to, not this squad's own spot in the line:
-            // an order sent to exactly this point joins the operation instead of starting another.
-            val command = squad.command?.takeIf { squad.commandOutcome == com.sbwnpc.squad.ai.tactics.CommandOutcome.ACTIVE }
-            val goal = (command?.goal as? com.sbwnpc.squad.ai.coordination.ObjectiveKey.Area)
+            // The point the squad's operation was ordered to, not this squad's own spot in the
+            // line: an order sent to exactly this point joins the operation instead of starting another.
+            val operation = com.sbwnpc.squad.ai.integration.NativeTactics.operationOf(level, squad.id)
+            val goal = (operation?.objective as? com.sbwnpc.squad.ai.coordination.ObjectiveKey.Area)
                 ?.takeIf { it.dimension == level.dimension().location().toString() }
                 ?.let { net.minecraft.core.BlockPos(it.x, it.y, it.z) } ?: squad.tacticalObjective ?: squad.objective
             goal?.let {
                 t.putIntArray("Goal", intArrayOf(it.x, it.y, it.z))
-                t.putString("GoalOrder", command?.order?.name ?: squad.order.name)
+                t.putString("GoalOrder", operation?.order?.name ?: squad.order.name)
             }
+            // Who may join it: the map has no alliance registry of its own.
+            t.putInt("Allies", com.sbwnpc.squad.team.Diplomacy.alliesOf(squad.faction).fold(0) { mask, it -> mask or (1 shl it.ordinal) })
             if (squad.order == SquadOrder.BARRAGE) t.putInt("Zone", MortarCrewBehaviour.BARRAGE_RADIUS.toInt())
             if (squad.order == SquadOrder.PATROL) {
                 routes.get(squad.routeId)?.points?.let { pts ->

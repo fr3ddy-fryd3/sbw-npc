@@ -74,7 +74,7 @@ class SquadMapPlugin : IClientPlugin {
     private val selected = LinkedHashSet<String>()
 
     /** What the menu needs to know about the player's squads, kept from the last feed each was in. */
-    private class Known(val name: String, val orders: List<SquadOrder>)
+    private class Known(val name: String, val orders: List<SquadOrder>, val faction: SquadFaction)
     private val known = HashMap<String, Known>()
 
     override fun getModId(): String = SquadMod.MODID
@@ -318,6 +318,7 @@ class SquadMapPlugin : IClientPlugin {
                         t.getBoolean("Gunship"),
                         t.getBoolean("Transport"),
                     ),
+                    faction,
                 )
             }
             if (own) marker.setOverlayListener(SquadListener(id))
@@ -348,9 +349,10 @@ class SquadMapPlugin : IClientPlugin {
                 val goalOrder = runCatching { SquadOrder.valueOf(t.getString("GoalOrder")) }.getOrNull()
                 if (goal != null && goalOrder != null) {
                     val at = BlockPos(goal[0], goal[1], goal[2])
-                    val mark = operations.getOrPut(goalOrder to at) { OperationMark(goalOrder, at, color) }
+                    val mark = operations.getOrPut(goalOrder to at) { OperationMark(goalOrder, at, color, t.getInt("Allies")) }
                     mark.names += name
                     mark.squads += id
+                    if (mark.route == null) mark.route = t.getIntArray("Route").takeIf { goalOrder == SquadOrder.PATROL && it.size >= 4 }
                 }
             }
             t.getIntArray("Obj").takeIf { it.size == 3 }?.let { obj ->
@@ -531,9 +533,12 @@ class SquadMapPlugin : IClientPlugin {
 
     private fun sendOrder(squads: List<String>, order: SquadOrder, pos: BlockPos) = PacketDistributor.sendToServer(SquadCmdPayload(SquadCmdPayload.MAP_ORDER, squads.joinToString(","), order.ordinal, "${pos.x} ${pos.z}"))
 
-    private class OperationMark(val order: SquadOrder, val pos: BlockPos, val color: Int) {
+    private class OperationMark(val order: SquadOrder, val pos: BlockPos, val color: Int, val allies: Int) {
         val names = ArrayList<String>()
         val squads = HashSet<String>()
+
+        /** A patrol's route as x, z pairs: joining it means walking the same one. */
+        var route: IntArray? = null
         val label get() = order.name.lowercase().replaceFirstChar { it.uppercase() }
     }
 
@@ -544,10 +549,24 @@ class SquadMapPlugin : IClientPlugin {
         override fun onMouseClick(state: UIState, mouse: Point2D.Double, pos: BlockPos, button: Int, doubleClick: Boolean): Boolean = true
 
         override fun onOverlayMenuPopup(state: UIState, mouse: Point2D.Double, pos: BlockPos, menu: ModPopupMenu) {
-            val ids = selected.filter { it !in mark.squads }
-            if (ids.isEmpty() || mark.order !in SquadOrder.pointOrdersFor(ids.mapNotNull { known[it]?.orders })) return
+            // Only the operation's allies; the server would refuse the rest anyway.
+            val ids = selected.filter { id -> id !in mark.squads && known[id]?.let { mark.allies and (1 shl it.faction.ordinal) != 0 } == true }
+            if (ids.isEmpty()) return
             val who = if (ids.size == 1) known[ids[0]]?.name ?: "Squad" else "${ids.size} squads"
-            menu.addMenuItem("$who: Join ${mark.label.lowercase()}") { _ -> sendOrder(ids, mark.order, mark.pos) }
+            val label = "$who: Join ${mark.label.lowercase()}"
+            if (mark.order == SquadOrder.PATROL) {
+                val route = mark.route ?: return
+                if (ids.none { SquadOrder.PATROL in known[it]?.orders.orEmpty() }) return
+                menu.addMenuItem(label) { _ ->
+                    val points = (route.indices step 2).joinToString(" ") { "${route[it]} ${route[it + 1]}" }
+                    PacketDistributor.sendToServer(RouteCmdPayload(RouteCmdPayload.MAP_ROUTE, ids.joinToString(","), points))
+                }
+                return
+            }
+            if (mark.order !in SquadOrder.pointOrdersFor(ids.mapNotNull { known[it]?.orders })) return
+            // One order per squad: a single squad sent to an operation's exact point joins it,
+            // while a new common order there deliberately starts an operation of its own.
+            menu.addMenuItem(label) { _ -> ids.forEach { sendOrder(listOf(it), mark.order, mark.pos) } }
         }
     }
 
