@@ -1,10 +1,12 @@
 package com.sbwnpc.squad.ai.tactics
 
 import com.sbwnpc.squad.ai.coordination.Point3
+import com.sbwnpc.squad.ai.coordination.TacticalOrder
 import java.util.UUID
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /** Who assaults into the objective and where, and who goes after the enemies left around it. */
 data class AttackRoles(val assault: Map<UUID, Point3> = emptyMap(), val clearing: Map<UUID, Point3> = emptyMap()) {
@@ -17,8 +19,34 @@ data class AttackRoles(val assault: Map<UUID, Point3> = emptyMap(), val clearing
 data class AttackMember(val id: UUID, val position: Point3, val ready: Boolean)
 
 /**
- * The operation's ways of taking its objective, as geometry and intent rewrites: no world access,
- * no executor state. [AttackPhase] decides when each applies; the HTN operation methods apply it.
+ * One member's situation for [OperationTactics.duty].
+ *
+ * @property elsewhere the order's objective is in another dimension.
+ * @property inContact the operation has a live contact to fight.
+ * @property observer a machine gunner or sniper with primary ammo, who watches from height when idle.
+ * @property reachedMove the member's current MOVE post is reached.
+ * @property wasFiring the member's previous intent was FIRE.
+ */
+data class DutyInputs(
+    val order: TacticalOrder,
+    val position: Point3,
+    val proposal: FrontProposal,
+    val objective: Point3?,
+    val inspect: Point3?,
+    val inContact: Boolean,
+    val elsewhere: Boolean,
+    val scout: Boolean,
+    val observer: Boolean,
+    val hasPatrolRoute: Boolean,
+    val reachedMove: Boolean,
+    val wasFiring: Boolean,
+)
+
+data class DutyChoice(val duty: CombatDuty, val anchor: Point3)
+
+/**
+ * Each member's duty in the operation and the ways of taking its objective, as geometry and intent
+ * rewrites: no world access, no executor state. [AttackPhase] decides when each applies; the HTN operation methods apply it.
  */
 object OperationTactics {
     /** Most attackers sent after enemies left around a taken objective. */
@@ -78,5 +106,54 @@ object OperationTactics {
         )
     }
 
+    /**
+     * What one member does under [order] and where: the front's [DutyInputs.proposal] applies only
+     * in a fight on ATTACK; otherwise the member follows the order, observes or fires from where it
+     * is. A fire post farther than [fireReach] is first approached as movement to [approachOffset]
+     * short of it, because a local fire-post query cannot see a post beyond its reach.
+     */
+    fun duty(inputs: DutyInputs, fireReach: Double, approachOffset: Double): DutyChoice =
+        with(inputs) {
+            val proposal = proposal
+            val approach = proposal.duty == CombatDuty.FIRE && distance3(position, proposal.anchor) > fireReach
+            val duty = when {
+                elsewhere -> CombatDuty.FOLLOW_ORDER
+
+                scout && order == TacticalOrder.ATTACK -> CombatDuty.SEARCH
+
+                !inContact && (order == TacticalOrder.DEFEND || (order == TacticalOrder.PATROL && !hasPatrolRoute)) && observer -> CombatDuty.OBSERVE
+
+                !inContact || order in setOf(TacticalOrder.RETREAT, TacticalOrder.MOVE, TacticalOrder.BARRAGE) -> CombatDuty.FOLLOW_ORDER
+
+                order != TacticalOrder.ATTACK -> CombatDuty.FIRE
+
+                // A mover that reached its post, or already fired, keeps firing instead of moving on.
+                proposal.duty == CombatDuty.MOVE -> if (reachedMove || wasFiring) CombatDuty.FIRE else CombatDuty.MOVE
+
+                approach -> CombatDuty.MOVE
+
+                else -> proposal.duty
+            }
+            val anchor = when {
+                duty == CombatDuty.SEARCH -> requireNotNull(inspect) { "a scout needs a point to inspect" }
+                duty in setOf(CombatDuty.FOLLOW_ORDER, CombatDuty.OBSERVE) -> objective ?: position
+                order != TacticalOrder.ATTACK -> position
+                duty == CombatDuty.FIRE && proposal.duty == CombatDuty.MOVE -> position
+                approach -> short(proposal.anchor, position, approachOffset)
+                else -> proposal.anchor
+            }
+            DutyChoice(duty, anchor)
+        }
+
+    /** [post] moved [offset] blocks horizontally towards [from]. */
+    private fun short(post: Point3, from: Point3, offset: Double): Point3 {
+        val dx = from.x - post.x
+        val dz = from.z - post.z
+        val length = hypot(dx, dz)
+        if (length < 1.0E-4) return post
+        return Point3(post.x + dx / length * offset, post.y, post.z + dz / length * offset)
+    }
+
     private fun distance(a: Point3, b: Point3) = hypot(a.x - b.x, a.z - b.z)
+    private fun distance3(a: Point3, b: Point3) = sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) + (a.z - b.z) * (a.z - b.z))
 }

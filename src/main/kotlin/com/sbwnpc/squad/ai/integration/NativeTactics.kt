@@ -505,26 +505,26 @@ object NativeTactics {
                 val oldIntents = old?.teams?.flatMap { it.members }?.associateBy { it.actor.id }.orEmpty()
                 val intents = view.members.map { member ->
                     val proposal = proposals.getValue(member.id)
-                    // A local fire-post query cannot see a post beyond its reach; approach it as movement first.
-                    val approach = proposal.duty == CombatDuty.FIRE && member.position.distanceTo(proposal.anchor.native()) > FIRE_POST_REACH
-                    val duty = when {
-                        saved.objectiveDimension?.let { it != level.dimension() } == true -> CombatDuty.FOLLOW_ORDER
-                        member.id in scouts && saved.order == SquadOrder.ATTACK -> CombatDuty.SEARCH
-                        focus == null && (saved.order == SquadOrder.DEFEND || (saved.order == SquadOrder.PATROL && !view.hasPatrolRoute)) && member.primaryAmmo && member.role in setOf(NpcClass.MACHINE_GUNNER, NpcClass.SNIPER) -> CombatDuty.OBSERVE
-                        focus == null || saved.order in setOf(SquadOrder.RETREAT, SquadOrder.MOVE, SquadOrder.BARRAGE) -> CombatDuty.FOLLOW_ORDER
-                        saved.order != SquadOrder.ATTACK -> CombatDuty.FIRE
-                        proposal.duty == CombatDuty.MOVE -> if (actions[member.id]?.let { it.intent.duty == CombatDuty.MOVE && it.reached() } == true || oldIntents[member.id]?.duty == CombatDuty.FIRE) CombatDuty.FIRE else CombatDuty.MOVE
-                        approach -> CombatDuty.MOVE
-                        else -> proposal.duty
-                    }
-                    val proposed = when {
-                        duty == CombatDuty.SEARCH -> inspect!!
-                        duty in setOf(CombatDuty.FOLLOW_ORDER, CombatDuty.OBSERVE) -> saved.objective?.center ?: member.position
-                        saved.order != SquadOrder.ATTACK -> member.position
-                        duty == CombatDuty.FIRE && proposal.duty == CombatDuty.MOVE -> member.position
-                        approach -> proposal.anchor.native().let { post -> post.add(member.position.subtract(post).multiply(1.0, 0.0, 1.0).normalize().scale(CombatPosition.LOCAL_MOVE_RADIUS)) }
-                        else -> proposal.anchor.native()
-                    }
+                    val choice = OperationTactics.duty(
+                        DutyInputs(
+                            order = TacticalOrder.valueOf(saved.order.name),
+                            position = member.position.point(),
+                            proposal = proposal,
+                            objective = saved.objective?.center?.point(),
+                            inspect = inspect?.point(),
+                            inContact = focus != null,
+                            elsewhere = saved.objectiveDimension?.let { it != level.dimension() } == true,
+                            scout = member.id in scouts,
+                            observer = member.primaryAmmo && member.role in setOf(NpcClass.MACHINE_GUNNER, NpcClass.SNIPER),
+                            hasPatrolRoute = view.hasPatrolRoute,
+                            reachedMove = actions[member.id]?.let { it.intent.duty == CombatDuty.MOVE && it.reached() } == true,
+                            wasFiring = oldIntents[member.id]?.duty == CombatDuty.FIRE,
+                        ),
+                        FIRE_POST_REACH,
+                        CombatPosition.LOCAL_MOVE_RADIUS,
+                    )
+                    val duty = choice.duty
+                    val proposed = choice.anchor.native()
                     val before = oldIntents[member.id]
                     val requireCover = duty == CombatDuty.MOVE && situation.incoming
                     val requireShelter = situation.incoming && duty in setOf(CombatDuty.MOVE, CombatDuty.FIRE)

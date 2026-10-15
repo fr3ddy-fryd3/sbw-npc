@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.ai.tactics
 
 import com.sbwnpc.squad.ai.coordination.Point3
+import com.sbwnpc.squad.ai.coordination.TacticalOrder
 import com.sbwnpc.squad.ai.planning.AgentId
 import com.sbwnpc.squad.ai.planning.AgentLevel
 import org.junit.jupiter.api.Assertions.*
@@ -50,5 +51,31 @@ class OperationTacticsTest {
         assertEquals(target, applied[1].inspection)
         assertEquals(intent(3), applied[2])
         assertSame(mission, OperationTactics.apply(mission, AttackRoles.NONE))
+    }
+
+    private val here = Point3(40.0, 64.0, 100.0)
+    private fun duty(order: TacticalOrder = TacticalOrder.ATTACK, proposal: FrontProposal = FrontProposal(CombatDuty.FIRE, Point3(60.0, 64.0, 100.0), null), inContact: Boolean = true, scout: Boolean = false, observer: Boolean = false, reachedMove: Boolean = false, wasFiring: Boolean = false, elsewhere: Boolean = false) = OperationTactics.duty(DutyInputs(order, here, proposal, objective, Point3(90.0, 64.0, 100.0), inContact, elsewhere, scout, observer, hasPatrolRoute = false, reachedMove = reachedMove, wasFiring = wasFiring), fireReach = 40.0, approachOffset = 10.0)
+
+    @Test fun `the front proposal applies only in a fight on attack`() {
+        assertEquals(DutyChoice(CombatDuty.FIRE, Point3(60.0, 64.0, 100.0)), duty())
+        assertEquals(DutyChoice(CombatDuty.FOLLOW_ORDER, objective), duty(inContact = false))
+        assertEquals(DutyChoice(CombatDuty.FOLLOW_ORDER, objective), duty(order = TacticalOrder.MOVE))
+        assertEquals(DutyChoice(CombatDuty.FIRE, here), duty(order = TacticalOrder.DEFEND))
+        assertEquals(DutyChoice(CombatDuty.OBSERVE, objective), duty(order = TacticalOrder.DEFEND, inContact = false, observer = true))
+        assertEquals(CombatDuty.FOLLOW_ORDER, duty(elsewhere = true, scout = true).duty)
+        assertEquals(DutyChoice(CombatDuty.SEARCH, Point3(90.0, 64.0, 100.0)), duty(scout = true))
+    }
+
+    @Test fun `a far fire post is approached as movement short of it`() {
+        val far = duty(proposal = FrontProposal(CombatDuty.FIRE, Point3(100.0, 64.0, 100.0), null))
+        assertEquals(CombatDuty.MOVE, far.duty)
+        assertEquals(Point3(90.0, 64.0, 100.0), far.anchor)
+    }
+
+    @Test fun `a mover keeps firing once it has reached its post or fired`() {
+        val move = FrontProposal(CombatDuty.MOVE, Point3(70.0, 64.0, 100.0), null)
+        assertEquals(DutyChoice(CombatDuty.MOVE, Point3(70.0, 64.0, 100.0)), duty(proposal = move))
+        assertEquals(DutyChoice(CombatDuty.FIRE, here), duty(proposal = move, reachedMove = true))
+        assertEquals(DutyChoice(CombatDuty.FIRE, here), duty(proposal = move, wasFiring = true))
     }
 }
