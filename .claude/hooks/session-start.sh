@@ -20,4 +20,12 @@ fi
 
 # Downloads the wrapper distribution, Minecraft/NeoForge artifacts and every Maven dependency,
 # and compiles both projects, so the session's first `./gradlew build` or `test` is quick.
-./gradlew --console=plain testClasses >&2
+# Maven Central sometimes answers 429 under load, so retry a couple of times before giving up.
+for attempt in 1 2 3; do
+  if ./gradlew --console=plain testClasses >&2; then
+    exit 0
+  fi
+  echo "Gradle warm-up attempt $attempt failed" >&2
+  sleep $((attempt * 15))
+done
+exit 1
