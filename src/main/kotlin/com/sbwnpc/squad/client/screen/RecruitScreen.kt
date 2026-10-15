@@ -157,9 +157,11 @@ class RecruitScreen(
             changed()
         }.bounds(cx - 100, y, 200, 20).build()
         classBtn.active = preset == SquadPreset.SINGLE
-        addRenderableWidget(classBtn)
-
-        y += 24
+        // Every other preset fixes its members' classes; a greyed-out class there read as a choice.
+        if (preset == SquadPreset.SINGLE) {
+            addRenderableWidget(classBtn)
+            y += 24
+        }
         factionBtn = addRenderableWidget(
             Button.builder(factionLabel()) {
                 faction = faction.next()
