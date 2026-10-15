@@ -222,7 +222,8 @@ object HtnTacticsGameTests {
                 val group = reinforcement!!
                 val squad = manager.create(helper.level, principal, requireNotNull(group.first().spawnFaction), group.map { it.uuid })
                 squads += squad
-                manager.issueOrderAt(helper.level, squad.id, SquadOrder.ATTACK, target)
+                // The map's "Join attack" sends the operation's exact point as a map order.
+                GroupOrders.apply(helper.level, manager, listOf(squad.id), SquadOrder.ATTACK, target.x, target.z)
                 helper.assertTrue(squads.first().command?.goal == squad.command?.goal, "Map and direct point orders produced different goals: ${squads.first().command?.goal} vs ${squad.command?.goal}")
                 issuedAt = helper.tick
             }

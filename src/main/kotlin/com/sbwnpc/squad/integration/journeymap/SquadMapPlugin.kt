@@ -289,6 +289,7 @@ class SquadMapPlugin : IClientPlugin {
             com.sbwnpc.squad.client.FactionBanner.faction
         }
         val objectives = HashMap<String, ObjectiveMark>()
+        val operations = LinkedHashMap<kotlin.Pair<SquadOrder, BlockPos>, OperationMark>()
 
         for (t in list(feed, "Squads")) {
             val faction = faction(t) ?: continue
@@ -342,6 +343,16 @@ class SquadMapPlugin : IClientPlugin {
                 )
             }
 
+            if (own) {
+                val goal = t.getIntArray("Goal").takeIf { it.size == 3 }
+                val goalOrder = runCatching { SquadOrder.valueOf(t.getString("GoalOrder")) }.getOrNull()
+                if (goal != null && goalOrder != null) {
+                    val at = BlockPos(goal[0], goal[1], goal[2])
+                    val mark = operations.getOrPut(goalOrder to at) { OperationMark(goalOrder, at, color) }
+                    mark.names += name
+                    mark.squads += id
+                }
+            }
             t.getIntArray("Obj").takeIf { it.size == 3 }?.let { obj ->
                 if (own) {
                     objectives[id] = ObjectiveMark(
@@ -382,6 +393,14 @@ class SquadMapPlugin : IClientPlugin {
             }
             val size = if (shape == MapShapes.CIRCLE) LOOSE_SIZE else VEHICLE_SIZE
             show(marker(dim, pos(t), shape, colorOf(faction), size, 1f).also { it.setTitle(faction.label) })
+        }
+        for (mark in operations.values) {
+            show(
+                marker(dim, mark.pos, MapShapes.DIAMOND, mark.color, OPERATION_SIZE, 1f).also {
+                    it.setTitle("${mark.label}: ${mark.names.joinToString(", ")}")
+                    it.setOverlayListener(OperationListener(mark))
+                },
+            )
         }
         routeDraft?.let { draft ->
             for (p in draft) show(outline(dim, diamond(p, OBJECTIVE_SIZE), SELECTION_COLOR, fill = 0.5f))
@@ -425,7 +444,9 @@ class SquadMapPlugin : IClientPlugin {
                 val wp = WaypointFactory.createClientWaypoint(modId, mark.pos, mark.name, dim, false)
                 wp.setColor(mark.color)
                 wp.setShowBeacon(false)
-                wp.setShowOnMap(true)
+                // On the map the operation's own marker stands there instead, with our menu: a
+                // waypoint's right-click only offers JourneyMap's waypoint actions.
+                wp.setShowOnMap(false)
                 wp.setShowInWorld(mark.showInWorld)
                 api.addWaypoint(modId, wp)
                 waypoints[id] = mark to wp
@@ -510,6 +531,26 @@ class SquadMapPlugin : IClientPlugin {
 
     private fun sendOrder(squads: List<String>, order: SquadOrder, pos: BlockPos) = PacketDistributor.sendToServer(SquadCmdPayload(SquadCmdPayload.MAP_ORDER, squads.joinToString(","), order.ordinal, "${pos.x} ${pos.z}"))
 
+    private class OperationMark(val order: SquadOrder, val pos: BlockPos, val color: Int) {
+        val names = ArrayList<String>()
+        val squads = HashSet<String>()
+        val label get() = order.name.lowercase().replaceFirstChar { it.uppercase() }
+    }
+
+    /** Right-click on an operation's point sends the selected squads to exactly that point, so
+     *  they join the operation on arrival — a plain map click a few blocks off starts another. */
+    private inner class OperationListener(private val mark: OperationMark) : IOverlayListener {
+        // Not taken: a click here still selects, drags a box or adds a route point.
+        override fun onMouseClick(state: UIState, mouse: Point2D.Double, pos: BlockPos, button: Int, doubleClick: Boolean): Boolean = true
+
+        override fun onOverlayMenuPopup(state: UIState, mouse: Point2D.Double, pos: BlockPos, menu: ModPopupMenu) {
+            val ids = selected.filter { it !in mark.squads }
+            if (ids.isEmpty() || mark.order !in SquadOrder.pointOrdersFor(ids.mapNotNull { known[it]?.orders })) return
+            val who = if (ids.size == 1) known[ids[0]]?.name ?: "Squad" else "${ids.size} squads"
+            menu.addMenuItem("$who: Join ${mark.label.lowercase()}") { _ -> sendOrder(ids, mark.order, mark.pos) }
+        }
+    }
+
     /** Left-click on a squad's square selects it; right-click switches its order, keeping the
      *  objective it has. */
     private inner class SquadListener(private val squad: String) : IOverlayListener {
@@ -573,6 +614,7 @@ class SquadMapPlugin : IClientPlugin {
         const val BARRACKS_SIZE = 2
         const val CIRCLE_POINTS = 32
         const val SELECTION_SIZE = 22.0
+        const val OPERATION_SIZE = 14.0
         const val SELECTION_COLOR = 0xFFFF55
         const val MEMBER_SIZE = 5.0
 

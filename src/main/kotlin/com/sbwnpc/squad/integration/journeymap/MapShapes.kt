@@ -17,6 +17,9 @@ internal enum class MapShapes {
     /** Hollow square drawn round a selected squad's symbol. */
     FRAME,
 
+    /** The point an operation was ordered to; right-click it to send more squads there. */
+    DIAMOND,
+
     ;
 
     val location: ResourceLocation = SquadMod.loc("textures/map/${name.lowercase()}.png")
