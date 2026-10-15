@@ -2,6 +2,8 @@
 # Still used on disk via includeBuild() in settings.gradle.kts.
 /SuperbWarfare/
 /SuperbWarfare.broken-backup/
+# SuperbWarfare ReFabricated (Fabric fork), fetched by scripts/setup.sh --refabricated.
+/SuperbWarfareReFabricated/
 
 # Gradle
 .gradle/
