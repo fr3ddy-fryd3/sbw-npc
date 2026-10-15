@@ -152,6 +152,106 @@ object HtnTacticsGameTests {
         }
     }
 
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1500, batch = "htn-blocked")
+    fun htnBlockedSquadDoesNotStopOtherAttackers(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "htn-blocked")
+        val manager = SquadManager.get(helper.level)
+        for (y in 1..4) {
+            for (x in 20..42) {
+                helper.setBlock(BlockPos(x, y, 40), net.minecraft.world.level.block.Blocks.STONE)
+                helper.setBlock(BlockPos(x, y, 72), net.minecraft.world.level.block.Blocks.STONE)
+            }
+            for (z in 40..72) {
+                helper.setBlock(BlockPos(20, y, z), net.minecraft.world.level.block.Blocks.STONE)
+                helper.setBlock(BlockPos(42, y, z), net.minecraft.world.level.block.Blocks.STONE)
+            }
+        }
+        val blocked = (0 until 8).map { scene.spawn(Vec3(25.5 + it / 4 * 5, 1.0, 46.5 + it % 4 * 5)) }
+        val free = (0 until 8).map { scene.spawn(Vec3(25.5 + it / 4 * 4, 1.0, 92.5 + it % 4 * 5)) }
+        val groups = listOf(blocked, free)
+        val squads = groups.map { group -> manager.create(helper.level, UUID(90, 5), requireNotNull(group.first().spawnFaction), group.map { it.uuid }) }
+        (0 until 4).forEach { scene.enemy(Vec3(145.5, 1.0, 98.5 + it * 5)) }
+        val origins = free.associate { it.uuid to it.position() }
+        scene.onClose = { squads.forEach { manager.deleteSquad(helper.level, it.id) } }
+        val target = helper.absolutePos(BlockPos(145, 1, 106))
+        GroupOrders.apply(helper.level, manager, squads.map { it.id }, SquadOrder.ATTACK, target.x, target.z)
+        var observedFailure = false
+        helper.onEachTick {
+            if (helper.tick % 20L != 0L) return@onEachTick
+            observedFailure = observedFailure || blocked.any { NativeTactics.reports(it).values.any { report -> report.reason?.startsWith("local_") == true } }
+            val firing = free.count { it.firedRecently(100) }
+            val moved = free.count { it.position().distanceTo(origins.getValue(it.uuid)) >= 12 }
+            if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} localFailure=$observedFailure freeFiring=$firing freeMoved=$moved")
+            if (helper.tick >= 600 && observedFailure && firing >= 4 && moved >= 6) {
+                helper.assertTrue(
+                    blocked.all { actor ->
+                        val relative = helper.relativeVec(actor.position())
+                        relative.x in 20.0..43.0 && relative.z in 40.0..73.0
+                    },
+                    "Blocked squad escaped the physical control",
+                )
+                helper.assertTrue(squads.all { it.tactics.plan == null }, "Legacy tactical controller handled blocked squad")
+                scene.result("PASS", "tick=${helper.tick} localFailure=$observedFailure freeFiring=$firing freeMoved=$moved")
+                helper.succeed()
+            }
+        }
+    }
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1600, batch = "htn-reinforcement")
+    fun htnReinforcementJoinsOnArrivalAndCanLeaveIndependently(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "htn-reinforcement")
+        val manager = SquadManager.get(helper.level)
+        val principal = UUID(90, 6)
+        val groups = (0..1).map { group -> (0 until 8).map { index -> scene.spawn(Vec3(24.5 + index / 4 * 4, 1.0, 76.5 + group * 32 + index % 4 * 4)) } }
+        val squads = groups.map { group -> manager.create(helper.level, principal, requireNotNull(group.first().spawnFaction), group.map { it.uuid }) }.toMutableList()
+        (0 until 4).forEach { scene.enemy(Vec3(145.5, 1.0, 94.5 + it * 6)) }
+        scene.onClose = { squads.forEach { manager.deleteSquad(helper.level, it.id) } }
+        val target = helper.absolutePos(BlockPos(145, 1, 106))
+        GroupOrders.apply(helper.level, manager, squads.map { it.id }, SquadOrder.ATTACK, target.x, target.z)
+        var reinforcement: List<NpcEntity>? = null
+        var issuedAt: Long? = null
+        var joinedAt: Long? = null
+        var leftAt: Long? = null
+        var pendingObserved = false
+        var retainedTickets = emptyMap<UUID, com.sbwnpc.squad.ai.planning.ExecutionTicket>()
+        helper.onEachTick {
+            if (helper.tick == 400L) {
+                reinforcement = (0 until 4).map { scene.spawn(Vec3(5.5, 1.0, 98.5 + it * 4)) }
+                val group = reinforcement!!
+                val squad = manager.create(helper.level, principal, requireNotNull(group.first().spawnFaction), group.map { it.uuid })
+                squads += squad
+                manager.issueOrderAt(helper.level, squad.id, SquadOrder.ATTACK, target)
+                issuedAt = helper.tick
+            }
+            val group = reinforcement ?: return@onEachTick
+            val npc = group.first()
+            val original = groups.first().first()
+            if (joinedAt == null && issuedAt != null && helper.tick > issuedAt!! + 10 && !NativeTactics.coordinated(npc)) pendingObserved = true
+            if (joinedAt == null && NativeTactics.coordinated(npc)) {
+                helper.assertTrue(pendingObserved, "Reinforcement was counted before travelling to the operation")
+                val operation = requireNotNull(NativeTactics.operation(original))
+                val position = requireNotNull(NativeTactics.snapshot(npc)).center
+                helper.assertTrue(operation.entry.contains(com.sbwnpc.squad.ai.coordination.Point3(position.x, position.y, position.z)), "Reinforcement joined outside its physical entry area")
+                joinedAt = helper.tick
+            }
+            if (joinedAt != null && leftAt == null && helper.tick - joinedAt!! >= 100) {
+                retainedTickets = groups.flatten().mapNotNull { actor -> NativeTactics.reports(actor)["position"]?.ticket?.let { actor.uuid to it } }.toMap()
+                manager.issueOrderAt(helper.level, squads.last().id, SquadOrder.MOVE, BlockPos.containing(npc.position().add(-20.0, 0.0, 0.0)))
+                leftAt = helper.tick
+            }
+            if (leftAt != null && helper.tick - leftAt!! >= 20) {
+                helper.assertTrue(NativeTactics.operation(npc)?.id != NativeTactics.operation(original)?.id, "Separate command did not remove the reinforcement")
+                helper.assertTrue(NativeTactics.operation(original)?.members?.size == 2, "Separate command disrupted original operation")
+                val kept = groups.flatten().count { actor -> retainedTickets[actor.uuid] != null && NativeTactics.reports(actor)["position"]?.ticket == retainedTickets[actor.uuid] }
+                helper.assertTrue(kept >= 8, "Removing reinforcement rebuilt most unrelated NPC executions: $kept/16")
+                scene.result("PASS", "pending=$pendingObserved issued=$issuedAt joined=$joinedAt left=$leftAt unaffectedExecutions=$kept")
+                helper.succeed()
+            }
+        }
+    }
+
     private fun jointAttack(helper: GameTestHelper, wide: Boolean) {
         val name = if (wide) "htn-wide" else "htn-compact"
         val scene = CombatIdleGameTests.Scene(helper, name)

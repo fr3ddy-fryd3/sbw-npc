@@ -35,7 +35,8 @@ object NativeTactics {
     fun reposition(npc: NpcEntity) {
         world(npc).actions[npc.uuid]?.requestFireRecovery(npc.level().gameTime)
     }
-    fun coordinated(npc: NpcEntity) = npc.currentSquad()?.let { world(npc).operations.operationOf(it.id)?.members?.size ?: 0 }?.let { it > 1 } == true
+    fun operation(npc: NpcEntity): OperationView? = npc.currentSquad()?.let { world(npc).operations.operationOf(it.id) }
+    fun coordinated(npc: NpcEntity) = (operation(npc)?.members?.size ?: 0) > 1
     fun targetDeath(event: net.neoforged.neoforge.event.entity.living.LivingDeathEvent) {
         val entity = event.entity
         val level = entity.level() as? ServerLevel ?: return
@@ -422,7 +423,7 @@ object NativeTactics {
                     focus?.y?.let { it > view.center.y + 4 } == true,
                     view.incoming.isNotEmpty(),
                     view.fighting.size.toDouble() / max(1, view.members.size),
-                    1.0 - view.members.size.toDouble() / max(1, view.peakStrength),
+                    1.0 - saved.members.size.toDouble() / max(1, max(view.peakStrength, saved.members.size)),
                     view.fighting.isNotEmpty(),
                 )
                 val evaluation = StrategyEvaluation.evaluate(facts(AgentId(AgentLevel.SQUAD, saved.id), now), situation)
