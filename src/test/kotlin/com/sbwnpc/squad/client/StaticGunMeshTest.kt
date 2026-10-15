@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test
 import java.io.File
 
 class StaticGunMeshTest {
-    private val assets = File(System.getProperty("sbwnpc.projectDir"), "SuperbWarfare/src/main/resources/assets")
+    private val assets = File(System.getProperty("sbwnpc.sbwResources"), "assets")
 
     @Test
     fun `every issued weapon has a renderable static mesh and its matching texture`() {

@@ -1,21 +1,18 @@
 #!/usr/bin/env bash
 # Sets up a checkout of sbw-npc to build, test and deploy on a contributor's machine.
 #
-# Clones the SuperbWarfare checkout that settings.gradle.kts includeBuild()s (it is gitignored),
-# then runs the given Gradle tasks (default: build). The cloud SessionStart hook runs this too.
+# Resolves the pinned NeoForge SBW artifact and runs Gradle tasks (default: build).
+# Use ./gradlew -PsbwSourceDir=/absolute/path build for a development SBW checkout.
 #
-#   scripts/setup.sh                    clone SBW if missing, then ./gradlew build
+#   scripts/setup.sh                    resolve pinned SBW, then ./gradlew build
 #   scripts/setup.sh test               any Gradle tasks instead of build (buildDevelop, testClasses, ...)
 #   scripts/setup.sh --deploy           also copy the jar into the mods folder, replacing older sbwnpc jars
-#   scripts/setup.sh --refabricated     also clone and build SuperbWarfare ReFabricated (Fabric) on its own
+#   scripts/setup.sh --refabricated     also clone and build a development ReFabricated checkout
 #
-# Environment overrides: SBW_REPO, SBW_BRANCH, REFAB_REPO, REFAB_BRANCH, MODS_DIR.
+# Environment overrides: REFAB_REPO, REFAB_BRANCH, MODS_DIR.
 # On Windows, run it from Git Bash or WSL.
 set -euo pipefail
 
-SBW_REPO="${SBW_REPO:-https://github.com/Mercurows/SuperbWarfare.git}"
-# The addon tracks a SuperbWarfare release branch, not upstream `1.21` tip (which has broken its APIs).
-SBW_BRANCH="${SBW_BRANCH:-0.8.9.2-1.21}"
 # ReFabricated is a Fabric fork the addon does not build against yet (that is the port in #15), so it
 # goes into its own folder and is never includeBuild()ed: its Loom build can't substitute for NeoForge SBW.
 REFAB_REPO="${REFAB_REPO:-https://github.com/CrawKatt/SuperbWarfareReFabricated.git}"
@@ -76,7 +73,6 @@ gradle_with_retry() {
   return 1
 }
 
-checkout SuperbWarfare "$SBW_REPO" "$SBW_BRANCH"
 gradle_with_retry "${tasks[@]}"
 
 if $deploy; then
@@ -94,6 +90,9 @@ fi
 
 if $refabricated; then
   checkout SuperbWarfareReFabricated "$REFAB_REPO" "$REFAB_BRANCH"
+  refab_dirty=false
+  [ -z "$(git -C SuperbWarfareReFabricated status --porcelain)" ] || refab_dirty=true
+  echo "ReFabricated development input: revision=$(git -C SuperbWarfareReFabricated rev-parse HEAD), dirty=$refab_dirty" >&2
   (cd SuperbWarfareReFabricated && gradle_with_retry build)
   echo "ReFabricated jars: $(ls SuperbWarfareReFabricated/build/libs/*.jar 2>/dev/null | tr '\n' ' ')" >&2
 fi

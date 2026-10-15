@@ -78,8 +78,10 @@ SuperbWarfare is a hard dependency today, but the code is arranged so it could b
 - To use something new from SBW: add it to the matching port in `domain/port/`, implement it in
   `integration/sbw/`, and call it through `Ports`.
 
-The build pulls SBW from a local checkout via `includeBuild("SuperbWarfare")` because the adapter
-uses SBW internals that aren't in its published jar.
+Normal builds use the SBW artifact pinned in `gradle/sbw/neoforge.properties`, verified by
+SHA-512 before compilation and testing. The selected release contains the internal APIs used
+by the adapter. `-PsbwSourceDir=/absolute/path` explicitly enables a development composite
+build; its revision and dirty state are recorded in `build/reports/sbw/input.txt`.
 
 ## NPC brains
 

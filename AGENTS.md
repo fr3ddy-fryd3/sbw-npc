@@ -166,13 +166,14 @@ KDoc (`/** ... */`) goes on every class, object and non-obvious public or `inter
 
 ## Build, test, deploy
 
-- First time on a machine: `scripts/setup.sh` checks Java, clones the SuperbWarfare checkout
+- First time on a machine: `scripts/setup.sh` checks Java, resolves the pinned SBW artifact
   described below and runs `build`. Pass Gradle tasks to run those instead
   (`scripts/setup.sh buildDevelop`), `--deploy` to copy the jar into `~/.minecraft/mods/` the way
-  the deploy step below describes, and `--refabricated` to also clone and build
-  [SuperbWarfare ReFabricated](https://github.com/CrawKatt/SuperbWarfareReFabricated) (the Fabric
+  the deploy step below describes, and `--refabricated` to also clone and build a development
+  checkout of [SuperbWarfare ReFabricated](https://github.com/CrawKatt/SuperbWarfareReFabricated) (the Fabric
   fork, branch `0.8.9.2-1.21-Fabric`) into the gitignored `SuperbWarfareReFabricated/`. The addon
-  does not build against ReFabricated yet: that checkout is for the Fabric port work (#15).
+  does not build against ReFabricated yet: that checkout is for the Fabric port work (#15),
+  reports its actual revision/dirty state, and is separate from the pinned addon dependency.
   `scripts/setup.sh --help` lists the overrides. On Windows, run it from Git Bash or WSL.
 - Build: `./gradlew build`, the same as `buildProduction` (`DebugFlags` off).
 - For local testing with verbose trace logs and debug particle markers: `./gradlew buildDevelop`.
@@ -186,18 +187,23 @@ KDoc (`/** ... */`) goes on every class, object and non-obvious public or `inter
   ```
   Not into a `~/.minecraft/mods/1.21.1/` subfolder: the launcher doesn't read it. Remove any jar
   of another version from `mods/` first, so two versions of the mod don't load at once.
-- The addon depends on a local SuperbWarfare checkout via `includeBuild("SuperbWarfare")` in
-  `settings.gradle.kts`, because it needs SBW's internal APIs, not just its published jar.
-  `/SuperbWarfare/` is gitignored and maintained separately.
+- SBW inputs are pinned in `gradle/sbw/`; normal builds use the published NeoForge artifact
+  and verify SHA-512 before compilation/testing. Provenance: `build/reports/sbw/input.txt`.
+  Use `-PsbwSourceDir=/absolute/path` only for local development; the checkout must match
+  the loader/Minecraft target and its revision/dirty state is reported. CI rejects this override.
+- The pinned SBW version is what the addon is built against, not what players need. Players need
+  SBW 0.8.9.1 or newer: `neoforge.mods.toml` declares `[0.8.9.1,)`, with no upper bound. Building
+  against a newer patch keeps the most players covered. When the pin moves, keep that lower bound
+  unless the addon starts relying on an API the older version lacks; then raise it on purpose.
 - The project stays on NeoForge 1.21.1. A 1.21.6/Fabric port was investigated and shelved:
   SuperbWarfare's own port to that target isn't ready, and this addon relies on Create/Ponder-style
   APIs that block on it.
 
 ## Cloud sessions (Claude Code on the web)
 
-- `.claude/hooks/session-start.sh` runs `scripts/setup.sh testClasses`, which clones
-  SuperbWarfare (branch `0.8.9.2-1.21` by default, override with `SBW_BRANCH`), so a cloud session
-  can build and test. Bump the branch when the local SuperbWarfare snapshot moves to a newer release.
+- `.claude/hooks/session-start.sh` runs `scripts/setup.sh testClasses` using the pinned SBW artifact.
+  Update its profile and SHA-512 together when intentionally changing the dependency, then rerun
+  the compatibility and build checks. Cloud setup does not clone a moving SBW branch.
 - The cloud environment's network allowlist must include these domains, or the build fails while
   resolving dependencies:
   - Gradle and Java: `mirrors.cloud.tencent.com` (Gradle wrapper), `plugins.gradle.org`,
