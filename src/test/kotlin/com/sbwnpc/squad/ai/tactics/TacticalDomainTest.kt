@@ -37,6 +37,24 @@ class TacticalDomainTest {
         assertTrue(plan(input.at(201)) is PlanningResult.Ready)
     }
 
+    @Test fun `a blind neighbourhood moves the search closer to the enemy`() {
+        val blind = LocalPositionFailure(intent.anchor, 1, 5, mapOf("blocked_shot" to 93))
+        val selected = (plan(facts(1).observe(TacticalFacts.POST_FAILURE, blind, expiresAt = 201)) as PlanningResult.Ready).plan.tasks.single().spec.action.parameters as PositionIntent
+        assertEquals(Point3(62.0, 1.0, 0.0), selected.anchor)
+        val next = blind.copy(attempts = 6)
+        val second = (plan(facts(1).observe(TacticalFacts.POST_FAILURE, next, expiresAt = 201)) as PlanningResult.Ready).plan.tasks.single().spec.action.parameters as PositionIntent
+        assertEquals(Point3(74.0, 1.0, 0.0), second.anchor)
+    }
+
+    @Test fun `closer anchors keep the role standoff and stop when used up`() {
+        val anchors = TacticalDomain.closerAnchors(intent.copy(standoff = 40.0))
+        assertTrue(anchors.isNotEmpty())
+        anchors.forEach { assertTrue(kotlin.math.hypot(it.x - 100.0, it.z) >= 40.0) }
+        assertTrue(TacticalDomain.closerAnchors(intent.copy(duty = CombatDuty.REAR_GUARD)).isEmpty())
+        val used = LocalPositionFailure(intent.anchor, 1, 5 + TacticalDomain.closerAnchors(intent).size, mapOf("blocked_shot" to 93))
+        assertTrue("closer_alternatives_exhausted" in (plan(facts(1).observe(TacticalFacts.POST_FAILURE, used, expiresAt = 201)) as PlanningResult.Failed).reasons)
+    }
+
     @Test fun `foreign actor intent cannot reserve another NPC motion`() {
         val foreign = intent.copy(actor = AgentId(AgentLevel.NPC, UUID(5, 5)))
         val result = HtnPlanningSession(TacticalDomain.npc, owner, TacticalDomain.NPC.call(foreign), facts(0)).advance(20) as PlanningResult.Failed

@@ -4,10 +4,11 @@ import com.sbwnpc.squad.ai.coordination.DelegationAction
 import com.sbwnpc.squad.ai.coordination.DelegationTask
 import com.sbwnpc.squad.ai.coordination.Point3
 import com.sbwnpc.squad.ai.planning.*
+import kotlin.math.max
 
 enum class CombatDuty { FIRE, MOVE, REAR_GUARD, OBSERVE, SEARCH, FOLLOW_ORDER }
 enum class CombatStrategy { ADVANCE, HOLD, GAIN_HEIGHT, WITHDRAW }
-data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null, val elevationWeight: Double = 0.0, val assault: Boolean = false) {
+data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null, val elevationWeight: Double = 0.0, val assault: Boolean = false, val standoff: Double = 0.0) {
     init {
         require(actor.level == AgentLevel.NPC && exposureWeight.isFinite() && exposureWeight >= 0 && elevationWeight.isFinite() && elevationWeight >= 0)
     }
@@ -143,7 +144,7 @@ object TacticalDomain {
                     Method("neighbor_post", eligible = { intent ->
                         Condition { facts ->
                             val failure = facts.value(TacticalFacts.POST_FAILURE)
-                            if (failure?.anchor == intent.anchor && failure.attempts <= 4) Verdict.Allowed else Verdict.Rejected("local_alternatives_exhausted")
+                            if (failure?.anchor == intent.anchor && failure.attempts <= NEIGHBOR_ATTEMPTS) Verdict.Allowed else Verdict.Rejected("local_alternatives_exhausted")
                         }
                     }, decompose = { intent, facts ->
                         val attempt = facts.value(TacticalFacts.POST_FAILURE)!!.attempts
@@ -157,6 +158,24 @@ object TacticalDomain {
                             intent.anchor.z + dx / length * offset.first + dz / length * offset.second,
                         )
                         TaskNetwork.sequence(POST.call(intent.copy(anchor = anchor)))
+                    }),
+                    // Terrain hides the enemy from the whole neighbourhood of the anchor: look for a
+                    // line of fire closer to the enemy or along the front instead of retrying the
+                    // same blind spot forever.
+                    Method("closer_post", eligible = { intent ->
+                        Condition { facts ->
+                            val failure = facts.value(TacticalFacts.POST_FAILURE)
+                            val step = (failure?.attempts ?: 0) - NEIGHBOR_ATTEMPTS - 1
+                            when {
+                                failure?.anchor != intent.anchor || step < 0 -> Verdict.Rejected("neighbors_not_exhausted")
+                                !blind(failure) -> Verdict.Rejected("not_blind")
+                                step >= closerAnchors(intent).size -> Verdict.Rejected("closer_alternatives_exhausted")
+                                else -> Verdict.Allowed
+                            }
+                        }
+                    }, decompose = { intent, facts ->
+                        val step = facts.value(TacticalFacts.POST_FAILURE)!!.attempts - NEIGHBOR_ATTEMPTS - 1
+                        TaskNetwork.sequence(POST.call(intent.copy(anchor = closerAnchors(intent)[step])))
                     }),
                 ),
             ),
@@ -179,6 +198,34 @@ object TacticalDomain {
             },
         ),
     )
+    private const val NEIGHBOR_ATTEMPTS = 4
+
+    /** Steps, forward towards the enemy and sideways along the front, tried once the neighbours fail. */
+    private val CLOSER_STEPS = listOf(12.0 to 0.0, 24.0 to 0.0, 12.0 to 16.0, 12.0 to -16.0, 24.0 to 16.0, 24.0 to -16.0, 36.0 to 0.0)
+
+    /** Most of the last query's candidates had no line of fire to the enemy. */
+    private fun blind(failure: LocalPositionFailure) = (failure.rejections["blocked_shot"] ?: 0) * 2 >= max(1, failure.rejections.values.sum())
+
+    /**
+     * Anchors closer to [PositionIntent.focus] than [PositionIntent.anchor], for a firing or
+     * moving member; none nearer the focus than its [PositionIntent.standoff].
+     */
+    fun closerAnchors(intent: PositionIntent): List<Point3> {
+        val focus = intent.focus ?: return emptyList()
+        if (intent.duty != CombatDuty.FIRE && intent.duty != CombatDuty.MOVE) return emptyList()
+        val dx = focus.x - intent.anchor.x
+        val dz = focus.z - intent.anchor.z
+        val length = kotlin.math.hypot(dx, dz)
+        if (length < 1.0) return emptyList()
+        val fx = dx / length
+        val fz = dz / length
+        return CLOSER_STEPS.map { (forward, side) -> Point3(intent.anchor.x + fx * forward - fz * side, intent.anchor.y, intent.anchor.z + fz * forward + fx * side) }
+            .filter { kotlin.math.hypot(it.x - focus.x, it.z - focus.z) >= max(intent.standoff, MIN_STANDOFF) }
+    }
+
+    /** Never search right on top of the enemy, whatever the role allows. */
+    private const val MIN_STANDOFF = 8.0
+
     fun at(level: AgentLevel) =
         when (level) {
             AgentLevel.OPERATION -> operation

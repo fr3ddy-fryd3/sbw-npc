@@ -551,6 +551,7 @@ object NativeTactics {
                             requireShelter = requireShelter,
                             minimumHeight = if (duty == CombatDuty.OBSERVE) member.position.y - 2 else null,
                             inspection = if (duty == CombatDuty.SEARCH) inspect?.point() else null,
+                            standoff = CombatPositionSafety.clearance(member.role),
                         )
                     }
                 }
