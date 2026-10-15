@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 plugins {
     idea
     id("net.neoforged.moddev") version "2.0.80"
@@ -230,7 +232,7 @@ abstract class VerifySbwInput : DefaultTask() {
         val details = provenance.get().toMutableMap()
         if (details.getValue("mode") == "published") {
             val artifact = artifacts.singleFile
-            val digest = java.security.MessageDigest.getInstance("SHA-512")
+            val digest = MessageDigest.getInstance("SHA-512")
             artifact.inputStream().use { input ->
                 val buffer = ByteArray(8192)
                 var count = input.read(buffer)
