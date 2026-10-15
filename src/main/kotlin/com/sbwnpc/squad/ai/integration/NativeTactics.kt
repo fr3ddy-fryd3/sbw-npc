@@ -85,6 +85,8 @@ object NativeTactics {
         private val areaTraces = HashMap<UUID, String>()
         private val areaOccupied = HashMap<UUID, Boolean>()
         private val attacks = HashMap<UUID, AttackProgress>()
+        private val losses = HashMap<UUID, OperationLosses>()
+        private val standings = HashMap<UUID, OperationStanding>()
         private val unverified = HashMap<UUID, MutableMap<UUID, Vec3>>()
         private val completions = HashMap<UUID, AreaControlTask>()
         private val sequences = HashMap<AssignmentTicket, Long>()
@@ -309,7 +311,9 @@ object NativeTactics {
                 val roots = HashSet<AgentId>()
                 val desiredAgents = HashSet<AgentId>()
                 opGroups.forEach { (operation, members) ->
-                    val squadMissions = layout(members.map { it.first }, now)
+                    val standing = standing(operation, now)
+                    if (standing == OperationStanding.WITHDRAW) return@forEach
+                    val squadMissions = layout(members.map { it.first }, now, holding = standing == OperationStanding.REVIEW)
                     val root = AgentId(AgentLevel.OPERATION, operation)
                     roots += root
                     desiredAgents += root
@@ -452,8 +456,46 @@ object NativeTactics {
             )
         }
 
+        /**
+         * The attacking operation's standing after its losses, over every squad in it, loaded or
+         * not. On [OperationStanding.WITHDRAW] the attack is called off here and each squad falls back.
+         */
+        private fun standing(operation: UUID, now: Long): OperationStanding {
+            val manager = SquadManager.get(level)
+            val attacking = (operations.operation(operation)?.members?.keys ?: setOf(operation))
+                .mapNotNull(manager::get)
+                .filter { it.order == SquadOrder.ATTACK && it.commandOutcome == CommandOutcome.ACTIVE && operations.pending(it.id) == null }
+            if (attacking.isEmpty()) {
+                losses.remove(operation)
+                standings.remove(operation)
+                return OperationStanding.STEADY
+            }
+            val record = losses.getOrPut(operation, ::OperationLosses)
+            record.retain(attacking.mapTo(HashSet()) { it.id })
+            attacking.forEach { record.observe(it.id, it.members) }
+            val fraction = record.fraction { id -> manager.get(id)?.members.orEmpty() }
+            val standing = OperationLosses.standing(fraction)
+            if (standings.put(operation, standing) != standing) {
+                DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=attack_standing standing={} losses={}", operation, standing, "%.2f".format(fraction))
+            }
+            if (standing == OperationStanding.WITHDRAW) {
+                attacking.forEach { squad ->
+                    val view = snapshots[squad.id]
+                    val reference = squad.members.firstNotNullOfOrNull { level.getEntity(it) as? NpcEntity }
+                    manager.withdraw(squad.id, "operation_losses")
+                    if (view != null && reference != null) manager.setObjective(level, squad.id, net.minecraft.core.BlockPos.containing(AttackAmmoWithdrawal.fallBack(level, reference, view)))
+                    com.sbwnpc.squad.squad.SquadReports.attackFailedLosses(level.server, squad, (fraction * 100).toInt())
+                }
+                operations.finish(operation, OperationStatus.CANCELLED)
+                losses.remove(operation)
+                standings.remove(operation)
+                attacks.remove(operation)
+            }
+            return standing
+        }
+
         /** Geometry proposes areas; actual arrival, useful fire and native reachability remain observations. */
-        private fun layout(squads: List<Squad>, now: Long): List<SquadMission> {
+        private fun layout(squads: List<Squad>, now: Long, holding: Boolean = false): List<SquadMission> {
             val contacts = squads.flatMap { combatView(it.id)!!.contacts }.filter { now - it.seenAt <= 200 }.distinctBy { it.id }
             val members = squads.flatMap { snapshots.getValue(it.id).members }.sortedBy { it.id.toString() }
             val center = Vec3(members.map { it.position.x }.average(), members.map { it.position.y }.average(), members.map { it.position.z }.average())
@@ -490,7 +532,8 @@ object NativeTactics {
                 val view = snapshots.getValue(saved.id)
                 val situation = CombatSituation(
                     focus != null,
-                    saved.order == SquadOrder.ATTACK,
+                    // An operation reviewing its losses holds the line it has instead of pushing on.
+                    saved.order == SquadOrder.ATTACK && !holding,
                     focus?.y?.let { it > view.center.y + 4 } == true,
                     view.incoming.isNotEmpty(),
                     view.fighting.size.toDouble() / max(1, view.members.size),

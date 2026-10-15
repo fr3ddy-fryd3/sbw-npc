@@ -334,6 +334,40 @@ object HtnTacticsGameTests {
         }
     }
 
+    /**
+     * Losses count over the operation: one squad cut to a single man is 40% of the whole and only
+     * a review; at 60% of everyone the attack is called off and every squad falls back.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1200, batch = "htn-losses")
+    fun htnOperationWithdrawsAfterHeavyLosses(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "htn-losses")
+        val manager = SquadManager.get(helper.level)
+        val groups = (0..1).map { group -> (0 until 5).map { index -> scene.spawn(Vec3(28.5 + index * 3, 1.0, 80.5 + group * 24)) } }
+        (0 until 4).forEach { scene.enemy(Vec3(150.5, 1.0, 88.5 + it * 4)) }
+        val squads = groups.map { group -> manager.create(helper.level, UUID(90, 10), requireNotNull(group.first().spawnFaction), group.map { it.uuid }) }
+        scene.onClose = { squads.forEach { manager.deleteSquad(helper.level, it.id) } }
+        val target = helper.absolutePos(BlockPos(150, 1, 94))
+        GroupOrders.apply(helper.level, manager, squads.map { it.id }, SquadOrder.ATTACK, target.x, target.z)
+        helper.onEachTick {
+            when (helper.tick) {
+                200L -> groups[0].drop(1).forEach { it.kill() }
+
+                300L -> {
+                    helper.assertTrue(squads.all { it.order == SquadOrder.ATTACK }, "One squad's remnant made the whole operation withdraw: ${squads.map { it.order }}")
+                    groups[1].take(2).forEach { it.kill() }
+                }
+            }
+            if (helper.tick > 300 && squads.all { it.order == SquadOrder.RETREAT }) {
+                helper.assertTrue(squads.all { it.commandReason == "operation_losses" && it.commandOutcome == com.sbwnpc.squad.ai.tactics.CommandOutcome.FAILED }, "Withdrawal not recorded as failed: ${squads.map { it.commandReason }}")
+                val away = squads.all { squad -> squad.objective?.let { it.center.distanceTo(target.center) > 100 } == true }
+                helper.assertTrue(away, "Fallback point not away from the objective: ${squads.map { it.objective }}")
+                scene.result("PASS", "tick=${helper.tick} orders=${squads.map { it.order }} objectives=${squads.map { it.objective }}")
+                helper.succeed()
+            }
+        }
+    }
+
     private fun jointAttack(helper: GameTestHelper, wide: Boolean) {
         val name = if (wide) "htn-wide" else "htn-compact"
         val scene = CombatIdleGameTests.Scene(helper, name)

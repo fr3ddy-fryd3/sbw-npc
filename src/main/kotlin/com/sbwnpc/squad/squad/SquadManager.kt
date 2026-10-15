@@ -226,10 +226,15 @@ class SquadManager : SavedData() {
 
     /** The ammunition failure, unlike a manual retreat, arms the next explicit attack retry. */
     fun withdrawForAmmo(id: UUID) {
+        squads[id]?.attackAmmoPolicy = AttackAmmoPolicy.RETRY_AVAILABLE
+        withdraw(id, "primary_ammo_exhausted")
+    }
+
+    /** Calls the squad's command off as failed for [reason] and falls back. */
+    fun withdraw(id: UUID, reason: String) {
         val squad = squads[id] ?: return
-        squad.attackAmmoPolicy = AttackAmmoPolicy.RETRY_AVAILABLE
         squad.commandOutcome = com.sbwnpc.squad.ai.tactics.CommandOutcome.FAILED
-        squad.commandReason = "primary_ammo_exhausted"
+        squad.commandReason = reason
         setOrder(id, SquadOrder.RETREAT)
     }
 

@@ -31,12 +31,7 @@ internal object AttackAmmoWithdrawal {
         val empty = infantry.count { !SidearmKit.hasPrimaryAmmo(it) }
         if (empty * 2 < infantry.size) return false
 
-        val threat = view.visible.maxByOrNull { it.priority }?.position
-            ?: view.contacts.maxByOrNull { it.seenAt }?.position
-            ?: view.incoming.firstOrNull() ?: view.home
-        val direction = away(view.center, threat, infantry.first().lookAngle)
-        val desired = view.center.add(direction.scale(DISTANCE))
-        val destination = rally(level, infantry.first(), view.center, desired, direction)
+        val destination = fallBack(level, infantry.first(), view)
         val manager = SquadManager.get(level)
         manager.withdrawForAmmo(squad.id)
         manager.setObjective(level, squad.id, BlockPos.containing(destination))
@@ -47,6 +42,15 @@ internal object AttackAmmoWithdrawal {
             squad.name, squad.id, empty, infantry.size, view.center, destination, destination.subtract(view.center).horizontalDistance(),
         )
         return true
+    }
+
+    /** [DISTANCE] behind the squad, away from the threat it knows best, on standable ground. */
+    fun fallBack(level: ServerLevel, reference: NpcEntity, view: TacticalSnapshot): Vec3 {
+        val threat = view.visible.maxByOrNull { it.priority }?.position
+            ?: view.contacts.maxByOrNull { it.seenAt }?.position
+            ?: view.incoming.firstOrNull() ?: view.home
+        val direction = away(view.center, threat, reference.lookAngle)
+        return rally(level, reference, view.center, view.center.add(direction.scale(DISTANCE)), direction)
     }
 
     private fun away(center: Vec3, threat: Vec3?, facing: Vec3): Vec3 {
