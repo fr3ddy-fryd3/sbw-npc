@@ -72,6 +72,7 @@ object NativeTactics {
         private val assignments = HashMap<AgentId, AssignmentView>()
         private val areaClocks = HashMap<UUID, AreaControlClock>()
         private val areaObservedAt = HashMap<UUID, Long>()
+        private val areaTraces = HashMap<UUID, String>()
         private val unverified = HashMap<UUID, MutableMap<UUID, Vec3>>()
         private val completions = HashMap<UUID, AreaControlTask>()
         private val sequences = HashMap<AssignmentTicket, Long>()
@@ -320,6 +321,7 @@ object NativeTactics {
                     children.remove(id)
                     areaClocks.remove(id.id)
                     areaObservedAt.remove(id.id)
+                    areaTraces.remove(id.id)
                     unverified.remove(id.id)
                     areaTasks.remove(id.id)
                     operations.forget(id.id)
@@ -363,7 +365,9 @@ object NativeTactics {
                     enemies.forEach { SquadTactics.observe(witness, it) }
                 }
             }
-            val occupied = observers.count { it.position().distanceTo(point) <= 24 } >= max(1, (squads.sumOf { it.members.size } + 1) / 2)
+            val present = observers.count { it.position().distanceTo(point) <= 24 }
+            val required = max(1, (squads.sumOf { it.members.size } + 1) / 2)
+            val occupied = present >= required
             if (occupied && contacts.isEmpty()) {
                 val reference = observers.firstOrNull()
                 if (reference != null) {
@@ -381,8 +385,15 @@ object NativeTactics {
             val inspected = occupied && observers.any { it.position().distanceTo(point) <= 24 && Vision.inCone(it.position(), it.yHeadRot, point) && DetectionSightline.visible(level, it.eyePosition, point.add(0.0, 1.5, 0.0), it) } && remaining.isEmpty()
             val loaded = listOf(-24, 24).all { x -> listOf(-24, 24).all { z -> level.hasChunkAt(net.minecraft.core.BlockPos.containing(point.add(x.toDouble(), 0.0, z.toDouble()))) } }
             val fire = observers.any { it.incomingFire.recentPoint(now) != null || it.evadingGrenade() }
-            areaClocks.getOrPut(task.operation, ::AreaControlClock).observe(now, loaded, occupied, inspected, contacts.isNotEmpty() || discovered, fire)
+            val clock = areaClocks.getOrPut(task.operation, ::AreaControlClock)
+            clock.observe(now, loaded, occupied, inspected, contacts.isNotEmpty() || discovered, fire)
             areaObservedAt[task.operation] = now
+            if (DebugFlags.on(LogGroup.ORDER)) {
+                val inputs = "present=$present/$required inspected=$inspected unverified=${remaining.size} contacts=${contacts.size} discovered=$discovered fire=$fire loaded=$loaded counting=${clock.heldTicks > 0}"
+                if (areaTraces.put(task.operation, inputs) != inputs) {
+                    DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=area_clock {} heldTicks={} nearestContact={} unverifiedAt={}", task.operation, inputs, clock.heldTicks, contacts.minOfOrNull { it.position.distanceTo(point).toInt() }, remaining.values.take(3).map { net.minecraft.core.BlockPos.containing(it).toShortString() })
+                }
+            }
         }
 
         /** Geometry proposes areas; actual arrival, useful fire and native reachability remain observations. */
