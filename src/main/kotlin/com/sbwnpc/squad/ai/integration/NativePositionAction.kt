@@ -20,12 +20,14 @@ data class NativeAssignment(val job: TacticalJob, val anchor: Vec3, val focus: V
 
 /** The existing collision/shot/native-A* query is used with explicit constraints and a private cursor. */
 internal class NativePositionAction(
-    val intent: PositionIntent,
+    intent: PositionIntent,
     private val npc: NpcEntity,
     private val snapshot: () -> TacticalSnapshot,
     private val cover: () -> Boolean,
     private val exhausted: (PositionIntent, Map<String, Int>) -> Unit,
 ) : ActionExecution {
+    var intent = intent
+        private set
     private val claimOwner = java.util.UUID.randomUUID()
     private val task = TacticalTask(
         when (intent.duty) {
@@ -84,9 +86,9 @@ internal class NativePositionAction(
         task.usesObservedAim = true
         task.observedAim = observation?.let { TacticalAim(it.id, it.position, it.position.add(0.0, 1.5, 0.0)) }
             ?: intent.focus?.native()?.let { TacticalAim(null, it, it.add(0.0, 1.5, 0.0)) }
-        if (task.position != null && (!TacticalClearance.permitsPosition(npc.npcClass, npc.position(), task.position!!, view) || GrenadeHazard.threatens(npc.level() as ServerLevel, task.position!!))) invalidate(now)
+        if (task.position != null && (!TacticalClearance.permitsPosition(npc.npcClass, npc.position(), task.position!!, view) || GrenadeHazard.threatens(npc.level() as ServerLevel, task.position!!))) invalidate(now, "post_not_permitted")
         val path = npc.navigation.path
-        if (path != null && path === task.navigationPath && !path.isDone && !TacticalClearance.permitsPath(npc.npcClass, npc.position(), path, view)) invalidate(now)
+        if (path != null && path === task.navigationPath && !path.isDone && !TacticalClearance.permitsPath(npc.npcClass, npc.position(), path, view)) invalidate(now, "path_not_permitted")
         if (reached()) {
             releasePath()
             if (npc.target == null && intent.duty in setOf(CombatDuty.REAR_GUARD, CombatDuty.OBSERVE, CombatDuty.SEARCH)) {
@@ -122,12 +124,12 @@ internal class NativePositionAction(
         }
         if (FiringPostArrival.reached(npc.position(), destination)) {
             if (intent.duty in setOf(CombatDuty.MOVE, CombatDuty.SEARCH) && destination.distanceTo(intent.anchor.native()) > 4 && !task.maneuverPost) {
-                invalidate(now)
+                invalidate(now, "intermediate_reached")
                 return ActionUpdate.Running
             }
             if (intent.duty == CombatDuty.FIRE && !TacticalPositions.firingReady(npc, task, npc.position())) {
                 task.localFirePost = npc.position()
-                invalidate(now)
+                invalidate(now, "no_firing_lane")
                 return deferred(now, "firing_lane_recovery")
             }
             return ActionUpdate.Running
@@ -141,7 +143,7 @@ internal class NativePositionAction(
             if (!TacticalBudget.path(npc)) return deferred(now, "native_path_budget")
             val route = TacticalPositions.pathToPosition(npc, destination)
             if (!TacticalPositions.reaches(route, destination) || !TacticalClearance.permitsPath(npc.npcClass, npc.position(), route!!, view)) {
-                invalidate(now)
+                invalidate(now, "route_unreachable")
                 return ActionUpdate.Running
             }
             if (npc.navigation.moveTo(route, 1.3)) task.navigationPath = route
@@ -176,9 +178,10 @@ internal class NativePositionAction(
     fun requestFireRecovery(now: Long) {
         if (intent.duty != CombatDuty.FIRE || !npc.onGround() || task.position?.let { FiringPostArrival.reached(npc.position(), it) } != true) return
         task.localFirePost = npc.position()
-        invalidate(now)
+        invalidate(now, "fire_recovery_requested")
     }
-    fun invalidate(now: Long) {
+    fun invalidate(now: Long, reason: String) {
+        DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=post_invalidated reason={} duty={}", npc.uuid, reason, intent.duty)
         releasePath()
         task.position = null
         task.search = null
@@ -186,6 +189,36 @@ internal class NativePositionAction(
         FiringSpots.release(npc.uuid, claimOwner)
     }
     private fun releasePath() = task.releaseNavigation(npc.navigation.path) { npc.navigation.stop() }
+
+    /**
+     * A revised intent keeps this execution, its post and route while the post still serves it:
+     * the enemy moving or fire starting and stopping must not send every man to a new post.
+     */
+    override fun revise(spec: ActionSpec<*>, now: Long): Boolean {
+        val next = spec.parameters as? PositionIntent ?: return false
+        val rejection = when {
+            spec.key != TacticalDomain.POSITION || released -> "not_running"
+            next.actor != intent.actor || next.duty != intent.duty -> "duty_changed"
+            next.minimumHeight != intent.minimumHeight || next.inspection != intent.inspection -> "post_kind_changed"
+            (next.requireShelter && !intent.requireShelter) || (next.requireCover && !intent.requireCover) -> "shelter_now_required"
+            !servedBy(next) -> "post_outside_new_anchor"
+            else -> null
+        }
+        if (rejection != null) {
+            DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=post_replaced reason={} duty={}", npc.uuid, rejection, next.duty)
+            return false
+        }
+        intent = next
+        task.focus = next.focus?.native()
+        return true
+    }
+
+    private fun servedBy(next: PositionIntent): Boolean {
+        val anchor = next.anchor.native()
+        if (next.duty in setOf(CombatDuty.MOVE, CombatDuty.SEARCH)) return anchor.distanceTo(task.anchor) <= 4.0
+        return task.position?.let { TacticalFirePosts.withinPost(anchor, it, recovery = true) } ?: (anchor.distanceTo(task.anchor) <= CombatPosition.LOCAL_MOVE_RADIUS)
+    }
+
     override fun suspend(now: Long, reason: String) {
         releaseLook()
         releasePath()
