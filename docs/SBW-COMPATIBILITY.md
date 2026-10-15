@@ -10,7 +10,7 @@ Audit date: 2026-10-15. Checks below distinguish binary/source inspection from e
 | --- | --- | --- |
 | NeoForge / MC 1.21.1 | Modrinth Cd3DYqzn / bl7W8fjU, SBW 0.8.9.2 | Enabled; build and JUnit passed |
 | Fabric / MC 1.21.1 | Modrinth XU8zWdjt / OsEZFHcH, ReFabricated 1.21.1-0.8.9.2 | Audited, addon build disabled pending #17/#18/#15 |
-| Forge | Minecraft/SBW versions not selected by owner | No guessed coordinate or compatibility claim; #16 remains gated |
+| Forge / MC 1.20.1 | Modrinth Cd3DYqzn / 81Iyv9ao, SBW 0.8.9.2 | Audited, addon build disabled pending #17/#18/#16 |
 
 Version IDs, repositories, source references and independently checked SHA-512 values
 are in gradle/sbw/. Source references: NeoForge c22d98c232aeb8f6150799e16387ffa09b488681;
@@ -34,7 +34,7 @@ Cloud warm-up resolves the pinned artifact and no longer clones a moving SBW bra
 
 ## What was verified before implementation
 
-Both published jars were read in memory and independently matched their Modrinth SHA-512.
+The NeoForge and Fabric published jars were read in memory and independently matched their Modrinth SHA-512.
 All 51 directly referenced SBW class/interface names exist in both binaries, including
 VehicleModelEntry (declared in another source file). Checked classes use Java 21 bytecode.
 Inspected key descriptors for GunData, ShootParameters usage, vehicle firing/geometry,
@@ -102,12 +102,67 @@ and Rhino; do not copy NeoForge dependencies into Fabric or bundle them again bl
 The checksum pins bundled bytes; exact external runtime versions and model API compatibility
 must be verified by #15's build and client/server tests before enabling the loader.
 
-## Forge decision gate for #16
+## Forge / Minecraft 1.20.1 audit for #16
 
-Owner must select Minecraft version and an actual Forge SBW artifact/source revision.
-Then repeat the class/member, mixin, mappings, Kotlin provider and dependency inventory
-against those exact inputs. Different Minecraft versions also require a common-source
-compatibility assessment. No Forge audit was run without that decision.
+Owner selected Forge 1.20.1 / SBW 0.8.9.2; Forge 1.21.1 is excluded.
+Fabric remains Minecraft 1.21.1 with unofficial SuperbWarfare ReFabricated.
+Forge input: Modrinth 81Iyv9ao, source reference 65d985a6447cf6b119b72b73a636e79adecbb44f.
+The published binary and sources jar were read in memory and independently matched
+their Modrinth SHA-512 values. The binary is authoritative; the source reference is
+not a claim that rebuilding upstream reproduces the published bytes.
+50 of 51 directly imported SBW types exist. ModAttachments is absent; player variables
+use capability.ModCapabilities.PLAYER_VARIABLE and capability.player.PlayerVariable.
+Inspected classes have Java 17 bytecode (major 61); upstream uses Forge 47.2.0.
+
+| Contract / caller | Selected Forge API and required work |
+| --- | --- |
+| Guns: SbwGuns | GunData.from/tick/reloadAmmo/canShoot/shoot/save exist; replace DataComponents access with 1.20.1 ItemStack NBT |
+| Vehicles: SbwVehicles | Seats, energy, canShoot and three-argument vehicleShoot exist; adapt Forge capabilities and mapped vanilla/container methods |
+| Mortars: SbwMortars | setTarget, vehicleShoot(LivingEntity,String,Vec3) and ItemStack.firingParameters exist; targeting uses NBT |
+| Grenades: SbwGrenades | Grenade/config/RangeTool types exist; compile constructors and port explosion events before fuse/friendly-fire tests |
+| Drones: SbwDrones | DroneEntity/SwarmDroneEntity/CustomExplosion types exist; port Forge hooks and verify optional-addon fallback |
+| Gear: SbwGear | MedicalKitItem.treat exists; ModItems uses Forge RegistryObject suppliers |
+| PlayerSupply: SbwPlayerSupply | Replace NeoForge getData/setData with native SBW player capability access/watch/sync; verify respawn and multiplayer |
+| GunPoses / GunRendering | PoseTool/GunItem types exist; use the Forge SimpleBedrockModel binary and 1.20.1 rendering interfaces |
+| Hearing / creative tabs / aircraft | ShootEvent extends Forge Event; port registration and RenderLevelStageEvent to net.minecraftforge |
+
+Every mixin below needs application checks in both the development environment and
+the reobfuscated production jar, followed by its gameplay checks from the matrix above.
+Class/member presence alone does not establish binary or behavioural compatibility.
+
+| Mixin | Selected Forge target / required work |
+| --- | --- |
+| VehicleGunDataMixin | GunData.shoot(ShootParameters) exists; Kotlin record has copy, including spread |
+| AutoAimableEntityMixin | autoAim calls three-argument vehicleShoot; verify invocation owner and injection after remapping |
+| VehicleShootingMixin | VehicleEntity.canShoot(LivingEntity) exists; verify injection and firing-lane checks |
+| VehicleBoardingMixin | interact is a vanilla override with an SRG name in the jar; remap and use Forge FakePlayer |
+| AircraftSnapshotMixin | buildBvrSyncNbt exists; readAdditionalSaveData is SRG-named and must be remapped |
+| AircraftModelEntriesMixin | getModelEntries exists; validate LOD augmentation |
+| AircraftModelReloadMixin | apply(Map,ResourceManager,ProfilerFiller) exists; validate reload and model-library compatibility |
+| AircraftRendererMixin | getCurrentModelEntry and typed shouldRender exist; verify production descriptors |
+| AircraftWorldRenderMixin | onRenderLevelStage takes Forge RenderLevelStageEvent; adapt the callback type |
+| EntityAllianceMixin | Vanilla Entity.isAlliedTo; use Forge 1.20.1 mappings/refmap and test alliances |
+| EntityTrackingRangeMixin | Vanilla EntityType.clientTrackingRange; use Forge 1.20.1 mappings/refmap |
+| KeyMappingMixin | Vanilla KeyMapping.consumeClick; use Forge 1.20.1 mappings/refmap and client bootstrap |
+
+| Dependency | Forge input / evidence and remaining work |
+| --- | --- |
+| Kotlin provider | SBW requires KotlinForForge >=4.11.0 and builds with Kotlin 2.0.0; choose compiler/runtime together. Published 4.12.0 uses Kotlin 2.2.21; neither is an assumed drop-in for this addon's 2.1.20 compiler |
+| SmartBrainLib | Forge 1.20.1 version 1.15 exists; all four directly imported SBL types are in its jar. Current 1.16.11 is not listed for this target; compile behaviour and sensor APIs |
+| GeckoLib / SimpleBedrockModel | Nested 4.4.6 / 2.5.1-forge-mc1.20.1; adapt rendering against these versions |
+| JourneyMap API | Published journeymap-api-forge:1.20.1-2.0.0 POM references Forge 47.3.0; choose a compatible Forge 47.x version and test this optional integration |
+
+The Forge jar also nests Curios 5.14.1+1.20.1, Ponder 1.0.91, Flywheel 1.0.5,
+Cloth Config 11.1.106 and Rhino 1.8.1-SNAPSHOT. The outer checksum pins these bytes;
+do not resolve the nested snapshot independently or rebundle these dependencies.
+
+Cross-version work extends beyond SBW: network/Payloads uses CustomPacketPayload,
+StreamCodec and RegistryFriendlyByteBuf; gun/boarding code uses DataComponents;
+squad SavedData uses HolderLookup.Provider and the newer factory signatures.
+#17/#18 must isolate or adapt these Minecraft APIs before #16 can share gameplay
+with 1.21.1. Use a Java 17-compatible Forge target; the existing Java 21 output is
+not suitable. ForgeGradle must deobfuscate the input and reobfuscate the addon.
+No Forge addon compilation, JUnit, mixin application or client/server playtest was run.
 
 ## Reproduction and acceptance
 
@@ -115,7 +170,7 @@ NeoForge test/build/verifySbwInput passed: 164 tests passed, 2 skipped because
 SBWNPC_GROUND was absent. A subsequent clean build passed using Gradle's build cache.
 Published SHA-512 verification, rejection of an incorrect checksum, six negative-input
 checks and local-source provenance checks passed; see #19 for the commands and results.
-No GameTest, client/server playtest, Fabric addon build or Forge audit was performed.
+No GameTest, client/server playtest, Fabric addon build or Forge addon build was performed.
 
 To reproduce:
 - Run ./gradlew test build verifySbwInput with no local override; inspect input.txt.
@@ -123,9 +178,12 @@ To reproduce:
 - Check a development source override records its actual Git revision/dirty state.
 - Check CI rejects source overrides and an incorrect artifact checksum fails verification.
 - Record actual build/test outcomes in #19; source/binary inspection is not a passed build.
-- Supply this report to #15/#16. Forge remains pending the explicit target decision.
+- Supply this report to #15/#16. Fabric and Forge remain disabled until their ports are verified.
 
 Sources: [NeoForge release](https://modrinth.com/mod/superb-warfare/version/bl7W8fjU),
 [Fabric release](https://modrinth.com/mod/superb-warfare-refabricated/version/OsEZFHcH),
 [NeoForge source](https://github.com/Mercurows/SuperbWarfare/tree/c22d98c232aeb8f6150799e16387ffa09b488681),
-[Fabric source](https://github.com/CrawKatt/SuperbWarfareReFabricated/tree/e8e48e10e112e9c65520a132af27746e31e92831).
+[Fabric source](https://github.com/CrawKatt/SuperbWarfareReFabricated/tree/e8e48e10e112e9c65520a132af27746e31e92831),
+[Forge release](https://modrinth.com/mod/superb-warfare/version/81Iyv9ao),
+[Forge source](https://github.com/Mercurows/SuperbWarfare/tree/65d985a6447cf6b119b72b73a636e79adecbb44f),
+[Forge networking](https://docs.minecraftforge.net/en/1.20.1/networking/simpleimpl/).
