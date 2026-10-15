@@ -71,6 +71,12 @@ tested" as two different claims; see Workflow below.
   doc change too.
 - Commit messages: concise, and start with a Conventional Commits prefix (`feat:`, `fix:`,
   `docs:`, `refactor:`, `perf:`, `test:`, `chore:`, ...) matching what the commit actually is.
+- Branch names say what the branch does: `<type>/<short-kebab-description>`, e.g.
+  `feature/add-mortar-barrage`, `fix/medic-heals-enemies`, `perf/cache-cover-search`,
+  `docs/architecture-overview`. The type matches the commit prefix it will mostly carry
+  (`feature/` for `feat:`, otherwise the same word: `fix/`, `perf/`, `refactor/`, `docs/`,
+  `test/`, `chore/`). Lowercase, hyphens between words, a few words at most, no issue numbers or
+  dates on their own. Branch off `develop` and open the PR back into `develop`.
 - When the user says to slow down ("не торопись") or similar, actually stop and wait — don't
   keep proposing or making the next change.
 - Prefer reusing an existing vanilla/NeoForge/SuperbWarfare class or mechanism over inventing a
