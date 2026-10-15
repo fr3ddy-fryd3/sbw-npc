@@ -426,7 +426,7 @@ class SquadMapPlugin : IClientPlugin {
         while (it.hasNext()) {
             val (id, entry) = it.next()
             if (marks[id] != entry.first) {
-                runCatching { api.removeWaypoint(modId, entry.second) }
+                runCatching { api.removeWaypoint(modId, entry.second) }.onFailure { SquadMod.LOGGER.warn("JourneyMap kept waypoint {}: {}", entry.first.name, it.toString()) }
                 it.remove()
             }
         }
@@ -437,7 +437,7 @@ class SquadMapPlugin : IClientPlugin {
         // A server running JourneyMap keeps them past the session, "not persistent" or not — and
         // one left from last time belongs to nothing this client knows of, so it never went away.
         if (!staleWaypointsCleared) {
-            runCatching { api.removeAllWaypoints(modId) }
+            runCatching { api.removeAllWaypoints(modId) }.onFailure { SquadMod.LOGGER.warn("JourneyMap kept old waypoints: {}", it.toString()) }
             staleWaypointsCleared = true
         }
         for ((id, mark) in marks) {
