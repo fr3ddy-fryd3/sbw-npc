@@ -86,6 +86,36 @@ tested" as two different claims; see Workflow below.
   SuperbWarfare's own port to that target isn't ready, and this addon leans on Create/Ponder-style
   APIs that block on it.
 
+## Pull requests
+
+A PR is read by someone with limited time. Every line of the diff and the description should earn
+its place.
+
+The diff:
+
+- One concern per PR. A bug fix doesn't carry a drive-by refactor, a rename sweep or reformatting
+  of untouched code; open a separate PR for those, or leave them.
+- Keep it as small as the change allows. If the PR description needs "also" more than once, split it.
+- Touch only what the change needs: no whitespace or import churn, no reordered members, no
+  rewritten comments that were fine.
+- No leftover debug logging, commented-out code, unused helpers, or "just in case" parameters,
+  null checks and fallbacks for cases that can't happen.
+- No comments that narrate the diff ("added this to fix the bug", "new method"). Comments follow
+  the rules below, and the history belongs in the commit message.
+- Re-read the whole diff before opening the PR, as a reviewer would, and cut whatever isn't needed.
+
+The description:
+
+- Title: a Conventional Commits line, the same style as commit messages.
+- Body: what changes for the player or the code, and why, in a few plain sentences. Then how it
+  was tested, stated honestly: "built, unit tests pass, not yet tested in game" is a valid answer.
+  Add known risks or open questions only if there are any.
+- Don't restate the diff file by file, list every commit, or repeat the title.
+- No filler: no "This PR introduces...", no "comprehensive", "robust", "seamless" or "enhanced",
+  no emoji headings, no summary tables for a three-line change, no "future improvements" nobody
+  asked for, no empty template sections.
+- A PR that changes gameplay stays a draft until it has been tested in game.
+
 ## Code comments and KDoc
 
 Comments are for the next reader of the code, human or AI. Distilled from
