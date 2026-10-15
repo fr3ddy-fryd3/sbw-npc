@@ -281,7 +281,8 @@ object NativeTactics {
                             pending.operation,
                             now,
                             if (settled) joined!!.entry.center else view.center.point(),
-                            view.incoming.isEmpty() && !view.grenade,
+                            // Reinforcements join a fight in progress: incoming fire does not hold them out.
+                            !view.grenade,
                             view.members.any { it.ready },
                         ),
                         now,
