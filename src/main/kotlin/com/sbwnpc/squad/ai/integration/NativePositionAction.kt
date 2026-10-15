@@ -52,6 +52,7 @@ internal class NativePositionAction(
         override fun route(view: TacticalSnapshot, point: Vec3) = intent.minimumHeight?.let { point.y >= it } != false
     }
     private var ownedLook: net.minecraft.world.entity.ai.behavior.PositionTracker? = null
+    val ownsLook get() = ownedLook != null && npc.target == null && NativeTactics.movable(npc)
     private var deferredAt: Long? = null
     private var lastProgress = 0L
     private var closest = Double.MAX_VALUE
@@ -163,6 +164,7 @@ internal class NativePositionAction(
         val tracker = net.minecraft.world.entity.ai.behavior.BlockPosTracker(net.minecraft.core.BlockPos.containing(watching))
         ownedLook = tracker
         net.tslat.smartbrainlib.util.BrainUtils.setMemory(npc, net.minecraft.world.entity.ai.memory.MemoryModuleType.LOOK_TARGET, tracker)
+        npc.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES, watching)
         npc.lookControl.setLookAt(watching.x, watching.y, watching.z)
     }
     private fun releaseLook() {

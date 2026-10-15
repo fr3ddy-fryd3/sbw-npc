@@ -28,6 +28,7 @@ object NativeTactics {
         refresh(npc)
         return world(npc).actions[npc.uuid]?.takeIf { it.intent.duty != CombatDuty.FOLLOW_ORDER }?.assignment
     }
+    fun ownsLook(npc: NpcEntity): Boolean = worlds[npc.level()]?.actions?.get(npc.uuid)?.ownsLook == true
     fun ownsMovement(npc: NpcEntity): Boolean {
         tick(npc)
         return assignment(npc) != null && movable(npc)
@@ -248,7 +249,8 @@ object NativeTactics {
                     val participants = selected.map { (saved, _) -> SquadParticipant(saved.id, saved.owner, saved.faction.name, level.dimension().location().toString(), saved.orderStamp.toLong()) }
                     val commandId = UUID.nameUUIDFromBytes("$group:${selected.joinToString { "${it.first.id}:${it.first.orderStamp}" }}".toByteArray())
                     val key = first.command?.goal?.takeIf { first.commandOutcome == CommandOutcome.ACTIVE && first.command?.order?.name == first.order.name } ?: ObjectiveKey.Area(first.objectiveDimension?.location()?.toString() ?: level.dimension().location().toString(), objective.x, objective.y, objective.z)
-                    operations.command(CommandBatch(commandId, first.owner, TacticalOrder.valueOf(first.order.name), key, participants, now, EntryArea(entry.point(), 32.0, 16.0)))
+                    val accepted = operations.command(CommandBatch(commandId, first.owner, TacticalOrder.valueOf(first.order.name), key, participants, now, EntryArea(entry.point(), 32.0, 16.0)))
+                    DebugFlags.log(LogGroup.ORDER, "[htn] event=operation_command principal={} squads={} order={} objective={} result={}", first.owner, participants.map { it.id }, first.order, key, accepted)
                     selected.forEach { (saved, _) ->
                         knownOrders[saved.id] = saved.orderStamp
                         missions.remove(saved.id)
@@ -451,7 +453,7 @@ object NativeTactics {
                         else -> proposal.anchor.native()
                     }
                     val before = oldIntents[member.id]
-                    val retained = before?.takeIf { oldStrategy?.first == selected && it.duty == duty && it.requireCover == (duty == CombatDuty.MOVE && situation.incoming) && (focus?.distanceTo(plannedContact[member.id] ?: focus) ?: 0.0) < 8 }
+                    val retained = before?.takeIf { oldStrategy?.first == selected && it.duty == duty && it.requireCover == (duty == CombatDuty.MOVE && situation.incoming) && it.requireShelter == (situation.incoming && duty in setOf(CombatDuty.MOVE, CombatDuty.FIRE)) && (focus?.distanceTo(plannedContact[member.id] ?: focus) ?: 0.0) < 8 }
                     if (retained != null) {
                         retained
                     } else {

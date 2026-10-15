@@ -223,11 +223,13 @@ object HtnTacticsGameTests {
                 val squad = manager.create(helper.level, principal, requireNotNull(group.first().spawnFaction), group.map { it.uuid })
                 squads += squad
                 manager.issueOrderAt(helper.level, squad.id, SquadOrder.ATTACK, target)
+                helper.assertTrue(squads.first().command?.goal == squad.command?.goal, "Map and direct point orders produced different goals: ${squads.first().command?.goal} vs ${squad.command?.goal}")
                 issuedAt = helper.tick
             }
             val group = reinforcement ?: return@onEachTick
             val npc = group.first()
             val original = groups.first().first()
+            if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} pendingObserved=$pendingObserved joined=$joinedAt left=$leftAt original=${NativeTactics.operation(original)} reinforcement=${NativeTactics.operation(npc)} actors=${group.map { helper.relativeVec(it.position()) }}")
             if (joinedAt == null && issuedAt != null && helper.tick > issuedAt!! + 10 && !NativeTactics.coordinated(npc)) pendingObserved = true
             if (joinedAt == null && NativeTactics.coordinated(npc)) {
                 helper.assertTrue(pendingObserved, "Reinforcement was counted before travelling to the operation")
@@ -295,9 +297,10 @@ object HtnTacticsGameTests {
             val rear = allViews.count { it.job == TacticalJob.RESERVE }
             val watchingRear = members.count { actor ->
                 val post = NativeTactics.assignment(actor)
-                post?.job == TacticalJob.RESERVE && post.focus?.let { actor.lookAngle.dot(it.subtract(actor.eyePosition).normalize()) > 0.5 } == true
+                post?.job == TacticalJob.RESERVE && post.focus?.let { actor.lookAngle.dot(it.subtract(actor.eyePosition).normalize()) > 0.5 && com.sbwnpc.squad.combat.Vision.inCone(actor.position(), actor.yHeadRot, it, 120.0) } == true
             }
             val htn = members.count { NativeTactics.reports(it).isNotEmpty() }
+            if (!wide && helper.tick >= 600) Files.writeString(report.resolve("$name-rear.txt"), members.mapNotNull { actor -> NativeTactics.assignment(actor)?.takeIf { it.job == TacticalJob.RESERVE }?.let { post -> "actor=${actor.uuid} position=${helper.relativeVec(actor.position())} post=$post target=${actor.target?.uuid} body=${actor.yRot} head=${actor.yHeadRot} reports=${NativeTactics.reports(actor)}" } }.joinToString("\n"))
             val moved = members.count { it.position().distanceTo(origins.getValue(it.uuid)) >= 12.0 }
             val useful = groups.all { group -> group.count { it.firedRecently(100) } >= 8 }
             groups.forEachIndexed { index, group ->

@@ -271,7 +271,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             return
         }
         // Active role/vehicle/medical controllers keep ownership of their look direction.
-        if (busyWithRole() || vehicle != null || combatLockedByMedic()) return
+        if (busyWithRole() || vehicle != null || combatLockedByMedic() || com.sbwnpc.squad.ai.integration.NativeTactics.ownsLook(this)) return
         lookControl.setLookAt(at.x, at.y, at.z)
     }
 
