@@ -7,7 +7,7 @@ import com.sbwnpc.squad.ai.planning.*
 
 enum class CombatDuty { FIRE, MOVE, REAR_GUARD, OBSERVE, SEARCH, FOLLOW_ORDER }
 enum class CombatStrategy { ADVANCE, HOLD, GAIN_HEIGHT, WITHDRAW }
-data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null, val elevationWeight: Double = 0.0) {
+data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null, val elevationWeight: Double = 0.0, val assault: Boolean = false) {
     init {
         require(actor.level == AgentLevel.NPC && exposureWeight.isFinite() && exposureWeight >= 0 && elevationWeight.isFinite() && elevationWeight >= 0)
     }
@@ -15,7 +15,7 @@ data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: 
 data class TeamMission(val agent: AgentId, val members: List<PositionIntent>)
 data class SquadMission(val agent: AgentId, val teams: List<TeamMission>)
 data class AreaControlTask(val operation: java.util.UUID, val objective: Point3, val commands: Map<java.util.UUID, java.util.UUID>)
-data class OperationMission(val squads: List<SquadMission>, val secure: AreaControlTask? = null)
+data class OperationMission(val squads: List<SquadMission>, val secure: AreaControlTask? = null, val attack: AttackRoles = AttackRoles.NONE)
 
 /** Typed observations are scoped by FactSnapshot.owner; no world queries live in this domain. */
 data class LocalPositionFailure(val anchor: Point3, val failedAt: Long, val attempts: Int, val rejections: Map<String, Int>)
@@ -27,6 +27,7 @@ object TacticalFacts {
     val COVER = FactKey("sector.actual_cover", Boolean::class.javaObjectType)
     val ARRIVED = FactKey("post.actual_arrival", Boolean::class.javaObjectType)
     val STRATEGY = FactKey("squad.strategy", CombatStrategy::class.java)
+    val ATTACK_PHASE = FactKey("operation.attack_phase", AttackPhase::class.java)
 }
 
 object TacticalDomain {
@@ -44,18 +45,27 @@ object TacticalDomain {
             PrimitiveSpec(task.child.id.toString(), ActionSpec(DelegationAction.KEY, task.copy(continuous = true), setOf(ResourceKey(task.child, "command")), timeoutTicks = Long.MAX_VALUE), TaskContract())
         }
     private fun children(tasks: List<DelegationTask>) = TaskNetwork(tasks.map { NetworkNode(it.child.id.toString(), DELEGATE.call(it)) })
+    private fun coordinate(mission: OperationMission, roles: AttackRoles): TaskNetwork {
+        val nodes = mission.squads.map { squad -> NetworkNode(squad.agent.id.toString(), DELEGATE.call(DelegationTask(squad.agent, SQUAD.call(OperationTactics.apply(squad, roles))))) }
+        return TaskNetwork(nodes + listOfNotNull(mission.secure?.let { NetworkNode("secure", SECURE_TASK.call(it)) }))
+    }
 
     val operation = HtnDomain(
         AgentLevel.OPERATION,
         listOf(
             CompoundTask(
                 OPERATION,
+                // Without an attack phase the squads carry out their own missions; an attacking
+                // operation deploys a firing line, assaults into its objective or clears around it.
                 listOf(
-                    Method("coordinate", decompose = { mission, _ ->
-                        val nodes = mission.squads.map { NetworkNode(it.agent.id.toString(), DELEGATE.call(DelegationTask(it.agent, SQUAD.call(it)))) }
-                        TaskNetwork(nodes + listOfNotNull(mission.secure?.let { NetworkNode("secure", SECURE_TASK.call(it)) }))
-                    }),
-                ),
+                    Method<OperationMission>("coordinate", eligible = {
+                        Condition { facts -> if (facts.value(TacticalFacts.ATTACK_PHASE) == null) Verdict.Allowed else Verdict.Rejected("attack_phase_known") }
+                    }, decompose = { mission, _ -> coordinate(mission, AttackRoles.NONE) }),
+                ) + AttackPhase.entries.map { phase ->
+                    Method<OperationMission>(phase.name.lowercase(), eligible = {
+                        Condition.test(TacticalFacts.ATTACK_PHASE, "other_attack_phase") { it == phase }
+                    }, decompose = { mission, _ -> coordinate(mission, if (phase == AttackPhase.DEPLOY) AttackRoles.NONE else mission.attack) })
+                },
             ),
             delegate(),
             PrimitiveTask(SECURE_TASK) { task ->
@@ -79,7 +89,9 @@ object TacticalDomain {
                         decompose = { mission, _ ->
                             val tasks = mission.teams.map { team ->
                                 val selected = team.copy(
+                                    // A member assaulting for the operation keeps its role whatever the squad's own strategy.
                                     members = team.members.map { intent ->
+                                        if (intent.assault) return@map intent
                                         when (strategy) {
                                             CombatStrategy.HOLD -> if (intent.duty == CombatDuty.MOVE) intent.copy(duty = CombatDuty.FIRE, anchor = intent.origin, requireCover = false) else intent
 

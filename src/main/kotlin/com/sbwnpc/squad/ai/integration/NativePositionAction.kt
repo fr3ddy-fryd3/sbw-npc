@@ -45,6 +45,7 @@ internal class NativePositionAction(
     private val policy = object : TacticalPositionPolicy {
         override fun score(view: TacticalSnapshot, task: TacticalTask, point: Vec3, exposure: Int) = exposure * intent.exposureWeight - (point.y - intent.origin.y).coerceIn(-2.0, 8.0) * intent.elevationWeight
         override fun requiresShelter(view: TacticalSnapshot, task: TacticalTask) = intent.requireShelter
+        override val closesWithEnemy get() = intent.assault
         override fun candidate(view: TacticalSnapshot, task: TacticalTask, point: Vec3, localAnchor: Vec3): Boolean {
             if (intent.minimumHeight?.let { point.y < it } == true) return false
             if (intent.inspection != null && point.distanceTo(intent.inspection.native()) <= 24 && !DetectionSightline.visible(npc.level() as ServerLevel, point.add(0.0, npc.eyeHeight.toDouble(), 0.0), intent.inspection.native().add(0.0, 1.5, 0.0), npc)) return false
@@ -86,9 +87,9 @@ internal class NativePositionAction(
         task.usesObservedAim = true
         task.observedAim = observation?.let { TacticalAim(it.id, it.position, it.position.add(0.0, 1.5, 0.0)) }
             ?: intent.focus?.native()?.let { TacticalAim(null, it, it.add(0.0, 1.5, 0.0)) }
-        if (task.position != null && (!TacticalClearance.permitsPosition(npc.npcClass, npc.position(), task.position!!, view) || GrenadeHazard.threatens(npc.level() as ServerLevel, task.position!!))) invalidate(now, "post_not_permitted")
+        if (task.position != null && ((!intent.assault && !TacticalClearance.permitsPosition(npc.npcClass, npc.position(), task.position!!, view)) || GrenadeHazard.threatens(npc.level() as ServerLevel, task.position!!))) invalidate(now, "post_not_permitted")
         val path = npc.navigation.path
-        if (path != null && path === task.navigationPath && !path.isDone && !TacticalClearance.permitsPath(npc.npcClass, npc.position(), path, view)) invalidate(now, "path_not_permitted")
+        if (!intent.assault && path != null && path === task.navigationPath && !path.isDone && !TacticalClearance.permitsPath(npc.npcClass, npc.position(), path, view)) invalidate(now, "path_not_permitted")
         if (reached()) {
             releasePath()
             if (npc.target == null && intent.duty in setOf(CombatDuty.REAR_GUARD, CombatDuty.OBSERVE, CombatDuty.SEARCH)) {
@@ -142,7 +143,7 @@ internal class NativePositionAction(
         if (npc.navigation.isDone) {
             if (!TacticalBudget.path(npc)) return deferred(now, "native_path_budget")
             val route = TacticalPositions.pathToPosition(npc, destination)
-            if (!TacticalPositions.reaches(route, destination) || !TacticalClearance.permitsPath(npc.npcClass, npc.position(), route!!, view)) {
+            if (!TacticalPositions.reaches(route, destination) || (!intent.assault && !TacticalClearance.permitsPath(npc.npcClass, npc.position(), route!!, view))) {
                 invalidate(now, "route_unreachable")
                 return ActionUpdate.Running
             }

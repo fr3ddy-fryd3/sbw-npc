@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.gametest
 
 import com.sbwnpc.squad.ai.integration.NativeTactics
+import com.sbwnpc.squad.ai.tactics.AttackPhase
 import com.sbwnpc.squad.combat.tactics.TacticalJob
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
@@ -301,6 +302,38 @@ object HtnTacticsGameTests {
         }
     }
 
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 4800, batch = "htn-take")
+    fun htnAttackTakesDefendedObjective(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "htn-take")
+        val manager = SquadManager.get(helper.level)
+        val groups = (0..1).map { group -> (0 until 8).map { index -> scene.spawn(Vec3(28.5 + index / 4 * 4, 1.0, 72.5 + group * 32 + index % 4 * 4)) } }
+        val defenders = (0 until 8).map { index -> scene.spawn(Vec3(128.5 + index / 4 * 4, 1.0, 80.5 + index % 4 * 8), faction = com.sbwnpc.squad.npc.SquadFaction.COW) }
+        val squads = groups.map { group -> manager.create(helper.level, UUID(90, 8), requireNotNull(group.first().spawnFaction), group.map { it.uuid }) }
+        val defence = manager.create(helper.level, UUID(91, 8), requireNotNull(defenders.first().spawnFaction), defenders.map { it.uuid })
+        scene.onClose = { (squads + defence).forEach { manager.deleteSquad(helper.level, it.id) } }
+        val target = helper.absolutePos(BlockPos(130, 1, 92))
+        manager.issueOrderAt(helper.level, defence.id, SquadOrder.DEFEND, target)
+        GroupOrders.apply(helper.level, manager, squads.map { it.id }, SquadOrder.ATTACK, target.x, target.z)
+        var closest = Double.MAX_VALUE
+        var enteredAt: Long? = null
+        var defendersAtEntry = 0
+        helper.onEachTick {
+            val attackers = groups.flatten().filter { it.isAlive }
+            attackers.minOfOrNull { it.position().distanceTo(target.center) }?.let { closest = minOf(closest, it) }
+            if (enteredAt == null && attackers.count { it.position().distanceTo(target.center) <= 24 } >= 4) {
+                enteredAt = helper.tick
+                defendersAtEntry = defenders.count { it.isAlive }
+            }
+            if (helper.tick % 200L == 0L) scene.result("RUNNING", "tick=${helper.tick} attackers=${attackers.size} defenders=${defenders.count { it.isAlive }} closest=${closest.toInt()} inside=${attackers.count { it.position().distanceTo(target.center) <= 24 }} orders=${squads.map { it.order }}")
+            if (squads.all { it.order == SquadOrder.DEFEND }) {
+                helper.assertTrue(squads.all { it.commandReason == "occupied_and_inspected_area" }, "Attack ended without taking the objective: ${squads.map { it.commandReason }}")
+                scene.result("PASS", "tick=${helper.tick} attackers=${attackers.size} defenders=${defenders.count { it.isAlive }} enteredAt=$enteredAt defendersAtEntry=$defendersAtEntry")
+                helper.succeed()
+            }
+        }
+    }
+
     private fun jointAttack(helper: GameTestHelper, wide: Boolean) {
         val name = if (wide) "htn-wide" else "htn-compact"
         val scene = CombatIdleGameTests.Scene(helper, name)
@@ -316,7 +349,7 @@ object HtnTacticsGameTests {
         (0 until 16).forEach { index -> scene.enemy(Vec3(145.5 + index / 4 * 2, 1.0, if (wide) 16.5 + index * 12 else 100.5 + index % 4 * 4)) }
         val squads = groups.map { group -> manager.create(helper.level, principal, requireNotNull(group.first().spawnFaction), group.map { it.uuid }) }
         val report = Path.of(System.getProperty("sbwnpc.gameTestReports"))
-        Files.writeString(report.resolve("$name-observed.csv"), "tick,squad,alive,moved,shootersRecent,actualProjectileShooters,frontWidth,rearGuards,htnExecutions,friendlyHits\n")
+        Files.writeString(report.resolve("$name-observed.csv"), "tick,squad,alive,moved,shootersRecent,actualProjectileShooters,frontWidth,rearGuards,htnExecutions,friendlyHits,phase\n")
         val shooters = HashSet<UUID>()
         val memberIds = origins.keys
         var friendlyHits = 0
@@ -338,7 +371,7 @@ object HtnTacticsGameTests {
         GroupOrders.apply(helper.level, manager, squads.map { it.id }, SquadOrder.ATTACK, objective.x, objective.z)
         var validWindows = 0
         helper.onEachTick {
-            if (helper.tick % 100L != 0L) return@onEachTick
+            if (helper.tick % 50L != 0L) return@onEachTick
             val allViews = members.mapNotNull { NativeTactics.assignment(it) }
             val width = allViews.maxOfOrNull { it.anchor.z }?.minus(allViews.minOf { it.anchor.z }) ?: 0.0
             val rear = allViews.count { it.job == TacticalJob.RESERVE }
@@ -350,10 +383,12 @@ object HtnTacticsGameTests {
             if (!wide && helper.tick >= 600) Files.writeString(report.resolve("$name-rear.txt"), members.mapNotNull { actor -> NativeTactics.assignment(actor)?.takeIf { it.job == TacticalJob.RESERVE }?.let { post -> "actor=${actor.uuid} position=${helper.relativeVec(actor.position())} post=$post target=${actor.target?.uuid} body=${actor.yRot} head=${actor.yHeadRot} reports=${NativeTactics.reports(actor)}" } }.joinToString("\n"))
             val moved = members.count { it.position().distanceTo(origins.getValue(it.uuid)) >= 12.0 }
             val useful = groups.all { group -> group.count { it.firedRecently(100) } >= 8 }
+            // This scene measures the firing line: the assault that follows it is a separate scene.
+            val phase = members.firstNotNullOfOrNull { NativeTactics.attackPhase(it) }
             groups.forEachIndexed { index, group ->
-                Files.writeString(report.resolve("$name-observed.csv"), "${helper.tick},$index,${group.count { it.isAlive }},${group.count { it.position().distanceTo(origins.getValue(it.uuid)) >= 12.0 }},${group.count { it.firedRecently(100) }},${group.count { it.uuid in shooters }},$width,$rear,$htn,$friendlyHits\n", APPEND)
+                Files.writeString(report.resolve("$name-observed.csv"), "${helper.tick},$index,${group.count { it.isAlive }},${group.count { it.position().distanceTo(origins.getValue(it.uuid)) >= 12.0 }},${group.count { it.firedRecently(100) }},${group.count { it.uuid in shooters }},$width,$rear,$htn,$friendlyHits,$phase\n", APPEND)
             }
-            if (helper.tick >= 600 && useful && moved >= 32 && shooters.size >= 24 && htn == 64) validWindows++ else validWindows = 0
+            if (helper.tick >= 300 && phase != AttackPhase.ASSAULT && phase != AttackPhase.CLEAR && useful && moved >= 32 && shooters.size >= 24 && htn == 64) validWindows++ else validWindows = 0
             if (validWindows >= 3) {
                 helper.assertTrue(members.all { it.isAlive }, "Attacker died without return fire")
                 helper.assertTrue(friendlyHits == 0, "HTN attack caused friendly damage")

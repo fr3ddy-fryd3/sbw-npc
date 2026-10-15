@@ -45,6 +45,9 @@ object NativeTactics {
     fun operationOf(level: ServerLevel, squad: UUID): OperationView? = worlds[level]?.operations?.operationOf(squad)
     fun coordinated(npc: NpcEntity) = (operation(npc)?.members?.size ?: 0) > 1
 
+    /** The attack phase of [npc]'s operation, or null when it is not attacking. */
+    fun attackPhase(npc: NpcEntity): AttackPhase? = operation(npc)?.let { world(npc).attackPhase(it.id) }
+
     /** Whether [squad] currently counts towards some operation's area completion. */
     fun holdsArea(squad: UUID) = worlds.values.any { it.holdsArea(squad) }
     fun targetDeath(event: net.neoforged.neoforge.event.entity.living.LivingDeathEvent) {
@@ -80,6 +83,8 @@ object NativeTactics {
         private val areaClocks = HashMap<UUID, AreaControlClock>()
         private val areaObservedAt = HashMap<UUID, Long>()
         private val areaTraces = HashMap<UUID, String>()
+        private val areaOccupied = HashMap<UUID, Boolean>()
+        private val attacks = HashMap<UUID, AttackProgress>()
         private val unverified = HashMap<UUID, MutableMap<UUID, Vec3>>()
         private val completions = HashMap<UUID, AreaControlTask>()
         private val sequences = HashMap<AssignmentTicket, Long>()
@@ -175,6 +180,7 @@ object NativeTactics {
                 val observed = areaObservedAt[id.id]
                 if (observed != null) result = result.observe(TacticalFacts.AREA_SECURED, areaClocks[id.id]?.completed == true, observedAt = observed, expiresAt = observed + 11)
             }
+            if (id.level == AgentLevel.OPERATION) attacks[id.id]?.let { result = result.observe(TacticalFacts.ATTACK_PHASE, it.phase) }
             if (id.level == AgentLevel.SQUAD) result = result.observe(TacticalFacts.STRATEGY, strategies[id.id]?.first ?: CombatStrategy.ADVANCE)
             if (id.level == AgentLevel.NPC) {
                 val npc = level.getEntity(id.id) as? NpcEntity
@@ -334,12 +340,15 @@ object NativeTactics {
                     } else {
                         null
                     }
-                    ensure(root).command(operation, TacticalDomain.OPERATION.call(OperationMission(squadMissions, secure)), facts(root, now))
+                    val roles = if (secure != null) attackRoles(operation, secure, active, now) else AttackRoles.NONE.also { attacks.remove(operation) }
+                    ensure(root).command(operation, TacticalDomain.OPERATION.call(OperationMission(squadMissions, secure, roles)), facts(root, now))
                 }
                 agents.keys.filter { it.level == AgentLevel.OPERATION && it !in roots }.toList().forEach { id ->
                     agents.remove(id)?.cancel(now, "operation_membership_changed")
                     children.remove(id)
                     areaClocks.remove(id.id)
+                    areaOccupied.remove(id.id)
+                    attacks.remove(id.id)
                     areaObservedAt.remove(id.id)
                     areaTraces.remove(id.id)
                     unverified.remove(id.id)
@@ -388,6 +397,7 @@ object NativeTactics {
             val present = observers.count { it.position().distanceTo(point) <= 24 }
             val required = max(1, (squads.sumOf { it.members.size } + 1) / 2)
             val occupied = present >= required
+            areaOccupied[task.operation] = occupied
             if (occupied && contacts.isEmpty()) {
                 val reference = observers.firstOrNull()
                 if (reference != null) {
@@ -414,6 +424,32 @@ object NativeTactics {
                     DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=area_clock {} heldTicks={} nearestContact={} unverifiedAt={}", task.operation, inputs, clock.heldTicks, contacts.minOfOrNull { it.position.distanceTo(point).toInt() }, remaining.values.take(3).map { net.minecraft.core.BlockPos.containing(it).toShortString() })
                 }
             }
+        }
+
+        /** Reports the attack's observations to its [AttackProgress] and returns the roles of its phase. */
+        private fun attackRoles(operation: UUID, task: AreaControlTask, squads: List<Squad>, now: Long): AttackRoles {
+            val progress = attacks.getOrPut(operation) { AttackProgress(now) }
+            val objective = task.objective.native()
+            val contacts = squads.flatMap { combatView(it.id)?.contacts.orEmpty() }.filter { now - it.seenAt <= 200 }.distinctBy { it.id }
+            val members = squads.flatMap { snapshots[it.id]?.members.orEmpty() }
+            val threats = contacts.filter { it.position.distanceTo(objective) <= AREA_THREAT_RADIUS }
+            val before = progress.phase
+            val inputs = progress.observe(
+                now,
+                contactSeen = contacts.isNotEmpty(),
+                incoming = squads.any { snapshots[it.id]?.incoming?.isNotEmpty() == true },
+                readyShooters = members.count { it.ready },
+                enemiesAtObjective = contacts.count { it.position.distanceTo(objective) <= AttackPhase.OBJECTIVE_RADIUS },
+                occupied = areaOccupied[operation] == true,
+                threatsNearby = threats.size,
+            )
+            if (progress.phase != before) DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=attack_phase from={} to={} inputs={}", operation, before, progress.phase, inputs)
+            return progress.roles(
+                task.objective,
+                members.filter { formationDuties[it.id] == CombatDuty.MOVE }.map { it.id },
+                members.map { AttackMember(it.id, it.position.point(), it.ready) },
+                threats.map { it.position.point() },
+            )
         }
 
         /** Geometry proposes areas; actual arrival, useful fire and native reachability remain observations. */
@@ -490,7 +526,9 @@ object NativeTactics {
                         else -> proposal.anchor.native()
                     }
                     val before = oldIntents[member.id]
-                    val retained = before?.takeIf { oldStrategy?.first == selected && it.duty == duty && it.requireCover == (duty == CombatDuty.MOVE && situation.incoming) && it.requireShelter == (situation.incoming && duty in setOf(CombatDuty.MOVE, CombatDuty.FIRE)) && (focus?.distanceTo(plannedContact[member.id] ?: focus) ?: 0.0) < 8 }
+                    val requireCover = duty == CombatDuty.MOVE && situation.incoming
+                    val requireShelter = situation.incoming && duty in setOf(CombatDuty.MOVE, CombatDuty.FIRE)
+                    val retained = before?.takeIf { oldStrategy?.first == selected && it.duty == duty && it.requireCover == requireCover && it.requireShelter == requireShelter && (focus?.distanceTo(plannedContact[member.id] ?: focus) ?: 0.0) < 8 }
                     if (retained != null) {
                         retained
                     } else {
@@ -509,8 +547,8 @@ object NativeTactics {
                             member.position.point(),
                             anchor.point(),
                             watch?.point(),
-                            requireCover = duty == CombatDuty.MOVE && situation.incoming,
-                            requireShelter = situation.incoming && duty in setOf(CombatDuty.MOVE, CombatDuty.FIRE),
+                            requireCover = requireCover,
+                            requireShelter = requireShelter,
                             minimumHeight = if (duty == CombatDuty.OBSERVE) member.position.y - 2 else null,
                             inspection = if (duty == CombatDuty.SEARCH) inspect?.point() else null,
                         )
@@ -545,6 +583,7 @@ object NativeTactics {
         }
         private val areaTasks = HashMap<UUID, AreaControlTask>()
         fun holdsArea(squad: UUID) = areaTasks.values.any { squad in it.commands.keys }
+        fun attackPhase(operation: UUID): AttackPhase? = attacks[operation]?.phase
         private fun currentAreaTask(operation: UUID): AreaControlTask? = areaTasks[operation]
         private fun finishAreas() {
             val manager = SquadManager.get(level)
