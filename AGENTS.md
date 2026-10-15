@@ -183,7 +183,7 @@ KDoc (`/** ... */`) goes on every class, object and non-obvious public or `inter
 - Compiling (`compileKotlin`) is not a testable artifact. A real jar requires `build`.
 - Deploy for in-game testing: copy the built jar into the **flat** `~/.minecraft/mods/` folder:
   ```
-  cp build/libs/sbwnpc-<version>-mc1.21.1.jar ~/.minecraft/mods/
+  cp build/libs/sbwnpc-<version>-mc1.21.1-neoforge.jar ~/.minecraft/mods/
   ```
   Not into a `~/.minecraft/mods/1.21.1/` subfolder: the launcher doesn't read it. Remove any jar
   of another version from `mods/` first, so two versions of the mod don't load at once.

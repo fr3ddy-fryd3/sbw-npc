@@ -4,10 +4,11 @@ A map of the codebase for whoever picks it up next. It covers how the parts fit 
 things go; the code's own KDoc covers the details. Build, workflow and coding rules are in
 [AGENTS.md](../AGENTS.md).
 
-Kotlin packages below are relative to `com/sbwnpc/squad/`. Routing sources live under
-`common/src/main/kotlin/`; remaining sources are under `src/main/kotlin/` while
-the NeoForge module is being extracted. The root NeoForge build recompiles common
-sources; `:common:check` compiles them against vanilla Minecraft.
+Kotlin packages below are relative to `com/sbwnpc/squad/`. Shared routing sources live
+under `common/src/main/kotlin/`; NeoForge-owned sources live under
+`neoforge/src/main/kotlin/`. Shared assets/data live in `common/src/main/resources/`.
+NeoForge recompiles common sources; `:common:check` checks them against vanilla Minecraft.
+Build conventions live in `build-logic/`; root build commands delegate to these modules.
 
 ## The big picture
 
@@ -50,8 +51,8 @@ command and supply it. The pieces, roughly from the outside in:
 | `config/` | `SquadConfig` (server config, `serverconfig/sbwnpc-server.toml`) and `DebugConfig` (debug builds only) |
 | `util/` | Small shared helpers: timers, terrain queries, item stack data, the perf probe |
 
-Java mixins live in `src/main/java/com/sbwnpc/squad/mixin/`, listed in
-`src/main/resources/mixins.sbwnpc.json` (common and client sets). Most patch SuperbWarfare classes
+Java mixins live in `neoforge/src/main/java/com/sbwnpc/squad/mixin/`, listed in
+`neoforge/src/main/resources/mixins.sbwnpc.json` (common and client sets). Most patch SuperbWarfare classes
 (vehicle boarding, shooting and gun data, aircraft rendering, auto-aim); the rest patch vanilla
 (entity alliance checks, tracking range, key mappings).
 
@@ -220,7 +221,7 @@ work runs in the NPC's own brain.
 
 ## Tests
 
-JUnit 5 tests in `src/test/kotlin/com/sbwnpc/squad/`, mirroring the main packages. They cover the
+JUnit 5 tests in `neoforge/src/test/kotlin/com/sbwnpc/squad/`, mirroring the main packages. They cover the
 pure logic that can run without a game: sightlines and vision, formations, fire decisions, flight
 controllers, route progress, the cell planner, static gun models. `SbwBoundaryTest` scans the sources
 for SBW imports outside the adapter, and `SbwMixinIntegrationTest` checks that the mixins still
@@ -241,4 +242,4 @@ Gameplay behaviour is verified by playtesting in game, not by these tests.
 | Runtime-only global state | An `object` with a `clearAll()`, called from `ServerLifecycle.onServerStopped`. |
 | Periodic server work | A `tick(server)` called from `ServerTick`. Spread expensive work with a budget like `TickBudget` or `PlanBudget`. |
 | A server setting | An entry in `SquadConfig`. |
-| An NPC class or faction | `npc/NpcClass` or `npc/SquadFaction`, plus textures and lang entries under `src/main/resources/assets/sbwnpc/`. |
+| An NPC class or faction | `npc/NpcClass` or `npc/SquadFaction`, plus textures and lang entries under `common/src/main/resources/assets/sbwnpc/`. |

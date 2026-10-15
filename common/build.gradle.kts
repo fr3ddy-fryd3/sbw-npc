@@ -1,6 +1,6 @@
 plugins {
     id("net.neoforged.moddev")
-    id("org.jetbrains.kotlin.jvm")
+    id("sbwnpc.jvm-conventions")
 }
 
 repositories {
@@ -15,15 +15,16 @@ neoForge {
     }
 }
 
-kotlin {
-    jvmToolchain(21)
-}
-
 val commonKotlin by configurations.creating {
     isCanBeResolved = false
     isCanBeConsumed = true
 }
 artifacts.add(commonKotlin.name, file("src/main/kotlin"))
+val commonResources by configurations.creating {
+    isCanBeResolved = false
+    isCanBeConsumed = true
+}
+artifacts.add(commonResources.name, file("src/main/resources"))
 
 // Loaders recompile these sources; the vanilla check must not become a second shipped jar.
 tasks.named<Jar>("jar") { enabled = false }
