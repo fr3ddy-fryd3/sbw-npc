@@ -137,6 +137,9 @@ KDoc (`/** ... */`) goes on every class, object and non-obvious public or `inter
 
 ## Architecture pointers
 
+Full map of packages, wiring and where to add things: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The short version:
+
 - AI behaviors live under `entity/ai/*Behaviour.kt`, written against SmartBrainLib's
   behavior-tree framework (`ExtendedBehaviour`, `BrainActivityGroup`, `MemoryModuleType`) — not
   vanilla `Goal`/`GoalSelector`.
@@ -147,3 +150,7 @@ KDoc (`/** ... */`) goes on every class, object and non-obvious public or `inter
   `RegisterPayloadHandlersEvent`.
 - Squad state (`SquadManager`) and player faction picks (`PlayerFactionRegistry`) are both
   `SavedData` — persisted per world, not per session.
+- Only `integration/sbw/` (and the mixins) may import SuperbWarfare; everything else goes through
+  the ports in `domain/port/`. `SbwBoundaryTest` enforces it.
+- Runtime-only static state must be cleared in `ServerLifecycle.onServerStopped`, or it leaks into
+  the next world.
