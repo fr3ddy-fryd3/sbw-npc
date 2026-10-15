@@ -217,6 +217,7 @@ kotlin {
     }
 }
 
+/** Verifies the selected dependency and records its effective inputs for build audits. */
 abstract class VerifySbwInput : DefaultTask() {
     @get:Input abstract val provenance: MapProperty<String, String>
     @get:InputFiles

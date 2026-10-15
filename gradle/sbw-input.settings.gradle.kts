@@ -1,6 +1,6 @@
 val loader = providers.gradleProperty("loader").orElse("neoforge").get()
 require(loader in setOf("neoforge", "fabric", "forge")) { "Unknown loader: $loader" }
-val profileFile = file("gradle/sbw/$loader.properties")
+val profileFile = settingsDir.resolve("gradle/sbw/$loader.properties")
 require(profileFile.isFile) { "Missing SBW profile: $profileFile" }
 val profile = java.util.Properties().apply { profileFile.inputStream().use { load(it) } }
 require(profile.getProperty("loader") == loader) { "SBW profile loader mismatch" }
@@ -22,7 +22,7 @@ if (sourceOverride != null) {
     require(providers.environmentVariable("CI").orElse("").get() in listOf("", "false")) {
         "Local SBW source overrides are development-only and disabled in CI"
     }
-    val source = file(sourceOverride).canonicalFile
+    val source = settingsDir.resolve(sourceOverride).canonicalFile
     require(source.isDirectory) { "Missing SBW source override: $source" }
     fun git(vararg args: String) = providers.exec {
         commandLine(listOf("git", "-C", source.path) + args)
