@@ -62,6 +62,11 @@ object HtnTacticsGameTests {
                 helper.assertTrue(helper.tick - injectedAt!! >= 600, "Renewed incoming fire did not reset success interval")
                 helper.assertTrue(squad.commandOutcome == com.sbwnpc.squad.ai.tactics.CommandOutcome.COMPLETED, "Physical success was not recorded")
                 helper.assertTrue(squad.tactics.plan == null, "Legacy controller completed the attack")
+                // What the map receives must already show the defence, not the finished attack.
+                val feed = com.sbwnpc.squad.map.MapFeed.build(helper.level.server, helper.level, squad.owner, squad.faction)
+                val entry = feed.getList("Squads", net.minecraft.nbt.Tag.TAG_COMPOUND.toInt()).map { it as net.minecraft.nbt.CompoundTag }.single { it.getUUID("Id") == squad.id }
+                scene.result("MAP", "order=${entry.getString("Order")} goalOrder=${entry.getString("GoalOrder")} goal=${entry.getIntArray("Goal").toList()}")
+                helper.assertTrue(entry.getString("Order") == "DEFEND" && entry.getString("GoalOrder") == "DEFEND", "Map still shows ${entry.getString("Order")}/${entry.getString("GoalOrder")} after the attack completed")
                 scene.result("PASS", "tick=${helper.tick} occupiedAt=$occupiedAt incomingAt=$injectedAt inspectedAt=$inspectedAt reason=${squad.commandReason}")
                 helper.succeed()
             }

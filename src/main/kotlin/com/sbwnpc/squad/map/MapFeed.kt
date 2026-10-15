@@ -57,8 +57,10 @@ object MapFeed {
         }
     }
 
-    private fun build(server: MinecraftServer, player: ServerPlayer, faction: SquadFaction): CompoundTag {
-        val level = player.serverLevel()
+    private fun build(server: MinecraftServer, player: ServerPlayer, faction: SquadFaction): CompoundTag = build(server, player.serverLevel(), player.uuid, faction)
+
+    /** The feed a viewer in [level] receives for [faction]; GameTests check what the map shows. */
+    fun build(server: MinecraftServer, level: net.minecraft.server.level.ServerLevel, viewer: UUID, faction: SquadFaction): CompoundTag {
         val sides = Diplomacy.alliesOf(faction)
         val tag = CompoundTag()
         tag.putString("Dim", level.dimension().location().toString())
@@ -72,9 +74,9 @@ object MapFeed {
         // plus everything on the sides allied with the player's faction.
         val showAll = com.sbwnpc.squad.combat.DebugFlags.mapShowsAll
         val shown = if (showAll) SquadFaction.entries.toMutableSet() else sides.toMutableSet()
-        for (squad in squads.all()) if (squad.owner == player.uuid) shown += squad.faction
+        for (squad in squads.all()) if (squad.owner == viewer) shown += squad.faction
         for (squad in squads.all()) {
-            if (squad.owner != player.uuid && squad.faction !in shown) continue
+            if (squad.owner != viewer && squad.faction !in shown) continue
             // Wiped out and waiting on its barracks for men: nothing out there to show. It used to
             // pass for a squad merely out of range, square and objective waypoint and all.
             if (squad.members.isEmpty()) continue
@@ -90,7 +92,7 @@ object MapFeed {
             t.putUUID("Id", squad.id)
             t.putString("Name", squad.name)
             t.putInt("F", squad.faction.ordinal)
-            t.putBoolean("Own", squad.owner == player.uuid)
+            t.putBoolean("Own", squad.owner == viewer)
             t.putString("Order", squad.order.name)
             t.putBoolean("Mortar", squads.isMortarSquad(squad))
             t.putBoolean("Tank", squads.isTankSquad(squad))
@@ -106,7 +108,7 @@ object MapFeed {
             }
             // Where each of the player's own men stands, for the map to mark — the square alone is
             // the middle, and hides the one stuck behind a hill.
-            if (squad.owner == player.uuid && members.isNotEmpty()) {
+            if (squad.owner == viewer && members.isNotEmpty()) {
                 t.putIntArray("Men", members.flatMap { listOf(it.blockX, it.blockZ) }.toIntArray())
             }
             squad.objective?.let { t.putIntArray("Obj", intArrayOf(it.x, it.y, it.z)) }
