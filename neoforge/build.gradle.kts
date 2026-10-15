@@ -90,7 +90,7 @@ neoForge {
                 "--existing",
                 file("src/main/resources/").absolutePath,
                 "--existing",
-                project(":common").file("src/main/resources/").absolutePath
+                rootProject.layout.projectDirectory.dir("common/src/main/resources").asFile.absolutePath
             )
         }
 
