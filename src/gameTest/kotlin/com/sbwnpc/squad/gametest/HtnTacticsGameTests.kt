@@ -26,15 +26,15 @@ import java.util.function.Consumer
 @PrefixGameTestTemplate(false)
 object HtnTacticsGameTests {
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1600, batch = "htn-compact")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1600, batch = "htn-compact")
     fun htnJointAttack64OnCompactFront(helper: GameTestHelper) = jointAttack(helper, wide = false)
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1600, batch = "htn-wide")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1600, batch = "htn-wide")
     fun htnJointAttack64OnWideFront(helper: GameTestHelper) = jointAttack(helper, wide = true)
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1800, batch = "htn-area")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1800, batch = "htn-area")
     fun htnEmptyAreaRequiresOccupationAndQuietInterval(helper: GameTestHelper) {
         val scene = CombatIdleGameTests.Scene(helper, "htn-area")
         val manager = SquadManager.get(helper.level)
@@ -69,7 +69,7 @@ object HtnTacticsGameTests {
     }
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1300, batch = "htn-600-movement")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1300, batch = "htn-600-movement")
     fun htnSixHundredActiveNpcMovementBudget(helper: GameTestHelper) {
         val scene = CombatIdleGameTests.Scene(helper, "htn-600", recordTrace = false)
         val manager = SquadManager.get(helper.level)
@@ -103,7 +103,7 @@ object HtnTacticsGameTests {
     }
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1300, batch = "htn-armed")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1300, batch = "htn-armed")
     fun htnJointAttackAgainstArmedDefenders(helper: GameTestHelper) {
         val scene = CombatIdleGameTests.Scene(helper, "htn-armed")
         val manager = SquadManager.get(helper.level)
@@ -153,7 +153,7 @@ object HtnTacticsGameTests {
     }
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1500, batch = "htn-blocked")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1500, batch = "htn-blocked")
     fun htnBlockedSquadDoesNotStopOtherAttackers(helper: GameTestHelper) {
         val scene = CombatIdleGameTests.Scene(helper, "htn-blocked")
         val manager = SquadManager.get(helper.level)
@@ -199,7 +199,7 @@ object HtnTacticsGameTests {
     }
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1600, batch = "htn-reinforcement")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1600, batch = "htn-reinforcement")
     fun htnReinforcementJoinsOnArrivalAndCanLeaveIndependently(helper: GameTestHelper) {
         val scene = CombatIdleGameTests.Scene(helper, "htn-reinforcement")
         val manager = SquadManager.get(helper.level)
