@@ -30,7 +30,9 @@ object OperationFront {
         val enemyMin = extents.minOrNull() ?: 0.0
         val enemyMax = extents.maxOrNull() ?: 0.0
         val width = max(48.0, enemyMax - enemyMin + 24)
-        val columns = min(actors.size, max(1, ceil(width / SPACING).toInt()))
+        // Capacity per row follows the enemy width at the former 3-block pitch; the wider spacing
+        // lengthens the row rather than sending more men to the rear.
+        val columns = min(actors.size, max(1, ceil(width / 3).toInt()))
         val minimumSupport = min(actors.size, max(1, actors.size / 3))
         val frontCount = min(actors.size - minimumSupport, columns * 2)
         val supportCount = min(actors.size - frontCount, max(minimumSupport, frontCount / 2))
