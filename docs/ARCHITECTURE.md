@@ -2,7 +2,7 @@
 
 A map of the codebase for whoever picks it up next. It covers how the parts fit together and where
 things go; the code's own KDoc covers the details. Build, workflow and coding rules are in
-[CLAUDE.md](../CLAUDE.md).
+[AGENTS.md](../AGENTS.md).
 
 All Kotlin sources live under `src/main/kotlin/com/sbwnpc/squad/`; paths below are relative to it.
 

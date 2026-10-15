@@ -51,8 +51,12 @@ two different claims.
 - **Branches:** `develop` is the default branch. All work branches from it and comes back to it
   through a PR. `master` is behind `develop` and not used for new work. Ask the owner before
   touching it.
-- **One issue, one branch**, named after the change: `feature/...`, `fix/...`, `docs/...`,
-  `chore/...`. Bring `develop` into a long-lived branch regularly, and before opening a PR.
+- **One issue, one branch**, named `<type>/<short-kebab-description>` so the name says what the
+  branch does: `feature/add-mortar-barrage`, `fix/medic-heals-enemies`, `perf/cache-cover-search`,
+  `docs/architecture-overview`. The type matches the commit prefix it will mostly carry
+  (`feature/` for `feat:`, otherwise the same word: `fix/`, `perf/`, `refactor/`, `docs/`,
+  `test/`, `chore/`). Lowercase, hyphens between words, a few words at most, no issue numbers or
+  dates on their own. Bring `develop` into a long-lived branch regularly, and before opening a PR.
 - **End of a session:** nothing is left uncommitted. Commit it to your branch, even as an
   unfinished WIP commit, and update the issue with where it stands and what is next.
 - **Remove what is finished:** delete merged branches, remove worktrees you no longer use, and
@@ -85,6 +89,67 @@ two different claims.
 - A PR links its issue (`Closes #N`), says what changed and why, and lists how it was verified.
 - When the person you work for says to slow down ("не торопись" or similar), stop and wait.
   Don't keep proposing or making the next change.
+
+## Pull requests
+
+A PR is read by someone with limited time. Every line of the diff and the description should earn
+its place.
+
+The diff:
+
+- One concern per PR. A bug fix doesn't carry a drive-by refactor, a rename sweep or reformatting
+  of untouched code; open a separate PR for those, or leave them.
+- Keep it as small as the change allows. If the PR description needs "also" more than once, split it.
+- Touch only what the change needs: no whitespace or import churn, no reordered members, no
+  rewritten comments that were fine.
+- No leftover debug logging, commented-out code, unused helpers, or "just in case" parameters,
+  null checks and fallbacks for cases that can't happen.
+- No comments that narrate the diff ("added this to fix the bug", "new method"). Comments follow
+  the comment rules below, and the history belongs in the commit message.
+- Re-read the whole diff before opening the PR, as a reviewer would, and cut whatever isn't needed.
+
+The description:
+
+- Title: a Conventional Commits line, the same style as commit messages.
+- Body: `Closes #N`, then what changes for the player or the code, and why, in a few plain
+  sentences. Then how it was verified, stated honestly: "built, unit tests pass, not yet tested in
+  game" is a valid answer. Add known risks or open questions only if there are any.
+- Don't restate the diff file by file, list every commit, or repeat the title.
+- No filler: no "This PR introduces...", no "comprehensive", "robust", "seamless" or "enhanced",
+  no emoji headings, no summary tables for a three-line change, no "future improvements" nobody
+  asked for, no empty template sections.
+- A PR that changes gameplay stays a draft until it has been tested in game.
+
+## Code comments and KDoc
+
+Comments are for the next reader of the code, human or AI. Distilled from
+[Best practices for writing code comments](https://stackoverflow.blog/2021/12/23/best-practices-for-writing-code-comments/)
+and the [KDoc reference](https://kotlinlang.org/docs/kotlin-doc.html):
+
+- Say *why*, not *what*. Don't restate the code; a comment that only repeats it is noise that goes
+  stale. If a name or a small extraction would make the comment unnecessary, do that instead.
+- If a clear comment is hard to write, the code is probably unclear; consider fixing the code.
+- Explain anything unidiomatic or surprising, especially workarounds for vanilla, NeoForge,
+  SmartBrainLib or SuperbWarfare behaviour, so nobody "simplifies" it back into the bug.
+- When fixing a bug, leave a comment where the fix isn't self-evident, saying what went wrong.
+  Commit messages are where the full story goes; the comment is just enough to stop a regression.
+- Link the source when code is copied or adapted from somewhere, and link external references
+  (a wiki page, an SBW class, a forum thread) where they help the reader most.
+- Mark unfinished work with `TODO:` and what's missing, not a bare `TODO`.
+- Comments should dispel confusion, not cause it. Delete or fix comments that no longer match the
+  code; a stale comment is worse than none.
+- Write comments in English, like the rest of the sources.
+
+KDoc (`/** ... */`) goes on every class, object and non-obvious public or `internal` member:
+
+- The first paragraph is a one-sentence summary; details follow after a blank line. Markdown works.
+- Refer to code with `[Name]` or `[text][Name]` links (`[SquadManager.get]`, `[Ports.guns]`), not
+  backticks, so they resolve and get renamed with the code.
+- Prefer describing parameters and the return value in prose. Use block tags when they add
+  information: `@param name`, `@return`, `@throws ExceptionClass` (for exceptions a caller should
+  expect), `@property name` (constructor properties), `@receiver`, `@see`, `@sample`.
+- Mark deprecation with the `@Deprecated` annotation, not a KDoc tag.
+- Never put a literal `/*` inside a KDoc comment (see the gotcha below).
 
 ## Talking to each other
 
@@ -154,6 +219,9 @@ two different claims.
 
 ## Architecture pointers
 
+Full map of packages, wiring and where to add things: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The short version:
+
 - AI behaviours live under `entity/ai/*Behaviour.kt`, written against SmartBrainLib's
   behaviour-tree framework (`ExtendedBehaviour`, `BrainActivityGroup`, `MemoryModuleType`), not
   vanilla `Goal`/`GoalSelector`.
@@ -164,3 +232,7 @@ two different claims.
   `RegisterPayloadHandlersEvent`.
 - Squad state (`SquadManager`) and player faction choices (`PlayerFactionRegistry`) are both
   `SavedData`, persisted per world.
+- Only `integration/sbw/` (and the mixins) may import SuperbWarfare; everything else goes through
+  the ports in `domain/port/`. `SbwBoundaryTest` enforces it.
+- Runtime-only static state must be cleared in `ServerLifecycle.onServerStopped`, or it leaks into
+  the next world.
