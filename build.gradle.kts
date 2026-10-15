@@ -165,10 +165,17 @@ tasks.register("buildProduction") {
     dependsOn("build")
 }
 
+val commonKotlin by configurations.creating {
+    isCanBeConsumed = false
+    isTransitive = false
+}
+
 val gameRuntimeOnly: Configuration by configurations.creating
 configurations.named("runtimeClasspath") { extendsFrom(gameRuntimeOnly) }
 
 dependencies {
+    add(commonKotlin.name, project(mapOf("path" to ":common", "configuration" to "commonKotlin")))
+
     implementation("thedarkcolour:kotlinforforge-neoforge:${project.property("kotlinforforge_version")}")
 
     // Immutable release input; local source substitution requires -PsbwSourceDir.
@@ -216,6 +223,7 @@ kotlin {
     jvmToolchain(21)
     sourceSets.main {
         kotlin.srcDir(generateBuildFlags)
+        kotlin.srcDir(commonKotlin)
     }
 }
 
@@ -285,3 +293,5 @@ tasks.withType<Test>().configureEach {
 }
 tasks.withType<Jar>().configureEach { dependsOn(verifySbwInput) }
 tasks.matching { it.name.startsWith("run") }.configureEach { dependsOn(verifySbwInput) }
+
+tasks.named("check") { dependsOn(":common:check") }

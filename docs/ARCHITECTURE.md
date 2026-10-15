@@ -4,7 +4,10 @@ A map of the codebase for whoever picks it up next. It covers how the parts fit 
 things go; the code's own KDoc covers the details. Build, workflow and coding rules are in
 [AGENTS.md](../AGENTS.md).
 
-All Kotlin sources live under `src/main/kotlin/com/sbwnpc/squad/`; paths below are relative to it.
+Kotlin packages below are relative to `com/sbwnpc/squad/`. Routing sources live under
+`common/src/main/kotlin/`; remaining sources are under `src/main/kotlin/` while
+the NeoForge module is being extracted. The root NeoForge build recompiles common
+sources; `:common:check` compiles them against vanilla Minecraft.
 
 ## The big picture
 

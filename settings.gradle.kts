@@ -16,3 +16,5 @@ plugins {
 rootProject.name = "sbwnpc"
 
 apply(from = "gradle/sbw-input.settings.gradle.kts")
+
+include(":common")
