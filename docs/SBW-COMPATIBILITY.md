@@ -8,7 +8,7 @@ Audit date: 2026-10-15. Checks below distinguish binary/source inspection from e
 
 | Loader | Selected input | State |
 | --- | --- | --- |
-| NeoForge / MC 1.21.1 | Modrinth Cd3DYqzn / bl7W8fjU, SBW 0.8.9.2 | Enabled; build/tests still required |
+| NeoForge / MC 1.21.1 | Modrinth Cd3DYqzn / bl7W8fjU, SBW 0.8.9.2 | Enabled; build and JUnit passed |
 | Fabric / MC 1.21.1 | Modrinth XU8zWdjt / OsEZFHcH, ReFabricated 1.21.1-0.8.9.2 | Audited, addon build disabled pending #17/#18/#15 |
 | Forge | Minecraft/SBW versions not selected by owner | No guessed coordinate or compatibility claim; #16 remains gated |
 
@@ -40,7 +40,7 @@ VehicleModelEntry (declared in another source file). Checked classes use Java 21
 Inspected key descriptors for GunData, ShootParameters usage, vehicle firing/geometry,
 mortar targeting, supply attachments, model reload and rendering.
 Fabric Minecraft descriptors use intermediary names and require Loom remapping.
-No addon compile, JUnit, GameTest, server or client playtest has passed as part of this audit.
+The binary/source audit above predates execution; NeoForge validation is recorded below.
 
 The Modrinth source link still points at the old 0.8.8 Fabric branch. That branch has
 substantial missing/different APIs and is not the selected port input. Its Java-only
@@ -111,7 +111,13 @@ compatibility assessment. No Forge audit was run without that decision.
 
 ## Reproduction and acceptance
 
-After approval and applying this patch:
+NeoForge test/build/verifySbwInput passed: 164 tests passed, 2 skipped because
+SBWNPC_GROUND was absent. A subsequent clean build passed using Gradle's build cache.
+Published SHA-512 verification, rejection of an incorrect checksum, six negative-input
+checks and local-source provenance checks passed; see #19 for the commands and results.
+No GameTest, client/server playtest, Fabric addon build or Forge audit was performed.
+
+To reproduce:
 - Run ./gradlew test build verifySbwInput with no local override; inspect input.txt.
 - Check failures for unknown loader, Fabric/Forge selection and missing source override.
 - Check a development source override records its actual Git revision/dirty state.
