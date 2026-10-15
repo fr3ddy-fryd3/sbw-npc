@@ -86,7 +86,12 @@ class SquadMapPlugin : IClientPlugin {
         ClientEventRegistry.ENTITY_RADAR_UPDATE_EVENT.subscribe(modId) { event ->
             if (event.wrappedEntity.entityRef.get() is NpcEntity) event.wrappedEntity.setDisable(true)
         }
-        ClientEventRegistry.FULLSCREEN_POPUP_MENU_EVENT.subscribe(modId) { event -> addOrderMenu(event.popupMenu) }
+        ClientEventRegistry.FULLSCREEN_POPUP_MENU_EVENT.subscribe(modId) { event ->
+            addOrderMenu(event.popupMenu)
+            addNearbyJoins(event.popupMenu, event.fullscreen.uiState)
+        }
+        // The popup opens where the cursor is; its own event does not say where that is.
+        FullscreenEventRegistry.FULLSCREEN_MAP_MOVE_EVENT.subscribe(modId) { event -> hovered = event.info?.blockPos }
         FullscreenEventRegistry.FULLSCREEN_MAP_CLICK_EVENT.subscribe(modId) { event ->
             if (event.stage != FullscreenMapEvent.Stage.PRE || event.button != 0) return@subscribe
             if (routeDraft != null) {
@@ -122,6 +127,15 @@ class SquadMapPlugin : IClientPlugin {
 
     /** Points of the route being drawn, or null when not drawing one. */
     private var routeDraft: MutableList<BlockPos>? = null
+
+    /** Block under the cursor on the fullscreen map, where a right-click menu opens. */
+    private var hovered: BlockPos? = null
+
+    /** Operation points drawn by the last redraw, offered for joining from the context menu. */
+    private var operationMarks: List<OperationMark> = emptyList()
+
+    /** The menu that already got join items, so a click on a marker does not list them twice. */
+    private var joinMenu: ModPopupMenu? = null
     private var routeSquads: List<String> = emptyList()
 
     /** A left-click waiting to learn whether it was a click (a point) or the start of a pan. */
@@ -396,6 +410,7 @@ class SquadMapPlugin : IClientPlugin {
             val size = if (shape == MapShapes.CIRCLE) LOOSE_SIZE else VEHICLE_SIZE
             show(marker(dim, pos(t), shape, colorOf(faction), size, 1f).also { it.setTitle(faction.label) })
         }
+        operationMarks = operations.values.toList()
         for (mark in operations.values) {
             show(
                 marker(dim, mark.pos, MapShapes.DIAMOND, mark.color, OPERATION_SIZE, 1f).also {
@@ -548,26 +563,49 @@ class SquadMapPlugin : IClientPlugin {
         // Not taken: a click here still selects, drags a box or adds a route point.
         override fun onMouseClick(state: UIState, mouse: Point2D.Double, pos: BlockPos, button: Int, doubleClick: Boolean): Boolean = true
 
-        override fun onOverlayMenuPopup(state: UIState, mouse: Point2D.Double, pos: BlockPos, menu: ModPopupMenu) {
-            // Only the operation's allies; the server would refuse the rest anyway.
-            val ids = selected.filter { id -> id !in mark.squads && known[id]?.let { mark.allies and (1 shl it.faction.ordinal) != 0 } == true }
-            if (ids.isEmpty()) return
-            val who = if (ids.size == 1) known[ids[0]]?.name ?: "Squad" else "${ids.size} squads"
-            val label = "$who: Join ${mark.label.lowercase()}"
-            if (mark.order == SquadOrder.PATROL) {
-                val route = mark.route ?: return
-                if (ids.none { SquadOrder.PATROL in known[it]?.orders.orEmpty() }) return
-                menu.addMenuItem(label) { _ ->
-                    val points = (route.indices step 2).joinToString(" ") { "${route[it]} ${route[it + 1]}" }
-                    PacketDistributor.sendToServer(RouteCmdPayload(RouteCmdPayload.MAP_ROUTE, ids.joinToString(","), points))
-                }
-                return
-            }
-            if (mark.order !in SquadOrder.pointOrdersFor(ids.mapNotNull { known[it]?.orders })) return
-            // One order per squad: a single squad sent to an operation's exact point joins it,
-            // while a new common order there deliberately starts an operation of its own.
-            menu.addMenuItem(label) { _ -> ids.forEach { sendOrder(listOf(it), mark.order, mark.pos) } }
+        override fun onOverlayMenuPopup(state: UIState, mouse: Point2D.Double, pos: BlockPos, menu: ModPopupMenu) = addJoin(menu, mark)
+    }
+
+    /**
+     * Join items for operation points near the cursor. The marker is a few pixels wide, so
+     * hitting it exactly was rare; anything within [JOIN_REACH_PIXELS] of the click counts.
+     */
+    private fun addNearbyJoins(menu: ModPopupMenu, state: UIState) {
+        val at = hovered ?: return
+        val reach = maxOf(4.0, JOIN_REACH_PIXELS / state.blockSize)
+        operationMarks
+            .filter { kotlin.math.hypot((it.pos.x - at.x).toDouble(), (it.pos.z - at.z).toDouble()) <= reach }
+            .sortedBy { kotlin.math.hypot((it.pos.x - at.x).toDouble(), (it.pos.z - at.z).toDouble()) }
+            .forEach { addJoin(menu, it) }
+    }
+
+    private val joinedMarks = HashSet<OperationMark>()
+
+    private fun addJoin(menu: ModPopupMenu, mark: OperationMark) {
+        if (joinMenu === menu && mark in joinedMarks) return
+        if (joinMenu !== menu) {
+            joinMenu = menu
+            joinedMarks.clear()
         }
+        joinedMarks += mark
+        // Only the operation's allies; the server would refuse the rest anyway.
+        val ids = selected.filter { id -> id !in mark.squads && known[id]?.let { mark.allies and (1 shl it.faction.ordinal) != 0 } == true }
+        if (ids.isEmpty()) return
+        val who = if (ids.size == 1) known[ids[0]]?.name ?: "Squad" else "${ids.size} squads"
+        val label = "$who: Join ${mark.label.lowercase()}"
+        if (mark.order == SquadOrder.PATROL) {
+            val route = mark.route ?: return
+            if (ids.none { SquadOrder.PATROL in known[it]?.orders.orEmpty() }) return
+            menu.addMenuItem(label) { _ ->
+                val points = (route.indices step 2).joinToString(" ") { "${route[it]} ${route[it + 1]}" }
+                PacketDistributor.sendToServer(RouteCmdPayload(RouteCmdPayload.MAP_ROUTE, ids.joinToString(","), points))
+            }
+            return
+        }
+        if (mark.order !in SquadOrder.pointOrdersFor(ids.mapNotNull { known[it]?.orders })) return
+        // One order per squad: a single squad sent to an operation's exact point joins it,
+        // while a new common order there deliberately starts an operation of its own.
+        menu.addMenuItem(label) { _ -> ids.forEach { sendOrder(listOf(it), mark.order, mark.pos) } }
     }
 
     /** Left-click on a squad's square selects it; right-click switches its order, keeping the
@@ -634,6 +672,9 @@ class SquadMapPlugin : IClientPlugin {
         const val CIRCLE_POINTS = 32
         const val SELECTION_SIZE = 22.0
         const val OPERATION_SIZE = 14.0
+
+        /** How close to an operation's point, in screen pixels, a right-click offers to join it. */
+        const val JOIN_REACH_PIXELS = 24.0
         const val SELECTION_COLOR = 0xFFFF55
         const val MEMBER_SIZE = 5.0
 
