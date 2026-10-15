@@ -309,6 +309,11 @@ class MortarCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
             squad.objective?.let { return barrageAimPoint(entity, it) }
         }
         if (squad != null && squad.order == SquadOrder.ATTACK) {
+            // Sent with infantry: shell the area round the objective until the infantry gets there.
+            val level = entity.level() as? ServerLevel
+            if (level != null && com.sbwnpc.squad.squad.FireSupport.infantryApproaching(level, squad)) {
+                squad.objective?.let { return barrageAimPoint(entity, it) }
+            }
             commandedTarget(entity, squad)?.let { return it }
         }
         return scanForEnemy(entity)
