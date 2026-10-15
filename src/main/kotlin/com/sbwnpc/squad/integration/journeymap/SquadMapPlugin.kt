@@ -413,7 +413,7 @@ class SquadMapPlugin : IClientPlugin {
         operationMarks = operations.values.toList()
         for (mark in operations.values) {
             show(
-                marker(dim, mark.pos, MapShapes.DIAMOND, mark.color, OPERATION_SIZE, 1f).also {
+                marker(dim, mark.pos, MapShapes.TARGET, mark.color, OPERATION_SIZE, 1f).also {
                     it.setTitle("${mark.label}: ${mark.names.joinToString(", ")}")
                     it.setOverlayListener(OperationListener(mark))
                 },
@@ -671,7 +671,7 @@ class SquadMapPlugin : IClientPlugin {
         const val BARRACKS_SIZE = 2
         const val CIRCLE_POINTS = 32
         const val SELECTION_SIZE = 22.0
-        const val OPERATION_SIZE = 14.0
+        const val OPERATION_SIZE = 18.0
 
         /** How close to an operation's point, in screen pixels, a right-click offers to join it. */
         const val JOIN_REACH_PIXELS = 24.0
