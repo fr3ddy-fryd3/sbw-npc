@@ -2,6 +2,9 @@
 
 Working notes for Claude Code (or any AI assistant) picking up this repository. Read this before making changes.
 
+Team workflow (task board, branches, keeping the tree current, publishing) is in [AGENTS.md](AGENTS.md).
+Read both at the start of a session.
+
 ## What this is
 
 [SBW] NPC Squads (`sbwnpc`) — an NPC squad addon for the SuperbWarfare weapons/vehicles mod, built on
