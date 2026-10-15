@@ -15,17 +15,4 @@ plugins {
 
 rootProject.name = "sbwnpc"
 
-// Разрабатываем поверх ЛОКАЛЬНОГО снапшота SuperbWarfare (папка пуллится/обновляется отдельно,
-// см. .gitignore — она не часть этого репозитория), а не поверх опубликованного релиза,
-// потому что используем внутренние API мода (GunShootGoal, AutoAimableEntity/TowerAI, ArtilleryEntity и т.д.),
-// которые могут ещё не быть в последнем релизе на Modrinth/CurseForge.
-//
-// Gradle будет собирать SuperbWarfare как отдельный composite build при первой сборке —
-// это тяжелее и медленнее обычной maven-зависимости, но гарантирует совпадение API с тем,
-// что реально лежит в ./SuperbWarfare на момент сборки.
-includeBuild("SuperbWarfare") {
-    dependencySubstitution {
-        substitute(module("com.atsuishio.superbwarfare:superbwarfare"))
-            .using(project(":"))
-    }
-}
+apply(from = "gradle/sbw-input.settings.gradle.kts")

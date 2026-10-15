@@ -33,7 +33,7 @@ internal fun gunResources(vararg roots: File): MultiPackResourceManager =
     )
 
 class StaticGunModelsTest {
-    private val resources = File(System.getProperty("sbwnpc.projectDir"), "SuperbWarfare/src/main/resources")
+    private val resources = File(System.getProperty("sbwnpc.sbwResources"))
 
     @TempDir
     lateinit var overrides: Path

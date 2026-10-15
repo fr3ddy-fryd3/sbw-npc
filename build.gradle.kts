@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 plugins {
     idea
     id("net.neoforged.moddev") version "2.0.80"
@@ -11,9 +13,18 @@ tasks.named<Wrapper>("wrapper") {
 version = "${project.property("mod_version")}-mc${project.property("minecraft_version")}"
 group = "com.sbwnpc.squad"
 
+@Suppress("UNCHECKED_CAST")
+val sbwInput = extensions.extraProperties["sbwInput"] as Map<String, String>
+val sbwCoordinate = sbwInput.getValue("profile.coordinate")
+
 repositories {
     mavenLocal()
     mavenCentral()
+    maven {
+        name = "Pinned SBW"
+        url = uri("https://api.modrinth.com/maven")
+        content { includeModule("maven.modrinth", "Cd3DYqzn") }
+    }
     maven {
         name = "Kotlin for Forge"
         url = uri("https://thedarkcolour.github.io/KotlinForForge/")
@@ -222,20 +233,19 @@ configurations.named("runtimeClasspath") { extendsFrom(gameRuntimeOnly) }
 dependencies {
     implementation("thedarkcolour:kotlinforforge-neoforge:${project.property("kotlinforforge_version")}")
 
-    // Резолвится через includeBuild("SuperbWarfare") + dependencySubstitution в settings.gradle.kts —
-    // указанная здесь версия ни на что не влияет (Gradle подставит локальный проект).
-    compileOnly("com.atsuishio.superbwarfare:superbwarfare:${project.property("superbwarfare_version")}")
-    gameRuntimeOnly("com.atsuishio.superbwarfare:superbwarfare:${project.property("superbwarfare_version")}")
+    // Immutable release input; local source substitution requires -PsbwSourceDir.
+    compileOnly(sbwCoordinate)
+    gameRuntimeOnly(sbwCoordinate)
     // SBW's published runtime variant also lists its optional development modpack. Its jar already
     // embeds the required libraries; headless tests need that jar, not the client test modpack.
-    add(gameTest.runtimeOnlyConfigurationName, "com.atsuishio.superbwarfare:superbwarfare:${project.property("superbwarfare_version")}") {
+    add(gameTest.runtimeOnlyConfigurationName, sbwCoordinate) {
         isTransitive = false
     }
     // Regression tests exercise SBW's resource decoder alongside our static model loader.
-    testCompileOnly("com.atsuishio.superbwarfare:superbwarfare:${project.property("superbwarfare_version")}") {
+    testCompileOnly(sbwCoordinate) {
         isTransitive = false
     }
-    testRuntimeOnly("com.atsuishio.superbwarfare:superbwarfare:${project.property("superbwarfare_version")}") {
+    testRuntimeOnly(sbwCoordinate) {
         isTransitive = false
     }
 
@@ -308,3 +318,70 @@ kotlin {
         kotlin.srcDir(generateBuildFlags)
     }
 }
+
+/** Verifies the selected dependency and records its effective inputs for build audits. */
+abstract class VerifySbwInput : DefaultTask() {
+    @get:Input abstract val provenance: MapProperty<String, String>
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val artifacts: ConfigurableFileCollection
+    @get:OutputFile abstract val report: RegularFileProperty
+
+    @TaskAction
+    fun verify() {
+        val details = provenance.get().toMutableMap()
+        if (details.getValue("mode") == "published") {
+            val artifact = artifacts.singleFile
+            val digest = MessageDigest.getInstance("SHA-512")
+            artifact.inputStream().use { input ->
+                val buffer = ByteArray(8192)
+                var count = input.read(buffer)
+                while (count != -1) {
+                    digest.update(buffer, 0, count)
+                    count = input.read(buffer)
+                }
+            }
+            val actual = digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
+            check(actual == details.getValue("profile.sha512")) {
+                "SBW SHA-512 mismatch: expected ${details["profile.sha512"]}, got $actual"
+            }
+            details["artifact.sha512"] = actual
+        }
+        report.get().asFile.apply {
+            parentFile.mkdirs()
+            writeText(details.toSortedMap().entries.joinToString("\n", postfix = "\n") { "${it.key}=${it.value}" })
+        }
+    }
+}
+
+val sbwVerification by configurations.creating { isTransitive = false }
+if (sbwInput.getValue("mode") == "published") {
+    dependencies.add(sbwVerification.name, sbwCoordinate)
+}
+val verifySbwInput = tasks.register<VerifySbwInput>("verifySbwInput") {
+    group = "verification"
+    description = "Verify the pinned SBW artifact and record the effective input."
+    provenance.set(sbwInput)
+    artifacts.from(sbwVerification)
+    report.set(layout.buildDirectory.file("reports/sbw/input.txt"))
+}
+tasks.withType<JavaCompile>().configureEach { dependsOn(verifySbwInput) }
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach { dependsOn(verifySbwInput) }
+// Resource regression tests must read the same SBW input as the compiled addon.
+val sbwTestResources = layout.buildDirectory.dir("sbw-test-resources")
+val prepareSbwTestResources = tasks.register<Sync>("prepareSbwTestResources") {
+    dependsOn(verifySbwInput)
+    from(provider {
+        if (sbwInput.getValue("mode") == "published") zipTree(sbwVerification.singleFile)
+        else file(sbwInput.getValue("source.path")).resolve("src/main/resources")
+    })
+    include("assets/**")
+    into(sbwTestResources)
+}
+tasks.withType<Test>().configureEach {
+    dependsOn(prepareSbwTestResources)
+    inputs.dir(sbwTestResources).withPropertyName("sbwResources")
+    systemProperty("sbwnpc.sbwResources", sbwTestResources.get().asFile.absolutePath)
+}
+tasks.withType<Jar>().configureEach { dependsOn(verifySbwInput) }
+tasks.matching { it.name.startsWith("run") }.configureEach { dependsOn(verifySbwInput) }

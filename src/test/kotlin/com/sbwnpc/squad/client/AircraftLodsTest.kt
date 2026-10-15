@@ -16,7 +16,7 @@ import java.io.File
 class AircraftLodsTest {
     @Test
     fun `all built in aircraft bake cheaper distant geometry without changing their skeleton`() {
-        val root = File(System.getProperty("sbwnpc.projectDir"), "SuperbWarfare/src/main/resources/assets/superbwarfare/models/bedrock/vehicle")
+        val root = File(System.getProperty("sbwnpc.sbwResources"), "assets/superbwarfare/models/bedrock/vehicle")
         for (name in listOf("a_10a", "ac_130h", "ah_6", "j_16", "ju_87", "kv_16", "mi_28", "tom_6")) {
             val source = File(root, "$name.geo.json").reader().use {
                 JsonParser.parseReader(it).asJsonObject
@@ -84,7 +84,7 @@ class AircraftLodsTest {
 
     @Test
     fun `LOD selection advances through every distance step and respects disabled LOD`() {
-        val source = File(System.getProperty("sbwnpc.projectDir"), "SuperbWarfare/src/main/resources/assets/superbwarfare/models/bedrock/vehicle/ah_6.geo.json")
+        val source = File(System.getProperty("sbwnpc.sbwResources"), "assets/superbwarfare/models/bedrock/vehicle/ah_6.geo.json")
             .reader().use { JsonParser.parseReader(it).asJsonObject }
         val full = VehicleModelEntry(VehicleModelInstance(AircraftLods.bake(source)), ResourceLocation.parse("test:texture"), null, 0)
         val entries = listOf(full, full.copy(lodDistance = 64), full.copy(lodDistance = 128), full.copy(lodDistance = 256))
