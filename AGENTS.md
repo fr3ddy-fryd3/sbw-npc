@@ -161,6 +161,14 @@ KDoc (`/** ... */`) goes on every class, object and non-obvious public or `inter
 
 ## Build, test, deploy
 
+- First time on a machine: `scripts/setup.sh` checks Java, clones the SuperbWarfare checkout
+  described below and runs `build`. Pass Gradle tasks to run those instead
+  (`scripts/setup.sh buildDevelop`), `--deploy` to copy the jar into `~/.minecraft/mods/` the way
+  the deploy step below describes, and `--refabricated` to also clone and build
+  [SuperbWarfare ReFabricated](https://github.com/CrawKatt/SuperbWarfareReFabricated) (the Fabric
+  fork, branch `0.8.9.2-1.21-Fabric`) into the gitignored `SuperbWarfareReFabricated/`. The addon
+  does not build against ReFabricated yet: that checkout is for the Fabric port work (#15).
+  `scripts/setup.sh --help` lists the overrides. On Windows, run it from Git Bash or WSL.
 - Build: `./gradlew build`, the same as `buildProduction` (`DebugFlags` off).
 - For local testing with verbose trace logs and debug particle markers: `./gradlew buildDevelop`.
   The flag is baked into the jar at build time by the generated `BuildFlags` object (see
@@ -182,9 +190,9 @@ KDoc (`/** ... */`) goes on every class, object and non-obvious public or `inter
 
 ## Cloud sessions (Claude Code on the web)
 
-- `.claude/hooks/session-start.sh` clones SuperbWarfare (branch `0.8.9.2-1.21` by default,
-  override with `SBW_BRANCH`) and runs `./gradlew testClasses`, so a cloud session can build and
-  test. Bump the branch when the local SuperbWarfare snapshot moves to a newer release.
+- `.claude/hooks/session-start.sh` runs `scripts/setup.sh testClasses`, which clones
+  SuperbWarfare (branch `0.8.9.2-1.21` by default, override with `SBW_BRANCH`), so a cloud session
+  can build and test. Bump the branch when the local SuperbWarfare snapshot moves to a newer release.
 - The cloud environment's network allowlist must include these domains, or the build fails while
   resolving dependencies:
   - Gradle and Java: `mirrors.cloud.tencent.com` (Gradle wrapper), `plugins.gradle.org`,
@@ -199,6 +207,8 @@ KDoc (`/** ... */`) goes on every class, object and non-obvious public or `inter
     `mediafilez.forgecdn.net`, `api.modrinth.com`, `cdn.modrinth.com`, `maven.createmod.net`,
     `maven.ryanhcode.dev`, `maven.sighs.cc`, `maven.shedaniel.me`, `maven.theillusivec4.top`,
     `raw.githubusercontent.com`
+  - Only for `scripts/setup.sh --refabricated`: `maven.fabricmc.net`, `maven.terraformersmc.com`,
+    `maven.ladysnake.org`
 
 ## Gotchas worth knowing before you hit them
 
