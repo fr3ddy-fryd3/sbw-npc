@@ -191,6 +191,10 @@ KDoc (`/** ... */`) goes on every class, object and non-obvious public or `inter
   and verify SHA-512 before compilation/testing. Provenance: `build/reports/sbw/input.txt`.
   Use `-PsbwSourceDir=/absolute/path` only for local development; the checkout must match
   the loader/Minecraft target and its revision/dirty state is reported. CI rejects this override.
+- The pinned SBW version is what the addon is built against, not what players need. Players need
+  SBW 0.8.9.1 or newer: `neoforge.mods.toml` declares `[0.8.9.1,)`, with no upper bound. Building
+  against a newer patch keeps the most players covered. When the pin moves, keep that lower bound
+  unless the addon starts relying on an API the older version lacks; then raise it on purpose.
 - The project stays on NeoForge 1.21.1. A 1.21.6/Fabric port was investigated and shelved:
   SuperbWarfare's own port to that target isn't ready, and this addon relies on Create/Ponder-style
   APIs that block on it.
