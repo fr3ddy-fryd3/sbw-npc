@@ -11,7 +11,8 @@ fi
 cd "$CLAUDE_PROJECT_DIR"
 
 SBW_REPO="${SBW_REPO:-https://github.com/Mercurows/SuperbWarfare.git}"
-SBW_BRANCH="${SBW_BRANCH:-1.21}"
+# The addon tracks a SuperbWarfare release branch, not upstream `1.21` tip (which has broken its APIs).
+SBW_BRANCH="${SBW_BRANCH:-0.8.9.2-1.21}"
 
 if [ ! -d SuperbWarfare/.git ]; then
   echo "Cloning SuperbWarfare ($SBW_BRANCH)..." >&2
