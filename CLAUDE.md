@@ -2,6 +2,9 @@
 
 Working notes for Claude Code (or any AI assistant) picking up this repository. Read this before making changes.
 
+Team workflow (task board, branches, keeping the tree current, publishing) is in [AGENTS.md](AGENTS.md).
+Read both at the start of a session.
+
 ## What this is
 
 [SBW] NPC Squads (`sbwnpc`) — an NPC squad addon for the SuperbWarfare weapons/vehicles mod, built on
@@ -39,6 +42,26 @@ tested" as two different claims; see Workflow below.
 - This addon depends on a local SuperbWarfare checkout via `includeBuild("SuperbWarfare")` in
   `settings.gradle.kts` (it needs SBW's internal APIs, not just its published jar). `/SuperbWarfare/`
   is gitignored — pulled and maintained separately, not part of this repo.
+
+## Cloud sessions (Claude Code on the web)
+
+- `.claude/hooks/session-start.sh` clones SuperbWarfare (branch `0.8.9.2-1.21` by default, override
+  with `SBW_BRANCH`) and runs `./gradlew testClasses`, so a cloud session can build and test. Bump the
+  branch when the local SuperbWarfare snapshot moves to a newer release.
+- The cloud environment's network allowlist must include these domains, or the build fails while
+  resolving dependencies:
+  - Gradle and Java: `mirrors.cloud.tencent.com` (Gradle wrapper), `plugins.gradle.org`,
+    `plugins-artifacts.gradle.org`, `repo.maven.apache.org`, `api.foojay.io`
+  - SuperbWarfare source: `github.com`
+  - NeoForge and Minecraft: `maven.neoforged.net`, `maven.parchmentmc.org`,
+    `libraries.minecraft.net`, `launchermeta.mojang.com`, `launcher.mojang.com`,
+    `piston-meta.mojang.com`, `piston-data.mojang.com`, `resources.download.minecraft.net`
+  - This addon's mod repositories: `thedarkcolour.github.io`, `dl.cloudsmith.io`,
+    `maven.blamejared.com`, `jitpack.io`
+  - SuperbWarfare's mod repositories: `cursemaven.com`, `edge.forgecdn.net`,
+    `mediafilez.forgecdn.net`, `api.modrinth.com`, `cdn.modrinth.com`, `maven.createmod.net`,
+    `maven.ryanhcode.dev`, `maven.sighs.cc`, `maven.shedaniel.me`, `maven.theillusivec4.top`,
+    `raw.githubusercontent.com`
 
 ## Workflow requirements
 
