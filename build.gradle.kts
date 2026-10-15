@@ -267,6 +267,21 @@ val verifySbwInput = tasks.register<VerifySbwInput>("verifySbwInput") {
 }
 tasks.withType<JavaCompile>().configureEach { dependsOn(verifySbwInput) }
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach { dependsOn(verifySbwInput) }
-tasks.withType<Test>().configureEach { dependsOn(verifySbwInput) }
+// Resource regression tests must read the same SBW input as the compiled addon.
+val sbwTestResources = layout.buildDirectory.dir("sbw-test-resources")
+val prepareSbwTestResources = tasks.register<Sync>("prepareSbwTestResources") {
+    dependsOn(verifySbwInput)
+    from(provider {
+        if (sbwInput.getValue("mode") == "published") zipTree(sbwVerification.singleFile)
+        else file(sbwInput.getValue("source.path")).resolve("src/main/resources")
+    })
+    include("assets/**")
+    into(sbwTestResources)
+}
+tasks.withType<Test>().configureEach {
+    dependsOn(prepareSbwTestResources)
+    inputs.dir(sbwTestResources).withPropertyName("sbwResources")
+    systemProperty("sbwnpc.sbwResources", sbwTestResources.get().asFile.absolutePath)
+}
 tasks.withType<Jar>().configureEach { dependsOn(verifySbwInput) }
 tasks.matching { it.name.startsWith("run") }.configureEach { dependsOn(verifySbwInput) }
