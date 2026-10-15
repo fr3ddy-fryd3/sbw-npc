@@ -61,8 +61,10 @@ import java.awt.geom.Point2D
  * - "Draw patrol route" in that menu turns clicks into route points: left-click adds one (a drag
  *   still pans the map), Backspace takes the last one back, right-click or Enter sends the route
  *   and the selected infantry patrol it, Esc drops it.
- * - Each owned squad's objective is also a JourneyMap waypoint on the minimap. Only objectives
- *   matching the player's faction appear in the world with their distance, kept for the session.
+ * - Each owned squad's objective is also a JourneyMap waypoint on the map and minimap. Only
+ *   objectives matching the player's faction appear in the world with their distance, kept for
+ *   the session. Right-click the waypoint, or the map near it, to send the selected squads to
+ *   join that attack, defence or patrol; joins are listed first.
  *
  * Only ever loaded by JourneyMap itself, so nothing else in the mod may refer to this class.
  */
@@ -86,10 +88,13 @@ class SquadMapPlugin : IClientPlugin {
         ClientEventRegistry.ENTITY_RADAR_UPDATE_EVENT.subscribe(modId) { event ->
             if (event.wrappedEntity.entityRef.get() is NpcEntity) event.wrappedEntity.setDisable(true)
         }
+        // Joins first: the menu grows long, and joining is what a click near an operation is for.
         ClientEventRegistry.FULLSCREEN_POPUP_MENU_EVENT.subscribe(modId) { event ->
-            addOrderMenu(event.popupMenu)
             addNearbyJoins(event.popupMenu, event.fullscreen.uiState)
+            addOrderMenu(event.popupMenu)
         }
+        // The objective waypoint's own menu; JourneyMap does not fire the map menu for a click on it.
+        ClientEventRegistry.WAYPOINT_POPUP_MENU_EVENT.subscribe(modId) { event -> addWaypointJoins(event.popupMenu, event.waypoint) }
         // The popup opens where the cursor is; its own event does not say where that is.
         FullscreenEventRegistry.FULLSCREEN_MAP_MOVE_EVENT.subscribe(modId) { event -> hovered = event.info?.blockPos }
         FullscreenEventRegistry.FULLSCREEN_MAP_CLICK_EVENT.subscribe(modId) { event ->
@@ -412,14 +417,6 @@ class SquadMapPlugin : IClientPlugin {
             show(marker(dim, pos(t), shape, colorOf(faction), size, 1f).also { it.setTitle(faction.label) })
         }
         operationMarks = operations.values.toList()
-        for (mark in operations.values) {
-            show(
-                marker(dim, mark.pos, MapShapes.TARGET, mark.color, OPERATION_SIZE, 1f).also {
-                    it.setTitle("${mark.label}: ${mark.names.joinToString(", ")}")
-                    it.setOverlayListener(OperationListener(mark))
-                },
-            )
-        }
         routeDraft?.let { draft ->
             for (p in draft) show(outline(dim, diamond(p, OBJECTIVE_SIZE), SELECTION_COLOR, fill = 0.5f))
             if (draft.size >= 2) show(outline(dim, draft, SELECTION_COLOR))
@@ -462,9 +459,8 @@ class SquadMapPlugin : IClientPlugin {
                 val wp = WaypointFactory.createClientWaypoint(modId, mark.pos, mark.name, dim, false)
                 wp.setColor(mark.color)
                 wp.setShowBeacon(false)
-                // On the map the operation's own marker stands there instead, with our menu: a
-                // waypoint's right-click only offers JourneyMap's waypoint actions.
-                wp.setShowOnMap(false)
+                // It also marks the operation on the map; its right-click menu offers joining it.
+                wp.setShowOnMap(true)
                 wp.setShowInWorld(mark.showInWorld)
                 api.addWaypoint(modId, wp)
                 waypoints[id] = mark to wp
@@ -558,18 +554,16 @@ class SquadMapPlugin : IClientPlugin {
         val label get() = order.name.lowercase().replaceFirstChar { it.uppercase() }
     }
 
-    /** Right-click on an operation's point sends the selected squads to exactly that point, so
-     *  they join the operation on arrival — a plain map click a few blocks off starts another. */
-    private inner class OperationListener(private val mark: OperationMark) : IOverlayListener {
-        // Not taken: a click here still selects, drags a box or adds a route point.
-        override fun onMouseClick(state: UIState, mouse: Point2D.Double, pos: BlockPos, button: Int, doubleClick: Boolean): Boolean = true
-
-        override fun onOverlayMenuPopup(state: UIState, mouse: Point2D.Double, pos: BlockPos, menu: ModPopupMenu) = addJoin(menu, mark)
+    /** Join items for the operation of the squad whose objective [waypoint] marks. */
+    private fun addWaypointJoins(menu: ModPopupMenu, waypoint: Waypoint) {
+        if (waypoint.modId != modId) return
+        val squad = waypoints.entries.firstOrNull { it.value.second.guid == waypoint.guid }?.key ?: return
+        operationMarks.filter { squad in it.squads }.forEach { addJoin(menu, it) }
     }
 
     /**
-     * Join items for operation points near the cursor. The marker is a few pixels wide, so
-     * hitting it exactly was rare; anything within [JOIN_REACH_PIXELS] of the click counts.
+     * Join items for operation points near the cursor. The waypoint is a few pixels wide, so
+     * hitting it exactly is rare; anything within [JOIN_REACH_PIXELS] of the click counts.
      */
     private fun addNearbyJoins(menu: ModPopupMenu, state: UIState) {
         val at = hovered ?: return
@@ -672,7 +666,6 @@ class SquadMapPlugin : IClientPlugin {
         const val BARRACKS_SIZE = 2
         const val CIRCLE_POINTS = 32
         const val SELECTION_SIZE = 22.0
-        const val OPERATION_SIZE = 18.0
 
         /** Operations other squads can be sent to join. */
         val JOINABLE = setOf(SquadOrder.ATTACK, SquadOrder.DEFEND, SquadOrder.PATROL)

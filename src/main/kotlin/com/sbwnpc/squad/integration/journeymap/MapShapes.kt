@@ -17,10 +17,6 @@ internal enum class MapShapes {
     /** Hollow square drawn round a selected squad's symbol. */
     FRAME,
 
-    /** The point an operation was ordered to; a ring, not a diamond, so JourneyMap's own
-     *  right-click diamond does not hide it. */
-    TARGET,
-
     ;
 
     val location: ResourceLocation = SquadMod.loc("textures/map/${name.lowercase()}.png")
