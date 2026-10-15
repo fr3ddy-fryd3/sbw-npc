@@ -29,13 +29,16 @@ two different claims.
   - **Done**: merged into `develop`, and confirmed in-game where that applies.
 - `Priority` (P0 is urgent, P2 can wait) and `Size` (XS to XL) are set when an issue leaves
   Backlog. Larger work is a parent issue with sub-issues.
-- Taking a task: assign yourself, move it to **In progress**, and say in a comment which branch
-  holds the work. Don't start on an issue someone else has in **In progress**. Ask in a comment
-  instead.
+- **Taking a task: assign it to yourself first**, before any work on it, so nobody else takes
+  it. Then move it to **In progress** and say in a comment which branch holds the work.
+- Don't start on an issue that has an assignee other than you. Ask in a comment instead.
 - Something you found mid-task that isn't part of the task, such as a bug or an idea: file a new
   issue (usually **Backlog**) instead of widening the current change.
-- Issues are work items. A question for the person you work for is asked in your session, not
-  filed as an issue. Once it is answered, write the decision into the issue it affects.
+- Issues are work items for agents. A question for the person you work for is asked in your
+  session, not filed as an issue. Once it is answered, write the decision into the issue it
+  affects.
+- Tasks for people, such as an in-game check, are given to the person you work for in your
+  session, and listed in the PR's verification steps. They are not filed as issues.
 - A Backlog issue must make sense to someone without your session: what happens, where (files,
   log lines), how to reproduce it, and what is already known or decided.
 - A local `TODO.md` is fine as a personal scratch pad. It is excluded from git and does not
