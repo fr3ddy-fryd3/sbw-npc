@@ -302,6 +302,42 @@ object HtnTacticsGameTests {
         }
     }
 
+    /**
+     * Two squads given one common order 9 blocks beside a held defence's point join that defence
+     * instead of starting another beside it. In-game 16.10 a click a few blocks off the point
+     * made a second defence, and the map showed both.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1600, batch = "htn-defend-join-beside")
+    fun htnOrderBesideDefenceJoinsIt(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "htn-defend-join-beside")
+        val manager = SquadManager.get(helper.level)
+        val principal = UUID(90, 17)
+        val holders = (0 until 4).map { scene.spawn(Vec3(80.5 + it % 2 * 3, 1.0, 96.5 + it / 2 * 3)) }
+        val squad = manager.create(helper.level, principal, requireNotNull(holders.first().spawnFaction), holders.map { it.uuid })
+        var joining = emptyList<com.sbwnpc.squad.squad.Squad>()
+        var joiners = emptyList<List<NpcEntity>>()
+        scene.onClose = { (listOf(squad) + joining).forEach { manager.deleteSquad(helper.level, it.id) } }
+        val point = helper.absolutePos(BlockPos(82, 1, 98))
+        GroupOrders.apply(helper.level, manager, listOf(squad.id), SquadOrder.DEFEND, point.x, point.z)
+        helper.onEachTick {
+            val operation = NativeTactics.operation(holders.first())
+            if (helper.tick == 100L) {
+                val area = requireNotNull(operation?.objective as? com.sbwnpc.squad.ai.coordination.ObjectiveKey.Area) { "Defence formed no operation" }
+                joiners = (0..1).map { group -> (0 until 4).map { scene.spawn(Vec3(76.5 + group * 12 + it * 2, 1.0, 140.5)) } }
+                joining = joiners.map { group -> manager.create(helper.level, principal, requireNotNull(group.first().spawnFaction), group.map { it.uuid }) }
+                GroupOrders.apply(helper.level, manager, joining.map { it.id }, SquadOrder.DEFEND, area.x + 9, area.z)
+                helper.assertTrue(joining.all { it.tacticalObjective?.x == area.x && it.tacticalObjective?.z == area.z }, "Order beside the defence kept its own point: ${joining.map { it.tacticalObjective }}")
+            }
+            if (joiners.isEmpty()) return@onEachTick
+            if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} members=${operation?.members?.size} joiners=${joiners.map { group -> NativeTactics.operation(group.first())?.id }}")
+            if (joiners.any { !NativeTactics.coordinated(it.first()) }) return@onEachTick
+            helper.assertTrue(joiners.all { NativeTactics.operation(it.first())?.id == operation?.id }, "Squads ordered beside the defence formed their own")
+            scene.result("PASS", "tick=${helper.tick} members=${operation?.members?.size}")
+            helper.succeed()
+        }
+    }
+
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 4800, batch = "htn-take")
     fun htnAttackTakesDefendedObjective(helper: GameTestHelper) {
