@@ -87,7 +87,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             val armed = SquadSelection.takeObjectiveArm(player.uuid)
             if (armed != null) {
                 val pos = Terrain.lookedAtPos(player, serverLevel, 220.0)
-                SquadManager.get(serverLevel).setObjective(serverLevel, armed, pos)
+                SquadManager.get(serverLevel).issueObjective(serverLevel, armed, pos)
                 val name = SquadManager.get(serverLevel).get(armed)?.name ?: "Squad"
                 actionbar(player, "$name → objective (${pos.x}, ${pos.y}, ${pos.z})", ChatFormatting.GRAY)
             } else {
@@ -121,7 +121,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             val squadId = SquadSelection.selectedSquad(player.uuid)
             if (squadId != null) {
                 // Close-range: point straight at the ground where you're standing, no GUI round-trip.
-                SquadManager.get(serverLevel).setObjective(serverLevel, squadId, context.clickedPos)
+                SquadManager.get(serverLevel).issueObjective(serverLevel, squadId, context.clickedPos)
                 val name = SquadManager.get(serverLevel).get(squadId)?.name ?: "Squad"
                 actionbar(player, "$name → objective (${context.clickedPos.x}, ${context.clickedPos.y}, ${context.clickedPos.z})", ChatFormatting.GRAY)
             } else if (player is net.minecraft.server.level.ServerPlayer) {
@@ -172,7 +172,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         // (armFocus itself already checked ownership of the commanding squad when it was armed.)
         val armedFocus = SquadSelection.takeFocusArm(player.uuid)
         if (armedFocus != null) {
-            mgr.setFocus(armedFocus, target.uuid)
+            mgr.issueFocus(level, armedFocus, target.uuid)
             val squad = mgr.get(armedFocus)
             val verb = if (squad?.order == SquadOrder.DEFEND) "will guard" else "will target"
             actionbar(player, "${squad?.name ?: "Squad"} $verb ${target.name.string}", squad?.faction?.accentStyle ?: Style.EMPTY.withColor(ChatFormatting.GRAY))
@@ -212,7 +212,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
 
         // Non-NPC living entity → focus the selected squad on it
         val sid = SquadSelection.selectedSquad(player.uuid) ?: return InteractionResult.PASS
-        mgr.setFocus(sid, target.uuid)
+        mgr.issueFocus(level, sid, target.uuid)
         val squad = mgr.get(sid)
         val verb = if (squad?.order == SquadOrder.DEFEND) "will guard" else "will target"
         actionbar(player, "${squad?.name ?: "Squad"} $verb ${target.name.string}", squad?.faction?.accentStyle ?: Style.EMPTY.withColor(ChatFormatting.GRAY))

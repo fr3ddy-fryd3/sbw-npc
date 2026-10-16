@@ -48,6 +48,18 @@ class Squad(
 
     var orderStamp: Int = 0
 
+    /** Explicit common command identity and objective; execution plans/cursors are not persisted. */
+    var command: com.sbwnpc.squad.ai.tactics.IssuedCommand? = null
+        internal set
+    var commandOutcome = com.sbwnpc.squad.ai.tactics.CommandOutcome.ACTIVE
+        internal set
+    var commandReason: String? = null
+        internal set
+    internal var pendingCommandStamp = -1
+    var objectiveDimension: ResourceKey<Level>? = null
+    var tacticalOperation: UUID? = null
+    var tacticalObjective: BlockPos? = null
+
     /** Game time the current MOVE rally started — see `SquadOrderBehaviour.tickMove`. Not saved. */
     var moveRallySince: Long = 0L
 
@@ -69,6 +81,12 @@ class Squad(
         tag.putString("Name", name)
         tag.putString("Faction", faction.name)
         tag.putString("Order", order.name)
+        command?.let { tag.put("IssuedCommand", com.sbwnpc.squad.ai.integration.IssuedCommandCodec.save(it)) }
+        tag.putString("CommandOutcome", commandOutcome.name)
+        commandReason?.let { tag.putString("CommandReason", it) }
+        objectiveDimension?.let { tag.putString("ObjectiveDimension", it.location().toString()) }
+        tacticalOperation?.let { tag.putUUID("TacticalOperation", it) }
+        tacticalObjective?.let { tag.put("TacticalObjective", NbtUtils.writeBlockPos(it)) }
         tag.putString("AttackAmmoPolicy", attackAmmoPolicy.name)
         tag.putString("Rank", rank.name)
         val list = ListTag()
@@ -126,6 +144,12 @@ class Squad(
                 moveAssembly = if (tag.contains("MoveAssembly")) NbtUtils.readBlockPos(tag, "MoveAssembly").orElse(null) else null,
                 moveFormationReady = tag.getBoolean("MoveFormationReady"),
             )
+            if (tag.contains("IssuedCommand")) squad.command = com.sbwnpc.squad.ai.integration.IssuedCommandCodec.load(tag.getCompound("IssuedCommand"))?.takeIf { it.principal == squad.owner }
+            squad.commandOutcome = com.sbwnpc.squad.ai.tactics.CommandOutcome.entries.firstOrNull { it.name == tag.getString("CommandOutcome") } ?: com.sbwnpc.squad.ai.tactics.CommandOutcome.ACTIVE
+            squad.commandReason = tag.getString("CommandReason").takeIf { it.isNotBlank() }
+            if (tag.contains("ObjectiveDimension")) squad.objectiveDimension = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(tag.getString("ObjectiveDimension")))
+            if (tag.hasUUID("TacticalOperation")) squad.tacticalOperation = tag.getUUID("TacticalOperation")
+            if (tag.contains("TacticalObjective")) squad.tacticalObjective = NbtUtils.readBlockPos(tag, "TacticalObjective").orElse(null)
             if (tag.contains("LastSeen")) squad.lastSeen = NbtUtils.readBlockPos(tag, "LastSeen").orElse(null)
             if (tag.contains("LastSeenDim", Tag.TAG_STRING.toInt())) {
                 squad.lastSeenDim = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(tag.getString("LastSeenDim")))

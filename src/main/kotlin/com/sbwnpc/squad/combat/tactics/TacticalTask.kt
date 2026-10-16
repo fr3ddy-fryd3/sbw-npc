@@ -5,6 +5,8 @@ import net.minecraft.world.phys.Vec3
 class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val plan: Int) {
     internal var operationMember: java.util.UUID? = null
     var position: Vec3? = null
+    internal var usesObservedAim = false
+    internal var observedAim: TacticalAim? = null
     var firingTarget: java.util.UUID? = null
     var nextSearch = Long.MIN_VALUE
     var failures = 0
@@ -14,6 +16,10 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
     var nextValidation = Long.MIN_VALUE
     var staging: Vec3? = null
     var frontage: TacticalFrontPost? = null
+
+    /** The walked route to [anchor] a transit leg follows, see [TacticalRoutes.routeLeg]. */
+    var route: List<Vec3>? = null
+    var nextRoutePlan = Long.MIN_VALUE
 
     /** Local shelter takes precedence over assembling on an exposed nominal attack line. */
     var coverOrigin: Vec3? = null

@@ -47,7 +47,15 @@ class MortarCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
     companion object {
         private const val SEARCH_RANGE = 30.0
         private const val MIN_RANGE_SQR = 25.0 * 25.0
-        private const val SAFE_RADIUS = 10.0
+
+        /** A shell's blast reach (SBW MortarShellEntity's default explosion radius). */
+        private const val SHELL_BLAST_RADIUS = 8.0
+
+        /** Room for friendlies walking towards the impact while the shell is in the air. */
+        private const val IN_FLIGHT_MARGIN = 4.0
+
+        /** Barrage points tried before firing at one with friendlies near is left to the fire gate. */
+        private const val BARRAGE_PICKS = 6
         private const val SELF_DEFENSE_RANGE_SQR = 6.0 * 6.0
 
         /** Radius of the area a BARRAGE order shells, per the command's description. */
@@ -221,7 +229,10 @@ class MortarCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
         // at max range into nothing. Ask the same solver ourselves first and just don't shoot
         // this tick if it can't actually hit the point.
         if (!canHitTarget(m, target)) return
-        if (entity.currentSquad() != null && friendlyNearCached(level, entity, target)) return
+        if (entity.currentSquad() != null && friendlyNearCached(level, entity, target)) {
+            DebugFlags.log(LogGroup.FIRE_SUPPORT, "mortar {} holds fire: friendlies within {} of {}", entity.uuid, dangerRadius(entity), target.toShortString())
+            return
+        }
 
         if (entity.tickCount >= nextAimTick) {
             Ports.mortars.lay(m, target, scatterRadius(entity), entity)
@@ -309,6 +320,11 @@ class MortarCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
             squad.objective?.let { return barrageAimPoint(entity, it) }
         }
         if (squad != null && squad.order == SquadOrder.ATTACK) {
+            // Sent with infantry: shell the area round the objective until the infantry gets there.
+            val level = entity.level() as? ServerLevel
+            if (level != null && com.sbwnpc.squad.squad.FireSupport.infantryApproaching(level, squad)) {
+                squad.objective?.let { return barrageAimPoint(entity, it) }
+            }
             commandedTarget(entity, squad)?.let { return it }
         }
         return scanForEnemy(entity)
@@ -323,18 +339,26 @@ class MortarCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun barrageAimPoint(entity: NpcEntity, objective: BlockPos): BlockPos {
         if (entity.tickCount >= nextBarrageShiftTick || barrageAim == null) {
             nextBarrageShiftTick = entity.tickCount + BARRAGE_SHIFT_TICKS
-            val angle = entity.random.nextDouble() * Math.PI * 2
-            // Square-rooted so the points spread evenly over the disc instead of clustering in
-            // the middle.
-            val radius = Math.sqrt(entity.random.nextDouble()) * BARRAGE_RADIUS
-            val x = objective.x + Math.round(Math.cos(angle) * radius).toInt()
-            val z = objective.z + Math.round(Math.sin(angle) * radius).toInt()
             val level = entity.level() as? ServerLevel
-            val y = level?.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, x, z)
-                ?: objective.y
-            barrageAim = BlockPos(x, y, z)
+            // Infantry walking into the area takes part of it; shell the rest instead of holding
+            // fire on a point next to it until the next shift.
+            val picks = (1..BARRAGE_PICKS).map { barragePoint(entity, level, objective) }
+            barrageAim = picks.firstOrNull { level == null || entity.currentSquad() == null || !friendlyNear(level, entity, it) } ?: picks.first()
+            DebugFlags.log(LogGroup.FIRE_SUPPORT, "mortar {} barrage point {} around {}", entity.uuid, barrageAim?.toShortString(), objective.toShortString())
         }
         return barrageAim ?: objective
+    }
+
+    private fun barragePoint(entity: NpcEntity, level: ServerLevel?, objective: BlockPos): BlockPos {
+        val angle = entity.random.nextDouble() * Math.PI * 2
+        // Square-rooted so the points spread evenly over the disc instead of clustering in
+        // the middle.
+        val radius = Math.sqrt(entity.random.nextDouble()) * BARRAGE_RADIUS
+        val x = objective.x + Math.round(Math.cos(angle) * radius).toInt()
+        val z = objective.z + Math.round(Math.sin(angle) * radius).toInt()
+        val y = level?.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, x, z)
+            ?: objective.y
+        return BlockPos(x, y, z)
     }
 
     private fun commandedTarget(entity: NpcEntity, squad: Squad): BlockPos? {
@@ -402,6 +426,8 @@ class MortarCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** Impact-point scatter radius (blocks), fed straight into SBW's own `ArtilleryEntity`
      *  dispersion (`targetPos.center.randomPos(radius)`). Recruits scatter widest, elites
      *  land almost dead-on. */
+    private fun dangerRadius(entity: NpcEntity): Double = scatterRadius(entity) + SHELL_BLAST_RADIUS + IN_FLIGHT_MARGIN
+
     private fun scatterRadius(entity: NpcEntity): Int {
         val t = entity.npcRank.ordinal / (com.sbwnpc.squad.npc.NpcRank.entries.size - 1).toDouble()
         return Math.round(MAX_SCATTER - t * (MAX_SCATTER - MIN_SCATTER)).toInt()
@@ -419,12 +445,17 @@ class MortarCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     // Squad NPCs from the registry + players from the level list — same population the old
     // LivingEntity box query filtered down to, minus the chunk-section walk.
+    //
+    // The shell lands anywhere within the crew's scatter of the aim and kills within its blast
+    // beyond that, so the check covers both: a fixed 10 blocks let a rookie's shells land on men
+    // up to 18 blocks from the aim.
     private fun friendlyNear(level: ServerLevel, entity: NpcEntity, target: BlockPos): Boolean {
         val center = target.center
-        NpcRegistry.forEachWithin(level, center, SAFE_RADIUS, exclude = entity) { other ->
+        val danger = dangerRadius(entity)
+        NpcRegistry.forEachWithin(level, center, danger, exclude = entity) { other ->
             if (other.squadId != null && !SquadTeams.isHostile(entity, other)) return true
         }
-        val r2 = SAFE_RADIUS * SAFE_RADIUS
+        val r2 = danger * danger
         for (player in level.players()) {
             if (player.distanceToSqr(center) <= r2 && !SquadTeams.isHostile(entity, player)) return true
         }

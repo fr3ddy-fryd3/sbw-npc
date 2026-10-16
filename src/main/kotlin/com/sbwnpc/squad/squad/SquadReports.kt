@@ -108,6 +108,10 @@ object SquadReports {
         send(server, squad, Kind.ATTACK_FAILED, "Attack failed: primary ammunition exhausted ($empty/$infantry). Falling back 100 m")
     }
 
+    fun attackFailedLosses(server: MinecraftServer, squad: Squad, lostPercent: Int) {
+        send(server, squad, Kind.ATTACK_FAILED, "Attack called off: the attack lost $lostPercent% of its men. Falling back 100 m")
+    }
+
     /** [squad] has taken its point, or fallen back to it, and holds it now. */
     fun holding(server: MinecraftServer, squad: Squad, was: SquadOrder) {
         send(server, squad, Kind.ARRIVED, if (was == SquadOrder.RETREAT) "Fallen back, holding" else "Objective taken, holding")

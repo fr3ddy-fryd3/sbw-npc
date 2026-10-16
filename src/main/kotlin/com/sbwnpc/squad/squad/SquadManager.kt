@@ -205,6 +205,13 @@ class SquadManager : SavedData() {
     fun issueOrder(id: UUID, order: SquadOrder) {
         setOrder(id, order)
         val squad = squads[id] ?: return
+        val dimension = squad.objectiveDimension?.location()?.toString() ?: squad.lastSeenDim?.location()?.toString() ?: "minecraft:overworld"
+        val goal = squad.focusEntity?.let { com.sbwnpc.squad.ai.coordination.ObjectiveKey.Entity(dimension, it) }
+            ?: squad.objective?.let { com.sbwnpc.squad.ai.coordination.ObjectiveKey.Area(dimension, it.x, it.y, it.z) }
+        squad.command = com.sbwnpc.squad.ai.tactics.IssuedCommand(UUID.randomUUID(), squad.owner, com.sbwnpc.squad.ai.coordination.TacticalOrder.valueOf(order.name), goal)
+        squad.commandOutcome = com.sbwnpc.squad.ai.tactics.CommandOutcome.ACTIVE
+        squad.commandReason = null
+        squad.pendingCommandStamp = squad.orderStamp
         if (squad.order == SquadOrder.ATTACK && squad.attackAmmoPolicy == AttackAmmoPolicy.RETRY_AVAILABLE) {
             squad.attackAmmoPolicy = AttackAmmoPolicy.PRESS_ON
             setDirty()
@@ -219,13 +226,23 @@ class SquadManager : SavedData() {
 
     /** The ammunition failure, unlike a manual retreat, arms the next explicit attack retry. */
     fun withdrawForAmmo(id: UUID) {
+        squads[id]?.attackAmmoPolicy = AttackAmmoPolicy.RETRY_AVAILABLE
+        withdraw(id, "primary_ammo_exhausted")
+    }
+
+    /** Calls the squad's command off as failed for [reason] and falls back. */
+    fun withdraw(id: UUID, reason: String) {
         val squad = squads[id] ?: return
-        squad.attackAmmoPolicy = AttackAmmoPolicy.RETRY_AVAILABLE
+        squad.commandOutcome = com.sbwnpc.squad.ai.tactics.CommandOutcome.FAILED
+        squad.commandReason = reason
         setOrder(id, SquadOrder.RETREAT)
     }
 
     fun setOrder(id: UUID, order: SquadOrder) {
         squads[id]?.let {
+            it.pendingCommandStamp = -1
+            it.tacticalOperation = null
+            it.tacticalObjective = null
             val available = SquadOrder.availableFor(
                 isTankSquad(it),
                 isMortarSquad(it),
@@ -245,6 +262,46 @@ class SquadManager : SavedData() {
         }
     }
 
+    /** Complete explicit command at a point; internal mode/objective transitions keep their original intent. */
+    fun issueOrderAt(level: ServerLevel, id: UUID, order: SquadOrder, pos: BlockPos, command: com.sbwnpc.squad.ai.tactics.IssuedCommand? = null) {
+        require(command == null || command.principal == squads[id]?.owner) { "Foreign command principal" }
+        require(command?.goal?.dimension?.let { it == level.dimension().location().toString() } != false) { "Foreign command dimension" }
+        issueOrder(id, order)
+        setObjective(level, id, pos)
+        squads[id]?.let { squad ->
+            if (command != null) squad.command = command
+            squad.pendingCommandStamp = -1
+        }
+        setDirty()
+    }
+
+    fun issueObjective(level: ServerLevel, id: UUID, pos: BlockPos) {
+        val squad = squads[id] ?: return
+        val previous = squad.command
+        issueOrderAt(level, id, squad.order, pos, previous?.copy(id = UUID.randomUUID(), goal = com.sbwnpc.squad.ai.coordination.ObjectiveKey.Area(level.dimension().location().toString(), pos.x, pos.y, pos.z)))
+    }
+
+    fun issueFocus(level: ServerLevel, id: UUID, target: UUID) {
+        val squad = squads[id] ?: return
+        val entity = level.getEntity(target) ?: return
+        val issued = com.sbwnpc.squad.ai.tactics.IssuedCommand(
+            UUID.randomUUID(),
+            squad.owner,
+            com.sbwnpc.squad.ai.coordination.TacticalOrder.valueOf(squad.order.name),
+            com.sbwnpc.squad.ai.coordination.ObjectiveKey.Entity(level.dimension().location().toString(), target),
+        )
+        issueOrderAt(level, id, squad.order, entity.blockPosition(), issued)
+        setFocus(id, target)
+    }
+
+    fun completeCommand(id: UUID, reason: String) {
+        val squad = squads[id] ?: return
+        if (squad.commandOutcome != com.sbwnpc.squad.ai.tactics.CommandOutcome.ACTIVE) return
+        squad.commandOutcome = com.sbwnpc.squad.ai.tactics.CommandOutcome.COMPLETED
+        squad.commandReason = reason
+        setDirty()
+    }
+
     fun isTankSquad(squad: Squad): Boolean = squad.originalComposition.contains(NpcClass.TANK_CREW) || squad.name.startsWith("Tank ")
 
     /** A gunship squad brought a turret gunner; a transport squad is a pilot without one. */
@@ -260,6 +317,13 @@ class SquadManager : SavedData() {
     /** Sets the objective; only an owner on the squad's faction sees the world particle marker. */
     fun setObjective(level: ServerLevel, id: UUID, pos: BlockPos?) {
         val squad = squads[id] ?: return
+        squad.tacticalOperation = null
+        squad.tacticalObjective = null
+        if (squad.pendingCommandStamp == squad.orderStamp) {
+            squad.command = squad.command?.copy(goal = pos?.let { com.sbwnpc.squad.ai.coordination.ObjectiveKey.Area(level.dimension().location().toString(), it.x, it.y, it.z) })
+        }
+        squad.pendingCommandStamp = -1
+        squad.objectiveDimension = level.dimension()
         squad.objective = pos
         squad.focusEntity = null
         if (squad.order == SquadOrder.MOVE) {
@@ -283,6 +347,8 @@ class SquadManager : SavedData() {
 
     fun setFocus(id: UUID, entity: UUID?) {
         squads[id]?.takeUnless(::isTankSquad)?.let {
+            it.tacticalOperation = null
+            it.tacticalObjective = null
             it.focusEntity = entity
             setDirty()
         }

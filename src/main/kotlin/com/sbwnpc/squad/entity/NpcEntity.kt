@@ -271,7 +271,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             return
         }
         // Active role/vehicle/medical controllers keep ownership of their look direction.
-        if (busyWithRole() || vehicle != null || combatLockedByMedic()) return
+        if (busyWithRole() || vehicle != null || combatLockedByMedic() || com.sbwnpc.squad.ai.integration.NativeTactics.ownsLook(this)) return
         lookControl.setLookAt(at.x, at.y, at.z)
     }
 
@@ -726,12 +726,20 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     /** The player's original destination, before local squad-area allocation. */
     internal fun orderCenter(): Vec3? {
         val squad = currentSquad() ?: return null
+        if (squad.objectiveDimension?.let { it != level().dimension() } == true) return null
         // A point to get to, not an enemy to go after: no focus entity.
         if (squad.order == SquadOrder.MOVE || squad.order == SquadOrder.RETREAT) {
             return squad.objective?.let { Vec3(it.x + 0.5, it.y.toDouble(), it.z + 0.5) }
         }
         squad.focusEntity?.let { fid ->
-            (level() as? ServerLevel)?.getEntity(fid)?.takeIf { it.isAlive }?.let { return it.position() }
+            (level() as? ServerLevel)?.getEntity(fid)?.takeIf { it.isAlive }?.let { target ->
+                val ownSide = com.sbwnpc.squad.team.SquadTeams.sideOf(this)
+                val targetSide = com.sbwnpc.squad.team.SquadTeams.sideOf(target)
+                val shared = ownSide != null && targetSide != null && com.sbwnpc.squad.team.Diplomacy.allied(ownSide, targetSide)
+                if (shared || target.uuid == squad.owner) return target.position()
+                if (target is net.minecraft.world.entity.LivingEntity && !isEnemy(target) && com.sbwnpc.squad.combat.DetectionSightline.canSeeWithin(this, target, DETECTION_RANGE)) return target.position()
+                squad.tactics.contacts[fid]?.let { return it.position }
+            }
         }
         return squad.objective?.let { Vec3(it.x + 0.5, it.y.toDouble(), it.z + 0.5) }
     }

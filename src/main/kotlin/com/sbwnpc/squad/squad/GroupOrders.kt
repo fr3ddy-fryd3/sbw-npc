@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.squad
 
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.npc.SquadFaction
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.levelgen.Heightmap
@@ -27,12 +28,60 @@ import java.util.UUID
 object GroupOrders {
     private const val SPACING = 16.0
 
+    /** An attack or defence ordered this close to an allied operation's point joins it. */
+    const val JOIN_RADIUS = 16.0
+
     private enum class Placement { LINE, POINT }
 
     private enum class Kind { INFANTRY, TANK, MORTAR, GUNSHIP, TRANSPORT }
 
     /** What happened, one entry per squad, for the player's action bar. */
     fun apply(level: ServerLevel, mgr: SquadManager, squadIds: List<UUID>, order: SquadOrder, x: Int, z: Int): List<String> {
+        val selected = squadIds.mapNotNull(mgr::get)
+        if (selected.size != squadIds.size || selected.isEmpty() || selected.map { it.id }.distinct().size != selected.size ||
+            selected.any { it.owner != selected.first().owner } ||
+            selected.any { saved -> saved.lastSeenDim?.let { it != level.dimension() } == true && saved.members.none { level.getEntity(it) != null } } ||
+            selected.any { a -> selected.any { b -> !com.sbwnpc.squad.team.Diplomacy.allied(a.faction, b.faction) } }
+        ) {
+            return listOf("Selection cancelled: incompatible squads")
+        }
+        // Clicked next to an operation's point rather than on it: each squad joins it at its own
+        // point. A new order clicked a few blocks off used to start a second operation beside it.
+        joinable(level, mgr, selected, order, x, z)?.let { (operation, x0, z0) ->
+            com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER, "[htn] event=map_order_joins operation={} clicked={},{} point={},{} squads={}", operation.id, x, z, x0, z0, selected.map { it.name })
+            return selected.flatMap { squad ->
+                if (operation.members.containsKey(squad.id)) listOf("${squad.name}: already there") else issue(level, mgr, listOf(squad.id), order, x0, z0)
+            }
+        }
+        return issue(level, mgr, squadIds, order, x, z)
+    }
+
+    /**
+     * The active operation of the same owner and order whose point lies within [JOIN_RADIUS] of
+     * the click, allied with every selected squad, with that point; null when the selected squads
+     * are all in it already, so moving an operation's own point still works.
+     */
+    private fun joinable(level: ServerLevel, mgr: SquadManager, selected: List<Squad>, order: SquadOrder, x: Int, z: Int): Triple<com.sbwnpc.squad.ai.coordination.OperationView, Int, Int>? {
+        if (order != SquadOrder.ATTACK && order != SquadOrder.DEFEND) return null
+        val dimension = level.dimension().location().toString()
+        val owner = selected.first().owner
+        return mgr.forOwner(owner)
+            .mapNotNull { com.sbwnpc.squad.ai.integration.NativeTactics.operationOf(level, it.id) }
+            .distinctBy { it.id }
+            .filter { op ->
+                op.status == com.sbwnpc.squad.ai.coordination.OperationStatus.ACTIVE && op.principal == owner && op.order.name == order.name &&
+                    op.members.values.all { member -> selected.all { com.sbwnpc.squad.team.Diplomacy.allied(SquadFaction.valueOf(member.faction), it.faction) } } &&
+                    !selected.all { op.members.containsKey(it.id) }
+            }
+            .mapNotNull { op -> (op.objective as? com.sbwnpc.squad.ai.coordination.ObjectiveKey.Area)?.takeIf { it.dimension == dimension }?.let { op to it } }
+            .map { (op, area) -> Triple(op, area, Math.hypot((area.x - x).toDouble(), (area.z - z).toDouble())) }
+            .filter { it.third <= JOIN_RADIUS }
+            .minByOrNull { it.third }
+            ?.let { (op, area) -> Triple(op, area.x, area.z) }
+    }
+
+    private fun issue(level: ServerLevel, mgr: SquadManager, squadIds: List<UUID>, order: SquadOrder, x: Int, z: Int): List<String> {
+        val operation = UUID.randomUUID()
         val plans = squadIds.mapNotNull { id ->
             val squad = mgr.get(id) ?: return@mapNotNull null
             val (given, placement) = resolve(kindOf(mgr, squad), order) ?: return@mapNotNull squad to null
@@ -47,9 +96,13 @@ object GroupOrders {
             val bx = Math.floor(px).toInt()
             val bz = Math.floor(pz).toInt()
             val by = groundY(level, bx, bz)
-            mgr.issueOrder(squad.id, given)
-            mgr.setObjective(level, squad.id, BlockPos(bx, by, bz))
+            val goal = com.sbwnpc.squad.ai.coordination.ObjectiveKey.Area(level.dimension().location().toString(), x, groundY(level, x, z), z)
+            val issued = com.sbwnpc.squad.ai.tactics.IssuedCommand(operation, squad.owner, com.sbwnpc.squad.ai.coordination.TacticalOrder.valueOf(order.name), goal)
+            mgr.issueOrderAt(level, squad.id, given, BlockPos(bx, by, bz), issued)
             mgr.setFocus(squad.id, null)
+            squad.tacticalOperation = operation
+            squad.tacticalObjective = BlockPos(x, groundY(level, x, z), z)
+            mgr.setDirty()
             "${squad.name}: ${squad.order.name.lowercase()}"
         }
     }

@@ -824,8 +824,11 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         updateAim(entity, target, gun, clearShot, visibility)
 
         val movement = updateCombatMovement(entity, target, squad, holding, gun, clearShot)
-        if (!terrainClear && movement == CombatMovement.TACTICAL && entity.tickCount % 40 == 0) {
+        // A target dipping behind terrain for a moment is no reason to leave the post: only a
+        // sustained obstruction asks the tactical executor for another one.
+        if (!terrainClear && movement == CombatMovement.TACTICAL && entity.firingObstruction.requiresRecovery) {
             SquadTactics.repositionForFire(entity)
+            entity.firingObstruction.reset()
         }
         // The CORE blind-fire executor owns the gun and cached aim while vegetation hides the target.
         if (foliageHidden) {
@@ -1039,7 +1042,11 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             // Dug in: hold fire rather than step out of the hole to clear an ally's line of fire —
             // same reasoning as advanceOrHold's guard above.
             if (tacticalMovement) {
-                SquadTactics.repositionForFire(entity)
+                // An ally crossing the lane clears it again; hold fire until the block persists.
+                if (entity.firingObstruction.requiresRecovery) {
+                    SquadTactics.repositionForFire(entity)
+                    entity.firingObstruction.reset()
+                }
             } else if (hullBlocked) {
                 // Choose another firing position; an ally sidestep cannot clear a hull.
                 nextPositionCheckTick = 0

@@ -689,8 +689,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             return
         }
         val waypoint = if (driveLegsOnly) currentWaypoint(entity, home) else driveWaypoint(entity, vehicle, home)
+        // Escorting infantry that hasn't met the enemy: idle the engine rather than outrun it.
+        val escort = com.sbwnpc.squad.squad.FireSupport.holdEscortPace(entity.level() as ServerLevel, entity, vehicle.position(), home)
         // Wait for a route before issuing steering commands.
-        if (waypoint == null) holdVehicle(vehicle) else steerToward(vehicle, aroundTrees(entity, vehicle, waypoint))
+        if (waypoint == null) holdVehicle(vehicle) else steerToward(vehicle, aroundTrees(entity, vehicle, waypoint), throttle = !escort)
     }
 
     private fun finishDriving(entity: NpcEntity, vehicle: Entity) {
