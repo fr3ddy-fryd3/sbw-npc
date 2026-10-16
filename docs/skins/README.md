@@ -1,6 +1,6 @@
 # NPC skins
 
-The eight runtime files in `src/main/resources/assets/sbwnpc/textures/entity/` are **64 × 64 RGBA PNGs**. Existing filenames and faction bindings are unchanged.
+The eight runtime files in `common/src/main/resources/assets/sbwnpc/textures/entity/` are **64 × 64 RGBA PNGs**. Existing filenames and faction bindings are unchanged.
 
 Clothing was redesigned using the built-in imagegen tool. Generated source artwork was 1254 × 1254 and did not reliably follow Minecraft UV coordinates; selected clothing panels were therefore resampled with nearest-neighbor sampling and packed into the standard 64 × 64 atlas. The high-resolution drafts are not runtime assets.
 
