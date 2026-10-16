@@ -221,7 +221,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
                     phase = Phase.TAKEOFF
                     return
                 }
-                land(level, heli, height, rollRate)
+                land(heli, height, rollRate)
             }
         }
     }
@@ -461,7 +461,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         trimWings(heli, rollRate)
     }
 
-    private fun land(level: ServerLevel, heli: Entity, height: Double, rollRate: Float) {
+    private fun land(heli: Entity, height: Double, rollRate: Float) {
         applyCollective(heli, HelicopterFlightController.landingCollective(height, heli.deltaMovement.y, DESCENT_RATE))
         Ports.vehicles.setCyclic(heli, 0f, 0f)
         // Hover mode keeps it level and kills the drift that would otherwise put a skid into a wall.

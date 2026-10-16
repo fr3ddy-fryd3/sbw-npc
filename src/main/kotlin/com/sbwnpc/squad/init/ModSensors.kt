@@ -21,5 +21,5 @@ object ModSensors {
     val SQUAD_TARGET: Supplier<SensorType<SquadTargetSensor>> =
         SBLConstants.SBL_LOADER.registerSensorType("squad_target") { SquadTargetSensor() }
 
-    fun init() {}
+    fun init() = Unit
 }

@@ -151,6 +151,8 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
     companion object {
         private const val RESPAWN_INTERVAL_TICKS = 200 // ~10s, one NPC per block
 
+        // BlockEntityTicker passes pos and state; this tick doesn't need them.
+        @Suppress("UnusedParameter")
         @JvmStatic
         fun serverTick(level: Level, pos: BlockPos, state: BlockState, be: BarracksBlockEntity) {
             if (level !is ServerLevel) return

@@ -72,11 +72,11 @@ class SavedWorldRoutesTest {
      *  where the land loads round the squad as it goes. */
     private class Seen(private val ground: Ground, private val radius: Int) : Ground {
         val spots = ArrayList<Vec3>()
-        private fun seen(x: Int, z: Int) = spots.any { Math.abs(it.x - x) <= radius && Math.abs(it.z - z) <= radius }
-        override fun known(x: Int, z: Int) = seen(x, z) && ground.known(x, z)
-        override fun kind(x: Int, z: Int) = if (seen(x, z)) ground.kind(x, z) else GroundMap.Kind.UNKNOWN
-        override fun height(x: Int, z: Int) = if (seen(x, z)) ground.height(x, z) else Int.MIN_VALUE
-        override fun room(x: Int, z: Int) = if (seen(x, z)) ground.room(x, z) else 0
+        private fun covers(x: Int, z: Int) = spots.any { Math.abs(it.x - x) <= radius && Math.abs(it.z - z) <= radius }
+        override fun known(x: Int, z: Int) = covers(x, z) && ground.known(x, z)
+        override fun kind(x: Int, z: Int) = if (covers(x, z)) ground.kind(x, z) else GroundMap.Kind.UNKNOWN
+        override fun height(x: Int, z: Int) = if (covers(x, z)) ground.height(x, z) else Int.MIN_VALUE
+        override fun room(x: Int, z: Int) = if (covers(x, z)) ground.room(x, z) else 0
     }
 
     /** The trip taken a known stretch at a time: planned, followed to the end of what is known,

@@ -162,7 +162,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
                 return
             }
             if (tickEvade(entity)) return
-            shoot(entity, level, drone, dist)
+            shoot(entity, drone, dist)
         } else {
             // Cover-seekers: hand the drone to SeekCoverBehaviour as a suppression threat (it
             // finds a spot the threat position can't see — for a drone, that means a roof).
@@ -200,7 +200,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
         return true
     }
 
-    private fun shoot(entity: NpcEntity, level: ServerLevel, drone: Entity, dist: Double) {
+    private fun shoot(entity: NpcEntity, drone: Entity, dist: Double) {
         entity.navigation.stop()
         val gun = Ports.guns.inHand(entity) ?: return
 

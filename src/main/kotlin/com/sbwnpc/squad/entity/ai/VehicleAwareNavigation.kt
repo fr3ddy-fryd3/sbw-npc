@@ -131,6 +131,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
     /** While he's off to look at a noise: who took his path away or swapped it, from the frames above. */
     private fun traceHandover(what: String) {
         if (!investigating()) return
+        @Suppress("ThrowingExceptionsWithoutMessageOrCause") // only for its stack trace
         val from = Throwable().stackTrace.asSequence()
             .map { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }
             // Only the plumbing — vanilla's own stuck check (PathNavigation.doStuckDetection) stays.

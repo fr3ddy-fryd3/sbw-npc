@@ -100,7 +100,7 @@ object AircraftLods {
             val source = resource.openAsReader().use { JsonParser.parseReader(it).asJsonObject }
             if (!source.has("minecraft:geometry")) return null
             listOf(0.35, 0.15).map { fraction -> bake(simplify(source, fraction)) }
-        } catch (exception: Exception) {
+        } catch (@Suppress("TooGenericExceptionCaught") exception: Exception) {
             SquadMod.LOGGER.warn("Cannot simplify aircraft model {}; keeping its native models", path, exception)
             null
         }

@@ -38,7 +38,7 @@ internal object StaticGunModels {
                     resources.openAsReader(geometry).use(StaticGunMesh::bake)
                 }
                 guns[gun] = StaticGunModel(geometry, texture, mesh)
-            } catch (e: Exception) {
+            } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
                 SquadMod.LOGGER.error("Cannot load NPC static gun {} from {}", gun, location, e)
             }
         }

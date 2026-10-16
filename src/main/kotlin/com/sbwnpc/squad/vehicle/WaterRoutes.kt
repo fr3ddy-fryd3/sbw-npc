@@ -73,7 +73,7 @@ object WaterRoutes {
 
     /** The water surface at one height, as a boat with [clearance] blocks either side of its middle sees it. */
     private class Water(val level: ServerLevel, val y: Int, val clearance: Int) : CellPlanner.Medium {
-        private val water = HashMap<Long, Boolean>()
+        private val open = HashMap<Long, Boolean>()
         private val fits = HashMap<Long, Boolean>()
 
         override val pace = 1.0 / BOAT_PACE
@@ -81,14 +81,14 @@ object WaterRoutes {
         override fun known(x: Int, z: Int): Boolean = WaterMap.known(level, y, x, z)
 
         /** Open water at the surface with room above it, as seen now or last seen. */
-        private fun water(x: Int, z: Int): Boolean = water.getOrPut(BlockPos.asLong(x, 0, z)) {
+        private fun openWater(x: Int, z: Int): Boolean = open.getOrPut(BlockPos.asLong(x, 0, z)) {
             WaterMap.kind(level, y, x, z) == WaterMap.Kind.WATER
         }
 
         /** The whole hull fits with its middle over this column. */
         override fun open(x: Int, z: Int): Boolean = fits.getOrPut(BlockPos.asLong(x, 0, z)) {
             for (dx in -clearance..clearance) for (dz in -clearance..clearance) {
-                if (!water(x + dx, z + dz)) return@getOrPut false
+                if (!openWater(x + dx, z + dz)) return@getOrPut false
             }
             true
         }

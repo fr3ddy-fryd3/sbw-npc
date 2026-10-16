@@ -447,6 +447,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         val vehicle = this.vehicle
         if (vehicle != null && !level().isClientSide && com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.VEHICLE)) {
             // Which of the many dismount paths this was — the frames above this one.
+            @Suppress("ThrowingExceptionsWithoutMessageOrCause") // only for its stack trace
             val from = Throwable().stackTrace.drop(1).take(3).joinToString(" <- ") { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }
             com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.VEHICLE, "{} ({}) off {}: {}", uuid, npcClass, vehicle.type.descriptionId, from)
         }

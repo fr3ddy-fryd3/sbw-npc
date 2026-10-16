@@ -49,5 +49,5 @@ object ModMemories {
     val DRONE_THREAT: Supplier<MemoryModuleType<java.util.UUID>> =
         SBLConstants.SBL_LOADER.registerMemoryType("drone_threat")
 
-    fun init() {}
+    fun init() = Unit
 }

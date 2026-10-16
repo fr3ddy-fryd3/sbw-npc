@@ -62,6 +62,8 @@ class SupplyBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlock
         const val RADIUS = 8.0
         private const val ISSUE_INTERVAL_TICKS = 20
 
+        // BlockEntityTicker passes pos and state; this tick doesn't need them.
+        @Suppress("UnusedParameter")
         fun serverTick(level: Level, pos: BlockPos, state: BlockState, be: SupplyBlockEntity) {
             if (level !is ServerLevel) return
             if (--be.ticksUntilIssue > 0) return
