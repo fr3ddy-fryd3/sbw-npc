@@ -526,7 +526,9 @@ object NativeTactics {
                 rememberedSeen[it.id] = now
             }
             val inspect = if (focus == null) {
-                remembered.values.firstOrNull() ?: squads.firstOrNull { it.order == SquadOrder.ATTACK && it.commandOutcome == CommandOutcome.ACTIVE }?.objective?.let { Vec3.atBottomCenterOf(it) }
+                val anchor = currentAreaTask(operation)?.objective?.native() ?: squads.first().objective?.let { Vec3.atBottomCenterOf(it) } ?: center
+                UnverifiedContacts.scoutTarget(anchor.point(), remembered.values.map { it.point() })?.native()
+                    ?: squads.firstOrNull { it.order == SquadOrder.ATTACK && it.commandOutcome == CommandOutcome.ACTIVE }?.objective?.let { Vec3.atBottomCenterOf(it) }
             } else {
                 null
             }
