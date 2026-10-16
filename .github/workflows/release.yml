@@ -1,0 +1,54 @@
+# Publishes a GitHub release with the mod jar when a version tag (v0.7.0, v0.7.0-beta.1) is pushed.
+# Lint and tests run on the tagged commit first, so a failing tag never produces a release.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The jar name and the in-game version come from mod_version, so a tag that disagrees with it
+      # would publish a release whose jar says something else.
+      - name: Check tag matches mod_version
+        run: |
+          mod_version=$(sed -n 's/^mod_version=//p' gradle.properties)
+          if [ "${GITHUB_REF_NAME#v}" != "$mod_version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match mod_version=$mod_version in gradle.properties"
+            exit 1
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Lint
+        run: ./gradlew --console=plain detekt
+
+      - name: Test
+        run: ./gradlew --console=plain test
+
+      # Plain build is the production build: DebugFlags stay off.
+      - name: Build
+        run: ./gradlew --console=plain build
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          minecraft_version=$(sed -n 's/^minecraft_version=//p' gradle.properties)
+          jar="build/libs/sbwnpc-${GITHUB_REF_NAME#v}-mc${minecraft_version}.jar"
+          prerelease=()
+          case "$GITHUB_REF_NAME" in *-*) prerelease=(--prerelease) ;; esac
+          gh release create "$GITHUB_REF_NAME" "$jar" --verify-tag --generate-notes "${prerelease[@]}"
