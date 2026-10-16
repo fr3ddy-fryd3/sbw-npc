@@ -22,6 +22,9 @@ interface ActionExecution {
     fun cancel(now: Long, reason: String)
     fun dispose(now: Long, reason: String) = Unit
 
+    /** Synchronous actions may retain their state when a completed condition is lost. */
+    fun reopen(now: Long): Boolean = false
+
     /** Synchronous adapters may revise intent in place; asynchronous actions use a new execution. */
     fun revise(spec: ActionSpec<*>, now: Long): Boolean = false
 }
@@ -122,10 +125,18 @@ class PlanRuntime(
             val compatible = next.owner == entry.ticket.owner && actionCompatible &&
                 entry.status !in setOf(ExecutionStatus.FAILED, ExecutionStatus.CANCELLED)
             val stillComplete = entry.status != ExecutionStatus.COMPLETED || replacement?.spec?.contract?.completed?.evaluate(facts) == Verdict.Allowed
-            if (!compatible || !stillComplete) {
+            val reopened = compatible && !stillComplete && entry.instance?.reopen(facts.now) == true
+            if (!compatible || (!stillComplete && !reopened)) {
                 cancel(entry, facts.now, "assignment_changed")
                 entries.remove(id)
             } else {
+                if (reopened) {
+                    entry.acceptsExternal = false
+                    entry.evidence = emptyList()
+                    entry.activeTicks = 0
+                    entry.lastTick = null
+                    change(entry, ExecutionStatus.RUNNING, null)
+                }
                 if (replacement!!.spec.action != entry.task.spec.action) entry.acceptsExternal = false
                 entry.task = replacement
             }
