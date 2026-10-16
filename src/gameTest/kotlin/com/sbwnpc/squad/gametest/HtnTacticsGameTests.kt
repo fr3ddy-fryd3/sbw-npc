@@ -221,6 +221,10 @@ object HtnTacticsGameTests {
         var joinedAt: Long? = null
         var leftAt: Long? = null
         var pendingObserved = false
+        var marchObserved = false
+        var firedOn = false
+        var phase: com.sbwnpc.squad.ai.tactics.AttackPhase? = null
+        var phaseSince = 0L
         var retainedTickets = emptyMap<UUID, com.sbwnpc.squad.ai.planning.ExecutionTicket>()
         helper.onEachTick {
             if (helper.tick == 400L) {
@@ -241,15 +245,33 @@ object HtnTacticsGameTests {
                 pendingObserved = true
                 helper.assertTrue(!NativeTactics.holdsArea(squads.last().id), "Pending reinforcement runs its own area completion")
             }
+            // Far from the fight and unfired on, it makes for the operation's entry instead of
+            // fighting where it stands: in-game 16.10 an enemy 280 m away stopped a reinforcement for good.
+            if (group.any { it.incomingFire.recentPoint(helper.level.gameTime) != null }) firedOn = true
+            if (joinedAt == null && issuedAt != null && helper.tick > issuedAt!! + 40 && !firedOn && group.all { helper.relativeVec(it.position()).x < 40.0 }) {
+                val entry = requireNotNull(NativeTactics.operation(original)).entry.center
+                val astray = group.filter { npc -> NativeTactics.assignment(npc).let { it == null || it.anchor.distanceTo(Vec3(entry.x, entry.y, entry.z)) > 1.0 } }
+                helper.assertTrue(astray.isEmpty(), "Distant reinforcement is not marching to the entry: ${astray.map { helper.relativeVec(it.position()) to NativeTactics.assignment(it) }}")
+                marchObserved = true
+            }
             // A reinforcement joins a fight in progress: once it reaches the fight it is under fire.
             if (joinedAt == null && helper.tick % 20L == 0L && group.any { helper.relativeVec(it.position()).x >= 65.0 }) group.forEach { it.incomingFire.record(it.position(), Vec3(1.0, 0.0, 0.0), null, helper.level.gameTime) }
             if (joinedAt == null && NativeTactics.coordinated(npc)) {
                 helper.assertTrue(pendingObserved, "Reinforcement was counted before travelling to the operation")
+                helper.assertTrue(marchObserved, "Reinforcement was never seen marching from afar")
                 val operation = requireNotNull(NativeTactics.operation(original))
                 helper.assertTrue(group.any { operation.entry.contains(com.sbwnpc.squad.ai.coordination.Point3(it.x, it.y, it.z)) }, "Reinforcement joined with nobody inside its physical entry area")
                 joinedAt = helper.tick
             }
-            if (joinedAt != null && leftAt == null && helper.tick - joinedAt!! >= 100) {
+            NativeTactics.attackPhase(original).let {
+                if (it != phase) {
+                    phase = it
+                    phaseSince = helper.tick
+                }
+            }
+            // A phase change re-plans the attackers by itself; leave between changes, so only the
+            // reinforcement's departure is measured.
+            if (joinedAt != null && leftAt == null && helper.tick - joinedAt!! >= 100 && helper.tick - phaseSince >= 60) {
                 helper.assertTrue(group.all { helper.relativeVec(it.position()).x >= 17.5 }, "A reinforcement support member stayed near its distant spawn: ${group.map { helper.relativeVec(it.position()) to NativeTactics.reports(it) }}")
                 retainedTickets = groups.flatten().mapNotNull { actor -> NativeTactics.reports(actor)["position"]?.ticket?.let { actor.uuid to it } }.toMap()
                 manager.issueOrderAt(helper.level, squads.last().id, SquadOrder.MOVE, BlockPos.containing(npc.position().add(-20.0, 0.0, 0.0)))
@@ -259,7 +281,7 @@ object HtnTacticsGameTests {
                 helper.assertTrue(NativeTactics.operation(npc)?.id != NativeTactics.operation(original)?.id, "Separate command did not remove the reinforcement")
                 helper.assertTrue(NativeTactics.operation(original)?.members?.size == 2, "Separate command disrupted original operation")
                 val kept = groups.flatten().count { actor -> retainedTickets[actor.uuid] != null && NativeTactics.reports(actor)["position"]?.ticket == retainedTickets[actor.uuid] }
-                helper.assertTrue(kept >= 8, "Removing reinforcement rebuilt most unrelated NPC executions: $kept/16")
+                helper.assertTrue(kept >= 8, "Removing reinforcement rebuilt most unrelated NPC executions: $kept/16 phase=$phase since=$phaseSince left=$leftAt")
                 scene.result("PASS", "pending=$pendingObserved issued=$issuedAt joined=$joinedAt left=$leftAt unaffectedExecutions=$kept")
                 helper.succeed()
             }

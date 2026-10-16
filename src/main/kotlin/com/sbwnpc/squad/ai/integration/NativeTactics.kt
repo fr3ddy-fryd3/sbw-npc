@@ -92,6 +92,10 @@ object NativeTactics {
         // When each remembered position was last seen, so one nobody can reach expires.
         private val unverifiedSeen = HashMap<UUID, MutableMap<UUID, Long>>()
         private val completions = HashMap<UUID, AreaControlTask>()
+
+        // Per squad on its way as a reinforcement: when it was last fired on, and whether it fights.
+        private val reinforcementFire = HashMap<UUID, Long>()
+        private val reinforcementEngaged = HashMap<UUID, Boolean>()
         private val sequences = HashMap<AssignmentTicket, Long>()
         private val retiredAssignments = ArrayList<AssignmentTicket>()
         private val leases = ResourceLeases()
@@ -512,10 +516,32 @@ object NativeTactics {
             return standing
         }
 
+        /** Whether a reinforcement on its way stops to fight, see [ReinforcementMarch]; logs each change. */
+        private fun reinforcementEngaged(squad: UUID, contacts: List<TacticalContact>, members: List<TacticalMember>, now: Long): Boolean {
+            if (snapshots[squad]?.incoming?.isNotEmpty() == true) reinforcementFire[squad] = now
+            val nearest = contacts.minOfOrNull { contact -> members.minOfOrNull { it.position.distanceTo(contact.position) } ?: Double.MAX_VALUE }
+            val sinceFire = reinforcementFire[squad]?.let { now - it } ?: Long.MAX_VALUE
+            val engaged = ReinforcementMarch.engaged(nearest, sinceFire)
+            if (reinforcementEngaged.put(squad, engaged) != engaged) {
+                DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=reinforcement_march engaged={} nearestContact={} ticksSinceFire={}", squad, engaged, nearest?.let { "%.0f".format(it) }, sinceFire)
+            }
+            return engaged
+        }
+
         /** Geometry proposes areas; actual arrival, useful fire and native reachability remain observations. */
         private fun layout(squads: List<Squad>, now: Long, holding: Boolean = false): List<SquadMission> {
-            val contacts = squads.flatMap { combatView(it.id)!!.contacts }.filter { now - it.seenAt <= 200 }.distinctBy { it.id }
+            val seen = squads.flatMap { combatView(it.id)!!.contacts }.filter { now - it.seenAt <= 200 }.distinctBy { it.id }
             val members = squads.flatMap { snapshots.getValue(it.id).members }.sortedBy { it.id.toString() }
+            // A reinforcement on its way keeps marching past the operation's distant fight.
+            val reinforcement = squads.singleOrNull()?.takeIf { operations.pending(it.id) != null }
+            val marching = reinforcement != null && !reinforcementEngaged(reinforcement.id, seen, members, now)
+            val contacts = if (marching) emptyList() else seen
+            if (reinforcement == null) {
+                squads.forEach {
+                    reinforcementFire.remove(it.id)
+                    reinforcementEngaged.remove(it.id)
+                }
+            }
             val center = Vec3(members.map { it.position.x }.average(), members.map { it.position.y }.average(), members.map { it.position.z }.average())
             val focus = contacts.maxByOrNull { it.priority }?.position
             val operation = operations.operationOf(squads.first().id)?.id ?: squads.first().id
@@ -525,7 +551,7 @@ object NativeTactics {
                 remembered[it.id] = it.position
                 rememberedSeen[it.id] = now
             }
-            val inspect = if (focus == null) {
+            val inspect = if (focus == null && !marching) {
                 val anchor = currentAreaTask(operation)?.objective?.native() ?: squads.first().objective?.let { Vec3.atBottomCenterOf(it) } ?: center
                 UnverifiedContacts.scoutTarget(anchor.point(), remembered.values.map { it.point() })?.native()
                     ?: squads.firstOrNull { it.order == SquadOrder.ATTACK && it.commandOutcome == CommandOutcome.ACTIVE }?.objective?.let { Vec3.atBottomCenterOf(it) }
@@ -570,9 +596,12 @@ object NativeTactics {
                 if (oldStrategy?.first != selected) strategies[saved.id] = selected to now
                 val old = missions[saved.id]
                 val oldIntents = old?.teams?.flatMap { it.members }?.associateBy { it.actor.id }.orEmpty()
+                // Marching on, an attack's reinforcement makes for the operation's entry itself: left to
+                // the order's own march, each man's sighted target still drew him off after it.
+                val entry = if (marching && saved.order == SquadOrder.ATTACK) operations.pending(saved.id)?.let { operations.operation(it.operation) }?.entry?.center else null
                 val intents = view.members.map { member ->
                     val proposal = proposals.getValue(member.id)
-                    val choice = OperationTactics.duty(
+                    val choice = entry?.let { DutyChoice(CombatDuty.MOVE, it) } ?: OperationTactics.duty(
                         DutyInputs(
                             order = TacticalOrder.valueOf(saved.order.name),
                             position = member.position.point(),
