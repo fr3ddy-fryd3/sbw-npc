@@ -1,6 +1,8 @@
 package com.sbwnpc.squad.gametest
 
 import com.mojang.authlib.GameProfile
+import com.sbwnpc.squad.ai.integration.NativeAssignment
+import com.sbwnpc.squad.ai.integration.NativeTactics
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.FiringPostArrival
@@ -8,6 +10,7 @@ import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.tactics.TacticalJob
 import com.sbwnpc.squad.combat.tactics.TacticalPositions
+import com.sbwnpc.squad.combat.tactics.TacticalTask
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
@@ -67,6 +70,23 @@ object DefensiveOverwatchGameTests {
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1200, batch = "patrol-tower-fall")
     fun fallenPatrolSentryReturnsToReservedTower(helper: GameTestHelper) = occupy(helper, SquadOrder.PATROL, fall = true)
 
+    /**
+     * The legacy [TacticalTask] shape of an HTN [NativeAssignment], so the existing shelter and
+     * firing-lane checks judge the post the runtime actually holds.
+     */
+    private fun NativeAssignment.task() = TacticalTask(job, anchor, focus, 0).also {
+        it.position = position
+        it.localFirePost = localFirePost
+    }
+
+    /**
+     * Whether [post] is still held: a revised HTN action re-reserves the spot where the sentry
+     * stands, a fraction of a block from the earlier claim, rather than the same [Vec3].
+     */
+    private fun holds(post: Vec3?, held: Vec3) = post?.let { FiringPostArrival.reached(it, held) } == true
+
+    private fun reserved(held: Vec3) = FiringSpots.nearby(held, 1.0, UUID(0, 0)).any { holds(it, held) }
+
     private fun occupy(helper: GameTestHelper, order: SquadOrder, contact: Boolean = false, ladder: Boolean = true, fall: Boolean = false) {
         for (x in 0..175) for (z in 0..95) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
         for (y in 1..10) {
@@ -105,7 +125,7 @@ object DefensiveOverwatchGameTests {
         } else {
             ""
         }}"
-        val trace = StringBuilder("tick,member,x,y,z,job,postX,postY,postZ,ladder,pattern,closest,lastProgress,recovery\n")
+        val trace = StringBuilder("tick,member,x,y,z,job,postX,postY,postZ,ladder,status,reason,recovery\n")
         var reservedBeforeAscent = false
         var climbedLadder = false
         var stableSince: Long? = null
@@ -117,6 +137,7 @@ object DefensiveOverwatchGameTests {
         var displacedAt: Long? = null
         var landedAt: Long? = null
         var returnedSince: Long? = null
+        var released: Pair<Long, List<Vec3>>? = null
         val oldGroups = DebugFlags.enabledGroups
         if (contact) DebugFlags.enabledGroups = oldGroups + setOf(LogGroup.ORDER, LogGroup.FIRE)
         if (fall) DebugFlags.enabledGroups = oldGroups + LogGroup.ORDER
@@ -162,7 +183,8 @@ object DefensiveOverwatchGameTests {
             }
         })
         helper.onEachTick {
-            val posts = npcs.mapNotNull { npc -> squad.tactics.plan?.tasks?.get(npc.uuid)?.position?.let { npc to it } }
+            val assignments = npcs.associateWith { NativeTactics.assignment(it) }
+            val posts = npcs.mapNotNull { npc -> assignments[npc]?.position?.let { npc to it } }
             val high = posts.filter { helper.relativeVec(it.second).y >= 10.5 }
             helper.assertTrue(high.size <= if (ladder) 1 else 0, "Support reserved a crowded or unreachable tower: $high")
             for ((npc, point) in high) {
@@ -175,27 +197,34 @@ object DefensiveOverwatchGameTests {
             }
             if (helper.tick % 10L == 0L) {
                 for (npc in npcs) {
-                    val task = squad.tactics.plan?.tasks?.get(npc.uuid)
+                    val task = assignments[npc]
                     val at = helper.relativeVec(npc.position())
                     val post = task?.position?.let(helper::relativeVec)
-                    trace.append("${helper.tick},${npc.uuid},${at.x},${at.y},${at.z},${task?.job},${post?.x},${post?.y},${post?.z},${npc.onClimbable()},${squad.tactics.plan?.pattern},${task?.closest},${task?.lastProgress},${task?.localFireRecovery}\n")
+                    val position = NativeTactics.reports(npc)["position"]
+                    trace.append("${helper.tick},${npc.uuid},${at.x},${at.y},${at.z},${task?.job},${post?.x},${post?.y},${post?.z},${npc.onClimbable()},${position?.status},${position?.reason},${task?.localFireRecovery}\n")
                 }
                 Files.writeString(report.resolve("$name.csv"), trace)
             }
             if (!ladder && helper.tick % 100L == 0L) {
                 for (npc in npcs) {
-                    val task = squad.tactics.plan?.tasks?.get(npc.uuid)
-                    val search = task?.search
-                    DebugFlags.log(LogGroup.PATH, "[tactics-test] {} event=unfinished_overwatch tick={} searchAt={} probe={}/{} destinations={}/{} attempts={} rejected={}", npc.uuid, helper.tick, task?.nextSearch, search?.probeIndex, search?.probes?.size, search?.destinationIndex, search?.destinations?.size, search?.pathAttempts, search?.rejections)
+                    DebugFlags.log(LogGroup.PATH, "[tactics-test] {} event=unfinished_overwatch tick={} assignment={} reports={}", npc.uuid, helper.tick, assignments[npc], NativeTactics.reports(npc))
                 }
+            }
+            released?.let { (since, occupied) ->
+                if (occupied.all { FiringSpots.nearby(it, 1.0, UUID(0, 0)).isEmpty() }) {
+                    Files.writeString(report.resolve("$name-result.txt"), "settled=${occupied.size}\nhigh=${occupied.count { helper.relativeVec(it).y >= 10.5 }}\nreservedBeforeAscent=$reservedBeforeAscent\nclimbedLadder=$climbedLadder\nreleasedAfter=${helper.tick - since}\n")
+                    helper.succeed()
+                }
+                helper.assertTrue(helper.tick - since < 40, "Released support posts remained reserved: ${occupied.filter { FiringSpots.nearby(it, 1.0, UUID(0, 0)).isNotEmpty() }}")
+                return@onEachTick
             }
             if (displacedAt != null) {
                 val sentry = holder!!
                 val point = heldPost!!
                 helper.assertTrue(sentry.isAlive, "Sentry died during the controlled fall")
-                val task = squad.tactics.plan?.tasks?.get(sentry.uuid)
-                helper.assertTrue(task?.position == point && task.job == TacticalJob.OVERWATCH && !task.localFireRecovery, "Fall lost the assigned tower post: task=${task?.job} post=${task?.position} recovery=${task?.localFireRecovery}")
-                helper.assertTrue(point in FiringSpots.nearby(point, 1.0, UUID(0, 0)), "Fall released the reserved tower slot")
+                val task = assignments[sentry]
+                helper.assertTrue(holds(task?.position, point) && task!!.job == TacticalJob.OVERWATCH && !task.localFireRecovery, "Fall lost the assigned tower post: task=${task?.job} post=${task?.position} recovery=${task?.localFireRecovery}")
+                helper.assertTrue(reserved(point), "Fall released the reserved tower slot")
                 if (sentry.onGround() && helper.relativeVec(sentry.position()).y < 3.0 && landedAt == null) landedAt = helper.tick
                 if (landedAt != null && FiringPostArrival.reached(sentry.position(), point) && sentry.onGround()) {
                     if (returnedSince == null) returnedSince = helper.tick
@@ -209,10 +238,10 @@ object DefensiveOverwatchGameTests {
                 return@onEachTick
             }
             if (enemy != null) {
-                if (helper.tick % 20L == 0L) Files.writeString(report.resolve("$name-sight.txt"), "tick=${helper.tick}\nposition=${helper.relativeVec(holder!!.position())}\npose=${holder!!.pose} eye=${holder!!.eyeHeight}\nyaw=${holder!!.yHeadRot} look=${holder!!.lookAngle}\nenemy=${helper.relativeVec(enemy!!.position())} alive=${enemy!!.isAlive}\nvisible=${DetectionSightline.trace(holder!!, enemy!!)}\ntarget=${holder!!.target?.uuid}\nfireReady=${TacticalPositions.firingReady(holder!!, squad.tactics.plan!!.tasks[holder!!.uuid]!!, holder!!.position())}\n")
-                val task = squad.tactics.plan?.tasks?.get(holder!!.uuid)
-                helper.assertTrue(task?.position == heldPost, "New contact displaced a usable tower post")
-                helper.assertTrue(heldPost in FiringSpots.nearby(heldPost!!, 1.0, UUID(0, 0)), "Contact transition dropped the tower reservation")
+                if (helper.tick % 20L == 0L) Files.writeString(report.resolve("$name-sight.txt"), "tick=${helper.tick}\nposition=${helper.relativeVec(holder!!.position())}\npose=${holder!!.pose} eye=${holder!!.eyeHeight}\nyaw=${holder!!.yHeadRot} look=${holder!!.lookAngle}\nenemy=${helper.relativeVec(enemy!!.position())} alive=${enemy!!.isAlive}\nvisible=${DetectionSightline.trace(holder!!, enemy!!)}\ntarget=${holder!!.target?.uuid}\nfireReady=${assignments[holder]?.let { TacticalPositions.firingReady(holder!!, it.task(), holder!!.position()) }}\n")
+                val task = assignments[holder]
+                helper.assertTrue(holds(task?.position, heldPost!!), "New contact displaced a usable tower post")
+                helper.assertTrue(reserved(heldPost!!), "Contact transition dropped the tower reservation")
                 if (roundsFromTower >= 3 && helper.tick - contactSince >= 100) {
                     Files.writeString(report.resolve("$name-result.txt"), "roundsFromTower=$roundsFromTower\npostRetained=true\nreservationRetained=true\n")
                     helper.succeed()
@@ -220,8 +249,8 @@ object DefensiveOverwatchGameTests {
                 return@onEachTick
             }
             val allSettled = posts.size == npcs.size && posts.all { (npc, point) ->
-                val task = squad.tactics.plan!!.tasks[npc.uuid]!!
-                task.job == TacticalJob.OVERWATCH && FiringPostArrival.reached(npc.position(), point) && TacticalPositions.protected(npc, task, point)
+                val task = assignments.getValue(npc)!!
+                task.job == TacticalJob.OVERWATCH && FiringPostArrival.reached(npc.position(), point) && TacticalPositions.protected(npc, task.task(), point)
             }
             if (allSettled && high.size == if (ladder) 1 else 0) {
                 if (stableSince == null) stableSince = helper.tick
@@ -259,10 +288,10 @@ object DefensiveOverwatchGameTests {
                         npc.hurt(helper.level.damageSources().genericKill(), Float.MAX_VALUE)
                         helper.assertTrue(!npc.isAlive && FiringSpots.nearby(point, 1.0, UUID(0, 0)).isEmpty(), "Dead sentry retained its tower reservation")
                     }
-                    squad.tactics.deactivate(helper.level.gameTime, "test_post_release")
-                    helper.assertTrue(occupied.all { FiringSpots.nearby(it, 1.0, UUID(0, 0)).isEmpty() }, "Released support posts remained reserved")
-                    Files.writeString(report.resolve("$name-result.txt"), "settled=${posts.size}\nhigh=${high.size}\nreservedBeforeAscent=$reservedBeforeAscent\nclimbedLadder=$climbedLadder\nreleased=true\n")
-                    helper.succeed()
+                    // A new order is what ends the overwatch duty in play; the HTN runtime
+                    // cancels the position actions on the members' next ticks, not synchronously.
+                    manager.setOrder(squad.id, SquadOrder.MOVE)
+                    released = helper.tick to occupied
                 }
             } else {
                 stableSince = null
