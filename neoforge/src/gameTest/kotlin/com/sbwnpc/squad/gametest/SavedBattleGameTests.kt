@@ -106,6 +106,64 @@ object SavedBattleGameTests {
 
     /** Static search isolation from the failed replay; not a replacement for the battle criterion. */
     @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 400, batch = "saved-sniper-search")
+    fun savedSniperFindsReachableFiringPost(helper: GameTestHelper) = sniperSearch(helper)
+
+    private fun sniperSearch(helper: GameTestHelper) {
+        val report = Path.of(System.getProperty("sbwnpc.gameTestReports"))
+        Files.createDirectories(report)
+        val replay = SavedBattleReplay(helper.level, Path.of(System.getProperty("sbwnpc.gameTestReplay")))
+        replay.restore()
+        val sniper = replay.npcs.single { it.uuid == UUID.fromString("f8104e12-9378-4094-8cc7-54145ce8df70") }
+        val enemy = replay.npcs.single { it.uuid == UUID.fromString("13342545-2838-41d1-8a83-fc642abf202a") }
+        // Coordinates sampled at ticks 609/612 of oct13-idle-transit-progress. Preserve native
+        // blocks and saved equipment; remove other combatants to isolate search from AI churn.
+        replay.entities.filter { it !== sniper && it !== enemy }.forEach(Entity::discard)
+        sniper.isNoAi = true
+        enemy.isNoAi = true
+        sniper.moveTo(-413.4751351142926, 75.0, -252.49745925857366)
+        enemy.moveTo(-469.4374784844925, 72.0, -236.53581311422343)
+        BrainUtils.setTargetOfEntity(sniper, enemy)
+        val task = TacticalTask(TacticalJob.COVER, sniper.position(), enemy.position(), 1).apply {
+            localFirePost = sniper.position()
+            expandedFireSearch = true
+        }
+        val trace = report.resolve("sniper-search.csv")
+        Files.writeString(trace, "tick,outcome,probe,probes,scored,rejections,position\n")
+        helper.testInfo.addListener(object : GameTestListener {
+            override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
+            override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
+            override fun testFailed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
+            override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) = cleanup()
+            private fun cleanup() {
+                FiringSpots.release(sniper.uuid)
+                replay.close()
+            }
+        })
+        helper.onEachTick {
+            sniper.setOnGround(true)
+            val view = TacticalSnapshot(
+                helper.level.gameTime,
+                SquadOrder.ATTACK,
+                1,
+                sniper.position(),
+                enemy.position(),
+                listOf(TacticalMember(sniper.uuid, sniper.position(), sniper.npcClass)),
+                listOf(TacticalContact(enemy.uuid, enemy.position(), helper.level.gameTime)),
+            )
+            val result = TacticalPositions.find(sniper, task, view)
+            if (helper.tick % 10L == 0L || result.outcome != TacticalPositions.Outcome.DEFERRED) {
+                Files.writeString(trace, "${helper.tick},${result.outcome},${task.search?.probeIndex},${task.search?.probes?.size},${task.search?.scored?.size},\"${task.search?.rejections}\",\"${result.position}\"\n", APPEND)
+            }
+            if (result.outcome != TacticalPositions.Outcome.DEFERRED) {
+                helper.assertTrue(result.outcome == TacticalPositions.Outcome.FOUND, "Static saved sniper search failed: $result; see sniper-search.csv")
+                helper.assertTrue(TacticalPositions.firingReady(sniper, task, result.position!!), "Selected post cannot shoot the fixed enemy")
+                helper.succeed()
+            }
+        }
+    }
+
+    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 1300, batch = "saved-battle", skyAccess = true)
     fun savedBattleMaintainsCombatParticipation(helper: GameTestHelper) {
         replay(helper, attackersOnly = false)

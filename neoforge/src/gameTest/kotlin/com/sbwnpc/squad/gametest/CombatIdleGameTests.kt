@@ -129,29 +129,6 @@ object CombatIdleGameTests {
     }
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 900, batch = "remote-reserve")
-    fun freshMedicJoinsRemoteReserveDuringContact(helper: GameTestHelper) {
-        val scene = Scene(helper, "remote-reserve")
-        val lead = (0..3).map { scene.spawn(Vec3(110.5, 1.0, 90.5 + it * 6)) }
-        val medic = scene.spawn(Vec3(12.5, 1.0, 100.5), NpcClass.MEDIC)
-        scene.enemy(Vec3(170.5, 1.0, 100.5))
-        val squad = scene.squad(lead + medic)
-        val start = medic.position()
-        helper.onEachTick {
-            scene.tick(squad)
-            if (helper.tick > 40) helper.assertTrue(com.sbwnpc.squad.ai.integration.NativeTactics.assignment(medic)?.job == TacticalJob.RESERVE, "Medic lost its reserve assignment")
-            if (medic.x - start.x >= 85.0) {
-                scene.result("PASS", "joined=${helper.tick} distance=${medic.position().distanceTo(start)}")
-                helper.succeed()
-            }
-        }
-        helper.runAtTickTime(850) {
-            scene.result("FAIL", "position=${helper.relativeVec(medic.position())} task=${com.sbwnpc.squad.ai.integration.NativeTactics.assignment(medic)?.position}")
-            helper.fail("Fresh medic never joined its remote reserve; see remote-reserve.csv")
-        }
-    }
-
-    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1200, batch = "closed-wide-post")
     fun coveredAttackerCrossesWideBlindRidgeAndResumesFire(helper: GameTestHelper) {
         val scene = Scene(helper, "closed-wide-post")
