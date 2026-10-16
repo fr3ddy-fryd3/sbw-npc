@@ -46,6 +46,30 @@ class AttackProgressTest {
         assertEquals(AttackPhase.DEPLOY, progress.phase)
     }
 
+    @Test fun `a called off assault is not retried on silence`() {
+        val progress = AttackProgress(0)
+        progress.update(0, ready = 23, enemies = 8, incoming = true)
+        progress.update(400, ready = 23, enemies = 4, incoming = true)
+        assertEquals(AttackPhase.ASSAULT, progress.phase)
+        progress.update(420, ready = 21, enemies = 15, incoming = true)
+        assertEquals(AttackPhase.DEPLOY, progress.phase)
+        // Long silence, still 10 of a peak of 15 seen: stay on the firing line.
+        progress.update(1000, ready = 20, enemies = 10)
+        assertEquals(AttackPhase.DEPLOY, progress.phase)
+        progress.update(1100, ready = 12, enemies = 6)
+        assertEquals(AttackPhase.ASSAULT, progress.phase)
+    }
+
+    @Test fun `occupation flickering under the clearing team does not flip the phase`() {
+        val progress = AttackProgress(0)
+        progress.update(100, ready = 12, enemies = 0, contact = true, occupied = true, threats = 2)
+        assertEquals(AttackPhase.CLEAR, progress.phase)
+        for (tick in 110L..300L step 10) {
+            progress.update(tick, ready = 12, enemies = 0, contact = true, occupied = tick % 20 == 0L, threats = 2)
+            assertEquals(AttackPhase.CLEAR, progress.phase)
+        }
+    }
+
     @Test fun `the clearing team is kept between updates`() {
         val progress = AttackProgress(0)
         progress.update(100, ready = 8, enemies = 0, contact = true, occupied = true, threats = 1)

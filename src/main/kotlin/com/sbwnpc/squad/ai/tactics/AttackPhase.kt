@@ -15,7 +15,8 @@ enum class AttackPhase {
     /**
      * Observations for one decision. [enemiesAtObjective] and [threatsNearby] are seen, live
      * contacts; [peakEnemiesAtObjective] is the most seen at the objective during this attack.
-     * [ticksSinceContact] stays 0 until the attack first sees an enemy.
+     * [ticksSinceContact] stays 0 until the attack first sees an enemy. [aborted] is set once
+     * an assault of this attack has been called off.
      */
     data class Inputs(
         val readyShooters: Int,
@@ -26,6 +27,7 @@ enum class AttackPhase {
         val ticksSinceIncoming: Long,
         val occupied: Boolean,
         val threatsNearby: Int,
+        val aborted: Boolean = false,
     )
 
     fun next(inputs: Inputs): AttackPhase {
@@ -36,7 +38,15 @@ enum class AttackPhase {
 
             // Lost ground before the objective is taken: back to the firing line rather than
             // walking the assault group into a fight it no longer wins.
-            ASSAULT, CLEAR -> if (!quiet && inputs.readyShooters < ABORT_RATIO * inputs.enemiesAtObjective) DEPLOY else ASSAULT
+            ASSAULT, CLEAR -> when {
+                !quiet && inputs.readyShooters < ABORT_RATIO * inputs.enemiesAtObjective -> DEPLOY
+
+                // Clearing sends men off the objective, so it alone can drop the holders below
+                // occupation; going back to ASSAULT then recalled them and flipped every update.
+                this == CLEAR && inputs.threatsNearby > 0 -> CLEAR
+
+                else -> ASSAULT
+            }
         }
     }
 
@@ -54,8 +64,10 @@ enum class AttackPhase {
         /** The firing line works for at least this long (20 s) before an assault. */
         const val ENGAGE_TICKS = 400L
 
-        /** No fire on the attackers for this long (5 s) counts as a suppressed defence. */
-        const val SILENT_TICKS = 100L
+        /** No fire on the attackers for this long (15 s) counts as a suppressed defence. Five
+         *  seconds were a pause between bursts, and the assault ran into a defence that only then
+         *  showed its full size. */
+        const val SILENT_TICKS = 300L
 
         /** Enemies this close to the objective count as holding it. */
         const val OBJECTIVE_RADIUS = 48.0
@@ -63,9 +75,10 @@ enum class AttackPhase {
         private fun superior(inputs: Inputs) = inputs.readyShooters >= ASSAULT_RATIO * inputs.enemiesAtObjective
 
         // A fresh force facing an untouched defence is not yet winning: the firing line first
-        // has to thin it out or silence it.
+        // has to thin it out or silence it. After a called-off assault silence no longer counts:
+        // the defence that drove it back has shown its size and has to be thinned.
         private fun suppressed(inputs: Inputs) =
             inputs.ticksEngaged >= ENGAGE_TICKS &&
-                (inputs.enemiesAtObjective * 2 <= inputs.peakEnemiesAtObjective || inputs.ticksSinceIncoming >= SILENT_TICKS)
+                (inputs.enemiesAtObjective * 2 <= inputs.peakEnemiesAtObjective || (!inputs.aborted && inputs.ticksSinceIncoming >= SILENT_TICKS))
     }
 }
