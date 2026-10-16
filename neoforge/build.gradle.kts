@@ -286,6 +286,7 @@ dependencies {
 // One style for every module's Kotlin, checked from the root so the shared .editorconfig applies.
 val kotlinStylePatterns = listOf(
     "common/src/main/kotlin/**/*.kt",
+    "common/src/test/kotlin/**/*.kt",
     "neoforge/src/main/kotlin/**/*.kt",
     "neoforge/src/test/kotlin/**/*.kt",
     "neoforge/src/gameTest/kotlin/**/*.kt",
