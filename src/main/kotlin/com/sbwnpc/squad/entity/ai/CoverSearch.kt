@@ -50,7 +50,9 @@ object CoverSearch {
         repeat(SAMPLE_COUNT) {
             val angle = entity.random.nextDouble() * Math.PI * 2
             val dist = MIN_RADIUS + entity.random.nextDouble() * (MAX_RADIUS - MIN_RADIUS)
-            candidates += Terrain.groundAt(level, origin.offset(Math.round(Math.cos(angle) * dist).toInt(), 0, Math.round(Math.sin(angle) * dist).toInt()))
+            val dx = Math.round(Math.cos(angle) * dist).toInt()
+            val dz = Math.round(Math.sin(angle) * dist).toInt()
+            candidates += Terrain.groundAt(level, origin.offset(dx, 0, dz))
         }
 
         val threats = nearbyThreats(entity, level, threat)

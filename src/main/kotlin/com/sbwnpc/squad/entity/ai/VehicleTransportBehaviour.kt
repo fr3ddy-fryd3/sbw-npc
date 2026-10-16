@@ -220,7 +220,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             return logEligibility(entity, false) { "no vehicle for this order, walking" }
         }
         if (entity.tickCount < giveupCooldownUntilTick) {
-            return logEligibility(entity, false) { "cooling down after a recent giveup (${giveupCooldownUntilTick - entity.tickCount} ticks left)" }
+            return logEligibility(entity, false) {
+                "cooling down after a recent giveup (${giveupCooldownUntilTick - entity.tickCount} ticks left)"
+            }
         }
 
         val squad = entity.currentSquad() ?: return logEligibility(entity, false) { "no squad" }
@@ -826,7 +828,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             val a = route[i]
             val b = route[i + 1]
             val len = horizontalDistance(a, b)
-            val t = if (len < 1e-6) 0.0 else (((here.x - a.x) * (b.x - a.x) + (here.z - a.z) * (b.z - a.z)) / (len * len)).coerceIn(0.0, 1.0)
+            val dot = (here.x - a.x) * (b.x - a.x) + (here.z - a.z) * (b.z - a.z)
+            val t = if (len < 1e-6) 0.0 else (dot / (len * len)).coerceIn(0.0, 1.0)
             val d = Math.hypot(a.x + (b.x - a.x) * t - here.x, a.z + (b.z - a.z) * t - here.z)
             if (d < nearest) {
                 nearest = d
@@ -1000,7 +1003,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 DebugFlags.log(LogGroup.VEHICLE,
                     "{} driving {} along {} points, {} blocks, {} {} ({} from home; {} units over {} ticks; {})",
                     entity.uuid, vehicle.uuid, driveRoute.size, found.length.toInt(),
-                    if (!found.complete) "on toward the goal, to look again at" else if (driveExitToCheck != null) "checking stop at" else "crew out at",
+                    when {
+                        !found.complete -> "on toward the goal, to look again at"
+                        driveExitToCheck != null -> "checking stop at"
+                        else -> "crew out at"
+                    },
                     BlockPos.containing(found.landing),
                     horizontalDistance(found.landing, home).toInt(), search.expanded, entity.tickCount - driveSearchStarted + 1,
                     search.stoppedBy

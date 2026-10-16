@@ -213,7 +213,11 @@ object SbwVehicles : Vehicles {
             vehicle.backInputDown = false
             vehicle.rightInputDown = right
             vehicle.leftInputDown = left
-            return Steering(right, left, "ship pos=${vehicle.position()} yRot=${vehicle.yRot} desiredYaw=$desiredYaw diff=$diff speed=${vehicle.deltaMovement.horizontalDistance()}")
+            return Steering(
+                right, left,
+                "ship pos=${vehicle.position()} yRot=${vehicle.yRot} desiredYaw=$desiredYaw diff=$diff " +
+                    "speed=${vehicle.deltaMovement.horizontalDistance()}"
+            )
         }
 
         val targetRudder = Mth.clamp((-diff / RUDDER_FULL_LOCK_DEGREES).toFloat(), -1f, 1f) * MAX_RUDDER_MAGNITUDE
@@ -260,7 +264,9 @@ object SbwVehicles : Vehicles {
         val hull = vehicle.getCombinedAABB()
         val half = Math.max(hull.xsize, hull.zsize) / 2.0
         val back = vehicle.getViewVector(1f).multiply(-1.0, 0.0, -1.0).normalize()
-        val from = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, vehicle.blockX, vehicle.blockZ)
+        val from = level.getHeight(
+            net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, vehicle.blockX, vehicle.blockZ
+        )
         val climb = Math.max(1.0, vehicle.maxUpStep().toDouble())
         for (d in listOf(half + 1.0, half + BACK_ROOM)) {
             val x = Mth.floor(vehicle.x + back.x * d)

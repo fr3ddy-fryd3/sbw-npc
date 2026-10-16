@@ -124,7 +124,8 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
                 // path rather than one each. The old spot stays the one to count from meanwhile.
                 if (end != null && entity.tickCount - askedAt < REPLAN_TICKS) {
                     if (!deferring) log(entity, "spot moved ${Math.sqrt(pos.distanceToSqr(old)).toInt()} blocks, " +
-                        "path ends ${Math.sqrt(end.distToCenterSqr(pos)).toInt()} from it: asks in ${REPLAN_TICKS - (entity.tickCount - askedAt)} ticks")
+                        "path ends ${Math.sqrt(end.distToCenterSqr(pos)).toInt()} from it: " +
+                        "asks in ${REPLAN_TICKS - (entity.tickCount - askedAt)} ticks")
                     deferring = true
                     return
                 }
@@ -144,7 +145,8 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
                 val before = askedFrom
                 askedFrom = now
                 val going = entity.navigation.moveTo(pos.x, pos.y, pos.z, 1.0)
-                log(entity, "stretch ended ${now.toInt()} blocks off (asked from ${if (before == Double.MAX_VALUE) "the air" else before.toInt()}), asks again: " +
+                val from = if (before == Double.MAX_VALUE) "the air" else before.toInt()
+                log(entity, "stretch ended ${now.toInt()} blocks off (asked from $from), asks again: " +
                     if (going) pathTrace(entity, pos) else "no path")
                 if (going) return
             } else {
@@ -183,7 +185,8 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun pathTrace(entity: NpcEntity, pos: Vec3): String = entity.navigation.path?.let {
         "path of ${it.nodeCount} nodes ends ${it.endNode?.asBlockPos()}, " +
-            "${it.endNode?.let { end -> Math.sqrt(end.asBlockPos().distToCenterSqr(pos)).toInt() }} blocks from the spot, reach=${it.canReach()}"
+            "${it.endNode?.let { end -> Math.sqrt(end.asBlockPos().distToCenterSqr(pos)).toInt() }} blocks from the spot, " +
+            "reach=${it.canReach()}"
     } ?: "no path kept"
 
     private fun log(entity: NpcEntity, what: String) {

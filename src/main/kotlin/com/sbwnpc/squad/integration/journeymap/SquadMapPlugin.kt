@@ -476,7 +476,9 @@ class SquadMapPlugin : IClientPlugin {
     }
 
     private fun sendOrder(squads: List<String>, order: SquadOrder, pos: BlockPos) =
-        PacketDistributor.sendToServer(SquadCmdPayload(SquadCmdPayload.MAP_ORDER, squads.joinToString(","), order.ordinal, "${pos.x} ${pos.z}"))
+        PacketDistributor.sendToServer(
+            SquadCmdPayload(SquadCmdPayload.MAP_ORDER, squads.joinToString(","), order.ordinal, "${pos.x} ${pos.z}")
+        )
 
     /** Left-click on a squad's square selects it; right-click switches its order, keeping the
      *  objective it has. */

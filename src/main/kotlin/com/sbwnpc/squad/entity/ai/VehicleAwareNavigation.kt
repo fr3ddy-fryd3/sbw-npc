@@ -71,14 +71,21 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
             }
         }
         // No path on the ground is rare and is what a caller gives up on — never skipped.
-        if (com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.PATH) && (result == null && canPlan || mob.tickCount - lastPathLogTick >= PATH_LOG_TICKS)) {
+        val logDue = result == null && canPlan || mob.tickCount - lastPathLogTick >= PATH_LOG_TICKS
+        if (com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.PATH) && logDue) {
             lastPathLogTick = mob.tickCount
+            val outcome = if (result != null) {
+                "nodes=${result.nodeCount} reach=${result.canReach()} end=${result.endNode?.asBlockPos()} " +
+                    "short=${"%.1f".format(result.distToTarget)}"
+            } else {
+                "null (canUpdate=${canUpdatePath()} ground=${mob.onGround()} liquid=${mob.isInLiquid} " +
+                    "passenger=${mob.isPassenger} y=${"%.2f".format(mob.y)})"
+            }
             com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.PATH,
                 "{} at {} asked {} ({} blocks) branch={} target={} -> {}",
                 mob.uuid.toString().take(8), mob.blockPosition(), pos,
-                Math.sqrt(pos.distToCenterSqr(mob.x, mob.y, mob.z)).toInt(), branch, (mob as? com.sbwnpc.squad.entity.NpcEntity)?.target != null,
-                result?.let { "nodes=${it.nodeCount} reach=${it.canReach()} end=${it.endNode?.asBlockPos()} short=${"%.1f".format(it.distToTarget)}" }
-                    ?: "null (canUpdate=${canUpdatePath()} ground=${mob.onGround()} liquid=${mob.isInLiquid} passenger=${mob.isPassenger} y=${"%.2f".format(mob.y)})"
+                Math.sqrt(pos.distToCenterSqr(mob.x, mob.y, mob.z)).toInt(), branch,
+                (mob as? com.sbwnpc.squad.entity.NpcEntity)?.target != null, outcome
             )
         }
         return result
@@ -111,7 +118,9 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
             traceAir("asked mid-jump, keeps walking the path to ${this.path?.target}")
             return false
         }
-        if (path == null || !path.sameAs(this.path)) traceHandover(if (path == null) "path dropped, none in its place" else "new path to ${path.target}")
+        if (path == null || !path.sameAs(this.path)) {
+            traceHandover(if (path == null) "path dropped, none in its place" else "new path to ${path.target}")
+        }
         return super.moveTo(path, speed)
     }
 

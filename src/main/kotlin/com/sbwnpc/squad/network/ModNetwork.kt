@@ -126,7 +126,8 @@ object ModNetwork {
             for (slot in listOf(EquipmentSlot.MAINHAND, EquipmentSlot.OFFHAND)) {
                 val stack = player.getItemBySlot(slot)
                 if (stack.item !is SquadToolItem) continue
-                val next = if (SquadToolItem.mode(stack) == SquadToolItem.MODE_RECRUIT) SquadToolItem.MODE_COMMAND else SquadToolItem.MODE_RECRUIT
+                val next = if (SquadToolItem.mode(stack) == SquadToolItem.MODE_RECRUIT) SquadToolItem.MODE_COMMAND
+                    else SquadToolItem.MODE_RECRUIT
                 StackData.update(stack) { it.putInt(SquadToolItem.KEY_MODE, next) }
                 val name = if (next == SquadToolItem.MODE_COMMAND) "COMMAND" else "RECRUIT"
                 player.displayClientMessage(
@@ -301,7 +302,9 @@ object ModNetwork {
                 .forEach { squad ->
                     mgr.setOrder(squad.id, order)
                     mgr.setObjective(level, squad.id, pos)
-                    com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER, "HUD all: {} -> {} at {}", squad.name, squad.order, pos)
+                    com.sbwnpc.squad.combat.DebugFlags.log(
+                        com.sbwnpc.squad.combat.LogGroup.ORDER, "HUD all: {} -> {} at {}", squad.name, squad.order, pos
+                    )
                 }
         }
     }

@@ -34,7 +34,11 @@ class SquadMod(bus: IEventBus, container: ModContainer) {
 
         container.registerConfig(net.neoforged.fml.config.ModConfig.Type.SERVER, com.sbwnpc.squad.config.SquadConfig.SPEC)
         if (com.sbwnpc.squad.combat.BuildFlags.DEBUG_ENABLED) {
-            container.registerConfig(net.neoforged.fml.config.ModConfig.Type.COMMON, com.sbwnpc.squad.config.DebugConfig.SPEC, com.sbwnpc.squad.config.DebugConfig.FILE)
+            container.registerConfig(
+                net.neoforged.fml.config.ModConfig.Type.COMMON,
+                com.sbwnpc.squad.config.DebugConfig.SPEC,
+                com.sbwnpc.squad.config.DebugConfig.FILE
+            )
             bus.addListener(com.sbwnpc.squad.config.DebugConfig::onConfig)
         }
 

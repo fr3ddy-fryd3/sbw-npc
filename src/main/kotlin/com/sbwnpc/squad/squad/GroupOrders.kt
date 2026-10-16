@@ -60,7 +60,14 @@ object GroupOrders {
      * can be told apart in the Routes screen — and the map route a squad had before is dropped once
      * no squad walks it any more, so redrawing doesn't pile them up.
      */
-    fun patrol(level: ServerLevel, mgr: SquadManager, routes: RouteManager, owner: UUID, squadIds: List<UUID>, points: List<kotlin.Pair<Int, Int>>): List<String> {
+    fun patrol(
+        level: ServerLevel,
+        mgr: SquadManager,
+        routes: RouteManager,
+        owner: UUID,
+        squadIds: List<UUID>,
+        points: List<kotlin.Pair<Int, Int>>
+    ): List<String> {
         val squads = squadIds.mapNotNull { mgr.get(it) }
         val walkers = squads.filter { kindOf(mgr, it) == Kind.INFANTRY }
         if (walkers.isEmpty()) return squads.map { "${it.name}: unchanged" }

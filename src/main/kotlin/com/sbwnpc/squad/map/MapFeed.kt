@@ -38,7 +38,9 @@ object MapFeed {
 
     fun subscribe(player: ServerPlayer) {
         subscribers += player.uuid
-        com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.MAP, "{} subscribed to the map feed", player.gameProfile.name)
+        com.sbwnpc.squad.combat.DebugFlags.log(
+            com.sbwnpc.squad.combat.LogGroup.MAP, "{} subscribed to the map feed", player.gameProfile.name
+        )
     }
 
     fun unsubscribe(player: UUID) {
@@ -84,7 +86,8 @@ object MapFeed {
             // and ordered (which wakes it — see SquadChunkLoader).
             val asleep = members.isEmpty()
             val lastSeen = squad.lastSeen
-            if (asleep && (lastSeen == null || (squad.lastSeenDim ?: net.minecraft.world.level.Level.OVERWORLD) != level.dimension())) continue
+            val lastDim = squad.lastSeenDim ?: net.minecraft.world.level.Level.OVERWORLD
+            if (asleep && (lastSeen == null || lastDim != level.dimension())) continue
             val t = CompoundTag()
             t.putBoolean("Asleep", asleep)
             t.putUUID("Id", squad.id)

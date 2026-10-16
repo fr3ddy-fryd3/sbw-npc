@@ -46,7 +46,12 @@ object SbwGrenades : Grenades {
         repeat(MAX_FLIGHT_TICKS) { tick ->
             val predictedTarget = target.add(targetVelocity.scale((tick + 1).toDouble()))
             val next = pos.add(velocity)
-            val hit = level.clip(net.minecraft.world.level.ClipContext(pos, next, net.minecraft.world.level.ClipContext.Block.COLLIDER, net.minecraft.world.level.ClipContext.Fluid.NONE, thrower))
+            val hit = level.clip(
+                net.minecraft.world.level.ClipContext(
+                    pos, next, net.minecraft.world.level.ClipContext.Block.COLLIDER,
+                    net.minecraft.world.level.ClipContext.Fluid.NONE, thrower
+                )
+            )
             if (hit.type != net.minecraft.world.phys.HitResult.Type.MISS) return hit.location.distanceToSqr(predictedTarget) <= nearSqr
             val bystander = level.getEntities(thrower, net.minecraft.world.phys.AABB(pos, next).inflate(0.3)) {
                 it is LivingEntity && it.isAlive && !it.isSpectator && it.vehicle !== thrower &&

@@ -30,7 +30,8 @@ class SbwMixinIntegrationTest {
         fun read(name: String): ClassNode = ClassNode().also { node ->
             javaClass.classLoader.getResourceAsStream("$name.class")!!.use { ClassReader(it).accept(node, ClassReader.SKIP_CODE) }
         }
-        for (mixin in listOf("AircraftModelEntriesMixin", "AircraftModelReloadMixin", "AircraftRendererMixin", "AircraftWorldRenderMixin")) {
+        val mixins = listOf("AircraftModelEntriesMixin", "AircraftModelReloadMixin", "AircraftRendererMixin", "AircraftWorldRenderMixin")
+        for (mixin in mixins) {
             val node = read("com/sbwnpc/squad/mixin/$mixin")
             val annotation = node.invisibleAnnotations.single { it.desc == "Lorg/spongepowered/asm/mixin/Mixin;" }
             val values = annotation.values.chunked(2).associate { it[0] as String to it[1] }

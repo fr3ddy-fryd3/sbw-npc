@@ -44,7 +44,9 @@ object SbwStaticGunRendering : SimplePreparableReloadListener<Map<ResourceLocati
         // Only apply the existing item model's hand transform; never call its custom renderer.
         val minecraft = Minecraft.getInstance()
         val itemModel = minecraft.itemRenderer.getModel(stack, holder.level(), holder, holder.id)
-        ClientHooks.handleCameraTransforms(poseStack, itemModel, displayContext, displayContext == ItemDisplayContext.THIRD_PERSON_LEFT_HAND)
+        ClientHooks.handleCameraTransforms(
+            poseStack, itemModel, displayContext, displayContext == ItemDisplayContext.THIRD_PERSON_LEFT_HAND
+        )
         // ItemRenderer's (-0.5, -0.5, -0.5) and GeoItemRenderer's (0.5, 0.51, 0.5) cancel.
         poseStack.translate(0.0f, 0.01f, 0.0f)
         gun.mesh.render(poseStack, buffer.getBuffer(RenderType.entityCutoutNoCull(gun.texture)), packedLight)
@@ -61,7 +63,10 @@ object SbwStaticGunRendering : SimplePreparableReloadListener<Map<ResourceLocati
         guns = prepared
         reported.clear()
         val meshes = guns.values.map { it.mesh }.toSet()
-        SquadMod.LOGGER.info("NPC gun renderer: loaded {} guns, {} static LOD models ({} quads)", guns.size, meshes.size, meshes.sumOf { it.quadCount })
+        SquadMod.LOGGER.info(
+            "NPC gun renderer: loaded {} guns, {} static LOD models ({} quads)",
+            guns.size, meshes.size, meshes.sumOf { it.quadCount }
+        )
     }
 
     @SubscribeEvent

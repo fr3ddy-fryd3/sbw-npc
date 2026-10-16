@@ -188,7 +188,9 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             if (!inLaunchRange(entity, c.position())) continue
             if (losChecks++ >= MAX_LOS_CHECKS) break
             if (!com.sbwnpc.squad.combat.DetectionSightline.canSee(entity, c)) continue
-            if (faction != null) TeamAwareness.report(faction, c.uuid, c.position(), tick, "drone operator ${entity.uuid.toString().take(8)}")
+            if (faction != null) {
+                TeamAwareness.report(faction, c.uuid, c.position(), tick, "drone operator ${entity.uuid.toString().take(8)}")
+            }
             if (spotted == null) spotted = c
         }
         if (spotted != null) {
@@ -457,7 +459,8 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun tickCruise(entity: NpcEntity, level: ServerLevel, drone: Entity) {
         val desiredY = DroneFlightController.cruiseAltitude(terrainAhead(level, drone, targetPos), clearance, drone.y)
-        apply(drone, DroneFlightController.steer(drone.position(), drone.yRot, drone.deltaMovement.horizontalDistance(), targetPos, desiredY, CRUISE_SPEED))
+        val speed = drone.deltaMovement.horizontalDistance()
+        apply(drone, DroneFlightController.steer(drone.position(), drone.yRot, speed, targetPos, desiredY, CRUISE_SPEED))
         if (horizontalDistance(drone.position(), targetPos) <= ATTACK_RANGE) {
             if (blastClear(entity) && targetInSight(entity)) {
                 phase = Phase.ATTACK
@@ -476,7 +479,8 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun tickHold(entity: NpcEntity, level: ServerLevel, drone: Entity) {
         val desiredY = DroneFlightController.cruiseAltitude(terrainAhead(level, drone, targetPos), clearance, drone.y)
         val dist = horizontalDistance(drone.position(), targetPos)
-        val cmd = DroneFlightController.steer(drone.position(), drone.yRot, drone.deltaMovement.horizontalDistance(), targetPos, desiredY, HOLD_SPEED)
+        val speed = drone.deltaMovement.horizontalDistance()
+        val cmd = DroneFlightController.steer(drone.position(), drone.yRot, speed, targetPos, desiredY, HOLD_SPEED)
         // Hover once overhead instead of overshooting back and forth.
         apply(drone, if (dist < HOLD_HOVER_RADIUS) DroneFlightController.Command(false, cmd.back, cmd.up, cmd.down, cmd.yaw) else cmd)
         val clear = blastClear(entity)
@@ -519,7 +523,8 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             phase = Phase.CRUISE
             return
         }
-        apply(drone, DroneFlightController.steer(drone.position(), drone.yRot, drone.deltaMovement.horizontalDistance(), aim, aim.y, DIVE_SPEED))
+        val speed = drone.deltaMovement.horizontalDistance()
+        apply(drone, DroneFlightController.steer(drone.position(), drone.yRot, speed, aim, aim.y, DIVE_SPEED))
     }
 
     /**

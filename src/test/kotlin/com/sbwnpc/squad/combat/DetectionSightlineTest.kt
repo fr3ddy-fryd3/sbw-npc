@@ -75,7 +75,8 @@ class DetectionSightlineTest {
 
     @Test
     fun `clear coloured and tinted glass and panes are visible through but still stop firing lanes`() {
-        for (glass in listOf(Blocks.GLASS, Blocks.RED_STAINED_GLASS, Blocks.TINTED_GLASS, Blocks.GLASS_PANE, Blocks.RED_STAINED_GLASS_PANE)) {
+        val glasses = listOf(Blocks.GLASS, Blocks.RED_STAINED_GLASS, Blocks.TINTED_GLASS, Blocks.GLASS_PANE, Blocks.RED_STAINED_GLASS_PANE)
+        for (glass in glasses) {
             val world = terrain(glass, 1)
             assertTrue(seen(world), "${glass.name} should allow detection")
             assertFalse(colliderClear(world), "${glass.name} should keep blocking shots and cover rays")

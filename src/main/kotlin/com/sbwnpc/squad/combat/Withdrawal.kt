@@ -105,7 +105,8 @@ object Withdrawal {
                     "${m.uuid.toString().take(8)} half ${half(m, squad)} at ${m.blockPosition().toShortString()} " +
                         "point ${m.position().distanceTo(state.point).toInt()} " +
                         (spot?.let { "spot ${m.position().distanceTo(it).toInt()} " } ?: "no spot ") +
-                        "target=${m.target != null} navDone=${m.navigation.isDone} speed=${"%.2f".format(m.deltaMovement.horizontalDistance())} " +
+                        "target=${m.target != null} navDone=${m.navigation.isDone} " +
+                        "speed=${"%.2f".format(m.deltaMovement.horizontalDistance())} " +
                         "suppressed=${m.isSuppressed()} pinned=${m.combatLockedByCover()} dug=${m.diggedIn}"
                 }
             )

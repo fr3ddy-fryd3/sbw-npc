@@ -172,7 +172,9 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         gun.operate()
 
         val aim = target.position().add(0.0, target.bbHeight * 0.5, 0.0)
-        if (!Helicopters.hasTurret(heli) && !BenchAttackOrbit.canAim(seat, heli.yRot, entity.eyePosition, aim)) return "target outside the seat's firing arc"
+        if (!Helicopters.hasTurret(heli) && !BenchAttackOrbit.canAim(seat, heli.yRot, entity.eyePosition, aim)) {
+            return "target outside the seat's firing arc"
+        }
         entity.lookAt(EntityAnchorArgument.Anchor.EYES, aim)
         val dist = entity.distanceTo(target)
         if (dist > BENCH_RANGE) return "target ${dist.toInt()} blocks off (range ${BENCH_RANGE.toInt()})"

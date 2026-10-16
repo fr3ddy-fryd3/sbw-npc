@@ -126,7 +126,9 @@ class MortarOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (relocationPoint(entity) == null && fireTarget(entity) == null) return false
 
         val current = mortar
-        if (current != null && Ports.vehicles.isOperational(current) && !MortarClaims.isOperatorClaimedByOther(current.uuid, entity.uuid)) return true
+        if (current != null && Ports.vehicles.isOperational(current) && !MortarClaims.isOperatorClaimedByOther(current.uuid, entity.uuid)) {
+            return true
+        }
 
         val level = entity.level() as? ServerLevel ?: return false
         if (entity.tickCount < nextMortarSearchTick) return false

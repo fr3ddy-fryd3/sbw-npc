@@ -34,8 +34,8 @@ object SbwAircraftSnapshots {
 
     // Entity.load expects vanilla lists; SBW's flat PosX/MotionX/Yaw fields are not consumed by it.
     internal fun writeMotion(tag: CompoundTag, position: Vec3, motion: Vec3, yaw: Float, pitch: Float) {
-        tag.put("Pos", ListTag().apply { add(DoubleTag.valueOf(position.x)); add(DoubleTag.valueOf(position.y)); add(DoubleTag.valueOf(position.z)) })
-        tag.put("Motion", ListTag().apply { add(DoubleTag.valueOf(motion.x)); add(DoubleTag.valueOf(motion.y)); add(DoubleTag.valueOf(motion.z)) })
+        tag.put("Pos", ListTag().apply { listOf(position.x, position.y, position.z).forEach { add(DoubleTag.valueOf(it)) } })
+        tag.put("Motion", ListTag().apply { listOf(motion.x, motion.y, motion.z).forEach { add(DoubleTag.valueOf(it)) } })
         tag.put("Rotation", ListTag().apply { add(FloatTag.valueOf(yaw)); add(FloatTag.valueOf(pitch)) })
     }
 

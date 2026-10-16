@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.entity
 
+import com.sbwnpc.squad.domain.port.GrenadeKind
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.ai.GrenadeThrowBehaviour
 import com.sbwnpc.squad.entity.ai.IdleLookAroundGoal
@@ -170,7 +171,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     private var lastHearingLogTick = Int.MIN_VALUE / 2
 
     private fun logHearing(at: Vec3, reaction: String) {
-        if (!com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.HEARING) || tickCount - lastHearingLogTick < HEARING_LOG_TICKS) return
+        if (!com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.HEARING)) return
+        if (tickCount - lastHearingLogTick < HEARING_LOG_TICKS) return
         lastHearingLogTick = tickCount
         com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.HEARING,
             "{} ({}) at {} heard {} ({} blocks): {}",
@@ -232,8 +234,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      *  back, the RGN otherwise — and whichever is left when that one has run out. */
     fun grenadeToThrow(): com.sbwnpc.squad.domain.port.GrenadeKind? {
         val defensive = retreatPoint() != null || currentSquad()?.order.let { it == SquadOrder.DEFEND || it == SquadOrder.RETREAT }
-        val preferred = if (defensive) com.sbwnpc.squad.domain.port.GrenadeKind.DEFENSIVE else com.sbwnpc.squad.domain.port.GrenadeKind.OFFENSIVE
-        val other = if (defensive) com.sbwnpc.squad.domain.port.GrenadeKind.OFFENSIVE else com.sbwnpc.squad.domain.port.GrenadeKind.DEFENSIVE
+        val preferred = if (defensive) GrenadeKind.DEFENSIVE else GrenadeKind.OFFENSIVE
+        val other = if (defensive) GrenadeKind.OFFENSIVE else GrenadeKind.DEFENSIVE
         return listOf(preferred, other).firstOrNull { grenadesLeft(it) > 0 }
     }
 
@@ -285,7 +287,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     private fun primaryGun(): ItemStack {
         val hand = mainHandItem
         if (Ports.guns.isGun(hand) && !com.sbwnpc.squad.combat.AntiArmourKit.isLauncher(hand)) return hand
-        return listOf(antiArmourWeapon, stowedWeapon).firstOrNull { Ports.guns.isGun(it) && !com.sbwnpc.squad.combat.AntiArmourKit.isLauncher(it) }
+        return listOf(antiArmourWeapon, stowedWeapon)
+            .firstOrNull { Ports.guns.isGun(it) && !com.sbwnpc.squad.combat.AntiArmourKit.isLauncher(it) }
             ?: hand
     }
 
@@ -448,8 +451,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         if (vehicle != null && !level().isClientSide && com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.VEHICLE)) {
             // Which of the many dismount paths this was — the frames above this one.
             @Suppress("ThrowingExceptionsWithoutMessageOrCause") // only for its stack trace
-            val from = Throwable().stackTrace.drop(1).take(3).joinToString(" <- ") { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }
-            com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.VEHICLE, "{} ({}) off {}: {}", uuid, npcClass, vehicle.type.descriptionId, from)
+            val from = Throwable().stackTrace.drop(1).take(3)
+                .joinToString(" <- ") { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }
+            com.sbwnpc.squad.combat.DebugFlags.log(
+                com.sbwnpc.squad.combat.LogGroup.VEHICLE, "{} ({}) off {}: {}", uuid, npcClass, vehicle.type.descriptionId, from
+            )
         }
         super.stopRiding()
         if (vehicle == null || this.vehicle != null) return
@@ -488,8 +494,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             at.takeIf { !body.intersects(hull) && level().noCollision(this, body) }
         }
         if (!dry) return spots.firstOrNull()
-        return spots.firstOrNull { !level().getFluidState(BlockPos.containing(it.x, it.y - 0.5, it.z)).`is`(net.minecraft.tags.FluidTags.WATER) &&
-            !level().getFluidState(BlockPos.containing(it)).`is`(net.minecraft.tags.FluidTags.WATER) } ?: spots.firstOrNull()
+        fun wet(pos: BlockPos) = level().getFluidState(pos).`is`(net.minecraft.tags.FluidTags.WATER)
+        return spots.firstOrNull { !wet(BlockPos.containing(it.x, it.y - 0.5, it.z)) && !wet(BlockPos.containing(it)) }
+            ?: spots.firstOrNull()
     }
 
     override fun hurt(source: DamageSource, amount: Float): Boolean {
@@ -1052,7 +1059,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         }
         com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.LOOT,
             "{} ({}) killed by {} via {} (playerHit={}): {}",
-            uuid, npcClass, damageSource.entity?.let { it as? NpcEntity }?.let { "NPC ${it.npcClass}" } ?: damageSource.entity?.name?.string,
+            uuid, npcClass,
+            damageSource.entity?.let { it as? NpcEntity }?.let { "NPC ${it.npcClass}" } ?: damageSource.entity?.name?.string,
             damageSource.msgId, recentlyHit, rolls.joinToString(", ")
         )
     }

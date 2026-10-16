@@ -141,7 +141,8 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         // never sets off on a hop they were never going to get on.
         val launchDistance =
             if (Helicopters.hasTurret(heli)) RELOCATE_DISTANCE else Helicopters.AIR_TRANSPORT_DISTANCE
-        val relocating = HelicopterFlightController.horizontalDistance(heli.position(), mission.anchor) > launchDistance || mission.attackOrbit
+        val relocating =
+            HelicopterFlightController.horizontalDistance(heli.position(), mission.anchor) > launchDistance || mission.attackOrbit
         // Don't leave the squad on the pad: a transport holds until its passengers are aboard, or
         // until it's clear they aren't coming.
         //

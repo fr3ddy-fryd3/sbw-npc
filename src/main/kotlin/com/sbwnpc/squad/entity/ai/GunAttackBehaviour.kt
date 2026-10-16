@@ -644,7 +644,10 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             // sighting (SquadTargetSensor's own nearestDirectTarget only CONSUMES relayed contacts,
             // it doesn't report). Without this, faction-wide awareness would never receive anything
             // regardless of how the current target was acquired (focus/hurt-by/relay/direct).
-            SquadTeams.factionOf(entity)?.let { TeamAwareness.report(it, target.uuid, target.position(), entity.level().gameTime, "${entity.npcClass} ${entity.uuid.toString().take(8)}") }
+            SquadTeams.factionOf(entity)?.let {
+                val reporter = "${entity.npcClass} ${entity.uuid.toString().take(8)}"
+                TeamAwareness.report(it, target.uuid, target.position(), entity.level().gameTime, reporter)
+            }
             com.sbwnpc.squad.squad.SquadReports.contact(entity, target)
         }
         if (canShootTarget) {

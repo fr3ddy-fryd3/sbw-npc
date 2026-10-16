@@ -92,8 +92,8 @@ class RecruitScreen(
                         }.bounds(cx - 100, y, 200, 20).build())
                     } else {
                         // SEVEN has no choice — BMP-2 only. Shown, not clickable, for visibility.
-                        addRenderableWidget(Button.builder(Component.literal("Vehicle: ${TransportVehicle.BMP_2.label}").withStyle(ChatFormatting.GOLD)) {}
-                            .bounds(cx - 100, y, 200, 20).build()).active = false
+                        val label = Component.literal("Vehicle: ${TransportVehicle.BMP_2.label}").withStyle(ChatFormatting.GOLD)
+                        addRenderableWidget(Button.builder(label) {}.bounds(cx - 100, y, 200, 20).build()).active = false
                     }
                     y += 24
                 }

@@ -107,7 +107,14 @@ object SquadMarch {
     private val byGroup = HashMap<UUID, MutableList<March>>()
 
     /** A way the long-route planner found lately — see [REUSE_TICKS]. */
-    private class Found(val dimension: String, val from: BlockPos, val goal: BlockPos, val trail: List<BlockPos>, val complete: Boolean, val at: Long)
+    private class Found(
+        val dimension: String,
+        val from: BlockPos,
+        val goal: BlockPos,
+        val trail: List<BlockPos>,
+        val complete: Boolean,
+        val at: Long
+    )
     private val found = ArrayList<Found>()
     private var lastPlanTick = Long.MIN_VALUE
 
@@ -306,7 +313,9 @@ object SquadMarch {
                 march.complete = reachedWalkingGoal(it.complete, Vec3.atBottomCenterOf(it.trail.last()), goal)
                 march.legsOnly = it.complete && !march.complete
                 march.long = true
-                DebugFlags.log(LogGroup.MARCH, "{} takes the way found from {} to {} ({} nodes)", squadName, it.from, it.goal, it.trail.size)
+                DebugFlags.log(
+                    LogGroup.MARCH, "{} takes the way found from {} to {} ({} nodes)", squadName, it.from, it.goal, it.trail.size
+                )
                 return
             }
         }
@@ -327,8 +336,10 @@ object SquadMarch {
         val found = search.result()
         if (found == null || found.trail.size < 2) {
             march.legsOnly = needsLocalContinuation(march, npc)
-            DebugFlags.log(LogGroup.MARCH, "{} no long route from {} to {} ({}), {}", squadName, BlockPos.containing(from), goal, search.stoppedBy,
-                if (march.legsOnly) "planning in legs" else "keeping the previous route")
+            DebugFlags.log(
+                LogGroup.MARCH, "{} no long route from {} to {} ({}), {}", squadName, BlockPos.containing(from), goal,
+                search.stoppedBy, if (march.legsOnly) "planning in legs" else "keeping the previous route"
+            )
             return
         }
         val trail = found.trail.map { BlockPos.containing(it) }

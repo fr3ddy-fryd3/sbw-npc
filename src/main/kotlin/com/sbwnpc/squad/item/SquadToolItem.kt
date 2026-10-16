@@ -121,7 +121,8 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
                 // Close-range: point straight at the ground where you're standing, no GUI round-trip.
                 SquadManager.get(serverLevel).setObjective(serverLevel, squadId, context.clickedPos)
                 val name = SquadManager.get(serverLevel).get(squadId)?.name ?: "Squad"
-                actionbar(player, "$name → objective (${context.clickedPos.x}, ${context.clickedPos.y}, ${context.clickedPos.z})", ChatFormatting.GRAY)
+                val at = context.clickedPos
+                actionbar(player, "$name → objective (${at.x}, ${at.y}, ${at.z})", ChatFormatting.GRAY)
             } else if (player is net.minecraft.server.level.ServerPlayer) {
                 val snap = buildSquadSnapshot(
                     SquadManager.get(serverLevel), player.uuid, SquadSelection.looseOf(player.uuid).size,
@@ -171,7 +172,10 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             mgr.setFocus(armedFocus, target.uuid)
             val squad = mgr.get(armedFocus)
             val verb = if (squad?.order == SquadOrder.DEFEND) "will guard" else "will target"
-            actionbar(player, "${squad?.name ?: "Squad"} $verb ${target.name.string}", squad?.faction?.accentStyle ?: Style.EMPTY.withColor(ChatFormatting.GRAY))
+            actionbar(
+                player, "${squad?.name ?: "Squad"} $verb ${target.name.string}",
+                squad?.faction?.accentStyle ?: Style.EMPTY.withColor(ChatFormatting.GRAY)
+            )
             return InteractionResult.SUCCESS
         }
 
@@ -191,7 +195,10 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
                 }
                 SquadSelection.selectSquad(player.uuid, sid)
                 val s = mgr.get(sid)
-                actionbar(player, "Selected ${s?.name ?: "squad"} (${s?.members?.size ?: 0})", s?.faction?.accentStyle ?: Style.EMPTY.withColor(ChatFormatting.GRAY))
+                actionbar(
+                    player, "Selected ${s?.name ?: "squad"} (${s?.members?.size ?: 0})",
+                    s?.faction?.accentStyle ?: Style.EMPTY.withColor(ChatFormatting.GRAY)
+                )
             } else {
                 val loose = SquadSelection.looseOf(player.uuid)
                 val existingFaction = loose.firstOrNull()?.let { level.getEntity(it) }?.let { SquadTeams.factionOf(it) }
@@ -211,7 +218,10 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         mgr.setFocus(sid, target.uuid)
         val squad = mgr.get(sid)
         val verb = if (squad?.order == SquadOrder.DEFEND) "will guard" else "will target"
-        actionbar(player, "${squad?.name ?: "Squad"} $verb ${target.name.string}", squad?.faction?.accentStyle ?: Style.EMPTY.withColor(ChatFormatting.GRAY))
+        actionbar(
+            player, "${squad?.name ?: "Squad"} $verb ${target.name.string}",
+            squad?.faction?.accentStyle ?: Style.EMPTY.withColor(ChatFormatting.GRAY)
+        )
         return InteractionResult.SUCCESS
     }
 
@@ -272,7 +282,10 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             readEnum(tag, KEY_FACTION, SquadFaction.DEFAULT, { SquadFaction.valueOf(it) }, { SquadFaction.byOrdinal(it) }),
             readEnum(tag, KEY_PRESET, SquadPreset.DEFAULT, { SquadPreset.valueOf(it) }, { SquadPreset.byOrdinal(it) }),
             tag.getBoolean(KEY_VEHICLE),
-            readEnum(tag, KEY_VEHICLE_MODEL, TransportVehicle.DEFAULT, { TransportVehicle.valueOf(it) }, { TransportVehicle.byOrdinal(it) }),
+            readEnum(
+                tag, KEY_VEHICLE_MODEL, TransportVehicle.DEFAULT,
+                { TransportVehicle.valueOf(it) }, { TransportVehicle.byOrdinal(it) }
+            ),
             readEnum(tag, KEY_TANK_MODEL, TankModel.DEFAULT, { TankModel.valueOf(it) }, { TankModel.byOrdinal(it) }),
             readEnum(tag, KEY_HELI_MODEL, HelicopterModel.DEFAULT, { HelicopterModel.valueOf(it) }, { HelicopterModel.byOrdinal(it) })
         )

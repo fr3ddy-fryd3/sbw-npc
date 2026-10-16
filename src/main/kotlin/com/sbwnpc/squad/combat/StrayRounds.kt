@@ -36,7 +36,10 @@ object StrayRounds : EntityIndex({ Ports.guns.isRound(it) }) {
             }
             stuck.forEach { it.discard() }
             if (stuck.isNotEmpty()) {
-                DebugFlags.log(LogGroup.PERF, "{} stray NPC rounds cleared in {}, {} rounds in flight", stuck.size, level.dimension().location(), all(level).size)
+                DebugFlags.log(
+                    LogGroup.PERF, "{} stray NPC rounds cleared in {}, {} rounds in flight",
+                    stuck.size, level.dimension().location(), all(level).size
+                )
             }
         }
     }

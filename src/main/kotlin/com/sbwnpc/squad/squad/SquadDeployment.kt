@@ -98,7 +98,9 @@ object SquadDeployment {
         for ((i, cls) in composition.withIndex()) {
             val npc = ModEntities.NPC.get().create(level) ?: continue
             val offset = com.sbwnpc.squad.combat.SquadFormation.gridOffset(i, composition.size)
-            val spot = SafeSpawn.findStandingSpot(level, center.x + 0.5 + offset.x, center.z + 0.5 + offset.z, center.y, npc.getDimensions(Pose.STANDING))
+            val spot = SafeSpawn.findStandingSpot(
+                level, center.x + 0.5 + offset.x, center.z + 0.5 + offset.z, center.y, npc.getDimensions(Pose.STANDING)
+            )
                 ?: net.minecraft.world.phys.Vec3(center.x + 0.5, center.y + 1.0, center.z + 0.5)
             npc.moveTo(spot.x, spot.y, spot.z, facingYaw + 180f, 0f)
             npc.npcClass = cls

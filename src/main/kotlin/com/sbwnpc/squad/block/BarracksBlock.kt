@@ -99,7 +99,13 @@ class BarracksBlock : BaseEntityBlock(
     /** Opens the same deployment config the squad tool uses — the Barracks garrisons and reinforces
      *  whatever is set there. No squad selection and no tool required, which is the whole point of
      *  the change: a placed Barracks is usable on its own. */
-    override fun useWithoutItem(state: BlockState, level: Level, pos: BlockPos, player: Player, hitResult: BlockHitResult): InteractionResult {
+    override fun useWithoutItem(
+        state: BlockState,
+        level: Level,
+        pos: BlockPos,
+        player: Player,
+        hitResult: BlockHitResult
+    ): InteractionResult {
         if (level.isClientSide) return InteractionResult.SUCCESS
         val be = level.getBlockEntity(pos) as? BarracksBlockEntity ?: return InteractionResult.PASS
         if (be.owner != player.uuid) {

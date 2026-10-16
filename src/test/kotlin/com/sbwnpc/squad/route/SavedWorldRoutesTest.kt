@@ -40,7 +40,8 @@ class SavedWorldRoutesTest {
             if (x < x0 || z < z0 || x >= x0 + w || z >= z0 + h) -1 else (x - x0) * h + (z - z0)
 
         override fun known(x: Int, z: Int) = index(x, z).let { it >= 0 && kind[it].toInt() != 0 }
-        override fun kind(x: Int, z: Int) = index(x, z).let { if (it < 0) GroundMap.Kind.UNKNOWN else GroundMap.Kind.entries[kind[it].toInt()] }
+        override fun kind(x: Int, z: Int) =
+            index(x, z).let { if (it < 0) GroundMap.Kind.UNKNOWN else GroundMap.Kind.entries[kind[it].toInt()] }
         override fun height(x: Int, z: Int) = index(x, z).let { if (it < 0) Int.MIN_VALUE else height[it].toInt() }
         override fun room(x: Int, z: Int) = index(x, z).let { if (it < 0) 0 else room[it].toInt() }
     }
@@ -65,7 +66,8 @@ class SavedWorldRoutesTest {
         val wet = route.trail.count { medium.pace == 1.0 && medium.extraCost(Math.floor(it.x).toInt(), Math.floor(it.z).toInt()) > 0 }
         val short = Math.hypot(route.landing.x - trip.goal.x, route.landing.z - trip.goal.z)
         return ("${trip.name}: ${search.stoppedBy}, ${route.trail.size} columns, cost %.0f, ends %.0f from the goal, " +
-            "lowest y %.0f highest y %.0f, $wet in water, ${search.expanded} units, $ticks ticks, %.0f ms").format(route.length, short, ys.min(), ys.max(), ms)
+            "lowest y %.0f highest y %.0f, $wet in water, ${search.expanded} units, $ticks ticks, %.0f ms")
+            .format(route.length, short, ys.min(), ys.max(), ms)
     }
 
     /** Only the ground within [radius] of where the traveller has been is known — as in the game,

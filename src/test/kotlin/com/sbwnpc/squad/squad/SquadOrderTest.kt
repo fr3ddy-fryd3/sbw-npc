@@ -12,7 +12,10 @@ class SquadOrderTest {
         val mortars = SquadOrder.availableFor(tank = false, mortar = true)
         val infantry = SquadOrder.availableFor(tank = false, mortar = false)
         assertEquals(listOf(SquadOrder.MOVE, SquadOrder.RETREAT), SquadOrder.pointOrdersFor(listOf(tanks)))
-        assertEquals(listOf(SquadOrder.ATTACK, SquadOrder.DEFEND, SquadOrder.RETREAT, SquadOrder.BARRAGE), SquadOrder.pointOrdersFor(listOf(mortars)))
+        assertEquals(
+            listOf(SquadOrder.ATTACK, SquadOrder.DEFEND, SquadOrder.RETREAT, SquadOrder.BARRAGE),
+            SquadOrder.pointOrdersFor(listOf(mortars))
+        )
         assertFalse(SquadOrder.BARRAGE in SquadOrder.pointOrdersFor(listOf(infantry)))
         assertFalse(SquadOrder.PATROL in SquadOrder.pointOrdersFor(listOf(infantry)))
         assertTrue(SquadOrder.BARRAGE in SquadOrder.pointOrdersFor(listOf(tanks, mortars)))
@@ -28,7 +31,10 @@ class SquadOrderTest {
             assertTrue(SquadOrder.ATTACK in orders)
             assertFalse(SquadOrder.PATROL in orders)
             assertFalse(SquadOrder.BARRAGE in orders)
-            assertEquals(listOf(SquadOrder.MOVE, SquadOrder.ATTACK, SquadOrder.DEFEND, SquadOrder.RETREAT), SquadOrder.pointOrdersFor(listOf(orders)))
+            assertEquals(
+                listOf(SquadOrder.MOVE, SquadOrder.ATTACK, SquadOrder.DEFEND, SquadOrder.RETREAT),
+                SquadOrder.pointOrdersFor(listOf(orders))
+            )
         }
     }
 }

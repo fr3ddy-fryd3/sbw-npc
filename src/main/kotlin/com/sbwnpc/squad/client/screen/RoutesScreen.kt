@@ -25,7 +25,10 @@ class RoutesScreen(snapshot: CompoundTag) : Screen(Component.literal("Patrol Rou
     }
     private val squads: List<AssignableSquad> = snapshot.getList("Squads", Tag.TAG_COMPOUND.toInt()).map {
         val t = it as CompoundTag
-        AssignableSquad(t.getString("Id"), t.getString("Name"), runCatching { SquadFaction.valueOf(t.getString("Faction")) }.getOrDefault(SquadFaction.DEFAULT))
+        AssignableSquad(
+            t.getString("Id"), t.getString("Name"),
+            runCatching { SquadFaction.valueOf(t.getString("Faction")) }.getOrDefault(SquadFaction.DEFAULT)
+        )
     }
 
     override fun init() {

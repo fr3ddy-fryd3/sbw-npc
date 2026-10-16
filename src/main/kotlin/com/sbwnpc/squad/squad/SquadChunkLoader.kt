@@ -82,8 +82,12 @@ object SquadChunkLoader {
         farBusy.sortBy { it.second }
         for ((spots, _) in farBusy.take(limit)) wanted += spots
 
-        for (spot in held - wanted) server.getLevel(spot.dimension)?.chunkSource?.removeRegionTicket(TICKET, spot.chunk, TICKET_DISTANCE, spot.chunk)
-        for (spot in wanted - held) server.getLevel(spot.dimension)?.chunkSource?.addRegionTicket(TICKET, spot.chunk, TICKET_DISTANCE, spot.chunk)
+        for (spot in held - wanted) {
+            server.getLevel(spot.dimension)?.chunkSource?.removeRegionTicket(TICKET, spot.chunk, TICKET_DISTANCE, spot.chunk)
+        }
+        for (spot in wanted - held) {
+            server.getLevel(spot.dimension)?.chunkSource?.addRegionTicket(TICKET, spot.chunk, TICKET_DISTANCE, spot.chunk)
+        }
         if (wanted != held) DebugFlags.log(LogGroup.CHUNK, "squads and barracks hold {} chunks (was {})", wanted.size, held.size)
         held.clear()
         held += wanted

@@ -82,7 +82,9 @@ class MortarLoaderBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (carrier != null) return true
 
         val current = mortar
-        if (current != null && Ports.vehicles.isOperational(current) && !MortarClaims.isLoaderClaimedByOther(current.uuid, entity.uuid)) return true
+        if (current != null && Ports.vehicles.isOperational(current) && !MortarClaims.isLoaderClaimedByOther(current.uuid, entity.uuid)) {
+            return true
+        }
 
         val level = entity.level() as? ServerLevel ?: return false
         // Same every-tick-search problem as MortarOperatorBehaviour — see its MORTAR_SEARCH_INTERVAL_TICKS.
