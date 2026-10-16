@@ -199,10 +199,19 @@ internal class NativePositionAction(
         val next = spec.parameters as? PositionIntent ?: return false
         val rejection = when {
             spec.key != TacticalDomain.POSITION || released -> "not_running"
+
             next.actor != intent.actor || next.duty != intent.duty -> "duty_changed"
-            next.minimumHeight != intent.minimumHeight || next.inspection != intent.inspection -> "post_kind_changed"
+
+            next.inspection != intent.inspection -> "post_kind_changed"
+
+            // GAIN_HEIGHT sets the floor from where the man stands now, so it moved with every
+            // step up or down a slope and threw away a post that was still high enough.
+            next.minimumHeight != intent.minimumHeight && !heightServed(next) -> "post_kind_changed"
+
             (next.requireShelter && !intent.requireShelter) || (next.requireCover && !intent.requireCover) -> "shelter_now_required"
+
             !servedBy(next) -> "post_outside_new_anchor"
+
             else -> null
         }
         if (rejection != null) {
@@ -212,6 +221,11 @@ internal class NativePositionAction(
         intent = next
         task.focus = next.focus?.native()
         return true
+    }
+
+    private fun heightServed(next: PositionIntent): Boolean {
+        val post = task.position ?: return false
+        return next.minimumHeight?.let { post.y >= it } != false
     }
 
     private fun servedBy(next: PositionIntent): Boolean {
