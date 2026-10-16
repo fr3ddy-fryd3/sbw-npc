@@ -521,7 +521,7 @@ object NativeTactics {
             if (snapshots[squad]?.incoming?.isNotEmpty() == true) reinforcementFire[squad] = now
             val nearest = contacts.minOfOrNull { contact -> members.minOfOrNull { it.position.distanceTo(contact.position) } ?: Double.MAX_VALUE }
             val sinceFire = reinforcementFire[squad]?.let { now - it } ?: Long.MAX_VALUE
-            val engaged = ReinforcementMarch.engaged(nearest, sinceFire)
+            val engaged = ReinforcementMarch.engaged(nearest, sinceFire, fighting = reinforcementEngaged[squad] == true)
             if (reinforcementEngaged.put(squad, engaged) != engaged) {
                 DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=reinforcement_march engaged={} nearestContact={} ticksSinceFire={}", squad, engaged, nearest?.let { "%.0f".format(it) }, sinceFire)
             }

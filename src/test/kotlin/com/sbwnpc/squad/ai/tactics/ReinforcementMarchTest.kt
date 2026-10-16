@@ -20,4 +20,11 @@ class ReinforcementMarchTest {
         assertTrue(ReinforcementMarch.engaged(280.0, 599))
         assertFalse(ReinforcementMarch.engaged(280.0, 600))
     }
+
+    @Test fun `a fighting squad marches on only once the enemy has drawn off`() {
+        // In-game 16.10: an enemy at 49, 32, 52, 25 blocks flipped the squad every few seconds.
+        assertTrue(ReinforcementMarch.engaged(52.0, Long.MAX_VALUE, fighting = true))
+        assertFalse(ReinforcementMarch.engaged(52.0, Long.MAX_VALUE, fighting = false))
+        assertFalse(ReinforcementMarch.engaged(65.0, Long.MAX_VALUE, fighting = true))
+    }
 }

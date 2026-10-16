@@ -12,8 +12,15 @@ object ReinforcementMarch {
     /** An enemy this close to one of its men is the squad's own fight. */
     const val ENGAGE_RADIUS = AttackPhase.OBJECTIVE_RADIUS
 
+    /**
+     * A fighting squad marches on only once the enemy is this far. With one line for both, an
+     * enemy at about 48 blocks switched the squad between marching and fighting every few seconds
+     * in-game 16.10, and each switch stopped every man to pick a new post.
+     */
+    const val DISENGAGE_RADIUS = 64.0
+
     /** Unfired on this long (30 s), a squad stopped by fire marches on. */
     const val QUIET_TICKS = 600L
 
-    fun engaged(nearestContact: Double?, ticksSinceIncoming: Long): Boolean = ticksSinceIncoming < QUIET_TICKS || (nearestContact != null && nearestContact <= ENGAGE_RADIUS)
+    fun engaged(nearestContact: Double?, ticksSinceIncoming: Long, fighting: Boolean = false): Boolean = ticksSinceIncoming < QUIET_TICKS || (nearestContact != null && nearestContact <= if (fighting) DISENGAGE_RADIUS else ENGAGE_RADIUS)
 }
