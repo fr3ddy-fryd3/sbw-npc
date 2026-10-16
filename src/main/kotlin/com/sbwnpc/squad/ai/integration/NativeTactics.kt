@@ -88,6 +88,9 @@ object NativeTactics {
         private val losses = HashMap<UUID, OperationLosses>()
         private val standings = HashMap<UUID, OperationStanding>()
         private val unverified = HashMap<UUID, MutableMap<UUID, Vec3>>()
+
+        // When each remembered position was last seen, so one nobody can reach expires.
+        private val unverifiedSeen = HashMap<UUID, MutableMap<UUID, Long>>()
         private val completions = HashMap<UUID, AreaControlTask>()
         private val sequences = HashMap<AssignmentTicket, Long>()
         private val retiredAssignments = ArrayList<AssignmentTicket>()
@@ -356,6 +359,7 @@ object NativeTactics {
                     areaObservedAt.remove(id.id)
                     areaTraces.remove(id.id)
                     unverified.remove(id.id)
+                    unverifiedSeen.remove(id.id)
                     areaTasks.remove(id.id)
                     operations.forget(id.id)
                 }
@@ -381,7 +385,19 @@ object NativeTactics {
             val observers = squads.flatMap { saved -> saved.members.mapNotNull { level.getEntity(it) as? NpcEntity } }.filter { it.isAlive && it.vehicle == null }
             val contacts = squads.flatMap { combatView(it.id)?.contacts.orEmpty() }.filter { now - it.seenAt <= 200 && it.position.distanceTo(point) <= AREA_THREAT_RADIUS }.distinctBy { it.id }
             val remaining = unverified.getOrPut(task.operation, ::LinkedHashMap)
-            contacts.forEach { remaining[it.id] = it.position }
+            val seen = unverifiedSeen.getOrPut(task.operation, ::HashMap)
+            contacts.forEach {
+                remaining[it.id] = it.position
+                seen[it.id] = now
+            }
+            for ((id, position) in remaining.toMap()) {
+                val unseen = now - seen.getOrPut(id) { now }
+                if (UnverifiedContacts.expired(position.distanceTo(point), unseen)) {
+                    remaining.remove(id)
+                    seen.remove(id)
+                    DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=unverified_expired at={} distance={} unseen={}", task.operation, net.minecraft.core.BlockPos.containing(position).toShortString(), position.distanceTo(point).toInt(), unseen)
+                }
+            }
             val known = contacts.mapTo(HashSet()) { it.id }
             var discovered = false
             // Only inspect remembered positions which no longer have a fresh contact report.
@@ -393,6 +409,7 @@ object NativeTactics {
                 }
                 if (enemies.isEmpty()) {
                     remaining.remove(id)
+                    seen.remove(id)
                 } else {
                     discovered = true
                     enemies.forEach { SquadTactics.observe(witness, it) }
@@ -411,6 +428,7 @@ object NativeTactics {
                         if (witness != null) {
                             SquadTactics.observe(witness, enemy)
                             remaining[enemy.uuid] = enemy.position()
+                            seen[enemy.uuid] = now
                             discovered = true
                         }
                     }
@@ -502,7 +520,11 @@ object NativeTactics {
             val focus = contacts.maxByOrNull { it.priority }?.position
             val operation = operations.operationOf(squads.first().id)?.id ?: squads.first().id
             val remembered = unverified.getOrPut(operation, ::LinkedHashMap)
-            contacts.forEach { remembered[it.id] = it.position }
+            val rememberedSeen = unverifiedSeen.getOrPut(operation, ::HashMap)
+            contacts.forEach {
+                remembered[it.id] = it.position
+                rememberedSeen[it.id] = now
+            }
             val inspect = if (focus == null) {
                 remembered.values.firstOrNull() ?: squads.firstOrNull { it.order == SquadOrder.ATTACK && it.commandOutcome == CommandOutcome.ACTIVE }?.objective?.let { Vec3.atBottomCenterOf(it) }
             } else {
