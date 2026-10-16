@@ -69,6 +69,16 @@ class TacticalPositionSearch(val origin: Vec3, probes: List<Vec3>, val aim: Tact
     var probeIndex = 0
     val scored = LinkedHashMap<Vec3, TacticalPositionScore>()
     val visited = HashSet<Vec3>()
+
+    /**
+     * Overwatch protection of each floor already examined in this scan.
+     *
+     * Probes are stacked at several heights per column and [com.sbwnpc.squad.util.Terrain.feetAt]
+     * scans up and down, so neighbouring probes keep landing on the same floor. Repeating its ray
+     * checks made a fresh height scan take hundreds of ticks. Candidates are checked again live
+     * before a route is taken.
+     */
+    internal val floorProtection = HashMap<Vec3, Boolean>()
     var destinations: List<Vec3>? = null
     var destinationIndex = 0
     internal var routeValidation: TacticalRouteValidation? = null
