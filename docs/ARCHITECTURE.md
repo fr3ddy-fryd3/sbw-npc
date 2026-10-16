@@ -4,9 +4,10 @@ A map of the codebase for whoever picks it up next. It covers how the parts fit 
 things go; the code's own KDoc covers the details. Build, workflow and coding rules are in
 [AGENTS.md](../AGENTS.md).
 
-Kotlin packages below are relative to `com/sbwnpc/squad/`. Shared routing sources live
-under `common/src/main/kotlin/`; NeoForge-owned sources live under
-`neoforge/src/main/kotlin/`. Shared assets/data live in `common/src/main/resources/`.
+Kotlin packages below are relative to `com/sbwnpc/squad/`. Shared sources live under
+`common/src/main/kotlin/`: routing and the HTN core (`ai/planning`, `ai/coordination`,
+`ai/tactics`), with their JUnit tests in `common/src/test/kotlin/`. NeoForge-owned sources live
+under `neoforge/src/main/kotlin/`, including the HTN adapter `ai/integration`. Shared assets/data live in `common/src/main/resources/`.
 NeoForge recompiles common sources; `:common:check` checks them against vanilla Minecraft.
 Build conventions live in `build-logic/`; root build commands delegate to these modules.
 
