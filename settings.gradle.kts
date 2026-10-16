@@ -1,4 +1,5 @@
 pluginManagement {
+    includeBuild("build-logic")
     repositories {
         mavenLocal()
         gradlePluginPortal()
@@ -16,3 +17,5 @@ plugins {
 rootProject.name = "sbwnpc"
 
 apply(from = "gradle/sbw-input.settings.gradle.kts")
+
+include(":common", ":neoforge")

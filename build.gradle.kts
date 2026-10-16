@@ -1,9 +1,6 @@
-import java.security.MessageDigest
-
 plugins {
-    idea
-    id("net.neoforged.moddev") version "2.0.80"
-    id("org.jetbrains.kotlin.jvm") version "2.1.20"
+    base
+    id("net.neoforged.moddev") version "2.0.80" apply false
 }
 
 tasks.named<Wrapper>("wrapper") {
@@ -13,275 +10,28 @@ tasks.named<Wrapper>("wrapper") {
 version = "${project.property("mod_version")}-mc${project.property("minecraft_version")}"
 group = "com.sbwnpc.squad"
 
-@Suppress("UNCHECKED_CAST")
-val sbwInput = extensions.extraProperties["sbwInput"] as Map<String, String>
-val sbwCoordinate = sbwInput.getValue("profile.coordinate")
-
-repositories {
-    mavenLocal()
-    mavenCentral()
-    maven {
-        name = "Pinned SBW"
-        url = uri("https://api.modrinth.com/maven")
-        content { includeModule("maven.modrinth", "Cd3DYqzn") }
-    }
-    maven {
-        name = "Kotlin for Forge"
-        url = uri("https://thedarkcolour.github.io/KotlinForForge/")
-        content { includeGroup("thedarkcolour") }
-    }
-    maven {
-        // GeckoLib — compile-time only, and only because Kotlin needs the full supertype chain of
-        // SBW's Geo*Entity classes (DroneEntity extends GeoVehicleEntity implements GeoEntity) to
-        // resolve members declared on them. Same version SBW jar-in-jars, never shipped by us.
-        name = "GeckoLib (Cloudsmith)"
-        url = uri("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/")
-        content { includeGroup("software.bernie.geckolib") }
-    }
-    maven {
-        // SmartBrainLib's own publishing target (verified by resolving the actual jar +
-        // maven-metadata.xml from this URL, not guessed) — MPL-2.0, modId "smartbrainlib".
-        name = "SmartBrainLib (Cloudsmith)"
-        url = uri("https://dl.cloudsmith.io/public/tslat/sbl/maven/")
-        content { includeGroup("net.tslat.smartbrainlib") }
-    }
-    maven {
-        // JourneyMap API — compile-time only. Its licence allows building against it but not
-        // shipping its classes, and JourneyMap itself brings them at runtime.
-        name = "BlameJared"
-        url = uri("https://maven.blamejared.com")
-        content { includeGroup("info.journeymap") }
-    }
-    maven {
-        name = "SimpleBedrockModel"
-        url = uri("https://jitpack.io")
-        content { includeGroup("com.github.MCModderAnchor") }
-    }
+val modJar by configurations.creating {
+    isCanBeConsumed = false
+    isTransitive = false
 }
-
-base {
-    archivesName.set(project.property("mod_id") as String)
-}
-
-java {
-    toolchain {
-        languageVersion.set(JavaLanguageVersion.of(21))
-    }
-}
-
-neoForge {
-    version = project.property("neo_version") as String
-
-    parchment {
-        mappingsVersion = project.property("parchment_mappings_version") as String
-        minecraftVersion = project.property("parchment_minecraft_version") as String
-    }
-
-    runs {
-        create("client") {
-            client()
-            systemProperty("neoforge.enabledGameTestNamespaces", project.property("mod_id") as String)
-        }
-
-        create("server") {
-            server()
-            programArgument("--nogui")
-            systemProperty("neoforge.enabledGameTestNamespaces", project.property("mod_id") as String)
-        }
-
-        create("data") {
-            data()
-            programArguments.addAll(
-                "--mod",
-                project.property("mod_id") as String,
-                "--all",
-                "--output",
-                file("src/generated/resources/").absolutePath,
-                "--existing",
-                file("src/main/resources/").absolutePath
-            )
-        }
-
-        configureEach {
-            jvmArguments = listOf(
-                "-XX:+IgnoreUnrecognizedVMOptions",
-                "-XX:+AllowEnhancedClassRedefinition"
-            )
-            systemProperty("forge.logging.markers", "REGISTRIES")
-            logLevel = org.slf4j.event.Level.DEBUG
-        }
-    }
-
-    mods {
-        create(project.property("mod_id") as String) {
-            sourceSet(sourceSets.main.get())
-        }
-    }
-
-    unitTest {
-        enable()
-        testedMod.set(mods.named(project.property("mod_id") as String))
-    }
-}
-
-sourceSets.main.get().resources {
-    srcDir("src/generated/resources")
-}
-
-// Bakes DebugFlags' startup default into the jar at build time, so a locally-built dev jar comes
-// up with verbose trace logging/markers on without touching runtime code, while a plain/production
-// build stays quiet by default. `./gradlew buildDevelop` flips it on; plain `build` (and the
-// explicit `buildProduction` alias) leave it off.
-val generateBuildFlags = tasks.register("generateBuildFlags") {
-    val debugDefault = gradle.startParameter.taskNames.any { it.equals("buildDevelop", ignoreCase = true) }
-    val outputDir = layout.buildDirectory.dir("generated/buildFlags/kotlin")
-    inputs.property("debugDefault", debugDefault)
-    outputs.dir(outputDir)
-    doLast {
-        val file = outputDir.get().dir("com/sbwnpc/squad/combat").asFile.apply { mkdirs() }
-            .resolve("BuildFlags.kt")
-        file.writeText(
-            """
-            package com.sbwnpc.squad.combat
-
-            // Generated by the `generateBuildFlags` Gradle task — do not edit by hand.
-            internal object BuildFlags {
-                const val DEBUG_ENABLED: Boolean = $debugDefault
-            }
-            """.trimIndent() + "\n"
-        )
-    }
-}
-
-tasks.register("buildDevelop") {
-    group = "build"
-    description = "Assemble the mod jar with DebugFlags (trace logging + debug particle markers) defaulted ON."
-    dependsOn("build")
-}
-
-tasks.register("buildProduction") {
-    group = "build"
-    description = "Assemble the mod jar with DebugFlags defaulted OFF — same as plain 'build', named explicitly for release builds."
-    dependsOn("build")
-}
-
-val gameRuntimeOnly: Configuration by configurations.creating
-configurations.named("runtimeClasspath") { extendsFrom(gameRuntimeOnly) }
-
 dependencies {
-    implementation("thedarkcolour:kotlinforforge-neoforge:${project.property("kotlinforforge_version")}")
-
-    // Immutable release input; local source substitution requires -PsbwSourceDir.
-    compileOnly(sbwCoordinate)
-    gameRuntimeOnly(sbwCoordinate)
-    // Regression tests exercise SBW's resource decoder alongside our static model loader.
-    testCompileOnly(sbwCoordinate) {
-        isTransitive = false
-    }
-    testRuntimeOnly(sbwCoordinate) {
-        isTransitive = false
-    }
-
-    implementation("net.tslat.smartbrainlib:SmartBrainLib-neoforge-1.21.1:${project.property("smartbrainlib_version")}")
-    // See the GeckoLib repository comment above. SBW bundles 4.7.5 (jijImplement in its build).
-    compileOnly("software.bernie.geckolib:geckolib-neoforge-1.21.1:4.7.5")
-    // Already bundled by SBW. Used to bake NPC guns into static geometry, without GeoItemRenderer.
-    compileOnly("com.github.MCModderAnchor:SimpleBedrockModel:2.5.1.1-neoforge-mc1.21.1")
-    testCompileOnly("com.github.MCModderAnchor:SimpleBedrockModel:2.5.1.1-neoforge-mc1.21.1")
-    // Optional map integration (see integration/journeymap); never bundled.
-    compileOnly("info.journeymap:journeymap-api-neoforge:${project.property("journeymap_api_version")}")
-
-    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    add(modJar.name, project(mapOf("path" to ":neoforge", "configuration" to "modJar")))
 }
 
-tasks.withType<Test> {
-    useJUnitPlatform()
-    // NeoForge runs tests from its run directory; source-scanning tests need the real root.
-    systemProperty("sbwnpc.projectDir", projectDir.absolutePath)
+// Keep the existing setup/deploy entry point pointing at the enabled loader's jar.
+val stageNeoForgeJar = tasks.register<Sync>("stageNeoForgeJar") {
+    from(modJar)
+    into(layout.buildDirectory.dir("libs"))
 }
+tasks.named("assemble") { dependsOn(stageNeoForgeJar) }
+tasks.named("check") { dependsOn(":common:check", ":neoforge:check") }
 
-tasks.withType<JavaCompile> {
-    options.encoding = "UTF-8"
+listOf("test", "testClasses", "verifySbwInput", "runClient", "runServer", "runData").forEach { name ->
+    tasks.register(name) { dependsOn(":neoforge:$name") }
 }
-
-idea {
-    module {
-        isDownloadSources = true
-        isDownloadJavadoc = true
+listOf("buildDevelop", "buildProduction").forEach { name ->
+    tasks.register(name) {
+        group = "build"
+        dependsOn("build")
     }
 }
-
-kotlin {
-    jvmToolchain(21)
-    sourceSets.main {
-        kotlin.srcDir(generateBuildFlags)
-    }
-}
-
-/** Verifies the selected dependency and records its effective inputs for build audits. */
-abstract class VerifySbwInput : DefaultTask() {
-    @get:Input abstract val provenance: MapProperty<String, String>
-    @get:InputFiles
-    @get:PathSensitive(PathSensitivity.NONE)
-    abstract val artifacts: ConfigurableFileCollection
-    @get:OutputFile abstract val report: RegularFileProperty
-
-    @TaskAction
-    fun verify() {
-        val details = provenance.get().toMutableMap()
-        if (details.getValue("mode") == "published") {
-            val artifact = artifacts.singleFile
-            val digest = MessageDigest.getInstance("SHA-512")
-            artifact.inputStream().use { input ->
-                val buffer = ByteArray(8192)
-                var count = input.read(buffer)
-                while (count != -1) {
-                    digest.update(buffer, 0, count)
-                    count = input.read(buffer)
-                }
-            }
-            val actual = digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
-            check(actual == details.getValue("profile.sha512")) {
-                "SBW SHA-512 mismatch: expected ${details["profile.sha512"]}, got $actual"
-            }
-            details["artifact.sha512"] = actual
-        }
-        report.get().asFile.apply {
-            parentFile.mkdirs()
-            writeText(details.toSortedMap().entries.joinToString("\n", postfix = "\n") { "${it.key}=${it.value}" })
-        }
-    }
-}
-
-val sbwVerification by configurations.creating { isTransitive = false }
-if (sbwInput.getValue("mode") == "published") {
-    dependencies.add(sbwVerification.name, sbwCoordinate)
-}
-val verifySbwInput = tasks.register<VerifySbwInput>("verifySbwInput") {
-    group = "verification"
-    description = "Verify the pinned SBW artifact and record the effective input."
-    provenance.set(sbwInput)
-    artifacts.from(sbwVerification)
-    report.set(layout.buildDirectory.file("reports/sbw/input.txt"))
-}
-tasks.withType<JavaCompile>().configureEach { dependsOn(verifySbwInput) }
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach { dependsOn(verifySbwInput) }
-// Resource regression tests must read the same SBW input as the compiled addon.
-val sbwTestResources = layout.buildDirectory.dir("sbw-test-resources")
-val prepareSbwTestResources = tasks.register<Sync>("prepareSbwTestResources") {
-    dependsOn(verifySbwInput)
-    from(provider {
-        if (sbwInput.getValue("mode") == "published") zipTree(sbwVerification.singleFile)
-        else file(sbwInput.getValue("source.path")).resolve("src/main/resources")
-    })
-    include("assets/**")
-    into(sbwTestResources)
-}
-tasks.withType<Test>().configureEach {
-    dependsOn(prepareSbwTestResources)
-    inputs.dir(sbwTestResources).withPropertyName("sbwResources")
-    systemProperty("sbwnpc.sbwResources", sbwTestResources.get().asFile.absolutePath)
-}
-tasks.withType<Jar>().configureEach { dependsOn(verifySbwInput) }
-tasks.matching { it.name.startsWith("run") }.configureEach { dependsOn(verifySbwInput) }
