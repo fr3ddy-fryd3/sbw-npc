@@ -33,11 +33,10 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Lint
-        run: ./gradlew --console=plain detekt
-
-      - name: Test
-        run: ./gradlew --console=plain test
+      # Linters register on check alongside the unit tests (ktlint's checkKotlinStyle on
+      # feature/ai-architecture, detekt later), so this step picks them up without naming them.
+      - name: Lint and test
+        run: ./gradlew --console=plain check
 
       # Plain build is the production build: DebugFlags stay off.
       - name: Build
@@ -48,7 +47,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           minecraft_version=$(sed -n 's/^minecraft_version=//p' gradle.properties)
-          jar="build/libs/sbwnpc-${GITHUB_REF_NAME#v}-mc${minecraft_version}.jar"
+          # The jar moves to neoforge/build/libs once the sources split into modules (#30).
+          mapfile -t jars < <(find . -maxdepth 4 -path "*/build/libs/sbwnpc-${GITHUB_REF_NAME#v}-mc${minecraft_version}.jar")
+          if [ ${#jars[@]} -ne 1 ]; then
+            echo "::error::Expected one release jar, found ${#jars[@]}: ${jars[*]}"
+            exit 1
+          fi
+          jar=${jars[0]}
           prerelease=()
           case "$GITHUB_REF_NAME" in *-*) prerelease=(--prerelease) ;; esac
           gh release create "$GITHUB_REF_NAME" "$jar" --verify-tag --generate-notes "${prerelease[@]}"
