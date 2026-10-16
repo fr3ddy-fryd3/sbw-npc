@@ -308,7 +308,7 @@ class SquadMapPlugin : IClientPlugin {
             com.sbwnpc.squad.client.FactionBanner.faction
         }
         val objectives = HashMap<String, ObjectiveMark>()
-        val operations = LinkedHashMap<kotlin.Pair<SquadOrder, BlockPos>, OperationMark>()
+        val operations = LinkedHashMap<OperationKey, OperationMark>()
 
         for (t in list(feed, "Squads")) {
             val faction = faction(t) ?: continue
@@ -363,19 +363,24 @@ class SquadMapPlugin : IClientPlugin {
                 )
             }
 
+            var inOperation = false
             if (own) {
                 val goal = t.getIntArray("Goal").takeIf { it.size == 3 }
                 val goalOrder = runCatching { SquadOrder.valueOf(t.getString("GoalOrder")) }.getOrNull()
                 // Only an attack, defence or patrol is worth joining; a squad on the move just passes through.
                 if (goal != null && goalOrder != null && goalOrder in JOINABLE) {
                     val at = BlockPos(goal[0], goal[1], goal[2])
-                    val mark = operations.getOrPut(goalOrder to at) { OperationMark(goalOrder, at, color, t.getInt("Allies")) }
+                    val mark = operations.getOrPut(OperationKey(goalOrder, at, t.getInt("Allies"))) { OperationMark(goalOrder, at, color, t.getInt("Allies"), faction == playerFaction) }
                     mark.names += name
                     mark.squads += id
                     if (mark.route == null) mark.route = t.getIntArray("Route").takeIf { goalOrder == SquadOrder.PATROL && it.size >= 4 }
+                    // A patrol is drawn by its route; an attack or defence by its one shared point.
+                    inOperation = goalOrder != SquadOrder.PATROL
                 }
             }
-            t.getIntArray("Obj").takeIf { it.size == 3 }?.let { obj ->
+            // A squad in an operation is shown by the operation's point, not by its own spot in
+            // the line: two squads sent together looked like two separate operations.
+            t.getIntArray("Obj").takeIf { it.size == 3 && !inOperation }?.let { obj ->
                 if (own) {
                     objectives[id] = ObjectiveMark(
                         "$name: ${order?.name?.lowercase() ?: "?"}",
@@ -415,6 +420,12 @@ class SquadMapPlugin : IClientPlugin {
             }
             val size = if (shape == MapShapes.CIRCLE) LOOSE_SIZE else VEHICLE_SIZE
             show(marker(dim, pos(t), shape, colorOf(faction), size, 1f).also { it.setTitle(faction.label) })
+        }
+        for (mark in operations.values) {
+            if (mark.order == SquadOrder.PATROL) continue
+            show(outline(dim, diamond(BlockPos(mark.pos.x, 0, mark.pos.z), OBJECTIVE_SIZE), mark.color))
+            // Keyed by one member, so the waypoint's own menu still finds the operation.
+            objectives[mark.squads.min()] = ObjectiveMark("${mark.names.sorted().joinToString(", ")}: ${mark.order.name.lowercase()}", mark.pos, mark.color, mark.showInWorld)
         }
         operationMarks = operations.values.toList()
         routeDraft?.let { draft ->
@@ -545,7 +556,10 @@ class SquadMapPlugin : IClientPlugin {
 
     private fun sendOrder(squads: List<String>, order: SquadOrder, pos: BlockPos) = PacketDistributor.sendToServer(SquadCmdPayload(SquadCmdPayload.MAP_ORDER, squads.joinToString(","), order.ordinal, "${pos.x} ${pos.z}"))
 
-    private class OperationMark(val order: SquadOrder, val pos: BlockPos, val color: Int, val allies: Int) {
+    // Allies in the key: two operations of unallied factions on one point stay apart.
+    private data class OperationKey(val order: SquadOrder, val pos: BlockPos, val allies: Int)
+
+    private class OperationMark(val order: SquadOrder, val pos: BlockPos, val color: Int, val allies: Int, val showInWorld: Boolean) {
         val names = ArrayList<String>()
         val squads = HashSet<String>()
 
