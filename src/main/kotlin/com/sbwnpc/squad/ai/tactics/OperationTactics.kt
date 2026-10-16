@@ -5,11 +5,15 @@ import com.sbwnpc.squad.ai.coordination.TacticalOrder
 import java.util.UUID
 import kotlin.math.cos
 import kotlin.math.hypot
+import kotlin.math.max
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-/** Who assaults into the objective and where, and who goes after the enemies left around it. */
-data class AttackRoles(val assault: Map<UUID, Point3> = emptyMap(), val clearing: Map<UUID, Point3> = emptyMap()) {
+/**
+ * Who assaults into the objective and where, who goes after the enemies left around it, and who
+ * closes on the point's defenders to fire from nearer.
+ */
+data class AttackRoles(val assault: Map<UUID, Point3> = emptyMap(), val clearing: Map<UUID, Point3> = emptyMap(), val closing: Map<UUID, Point3> = emptyMap()) {
     companion object {
         val NONE = AttackRoles()
     }
@@ -52,13 +56,26 @@ object OperationTactics {
     /** Most attackers sent after enemies left around a taken objective. */
     const val MAX_CLEARING_TEAM = 4
 
+    /** Closing in, a mover halves its distance to the point's nearest defender, down to this. */
+    const val CLOSE_DISTANCE = 20.0
+
     /**
-     * Roles for [phase]: the front movers assault into a loose ring inside [objective]; once it is
-     * taken, the ready members nearest the [threats] (2 to [MAX_CLEARING_TEAM], keeping those
-     * already sent) each go after the nearest one while the rest hold.
+     * Roles for [phase]. While defenders still hold the [objective] an assault closes in under
+     * fire: each front mover takes a firing post half as far from the nearest defender as it
+     * stood when the assault began ([origins], see [closingPost]). Once none are left at the
+     * point the movers occupy a loose ring inside it; once it is taken, the ready members nearest
+     * the [threats] (2 to [MAX_CLEARING_TEAM], keeping those already sent) each go after the
+     * nearest one while the rest hold.
      */
-    fun roles(phase: AttackPhase, objective: Point3, movers: List<UUID>, members: List<AttackMember>, threats: List<Point3>, previousClearing: Set<UUID>): AttackRoles {
+    fun roles(phase: AttackPhase, objective: Point3, movers: List<UUID>, members: List<AttackMember>, threats: List<Point3>, previousClearing: Set<UUID>, origins: Map<UUID, Point3> = emptyMap()): AttackRoles {
         if (phase == AttackPhase.DEPLOY) return AttackRoles.NONE
+        // An assault is not a run onto the defenders: it shortens the range and keeps firing.
+        val defenders = threats.filter { distance(it, objective) <= AttackPhase.OBJECTIVE_RADIUS }
+        if (phase == AttackPhase.ASSAULT && defenders.isNotEmpty()) {
+            val positions = members.associate { it.id to it.position }
+            val closing = movers.mapNotNull { id -> (origins[id] ?: positions[id])?.let { id to closingPost(it, defenders) } }.toMap()
+            return AttackRoles(closing = closing)
+        }
         val clearing = if (phase == AttackPhase.CLEAR && threats.isNotEmpty()) {
             val ready = members.filter { it.ready }
             val size = (ready.size / 4).coerceIn(2, MAX_CLEARING_TEAM).coerceAtMost(ready.size)
@@ -90,6 +107,7 @@ object OperationTactics {
                     members = team.members.map { intent ->
                         val target = roles.clearing[intent.actor.id]
                         val slot = roles.assault[intent.actor.id]
+                        val post = roles.closing[intent.actor.id]
                         when {
                             // Special duties (inspection, rear guard, marching orders) keep their own work.
                             intent.duty !in setOf(CombatDuty.MOVE, CombatDuty.FIRE) -> intent
@@ -97,6 +115,9 @@ object OperationTactics {
                             target != null -> intent.copy(duty = CombatDuty.SEARCH, anchor = target, focus = target, inspection = target, requireCover = false, requireShelter = false, minimumHeight = null, assault = true)
 
                             slot != null -> intent.copy(duty = CombatDuty.MOVE, anchor = slot, requireCover = false, requireShelter = false, minimumHeight = null, assault = true)
+
+                            // Closing in is still fire from cover at the role's own clearance.
+                            post != null -> intent.copy(duty = CombatDuty.FIRE, anchor = post, minimumHeight = null)
 
                             else -> intent
                         }
@@ -144,6 +165,14 @@ object OperationTactics {
             }
             DutyChoice(duty, anchor)
         }
+
+    /** Half as far from the nearest of [defenders] as [from], but no nearer than [CLOSE_DISTANCE]. */
+    fun closingPost(from: Point3, defenders: List<Point3>): Point3 {
+        val enemy = defenders.minBy { distance(it, from) }
+        val range = distance(enemy, from)
+        if (range <= CLOSE_DISTANCE) return from
+        return short(enemy, from, max(CLOSE_DISTANCE, range / 2)).copy(y = from.y)
+    }
 
     /** [post] moved [offset] blocks horizontally towards [from]. */
     private fun short(post: Point3, from: Point3, offset: Double): Point3 {

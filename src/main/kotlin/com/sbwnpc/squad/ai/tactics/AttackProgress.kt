@@ -23,6 +23,10 @@ class AttackProgress(now: Long) {
     private var aborted = false
     private var clearing: Set<UUID> = emptySet()
 
+    // Where each mover stood as this assault began: its closing post is measured from there, so
+    // the post stays put while the man walks to it.
+    private val closingOrigins = HashMap<UUID, Point3>()
+
     /** Records one update's observations and advances [phase]; returns the inputs it decided on. */
     fun observe(now: Long, contactSeen: Boolean, incoming: Boolean, readyShooters: Int, enemiesAtObjective: Int, occupied: Boolean, threatsNearby: Int): AttackPhase.Inputs {
         if (contactSeen) {
@@ -51,5 +55,12 @@ class AttackProgress(now: Long) {
     }
 
     /** The roles the current [phase] implies, keeping the members already sent clearing. */
-    fun roles(objective: Point3, movers: List<UUID>, members: List<AttackMember>, threats: List<Point3>): AttackRoles = OperationTactics.roles(phase, objective, movers, members, threats, clearing).also { clearing = it.clearing.keys }
+    fun roles(objective: Point3, movers: List<UUID>, members: List<AttackMember>, threats: List<Point3>): AttackRoles {
+        if (phase == AttackPhase.ASSAULT) {
+            members.filter { it.id in movers }.forEach { closingOrigins.putIfAbsent(it.id, it.position) }
+        } else {
+            closingOrigins.clear()
+        }
+        return OperationTactics.roles(phase, objective, movers, members, threats, clearing, closingOrigins).also { clearing = it.clearing.keys }
+    }
 }

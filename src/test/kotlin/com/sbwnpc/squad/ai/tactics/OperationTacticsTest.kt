@@ -27,6 +27,34 @@ class OperationTacticsTest {
         roles.assault.values.forEach { assertTrue(hypot(it.x - objective.x, it.z - objective.z) <= 12.0) }
     }
 
+    @Test fun `an assault on a held point closes in to fire instead of running onto it`() {
+        // In-game 16.10: "an assault is not running right up, it is closing the range and pressing with fire".
+        val defender = Point3(100.0, 64.0, 130.0)
+        val movers = listOf(id(1), id(2))
+        val members = listOf(AttackMember(id(1), Point3(100.0, 64.0, 30.0), true), AttackMember(id(2), Point3(100.0, 64.0, 120.0), true))
+        val roles = OperationTactics.roles(AttackPhase.ASSAULT, objective, movers, members, listOf(defender), emptySet())
+        assertTrue(roles.assault.isEmpty())
+        assertEquals(Point3(100.0, 64.0, 80.0), roles.closing[id(1)])
+        // Already this close, a man holds where he is.
+        assertEquals(Point3(100.0, 64.0, 120.0), roles.closing[id(2)])
+        val applied = OperationTactics.apply(SquadMission(AgentId(AgentLevel.SQUAD, id(100)), listOf(TeamMission(AgentId(AgentLevel.TEAM, id(101)), listOf(PositionIntent(AgentId(AgentLevel.NPC, id(1)), CombatDuty.MOVE, Point3(100.0, 64.0, 30.0), Point3(100.0, 64.0, 50.0), defender))))), roles).teams.single().members.single()
+        assertEquals(CombatDuty.FIRE, applied.duty)
+        assertEquals(Point3(100.0, 64.0, 80.0), applied.anchor)
+        assertFalse(applied.assault)
+    }
+
+    @Test fun `the closing post is measured from where the assault began`() {
+        val defender = Point3(100.0, 64.0, 130.0)
+        val roles = OperationTactics.roles(AttackPhase.ASSAULT, objective, listOf(id(1)), listOf(AttackMember(id(1), Point3(100.0, 64.0, 70.0), true)), listOf(defender), emptySet(), mapOf(id(1) to Point3(100.0, 64.0, 30.0)))
+        assertEquals(Point3(100.0, 64.0, 80.0), roles.closing[id(1)])
+    }
+
+    @Test fun `with no defender left at the point the assault occupies it`() {
+        val roles = OperationTactics.roles(AttackPhase.ASSAULT, objective, listOf(id(1)), listOf(member(1, 40.0)), listOf(Point3(100.0, 64.0, 200.0)), emptySet())
+        assertTrue(roles.closing.isEmpty())
+        assertEquals(setOf(id(1)), roles.assault.keys)
+    }
+
     @Test fun `clearing sends the nearest ready members and keeps the team stable`() {
         val members = (1..8).map { member(it, 100.0 + it * 2) } + member(9, 150.0, ready = false)
         val straggler = Point3(160.0, 64.0, 100.0)
