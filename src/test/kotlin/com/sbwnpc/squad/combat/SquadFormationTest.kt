@@ -3,7 +3,8 @@ package com.sbwnpc.squad.combat
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.SquadPreset
 import com.sbwnpc.squad.squad.SquadOrder
-import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class SquadFormationTest {

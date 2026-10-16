@@ -13,7 +13,8 @@ import net.minecraft.world.level.material.FluidState
 import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
 import net.minecraft.world.phys.shapes.CollisionContext
-import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /** Exercise vanilla's actual voxel traversal and clipping with independent sight and collider contexts. */
