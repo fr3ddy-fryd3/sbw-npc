@@ -5,30 +5,6 @@ import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
-enum class TacticalPattern {
-    FOLLOW_ORDER,
-    RETURN_FIRE,
-    FLANK,
-    ENCIRCLE,
-    BOUND,
-    FOCUS_SECTOR,
-    DISLODGE,
-    ATTACK_HEIGHT,
-    HOLD_HEIGHT,
-    FILE,
-    REORIENT,
-    BREAK_CONTACT,
-    REPEL,
-    SEARCH,
-    PURSUE,
-    REORGANIZE,
-    ANTI_ARMOUR,
-    AVOID_ARMOUR,
-    EVADE,
-    CONSOLIDATE,
-    COORDINATED_ATTACK,
-}
-enum class TacticalStatus { PREPARING, EXECUTING, REGROUPING, COMPLETED, FAILED }
 enum class TacticalJob {
     COVER,
     ADVANCE,
@@ -49,35 +25,6 @@ enum class TacticalJob {
         val FIRING_POSITIONS = FIRE_SUPPORT + setOf(ANTI_ARMOUR, OVERWATCH)
     }
 }
-enum class TacticalReason {
-    UNSPECIFIED,
-    GRENADE_DANGER,
-    PLAYER_RETREAT_OR_BARRAGE,
-    LAST_CONTACT_HIGHER,
-    UNSEEN_INCOMING_FIRE,
-    LOST_CONTACT,
-    NARROW_ROUTE,
-    QUIET_DEFENCE,
-    NO_CONTACT,
-    LOW_STRENGTH,
-    MULTIPLE_FRONTS,
-    AIR_CONTACT_WITHOUT_ROCKETS,
-    ARMOURED_CONTACT,
-    CLOSE_OR_APPROACHING_ENEMY,
-    TOO_FEW_FIGHTERS,
-    ENEMY_BELOW,
-    DEFENSIVE_CONTACT,
-    ENEMY_ABOVE,
-    BLOCKED_SIGHT,
-    ENEMY_WITHDRAWING,
-    SPREAD_ENEMY_FRONT,
-    SMALL_COMPACT_ENEMY,
-    COMPACT_ENEMY,
-    NORMAL_ADVANCE,
-    PATTERN_COOLDOWN,
-    OPERATION_ASSIGNED,
-}
-enum class TacticalFailure { NONE, UNSPECIFIED, COVER_NOT_READY_TIMEOUT, COVER_LOST, MOVEMENT_TIMEOUT, PARTIAL_MANEUVER }
 
 data class TacticalMember(
     val id: UUID,
@@ -123,15 +70,8 @@ data class TacticalSnapshot(
     val regrouping: Boolean? = null,
     val suppressionWithdrawal: Boolean = false,
     val hasPatrolRoute: Boolean = false,
-    val attackAssignment: com.sbwnpc.squad.combat.tactics.operation.AttackAssignment? = null,
 ) {
     val visible get() = contacts.filter { now - it.seenAt < 40 }
     val fighting get() = members.filter { it.ready && it.health >= 0.3 && (!offensive || it.primaryAmmo) }
     val offensive get() = order == SquadOrder.ATTACK
 }
-data class TacticalChoice(
-    val pattern: TacticalPattern,
-    val focus: Vec3?,
-    val emergency: Boolean = false,
-    val reason: TacticalReason = TacticalReason.UNSPECIFIED,
-)

@@ -62,7 +62,6 @@ object HtnTacticsGameTests {
                 helper.assertTrue(occupiedAt != null && injectedAt != null && inspectedAt != null, "Attack completed before physical occupation and renewed threat")
                 helper.assertTrue(helper.tick - injectedAt!! >= 600, "Renewed incoming fire did not reset success interval")
                 helper.assertTrue(squad.commandOutcome == com.sbwnpc.squad.ai.tactics.CommandOutcome.COMPLETED, "Physical success was not recorded")
-                helper.assertTrue(squad.tactics.plan == null, "Legacy controller completed the attack")
                 // What the map receives must already show the defence, not the finished attack.
                 val feed = com.sbwnpc.squad.map.MapFeed.build(helper.level.server, helper.level, squad.owner, squad.faction)
                 val entry = feed.getList("Squads", net.minecraft.nbt.Tag.TAG_COMPOUND.toInt()).map { it as net.minecraft.nbt.CompoundTag }.single { it.getUUID("Id") == squad.id }
@@ -197,7 +196,6 @@ object HtnTacticsGameTests {
                     },
                     "Blocked squad escaped the physical control",
                 )
-                helper.assertTrue(squads.all { it.tactics.plan == null }, "Legacy tactical controller handled blocked squad")
                 scene.result("PASS", "tick=${helper.tick} localFailure=$observedFailure freeFiring=$firing freeMoved=$moved")
                 helper.succeed()
             }
@@ -533,7 +531,6 @@ object HtnTacticsGameTests {
             if (validWindows >= 3) {
                 helper.assertTrue(members.all { it.isAlive }, "Attacker died without return fire")
                 helper.assertTrue(friendlyHits == 0, "HTN attack caused friendly damage")
-                helper.assertTrue(squads.all { it.tactics.plan == null }, "Legacy tactical controller ran alongside HTN")
                 if (!wide) {
                     helper.assertTrue(rear >= 8, "Compact enemy used all surplus capacity on the front")
                     helper.assertTrue(watchingRear >= 4, "Rear guards did not physically watch their assigned sector: $watchingRear/$rear")

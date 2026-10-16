@@ -30,8 +30,7 @@ internal class CombatParticipationTrace(private val level: ServerLevel, path: Pa
     fun sample(tick: Long, npc: NpcEntity) {
         val started = System.nanoTime()
         val squad = npc.currentSquad()
-        val plan = squad?.tactics?.plan
-        val task = plan?.tasks?.get(npc.uuid)
+        val task = com.sbwnpc.squad.ai.integration.NativeTactics.assignment(npc)
         val target = npc.target
         val rayBudget = TickBudget.hasRaycasts(level)
         val gun = Ports.guns.inHand(npc)
@@ -80,18 +79,15 @@ internal class CombatParticipationTrace(private val level: ServerLevel, path: Pa
         val fields = listOf(
             tick, npc.uuid, squad?.name, squad?.order, npc.npcClass, npc.isAlive,
             npc.x, npc.y, npc.z, target?.uuid, target?.let { npc.distanceTo(it) },
-            npc.brain.activeNonCoreActivity.orElse(null), task?.job, plan?.pattern, plan?.phase,
+            npc.brain.activeNonCoreActivity.orElse(null), task?.job, "htn", npc.let(com.sbwnpc.squad.ai.integration.NativeTactics::attackPhase),
             Ports.guns.roundsLeft(npc.primaryGun()), Ports.guns.roundsLeft(npc.mainHandItem), npc.usingSidearm,
             if (npc.lastShotTick >= 0) npc.tickCount - npc.lastShotTick else -1,
             npc.navigation.isDone, npc.onGround(), npc.pose, post?.x, post?.y, post?.z,
             conditions.joinToString(";"), blockHit?.let { BuiltInRegistries.BLOCK.getKey(level.getBlockState(it.blockPos).block) },
             blockHit?.blockPos?.x, blockHit?.blockPos?.y, blockHit?.blockPos?.z,
-            task?.search?.let { System.identityHashCode(it) }, task?.search?.probeIndex,
-            task?.search?.probes?.size, task?.search?.scored?.size, task?.nextSearch, rayBudget,
-            task?.search?.pathAttempts, task?.search?.routeValidation?.nextNode,
-            task?.search?.routeValidation?.let { level.gameTime - it.builtAt },
+            null, null, null, null, null, rayBudget, null, null, null,
             ally?.uuid, ally?.distanceTo(npc), ally?.position()?.subtract(npc.position())?.dot(target!!.position().subtract(npc.position()).normalize()),
-            ally?.let { it.squadId == npc.squadId }, task?.search?.scored?.values?.count { !it.open },
+            ally?.let { it.squadId == npc.squadId }, null,
             ownSquadBlockers, otherSquadBlockers, npc.debugAimTicks, npc.npcRank.aimTimeTicks,
             if (post != null && target != null) level.clip(ClipContext(post.add(0.0, npc.eyeHeight.toDouble(), 0.0), target.eyePosition, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, npc)).type == HitResult.Type.MISS else null,
         )

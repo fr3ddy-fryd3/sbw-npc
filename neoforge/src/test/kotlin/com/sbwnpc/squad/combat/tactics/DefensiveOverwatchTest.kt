@@ -46,96 +46,12 @@ class DefensiveOverwatchTest {
             }.toMap(),
         )
 
-    @Test fun `only snipers and machine gunners take high posts while defending`() {
-        val plan = TacticalPlan(1, TacticalPattern.CONSOLIDATE, null, 0, 1)
-        TacticalCoordinator.assign(UUID(0, 2), plan, view())
-        assertEquals(TacticalJob.OVERWATCH, plan.tasks[members[0].id]!!.job)
-        assertEquals(TacticalJob.OVERWATCH, plan.tasks[members[1].id]!!.job)
-        assertEquals(TacticalJob.OBSERVE, plan.tasks[members[2].id]!!.job)
-        assertFalse(DefensiveOverwatch.enabled(view(SquadOrder.ATTACK), members[0], TacticalPattern.HOLD_HEIGHT))
-        assertFalse(DefensiveOverwatch.enabled(view(), members[0], TacticalPattern.EVADE))
-    }
-
-    @Test fun `free patrol holds support posts while riflemen and routed patrol remain mobile`() {
-        val events = mutableListOf<TacticalEvent>()
-        val state = SquadTacticalState(TacticalEventSink(events::add))
-        val patrol = view(SquadOrder.PATROL)
-        state.assess(UUID(0, 2), patrol)
-        val plan = state.plan!!
-        assertEquals(TacticalPattern.FOLLOW_ORDER, plan.pattern)
-        assertEquals(2, plan.tasks.size)
-        assertTrue(plan.tasks.values.all { it.job == TacticalJob.OVERWATCH })
-        assertFalse(members[2].id in plan.tasks)
-        assertFalse(events.filterIsInstance<TacticalEvent.TaskAssigned>().any { it.member == members[2].id }, "Free patrol must never issue temporary cover commands to riflemen")
-        val task = plan.tasks[members[0].id]!!
-        task.position = task.anchor.add(4.0, 10.0, 0.0)
-        state.assess(UUID(0, 2), patrol.copy(now = 1300, narrow = true))
-        assertSame(task, plan.tasks[members[0].id], "Quiet assessments must preserve reservations and ascent progress")
-        state.assess(UUID(0, 2), patrol.copy(now = 1310, hasPatrolRoute = true))
-        assertTrue(plan.tasks.isEmpty(), "A route must not leave its support NPCs in the old tower")
-        assertFalse(DefensiveOverwatch.enabled(patrol.copy(hasPatrolRoute = true), members[0], TacticalPattern.HOLD_HEIGHT))
-    }
-
-    @Test fun `only area orders assign support posts and unavailable specialists relinquish them`() {
-        val state = SquadTacticalState()
-        val patrol = view(SquadOrder.PATROL)
-        state.assess(UUID(0, 2), patrol)
-        state.assess(UUID(0, 2), patrol.copy(now = 10, members = members.map { it.copy(ready = false) }))
-        assertTrue(state.plan!!.tasks.isEmpty())
-        state.assess(UUID(0, 2), patrol.copy(now = 20, order = SquadOrder.MOVE, stamp = 2))
-        assertTrue(state.plan!!.tasks.isEmpty())
-    }
-
     @Test fun `a low parapet protects the body and leaves an actual firing lane above it`() {
         val focus = Vec3(20.5, 64.0, 0.5)
         assertTrue(DefensiveOverwatch.protected(home, 1.62, focus, wall(64)::blocked))
         assertTrue(DefensiveOverwatch.protected(home, 1.62, null, wall(64)::blocked))
         assertFalse(DefensiveOverwatch.protected(home, 1.62, focus, wall(64, 2)::blocked))
         assertFalse(DefensiveOverwatch.protected(home, 1.62, null, World(emptyMap())::blocked))
-    }
-
-    @Test fun `empty primaries release high posts even though backup pistols remain ready`() {
-        for (order in listOf(SquadOrder.DEFEND, SquadOrder.PATROL)) {
-            val state = SquadTacticalState()
-            val initial = view(order)
-            state.assess(UUID(0, 2), initial)
-            val old = state.plan!!.tasks[members[0].id]!!
-            old.position = old.anchor.add(0.0, 12.0, 0.0)
-            val empty = initial.copy(now = 10, members = members.map { it.copy(primaryAmmo = false, sidearmOnly = true, canFire = false) })
-            state.assess(UUID(0, 2), empty)
-            assertTrue(state.plan!!.tasks.values.none { it.job == TacticalJob.OVERWATCH })
-            assertFalse(DefensiveOverwatch.enabled(empty, empty.members[0], TacticalPattern.REORIENT))
-            state.assess(UUID(0, 2), initial.copy(now = 20))
-            assertEquals(TacticalJob.OVERWATCH, state.plan!!.tasks[members[0].id]!!.job)
-        }
-    }
-
-    @Test fun `switching to pistol cancels a committed assault assignment without borrowing its front`() {
-        val view = view(SquadOrder.ATTACK).copy(
-            members = (0..7).map { TacticalMember(UUID(0, it.toLong()), home.add(0.0, 0.0, it * 4.0)) },
-            contacts = listOf(TacticalContact(UUID(1, 0), home.add(100.0, 0.0, 0.0), 0)),
-        )
-        val plan = TacticalPlan(1, TacticalPattern.BOUND, view.contacts.first().position, 0, view.stamp)
-        val context = TacticalContext(UUID(0, 2), plan, view)
-        plan.behavior.enter(context)
-        val member = view.members.first()
-        val assault = TacticalTask(TacticalJob.ADVANCE, home.add(20.0, 0.0, 0.0), plan.focus, plan.id)
-        assault.frontage = TacticalFrontPost(assault.anchor, Vec3(1.0, 0.0, 0.0))
-        plan.assignments.put(member.id, assault, 0, "control_assault")
-        plan.tick(
-            UUID(0, 2),
-            SquadTacticalState(),
-            view.copy(
-                now = 10,
-                members = view.members.map {
-                    if (it.id == member.id) it.copy(primaryAmmo = false, sidearmOnly = true) else it
-                },
-            ),
-        )
-        val pistol = plan.tasks[member.id]!!
-        assertEquals(TacticalJob.COVER, pistol.job)
-        assertEquals(member.position, pistol.anchor)
-        assertNull(pistol.frontage)
     }
 
     @Test fun `foliage and a distant wall do not make an exposed high position protected`() {
@@ -174,29 +90,5 @@ class DefensiveOverwatchTest {
         assertFalse(DefensiveOverwatch.within(home, home.add(0.0, 32.1, 0.0)))
         assertTrue(DefensiveOverwatch.probes(home).all { DefensiveOverwatch.within(home, it) })
         assertEquals(DefensiveOverwatch.probes(home).distinct().size, DefensiveOverwatch.probes(home).size)
-    }
-
-    @Test fun `a changed contact preserves the original defensive assignment and selected roof`() {
-        val original = TacticalPlan(1, TacticalPattern.CONSOLIDATE, null, 0, 1)
-        TacticalCoordinator.assign(UUID(0, 2), original, view())
-        val old = original.tasks[members[0].id]!!
-        val roof = old.anchor.add(20.0, 10.0, 0.0)
-        old.position = roof
-        val next = TacticalPlan(2, TacticalPattern.REORIENT, Vec3(30.0, 64.0, 0.0), 100, 1)
-        TacticalCoordinator.assign(
-            UUID(0, 2),
-            next,
-            view().copy(
-                now = 100,
-                members = members.map {
-                    if (it.id == members[0].id) it.copy(position = roof) else it
-                },
-            ),
-        )
-        DefensiveOverwatch.preservePosts(next, original.tasks, view().copy(now = 100))
-        assertEquals(old.anchor, next.tasks[members[0].id]!!.anchor)
-        assertEquals(roof, next.tasks[members[0].id]!!.position)
-        assertEquals(next.focus, next.tasks[members[0].id]!!.focus)
-        assertEquals(2, next.tasks[members[0].id]!!.plan)
     }
 }

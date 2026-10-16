@@ -1,8 +1,6 @@
 package com.sbwnpc.squad.squad
 
 import com.sbwnpc.squad.combat.tactics.TacticalContact
-import com.sbwnpc.squad.combat.tactics.TacticalEvent
-import com.sbwnpc.squad.combat.tactics.TacticalEventSink
 import com.sbwnpc.squad.combat.tactics.TacticalMember
 import com.sbwnpc.squad.combat.tactics.TacticalSnapshot
 import com.sbwnpc.squad.npc.NpcClass
@@ -138,46 +136,6 @@ class SquadManagerTest {
             val tag = source.save()
             if (value == null) tag.remove("AttackAmmoPolicy") else tag.putString("AttackAmmoPolicy", value)
             assertEquals(AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY, Squad.load(tag).attackAmmoPolicy)
-        }
-    }
-
-    @Test
-    fun `deleting a squad or pruning its last member cancels owned tactical work`() {
-        for (delete in listOf(true, false)) {
-            val source = garrison(List(3) { RIFLEMAN })
-            source.members.addAll(List(3) { UUID.randomUUID() })
-            val mgr = manager(source)
-            val active = mgr.get(source.id)!!
-            val released = mutableListOf<TacticalEvent.TaskReleased>()
-            active.tactics.events.runtime = TacticalEventSink { if (it is TacticalEvent.TaskReleased) released += it }
-            val origin = Vec3(0.0, 64.0, 0.0)
-            val focus = Vec3(50.0, 64.0, 0.0)
-            active.tactics.assess(
-                active.id,
-                TacticalSnapshot(
-                    10,
-                    SquadOrder.DEFEND,
-                    0,
-                    origin,
-                    origin,
-                    active.members.map { TacticalMember(it, origin, canFire = true) },
-                    listOf(TacticalContact(UUID.randomUUID(), focus, 10)),
-                ),
-            )
-            val plan = active.tactics.plan!!
-            val assigned = plan.tasks.keys.toSet()
-            assertFalse(assigned.isEmpty())
-            if (delete) {
-                mgr.beginDeletion(active.id)
-            } else {
-                source.members.toList().forEach(mgr::removeMemberEverywhere)
-            }
-            assertNull(mgr.get(active.id))
-            assertNull(active.tactics.plan)
-            assertTrue(plan.tasks.isEmpty())
-            assertEquals(assigned, released.map { it.member }.toSet())
-            assertEquals(assigned.size, released.size)
-            assertTrue(released.all { it.trigger == if (delete) "squad_deleted" else "squad_empty" })
         }
     }
 

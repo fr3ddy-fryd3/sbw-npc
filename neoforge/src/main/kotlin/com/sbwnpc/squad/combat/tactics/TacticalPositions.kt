@@ -21,18 +21,7 @@ object TacticalPositions {
 
     data class Query(val policy: TacticalPositionPolicy, val coverAvailable: Boolean, val claimOwner: java.util.UUID? = null)
 
-    /** Legacy callers supply their context here; the query itself never selects a maneuver. */
-    private fun legacyQuery(entity: NpcEntity, view: TacticalSnapshot): Query {
-        val plan = entity.currentSquad()?.tactics?.plan
-        val covered = (plan?.behavior is CoordinatedAttackState && view.attackAssignment?.externalCover == true) || (
-            plan != null && view.members.count { member ->
-                plan.tasks[member.id]?.job in TacticalJob.FIRE_SUPPORT && TacticalEvidence.firesCover(member, plan.tasks[member.id])
-            } >= TacticalFlanks.requiredCover(view)
-            )
-        return Query(plan?.behavior?.positions ?: DefaultTacticalPositions, covered)
-    }
-
-    fun find(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, query: Query = legacyQuery(entity, view)): Result {
+    fun find(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, query: Query = Query(DefaultTacticalPositions, coverAvailable = false)): Result {
         searchWorkObserver?.invoke(entity, false)
         val search = task.search
         val pending = search?.pendingPath
@@ -248,10 +237,6 @@ object TacticalPositions {
         }
         val nearContact = nearContact(task, candidate)
         if (!search.visited.add(candidate)) return
-        if (!TacticalFireAdvance.permits(task, search.origin, candidate)) {
-            search.reject("no_transit_progress")
-            return
-        }
         if (!TacticalGoalProgress.permitsAdvance(task, search.origin, candidate, context.deployment)) {
             search.reject("no_goal_progress")
             return
@@ -378,12 +363,6 @@ object TacticalPositions {
         }
         if (context.task.job == TacticalJob.FLANK && context.covered && !mustShoot) {
             return TacticalPositionScore.coveredTransitStep(context.entity.position(), context.task.anchor, candidate)
-        }
-        if (context.policy === CoordinatedAttackPositions && context.task.job in TacticalRoutes.TRANSIT_JOBS && !mustShoot) {
-            // Lane deployment is a journey, not a local firing-post adjustment. Summing
-            // distance from origin and to goal makes every point on the leg equally good
-            // and repeatedly picks a tiny step. Live shelter/clearance checks ran above.
-            return TacticalPositionScore.coveredTransitStep(context.search.origin, context.localAnchor, candidate)
         }
         var score = candidate.distanceTo(context.localAnchor) + candidate.distanceTo(context.entity.position())
         if (firing && mustShoot) score -= 8.0
@@ -616,15 +595,7 @@ object TacticalPositions {
     fun safeDistance(entity: NpcEntity, view: TacticalSnapshot, point: Vec3): Boolean = TacticalClearance.permitsPosition(entity.npcClass, entity.position(), point, view)
 
     /** Repaths and already-running paths must respect newly reported or approaching enemies too. */
-    fun safePath(entity: NpcEntity, view: TacticalSnapshot, path: Path): Boolean {
-        if (!TacticalClearance.permitsPath(entity.npcClass, entity.position(), path, view)) return false
-        val assignment = view.attackAssignment
-        if (entity.currentSquad()?.tactics?.plan?.behavior !is CoordinatedAttackState || assignment == null || assignment.holding) return true
-        return (path.nextNodeIndex until path.nodeCount).all {
-            val node = path.getNode(it)
-            assignment.corridor.permitsRoute(entity.position(), Vec3(node.x + 0.5, node.y.toDouble(), node.z + 0.5))
-        }
-    }
+    fun safePath(entity: NpcEntity, view: TacticalSnapshot, path: Path): Boolean = TacticalClearance.permitsPath(entity.npcClass, entity.position(), path, view)
 
     private fun hasUncoveredApproach(context: SearchContext, foot: Vec3): Boolean {
         val threat = context.threats.firstOrNull()

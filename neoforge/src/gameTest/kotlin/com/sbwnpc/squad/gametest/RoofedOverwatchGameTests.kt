@@ -171,7 +171,7 @@ object RoofedOverwatchGameTests {
             val npc = sentry ?: return@onEachTick
             if (helper.tick - emptiedAt < 30) return@onEachTick
             helper.assertTrue(npc.usingSidearm && npc.ammoFraction() == 0.0, "Sentry did not switch from exhausted primary")
-            helper.assertTrue(npc.currentSquad()!!.tactics.plan?.tasks?.get(npc.uuid)?.job != TacticalJob.OVERWATCH, "Empty primary retained overwatch duty")
+            helper.assertTrue(com.sbwnpc.squad.ai.integration.NativeTactics.assignment(npc)?.job != TacticalJob.OVERWATCH, "Empty primary retained overwatch duty")
             helper.assertTrue(post !in FiringSpots.nearby(post!!, 1.0, UUID(0, 0)), "Empty primary retained the old tower reservation")
             helper.succeed()
         }
@@ -246,7 +246,7 @@ object RoofedOverwatchGameTests {
 
                 Departure.RETREAT -> {
                     val squad = npc.currentSquad()!!
-                    val task = squad.tactics.plan?.tasks?.get(npc.uuid)
+                    val task = com.sbwnpc.squad.ai.integration.NativeTactics.assignment(npc)
                     // OrderArrival changes RETREAT to DEFEND after 3/4 of the squad arrives.
                     // A late support may already be holding its newly assigned defensive post.
                     val heldNewPost = squad.order == SquadOrder.DEFEND && task?.position?.let {
@@ -260,7 +260,7 @@ object RoofedOverwatchGameTests {
 
                 Departure.SUPPLY -> {
                     if (at.y < 3.0 && npc.ammoFraction() >= 0.8 && npc.position().distanceTo(helper.absolutePos(destination).center) <= SupplyBlockEntity.RADIUS) supplied = true
-                    val task = npc.currentSquad()!!.tactics.plan?.tasks?.get(npc.uuid)
+                    val task = com.sbwnpc.squad.ai.integration.NativeTactics.assignment(npc)
                     val returned = supplied && !npc.resupplying && task?.job == TacticalJob.OVERWATCH &&
                         task.position == previousPost && npc.onGround() && FiringPostArrival.reached(npc.position(), previousPost!!)
                     if (!returned) {
@@ -330,7 +330,7 @@ object RoofedOverwatchGameTests {
                 supports.forEach { npc ->
                     helper.assertTrue(npc.usingSidearm && npc.ammoFraction() == 0.0, "Empty support fixture lost primary/pistol state")
                     helper.assertTrue(npc.nearestSupply() == null, "No-supply control discovered a Supply from another scene")
-                    helper.assertTrue(squad.tactics.plan?.tasks?.get(npc.uuid)?.job != TacticalJob.OVERWATCH && helper.relativeVec(npc.position()).y < 3.0, "Empty specialist took an elevated post")
+                    helper.assertTrue(com.sbwnpc.squad.ai.integration.NativeTactics.assignment(npc)?.job != TacticalJob.OVERWATCH && helper.relativeVec(npc.position()).y < 3.0, "Empty specialist took an elevated post")
                     val supply = npc.blockPosition().offset(1, 0, 0)
                     issuedSupplies += supply
                     helper.level.setBlockAndUpdate(supply, ModBlocks.SUPPLY.get().defaultBlockState())
@@ -387,24 +387,24 @@ object RoofedOverwatchGameTests {
             }
             if (supports.any { it.onClimbable() }) climbed = true
             val high = supports.filter { npc ->
-                val task = squad.tactics.plan?.tasks?.get(npc.uuid) ?: return@filter false
+                val task = com.sbwnpc.squad.ai.integration.NativeTactics.assignment(npc) ?: return@filter false
                 val post = task.position ?: return@filter false
                 val relative = helper.relativeVec(post)
                 task.job == TacticalJob.OVERWATCH && !task.localFireRecovery && relative.y in 6.5..7.5 &&
-                    FiringPostArrival.reached(npc.position(), post) && npc.onGround() && TacticalPositions.protected(npc, task, post)
+                    FiringPostArrival.reached(npc.position(), post) && npc.onGround() && TacticalPositions.protected(npc, com.sbwnpc.squad.combat.tactics.TacticalTask(task.job, task.anchor, task.focus, 0), post)
             }
             if (helper.tick % 10L == 0L) {
                 supports.forEach { npc ->
-                    val task = squad.tactics.plan?.tasks?.get(npc.uuid)
+                    val task = com.sbwnpc.squad.ai.integration.NativeTactics.assignment(npc)
                     val at = helper.relativeVec(npc.position())
                     val post = task?.position?.let(helper::relativeVec)
-                    trace.append("${helper.tick},${npc.npcClass},${at.x},${at.y},${at.z},${post?.x},${post?.y},${post?.z},${task?.job},${task?.localFireRecovery},${task?.closest},${task?.lastProgress}\n")
+                    trace.append("${helper.tick},${npc.npcClass},${at.x},${at.y},${at.z},${post?.x},${post?.y},${post?.z},${task?.job},${task?.localFireRecovery}\n")
                 }
                 Files.writeString(report.resolve("$name.csv"), trace)
             }
             displaced?.let { npc ->
                 helper.assertTrue(npc.isAlive, "Displaced sentry died")
-                val task = squad.tactics.plan?.tasks?.get(npc.uuid)
+                val task = com.sbwnpc.squad.ai.integration.NativeTactics.assignment(npc)
                 helper.assertTrue(task != null && task.position == retainedPost && task.job == TacticalJob.OVERWATCH && !task.localFireRecovery, "Displacement discarded the sheltered platform")
                 helper.assertTrue(retainedPost in FiringSpots.nearby(retainedPost!!, 1.0, UUID(0, 0)), "Displacement lost the platform reservation")
                 if (!landed && npc.onGround() && helper.relativeVec(npc.position()).y < 3.0) {
@@ -419,7 +419,7 @@ object RoofedOverwatchGameTests {
                 if (settledSince == null) settledSince = helper.tick
                 if (helper.tick - settledSince!! >= 100) {
                     helper.assertTrue(climbed, "No actual ladder ascent took place")
-                    val post = squad.tactics.plan!!.tasks[high.first().uuid]!!.position!!
+                    val post = com.sbwnpc.squad.ai.integration.NativeTactics.assignment(high.first())!!.position!!
                     helper.assertTrue(post in FiringSpots.nearby(post, 1.0, UUID(0, 0)), "Occupied post is unreserved")
                     if (fall && displaced == null) {
                         displaced = high.first()

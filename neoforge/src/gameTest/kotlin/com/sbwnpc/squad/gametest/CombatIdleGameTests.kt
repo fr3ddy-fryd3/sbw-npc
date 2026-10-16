@@ -54,7 +54,7 @@ object CombatIdleGameTests {
         }
         val shooter = scene.spawn(Vec3(30.5, 1.0, 100.5))
         val enemy = scene.enemy(Vec3(150.5, 1.0, 100.5))
-        val squad = scene.squad(listOf(shooter), TacticalPattern.FOLLOW_ORDER)
+        val squad = scene.squad(listOf(shooter))
         var idle = 0
         var longest = 0
         helper.onEachTick {
@@ -97,7 +97,7 @@ object CombatIdleGameTests {
         val scene = Scene(helper, "mixed-infantry-contact")
         val members = scene.deploy(SquadPreset.SEVEN, Vec3(20.5, 1.0, 100.5))
         val enemy = scene.enemy(Vec3(140.5, 1.0, 100.5))
-        val squad = scene.squad(members, TacticalPattern.REORIENT, isolated = false)
+        val squad = scene.squad(members)
         val shooter = members.single { it.npcClass == NpcClass.SHOTGUNNER }
         val fired = mutableSetOf<UUID>()
         var firstShotgunDistance: Float? = null
@@ -135,18 +135,18 @@ object CombatIdleGameTests {
         val lead = (0..3).map { scene.spawn(Vec3(110.5, 1.0, 90.5 + it * 6)) }
         val medic = scene.spawn(Vec3(12.5, 1.0, 100.5), NpcClass.MEDIC)
         scene.enemy(Vec3(170.5, 1.0, 100.5))
-        val squad = scene.squad(lead + medic, TacticalPattern.REORIENT)
+        val squad = scene.squad(lead + medic)
         val start = medic.position()
         helper.onEachTick {
             scene.tick(squad)
-            if (helper.tick > 40) helper.assertTrue(squad.tactics.plan!!.tasks[medic.uuid]?.job == TacticalJob.RESERVE, "Medic lost its reserve assignment")
+            if (helper.tick > 40) helper.assertTrue(com.sbwnpc.squad.ai.integration.NativeTactics.assignment(medic)?.job == TacticalJob.RESERVE, "Medic lost its reserve assignment")
             if (medic.x - start.x >= 85.0) {
                 scene.result("PASS", "joined=${helper.tick} distance=${medic.position().distanceTo(start)}")
                 helper.succeed()
             }
         }
         helper.runAtTickTime(850) {
-            scene.result("FAIL", "position=${helper.relativeVec(medic.position())} task=${squad.tactics.plan!!.tasks[medic.uuid]?.position}")
+            scene.result("FAIL", "position=${helper.relativeVec(medic.position())} task=${com.sbwnpc.squad.ai.integration.NativeTactics.assignment(medic)?.position}")
             helper.fail("Fresh medic never joined its remote reserve; see remote-reserve.csv")
         }
     }
@@ -159,7 +159,7 @@ object CombatIdleGameTests {
         val enemy = scene.enemy(Vec3(110.5, 1.0, 100.5))
         val rear = scene.spawn(Vec3(30.5, 1.0, 80.5))
         val scout = scene.spawn(Vec3(130.5, 1.0, 140.5))
-        val squad = scene.squad(listOf(shooter, rear, scout), TacticalPattern.REORIENT)
+        val squad = scene.squad(listOf(shooter, rear, scout))
         var closed = false
         var lastOpenShot = -1
         helper.onEachTick {
@@ -181,7 +181,7 @@ object CombatIdleGameTests {
             if (closed && shooter.lastShotTick > lastOpenShot && helper.relativeVec(shooter.position()).x > 56.0) {
                 scene.result("PASS", "resumed=${helper.tick} at=${helper.relativeVec(shooter.position())}")
                 helper.assertTrue(shooter.position().subtract(enemy.position()).horizontalDistance() >= 48.0, "Recovery charged into the enemy")
-                val post = squad.tactics.plan!!.tasks[shooter.uuid]?.position
+                val post = com.sbwnpc.squad.ai.integration.NativeTactics.assignment(shooter)?.position
                 if (post != null) helper.assertTrue(kotlin.math.abs(helper.relativeVec(post).z - 100.5) <= 8.0, "Recovery assigned a post outside the owned lateral lane")
                 // The chosen block center may lie on the boundary. Physical arrival already
                 // permits 0.4 blocks; a 0.01-block settling overshoot is not another lane.
@@ -194,7 +194,7 @@ object CombatIdleGameTests {
             }
         }
         helper.runAtTickTime(1150) {
-            scene.result("FAIL", "closed=$closed at=${helper.relativeVec(shooter.position())} lastShot=${shooter.lastShotTick} task=${squad.tactics.plan!!.tasks[shooter.uuid]?.job}")
+            scene.result("FAIL", "closed=$closed at=${helper.relativeVec(shooter.position())} lastShot=${shooter.lastShotTick} task=${com.sbwnpc.squad.ai.integration.NativeTactics.assignment(shooter)?.job}")
             helper.fail("Attacker stayed behind a wide ridge without resuming fire; see closed-wide-post.csv")
         }
     }
@@ -261,12 +261,10 @@ object CombatIdleGameTests {
             manager = SquadManager.load(saved)
             helper.level.dataStorage.set("sbwnpc_squads", manager)
             SquadManager.clearCache()
-            com.sbwnpc.squad.combat.tactics.operation.AttackOperations.clear(helper.level)
             entities.forEach { npc -> identities[npc.squadId]?.let { npc.squadId = it } }
             val replacements = current.map { old ->
                 manager.all().single { it.id == identities.getValue(old.id) }.also {
                     it.tactics.contacts.putAll(old.tactics.contacts)
-                    TacticalRuntimeEvents.bind(it, helper.level)
                 }
             }
             squads.clear()
@@ -282,7 +280,12 @@ object CombatIdleGameTests {
                 health = maxHealth
                 entities += this
             }
-        fun squad(members: List<NpcEntity>, pattern: TacticalPattern, isolated: Boolean = true, contact: NpcEntity? = null, order: SquadOrder = SquadOrder.ATTACK): Squad =
+
+        /**
+         * An ordinary squad with a reported contact: detection, target selection, the gun and the
+         * HTN controller all run as in play.
+         */
+        fun squad(members: List<NpcEntity>, contact: NpcEntity? = null, order: SquadOrder = SquadOrder.ATTACK): Squad =
             manager.create(helper.level, UUID.randomUUID(), requireNotNull(members.first().spawnFaction), members.map { it.uuid }).also {
                 squads += it
                 manager.setOrder(it.id, order)
@@ -293,36 +296,22 @@ object CombatIdleGameTests {
                     enemy.blockPosition()
                 }
                 manager.setObjective(helper.level, it.id, objective)
-                TacticalRuntimeEvents.bind(it, helper.level)
-                // Start with a reported contact. Detection/target selection and the actual gun still
-                // run normally; this fixture isolates post recovery rather than scout placement.
+                // Start with a reported contact; this fixture isolates post recovery rather than scout placement.
                 val observer = members.firstOrNull { npc -> npc.npcClass == NpcClass.SHOTGUNNER } ?: members.first()
                 SquadTactics.observe(observer, enemy)
                 helper.assertTrue(enemy.uuid in it.tactics.contacts, "Observer class failed to report its contact")
-                if (isolated) {
-                    it.tactics.select(TacticalChoice(pattern, enemy.position()), it.orderStamp, helper.level.gameTime)
-                    it.tactics.nextAssessment = Long.MAX_VALUE
-                } else {
-                    SquadTactics.refresh(observer)
-                    helper.assertTrue(it.tactics.snapshot!!.members.any { member -> member.id == observer.uuid }, "Production assessment excluded the shotgunner")
-                }
+                SquadTactics.refresh(observer)
+                helper.assertTrue(it.tactics.snapshot!!.members.any { member -> member.id == observer.uuid }, "Production assessment excluded the shotgunner")
             }
         fun tick(squad: Squad) {
             val members = entities.filter { it.squadId == squad.id }
-            helper.assertTrue(squad.tactics.plan != null, "Fixture lost its tactical plan: order=${squad.order} alive=${members.count { it.isAlive }}")
             if (helper.tick % 10L == 0L) {
-                if (squad.tactics.nextAssessment == Long.MAX_VALUE) {
-                    val view = TacticalSnapshotCollector.collect(squad, helper.level, members, members.first())
-                    squad.tactics.snapshot = view
-                    TacticalCoordinator.advance(squad.id, squad.tactics, squad.tactics.plan!!, view)
-                } else {
-                    SquadTactics.refresh(members.first())
-                }
+                members.firstOrNull { it.isAlive }?.let(SquadTactics::refresh)
                 if (recordTrace) {
                     for (npc in members) {
-                        val task = squad.tactics.plan!!.tasks[npc.uuid]
+                        val task = com.sbwnpc.squad.ai.integration.NativeTactics.assignment(npc)
                         val p = helper.relativeVec(npc.position())
-                        Files.writeString(report.resolve("$name.csv"), "${helper.tick},${npc.uuid},${npc.npcClass},${p.x},${p.y},${p.z},${task?.job},${npc.navigation.isDone},${npc.lastShotTick},${task?.search?.probeIndex},${squad.tactics.plan!!.phase}\n", APPEND)
+                        Files.writeString(report.resolve("$name.csv"), "${helper.tick},${npc.uuid},${npc.npcClass},${p.x},${p.y},${p.z},${task?.job},${npc.navigation.isDone},${npc.lastShotTick},${task?.position},htn\n", APPEND)
                     }
                 }
             }

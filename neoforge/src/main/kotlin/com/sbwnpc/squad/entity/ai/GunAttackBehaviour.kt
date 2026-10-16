@@ -1094,14 +1094,11 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         lastFireTarget = target.uuid
         lastFireBlocker = blocker
         val squad = entity.currentSquad()
-        val plan = squad?.tactics?.plan
         DebugFlags.log(
             LogGroup.ORDER,
-            "[tactics] {} squad={} plan={} event=fire_gate job={} target={} reason={} distance={}",
+            "[tactics] {} squad={} event=fire_gate target={} reason={} distance={}",
             entity.uuid,
             squad?.id,
-            plan?.id,
-            plan?.tasks?.get(entity.uuid)?.job,
             target.uuid,
             blocker ?: "READY",
             entity.distanceTo(target),

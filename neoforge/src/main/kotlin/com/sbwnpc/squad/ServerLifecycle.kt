@@ -62,7 +62,6 @@ object ServerLifecycle {
         com.sbwnpc.squad.squad.SquadChunkLoader.clearAll()
         TeamAwareness.clearAll()
         com.sbwnpc.squad.combat.SquadAreas.clearAll()
-        com.sbwnpc.squad.combat.tactics.operation.AttackOperations.clearAll()
         com.sbwnpc.squad.ai.integration.NativeTactics.clearAll()
         com.sbwnpc.squad.squad.SquadReports.clearAll()
         com.sbwnpc.squad.combat.Hearing.clearAll()

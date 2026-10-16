@@ -74,7 +74,7 @@ object TacticalSearchGameTests {
                 }
                 if (selected.size == actors.size) {
                     actors.forEach { (npc, _) -> npc.isNoAi = false }
-                    squad = scene.squad(actors.map { it.first }, TacticalPattern.REORIENT, isolated = false, contact = actors.first().second, order = SquadOrder.PATROL)
+                    squad = scene.squad(actors.map { it.first }, contact = actors.first().second, order = SquadOrder.PATROL)
                 }
             } else {
                 scene.tick(squad!!)
@@ -101,13 +101,10 @@ object TacticalSearchGameTests {
         val npc = scene.spawn(Vec3(20.5, 1.0, 100.5)).apply { isNoAi = true }
         val support = scene.spawn(Vec3(20.5, 1.0, 112.5)).apply { isNoAi = true }
         val enemy = scene.enemy(Vec3(90.5, 1.0, 100.5))
-        val squad = scene.squad(listOf(npc, support), TacticalPattern.BOUND)
+        val squad = scene.squad(listOf(npc, support))
         npc.target = enemy
-        val plan = squad.tactics.plan!!
         val goal = helper.absoluteVec(Vec3(32.5, 1.0, 100.5))
-        var task = TacticalTask(TacticalJob.ADVANCE, goal, enemy.position(), plan.id)
-        plan.assignments.put(npc.uuid, task, helper.level.gameTime, "search_fixture")
-        plan.assignments.put(support.uuid, TacticalTask(TacticalJob.COVER, support.position(), enemy.position(), plan.id), helper.level.gameTime, "search_fixture")
+        var task = TacticalTask(TacticalJob.ADVANCE, goal, enemy.position(), 0)
         var shelterAdded = false
         helper.onEachTick {
             if (helper.tick < 10 || helper.tick % 2L != 0L) return@onEachTick
@@ -129,8 +126,7 @@ object TacticalSearchGameTests {
                 helper.assertTrue(result.outcome == TacticalPositions.Outcome.UNREACHABLE, "An exposed forward post was accepted under incoming fire")
                 helper.assertTrue((result.rejections["exposed_advance_under_fire"] ?: 0) > 0, "Fixture did not exercise the protection gate")
                 for (z in 98..102) helper.setBlock(BlockPos(35, 1, z), Blocks.STONE)
-                task = TacticalTask(TacticalJob.ADVANCE, goal, enemy.position(), plan.id)
-                plan.assignments.put(npc.uuid, task, now, "shelter_added")
+                task = TacticalTask(TacticalJob.ADVANCE, goal, enemy.position(), 0)
                 shelterAdded = true
             } else {
                 helper.assertTrue(result.outcome == TacticalPositions.Outcome.FOUND, "A reachable protected bound remained blocked")
@@ -198,7 +194,7 @@ object TacticalSearchGameTests {
         }
         val squads = sides.mapIndexed { side, groups ->
             groups.mapIndexed { group, members ->
-                scene.squad(members, TacticalPattern.BOUND, isolated = false, contact = sides[1 - side][group].first(), order = if (side == 0) SquadOrder.ATTACK else SquadOrder.DEFEND)
+                scene.squad(members, contact = sides[1 - side][group].first(), order = if (side == 0) SquadOrder.ATTACK else SquadOrder.DEFEND)
             }
         }
         val starting = sides.flatten().flatten().associate { it.uuid to it.position() }
@@ -291,7 +287,7 @@ object TacticalSearchGameTests {
         val groups = (0..1).map { group ->
             val members = (0..15).map { index -> scene.spawn(Vec3(24.5 + index / 8 * 5, 1.0, 22.5 + group * 120 + index % 8 * 5)) }
             scene.enemy(Vec3(140.5, 1.0, 40.5 + group * 120))
-            members to scene.squad(members, TacticalPattern.BOUND, isolated = false)
+            members to scene.squad(members)
         }
         // Additional stationary clients exercise the same native A*/budget alongside real brains.
         // Their fixed prepared posts isolate queue pressure rather than terrain scoring.
