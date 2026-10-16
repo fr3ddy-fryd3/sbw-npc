@@ -179,4 +179,70 @@ object FireSupportGameTests {
             }
         }
     }
+
+    /**
+     * Infantry standing 12 blocks from the objective the mortar is told to hit: the shells can
+     * land up to the crew's scatter from the aim and kill within their blast beyond that, so the
+     * crew holds fire. In-game 16.10 a group attack's mortar shelled its own infantry.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", skyAccess = true, timeoutTicks = 1200, batch = "fire-support-mortar-safety")
+    fun mortarHoldsFireOnInfantryAtItsObjective(helper: GameTestHelper) {
+        for (x in 0..159) for (z in 0..127) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        val report = Path.of(System.getProperty("sbwnpc.gameTestReports"))
+        Files.createDirectories(report)
+        val manager = SquadManager.get(helper.level)
+        val tube = Ports.mortars.create(helper.level, -90f)
+        val pos = helper.absoluteVec(Vec3(24.5, 1.0, 64.5))
+        tube.moveTo(pos.x, pos.y, pos.z, -90f, 0f)
+        helper.level.addFreshEntity(tube)
+        SquadTeams.assign(tube, SquadFaction.PIG)
+        val crew = listOf(Vec3(22.5, 1.0, 64.5), Vec3(24.5, 1.0, 66.3)).map { AttackDeploymentGameTests.spawn(helper, it, SquadFaction.PIG, role = NpcClass.MORTAR) }
+        val mortars = manager.create(helper.level, UUID(93, 2), SquadFaction.PIG, crew.map { it.uuid })
+        val objective = helper.absolutePos(BlockPos(105, 1, 64))
+        val infantry = (0 until 4).map { AttackDeploymentGameTests.spawn(helper, Vec3(105.5 + 12.0, 1.0, 62.5 + it * 2), SquadFaction.PIG).apply { isNoAi = true } }
+        val rifles = manager.create(helper.level, UUID(93, 2), SquadFaction.PIG, infantry.map { it.uuid })
+        val flying = LinkedHashMap<MortarShellEntity, Vec3>()
+        val landings = mutableListOf<Double>()
+        val listener = Consumer<EntityJoinLevelEvent> { event ->
+            val shell = event.entity as? MortarShellEntity ?: return@Consumer
+            if (event.level === helper.level && shell.owner?.uuid in crew.map { it.uuid }) flying[shell] = shell.position()
+        }
+        NeoForge.EVENT_BUS.addListener(listener)
+        helper.testInfo.addListener(object : GameTestListener {
+            override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
+            override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
+            override fun testFailed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
+            override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) = cleanup()
+            private fun cleanup() {
+                NeoForge.EVENT_BUS.unregister(listener)
+                listOf(mortars, rifles).forEach { manager.deleteSquad(helper.level, it.id) }
+                crew.forEach { MortarClaims.release(it.uuid) }
+                MortarClaims.releaseMortar(tube.uuid)
+                (crew + infantry + tube).forEach(Entity::discard)
+            }
+        })
+        helper.runAtTickTime(20) {
+            GroupOrders.apply(helper.level, manager, listOf(mortars.id, rifles.id), com.sbwnpc.squad.squad.SquadOrder.ATTACK, objective.x, objective.z)
+            helper.assertTrue(!FireSupport.infantryApproaching(helper.level, mortars), "Infantry at the objective counted as still approaching")
+        }
+        helper.onEachTick {
+            val tracked = flying.entries.iterator()
+            while (tracked.hasNext()) {
+                val entry = tracked.next()
+                if (entry.key.isRemoved) {
+                    landings += infantry.minOf { Math.hypot(entry.value.x - it.x, entry.value.z - it.z) }
+                    tracked.remove()
+                } else {
+                    entry.setValue(entry.key.position())
+                }
+            }
+            if (helper.tick >= 900) {
+                Files.writeString(report.resolve("fire-support-mortar-safety.txt"), "landingsFromInfantry=${landings.map { it.toInt() }}\n")
+                // A shell's blast reaches 8 blocks.
+                helper.assertTrue(landings.none { it <= 9.0 }, "Mortar shells landed on its own infantry: $landings")
+                helper.succeed()
+            }
+        }
+    }
 }
