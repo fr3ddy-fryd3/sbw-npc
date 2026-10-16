@@ -1,6 +1,8 @@
 package com.sbwnpc.squad.combat.tactics
 
 import com.sbwnpc.squad.combat.CombatPositionSafety
+import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import com.sbwnpc.squad.npc.NpcClass
 import net.minecraft.world.phys.Vec3
 import kotlin.math.*
@@ -36,6 +38,45 @@ object TacticalRoutes {
     fun safeLaneProbe(from: Vec3, point: Vec3, focus: Vec3, approach: Double = 4.0): Boolean =
         point.subtract(from).horizontalDistance() <= 16.0 &&
             point.subtract(focus).horizontalDistance() >= from.subtract(focus).horizontalDistance() - approach
+
+    /**
+     * The next leg along the way a man can actually walk to [TacticalTask.anchor].
+     *
+     * A straight leg ran into whatever lay between: in-game 16.10 an assault 40 blocks from its
+     * point had a lake on the line, every post probed there was water, and the men stood on the
+     * shore for minutes. The route is planned once, with room to go round, and followed until
+     * the man strays from it.
+     */
+    fun routeLeg(entity: NpcEntity, task: TacticalTask): Vec3 {
+        val from = entity.position()
+        val straight = leg(from, task)
+        if (task.job == TacticalJob.FLANK || straight == task.anchor) return straight
+        val route = task.route?.takeIf { nodes -> nodes.any { it.distanceTo(from) <= ROUTE_DEVIATION } } ?: plan(entity, task) ?: task.route ?: return straight
+        val start = route.indices.minBy { route[it].distanceToSqr(from) }
+        var walked = 0.0
+        for (index in start + 1 until route.size) {
+            walked += route[index].distanceTo(route[index - 1])
+            if (walked >= ROUTE_LEG) return route[index]
+        }
+        return route.last()
+    }
+
+    private fun plan(entity: NpcEntity, task: TacticalTask): List<Vec3>? {
+        val now = entity.level().gameTime
+        val navigation = entity.navigation as? VehicleAwareNavigation ?: return null
+        if (now < task.nextRoutePlan || !TacticalBudget.path(entity)) return null
+        task.nextRoutePlan = now + ROUTE_RETRY_TICKS
+        val path = TacticalBudget.measure(entity) { navigation.createPositionPath(setOf(VehicleAwareNavigation.walkingNode(task.anchor)), allowDetour = true) } ?: return null
+        val nodes = (0 until path.nodeCount).map { path.getNode(it).let { node -> Vec3(node.x + 0.5, node.y.toDouble(), node.z + 0.5) } }
+        return nodes.takeIf { it.size >= 2 }?.also { task.route = it }
+    }
+
+    /** Route length of one leg: about the straight leg's 24 blocks. */
+    private const val ROUTE_LEG = 20.0
+
+    /** Farther than this from every node of its route, a man has a new route planned. */
+    private const val ROUTE_DEVIATION = 8.0
+    private const val ROUTE_RETRY_TICKS = 100L
 
     fun leg(from: Vec3, task: TacticalTask): Vec3 {
         val focus = task.focus

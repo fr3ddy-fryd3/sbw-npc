@@ -17,6 +17,10 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
     var staging: Vec3? = null
     var frontage: TacticalFrontPost? = null
 
+    /** The walked route to [anchor] a transit leg follows, see [TacticalRoutes.routeLeg]. */
+    var route: List<Vec3>? = null
+    var nextRoutePlan = Long.MIN_VALUE
+
     /** Local shelter takes precedence over assembling on an exposed nominal attack line. */
     var coverOrigin: Vec3? = null
     fun permitsFront(point: Vec3): Boolean =

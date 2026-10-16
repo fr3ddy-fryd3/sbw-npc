@@ -38,7 +38,7 @@ internal class NativePositionAction(
             CombatDuty.OBSERVE -> if (intent.minimumHeight != null) TacticalJob.OVERWATCH else TacticalJob.OBSERVE
             CombatDuty.FOLLOW_ORDER -> TacticalJob.WAIT
         },
-        intent.anchor.native(),
+        DryGround.near(npc.level() as ServerLevel, intent.anchor.native(), npc.position()),
         intent.focus?.native(),
         intent.hashCode(),
     )
@@ -49,8 +49,10 @@ internal class NativePositionAction(
         override fun candidate(view: TacticalSnapshot, task: TacticalTask, point: Vec3, localAnchor: Vec3): Boolean {
             if (intent.minimumHeight?.let { point.y < it } == true) return false
             if (intent.inspection != null && point.distanceTo(intent.inspection.native()) <= 24 && !DetectionSightline.visible(npc.level() as ServerLevel, point.add(0.0, npc.eyeHeight.toDouble(), 0.0), intent.inspection.native().add(0.0, 1.5, 0.0), npc)) return false
-            val remaining = npc.position().distanceTo(intent.anchor.native())
-            return intent.duty !in setOf(CombatDuty.MOVE, CombatDuty.SEARCH) || point.distanceTo(intent.anchor.native()) <= 4 || point.distanceTo(intent.anchor.native()) < remaining - 1.5
+            val remaining = npc.position().distanceTo(task.anchor)
+            // A leg along the walked route may lead away from the anchor for a while to get round.
+            return intent.duty !in setOf(CombatDuty.MOVE, CombatDuty.SEARCH) || point.distanceTo(task.anchor) <= 4 || point.distanceTo(task.anchor) < remaining - 1.5 ||
+                point.distanceTo(localAnchor) <= ROUTE_LEG_REACH
         }
         override fun route(view: TacticalSnapshot, point: Vec3) = intent.minimumHeight?.let { point.y >= it } != false
     }
@@ -64,7 +66,7 @@ internal class NativePositionAction(
     val assignment get() = NativeAssignment(task.job, task.anchor, task.focus, task.position, task.localFirePost, task.localFireRecovery)
     fun reached(): Boolean =
         task.position?.let { FiringPostArrival.reached(npc.position(), it) } == true &&
-            (intent.duty !in setOf(CombatDuty.MOVE, CombatDuty.SEARCH) || task.position!!.distanceTo(intent.anchor.native()) <= 4 || task.maneuverPost) &&
+            (intent.duty !in setOf(CombatDuty.MOVE, CombatDuty.SEARCH) || task.position!!.distanceTo(task.anchor) <= 4 || task.maneuverPost) &&
             (intent.inspection?.let { DetectionSightline.visible(npc.level() as ServerLevel, npc.eyePosition, it.native().add(0.0, 1.5, 0.0), npc) } != false)
 
     override fun start(now: Long): ActionUpdate {
@@ -124,7 +126,7 @@ internal class NativePositionAction(
             lastProgress = now
         }
         if (FiringPostArrival.reached(npc.position(), destination)) {
-            if (intent.duty in setOf(CombatDuty.MOVE, CombatDuty.SEARCH) && destination.distanceTo(intent.anchor.native()) > 4 && !task.maneuverPost) {
+            if (intent.duty in setOf(CombatDuty.MOVE, CombatDuty.SEARCH) && destination.distanceTo(task.anchor) > 4 && !task.maneuverPost) {
                 invalidate(now, "intermediate_reached")
                 return ActionUpdate.Running
             }
@@ -223,13 +225,20 @@ internal class NativePositionAction(
         return true
     }
 
+    // The last anchor revised in and where it stands dry: revisions repeat the same point.
+    private var dryAnchor = intent.anchor to task.anchor
+    private fun dry(anchor: Point3): Vec3 {
+        if (dryAnchor.first != anchor) dryAnchor = anchor to DryGround.near(npc.level() as ServerLevel, anchor.native(), npc.position())
+        return dryAnchor.second
+    }
+
     private fun heightServed(next: PositionIntent): Boolean {
         val post = task.position ?: return false
         return next.minimumHeight?.let { post.y >= it } != false
     }
 
     private fun servedBy(next: PositionIntent): Boolean {
-        val anchor = next.anchor.native()
+        val anchor = dry(next.anchor)
         if (next.duty in setOf(CombatDuty.MOVE, CombatDuty.SEARCH)) return anchor.distanceTo(task.anchor) <= 4.0
         return task.position?.let { TacticalFirePosts.withinPost(anchor, it, recovery = true) } ?: (anchor.distanceTo(task.anchor) <= CombatPosition.LOCAL_MOVE_RADIUS)
     }
@@ -256,5 +265,10 @@ internal class NativePositionAction(
         releaseLook()
         releasePath()
         FiringSpots.release(npc.uuid, claimOwner)
+    }
+
+    private companion object {
+        /** A candidate this near the route leg is on the way, even while it leads away from the anchor. */
+        const val ROUTE_LEG_REACH = 6.0
     }
 }

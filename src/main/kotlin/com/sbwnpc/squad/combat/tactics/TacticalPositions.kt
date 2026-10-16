@@ -140,7 +140,7 @@ object TacticalPositions {
             task.frontage!!.leg(entity.position())
         } else {
             task.localFirePost ?: task.staging ?: if (task.job in TacticalRoutes.TRANSIT_JOBS) {
-                TacticalRoutes.leg(entity.position(), task)
+                TacticalRoutes.routeLeg(entity, task)
             } else {
                 task.anchor
             }

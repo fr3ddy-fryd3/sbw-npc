@@ -393,6 +393,49 @@ object HtnTacticsGameTests {
     }
 
     /**
+     * A pond lies between the attackers and a defended point: the firing line laid out at range
+     * falls on the water and the straight way in crosses it. In-game 16.10 the same, with a lake,
+     * left an attack of 23 against 7 standing on the shore; here the posts move to the bank and
+     * the assault walks round the water to take the point.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 4800, batch = "htn-pond")
+    fun htnAttackGoesRoundWaterToTakeObjective(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "htn-pond")
+        val manager = SquadManager.get(helper.level)
+        // Deep enough to swim, as the lake was; a wading pond is just open ground.
+        val pond = (66..100).flatMap { x -> (70..114).flatMap { z -> (-3..0).map { y -> BlockPos(x, y, z) } } }
+        val ground = pond.associateWith { helper.getBlockState(it) }
+        pond.forEach { helper.setBlock(it, net.minecraft.world.level.block.Blocks.WATER) }
+        val groups = (0..1).map { group -> (0 until 8).map { index -> scene.spawn(Vec3(28.5 + index / 4 * 4, 1.0, 72.5 + group * 32 + index % 4 * 4)) } }
+        val defenders = (0 until 8).map { index -> scene.spawn(Vec3(128.5 + index / 4 * 4, 1.0, 80.5 + index % 4 * 8), faction = com.sbwnpc.squad.npc.SquadFaction.COW) }
+        val squads = groups.map { group -> manager.create(helper.level, UUID(90, 15), requireNotNull(group.first().spawnFaction), group.map { it.uuid }) }
+        val defence = manager.create(helper.level, UUID(91, 15), requireNotNull(defenders.first().spawnFaction), defenders.map { it.uuid })
+        scene.onClose = {
+            (squads + defence).forEach { manager.deleteSquad(helper.level, it.id) }
+            ground.forEach { (pos, state) -> helper.setBlock(pos, state) }
+        }
+        val target = helper.absolutePos(BlockPos(130, 1, 92))
+        manager.issueOrderAt(helper.level, defence.id, SquadOrder.DEFEND, target)
+        GroupOrders.apply(helper.level, manager, squads.map { it.id }, SquadOrder.ATTACK, target.x, target.z)
+        var enteredAt: Long? = null
+        helper.onEachTick {
+            val attackers = groups.flatten().filter { it.isAlive }
+            val inside = attackers.count { it.position().distanceTo(target.center) <= 24 }
+            if (enteredAt == null && inside >= 4) enteredAt = helper.tick
+            if (helper.tick % 200L == 0L) {
+                val wet = attackers.count { it.isInWater }
+                scene.result("RUNNING", "tick=${helper.tick} phase=${NativeTactics.attackPhase(attackers.firstOrNull() ?: groups[0][0])} attackers=${attackers.size} defenders=${defenders.count { it.isAlive }} inside=$inside wet=$wet actors=${attackers.map { helper.relativeVec(it.position()).let { p -> "${p.x.toInt()},${p.z.toInt()}" } }}")
+            }
+            if (squads.all { it.order == SquadOrder.DEFEND }) {
+                helper.assertTrue(squads.all { it.commandReason == "occupied_and_inspected_area" }, "Attack ended without taking the objective: ${squads.map { it.commandReason }}")
+                scene.result("PASS", "tick=${helper.tick} attackers=${attackers.size} defenders=${defenders.count { it.isAlive }} enteredAt=$enteredAt")
+                helper.succeed()
+            }
+        }
+    }
+
+    /**
      * Losses count over the operation: one squad cut to a single man is 40% of the whole and only
      * a review; at 60% of everyone the attack is called off and every squad falls back.
      */
