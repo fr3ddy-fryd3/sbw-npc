@@ -16,7 +16,8 @@ enum class AttackPhase {
      * Observations for one decision. [enemiesAtObjective] and [threatsNearby] are seen, live
      * contacts; [peakEnemiesAtObjective] is the most seen at the objective during this attack.
      * [ticksSinceContact] stays 0 until the attack first sees an enemy. [aborted] is set once
-     * an assault of this attack has been called off.
+     * an assault of this attack has been called off; [peakThreatsNearby] is the most threats
+     * seen round the objective during this attack.
      */
     data class Inputs(
         val readyShooters: Int,
@@ -28,18 +29,21 @@ enum class AttackPhase {
         val occupied: Boolean,
         val threatsNearby: Int,
         val aborted: Boolean = false,
+        val peakThreatsNearby: Int = threatsNearby,
     )
 
     fun next(inputs: Inputs): AttackPhase {
-        if (inputs.occupied) return if (inputs.threatsNearby > 0) CLEAR else ASSAULT
         val quiet = inputs.ticksSinceContact >= QUIET_TICKS
+        val losing = !quiet && inputs.readyShooters < ABORT_RATIO * inputs.enemiesAtObjective
+        // Standing on the point does not win it against a defence that still outnumbers them.
+        if (inputs.occupied && !losing) return if (inputs.threatsNearby > 0) CLEAR else ASSAULT
         return when (this) {
             DEPLOY -> if (quiet || (superior(inputs) && suppressed(inputs))) ASSAULT else DEPLOY
 
             // Lost ground before the objective is taken: back to the firing line rather than
             // walking the assault group into a fight it no longer wins.
             ASSAULT, CLEAR -> when {
-                !quiet && inputs.readyShooters < ABORT_RATIO * inputs.enemiesAtObjective -> DEPLOY
+                losing -> DEPLOY
 
                 // Clearing sends men off the objective, so it alone can drop the holders below
                 // occupation; going back to ASSAULT then recalled them and flipped every update.
@@ -79,6 +83,10 @@ enum class AttackPhase {
         // the defence that drove it back has shown its size and has to be thinned.
         private fun suppressed(inputs: Inputs) =
             inputs.ticksEngaged >= ENGAGE_TICKS &&
-                (inputs.enemiesAtObjective * 2 <= inputs.peakEnemiesAtObjective || (!inputs.aborted && inputs.ticksSinceIncoming >= SILENT_TICKS))
+                (thinned(inputs) || (!inputs.aborted && inputs.ticksSinceIncoming >= SILENT_TICKS))
+
+        // Thinned round the objective as well as at it: defenders stepping back past
+        // [OBJECTIVE_RADIUS] halved the count at the point while all of them were still there.
+        private fun thinned(inputs: Inputs) = inputs.enemiesAtObjective * 2 <= inputs.peakEnemiesAtObjective && inputs.threatsNearby * 2 <= inputs.peakThreatsNearby
     }
 }

@@ -19,6 +19,7 @@ class AttackProgress(now: Long) {
     private var engagedSince: Long? = null
     private var lastIncomingAt: Long? = null
     private var peakEnemies = 0
+    private var peakThreats = 0
     private var aborted = false
     private var clearing: Set<UUID> = emptySet()
 
@@ -30,6 +31,7 @@ class AttackProgress(now: Long) {
         }
         if (incoming) lastIncomingAt = now
         peakEnemies = max(peakEnemies, enemiesAtObjective)
+        peakThreats = max(peakThreats, threatsNearby)
         val inputs = AttackPhase.Inputs(
             readyShooters = readyShooters,
             enemiesAtObjective = enemiesAtObjective,
@@ -40,6 +42,7 @@ class AttackProgress(now: Long) {
             occupied = occupied,
             threatsNearby = threatsNearby,
             aborted = aborted,
+            peakThreatsNearby = peakThreats,
         )
         val next = phase.next(inputs)
         if (phase != AttackPhase.DEPLOY && next == AttackPhase.DEPLOY) aborted = true

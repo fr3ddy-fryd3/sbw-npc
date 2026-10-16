@@ -4,7 +4,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
 class AttackPhaseTest {
-    private fun inputs(ready: Int, enemies: Int, peak: Int = enemies, quiet: Long = 0, engaged: Long = 400, silent: Long = 0, occupied: Boolean = false, threats: Int = 0, aborted: Boolean = false) = AttackPhase.Inputs(ready, enemies, peak, quiet, engaged, silent, occupied, threats, aborted)
+    private fun inputs(ready: Int, enemies: Int, peak: Int = enemies, quiet: Long = 0, engaged: Long = 400, silent: Long = 0, occupied: Boolean = false, threats: Int = 0, aborted: Boolean = false, peakThreats: Int = threats) = AttackPhase.Inputs(ready, enemies, peak, quiet, engaged, silent, occupied, threats, aborted, peakThreats)
 
     @Test fun `an untouched defence is not assaulted on numbers alone`() {
         assertEquals(AttackPhase.DEPLOY, AttackPhase.DEPLOY.next(inputs(ready = 16, enemies = 4, engaged = 0)))
@@ -29,9 +29,23 @@ class AttackPhaseTest {
     }
 
     @Test fun `taken objective with enemies around it is cleared`() {
-        assertEquals(AttackPhase.CLEAR, AttackPhase.ASSAULT.next(inputs(ready = 3, enemies = 4, occupied = true, threats = 1)))
-        assertEquals(AttackPhase.CLEAR, AttackPhase.DEPLOY.next(inputs(ready = 1, enemies = 9, occupied = true, threats = 2)))
+        assertEquals(AttackPhase.CLEAR, AttackPhase.ASSAULT.next(inputs(ready = 6, enemies = 4, occupied = true, threats = 1)))
+        assertEquals(AttackPhase.CLEAR, AttackPhase.DEPLOY.next(inputs(ready = 14, enemies = 9, occupied = true, threats = 2)))
         assertEquals(AttackPhase.ASSAULT, AttackPhase.CLEAR.next(inputs(ready = 3, enemies = 0, occupied = true, threats = 0)))
+    }
+
+    @Test fun `standing on the point against a defence that outnumbers them is not taking it`() {
+        // In-game 16.10, 20:12:37: DEPLOY to CLEAR on occupation with 28 against 16 at the point,
+        // back to DEPLOY 4 s later on the ratio, and again on the next occupation.
+        assertEquals(AttackPhase.DEPLOY, AttackPhase.DEPLOY.next(inputs(ready = 1, enemies = 9, occupied = true, threats = 2)))
+        assertEquals(AttackPhase.DEPLOY, AttackPhase.CLEAR.next(inputs(ready = 25, enemies = 20, occupied = true, threats = 23)))
+    }
+
+    @Test fun `defenders stepping back from the point have not thinned`() {
+        // In-game 16.10, 20:12:07: 8 of a peak of 19 at the point but 11 to 21 round it the whole
+        // time; the assault met 16 to 20 of them 10 s later.
+        assertEquals(AttackPhase.DEPLOY, AttackPhase.DEPLOY.next(inputs(ready = 31, enemies = 8, peak = 19, threats = 11, peakThreats = 21)))
+        assertEquals(AttackPhase.ASSAULT, AttackPhase.DEPLOY.next(inputs(ready = 31, enemies = 8, peak = 19, threats = 10, peakThreats = 21)))
     }
 
     @Test fun `a pause between bursts is not a silenced defence`() {
