@@ -61,6 +61,9 @@ two different claims.
   (`feature/` for `feat:`, otherwise the same word: `fix/`, `perf/`, `refactor/`, `docs/`,
   `test/`, `chore/`). Lowercase, hyphens between words, a few words at most, no issue numbers or
   dates on their own. Bring `develop` into a long-lived branch regularly, and before opening a PR.
+- **Agents name the branch themselves.** A tool's default branch name, such as a cloud session's
+  `claude/...`, or a random suffix (`chore/add-local-setup-o3uh8c`) does not follow the rule
+  above. Rename the branch before the first push.
 - **End of a session:** nothing is left uncommitted. Commit it to your branch, even as an
   unfinished WIP commit, and update the issue with where it stands and what is next.
 - **Remove what is finished:** delete merged branches, remove worktrees you no longer use, and
