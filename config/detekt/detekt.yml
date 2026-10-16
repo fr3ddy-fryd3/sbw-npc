@@ -1,0 +1,59 @@
+# Overrides on top of detekt's default config (buildUponDefaultConfig = true in build.gradle.kts).
+# Rule reference: https://detekt.dev/docs/rules/style
+#
+# The rules switched off below fight idioms the whole codebase uses on purpose, rather than
+# catching bugs. Complexity findings that predate detekt (long or branchy methods, large classes)
+# are recorded in baseline.xml instead, so new code is still held to the limits. Regenerate it
+# with ./gradlew detektBaseline only after removing an entry's cause, never to hide a new one.
+
+config:
+  validation: true
+
+style:
+  # Early-continue scans over candidates (cover spots, seats, targets) are the house idiom.
+  LoopWithTooManyJumpStatements:
+    active: false
+  # Inline tuning values (block offsets, ranges in blocks, tick counts) read better next to the
+  # geometry they belong to; the ones shared or worth naming are already constants.
+  MagicNumber:
+    active: false
+  # Guard clauses with early returns are the house idiom for AI checks.
+  ReturnCount:
+    active: false
+  # NeoForge event handlers and SavedData loaders must take these even when they don't read them.
+  UnusedParameter:
+    allowedNames: 'ignored|expected|event|registries'
+  # ktlint_official's limit. Most of the code already fits; 120 would rewrap a few hundred lines.
+  MaxLineLength:
+    maxLineLength: 140
+    excludeCommentStatements: true
+
+formatting:
+  # The ktlint wrapping rules below would rewrap most multi-line calls and signatures in the
+  # codebase, which keeps several arguments per continuation line, so they stay off.
+  ArgumentListWrapping:
+    active: false
+  ParameterListWrapping:
+    active: false
+  Wrapping:
+    active: false
+  MultiLineIfElse:
+    active: false
+  # Constants with a one-line KDoc are stacked without blank lines between them.
+  SpacingBetweenDeclarationsWithComments:
+    active: false
+  # Same for annotated members such as stacked `@Volatile private var` fields.
+  SpacingBetweenDeclarationsWithAnnotations:
+    active: false
+  # These wrap a declaration once it passes the line limit; keep them on style.MaxLineLength's.
+  ParameterWrapping:
+    maxLineLength: 140
+  PropertyWrapping:
+    maxLineLength: 140
+  # Covered by style.MaxLineLength, which can skip comment lines.
+  MaximumLineLength:
+    active: false
+  # Its continuation indent pulls the `else` of a wrapped `val x = if (...) a` back to the
+  # declaration's column; the codebase indents it one step, under the `if` it belongs to.
+  Indentation:
+    active: false

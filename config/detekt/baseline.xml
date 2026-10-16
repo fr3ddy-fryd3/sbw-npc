@@ -1,0 +1,194 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:AlliedVehicleBoarding.kt$AlliedVehicleBoarding$(item is NameTagItem &amp;&amp; stack.has(DataComponents.CUSTOM_NAME)) || stack.`is`(ModItems.C4_BOMB.get()) || stack.`is`(ModItems.DETONATOR.get())</ID>
+    <ID>ComplexCondition:AlliedVehicleBoarding.kt$AlliedVehicleBoarding$player.vehicle != null || player.isShiftKeyDown || player.isSpectator || player is FakePlayer</ID>
+    <ID>ComplexCondition:CellPlanner.kt$CellPlanner.Search$dx != 0 &amp;&amp; dz != 0 &amp;&amp; (!medium.open(x + dx, z) || !medium.open(x, z + dz))</ID>
+    <ID>ComplexCondition:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$phase != Phase.LAUNCH &amp;&amp; phase != Phase.RETURN &amp;&amp; (drone.onGround() || drone.horizontalCollision || drone.verticalCollision)</ID>
+    <ID>ComplexCondition:FriendlyFireGuard.kt$FriendlyFireGuard$blastClear &amp;&amp; checkBlast &amp;&amp; canBeHurt(ally) &amp;&amp; ally.position().distanceTo(impactPoint) &lt;= blastRadius</ID>
+    <ID>ComplexCondition:FriendlyFireGuard.kt$FriendlyFireGuard$lineClear &amp;&amp; aimDir != null &amp;&amp; coneBox.intersects(ally.boundingBox) &amp;&amp; inFiringCone(ally, from, aimDir, aimDist, maxAngle)</ID>
+    <ID>ComplexCondition:GrenadeThrower.kt$GrenadeThrower$thrower.grenadesLeft(kind) &lt;= 0 || !inRange(thrower.position(), target) || !isSafeToThrow(thrower, target, kind) || !Ports.grenades.arcClear(thrower, level, target, targetVelocity, kind, NEAR_TARGET)</ID>
+    <ID>ComplexCondition:GunAttackBehaviour.kt$GunAttackBehaviour$canShootTarget &amp;&amp; !pausedBetweenBursts &amp;&amp; lineIsClear &amp;&amp; blastClear &amp;&amp; gun.canShoot() &amp;&amp; aimTime &gt;= entity.maxAimTime</ID>
+    <ID>ComplexCondition:GunAttackBehaviour.kt$GunAttackBehaviour$entity.tickCount &gt;= nextSidestepTick &amp;&amp; (firingPos == null || entity.navigation.isDone || atSpot(entity, firingPos!!))</ID>
+    <ID>ComplexCondition:GunAttackBehaviour.kt$GunAttackBehaviour$held != null &amp;&amp; entity.tickCount &gt;= nextPositionCheckTick &amp;&amp; atSpot(entity, held) &amp;&amp; !GrenadeHazard.threatens(level, held) &amp;&amp; TickBudget.hasRaycasts(level) &amp;&amp; // With the hulls on the line: a spot a vehicle has since pulled in front of is no longer // "still has a shot", and keeping it had defenders standing behind a hull, never firing. concealmentScore( level, entity, target, held, entity.eyeHeight.toDouble(), Sightline.vehicleHulls(level, AABB(held, target.position()).inflate(VEHICLE_LANE_MARGIN), entity, target) ) != null</ID>
+    <ID>ComplexCondition:HelicopterRideBehaviour.kt$HelicopterRideBehaviour$entity.vehicle != null || entity.diggedIn || entity.operatingDrone || entity.antiDroneEngaged</ID>
+    <ID>ComplexCondition:NpcMoveControl.kt$NpcMoveControl$!moving || operation != Operation.WAIT || !mob.onGround() || mob.isInWater || !mob.horizontalCollision</ID>
+    <ID>ComplexCondition:NpcPosture.kt$NpcPosture$!moving &amp;&amp; npc.onGround() &amp;&amp; !npc.isPassenger &amp;&amp; !npc.isInWater &amp;&amp; position</ID>
+    <ID>ComplexCondition:NpcPosture.kt$NpcPosture$npc.isCrouching &amp;&amp; npc.target != null &amp;&amp; blockedSince != null &amp;&amp; tick - blockedSince &gt;= SIGHT_LOST_STAND_TICKS</ID>
+    <ID>ComplexCondition:OutOfAmmoBehaviour.kt$OutOfAmmoBehaviour$entity.isPassenger || entity.vehicleTransport || entity.servingMortar || entity.operatingDrone</ID>
+    <ID>ComplexCondition:SavedWorldRoutesTest.kt$SavedWorldRoutesTest.FileGround$x &lt; x0 || z &lt; z0 || x &gt;= x0 + w || z &gt;= z0 + h</ID>
+    <ID>ComplexCondition:SeekCoverBehaviour.kt$SeekCoverBehaviour$!(hurtEnough &amp;&amp; diggableGround &amp;&amp; flatEnough &amp;&amp; covered)</ID>
+    <ID>ComplexCondition:SeekCoverBehaviour.kt$SeekCoverBehaviour$target != null &amp;&amp; target.isAlive &amp;&amp; !ally.combatLockedByCover() &amp;&amp; ally.sensing.hasLineOfSight(target)</ID>
+    <ID>ComplexCondition:SquadFormation.kt$SquadFormation$(shape == Shape.RING &amp;&amp; !rearSupport) || shape == Shape.PERIMETER || shape == Shape.SCATTER</ID>
+    <ID>ComplexCondition:SquadManager.kt$SquadManager$npc != null &amp;&amp; npc.npcClass == NpcClass.DRONE_OPERATOR &amp;&amp; npc.isAlive &amp;&amp; npc.position().distanceToSqr(pos) &lt;= RESUPPLY_RADIUS * RESUPPLY_RADIUS</ID>
+    <ID>ComplexCondition:SquadMarch.kt$SquadMarch$atEnd &amp;&amp; !march.complete &amp;&amp; level.gameTime - march.plannedAt &gt;= MIN_REPLAN_TICKS &amp;&amp; lastPlanTick != level.gameTime</ID>
+    <ID>ComplexCondition:SquadOrderBehaviour.kt$SquadOrderBehaviour$member.target != null || member.vehicle != null || member.vehicleTransport || member.servingMortar || member.operatingDrone || member.diggedIn</ID>
+    <ID>ComplexCondition:SquadTargetSensor.kt$SquadTargetSensor$t.isAlive &amp;&amp; SquadTeams.isHostile(mob, t) &amp;&amp; mob.distanceToSqr(t) &lt;= rangeSqr &amp;&amp; allowed(mob)</ID>
+    <ID>ComplexCondition:VehicleAwareNavigation.kt$VehicleAwareNavigation$current != null &amp;&amp; !current.isDone &amp;&amp; goal != null &amp;&amp; goal.closerThan(pos, GOAL_DRIFT)</ID>
+    <ID>ComplexCondition:VehicleAwareNavigation.kt$VehicleAwareNavigation$near != null &amp;&amp; !near.canReach() &amp;&amp; near.distToTarget &gt; SHORT_OF_GOAL &amp;&amp; npc != null &amp;&amp; (npc.target == null || resupplyTrip(npc))</ID>
+    <ID>ComplexCondition:VehicleAwareNavigation.kt$VehicleAwareNodeEvaluator$origin != null &amp;&amp; origin.x == x &amp;&amp; origin.z == z &amp;&amp; kotlin.math.abs(origin.y - y) &lt;= 1</ID>
+    <ID>ComplexCondition:VehicleCrewBehaviour.kt$VehicleCrewBehaviour$vehicle != null &amp;&amp; entity.vehicle !== vehicle &amp;&amp; entity.target != null &amp;&amp; Helicopters.isHelicopter(vehicle) &amp;&amp; !Helicopters.canFly(vehicle)</ID>
+    <ID>ComplexCondition:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$!boatRouteComplete &amp;&amp; boatRoute.isNotEmpty() &amp;&amp; entity.tickCount &gt;= boatLookAheadTick &amp;&amp; horizontalDistance(vehicle.position(), boatRoute.last()) &lt; BOAT_LOOKAHEAD</ID>
+    <ID>ComplexCondition:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$!driveRouteComplete &amp;&amp; driveSearch == null &amp;&amp; entity.tickCount &gt;= driveLookAheadTick &amp;&amp; horizontalDistance(vehicle.position(), driveRoute.last()) &lt; DRIVE_LOOKAHEAD</ID>
+    <ID>ComplexCondition:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$ally.vehicle !== vehicle &amp;&amp; ally.isAlive &amp;&amp; SquadTeams.factionOf(ally) == faction &amp;&amp; (1..samples).any { step -&gt; vehicleOverlaps(vehicle, ally, offset.scale(step.toDouble() / samples)) }</ID>
+    <ID>ComplexCondition:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$boatRoute.isEmpty() &amp;&amp; trip != null &amp;&amp; trip.route.route.isNotEmpty() &amp;&amp; trip.route.route.first().distanceTo(vehicle.position()) &lt; BOAT_WAYPOINT_RADIUS * 2</ID>
+    <ID>ComplexCondition:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$vehicle == null || !Ports.vehicles.isOperational(vehicle) || Ports.vehicles.isLocked(vehicle) || hasBlockingPlayerAboard(vehicle, entity) || vehicle.passengers.size &gt;= Ports.vehicles.seatCount(vehicle)</ID>
+    <ID>CyclomaticComplexMethod:AircraftLods.kt$AircraftLods$@JvmStatic fun augment(entity: VehicleEntity, original: List&lt;VehicleModelEntry&gt;): List&lt;VehicleModelEntry&gt;</ID>
+    <ID>CyclomaticComplexMethod:AlliedVehicleBoarding.kt$AlliedVehicleBoarding$@JvmStatic fun interact(vehicle: VehicleEntity, player: Player, hand: InteractionHand): InteractionResult?</ID>
+    <ID>CyclomaticComplexMethod:BoatTrips.kt$BoatTrips$fun tripsFor(npc: NpcEntity, goal: Vec3, waterAhead: Boolean, usable: (Entity) -&gt; Boolean): List&lt;Trip&gt;?</ID>
+    <ID>CyclomaticComplexMethod:CellPlanner.kt$CellPlanner.Search$fun step(budget: Int): Boolean</ID>
+    <ID>CyclomaticComplexMethod:CellPlanner.kt$CellPlanner.Search$private fun partsOf(cell: Long): IntArray</ID>
+    <ID>CyclomaticComplexMethod:CellPlanner.kt$CellPlanner.Search$private fun visitCell(n: Long, cg: Double)</ID>
+    <ID>CyclomaticComplexMethod:Diplomacy.kt$Diplomacy$private fun resolve(server: MinecraftServer, reg: AllianceRegistry)</ID>
+    <ID>CyclomaticComplexMethod:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>CyclomaticComplexMethod:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$private fun retarget(entity: NpcEntity, level: ServerLevel, drone: Entity): Boolean</ID>
+    <ID>CyclomaticComplexMethod:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$private fun scanForEnemy(entity: NpcEntity): StrikeTarget?</ID>
+    <ID>CyclomaticComplexMethod:GrenadeUseBehaviour.kt$GrenadeUseBehaviour$private fun clusterPoint(entity: NpcEntity, level: ServerLevel): Vec3?</ID>
+    <ID>CyclomaticComplexMethod:GroundMap.kt$GroundMap$private fun read(level: ServerLevel, cx: Int, cz: Int, now: Long): Chunk</ID>
+    <ID>CyclomaticComplexMethod:GroupOrders.kt$GroupOrders$private fun resolve(kind: Kind, order: SquadOrder): kotlin.Pair&lt;SquadOrder, Placement&gt;?</ID>
+    <ID>CyclomaticComplexMethod:GunAttackBehaviour.kt$GunAttackBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>CyclomaticComplexMethod:GunAttackBehaviour.kt$GunAttackBehaviour$private fun holdFiringPosition(entity: NpcEntity, target: LivingEntity)</ID>
+    <ID>CyclomaticComplexMethod:GunAttackBehaviour.kt$GunAttackBehaviour$private fun tryHoldingAdvance(entity: NpcEntity, target: LivingEntity): Boolean</ID>
+    <ID>CyclomaticComplexMethod:HelicopterFlightControllerTest.kt$HelicopterFlightControllerTest.Heli$fun step(cmd: HelicopterFlightController.Command)</ID>
+    <ID>CyclomaticComplexMethod:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>CyclomaticComplexMethod:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$private fun decideMission( entity: NpcEntity, heli: Entity, target: LivingEntity?, home: Vec3, airworthy: Boolean ): Mission</ID>
+    <ID>CyclomaticComplexMethod:HelicopterRideBehaviour.kt$HelicopterRideBehaviour$private fun benchHoldReason(entity: NpcEntity, heli: Entity): String?</ID>
+    <ID>CyclomaticComplexMethod:InvestigateBehaviour.kt$InvestigateBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>CyclomaticComplexMethod:MapFeed.kt$MapFeed$private fun build(server: MinecraftServer, player: ServerPlayer, faction: SquadFaction): CompoundTag</ID>
+    <ID>CyclomaticComplexMethod:MedicHealBehaviour.kt$MedicHealBehaviour$private fun scanCandidate(entity: NpcEntity): LivingEntity?</ID>
+    <ID>CyclomaticComplexMethod:ModNetwork.kt$ModNetwork$private fun onRouteCmd(p: RouteCmdPayload, ctx: IPayloadContext)</ID>
+    <ID>CyclomaticComplexMethod:ModNetwork.kt$ModNetwork$private fun onSquadCmd(p: SquadCmdPayload, ctx: IPayloadContext)</ID>
+    <ID>CyclomaticComplexMethod:MortarLoaderBehaviour.kt$MortarLoaderBehaviour$private fun eligible(entity: NpcEntity): Boolean</ID>
+    <ID>CyclomaticComplexMethod:MortarOperatorBehaviour.kt$MortarOperatorBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>CyclomaticComplexMethod:MortarOperatorBehaviour.kt$MortarOperatorBehaviour$private fun eligible(entity: NpcEntity): Boolean</ID>
+    <ID>CyclomaticComplexMethod:NpcEntity.kt$NpcEntity$override fun readAdditionalSaveData(compound: CompoundTag)</ID>
+    <ID>CyclomaticComplexMethod:NpcPosture.kt$NpcPosture$fun tick()</ID>
+    <ID>CyclomaticComplexMethod:NpcStuckRecovery.kt$NpcStuckRecovery$fun tick()</ID>
+    <ID>CyclomaticComplexMethod:OrderArrival.kt$OrderArrival$fun tick(server: MinecraftServer)</ID>
+    <ID>CyclomaticComplexMethod:SbwAircraftRendering.kt$SbwAircraftRendering$@JvmStatic fun render(event: RenderLevelStageEvent)</ID>
+    <ID>CyclomaticComplexMethod:SbwPlayerSupply.kt$SbwPlayerSupply$override fun issueKit(player: ServerPlayer, kit: Int, option: Int, faction: SquadFaction?): Boolean</ID>
+    <ID>CyclomaticComplexMethod:SquadChunkLoader.kt$SquadChunkLoader$fun tick(server: MinecraftServer)</ID>
+    <ID>CyclomaticComplexMethod:SquadFormation.kt$SquadFormation$private fun localOffset(shape: Shape, slotIndex: Int, squadSize: Int, spacing: Double = SLOT_SPACING): Vec3</ID>
+    <ID>CyclomaticComplexMethod:SquadMapPlugin.kt$SquadMapPlugin$private fun redraw(feed: CompoundTag)</ID>
+    <ID>CyclomaticComplexMethod:SquadMarch.kt$SquadMarch$fun crossingAhead(npc: NpcEntity): Crossing?</ID>
+    <ID>CyclomaticComplexMethod:SquadMarch.kt$SquadMarch$fun waypointFor(npc: NpcEntity, goal: BlockPos, followFormation: Boolean = true): Waypoint?</ID>
+    <ID>CyclomaticComplexMethod:SquadMarch.kt$SquadMarch$private fun planLong(level: ServerLevel, npc: NpcEntity, march: March, goal: BlockPos, squadName: String)</ID>
+    <ID>CyclomaticComplexMethod:SquadOrderBehaviour.kt$SquadOrderBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>CyclomaticComplexMethod:SquadTargetSensor.kt$SquadTargetSensor$private fun computeDesired(mob: NpcEntity, level: ServerLevel): LivingEntity?</ID>
+    <ID>CyclomaticComplexMethod:SquadTargetSensor.kt$SquadTargetSensor$private fun nearestGroundTarget(mob: NpcEntity, level: ServerLevel): LivingEntity?</ID>
+    <ID>CyclomaticComplexMethod:SquadToolItem.kt$SquadToolItem$override fun interactLivingEntity(stack: ItemStack, player: Player, target: LivingEntity, hand: InteractionHand): InteractionResult</ID>
+    <ID>CyclomaticComplexMethod:SquadToolItem.kt$SquadToolItem$override fun useOn(context: UseOnContext): InteractionResult</ID>
+    <ID>CyclomaticComplexMethod:TeamAwareness.kt$TeamAwareness$fun sightings(faction: SquadFaction, tick: Long): List&lt;Sighting&gt;</ID>
+    <ID>CyclomaticComplexMethod:VehicleAwareNavigation.kt$VehicleAwareNavigation$private fun choosePath(pos: BlockPos, accuracy: Int): Path?</ID>
+    <ID>CyclomaticComplexMethod:VehicleAwareNavigation.kt$VehicleAwareNodeEvaluator$override fun getPathTypeOfMob(context: PathfindingContext, x: Int, y: Int, z: Int, mob: Mob): PathType</ID>
+    <ID>CyclomaticComplexMethod:VehicleCombatSupportBehaviour.kt$VehicleCombatSupportBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>CyclomaticComplexMethod:VehicleTargeting.kt$VehicleTargeting$fun closestVisibleHostileAircrew(entity: NpcEntity, level: ServerLevel, groundRange: Double): LivingEntity?</ID>
+    <ID>CyclomaticComplexMethod:VehicleTargeting.kt$VehicleTargeting$fun closestVisibleHostileVehicleOccupant( entity: NpcEntity, level: ServerLevel, range: Double ): LivingEntity?</ID>
+    <ID>CyclomaticComplexMethod:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun boatWaypoint(entity: NpcEntity, vehicle: Entity, landing: Vec3): Vec3?</ID>
+    <ID>CyclomaticComplexMethod:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun driveWaypoint(entity: NpcEntity, vehicle: Entity, home: Vec3): Vec3?</ID>
+    <ID>CyclomaticComplexMethod:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun eligible(entity: NpcEntity, checkGiveup: Boolean): Boolean</ID>
+    <ID>CyclomaticComplexMethod:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun tickBoarding(entity: NpcEntity, level: ServerLevel)</ID>
+    <ID>CyclomaticComplexMethod:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun tickDriving(entity: NpcEntity)</ID>
+    <ID>CyclomaticComplexMethod:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun tickSeeking(entity: NpcEntity, level: ServerLevel)</ID>
+    <ID>CyclomaticComplexMethod:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun tickWaiting(entity: NpcEntity, level: ServerLevel)</ID>
+    <ID>CyclomaticComplexMethod:Withdrawal.kt$Withdrawal$private fun update(level: ServerLevel, squad: Squad, state: State)</ID>
+    <ID>LargeClass:NpcEntity.kt$NpcEntity : PathfinderMobSmartBrainOwner</ID>
+    <ID>LargeClass:VehicleTransportBehaviour.kt$VehicleTransportBehaviour : ExtendedBehaviour</ID>
+    <ID>LongMethod:CellPlanner.kt$CellPlanner.Search$private fun visitCell(n: Long, cg: Double)</ID>
+    <ID>LongMethod:GunAttackBehaviour.kt$GunAttackBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>LongMethod:HelicopterFlightControllerTest.kt$HelicopterFlightControllerTest.Heli$fun step(cmd: HelicopterFlightController.Command)</ID>
+    <ID>LongMethod:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>LongMethod:MapFeed.kt$MapFeed$private fun build(server: MinecraftServer, player: ServerPlayer, faction: SquadFaction): CompoundTag</ID>
+    <ID>LongMethod:ModNetwork.kt$ModNetwork$private fun onSquadCmd(p: SquadCmdPayload, ctx: IPayloadContext)</ID>
+    <ID>LongMethod:RecruitScreen.kt$RecruitScreen$override fun init()</ID>
+    <ID>LongMethod:SbwAircraftRendering.kt$SbwAircraftRendering$@JvmStatic fun render(event: RenderLevelStageEvent)</ID>
+    <ID>LongMethod:SquadMapPlugin.kt$SquadMapPlugin$private fun redraw(feed: CompoundTag)</ID>
+    <ID>LongMethod:SquadToolItem.kt$SquadToolItem$override fun interactLivingEntity(stack: ItemStack, player: Player, target: LivingEntity, hand: InteractionHand): InteractionResult</ID>
+    <ID>LongMethod:VehicleCombatSupportBehaviour.kt$VehicleCombatSupportBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>LongMethod:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun driveWaypoint(entity: NpcEntity, vehicle: Entity, home: Vec3): Vec3?</ID>
+    <ID>LongMethod:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun tickBoarding(entity: NpcEntity, level: ServerLevel)</ID>
+    <ID>LongMethod:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun tickDriving(entity: NpcEntity)</ID>
+    <ID>LongMethod:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun tickSeeking(entity: NpcEntity, level: ServerLevel)</ID>
+    <ID>LongParameterList:BoatTrips.kt$BoatTrips$(npc: NpcEntity, boat: Entity, goal: Vec3, search: CellPlanner.Search, decision: Decision, squadName: String)</ID>
+    <ID>LongParameterList:CellPlanner.kt$CellPlanner.Route$( val route: List&lt;Vec3&gt;, /** Every column of the way, a block or so apart — for walking it in a column of men. */ val trail: List&lt;Vec3&gt;, val landing: Vec3, val shore: Vec3, val length: Double, val complete: Boolean, private val pace: Double, )</ID>
+    <ID>LongParameterList:DroneFlightController.kt$DroneFlightController$(pos: Vec3, yaw: Float, horizontalSpeed: Double, target: Vec3, desiredY: Double, cruiseSpeed: Double)</ID>
+    <ID>LongParameterList:Grenades.kt$Grenades$( thrower: LivingEntity, level: ServerLevel, target: Vec3, targetVelocity: Vec3, kind: GrenadeKind, nearTarget: Double )</ID>
+    <ID>LongParameterList:GroupOrders.kt$GroupOrders$( level: ServerLevel, mgr: SquadManager, routes: RouteManager, owner: UUID, squadIds: List&lt;UUID&gt;, points: List&lt;kotlin.Pair&lt;Int, Int&gt;&gt; )</ID>
+    <ID>LongParameterList:GroupOrders.kt$GroupOrders$(level: ServerLevel, mgr: SquadManager, squadIds: List&lt;UUID&gt;, order: SquadOrder, x: Int, z: Int)</ID>
+    <ID>LongParameterList:GunAttackBehaviour.kt$GunAttackBehaviour$( level: ServerLevel, entity: NpcEntity, target: LivingEntity, origin: Vec3, eyeHeight: Double, hulls: List&lt;AABB&gt;, taken: List&lt;Vec3&gt;, radius: Double, step: Int, startingScore: Double )</ID>
+    <ID>LongParameterList:GunAttackBehaviour.kt$GunAttackBehaviour$( level: ServerLevel, entity: NpcEntity, target: LivingEntity, pos: Vec3, eyeHeight: Double, vehicleHulls: List&lt;AABB&gt; )</ID>
+    <ID>LongParameterList:GunRendering.kt$GunRendering$( holder: LivingEntity, stack: ItemStack, displayContext: ItemDisplayContext, poseStack: PoseStack, buffer: MultiBufferSource, packedLight: Int )</ID>
+    <ID>LongParameterList:HelicopterFlightController.kt$HelicopterFlightController$( pos: Vec3, yaw: Float, pitch: Float, roll: Float, rollRate: Float, velocity: Vec3, target: Vec3, desiredY: Double, cruiseSpeed: Double, tuning: Tuning, facing: Vec3? = null )</ID>
+    <ID>LongParameterList:HelicopterFlightControllerTest.kt$HelicopterFlightControllerTest.Heli$( var pos: Vec3, var yaw: Float, private val increment: Float = 0.8f, private val decrement: Float = 0.8f, private val liftSpeed: Float = 1f, private val yawSpeed: Float = 0.85f, private val pitchSpeed: Float = 0.75f, private val rollSpeed: Float = 0.6f )</ID>
+    <ID>LongParameterList:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$( level: ServerLevel, heli: Entity, station: Vec3, facing: Vec3?, speed: Double, rollRate: Float, clearance: Double )</ID>
+    <ID>LongParameterList:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour.Mission$( val station: Vec3, val facing: Vec3?, val landOnArrival: Boolean, val speed: Double, /** What "am I already where I belong?" is measured against. For a patrol that is the * centre of the area, not the point on the circle being flown to next — otherwise a * helicopter parked dead on its own objective still sees 70 blocks to the next waypoint * and scrambles the moment it is deployed. */ val anchor: Vec3 = station, /** How high over the terrain this leg is flown. A patrol sits low enough to see and be * seen; anything else keeps the safe margin. */ val clearance: Double = CRUISE_CLEARANCE, val patrol: Boolean = false, val attackOrbit: Boolean = false )</ID>
+    <ID>LongParameterList:Payloads.kt$ConfigureToolPayload$( val cls: Int, val rank: Int, val faction: Int, val preset: Int, val vehicle: Boolean, val vehicleModel: Int, val tankModel: Int, val heliModel: Int )</ID>
+    <ID>LongParameterList:SafeSpawn.kt$SafeSpawn$( level: ServerLevel, preferredX: Double, preferredZ: Double, aroundY: Int, dimensions: EntityDimensions, radius: Double = DEFAULT_CLEAR_RADIUS )</ID>
+    <ID>LongParameterList:SafeSpawn.kt$SafeSpawn$( level: ServerLevel, x: Double, z: Double, aroundY: Int, dimensions: EntityDimensions, radius: Double = STANDING_RADIUS )</ID>
+    <ID>LongParameterList:SafeSpawn.kt$SafeSpawn$( level: ServerLevel, x: Double, z: Double, aroundY: Int, dimensions: EntityDimensions, range: Int = SEARCH_RANGE )</ID>
+    <ID>LongParameterList:Sightline.kt$Sightline$( level: ServerLevel, from: Vec3, to: Vec3, passer: Entity, hulls: List&lt;AABB&gt;, spreadDegrees: Double = 0.0 )</ID>
+    <ID>LongParameterList:Squad.kt$Squad$( val id: UUID, var name: String, var faction: SquadFaction, var order: SquadOrder, val members: MutableList&lt;UUID&gt;, var objective: BlockPos?, /** Entity the squad is focused on: attack it (ATTACK) or guard it (DEFEND). */ var focusEntity: UUID?, val owner: UUID, /** Barracks this squad resupplies from, if any. */ var barracks: BarracksRef? = null, /** Classes the squad was formed/last topped up with. */ var originalComposition: List&lt;NpcClass&gt; = emptyList(), /** Rank preserved for barracks reinforcements. */ var rank: NpcRank = NpcRank.DEFAULT, /** Patrol route this squad walks when on PATROL order, if any — see `Route`/`SquadOrderBehaviour`. */ var routeId: UUID? = null, /** The fixed rally point for the current MOVE command. */ var moveAssembly: BlockPos? = null, /** True once every member has reached its slot at [moveAssembly]. */ var moveFormationReady: Boolean = false )</ID>
+    <ID>LongParameterList:SquadDeployment.kt$SquadDeployment$( level: ServerLevel, center: BlockPos, facingYaw: Float, composition: List&lt;NpcClass&gt;, rank: NpcRank, faction: SquadFaction, difficulty: net.minecraft.world.DifficultyInstance )</ID>
+    <ID>LongParameterList:SquadDeployment.kt$SquadDeployment$( level: ServerLevel, center: BlockPos, facingYaw: Float, composition: List&lt;NpcClass&gt;, rank: NpcRank, faction: SquadFaction, difficulty: net.minecraft.world.DifficultyInstance, spacing: Double = 2.0 )</ID>
+    <ID>LongParameterList:SquadDeployment.kt$SquadDeployment$( level: ServerLevel, center: BlockPos, yaw: Float, faction: SquadFaction, crew: List&lt;NpcEntity&gt;, model: HelicopterModel )</ID>
+    <ID>LongParameterList:SquadDeployment.kt$SquadDeployment$( level: ServerLevel, center: BlockPos, yaw: Float, faction: SquadFaction, crew: List&lt;NpcEntity&gt;, model: TankModel )</ID>
+    <ID>LongParameterList:SquadDeployment.kt$SquadDeployment$( level: ServerLevel, center: BlockPos, yaw: Float, faction: SquadFaction, model: TransportVehicle, squad: List&lt;NpcEntity&gt;, )</ID>
+    <ID>LongParameterList:SquadFormation.kt$SquadFormation$( mob: NpcEntity, anchor: Vec3, fallbackFacing: Vec3, arrived: Boolean, spacing: Double = SLOT_SPACING, combat: Boolean = false )</ID>
+    <ID>LongParameterList:SquadFormation.kt$SquadFormation$( order: SquadOrder, arrived: Boolean, cls: NpcClass, slotIndex: Int, squadSize: Int, spacing: Double = SLOT_SPACING, combat: Boolean = false )</ID>
+    <ID>LongParameterList:SquadManager.kt$SquadManager$( level: ServerLevel, owner: UUID, faction: SquadFaction, members: List&lt;UUID&gt;, originalComposition: List&lt;NpcClass&gt;? = null, rank: NpcRank? = null )</ID>
+    <ID>LongParameterList:SquadMapPlugin.kt$SquadMapPlugin$( dim: ResourceKey&lt;Level&gt;, at: BlockPos, shape: MapShapes, color: Int, size: Double, opacity: Float )</ID>
+    <ID>NestedBlockDepth:AircraftLodsTest.kt$AircraftLodsTest$@Test fun `all built in aircraft bake cheaper distant geometry without changing their skeleton`()</ID>
+    <ID>NestedBlockDepth:CellPlanner.kt$CellPlanner$fun search(medium: Medium, from: Vec3, goal: Vec3): Search?</ID>
+    <ID>NestedBlockDepth:CellPlanner.kt$CellPlanner.Search$fun step(budget: Int): Boolean</ID>
+    <ID>NestedBlockDepth:CellPlanner.kt$CellPlanner.Search$private fun visitCell(n: Long, cg: Double)</ID>
+    <ID>NestedBlockDepth:CoverSearch.kt$CoverSearch$fun find(entity: NpcEntity, level: ServerLevel, threat: Vec3): BlockPos?</ID>
+    <ID>NestedBlockDepth:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$private fun refreshTarget(entity: NpcEntity, level: ServerLevel, drone: Entity): Boolean</ID>
+    <ID>NestedBlockDepth:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$private fun strikeTarget(entity: NpcEntity): StrikeTarget?</ID>
+    <ID>NestedBlockDepth:GroundMap.kt$GroundMap$private fun read(level: ServerLevel, cx: Int, cz: Int, now: Long): Chunk</ID>
+    <ID>NestedBlockDepth:GunAttackBehaviour.kt$GunAttackBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>NestedBlockDepth:InvestigateBehaviour.kt$InvestigateBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>NestedBlockDepth:SbwAircraftRendering.kt$SbwAircraftRendering$@JvmStatic fun render(event: RenderLevelStageEvent)</ID>
+    <ID>NestedBlockDepth:SquadChunkLoader.kt$SquadChunkLoader$fun tick(server: MinecraftServer)</ID>
+    <ID>NestedBlockDepth:TeamAwareness.kt$TeamAwareness$fun relayedContacts(faction: SquadFaction, tick: Long, window: Long = RECENT_WINDOW_TICKS): List&lt;UUID&gt;</ID>
+    <ID>NestedBlockDepth:TreeAvoidance.kt$TreeAvoidance$private fun hasTree(level: Level, box: AABB): Boolean</ID>
+    <ID>NestedBlockDepth:VehicleAwareNavigation.kt$VehicleAwareNavigation$private fun choosePath(pos: BlockPos, accuracy: Int): Path?</ID>
+    <ID>NestedBlockDepth:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun tickDriving(entity: NpcEntity)</ID>
+    <ID>NestedBlockDepth:WaterMap.kt$WaterMap$private fun read(level: ServerLevel, y: Int, cx: Int, cz: Int, now: Long): Chunk</ID>
+    <ID>TooManyFunctions:AntiDroneBehaviour.kt$AntiDroneBehaviour : ExtendedBehaviour</ID>
+    <ID>TooManyFunctions:BarracksBlock.kt$BarracksBlock : BaseEntityBlock</ID>
+    <ID>TooManyFunctions:CellPlanner.kt$CellPlanner$Search</ID>
+    <ID>TooManyFunctions:ClientPayloadHandlers.kt$ClientPayloadHandlers</ID>
+    <ID>TooManyFunctions:Diplomacy.kt$Diplomacy</ID>
+    <ID>TooManyFunctions:DroneOperatorBehaviour.kt$DroneOperatorBehaviour : ExtendedBehaviour</ID>
+    <ID>TooManyFunctions:Drones.kt$Drones</ID>
+    <ID>TooManyFunctions:GunAttackBehaviour.kt$GunAttackBehaviour : ExtendedBehaviour</ID>
+    <ID>TooManyFunctions:Guns.kt$Guns</ID>
+    <ID>TooManyFunctions:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour : ExtendedBehaviour</ID>
+    <ID>TooManyFunctions:HelicopterRideBehaviour.kt$HelicopterRideBehaviour : ExtendedBehaviour</ID>
+    <ID>TooManyFunctions:InvestigateBehaviour.kt$InvestigateBehaviour : ExtendedBehaviour</ID>
+    <ID>TooManyFunctions:MedicHealBehaviour.kt$MedicHealBehaviour : ExtendedBehaviour</ID>
+    <ID>TooManyFunctions:ModNetwork.kt$ModNetwork</ID>
+    <ID>TooManyFunctions:MortarClaims.kt$MortarClaims</ID>
+    <ID>TooManyFunctions:MortarOperatorBehaviour.kt$MortarOperatorBehaviour : ExtendedBehaviour</ID>
+    <ID>TooManyFunctions:NpcEntity.kt$NpcEntity : PathfinderMobSmartBrainOwner</ID>
+    <ID>TooManyFunctions:RecruitScreen.kt$RecruitScreen : Screen</ID>
+    <ID>TooManyFunctions:SbwDrones.kt$SbwDrones : Drones</ID>
+    <ID>TooManyFunctions:SbwGuns.kt$SbwGuns : Guns</ID>
+    <ID>TooManyFunctions:SbwPlayerSupply.kt$SbwPlayerSupply : PlayerSupply</ID>
+    <ID>TooManyFunctions:SbwVehicles.kt$SbwVehicles : Vehicles</ID>
+    <ID>TooManyFunctions:SeekCoverBehaviour.kt$SeekCoverBehaviour : ExtendedBehaviour</ID>
+    <ID>TooManyFunctions:SquadFormation.kt$SquadFormation</ID>
+    <ID>TooManyFunctions:SquadManager.kt$SquadManager : SavedData</ID>
+    <ID>TooManyFunctions:SquadMapPlugin.kt$SquadMapPlugin : IClientPlugin</ID>
+    <ID>TooManyFunctions:SquadMarch.kt$SquadMarch</ID>
+    <ID>TooManyFunctions:SquadOrderBehaviour.kt$SquadOrderBehaviour : ExtendedBehaviour</ID>
+    <ID>TooManyFunctions:SquadTeams.kt$SquadTeams</ID>
+    <ID>TooManyFunctions:SupplyBlock.kt$SupplyBlock : BaseEntityBlock</ID>
+    <ID>TooManyFunctions:VehicleAwareNavigation.kt$VehicleAwareNavigation : GroundPathNavigation</ID>
+    <ID>TooManyFunctions:VehicleCombatSupportBehaviour.kt$VehicleCombatSupportBehaviour : ExtendedBehaviour</ID>
+    <ID>TooManyFunctions:VehicleTransportBehaviour.kt$VehicleTransportBehaviour : ExtendedBehaviour</ID>
+    <ID>TooManyFunctions:VehicleTransportClaims.kt$VehicleTransportClaims</ID>
+    <ID>TooManyFunctions:Vehicles.kt$Vehicles</ID>
+  </CurrentIssues>
+</SmellBaseline>

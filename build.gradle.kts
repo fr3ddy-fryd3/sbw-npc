@@ -4,6 +4,7 @@ plugins {
     idea
     id("net.neoforged.moddev") version "2.0.80"
     id("org.jetbrains.kotlin.jvm") version "2.1.20"
+    id("io.gitlab.arturbosch.detekt") version "1.23.8"
 }
 
 tasks.named<Wrapper>("wrapper") {
@@ -191,6 +192,8 @@ dependencies {
     // Optional map integration (see integration/journeymap); never bundled.
     compileOnly("info.journeymap:journeymap-api-neoforge:${project.property("journeymap_api_version")}")
 
+    detektPlugins("io.gitlab.arturbosch.detekt:detekt-formatting:1.23.8")
+
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
@@ -203,6 +206,14 @@ tasks.withType<Test> {
 
 tasks.withType<JavaCompile> {
     options.encoding = "UTF-8"
+}
+
+detekt {
+    buildUponDefaultConfig = true
+    config.setFrom(file("config/detekt/detekt.yml"))
+    // Complexity findings that predate detekt; see the header of detekt.yml.
+    baseline = file("config/detekt/baseline.xml")
+    source.setFrom("src/main/kotlin", "src/test/kotlin")
 }
 
 idea {
