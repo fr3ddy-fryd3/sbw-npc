@@ -115,7 +115,6 @@ object TerrainAttackGameTests {
         }
         val manager = SquadManager.get(helper.level)
         val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, members.map { it.uuid })
-        squad.tactics.flankSide = 1.0
         val defenders = if (returnFire) manager.create(helper.level, UUID.randomUUID(), SquadFaction.COW, enemies.map { it.uuid }) else null
         if (defenders != null) {
             manager.setOrder(defenders.id, SquadOrder.DEFEND)
@@ -159,7 +158,6 @@ object TerrainAttackGameTests {
         val previous = HashMap<UUID, Vec3>()
         val firstPosts = HashMap<UUID, Vec3>()
         val continued = HashSet<UUID>()
-        val completedWaves = HashMap<Int, Int>()
         val bullets = Consumer<EntityJoinLevelEvent> { event ->
             val round = event.entity as? Projectile
             if (event.level === helper.level && round != null && Ports.guns.isRound(round)) {
@@ -223,7 +221,7 @@ object TerrainAttackGameTests {
                 }
                 val candidates = members.filter { npc ->
                     npc.isAlive && npc.onGround() && npc.firedRecently(60) && npc.navigation.isDone &&
-                        squad.tactics.plan?.tasks?.get(npc.uuid)?.job in TacticalJob.FIRE_SUPPORT && npc.target != null &&
+                        com.sbwnpc.squad.ai.integration.NativeTactics.assignment(npc)?.job in TacticalJob.FIRE_SUPPORT && npc.target != null &&
                         DetectionSightline.canSee(npc, npc.target!!) && !Sightline.blocked(helper.level, npc.eyePosition, npc.target!!.eyePosition, npc)
                 }.sortedBy { helper.relativeVec(it.position()).z }
                 for (npc in candidates) {
@@ -249,15 +247,10 @@ object TerrainAttackGameTests {
             }
         }
         helper.onEachTick {
-            if (sustained) {
-                squad.tactics.plan?.takeIf { it.pattern == com.sbwnpc.squad.combat.tactics.TacticalPattern.BOUND }?.let { plan ->
-                    completedWaves[plan.id] = maxOf(completedWaves[plan.id] ?: 0, plan.bounds)
-                }
-            }
             for (npc in members) {
                 val p = helper.relativeVec(npc.position())
                 if (sustained) {
-                    val task = squad.tactics.plan?.tasks?.get(npc.uuid)
+                    val task = com.sbwnpc.squad.ai.integration.NativeTactics.assignment(npc)
                     if (npc.onGround() && npc.navigation.isDone && npc.firedRecently(60) && task?.job in TacticalJob.FIRE_SUPPORT) {
                         firstPosts.putIfAbsent(npc.uuid, npc.position())
                     }
@@ -278,8 +271,7 @@ object TerrainAttackGameTests {
                     longestIdle[npc.uuid] = maxOf(longestIdle[npc.uuid] ?: 0, duration)
                 }
                 if (helper.tick % 10 == 0L) {
-                    val plan = squad.tactics.plan
-                    Files.writeString(csv, "${helper.tick},${npc.uuid},${p.x},${p.y},${p.z},${npc.onGround()},${npc.navigation.isDone},${plan?.tasks?.get(npc.uuid)?.job},${plan?.id},${plan?.phase},${Ports.guns.roundsLeft(npc.mainHandItem)},${npc.lastShotTick},${npc.health},${npc.isAlive},${npc.pose},${npc.target?.uuid},${npc.blockedSightSince}\n", APPEND)
+                    Files.writeString(csv, "${helper.tick},${npc.uuid},${p.x},${p.y},${p.z},${npc.onGround()},${npc.navigation.isDone},${com.sbwnpc.squad.ai.integration.NativeTactics.assignment(npc)?.job},htn,${com.sbwnpc.squad.ai.integration.NativeTactics.attackPhase(npc)},${Ports.guns.roundsLeft(npc.mainHandItem)},${npc.lastShotTick},${npc.health},${npc.isAlive},${npc.pose},${npc.target?.uuid},${npc.blockedSightSince}\n", APPEND)
                 }
             }
         }
@@ -287,17 +279,16 @@ object TerrainAttackGameTests {
             try {
                 Files.writeString(directory.resolve("$name.txt"), "shooters=${shooters.size}\nadvanced=${advanced.size}\nalive=${members.count { it.isAlive }}\nenemyRounds=$enemyRounds\n")
                 if (sustained) {
-                    Files.writeString(directory.resolve("$name.txt"), "firstFiringPosts=${firstPosts.size}\ncontinuedAfterFirstPost=${continued.size}\ncompletedWaves=${completedWaves.values.sum()}\n", APPEND)
+                    Files.writeString(directory.resolve("$name.txt"), "firstFiringPosts=${firstPosts.size}\ncontinuedAfterFirstPost=${continued.size}\n", APPEND)
                     helper.assertTrue(firstPosts.size >= 24, "Most attackers never established a first physical firing post")
                     helper.assertTrue(continued.size >= 16, "Half the attack did not cross another 12-block bound after first deployment; see $name.csv")
-                    helper.assertTrue(completedWaves.values.sum() >= 2, "The attack did not complete two coordinated movement waves; see server.log")
                 }
                 helper.assertTrue(!returnFire || enemyRounds > 0, "Return-fire control did not fire real rounds")
                 helper.assertTrue(returnFire || enemyRounds == 0, "Isolation control fired unexpectedly")
                 if (brokenPosts) {
                     for (npc in members.filter { it.uuid in obstructed && (it.uuid !in resumedFire || (longestIdle[it.uuid] ?: 0) >= 200) }) {
                         val audit = directory.resolve("lost-post-search.txt")
-                        val task = squad.tactics.plan?.tasks?.get(npc.uuid)
+                        val task = com.sbwnpc.squad.ai.integration.NativeTactics.assignment(npc)
                         val view = squad.tactics.snapshot
                         if (task == null || view == null) {
                             Files.writeString(audit, "npc=${npc.uuid} position=${helper.relativeVec(npc.position())} task=${task?.job} snapshot=${view != null} longestBlindIdle=${longestIdle[npc.uuid]}\n", CREATE, APPEND)
@@ -310,14 +301,14 @@ object TerrainAttackGameTests {
                                 val point = Terrain.feetAt(helper.level, npc.position().add(x.toDouble(), 0.0, z.toDouble())) {
                                     helper.level.noCollision(npc, npc.getDimensions(npc.pose).makeBoundingBox(it))
                                 } ?: return@mapNotNull null
-                                point.takeIf { !FiringSpots.crowded(it, taken) && TacticalPositions.safeDistance(npc, view, it) && TacticalPositions.firingReady(npc, task, it) }
+                                point.takeIf { !FiringSpots.crowded(it, taken) && TacticalPositions.safeDistance(npc, view, it) && TacticalPositions.firingReady(npc, com.sbwnpc.squad.combat.tactics.TacticalTask(task.job, task.anchor, task.focus, 0), it) }
                             }
                         }.distinct().sortedBy { it.distanceToSqr(npc.position()) }
                         val reachable = free.filter { point ->
                             val path = TacticalPositions.pathToPosition(npc, point)
                             TacticalPositions.reaches(path, point) && TacticalPositions.safePath(npc, view, path!!)
                         }
-                        Files.writeString(audit, "npc=${npc.uuid} pose=${npc.pose} target=${npc.target?.uuid} expanded=${task.expandedFireSearch} origin=${task.localFirePost?.let(helper::relativeVec)} longestBlindIdle=${longestIdle[npc.uuid]} free=${free.size} reachable=${reachable.map(helper::relativeVec)}\n", CREATE, APPEND)
+                        Files.writeString(audit, "npc=${npc.uuid} pose=${npc.pose} target=${npc.target?.uuid} origin=${task.localFirePost?.let(helper::relativeVec)} longestBlindIdle=${longestIdle[npc.uuid]} free=${free.size} reachable=${reachable.map(helper::relativeVec)}\n", CREATE, APPEND)
                     }
                     Files.writeString(directory.resolve("$name.txt"), "obstructed=${obstructed.size}\nresumedFire=${resumedFire.size}\nlongestBlindIdle=${longestIdle.values.maxOrNull() ?: 0}\n", APPEND)
                     helper.assertTrue(resumedFire.size == 4, "Blocked shooters did not resume real fire; see $name.csv")

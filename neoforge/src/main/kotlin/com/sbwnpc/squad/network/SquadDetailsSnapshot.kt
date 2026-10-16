@@ -26,10 +26,6 @@ fun buildSquadDetailsSnapshot(manager: SquadManager, server: MinecraftServer, ow
         putBoolean("Transport", manager.isTransportSquad(squad))
         squad.barracks?.let { putLong("Barracks", it.pos.asLong()) }
         squad.objective?.let { putString("Objective", "${it.x} ${it.y} ${it.z}") }
-        squad.tactics.plan?.let {
-            putString("Tactic", it.pattern.name.replace('_', ' ').lowercase())
-            putString("Phase", it.phase.name.replace('_', ' ').lowercase())
-        }
         put(
             "Members",
             ListTag().apply {

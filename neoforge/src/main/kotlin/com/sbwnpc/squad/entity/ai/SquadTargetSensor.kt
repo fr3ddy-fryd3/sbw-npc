@@ -10,7 +10,6 @@ import com.sbwnpc.squad.combat.TankWeaponSelection
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.combat.VehicleTargeting
 import com.sbwnpc.squad.combat.Vision
-import com.sbwnpc.squad.combat.tactics.CoordinatedAttackState
 import com.sbwnpc.squad.combat.tactics.SquadTactics
 import com.sbwnpc.squad.combat.tactics.TacticalJob
 import com.sbwnpc.squad.combat.tactics.TacticalTargetSelection
@@ -85,8 +84,8 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             val squad = entity.currentSquad()
             DebugFlags.log(
                 LogGroup.ORDER,
-                "[tactics] {} squad={} plan={} event=target_changed previous={} target={} distance={} sharedContact={} allocationReview={}",
-                entity.uuid, squad?.id, squad?.tactics?.plan?.id, previous?.uuid, target?.uuid,
+                "[tactics] {} squad={} event=target_changed previous={} target={} distance={} sharedContact={} allocationReview={}",
+                entity.uuid, squad?.id, previous?.uuid, target?.uuid,
                 target?.let { entity.distanceTo(it) }, target?.uuid in squad?.tactics?.contacts.orEmpty(), reconsider,
             )
         }
@@ -224,8 +223,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             .mapNotNull { level.getEntity(it) as? LivingEntity }
             .filter {
                 val detection = VehicleTargeting.rangeFor(it, NpcEntity.DETECTION_RANGE)
-                val range = if (requireShot) maxOf(detection, mob.currentSquad()?.tactics?.plan?.behavior?.assignmentRange ?: detection) else detection
-                it.isAlive && it !== mob && SquadTeams.isHostile(mob, it) && mob.distanceToSqr(it) <= range * range
+                it.isAlive && it !== mob && SquadTeams.isHostile(mob, it) && mob.distanceToSqr(it) <= detection * detection
             }
             .sortedBy { mob.distanceToSqr(it) }
             .toList()

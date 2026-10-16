@@ -2,7 +2,6 @@ package com.sbwnpc.squad.gametest
 
 import com.sbwnpc.squad.combat.FiringCone
 import com.sbwnpc.squad.combat.FriendlyFireGuard
-import com.sbwnpc.squad.combat.tactics.TacticalPattern
 import com.sbwnpc.squad.domain.port.Guns
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
@@ -32,7 +31,7 @@ object CombatPerformanceGameTests {
         for (x in 40..41) for (z in 0..223) for (y in 1..8) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
         val shooter = scene.spawn(Vec3(30.5, 1.0, 100.5))
         scene.enemy(Vec3(150.5, 1.0, 100.5))
-        val squad = scene.squad(listOf(shooter), TacticalPattern.FOLLOW_ORDER)
+        val squad = scene.squad(listOf(shooter))
         val nav = shooter.navigation as VehicleAwareNavigation
         var blockedSearches = 0
         var blockedNanos = 0L

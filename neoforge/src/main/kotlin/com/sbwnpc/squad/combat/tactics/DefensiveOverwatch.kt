@@ -7,16 +7,6 @@ import net.minecraft.world.phys.Vec3
 /** Protected support posts around a fixed defensive assignment, never around each new stop. */
 object DefensiveOverwatch {
     const val RADIUS = 32.0
-    val PATTERNS get() = TacticalStates.registry.defensivePatterns
-
-    fun enabled(view: TacticalSnapshot, member: TacticalMember, pattern: TacticalPattern): Boolean = enabled(view, member, pattern in PATTERNS)
-
-    fun enabled(view: TacticalSnapshot, member: TacticalMember, state: TacticalState): Boolean = enabled(view, member, state.supportsDefensiveOverwatch)
-
-    private fun enabled(view: TacticalSnapshot, member: TacticalMember, supported: Boolean): Boolean =
-        holdsArea(view) && supported && member.ready && member.primaryAmmo && member.health >= 0.3 &&
-            member.role in setOf(NpcClass.SNIPER, NpcClass.MACHINE_GUNNER)
-
     fun holdsArea(view: TacticalSnapshot): Boolean = view.order == SquadOrder.DEFEND || (view.order == SquadOrder.PATROL && !view.hasPatrolRoute)
 
     fun within(anchor: Vec3, point: Vec3): Boolean =
@@ -63,23 +53,4 @@ object DefensiveOverwatch {
     }
 
     fun score(anchor: Vec3, origin: Vec3, point: Vec3, exposure: Int): Double = -point.y * 1000.0 + point.distanceTo(anchor) + point.distanceTo(origin) * 0.2 + exposure * 5.0
-
-    fun preservePosts(plan: TacticalPlan, previous: Map<java.util.UUID, TacticalTask>, view: TacticalSnapshot) {
-        if (!holdsArea(view) || !plan.behavior.supportsDefensiveOverwatch) return
-        val desired = plan.tasks.toMutableMap()
-        for ((id, next) in plan.tasks.toMap()) {
-            val old = previous[id] ?: continue
-            if (next.job != TacticalJob.OVERWATCH || old.job != TacticalJob.OVERWATCH) continue
-            desired[id] = TacticalTask(next.job, old.anchor, next.focus, plan.id).also {
-                it.position = old.position
-                it.search = old.search
-                it.nextSearch = if (it.search != null || it.position != null) old.nextSearch else view.now
-                it.lastProgress = old.lastProgress
-                it.closest = old.closest
-                it.nextValidation = view.now
-                it.failures = old.failures
-            }
-        }
-        plan.assignments.replace(desired, view.now, "preserve_defensive_posts")
-    }
 }

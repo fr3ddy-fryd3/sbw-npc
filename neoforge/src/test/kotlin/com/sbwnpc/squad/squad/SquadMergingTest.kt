@@ -1,8 +1,6 @@
 package com.sbwnpc.squad.squad
 
 import com.sbwnpc.squad.combat.tactics.TacticalContact
-import com.sbwnpc.squad.combat.tactics.TacticalEvent
-import com.sbwnpc.squad.combat.tactics.TacticalEventSink
 import com.sbwnpc.squad.combat.tactics.TacticalMember
 import com.sbwnpc.squad.combat.tactics.TacticalSnapshot
 import com.sbwnpc.squad.npc.NpcClass
@@ -87,42 +85,5 @@ class SquadMergingTest {
         from.barracks = BarracksRef(Level.OVERWORLD, BlockPos.ZERO)
         assertNotNull(SquadMerging.problem(from, into, owner))
         assertNotNull(SquadMerging.problem(null, into, owner))
-    }
-
-    @Test
-    fun `merge releases tasks from both active plans before changing the receiver composition`() {
-        val from = group()
-        val into = group()
-        val released = mutableListOf<TacticalEvent.TaskReleased>()
-        val expected = mutableSetOf<UUID>()
-        for (squad in listOf(from, into)) {
-            squad.members.addAll(List(2) { UUID.randomUUID() })
-            squad.originalComposition = List(3) { NpcClass.RIFLEMAN }
-            squad.recruitmentRoster = RecruitmentRoster.migrate(squad.originalComposition, squad.members.associateWith { NpcClass.RIFLEMAN })
-            squad.tactics.events.runtime = TacticalEventSink { if (it is TacticalEvent.TaskReleased) released += it }
-            val origin = Vec3(0.0, 64.0, 0.0)
-            squad.tactics.assess(
-                squad.id,
-                TacticalSnapshot(
-                    10,
-                    SquadOrder.DEFEND,
-                    0,
-                    origin,
-                    origin,
-                    squad.members.map { TacticalMember(it, origin, canFire = true) },
-                    listOf(TacticalContact(UUID.randomUUID(), Vec3(50.0, 64.0, 0.0), 10)),
-                ),
-            )
-            val assigned = squad.tactics.plan!!.tasks.keys
-            assertFalse(assigned.isEmpty())
-            expected += assigned
-        }
-        SquadMerging.transfer(from, into, 20)
-        assertNull(from.tactics.plan)
-        assertNull(into.tactics.plan)
-        assertEquals(expected, released.map { it.member }.toSet())
-        assertEquals(expected.size, released.size)
-        assertTrue(released.all { it.trigger == "squad_merged" })
-        assertEquals(6, into.members.size)
     }
 }

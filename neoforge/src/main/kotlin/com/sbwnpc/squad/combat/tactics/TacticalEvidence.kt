@@ -19,18 +19,4 @@ object TacticalEvidence {
                 (if (task.job in TacticalJob.FIRING_POSITIONS || task.job == TacticalJob.FLANK) FiringPostArrival.reached(member.position, it) else member.position.distanceTo(it) <= 2.5) &&
                 (task.job in TacticalJob.FIRE_SUPPORT || task.maneuverPost || TacticalGoalProgress.reached(task, member.position))
         } == true
-
-    fun transition(plan: TacticalPlan, view: TacticalSnapshot): TacticalTransitionEvidence {
-        val cover = view.members.filter { plan.tasks[it.id]?.job in TacticalJob.FIRE_SUPPORT }
-        val movers = view.members.filter { plan.tasks[it.id]?.job in setOf(TacticalJob.FLANK, TacticalJob.ADVANCE, TacticalJob.RETREAT) }
-        return TacticalTransitionEvidence(
-            view.members.size,
-            view.visible.size,
-            cover.size,
-            cover.count { covers(it, plan.tasks[it.id]) },
-            cover.count { firesCover(it, plan.tasks[it.id]) },
-            movers.size,
-            movers.count { settled(it, plan.tasks[it.id]) },
-        )
-    }
 }

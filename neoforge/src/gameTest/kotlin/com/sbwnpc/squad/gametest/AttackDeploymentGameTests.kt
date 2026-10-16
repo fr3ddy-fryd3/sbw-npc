@@ -90,7 +90,7 @@ object AttackDeploymentGameTests {
             if (scouts.any { it.target === enemy }) reported = true
             if (helper.tick % 20L == 0L) {
                 rear.forEach { npc ->
-                    val task = squad.tactics.plan?.tasks?.get(npc.uuid)
+                    val task = com.sbwnpc.squad.ai.integration.NativeTactics.assignment(npc)
                     val at = helper.relativeVec(npc.position())
                     val post = task?.position?.let(helper::relativeVec)
                     trace.append("${helper.tick},${npc.uuid},${at.x},${at.y},${at.z},${npc.position().subtract(enemy.position()).horizontalDistance()},${task?.job},${post?.x},${post?.z},${!npc.navigation.isDone},${npc.lastShotTick}\n")
@@ -203,7 +203,6 @@ object AttackDeploymentGameTests {
         val manager = SquadManager.get(helper.level)
         val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, attackers.map { it.uuid })
         val trace = AttackTrace(helper, squad, attackers)
-        val flankTrace = FlankTrace(helper, squad, attackers)
         val attackerIds = attackers.map { it.uuid }.toSet()
         val targetIds = targets.map { it.uuid }.toSet()
         DebugFlags.enabledGroups = setOf(LogGroup.ORDER, LogGroup.PATH, LogGroup.STUCK)
@@ -233,12 +232,10 @@ object AttackDeploymentGameTests {
         manager.setObjective(helper.level, squad.id, helper.absolutePos(BlockPos(96, 1, 64)))
         helper.onEachTick {
             trace.sample()
-            flankTrace.sample()
         }
         helper.runAtTickTime(899) {
             try {
                 trace.finish()
-                flankTrace.finish()
                 helper.assertTrue(trace.enemyRounds == 0 && targets.none { it.lastShotTick >= 0 }, "Stationary targets unexpectedly fired: invalid isolation scenario")
                 helper.assertTrue(attackers.all { it.isAlive }, "Attackers died without enemy return fire; see attack-damage.csv")
                 helper.assertTrue(trace.friendlyHits == 0, "Attackers were hit by friendly rounds; see attack-damage.csv")
@@ -247,10 +244,6 @@ object AttackDeploymentGameTests {
                 helper.assertTrue(trace.longestLineHold >= 40, "Attack did not sustain a spaced line of at least 12/16 NPCs for 40 ticks; see attack-summary.txt")
                 helper.assertTrue(trace.projectileShooters >= 12, "Fewer than 12/16 NPCs fired real SBW rounds; see attack-summary.txt")
                 helper.assertTrue(trace.ammoSpent >= 12, "Weapon ammunition was not consumed")
-                helper.assertTrue(flankTrace.moverCount >= 6 && flankTrace.maxArrived >= 6, "Flank did not actually move and arrive; see attack-flank-summary.txt")
-                helper.assertTrue(flankTrace.completedCount >= 1, "No flank completed with all its movers arrived; see attack-flank-summary.txt")
-                helper.assertTrue(flankTrace.orderCrossings == 0, "Flankers crossed each other's lateral order; see attack-flank-crossings.csv")
-                helper.assertTrue(flankTrace.longestCrowding < 40, "Flankers remained within 3 blocks of another NPC for 40 ticks; see attack-flanks.csv")
                 helper.succeed()
             } finally {
                 NeoForge.EVENT_BUS.unregister(projectiles)

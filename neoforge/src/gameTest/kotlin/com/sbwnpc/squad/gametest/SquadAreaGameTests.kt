@@ -207,7 +207,7 @@ object SquadAreaGameTests {
                 }
             }
             if (helper.tick % 100L == 0L) {
-                fixture.scene.result("CHECK", "tick=${helper.tick} homes=${now.map(helper::relativeVec)} occupied=$near members=${groups.map { (_, members) -> members.map { npc -> "${helper.relativeVec(npc.position())}:alert=${npc.isAlert()}:target=${npc.target?.uuid}:done=${npc.navigation.isDone}:path=${npc.navigation.path?.target}:job=${npc.currentSquad()?.tactics?.plan?.tasks?.get(npc.uuid)?.job}" } }}")
+                fixture.scene.result("CHECK", "tick=${helper.tick} homes=${now.map(helper::relativeVec)} occupied=$near members=${groups.map { (_, members) -> members.map { npc -> "${helper.relativeVec(npc.position())}:alert=${npc.isAlert()}:target=${npc.target?.uuid}:done=${npc.navigation.isDone}:path=${npc.navigation.path?.target}:job=${com.sbwnpc.squad.ai.integration.NativeTactics.assignment(npc)?.job}" } }}")
             }
             if (helper.tick >= 300 && near.all { it >= 12 }) windows++
             if (windows >= 5) {

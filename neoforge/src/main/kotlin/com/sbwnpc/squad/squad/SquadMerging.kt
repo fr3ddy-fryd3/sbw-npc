@@ -38,8 +38,6 @@ object SquadMerging {
         }
 
     internal fun transfer(source: Squad, destination: Squad, now: Long) {
-        source.tactics.deactivate(now, "squad_merged")
-        destination.tactics.deactivate(now, "squad_merged")
         val members = (destination.members + source.members).toSet()
         val slots = (destination.recruitmentRoster!!.slots + source.recruitmentRoster!!.slots)
             .filter { it.occupant in members }

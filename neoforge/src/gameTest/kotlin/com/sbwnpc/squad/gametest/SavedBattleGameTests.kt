@@ -9,15 +9,9 @@ import com.sbwnpc.squad.combat.tactics.TacticalAim
 import com.sbwnpc.squad.combat.tactics.TacticalContact
 import com.sbwnpc.squad.combat.tactics.TacticalJob
 import com.sbwnpc.squad.combat.tactics.TacticalMember
-import com.sbwnpc.squad.combat.tactics.TacticalPattern
-import com.sbwnpc.squad.combat.tactics.TacticalPlan
 import com.sbwnpc.squad.combat.tactics.TacticalPositions
 import com.sbwnpc.squad.combat.tactics.TacticalSnapshot
 import com.sbwnpc.squad.combat.tactics.TacticalTask
-import com.sbwnpc.squad.combat.tactics.operation.AttackAssignment
-import com.sbwnpc.squad.combat.tactics.operation.AttackCorridor
-import com.sbwnpc.squad.combat.tactics.operation.AttackRole
-import com.sbwnpc.squad.combat.tactics.operation.AttackStage
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.gametest.framework.GameTest
@@ -113,17 +107,9 @@ object SavedBattleGameTests {
     /** Static search isolation from the failed replay; not a replacement for the battle criterion. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 400, batch = "saved-sniper-search")
-    fun savedSniperFindsReachableFiringPost(helper: GameTestHelper) = sniperSearch(helper, revisionChanges = false)
+    fun savedSniperFindsReachableFiringPost(helper: GameTestHelper) = sniperSearch(helper)
 
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 80, batch = "saved-sniper-revisions")
-    fun savedSniperSearchSurvivesHoldingLaneRevisions(helper: GameTestHelper) = sniperSearch(helper, revisionChanges = true)
-
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 80, batch = "saved-sniper-pressure")
-    fun savedSniperSearchSurvivesPressureChanges(helper: GameTestHelper) = sniperSearch(helper, revisionChanges = false, pressureChanges = true)
-
-    private fun sniperSearch(helper: GameTestHelper, revisionChanges: Boolean, pressureChanges: Boolean = false) {
+    private fun sniperSearch(helper: GameTestHelper) {
         val report = Path.of(System.getProperty("sbwnpc.gameTestReports"))
         Files.createDirectories(report)
         val replay = SavedBattleReplay(helper.level, Path.of(System.getProperty("sbwnpc.gameTestReplay")))
@@ -138,33 +124,11 @@ object SavedBattleGameTests {
         sniper.moveTo(-413.4751351142926, 75.0, -252.49745925857366)
         enemy.moveTo(-469.4374784844925, 72.0, -236.53581311422343)
         BrainUtils.setTargetOfEntity(sniper, enemy)
-        val plan = TacticalPlan(1, TacticalPattern.COORDINATED_ATTACK, enemy.position(), helper.level.gameTime, 1)
-        val owner = SquadTacticalState()
-        val assignment = AttackAssignment(
-            operation = 1,
-            role = AttackRole.CENTER,
-            stage = AttackStage.ENGAGING,
-            revision = 0,
-            waypoint = sniper.position(),
-            sector = sniper.position(),
-            facing = enemy.position().subtract(sniper.position()).multiply(1.0, 0.0, 1.0).normalize(),
-            corridor = AttackCorridor(listOf(sniper.position()), 32.0),
-            deployed = true,
-            blocked = true,
-            externalCover = false,
-            slots = mapOf(sniper.uuid to 0.0),
-        )
-        var task = TacticalTask(TacticalJob.COVER, sniper.position(), enemy.position(), 1).apply {
+        val task = TacticalTask(TacticalJob.COVER, sniper.position(), enemy.position(), 1).apply {
             localFirePost = sniper.position()
             expandedFireSearch = true
         }
-        val trace = report.resolve(
-            when {
-                pressureChanges -> "sniper-search-pressure.csv"
-                revisionChanges -> "sniper-search-revisions.csv"
-                else -> "sniper-search.csv"
-            },
-        )
+        val trace = report.resolve("sniper-search.csv")
         Files.writeString(trace, "tick,outcome,probe,probes,scored,rejections,position\n")
         helper.testInfo.addListener(object : GameTestListener {
             override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
@@ -186,17 +150,7 @@ object SavedBattleGameTests {
                 enemy.position(),
                 listOf(TacticalMember(sniper.uuid, sniper.position(), sniper.npcClass)),
                 listOf(TacticalContact(enemy.uuid, enemy.position(), helper.level.gameTime)),
-                incoming = if (pressureChanges && helper.tick / 2 % 2 == 1L) listOf(enemy.position()) else emptyList(),
-                attackAssignment = assignment.copy(revision = if (revisionChanges) (helper.tick / 2).toInt() else 0),
             )
-            if (revisionChanges || pressureChanges) {
-                plan.tick(sniper.currentSquad()!!.id, owner, view)
-                task = plan.tasks.getValue(sniper.uuid)
-                if (helper.tick == 0L) {
-                    task.localFirePost = sniper.position()
-                    task.expandedFireSearch = true
-                }
-            }
             val result = TacticalPositions.find(sniper, task, view)
             if (helper.tick % 10L == 0L || result.outcome != TacticalPositions.Outcome.DEFERRED) {
                 Files.writeString(trace, "${helper.tick},${result.outcome},${task.search?.probeIndex},${task.search?.probes?.size},${task.search?.scored?.size},\"${task.search?.rejections}\",\"${result.position}\"\n", APPEND)
@@ -273,20 +227,13 @@ object SavedBattleGameTests {
         val watched = UUID.fromString(System.getProperty("sbwnpc.gameTestWatchNpc", "f8104e12-9378-4094-8cc7-54145ce8df70"))
         val sniper = members.firstOrNull { it.uuid == watched }
         val sniperTrace = report.resolve("sniper-lifecycle.csv")
-        Files.writeString(sniperTrace, "tick,task,job,anchor,search,probe,probes,aimShift,restart,target,position,transit,contacts,phase,actorPosition,navDone,ownedPath,localPost,expanded,failures,lastProgress,closest,rejections,operation,revision,waypoint,sector,deployed,blocked,externalCover,suppressed,failedMember,medicGuard,isGuard,canFire,ready,localCover,guardFocus\n")
-        var lastTask: TacticalTask? = null
-        var lastSearch: Any? = null
+        Files.writeString(sniperTrace, "tick,job,anchor,post,target,actorPosition,navDone\n")
         val stalledWindows = mutableMapOf<UUID, Int>()
         helper.onEachTick {
-            val squad = sniper?.currentSquad()
-            val task = squad?.tactics?.plan?.tasks?.get(sniper?.uuid)
-            val search = task?.search
-            if (helper.tick % 10L == 0L || task !== lastTask || search !== lastSearch) {
-                val aim = task?.let { TacticalAim.resolve(sniper!!, it) }
-                Files.writeString(sniperTrace, "${helper.tick},${task?.let { System.identityHashCode(it) }},${task?.job},\"${task?.anchor}\",${search?.let { System.identityHashCode(it) }},${search?.probeIndex},${search?.probes?.size},${search?.aim?.eye?.let { old -> aim?.eye?.distanceTo(old) }},${search?.needsRestart(sniper!!.position(), aim)},${sniper?.target?.uuid},\"${task?.position}\",\"${task?.fireTransit}\",\"${squad?.tactics?.snapshot?.contacts?.map { it.id to it.position }}\",${squad?.tactics?.plan?.phase},\"${sniper?.position()}\",${sniper?.navigation?.isDone},${task?.navigationPath === sniper?.navigation?.path},\"${task?.localFirePost}\",${task?.expandedFireSearch},${task?.failures},${task?.lastProgress},${task?.closest},\"${search?.rejections}\",${squad?.tactics?.snapshot?.attackAssignment?.operation},${squad?.tactics?.snapshot?.attackAssignment?.revision},\"${squad?.tactics?.snapshot?.attackAssignment?.waypoint}\",\"${squad?.tactics?.snapshot?.attackAssignment?.sector}\",${squad?.tactics?.snapshot?.attackAssignment?.deployed},${squad?.tactics?.snapshot?.attackAssignment?.blocked},${squad?.tactics?.snapshot?.attackAssignment?.externalCover},${squad?.tactics?.snapshot?.members?.firstOrNull { it.id == watched }?.suppressed},${squad?.tactics?.plan?.failedMembers?.contains(watched)},${squad?.tactics?.plan?.behavior?.medicGuard},${squad?.tactics?.plan?.behavior?.medicGuard == watched},${squad?.tactics?.snapshot?.members?.firstOrNull { it.id == watched }?.canFire},${squad?.tactics?.snapshot?.members?.firstOrNull { it.id == watched }?.ready},${squad?.tactics?.snapshot?.members?.count { member -> member.id != watched && com.sbwnpc.squad.combat.tactics.TacticalEvidence.firesCover(member, squad.tactics.plan?.tasks?.get(member.id)) }},\"${task?.focus}\"\n", APPEND)
+            val task = sniper?.let(com.sbwnpc.squad.ai.integration.NativeTactics::assignment)
+            if (helper.tick % 10L == 0L) {
+                Files.writeString(sniperTrace, "${helper.tick},${task?.job},\"${task?.anchor}\",\"${task?.position}\",${sniper?.target?.uuid},\"${sniper?.position()}\",${sniper?.navigation?.isDone}\n", APPEND)
             }
-            lastTask = task
-            lastSearch = search
             for ((index, npc) in members.withIndex()) {
                 if (helper.tick % 40L == (index % 40).toLong()) trace!!.sample(helper.tick, npc)
             }
@@ -296,7 +243,7 @@ object SavedBattleGameTests {
                 val alive = members.filter { it.isAlive && it.squadId == squad.id }
                 val armed = alive.filter { Ports.guns.roundsLeft(it.primaryGun()) > 0 && !it.busyWithRole() }
                 val recent = armed.count { it.firedRecently(100) }
-                Files.writeString(windows, "${helper.tick},${squad.name},${alive.size},${armed.size},$recent,${squad.tactics.plan?.pattern},${squad.tactics.plan?.phase}\n", APPEND)
+                Files.writeString(windows, "${helper.tick},${squad.name},${alive.size},${armed.size},$recent,htn,${squad.members.firstNotNullOfOrNull { helper.level.getEntity(it) as? com.sbwnpc.squad.entity.NpcEntity }?.let(com.sbwnpc.squad.ai.integration.NativeTactics::attackPhase)}\n", APPEND)
                 // Fix the criterion before the baseline: a sustained near-total standstill is a
                 // failure, regardless of a few early shots or the final battle's casualty ratio.
                 val contact = squad.tactics.snapshot?.contacts?.any { helper.level.getEntity(it.id)?.isAlive == true } == true

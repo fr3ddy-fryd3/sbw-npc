@@ -48,7 +48,6 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
     private var pauseReason: String? = null
     internal var navigationPath: net.minecraft.world.level.pathfinder.Path? = null
     private var deploymentStarted = false
-    private var movementBlocker: TacticalMovementBlocker? = null
 
     /** A support-role exchange keeps the physical post and owned route of each actor. */
     internal fun withJob(next: TacticalJob, anchor: Vec3): TacticalTask =
@@ -73,14 +72,6 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
             navigationPath = null
         }
 
-    /** Observations explain individual preemption without changing timers or navigation. */
-    internal fun observeBlocker(member: java.util.UUID, now: Long, blocker: TacticalMovementBlocker?, events: TacticalEventSink) {
-        if (movementBlocker == blocker) return
-        val previous = movementBlocker
-        movementBlocker = blocker
-        events.emit(TacticalEvent.MovementBlocked(plan, now, member, previous, blocker))
-    }
-
     internal fun suspend(now: Long, reason: String): Boolean {
         if (pauseReason == reason) return false
         if (pausedAt == null) pausedAt = now
@@ -101,23 +92,6 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
     internal fun releaseNavigation(current: net.minecraft.world.level.pathfinder.Path?, stop: () -> Unit) {
         if (navigationPath != null && navigationPath === current) stop()
         navigationPath = null
-    }
-
-    /** Call after airborne/emergency guards: a new contact search must not ride the march route. */
-    internal fun beginDeployment(current: net.minecraft.world.level.pathfinder.Path?, stop: () -> Unit): Boolean {
-        if (coverOrigin == null || job !in TacticalJob.FIRE_SUPPORT || deploymentStarted) return false
-        deploymentStarted = true
-        if (current == null || current.isDone || current === navigationPath) return false
-        stop()
-        return true
-    }
-
-    /** Initial contact constraints end at the reached post, before ordinary fire-post recovery. */
-    internal fun finishDeployment(phase: TacticalPhase): Boolean {
-        if (phase in setOf(TacticalPhase.PREPARING, TacticalPhase.OPENING_LANE)) return false
-        if (coverOrigin == null || job !in TacticalJob.FIRE_SUPPORT) return false
-        coverOrigin = null
-        return true
     }
 }
 

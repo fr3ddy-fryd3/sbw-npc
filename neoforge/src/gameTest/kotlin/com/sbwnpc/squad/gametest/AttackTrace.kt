@@ -109,22 +109,23 @@ class AttackTrace(private val helper: GameTestHelper, private val squad: Squad, 
         lineHold = if (aligned.size >= 12 && width >= 66.0 && spacing >= 3.0) lineHold + 1 else 0
         longestLineHold = maxOf(longestLineHold, lineHold)
         if (helper.tick % 10 != 0L) return
-        val plan = squad.tactics.plan
+        val lead = members.firstOrNull { it.isAlive }
+        val operation = lead?.let(com.sbwnpc.squad.ai.integration.NativeTactics::operation)
         val line = String.format(
             Locale.ROOT, "%d,%d,%d,%d,%d,%.4f,%.4f,%d,%d,%d,%d,%s,%s,%s,%s%n",
             helper.tick, (System.nanoTime() - started) / 1_000_000, alive.size, alive.count { it.target != null }, aligned.size, width, spacing,
-            lineHold, projectileShooters, rounds.values.sum(), ammoSpent, plan?.id, plan?.pattern, plan?.phase, plan?.status,
+            lineHold, projectileShooters, rounds.values.sum(), ammoSpent, operation?.id, operation?.order, lead?.let(com.sbwnpc.squad.ai.integration.NativeTactics::attackPhase), operation?.status,
         )
         Files.writeString(directory.resolve("attack-squad.csv"), line, APPEND)
         for (npc in members) {
             val p = helper.relativeVec(npc.position())
-            val task = plan?.tasks?.get(npc.uuid)
+            val task = com.sbwnpc.squad.ai.integration.NativeTactics.assignment(npc)
             val path = npc.navigation.path
             val record = String.format(
                 Locale.ROOT, "%d,%s,%.4f,%.4f,%.4f,%.4f,%s,%d,%d,%s,%d,%d,%s,\"%s\",\"%s\",%d,%s,%s%n",
                 helper.tick, npc.uuid, p.x, p.y, p.z, npc.health, npc.target?.uuid, npc.lastShotTick,
                 Ports.guns.roundsLeft(npc.mainHandItem), npc.navigation.isDone, path?.nextNodeIndex ?: -1, path?.nodeCount ?: 0,
-                task?.job, task?.position, task?.frontage?.point, task?.failures ?: 0, npc.combatLockedByCover(), npc.combatLockedByMedic(),
+                task?.job, task?.position, task?.anchor, 0, npc.combatLockedByCover(), npc.combatLockedByMedic(),
             )
             Files.writeString(directory.resolve("attack-members.csv"), record, APPEND)
         }

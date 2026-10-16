@@ -5,7 +5,6 @@ import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.FiringOpportunity
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.combat.tactics.SquadTactics
-import com.sbwnpc.squad.combat.tactics.TacticalPattern
 import com.sbwnpc.squad.combat.tactics.TacticalSnapshotCollector
 import com.sbwnpc.squad.combat.tactics.TacticalTargetSelection.Opportunity
 import com.sbwnpc.squad.entity.NpcEntity
@@ -42,7 +41,7 @@ object TargetMemoryGameTests {
         // Preserve a prior contact behind solid cover. It must not mask stale UUID rebinding
         // by offering a nearer shootable enemy during the reproduction.
         for (x in 54..56) for (z in 59..69) for (y in 1..3) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
-        val squad = scene.squad(listOf(npc), TacticalPattern.FOLLOW_ORDER, isolated = false, contact = other, order = SquadOrder.DEFEND)
+        val squad = scene.squad(listOf(npc), contact = other, order = SquadOrder.DEFEND)
         val profile = GameProfile(UUID.randomUUID(), "respawn-target")
         var player = ServerPlayer(helper.level.server, helper.level, profile, ClientInformation.createDefault()).apply {
             connection = FakePlayerFactory.get(helper.level, profile).connection
@@ -126,7 +125,7 @@ object TargetMemoryGameTests {
             val z = 40.5 + index * 90
             val npc = scene.spawn(Vec3(20.5, 1.0, z)).apply { isNoAi = true }
             val far = scene.enemy(Vec3(140.5, 1.0, z))
-            scene.squad(listOf(npc), TacticalPattern.FOLLOW_ORDER, isolated = false, contact = far, order = order)
+            scene.squad(listOf(npc), contact = far, order = order)
             BrainUtils.setTargetOfEntity(npc, far)
             Triple(npc, far, SquadTargetSensor())
         }
@@ -162,8 +161,8 @@ object TargetMemoryGameTests {
         val blocked = scene.enemy(Vec3(100.5, 1.0, 100.5))
         val report = scene.enemy(Vec3(20.5, 1.0, 20.5))
         val spotter = scene.spawn(Vec3(32.5, 1.0, 40.5)).apply { isNoAi = true }
-        val squad = scene.squad(listOf(npc), TacticalPattern.COORDINATED_ATTACK, contact = blocked)
-        scene.squad(listOf(spotter), TacticalPattern.FOLLOW_ORDER, contact = report)
+        val squad = scene.squad(listOf(npc), contact = blocked)
+        scene.squad(listOf(spotter), contact = report)
         for (y in 1..4) for (z in 90..110) helper.setBlock(BlockPos(50, y, z), Blocks.STONE)
         BrainUtils.setTargetOfEntity(npc, blocked)
         val sensor = SquadTargetSensor()
@@ -176,7 +175,6 @@ object TargetMemoryGameTests {
             if (helper.tick >= 70) {
                 helper.assertTrue(FiringOpportunity.assess(npc, blocked) == Opportunity.BLOCKED, "Old target is not blocked")
                 helper.assertTrue(FiringOpportunity.assess(npc, report) == Opportunity.SHOOTABLE, "Allied report is not shootable: ${FiringOpportunity.assess(npc, report)}")
-                helper.assertTrue(squad.tactics.plan?.behavior is com.sbwnpc.squad.combat.tactics.CoordinatedAttackState, "Fixture lost coordinated state")
                 helper.assertTrue(report.uuid in TeamAwareness.relayedContacts(SquadFaction.PIG, helper.level.gameTime, TeamAwareness.MEMORY_TICKS), "Allied report is not relayed")
             }
             sensor.tick(helper.level, npc)
