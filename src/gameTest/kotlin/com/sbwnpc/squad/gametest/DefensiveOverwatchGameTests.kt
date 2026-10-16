@@ -74,10 +74,11 @@ object DefensiveOverwatchGameTests {
      * The legacy [TacticalTask] shape of an HTN [NativeAssignment], so the existing shelter and
      * firing-lane checks judge the post the runtime actually holds.
      */
-    private fun NativeAssignment.task() = TacticalTask(job, anchor, focus, 0).also {
-        it.position = position
-        it.localFirePost = localFirePost
-    }
+    private fun NativeAssignment.task() =
+        TacticalTask(job, anchor, focus, 0).also {
+            it.position = position
+            it.localFirePost = localFirePost
+        }
 
     /**
      * Whether [post] is still held: a revised HTN action re-reserves the spot where the sentry

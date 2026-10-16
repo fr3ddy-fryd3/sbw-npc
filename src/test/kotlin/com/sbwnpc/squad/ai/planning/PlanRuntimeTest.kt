@@ -265,7 +265,10 @@ class PlanRuntimeTest {
         val action = Action(reopenable = true)
         val leases = ResourceLeases()
         var creates = 0
-        val runtime = PlanRuntime({ _, _ -> creates++; action }, leases)
+        val runtime = PlanRuntime({ _, _ ->
+            creates++
+            action
+        }, leases)
         val post = task("post", contract = TaskContract(completed = Condition.test(arrived, "not_arrived") { it }), resources = setOf(motion))
         runtime.install(plan(post), facts(0).observe(arrived, false))
         runtime.tick(facts(0).observe(arrived, false))
