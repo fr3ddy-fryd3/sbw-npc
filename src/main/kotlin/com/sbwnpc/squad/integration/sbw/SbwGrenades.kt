@@ -3,8 +3,8 @@ package com.sbwnpc.squad.integration.sbw
 import com.atsuishio.superbwarfare.config.server.ExplosionConfig
 import com.atsuishio.superbwarfare.entity.projectile.HandGrenadeEntity
 import com.atsuishio.superbwarfare.entity.projectile.RgoGrenadeEntity
-import com.sbwnpc.squad.domain.port.GrenadeKind
 import com.atsuishio.superbwarfare.tools.RangeTool
+import com.sbwnpc.squad.domain.port.GrenadeKind
 import com.sbwnpc.squad.domain.port.Grenades
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity

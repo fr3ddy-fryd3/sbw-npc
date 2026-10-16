@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.block
 
+import com.mojang.serialization.MapCodec
 import com.sbwnpc.squad.block.entity.BarracksBlockEntity
 import com.sbwnpc.squad.init.ModBlockEntities
 import com.sbwnpc.squad.item.SquadToolItem
@@ -8,7 +9,6 @@ import com.sbwnpc.squad.network.sendToClient
 import com.sbwnpc.squad.squad.BarracksRef
 import com.sbwnpc.squad.squad.PlayerFactionRegistry
 import com.sbwnpc.squad.squad.SquadManager
-import com.mojang.serialization.MapCodec
 import net.minecraft.ChatFormatting
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction

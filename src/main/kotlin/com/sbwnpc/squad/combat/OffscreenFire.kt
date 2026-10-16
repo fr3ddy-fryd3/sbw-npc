@@ -31,8 +31,8 @@ object OffscreenFire {
     const val WITNESS_RADIUS = 128.0
 
     private const val BASE_HIT_CHANCE = 0.75
-    private const val DISTANCE_FALLOFF = 40.0   // e-folding distance in blocks
-    private const val SPREAD_DIVISOR = 6.0      // NpcRank.spread is 3..7 -> factor 0.46..0.67
+    private const val DISTANCE_FALLOFF = 40.0 // e-folding distance in blocks
+    private const val SPREAD_DIVISOR = 6.0 // NpcRank.spread is 3..7 -> factor 0.46..0.67
     private const val MIN_HIT_CHANCE = 0.05
     private const val MAX_HIT_CHANCE = 0.6
 

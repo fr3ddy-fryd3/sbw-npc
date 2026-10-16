@@ -5,8 +5,8 @@ import com.sbwnpc.squad.entity.ai.HelicopterFlightController.Tuning
 import net.minecraft.util.Mth
 import net.minecraft.world.phys.Vec3
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import kotlin.math.cos
 import kotlin.math.sin

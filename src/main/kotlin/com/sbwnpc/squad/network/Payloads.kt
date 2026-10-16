@@ -219,12 +219,12 @@ class RouteCmdPayload(val action: Int, val route: String, val text: String) : Cu
 
     companion object {
         const val START_RECORDING = 0
-        const val FINISH = 1       // text = new route's name
+        const val FINISH = 1 // text = new route's name
         const val CANCEL = 2
-        const val ASSIGN = 3       // route = route id, text = squad id
-        const val DELETE = 4       // route = route id
+        const val ASSIGN = 3 // route = route id, text = squad id
+        const val DELETE = 4 // route = route id
         const val REQUEST_LIST = 5
-        const val MAP_ROUTE = 6    // route = squad ids, comma-separated; text = "x z x z ..." drawn on the map
+        const val MAP_ROUTE = 6 // route = squad ids, comma-separated; text = "x z x z ..." drawn on the map
 
         val TYPE = CustomPacketPayload.Type<RouteCmdPayload>(SquadMod.loc("route_cmd"))
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, RouteCmdPayload> = StreamCodec.composite(
@@ -313,7 +313,7 @@ class SupplyCmdPayload(val pos: BlockPos, val action: Int, val kit: Int, val opt
     override fun type() = TYPE
 
     companion object {
-        const val TAKE_KIT = 1     // kit = its index, option = the weapon's
+        const val TAKE_KIT = 1 // kit = its index, option = the weapon's
         const val SET_SPAWN = 2
 
         val TYPE = CustomPacketPayload.Type<SupplyCmdPayload>(SquadMod.loc("supply_cmd"))
@@ -333,8 +333,8 @@ class DiplomacyCmdPayload(val action: Int, val faction: Int, val proposal: Int) 
 
     companion object {
         const val REQUEST = 0
-        const val PROPOSE = 1      // faction = the one offered an alliance
-        const val ACCEPT = 2       // proposal = its id
+        const val PROPOSE = 1 // faction = the one offered an alliance
+        const val ACCEPT = 2 // proposal = its id
         const val TOGGLE_LEAVE = 3
 
         val TYPE = CustomPacketPayload.Type<DiplomacyCmdPayload>(SquadMod.loc("diplomacy_cmd"))

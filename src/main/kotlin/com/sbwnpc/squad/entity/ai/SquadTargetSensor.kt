@@ -1,12 +1,12 @@
 package com.sbwnpc.squad.entity.ai
 
-import com.sbwnpc.squad.combat.FireAllocation
 import com.sbwnpc.squad.combat.CombatPosition
 import com.sbwnpc.squad.combat.DetectionSightline
-import com.sbwnpc.squad.combat.TeamAwareness
-import com.sbwnpc.squad.combat.Vision
+import com.sbwnpc.squad.combat.FireAllocation
 import com.sbwnpc.squad.combat.TankWeaponSelection
+import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.combat.VehicleTargeting
+import com.sbwnpc.squad.combat.Vision
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModSensors

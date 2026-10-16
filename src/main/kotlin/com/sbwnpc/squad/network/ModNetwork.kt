@@ -18,10 +18,10 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.entity.EquipmentSlot
 import net.minecraft.world.phys.Vec3
+import net.neoforged.api.distmarker.Dist
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.fml.loading.FMLEnvironment
-import net.neoforged.api.distmarker.Dist
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent
 import net.neoforged.neoforge.network.handling.IPayloadContext
 import java.util.UUID
@@ -402,5 +402,4 @@ object ModNetwork {
             }
         }
     }
-
 }

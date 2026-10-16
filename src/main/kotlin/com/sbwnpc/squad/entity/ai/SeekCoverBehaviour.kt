@@ -2,9 +2,9 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
-import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.GrenadeThrower
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.combat.TickBudget
 import com.sbwnpc.squad.entity.NpcEntity
@@ -97,10 +97,10 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     companion object {
         private const val FALLBACK_DISTANCE = 6.0
         private const val FALLBACK_SPREAD_RADIANS = Math.PI / 3.0 // +/- 60 deg off dead-away-from-threat
-        private const val DWELL_TICKS = 20        // ~1s minimum before the first peek
-        private const val DWELL_JITTER = 30        // + up to ~1.5s random, so a squad doesn't peek in lockstep
-        private const val PEEK_TICKS = 50          // ~2.5s exposed before ducking back, unless target dies/breaks LOS first
-        private const val RECHECK_TICKS = 15       // no target yet — check again soon rather than popping out blind
+        private const val DWELL_TICKS = 20 // ~1s minimum before the first peek
+        private const val DWELL_JITTER = 30 // + up to ~1.5s random, so a squad doesn't peek in lockstep
+        private const val PEEK_TICKS = 50 // ~2.5s exposed before ducking back, unless target dies/breaks LOS first
+        private const val RECHECK_TICKS = 15 // no target yet — check again soon rather than popping out blind
 
         // Minimal-exposure peek distances (blocks), tried in order — first one with a clear
         // raycast to the target wins. Lean-and-peek rather than a full walk-out to the target, per
@@ -110,7 +110,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         private val PEEK_STEP_DISTANCES = listOf(0.5, 1.0, 1.5, 2.0, 2.5, 3.0)
 
         private const val DIG_HEALTH_FRACTION = 0.25f // only badly hurt NPCs bother digging in (was 0.5, per user request)
-        private const val DIG_TICKS = 70              // ~3.5s of "digging" before the hole is done
+        private const val DIG_TICKS = 70 // ~3.5s of "digging" before the hole is done
         // One initial dig, plus at most one extra block deeper if hit again while dug in and still
         // no real cover — per user request. NOT unlimited (see digsUsed's own doc comment for why).
         private const val MAX_DIGS = 2

@@ -11,21 +11,21 @@ import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.SquadOrder
 import journeymap.api.v2.client.IClientAPI
 import journeymap.api.v2.client.IClientPlugin
-import journeymap.api.v2.common.JourneyMapPlugin
 import journeymap.api.v2.client.display.IOverlayListener
 import journeymap.api.v2.client.display.MarkerOverlay
 import journeymap.api.v2.client.display.PolygonOverlay
+import journeymap.api.v2.client.event.FullscreenMapEvent
+import journeymap.api.v2.client.event.FullscreenRenderEvent
+import journeymap.api.v2.client.fullscreen.IFullscreen
 import journeymap.api.v2.client.fullscreen.ModPopupMenu
 import journeymap.api.v2.client.model.MapImage
 import journeymap.api.v2.client.model.MapPolygon
 import journeymap.api.v2.client.model.ShapeProperties
 import journeymap.api.v2.client.model.TextProperties
 import journeymap.api.v2.client.util.UIState
-import journeymap.api.v2.client.event.FullscreenMapEvent
-import journeymap.api.v2.client.event.FullscreenRenderEvent
+import journeymap.api.v2.common.JourneyMapPlugin
 import journeymap.api.v2.common.event.ClientEventRegistry
 import journeymap.api.v2.common.event.FullscreenEventRegistry
-import journeymap.api.v2.client.fullscreen.IFullscreen
 import journeymap.api.v2.common.waypoint.Waypoint
 import journeymap.api.v2.common.waypoint.WaypointFactory
 import net.minecraft.core.BlockPos
@@ -544,6 +544,5 @@ class SquadMapPlugin : IClientPlugin {
         /** The server keeps no more than this many either. */
         const val MAX_ROUTE_POINTS = 32
         const val ROUTE_HINT_Y = 30
-
     }
 }

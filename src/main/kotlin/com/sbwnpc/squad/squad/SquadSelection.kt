@@ -55,5 +55,4 @@ object SquadSelection {
 
     /** Consumes and returns the squad awaiting a focus-entity pick, if any. */
     fun takeFocusArm(player: UUID): UUID? = awaitingFocus.remove(player)
-
 }

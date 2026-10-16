@@ -23,16 +23,15 @@ import com.sbwnpc.squad.squad.Squad
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
-import net.minecraft.server.level.ServerLevel
-import net.minecraft.world.phys.Vec3
-import java.util.UUID
 import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.syncher.EntityDataAccessor
 import net.minecraft.network.syncher.EntityDataSerializers
 import net.minecraft.network.syncher.SynchedEntityData
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.DifficultyInstance
 import net.minecraft.world.InteractionHand
+import net.minecraft.world.damagesource.DamageSource
 import net.minecraft.world.entity.EntityDimensions
 import net.minecraft.world.entity.EntityType
 import net.minecraft.world.entity.EquipmentSlot
@@ -46,11 +45,12 @@ import net.minecraft.world.entity.ai.attributes.AttributeSupplier
 import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.entity.ai.goal.FloatGoal
 import net.minecraft.world.entity.player.Player
-import net.minecraft.world.damagesource.DamageSource
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.Level
-import net.tslat.smartbrainlib.util.BrainUtils
 import net.minecraft.world.level.ServerLevelAccessor
+import net.minecraft.world.phys.Vec3
+import net.tslat.smartbrainlib.util.BrainUtils
+import java.util.UUID
 
 /**
  * Base squad-member entity. Role (class + rank) drives the loadout and combat tuning. Friend/foe
@@ -1153,7 +1153,6 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         // See navigateTo().
         const val REPATH_INTERVAL_TICKS = 10
 
-
         @JvmField
         val DATA_CLASS: EntityDataAccessor<Int> =
             SynchedEntityData.defineId(NpcEntity::class.java, EntityDataSerializers.INT)
@@ -1167,7 +1166,6 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             return Mob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, BASE_HEALTH)
                 .add(Attributes.MOVEMENT_SPEED, BASE_SPEED) // real per-class value is set in applyRole() — npcClass isn't known yet here
-
                 .add(Attributes.ATTACK_DAMAGE, 2.0)
                 .add(Attributes.ARMOR, 2.0)
                 // NOT the detection range any more — that's DETECTION_RANGE (still 72, x1.5 per

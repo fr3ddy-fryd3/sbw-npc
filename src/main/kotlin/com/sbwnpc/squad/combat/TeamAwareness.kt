@@ -42,7 +42,7 @@ object TeamAwareness {
 
     private const val NEVER = Long.MIN_VALUE / 2
 
-    const val ALERT_DELAY_TICKS = 60L   // ~3s before non-spotters can act on it
+    const val ALERT_DELAY_TICKS = 60L // ~3s before non-spotters can act on it
     const val RECENT_WINDOW_TICKS = 40L // ~2s since the last confirmed sighting by anyone
     /**
      * How long infantry and the map keep acting on a contact nobody is still looking at. The 2s
@@ -51,8 +51,8 @@ object TeamAwareness {
      * killer, reported as he died — or seen for under 3s went stale before anyone else could
      * know of it, and an ally standing nearby never reacted.
      */
-    const val MEMORY_TICKS = 200L       // ~10s
-    const val FORGET_TICKS = 200L       // ~10s untouched -> drop entirely
+    const val MEMORY_TICKS = 200L // ~10s
+    const val FORGET_TICKS = 200L // ~10s untouched -> drop entirely
     private const val SWEEP_INTERVAL_TICKS = 100L
 
     private val byFaction = HashMap<SquadFaction, MutableMap<UUID, Contact>>()

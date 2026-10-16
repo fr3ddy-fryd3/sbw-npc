@@ -28,7 +28,8 @@ class StaticGunMeshTest {
             val texture = asset(resource.get("LODTexture").asString)
             assertTrue(model.isFile, "Missing $weapon model: $model")
             assertTrue(texture.isFile, "Missing $weapon texture: $texture")
-            val gun = requireNotNull(guns[ResourceLocation.fromNamespaceAndPath("superbwarfare", weapon)]) { "Missing NPC model for $weapon" }
+            val gun =
+                requireNotNull(guns[ResourceLocation.fromNamespaceAndPath("superbwarfare", weapon)]) { "Missing NPC model for $weapon" }
             assertEquals(resource.get("LODModel").asString, gun.geometry.toString(), weapon)
             assertEquals(resource.get("LODTexture").asString, gun.texture.toString(), weapon)
             val mesh = gun.mesh

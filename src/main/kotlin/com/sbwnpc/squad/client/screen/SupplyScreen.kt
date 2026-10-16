@@ -108,7 +108,7 @@ class SupplyScreen(private val pos: BlockPos, snapshot: CompoundTag) : Screen(Co
         g.drawString(font, shown.weapon.hoverName, left + 4, y, 0xFFFFFF)
         y += LINE
         for ((stack, count) in shown.items) {
-            g.drawString(font, Component.literal("${count}× ").append(stack.hoverName).withStyle(ChatFormatting.GRAY), left + 4, y, -1)
+            g.drawString(font, Component.literal("$count× ").append(stack.hoverName).withStyle(ChatFormatting.GRAY), left + 4, y, -1)
             y += LINE
         }
         g.drawString(font, Component.literal("Helmet and vest of your side").withStyle(ChatFormatting.GRAY), left + 4, y, -1)

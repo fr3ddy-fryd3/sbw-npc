@@ -136,8 +136,8 @@ object CoverSearch {
     private val NEIGHBOR_OFFSETS = listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1)
         private const val SAMPLE_COUNT = 20
         private const val MIN_RADIUS = 5.0
-        private const val MAX_RADIUS = 14.0        // reverted back from 28 per user request
-        private const val WALL_SCAN_STEP = 4       // 8x8 candidate grid across the 28-block search diameter
+        private const val MAX_RADIUS = 14.0 // reverted back from 28 per user request
+        private const val WALL_SCAN_STEP = 4 // 8x8 candidate grid across the 28-block search diameter
         // How far out to look for OTHER hostiles a candidate cover point must also stay hidden from
         // — see [find]. Roughly the rifleman/machine-gunner engagement range
         // (BASE_SHOOT_DISTANCE 24 * up to 1.5-2x class multiplier, GunAttackBehaviour) rather than

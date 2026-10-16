@@ -1,9 +1,9 @@
 package com.sbwnpc.squad.entity
 
+import com.sbwnpc.squad.SquadMod
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.entity.ai.WalkingClearance
-import com.sbwnpc.squad.SquadMod
 import net.minecraft.core.BlockPos
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.server.level.ServerLevel

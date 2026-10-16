@@ -1,17 +1,17 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
+import com.sbwnpc.squad.combat.DeathSites
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
-import com.sbwnpc.squad.combat.DeathSites
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.core.BlockPos
-import net.minecraft.world.phys.Vec3
-import com.sbwnpc.squad.init.ModMemories
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
+import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 import net.tslat.smartbrainlib.util.BrainUtils
 

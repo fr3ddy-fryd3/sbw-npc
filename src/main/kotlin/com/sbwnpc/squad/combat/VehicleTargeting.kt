@@ -9,7 +9,6 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.level.Level
-import net.minecraft.world.phys.AABB
 
 /** A vehicle is targeted through a hostile occupant because SBW's gunner API accepts LivingEntity targets. */
 object VehicleTargeting {
@@ -25,7 +24,8 @@ object VehicleTargeting {
         // From a helicopter the ground is a long way down: search as far as the ground can see it.
         val airborne = isAircrew(entity)
         val height = if (airborne) AIR_SEARCH_HEIGHT else SEARCH_HEIGHT
-        @Suppress("NAME_SHADOWING") val range = if (airborne) range * AIR_RANGE_FACTOR else range
+        @Suppress("NAME_SHADOWING")
+        val range = if (airborne) range * AIR_RANGE_FACTOR else range
         val rangeSqr = range * range
         // Walked from the level's short list of vehicles rather than a box query for every living
         // thing within 144 blocks: every NPC ran that one every half second, with a handful of

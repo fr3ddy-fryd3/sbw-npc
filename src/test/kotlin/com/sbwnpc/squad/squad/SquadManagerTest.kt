@@ -1,20 +1,20 @@
 package com.sbwnpc.squad.squad
 
+import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcClass.MACHINE_GUNNER
 import com.sbwnpc.squad.npc.NpcClass.MEDIC
 import com.sbwnpc.squad.npc.NpcClass.RIFLEMAN
 import com.sbwnpc.squad.npc.NpcClass.SNIPER
-import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.npc.SquadPreset
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNull
-import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Test
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
 import java.util.UUID
 
 class SquadManagerTest {

@@ -1,11 +1,11 @@
 package com.sbwnpc.squad.entity.ai
 
+import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.squad.RouteManager
 import com.sbwnpc.squad.squad.Squad
 import com.sbwnpc.squad.squad.SquadOrder
-import com.mojang.datafixers.util.Pair
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
