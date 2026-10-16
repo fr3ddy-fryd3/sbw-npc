@@ -36,6 +36,9 @@ object MapFeed {
 
     private val subscribers = HashSet<UUID>()
 
+    // Last joinable point sent per squad, so the trace shows only changes.
+    private val goalTraces = HashMap<UUID, String>()
+
     fun subscribe(player: ServerPlayer) {
         subscribers += player.uuid
         com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.MAP, "{} subscribed to the map feed", player.gameProfile.name)
@@ -45,7 +48,10 @@ object MapFeed {
         subscribers -= player
     }
 
-    fun clearAll() = subscribers.clear()
+    fun clearAll() {
+        subscribers.clear()
+        goalTraces.clear()
+    }
 
     fun tick(server: MinecraftServer) {
         if (subscribers.isEmpty() || server.tickCount % INTERVAL_TICKS != 0) return
@@ -121,6 +127,18 @@ object MapFeed {
             goal?.let {
                 t.putIntArray("Goal", intArrayOf(it.x, it.y, it.z))
                 t.putString("GoalOrder", operation?.order?.name ?: squad.order.name)
+            }
+            if (squad.owner == viewer && com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.MAP)) {
+                val source = when {
+                    goal == null -> "none"
+                    operation?.objective is com.sbwnpc.squad.ai.coordination.ObjectiveKey.Area -> "operation"
+                    squad.tacticalObjective != null -> "tactical"
+                    else -> "objective"
+                }
+                val trace = "goal=${goal?.toShortString()} order=${operation?.order ?: squad.order} source=$source operation=${operation?.id}"
+                if (goalTraces.put(squad.id, trace) != trace) {
+                    com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.MAP, "join-goal squad={} name={} {}", squad.id, squad.name, trace)
+                }
             }
             // Who may join it: the map has no alliance registry of its own.
             t.putInt("Allies", com.sbwnpc.squad.team.Diplomacy.alliesOf(squad.faction).fold(0) { mask, it -> mask or (1 shl it.ordinal) })

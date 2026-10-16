@@ -557,7 +557,9 @@ class SquadMapPlugin : IClientPlugin {
     /** Join items for the operation of the squad whose objective [waypoint] marks. */
     private fun addWaypointJoins(menu: ModPopupMenu, waypoint: Waypoint) {
         if (waypoint.modId != modId) return
-        val squad = waypoints.entries.firstOrNull { it.value.second.guid == waypoint.guid }?.key ?: return
+        val squad = waypoints.entries.firstOrNull { it.value.second.guid == waypoint.guid }?.key
+        DebugFlags.log(LogGroup.MAP, "join-menu: waypoint {} of squad {}, marks={}", waypoint.name, squad?.let { known[it]?.name ?: it }, operationMarks.count { squad != null && squad in it.squads })
+        if (squad == null) return
         operationMarks.filter { squad in it.squads }.forEach { addJoin(menu, it) }
     }
 
@@ -566,8 +568,16 @@ class SquadMapPlugin : IClientPlugin {
      * hitting it exactly is rare; anything within [JOIN_REACH_PIXELS] of the click counts.
      */
     private fun addNearbyJoins(menu: ModPopupMenu, state: UIState) {
-        val at = hovered ?: return
+        val at = hovered
+        if (at == null) {
+            DebugFlags.log(LogGroup.MAP, "join-menu: no hovered position, marks={}", operationMarks.size)
+            return
+        }
         val reach = maxOf(4.0, JOIN_REACH_PIXELS / state.blockSize)
+        if (DebugFlags.on(LogGroup.MAP)) {
+            val marks = operationMarks.joinToString { "${it.order}@${it.pos.toShortString()} d=${"%.1f".format(kotlin.math.hypot((it.pos.x - at.x).toDouble(), (it.pos.z - at.z).toDouble()))} squads=${it.squads.size}" }
+            DebugFlags.log(LogGroup.MAP, "join-menu: at={} reach={} selected={} marks=[{}]", at.toShortString(), "%.1f".format(reach), selected.mapNotNull { known[it]?.name ?: it }, marks)
+        }
         operationMarks
             .filter { kotlin.math.hypot((it.pos.x - at.x).toDouble(), (it.pos.z - at.z).toDouble()) <= reach }
             .sortedBy { kotlin.math.hypot((it.pos.x - at.x).toDouble(), (it.pos.z - at.z).toDouble()) }
@@ -585,7 +595,18 @@ class SquadMapPlugin : IClientPlugin {
         joinedMarks += mark
         // Only the operation's allies; the server would refuse the rest anyway.
         val ids = selected.filter { id -> id !in mark.squads && known[id]?.let { mark.allies and (1 shl it.faction.ordinal) != 0 } == true }
-        if (ids.isEmpty()) return
+        if (ids.isEmpty()) {
+            DebugFlags.log(
+                LogGroup.MAP,
+                "join-skip {}@{}: no eligible squad, selected={} inOperation={} unknown={}",
+                mark.order,
+                mark.pos.toShortString(),
+                selected.size,
+                selected.count { it in mark.squads },
+                selected.count { it !in known },
+            )
+            return
+        }
         val who = if (ids.size == 1) known[ids[0]]?.name ?: "Squad" else "${ids.size} squads"
         val label = "$who: Join ${mark.label.lowercase()}"
         if (mark.order == SquadOrder.PATROL) {
@@ -597,7 +618,11 @@ class SquadMapPlugin : IClientPlugin {
             }
             return
         }
-        if (mark.order !in SquadOrder.pointOrdersFor(ids.mapNotNull { known[it]?.orders })) return
+        if (mark.order !in SquadOrder.pointOrdersFor(ids.mapNotNull { known[it]?.orders })) {
+            DebugFlags.log(LogGroup.MAP, "join-skip {}@{}: order not available to {}", mark.order, mark.pos.toShortString(), ids.mapNotNull { known[it]?.name })
+            return
+        }
+        DebugFlags.log(LogGroup.MAP, "join-offer {}@{} for {}", mark.order, mark.pos.toShortString(), ids.mapNotNull { known[it]?.name })
         // One order per squad: a single squad sent to an operation's exact point joins it,
         // while a new common order there deliberately starts an operation of its own.
         menu.addMenuItem(label) { _ -> ids.forEach { sendOrder(listOf(it), mark.order, mark.pos) } }
@@ -615,6 +640,7 @@ class SquadMapPlugin : IClientPlugin {
         }
 
         override fun onOverlayMenuPopup(state: UIState, mouse: Point2D.Double, pos: BlockPos, menu: ModPopupMenu) {
+            DebugFlags.log(LogGroup.MAP, "join-menu: squad marker menu for {} at {}, no joins in it", known[squad]?.name ?: squad, pos.toShortString())
             for (order in known[squad]?.orders.orEmpty()) {
                 menu.addMenuItem("Order: ${order.name.lowercase().replaceFirstChar { it.uppercase() }}") {
                     PacketDistributor.sendToServer(SquadCmdPayload(SquadCmdPayload.SET_ORDER, squad, order.ordinal, ""))
