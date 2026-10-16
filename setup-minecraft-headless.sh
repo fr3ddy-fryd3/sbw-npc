@@ -18,7 +18,7 @@ Default: install missing tools, prepare dependencies, run three smoke GameTests.
 
 Requires Linux x86_64/aarch64 with glibc. Uses JAVA_HOME/installed Java 21,
 otherwise installs Temurin 21 locally. Gradle 8.14.2 is installed locally.
-Downloads and logs: build/headless/; test reports: build/reports/gameTest/.
+Downloads and logs: build/headless/; test reports: neoforge/build/reports/gameTest/.
 Optional: GRADLE_USER_HOME for a persistent cache; HEADLESS_GRADLE_HEAP=4G;
 HEADLESS_GRADLE_BIN=/absolute/path/to/gradle (must be 8.14.2).
 Existing SuperbWarfare sources are retained. A missing directory is restored
@@ -192,5 +192,5 @@ printf 'Running:'; printf ' %q' "$gradle_bin" "${args[@]}"; printf '\n'
 "$gradle_bin" "${args[@]}"
 printf '\nHeadless %s completed. Log: %s\nEnvironment: %s/env.sh\n' "$mode" "$log" "$work"
 if [[ $mode != unit && $mode != prepare ]]; then
-    printf 'GameTest reports: %s/build/reports/gameTest/%s/\n' "$root" "$report"
+    printf 'GameTest reports: %s/neoforge/build/reports/gameTest/%s/\n' "$root" "$report"
 fi

@@ -12,7 +12,7 @@ out/
 !gradle/wrapper/gradle-wrapper.jar
 
 # Generated resources (data generators)
-/src/generated/
+/neoforge/src/generated/
 
 # IDE
 .idea/

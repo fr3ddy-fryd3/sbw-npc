@@ -61,13 +61,13 @@ bash setup-minecraft-headless.sh --offline --report cloud-repeat
 Скрипт ограничивает сборку двумя workers и отключает параллельные задачи.
 
 Лог установки и запуска: `build/headless/logs/<report>.log`.
-Серверный лог, CSV и TXT сцен: `build/reports/gameTest/<report>/`.
-JUnit XML/HTML: `build/test-results/test/`, `build/reports/tests/test/`.
+Серверный лог, CSV и TXT сцен: `neoforge/build/reports/gameTest/<report>/`.
+JUnit XML/HTML: `neoforge/build/test-results/test/`, `neoforge/build/reports/tests/test/`.
 Для ручных команд можно выполнить `source build/headless/env.sh`, затем
 `"$HEADLESS_GRADLE_BIN" runGameTestServer -PgameTestFilter=moveAcrossFlatGround`.
 Скрипт не копирует JAR в установленный Minecraft и не меняет пользовательские миры.
 Не запускайте одновременно несколько GameTest-процессов в одном клоне:
-они используют общий `build/gametest/server/`.
+они используют общий `neoforge/build/gametest/server/`.
 
 В облачном setup агента используйте `bash setup-minecraft-headless.sh --prepare`,
 а проверку запуска оставьте командой без аргументов. Полный набор может выявить
@@ -76,19 +76,19 @@ JUnit XML/HTML: `build/test-results/test/`, `build/reports/tests/test/`.
 
 | Файл или каталог | Назначение |
 |---|---|
-| [InfantryMovementGameTests.kt](../src/gameTest/kotlin/com/sbwnpc/squad/gametest/InfantryMovementGameTests.kt) | Сцены движения, создание NPC и отряда, выдача MOVE, проверки прибытия, запись состояния навигации |
-| [AttackDeploymentGameTests.kt](../src/gameTest/kotlin/com/sbwnpc/squad/gametest/AttackDeploymentGameTests.kt) | Атака 16 стрелков на четыре неподвижные цели без ответного огня |
-| [TerrainAttackGameTests.kt](../src/gameTest/kotlin/com/sbwnpc/squad/gametest/TerrainAttackGameTests.kt) | Атака 32 стрелков через гребень и потеря обзора несколькими стрелками на неровной местности |
-| [FiringPostSearchGameTests.kt](../src/gameTest/kotlin/com/sbwnpc/squad/gametest/FiringPostSearchGameTests.kt) | Запрос достижимого огневого поста на геометрии неудачного боя; проверка сохранения центра обхода |
-| [GameTestRegistration.kt](../src/gameTest/kotlin/com/sbwnpc/squad/gametest/GameTestRegistration.kt) | Регистрация сцен и выбор методов через `gameTestFilter` |
-| [AttackTrace.kt](../src/gameTest/kotlin/com/sbwnpc/squad/gametest/AttackTrace.kt) | Измерения линии, участников стрельбы, расхода боезапаса, пуль и урона |
-| [FlankTrace.kt](../src/gameTest/kotlin/com/sbwnpc/squad/gametest/FlankTrace.kt) | Пересечения порядка бойцов, интервалы во время и после флангового движения, прибытие и завершение манёвра |
-| [CombatTickPacer.kt](../src/gameTest/kotlin/com/sbwnpc/squad/gametest/CombatTickPacer.kt) | Минимум 50 мс на тик боевой сцены для штатного таймера оружия |
-| [terrain_arena.nbt](../src/gameTest/resources/data/sbwnpc/structure/terrain_arena.nbt) | Пустой шаблон 176 × 16 × 224 для развёрнутой линии и гребня |
-| [movement_arena.nbt](../src/gameTest/resources/data/sbwnpc/structure/movement_arena.nbt) | Пустой шаблон размером 24 × 8 × 12; пол и препятствия ставят методы тестов |
-| [build.gradle.kts](../build.gradle.kts) | Отдельный source set `gameTest`, запуск `runGameTestServer`, выбор модов и архивация лога |
-| `build/gametest/server/` | Изолированный мир, настройки и логи тестового сервера |
-| `build/reports/gameTest/<имя>/` | CSV каждого сценария, краткий результат TXT и `server.log` |
+| [InfantryMovementGameTests.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/InfantryMovementGameTests.kt) | Сцены движения, создание NPC и отряда, выдача MOVE, проверки прибытия, запись состояния навигации |
+| [AttackDeploymentGameTests.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/AttackDeploymentGameTests.kt) | Атака 16 стрелков на четыре неподвижные цели без ответного огня |
+| [TerrainAttackGameTests.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/TerrainAttackGameTests.kt) | Атака 32 стрелков через гребень и потеря обзора несколькими стрелками на неровной местности |
+| [FiringPostSearchGameTests.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/FiringPostSearchGameTests.kt) | Запрос достижимого огневого поста на геометрии неудачного боя; проверка сохранения центра обхода |
+| [GameTestRegistration.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/GameTestRegistration.kt) | Регистрация сцен и выбор методов через `gameTestFilter` |
+| [AttackTrace.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/AttackTrace.kt) | Измерения линии, участников стрельбы, расхода боезапаса, пуль и урона |
+| [FlankTrace.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/FlankTrace.kt) | Пересечения порядка бойцов, интервалы во время и после флангового движения, прибытие и завершение манёвра |
+| [CombatTickPacer.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/CombatTickPacer.kt) | Минимум 50 мс на тик боевой сцены для штатного таймера оружия |
+| [terrain_arena.nbt](../neoforge/src/gameTest/resources/data/sbwnpc/structure/terrain_arena.nbt) | Пустой шаблон 176 × 16 × 224 для развёрнутой линии и гребня |
+| [movement_arena.nbt](../neoforge/src/gameTest/resources/data/sbwnpc/structure/movement_arena.nbt) | Пустой шаблон размером 24 × 8 × 12; пол и препятствия ставят методы тестов |
+| [neoforge/build.gradle.kts](../neoforge/build.gradle.kts) | Отдельный source set `gameTest`, запуск `runGameTestServer`, выбор модов и архивация лога |
+| `neoforge/build/gametest/server/` | Изолированный мир, настройки и логи тестового сервера |
+| `neoforge/build/reports/gameTest/<имя>/` | CSV каждого сценария, краткий результат TXT и `server.log` |
 
 ## Запуск
 
@@ -146,11 +146,11 @@ GameTestServer выполняет тики ускоренно. Боевая сц
 
 | Отчёт | Завершённые фланги | Пересечения | Самое долгое сближение <3 блоков, тики | Пули |
 |---|---|---|---|---|
-| [flank-final-1](../build/reports/gameTest/flank-final-1/attack-flank-summary.txt) | 2 | 0 | 16 | 1271 |
-| [flank-final-2](../build/reports/gameTest/flank-final-2/attack-flank-summary.txt) | 2 | 0 | 15 | 1301 |
-| [flank-final-3](../build/reports/gameTest/flank-final-3/attack-flank-summary.txt) | 2 | 0 | 15 | 1304 |
+| [flank-final-1](../neoforge/build/reports/gameTest/flank-final-1/attack-flank-summary.txt) | 2 | 0 | 16 | 1271 |
+| [flank-final-2](../neoforge/build/reports/gameTest/flank-final-2/attack-flank-summary.txt) | 2 | 0 | 15 | 1301 |
+| [flank-final-3](../neoforge/build/reports/gameTest/flank-final-3/attack-flank-summary.txt) | 2 | 0 | 15 | 1304 |
 
-[Маршруты первого фланга до и после исправления](../build/reports/gameTest/flank-routes.png), [позиции в фиксированные моменты](../build/reports/gameTest/flank-positions.png). Координаты получены из CSV; цвета маршрутов соответствуют начальному порядку бойцов. Полный JUnit после изменения выхода волн: 351 тест, 0 ошибок, 2 пропуска; `checkKotlinStyle` пройден. Промежуточный прогон `flank-spatial-2` с исправленными местами, но прежним порядком волн обнаружил ещё одно пересечение и не считается успешным результатом окончательного изменения.
+[Маршруты первого фланга до и после исправления](../neoforge/build/reports/gameTest/flank-routes.png), [позиции в фиксированные моменты](../neoforge/build/reports/gameTest/flank-positions.png). Координаты получены из CSV; цвета маршрутов соответствуют начальному порядку бойцов. Полный JUnit после изменения выхода волн: 351 тест, 0 ошибок, 2 пропуска; `checkKotlinStyle` пройден. Промежуточный прогон `flank-spatial-2` с исправленными местами, но прежним порядком волн обнаружил ещё одно пересечение и не считается успешным результатом окончательного изменения.
 
 Контрольные отчёты: `attack-shot-audit` провалил сохранность отряда, а `attack-safety-2` после исправления оружия провалил устойчивость линии (13 тиков). Исправление подготовки проверено отдельно: два готовых стрелка не запускают манёвр, пока остальная линия развёртывается; после прихода бойцы закрепляются 40 тиков. Ожидание сохраняет предел 600 тиков и прекращается при отсутствии прогресса 100 тиков. Причины видны в событиях `preparation_held reason=DEPLOYMENT/SETTLING` и `preparation_released`.
 
@@ -158,11 +158,11 @@ GameTestServer выполняет тики ускоренно. Боевая сц
 
 | Локальный отчёт | Стрелки / выжившие | Настоящие пули | Попадания по своим | Устойчивая линия, тики |
 |---|---|---|---|---|
-| [attack-settled-1](../build/reports/gameTest/attack-settled-1/attack-summary.txt) | 16 / 16 | 1208 | 0 | 146 |
-| [attack-settled-2](../build/reports/gameTest/attack-settled-2/attack-summary.txt) | 16 / 16 | 1196 | 0 | 119 |
-| [attack-settled-3](../build/reports/gameTest/attack-settled-3/attack-summary.txt) | 16 / 16 | 1167 | 0 | 70 |
+| [attack-settled-1](../neoforge/build/reports/gameTest/attack-settled-1/attack-summary.txt) | 16 / 16 | 1208 | 0 | 146 |
+| [attack-settled-2](../neoforge/build/reports/gameTest/attack-settled-2/attack-summary.txt) | 16 / 16 | 1196 | 0 | 119 |
+| [attack-settled-3](../neoforge/build/reports/gameTest/attack-settled-3/attack-summary.txt) | 16 / 16 | 1167 | 0 | 70 |
 
-Первичные записи находятся рядом с TXT; официальное завершение — в `server.log`. [График фактических позиций](../build/reports/gameTest/attack-positions.png) показывает независимые прогоны до и после исправления в фиксированные моменты 0, 15, 30 и 44.5 секунды. JUnit запускается отдельно: `./gradlew test --offline`; итог — 349 тестов, 0 ошибок, 2 пропуска. Не объединяйте JUnit и GameTest одной командой для получения двух отчётов: Gradle может выполнить сервер раньше JUnit и после его провала остановить оставшиеся задачи.
+Первичные записи находятся рядом с TXT; официальное завершение — в `server.log`. [График фактических позиций](../neoforge/build/reports/gameTest/attack-positions.png) показывает независимые прогоны до и после исправления в фиксированные моменты 0, 15, 30 и 44.5 секунды. JUnit запускается отдельно: `./gradlew test --offline`; итог — 349 тестов, 0 ошибок, 2 пропуска. Не объединяйте JUnit и GameTest одной командой для получения двух отчётов: Gradle может выполнить сервер раньше JUnit и после его провала остановить оставшиеся задачи.
 
 ## Гребень и прыжок: проверка 2026-10-07
 
@@ -175,9 +175,9 @@ GameTestServer выполняет тики ускоренно. Боевая сц
 
 До исправления обе сцены провалили проверки. Финальный прогон прошёл все восемь сцен, включая прежнюю атаку на ровном поле. В MOVE проверяется фактическое место строя: измерение до центра приказа давало ложный отказ в сцене обхода. Допуск остаётся 1.5 блока. Сцены прыжка и изменённого прохода завершились на тиках 255 и 309.
 
-- [Исходная сцена без огня](../build/reports/gameTest/terrain-ridge-before/ridge-no-fire.txt), [исходная сцена под огнём](../build/reports/gameTest/terrain-ridge-before/ridge-under-fire.txt), [исходный лог сервера](../build/reports/gameTest/terrain-ridge-before/server.log).
-- [Финальная сцена без огня](../build/reports/gameTest/terrain-final/ridge-no-fire.txt), [финальная сцена под огнём](../build/reports/gameTest/terrain-final/ridge-under-fire.txt), [финальный лог сервера](../build/reports/gameTest/terrain-final/server.log).
-- [Смена задачи в прыжке](../build/reports/gameTest/terrain-final/task-release-in-air.csv), [обход изменённого прохода](../build/reports/gameTest/terrain-final/blocked-headroom.csv).
+- [Исходная сцена без огня](../neoforge/build/reports/gameTest/terrain-ridge-before/ridge-no-fire.txt), [исходная сцена под огнём](../neoforge/build/reports/gameTest/terrain-ridge-before/ridge-under-fire.txt), [исходный лог сервера](../neoforge/build/reports/gameTest/terrain-ridge-before/server.log).
+- [Финальная сцена без огня](../neoforge/build/reports/gameTest/terrain-final/ridge-no-fire.txt), [финальная сцена под огнём](../neoforge/build/reports/gameTest/terrain-final/ridge-under-fire.txt), [финальный лог сервера](../neoforge/build/reports/gameTest/terrain-final/server.log).
+- [Смена задачи в прыжке](../neoforge/build/reports/gameTest/terrain-final/task-release-in-air.csv), [обход изменённого прохода](../neoforge/build/reports/gameTest/terrain-final/blocked-headroom.csv).
 
 CSV каждого боевого сценария сохраняет положение всех NPC каждые десять тиков, работу, план, фазу, приземление, состояние пути, боезапас и время последнего выстрела. Отчёты лежат в игнорируемом `build/` и доступны локально. JUnit: 356 тестов, ноль ошибок, два штатных пропуска; `checkKotlinStyle` проходит.
 
@@ -189,9 +189,9 @@ CSV каждого боевого сценария сохраняет полож
 
 | Основной код / отчёт | Восстановили огонь | Самый долгий слепой простой | Выжили |
 |---|---|---|---|
-| Исходный поиск, `36f4c9d`: [minority-control-final](../build/reports/gameTest/minority-control-final/blocked-minority.txt) | 3 / 4 | 566 тиков, 28,3 с | 32 / 32 |
-| Исправленный поиск: [minority-final-1](../build/reports/gameTest/minority-final-1/blocked-minority.txt) | 4 / 4 | 57 тиков, 2,85 с | 32 / 32 |
-| Независимый повтор: [minority-final-2](../build/reports/gameTest/minority-final-2/blocked-minority.txt) | 4 / 4 | 132 тика, 6,6 с | 32 / 32 |
+| Исходный поиск, `36f4c9d`: [minority-control-final](../neoforge/build/reports/gameTest/minority-control-final/blocked-minority.txt) | 3 / 4 | 566 тиков, 28,3 с | 32 / 32 |
+| Исправленный поиск: [minority-final-1](../neoforge/build/reports/gameTest/minority-final-1/blocked-minority.txt) | 4 / 4 | 57 тиков, 2,85 с | 32 / 32 |
+| Независимый повтор: [minority-final-2](../neoforge/build/reports/gameTest/minority-final-2/blocked-minority.txt) | 4 / 4 | 132 тика, 6,6 с | 32 / 32 |
 
 Исходный код провалил новый сценарий. Оба независимых финальных прогона прошли все девять GameTest. Весь отряд выпускал пули 29/32 и 30/32 участниками соответственно; критерий непрерывного слепого простоя относится к четырём выбранным постам. Полные позиции и время последнего выстрела записаны в `blocked-minority.csv`, выбранные посты — в `blocked-minority-obstructions.txt`, решения и причины отказов маршрута — в `server.log`. Рядом лежат отчёты прежних сцен линии, фланга, гребня и движения. JUnit: 358 тестов, ноль ошибок, два штатных пропуска; `checkKotlinStyle` проходит.
 
@@ -205,9 +205,9 @@ CSV каждого боевого сценария сохраняет полож
 
 | Сцена / отчёт | Участники стрельбы | Восстановили огонь | Самый долгий слепой простой | Выжили |
 |---|---|---|---|---|
-| Доски и грядки до исправления: [village-control](../build/reports/gameTest/village-control/village-cover.txt) | 6 / 7 | — | 463 тика, 23,15 с | 7 / 7 |
-| Доски и грядки после исправления: [live-failures-fixed-4](../build/reports/gameTest/live-failures-fixed-4/village-cover.txt) | 7 / 7 | — | 71 тик, 3,55 с | 7 / 7 |
-| Четыре перекрытых поста: [live-failures-fixed-4](../build/reports/gameTest/live-failures-fixed-4/blocked-minority.txt) | 31 / 32 | 4 / 4 | 62 тика, 3,1 с | 32 / 32 |
+| Доски и грядки до исправления: [village-control](../neoforge/build/reports/gameTest/village-control/village-cover.txt) | 6 / 7 | — | 463 тика, 23,15 с | 7 / 7 |
+| Доски и грядки после исправления: [live-failures-fixed-4](../neoforge/build/reports/gameTest/live-failures-fixed-4/village-cover.txt) | 7 / 7 | — | 71 тик, 3,55 с | 7 / 7 |
+| Четыре перекрытых поста: [live-failures-fixed-4](../neoforge/build/reports/gameTest/live-failures-fixed-4/blocked-minority.txt) | 31 / 32 | 4 / 4 | 62 тика, 3,1 с | 32 / 32 |
 
 Отчёты неудачных промежуточных прогонов сохранены в `live-failures-fixed-1`, `live-failures-fixed-2` и `live-failures-fixed-3`. В них обнаружены отмена атаки по широкой погрешности прибытия, отмена найденного поста при возобновлении наступления, смещённый центр поиска обхода и ожидание старого маршрута после сборки MOVE. Состояния переходов, отказы путей и причины задержек доступны в `server.log`.
 
@@ -219,11 +219,11 @@ CSV каждого боевого сценария сохраняет полож
 
 | Отчёт | Участники стрельбы | Восстановили огонь | Самый долгий слепой простой | Выжили |
 |---|---|---|---|---|
-| [dense-recovery-fixed-2](../build/reports/gameTest/dense-recovery-fixed-2/blocked-minority.txt) | 31 / 32 | 4 / 4 | 0 тиков | 32 / 32 |
-| [dense-recovery-fixed-3](../build/reports/gameTest/dense-recovery-fixed-3/blocked-minority.txt) | 31 / 32 | 4 / 4 | 19 тиков, 0,95 с | 32 / 32 |
-| Полный набор: [live-failures-final-1](../build/reports/gameTest/live-failures-final-1/blocked-minority.txt) | 31 / 32 | 4 / 4 | 60 тиков, 3 с | 32 / 32 |
+| [dense-recovery-fixed-2](../neoforge/build/reports/gameTest/dense-recovery-fixed-2/blocked-minority.txt) | 31 / 32 | 4 / 4 | 0 тиков | 32 / 32 |
+| [dense-recovery-fixed-3](../neoforge/build/reports/gameTest/dense-recovery-fixed-3/blocked-minority.txt) | 31 / 32 | 4 / 4 | 19 тиков, 0,95 с | 32 / 32 |
+| Полный набор: [live-failures-final-1](../neoforge/build/reports/gameTest/live-failures-final-1/blocked-minority.txt) | 31 / 32 | 4 / 4 | 60 тиков, 3 с | 32 / 32 |
 
-Два первых отчёта относятся к выбранным двум сценам поиска; `live-failures-final-1` прошёл все 12 GameTest. В нём семь стрелков на грядках стреляли и продвигались без потерь, максимальный слепой простой — 149 тиков. На ровном поле стреляли 16/16, попаданий по своим не было; фланговые манёвры завершились. На гребне без ответного огня стреляли и продвигались 32/32; под огнём — 25 и 26 из 32, зарегистрировано 270 ответных пуль. [Полный серверный лог](../build/reports/gameTest/live-failures-final-1/server.log) подтверждает завершение всех сцен. JUnit: 363 теста, ошибок нет, два штатных пропуска; проверка стиля проходит.
+Два первых отчёта относятся к выбранным двум сценам поиска; `live-failures-final-1` прошёл все 12 GameTest. В нём семь стрелков на грядках стреляли и продвигались без потерь, максимальный слепой простой — 149 тиков. На ровном поле стреляли 16/16, попаданий по своим не было; фланговые манёвры завершились. На гребне без ответного огня стреляли и продвигались 32/32; под огнём — 25 и 26 из 32, зарегистрировано 270 ответных пуль. [Полный серверный лог](../neoforge/build/reports/gameTest/live-failures-final-1/server.log) подтверждает завершение всех сцен. JUnit: 363 теста, ошибок нет, два штатных пропуска; проверка стиля проходит.
 
 Стационарная сцена сохраняет независимые запросы в `blocked-hill-search.txt`. В боевой сцене `lost-post-search.txt` при провале содержит задачу, центр обхода и найденные независимым запросом маршруты; отсутствие задачи тоже записывается. CSV дополнен позой, UUID цели и началом потери обзора.
 
@@ -237,10 +237,10 @@ CSV каждого боевого сценария сохраняет полож
 
 | Проверка | Результат |
 |---|---|
-| [Старый контроллер, та же яма и цель](../build/reports/gameTest/jump-heading-negative/server.log) | Провал: остановка на 150 тиков, NPC не вышел из ямы |
-| [Исправленный контроллер](../build/reports/gameTest/jump-heading-arrival/side-aim-hole.txt) | Прибытие за 48 тиков |
-| [32 стрелка, четыре перекрытых поста](../build/reports/gameTest/jump-heading-fixed/blocked-minority.txt) | Стреляли 32/32, восстановили огонь 4/4, слепой простой 72 тика, выжили 32/32 |
-| [Семь стрелков, доски и грядки](../build/reports/gameTest/jump-heading-fixed/village-cover.txt) | Стреляли и продвигались 7/7, слепой простой 102 тика, выжили 7/7 |
+| [Старый контроллер, та же яма и цель](../neoforge/build/reports/gameTest/jump-heading-negative/server.log) | Провал: остановка на 150 тиков, NPC не вышел из ямы |
+| [Исправленный контроллер](../neoforge/build/reports/gameTest/jump-heading-arrival/side-aim-hole.txt) | Прибытие за 48 тиков |
+| [32 стрелка, четыре перекрытых поста](../neoforge/build/reports/gameTest/jump-heading-fixed/blocked-minority.txt) | Стреляли 32/32, восстановили огонь 4/4, слепой простой 72 тика, выжили 32/32 |
+| [Семь стрелков, доски и грядки](../neoforge/build/reports/gameTest/jump-heading-fixed/village-cover.txt) | Стреляли и продвигались 7/7, слепой простой 102 тика, выжили 7/7 |
 
 В первом прогоне исправленного контроллера `jump-heading-fixed` движение из ямы состоялось, но конечный слот строя оказался за пределами платформы. Для `jump-heading-arrival` и отрицательного контроля назначение перенесено внутрь площадки; критерии прибытия и остановки сохранены.
 
@@ -254,19 +254,19 @@ CSV каждого боевого сценария сохраняет полож
 
 Оба сбоя воспроизведены JUnit: проверки падали до исправления, после него весь набор прошёл — 366 тестов, ноль ошибок, два штатных пропуска. Отчёты: `build/reports/live-review-2026-10-07-1624/flank-and-wave-negative-console.txt` и `flank-and-wave-fixed-console.txt`. Полный повтор находится в `live-failures-final-4`.
 
-В [live-failures-final-4](../build/reports/gameTest/live-failures-final-4/server.log) прошли все 13 обязательных серверных сцен. Установленные критерии простоя, стрельбы, прибытия и безопасности сохранены.
+В [live-failures-final-4](../neoforge/build/reports/gameTest/live-failures-final-4/server.log) прошли все 13 обязательных серверных сцен. Установленные критерии простоя, стрельбы, прибытия и безопасности сохранены.
 
 | Сцена | Участники стрельбы | Продвигались | Выжили | Дополнительные измерения |
 |---|---|---|---|---|
-| [Семь бойцов, деревянная стенка и грядки](../build/reports/gameTest/live-failures-final-4/village-cover.txt) | 7/7 | 7/7 | 7/7 | Слепой простой ≤75 тиков |
-| [Четыре перекрытых поста на буграх](../build/reports/gameTest/live-failures-final-4/blocked-minority.txt) | 32/32 | 32/32 | 32/32 | Все 4 восстановили огонь; слепой простой ≤115 тиков |
-| [Ровное поле](../build/reports/gameTest/live-failures-final-4/attack-summary.txt) | 16/16 | — | 16/16 | Линия удерживалась 134 тика; попаданий по своим и небезопасных пуль нет |
-| [Гребень без ответного огня](../build/reports/gameTest/live-failures-final-4/ridge-no-fire.txt) | 29/32 | 32/32 | 32/32 | Ответных пуль нет |
-| [Гребень под ответным огнём](../build/reports/gameTest/live-failures-final-4/ridge-under-fire.txt) | 25/32 | 27/32 | 32/32 | 311 ответных пуль |
+| [Семь бойцов, деревянная стенка и грядки](../neoforge/build/reports/gameTest/live-failures-final-4/village-cover.txt) | 7/7 | 7/7 | 7/7 | Слепой простой ≤75 тиков |
+| [Четыре перекрытых поста на буграх](../neoforge/build/reports/gameTest/live-failures-final-4/blocked-minority.txt) | 32/32 | 32/32 | 32/32 | Все 4 восстановили огонь; слепой простой ≤115 тиков |
+| [Ровное поле](../neoforge/build/reports/gameTest/live-failures-final-4/attack-summary.txt) | 16/16 | — | 16/16 | Линия удерживалась 134 тика; попаданий по своим и небезопасных пуль нет |
+| [Гребень без ответного огня](../neoforge/build/reports/gameTest/live-failures-final-4/ridge-no-fire.txt) | 29/32 | 32/32 | 32/32 | Ответных пуль нет |
+| [Гребень под ответным огнём](../neoforge/build/reports/gameTest/live-failures-final-4/ridge-under-fire.txt) | 25/32 | 27/32 | 32/32 | 311 ответных пуль |
 
-[Фланг на ровном поле](../build/reports/gameTest/live-failures-final-4/attack-flank-summary.txt): два завершённых манёвра, пересечений порядка участников нет, максимальное сближение ниже трёх блоков длилось 16 тиков при пределе 40. [Выход из ямы с прицеливанием](../build/reports/gameTest/live-failures-final-4/side-aim-hole.txt) завершился за 47 тиков. Эти измерения относятся к фиксированным сценам стенда; ограничения карты и состава боя перечислены ниже.
+[Фланг на ровном поле](../neoforge/build/reports/gameTest/live-failures-final-4/attack-flank-summary.txt): два завершённых манёвра, пересечений порядка участников нет, максимальное сближение ниже трёх блоков длилось 16 тиков при пределе 40. [Выход из ямы с прицеливанием](../neoforge/build/reports/gameTest/live-failures-final-4/side-aim-hole.txt) завершился за 47 тиков. Эти измерения относятся к фиксированным сценам стенда; ограничения карты и состава боя перечислены ниже.
 
-Независимый [повтор двух сцен потери обзора](../build/reports/gameTest/live-failures-posts-repeat/server.log) также прошёл. У деревянной стенки стреляли и продвигались 7/7, слепой простой ≤117 тиков. На буграх стреляли 31/32, продвигались 32/32, огонь восстановили все четыре выбранных бойца, слепой простой ≤13 тиков. Потерь в обеих сценах нет.
+Независимый [повтор двух сцен потери обзора](../neoforge/build/reports/gameTest/live-failures-posts-repeat/server.log) также прошёл. У деревянной стенки стреляли и продвигались 7/7, слепой простой ≤117 тиков. На буграх стреляли 31/32, продвигались 32/32, огонь восстановили все четыре выбранных бойца, слепой простой ≤13 тиков. Потерь в обеих сценах нет.
 
 ## Общая атака и воспроизведение сохранённого боя
 
@@ -281,7 +281,7 @@ CSV каждого боевого сценария сохраняет полож
   -PgameTestReportName=saved-battle-check
 ```
 
-[AttackOperationGameTests.kt](../src/gameTest/kotlin/com/sbwnpc/squad/gametest/AttackOperationGameTests.kt)
+[AttackOperationGameTests.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/AttackOperationGameTests.kt)
 проверяет распределение 16+7+7 и 4×32, фактическое развёртывание и повторяющиеся
 окна недавних выстрелов. Отдельные сцены проверяют закрытый фланг, новый приказ,
 защиту тела укрытием и продвижение выбранного native A*. Цели этих сцен имеют
@@ -289,7 +289,7 @@ CSV каждого боевого сценария сохраняет полож
 Арена 4×32 имеет собственный расширенный шаблон: расширять только землю нельзя,
 поскольку GameTest создаёт невидимые стены по границе исходного шаблона.
 
-[SavedBattleReplay.kt](../src/gameTest/kotlin/com/sbwnpc/squad/gametest/SavedBattleReplay.kt)
+[SavedBattleReplay.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/SavedBattleReplay.kt)
 читает подготовленную копию region/entity-файлов, состава отрядов и фракций.
 Перед чтением она снова копируется в каталог отчёта: исходные файлы не изменяются.
 NPC сохраняют HP, боезапас, снаряжение и приказы; transient Brain, цели и задачи
@@ -298,7 +298,7 @@ NPC сохраняют HP, боезапас, снаряжение и прика�
 не пытается загрузить пользовательское сохранение. Для блоков стороннего мода
 нужен тот же мод в тестовом сервере.
 
-[CombatParticipationTrace.kt](../src/gameTest/kotlin/com/sbwnpc/squad/gametest/CombatParticipationTrace.kt)
+[CombatParticipationTrace.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/CombatParticipationTrace.kt)
 пишет состояние каждого участника: оружие/боезапас, цель, дальность, видимость,
 свои и другие отряды на огневой линии, движение, задачу и последний выстрел.
 Диагностические проверки не разрешают стрельбу и не заменяют native friendly-fire guard.
