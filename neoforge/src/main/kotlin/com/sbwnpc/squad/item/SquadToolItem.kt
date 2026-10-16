@@ -6,11 +6,11 @@ import com.sbwnpc.squad.network.OpenFinishRoutePayload
 import com.sbwnpc.squad.network.OpenRecruitScreenPayload
 import com.sbwnpc.squad.network.buildSquadSnapshot
 import com.sbwnpc.squad.network.sendToClient
+import com.sbwnpc.squad.npc.HelicopterModel
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.npc.SquadPreset
-import com.sbwnpc.squad.npc.HelicopterModel
 import com.sbwnpc.squad.npc.TankModel
 import com.sbwnpc.squad.npc.TransportVehicle
 import com.sbwnpc.squad.squad.PlayerFactionRegistry
@@ -87,13 +87,15 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             val armed = SquadSelection.takeObjectiveArm(player.uuid)
             if (armed != null) {
                 val pos = Terrain.lookedAtPos(player, serverLevel, 220.0)
-                SquadManager.get(serverLevel).setObjective(serverLevel, armed, pos)
+                SquadManager.get(serverLevel).issueObjective(serverLevel, armed, pos)
                 val name = SquadManager.get(serverLevel).get(armed)?.name ?: "Squad"
                 actionbar(player, "$name → objective (${pos.x}, ${pos.y}, ${pos.z})", ChatFormatting.GRAY)
             } else {
                 val snap = buildSquadSnapshot(
-                    SquadManager.get(serverLevel), player.uuid, SquadSelection.looseOf(player.uuid).size,
-                    !com.sbwnpc.squad.squad.ReportMutes.get(serverLevel.server).isMuted(player.uuid)
+                    SquadManager.get(serverLevel),
+                    player.uuid,
+                    SquadSelection.looseOf(player.uuid).size,
+                    !com.sbwnpc.squad.squad.ReportMutes.get(serverLevel.server).isMuted(player.uuid),
                 )
                 sendToClient(player, OpenCommandScreenPayload(snap))
             }
@@ -119,13 +121,15 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             val squadId = SquadSelection.selectedSquad(player.uuid)
             if (squadId != null) {
                 // Close-range: point straight at the ground where you're standing, no GUI round-trip.
-                SquadManager.get(serverLevel).setObjective(serverLevel, squadId, context.clickedPos)
+                SquadManager.get(serverLevel).issueObjective(serverLevel, squadId, context.clickedPos)
                 val name = SquadManager.get(serverLevel).get(squadId)?.name ?: "Squad"
                 actionbar(player, "$name → objective (${context.clickedPos.x}, ${context.clickedPos.y}, ${context.clickedPos.z})", ChatFormatting.GRAY)
             } else if (player is net.minecraft.server.level.ServerPlayer) {
                 val snap = buildSquadSnapshot(
-                    SquadManager.get(serverLevel), player.uuid, SquadSelection.looseOf(player.uuid).size,
-                    !com.sbwnpc.squad.squad.ReportMutes.get(serverLevel.server).isMuted(player.uuid)
+                    SquadManager.get(serverLevel),
+                    player.uuid,
+                    SquadSelection.looseOf(player.uuid).size,
+                    !com.sbwnpc.squad.squad.ReportMutes.get(serverLevel.server).isMuted(player.uuid),
                 )
                 sendToClient(player, OpenCommandScreenPayload(snap))
             }
@@ -133,11 +137,11 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         }
 
         // RECRUIT: deploy — a single NPC, or a whole preset squad lined up abreast of the click point.
-        // Gated on having picked a default once (mandatory first-interaction screen), but the
-        // faction actually used to deploy is whatever the tool is currently set to — free choice
-        // of ANY faction stays available during development, per explicit user call.
-        PlayerFactionRegistry.get(serverLevel).requireOrPrompt(serverPlayer) ?: return InteractionResult.CONSUME
-        val cfg = readConfig(stack) ?: Config(NpcClass.DEFAULT, NpcRank.DEFAULT, SquadFaction.DEFAULT, SquadPreset.DEFAULT)
+        val configured = readConfig(stack) ?: Config(NpcClass.DEFAULT, NpcRank.DEFAULT, SquadFaction.DEFAULT, SquadPreset.DEFAULT)
+        val faction = PlayerFactionRegistry.get(serverLevel).recruitmentFaction(serverPlayer, configured.faction)
+            ?: return InteractionResult.CONSUME
+        val cfg = configured.copy(faction = faction)
+        if (cfg != configured) writeConfig(stack, cfg)
         val pos = context.clickedPos.relative(context.clickedFace)
         val deployed = SquadDeployment.deploy(serverLevel, pos, player.yRot, cfg, player.uuid)
             ?: return InteractionResult.FAIL
@@ -168,7 +172,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         // (armFocus itself already checked ownership of the commanding squad when it was armed.)
         val armedFocus = SquadSelection.takeFocusArm(player.uuid)
         if (armedFocus != null) {
-            mgr.setFocus(armedFocus, target.uuid)
+            mgr.issueFocus(level, armedFocus, target.uuid)
             val squad = mgr.get(armedFocus)
             val verb = if (squad?.order == SquadOrder.DEFEND) "will guard" else "will target"
             actionbar(player, "${squad?.name ?: "Squad"} $verb ${target.name.string}", squad?.faction?.accentStyle ?: Style.EMPTY.withColor(ChatFormatting.GRAY))
@@ -208,18 +212,16 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
 
         // Non-NPC living entity → focus the selected squad on it
         val sid = SquadSelection.selectedSquad(player.uuid) ?: return InteractionResult.PASS
-        mgr.setFocus(sid, target.uuid)
+        mgr.issueFocus(level, sid, target.uuid)
         val squad = mgr.get(sid)
         val verb = if (squad?.order == SquadOrder.DEFEND) "will guard" else "will target"
         actionbar(player, "${squad?.name ?: "Squad"} $verb ${target.name.string}", squad?.faction?.accentStyle ?: Style.EMPTY.withColor(ChatFormatting.GRAY))
         return InteractionResult.SUCCESS
     }
 
-    private fun actionbar(player: Player, msg: String, color: ChatFormatting) =
-        player.displayClientMessage(Component.literal(msg).withStyle(color), true)
+    private fun actionbar(player: Player, msg: String, color: ChatFormatting) = player.displayClientMessage(Component.literal(msg).withStyle(color), true)
 
-    private fun actionbar(player: Player, msg: String, style: Style) =
-        player.displayClientMessage(Component.literal(msg).withStyle(style), true)
+    private fun actionbar(player: Player, msg: String, style: Style) = player.displayClientMessage(Component.literal(msg).withStyle(style), true)
 
     override fun appendHoverText(stack: ItemStack, context: TooltipContext, tooltip: MutableList<Component>, flag: TooltipFlag) {
         val m = when (mode(stack)) {
@@ -229,7 +231,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         tooltip.add(Component.literal("Mode: $m").withStyle(ChatFormatting.YELLOW))
         readConfig(stack)?.let { cfg ->
             val what = if (cfg.preset == SquadPreset.SINGLE) cfg.cls.name else cfg.preset.label
-            tooltip.add(Component.literal("Deploy: $what / ${cfg.rank.name}").withStyle(ChatFormatting.GOLD))
+            tooltip.add(Component.literal("Deploy: $what / ${NpcRank.RECRUIT.name}").withStyle(ChatFormatting.GOLD))
             tooltip.add(Component.literal("Faction: ${cfg.faction.label}").withStyle(cfg.faction.accentStyle))
         }
         tooltip.add(Component.literal("ctrl+air: switch mode · air: open GUI").withStyle(ChatFormatting.DARK_GRAY))
@@ -243,7 +245,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
         val vehicle: Boolean = false,
         val vehicleModel: TransportVehicle = TransportVehicle.DEFAULT,
         val tankModel: TankModel = TankModel.DEFAULT,
-        val heliModel: HelicopterModel = HelicopterModel.DEFAULT
+        val heliModel: HelicopterModel = HelicopterModel.DEFAULT,
     )
 
     companion object {
@@ -266,22 +268,24 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
             return readConfig(StackData.read(stack))
         }
 
-        fun readConfig(tag: CompoundTag): Config = Config(
-            readEnum(tag, KEY_CLASS, NpcClass.DEFAULT, { NpcClass.valueOf(it) }, { NpcClass.byOrdinal(it) }),
-            readEnum(tag, KEY_RANK, NpcRank.DEFAULT, { NpcRank.valueOf(it) }, { NpcRank.byOrdinal(it) }),
-            readEnum(tag, KEY_FACTION, SquadFaction.DEFAULT, { SquadFaction.valueOf(it) }, { SquadFaction.byOrdinal(it) }),
-            readEnum(tag, KEY_PRESET, SquadPreset.DEFAULT, { SquadPreset.valueOf(it) }, { SquadPreset.byOrdinal(it) }),
-            tag.getBoolean(KEY_VEHICLE),
-            readEnum(tag, KEY_VEHICLE_MODEL, TransportVehicle.DEFAULT, { TransportVehicle.valueOf(it) }, { TransportVehicle.byOrdinal(it) }),
-            readEnum(tag, KEY_TANK_MODEL, TankModel.DEFAULT, { TankModel.valueOf(it) }, { TankModel.byOrdinal(it) }),
-            readEnum(tag, KEY_HELI_MODEL, HelicopterModel.DEFAULT, { HelicopterModel.valueOf(it) }, { HelicopterModel.byOrdinal(it) })
-        )
+        fun readConfig(tag: CompoundTag): Config =
+            Config(
+                readEnum(tag, KEY_CLASS, NpcClass.DEFAULT, { NpcClass.byName(it) }, { NpcClass.byOrdinal(it) }),
+                readEnum(tag, KEY_RANK, NpcRank.DEFAULT, { NpcRank.valueOf(it) }, { NpcRank.byOrdinal(it) }),
+                readEnum(tag, KEY_FACTION, SquadFaction.DEFAULT, { SquadFaction.valueOf(it) }, { SquadFaction.byOrdinal(it) }),
+                readEnum(tag, KEY_PRESET, SquadPreset.DEFAULT, { SquadPreset.valueOf(it) }, { SquadPreset.byOrdinal(it) }),
+                tag.getBoolean(KEY_VEHICLE),
+                readEnum(tag, KEY_VEHICLE_MODEL, TransportVehicle.DEFAULT, { TransportVehicle.valueOf(it) }, { TransportVehicle.byOrdinal(it) }),
+                readEnum(tag, KEY_TANK_MODEL, TankModel.DEFAULT, { TankModel.valueOf(it) }, { TankModel.byOrdinal(it) }),
+                readEnum(tag, KEY_HELI_MODEL, HelicopterModel.DEFAULT, { HelicopterModel.valueOf(it) }, { HelicopterModel.byOrdinal(it) }),
+            )
 
-        private inline fun <T> readEnum(tag: CompoundTag, key: String, default: T, byName: (String) -> T, byOrdinal: (Int) -> T): T = when {
-            tag.contains(key, Tag.TAG_STRING.toInt()) -> runCatching { byName(tag.getString(key)) }.getOrDefault(default)
-            tag.contains(key, Tag.TAG_INT.toInt()) -> byOrdinal(tag.getInt(key))
-            else -> default
-        }
+        private inline fun <T> readEnum(tag: CompoundTag, key: String, default: T, byName: (String) -> T, byOrdinal: (Int) -> T): T =
+            when {
+                tag.contains(key, Tag.TAG_STRING.toInt()) -> runCatching { byName(tag.getString(key)) }.getOrDefault(default)
+                tag.contains(key, Tag.TAG_INT.toInt()) -> byOrdinal(tag.getInt(key))
+                else -> default
+            }
 
         /** The same NBT shape [writeConfig] stores on the tool, as a standalone tag — what the
          *  Barracks persists and what its config packets carry. */

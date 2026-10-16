@@ -22,11 +22,12 @@ object FactionBanner {
 
     var faction: SquadFaction? = null
 
-    private fun toolScreen(screen: Screen) = when (screen) {
-        is CommandScreen, is RoutesScreen, is DiplomacyScreen -> true
-        is RecruitScreen -> screen.forTool
-        else -> false
-    }
+    private fun toolScreen(screen: Screen) =
+        when (screen) {
+            is CommandScreen, is RoutesScreen, is DiplomacyScreen -> true
+            is RecruitScreen -> screen.forTool
+            else -> false
+        }
 
     @SubscribeEvent
     fun onRenderScreen(event: ScreenEvent.Render.Post) {

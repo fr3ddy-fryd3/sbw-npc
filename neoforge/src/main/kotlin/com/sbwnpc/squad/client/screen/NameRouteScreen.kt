@@ -24,10 +24,12 @@ class NameRouteScreen : Screen(Component.literal("Name Route")) {
         setInitialFocus(box)
 
         addRenderableWidget(Button.builder(Component.literal("OK")) { confirm() }.bounds(cx - 100, height / 2 + 16, 96, 20).build())
-        addRenderableWidget(Button.builder(Component.literal("Cancel")) {
-            PacketDistributor.sendToServer(RouteCmdPayload(RouteCmdPayload.CANCEL, "", ""))
-            onClose()
-        }.bounds(cx + 4, height / 2 + 16, 96, 20).build())
+        addRenderableWidget(
+            Button.builder(Component.literal("Cancel")) {
+                PacketDistributor.sendToServer(RouteCmdPayload(RouteCmdPayload.CANCEL, "", ""))
+                onClose()
+            }.bounds(cx + 4, height / 2 + 16, 96, 20).build(),
+        )
     }
 
     private fun confirm() {
@@ -37,7 +39,10 @@ class NameRouteScreen : Screen(Component.literal("Name Route")) {
     }
 
     override fun keyPressed(key: Int, scan: Int, mods: Int): Boolean {
-        if (key == 257 || key == 335) { confirm(); return true } // enter
+        if (key == 257 || key == 335) {
+            confirm()
+            return true
+        } // enter
         return super.keyPressed(key, scan, mods)
     }
 

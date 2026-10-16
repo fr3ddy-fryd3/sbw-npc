@@ -1,20 +1,26 @@
 package com.sbwnpc.squad.squad
 
+import com.sbwnpc.squad.combat.tactics.TacticalContact
+import com.sbwnpc.squad.combat.tactics.TacticalEvent
+import com.sbwnpc.squad.combat.tactics.TacticalEventSink
+import com.sbwnpc.squad.combat.tactics.TacticalMember
+import com.sbwnpc.squad.combat.tactics.TacticalSnapshot
+import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcClass.MACHINE_GUNNER
 import com.sbwnpc.squad.npc.NpcClass.MEDIC
 import com.sbwnpc.squad.npc.NpcClass.RIFLEMAN
 import com.sbwnpc.squad.npc.NpcClass.SNIPER
-import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.npc.SquadPreset
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNull
-import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Test
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
+import net.minecraft.world.phys.Vec3
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
 import java.util.UUID
 
 class SquadManagerTest {
@@ -76,10 +82,104 @@ class SquadManagerTest {
         assertEquals(listOf(member), mgr.get(squad.id)!!.members)
     }
 
-    private fun garrison(composition: List<NpcClass>) = Squad(
-        UUID.randomUUID(), "Alpha", SquadFaction.DEFAULT, SquadOrder.DEFEND, mutableListOf(),
-        null, null, UUID.randomUUID(), originalComposition = composition, rank = NpcRank.DEFAULT
-    )
+    private fun garrison(composition: List<NpcClass>) =
+        Squad(
+            UUID.randomUUID(), "Alpha", SquadFaction.DEFAULT, SquadOrder.DEFEND, mutableListOf(),
+            null, null, UUID.randomUUID(), originalComposition = composition, rank = NpcRank.DEFAULT,
+        )
+
+    @Test
+    fun `ammo withdrawal offers a saved retry consumed only by an explicit attack`() {
+        val source = garrison(listOf(RIFLEMAN))
+        var mgr = manager(source)
+        mgr.issueOrder(source.id, SquadOrder.ATTACK)
+        assertEquals(AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY, mgr.get(source.id)!!.attackAmmoPolicy)
+        mgr.withdrawForAmmo(source.id)
+        assertEquals(SquadOrder.RETREAT, mgr.get(source.id)!!.order)
+        mgr = SquadManager.load(mgr.saveState(CompoundTag()))
+        mgr.setOrder(source.id, SquadOrder.DEFEND) // Ordinary arrival, including after Supply.
+        assertEquals(AttackAmmoPolicy.RETRY_AVAILABLE, mgr.get(source.id)!!.attackAmmoPolicy)
+        mgr.setOrder(source.id, SquadOrder.ATTACK) // An internal update is not the player's retry.
+        assertEquals(AttackAmmoPolicy.RETRY_AVAILABLE, mgr.get(source.id)!!.attackAmmoPolicy)
+        mgr = SquadManager.load(mgr.saveState(CompoundTag()))
+        mgr.issueOrder(source.id, SquadOrder.ATTACK)
+        assertEquals(AttackAmmoPolicy.PRESS_ON, mgr.get(source.id)!!.attackAmmoPolicy)
+        mgr = SquadManager.load(mgr.saveState(CompoundTag()))
+        mgr.issueOrder(source.id, SquadOrder.ATTACK) // Moving the attack target does not rearm retreat.
+        assertEquals(AttackAmmoPolicy.PRESS_ON, mgr.get(source.id)!!.attackAmmoPolicy)
+        mgr.issueOrder(source.id, SquadOrder.RETREAT)
+        assertEquals(SquadOrder.RETREAT, mgr.get(source.id)!!.order)
+        assertEquals(AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY, mgr.get(source.id)!!.attackAmmoPolicy)
+        mgr.issueOrder(source.id, SquadOrder.ATTACK)
+        assertEquals(AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY, mgr.get(source.id)!!.attackAmmoPolicy)
+    }
+
+    @Test
+    fun `manual retreat and rejected tank attacks do not grant an ammunition override`() {
+        for (composition in listOf(listOf(RIFLEMAN), listOf(NpcClass.TANK_CREW))) {
+            val source = garrison(composition)
+            val mgr = manager(source)
+            mgr.issueOrder(source.id, SquadOrder.RETREAT)
+            mgr.issueOrder(source.id, SquadOrder.ATTACK)
+            assertEquals(AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY, mgr.get(source.id)!!.attackAmmoPolicy)
+            if (NpcClass.TANK_CREW in composition) {
+                mgr.withdrawForAmmo(source.id)
+                mgr.issueOrder(source.id, SquadOrder.ATTACK)
+                assertEquals(SquadOrder.MOVE, mgr.get(source.id)!!.order)
+                assertEquals(AttackAmmoPolicy.RETRY_AVAILABLE, mgr.get(source.id)!!.attackAmmoPolicy)
+            }
+        }
+    }
+
+    @Test
+    fun `missing or invalid saved ammo policy defaults to normal attack`() {
+        val source = garrison(listOf(RIFLEMAN))
+        for (value in listOf(null, "UNKNOWN", "PRESS_ON")) {
+            val tag = source.save()
+            if (value == null) tag.remove("AttackAmmoPolicy") else tag.putString("AttackAmmoPolicy", value)
+            assertEquals(AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY, Squad.load(tag).attackAmmoPolicy)
+        }
+    }
+
+    @Test
+    fun `deleting a squad or pruning its last member cancels owned tactical work`() {
+        for (delete in listOf(true, false)) {
+            val source = garrison(List(3) { RIFLEMAN })
+            source.members.addAll(List(3) { UUID.randomUUID() })
+            val mgr = manager(source)
+            val active = mgr.get(source.id)!!
+            val released = mutableListOf<TacticalEvent.TaskReleased>()
+            active.tactics.events.runtime = TacticalEventSink { if (it is TacticalEvent.TaskReleased) released += it }
+            val origin = Vec3(0.0, 64.0, 0.0)
+            val focus = Vec3(50.0, 64.0, 0.0)
+            active.tactics.assess(
+                active.id,
+                TacticalSnapshot(
+                    10,
+                    SquadOrder.DEFEND,
+                    0,
+                    origin,
+                    origin,
+                    active.members.map { TacticalMember(it, origin, canFire = true) },
+                    listOf(TacticalContact(UUID.randomUUID(), focus, 10)),
+                ),
+            )
+            val plan = active.tactics.plan!!
+            val assigned = plan.tasks.keys.toSet()
+            assertFalse(assigned.isEmpty())
+            if (delete) {
+                mgr.beginDeletion(active.id)
+            } else {
+                source.members.toList().forEach(mgr::removeMemberEverywhere)
+            }
+            assertNull(mgr.get(active.id))
+            assertNull(active.tactics.plan)
+            assertTrue(plan.tasks.isEmpty())
+            assertEquals(assigned, released.map { it.member }.toSet())
+            assertEquals(assigned.size, released.size)
+            assertTrue(released.all { it.trigger == if (delete) "squad_deleted" else "squad_empty" })
+        }
+    }
 
     @Test
     fun `a saved partial garrison grows one recruit at a time to the full configured strength`() {

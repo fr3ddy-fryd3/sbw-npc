@@ -1,9 +1,11 @@
 package com.sbwnpc.squad.util
 
+import com.sbwnpc.squad.combat.CombatPosition
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
+import com.sbwnpc.squad.squad.SquadOrder
 import net.neoforged.api.distmarker.Dist
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
@@ -11,8 +13,7 @@ import net.neoforged.neoforge.client.event.RenderLivingEvent
 import net.neoforged.neoforge.event.tick.ServerTickEvent
 
 /**
- * Answers one question and no other: when the frame rate drops with a lot of NPCs about, is the
- * cost on the server thread or on the render thread?
+ * Low-frequency server/render measurements and combat participation counters.
  *
  * It exists because "low FPS but nothing is using any resources" is the signature of a single
  * saturated thread, and which thread it is decides what there is to fix — a squad's worth of AI
@@ -50,12 +51,33 @@ object PerfProbe {
         if (now < nextServerReport || ticks == 0) return
         nextServerReport = now + REPORT_INTERVAL_MS
 
-        val npcs = event.server.allLevels.sumOf { NpcRegistry.all(it).size }
+        val npcs = event.server.allLevels.flatMap { NpcRegistry.all(it) }
         // Measured here rather than read off the server's own tick-time array so the number means
         // the same thing on an integrated server as on a dedicated one.
-        DebugFlags.log(LogGroup.PERF,
+        DebugFlags.log(
+            LogGroup.PERF,
             "server: {} ms/tick over {} ticks, {} NPCs loaded",
-            "%.2f".format(tickNanos / 1_000_000.0 / ticks), ticks, npcs
+            "%.2f".format(tickNanos / 1_000_000.0 / ticks),
+            ticks,
+            npcs.size,
+        )
+        // Read cached squad assessments only. Diagnostics must not request areas, raycasts
+        // or routes, or change an NPC's behavior while trying to measure it.
+        val relocating = npcs.filter { npc ->
+            val squad = npc.currentSquad() ?: return@filter false
+            val view = squad.tactics.snapshot ?: return@filter false
+            val home = view.home ?: return@filter false
+            squad.order == SquadOrder.DEFEND && view.stamp == squad.orderStamp &&
+                !CombatPosition.withinArea(home, npc.position(), CombatPosition.defendRadius(npc.npcClass, squad.members.size))
+        }
+        DebugFlags.log(
+            LogGroup.PERF,
+            "combat: targets={} firedLast40Ticks={} defendOutsideArea={} outsideTargets={} outsideFiredLast40Ticks={}",
+            npcs.count { it.target?.isAlive == true },
+            npcs.count { it.firedRecently(40) },
+            relocating.size,
+            relocating.count { it.target?.isAlive == true },
+            relocating.count { it.firedRecently(40) },
         )
         tickNanos = 0
         ticks = 0
@@ -99,11 +121,12 @@ object PerfProbe {
             val elapsed = now - lastReport
             if (elapsed < REPORT_INTERVAL_MS) return
             val perFrame = frames.coerceAtLeast(1).toDouble()
-            DebugFlags.log(LogGroup.PERF,
+            DebugFlags.log(
+                LogGroup.PERF,
                 "client: {} fps, {} NPC renders per frame ({} with weapons)",
                 "%.1f".format(frames * 1000.0 / elapsed),
                 "%.1f".format(rendered / perFrame),
-                "%.1f".format(weapons / perFrame)
+                "%.1f".format(weapons / perFrame),
             )
             lastReport = now
             frames = 0

@@ -36,7 +36,7 @@ object SelectionHighlight {
                 level.sendParticles(
                     player, options, true,
                     npc.x, npc.y + npc.bbHeight + 0.3, npc.z,
-                    3, 0.15, 0.05, 0.15, 0.0
+                    3, 0.15, 0.05, 0.15, 0.0,
                 )
             }
         }

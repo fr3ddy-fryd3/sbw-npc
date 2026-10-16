@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.block
 
+import com.mojang.serialization.MapCodec
 import com.sbwnpc.squad.block.entity.BarracksBlockEntity
 import com.sbwnpc.squad.init.ModBlockEntities
 import com.sbwnpc.squad.item.SquadToolItem
@@ -8,7 +9,6 @@ import com.sbwnpc.squad.network.sendToClient
 import com.sbwnpc.squad.squad.BarracksRef
 import com.sbwnpc.squad.squad.PlayerFactionRegistry
 import com.sbwnpc.squad.squad.SquadManager
-import com.mojang.serialization.MapCodec
 import net.minecraft.ChatFormatting
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -37,15 +37,16 @@ import net.minecraft.world.level.material.MapColor
 import net.minecraft.world.phys.BlockHitResult
 
 /**
- * Destructible resupply point for a squad: periodically respawns its missing members.
+ * Destructible recruitment point: releases one initial or replacement NPC per interval.
  *
  * A plain block, like every functional placeable SuperbWarfare has (ContainerBlock,
  * ChargingStationBlock, VehicleAssemblingTable…): right-click with no tool, removed only by mining
  * or an explosion — gunfire doesn't hurt it.
  */
-class BarracksBlock : BaseEntityBlock(
-    Properties.of().mapColor(MapColor.COLOR_GRAY).strength(6.0f, 12.0f).sound(SoundType.WOOD).noOcclusion()
-) {
+class BarracksBlock :
+    BaseEntityBlock(
+        Properties.of().mapColor(MapColor.COLOR_GRAY).strength(6.0f, 12.0f).sound(SoundType.WOOD).noOcclusion(),
+    ) {
     init {
         // Its faces are not interchangeable — front, back and two sides are distinct textures, so
         // the block has to remember which way it was put down.
@@ -61,14 +62,11 @@ class BarracksBlock : BaseEntityBlock(
     }
 
     /** Placed facing the player, the way every vanilla fronted block does it. */
-    override fun getStateForPlacement(context: BlockPlaceContext): BlockState =
-        defaultBlockState().setValue(FACING, context.horizontalDirection.opposite)
+    override fun getStateForPlacement(context: BlockPlaceContext): BlockState = defaultBlockState().setValue(FACING, context.horizontalDirection.opposite)
 
-    override fun rotate(state: BlockState, rotation: Rotation): BlockState =
-        state.setValue(FACING, rotation.rotate(state.getValue(FACING)))
+    override fun rotate(state: BlockState, rotation: Rotation): BlockState = state.setValue(FACING, rotation.rotate(state.getValue(FACING)))
 
-    override fun mirror(state: BlockState, mirror: Mirror): BlockState =
-        state.rotate(mirror.getRotation(state.getValue(FACING)))
+    override fun mirror(state: BlockState, mirror: Mirror): BlockState = state.rotate(mirror.getRotation(state.getValue(FACING)))
 
     override fun newBlockEntity(pos: BlockPos, state: BlockState): BlockEntity = BarracksBlockEntity(pos, state)
 
@@ -111,12 +109,14 @@ class BarracksBlock : BaseEntityBlock(
         // and the Barracks is a second way into deploying, so it cannot skip it.
         val own = PlayerFactionRegistry.get(level as ServerLevel).requireOrPrompt(serverPlayer)
             ?: return InteractionResult.SUCCESS
-        sendToClient(serverPlayer, OpenBarracksScreenPayload(pos.immutable(), SquadToolItem.configTag(be.configOrDefault(own))))
+        val configured = be.configOrDefault(own)
+        val config = SquadToolItem.configTag(if (serverPlayer.isCreative) configured else configured.copy(faction = own))
+        config.put("Recruitment", be.recruitmentSnapshot(level))
+        sendToClient(serverPlayer, OpenBarracksScreenPayload(pos.immutable(), config))
         return InteractionResult.SUCCESS
     }
 
-    private fun actionbar(player: Player, msg: String, color: ChatFormatting) =
-        player.displayClientMessage(Component.literal(msg).withStyle(color), true)
+    private fun actionbar(player: Player, msg: String, color: ChatFormatting) = player.displayClientMessage(Component.literal(msg).withStyle(color), true)
 
     companion object {
         val FACING = BlockStateProperties.HORIZONTAL_FACING

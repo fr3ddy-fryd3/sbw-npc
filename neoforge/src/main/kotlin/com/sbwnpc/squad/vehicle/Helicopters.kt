@@ -17,7 +17,8 @@ import net.minecraft.world.phys.Vec3
  *  - Mi-28 has two seats and declares `TurretControllerIndex: 1`, so seat 1 is a real auto-aimable
  *    turret (30mm cannon plus missiles) — the same mechanism tank and IFV gunners already use.
  *  - AH-6 has no turret at all: its cannon and rockets are fixed to the airframe, which means
- *    aiming them is a flying problem, not a gunnery one. Its other three seats are bare benches.
+ *    aiming them is a flying problem, not a gunnery one. It has a forward-facing cockpit passenger
+ *    and two side benches, whose occupants fire their carried weapons.
  *    It is therefore a transport here, not a gunship.
  */
 object Helicopters {
@@ -118,8 +119,7 @@ object Helicopters {
     }
 
     /** Ground level under a point, as the flight code measures it. */
-    fun groundY(level: ServerLevel, x: Double, z: Double): Int =
-        level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, x.toInt(), z.toInt())
+    fun groundY(level: ServerLevel, x: Double, z: Double): Int = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, x.toInt(), z.toInt())
 
     private const val ROTOR_CLEARANCE = 6
     private const val RETREAT_HEALTH_FRACTION = 0.35f
@@ -128,6 +128,7 @@ object Helicopters {
     private const val LZ_SEARCH_RADIUS = 24
     private const val LZ_STEP = 6
     private const val LZ_SAMPLES = 8
+
     /** A parked AH-6 reads about a block up from the heightmap surface; a landing flare starts at
      *  three. This sits between them. */
     private const val ON_DECK_HEIGHT = 2.0

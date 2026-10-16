@@ -3,8 +3,8 @@ package com.sbwnpc.squad.integration.sbw
 import com.atsuishio.superbwarfare.config.server.ExplosionConfig
 import com.atsuishio.superbwarfare.entity.projectile.HandGrenadeEntity
 import com.atsuishio.superbwarfare.entity.projectile.RgoGrenadeEntity
-import com.sbwnpc.squad.domain.port.GrenadeKind
 import com.atsuishio.superbwarfare.tools.RangeTool
+import com.sbwnpc.squad.domain.port.GrenadeKind
 import com.sbwnpc.squad.domain.port.Grenades
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
@@ -30,13 +30,19 @@ object SbwGrenades : Grenades {
     override val blastRadius: Double
         get() = maxOf(blastRadius(GrenadeKind.OFFENSIVE), blastRadius(GrenadeKind.DEFENSIVE))
 
-    override fun blastRadius(kind: GrenadeKind): Double = when (kind) {
-        GrenadeKind.OFFENSIVE -> ExplosionConfig.M67_GRENADE_EXPLOSION_RADIUS.get().toDouble()
-        GrenadeKind.DEFENSIVE -> ExplosionConfig.RGO_GRENADE_EXPLOSION_RADIUS.get().toDouble()
-    }
+    override fun blastRadius(kind: GrenadeKind): Double =
+        when (kind) {
+            GrenadeKind.OFFENSIVE -> ExplosionConfig.M67_GRENADE_EXPLOSION_RADIUS.get().toDouble()
+            GrenadeKind.DEFENSIVE -> ExplosionConfig.RGO_GRENADE_EXPLOSION_RADIUS.get().toDouble()
+        }
 
     override fun arcClear(
-        thrower: LivingEntity, level: ServerLevel, target: Vec3, targetVelocity: Vec3, kind: GrenadeKind, nearTarget: Double
+        thrower: LivingEntity,
+        level: ServerLevel,
+        target: Vec3,
+        targetVelocity: Vec3,
+        kind: GrenadeKind,
+        nearTarget: Double,
     ): Boolean {
         // Flown the way FastThrowableProjectile moves it: from just under the eyes, a step of the
         // current velocity, then gravity (no drag out of water).
@@ -70,10 +76,11 @@ object SbwGrenades : Grenades {
         level.addFreshEntity(grenade)
     }
 
-    override fun item(kind: GrenadeKind): net.minecraft.world.item.ItemStack = when (kind) {
-        GrenadeKind.OFFENSIVE -> net.minecraft.world.item.ItemStack(com.atsuishio.superbwarfare.init.ModItems.HAND_GRENADE.get())
-        GrenadeKind.DEFENSIVE -> net.minecraft.world.item.ItemStack(com.atsuishio.superbwarfare.init.ModItems.RGO_GRENADE.get())
-    }
+    override fun item(kind: GrenadeKind): net.minecraft.world.item.ItemStack =
+        when (kind) {
+            GrenadeKind.OFFENSIVE -> net.minecraft.world.item.ItemStack(com.atsuishio.superbwarfare.init.ModItems.HAND_GRENADE.get())
+            GrenadeKind.DEFENSIVE -> net.minecraft.world.item.ItemStack(com.atsuishio.superbwarfare.init.ModItems.RGO_GRENADE.get())
+        }
 
     // HandGrenadeEntity (the M67, and anything built on it) is the one on a timed fuse. The RGO and
     // launcher rounds go off on contact.

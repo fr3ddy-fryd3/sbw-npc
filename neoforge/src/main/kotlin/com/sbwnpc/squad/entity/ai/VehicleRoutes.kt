@@ -10,9 +10,9 @@ import net.minecraft.world.entity.Mob
 import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.level.PathNavigationRegion
 import net.minecraft.world.level.levelgen.Heightmap
+import net.minecraft.world.level.pathfinder.Node
 import net.minecraft.world.level.pathfinder.Path
 import net.minecraft.world.level.pathfinder.PathFinder
-import net.minecraft.world.level.pathfinder.Node
 import net.minecraft.world.level.pathfinder.PathType
 import net.minecraft.world.level.pathfinder.PathfindingContext
 import net.minecraft.world.phys.Vec3
@@ -33,6 +33,7 @@ object VehicleRoutes {
     private const val LEG = 96.0
     private const val SEARCH_RANGE = 140f
     private const val NODES = 10_000
+
     /** A leg ending this near its end point got there — see SquadMarch's LEG_REACH. */
     private const val LEG_REACH = 8
     private var lastPlanTick = Long.MIN_VALUE / 2
@@ -64,8 +65,10 @@ object VehicleRoutes {
             driver.setPathfindingMalus(PathType.WATER, if (amphibious) 1f else -1f)
             if (amphibious) driver.setPathfindingMalus(PathType.WATER_BORDER, 0f)
             val targetCorner = cornerOf(Vec3(target.x + 0.5, target.y.toDouble(), target.z + 0.5), vehicle.bbWidth)
-            return SearchResult(PathFinder(HullEvaluator(vehicle, width, height, amphibious), NODES)
-                .findPath(region, driver, setOf(targetCorner), SEARCH_RANGE, LEG_REACH, 1f))
+            return SearchResult(
+                PathFinder(HullEvaluator(vehicle, width, height, amphibious), NODES)
+                    .findPath(region, driver, setOf(targetCorner), SEARCH_RANGE, LEG_REACH, 1f),
+            )
         } finally {
             if (previousStep != null) stepHeight.baseValue = previousStep
             driver.setPathfindingMalus(PathType.WATER, waterCost)
@@ -82,9 +85,7 @@ object VehicleRoutes {
     }
 
     /** Nodes are the hull's lowest corner; this is where its middle is. */
-    fun centreOf(node: BlockPos, vehicle: Entity): Vec3 {
-        return centreOf(node, vehicle.bbWidth)
-    }
+    fun centreOf(node: BlockPos, vehicle: Entity): Vec3 = centreOf(node, vehicle.bbWidth)
 
     internal fun centreOf(node: BlockPos, width: Float): Vec3 {
         val half = Math.ceil(width.toDouble()) / 2.0
@@ -94,8 +95,11 @@ object VehicleRoutes {
     /** The whole search uses minimum-corner nodes; both the start and goal are hull centres. */
     internal fun cornerOf(position: Vec3, width: Float): BlockPos {
         val half = Math.ceil(width.toDouble()) / 2.0
-        return BlockPos(kotlin.math.floor(position.x - half).toInt(),
-            kotlin.math.floor(position.y + 0.5).toInt(), kotlin.math.floor(position.z - half).toInt())
+        return BlockPos(
+            kotlin.math.floor(position.x - half).toInt(),
+            kotlin.math.floor(position.y + 0.5).toInt(),
+            kotlin.math.floor(position.z - half).toInt(),
+        )
     }
 
     private fun legToward(level: ServerLevel, from: Vec3, home: Vec3): BlockPos? {
@@ -118,7 +122,10 @@ object VehicleRoutes {
 
     /** The ordinary evaluator, checking a [width] x [height] x [width] box at every node. */
     private class HullEvaluator(
-        private val vehicle: Entity, private val width: Int, private val height: Int, private val amphibious: Boolean,
+        private val vehicle: Entity,
+        private val width: Int,
+        private val height: Int,
+        private val amphibious: Boolean,
     ) : VehicleAwareNodeEvaluator() {
 
         init {

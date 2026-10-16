@@ -25,7 +25,7 @@ class DiplomacyScreen(snapshot: CompoundTag) : Screen(Component.literal("Diploma
         val truceSeconds: Int,
         val offer: Int,
         val voted: Boolean,
-        val members: String
+        val members: String,
     )
 
     private val own = runCatching { SquadFaction.valueOf(snapshot.getString("Own")) }.getOrNull()
@@ -35,13 +35,16 @@ class DiplomacyScreen(snapshot: CompoundTag) : Screen(Component.literal("Diploma
         val t = it as CompoundTag
         val faction = runCatching { SquadFaction.valueOf(t.getString("Faction")) }.getOrNull() ?: return@mapNotNull null
         Row(
-            faction, t.getString("Status"), t.getInt("TruceSeconds"),
-            t.getInt("Offer"), t.getBoolean("Voted"), t.getString("Members")
+            faction,
+            t.getString("Status"),
+            t.getInt("TruceSeconds"),
+            t.getInt("Offer"),
+            t.getBoolean("Voted"),
+            t.getString("Members"),
         )
     }
 
-    private fun send(action: Int, faction: Int = 0, proposal: Int = 0) =
-        PacketDistributor.sendToServer(DiplomacyCmdPayload(action, faction, proposal))
+    private fun send(action: Int, faction: Int = 0, proposal: Int = 0) = PacketDistributor.sendToServer(DiplomacyCmdPayload(action, faction, proposal))
 
     private val left get() = width / 2 - WIDTH / 2
     private val top get() = height / 2 - (rows.size * ROW_HEIGHT + 60) / 2
@@ -51,12 +54,15 @@ class DiplomacyScreen(snapshot: CompoundTag) : Screen(Component.literal("Diploma
         for (row in rows) {
             val button = when {
                 row.status == "ALLY" -> null
+
                 row.offer != 0 && row.voted -> Button.builder(Component.literal("Voted")) {}
                     .tooltip(Tooltip.create(Component.literal("Waiting for the others: ${row.members}")))
                     .build().also { it.active = false }
+
                 row.offer != 0 -> Button.builder(Component.literal("Accept").withStyle(ChatFormatting.GREEN)) {
                     send(DiplomacyCmdPayload.ACCEPT, proposal = row.offer)
                 }.tooltip(Tooltip.create(Component.literal("Alliance of ${row.members}"))).build()
+
                 else -> Button.builder(Component.literal("Propose")) {
                     send(DiplomacyCmdPayload.PROPOSE, faction = row.faction.ordinal)
                 }.tooltip(Tooltip.create(Component.literal("Offer ${row.faction.label} an alliance"))).build()
@@ -70,10 +76,12 @@ class DiplomacyScreen(snapshot: CompoundTag) : Screen(Component.literal("Diploma
         y += 8
         if (inAlliance) {
             val label = if (wantsOut) "Stay in the alliance" else "Vote to leave the alliance"
-            addRenderableWidget(Button.builder(Component.literal(label).withStyle(ChatFormatting.GOLD)) {
-                send(DiplomacyCmdPayload.TOGGLE_LEAVE)
-            }.tooltip(Tooltip.create(Component.literal("Your faction leaves once at least half of its players online want out")))
-                .bounds(left, y, WIDTH, 20).build())
+            addRenderableWidget(
+                Button.builder(Component.literal(label).withStyle(ChatFormatting.GOLD)) {
+                    send(DiplomacyCmdPayload.TOGGLE_LEAVE)
+                }.tooltip(Tooltip.create(Component.literal("Your faction leaves once at least half of its players online want out")))
+                    .bounds(left, y, WIDTH, 20).build(),
+            )
             y += 24
         }
         addRenderableWidget(Button.builder(Component.literal("Close")) { onClose() }.bounds(left, y, WIDTH, 20).build())
@@ -81,8 +89,11 @@ class DiplomacyScreen(snapshot: CompoundTag) : Screen(Component.literal("Diploma
 
     override fun render(g: GuiGraphics, mouseX: Int, mouseY: Int, partial: Float) {
         super.render(g, mouseX, mouseY, partial)
-        val header = if (own == null) Component.literal("Pick a faction first")
-            else Component.literal("Diplomacy — ").append(Component.literal(own.label).withStyle(own.accentStyle))
+        val header = if (own == null) {
+            Component.literal("Pick a faction first")
+        } else {
+            Component.literal("Diplomacy — ").append(Component.literal(own.label).withStyle(own.accentStyle))
+        }
         g.drawCenteredString(font, header, width / 2, top, 0xFFFFFF)
         var y = top + 20
         for (row in rows) {
@@ -92,13 +103,17 @@ class DiplomacyScreen(snapshot: CompoundTag) : Screen(Component.literal("Diploma
         }
     }
 
-    private fun statusText(row: Row): Component = when {
-        row.status == "ALLY" -> Component.literal("Ally").withStyle(ChatFormatting.GREEN)
-        row.offer != 0 -> Component.literal("Alliance offered").withStyle(ChatFormatting.YELLOW)
-        row.status == "TRUCE" -> Component.literal("Truce, ${row.truceSeconds / 60}:${"%02d".format(row.truceSeconds % 60)}")
-            .withStyle(ChatFormatting.GOLD)
-        else -> Component.literal("Hostile").withStyle(ChatFormatting.RED)
-    }
+    private fun statusText(row: Row): Component =
+        when {
+            row.status == "ALLY" -> Component.literal("Ally").withStyle(ChatFormatting.GREEN)
+
+            row.offer != 0 -> Component.literal("Alliance offered").withStyle(ChatFormatting.YELLOW)
+
+            row.status == "TRUCE" -> Component.literal("Truce, ${row.truceSeconds / 60}:${"%02d".format(row.truceSeconds % 60)}")
+                .withStyle(ChatFormatting.GOLD)
+
+            else -> Component.literal("Hostile").withStyle(ChatFormatting.RED)
+        }
 
     override fun isPauseScreen() = false
 

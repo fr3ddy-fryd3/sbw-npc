@@ -19,8 +19,7 @@ import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal
  * without the mob actually being done holding its position — reported in-game as digging in not
  * reliably preventing the mob from wandering off once its immediate target disappeared.
  */
-class IdleWanderGoal(private val npc: NpcEntity, speedModifier: Double) :
-    WaterAvoidingRandomStrollGoal(npc, speedModifier) {
+class IdleWanderGoal(private val npc: NpcEntity, speedModifier: Double) : WaterAvoidingRandomStrollGoal(npc, speedModifier) {
     private fun eligible(): Boolean {
         if (npc.target != null || npc.diggedIn || npc.busyWithRole()) return false
         return npc.homeCenter() == null

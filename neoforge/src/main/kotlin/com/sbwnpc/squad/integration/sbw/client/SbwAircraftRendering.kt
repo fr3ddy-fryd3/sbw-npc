@@ -31,8 +31,11 @@ object SbwAircraftRendering {
         val aircraft = LinkedHashMap<Int, Entity>()
         val otherRemote = ArrayList<Entity>()
         for (entity in ClientSyncedEntityHandler.getSyncedWorldRenderEntities(level)) {
-            if (AircraftVisibility.isAircraft(entity)) aircraft[entity.id] = entity
-            else if (configuredBvr && level.getEntity(entity.id) == null) otherRemote += entity
+            if (AircraftVisibility.isAircraft(entity)) {
+                aircraft[entity.id] = entity
+            } else if (configuredBvr && level.getEntity(entity.id) == null) {
+                otherRemote += entity
+            }
         }
         // Prefer the live entity, including its vanilla interpolation and passenger state.
         for (entity in level.entitiesForRendering()) {
@@ -46,8 +49,11 @@ object SbwAircraftRendering {
         val savedFogStart = RenderSystem.getShaderFogStart()
         val savedFogEnd = RenderSystem.getShaderFogEnd()
         val savedFogShape = RenderSystem.getShaderFogShape()
-        val range = if (configuredBvr) maxOf(AircraftVisibility.RANGE, SyncConfig.MAX_RENDER_DISTANCE.get())
-            else AircraftVisibility.RANGE
+        val range = if (configuredBvr) {
+            maxOf(AircraftVisibility.RANGE, SyncConfig.MAX_RENDER_DISTANCE.get())
+        } else {
+            AircraftVisibility.RANGE
+        }
         val projection = AircraftVisibility.projection(savedProjection, range)
         val frustum = Frustum(event.modelViewMatrix, projection).apply {
             prepare(camera.position.x, camera.position.y, camera.position.z)
@@ -68,12 +74,15 @@ object SbwAircraftRendering {
         fun draw(entity: Entity, pos: Vec3) {
             val blockPos = net.minecraft.core.BlockPos.containing(pos)
             // Unloaded terrain has no light data; aircraft still receive normal sky lighting.
-            val light = if (level.hasChunkAt(blockPos)) LevelRenderer.getLightColor(level, blockPos)
-                else LightTexture.pack(0, 15)
+            val light = if (level.hasChunkAt(blockPos)) {
+                LevelRenderer.getLightColor(level, blockPos)
+            } else {
+                LightTexture.pack(0, 15)
+            }
             val relative = pos.subtract(camera.position)
             minecraft.entityRenderDispatcher.render(
                 entity, relative.x, relative.y, relative.z, entity.yRot, partialTick,
-                event.poseStack, buffers, light
+                event.poseStack, buffers, light,
             )
         }
 

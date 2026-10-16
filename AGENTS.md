@@ -180,13 +180,22 @@ KDoc (`/** ... */`) goes on every class, object and non-obvious public or `inter
   The flag is baked into the jar at build time by the generated `BuildFlags` object (see
   `generateBuildFlags` in `build.gradle.kts`). It cannot be passed at runtime.
 - Tests only: `./gradlew test`.
+- Cloud or headless setup: `bash setup-minecraft-headless.sh --prepare`. Then run
+  `bash setup-minecraft-headless.sh` for three real server smoke scenes, `--unit` for JUnit, or
+  `--filter methodA,methodB --report name` for selected GameTests. `docs/HEADLESS-TESTS.md` covers
+  dependencies, caches, logs and full-suite runs.
 - Compiling (`compileKotlin`) is not a testable artifact. A real jar requires `build`.
-- Deploy for in-game testing: copy the built jar into the **flat** `~/.minecraft/mods/` folder:
+- Deploy for in-game testing into the **flat** `~/.minecraft/mods/` folder:
   ```
-  cp build/libs/sbwnpc-<version>-mc1.21.1-neoforge.jar ~/.minecraft/mods/
+  python3 install-local-mod.py build/libs/sbwnpc-<version>-mc1.21.1-neoforge.jar
   ```
   Not into a `~/.minecraft/mods/1.21.1/` subfolder: the launcher doesn't read it. Remove any jar
   of another version from `mods/` first, so two versions of the mod don't load at once.
+- Never overwrite a jar in place while Minecraft is running: the JVM caches ZIP offsets and later
+  class loading can fail. The installer stages the new archive and swaps it in atomically. A full
+  Minecraft restart loads the new build.
+- After checks pass, build with `buildDevelop` and install the jar locally by default. An explicit
+  instruction not to build or install overrides this; otherwise it needs no separate confirmation.
 - SBW inputs are pinned in `gradle/sbw/`; normal builds use the published NeoForge artifact
   and verify SHA-512 before compilation/testing. Provenance: `build/reports/sbw/input.txt`.
   Use `-PsbwSourceDir=/absolute/path` only for local development; the checkout must match

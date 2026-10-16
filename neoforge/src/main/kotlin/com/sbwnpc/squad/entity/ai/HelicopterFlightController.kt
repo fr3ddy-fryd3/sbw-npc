@@ -49,7 +49,7 @@ object HelicopterFlightController {
         val mouseY: Float,
         val hoverMode: Boolean,
         val rollLeft: Boolean = false,
-        val rollRight: Boolean = false
+        val rollRight: Boolean = false,
     )
 
     /**
@@ -65,6 +65,7 @@ object HelicopterFlightController {
     const val MAX_YAW_RATE = 2.5f
     const val MAX_PITCH_RATE = 1.5f
     const val MAX_PITCH_ANGLE = 22f
+
     /** Below this the rotor is too slow to steer with; commanding a huge stick deflection to
      *  compensate would only snap the airframe around the moment it does spin up. */
     const val MIN_AUTHORITY = 0.02f
@@ -74,6 +75,7 @@ object HelicopterFlightController {
     private const val ALTITUDE_DEADBAND = 1.5
     private const val FAST_SINK_MARGIN = 8.0
     private const val ROLL_DEADBAND = 1.5f
+
     /** `deltaRot` decays by 0.9 a tick, so the roll still owed by the current rate is about 10x it. */
     private const val ROLL_LEAD = 10f
 
@@ -179,7 +181,7 @@ object HelicopterFlightController {
         desiredY: Double,
         cruiseSpeed: Double,
         tuning: Tuning,
-        facing: Vec3? = null
+        facing: Vec3? = null,
     ): Command {
         val arrived = horizontalDistance(pos, target) <= ARRIVE_RADIUS
         // Hover mode kills pitch authority and damps horizontal movement, so it can only come on

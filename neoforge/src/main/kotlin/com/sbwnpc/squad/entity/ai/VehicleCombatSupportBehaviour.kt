@@ -26,8 +26,10 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var phase = Phase.APPROACHING
     private var vehicleId: UUID? = null
     private var targetId: UUID? = null
+
     /** Last tick the target was in sight — see [engagementTarget]. */
     private var sawTargetTick = 0
+
     /** Last tick the gunner had anything to shoot at — see [lingering]. */
     private var engagedTick = 0
 
@@ -68,9 +70,12 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         engagedTick = entity.tickCount
         phase = Phase.APPROACHING
         entity.vehicleTransport = true
-        DebugFlags.log(LogGroup.VEHICLE,
+        DebugFlags.log(
+            LogGroup.VEHICLE,
             "{} claimed combat support vehicle {} for target {}",
-            entity.uuid, vehicle.uuid, target.uuid
+            entity.uuid,
+            vehicle.uuid,
+            target.uuid,
         )
     }
 
@@ -119,7 +124,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
                         entity.x.coerceIn(hull.minX, hull.maxX),
                         entity.y.coerceIn(hull.minY, hull.maxY),
                         entity.z.coerceIn(hull.minZ, hull.maxZ),
-                        BOARD_SPEED
+                        BOARD_SPEED,
                     )
                     return
                 }
@@ -131,11 +136,16 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 entity.navigation.stop()
                 phase = Phase.FIRING
                 engagedTick = entity.tickCount
-                DebugFlags.log(LogGroup.VEHICLE,
+                DebugFlags.log(
+                    LogGroup.VEHICLE,
                     "{} boarded combat support vehicle {} in seat {} for target {}",
-                    entity.uuid, vehicle.uuid, Ports.vehicles.seatOf(vehicle, entity), target.uuid
+                    entity.uuid,
+                    vehicle.uuid,
+                    Ports.vehicles.seatOf(vehicle, entity),
+                    target.uuid,
                 )
             }
+
             Phase.FIRING -> {
                 if (!Ports.vehicles.seatHasAmmo(vehicle, entity)) {
                     abort(entity, "seat out of ammo")
@@ -155,7 +165,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun eligible(entity: NpcEntity): Boolean =
         !entity.vehicleTransport && !entity.operatingDrone && !entity.antiDroneEngaged && !entity.diggedIn && !entity.isSuppressed() &&
-            entity.npcClass != NpcClass.MORTAR_OPERATOR && entity.npcClass != NpcClass.MORTAR_LOADER &&
+            entity.npcClass != NpcClass.MORTAR &&
             threat(entity) != null
 
     // The hostile-vehicle scan (an entity query + raycasts) used to run from this behaviour's
@@ -178,8 +188,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         return threatCache ?: fallbackThreat(entity)
     }
 
-    private fun fallbackThreat(entity: NpcEntity): LivingEntity? =
-        entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) }
+    private fun fallbackThreat(entity: NpcEntity): LivingEntity? = entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) }
 
     private fun abort(entity: NpcEntity, why: String) {
         val vehicle = vehicleId?.let { (entity.level() as? ServerLevel)?.getEntity(it)?.takeIf(Ports.vehicles::isVehicle) }
@@ -196,10 +205,15 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun traceExit(entity: NpcEntity, vehicle: Entity?, how: String) {
-        DebugFlags.log(LogGroup.VEHICLE,
+        DebugFlags.log(
+            LogGroup.VEHICLE,
             "{} leaving combat support ({}): seated={} ticksSinceTarget={} ammo={} phase={}",
-            entity.uuid, how, vehicle != null && entity.vehicle === vehicle, entity.tickCount - engagedTick,
-            vehicle?.let { Ports.vehicles.seatHasAmmo(it, entity) }, phase
+            entity.uuid,
+            how,
+            vehicle != null && entity.vehicle === vehicle,
+            entity.tickCount - engagedTick,
+            vehicle?.let { Ports.vehicles.seatHasAmmo(it, entity) },
+            phase,
         )
     }
 
@@ -229,8 +243,13 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
             targetId = null
         }
         return threat(entity)?.takeIf { entity.sensing.hasLineOfSight(it) }?.also {
-            DebugFlags.log(LogGroup.VEHICLE, "{} at the gun takes a new target {} ({} ticks after the last)",
-                entity.uuid, it.uuid, entity.tickCount - engagedTick)
+            DebugFlags.log(
+                LogGroup.VEHICLE,
+                "{} at the gun takes a new target {} ({} ticks after the last)",
+                entity.uuid,
+                it.uuid,
+                entity.tickCount - engagedTick,
+            )
             targetId = it.uuid
             sawTargetTick = entity.tickCount
             engagedTick = entity.tickCount
@@ -270,6 +289,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         const val BOARD_SPEED = 1.0
         const val LOST_SIGHT_TICKS = 200
         const val REBOARD_COOLDOWN_TICKS = 200
+
         /** How long a gunner stays at the gun after its last target, looking for the next. */
         const val LINGER_TICKS = 100
     }

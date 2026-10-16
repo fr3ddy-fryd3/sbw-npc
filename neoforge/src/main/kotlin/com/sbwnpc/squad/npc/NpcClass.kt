@@ -3,6 +3,7 @@ package com.sbwnpc.squad.npc
 import net.minecraft.resources.ResourceLocation
 
 private fun loc(path: String) = ResourceLocation.fromNamespaceAndPath("superbwarfare", path)
+private val rifles = listOf("ak_47", "ak_12", "m_4", "hk_416", "qbz_95").map(::loc)
 
 /**
  * Combat role. Determines the weapon pool (one is picked at random per NPC in
@@ -19,8 +20,12 @@ enum class NpcClass(
     val speedMultiplier: Double = 1.4, // "everyone else" default per user request — was the one global value before
     /** Rear offset from a contacted enemy; ordinary order movement still reaches its objective. */
     val attackStandoffDistance: Double = 0.0,
+    /** Movement clearance; short-range assault weapons need to approach closer than rifles. */
+    val combatClearance: Double = 48.0,
+    /** Most primaries can fire at shared contacts beyond detection range. */
+    val maxFireDistance: Double = Double.POSITIVE_INFINITY,
 ) {
-    RIFLEMAN(listOf(loc("ak_47"), loc("ak_12")), shootDistanceMultiplier = 2.0),
+    RIFLEMAN(rifles, shootDistanceMultiplier = 2.0),
     MACHINE_GUNNER(listOf(loc("rpk"), loc("m_60")), shootDistanceMultiplier = 3.0, speedMultiplier = 1.3, attackStandoffDistance = 56.0),
     SNIPER(listOf(loc("svd"), loc("awm")), shootDistanceMultiplier = 3.0, accuracyMultiplier = 1.0 / 1.4, speedMultiplier = 1.3, attackStandoffDistance = 64.0), // a bit tighter spread per user request (was /1.2)
 
@@ -40,12 +45,8 @@ enum class NpcClass(
      *  someone — see that class. */
     MEDIC(listOf(loc("mp_5"), loc("vector")), shootDistanceMultiplier = 3.0, speedMultiplier = 1.3, attackStandoffDistance = 64.0),
 
-    /** The medic's SMGs for self-defence; its real job (MortarOperatorBehaviour) is manning a nearby
-     *  placed MortarEntity, which the MORTAR_LOADER on the same squad keeps supplied. */
+    /** Reserved legacy save/network IDs; selection and loading map both to MORTAR. */
     MORTAR_OPERATOR(listOf(loc("mp_5"), loc("vector"))),
-
-    /** Keeps its squad's manned mortar loaded (MortarLoaderBehaviour) from the shells it carries, and
-     *  fetches more from a Supply — no combat job. Same SMGs as the operator. */
     MORTAR_LOADER(listOf(loc("mp_5"), loc("vector"))),
 
     /** Permanent vehicle crewman. Its sidearm is only for the brief period after its vehicle is destroyed. */
@@ -57,34 +58,56 @@ enum class NpcClass(
 
     /** Works the gunship turret from seat 1 (HelicopterGunnerBehaviour); same sidearm caveat. */
     HELICOPTER_GUNNER(listOf(loc("glock_18"), loc("mp_443"))),
+
     // Flies kamikaze drones at targets 80-150 blocks out (by rank) — see DroneOperatorBehaviour.
     // Same rifles as RIFLEMAN (per user request): once the drones are spent it fights on as an
     // ordinary rifleman rather than plinking with a sidearm.
-    DRONE_OPERATOR(listOf(loc("ak_47"), loc("ak_12")), shootDistanceMultiplier = 2.0, speedMultiplier = 1.3);
+    DRONE_OPERATOR(rifles, shootDistanceMultiplier = 2.0, speedMultiplier = 1.3),
+
+    /** The same soldier can lay, load and fire; crew roles belong to the mortar. */
+    MORTAR(listOf(loc("mp_5"), loc("vector"))),
+
+    /** Appended to preserve existing class ordinals in saved equipment and network packets. */
+    SHOTGUNNER(listOf(loc("m_870")), combatClearance = 16.0, maxFireDistance = 48.0),
+    ;
 
     /** Ordinary assault stops at this range; holding orders can shoot out to twice it. */
     val assaultDistance: Double get() = 24.0 * shootDistanceMultiplier
 
-    fun next(): NpcClass = entries[(ordinal + 1) % entries.size]
+    val canonical: NpcClass get() = if (this == MORTAR_OPERATOR || this == MORTAR_LOADER) MORTAR else this
+
+    /** Snipers take twice as long between primary-weapon shots, independently of rank. */
+    val fireIntervalMultiplier: Int get() = when (canonical) {
+        SNIPER, SHOTGUNNER -> 2
+        else -> 1
+    }
+
+    fun next(): NpcClass = selectable[(selectable.indexOf(canonical) + 1) % selectable.size]
 
     /**
      * Every round this class starts with for [weapon], the loaded magazine included (it is filled
      * from these). Counted in rounds per class and gun, per user call: a flat 120 for everyone gave
      * an AWM 24 reloads, an M79 120 grenades and an M60 barely one belt.
      */
-    fun startingRounds(weapon: ResourceLocation): Int = when (this) {
-        RIFLEMAN -> 210
-        MACHINE_GUNNER -> if (weapon.path == "m_60") 400 else 320
-        SNIPER -> if (weapon.path == "awm") 50 else 60
-        GRENADIER -> 20
-        MEDIC, MORTAR_OPERATOR, MORTAR_LOADER -> 180
-        DRONE_OPERATOR -> 120
-        TANK_CREW, HELICOPTER_PILOT, HELICOPTER_GUNNER -> 85
-    }
+    fun startingRounds(weapon: ResourceLocation): Int =
+        when (this) {
+            RIFLEMAN -> 210
+            MACHINE_GUNNER -> if (weapon.path == "m_60") 400 else 320
+            SNIPER -> if (weapon.path == "awm") 50 else 60
+            GRENADIER -> 20
+            MEDIC, MORTAR, MORTAR_OPERATOR, MORTAR_LOADER -> 180
+            DRONE_OPERATOR -> 120
+            SHOTGUNNER -> 64
+            TANK_CREW, HELICOPTER_PILOT, HELICOPTER_GUNNER -> 85
+        }
 
     companion object {
         val DEFAULT = RIFLEMAN
 
-        fun byOrdinal(i: Int): NpcClass = entries.getOrElse(i) { DEFAULT }
+        // Crew IDs remain valid for saved NPCs and full crew presets, but are not standalone recruits.
+        val selectable = entries.filter { it !in setOf(MORTAR_OPERATOR, MORTAR_LOADER, TANK_CREW, HELICOPTER_PILOT, HELICOPTER_GUNNER) }
+
+        fun byOrdinal(i: Int): NpcClass = entries.getOrElse(i) { DEFAULT }.canonical
+        fun byName(name: String): NpcClass = valueOf(name).canonical
     }
 }

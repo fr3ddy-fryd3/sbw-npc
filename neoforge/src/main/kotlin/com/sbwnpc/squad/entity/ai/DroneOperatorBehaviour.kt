@@ -2,8 +2,9 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
-import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.FriendlyFireGuard
+import com.sbwnpc.squad.combat.Hostiles
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
@@ -12,7 +13,6 @@ import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
-import com.sbwnpc.squad.combat.Hostiles
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.Entity
@@ -27,7 +27,7 @@ import java.util.UUID
 
 /**
  * DRONE_OPERATOR's whole job: spot a target 80-150 blocks out (by rank — same autonomous scan +
- * faction relay as [MortarOperatorBehaviour], plus the squad's ATTACK focus/objective), launch an
+ * faction relay as [MortarCrewBehaviour], plus the squad's ATTACK focus/objective), launch an
  * SBW kamikaze drone at it and fly it there from the server, no Monitor/player needed. Core task
  * like the mortar crew — it must keep flying regardless of Fight/Idle activity.
  *
@@ -55,7 +55,7 @@ import java.util.UUID
  * -> blast where it is. Operator killed -> [onOperatorDied]: same, "signal lost".
  *
  * One drone per operator, [MAX_DRONES] carried, refilled at a barracks
- * (SquadManager.respawnAtBarracks). While flying the operator stands still holding the Monitor
+ * (SquadManager.resupplyAtBarracks). While flying the operator stands still holding the Monitor
  * (its gun is stowed in `NpcEntity.stowedWeapon`) and every other movement/combat behaviour stands
  * down via `NpcEntity.operatingDrone`; suppression doesn't interrupt the flight (the operator is
  * stationary either way, SeekCoverBehaviour may shuffle it into cover meanwhile).
@@ -78,16 +78,19 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var launchTick = 0
     private var nextLaunchTick = 0
     private var holdUntilTick = 0
+
     /** When the drone, or anyone on its side, last saw the target it is after. */
     private var sawTargetTick = 0
     private var nextSightCheckTick = 0
     private var clearance = CRUISE_CLEARANCE_MIN
     private var detonated = false
     private var usesAddonBlast = false
+
     /** Targets this flight has given up on (allies kept standing in the blast), so a retarget
      *  doesn't pick the same one straight back up and hold over it again. */
     private val rejected = HashSet<UUID>()
     private var nextRetargetTick = 0
+
     /** When the returning drone first came within [APPROACH_RADIUS] of home, or null. */
     private var approachSinceTick: Int? = null
 
@@ -99,8 +102,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     // --- eligibility ---
 
-    private fun baseEligible(entity: NpcEntity): Boolean =
-        entity.npcClass == NpcClass.DRONE_OPERATOR && !entity.diggedIn && !entity.vehicleTransport
+    private fun baseEligible(entity: NpcEntity): Boolean = entity.npcClass == NpcClass.DRONE_OPERATOR && !entity.diggedIn && !entity.vehicleTransport
 
     private fun canLaunch(entity: NpcEntity): Boolean {
         if (entity.dronesLeft <= 0) return false
@@ -112,8 +114,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         return strikeTarget(entity) != null
     }
 
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
-        startCheck.check(entity) { baseEligible(entity) && canLaunch(entity) }
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = startCheck.check(entity) { baseEligible(entity) && canLaunch(entity) }
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = baseEligible(entity) && droneId != null
 
@@ -136,7 +137,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         cleanup(entity)
     }
 
-    // --- target acquisition (mirrors MortarOperatorBehaviour.fireTarget) ---
+    // --- target acquisition (mirrors MortarCrewBehaviour.fireTarget) ---
 
     private fun maxRange(entity: NpcEntity): Double {
         val t = entity.npcRank.ordinal / (NpcRank.entries.size - 1).toDouble()
@@ -205,10 +206,17 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
             ?.minByOrNull { entity.position().distanceToSqr(it.pos) }
         lastScanResult = sighting?.let { StrikeTarget(it.target, it.pos) }
-        if (sighting != null) DebugFlags.log(LogGroup.FIRE_SUPPORT,
-            "drone {} -> {} seen by {} {} ticks ago at {}",
-            entity.uuid, sighting.target, sighting.by, tick - sighting.tick, sighting.pos
-        )
+        if (sighting != null) {
+            DebugFlags.log(
+                LogGroup.FIRE_SUPPORT,
+                "drone {} -> {} seen by {} {} ticks ago at {}",
+                entity.uuid,
+                sighting.target,
+                sighting.by,
+                tick - sighting.tick,
+                sighting.pos,
+            )
+        }
         return lastScanResult
     }
 
@@ -251,6 +259,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun holdMonitor(entity: NpcEntity) {
         if (Ports.drones.isMonitor(entity.mainHandItem)) return
+        Ports.guns.persist(entity.mainHandItem)
         entity.stowedWeapon = entity.mainHandItem.copy()
         entity.setItemInHand(InteractionHand.MAIN_HAND, Ports.drones.monitor())
     }
@@ -358,8 +367,14 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
             return true
         }
-        DebugFlags.log(LogGroup.DRONE, "{} lost its target {} (alive={}, hostile={})",
-            entity.uuid, tid, target?.isAlive, target?.let { SquadTeams.isHostile(entity, it) })
+        DebugFlags.log(
+            LogGroup.DRONE,
+            "{} lost its target {} (alive={}, hostile={})",
+            entity.uuid,
+            tid,
+            target?.isAlive,
+            target?.let { SquadTeams.isHostile(entity, it) },
+        )
         return retarget(entity, level, drone)
     }
 
@@ -419,16 +434,14 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /** Whether the drone may commit to the dive: a fixed point always, a man only while he is
      *  seen. Over a spot he's no longer at, the drone holds and looks for him instead. */
-    private fun targetInSight(entity: NpcEntity): Boolean =
-        targetEntityId == null || entity.tickCount - sawTargetTick <= SIGHT_GRACE_TICKS
+    private fun targetInSight(entity: NpcEntity): Boolean = targetEntityId == null || entity.tickCount - sawTargetTick <= SIGHT_GRACE_TICKS
 
     private fun apply(drone: Entity, cmd: DroneFlightController.Command) {
         Ports.drones.setInputs(drone, cmd.forward, cmd.back, cmd.up, cmd.down)
         drone.yRot = cmd.yaw
     }
 
-    private fun groundY(level: ServerLevel, x: Double, z: Double): Int =
-        level.getHeight(Heightmap.Types.MOTION_BLOCKING, x.toInt(), z.toInt())
+    private fun groundY(level: ServerLevel, x: Double, z: Double): Int = level.getHeight(Heightmap.Types.MOTION_BLOCKING, x.toInt(), z.toInt())
 
     /** Heightmap samples under the drone and along the next [LOOKAHEAD_DISTANCES] blocks toward
      *  [toward] — cheap (no block reads), and MOTION_BLOCKING includes trees/roofs. */
@@ -468,8 +481,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
     }
 
-    private fun blastClear(entity: NpcEntity): Boolean =
-        FriendlyFireGuard.hasClearBlastRadius(entity, targetPos, warheadRadius())
+    private fun blastClear(entity: NpcEntity): Boolean = FriendlyFireGuard.hasClearBlastRadius(entity, targetPos, warheadRadius())
 
     /** Allies inside the blast radius: loiter at altitude above the target until they clear or the
      *  hold times out (then go home rather than blow up the squad). */
@@ -488,9 +500,15 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             if (!retarget(entity, level, drone)) phase = Phase.RETURN
         } else if (entity.tickCount >= holdUntilTick) {
             val blocker = FriendlyFireGuard.allyInBlast(entity, targetPos, warheadRadius())
-            DebugFlags.log(LogGroup.DRONE, "{} gave up on {}: {} ({}) is {} blocks from it",
-                entity.uuid, targetEntityId, blocker?.uuid, blocker?.let { describe(it) },
-                blocker?.position()?.distanceTo(targetPos))
+            DebugFlags.log(
+                LogGroup.DRONE,
+                "{} gave up on {}: {} ({}) is {} blocks from it",
+                entity.uuid,
+                targetEntityId,
+                blocker?.uuid,
+                blocker?.let { describe(it) },
+                blocker?.position()?.distanceTo(targetPos),
+            )
             targetEntityId?.let { rejected += it }
             if (!retarget(entity, level, drone)) {
                 DebugFlags.log(LogGroup.DRONE, "{} nothing else to strike, heading home", entity.uuid)
@@ -500,12 +518,15 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     /** What an ally in the blast actually is — the log line that says why a drone held off. */
-    private fun describe(e: LivingEntity): String = when (e) {
-        is NpcEntity -> "${e.npcClass} ${SquadTeams.factionOf(e)}"
-        is net.minecraft.world.entity.player.Player ->
-            "player ${if (e.isCreative) "creative" else "survival"} faction=${SquadTeams.factionOf(e)}"
-        else -> e.type.descriptionId
-    }
+    private fun describe(e: LivingEntity): String =
+        when (e) {
+            is NpcEntity -> "${e.npcClass} ${SquadTeams.factionOf(e)}"
+
+            is net.minecraft.world.entity.player.Player ->
+                "player ${if (e.isCreative) "creative" else "survival"} faction=${SquadTeams.factionOf(e)}"
+
+            else -> e.type.descriptionId
+        }
 
     private fun tickAttack(entity: NpcEntity, level: ServerLevel, drone: Entity) {
         val aim = targetPos.add(0.0, 1.0, 0.0)
@@ -551,8 +572,11 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             nextRetargetTick = entity.tickCount + SCAN_INTERVAL_TICKS
             if (retarget(entity, level, drone)) return
         }
-        val desiredY = if (dist <= APPROACH_RADIUS) maxOf(home.y + 1.0, terrainBefore(level, drone, home, dist) + 2.0)
-            else DroneFlightController.cruiseAltitude(terrainAhead(level, drone, home), clearance, drone.y)
+        val desiredY = if (dist <= APPROACH_RADIUS) {
+            maxOf(home.y + 1.0, terrainBefore(level, drone, home, dist) + 2.0)
+        } else {
+            DroneFlightController.cruiseAltitude(terrainAhead(level, drone, home), clearance, drone.y)
+        }
         val speed = (dist * ARRIVAL_SPEED_PER_BLOCK).coerceIn(MIN_ARRIVAL_SPEED, CRUISE_SPEED)
         val cmd = DroneFlightController.steer(drone.position(), drone.yRot, drone.deltaMovement.horizontalDistance(), home, desiredY, speed)
         apply(drone, if (dist <= RECOVER_RADIUS) DroneFlightController.Command(false, cmd.back, cmd.up, cmd.down, cmd.yaw) else cmd)
@@ -622,19 +646,24 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val ATTACK_RANGE = 15.0
         private const val DETONATE_RANGE = 2.5
         private const val RETARGET_RADIUS = 40.0
+
         /** How far the drone's camera makes out a man. */
         private const val DRONE_SIGHT_RANGE = 64.0
         private const val SIGHT_CHECK_TICKS = 4
+
         /** Out of sight this long, and the drone no longer dives on him. */
         private const val SIGHT_GRACE_TICKS = 20
         private const val HOLD_MAX_TICKS = 100
         private const val HOLD_HOVER_RADIUS = 6.0
         private const val RECOVER_RADIUS = 4.0
         private const val RECOVER_HEIGHT = 6.0
+
         /** Inside this, a returning drone descends instead of holding cruise height. */
         private const val APPROACH_RADIUS = 16.0
+
         /** How long a returning drone may spend near home before it's picked up where it is. */
         private const val APPROACH_MAX_TICKS = 200
+
         /** Returning speed falls off with distance: full cruise from ~15 blocks, a crawl at the end. */
         private const val ARRIVAL_SPEED_PER_BLOCK = 0.06
         private const val MIN_ARRIVAL_SPEED = 0.15
@@ -663,7 +692,9 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
  *  brain. Transient; cleared on server stop (ServerLifecycle). */
 object DroneLinks {
     private val droneByOperator = HashMap<UUID, UUID>()
-    fun link(operator: UUID, drone: UUID) { droneByOperator[operator] = drone }
+    fun link(operator: UUID, drone: UUID) {
+        droneByOperator[operator] = drone
+    }
     fun unlink(operator: UUID): UUID? = droneByOperator.remove(operator)
     fun clearAll() = droneByOperator.clear()
 }

@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.entity
 
+import com.sbwnpc.squad.combat.SidearmKit
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.ai.GrenadeThrowBehaviour
 import com.sbwnpc.squad.entity.ai.IdleLookAroundGoal
@@ -7,14 +8,15 @@ import com.sbwnpc.squad.entity.ai.IdleWanderGoal
 import com.sbwnpc.squad.entity.ai.InvestigateBehaviour
 import com.sbwnpc.squad.entity.ai.MedicHealBehaviour
 import com.sbwnpc.squad.entity.ai.MortarClaims
-import com.sbwnpc.squad.entity.ai.MortarLoaderBehaviour
-import com.sbwnpc.squad.entity.ai.MortarOperatorBehaviour
+import com.sbwnpc.squad.entity.ai.MortarCrewBehaviour
 import com.sbwnpc.squad.entity.ai.SeekCoverBehaviour
 import com.sbwnpc.squad.entity.ai.SquadOrderBehaviour
 import com.sbwnpc.squad.entity.ai.VehicleCombatSupportBehaviour
 import com.sbwnpc.squad.entity.ai.VehicleCrewBehaviour
 import com.sbwnpc.squad.entity.ai.VehicleTransportBehaviour
 import com.sbwnpc.squad.entity.ai.VehicleTransportClaims
+import com.sbwnpc.squad.experience.ExperienceAwards
+import com.sbwnpc.squad.experience.ExperienceRules
 import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
@@ -23,16 +25,16 @@ import com.sbwnpc.squad.squad.Squad
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
-import net.minecraft.server.level.ServerLevel
-import net.minecraft.world.phys.Vec3
-import java.util.UUID
 import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.network.chat.Component
 import net.minecraft.network.syncher.EntityDataAccessor
 import net.minecraft.network.syncher.EntityDataSerializers
 import net.minecraft.network.syncher.SynchedEntityData
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.DifficultyInstance
 import net.minecraft.world.InteractionHand
+import net.minecraft.world.damagesource.DamageSource
 import net.minecraft.world.entity.EntityDimensions
 import net.minecraft.world.entity.EntityType
 import net.minecraft.world.entity.EquipmentSlot
@@ -44,13 +46,16 @@ import net.minecraft.world.entity.Pose
 import net.minecraft.world.entity.SpawnGroupData
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier
 import net.minecraft.world.entity.ai.attributes.Attributes
+import net.minecraft.world.entity.ai.goal.ClimbOnTopOfPowderSnowGoal
 import net.minecraft.world.entity.ai.goal.FloatGoal
 import net.minecraft.world.entity.player.Player
-import net.minecraft.world.damagesource.DamageSource
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.Level
-import net.tslat.smartbrainlib.util.BrainUtils
 import net.minecraft.world.level.ServerLevelAccessor
+import net.minecraft.world.level.pathfinder.PathType
+import net.minecraft.world.phys.Vec3
+import net.tslat.smartbrainlib.util.BrainUtils
+import java.util.UUID
 
 /**
  * Base squad-member entity. Role (class + rank) drives the loadout and combat tuning. Friend/foe
@@ -59,22 +64,68 @@ import net.minecraft.world.level.ServerLevelAccessor
  *
  *
  * The AI is a SmartBrainLib brain (sensors and behaviours under `entity/ai`). [registerGoals] keeps
- * three small vanilla-style goals — float/swim, looking about ([IdleLookAroundGoal], which stands
+ * environmental recovery goals, looking about ([IdleLookAroundGoal], which stands
  * down in combat so it doesn't fight GunAttackBehaviour for the head) and wandering.
  */
 open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
-    PathfinderMob(type, level), net.tslat.smartbrainlib.api.SmartBrainOwner<NpcEntity> {
+    PathfinderMob(type, level),
+    net.tslat.smartbrainlib.api.SmartBrainOwner<NpcEntity> {
 
     var npcClass: NpcClass
         get() = NpcClass.byOrdinal(entityData.get(DATA_CLASS))
-        set(value) = entityData.set(DATA_CLASS, value.ordinal)
+        set(value) = entityData.set(DATA_CLASS, value.canonical.ordinal)
 
     var npcRank: NpcRank
         get() = NpcRank.byOrdinal(entityData.get(DATA_RANK))
         set(value) = entityData.set(DATA_RANK, value.ordinal)
 
+    var experience: Double = 0.0
+        private set
+
+    fun ensureExperienceIdentity() {
+        if (customName == null) customName = Component.literal(ExperienceRules.name(uuid))
+    }
+
+    fun gainExperience(amount: Double, reason: String) {
+        if (level().isClientSide || !amount.isFinite() || amount <= 0 || !isAlive) return
+        ensureExperienceIdentity()
+        val multiplier = com.sbwnpc.squad.config.SquadConfig.experienceMultiplier(npcClass)
+        val earned = amount * multiplier
+        experience = (experience + earned).coerceAtMost(1.0e12)
+        val promoted = ExperienceRules.rank(experience)
+        if (promoted.ordinal > npcRank.ordinal) {
+            val old = npcRank
+            npcRank = promoted
+            getAttribute(Attributes.MAX_HEALTH)?.let { attribute ->
+                attribute.baseValue *= npcRank.healthMultiplier / old.healthMultiplier
+            }
+            server?.let { srv ->
+                currentSquad()?.let { squad ->
+                    srv.playerList.getPlayer(squad.owner)?.sendSystemMessage(
+                        Component.literal("${squad.name}: ${name.string} promoted to ${npcRank.name}")
+                            .withStyle((com.sbwnpc.squad.team.SquadTeams.factionOf(this) ?: squad.faction).accentStyle),
+                    )
+                }
+            }
+            com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER, "[experience] npc={} event=promotion from={} to={} xp={}", uuid, old, npcRank, experience)
+        }
+        com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER, "[experience] npc={} event=award reason={} class={} base={} multiplier={} amount={} total={}", uuid, reason, npcClass, amount, multiplier, earned, experience)
+    }
+
     /** Weapon spread before any target-specific adjustment: the rank's, scaled by the class. */
     val spread: Double get() = npcRank.spread * npcClass.accuracyMultiplier
+
+    val fireIntervalMultiplier: Int get() = if (usingSidearm) 1 else npcClass.fireIntervalMultiplier
+
+    /** A class multiplier slows the effective mechanical cadence, including manual bolts. */
+    fun fireIntervalMillis(gun: com.sbwnpc.squad.domain.port.HandGun, normal: Long): Long {
+        if (fireIntervalMultiplier == 1) return normal
+        val cycle = gun.boltCycleTicks * 50L
+        // A pump already stops the shooting timer. Slow its effective cycle rather
+        // than stacking the generic semiautomatic trigger delay onto that cycle.
+        val base = if (npcClass.canonical == NpcClass.SHOTGUNNER && cycle > 0) cycle else maxOf(normal, cycle)
+        return base * fireIntervalMultiplier
+    }
 
     /** Faction to put the NPC on its scoreboard team; set before finalizeSpawn. null = leave unteamed. */
     var spawnFaction: SquadFaction? = null
@@ -105,6 +156,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // ranged damage (below, hurt()) or a nearby explosion (SuppressionEvents). Backed by a
     // SmartBrainLib TTL memory — expires on its own, and shows in the brain's memory
     // (e.g. /data get entity <e> Brain).
+    val incomingFire = com.sbwnpc.squad.combat.IncomingFire()
+    val lastSeenFire = com.sbwnpc.squad.combat.LastSeenFire()
+
     fun isSuppressed(): Boolean = BrainUtils.hasMemory(this, ModMemories.SUPPRESSING_THREAT.get())
     val threatPos: Vec3? get() = BrainUtils.getMemory(this, ModMemories.SUPPRESSING_THREAT.get())
 
@@ -112,9 +166,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      *  grant an indefinite "immune to squad orders" state; measured against the memory's own
      *  remaining TTL. */
     fun suppress(threat: Vec3) {
-        val remaining = if (isSuppressed())
+        val remaining = if (isSuppressed()) {
             BrainUtils.getTimeUntilMemoryExpires(this, ModMemories.SUPPRESSING_THREAT.get())
-        else 0L
+        } else {
+            0L
+        }
         val ticks = maxOf(remaining, SUPPRESSION_DURATION_TICKS.toLong()).coerceAtMost(SUPPRESSION_CAP_TICKS.toLong())
         BrainUtils.setForgettableMemory(this, ModMemories.SUPPRESSING_THREAT.get(), threat, ticks.toInt())
     }
@@ -131,36 +187,52 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             hear(pos)
             return
         }
-        val remaining = if (isAlert())
+        val remaining = if (isAlert()) {
             BrainUtils.getTimeUntilMemoryExpires(this, ModMemories.ALERT_POSITION.get())
-        else 0L
+        } else {
+            0L
+        }
         val ticks = maxOf(remaining, ALERT_DURATION_TICKS.toLong())
         BrainUtils.setForgettableMemory(this, ModMemories.ALERT_POSITION.get(), pos, ticks.toInt())
     }
 
     private var heardAt: Vec3? = null
     private var heardUntilTick = 0
+    private var heardDuringCombat = false
 
     /**
-     * Gunfire or an explosion of the other side's, heard at [at] — see [com.sbwnpc.squad.combat.Hearing].
+     * An eligible noise heard at [at], including allied player gunfire — see [com.sbwnpc.squad.combat.Hearing].
      * With nothing to fight, it turns to face the sound; and if nothing holds it where it is, goes
      * to see. Holding means dug in, at a crew post, defending, barraging, on the move or falling
      * back to an objective, or off to a Supply — none of those drop what they're doing for a noise.
      */
-    fun hear(at: Vec3) {
-        if (target != null) {
-            logHearing(at, "ignored, already fighting")
+    fun hear(at: Vec3, nearbyFootstep: Boolean = false) {
+        val currentTarget = target
+        if (currentTarget != null) {
+            if (!nearbyFootstep || com.sbwnpc.squad.combat.DetectionSightline.canSee(this, currentTarget)) {
+                logHearing(at, "ignored, already fighting")
+                return
+            }
+            heardAt = at
+            heardUntilTick = tickCount + HEARD_LOOK_TICKS
+            heardDuringCombat = true
+            logHearing(at, "nearby footsteps queued, retains hidden target")
             return
         }
+        heardDuringCombat = false
         heardAt = at
         heardUntilTick = tickCount + HEARD_LOOK_TICKS
         val order = currentSquad()?.order
         val holding = when {
             diggedIn -> "dug in"
+
             busyWithRole() -> "busy with a role"
+
             resupplying -> "resupplying"
+
             order == SquadOrder.DEFEND || order == SquadOrder.PATROL || order == SquadOrder.BARRAGE || order == SquadOrder.MOVE ||
                 order == SquadOrder.RETREAT -> "order $order"
+
             else -> null
         }
         if (holding == null) alert(at)
@@ -172,22 +244,34 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     private fun logHearing(at: Vec3, reaction: String) {
         if (!com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.HEARING) || tickCount - lastHearingLogTick < HEARING_LOG_TICKS) return
         lastHearingLogTick = tickCount
-        com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.HEARING,
+        com.sbwnpc.squad.combat.DebugFlags.log(
+            com.sbwnpc.squad.combat.LogGroup.HEARING,
             "{} ({}) at {} heard {} ({} blocks): {}",
-            uuid.toString().take(8), npcClass, blockPosition(), BlockPos.containing(at),
-            Math.sqrt(distanceToSqr(at)).toInt(), reaction
+            uuid.toString().take(8),
+            npcClass,
+            blockPosition(),
+            BlockPos.containing(at),
+            Math.sqrt(distanceToSqr(at)).toInt(),
+            reaction,
         )
     }
 
     /** Turned toward what it last heard for a few seconds, over the idle look-around. */
     fun listening(): Boolean = heardAt != null && tickCount < heardUntilTick
 
+    fun checkingNearbyNoise(): Boolean = heardDuringCombat && listening()
+
     private fun faceHeardNoise() {
         val at = heardAt ?: return
-        if (target != null || tickCount >= heardUntilTick) {
+        val currentTarget = target
+        val visuallyEngaged = currentTarget != null && (!heardDuringCombat || com.sbwnpc.squad.combat.DetectionSightline.canSee(this, currentTarget))
+        if (visuallyEngaged || tickCount >= heardUntilTick) {
             heardAt = null
+            heardDuringCombat = false
             return
         }
+        // Active role/vehicle/medical controllers keep ownership of their look direction.
+        if (busyWithRole() || vehicle != null || combatLockedByMedic() || com.sbwnpc.squad.ai.integration.NativeTactics.ownsLook(this)) return
         lookControl.setLookAt(at.x, at.y, at.z)
     }
 
@@ -203,8 +287,12 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      *  deliberate window where the mob steps out to return fire and GunAttackBehaviour/
      *  GrenadeThrowBehaviour take back over. Backed by [ModMemories.COVER_HOLD] (see its own doc
      *  comment) instead of a hand-rolled enum with a logging setter. */
-    fun combatLockedByCover(): Boolean =
-        BrainUtils.hasMemory(this, ModMemories.COVER_HOLD.get()) || evadingGrenade()
+    fun combatLockedByCover(): Boolean = BrainUtils.hasMemory(this, ModMemories.COVER_HOLD.get()) || evadingGrenade()
+
+    /** Peeking permits shooting while cover keeps sole ownership of the short movement. */
+    var coverPeekPoint: Vec3? = null
+        internal set
+    fun movementLockedByCover(): Boolean = combatLockedByCover() || coverPeekPoint != null
 
     /** Running from a live grenade (GrenadeEvadeBehaviour). Part of [combatLockedByCover]; exposed
      *  on its own for the movers that don't read that lock. */
@@ -217,7 +305,49 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // providing covering fire before digging in, rather than just inferring it from having a
     // target and line of sight. internal (not private) for the same cross-file reason isEnemy() is.
     var lastShotTick: Int = Int.MIN_VALUE / 2
+    var readyToCover: Boolean = false
+    internal var debugAimTicks: Int = 0
+    val firingObstruction = com.sbwnpc.squad.combat.FiringObstruction()
+    var lastFireAt: Vec3? = null
         internal set
+    private var sightedTarget: UUID? = null
+    private var sightedEye: Vec3? = null
+    private var sightedUntil = Long.MIN_VALUE
+
+    fun rememberVisible(target: LivingEntity) {
+        lastSeenFire.observe(target.uuid, target.eyePosition, level().gameTime)
+        sightedTarget = target.uuid
+        sightedEye = target.eyePosition
+        sightedUntil = level().gameTime + 200
+    }
+
+    internal fun forgetContact(id: UUID) {
+        lastSeenFire.forget(id)
+        forgetVehicleAttacker(id)
+        if (sightedTarget == id) {
+            sightedTarget = null
+            sightedEye = null
+            sightedUntil = Long.MIN_VALUE
+        }
+    }
+
+    fun noticeHidden(target: LivingEntity, visibility: com.sbwnpc.squad.combat.DetectionSightline.Visibility) {
+        if (lastSeenFire.hidden(target.uuid, visibility, level().gameTime)) {
+            com.sbwnpc.squad.combat.DebugFlags.log(
+                com.sbwnpc.squad.combat.LogGroup.ORDER,
+                "[foliage-fire] {} started: target={} lastSeen={} rounds={}",
+                uuid,
+                target.uuid,
+                lastSeenFire.point(level().gameTime),
+                lastSeenFire.roundsLeft,
+            )
+        }
+    }
+
+    fun rememberedEye(target: LivingEntity): Vec3? =
+        sightedEye?.takeIf {
+            sightedTarget == target.uuid && level().gameTime < sightedUntil
+        }
 
     fun firedRecently(withinTicks: Int): Boolean = tickCount - lastShotTick <= withinTicks
 
@@ -237,12 +367,14 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         return listOf(preferred, other).firstOrNull { grenadesLeft(it) > 0 }
     }
 
-    fun grenadesLeft(kind: com.sbwnpc.squad.domain.port.GrenadeKind): Int =
-        if (kind == com.sbwnpc.squad.domain.port.GrenadeKind.DEFENSIVE) rgoLeft else rgnLeft
+    fun grenadesLeft(kind: com.sbwnpc.squad.domain.port.GrenadeKind): Int = if (kind == com.sbwnpc.squad.domain.port.GrenadeKind.DEFENSIVE) rgoLeft else rgnLeft
 
     fun spendGrenade(kind: com.sbwnpc.squad.domain.port.GrenadeKind) {
-        if (kind == com.sbwnpc.squad.domain.port.GrenadeKind.DEFENSIVE) rgoLeft = (rgoLeft - 1).coerceAtLeast(0)
-        else rgnLeft = (rgnLeft - 1).coerceAtLeast(0)
+        if (kind == com.sbwnpc.squad.domain.port.GrenadeKind.DEFENSIVE) {
+            rgoLeft = (rgoLeft - 1).coerceAtLeast(0)
+        } else {
+            rgnLeft = (rgnLeft - 1).coerceAtLeast(0)
+        }
     }
 
     /**
@@ -252,11 +384,17 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      * [com.sbwnpc.squad.block.entity.SupplyBlockEntity].
      */
     fun resupply(): Boolean {
+        SidearmKit.sync(this)
         var topped = false
-        for (stack in listOf(mainHandItem, antiArmourWeapon, stowedWeapon)) {
+        for (stack in listOf(mainHandItem, antiArmourWeapon, stowedWeapon, sidearmWeapon, sidearmPrimaryWeapon).distinct()) {
             if (!Ports.guns.isGun(stack)) continue
-            val full = if (com.sbwnpc.squad.combat.AntiArmourKit.isLauncher(stack)) com.sbwnpc.squad.combat.AntiArmourKit.ROCKETS
-                else npcClass.startingRounds(net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.item))
+            val full = if (com.sbwnpc.squad.combat.AntiArmourKit.isLauncher(stack)) {
+                com.sbwnpc.squad.combat.AntiArmourKit.ROCKETS
+            } else if (stack === sidearmWeapon) {
+                SidearmKit.reserveRounds(stack)
+            } else {
+                npcClass.startingRounds(net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.item))
+            }
             if (Ports.guns.topUpReserve(stack, full)) topped = true
         }
         if (carriesGrenades() && (rgnLeft < GRENADES_OF_EACH || rgoLeft < GRENADES_OF_EACH)) {
@@ -264,7 +402,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             rgoLeft = maxOf(rgoLeft, GRENADES_OF_EACH)
             topped = true
         }
-        if (npcClass == NpcClass.MORTAR_LOADER && mortarShellsLeft < MORTAR_SHELLS) {
+        if (npcClass == NpcClass.MORTAR && mortarShellsLeft < MORTAR_SHELLS) {
             mortarShellsLeft = MORTAR_SHELLS
             topped = true
         }
@@ -282,7 +420,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     /** The gun this NPC fights with, wherever it is right now: in hand, or put away for the
      *  launcher or the drone monitor. */
-    private fun primaryGun(): ItemStack {
+    internal fun primaryGun(): ItemStack {
+        if (usingSidearm) return sidearmPrimaryWeapon
         val hand = mainHandItem
         if (Ports.guns.isGun(hand) && !com.sbwnpc.squad.combat.AntiArmourKit.isLauncher(hand)) return hand
         return listOf(antiArmourWeapon, stowedWeapon).firstOrNull { Ports.guns.isGun(it) && !com.sbwnpc.squad.combat.AntiArmourKit.isLauncher(it) }
@@ -309,13 +448,17 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      *  Looked up every couple of seconds, or immediately when the search range changes. */
     fun nearestSupply(): Vec3? {
         val level = level() as? ServerLevel ?: return null
-        val unlimited = ammoFraction() <= 0.0 || (npcClass == NpcClass.MORTAR_LOADER && mortarShellsLeft <= 0)
+        val unlimited = ammoFraction() <= 0.0 || (npcClass == NpcClass.MORTAR && mortarShellsLeft <= 0)
         if (unlimited != supplySearchUnlimited || tickCount - supplyCheckTick >= SUPPLY_CHECK_INTERVAL) {
             supplyCheckTick = tickCount
             supplySearchUnlimited = unlimited
             cachedSupply = com.sbwnpc.squad.block.entity.SupplyPoints.get(level)
-                .nearestServing(level, position(), SquadTeams.factionOf(this),
-                    if (unlimited) Double.POSITIVE_INFINITY else SUPPLY_SEARCH_RANGE)
+                .nearestServing(
+                    level,
+                    position(),
+                    SquadTeams.factionOf(this),
+                    if (unlimited) Double.POSITIVE_INFINITY else SUPPLY_SEARCH_RANGE,
+                )
                 ?.center
         }
         return cachedSupply
@@ -334,8 +477,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     var resupplying = false
 
     /** Classes that carry hand grenades at all: not the crews, whose hands are on something else. */
-    private fun carriesGrenades(): Boolean = npcClass != NpcClass.MORTAR_OPERATOR && npcClass != NpcClass.MORTAR_LOADER &&
-        npcClass != NpcClass.TANK_CREW && npcClass != NpcClass.DRONE_OPERATOR
+    private fun carriesGrenades(): Boolean =
+        npcClass != NpcClass.MORTAR &&
+            npcClass != NpcClass.TANK_CREW && npcClass != NpcClass.DRONE_OPERATOR
 
     // Set/cleared only by SeekCoverBehaviour (enterDugInHolding/stop) while the mob is holding a
     // foxhole it dug for itself. Read by GunAttackBehaviour to skip ALL repositioning (formation
@@ -381,11 +525,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     var medkitsLeft: Int = MEDKITS
 
     /** Shells a mortar loader carries for its crew's tube — see
-     *  [com.sbwnpc.squad.entity.ai.MortarLoaderBehaviour]. Persisted; zero for every other class. */
+     *  [com.sbwnpc.squad.entity.ai.MortarCrewBehaviour]. Persisted; zero for every other class. */
     var mortarShellsLeft: Int = 0
 
-    /** Kamikaze drones this operator still carries; refilled at a barracks (SquadManager.
-     *  respawnAtBarracks). Persisted. Meaningless for other classes. */
+    /** Kamikaze drones this operator still carries; refilled by SquadManager.resupplyAtBarracks.
+     *  Persisted. Meaningless for other classes. */
     var dronesLeft: Int = 0
 
     /** True while a mortar operator has broken its mortar down and is carrying it to a new
@@ -393,9 +537,12 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      *  the ground if the carrier dies, so a displacing crew can never simply lose its mortar. */
     var carryingMortar: Boolean = false
 
+    var assignedMortarId: UUID? = null
+    var packedMortarState: CompoundTag = CompoundTag()
+
     /** The mortar crew's own behaviour is walking this man somewhere — after the carried tube, to
-     *  a Supply for shells, back to the tube — see [com.sbwnpc.squad.entity.ai.MortarLoaderBehaviour]
-     *  and [com.sbwnpc.squad.entity.ai.MortarOperatorBehaviour]. Runtime only. */
+     *  a Supply for shells, back to the tube — see [com.sbwnpc.squad.entity.ai.MortarCrewBehaviour]
+     *  and [com.sbwnpc.squad.entity.ai.MortarCrewBehaviour]. Runtime only. */
     var mortarErrand: Boolean = false
 
     /** The crew's errand, not the squad order, sets where and how fast it goes. Both used to steer
@@ -412,6 +559,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      *  DroneOperatorBehaviour.holdMonitor/restoreWeapon). */
     var stowedWeapon: ItemStack = ItemStack.EMPTY
 
+    /** The backup pistol; while drawn this is the same stack as the hand/monitor stow. */
+    var sidearmWeapon: ItemStack = ItemStack.EMPTY
+    var sidearmPrimaryWeapon: ItemStack = ItemStack.EMPTY
+    val usingSidearm: Boolean get() = !sidearmPrimaryWeapon.isEmpty
+
     /** The vehicle this NPC permanently crews. It remounts while the vehicle remains operational. */
     var assignedVehicleId: UUID? = null
 
@@ -421,6 +573,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     fun rememberVehicleAttacker(attacker: LivingEntity) {
         vehicleAttackerId = attacker.uuid
         vehicleAttackerUntilTick = tickCount + VEHICLE_ATTACKER_MEMORY_TICKS
+    }
+
+    internal fun forgetVehicleAttacker(id: UUID) {
+        if (vehicleAttackerId == id) vehicleAttackerId = null
     }
 
     internal fun vehicleAttacker(): LivingEntity? {
@@ -487,8 +643,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             at.takeIf { !body.intersects(hull) && level().noCollision(this, body) }
         }
         if (!dry) return spots.firstOrNull()
-        return spots.firstOrNull { !level().getFluidState(BlockPos.containing(it.x, it.y - 0.5, it.z)).`is`(net.minecraft.tags.FluidTags.WATER) &&
-            !level().getFluidState(BlockPos.containing(it)).`is`(net.minecraft.tags.FluidTags.WATER) } ?: spots.firstOrNull()
+        return spots.firstOrNull {
+            !level().getFluidState(BlockPos.containing(it.x, it.y - 0.5, it.z)).`is`(net.minecraft.tags.FluidTags.WATER) &&
+                !level().getFluidState(BlockPos.containing(it)).`is`(net.minecraft.tags.FluidTags.WATER)
+        } ?: spots.firstOrNull()
     }
 
     override fun hurt(source: DamageSource, amount: Float): Boolean {
@@ -496,7 +654,17 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         // Not vanilla's DamageTypeTags.IS_PROJECTILE: SBW's gunfire isn't in it, so that tag left
         // suppression coming only from explosions — see the Gear adapter.
         if (result && !level().isClientSide && Ports.gear.isBulletDamage(source)) {
-            suppress(source.sourcePosition ?: position())
+            // A known ally's stray round is damage, but is not a new enemy contact.
+            if (source.entity?.let { SquadTeams.sameSide(this, it) } == true) return result
+            incomingFire.record(eyePosition, source.directEntity?.takeIf { it !== source.entity }?.deltaMovement, source.entity?.eyePosition ?: source.sourcePosition, level().gameTime)
+            suppress(incomingFire.point(level().gameTime) ?: source.sourcePosition ?: position())
+            com.sbwnpc.squad.combat.DebugFlags.log(
+                com.sbwnpc.squad.combat.LogGroup.ORDER,
+                "[return-fire] {} hit, sector={} rounds={}",
+                uuid,
+                incomingFire.point(level().gameTime),
+                incomingFire.roundsLeft,
+            )
         }
         return result
     }
@@ -551,41 +719,61 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     /** Where this NPC "belongs" per its squad: the guarded entity, else the objective point. */
     fun homeCenter(): Vec3? {
+        val requested = orderCenter() ?: return null
+        return com.sbwnpc.squad.combat.SquadAreas.home(this, requested)
+    }
+
+    /** The player's original destination, before local squad-area allocation. */
+    internal fun orderCenter(): Vec3? {
         val squad = currentSquad() ?: return null
+        if (squad.objectiveDimension?.let { it != level().dimension() } == true) return null
         // A point to get to, not an enemy to go after: no focus entity.
         if (squad.order == SquadOrder.MOVE || squad.order == SquadOrder.RETREAT) {
             return squad.objective?.let { Vec3(it.x + 0.5, it.y.toDouble(), it.z + 0.5) }
         }
         squad.focusEntity?.let { fid ->
-            (level() as? ServerLevel)?.getEntity(fid)?.takeIf { it.isAlive }?.let { return it.position() }
+            (level() as? ServerLevel)?.getEntity(fid)?.takeIf { it.isAlive }?.let { target ->
+                val ownSide = com.sbwnpc.squad.team.SquadTeams.sideOf(this)
+                val targetSide = com.sbwnpc.squad.team.SquadTeams.sideOf(target)
+                val shared = ownSide != null && targetSide != null && com.sbwnpc.squad.team.Diplomacy.allied(ownSide, targetSide)
+                if (shared || target.uuid == squad.owner) return target.position()
+                if (target is net.minecraft.world.entity.LivingEntity && !isEnemy(target) && com.sbwnpc.squad.combat.DetectionSightline.canSeeWithin(this, target, DETECTION_RANGE)) return target.position()
+                squad.tactics.contacts[fid]?.let { return it.position }
+            }
         }
         return squad.objective?.let { Vec3(it.x + 0.5, it.y.toDouble(), it.z + 0.5) }
     }
 
     /** Where the squad is falling back to, while it is. */
-    fun retreatPoint(): Vec3? =
-        if (currentSquad()?.order == SquadOrder.RETREAT) homeCenter() else null
+    fun retreatPoint(): Vec3? = if (currentSquad()?.order == SquadOrder.RETREAT) homeCenter() else null
 
     override fun defineSynchedData(builder: SynchedEntityData.Builder) {
         super.defineSynchedData(builder)
         builder.define(DATA_CLASS, NpcClass.DEFAULT.ordinal)
-        builder.define(DATA_RANK, NpcRank.DEFAULT.ordinal)
+        builder.define(DATA_RANK, NpcRank.RECRUIT.ordinal)
     }
 
     /** Vehicles are not obstacles to vanilla pathfinding, so routes are plotted straight through
      *  them and the mob ends up shoved against a hull or standing on its roof. See
      *  [com.sbwnpc.squad.entity.ai.VehicleAwareNavigation]. */
-    override fun createNavigation(level: Level): net.minecraft.world.entity.ai.navigation.PathNavigation =
-        com.sbwnpc.squad.entity.ai.VehicleAwareNavigation(this, level)
+    override fun createNavigation(level: Level): net.minecraft.world.entity.ai.navigation.PathNavigation = com.sbwnpc.squad.entity.ai.VehicleAwareNavigation(this, level)
+
+    override fun isDescending(): Boolean =
+        super.isDescending() ||
+            (navigation as? com.sbwnpc.squad.entity.ai.VehicleAwareNavigation)?.descendingScaffolding == true
 
     init {
         moveControl = com.sbwnpc.squad.entity.ai.NpcMoveControl(this)
+        // Vanilla forbids snow-filled nodes but gives the empty node above snow zero cost.
+        // Avoid that unsupported surface; the climbing goal handles an accidental fall into it.
+        setPathfindingMalus(PathType.DANGER_POWDER_SNOW, -1f)
     }
 
-    // Three small vanilla-style goals beside the brain — see the class doc comment.
+    // Environmental recovery and idle goals beside the brain — see the class doc comment.
     override fun registerGoals() {
         super.registerGoals()
         this.goalSelector.addGoal(0, FloatGoal(this))
+        this.goalSelector.addGoal(1, ClimbOnTopOfPowderSnowGoal(this, level()))
         this.goalSelector.addGoal(6, IdleLookAroundGoal(this))
         this.goalSelector.addGoal(7, IdleWanderGoal(this, SquadOrderBehaviour.WALK_SPEED_MODIFIER))
     }
@@ -593,8 +781,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // --- SmartBrainOwner ---
     // SmartBrainLib 1.16.11 (the published jar, whose API differs from the library's git master)
     // has no auto-wiring mixin: brainProvider()/tickBrain() are wired by hand below.
-    override fun brainProvider(): net.minecraft.world.entity.ai.Brain.Provider<NpcEntity> =
-        net.tslat.smartbrainlib.api.core.SmartBrainProvider(this)
+    override fun brainProvider(): net.minecraft.world.entity.ai.Brain.Provider<NpcEntity> = net.tslat.smartbrainlib.api.core.SmartBrainProvider(this)
 
     // Was a one-shot flag; widened to a few retries — see resyncEquipmentForNewlySpawnedNpc's doc
     // comment for why one resync, one tick after spawn, still wasn't always enough (reported: weapon
@@ -613,12 +800,12 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     private var lodRecheckTick = 0
     private var brainTickInterval = 1
 
-    private fun inCombatState(): Boolean =
-        target != null || isSuppressed() || isAlert() || operatingDrone || antiDroneEngaged
+    private fun inCombatState(): Boolean = target != null || isSuppressed() || isAlert() || operatingDrone || antiDroneEngaged
 
     private fun refreshAiLod() {
         brainTickInterval = when {
             inCombatState() -> 1
+
             else -> {
                 val nearest = level().getNearestPlayer(this, -1.0)
                 val distSqr = nearest?.distanceToSqr(this) ?: Double.MAX_VALUE
@@ -631,11 +818,18 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         }
         // Idle pathing doesn't need a perfect route — half the A* node budget is plenty for
         // walking to a patrol point; combat gets the full budget back for chasing/repositioning.
-        if (inCombatState()) navigation.resetMaxVisitedNodesMultiplier()
-        else navigation.setMaxVisitedNodesMultiplier(IDLE_PATH_NODE_MULTIPLIER)
+        if (inCombatState()) {
+            navigation.resetMaxVisitedNodesMultiplier()
+        } else {
+            navigation.setMaxVisitedNodesMultiplier(IDLE_PATH_NODE_MULTIPLIER)
+        }
     }
 
     private var seenOrderStamp = 0
+
+    fun invalidateOrders() {
+        seenOrderStamp = Int.MIN_VALUE
+    }
 
     /** A new command beats whatever the NPC was idly busy with: an alarm it was going to
      *  investigate held the squad's orders off for up to ten seconds, and a path to the old
@@ -647,10 +841,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         seenOrderStamp = stamp
         // Why a member does or doesn't act on it: a target, a vehicle, a tube or a drone all come
         // before a squad order.
-        com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER,
+        com.sbwnpc.squad.combat.DebugFlags.log(
+            com.sbwnpc.squad.combat.LogGroup.ORDER,
             "{} ({}) got {}: target={} alert={} transport={} mortar={} drone={} dug={}",
             squad.name, npcClass, squad.order, target?.name?.string, isAlert(), vehicleTransport,
-            servingMortar, operatingDrone, diggedIn
+            servingMortar, operatingDrone, diggedIn,
         )
         if (target == null) {
             clearAlert()
@@ -660,9 +855,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     }
 
     override fun customServerAiStep() {
+        ExperienceAwards.tick(this)
         super.customServerAiStep()
+        com.sbwnpc.squad.combat.VehicleAmmoSupply.tick(this)
+        SidearmKit.update(this)
         takeNewOrders()
-        faceHeardNoise()
         if (equipmentResyncTicksRemaining > 0) {
             equipmentResyncTicksRemaining--
             resyncEquipmentForNewlySpawnedNpc()
@@ -677,6 +874,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         }
         // Offset by entity id so throttled NPCs don't all take their turn on the same tick.
         if (brainTickInterval == 1 || (tickCount + id) % brainTickInterval == 0) tickBrain(this)
+        // Hearing's head check follows idle/blocked aiming; an unseen target cannot overwrite it.
+        faceHeardNoise()
         posture.tick()
         stuckRecovery.tick()
     }
@@ -706,8 +905,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     /** See [NpcStuckRecovery.notePathGoesNowhere]; the navigation reports every path it plans. */
     fun notePathGoesNowhere(toward: BlockPos, goesNowhere: Boolean) = stuckRecovery.notePathGoesNowhere(toward, goesNowhere)
 
-    override fun getDefaultDimensions(pose: Pose): EntityDimensions =
-        if (pose == Pose.CROUCHING) NpcPosture.CROUCHING_DIMENSIONS.scale(ageScale) else super.getDefaultDimensions(pose)
+    override fun getDefaultDimensions(pose: Pose): EntityDimensions = if (pose == Pose.CROUCHING) NpcPosture.CROUCHING_DIMENSIONS.scale(ageScale) else super.getDefaultDimensions(pose)
 
     // --- Equipment sync ---
     // Vanilla re-compares every equipment slot against its last-broadcast copy each tick
@@ -761,8 +959,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         return true
     }
 
-    fun navigateTo(pos: Vec3, speed: Double, repathIntervalTicks: Int = REPATH_INTERVAL_TICKS): Boolean =
-        navigateTo(pos.x, pos.y, pos.z, speed, repathIntervalTicks)
+    fun navigateTo(pos: Vec3, speed: Double, repathIntervalTicks: Int = REPATH_INTERVAL_TICKS): Boolean = navigateTo(pos.x, pos.y, pos.z, speed, repathIntervalTicks)
 
     /**
      * Fix for a bug reported after in-game testing: NPCs sometimes spawn with no visibly held
@@ -796,11 +993,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         val slots = listOf(
             net.minecraft.world.entity.EquipmentSlot.MAINHAND,
             net.minecraft.world.entity.EquipmentSlot.HEAD,
-            net.minecraft.world.entity.EquipmentSlot.CHEST
-        // .copy() — vanilla always does this before handing a stack to this exact packet
-        // (LivingEntity.detectEquipmentUpdates, ServerEntity.sendPairingData) rather than the live
-        // reference, since that reference can keep mutating (ammo count, durability, ...) after the
-        // packet object is built but before it's actually written to the network buffer (PM finding).
+            net.minecraft.world.entity.EquipmentSlot.CHEST,
+            // .copy() — vanilla always does this before handing a stack to this exact packet
+            // (LivingEntity.detectEquipmentUpdates, ServerEntity.sendPairingData) rather than the live
+            // reference, since that reference can keep mutating (ammo count, durability, ...) after the
+            // packet object is built but before it's actually written to the network buffer (PM finding).
         ).map { slot -> com.mojang.datafixers.util.Pair.of(slot, getItemBySlot(slot).copy()) }
             .filter { !it.second.isEmpty }
         if (slots.isEmpty()) return
@@ -813,8 +1010,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // Target acquisition: replaces the old SquadFocusTargetGoal, HurtByTargetGoal,
     // SquadAwarenessTargetGoal, and NearestAttackableTargetGoal with one sensor evaluating the same
     // priority chain in one place. Bridges to mob.target via BrainUtils.setTargetOfEntity.
-    override fun getSensors(): List<net.tslat.smartbrainlib.api.core.sensor.ExtendedSensor<out NpcEntity>> =
-        listOf(com.sbwnpc.squad.entity.ai.SquadTargetSensor())
+    override fun getSensors(): List<net.tslat.smartbrainlib.api.core.sensor.ExtendedSensor<out NpcEntity>> = listOf(com.sbwnpc.squad.entity.ai.SquadTargetSensor())
+
     // Core: always ticks regardless of the current Fight/Idle activity — matches how the goals
     // they replace ran too (door interaction and cover-seeking never competed for GoalSelector's
     // Flag.MOVE with anything, so they always ran; the mortar crew goals reserved Flag.MOVE at
@@ -823,10 +1020,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // OpenDoorGoal, not just a port — it also holds a door open for OTHER squad members mid-transit.
     override fun getCoreTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
         net.tslat.smartbrainlib.api.core.BrainActivityGroup.coreTasks(
+            com.sbwnpc.squad.entity.ai.SquadTacticalBehaviour(),
             net.tslat.smartbrainlib.api.core.behaviour.custom.move.InteractWithDoor<NpcEntity>(),
             SeekCoverBehaviour(),
-            MortarOperatorBehaviour(),
-            MortarLoaderBehaviour(),
+            com.sbwnpc.squad.entity.ai.BlindReturnFireBehaviour(),
+            MortarCrewBehaviour(),
             com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour(),
             com.sbwnpc.squad.entity.ai.AntiDroneBehaviour(),
             VehicleCrewBehaviour(),
@@ -837,8 +1035,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             MedicHealBehaviour(),
             com.sbwnpc.squad.entity.ai.SelfTreatBehaviour(),
             // Last: it has to override whatever the behaviours above did with the navigation.
-            com.sbwnpc.squad.entity.ai.GrenadeEvadeBehaviour()
+            com.sbwnpc.squad.entity.ai.GrenadeEvadeBehaviour(),
         )
+
     // Idle: only relevant while there's no ATTACK_TARGET (Fight always outranks Idle). Order here
     // doesn't change behaviour — InvestigateBehaviour's and SquadOrderBehaviour's own eligibility
     // checks already exclude each other's cases (see each class's doc comment), reproducing the
@@ -850,9 +1049,12 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // apply, and steps aside for SquadOrderBehaviour once close enough / after arrival.
     override fun getIdleTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
         net.tslat.smartbrainlib.api.core.BrainActivityGroup.idleTasks(
-            com.sbwnpc.squad.entity.ai.ResupplyBehaviour(), InvestigateBehaviour(),
-            com.sbwnpc.squad.entity.ai.VehicleTransportBehaviour(), SquadOrderBehaviour()
+            com.sbwnpc.squad.entity.ai.ResupplyBehaviour(),
+            InvestigateBehaviour(),
+            com.sbwnpc.squad.entity.ai.VehicleTransportBehaviour(),
+            SquadOrderBehaviour(),
         )
+
     // Fight: only while ATTACK_TARGET is set, all running side by side. AnimatableMeleeAttack is
     // SmartBrainLib's own melee behaviour and only strikes what is already in reach — it does no
     // chasing: every class carries a gun, and GunAttackBehaviour closes the distance itself.
@@ -863,7 +1065,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             com.sbwnpc.squad.entity.ai.OutOfAmmoBehaviour(),
             net.tslat.smartbrainlib.api.core.behaviour.custom.attack.AnimatableMeleeAttack<NpcEntity>(20),
             GrenadeThrowBehaviour(),
-            com.sbwnpc.squad.entity.ai.GrenadeUseBehaviour()
+            com.sbwnpc.squad.entity.ai.GrenadeUseBehaviour(),
         )
 
     // Also used by GrenadeUseBehaviour, hence internal not private.
@@ -883,16 +1085,17 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // Vanilla sizes this by the hitbox — 64 x the box's average side x the player's entity-distance
     // setting — which for a man-sized box came to about 70-85 blocks, so NPCs the client had been
     // sent were not drawn at all past that.
-    override fun shouldRenderAtSqrDistance(distance: Double): Boolean =
-        distance < com.sbwnpc.squad.config.SquadConfig.npcViewDistance().let { it.toDouble() * it }
+    override fun shouldRenderAtSqrDistance(distance: Double): Boolean = distance < com.sbwnpc.squad.config.SquadConfig.npcViewDistance().let { it.toDouble() * it }
 
     @Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")
     override fun finalizeSpawn(
         level: ServerLevelAccessor,
         difficulty: DifficultyInstance,
         spawnType: MobSpawnType,
-        spawnGroupData: SpawnGroupData?
+        spawnGroupData: SpawnGroupData?,
     ): SpawnGroupData? {
+        experience = ExperienceRules.threshold(npcRank)
+        ensureExperienceIdentity()
         applyRole()
         spawnFaction?.let { SquadTeams.assign(this, it) }
         return super.finalizeSpawn(level, difficulty, spawnType, spawnGroupData)
@@ -916,6 +1119,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         val weaponId = npcClass.weaponPool[random.nextInt(npcClass.weaponPool.size)]
         val gun = Ports.guns.issue(weaponId, this, npcClass.startingRounds(weaponId))
         if (!gun.isEmpty) setItemInHand(InteractionHand.MAIN_HAND, gun)
+        sidearmPrimaryWeapon = ItemStack.EMPTY
+        sidearmWeapon = SidearmKit.issue(this)
 
         // Green (RU) kit for CREEPER/CAT/PIG/COW, sand (US) kit for the other 4 factions — per user
         // request, applies to every class without exception. spawnFaction (not
@@ -934,7 +1139,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         rgnLeft = if (carriesGrenades()) GRENADES_OF_EACH else 0
         rgoLeft = rgnLeft
         medkitsLeft = MEDKITS
-        mortarShellsLeft = if (npcClass == NpcClass.MORTAR_LOADER) MORTAR_SHELLS else 0
+        mortarShellsLeft = if (npcClass == NpcClass.MORTAR) MORTAR_SHELLS else 0
         if (npcClass == NpcClass.DRONE_OPERATOR) dronesLeft = com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES
 
         // A belt-fed gun does nothing to a tank, and the machine gunner is the one member of an
@@ -945,9 +1150,12 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     }
 
     override fun addAdditionalSaveData(compound: CompoundTag) {
+        SidearmKit.sync(this)
+        listOf(mainHandItem, antiArmourWeapon, stowedWeapon, sidearmWeapon, sidearmPrimaryWeapon).distinct().forEach(Ports.guns::persist)
         super.addAdditionalSaveData(compound)
         compound.putString("NpcClass", npcClass.name)
         compound.putString("NpcRank", npcRank.name)
+        compound.putDouble("Experience", experience)
         squadId?.let { compound.putUUID("SquadId", it) }
         assignedVehicleId?.let { compound.putUUID("AssignedVehicle", it) }
         compound.putInt("Rgn", rgnLeft)
@@ -955,39 +1163,87 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         compound.putInt("Medkits", medkitsLeft)
         compound.putInt("MortarShells", mortarShellsLeft)
         if (carryingMortar) compound.putBoolean("CarryingMortar", true)
+        assignedMortarId?.let { compound.putUUID("AssignedMortar", it) }
+        if (!packedMortarState.isEmpty) compound.put("PackedMortar", packedMortarState.copy())
         compound.putInt("DronesLeft", dronesLeft)
         if (!stowedWeapon.isEmpty) compound.put("StowedWeapon", stowedWeapon.save(registryAccess()))
         if (!antiArmourWeapon.isEmpty) compound.put("AntiArmourWeapon", antiArmourWeapon.save(registryAccess()))
+        if (!sidearmWeapon.isEmpty) compound.put("Sidearm", sidearmWeapon.save(registryAccess()))
+        if (!sidearmPrimaryWeapon.isEmpty) compound.put("SidearmPrimary", sidearmPrimaryWeapon.save(registryAccess()))
     }
 
     override fun readAdditionalSaveData(compound: CompoundTag) {
         super.readAdditionalSaveData(compound)
         // Saved attributes carry the old base; NPCs from before the change swim at the new pace too.
         getAttribute(net.neoforged.neoforge.common.NeoForgeMod.SWIM_SPEED)?.baseValue = SWIM_SPEED
-        runCatching { npcClass = NpcClass.valueOf(compound.getString("NpcClass")) }
-        runCatching { npcRank = NpcRank.valueOf(compound.getString("NpcRank")) }
+        runCatching { npcClass = NpcClass.byName(compound.getString("NpcClass")) }
+        npcRank = runCatching { NpcRank.valueOf(compound.getString("NpcRank")) }.getOrDefault(NpcRank.DEFAULT)
+        experience = if (compound.contains("Experience")) compound.getDouble("Experience").takeIf { it.isFinite() }?.coerceIn(0.0, 1.0e12) ?: 0.0 else ExperienceRules.threshold(npcRank)
+        experience = maxOf(experience, ExperienceRules.threshold(npcRank))
+        val savedRank = npcRank
+        npcRank = ExperienceRules.rank(experience)
+        getAttribute(Attributes.MAX_HEALTH)?.let { attribute ->
+            attribute.baseValue *= npcRank.healthMultiplier / savedRank.healthMultiplier
+        }
+        ensureExperienceIdentity()
         squadId = if (compound.hasUUID("SquadId")) compound.getUUID("SquadId") else null
         assignedVehicleId = if (compound.hasUUID("AssignedVehicle")) compound.getUUID("AssignedVehicle") else null
         // Saved before grenades were counted: a full set, as for anyone recruited now.
-        rgnLeft = if (compound.contains("Rgn")) compound.getInt("Rgn") else if (carriesGrenades()) GRENADES_OF_EACH else 0
-        rgoLeft = if (compound.contains("Rgo")) compound.getInt("Rgo") else if (carriesGrenades()) GRENADES_OF_EACH else 0
+        rgnLeft = if (compound.contains("Rgn")) {
+            compound.getInt("Rgn")
+        } else if (carriesGrenades()) {
+            GRENADES_OF_EACH
+        } else {
+            0
+        }
+        rgoLeft = if (compound.contains("Rgo")) {
+            compound.getInt("Rgo")
+        } else if (carriesGrenades()) {
+            GRENADES_OF_EACH
+        } else {
+            0
+        }
         // Saved before NPCs carried one: issued now.
         medkitsLeft = if (compound.contains("Medkits")) compound.getInt("Medkits") else MEDKITS
-        mortarShellsLeft = if (compound.contains("MortarShells")) compound.getInt("MortarShells")
-            else if (npcClass == NpcClass.MORTAR_LOADER) MORTAR_SHELLS else 0
+        mortarShellsLeft = if (compound.getString("NpcClass") == "MORTAR_OPERATOR" && compound.getInt("MortarShells") <= 0) {
+            // Legacy operators never carried shells; new unified crew receive their initial kit.
+            MORTAR_SHELLS
+        } else if (compound.contains("MortarShells")) {
+            compound.getInt("MortarShells")
+        } else if (npcClass == NpcClass.MORTAR) {
+            MORTAR_SHELLS
+        } else {
+            0
+        }
         carryingMortar = compound.getBoolean("CarryingMortar")
-        dronesLeft = if (compound.contains("DronesLeft")) compound.getInt("DronesLeft")
-            else if (npcClass == NpcClass.DRONE_OPERATOR) com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES else 0
-        stowedWeapon = if (compound.contains("StowedWeapon"))
-            ItemStack.parseOptional(registryAccess(), compound.getCompound("StowedWeapon")) else ItemStack.EMPTY
-        antiArmourWeapon = if (compound.contains("AntiArmourWeapon"))
-            ItemStack.parseOptional(registryAccess(), compound.getCompound("AntiArmourWeapon")) else ItemStack.EMPTY
+        assignedMortarId = if (compound.hasUUID("AssignedMortar")) compound.getUUID("AssignedMortar") else null
+        packedMortarState = compound.getCompound("PackedMortar").copy()
+        dronesLeft = if (compound.contains("DronesLeft")) {
+            compound.getInt("DronesLeft")
+        } else if (npcClass == NpcClass.DRONE_OPERATOR) {
+            com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES
+        } else {
+            0
+        }
+        stowedWeapon = if (compound.contains("StowedWeapon")) {
+            ItemStack.parseOptional(registryAccess(), compound.getCompound("StowedWeapon"))
+        } else {
+            ItemStack.EMPTY
+        }
+        antiArmourWeapon = if (compound.contains("AntiArmourWeapon")) {
+            ItemStack.parseOptional(registryAccess(), compound.getCompound("AntiArmourWeapon"))
+        } else {
+            ItemStack.EMPTY
+        }
         // Saved mid-flight: the drone itself doesn't survive the reload as "ours" (the behaviour's
         // state is transient), so just give the gun back right away.
         if (!stowedWeapon.isEmpty) {
             setItemInHand(InteractionHand.MAIN_HAND, stowedWeapon)
             stowedWeapon = ItemStack.EMPTY
         }
+        sidearmWeapon = if (compound.contains("Sidearm")) ItemStack.parseOptional(registryAccess(), compound.getCompound("Sidearm")) else SidearmKit.issue(this)
+        sidearmPrimaryWeapon = if (compound.contains("SidearmPrimary")) ItemStack.parseOptional(registryAccess(), compound.getCompound("SidearmPrimary")) else ItemStack.EMPTY
+        if (usingSidearm) setItemInHand(InteractionHand.MAIN_HAND, sidearmWeapon)
     }
 
     override fun die(cause: net.minecraft.world.damagesource.DamageSource) {
@@ -1018,8 +1274,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      * that predates [dropCustomDeathLoot] below — which is why this is an override rather than a
      * `setDropChance` call in [applyRole], which only ever runs at spawn.
      */
-    override fun getEquipmentDropChance(slot: EquipmentSlot): Float =
-        if (slot in LOOTABLE_SLOTS) 0f else super.getEquipmentDropChance(slot)
+    override fun getEquipmentDropChance(slot: EquipmentSlot): Float = if (slot in LOOTABLE_SLOTS) 0f else super.getEquipmentDropChance(slot)
 
     /**
      * Loot: the weapon in hand drops with [WEAPON_DROP_CHANCE], each piece of armour with
@@ -1036,6 +1291,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     override fun dropCustomDeathLoot(level: ServerLevel, damageSource: DamageSource, recentlyHit: Boolean) {
         super.dropCustomDeathLoot(level, damageSource, recentlyHit)
         val rolls = ArrayList<String>(LOOTABLE_SLOTS.size + 1)
+        SidearmKit.sync(this)
+        for (stack in listOf(sidearmWeapon, sidearmPrimaryWeapon).distinct().filter { !it.isEmpty && it !== mainHandItem }) {
+            if (random.nextFloat() < WEAPON_DROP_CHANCE) spawnAtLocation(Ports.guns.withoutReserve(stack))
+        }
         dropAmmo(rolls)
         dropGrenade(rolls)
         for (slot in LOOTABLE_SLOTS) {
@@ -1049,10 +1308,15 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             rolls[rolls.size - 1] += if (dropped != null) " DROPPED" else " (spawn failed)"
             setItemSlot(slot, ItemStack.EMPTY)
         }
-        com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.LOOT,
+        com.sbwnpc.squad.combat.DebugFlags.log(
+            com.sbwnpc.squad.combat.LogGroup.LOOT,
             "{} ({}) killed by {} via {} (playerHit={}): {}",
-            uuid, npcClass, damageSource.entity?.let { it as? NpcEntity }?.let { "NPC ${it.npcClass}" } ?: damageSource.entity?.name?.string,
-            damageSource.msgId, recentlyHit, rolls.joinToString(", ")
+            uuid,
+            npcClass,
+            damageSource.entity?.let { it as? NpcEntity }?.let { "NPC ${it.npcClass}" } ?: damageSource.entity?.name?.string,
+            damageSource.msgId,
+            recentlyHit,
+            rolls.joinToString(", "),
         )
     }
 
@@ -1109,24 +1373,28 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         /** Chances that a piece of an NPC's kit survives its death — see [dropCustomDeathLoot]. */
         private const val WEAPON_DROP_CHANCE = 0.0375f
         private const val ARMOUR_DROP_CHANCE = 0.0125f
-        private const val AMMO_DROP_CHANCE = 0.1875f
+        private const val AMMO_DROP_CHANCE = 0.28125f
         private const val GRENADE_DROP_CHANCE = 0.0125f
         private val LOOTABLE_SLOTS = listOf(EquipmentSlot.MAINHAND, EquipmentSlot.HEAD, EquipmentSlot.CHEST)
         private const val BASE_HEALTH = 20.0
         private const val GRENADES_OF_EACH = 2
         const val MEDKITS = 1
         private const val HEARD_LOOK_TICKS = 100
+
         /** One hearing trace line per NPC per this many ticks — a firefight is a noise a second. */
         private const val HEARING_LOG_TICKS = 40
         const val MORTAR_SHELLS = 30
+
         /** Below this share of its issued rounds an NPC goes to a Supply between fights. */
         private const val LOW_AMMO_FRACTION = 0.3
+
         /** Below this it falls back on a Supply even in a fight. */
         private const val VERY_LOW_AMMO_FRACTION = 0.1
         private const val SUPPLY_SEARCH_RANGE = 96.0
         private const val SUPPLY_CHECK_INTERVAL = 40
         private const val SWIM_SPEED = 2.0
         private const val VEHICLE_ATTACKER_MEMORY_TICKS = 200
+
         // internal (not private) — MedicHealBehaviour reuses this to compute its temporary
         // "sprinting to treat someone" speed on the same BASE_SPEED*multiplier basis as applyRole(),
         // instead of hardcoding 0.25 a second time.
@@ -1135,6 +1403,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         private const val SUPPRESSION_CAP_TICKS = 200
         private const val ALERT_DURATION_TICKS = 200 // ~10s to reach/abandon an investigation lead
         private const val DEATH_ALARM_RADIUS = 36.0 // detection range, x1.5 per user request (was 24)
+
         // How far an NPC can spot / act on relayed contacts — see the FOLLOW_RANGE note in
         // createAttributes() for why this is a constant of its own rather than that attribute.
         const val DETECTION_RANGE = 72.0
@@ -1145,14 +1414,15 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
         private const val DISMOUNT_CLEARANCE = 0.3
         private const val DISMOUNT_SAMPLE_STEP = 0.125
+
         /** Blocks past a boat's side searched for the bank to step out onto. */
         private const val LANDING_REACH = 4
         private const val LOD_NEAR_RANGE = 96.0
         private const val LOD_FAR_RANGE = 192.0
         private const val IDLE_PATH_NODE_MULTIPLIER = 0.5f
+
         // See navigateTo().
         const val REPATH_INTERVAL_TICKS = 10
-
 
         @JvmField
         val DATA_CLASS: EntityDataAccessor<Int> =
@@ -1163,11 +1433,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             SynchedEntityData.defineId(NpcEntity::class.java, EntityDataSerializers.INT)
 
         @JvmStatic
-        fun createAttributes(): AttributeSupplier.Builder {
-            return Mob.createMobAttributes()
+        fun createAttributes(): AttributeSupplier.Builder =
+            Mob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, BASE_HEALTH)
                 .add(Attributes.MOVEMENT_SPEED, BASE_SPEED) // real per-class value is set in applyRole() — npcClass isn't known yet here
-
                 .add(Attributes.ATTACK_DAMAGE, 2.0)
                 .add(Attributes.ARMOR, 2.0)
                 // NOT the detection range any more — that's DETECTION_RANGE (still 72, x1.5 per
@@ -1179,6 +1448,5 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
                 .add(Attributes.FOLLOW_RANGE, 48.0)
                 // Twice the usual pace in water, per user call — a squad fording a river crawled.
                 .add(net.neoforged.neoforge.common.NeoForgeMod.SWIM_SPEED, SWIM_SPEED)
-        }
     }
 }

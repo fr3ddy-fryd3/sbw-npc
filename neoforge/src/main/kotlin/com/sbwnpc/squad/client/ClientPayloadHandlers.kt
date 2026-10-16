@@ -25,8 +25,15 @@ object ClientPayloadHandlers {
     /** The Barracks' garrison config — the same screen, sent back to the block instead of the tool. */
     fun openBarracksScreen(pos: BlockPos, config: CompoundTag) {
         net.minecraft.client.Minecraft.getInstance().setScreen(
-            RecruitScreen.forBarracks(pos, SquadToolItem.readConfig(config))
+            RecruitScreen.forBarracks(pos, SquadToolItem.readConfig(config), config.getCompound("Recruitment")),
         )
+    }
+
+    fun barracksQueue(pos: BlockPos, data: CompoundTag) {
+        when (val screen = net.minecraft.client.Minecraft.getInstance().screen) {
+            is RecruitScreen -> screen.updateBarracksQueue(pos, data)
+            is com.sbwnpc.squad.client.screen.BarracksQueueScreen -> screen.updateQueue(pos, data)
+        }
     }
 
     /** Recruit-mode air-click round-trips through the server first (faction-lock check); this
@@ -60,6 +67,16 @@ object ClientPayloadHandlers {
 
     fun openCommandScreen(snapshot: CompoundTag) {
         net.minecraft.client.Minecraft.getInstance().setScreen(CommandScreen(snapshot))
+    }
+
+    fun squadDetails(snapshot: CompoundTag) {
+        val client = net.minecraft.client.Minecraft.getInstance()
+        val screen = client.screen as? com.sbwnpc.squad.client.screen.SquadDetailsScreen
+        if (snapshot.getBoolean("Refresh")) {
+            if (screen?.squadId == snapshot.getString("Id")) screen.update(snapshot)
+        } else {
+            client.setScreen(com.sbwnpc.squad.client.screen.SquadDetailsScreen(snapshot))
+        }
     }
 
     fun openHud(snapshot: CompoundTag) {

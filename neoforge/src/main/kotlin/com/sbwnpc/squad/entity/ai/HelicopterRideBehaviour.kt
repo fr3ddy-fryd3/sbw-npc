@@ -1,16 +1,15 @@
 package com.sbwnpc.squad.entity.ai
 
-
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
-import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.DroneCombat
 import com.sbwnpc.squad.combat.FriendlyFireGuard
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
-import com.sbwnpc.squad.team.SquadTeams
 import com.sbwnpc.squad.squad.SquadOrder
+import com.sbwnpc.squad.team.SquadTeams
 import com.sbwnpc.squad.vehicle.Helicopters
 import net.minecraft.commands.arguments.EntityAnchorArgument
 import net.minecraft.server.level.ServerLevel
@@ -52,8 +51,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
-        canRide(entity) && (aboard(entity) != null || lift(entity, level) != null)
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = canRide(entity) && (aboard(entity) != null || lift(entity, level) != null)
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean {
         if (aboard(entity) != null) return true
@@ -134,7 +132,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
                 entity.x.coerceIn(hull.minX, hull.maxX),
                 entity.y.coerceIn(hull.minY, hull.maxY),
                 entity.z.coerceIn(hull.minZ, hull.maxZ),
-                BOARD_SPEED
+                BOARD_SPEED,
             )
             return
         }
@@ -177,6 +175,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.lookAt(EntityAnchorArgument.Anchor.EYES, aim)
         val dist = entity.distanceTo(target)
         if (dist > BENCH_RANGE) return "target ${dist.toInt()} blocks off (range ${BENCH_RANGE.toInt()})"
+        if (!com.sbwnpc.squad.combat.WeaponReach.inRange(entity, entity.eyePosition, aim)) return "target outside weapon range"
         if (!com.sbwnpc.squad.combat.DetectionSightline.visible(entity.level(), entity.eyePosition, aim, entity)) return "target concealed"
         // Not hasLineOfSight: vanilla gives up past 128 blocks, and from cruising height that is
         // most of the ground a passenger can see.
@@ -185,7 +184,9 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.tickCount < nextShotTick || !gun.canShoot()) return null
 
         val spread = DroneCombat.spreadForTarget(entity.spread, target)
-        if (!FriendlyFireGuard.hasClearLineOfFire(entity, aim, spread)) return "friendly in the line of fire"
+        val safety = FriendlyFireGuard.assess(entity, aim, spread, target.position(), gun.explosionRadius)
+        if (!safety.lineClear) return "friendly in the line of fire"
+        if (!safety.blastClear) return "friendly in the blast radius"
 
         gun.shootAt(spread, aim)
         entity.lastShotTick = entity.tickCount
@@ -193,19 +194,21 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (gun.needsTriggerReset) {
             cooldown += (entity.npcRank.semiFireIntervalMs / 50).toInt()
         }
-        nextShotTick = entity.tickCount + cooldown
+        nextShotTick = entity.tickCount + (entity.fireIntervalMillis(gun, cooldown * 50L) / 50).toInt()
         return null
     }
 
-    private fun aboard(entity: NpcEntity): Entity? =
-        entity.vehicle?.takeIf { Helicopters.isHelicopter(it) && Ports.vehicles.seatOf(it, entity) != PILOT_SEAT }
+    private fun aboard(entity: NpcEntity): Entity? = entity.vehicle?.takeIf { Helicopters.isHelicopter(it) && Ports.vehicles.seatOf(it, entity) != PILOT_SEAT }
 
     /** Ordinary infantry only: every other class has a post of its own to man. */
-    private fun canRide(entity: NpcEntity): Boolean = when (entity.npcClass) {
-        NpcClass.RIFLEMAN, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC -> true
-        NpcClass.MORTAR_OPERATOR, NpcClass.MORTAR_LOADER, NpcClass.TANK_CREW,
-        NpcClass.HELICOPTER_PILOT, NpcClass.HELICOPTER_GUNNER, NpcClass.DRONE_OPERATOR -> false
-    }
+    private fun canRide(entity: NpcEntity): Boolean =
+        when (entity.npcClass) {
+            NpcClass.RIFLEMAN, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.SHOTGUNNER -> true
+
+            NpcClass.MORTAR, NpcClass.MORTAR_OPERATOR, NpcClass.MORTAR_LOADER, NpcClass.TANK_CREW,
+            NpcClass.HELICOPTER_PILOT, NpcClass.HELICOPTER_GUNNER, NpcClass.DRONE_OPERATOR,
+            -> false
+        }
 
     private fun boardable(heli: Entity, entity: NpcEntity): Boolean = reject(heli, entity) == null
 
@@ -271,9 +274,11 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         val chosen = nearby.firstOrNull { boardable(it, entity) }
         if (chosen == null) {
             if (nearby.isNotEmpty()) {
-                DebugFlags.log(LogGroup.HELI,
-                    "{} found no ride: {}", entity.uuid,
-                    nearby.joinToString { "${it.uuid}=${reject(it, entity)}" }
+                DebugFlags.log(
+                    LogGroup.HELI,
+                    "{} found no ride: {}",
+                    entity.uuid,
+                    nearby.joinToString { "${it.uuid}=${reject(it, entity)}" },
                 )
             }
             return null
@@ -290,12 +295,15 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         const val BOARD_DISTANCE_SQR = 2.5 * 2.5
         const val BOARD_SPEED = 1.0
         const val DISMOUNT_RADIUS = 32.0
+
         /** Grounded this long somewhere that isn't the objective: get out and walk. */
         const val STRANDED_TICKS = 200
         const val REBOARD_COOLDOWN_TICKS = 200
+
         /** Seats 0 and 1 are the cockpit; the side benches start here. */
         const val FIRST_BENCH_SEAT = 2
         const val BENCH_LOG_TICKS = 40
+
         /** As far as aircrew spot the ground (VehicleTargeting): 48 was less than the height a
          *  transport cruises at, so a passenger never had anything in range. */
         const val BENCH_RANGE = NpcEntity.DETECTION_RANGE * com.sbwnpc.squad.combat.VehicleTargeting.AIR_RANGE_FACTOR

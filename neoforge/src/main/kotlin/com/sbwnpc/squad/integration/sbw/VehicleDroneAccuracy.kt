@@ -33,7 +33,7 @@ object VehicleDroneAccuracy {
         if (autonomous != null) {
             return parameters.copy(
                 spread = DroneAccuracy.adjustSpread(parameters.spread, autonomous.droneTarget),
-                targetPos = autonomous.position()
+                targetPos = autonomous.position(),
             )
         }
         val vehicle = parameters.ammoSupplier as? VehicleEntity ?: return parameters

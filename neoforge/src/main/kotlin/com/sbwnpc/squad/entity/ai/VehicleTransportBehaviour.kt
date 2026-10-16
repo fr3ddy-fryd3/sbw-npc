@@ -1,26 +1,26 @@
 package com.sbwnpc.squad.entity.ai
 
+import com.mojang.datafixers.util.Pair
+import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.domain.port.Mobility
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
-import com.sbwnpc.squad.vehicle.TreeAvoidance
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
 import com.sbwnpc.squad.vehicle.DriverAllegiance
+import com.sbwnpc.squad.vehicle.TreeAvoidance
 import com.sbwnpc.squad.vehicle.VehiclePower
-import com.mojang.datafixers.util.Pair
-import com.sbwnpc.squad.combat.DebugFlags
-import com.sbwnpc.squad.combat.LogGroup
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.util.Mth
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.minecraft.world.phys.AABB
-import net.minecraft.util.Mth
 import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 import net.tslat.smartbrainlib.util.BrainUtils
@@ -80,6 +80,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var nextSeekTick = 0
     private var seekingStartTick = 0
     private var giveupCooldownUntilTick = 0
+
     /** The order a scan found no vehicle for — see [tickSeeking]. */
     private var noVehicleForStamp = Int.MIN_VALUE
     private var lastNoCandidateLogTick = 0
@@ -98,12 +99,14 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     // without this a stretch the vehicle genuinely can't get through would stop it dead forever.
     private var lastStuckCheckTick = 0
     private var lastStuckCheckPos: Vec3? = null
+
     /** The heading at the last progress check: turning on the spot or backing round is progress. */
     private var lastStuckCheckYaw = 0f
     private var recoveryUntilTick = 0
     private var recoveryTurnLeft = false
     private var avoidancePoint: Vec3? = null
     private var nextAvoidanceTick = 0
+
     // A man of our side in the way: since when, and until when the vehicle is steering round him.
     private var allyBlockedSince = -1
     private var detourUntilTick = 0
@@ -129,13 +132,17 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     // is correct there — only the actual driving target is locked in once committed.
     private var tripDestination: Vec3? = null
     private var observedDamageStamp = 0L
+
     /** Last tick the combat gunner could see its target — see [gunnerStillEngaged]. */
     private var gunnerSawThreatTick = 0
+
     /** Boat trips worth taking to the objective, as of the last eligibility check — see [BoatTrips]. */
     private var boatTrips: List<BoatTrips.Trip> = emptyList()
+
     /** The way over the water the boat being driven follows, and how far along it it is. */
     private var boatRoute: List<Vec3> = emptyList()
     private var boatRouteIndex = 0
+
     /**
      * A vehicle's way over the land from the long-route planner ([Driving]): its turns, whether it
      * ends where the crew gets out or runs on into ground not yet seen, and the search under way
@@ -143,37 +150,47 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
      */
     private var driveRoute: List<Vec3> = emptyList()
     private var driveRouteComplete = true
+
     /** A far stop proposed by the surface map, awaiting a hull-sized search before anyone exits. */
     private var driveExitToCheck: Vec3? = null
     private var driveSearch: com.sbwnpc.squad.route.CellPlanner.Search? = null
     private var driveSearchStarted = 0
+
     /** Not before this tick is the next stretch of a vehicle's way into unseen ground looked for again. */
     private var driveLookAheadTick = 0
+
     /** The long-route planner found no way from here: the vehicle keeps to the old short routes. */
     private var driveLegsOnly = false
+
     /** When the boat last got nearer the end of its way, and how near that was — a boat that has
      *  stopped getting anywhere is given up on, however long its voyage. */
     private var boatProgressTick = 0
     private var boatBestRemaining = Double.MAX_VALUE
+
     /** As fast as the boat should go for the bends ahead — see [pursue]. */
     private var boatTargetSpeed = 1.0
+
     /** Whether the way the boat follows ends at a bank — see [com.sbwnpc.squad.route.CellPlanner.Route.complete]. */
     private var boatRouteComplete = true
+
     /** Not before this tick is the next stretch of a way that goes on looked for again. */
     private var boatLookAheadTick = 0
+
     /** When the boat last got stuck — a second time soon after means its way is no good. */
     private var boatStuckTick = Int.MIN_VALUE / 2
+
     /** Since when the boat this man rides has had nobody at the wheel — see [tickRiding]. */
     private var driverlessSince = -1
+
     /** What the man at a boat's machine gun is firing at — see [workBoatGun]. */
     private var boatGunTarget: java.util.UUID? = null
+
     /** No boat trips before this — just landed, or found no boat to take. */
     private var boatCooldownUntilTick = 0
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
-    private fun combatInterrupted(entity: NpcEntity) =
-        entity.target != null || entity.isAlert() || entity.isSuppressed()
+    private fun combatInterrupted(entity: NpcEntity) = entity.target != null || entity.isAlert() || entity.isSuppressed()
 
     /** [checkGiveup] must be false when called from [checkExtraStartConditions] (deciding whether to
      *  START a brand new episode) and true from [shouldKeepRunning] (deciding whether an ALREADY
@@ -203,6 +220,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // VehicleCrewBehaviour handles getting it back aboard if it is ever ejected.
         entity.assignedVehicleId?.let { assigned -> return entity.vehicle?.uuid == assigned }
         if (entity.vehicle != null) return true // already mounted: DRIVING/RIDING keep going regardless
+        if (com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) return false
 
         if (combatInterrupted(entity)) {
             return logEligibility(entity, false) {
@@ -230,10 +248,13 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (shouldPrioritizeMortar(entity, squad.order)) {
             return logEligibility(entity, false) { "mortar duty takes priority for ATTACK" }
         }
-        val trips = if (entity.tickCount < boatCooldownUntilTick) emptyList()
-            else BoatTrips.tripsFor(entity, home, SquadMarch.crossingAhead(entity) != null) { isUsableBoat(it, entity) }
+        val trips = if (entity.tickCount < boatCooldownUntilTick) {
+            emptyList()
+        } else {
+            BoatTrips.tripsFor(entity, home, SquadMarch.crossingAhead(entity) != null) { isUsableBoat(it, entity) }
                 ?: boatTrips.takeIf { checkGiveup && it.isNotEmpty() }
                 ?: return logEligibility(entity, false) { "weighing the boats nearby" }
+        }
         // Once under way to a boat, the trip stays: the squad's decision can be looked at again
         // meanwhile and come out differently from where he now stands, and dropping it there broke
         // the trip off and freed his seat over and over.
@@ -260,11 +281,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private val startCheck = StartCheckThrottle(START_CHECK_INTERVAL_TICKS)
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
-        startCheck.check(entity) { eligible(entity, checkGiveup = false) }
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = startCheck.check(entity) { eligible(entity, checkGiveup = false) }
 
-    override fun shouldKeepRunning(entity: NpcEntity): Boolean =
-        if (entity.vehicle != null) true else eligible(entity, checkGiveup = true)
+    override fun shouldKeepRunning(entity: NpcEntity): Boolean = if (entity.vehicle != null) true else eligible(entity, checkGiveup = true)
 
     override fun start(entity: NpcEntity) {
         val mounted = entity.vehicle?.takeIf(Ports.vehicles::isVehicle)
@@ -289,9 +308,12 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         tripDestination = null
         observedDamageStamp = 0L
         entity.vehicleTransport = true
-        DebugFlags.log(LogGroup.VEHICLE,
+        DebugFlags.log(
+            LogGroup.VEHICLE,
             "{} starting vehicle transport, home={} dist={}",
-            entity.uuid, entity.homeCenter(), entity.homeCenter()?.let { entity.position().distanceTo(it) }
+            entity.uuid,
+            entity.homeCenter(),
+            entity.homeCenter()?.let { entity.position().distanceTo(it) },
         )
     }
 
@@ -323,7 +345,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             phase = Phase.WAITING_FOR_SQUAD
         } else {
             VehicleTransportClaims.claimPassenger(
-                vehicle.uuid, entity.uuid, Ports.vehicles.seatCount(vehicle), vehicle.passengers.map { it.uuid }
+                vehicle.uuid,
+                entity.uuid,
+                Ports.vehicles.seatCount(vehicle),
+                vehicle.passengers.map { it.uuid },
             )
             phase = Phase.RIDING
         }
@@ -372,13 +397,16 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         val squad = entity.currentSquad() ?: return
         val nearby = Ports.vehicles.within(
             level,
-            AABB.ofSize(entity.position(), SEARCH_RADIUS * 2, SEARCH_RADIUS * 2, SEARCH_RADIUS * 2)
+            AABB.ofSize(entity.position(), SEARCH_RADIUS * 2, SEARCH_RADIUS * 2, SEARCH_RADIUS * 2),
         )
         val choice = nearby.asSequence()
             .filter { entity.distanceToSqr(it) <= SEARCH_RADIUS * SEARCH_RADIUS }
             .filter { vehicle ->
-                if (boatTrips.isNotEmpty()) boatTrips.any { it.boat == vehicle.uuid } && isUsableBoat(vehicle, entity)
-                else isUsableGroundVehicle(vehicle, entity)
+                if (boatTrips.isNotEmpty()) {
+                    boatTrips.any { it.boat == vehicle.uuid } && isUsableBoat(vehicle, entity)
+                } else {
+                    isUsableGroundVehicle(vehicle, entity)
+                }
             }
             .mapNotNull { vehicle ->
                 val claimedBySquad = squad.members.any { VehicleTransportClaims.vehicleOf(it) == vehicle.uuid }
@@ -388,29 +416,36 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                     Ports.vehicles.seating(vehicle).firstOrNull() == null
                 when {
                     claimedBySquad && wheelFree -> VehicleChoice(vehicle, isDriver = true)
+
                     claimedBySquad && VehicleTransportClaims.occupiedOrClaimedSeats(
-                        vehicle.uuid, vehicle.passengers.map { it.uuid }
+                        vehicle.uuid,
+                        vehicle.passengers.map { it.uuid },
                     ) < Ports.vehicles.seatCount(vehicle) ->
                         VehicleChoice(vehicle, isDriver = false)
+
                     // Nobody's claim and no NPC aboard — a player of ours in the back rides along.
                     VehicleTransportClaims.claimedSeats(vehicle.uuid) == 0 &&
                         vehicle.passengers.none { it !is net.minecraft.world.entity.player.Player } &&
                         Ports.vehicles.seating(vehicle).firstOrNull() == null ->
                         VehicleChoice(vehicle, isDriver = true)
+
                     else -> null
                 }
             }
             .minWithOrNull(
                 compareByDescending<VehicleChoice> { Ports.vehicles.seatCount(it.vehicle) }
-                    .thenBy { entity.distanceToSqr(it.vehicle) }
+                    .thenBy { entity.distanceToSqr(it.vehicle) },
             )
 
         if (choice == null) {
             if (entity.tickCount - lastNoCandidateLogTick > NO_CANDIDATE_LOG_INTERVAL_TICKS) {
                 lastNoCandidateLogTick = entity.tickCount
-                DebugFlags.log(LogGroup.VEHICLE,
+                DebugFlags.log(
+                    LogGroup.VEHICLE,
                     "{} found no claimable vehicle within {} blocks ({} vehicles total nearby)",
-                    entity.uuid, SEARCH_RADIUS, nearby.size
+                    entity.uuid,
+                    SEARCH_RADIUS,
+                    nearby.size,
                 )
             }
             // The boats worth taking are full or gone: walk, or a road vehicle if it's far — and
@@ -431,8 +466,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             VehicleTransportClaims.claimDriver(choice.vehicle.uuid, entity.uuid)
         } else {
             VehicleTransportClaims.claimPassenger(
-                choice.vehicle.uuid, entity.uuid, Ports.vehicles.seatCount(choice.vehicle),
-                choice.vehicle.passengers.map { it.uuid }
+                choice.vehicle.uuid,
+                entity.uuid,
+                Ports.vehicles.seatCount(choice.vehicle),
+                choice.vehicle.passengers.map { it.uuid },
             )
         }
         if (claimed) {
@@ -443,10 +480,13 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
             targetVehicleId = choice.vehicle.uuid
             phase = Phase.BOARDING
-            DebugFlags.log(LogGroup.VEHICLE,
+            DebugFlags.log(
+                LogGroup.VEHICLE,
                 "{} claimed {} seat of {} (capacity={})",
-                entity.uuid, if (choice.isDriver) "driver" else "passenger", choice.vehicle.uuid,
-                Ports.vehicles.seatCount(choice.vehicle)
+                entity.uuid,
+                if (choice.isDriver) "driver" else "passenger",
+                choice.vehicle.uuid,
+                Ports.vehicles.seatCount(choice.vehicle),
             )
         }
     }
@@ -486,8 +526,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // Not force=true: lets VehicleEntity.canAddPassenger's own real seat-capacity check apply as
         // a final backstop, instead of only trusting the app-level claim registry.
         if (!entity.startRiding(vehicle, false)) {
-            DebugFlags.log(LogGroup.VEHICLE,
-                "{} in range of {} but startRiding refused", entity.uuid, vehicle.uuid
+            DebugFlags.log(
+                LogGroup.VEHICLE,
+                "{} in range of {} but startRiding refused",
+                entity.uuid,
+                vehicle.uuid,
             )
             VehicleTransportClaims.release(entity.uuid)
             targetVehicleId = null
@@ -532,12 +575,18 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             // Whoever had claimed the wheel still has a place, just not that one.
             claimant?.let {
                 VehicleTransportClaims.claimPassenger(
-                    vehicle.uuid, it, Ports.vehicles.seatCount(vehicle), vehicle.passengers.map { p -> p.uuid }
+                    vehicle.uuid,
+                    it,
+                    Ports.vehicles.seatCount(vehicle),
+                    vehicle.passengers.map { p -> p.uuid },
                 )
             }
         } else if (!atWheel && VehicleTransportClaims.driverOf(vehicle.uuid) == entity.uuid) {
             VehicleTransportClaims.claimPassenger(
-                vehicle.uuid, entity.uuid, Ports.vehicles.seatCount(vehicle), vehicle.passengers.map { it.uuid }
+                vehicle.uuid,
+                entity.uuid,
+                Ports.vehicles.seatCount(vehicle),
+                vehicle.passengers.map { it.uuid },
             )
         }
         DebugFlags.log(LogGroup.VEHICLE, "{} seated in {} as {}", entity.uuid, vehicle.uuid, if (atWheel) "driver" else "passenger")
@@ -615,8 +664,47 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             tickCombatDismount(entity, vehicle)
             return
         }
-        // Ran the battery down on the way. Nothing here can move it, so walk the rest — a
-        // permanent crew stays with its vehicle as usual and just holds.
+        if (stopIfPowerExhausted(entity, vehicle)) return
+        val home = resolveTripDestination(entity)
+        if (home == null) {
+            waitToStopThenDismount(entity, vehicle, isDriver = true)
+            return
+        }
+        if (arrived(entity, vehicle, home)) {
+            finishDriving(entity, vehicle)
+            return
+        }
+        if (updateProgressAndCheckStall(entity, vehicle)) {
+            finishDriving(entity, vehicle)
+            return
+        }
+        if (entity.tickCount < recoveryUntilTick) {
+            performRecovery(entity, vehicle)
+            return
+        }
+        if (recoverIfStuck(entity, vehicle, home)) return
+        if (yieldToBlockingAlly(entity, vehicle)) return
+        if (isBoat(vehicle)) {
+            steerBoat(entity, vehicle, home)
+            return
+        }
+        val waypoint = if (driveLegsOnly) currentWaypoint(entity, home) else driveWaypoint(entity, vehicle, home)
+        // Escorting infantry that hasn't met the enemy: idle the engine rather than outrun it.
+        val escort = com.sbwnpc.squad.squad.FireSupport.holdEscortPace(entity.level() as ServerLevel, entity, vehicle.position(), home)
+        // Wait for a route before issuing steering commands.
+        if (waypoint == null) holdVehicle(vehicle) else steerToward(vehicle, aroundTrees(entity, vehicle, waypoint), throttle = !escort)
+    }
+
+    private fun finishDriving(entity: NpcEntity, vehicle: Entity) {
+        if (isPermanentCrew(entity, vehicle)) {
+            holdVehicle(vehicle)
+            phase = Phase.HOLDING
+        } else {
+            waitToStopThenDismount(entity, vehicle, isDriver = true)
+        }
+    }
+
+    private fun stopIfPowerExhausted(entity: NpcEntity, vehicle: Entity): Boolean {
         if (!VehiclePower.hasReserve(vehicle, STRANDED_RESERVE_TICKS)) {
             stopVehicle(vehicle)
             if (isPermanentCrew(entity, vehicle)) {
@@ -625,29 +713,21 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             } else {
                 waitToStopThenDismount(entity, vehicle, isDriver = true)
             }
-            return
+            return true
         }
-        val home = resolveTripDestination(entity)
-        if (home == null) {
-            waitToStopThenDismount(entity, vehicle, isDriver = true)
-            return
-        }
+        return false
+    }
 
-        if (arrived(entity, vehicle, home)) {
-            if (isPermanentCrew(entity, vehicle)) {
-                holdVehicle(vehicle)
-                phase = Phase.HOLDING
-                return
-            }
-            waitToStopThenDismount(entity, vehicle, isDriver = true)
-            return
-        }
-
+    private fun updateProgressAndCheckStall(entity: NpcEntity, vehicle: Entity): Boolean {
         // Distance, rather than time aboard: long marches and terrain detours can take minutes.
         // Fresh ground counts, but repeated reversals over the same patch do not.
         val waitingForRoute = !isBoat(vehicle) && !driveLegsOnly &&
-            (driveRoute.isEmpty() || ((!driveRouteComplete || driveExitToCheck != null) &&
-                groundRouteProgress.finished(vehicle.position(), GROUND_EXIT_RADIUS)))
+            (
+                driveRoute.isEmpty() || (
+                    (!driveRouteComplete || driveExitToCheck != null) &&
+                        groundRouteProgress.finished(vehicle.position(), GROUND_EXIT_RADIUS)
+                    )
+                )
         if (!isBoat(vehicle)) {
             groundTravelProgress.observe(entity.tickCount, vehicle.position())
             if (waitingForRoute) {
@@ -657,23 +737,15 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 recoveryUntilTick = 0
             }
         }
-        val givenUp = if (isBoat(vehicle)) entity.tickCount - boatProgressTick > BOAT_NO_PROGRESS_TICKS
-            else groundTravelProgress.stalled(entity.tickCount)
-        if (givenUp) {
-            if (isPermanentCrew(entity, vehicle)) {
-                holdVehicle(vehicle)
-                phase = Phase.HOLDING
-                return
-            }
-            waitToStopThenDismount(entity, vehicle, isDriver = true)
-            return
+        val givenUp = if (isBoat(vehicle)) {
+            entity.tickCount - boatProgressTick > BOAT_NO_PROGRESS_TICKS
+        } else {
+            groundTravelProgress.stalled(entity.tickCount)
         }
+        return givenUp
+    }
 
-        if (entity.tickCount < recoveryUntilTick) {
-            performRecovery(entity, vehicle)
-            return
-        }
-
+    private fun recoverIfStuck(entity: NpcEntity, vehicle: Entity, home: Vec3): Boolean {
         if (entity.tickCount - lastStuckCheckTick >= STUCK_CHECK_INTERVAL_TICKS) {
             val last = lastStuckCheckPos
             val turned = Math.abs(net.minecraft.util.Mth.wrapDegrees(vehicle.yRot - lastStuckCheckYaw)) > STUCK_TURN_DEGREES
@@ -684,7 +756,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 // Run aground short of the landing point: this is the shore, get off here.
                 if (isBoat(vehicle) && boatRouteComplete && horizontalDistance(vehicle.position(), home) <= BOAT_AGROUND_RADIUS) {
                     waitToStopThenDismount(entity, vehicle, isDriver = true)
-                    return
+                    return true
                 }
                 // A boat takes a while to get going astern, and more with its bow in the bank.
                 recoveryUntilTick = entity.tickCount + if (isBoat(vehicle)) BOAT_RECOVERY_TICKS else RECOVERY_TICKS
@@ -701,10 +773,13 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 }
                 DebugFlags.log(LogGroup.VEHICLE, "{} recovering {} at {} after no movement", entity.uuid, vehicle.uuid, vehicle.position())
                 performRecovery(entity, vehicle)
-                return
+                return true
             }
         }
+        return false
+    }
 
+    private fun yieldToBlockingAlly(entity: NpcEntity, vehicle: Entity): Boolean {
         val blocker = allyInTheWay(entity, vehicle, forwardDirection(vehicle))
         if (blocker != null) {
             stopVehicle(vehicle)
@@ -718,8 +793,13 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             // He hasn't moved off — he may not be able to, pressed against the hull. Back off and
             // go round him instead of waiting out the whole trip.
             if (entity.tickCount - allyBlockedSince >= ALLY_WAIT_TICKS) {
-                DebugFlags.log(LogGroup.VEHICLE, "{} blocked by {} for {} ticks, backing off to go round",
-                    entity.uuid, blocker.uuid, entity.tickCount - allyBlockedSince)
+                DebugFlags.log(
+                    LogGroup.VEHICLE,
+                    "{} blocked by {} for {} ticks, backing off to go round",
+                    entity.uuid,
+                    blocker.uuid,
+                    entity.tickCount - allyBlockedSince,
+                )
                 allyBlockedSince = -1
                 recoveryUntilTick = entity.tickCount + RECOVERY_TICKS
                 recoveryTurnLeft = entity.random.nextBoolean()
@@ -728,23 +808,21 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 nextAvoidanceTick = entity.tickCount
                 performRecovery(entity, vehicle)
             }
-            return
+            return true
         }
         allyBlockedSince = -1
-        if (isBoat(vehicle)) {
-            // Its own way over the water; the land route and the trees are no use there.
-            val waypoint = boatWaypoint(entity, vehicle, home)
-            // In to the bank at a crawl: at full speed it ploughed in wherever the bow pointed. And
-            // no faster than the bends ahead allow.
-            val speed = vehicle.deltaMovement.horizontalDistance()
-            val coasting = (horizontalDistance(vehicle.position(), home) < BOAT_SLOW_RADIUS && speed > BOAT_APPROACH_SPEED) ||
-                speed > boatTargetSpeed
-            if (waypoint == null) stopVehicle(vehicle) else steerToward(vehicle, waypoint, throttle = !coasting)
-            return
-        }
-        val waypoint = if (driveLegsOnly) currentWaypoint(entity, home) else driveWaypoint(entity, vehicle, home)
-        // No way yet: the first search takes a moment. Wait for it rather than set off wrong.
-        if (waypoint == null) holdVehicle(vehicle) else steerToward(vehicle, aroundTrees(entity, vehicle, waypoint))
+        return false
+    }
+
+    private fun steerBoat(entity: NpcEntity, vehicle: Entity, home: Vec3) {
+        // Its own way over the water; the land route and the trees are no use there.
+        val waypoint = boatWaypoint(entity, vehicle, home)
+        // In to the bank at a crawl: at full speed it ploughed in wherever the bow pointed. And
+        // no faster than the bends ahead allow.
+        val speed = vehicle.deltaMovement.horizontalDistance()
+        val coasting = (horizontalDistance(vehicle.position(), home) < BOAT_SLOW_RADIUS && speed > BOAT_APPROACH_SPEED) ||
+            speed > boatTargetSpeed
+        if (waypoint == null) stopVehicle(vehicle) else steerToward(vehicle, waypoint, throttle = !coasting)
     }
 
     /**
@@ -758,7 +836,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             val trip = BoatTrips.tripOf(vehicle.uuid)
             val route = if (boatRoute.isEmpty() && trip != null && trip.route.route.isNotEmpty() &&
                 trip.route.route.first().distanceTo(vehicle.position()) < BOAT_WAYPOINT_RADIUS * 2
-            ) trip.route else BoatTrips.replan(vehicle, trip?.goal ?: landing)
+            ) {
+                trip.route
+            } else {
+                BoatTrips.replan(vehicle, trip?.goal ?: landing)
+            }
             if (route == null) {
                 if (boatRoute.isEmpty()) return null
                 // At the end of a stretch that goes on and the next not found yet: wait there
@@ -773,14 +855,21 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 boatProgressTick = entity.tickCount
                 // The way can come out at another bank than the one first picked; everyone aboard
                 // gets off where it actually goes — and nowhere while it goes on past what was searched.
-                if (route.complete) VehicleTransportClaims.setLanding(vehicle.uuid, route.landing)
-                else VehicleTransportClaims.clearLanding(vehicle.uuid)
+                if (route.complete) {
+                    VehicleTransportClaims.setLanding(vehicle.uuid, route.landing)
+                } else {
+                    VehicleTransportClaims.clearLanding(vehicle.uuid)
+                }
                 tripDestination = route.landing
-                DebugFlags.log(LogGroup.BOAT,
+                DebugFlags.log(
+                    LogGroup.BOAT,
                     "{} steering {} along {} points, {} blocks, {} {}",
-                    entity.uuid.toString().take(8), vehicle.uuid.toString().take(8), boatRoute.size,
-                    route.length.toInt(), if (route.complete) "to land at" else "on toward the goal, to look again at",
-                    BlockPos.containing(route.shore)
+                    entity.uuid.toString().take(8),
+                    vehicle.uuid.toString().take(8),
+                    boatRoute.size,
+                    route.length.toInt(),
+                    if (route.complete) "to land at" else "on toward the goal, to look again at",
+                    BlockPos.containing(route.shore),
                 )
             }
         }
@@ -874,12 +963,13 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     /** The speed a boat can take a bend of [degrees] at without running wide into the bank. */
-    private fun speedForTurn(degrees: Double): Double = when {
-        degrees <= 20.0 -> BOAT_FULL_SPEED
-        degrees <= 45.0 -> 0.55
-        degrees <= 75.0 -> 0.4
-        else -> BOAT_SLOW_TURN_SPEED
-    }
+    private fun speedForTurn(degrees: Double): Double =
+        when {
+            degrees <= 20.0 -> BOAT_FULL_SPEED
+            degrees <= 45.0 -> 0.55
+            degrees <= 75.0 -> 0.4
+            else -> BOAT_SLOW_TURN_SPEED
+        }
 
     private fun horizontalDistance(a: Vec3, b: Vec3): Double = Math.hypot(a.x - b.x, a.z - b.z)
 
@@ -900,8 +990,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     /** Where the crew of [vehicle], a boat, get off: what its driver's trip set, or the squad's. */
-    private fun landingOf(vehicle: Entity): Vec3? =
-        VehicleTransportClaims.landingOf(vehicle.uuid) ?: BoatTrips.tripOf(vehicle.uuid)?.route?.takeIf { it.complete }?.landing
+    private fun landingOf(vehicle: Entity): Vec3? = VehicleTransportClaims.landingOf(vehicle.uuid) ?: BoatTrips.tripOf(vehicle.uuid)?.route?.takeIf { it.complete }?.landing
 
     /** [TreeAvoidance] is a few hundred block lookups, so its answer is kept for a few ticks. */
     private fun aroundTrees(entity: NpcEntity, vehicle: Entity, waypoint: Vec3): Vec3 {
@@ -955,8 +1044,13 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun driveWaypoint(entity: NpcEntity, vehicle: Entity, home: Vec3): Vec3? {
         val level = entity.level() as? ServerLevel ?: return home
         if (driveSearch == null && (driveRoute.isEmpty() || entity.tickCount >= nextRouteTick)) {
-            val medium = com.sbwnpc.squad.route.Driving(level, vehicle.bbWidth / 2.0, vehicle.maxUpStep().toDouble(),
-                vehicle.bbHeight.toDouble(), Ports.vehicles.canCrossWater(vehicle))
+            val medium = com.sbwnpc.squad.route.Driving(
+                level,
+                vehicle.bbWidth / 2.0,
+                vehicle.maxUpStep().toDouble(),
+                vehicle.bbHeight.toDouble(),
+                Ports.vehicles.canCrossWater(vehicle),
+            )
             // A continuation starts at the point where the current leg ends, which the vehicle
             // will reach while the search runs. Searching from 48 blocks behind that point
             // could produce a new first turn behind the vehicle by the time it was ready.
@@ -964,12 +1058,19 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             driveContinueFromEnd = false
             driveSearch = com.sbwnpc.squad.route.CellPlanner.search(medium, from, home)
             driveSearchStarted = entity.tickCount
-            DebugFlags.log(LogGroup.VEHICLE, "{} planning {} from {} to {} amphibious={} width={} height={} step={}",
+            DebugFlags.log(
+                LogGroup.VEHICLE, "{} planning {} from {} to {} amphibious={} width={} height={} step={}",
                 entity.uuid, vehicle.uuid, from, home, Ports.vehicles.canCrossWater(vehicle),
-                vehicle.bbWidth, vehicle.bbHeight, vehicle.maxUpStep())
+                vehicle.bbWidth, vehicle.bbHeight, vehicle.maxUpStep(),
+            )
             if (driveSearch == null) {
-                DebugFlags.log(LogGroup.VEHICLE, "{} no long route for {} from {} (not on known open ground), short routes instead",
-                    entity.uuid, vehicle.uuid, vehicle.blockPosition())
+                DebugFlags.log(
+                    LogGroup.VEHICLE,
+                    "{} no long route for {} from {} (not on known open ground), short routes instead",
+                    entity.uuid,
+                    vehicle.uuid,
+                    vehicle.blockPosition(),
+                )
                 driveLegsOnly = true
                 nextRouteTick = entity.tickCount
                 VehicleTransportClaims.clearLanding(vehicle.uuid)
@@ -982,8 +1083,14 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 nextRouteTick = Int.MAX_VALUE
                 val found = search.result()
                 if (found == null || found.route.isEmpty()) {
-                    DebugFlags.log(LogGroup.VEHICLE, "{} no long route for {} to {} ({}), short routes instead",
-                        entity.uuid, vehicle.uuid, BlockPos.containing(home), search.stoppedBy)
+                    DebugFlags.log(
+                        LogGroup.VEHICLE,
+                        "{} no long route for {} to {} ({}), short routes instead",
+                        entity.uuid,
+                        vehicle.uuid,
+                        BlockPos.containing(home),
+                        search.stoppedBy,
+                    )
                     driveLegsOnly = true
                     nextRouteTick = entity.tickCount
                     VehicleTransportClaims.clearLanding(vehicle.uuid)
@@ -995,15 +1102,25 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 groundRouteProgress.reset(driveRoute, vehicle.position())
                 driveRouteComplete = found.complete
                 driveExitToCheck = found.landing.takeIf { found.complete && horizontalDistance(it, home) > ARRIVAL_RADIUS }
-                if (found.complete && driveExitToCheck == null) VehicleTransportClaims.setLanding(vehicle.uuid, found.landing)
-                else VehicleTransportClaims.clearLanding(vehicle.uuid)
-                DebugFlags.log(LogGroup.VEHICLE,
+                if (found.complete && driveExitToCheck == null) {
+                    VehicleTransportClaims.setLanding(vehicle.uuid, found.landing)
+                } else {
+                    VehicleTransportClaims.clearLanding(vehicle.uuid)
+                }
+                DebugFlags.log(
+                    LogGroup.VEHICLE,
                     "{} driving {} along {} points, {} blocks, {} {} ({} from home; {} units over {} ticks; {})",
                     entity.uuid, vehicle.uuid, driveRoute.size, found.length.toInt(),
-                    if (!found.complete) "on toward the goal, to look again at" else if (driveExitToCheck != null) "checking stop at" else "crew out at",
+                    if (!found.complete) {
+                        "on toward the goal, to look again at"
+                    } else if (driveExitToCheck != null) {
+                        "checking stop at"
+                    } else {
+                        "crew out at"
+                    },
                     BlockPos.containing(found.landing),
                     horizontalDistance(found.landing, home).toInt(), search.expanded, entity.tickCount - driveSearchStarted + 1,
-                    search.stoppedBy
+                    search.stoppedBy,
                 )
             } else if (driveRoute.isEmpty()) {
                 return null
@@ -1025,13 +1142,26 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                     lastRouteSearchTick = entity.tickCount
                     nextRouteTick = entity.tickCount + ROUTE_RECOMPUTE_TICKS
                     VehicleTransportClaims.clearLanding(vehicle.uuid)
-                    DebugFlags.log(LogGroup.VEHICLE, "{} continuing {} past map stop {} on hull route to {}",
-                        entity.uuid, vehicle.uuid, stop, end)
+                    DebugFlags.log(
+                        LogGroup.VEHICLE,
+                        "{} continuing {} past map stop {} on hull route to {}",
+                        entity.uuid,
+                        vehicle.uuid,
+                        stop,
+                        end,
+                    )
                     return groundRouteProgress.waypoint(vehicle.position(), WAYPOINT_RADIUS)
                 }
                 VehicleTransportClaims.setLanding(vehicle.uuid, vehicle.position())
-                DebugFlags.log(LogGroup.VEHICLE, "{} confirmed stop for {} at {}: hull route end={} canReach={}",
-                    entity.uuid, vehicle.uuid, vehicle.position(), end, path?.canReach())
+                DebugFlags.log(
+                    LogGroup.VEHICLE,
+                    "{} confirmed stop for {} at {}: hull route end={} canReach={}",
+                    entity.uuid,
+                    vehicle.uuid,
+                    vehicle.position(),
+                    end,
+                    path?.canReach(),
+                )
                 return null
             }
         }
@@ -1061,15 +1191,15 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             if (checked != null) {
                 val path = checked.path
                 val proposed = path?.let { (0 until it.nodeCount).map { i -> it.getNodePos(i) } } ?: emptyList()
-                val accepted = groundRouteProgress.replaceIfAdvancing(
-                    proposed.map { VehicleRoutes.centreOf(it, vehicle) }, vehicle.position(), GROUND_EXIT_RADIUS)
+                val accepted = groundRouteProgress.replaceIfAdvancing(proposed.map { VehicleRoutes.centreOf(it, vehicle) }, vehicle.position(), GROUND_EXIT_RADIUS)
                 lastRouteSearchTick = entity.tickCount
                 nextRouteTick = entity.tickCount + if (accepted) ROUTE_RECOMPUTE_TICKS else ROUTE_RETRY_TICKS
                 if (accepted) route = proposed
-                DebugFlags.log(LogGroup.VEHICLE,
+                DebugFlags.log(
+                    LogGroup.VEHICLE,
                     "{} route refresh for {}: {} nodes, canReach={}, accepted={}, kept={} nodes, start={}, end={}, dist-to-home={}",
                     entity.uuid, vehicle.uuid, proposed.size, path?.canReach(), accepted, route.size,
-                    proposed.firstOrNull(), proposed.lastOrNull(), vehicle.position().distanceTo(home)
+                    proposed.firstOrNull(), proposed.lastOrNull(), vehicle.position().distanceTo(home),
                 )
             }
         }
@@ -1142,13 +1272,15 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         }?.takeIf { Ports.vehicles.seatHasAmmo(vehicle, entity) }
         val aimed = boatGunTarget
         if (target?.uuid != aimed) {
-            DebugFlags.log(LogGroup.BOAT,
-                "{} at the boat's gun: {}", entity.uuid.toString().take(8),
+            DebugFlags.log(
+                LogGroup.BOAT,
+                "{} at the boat's gun: {}",
+                entity.uuid.toString().take(8),
                 when {
                     target != null -> "firing at ${target.uuid.toString().take(8)} ${target.type.descriptionId}"
                     !Ports.vehicles.seatHasAmmo(vehicle, entity) -> "out of ammunition"
                     else -> "nothing in sight"
-                }
+                },
             )
             boatGunTarget = target?.uuid
         }
@@ -1195,10 +1327,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             // next test tells us the actual speed/health at the exact moment of dismount instead of
             // guessing again: was it the slow-enough check firing on a real stop, or the timeout
             // firing early while still going, and was the NPC already hurt going into it.
-            DebugFlags.log(LogGroup.VEHICLE,
+            DebugFlags.log(
+                LogGroup.VEHICLE,
                 "{} dismounting: speed={} slowEnough={} waitedTooLong={} health={}/{} pos={}",
                 entity.uuid, kotlin.math.sqrt(speedSqr), slowEnough, waitedTooLong,
-                entity.health, entity.maxHealth, vehicle.position()
+                entity.health, entity.maxHealth, vehicle.position(),
             )
             // A gun left with a target keeps firing at it with nobody aboard.
             if (Ports.vehicles.hasWeaponAt(vehicle, entity)) Ports.vehicles.aimAt(vehicle, entity, null)
@@ -1206,11 +1339,14 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             entity.stopRiding()
             releaseVehicleTeamIfLastAboard(vehicle, entity)
             arrivalWaitStartTick = -1
-            if (isBoat(vehicle)) boatCooldownUntilTick = entity.tickCount + BOAT_COOLDOWN_TICKS
-            // Out where the drive ends — at the goal, or where no continuation was found: the rest of
+            if (isBoat(vehicle)) {
+                boatCooldownUntilTick = entity.tickCount + BOAT_COOLDOWN_TICKS
+            } // Out where the drive ends — at the goal, or where no continuation was found: the rest of
             // this order is on foot. Still further off than the distance worth a ride, the crew
             // climbed straight back in, was refused, and got out again.
-            else entity.currentSquad()?.let { noVehicleForStamp = it.orderStamp }
+            else {
+                entity.currentSquad()?.let { noVehicleForStamp = it.orderStamp }
+            }
         }
     }
 
@@ -1258,8 +1394,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         return engageVehicleThreat(entity, vehicle, attacker)
     }
 
-    private fun isPermanentCrew(entity: NpcEntity, vehicle: Entity): Boolean =
-        entity.assignedVehicleId == vehicle.uuid
+    private fun isPermanentCrew(entity: NpcEntity, vehicle: Entity): Boolean = entity.assignedVehicleId == vehicle.uuid
 
     private fun engageVehicleThreat(entity: NpcEntity, vehicle: Entity): Boolean {
         val threat = entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) } ?: return false
@@ -1280,9 +1415,12 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         phase = Phase.COMBAT_DISMOUNT
         gunnerSawThreatTick = entity.tickCount
-        DebugFlags.log(LogGroup.VEHICLE,
+        DebugFlags.log(
+            LogGroup.VEHICLE,
             "{} stopping {} for combat against {}",
-            entity.uuid, vehicle.uuid, threat.uuid
+            entity.uuid,
+            vehicle.uuid,
+            threat.uuid,
         )
         return true
     }
@@ -1311,10 +1449,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun shouldPrioritizeMortar(entity: NpcEntity, order: SquadOrder): Boolean {
         if (order != SquadOrder.ATTACK || entity.homeCenter() == null) return false
-        val claimable: (Entity) -> Boolean = when (entity.npcClass) {
-            NpcClass.MORTAR_OPERATOR -> { mortar -> !MortarClaims.isOperatorClaimedByOther(mortar.uuid, entity.uuid) }
-            NpcClass.MORTAR_LOADER -> { mortar -> !MortarClaims.isLoaderClaimedByOther(mortar.uuid, entity.uuid) }
-            else -> return false
+        if (entity.npcClass != NpcClass.MORTAR) return false
+        val claimable: (Entity) -> Boolean = { mortar ->
+            !SquadTeams.isHostile(entity, mortar) && MortarClaims.hasPlace(mortar.uuid, entity.uuid)
         }
         val level = entity.level() as? ServerLevel ?: return false
         // Reached from eligible() every tick for mortar crew under ATTACK — cache the box query.
@@ -1322,7 +1459,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         mortarPriorityCheckTick = entity.tickCount
         mortarPriorityCached = Ports.mortars.within(
             level,
-            AABB.ofSize(entity.position(), MORTAR_SEARCH_RADIUS * 2, MORTAR_SEARCH_RADIUS * 2, MORTAR_SEARCH_RADIUS * 2)
+            AABB.ofSize(entity.position(), MORTAR_SEARCH_RADIUS * 2, MORTAR_SEARCH_RADIUS * 2, MORTAR_SEARCH_RADIUS * 2),
         ).any {
             Ports.vehicles.isOperational(it) && entity.distanceToSqr(it) <= MORTAR_SEARCH_RADIUS * MORTAR_SEARCH_RADIUS && claimable(it)
         }
@@ -1375,8 +1512,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         return Vec3(view.x, 0.0, view.z).normalize()
     }
 
-    private fun alliedNpcBlocksTravel(entity: NpcEntity, vehicle: Entity, direction: Vec3): Boolean =
-        allyInTheWay(entity, vehicle, direction) != null
+    private fun alliedNpcBlocksTravel(entity: NpcEntity, vehicle: Entity, direction: Vec3): Boolean = allyInTheWay(entity, vehicle, direction) != null
 
     /** The first man of the driver's side the hull would run into going [direction], looking
      *  [reach] blocks ahead — by default as far as the vehicle can brake from its current speed. */
@@ -1397,13 +1533,14 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         NpcRegistry.forEachIn(level, corridor, exclude = entity) { ally ->
             if (ally.vehicle !== vehicle && ally.isAlive && SquadTeams.factionOf(ally) == faction &&
                 (1..samples).any { step -> vehicleOverlaps(vehicle, ally, offset.scale(step.toDouble() / samples)) }
-            ) return ally
+            ) {
+                return ally
+            }
         }
         return null
     }
 
-    private fun vehicleOverlaps(vehicle: Entity, entity: NpcEntity, offset: Vec3): Boolean =
-        Ports.vehicles.wouldHit(vehicle, entity, offset)
+    private fun vehicleOverlaps(vehicle: Entity, entity: NpcEntity, offset: Vec3): Boolean = Ports.vehicles.wouldHit(vehicle, entity, offset)
 
     /** Throttle forward and steer at [target] — see the Vehicles adapter for how. */
     private fun steerToward(vehicle: Entity, target: Vec3, throttle: Boolean = true) {
@@ -1418,8 +1555,14 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             if (dueForFullLog) lastFullLogTick = vehicle.tickCount
             lastLoggedRight = steering.right
             lastLoggedLeft = steering.left
-            DebugFlags.log(LogGroup.VEHICLE,
-                "steer {} toward {}: {} -> right={} left={}", vehicle.uuid, target, steering.detail, steering.right, steering.left
+            DebugFlags.log(
+                LogGroup.VEHICLE,
+                "steer {} toward {}: {} -> right={} left={}",
+                vehicle.uuid,
+                target,
+                steering.detail,
+                steering.right,
+                steering.left,
             )
         }
     }
@@ -1451,51 +1594,70 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val SEARCH_RADIUS = 60.0
         private const val BOARD_DISTANCE = 3.0
         private const val ARRIVAL_RADIUS = 20.0
+
         /** A boat this near its landing point is up against the bank. */
         private const val BOAT_ARRIVAL_RADIUS = 3.0
+
         /** A boat stuck this near its landing point has run aground by the bank. */
         private const val BOAT_AGROUND_RADIUS = 8.0
+
         /** A point on a boat's way over the water counts as passed this near. */
         private const val BOAT_WAYPOINT_RADIUS = 5.0
+
         /** Within this of its landing a boat comes in slowly, at no more than [BOAT_APPROACH_SPEED]. */
         private const val BOAT_SLOW_RADIUS = 14.0
         private const val BOAT_APPROACH_SPEED = 0.25
+
         /** A boat at rest this near its landing, with ground beside it, has arrived. */
         private const val BOAT_BANK_RADIUS = 12.0
         private const val BOAT_RESTING_SPEED = 0.05
+
         /** Blocks past a boat's side a man steps out onto the bank — as NpcEntity puts him down. */
         private const val LANDING_REACH = 4
         private const val BANK_CHECK_TICKS = 10L
+
         /** A boat's reverse-and-turn — slower to get going astern than a wheeled vehicle. */
         private const val BOAT_RECOVERY_TICKS = 60
+
         /** Steering aims this far along the way ahead of the boat, and this much further per block a tick of speed. */
         private const val BOAT_CARROT_MIN = 6.0
         private const val BOAT_CARROT_PER_SPEED = 14.0
+
         /** Bends this far ahead, and this much further per block a tick of speed, slow the boat down. */
         private const val BOAT_BRAKE_MIN = 10.0
         private const val BOAT_BRAKE_PER_SPEED = 35.0
         private const val BOAT_FULL_SPEED = 2.0
+
         /** Round a hairpin at no more than this. */
         private const val BOAT_SLOW_TURN_SPEED = 0.28
+
         /** Legs of the way looked along for where the boat is on it. */
         private const val BOAT_LEGS_LOOKED_AT = 4
+
         /** A boat that hasn't got this much nearer the end of its way in [BOAT_NO_PROGRESS_TICKS]
          *  is given up on and everyone gets off. */
         private const val BOAT_PROGRESS_STEP = 4.0
         private const val BOAT_NO_PROGRESS_TICKS = 1200
+
         /** A vehicle this near where its way ends lets its crew out there. */
         private const val GROUND_EXIT_RADIUS = 6.0
+
         /** Blocks short of the end of a vehicle's way into unseen ground at which the next stretch is looked for. */
         private const val DRIVE_LOOKAHEAD = 48.0
+
         /** Blocks short of the end of a way that goes on at which the next stretch is looked for. */
         private const val BOAT_LOOKAHEAD = 40.0
         private const val BOAT_LOOKAHEAD_RETRY_TICKS = 40
+
         /** Stuck again within this of the last time, a boat's way is searched afresh. */
         private const val BOAT_RESTUCK_TICKS = 300
+
         /** Riding a boat with nobody at the wheel this long, at rest, before getting off. */
         private const val DRIVERLESS_TICKS = 40
+
         /** A boat out of the water this soon after boarding is still being pushed off, not landed. */
         private const val BOAT_LAUNCH_GRACE_TICKS = 60
+
         /** After landing, or finding no boat, before the water ahead is looked at again. */
         private const val BOAT_COOLDOWN_TICKS = 600
         private const val ARRIVAL_STOP_SPEED_SQR = 0.0004 // ~0.02 blocks/tick — "stopped" next to a multi-block vehicle
@@ -1503,6 +1665,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val WAIT_TIMEOUT_TICKS = 400 // ~20s
         private const val SEEK_INTERVAL_TICKS = 20
         private const val SEEK_GIVEUP_TICKS = 200 // ~10s of scanning before falling back to walking
+
         /** Looser than the reserve demanded before boarding: a trip already under way is worth
          *  finishing on the last of the battery rather than abandoning halfway. */
         private const val STRANDED_RESERVE_TICKS = 40.0
@@ -1525,11 +1688,13 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val DETOUR_LOOKAHEAD = 8.0
         private const val STUCK_CHECK_INTERVAL_TICKS = 40 // 2s between progress checks
         private const val STUCK_DISTANCE_SQR = 1.0 // moved less than 1 block in that window
+
         /** Turned more than this in that window — a tank turning on the spot — isn't stuck. */
         private const val STUCK_TURN_DEGREES = 20f
         private const val RECOVERY_TICKS = 30 // ~1.5s reverse-and-turn before retrying
         private const val ROUTE_RECOMPUTE_TICKS = 100 // 5s between route refreshes
         private const val ROUTE_RETRY_TICKS = 20 // failed refreshes retry once a second
+
         // Deliberately much larger than SquadOrderBehaviour's walking-mob waypoint radius (3 blocks) —
         // a walking mob can turn on the spot, a vehicle cannot. A waypoint inside the vehicle's own
         // minimum turning radius is physically unpointable at: the vehicle just orbits that spot,

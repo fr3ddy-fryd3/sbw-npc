@@ -30,14 +30,22 @@ class DetectionSightlineTest {
         override fun getMinBuildHeight() = -64
     }
 
-    private fun terrain(block: Block, count: Int): Terrain =
-        Terrain((1..count).associate { BlockPos(it, 64, 0) to block.defaultBlockState() })
+    private fun terrain(block: Block, count: Int): Terrain = Terrain((1..count).associate { BlockPos(it, 64, 0) to block.defaultBlockState() })
 
-    private fun seen(world: Terrain, start: Vec3 = from, end: Vec3 = to): Boolean =
-        DetectionSightline.visible(world, start, end, collision)
+    private fun seen(world: Terrain, start: Vec3 = from, end: Vec3 = to): Boolean = DetectionSightline.visible(world, start, end, collision)
 
-    private fun colliderClear(world: Terrain): Boolean =
-        world.clip(ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, collision)).type == HitResult.Type.MISS
+    private fun colliderClear(world: Terrain): Boolean = world.clip(ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, collision)).type == HitResult.Type.MISS
+
+    @Test
+    fun `visibility reports the first obstruction rather than mistaking any grass for concealment`() {
+        val grass = (2..4).associate { BlockPos(it, 64, 0) to Blocks.TALL_GRASS.defaultBlockState() }
+        val behindWall = Terrain(grass + (BlockPos(1, 64, 0) to Blocks.STONE.defaultBlockState()))
+        val beforeWall = Terrain(grass + (BlockPos(7, 64, 0) to Blocks.STONE.defaultBlockState()))
+        assertEquals(DetectionSightline.Visibility.OBSTACLE, DetectionSightline.trace(behindWall, from, to, collision))
+        assertEquals(DetectionSightline.Visibility.FOLIAGE, DetectionSightline.trace(beforeWall, from, to, collision))
+        assertFalse(colliderClear(beforeWall), "Grass must not make the solid wall behind it transparent to bullets")
+        assertEquals(DetectionSightline.Visibility.VISIBLE, DetectionSightline.trace(terrain(Blocks.GLASS, 1), from, to, collision))
+    }
 
     @Test
     fun `two foliage blocks can be seen through but the third conceals the target`() {
@@ -83,10 +91,12 @@ class DetectionSightlineTest {
 
     @Test
     fun `a wall behind a window still blocks detection`() {
-        val world = Terrain(mapOf(
-            BlockPos(1, 64, 0) to Blocks.GLASS.defaultBlockState(),
-            BlockPos(4, 64, 0) to Blocks.STONE.defaultBlockState()
-        ))
+        val world = Terrain(
+            mapOf(
+                BlockPos(1, 64, 0) to Blocks.GLASS.defaultBlockState(),
+                BlockPos(4, 64, 0) to Blocks.STONE.defaultBlockState(),
+            ),
+        )
         assertFalse(seen(world))
         assertFalse(colliderClear(world))
     }

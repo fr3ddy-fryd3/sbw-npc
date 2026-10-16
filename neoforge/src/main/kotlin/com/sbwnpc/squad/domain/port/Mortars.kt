@@ -11,6 +11,8 @@ import net.minecraft.world.phys.AABB
 interface Mortars {
     fun isMortar(entity: Entity?): Boolean
 
+    fun isShell(entity: Entity?): Boolean = false
+
     fun within(level: Level, area: AABB, filter: (Entity) -> Boolean = { true }): List<Entity>
 
     /** A new, unplaced mortar facing [yaw], already under AI control (see [takeControl]). */
@@ -31,5 +33,8 @@ interface Mortars {
     /** Lays the tube on [target], shells landing within [scatter] blocks of it. */
     fun lay(mortar: Entity, target: BlockPos, scatter: Int, gunner: Entity)
 
-    fun fire(mortar: Entity, gunner: LivingEntity)
+    /** True only when SBW accepted the firing cycle; the shell leaves twenty ticks later. */
+    fun fire(mortar: Entity, gunner: LivingEntity): Boolean
+
+    fun isFiring(mortar: Entity): Boolean
 }

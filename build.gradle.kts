@@ -26,7 +26,7 @@ val stageNeoForgeJar = tasks.register<Sync>("stageNeoForgeJar") {
 tasks.named("assemble") { dependsOn(stageNeoForgeJar) }
 tasks.named("check") { dependsOn(":common:check", ":neoforge:check") }
 
-listOf("test", "testClasses", "verifySbwInput", "runClient", "runServer", "runData").forEach { name ->
+listOf("test", "testClasses", "verifySbwInput", "runClient", "runServer", "runData", "runGameTestServer", "formatKotlin", "checkKotlinStyle").forEach { name ->
     tasks.register(name) { dependsOn(":neoforge:$name") }
 }
 listOf("buildDevelop", "buildProduction").forEach { name ->

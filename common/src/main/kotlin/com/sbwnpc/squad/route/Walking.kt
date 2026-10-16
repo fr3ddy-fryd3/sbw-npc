@@ -28,8 +28,7 @@ class Walking(private val ground: Ground) : CellPlanner.Medium {
         return rise <= MAX_CLIMB && rise >= -MAX_DROP
     }
 
-    override fun extraCost(x: Int, z: Int): Double =
-        if (ground.kind(x, z) == GroundMap.Kind.WATER) SWIM_COST else 0.0
+    override fun extraCost(x: Int, z: Int): Double = if (ground.kind(x, z) == GroundMap.Kind.WATER) SWIM_COST else 0.0
 
     override fun exitAt(x: Int, z: Int, goal: Vec3): Vec3 = Vec3(x + 0.5, pointY(x, z), z + 0.5)
 
@@ -43,8 +42,10 @@ class Walking(private val ground: Ground) : CellPlanner.Medium {
     private companion object {
         const val MAX_CLIMB = 1
         const val MAX_DROP = 3
+
         /** Extra blocks of walking a block of swimming costs. */
         const val SWIM_COST = 2.0
+
         /** This near the goal is at it. */
         const val AT_GOAL = 4.0
         const val SHORT_OF_GOAL = 2.0

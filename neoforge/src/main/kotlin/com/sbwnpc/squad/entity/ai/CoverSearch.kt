@@ -29,9 +29,17 @@ object CoverSearch {
      *  actually shipped before and, per user feedback in-game, mostly just resulted in NPCs backing
      *  straight away from the threat (`SeekCoverBehaviour`'s fallback retreat) instead of finding real cover — because
      *  purely random points rarely land next to a wall by chance within a small sample. */
-    fun find(entity: NpcEntity, level: ServerLevel, threat: Vec3): BlockPos? {
+    fun find(entity: NpcEntity, level: ServerLevel, threat: Vec3, excluded: Set<BlockPos> = emptySet(), permitted: (Vec3) -> Boolean = { true }): BlockPos? {
         val origin = entity.blockPosition()
         val candidates = ArrayList<BlockPos>(64)
+
+        // A wall one or two blocks away must be tried before a long run across incoming fire.
+        for (x in -4..4) {
+            for (z in -4..4) {
+                val ground = Terrain.groundAt(level, origin.offset(x, 0, z))
+                if (hasAdjacentSolidWall(level, ground)) candidates += ground
+            }
+        }
 
         var dx = -MAX_RADIUS.toInt()
         while (dx <= MAX_RADIUS.toInt()) {
@@ -58,17 +66,39 @@ object CoverSearch {
         // above only ever proposes candidates next to a solid *block*, so without this the mob
         // would never recognise the one piece of hard cover actually standing next to it.
         val hulls = Sightline.vehicleHulls(
-            level, entity.boundingBox.inflate(MAX_RADIUS + 4.0), entity, null
+            level,
+            entity.boundingBox.inflate(MAX_RADIUS + 4.0),
+            entity,
+            null,
         )
         // Nearest cover that nobody else is already behind — the nearest cover, full stop, put a
         // whole suppressed squad behind the same wall.
         val taken = FiringSpots.nearbyWithBodies(level, entity, MAX_RADIUS)
         return candidates.asSequence()
+            .mapNotNull {
+                Terrain.feetAt(level, it.bottomCenter) { feet ->
+                    level.noCollision(entity, entity.getDimensions(entity.pose).makeBoundingBox(feet))
+                }?.let { feet -> BlockPos.containing(feet.x, kotlin.math.ceil(feet.y), feet.z) }
+            }
             .distinct()
+            .filterNot { it in excluded }
+            .filter { permitted(it.bottomCenter) }
             .filterNot { GrenadeHazard.threatens(level, it) }
             .filterNot { FiringSpots.crowded(it.bottomCenter, taken) }
             .sortedBy { it.distSqr(origin) }
             .firstOrNull { isHiddenFrom(level, entity, threats, it, hulls) }
+    }
+
+    /** Revalidate a queued cover proposal when native path admission becomes available. */
+    fun usable(entity: NpcEntity, level: ServerLevel, threat: Vec3, candidate: BlockPos): Boolean {
+        val point = candidate.bottomCenter
+        if (!level.noCollision(entity, entity.getDimensions(entity.pose).makeBoundingBox(point)) ||
+            GrenadeHazard.threatens(level, candidate) || FiringSpots.crowded(point, FiringSpots.nearbyWithBodies(level, entity, MAX_RADIUS))
+        ) {
+            return false
+        }
+        val hulls = Sightline.vehicleHulls(level, entity.boundingBox.inflate(MAX_RADIUS + 4.0), entity, null)
+        return isHiddenFrom(level, entity, nearbyThreats(entity, level, threat), candidate, hulls)
     }
 
     /** Every currently-known hostile near [entity] (within [THREAT_SCAN_RADIUS]), as eye-height
@@ -81,7 +111,7 @@ object CoverSearch {
      *  one threat it's certain is real. Approximated at the same "+1.5 eye height" heuristic the old
      *  single-threat check always used (threatPos is a stored position, not a live entity to read an
      *  exact eyePosition from). Same hostile-detection idiom as
-     *  `MortarOperatorBehaviour.scanForEnemy` (NpcEntity/Player, [SquadTeams.isHostile], alive). */
+     *  `MortarCrewBehaviour.scanForEnemy` (NpcEntity/Player, [SquadTeams.isHostile], alive). */
     private fun nearbyThreats(entity: NpcEntity, level: ServerLevel, primary: Vec3): List<Vec3> {
         val threats = Hostiles.within(level, entity, THREAT_SCAN_RADIUS).mapTo(ArrayList()) { it.eyePosition }
         threats += primary.add(0.0, 1.5, 0.0)
@@ -112,8 +142,7 @@ object CoverSearch {
         }
     }
 
-    private fun hasCollision(level: ServerLevel, pos: BlockPos): Boolean =
-        !level.getBlockState(pos).getCollisionShape(level, pos).isEmpty
+    private fun hasCollision(level: ServerLevel, pos: BlockPos): Boolean = !level.getBlockState(pos).getCollisionShape(level, pos).isEmpty
 
     /** [candidate] only counts as real cover if it's blocked from EVERY entry in [threats] — one
      *  attacker with a clear line to it is enough to make it not-cover, regardless of how many
@@ -123,7 +152,7 @@ object CoverSearch {
         entity: NpcEntity,
         threats: List<Vec3>,
         candidate: BlockPos,
-        hulls: List<AABB>
+        hulls: List<AABB>,
     ): Boolean {
         val to = Vec3(candidate.x + 0.5, candidate.y + 1.5, candidate.z + 0.5)
         // A vehicle has collision, so walking at one rides the mob up onto it. Somewhere inside a
@@ -134,22 +163,24 @@ object CoverSearch {
     }
 
     private val NEIGHBOR_OFFSETS = listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1)
-        private const val SAMPLE_COUNT = 20
-        private const val MIN_RADIUS = 5.0
-        private const val MAX_RADIUS = 14.0        // reverted back from 28 per user request
-        private const val WALL_SCAN_STEP = 4       // 8x8 candidate grid across the 28-block search diameter
-        // How far out to look for OTHER hostiles a candidate cover point must also stay hidden from
-        // — see [find]. Roughly the rifleman/machine-gunner engagement range
-        // (BASE_SHOOT_DISTANCE 24 * up to 1.5-2x class multiplier, GunAttackBehaviour) rather than
-        // the sniper's full 3x/72 — a pragmatic bound, not "hidden from literally everything that
-        // could ever see this spot", to keep the per-candidate raycast cost from scaling unbounded.
-        private const val THREAT_SCAN_RADIUS = 40.0
-        // How far out (in block-widths, along each NEIGHBOR_OFFSETS direction) to look for a
-        // depression's actual rim — see hasAdjacentSolidWall's doc comment. 1..3 only ever found
-        // depressions narrower than ~6 blocks total (rim within 3 of any interior point); a real
-        // depression/valley is often wider than that, so a candidate deep inside one never saw its
-        // own rim (reported in-game as depression-cover only ever working "right up close"). Widened
-        // to 1..7 — this only feeds isHiddenFrom() more CANDIDATES to try, it doesn't grant cover on
-        // its own, so widening it further has no downside beyond a bit more scanning work.
-        private val DEPRESSION_CHECK_DISTANCES = 1..7
+    private const val SAMPLE_COUNT = 20
+    private const val MIN_RADIUS = 5.0
+    private const val MAX_RADIUS = 14.0 // reverted back from 28 per user request
+    private const val WALL_SCAN_STEP = 4 // 8x8 candidate grid across the 28-block search diameter
+
+    // How far out to look for OTHER hostiles a candidate cover point must also stay hidden from
+    // — see [find]. Roughly the rifleman/machine-gunner engagement range
+    // (BASE_SHOOT_DISTANCE 24 * up to 1.5-2x class multiplier, GunAttackBehaviour) rather than
+    // the sniper's full 3x/72 — a pragmatic bound, not "hidden from literally everything that
+    // could ever see this spot", to keep the per-candidate raycast cost from scaling unbounded.
+    private const val THREAT_SCAN_RADIUS = 40.0
+
+    // How far out (in block-widths, along each NEIGHBOR_OFFSETS direction) to look for a
+    // depression's actual rim — see hasAdjacentSolidWall's doc comment. 1..3 only ever found
+    // depressions narrower than ~6 blocks total (rim within 3 of any interior point); a real
+    // depression/valley is often wider than that, so a candidate deep inside one never saw its
+    // own rim (reported in-game as depression-cover only ever working "right up close"). Widened
+    // to 1..7 — this only feeds isHiddenFrom() more CANDIDATES to try, it doesn't grant cover on
+    // its own, so widening it further has no downside beyond a bit more scanning work.
+    private val DEPRESSION_CHECK_DISTANCES = 1..7
 }

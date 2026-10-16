@@ -2,23 +2,25 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
-import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.combat.FiringPostArrival
 import com.sbwnpc.squad.combat.FiringSpots
+import com.sbwnpc.squad.combat.GrenadeHazard
+import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.combat.TickBudget
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
+import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.minecraft.world.entity.ai.util.DefaultRandomPos
+import net.minecraft.world.level.pathfinder.Path
+import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 
 /**
- * Nothing left to shoot with: get away from the enemy.
- *
- * An empty gun takes the NPC out of [GunAttackBehaviour], but its target stays, and a target keeps
- * it out of its squad orders too — so it stood where it ran dry, facing the enemy, doing nothing
- * until it was shot. Now it runs, a stretch at a time, away from whoever it was fighting, until it
- * has lost sight of them and the target lapses — or to the nearest friendly Supply, even far away.
+ * Empty NPCs go to a known friendly Supply, even far away. Without Supply they seek nearby
+ * cover or make a bounded withdrawal; a relayed target cannot make them flee indefinitely.
  */
 class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
 
@@ -27,6 +29,12 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private var nextStepTick = 0
+    private val retreat = AmmoRetreat()
+    private val failedCover = HashSet<BlockPos>()
+    private var destination: Vec3? = null
+    private var hiding = false
+    private var ownedPath: Path? = null
+    private var lastMode: String? = null
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
@@ -47,25 +55,116 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.resupplying = entity.nearestSupply() != null
         FiringSpots.release(entity.uuid)
         DebugFlags.log(LogGroup.AMMO, "{} ({}) out of ammo, running from {}", entity.uuid, entity.npcClass, entity.target?.name?.string)
+        beginEpisode(entity)
     }
 
     override fun tick(entity: NpcEntity) {
         val target = entity.target ?: return
-        if (entity.tickCount < nextStepTick && !entity.navigation.isDone) return
-        nextStepTick = entity.tickCount + REPATH_TICKS
+        beginEpisode(entity)
+        if (entity.movementLockedByCover() || entity.coverPeekPoint != null || entity.evadingGrenade() || entity.combatLockedByMedic()) return
         // A fully empty NPC can return to a known Supply even outside the ordinary search radius.
+        entity.retreatPoint()?.let { rally ->
+            entity.resupplying = false
+            val squad = entity.currentSquad()!!
+            val point = com.sbwnpc.squad.combat.Withdrawal.positionFor(entity, squad, rally)
+            trace(entity, "ordered_retreat", point ?: entity.position())
+            if (point == null) {
+                entity.navigation.stop()
+            } else if (entity.tickCount >= nextStepTick || entity.navigation.isDone) {
+                nextStepTick = entity.tickCount + REPATH_TICKS
+                entity.navigateTo(point, SPEED)
+                ownedPath = entity.navigation.path
+            }
+            return
+        }
         entity.nearestSupply()?.let {
             entity.resupplying = true
+            trace(entity, "supply", it)
+            if (entity.tickCount < nextStepTick && !entity.navigation.isDone) return
+            nextStepTick = entity.tickCount + REPATH_TICKS
             entity.navigateTo(it, SPEED)
+            ownedPath = entity.navigation.path
             return
         }
         entity.resupplying = false
-        val away = DefaultRandomPos.getPosAway(entity, STEP, VERTICAL, target.position()) ?: return
-        entity.navigation.moveTo(away.x, away.y, away.z, SPEED)
+        if (retreat.exhausted(entity.position(), entity.level().gameTime)) {
+            hold(entity, "limit_reached")
+            return
+        }
+        destination?.let { post ->
+            val arrived = if (hiding) FiringPostArrival.reached(entity.position(), post) else entity.position().distanceTo(post) <= 2.0
+            if (arrived && hiding) {
+                hold(entity, "cover_reached")
+                return
+            }
+            if (!arrived && hiding && FiringPostArrival.steer(entity, post, SPEED)) return
+            if (!arrived && !entity.navigation.isDone) return
+            if (!arrived && hiding) failedCover += BlockPos.containing(post)
+            destination = null
+        }
+        if (entity.tickCount < nextStepTick) return
+        nextStepTick = entity.tickCount + REPATH_TICKS
+        val level = entity.level() as ServerLevel
+        val search = TickBudget.attempt(entity, TickBudget.Work.COVER) { CoverSearch.find(entity, level, target.position(), failedCover, retreat::permits) }
+        if (search == null) {
+            nextStepTick = entity.tickCount + 2
+            return
+        }
+        val cover = search.value
+        if (cover != null && move(entity, cover.bottomCenter, hidden = true)) return
+        if (cover != null) failedCover += cover
+        val away = (1..6).mapNotNull { DefaultRandomPos.getPosAway(entity, STEP, VERTICAL, target.position()) }
+            .filter { retreat.permits(it) && !GrenadeHazard.threatens(level, it) }
+            .filter { it.subtract(target.position()).horizontalDistance() > entity.position().subtract(target.position()).horizontalDistance() }
+            .maxByOrNull { it.subtract(target.position()).horizontalDistance() }
+        if (away == null || !move(entity, away, hidden = false)) hold(entity, "no_safe_step")
+    }
+
+    private fun beginEpisode(entity: NpcEntity) {
+        val squad = entity.currentSquad()
+        if (!retreat.begin(entity.position(), entity.level().gameTime, squad?.id, squad?.orderStamp)) return
+        stopOwnedPath(entity)
+        destination = null
+        failedCover.clear()
+        lastMode = null
+        nextStepTick = 0
+        trace(entity, "started", entity.position())
+    }
+
+    private fun move(entity: NpcEntity, point: Vec3, hidden: Boolean): Boolean {
+        if (!entity.navigation.moveTo(point.x, point.y, point.z, SPEED)) return false
+        ownedPath = entity.navigation.path
+        destination = point
+        hiding = hidden
+        trace(entity, if (hidden) "seek_cover" else "withdraw", point)
+        return true
+    }
+
+    private fun hold(entity: NpcEntity, reason: String) {
+        retreat.hold()
+        stopOwnedPath(entity)
+        trace(entity, reason, entity.position())
+    }
+
+    private fun stopOwnedPath(entity: NpcEntity) {
+        if (ownedPath != null && entity.navigation.path === ownedPath) entity.navigation.stop()
+        ownedPath = null
+    }
+
+    private fun trace(entity: NpcEntity, mode: String, point: Vec3) {
+        if (lastMode == mode) return
+        lastMode = mode
+        DebugFlags.log(
+            LogGroup.ORDER, "[tactics] {} squad={} tick={} event=ammo_retreat mode={} origin={} position={} destination={} target={}",
+            entity.uuid, entity.currentSquad()?.id, entity.level().gameTime, mode, retreat.origin, entity.position(), point, entity.target?.uuid,
+        )
     }
 
     override fun stop(entity: NpcEntity) {
         entity.resupplying = false
+        stopOwnedPath(entity)
+        // Target loss is temporary when contacts are relayed by the squad. Only ammo restores the allowance.
+        if (Ports.guns.inHand(entity)?.hasAmmo() != false) retreat.reset()
     }
 
     private companion object {

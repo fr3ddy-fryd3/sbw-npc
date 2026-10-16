@@ -11,11 +11,11 @@ import com.sbwnpc.squad.entity.ai.MortarClaims
 import com.sbwnpc.squad.entity.ai.VehicleTransportClaims
 import com.sbwnpc.squad.squad.RouteRecording
 import com.sbwnpc.squad.squad.SquadManager
-import com.sbwnpc.squad.vehicle.PilotlessHelicopters
 import com.sbwnpc.squad.squad.SquadSelection
 import com.sbwnpc.squad.team.SquadTeams
-import net.neoforged.bus.api.SubscribeEvent
+import com.sbwnpc.squad.vehicle.PilotlessHelicopters
 import net.neoforged.bus.api.EventPriority
+import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.neoforge.event.entity.player.PlayerEvent
 import net.neoforged.neoforge.event.server.ServerStoppedEvent
@@ -26,7 +26,20 @@ object ServerLifecycle {
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     fun onEntityJoin(event: net.neoforged.neoforge.event.entity.EntityJoinLevelEvent) {
         val level = event.level as? net.minecraft.server.level.ServerLevel ?: return
-        if (SquadManager.get(level).discardDeletedEntity(event.entity)) event.isCanceled = true
+        if (SquadManager.get(level).discardDeletedEntity(event.entity)) {
+            event.isCanceled = true
+        } else {
+            (event.entity as? com.sbwnpc.squad.entity.NpcEntity)?.let {
+                val manager = SquadManager.get(level)
+                manager.reconcileMembership(it)
+                manager.deliverExperience(it)
+            }
+        }
+    }
+
+    @SubscribeEvent
+    fun onTacticalTargetDeath(event: net.neoforged.neoforge.event.entity.living.LivingDeathEvent) {
+        if (event.entity.level() is net.minecraft.server.level.ServerLevel) com.sbwnpc.squad.ai.integration.NativeTactics.targetDeath(event)
     }
 
     @SubscribeEvent
@@ -39,6 +52,7 @@ object ServerLifecycle {
         com.sbwnpc.squad.team.Diplomacy.detach()
         com.sbwnpc.squad.map.MapFeed.clearAll()
         com.sbwnpc.squad.combat.Withdrawal.clearAll()
+        com.sbwnpc.squad.squad.FireSupport.clearAll()
         com.sbwnpc.squad.entity.ai.GrenadeUseBehaviour.clearAll()
         com.sbwnpc.squad.entity.ai.SquadMarch.clearAll()
         com.sbwnpc.squad.entity.ai.BoatTrips.clearAll()
@@ -47,6 +61,9 @@ object ServerLifecycle {
         com.sbwnpc.squad.route.PlanBudget.clearAll()
         com.sbwnpc.squad.squad.SquadChunkLoader.clearAll()
         TeamAwareness.clearAll()
+        com.sbwnpc.squad.combat.SquadAreas.clearAll()
+        com.sbwnpc.squad.combat.tactics.operation.AttackOperations.clearAll()
+        com.sbwnpc.squad.ai.integration.NativeTactics.clearAll()
         com.sbwnpc.squad.squad.SquadReports.clearAll()
         com.sbwnpc.squad.combat.Hearing.clearAll()
         DeathSites.clearAll()
@@ -55,6 +72,7 @@ object ServerLifecycle {
         VehicleTransportClaims.clearAll()
         SquadSelection.clearAll()
         RouteRecording.clearAll()
+        com.sbwnpc.squad.experience.ExperienceEvents.clear()
         SquadManager.clearCache()
         NpcRegistry.clearAll()
         PilotlessHelicopters.clear()

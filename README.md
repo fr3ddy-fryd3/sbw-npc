@@ -23,6 +23,15 @@ follow orders — Attack, Defend, Patrol, Move — from a quick-command HUD or b
 clicking. Supply points keep them equipped, boats carry them across water, and radio reports tell
 you when they make contact, lose men, need ammunition, or reach their objective.
 
+## Version 1.0.0 design
+
+[PLAN-1.0.0.md](PLAN-1.0.0.md) defines the next version: physical NPC commanders with delegated
+authority and succession, sequential barracks recruitment, earned ranks, engineering squads,
+territorial Supply points, and operations. These systems are being designed on `feature/1.0.0`;
+`develop` contains the released `0.6.0`. The recruitment queue is implemented
+on `feature/1.0.0`; the remaining systems are planned features, not part of
+the current release.
+
 ## Requirements
 
 - Minecraft 1.21.1 + NeoForge 21.1.203 or newer
@@ -51,6 +60,9 @@ and press the new combination, `Ctrl` included.
 | `N` | Fire mode | JourneyMap — *Waypoint Manager* | `Ctrl + N` (the list is also a button on the fullscreen map) |
 
 ## How this mod was made
+
+Developer guides: [Project structure / Карта проекта](docs/PROJECT-STRUCTURE.md) ·
+[Squad tactics architecture / Архитектура тактики](docs/TACTICS-ARCHITECTURE.md).
 
 This is a hobby project, built purely for fun. The entire codebase was written by an AI (Claude
 Code and Codex) — architecture, features, bug fixes, all of it — while the meatbags did the actual
@@ -89,13 +101,18 @@ Two modes, switched with **Ctrl + right-click on air**. The current one is on th
 
 **Recruit mode — what gets deployed**
 
-- **Right-click air** opens the deploy config: preset, class (Single only), rank, faction, and the
+- **Right-click air** opens the deploy config: preset, class (Single only), faction, and the
   vehicle or airframe where the preset has one.
 - **Right-click a block** deploys it there, lined up abreast and facing you.
 - Presets: `Single`, `5: Riflemen`, `7: Standard`, `16: Large`, `32: Company`, `Mortar Crew`, `Tank Crew`
   (ZTZ-99A / T-90A / M1A2), `Drone Team`, `Heli Crew` — Mi-28 gunship or AH-6 transport, and the
   airframe decides which crew comes with it. `5` and `7` can bring a LAV-25 / LAV-150 / BMP-2.
-- Ranks go `RECRUIT → REGULAR → VETERAN → ELITE`: more health, tighter spread, quicker reactions.
+- New soldiers start as `RECRUIT`, with a persistent name and personal experience. Ranks progress
+  `RECRUIT → REGULAR → VETERAN → ELITE`, at 0 / 300 / 1200 / 3500 cumulative XP by default
+  (`regularExperience`, `veteranExperience`, `eliteExperience` in the server config).
+  Hostile damage, kill contributions, combat treatment and useful combat participation earn XP.
+  Promotion improves rank statistics while preserving current health, weapons and ammunition.
+  Existing soldiers keep their rank; replacements start from zero.
 - Anything bigger than a single NPC is formed into a squad automatically, holding where it landed.
 
 **Command mode — what they do**
@@ -112,9 +129,13 @@ Two modes, switched with **Ctrl + right-click on air**. The current one is on th
 
 One row per squad, scrollable, with the footer buttons under the list:
 
-- **Order** cycles through the orders that squad can actually carry out.
-- **Objective** arms a click: the next block you right-click is where the squad works from.
-- **Focus** arms the same thing on an entity instead.
+- **Squad name** opens a live detail page: order, tactical state, objective, and each loaded soldier's
+  name, role, rank, experience, health and primary/pistol ammunition. Unloaded data is marked unavailable.
+- In that page, **Order** cycles available orders; **Objective** arms the next block click;
+  **Focus** arms an entity click.
+- **Merge** joins the squad into a selected infantry squad with the same owner and faction;
+  neither may be assigned to barracks. The destination keeps its identity, order and objective.
+  Soldiers keep their UUIDs, names, experience, rank and kit, including across chunk unloads.
 - **R** renames · **X** disbands (the NPCs stay, the squad doesn't) · **DEL** deletes the squad
   and everything in it, vehicles included.
 - **Routes** opens patrol routes: add one, right-click blocks to drop waypoints, finish, then
@@ -149,11 +170,25 @@ combat; without an enemy present they travel to the ordered objective with every
 
 ## The Barracks
 
-Right-click a Barracks you placed to configure it the same way the tool is configured, then press
-**Deploy garrison**. It builds the configured squad one NPC at a time, at most once every 10 seconds,
-then replaces losses at the same rate. Support vehicles deploy once the complete crew is ready.
-Drone operators standing near it get their drones back. Re-deploying replaces the old garrison;
-only the player who placed the Barracks can configure it.
+Right-click a Barracks you placed, choose its composition, then press **Apply recruitment**.
+It creates an empty squad and recruits one NPC every `recruitIntervalSeconds` (10 seconds by
+default, in the world's `serverconfig/sbwnpc-server.toml`). The first recruit also waits a full
+interval: seven soldiers take at least 70 seconds. Initial recruits and replacements share one
+queue across every squad assigned to that Barracks. Replacements have priority, with one initial
+recruit admitted after three replacements when both are waiting.
+
+The **Queue** button shows the actual release order, next recruit, time remaining, and any reason
+production is waiting. The queue and countdown survive saves; unloading pauses recruitment, and
+reloading never releases a catch-up wave. Unloaded soldiers keep their places. Older saves wait
+for unknown member roles to load before recruiting replacements. No safe spawn space means the
+request waits. Drone operators nearby still get their drones replenished independently.
+
+Applying new settings preserves living soldiers and changes future recruitment. Surplus soldiers
+stay until they die; their retired places are not refilled. Choosing another faction releases the
+old squad to manual control and queues a new one on the selected side. Only the player who placed
+the Barracks can configure it. Disbanding or deleting its garrison cancels that recruitment order.
+Support vehicles and mortars deploy once the initial crew is assembled; replacements do not
+generate additional vehicles.
 
 An assigned Barracks keeps ticking away from players. Deleting or disbanding its garrison from
 the squad screen stops production until you configure it again.

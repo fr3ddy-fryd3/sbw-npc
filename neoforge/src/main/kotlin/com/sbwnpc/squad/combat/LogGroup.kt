@@ -26,7 +26,8 @@ enum class LogGroup(val key: String) {
     RETREAT("retreat"),
     STUCK("stuck"),
     SUPPLY("supply"),
-    VEHICLE("vehicle");
+    VEHICLE("vehicle"),
+    ;
 
     val tag = "[$key-debug] "
 

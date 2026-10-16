@@ -18,12 +18,8 @@ import java.util.UUID
  * they try to actually DO anything with the squad tool (open Recruit, deploy, form a squad) —
  * establishing a "default"/home identity for them.
  *
- * IMPORTANT — this is NOT currently an enforcement lock: per an explicit user decision, free
- * choice of any of the 8 factions stays fully available during development (e.g. to deploy
- * OPFOR/test squads of a different faction). [requireOrPrompt] only gates on the one-time pick
- * having happened at all — it does not override whatever faction the tool/client is actually
- * using for a given action. The future admin-override design (grant a specific player permission
- * to bypass their own default, once real enforcement exists) is deferred, not yet built.
+ * Survival recruitment uses this identity; creative players may deploy another faction.
+ * Supply placement always uses the player's own faction, including in creative mode.
  */
 class PlayerFactionRegistry : SavedData() {
 
@@ -41,15 +37,18 @@ class PlayerFactionRegistry : SavedData() {
     /** Tells [player]'s client which faction they are on, for the banner shown with the tool. */
     fun sync(player: ServerPlayer) = sendToClient(player, PlayerFactionPayload(factions[player.uuid]?.ordinal ?: -1))
 
-    /** The player's recorded default faction, or null — and a mandatory pick screen sent to the
-     *  client — if they haven't chosen yet. Server-side entry points call this only to gate on
-     *  the one-time pick having happened; they should keep using the client/tool's own faction
-     *  value for the actual action (see class doc — this is not an enforcement lock right now). */
+    /** Returns the player's faction, or prompts for the mandatory first choice. */
     fun requireOrPrompt(player: ServerPlayer): SquadFaction? {
         val existing = factions[player.uuid]
         if (existing != null) return existing
         sendToClient(player, OpenFactionPickPayload)
         return null
+    }
+
+    /** Re-check at configuration and deployment: a tool can survive a change of game mode. */
+    fun recruitmentFaction(player: ServerPlayer, requested: SquadFaction): SquadFaction? {
+        val own = requireOrPrompt(player) ?: return null
+        return if (player.isCreative) requested else own
     }
 
     override fun save(tag: CompoundTag, registries: HolderLookup.Provider): CompoundTag {
@@ -69,15 +68,17 @@ class PlayerFactionRegistry : SavedData() {
             return reg
         }
 
-        private fun readFaction(tag: CompoundTag, key: String): SquadFaction? = when {
-            tag.contains(key, Tag.TAG_STRING.toInt()) -> runCatching { SquadFaction.valueOf(tag.getString(key)) }.getOrNull()
-            tag.contains(key, Tag.TAG_INT.toInt()) -> SquadFaction.byOrdinal(tag.getInt(key))
-            else -> null
-        }
+        private fun readFaction(tag: CompoundTag, key: String): SquadFaction? =
+            when {
+                tag.contains(key, Tag.TAG_STRING.toInt()) -> runCatching { SquadFaction.valueOf(tag.getString(key)) }.getOrNull()
+                tag.contains(key, Tag.TAG_INT.toInt()) -> SquadFaction.byOrdinal(tag.getInt(key))
+                else -> null
+            }
 
         fun get(server: MinecraftServer): PlayerFactionRegistry =
             server.overworld().dataStorage.computeIfAbsent(
-                SavedData.Factory({ PlayerFactionRegistry() }, ::load, null), FILE
+                SavedData.Factory({ PlayerFactionRegistry() }, ::load, null),
+                FILE,
             )
 
         fun get(level: ServerLevel): PlayerFactionRegistry = get(level.server)

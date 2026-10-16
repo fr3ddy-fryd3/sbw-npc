@@ -14,7 +14,7 @@ import net.neoforged.neoforge.network.PacketDistributor
 class AssignRouteScreen(
     private val routeId: String,
     private val rows: List<AssignableSquad>,
-    private val back: Screen
+    private val back: Screen,
 ) : Screen(Component.literal("Assign Route")) {
 
     override fun init() {
@@ -22,17 +22,21 @@ class AssignRouteScreen(
         var y = height / 2 - (rows.size * 24) / 2
 
         for (row in rows) {
-            addRenderableWidget(Button.builder(Component.literal(row.name).withStyle(row.faction.accentStyle)) {
-                PacketDistributor.sendToServer(RouteCmdPayload(RouteCmdPayload.ASSIGN, routeId, row.id))
-                onClose()
-            }.bounds(cx - 100, y, 200, 20).build())
+            addRenderableWidget(
+                Button.builder(Component.literal(row.name).withStyle(row.faction.accentStyle)) {
+                    PacketDistributor.sendToServer(RouteCmdPayload(RouteCmdPayload.ASSIGN, routeId, row.id))
+                    onClose()
+                }.bounds(cx - 100, y, 200, 20).build(),
+            )
             y += 24
         }
 
         y += 12
-        addRenderableWidget(Button.builder(Component.literal("Cancel")) {
-            Minecraft.getInstance().setScreen(back)
-        }.bounds(cx - 100, y, 200, 20).build())
+        addRenderableWidget(
+            Button.builder(Component.literal("Cancel")) {
+                Minecraft.getInstance().setScreen(back)
+            }.bounds(cx - 100, y, 200, 20).build(),
+        )
     }
 
     override fun render(g: GuiGraphics, mouseX: Int, mouseY: Int, partial: Float) {

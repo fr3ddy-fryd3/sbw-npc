@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.config
 
+import com.sbwnpc.squad.npc.NpcClass
 import net.neoforged.neoforge.common.ModConfigSpec
 
 /** Server settings (`serverconfig/sbwnpc-server.toml` in each world). */
@@ -15,7 +16,7 @@ object SquadConfig {
             "a player on a small patch of the world. Assigned barracks also stay loaded at their",
             "own positions so reinforcements spawn; they do not count against the squad limit.",
             "Each independent NPC returning to Supply counts as one squad against this limit.",
-            "0 turns off both squad and barracks tickets."
+            "0 turns off both squad and barracks tickets.",
         )
         .defineInRange("activeSquadChunkLimit", 8, 0, 64)
 
@@ -24,11 +25,52 @@ object SquadConfig {
             "How far away, in blocks, players see NPCs. Past the server's own view-distance they",
             "are not sent however high this is: a dedicated server needs view-distance of this",
             "divided by 16 or more. Shots past 128 blocks from every player are simulated rather",
-            "than fired, whatever this is set to. Higher costs network and client frame rate."
+            "than fired, whatever this is set to. Higher costs network and client frame rate.",
         )
         .defineInRange("npcViewDistance", 256, 64, 512)
 
+    val RECRUIT_INTERVAL_SECONDS: ModConfigSpec.IntValue = builder
+        .comment(
+            "Seconds of loaded barracks time between replacements for fallen NPCs, including the first replacement.",
+            "Deploy releases the initial garrison together. Unloading pauses the replacement clock.",
+        )
+        .defineInRange("recruitIntervalSeconds", 10, 1, 3600)
+
+    val REGULAR_XP = builder.defineInRange("regularExperience", 300, 1, 1000000)
+    val VETERAN_XP = builder.defineInRange("veteranExperience", 1200, 2, 1000000)
+    val ELITE_XP = builder.defineInRange("eliteExperience", 3500, 3, 1000000)
+
+    private val CLASS_EXPERIENCE = run {
+        builder.comment("Class reward multipliers. Applied once to new XP, including deferred rewards; saved XP is unchanged.").push("experienceMultipliers")
+        val defaults = mapOf(
+            NpcClass.MACHINE_GUNNER to 0.65,
+            NpcClass.SNIPER to 0.5,
+            NpcClass.GRENADIER to 0.75,
+            NpcClass.DRONE_OPERATOR to 0.65,
+            NpcClass.MORTAR to 0.35,
+            NpcClass.TANK_CREW to 0.5,
+            NpcClass.HELICOPTER_PILOT to 0.5,
+            NpcClass.HELICOPTER_GUNNER to 0.5,
+        )
+        val values = NpcClass.entries.filter { it.canonical == it }.associateWith {
+            builder.defineInRange(it.name.lowercase(), defaults[it] ?: 1.0, 0.01, 10.0)
+        }
+        builder.pop()
+        values
+    }
+
+    fun experienceMultiplier(cls: NpcClass): Double = CLASS_EXPERIENCE.getValue(cls.canonical).let { if (SPEC.isLoaded) it.get() else it.default }
+
+    fun experienceThresholds(): List<Int> {
+        fun value(v: ModConfigSpec.IntValue) = if (SPEC.isLoaded) v.get() else v.default
+        val regular = value(REGULAR_XP)
+        val veteran = maxOf(regular + 1, value(VETERAN_XP))
+        return listOf(0, regular, veteran, maxOf(veteran + 1, value(ELITE_XP)))
+    }
+
     val SPEC: ModConfigSpec = builder.build()
+
+    fun recruitIntervalTicks(): Int = (if (SPEC.isLoaded) RECRUIT_INTERVAL_SECONDS.get() else RECRUIT_INTERVAL_SECONDS.default) * 20
 
     /** [NPC_VIEW_DISTANCE], or its default while no world's config is loaded — the client asks
      *  before it has joined one, and a config value read then throws. */

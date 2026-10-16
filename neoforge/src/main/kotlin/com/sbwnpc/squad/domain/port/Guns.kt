@@ -4,6 +4,7 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
@@ -16,13 +17,20 @@ enum class TriggerMode { SEMI, BURST, AUTO }
  */
 interface HandGun {
     val roundsPerMinute: Double
+
+    /** Mechanical bolt cycle including its start tick; zero for guns without a manual bolt. */
+    val boltCycleTicks: Int get() = 0
+
     /** Blocks per tick. */
     val muzzleVelocity: Double
+
     /** Zero for anything that doesn't explode on impact. */
     val explosionRadius: Double
+
     /** How far off a shot from it is heard, suppressor included. */
     val hearingRadius: Double
     val pellets: Int
+
     /** Per pellet. */
     val damage: Double
     val triggerMode: TriggerMode
@@ -44,7 +52,8 @@ interface HandGun {
      *  a straight aim is good enough, or when the round can't reach [to] at all. */
     fun arcPitch(from: Vec3, to: Vec3): Float?
 
-    fun shootAt(spread: Double, zoom: Boolean, target: UUID)
+    /** [direction] overrides the holder's body rotation; [target] also serves guided weapons. */
+    fun shootAt(spread: Double, zoom: Boolean, target: UUID, direction: Vec3? = null)
 
     fun shootAt(spread: Double, point: Vec3)
 
@@ -57,13 +66,21 @@ interface HandGun {
 }
 
 interface Guns {
+    /** Whether a fired round can collide with this entity; blast damage is independent. */
+    fun canHitEntity(shooter: LivingEntity, target: LivingEntity): Boolean
+
+    /** Body bounds relevant to projectiles, including hitbox rewind and movement during flight. */
+    fun firingSafetyBounds(entity: LivingEntity, flightTicks: Double): AABB
+
     fun inHand(holder: LivingEntity): HandGun?
 
     fun isGun(stack: ItemStack): Boolean
 
-    /** A gun of [item] with a full magazine and [reserve] rounds behind it, or empty if [item] is
-     *  not a gun. */
+    /** A gun with [reserve] total rounds; its first magazine is filled from this allocation. */
     fun issue(item: ResourceLocation, holder: LivingEntity, reserve: Int): ItemStack
+
+    /** Flush pending weapon state before stowing, copying or serializing its stack. */
+    fun persist(stack: ItemStack)
 
     /** Magazine plus reserve carried with the gun itself; zero for anything that isn't a gun. */
     fun roundsLeft(stack: ItemStack): Int

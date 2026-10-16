@@ -4,7 +4,7 @@ import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
-import com.sbwnpc.squad.entity.ai.MortarOperatorBehaviour
+import com.sbwnpc.squad.entity.ai.MortarCrewBehaviour
 import com.sbwnpc.squad.network.MapFeedPayload
 import com.sbwnpc.squad.network.sendToClient
 import com.sbwnpc.squad.npc.SquadFaction
@@ -36,6 +36,9 @@ object MapFeed {
 
     private val subscribers = HashSet<UUID>()
 
+    // Last joinable point sent per squad, so the trace shows only changes.
+    private val goalTraces = HashMap<UUID, String>()
+
     fun subscribe(player: ServerPlayer) {
         subscribers += player.uuid
         com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.MAP, "{} subscribed to the map feed", player.gameProfile.name)
@@ -45,7 +48,10 @@ object MapFeed {
         subscribers -= player
     }
 
-    fun clearAll() = subscribers.clear()
+    fun clearAll() {
+        subscribers.clear()
+        goalTraces.clear()
+    }
 
     fun tick(server: MinecraftServer) {
         if (subscribers.isEmpty() || server.tickCount % INTERVAL_TICKS != 0) return
@@ -57,8 +63,10 @@ object MapFeed {
         }
     }
 
-    private fun build(server: MinecraftServer, player: ServerPlayer, faction: SquadFaction): CompoundTag {
-        val level = player.serverLevel()
+    private fun build(server: MinecraftServer, player: ServerPlayer, faction: SquadFaction): CompoundTag = build(server, player.serverLevel(), player.uuid, faction)
+
+    /** The feed a viewer in [level] receives for [faction]; GameTests check what the map shows. */
+    fun build(server: MinecraftServer, level: net.minecraft.server.level.ServerLevel, viewer: UUID, faction: SquadFaction): CompoundTag {
         val sides = Diplomacy.alliesOf(faction)
         val tag = CompoundTag()
         tag.putString("Dim", level.dimension().location().toString())
@@ -70,11 +78,11 @@ object MapFeed {
         val inSquad = HashSet<UUID>()
         // The player's own squads whatever faction they were raised in (anyone may field several),
         // plus everything on the sides allied with the player's faction.
-        val showAll = com.sbwnpc.squad.combat.DebugFlags.MAP_SHOWS_ALL
+        val showAll = com.sbwnpc.squad.combat.DebugFlags.mapShowsAll
         val shown = if (showAll) SquadFaction.entries.toMutableSet() else sides.toMutableSet()
-        for (squad in squads.all()) if (squad.owner == player.uuid) shown += squad.faction
+        for (squad in squads.all()) if (squad.owner == viewer) shown += squad.faction
         for (squad in squads.all()) {
-            if (squad.owner != player.uuid && squad.faction !in shown) continue
+            if (squad.owner != viewer && squad.faction !in shown) continue
             // Wiped out and waiting on its barracks for men: nothing out there to show. It used to
             // pass for a squad merely out of range, square and objective waypoint and all.
             if (squad.members.isEmpty()) continue
@@ -90,7 +98,7 @@ object MapFeed {
             t.putUUID("Id", squad.id)
             t.putString("Name", squad.name)
             t.putInt("F", squad.faction.ordinal)
-            t.putBoolean("Own", squad.owner == player.uuid)
+            t.putBoolean("Own", squad.owner == viewer)
             t.putString("Order", squad.order.name)
             t.putBoolean("Mortar", squads.isMortarSquad(squad))
             t.putBoolean("Tank", squads.isTankSquad(squad))
@@ -106,11 +114,35 @@ object MapFeed {
             }
             // Where each of the player's own men stands, for the map to mark — the square alone is
             // the middle, and hides the one stuck behind a hill.
-            if (squad.owner == player.uuid && members.isNotEmpty()) {
+            if (squad.owner == viewer && members.isNotEmpty()) {
                 t.putIntArray("Men", members.flatMap { listOf(it.blockX, it.blockZ) }.toIntArray())
             }
             squad.objective?.let { t.putIntArray("Obj", intArrayOf(it.x, it.y, it.z)) }
-            if (squad.order == SquadOrder.BARRAGE) t.putInt("Zone", MortarOperatorBehaviour.BARRAGE_RADIUS.toInt())
+            // The point the squad's operation was ordered to, not this squad's own spot in the
+            // line: an order sent to exactly this point joins the operation instead of starting another.
+            val operation = com.sbwnpc.squad.ai.integration.NativeTactics.operationOf(level, squad.id)
+            val goal = (operation?.objective as? com.sbwnpc.squad.ai.coordination.ObjectiveKey.Area)
+                ?.takeIf { it.dimension == level.dimension().location().toString() }
+                ?.let { net.minecraft.core.BlockPos(it.x, it.y, it.z) } ?: squad.tacticalObjective ?: squad.objective
+            goal?.let {
+                t.putIntArray("Goal", intArrayOf(it.x, it.y, it.z))
+                t.putString("GoalOrder", operation?.order?.name ?: squad.order.name)
+            }
+            if (squad.owner == viewer && com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.MAP)) {
+                val source = when {
+                    goal == null -> "none"
+                    operation?.objective is com.sbwnpc.squad.ai.coordination.ObjectiveKey.Area -> "operation"
+                    squad.tacticalObjective != null -> "tactical"
+                    else -> "objective"
+                }
+                val trace = "goal=${goal?.toShortString()} order=${operation?.order ?: squad.order} source=$source operation=${operation?.id}"
+                if (goalTraces.put(squad.id, trace) != trace) {
+                    com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.MAP, "join-goal squad={} name={} {}", squad.id, squad.name, trace)
+                }
+            }
+            // Who may join it: the map has no alliance registry of its own.
+            t.putInt("Allies", com.sbwnpc.squad.team.Diplomacy.alliesOf(squad.faction).fold(0) { mask, it -> mask or (1 shl it.ordinal) })
+            if (squad.order == SquadOrder.BARRAGE) t.putInt("Zone", MortarCrewBehaviour.BARRAGE_RADIUS.toInt())
             if (squad.order == SquadOrder.PATROL) {
                 routes.get(squad.routeId)?.points?.let { pts ->
                     t.putIntArray("Route", pts.flatMap { listOf(it.x, it.z) }.toIntArray())

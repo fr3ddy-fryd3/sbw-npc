@@ -19,7 +19,9 @@ enum class SquadOrder {
 
     /** Fall back to the objective, covering each other, then hold it (turns into DEFEND on
      *  arrival). Appended last for the same reason as [BARRAGE]. */
-    RETREAT;
+    RETREAT,
+
+    ;
 
     fun next(): SquadOrder = entries[(ordinal + 1) % entries.size]
 
@@ -41,16 +43,21 @@ enum class SquadOrder {
             tank: Boolean,
             mortar: Boolean,
             gunship: Boolean = false,
-            transport: Boolean = false
-        ): List<SquadOrder> = when {
-            tank -> listOf(MOVE, RETREAT)
-            mortar -> listOf(ATTACK, DEFEND, BARRAGE, RETREAT)
-            // A gunship is sent hunting, holds an area, or repositions.
-            gunship -> listOf(ATTACK, DEFEND, MOVE, RETREAT)
-            // AH-6 attacks by orbiting for its passengers' guns; MOVE still ends in a landing.
-            transport -> listOf(ATTACK, DEFEND, MOVE, RETREAT)
-            else -> entries.filter { it != BARRAGE }
-        }
+            transport: Boolean = false,
+        ): List<SquadOrder> =
+            when {
+                tank -> listOf(MOVE, RETREAT)
+
+                mortar -> listOf(ATTACK, DEFEND, BARRAGE, RETREAT)
+
+                // A gunship is sent hunting, holds an area, or repositions.
+                gunship -> listOf(ATTACK, DEFEND, MOVE, RETREAT)
+
+                // AH-6 attacks by orbiting for its passengers' guns; MOVE still ends in a landing.
+                transport -> listOf(ATTACK, DEFEND, MOVE, RETREAT)
+
+                else -> entries.filter { it != BARRAGE }
+            }
 
         /** Map point commands supported by at least one selected squad; patrol uses its route editor. */
         fun pointOrdersFor(available: Collection<List<SquadOrder>>): List<SquadOrder> {

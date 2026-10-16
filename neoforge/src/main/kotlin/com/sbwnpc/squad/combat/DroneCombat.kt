@@ -13,16 +13,15 @@ import net.minecraft.world.entity.projectile.Projectile
 /** Drone identification is explicit; helicopters and other airborne targets keep normal accuracy. */
 object DroneCombat {
     private val DRONE_TARGETS = TagKey.create(
-        Registries.ENTITY_TYPE, ResourceLocation.fromNamespaceAndPath("sbwnpc", "drone_targets")
+        Registries.ENTITY_TYPE,
+        ResourceLocation.fromNamespaceAndPath("sbwnpc", "drone_targets"),
     )
 
     @JvmStatic
-    fun isDrone(target: Entity): Boolean =
-        Ports.drones.isDrone(target) || target.type.`is`(DRONE_TARGETS)
+    fun isDrone(target: Entity): Boolean = Ports.drones.isDrone(target) || target.type.`is`(DRONE_TARGETS)
 
     @JvmStatic
-    fun spreadForTarget(baseSpread: Double, target: Entity?): Double =
-        DroneAccuracy.adjustSpread(baseSpread, target != null && (isDrone(target) || isDrone(target.rootVehicle)))
+    fun spreadForTarget(baseSpread: Double, target: Entity?): Double = DroneAccuracy.adjustSpread(baseSpread, target != null && (isDrone(target) || isDrone(target.rootVehicle)))
 
     fun isHostileDrone(shooter: NpcEntity, target: Entity): Boolean {
         if (!isDrone(target) || !target.isAlive || target.isSpectator) return false

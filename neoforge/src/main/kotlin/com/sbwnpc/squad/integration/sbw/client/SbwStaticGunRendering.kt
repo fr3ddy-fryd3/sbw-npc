@@ -37,7 +37,7 @@ object SbwStaticGunRendering : SimplePreparableReloadListener<Map<ResourceLocati
         displayContext: ItemDisplayContext,
         poseStack: PoseStack,
         buffer: MultiBufferSource,
-        packedLight: Int
+        packedLight: Int,
     ) {
         val gun = guns[BuiltInRegistries.ITEM.getKey(stack.item)] ?: return
 
@@ -54,8 +54,7 @@ object SbwStaticGunRendering : SimplePreparableReloadListener<Map<ResourceLocati
         }
     }
 
-    override fun prepare(resourceManager: ResourceManager, profiler: ProfilerFiller): Map<ResourceLocation, StaticGunModel> =
-        StaticGunModels.load(resourceManager)
+    override fun prepare(resourceManager: ResourceManager, profiler: ProfilerFiller): Map<ResourceLocation, StaticGunModel> = StaticGunModels.load(resourceManager)
 
     override fun apply(prepared: Map<ResourceLocation, StaticGunModel>, resourceManager: ResourceManager, profiler: ProfilerFiller) {
         guns = prepared

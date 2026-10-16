@@ -59,12 +59,35 @@ base {
     archivesName.set(project.property("mod_id") as String)
 }
 
+// Real server/world tests have their own sources and are never packaged in the mod jar.
+val gameTest by sourceSets.creating {
+    compileClasspath += sourceSets.main.get().output
+    runtimeClasspath += sourceSets.main.get().output
+}
+// Custom tests use the same internal access as JUnit, without exposing implementation in the mod API.
+kotlin.target.compilations.getByName("gameTest").associateWith(kotlin.target.compilations.getByName("main"))
+val gameTestReportName = providers.gradleProperty("gameTestReportName").orElse("latest").get()
+require(gameTestReportName.matches(Regex("[A-Za-z0-9_-]+"))) { "gameTestReportName must be a simple directory name" }
+configurations[gameTest.implementationConfigurationName].extendsFrom(configurations.implementation.get())
+configurations[gameTest.compileOnlyConfigurationName].extendsFrom(configurations.compileOnly.get())
+configurations[gameTest.runtimeOnlyConfigurationName].extendsFrom(configurations.runtimeOnly.get())
+
 neoForge {
     version = project.property("neo_version") as String
 
     parchment {
         mappingsVersion = project.property("parchment_mappings_version") as String
         minecraftVersion = project.property("parchment_minecraft_version") as String
+    }
+
+    mods {
+        create(project.property("mod_id") as String) {
+            sourceSet(sourceSets.main.get())
+        }
+        create("sbwnpcGameTest") {
+            sourceSet(sourceSets.main.get())
+            sourceSet(gameTest)
+        }
     }
 
     runs {
@@ -77,6 +100,19 @@ neoForge {
             server()
             programArgument("--nogui")
             systemProperty("neoforge.enabledGameTestNamespaces", project.property("mod_id") as String)
+        }
+
+        create("gameTestServer") {
+            type = "gameTestServer"
+            sourceSet = gameTest
+            gameDirectory = layout.buildDirectory.dir("gametest/server").get().asFile
+            systemProperty("neoforge.enabledGameTestNamespaces", project.property("mod_id") as String)
+            systemProperty("sbwnpc.gameTestReports", layout.buildDirectory.dir("reports/gameTest/$gameTestReportName").get().asFile.absolutePath)
+            systemProperty("sbwnpc.gameTestNegativeControl", providers.gradleProperty("gameTestNegativeControl").orElse("false").get())
+            systemProperty("sbwnpc.gameTestFilter", providers.gradleProperty("gameTestFilter").orElse("").get())
+            systemProperty("sbwnpc.gameTestReplay", providers.gradleProperty("gameTestReplay").orElse("").get())
+            systemProperty("sbwnpc.gameTestWatchNpc", providers.gradleProperty("gameTestWatchNpc").orElse("f8104e12-9378-4094-8cc7-54145ce8df70").get())
+            logLevel = org.slf4j.event.Level.INFO
         }
 
         create("data") {
@@ -95,25 +131,49 @@ neoForge {
         }
 
         configureEach {
+            // The combined main + GameTest mod is selected only for the headless run.
+            loadedMods.set(listOf(mods.getByName(if (name == "gameTestServer") "sbwnpcGameTest" else project.property("mod_id") as String)))
             jvmArguments = listOf(
                 "-XX:+IgnoreUnrecognizedVMOptions",
                 "-XX:+AllowEnhancedClassRedefinition"
             )
             systemProperty("forge.logging.markers", "REGISTRIES")
-            logLevel = org.slf4j.event.Level.DEBUG
+            if (name != "gameTestServer") logLevel = org.slf4j.event.Level.DEBUG
         }
     }
 
-    mods {
-        create(project.property("mod_id") as String) {
-            sourceSet(sourceSets.main.get())
-        }
-    }
+    addModdingDependenciesTo(gameTest)
 
     unitTest {
         enable()
         testedMod.set(mods.named(project.property("mod_id") as String))
+        loadedMods.set(listOf(mods.getByName(project.property("mod_id") as String)))
     }
+}
+
+val gameTestStartMarker = layout.buildDirectory.file("gametest/server/run-started-at.txt")
+val archiveGameTestLog = tasks.register("archiveGameTestLog") {
+    // A Copy task owns its destination directory; Gradle's stale-output cleanup can delete the
+    // CSV files written there by the server. Copy just the log without declaring that ownership.
+    doLast {
+        val marker = gameTestStartMarker.get().asFile
+        check(marker.exists()) { "Missing GameTest start marker" }
+        val startedAt = marker.readText().toLong()
+        val log = layout.buildDirectory.file("gametest/server/logs/latest.log").get().asFile
+        check(log.exists() && log.lastModified() >= startedAt) { "GameTest server produced no fresh log" }
+        val reports = layout.buildDirectory.dir("reports/gameTest/$gameTestReportName").get().asFile
+        reports.mkdirs()
+        log.copyTo(reports.resolve("server.log"), overwrite = true)
+        check(log.readText().contains("GAME TESTS COMPLETE")) { "GameTest server stopped before completing tests; see ${reports.resolve("server.log")}" }
+    }
+}
+tasks.named("runGameTestServer") {
+    doFirst {
+        val marker = gameTestStartMarker.get().asFile
+        marker.parentFile.mkdirs()
+        marker.writeText(System.currentTimeMillis().toString())
+    }
+    finalizedBy(archiveGameTestLog)
 }
 
 
@@ -122,7 +182,9 @@ neoForge {
 // build stays quiet by default. `./gradlew buildDevelop` flips it on; plain `build` (and the
 // explicit `buildProduction` alias) leave it off.
 val generateBuildFlags = tasks.register("generateBuildFlags") {
-    val debugDefault = gradle.startParameter.taskNames.any { it.substringAfterLast(':').equals("buildDevelop", ignoreCase = true) }
+    val debugDefault = gradle.startParameter.taskNames.any {
+        it.substringAfterLast(':').let { task -> task.equals("buildDevelop", ignoreCase = true) || task.equals("runGameTestServer", ignoreCase = true) }
+    }
     val outputDir = layout.buildDirectory.dir("generated/buildFlags/kotlin")
     inputs.property("debugDefault", debugDefault)
     outputs.dir(outputDir)
@@ -181,6 +243,11 @@ dependencies {
     // Immutable release input; local source substitution requires -PsbwSourceDir.
     compileOnly(sbwCoordinate)
     gameRuntimeOnly(sbwCoordinate)
+    // SBW's published runtime variant also lists its optional development modpack. Its jar already
+    // embeds the required libraries; headless tests need that jar, not the client test modpack.
+    add(gameTest.runtimeOnlyConfigurationName, sbwCoordinate) {
+        isTransitive = false
+    }
     // Regression tests exercise SBW's resource decoder alongside our static model loader.
     testCompileOnly(sbwCoordinate) {
         isTransitive = false
@@ -207,6 +274,46 @@ tasks.withType<Test> {
     // NeoForge runs tests from its run directory; source-scanning tests need the real root.
     systemProperty("sbwnpc.projectDir", projectDir.absolutePath)
 }
+
+// Development tooling has its own classpath and is never included in the mod's runtime or jar.
+val kotlinStyle: Configuration by configurations.creating {
+    isCanBeConsumed = false
+}
+dependencies {
+    kotlinStyle("com.pinterest.ktlint:ktlint-cli:1.8.0:all") { isTransitive = false }
+}
+
+// One style for every module's Kotlin, checked from the root so the shared .editorconfig applies.
+val kotlinStylePatterns = listOf(
+    "common/src/main/kotlin/**/*.kt",
+    "neoforge/src/main/kotlin/**/*.kt",
+    "neoforge/src/test/kotlin/**/*.kt",
+    "neoforge/src/gameTest/kotlin/**/*.kt",
+)
+val kotlinStyleFiles = rootProject.fileTree(rootDir) {
+    include(kotlinStylePatterns)
+}
+
+val checkKotlinStyle = tasks.register<JavaExec>("checkKotlinStyle") {
+    group = "verification"
+    description = "Check Kotlin source formatting using the project's .editorconfig."
+    classpath = kotlinStyle
+    mainClass.set("com.pinterest.ktlint.Main")
+    workingDir = rootDir
+    inputs.files(kotlinStyleFiles, rootProject.file(".editorconfig"))
+    args(listOf("--relative") + kotlinStylePatterns)
+}
+
+tasks.register<JavaExec>("formatKotlin") {
+    group = "formatting"
+    description = "Format the project's Kotlin sources; excludes generated code and SuperbWarfare."
+    classpath = kotlinStyle
+    mainClass.set("com.pinterest.ktlint.Main")
+    workingDir = rootDir
+    args(listOf("--format", "--relative") + kotlinStylePatterns)
+}
+
+tasks.named("check") { dependsOn(checkKotlinStyle) }
 
 tasks.withType<JavaCompile> {
     options.encoding = "UTF-8"

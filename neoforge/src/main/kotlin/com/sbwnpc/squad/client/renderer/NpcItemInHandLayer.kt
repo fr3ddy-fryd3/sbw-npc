@@ -23,7 +23,7 @@ import net.minecraft.world.item.ItemStack
  */
 class NpcItemInHandLayer(
     renderer: RenderLayerParent<NpcEntity, NpcModel>,
-    itemInHandRenderer: ItemInHandRenderer
+    itemInHandRenderer: ItemInHandRenderer,
 ) : ItemInHandLayer<NpcEntity, NpcModel>(renderer, itemInHandRenderer) {
 
     override fun render(
@@ -36,7 +36,7 @@ class NpcItemInHandLayer(
         partialTicks: Float,
         ageInTicks: Float,
         netHeadYaw: Float,
-        headPitch: Float
+        headPitch: Float,
     ) {
         // Against the camera rather than the local player: in spectator, or on a detached/third
         // person camera, the player is not where the view is.
@@ -54,7 +54,7 @@ class NpcItemInHandLayer(
         arm: HumanoidArm,
         poseStack: PoseStack,
         buffer: MultiBufferSource,
-        packedLight: Int
+        packedLight: Int,
     ) {
         if (stack.isEmpty) return
         if (!Ports.gunRendering.supports(stack)) {
@@ -82,8 +82,13 @@ class NpcItemInHandLayer(
         if (entity.tickCount < EMPTY_HAND_GRACE_TICKS || !reportedEmpty.add(entity.id)) return
         com.sbwnpc.squad.SquadMod.LOGGER.info(
             "[equip-debug] client: NPC {} (entity {}) has an empty main hand {} ticks after appearing; offhand={} head={} chest={} vehicle={}",
-            entity.uuid, entity.id, entity.tickCount, entity.offhandItem, entity.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.HEAD),
-            entity.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.CHEST), entity.vehicle?.type?.descriptionId
+            entity.uuid,
+            entity.id,
+            entity.tickCount,
+            entity.offhandItem,
+            entity.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.HEAD),
+            entity.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.CHEST),
+            entity.vehicle?.type?.descriptionId,
         )
     }
 

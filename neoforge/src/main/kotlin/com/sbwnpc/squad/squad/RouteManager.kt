@@ -51,7 +51,8 @@ class RouteManager : SavedData() {
 
         fun get(server: MinecraftServer): RouteManager =
             server.overworld().dataStorage.computeIfAbsent(
-                SavedData.Factory({ RouteManager() }, ::load, null), FILE
+                SavedData.Factory({ RouteManager() }, ::load, null),
+                FILE,
             )
 
         fun get(level: ServerLevel): RouteManager = get(level.server)

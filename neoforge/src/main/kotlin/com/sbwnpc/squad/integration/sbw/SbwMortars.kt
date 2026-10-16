@@ -21,11 +21,11 @@ object SbwMortars : Mortars {
 
     override fun isMortar(entity: Entity?): Boolean = entity is MortarEntity
 
-    override fun within(level: Level, area: AABB, filter: (Entity) -> Boolean): List<Entity> =
-        level.getEntitiesOfClass(MortarEntity::class.java, area) { filter(it) }
+    override fun isShell(entity: Entity?): Boolean = entity is com.atsuishio.superbwarfare.entity.projectile.MortarShellEntity
 
-    override fun create(level: ServerLevel, yaw: Float): Entity =
-        MortarEntity(level, yaw).also { it.intelligent = true }
+    override fun within(level: Level, area: AABB, filter: (Entity) -> Boolean): List<Entity> = level.getEntitiesOfClass(MortarEntity::class.java, area) { filter(it) }
+
+    override fun create(level: ServerLevel, yaw: Float): Entity = MortarEntity(level, yaw).also { it.intelligent = true }
 
     // A non-"intelligent" mortar auto-fires on any inventory change (MortarEntity.setChanged),
     // simulating a dumb mortar that discharges as soon as a shell is dropped in. The same flag a
@@ -74,7 +74,11 @@ object SbwMortars : Mortars {
         mortar.setTarget(stack, gunner, WEAPON)
     }
 
-    override fun fire(mortar: Entity, gunner: LivingEntity) {
-        (mortar as? MortarEntity)?.vehicleShoot(gunner, WEAPON, null)
+    override fun fire(mortar: Entity, gunner: LivingEntity): Boolean {
+        if (mortar !is MortarEntity || !hasShell(mortar) || isFiring(mortar)) return false
+        mortar.vehicleShoot(gunner, WEAPON, null)
+        return isFiring(mortar)
     }
+
+    override fun isFiring(mortar: Entity): Boolean = mortar is MortarEntity && mortar.entityData.get(MortarEntity.FIRE_TIME) > 0
 }

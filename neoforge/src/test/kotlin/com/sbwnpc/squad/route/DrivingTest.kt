@@ -64,8 +64,7 @@ class DrivingTest {
     @Test
     fun `a known road detour can first move away from the goal`() {
         val island = object : Plain() {
-            override fun kind(x: Int, z: Int) =
-                if (x in 40..99 && z in -60..60) GroundMap.Kind.WATER else GroundMap.Kind.GROUND
+            override fun kind(x: Int, z: Int) = if (x in 40..99 && z in -60..60) GroundMap.Kind.WATER else GroundMap.Kind.GROUND
         }
         val found = plan(island, at(180.5), false)
         assertTrue(found.complete)
@@ -130,8 +129,10 @@ class DrivingTest {
         }
         val found = plan(slope, Vec3(100.5, 144.0, 0.5), true, at(-10.5))
         assertTrue(found.complete)
-        assertTrue(found.landing.distanceTo(Vec3(100.5, 144.0, 0.5)) <= 20.0,
-            "a climbable slope became a premature dismount: ${found.landing}")
+        assertTrue(
+            found.landing.distanceTo(Vec3(100.5, 144.0, 0.5)) <= 20.0,
+            "a climbable slope became a premature dismount: ${found.landing}",
+        )
         assertTrue(found.trail.any { it.y in 66.0..140.0 })
     }
 

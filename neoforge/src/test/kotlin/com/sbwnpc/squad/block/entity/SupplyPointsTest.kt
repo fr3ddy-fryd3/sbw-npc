@@ -19,8 +19,7 @@ class SupplyPointsTest {
     private val far = BlockPos(1000, 64, 0)
     private val registries = HolderLookup.Provider.create(Stream.empty())
 
-    private fun reload(points: SupplyPoints): SupplyPoints =
-        SupplyPoints.load(points.save(CompoundTag(), registries))
+    private fun reload(points: SupplyPoints): SupplyPoints = SupplyPoints.load(points.save(CompoundTag(), registries))
 
     @Test
     fun `ordinary resupply stays within 96 blocks but an empty NPC can find supply a kilometre away`() {
@@ -46,11 +45,13 @@ class SupplyPointsTest {
     @Test
     fun `supplies remain discoverable after saving and reloading with no block entities loaded`() {
         val public = BlockPos(-1200, 70, -100)
-        val points = reload(SupplyPoints().apply {
-            remember(near, enemy)
-            remember(far, own)
-            remember(public, null)
-        })
+        val points = reload(
+            SupplyPoints().apply {
+                remember(near, enemy)
+                remember(far, own)
+                remember(public, null)
+            },
+        )
         assertEquals(far, points.nearestServing(here, own, Double.POSITIVE_INFINITY))
         assertEquals(near, points.nearestServing(here, enemy, Double.POSITIVE_INFINITY))
         assertEquals(public, points.nearestServing(here, null, Double.POSITIVE_INFINITY))
@@ -91,10 +92,12 @@ class SupplyPointsTest {
     @Test
     fun `a malformed saved faction never makes an enemy supply public`() {
         val list = ListTag().apply {
-            add(CompoundTag().apply {
-                put("Pos", NbtUtils.writeBlockPos(near))
-                putString("Faction", "UNKNOWN")
-            })
+            add(
+                CompoundTag().apply {
+                    put("Pos", NbtUtils.writeBlockPos(near))
+                    putString("Faction", "UNKNOWN")
+                },
+            )
         }
         val points = SupplyPoints.load(CompoundTag().apply { put("Points", list) })
         assertNull(points.nearestServing(here, own, Double.POSITIVE_INFINITY))

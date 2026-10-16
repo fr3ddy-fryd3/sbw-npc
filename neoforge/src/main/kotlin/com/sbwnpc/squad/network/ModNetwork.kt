@@ -18,10 +18,10 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.entity.EquipmentSlot
 import net.minecraft.world.phys.Vec3
+import net.neoforged.api.distmarker.Dist
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.fml.loading.FMLEnvironment
-import net.neoforged.api.distmarker.Dist
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent
 import net.neoforged.neoforge.network.handling.IPayloadContext
 import java.util.UUID
@@ -30,16 +30,19 @@ import java.util.UUID
 object ModNetwork {
 
     private const val OBJECTIVE_RAYCAST_RANGE = 1024.0
+
     /** Generous, but bounded — a config packet has to come from someone standing at the block. */
     private const val BARRACKS_REACH_SQR = 64.0 * 64.0
+
     /** Standing at the block — the screen is only opened from there. */
     private const val SUPPLY_REACH_SQR = 8.0 * 8.0
+
     /** Each point of a map-drawn route loads its chunk to find the ground; this keeps that bounded. */
     private const val MAX_MAP_ROUTE_POINTS = 32
 
     @SubscribeEvent
     fun register(event: RegisterPayloadHandlersEvent) {
-        val r = event.registrar("1")
+        val r = event.registrar("2")
 
         r.playToServer(ConfigureToolPayload.TYPE, ConfigureToolPayload.CODEC) { p, ctx -> onConfigureTool(p, ctx) }
         r.playToServer(ToggleToolModePayload.TYPE, ToggleToolModePayload.CODEC) { _, ctx -> onToggleToolMode(ctx) }
@@ -50,6 +53,16 @@ object ModNetwork {
         r.playToServer(ChooseFactionPayload.TYPE, ChooseFactionPayload.CODEC) { p, ctx -> onChooseFaction(p, ctx) }
         r.playToServer(RouteCmdPayload.TYPE, RouteCmdPayload.CODEC) { p, ctx -> onRouteCmd(p, ctx) }
         r.playToServer(ConfigureBarracksPayload.TYPE, ConfigureBarracksPayload.CODEC) { p, ctx -> onConfigureBarracks(p, ctx) }
+        r.playToServer(RequestBarracksQueuePayload.TYPE, RequestBarracksQueuePayload.CODEC) { p, ctx ->
+            ctx.enqueueWork {
+                val player = ctx.player() as? ServerPlayer ?: return@enqueueWork
+                val level = player.serverLevel()
+                if (player.distanceToSqr(Vec3.atCenterOf(p.pos)) > BARRACKS_REACH_SQR || !level.hasChunkAt(p.pos)) return@enqueueWork
+                val be = level.getBlockEntity(p.pos) as? BarracksBlockEntity ?: return@enqueueWork
+                if (be.owner != player.uuid) return@enqueueWork
+                sendToClient(player, BarracksQueuePayload(p.pos, be.recruitmentSnapshot(level)))
+            }
+        }
         r.playToServer(DiplomacyCmdPayload.TYPE, DiplomacyCmdPayload.CODEC) { p, ctx -> onDiplomacyCmd(p, ctx) }
         r.playToServer(SupplyCmdPayload.TYPE, SupplyCmdPayload.CODEC) { p, ctx -> onSupplyCmd(p, ctx) }
         r.playToServer(MapSubscribePayload.TYPE, MapSubscribePayload.CODEC) { _, ctx ->
@@ -58,6 +71,9 @@ object ModNetwork {
 
         r.playToClient(OpenCommandScreenPayload.TYPE, OpenCommandScreenPayload.CODEC) { p, _ ->
             if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openCommandScreen(p.data)
+        }
+        r.playToClient(SquadDetailsPayload.TYPE, SquadDetailsPayload.CODEC) { p, ctx ->
+            if (FMLEnvironment.dist == Dist.CLIENT) ctx.enqueueWork { ClientPayloadHandlers.squadDetails(p.data) }
         }
         r.playToClient(OpenHudPayload.TYPE, OpenHudPayload.CODEC) { p, _ ->
             if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openHud(p.data)
@@ -86,6 +102,11 @@ object ModNetwork {
         r.playToClient(OpenBarracksScreenPayload.TYPE, OpenBarracksScreenPayload.CODEC) { p, _ ->
             if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openBarracksScreen(p.pos, p.config)
         }
+        r.playToClient(BarracksQueuePayload.TYPE, BarracksQueuePayload.CODEC) { p, ctx ->
+            ctx.enqueueWork {
+                if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.barracksQueue(p.pos, p.data)
+            }
+        }
         r.playToClient(OpenSupplyScreenPayload.TYPE, OpenSupplyScreenPayload.CODEC) { p, _ ->
             if (FMLEnvironment.dist == Dist.CLIENT) ClientPayloadHandlers.openSupplyScreen(p.pos, p.data)
         }
@@ -95,10 +116,8 @@ object ModNetwork {
         ctx.enqueueWork {
             val player = ctx.player() as? ServerPlayer ?: return@enqueueWork
             val level = player.level() as? ServerLevel ?: return@enqueueWork
-            // Gate on having picked a default once — but during development everyone may freely
-            // choose ANY faction per deploy after that (explicit user call: keep free choice for
-            // now, the lock is only meant to bite once an admin-override permission exists later).
-            PlayerFactionRegistry.get(level).requireOrPrompt(player) ?: return@enqueueWork
+            val faction = PlayerFactionRegistry.get(level).recruitmentFaction(player, SquadFaction.byOrdinal(p.faction))
+                ?: return@enqueueWork
             for (slot in listOf(EquipmentSlot.MAINHAND, EquipmentSlot.OFFHAND)) {
                 val stack = player.getItemBySlot(slot)
                 if (stack.item is SquadToolItem) {
@@ -106,14 +125,14 @@ object ModNetwork {
                         stack,
                         SquadToolItem.Config(
                             NpcClass.byOrdinal(p.cls),
-                            NpcRank.byOrdinal(p.rank),
-                            SquadFaction.byOrdinal(p.faction),
+                            NpcRank.RECRUIT,
+                            faction,
                             com.sbwnpc.squad.npc.SquadPreset.byOrdinal(p.preset),
                             p.vehicle,
                             com.sbwnpc.squad.npc.TransportVehicle.byOrdinal(p.vehicleModel),
                             com.sbwnpc.squad.npc.TankModel.byOrdinal(p.tankModel),
-                            com.sbwnpc.squad.npc.HelicopterModel.byOrdinal(p.heliModel)
-                        )
+                            com.sbwnpc.squad.npc.HelicopterModel.byOrdinal(p.heliModel),
+                        ),
                     )
                 }
             }
@@ -130,7 +149,8 @@ object ModNetwork {
                 StackData.update(stack) { it.putInt(SquadToolItem.KEY_MODE, next) }
                 val name = if (next == SquadToolItem.MODE_COMMAND) "COMMAND" else "RECRUIT"
                 player.displayClientMessage(
-                    net.minecraft.network.chat.Component.literal("Mode: $name").withStyle(net.minecraft.ChatFormatting.YELLOW), true
+                    net.minecraft.network.chat.Component.literal("Mode: $name").withStyle(net.minecraft.ChatFormatting.YELLOW),
+                    true,
                 )
                 return@enqueueWork
             }
@@ -159,10 +179,13 @@ object ModNetwork {
         ctx.enqueueWork {
             val player = ctx.player() as? ServerPlayer ?: return@enqueueWork
             val level = player.level() as? ServerLevel ?: return@enqueueWork
-            if (player.distanceToSqr(Vec3.atCenterOf(p.pos)) > BARRACKS_REACH_SQR) return@enqueueWork
+            if (player.distanceToSqr(Vec3.atCenterOf(p.pos)) > BARRACKS_REACH_SQR || !level.hasChunkAt(p.pos)) return@enqueueWork
             val be = level.getBlockEntity(p.pos) as? BarracksBlockEntity ?: return@enqueueWork
             if (be.owner != player.uuid) return@enqueueWork
-            be.configure(level, SquadToolItem.readConfig(p.config))
+            val requested = SquadToolItem.readConfig(p.config)
+            val faction = PlayerFactionRegistry.get(level).recruitmentFaction(player, requested.faction)
+                ?: return@enqueueWork
+            be.configure(level, requested.copy(rank = NpcRank.RECRUIT, faction = faction))
         }
     }
 
@@ -174,6 +197,7 @@ object ModNetwork {
             fun bar(msg: String) = player.displayClientMessage(net.minecraft.network.chat.Component.literal(msg), true)
             // Set by the actions that change which squads exist — see the end of this handler.
             var reopen = false
+
             // Only ever resolves to a squad the sender actually owns — a squad id in a packet is
             // just a string the client chose to send, so this is the one place that matters.
             fun ownedSid(): UUID? {
@@ -185,6 +209,27 @@ object ModNetwork {
                 return id
             }
             when (p.action) {
+                SquadCmdPayload.REQUEST_LIST -> reopen = true
+
+                SquadCmdPayload.REQUEST_DETAILS -> ownedSid()?.let { id ->
+                    buildSquadDetailsSnapshot(mgr, player.server, player.uuid, id, refresh = p.value == 1)?.let {
+                        sendToClient(player, SquadDetailsPayload(it))
+                    }
+                }
+
+                SquadCmdPayload.MERGE -> ownedSid()?.let { source ->
+                    val destination = runCatching { UUID.fromString(p.text) }.getOrNull() ?: return@let
+                    val problem = mgr.merge(level, source, destination, player.uuid)
+                    if (problem != null) {
+                        bar(problem)
+                    } else {
+                        bar("Squads merged into ${mgr.get(destination)?.name}")
+                        buildSquadDetailsSnapshot(mgr, player.server, player.uuid, destination)?.let {
+                            sendToClient(player, SquadDetailsPayload(it))
+                        }
+                    }
+                }
+
                 SquadCmdPayload.CREATE -> {
                     val members = SquadSelection.looseOf(player.uuid).toList()
                     if (members.isEmpty()) return@enqueueWork
@@ -198,36 +243,51 @@ object ModNetwork {
                     SquadSelection.selectSquad(player.uuid, squad.id)
                     bar("Squad ${squad.name} formed")
                 }
-                SquadCmdPayload.DISBAND -> ownedSid()?.let { mgr.disband(level, it); reopen = true }
-                SquadCmdPayload.SET_ORDER -> ownedSid()?.let { mgr.setOrder(it, SquadOrder.byOrdinal(p.value)) }
+
+                SquadCmdPayload.DISBAND -> ownedSid()?.let {
+                    mgr.disband(level, it)
+                    reopen = true
+                }
+
+                SquadCmdPayload.SET_ORDER -> ownedSid()?.let { mgr.issueOrder(it, SquadOrder.byOrdinal(p.value)) }
+
                 SquadCmdPayload.TOGGLE_REPORTS -> {
                     val on = com.sbwnpc.squad.squad.ReportMutes.get(player.server).toggle(player.uuid)
                     bar(if (on) "Squad reports on" else "Squad reports off")
                 }
+
                 SquadCmdPayload.MAP_ORDER -> {
                     val (x, z) = p.text.split(' ').mapNotNull { it.toIntOrNull() }.takeIf { it.size == 2 }
                         ?: return@enqueueWork
                     // Every id a string the client chose to send: only the sender's own squads.
-                    val ids = p.squad.split(',').mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }
-                        .filter { mgr.ownedBy(it, player.uuid) }
-                    if (ids.isEmpty()) return@enqueueWork
+                    val entries = p.squad.split(',')
+                    val ids = entries.mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }
+                    if (ids.size != entries.size || ids.isEmpty() || ids.any { !mgr.ownedBy(it, player.uuid) }) {
+                        SquadSelection.clear(player.uuid)
+                        return@enqueueWork
+                    }
                     bar(com.sbwnpc.squad.squad.GroupOrders.apply(level, mgr, ids, SquadOrder.byOrdinal(p.value), x, z).joinToString(", "))
                 }
+
                 SquadCmdPayload.RENAME -> ownedSid()?.let { mgr.rename(it, p.text) }
+
                 SquadCmdPayload.SELECT -> ownedSid()?.let {
                     SquadSelection.selectSquad(player.uuid, it)
                     bar("Commanding ${mgr.get(it)?.name ?: "squad"}")
                 }
+
                 SquadCmdPayload.ARM_OBJECTIVE -> ownedSid()?.let {
                     SquadSelection.selectSquad(player.uuid, it)
                     SquadSelection.armObjective(player.uuid, it)
                     bar("Aim and right-click to set ${mgr.get(it)?.name ?: "squad"}'s objective")
                 }
+
                 SquadCmdPayload.ARM_FOCUS -> ownedSid()?.let {
                     SquadSelection.selectSquad(player.uuid, it)
                     SquadSelection.armFocus(player.uuid, it)
                     bar("Right-click anything (including your own NPCs) to focus ${mgr.get(it)?.name ?: "squad"} on it")
                 }
+
                 SquadCmdPayload.DELETE_SQUAD -> ownedSid()?.let { id ->
                     mgr.deleteSquad(level, id)
                     SquadSelection.clear(player.uuid)
@@ -240,8 +300,10 @@ object ModNetwork {
             // Send the fresh list instead; the client swaps the screen out under them.
             if (reopen) {
                 val snap = buildSquadSnapshot(
-                    mgr, player.uuid, SquadSelection.looseOf(player.uuid).size,
-                    !com.sbwnpc.squad.squad.ReportMutes.get(player.server).isMuted(player.uuid)
+                    mgr,
+                    player.uuid,
+                    SquadSelection.looseOf(player.uuid).size,
+                    !com.sbwnpc.squad.squad.ReportMutes.get(player.server).isMuted(player.uuid),
                 )
                 sendToClient(player, OpenCommandScreenPayload(snap))
             }
@@ -253,8 +315,10 @@ object ModNetwork {
             val player = ctx.player() as? ServerPlayer ?: return@enqueueWork
             val level = player.level() as? ServerLevel ?: return@enqueueWork
             val snap = buildSquadSnapshot(
-                SquadManager.get(level), player.uuid, 0,
-                !com.sbwnpc.squad.squad.ReportMutes.get(player.server).isMuted(player.uuid)
+                SquadManager.get(level),
+                player.uuid,
+                0,
+                !com.sbwnpc.squad.squad.ReportMutes.get(player.server).isMuted(player.uuid),
             )
             // Lets the client show an accurate "ALL SQUADS (N)" count for the `0` key, which
             // (see onHudOrderAll) only actually orders squads matching this — not every squad the
@@ -274,12 +338,15 @@ object ModNetwork {
             val mgr = SquadManager.get(level)
             val id = runCatching { UUID.fromString(p.squad) }.getOrNull() ?: return@enqueueWork
             if (!mgr.ownedBy(id, player.uuid)) return@enqueueWork
-            mgr.setOrder(id, SquadOrder.byOrdinal(p.order))
             val pos = Terrain.lookedAtPos(player, level, OBJECTIVE_RAYCAST_RANGE)
-            mgr.setObjective(level, id, pos)
-            com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER,
+            mgr.issueOrderAt(level, id, SquadOrder.byOrdinal(p.order), pos)
+            com.sbwnpc.squad.combat.DebugFlags.log(
+                com.sbwnpc.squad.combat.LogGroup.ORDER,
                 "HUD: {} -> {} at {} (asked {})",
-                mgr.get(id)?.name, mgr.get(id)?.order, pos, SquadOrder.byOrdinal(p.order)
+                mgr.get(id)?.name,
+                mgr.get(id)?.order,
+                pos,
+                SquadOrder.byOrdinal(p.order),
             )
         }
     }
@@ -296,13 +363,8 @@ object ModNetwork {
             val order = SquadOrder.byOrdinal(p.order)
             val pos = Terrain.lookedAtPos(player, level, OBJECTIVE_RAYCAST_RANGE)
             val defaultFaction = PlayerFactionRegistry.get(level).get(player.uuid)
-            mgr.forOwner(player.uuid)
-                .filter { defaultFaction == null || it.faction == defaultFaction }
-                .forEach { squad ->
-                    mgr.setOrder(squad.id, order)
-                    mgr.setObjective(level, squad.id, pos)
-                    com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER, "HUD all: {} -> {} at {}", squad.name, squad.order, pos)
-                }
+            val selected = mgr.forOwner(player.uuid).filter { defaultFaction == null || it.faction == defaultFaction }
+            com.sbwnpc.squad.squad.GroupOrders.apply(level, mgr, selected.map { it.id }, order, pos.x, pos.z)
         }
     }
 
@@ -311,20 +373,44 @@ object ModNetwork {
             val player = ctx.player() as? ServerPlayer ?: return@enqueueWork
             val level = player.level() as? ServerLevel ?: return@enqueueWork
             if (player.distanceToSqr(p.pos.center) > SUPPLY_REACH_SQR) return@enqueueWork
+            if (!level.hasChunkAt(p.pos)) return@enqueueWork
             val supply = level.getBlockEntity(p.pos) as? com.sbwnpc.squad.block.entity.SupplyBlockEntity ?: return@enqueueWork
-            if (!supply.serves(PlayerFactionRegistry.get(level).get(player.uuid))) return@enqueueWork
+            if (!player.isCreative && !supply.serves(PlayerFactionRegistry.get(level).get(player.uuid))) return@enqueueWork
             val supplyPort = com.sbwnpc.squad.domain.port.Ports.playerSupply
             val reply = when (p.action) {
                 SupplyCmdPayload.TAKE_KIT -> {
+                    if (!supply.serves(PlayerFactionRegistry.get(level).get(player.uuid))) return@enqueueWork
                     val name = supplyPort.kits.getOrNull(p.kit)?.name ?: return@enqueueWork
                     val faction = PlayerFactionRegistry.get(level).get(player.uuid)
-                    if (supplyPort.issueKit(player, p.kit, p.option, faction)) "$name kit issued"
-                    else "You already carry the $name kit"
+                    if (supplyPort.issueKit(player, p.kit, p.option, faction)) {
+                        "$name kit issued"
+                    } else {
+                        "You already carry the $name kit"
+                    }
                 }
+
+                SupplyCmdPayload.RESUPPLY_AMMO -> {
+                    if (!supply.serves(PlayerFactionRegistry.get(level).get(player.uuid))) return@enqueueWork
+                    val name = supplyPort.kits.getOrNull(p.kit)?.name ?: return@enqueueWork
+                    if (supplyPort.issueAmmo(player, p.kit)) "$name ammunition resupplied" else "$name ammunition already full"
+                }
+
                 SupplyCmdPayload.SET_SPAWN -> {
+                    if (!supply.serves(PlayerFactionRegistry.get(level).get(player.uuid))) return@enqueueWork
                     com.sbwnpc.squad.block.SupplySpawns.get(player.server).set(player, level, p.pos)
                     "You will respawn at this Supply"
                 }
+
+                SupplyCmdPayload.SET_FACTION -> {
+                    if (!player.isCreative) return@enqueueWork
+                    val faction = SquadFaction.entries.getOrNull(p.kit) ?: return@enqueueWork
+                    val previous = supply.faction
+                    supply.faction = faction
+                    supply.setChanged()
+                    com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.SUPPLY, "Supply {} faction {} -> {} by {}", p.pos, previous, faction, player.uuid)
+                    "Supply now belongs to ${faction.label}"
+                }
+
                 else -> return@enqueueWork
             }
             player.displayClientMessage(net.minecraft.network.chat.Component.literal(reply), true)
@@ -339,8 +425,11 @@ object ModNetwork {
             val reply = when (p.action) {
                 DiplomacyCmdPayload.PROPOSE ->
                     SquadFaction.entries.getOrNull(p.faction)?.let { com.sbwnpc.squad.team.Diplomacy.propose(server, player, it) }
+
                 DiplomacyCmdPayload.ACCEPT -> com.sbwnpc.squad.team.Diplomacy.accept(server, player, p.proposal)
+
                 DiplomacyCmdPayload.TOGGLE_LEAVE -> com.sbwnpc.squad.team.Diplomacy.voteLeave(server, player)
+
                 else -> null
             }
             reply?.let { player.displayClientMessage(it, true) }
@@ -361,6 +450,7 @@ object ModNetwork {
                     RouteRecording.start(player.uuid)
                     bar("Recording route — right-click blocks to add points, air-click to finish")
                 }
+
                 RouteCmdPayload.FINISH -> {
                     val points = RouteRecording.finish(player.uuid)
                     if (points.isNullOrEmpty()) {
@@ -370,10 +460,12 @@ object ModNetwork {
                         bar("Route ${route.name} saved (${points.size} points)")
                     }
                 }
+
                 RouteCmdPayload.CANCEL -> {
                     RouteRecording.cancel(player.uuid)
                     bar("Recording cancelled")
                 }
+
                 RouteCmdPayload.ASSIGN -> {
                     val routeId = runCatching { UUID.fromString(p.route) }.getOrNull() ?: return@enqueueWork
                     val squadId = runCatching { UUID.fromString(p.text) }.getOrNull() ?: return@enqueueWork
@@ -381,11 +473,13 @@ object ModNetwork {
                     squads.assignRoute(squadId, routeId)
                     bar("${squads.get(squadId)?.name ?: "Squad"} now patrols ${routes.get(routeId)?.name ?: "route"}")
                 }
+
                 RouteCmdPayload.DELETE -> {
                     val routeId = runCatching { UUID.fromString(p.route) }.getOrNull() ?: return@enqueueWork
                     if (!routes.ownedBy(routeId, player.uuid)) return@enqueueWork
                     routes.delete(routeId)
                 }
+
                 RouteCmdPayload.MAP_ROUTE -> {
                     val coords = p.text.split(' ').mapNotNull { it.toIntOrNull() }
                     val points = coords.chunked(2).filter { it.size == 2 }.map { it[0] to it[1] }.take(MAX_MAP_ROUTE_POINTS)
@@ -396,11 +490,11 @@ object ModNetwork {
                     if (ids.isEmpty()) return@enqueueWork
                     bar(com.sbwnpc.squad.squad.GroupOrders.patrol(level, squads, routes, player.uuid, ids, points).joinToString(", "))
                 }
+
                 RouteCmdPayload.REQUEST_LIST -> {
                     sendToClient(player, OpenRoutesScreenPayload(buildRouteSnapshot(routes, squads, player.uuid)))
                 }
             }
         }
     }
-
 }

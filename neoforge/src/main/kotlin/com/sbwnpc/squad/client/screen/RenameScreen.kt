@@ -31,7 +31,10 @@ class RenameScreen(private val squadId: String, private val current: String) : S
     }
 
     override fun keyPressed(key: Int, scan: Int, mods: Int): Boolean {
-        if (key == 257 || key == 335) { confirm(); return true } // enter
+        if (key == 257 || key == 335) {
+            confirm()
+            return true
+        } // enter
         return super.keyPressed(key, scan, mods)
     }
 

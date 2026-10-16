@@ -1,12 +1,19 @@
 package com.sbwnpc.squad.entity.ai
 
-import com.sbwnpc.squad.combat.FireAllocation
 import com.sbwnpc.squad.combat.CombatPosition
+import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.DetectionSightline
-import com.sbwnpc.squad.combat.TeamAwareness
-import com.sbwnpc.squad.combat.Vision
+import com.sbwnpc.squad.combat.FireAllocation
+import com.sbwnpc.squad.combat.FiringOpportunity
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.TankWeaponSelection
+import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.combat.VehicleTargeting
+import com.sbwnpc.squad.combat.Vision
+import com.sbwnpc.squad.combat.tactics.CoordinatedAttackState
+import com.sbwnpc.squad.combat.tactics.SquadTactics
+import com.sbwnpc.squad.combat.tactics.TacticalJob
+import com.sbwnpc.squad.combat.tactics.TacticalTargetSelection
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModSensors
@@ -25,21 +32,23 @@ import net.tslat.smartbrainlib.util.BrainUtils
  * selectors each keeping its own idea of who the enemy is (which once had a mortar crew arguing
  * with itself over its target).
  *
- * Priority, highest first:
- * 1. Whatever vehicle is attacking it ([NpcEntity.vehicleAttacker]).
- * 2. At a vehicle's weapon: the crew of a hostile vehicle, then hostile aircrew.
- * 3. The squad's focus (ATTACK: hunt it; DEFEND: whoever last hurt the guarded focus) — not for
- *    mortar crew, who have their own solver (see MortarOperatorBehaviour).
- * 4. Whoever last hurt this NPC.
- * 5. Falling back: only what it can shoot from where it stands — its own sight, then what its
- *    squadmates are shooting at, then the side's contacts.
- * 6. Otherwise the side's relayed contacts ([TeamAwareness]; not for mortar crew), then the
- *    nearest hostile it can see.
+ * Priority, highest first (computeDesired is the executable order):
+ * 1. The vehicle attacker, then hostile vehicle occupants / aircrew for an armed seat.
+ * 2. A nearby visible threat for dismounted non-mortar members.
+ * 3. The ordered focus for non-mortar members, then whoever last hurt this NPC.
+ * 4. A visible current target retained by a holding order between allocation reviews.
+ * 5. During withdrawal: direct sight, squadmate callout, then faction relay.
+ * 6. Otherwise: tactical assignment, faction relay, then nearest direct target.
+ * Mortar crew skip ordinary focus, close-threat, withdrawal and tactical/relay selection.
+ *
+ * Defensive boundaries restrict movement, not observation or firing while reaching a post.
  *
  * [BrainUtils.setTargetOfEntity] sets both the ATTACK_TARGET memory and `mob.target`, which the
  * rest of the code reads.
  */
 class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
+    private var tacticalProbeCursor = 0
+    private var nextReallocationTick = Long.MIN_VALUE
 
     // ExtendedSensor's default is a flat 20 ticks with NO initial offset (nextTickTime starts at 0
     // — confirmed via javap), so every NPC deployed in the same tick (a whole preset squad, a
@@ -47,7 +56,13 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     // N raycasts in one tick, nothing on the other 19. Randomising the interval per scan
     // decorrelates them within a few cycles. Average is still ~20 ticks.
     init {
-        setScanRate { entity -> SCAN_RATE_MIN + entity.random.nextInt(SCAN_RATE_JITTER) }
+        setScanRate { entity ->
+            if (entity.target?.let { entity.distanceToSqr(it) <= 36.0 } == true) {
+                4
+            } else {
+                SCAN_RATE_MIN + entity.random.nextInt(SCAN_RATE_JITTER)
+            }
+        }
     }
 
     override fun type(): SensorType<out ExtendedSensor<*>> = ModSensors.SQUAD_TARGET.get()
@@ -55,102 +70,178 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     override fun memoriesUsed(): List<MemoryModuleType<*>> = MEMORIES
 
     override fun doTick(level: ServerLevel, entity: NpcEntity) {
-        val target = computeDesired(entity, level)
+        val previous = entity.target
+        // Observation continues while engaging a reported/ordered target; target priority cannot blind the squad.
+        val directTarget = nearestDirectTarget(entity, level)
+        val reconsider = level.gameTime >= nextReallocationTick
+        if (reconsider) nextReallocationTick = level.gameTime + REALLOCATION_MIN + entity.random.nextInt(REALLOCATION_JITTER)
+        val target = computeDesired(entity, level, directTarget, reconsider)
+        // Capture sight loss before target selection can discard the personally observed enemy.
+        if (previous != null && entity.lastSeenFire.observed(previous.uuid)) {
+            entity.noticeHidden(previous, DetectionSightline.trace(entity, previous))
+        }
         BrainUtils.setTargetOfEntity(entity, target)
+        if (DebugFlags.on(LogGroup.ORDER) && previous?.uuid != target?.uuid) {
+            val squad = entity.currentSquad()
+            DebugFlags.log(
+                LogGroup.ORDER,
+                "[tactics] {} squad={} plan={} event=target_changed previous={} target={} distance={} sharedContact={} allocationReview={}",
+                entity.uuid, squad?.id, squad?.tactics?.plan?.id, previous?.uuid, target?.uuid,
+                target?.let { entity.distanceTo(it) }, target?.uuid in squad?.tactics?.contacts.orEmpty(), reconsider,
+            )
+        }
+        if (target != null && DetectionSightline.canSeeWithin(entity, target, NpcEntity.DETECTION_RANGE)) {
+            entity.rememberVisible(target)
+            SquadTactics.observe(entity, target)
+        }
         if (target != null) TankWeaponSelection.update(entity, target)
     }
 
-    private fun computeDesired(mob: NpcEntity, level: ServerLevel): LivingEntity? {
-        mob.vehicleAttacker()?.takeIf { allowed(mob) }?.let { return it }
-        val isMortarCrew = mob.npcClass == NpcClass.MORTAR_OPERATOR || mob.npcClass == NpcClass.MORTAR_LOADER
+    /** Priority is explicit here: later queries run only when earlier sources have no target. */
+    private fun computeDesired(mob: NpcEntity, level: ServerLevel, directTarget: LivingEntity?, reconsider: Boolean): LivingEntity? {
+        val vehicleAttacker = mob.vehicleAttacker()
+        if (vehicleAttacker != null) return vehicleAttacker
+        val mortarCrew = mob.npcClass == NpcClass.MORTAR
 
-        // SBW aims at the vehicle when its passenger is the gunner's target. Give armed vehicle
-        // crews that passenger first, so armour is engaged before nearby dismounted infantry.
-        if (mob.vehicle?.let { Ports.vehicles.hasWeaponAt(it, mob) } == true) {
-            VehicleTargeting.closestVisibleHostileVehicleOccupant(mob, level, NpcEntity.DETECTION_RANGE)?.let { return it }
-            VehicleTargeting.closestVisibleHostileAircrew(mob, level, NpcEntity.DETECTION_RANGE)?.let { return it }
+        val mountedTarget = armedVehicleTarget(mob, level)
+        if (mountedTarget != null) return mountedTarget
+        if (!mortarCrew && mob.vehicle == null) {
+            val closeEnemy = closeThreat(mob, level)
+            if (closeEnemy != null) return closeEnemy
         }
-
-        if (!isMortarCrew) {
-            squadFocusTarget(mob, level)?.takeIf { allowed(mob) }?.let { return it }
+        if (!mortarCrew) {
+            val orderedTarget = squadFocusTarget(mob, level)
+            if (orderedTarget != null) return orderedTarget
         }
-
-        mob.lastHurtByMob?.takeIf { it.isAlive && SquadTeams.isHostile(mob, it) && allowed(mob) }?.let { return it }
-
-        // Detection finds new contacts in its ordinary radius. Holding orders retain an already
-        // visible enemy that moves farther away; a bounded approach is decided by the gun behaviour.
-        if (CombatPosition.holdsPosition(mob.currentSquad()?.order)) {
-            mob.target?.takeIf {
-                it.isAlive && SquadTeams.isHostile(mob, it) && allowed(mob) && DetectionSightline.canSee(mob, it)
-            }?.let { return it }
+        val attacker = mob.lastHurtByMob
+        val hostileAttacker = attacker?.takeIf { it.isAlive && SquadTeams.isHostile(mob, it) }
+        val assignment = SquadTactics.task(mob)
+        if (assignment?.job == TacticalJob.RESERVE) {
+            if (hostileAttacker != null && mob.incomingFire.pending(level.gameTime) && FiringOpportunity.assess(mob, hostileAttacker) == TacticalTargetSelection.Opportunity.SHOOTABLE) return hostileAttacker
+            val backwards = assignment.focus?.subtract(mob.position())?.multiply(1.0, 0.0, 1.0)?.normalize() ?: return null
+            val known = com.sbwnpc.squad.ai.integration.NativeTactics.snapshot(mob)?.contacts.orEmpty()
+            val candidates = (known.map { it.id } + listOfNotNull(directTarget?.uuid)).distinct().mapNotNull { level.getEntity(it) as? LivingEntity }
+            val visible = candidates.filter { it.isAlive && mob.isEnemy(it) && DetectionSightline.canSeeWithin(mob, it, NpcEntity.DETECTION_RANGE) && it.position().subtract(mob.position()).dot(backwards) > 0 }
+            return FireAllocation.pick(mob, level, visible)
         }
+        if (hostileAttacker != null && FiringOpportunity.assess(mob, hostileAttacker) == TacticalTargetSelection.Opportunity.SHOOTABLE) return hostileAttacker
 
-        // Falling back, a target has to be one this man can shoot from where he stands: the
-        // covering half is there to fire, and a relayed contact behind a hill gives it nothing to
-        // do. Facing away from the enemy, it would see nothing through its own eyes either — so
-        // what the squad is already shooting at comes next, whichever way he faces.
-        if (!isMortarCrew && mob.retreatPoint() != null) {
-            nearestDirectTarget(mob, level)?.let { return it }
-            squadmateTarget(mob, level)?.let { return it }
-            return relayedTarget(mob, level)
+        val retainedTarget = if (reconsider) null else retainedDefensiveTarget(mob)
+        if (retainedTarget != null) return retainedTarget
+        if (!mortarCrew && mob.retreatPoint() != null) return withdrawalTarget(mob, level, directTarget)
+        if (!mortarCrew) {
+            val tacticalTarget = SquadTactics.preferredTarget(mob, level, tacticalProbeCursor, reconsider)
+            tacticalProbeCursor = (tacticalProbeCursor + TacticalTargetSelection.PROBES_PER_SCAN) and Int.MAX_VALUE
+            if (tacticalTarget != null) {
+                // A remembered enemy behind terrain must not mask another squad's usable
+                // report. Keep ordered targets and specialist jobs in their existing priority.
+                if (com.sbwnpc.squad.ai.integration.NativeTactics.coordinated(mob) &&
+                    SquadTactics.task(mob)?.job != TacticalJob.ANTI_ARMOUR &&
+                    FiringOpportunity.assess(mob, tacticalTarget) != TacticalTargetSelection.Opportunity.SHOOTABLE
+                ) {
+                    relayedTarget(mob, level, requireShot = true)?.let { return it }
+                }
+                return tacticalTarget
+            }
+            val relayedTarget = relayedTarget(mob, level)
+            if (relayedTarget != null) return relayedTarget
         }
-
-        if (!isMortarCrew) {
-            relayedTarget(mob, level)?.let { return it }
-        }
-
-        return nearestDirectTarget(mob, level)
+        // A holding member without a current squad snapshot can still finish a known distant contact.
+        if (reconsider) retainedDefensiveTarget(mob)?.let { return it }
+        return directTarget ?: hostileAttacker
     }
 
-    private fun allowed(mob: NpcEntity): Boolean {
-        if (mob.vehicle != null) return true
-        val squad = mob.currentSquad()
-        val home = mob.homeCenter()
-        return squad?.order != SquadOrder.DEFEND || home == null ||
-            CombatPosition.withinArea(home, mob.position(), CombatPosition.defendRadius(mob.npcClass, squad.members.size))
+    private fun armedVehicleTarget(mob: NpcEntity, level: ServerLevel): LivingEntity? {
+        val armedSeat = mob.vehicle?.let { Ports.vehicles.hasWeaponAt(it, mob) } == true
+        if (!armedSeat) return null
+        // SBW aims at the vehicle when its passenger is the gunner's target.
+        return VehicleTargeting.closestVisibleHostileVehicleOccupant(mob, level, NpcEntity.DETECTION_RANGE)
+            ?: VehicleTargeting.closestVisibleHostileAircrew(mob, level, NpcEntity.DETECTION_RANGE)
+    }
+
+    private fun retainedDefensiveTarget(mob: NpcEntity): LivingEntity? {
+        if (!CombatPosition.holdsPosition(mob.currentSquad()?.order)) return null
+        // A holding order may retain a visible target beyond the ordinary detection radius.
+        return mob.target?.takeIf { target ->
+            target.isAlive && SquadTeams.isHostile(mob, target) &&
+                FiringOpportunity.assess(mob, target) == TacticalTargetSelection.Opportunity.SHOOTABLE
+        }
+    }
+
+    private fun withdrawalTarget(mob: NpcEntity, level: ServerLevel, directTarget: LivingEntity?): LivingEntity? {
+        // Covering members need a target visible from their position, including squad callouts.
+        return directTarget ?: squadmateTarget(mob, level) ?: relayedTarget(mob, level)
     }
 
     private fun squadFocusTarget(mob: NpcEntity, level: ServerLevel): LivingEntity? {
         val squad = mob.currentSquad() ?: return null
-        val fid = squad.focusEntity ?: return null
-        val focus = level.getEntity(fid) as? LivingEntity ?: return null
+        val focusId = squad.focusEntity ?: return null
+        val focus = level.getEntity(focusId) as? LivingEntity ?: return null
         if (!focus.isAlive) return null
         return when (squad.order) {
             SquadOrder.ATTACK -> focus
+
             SquadOrder.DEFEND -> focus.lastHurtByMob?.takeIf {
                 it.isAlive && it !== mob && SquadTeams.isHostile(mob, it)
             }
+
             else -> null
         }
+    }
+
+    /** A local visible threat outranks a distant ordered/relayed target, without seeing through cover. */
+    private fun closeThreat(mob: NpcEntity, level: ServerLevel): LivingEntity? {
+        val candidates = level.getEntitiesOfClass(LivingEntity::class.java, mob.boundingBox.inflate(6.0)) {
+            it !== mob && it.isAlive && SquadTeams.isHostile(mob, it) && Vision.noticesClose(mob.position(), mob.yHeadRot, it.position())
+        }.sortedBy { mob.distanceToSqr(it) }
+        for (candidate in candidates) {
+            if (DetectionSightline.canSee(mob, candidate)) {
+                SquadTactics.observe(mob, candidate)
+                return candidate
+            }
+        }
+        return null
     }
 
     /** A target a squadmate is engaging that this member can see too. Squadmates call out what
      *  they shoot at, so this skips the vision cone the way a relayed contact does. */
     private fun squadmateTarget(mob: NpcEntity, level: ServerLevel): LivingEntity? {
         val squad = mob.currentSquad() ?: return null
-        val rangeSqr = NpcEntity.DETECTION_RANGE * NpcEntity.DETECTION_RANGE
         val seen = HashSet<LivingEntity>()
         for (id in squad.members) {
             if (id == mob.uuid) continue
-            val t = (level.getEntity(id) as? NpcEntity)?.target ?: continue
-            if (t.isAlive && SquadTeams.isHostile(mob, t) && mob.distanceToSqr(t) <= rangeSqr && allowed(mob)) seen += t
+            val target = (level.getEntity(id) as? NpcEntity)?.target ?: continue
+            if (target.isAlive && SquadTeams.isHostile(mob, target)) seen += target
         }
         val visible = seen.sortedBy { mob.distanceToSqr(it) }.filter { DetectionSightline.canSee(mob, it) }
         return FireAllocation.pick(mob, level, visible)
     }
 
-    private fun relayedTarget(mob: NpcEntity, level: ServerLevel): LivingEntity? {
+    private fun relayedTarget(mob: NpcEntity, level: ServerLevel, requireShot: Boolean = false): LivingEntity? {
         val faction = SquadTeams.factionOf(mob) ?: return null
         return TeamAwareness.relayedContacts(faction, level.gameTime, TeamAwareness.MEMORY_TICKS)
             .asSequence()
             .mapNotNull { level.getEntity(it) as? LivingEntity }
             .filter {
-                val range = VehicleTargeting.rangeFor(it, NpcEntity.DETECTION_RANGE)
-                it.isAlive && it !== mob && SquadTeams.isHostile(mob, it) && mob.distanceToSqr(it) <= range * range && allowed(mob)
+                val detection = VehicleTargeting.rangeFor(it, NpcEntity.DETECTION_RANGE)
+                val range = if (requireShot) maxOf(detection, mob.currentSquad()?.tactics?.plan?.behavior?.assignmentRange ?: detection) else detection
+                it.isAlive && it !== mob && SquadTeams.isHostile(mob, it) && mob.distanceToSqr(it) <= range * range
             }
             .sortedBy { mob.distanceToSqr(it) }
             .toList()
-            .let { FireAllocation.pick(mob, level, it) }
+            .let { candidates ->
+                if (!requireShot) {
+                    FireAllocation.pick(mob, level, candidates)
+                } else {
+                    TacticalTargetSelection.choose(
+                        candidates,
+                        mob.target,
+                        tacticalProbeCursor,
+                        assess = { FiringOpportunity.assess(mob, it) },
+                        allocate = { FireAllocation.pick(mob, level, it.sortedBy(mob::distanceToSqr)) },
+                    )?.takeIf { FiringOpportunity.assess(mob, it) == TacticalTargetSelection.Opportunity.SHOOTABLE }
+                }
+            }
     }
 
     // Two cost fixes versus the naive "filter by LOS, then take the nearest" version:
@@ -161,7 +252,8 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     //    raycasts instead of one per hostile in range (dozens, in a big fight, per NPC per scan).
     private fun nearestDirectTarget(mob: NpcEntity, level: ServerLevel): LivingEntity? {
         val ground = nearestGroundTarget(mob, level)
-        val air = VehicleTargeting.closestVisibleHostileAircrew(mob, level, NpcEntity.DETECTION_RANGE)?.takeIf { allowed(mob) }
+        val air = VehicleTargeting.closestVisibleHostileAircrew(mob, level, NpcEntity.DETECTION_RANGE)
+        if (air != null) SquadTactics.observe(mob, air)
         if (ground == null || air == null) return ground ?: air
         return if (mob.distanceToSqr(air.vehicle ?: air) < mob.distanceToSqr(ground)) air else ground
     }
@@ -179,7 +271,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         val allRound = airborne || mob.vehicle?.let { Ports.vehicles.hasWeaponAt(it, mob) } == true
         val box = mob.boundingBox.inflate(range, height, range)
         val hostiles = level.getEntitiesOfClass(LivingEntity::class.java, box) { candidate ->
-            candidate !== mob && candidate.isAlive && SquadTeams.isHostile(mob, candidate) && allowed(mob)
+            candidate !== mob && candidate.isAlive && SquadTeams.isHostile(mob, candidate)
         }
         if (hostiles.isEmpty()) return null
         val rangeSqr = range * range
@@ -194,6 +286,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             if (!allRound && !Vision.inCone(mob.position(), mob.yHeadRot, candidate.position())) continue
             val sees = DetectionSightline.canSee(mob, candidate)
             if (sees) {
+                SquadTactics.observe(mob, candidate)
                 visible += candidate
                 if (visible.size >= MAX_SPREAD_CANDIDATES || mob.currentSquad() == null) break
             }
@@ -204,7 +297,10 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     companion object {
         private const val SCAN_RATE_MIN = 15
         private const val SCAN_RATE_JITTER = 11 // 15..25 ticks, mean 20 — same average as before
+        private const val REALLOCATION_MIN = 80L
+        private const val REALLOCATION_JITTER = 41 // 4..6s, independent for each NPC; aim stays stable between reviews.
         private const val DETECTION_HEIGHT = 24.0
+
         /** How many visible enemies a scan considers when spreading the squad's fire. */
         private const val MAX_SPREAD_CANDIDATES = 4
 

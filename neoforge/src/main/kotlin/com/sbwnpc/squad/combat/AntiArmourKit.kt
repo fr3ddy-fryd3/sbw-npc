@@ -28,8 +28,7 @@ object AntiArmourKit {
      *  registry lookup, not a guess about the mod being present). */
     fun issue(npc: NpcEntity): ItemStack = Ports.guns.issue(RPG, npc, ROCKETS)
 
-    fun isLauncher(stack: ItemStack): Boolean =
-        !stack.isEmpty && BuiltInRegistries.ITEM.getKey(stack.item) == RPG
+    fun isLauncher(stack: ItemStack): Boolean = !stack.isEmpty && BuiltInRegistries.ITEM.getKey(stack.item) == RPG
 
     /** Whether there is anything left to fire. */
     fun loaded(npc: NpcEntity): Boolean {
@@ -49,10 +48,12 @@ object AntiArmourKit {
 
     /** True once the gunner is holding what it should be holding. */
     fun wield(npc: NpcEntity, launcher: Boolean): Boolean {
+        if (launcher) SidearmKit.restorePrimary(npc)
         val holding = isLauncher(npc.mainHandItem)
         if (holding == launcher) return true
         val other = npc.antiArmourWeapon
         if (other.isEmpty) return false
+        Ports.guns.persist(npc.mainHandItem)
         // A straight exchange — whatever was in hand becomes the stowed weapon.
         npc.antiArmourWeapon = npc.mainHandItem
         npc.setItemInHand(InteractionHand.MAIN_HAND, other)

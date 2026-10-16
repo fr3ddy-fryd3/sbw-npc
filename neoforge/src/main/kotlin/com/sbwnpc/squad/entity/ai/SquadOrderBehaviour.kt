@@ -1,11 +1,13 @@
 package com.sbwnpc.squad.entity.ai
 
+import com.mojang.datafixers.util.Pair
+import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.squad.RouteManager
 import com.sbwnpc.squad.squad.Squad
 import com.sbwnpc.squad.squad.SquadOrder
-import com.mojang.datafixers.util.Pair
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
@@ -23,7 +25,7 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
  *    guarded entity), running when more than [DEFEND_RUN_DISTANCE] blocks away, then each man
  *    holds his own post round a perimeter sized to the squad.
  *  - PATROL: walk the squad's assigned Route in sequence if it has one (see RouteManager);
- *    otherwise wander within [ROAM_RADIUS] of home.
+ *    otherwise wander around home in an area sized for the squad.
  *  - ATTACK: advance on home at a run. Taking the point turns the squad to DEFEND —
  *    [com.sbwnpc.squad.squad.OrderArrival].
  *  - RETREAT: fall back to the point, bounding under fire ([com.sbwnpc.squad.combat.Withdrawal]).
@@ -49,11 +51,16 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var routeIndex = 0
     private var routeWaitUntil = 0
     private var moveAnchor: BlockPos? = null
+    private var assemblingMove = false
     private var orderStamp = -1
+    private var orderSquad: java.util.UUID? = null
+
     /** A defender's chosen place — see [holdDefendPost]. Kept until the point or the order changes. */
     private var defendPost: Vec3? = null
+
     /** On the way to a roaming spot — see [roamAround]. */
     private var roaming = false
+    private var patrolHome: Vec3? = null
     private var defendPostHome: Vec3? = null
 
     // No memory gate needed — eligibility is purely squad/order/target state, same as the old goal's
@@ -64,10 +71,10 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun eligible(entity: NpcEntity): Boolean {
         if (entity.target != null) return false
         // On its way to a Supply — ResupplyBehaviour hands it back once topped up.
-        if (entity.resupplying) return false
+        if (entity.resupplying || entity.movementLockedByCover() || entity.combatLockedByMedic()) return false
         // An alarm sends a mob to look — except while falling back, when looking is the one thing
         // it must not do.
-        if (entity.isAlert() && entity.retreatPoint() == null) return false
+        if (entity.isAlert() && entity.retreatPoint() == null && !com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) return false
         // A dug-in mob clears COVER_HOLD for its whole holding duration (see
         // SeekCoverBehaviour.enterDugInHolding) so GunAttackBehaviour can still fire from the hole —
         // this behaviour never checked combatLockedByCover() in the first place (only target/alert/
@@ -82,13 +89,12 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private val startCheck = StartCheckThrottle(START_CHECK_INTERVAL_TICKS)
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
-        startCheck.check(entity) { eligible(entity) }
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = startCheck.check(entity) { eligible(entity) }
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = eligible(entity)
 
     override fun stop(entity: NpcEntity) {
         startCheck.reset()
-        com.sbwnpc.squad.combat.FiringSpots.release(entity.uuid)
+        if (!com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) com.sbwnpc.squad.combat.FiringSpots.release(entity.uuid)
     }
 
     override fun start(entity: NpcEntity) {
@@ -98,12 +104,18 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun tick(entity: NpcEntity) {
         val squad = entity.currentSquad() ?: return
+        if (entity.retreatPoint() == null && com.sbwnpc.squad.combat.tactics.SquadTactics.holdsAfterFailure(entity)) {
+            entity.navigation.stop()
+            return
+        }
+        if (com.sbwnpc.squad.combat.tactics.SquadTactics.move(entity)) return
         val order = squad.order
         val home = entity.homeCenter() ?: return
         val dist = entity.position().distanceTo(home)
-        if (squad.orderStamp != orderStamp) {
+        if (squad.id != orderSquad || squad.orderStamp != orderStamp) {
             // Fresh command: path to it now, not after the cooldown left over from the last one.
             orderStamp = squad.orderStamp
+            orderSquad = squad.id
             repathCooldown = 0
             defendPost = null
         }
@@ -116,14 +128,16 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
                 // and rear support posts are decided only by GunAttackBehaviour.
                 approachSlot(entity, home, arrived, RUN_SPEED_MODIFIER)
             }
+
             // Own arrival threshold, SquadFormation.defendArrivalRadius — DEFEND holds a perimeter
             // sized to the squad, wider than ATTACK's ring; derived rather than hardcoded so it
             // stays past the slots it assigns (see the oscillation note on ARRIVAL_RADIUS).
             // A barraging crew shells the objective from where its tube stands: the objective is
             // the target, not a place to go. Moving the tube within reach of it is
-            // MortarOperatorBehaviour's business; taken for a point to hold, it walked the crew
+            // MortarCrewBehaviour's business; taken for a point to hold, it walked the crew
             // off toward the shelling whenever they stepped away from the tube.
             SquadOrder.BARRAGE -> entity.navigation.stop()
+
             SquadOrder.DEFEND -> {
                 val speed = if (dist > DEFEND_RUN_DISTANCE) RUN_SPEED_MODIFIER else WALK_SPEED_MODIFIER
                 // A defender that has picked its post keeps making for it: its way there can lead
@@ -131,15 +145,28 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
                 // turning round for the centre and back again, over and over.
                 val hasPost = defendPost != null && defendPostHome == home
                 val arrived = hasPost || dist <= SquadFormation.defendArrivalRadius(squad.members.size)
-                if (arrived) holdDefendPost(entity, home, speed)
-                else approachSlot(entity, home, arrived, speed)
+                if (arrived) {
+                    holdDefendPost(entity, home, speed)
+                } else {
+                    approachSlot(entity, home, arrived, speed)
+                }
             }
+
             SquadOrder.PATROL -> {
                 val points = squad.routeId
                     ?.let { (entity.level() as? ServerLevel)?.let { lvl -> RouteManager.get(lvl).get(it) } }
                     ?.points
                 if (!points.isNullOrEmpty()) {
                     tickRoute(entity, points)
+                } else if (patrolHome != home) {
+                    patrolHome = home
+                    roaming = false
+                    repathCooldown = 0
+                    repathWhenDue(entity, home, WALK_SPEED_MODIFIER)
+                } else if (!roaming && entity.position().subtract(home).horizontalDistance() > SquadFormation.patrolRadius(squad.members.size) + 3.0) {
+                    // A distant patrol area is a fixed transit goal. A short march leg is not
+                    // arrival at a roaming spot; do not pause and pick a different destination.
+                    repathWhenDue(entity, home, WALK_SPEED_MODIFIER)
                 } else if (entity.navigation.isDone && roaming) {
                     // Got there: stand about for a while before the next spot.
                     roaming = false
@@ -148,16 +175,19 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
                     roamAround(entity, home)
                 }
             }
+
             SquadOrder.MOVE -> tickMove(entity, home)
+
             // Nobody in sight: just get there at a run. Under fire GunAttackBehaviour takes over
             // and makes it a fighting withdrawal.
             SquadOrder.RETREAT -> {
-                val arrived = dist <= SquadFormation.ARRIVAL_RADIUS
                 // A squadmate is in a fight: this one's half may be the one holding to cover it.
-                val bound = if (arrived) null else com.sbwnpc.squad.combat.Withdrawal.positionFor(entity, squad, home)
-                if (!arrived && bound == null) entity.navigation.stop()
-                else if (bound != null) moveToSlot(entity, bound, RUN_SPEED_MODIFIER)
-                else approachSlot(entity, home, true, RUN_SPEED_MODIFIER)
+                val bound = com.sbwnpc.squad.combat.Withdrawal.positionFor(entity, squad, home)
+                if (bound == null) {
+                    entity.navigation.stop()
+                } else {
+                    moveToSlot(entity, bound, RUN_SPEED_MODIFIER)
+                }
             }
         }
     }
@@ -173,7 +203,21 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
 
         val heading = home.subtract(assembly)
-        if (!squad.moveFormationReady) {
+        val assembling = !squad.moveFormationReady
+        if (assembling != assemblingMove) {
+            assemblingMove = assembling
+            // Every member switches destinations, including those that did not finish the rally.
+            repathCooldown = 0
+            DebugFlags.log(
+                LogGroup.ORDER,
+                "{} MOVE phase={} assembly={} objective={}",
+                entity.uuid,
+                if (assembling) "ASSEMBLING" else "MARCHING",
+                assembly,
+                home,
+            )
+        }
+        if (assembling) {
             val rallySlot = SquadFormation.moveSlotTarget(entity, assembly, heading)
             moveToSlot(entity, rallySlot, fallIn = true)
             // The rally is for looks; it must never hold the order up. It used to wait for every
@@ -198,6 +242,9 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun moveToSlot(entity: NpcEntity, slot: Vec3, speed: Double = WALK_SPEED_MODIFIER, fallIn: Boolean = false) {
         if (entity.position().distanceTo(slot) > 1.5) {
             val pace = if (fallIn) paceTo(entity, slot, speed) else holdPace(entity, speed)
+            // Vanilla may finish a block-rounded path just outside this fractional grid slot.
+            // Complete only the short, unobstructed final approach using the shared post guard.
+            if (com.sbwnpc.squad.combat.FiringPostArrival.steer(entity, slot, pace)) return
             repathWhenDue(entity, slot, pace)
         } else {
             entity.navigation.stop()
@@ -211,7 +258,9 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
             // Busy elsewhere: not coming to the rally, so not worth waiting for.
             if (member.target != null || member.vehicle != null || member.vehicleTransport ||
                 member.servingMortar || member.operatingDrone || member.diggedIn
-            ) return@all true
+            ) {
+                return@all true
+            }
             member.position().distanceTo(SquadFormation.moveSlotTarget(member, anchor, heading)) <= MOVE_SLOT_RADIUS
         }
     }
@@ -268,13 +317,15 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         var best = slot
         var bestScore = Double.NEGATIVE_INFINITY
         val r = DEFEND_POST_SEARCH.toInt()
-        for (ox in -r..r) for (oz in -r..r) {
-            val ground = com.sbwnpc.squad.util.Terrain.standableOrNull(level, slot.x + ox, slot.y + 1.0, slot.z + oz) ?: continue
-            if (com.sbwnpc.squad.combat.FiringSpots.crowded(ground, taken)) continue
-            val score = coverScore(level, ground, outward) - Math.sqrt((ox * ox + oz * oz).toDouble()) * 0.3
-            if (score > bestScore) {
-                bestScore = score
-                best = ground
+        for (ox in -r..r) {
+            for (oz in -r..r) {
+                val ground = com.sbwnpc.squad.util.Terrain.standableOrNull(level, slot.x + ox, slot.y + 1.0, slot.z + oz) ?: continue
+                if (com.sbwnpc.squad.combat.FiringSpots.crowded(ground, taken)) continue
+                val score = coverScore(level, ground, outward) - Math.sqrt((ox * ox + oz * oz).toDouble()) * 0.3
+                if (score > bestScore) {
+                    bestScore = score
+                    best = ground
+                }
             }
         }
         return best
@@ -341,9 +392,6 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         return pace
     }
 
-    /** Resolves every squad member (not just this one) and checks it's within ARRIVAL_RADIUS of
-     *  [home] — an unloaded/dead-but-not-yet-cleaned-up member counts as "not arrived" (conservative:
-     *  better to keep waiting than switch the whole squad to DEFEND while unsure). */
     /** Heads for [to] — at most once a second, not every tick. */
     private fun repathWhenDue(entity: NpcEntity, to: Vec3, pace: Double) {
         if (repathCooldown != 0) return
@@ -353,17 +401,22 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /**
      * A patrol with no route: every member drifts about the area on its own — a spot somewhere in
-     * [ROAM_RADIUS] of the point, a walk there, a pause to look around, and the next. Picking each
+     * the squad's patrol area, a walk there, a pause to look around, and the next. Picking each
      * spot as "a step toward the point", as this used to, drew the whole squad into a knot at the
      * middle.
      */
     private fun roamAround(entity: NpcEntity, center: Vec3) {
         val level = entity.level() as? ServerLevel ?: return
+        val radius = SquadFormation.patrolRadius(entity.currentSquad()?.members?.size ?: 1)
         repeat(ROAM_ATTEMPTS) {
             val angle = entity.random.nextDouble() * Math.PI * 2
-            val dist = Math.sqrt(entity.random.nextDouble()) * ROAM_RADIUS
+            val dist = Math.sqrt(entity.random.nextDouble()) * radius
             val spot = com.sbwnpc.squad.util.Terrain.standableOrNull(
-                level, center.x + Math.cos(angle) * dist, center.y + 4.0, center.z + Math.sin(angle) * dist, 12
+                level,
+                center.x + Math.cos(angle) * dist,
+                center.y + 4.0,
+                center.z + Math.sin(angle) * dist,
+                12,
             ) ?: return@repeat
             if (entity.navigation.moveTo(spot.x, spot.y, spot.z, WALK_SPEED_MODIFIER)) {
                 roaming = true
@@ -376,8 +429,8 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     companion object {
         private const val REPATH_COOLDOWN_TICKS = 20
         private const val ROUTE_DWELL_TICKS = 40
-        private const val ROAM_RADIUS = 40.0
         private const val ROAM_ATTEMPTS = 4
+
         /** Standing about at a spot before heading for the next. */
         private const val ROAM_PAUSE_MIN = 100
         private const val ROAM_PAUSE_JITTER = 140
@@ -385,16 +438,19 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val ROUTE_DWELL_JITTER = 40
         private const val MOVE_SLOT_RADIUS = 2.0
         private const val SLOT_SETTLE_DISTANCE = 3.0
+
         /** How far around its perimeter slot a defender looks for a better spot. */
         private const val DEFEND_POST_SEARCH = 3.0
         private const val DEFEND_SETTLE_DISTANCE = 2.5
         private const val DEFEND_RUN_DISTANCE = 80.0
         private const val MOVE_RALLY_TIMEOUT_TICKS = 100L
+
         // Navigation modifiers multiply each role's MOVEMENT_SPEED. MOVE/PATROL and nearby
         // defenders walk; ATTACK/RETREAT and defenders beyond DEFEND_RUN_DISTANCE run at combat pace.
         // internal (not private) — NpcEntity.registerGoals() reuses this for vanilla idle wandering.
         internal const val WALK_SPEED_MODIFIER = 0.6
         private const val RUN_SPEED_MODIFIER = 1.0
+
         /** Out of formation by more than this, a member runs to its place. */
         private const val FALL_IN_DISTANCE = 4.0
         private const val FALL_IN_SPEED_MODIFIER = 1.3

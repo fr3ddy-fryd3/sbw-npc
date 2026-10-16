@@ -31,7 +31,7 @@ object HudOverlayState {
         val tank: Boolean,
         val mortar: Boolean,
         val gunship: Boolean,
-        val transport: Boolean
+        val transport: Boolean,
     )
 
     @JvmStatic
@@ -46,6 +46,7 @@ object HudOverlayState {
         private set
     var selectedAll: Boolean = false
         private set
+
     /** The player's own recorded default faction — used only to show an accurate "ALL SQUADS (N)"
      *  count for [selectAll]; the server independently applies the same filter (ModNetwork.
      *  onHudOrderAll) regardless of what the client shows. Null if not chosen yet (shouldn't
@@ -82,10 +83,14 @@ object HudOverlayState {
         rows = data.getList("Squads", Tag.TAG_COMPOUND.toInt()).map {
             val t = it as CompoundTag
             Row(
-                t.getString("Id"), t.getString("Name"),
+                t.getString("Id"),
+                t.getString("Name"),
                 runCatching { SquadFaction.valueOf(t.getString("Faction")) }.getOrDefault(SquadFaction.DEFAULT),
-                t.getInt("Members"), t.getBoolean("Tank"), t.getBoolean("Mortar"),
-                t.getBoolean("Gunship"), t.getBoolean("Transport")
+                t.getInt("Members"),
+                t.getBoolean("Tank"),
+                t.getBoolean("Mortar"),
+                t.getBoolean("Gunship"),
+                t.getBoolean("Transport"),
             )
         }
         defaultFaction = if (data.contains("DefaultFaction")) SquadFaction.byOrdinal(data.getInt("DefaultFaction")) else null
@@ -117,6 +122,7 @@ object HudOverlayState {
                 selected = row
                 mode = Mode.ORDERS
             }
+
             Mode.ORDERS -> {
                 val order = availableOrders().getOrNull(index) ?: return
                 if (selectedAll) {
@@ -147,15 +153,19 @@ object HudOverlayState {
     }
 
     /** Orders displayed for the selected squad. Tank crews only navigate; mortar crews hold or fire. */
-    fun availableOrders(): List<SquadOrder> = when {
-        // "All squads" can be any mix, so offer what suits an ordinary one; the server clamps each
-        // squad to its own list anyway.
-        selectedAll -> SquadOrder.availableFor(tank = false, mortar = false)
-        else -> SquadOrder.availableFor(
-            selected?.tank == true, selected?.mortar == true,
-            selected?.gunship == true, selected?.transport == true
-        )
-    }
+    fun availableOrders(): List<SquadOrder> =
+        when {
+            // "All squads" can be any mix, so offer what suits an ordinary one; the server clamps each
+            // squad to its own list anyway.
+            selectedAll -> SquadOrder.availableFor(tank = false, mortar = false)
+
+            else -> SquadOrder.availableFor(
+                selected?.tank == true,
+                selected?.mortar == true,
+                selected?.gunship == true,
+                selected?.transport == true,
+            )
+        }
 
     /** How many squads the number keys reach — [HudKeys.SLOTS]' own size, mirrored here so the
      *  renderer doesn't have to reach into the key mappings to lay the list out. */

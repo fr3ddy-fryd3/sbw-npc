@@ -24,6 +24,7 @@ object TreeAvoidance {
     private val OFFSETS = doubleArrayOf(0.0, 20.0, -20.0, 40.0, -40.0, 60.0, -60.0, 85.0, -85.0)
     private const val LOOKAHEAD = 8.0
     private const val PROBE_STEP = 2.0
+
     /** Ground clutter below this is driven over. */
     private const val CLEARANCE_FROM_FLOOR = 0.5
     private const val SIDE_SLACK = 0.2
@@ -47,8 +48,12 @@ object TreeAvoidance {
 
     private fun treeAhead(level: Level, body: AABB, dir: Vec3): Boolean {
         val probe = AABB(
-            body.minX + SIDE_SLACK, body.minY + CLEARANCE_FROM_FLOOR, body.minZ + SIDE_SLACK,
-            body.maxX - SIDE_SLACK, body.maxY - 0.01, body.maxZ - SIDE_SLACK
+            body.minX + SIDE_SLACK,
+            body.minY + CLEARANCE_FROM_FLOOR,
+            body.minZ + SIDE_SLACK,
+            body.maxX - SIDE_SLACK,
+            body.maxY - 0.01,
+            body.maxZ - SIDE_SLACK,
         )
         var d = PROBE_STEP
         while (d <= LOOKAHEAD) {

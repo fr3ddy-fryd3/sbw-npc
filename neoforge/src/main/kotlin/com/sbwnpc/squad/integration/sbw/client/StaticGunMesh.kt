@@ -32,7 +32,7 @@ class StaticGunMesh private constructor(private val chunks: Array<BakedQuadData>
                     pose.pose().transformPosition(positions[p], positions[p + 1], positions[p + 2], position)
                     buffer.addVertex(
                         position.x, position.y, position.z, -1, uvs[uv], uvs[uv + 1],
-                        OverlayTexture.NO_OVERLAY, packedLight, normal.x, normal.y, normal.z
+                        OverlayTexture.NO_OVERLAY, packedLight, normal.x, normal.y, normal.z,
                     )
                 }
             }

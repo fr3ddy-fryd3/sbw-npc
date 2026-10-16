@@ -28,7 +28,13 @@ class SquadFormationTest {
     fun `contact enables rear combat posts independently of the commanded objective`() {
         for (cls in support) {
             val post = SquadFormation.formationOffset(
-                SquadOrder.ATTACK, false, cls, 0, 7, SquadFormation.COMBAT_SPACING, combat = true
+                SquadOrder.ATTACK,
+                false,
+                cls,
+                0,
+                7,
+                SquadFormation.COMBAT_SPACING,
+                combat = true,
             )
             assertTrue(post.z <= -cls.attackStandoffDistance)
             assertTrue(post.length() <= cls.assaultDistance)
@@ -44,8 +50,10 @@ class SquadFormationTest {
             for (slot in 0 until 32) {
                 val post = SquadFormation.attackOffset(cls, slot, 32, SquadFormation.COMBAT_SPACING)
                 assertTrue(post.z <= -cls.attackStandoffDistance, "$cls slot $slot is too close: $post")
-                assertTrue(post.length() <= 24.0 * cls.shootDistanceMultiplier,
-                    "$cls slot $slot cannot cover the objective from $post")
+                assertTrue(
+                    post.length() <= 24.0 * cls.shootDistanceMultiplier,
+                    "$cls slot $slot cannot cover the objective from $post",
+                )
             }
         }
     }

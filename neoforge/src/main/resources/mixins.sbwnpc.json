@@ -8,13 +8,16 @@
     "defaultRequire": 1
   },
   "mixins": [
+    "PathNavigationAccessor",
     "VehicleBoardingMixin",
     "VehicleGunDataMixin",
     "VehicleShootingMixin",
     "AutoAimableEntityMixin",
     "EntityAllianceMixin",
     "EntityTrackingRangeMixin",
-    "AircraftSnapshotMixin"
+    "AircraftSnapshotMixin",
+    "VehicleExperienceMixin",
+    "ExperienceHealingMixin"
   ],
   "client": [
     "KeyMappingMixin",

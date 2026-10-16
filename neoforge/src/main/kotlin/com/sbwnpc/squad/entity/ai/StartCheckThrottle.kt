@@ -23,7 +23,9 @@ class StartCheckThrottle(private val intervalTicks: Int) {
     }
 
     @PublishedApi internal fun due(entity: NpcEntity): Boolean = entity.tickCount >= nextTick
+
     @PublishedApi internal fun cached(): Boolean = last
+
     @PublishedApi internal fun remember(entity: NpcEntity, value: Boolean): Boolean {
         // Small jitter so a squad deployed on one tick doesn't re-check in lockstep forever.
         nextTick = entity.tickCount + intervalTicks + entity.random.nextInt(2)

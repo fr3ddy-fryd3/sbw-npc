@@ -66,10 +66,12 @@ class SupplyPoints : SavedData() {
     override fun save(tag: CompoundTag, registries: HolderLookup.Provider): CompoundTag {
         val list = ListTag()
         for ((pos, faction) in points) {
-            list.add(CompoundTag().apply {
-                put("Pos", NbtUtils.writeBlockPos(pos))
-                faction?.let { putString("Faction", it.name) }
-            })
+            list.add(
+                CompoundTag().apply {
+                    put("Pos", NbtUtils.writeBlockPos(pos))
+                    faction?.let { putString("Faction", it.name) }
+                },
+            )
         }
         tag.put("Points", list)
         return tag
@@ -81,8 +83,7 @@ class SupplyPoints : SavedData() {
 
         fun get(level: ServerLevel): SupplyPoints = level.dataStorage.computeIfAbsent(FACTORY, FILE)
 
-        fun serves(own: SquadFaction?, other: SquadFaction?): Boolean =
-            own == null || (other != null && Diplomacy.allied(own, other))
+        fun serves(own: SquadFaction?, other: SquadFaction?): Boolean = own == null || (other != null && Diplomacy.allied(own, other))
 
         internal fun load(tag: CompoundTag): SupplyPoints {
             val data = SupplyPoints()
@@ -92,7 +93,9 @@ class SupplyPoints : SavedData() {
                 val faction = if (point.contains("Faction")) {
                     // A malformed faction must not turn a restricted point into a public one.
                     runCatching { SquadFaction.valueOf(point.getString("Faction")) }.getOrNull() ?: continue
-                } else null
+                } else {
+                    null
+                }
                 data.points[pos] = faction
             }
             return data

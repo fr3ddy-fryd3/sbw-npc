@@ -33,18 +33,32 @@ class Squad(
     var barracks: BarracksRef? = null,
     /** Classes the squad was formed/last topped up with. */
     var originalComposition: List<NpcClass> = emptyList(),
-    /** Rank preserved for barracks reinforcements. */
+    /** Legacy recruitment setting retained in saved data; new soldiers start as RECRUIT. */
     var rank: NpcRank = NpcRank.DEFAULT,
     /** Patrol route this squad walks when on PATROL order, if any — see `Route`/`SquadOrderBehaviour`. */
     var routeId: UUID? = null,
     /** The fixed rally point for the current MOVE command. */
     var moveAssembly: BlockPos? = null,
     /** True once every member has reached its slot at [moveAssembly]. */
-    var moveFormationReady: Boolean = false
+    var moveFormationReady: Boolean = false,
 ) {
     /** Bumped on every new order or objective, so members can tell a fresh command from the one
      *  they're already carrying out. Not saved: a reload is a fresh start anyway. */
+    val tactics = com.sbwnpc.squad.combat.tactics.SquadTacticalState()
+
     var orderStamp: Int = 0
+
+    /** Explicit common command identity and objective; execution plans/cursors are not persisted. */
+    var command: com.sbwnpc.squad.ai.tactics.IssuedCommand? = null
+        internal set
+    var commandOutcome = com.sbwnpc.squad.ai.tactics.CommandOutcome.ACTIVE
+        internal set
+    var commandReason: String? = null
+        internal set
+    internal var pendingCommandStamp = -1
+    var objectiveDimension: ResourceKey<Level>? = null
+    var tacticalOperation: UUID? = null
+    var tacticalObjective: BlockPos? = null
 
     /** Game time the current MOVE rally started — see `SquadOrderBehaviour.tickMove`. Not saved. */
     var moveRallySince: Long = 0L
@@ -54,12 +68,26 @@ class Squad(
     var lastSeen: BlockPos? = null
     var lastSeenDim: ResourceKey<Level>? = null
 
+    /** Null only for a pre-1.0 save whose member roles have not been resolved yet. */
+    var recruitmentRoster: RecruitmentRoster? = null
+
+    /** Saved separately from transient tactics so arrival and reload preserve an offered retry. */
+    var attackAmmoPolicy: AttackAmmoPolicy = AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY
+        internal set
+
     fun save(): CompoundTag {
         val tag = CompoundTag()
         tag.putUUID("Id", id)
         tag.putString("Name", name)
         tag.putString("Faction", faction.name)
         tag.putString("Order", order.name)
+        command?.let { tag.put("IssuedCommand", com.sbwnpc.squad.ai.integration.IssuedCommandCodec.save(it)) }
+        tag.putString("CommandOutcome", commandOutcome.name)
+        commandReason?.let { tag.putString("CommandReason", it) }
+        objectiveDimension?.let { tag.putString("ObjectiveDimension", it.location().toString()) }
+        tacticalOperation?.let { tag.putUUID("TacticalOperation", it) }
+        tacticalObjective?.let { tag.put("TacticalObjective", NbtUtils.writeBlockPos(it)) }
+        tag.putString("AttackAmmoPolicy", attackAmmoPolicy.name)
         tag.putString("Rank", rank.name)
         val list = ListTag()
         members.forEach { list.add(NbtUtils.createUUID(it)) }
@@ -74,6 +102,7 @@ class Squad(
         val comp = ListTag()
         originalComposition.forEach { comp.add(StringTag.valueOf(it.name)) }
         tag.put("OriginalComposition", comp)
+        recruitmentRoster?.let { tag.put("RecruitmentRoster", it.save()) }
         routeId?.let { tag.putUUID("RouteId", it) }
         moveAssembly?.let { tag.put("MoveAssembly", NbtUtils.writeBlockPos(it)) }
         tag.putBoolean("MoveFormationReady", moveFormationReady)
@@ -91,10 +120,14 @@ class Squad(
                 NbtUtils.readBlockPos(tag, "BarracksPos").orElse(null)?.let { pos ->
                     val dimension = if (tag.contains("BarracksDim", Tag.TAG_STRING.toInt())) {
                         ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(tag.getString("BarracksDim")))
-                    } else Level.OVERWORLD
+                    } else {
+                        Level.OVERWORLD
+                    }
                     BarracksRef(dimension, pos)
                 }
-            } else null
+            } else {
+                null
+            }
             val squad = Squad(
                 id = tag.getUUID("Id"),
                 name = tag.getString("Name"),
@@ -109,25 +142,42 @@ class Squad(
                 rank = runCatching { NpcRank.valueOf(tag.getString("Rank")) }.getOrDefault(NpcRank.DEFAULT),
                 routeId = if (tag.hasUUID("RouteId")) tag.getUUID("RouteId") else null,
                 moveAssembly = if (tag.contains("MoveAssembly")) NbtUtils.readBlockPos(tag, "MoveAssembly").orElse(null) else null,
-                moveFormationReady = tag.getBoolean("MoveFormationReady")
+                moveFormationReady = tag.getBoolean("MoveFormationReady"),
             )
+            if (tag.contains("IssuedCommand")) squad.command = com.sbwnpc.squad.ai.integration.IssuedCommandCodec.load(tag.getCompound("IssuedCommand"))?.takeIf { it.principal == squad.owner }
+            squad.commandOutcome = com.sbwnpc.squad.ai.tactics.CommandOutcome.entries.firstOrNull { it.name == tag.getString("CommandOutcome") } ?: com.sbwnpc.squad.ai.tactics.CommandOutcome.ACTIVE
+            squad.commandReason = tag.getString("CommandReason").takeIf { it.isNotBlank() }
+            if (tag.contains("ObjectiveDimension")) squad.objectiveDimension = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(tag.getString("ObjectiveDimension")))
+            if (tag.hasUUID("TacticalOperation")) squad.tacticalOperation = tag.getUUID("TacticalOperation")
+            if (tag.contains("TacticalObjective")) squad.tacticalObjective = NbtUtils.readBlockPos(tag, "TacticalObjective").orElse(null)
             if (tag.contains("LastSeen")) squad.lastSeen = NbtUtils.readBlockPos(tag, "LastSeen").orElse(null)
             if (tag.contains("LastSeenDim", Tag.TAG_STRING.toInt())) {
                 squad.lastSeenDim = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(tag.getString("LastSeenDim")))
             }
+            if (tag.contains("RecruitmentRoster", Tag.TAG_LIST.toInt())) {
+                squad.recruitmentRoster = RecruitmentRoster.load(tag.getList("RecruitmentRoster", Tag.TAG_COMPOUND.toInt()))
+            }
+            squad.attackAmmoPolicy = runCatching { AttackAmmoPolicy.valueOf(tag.getString("AttackAmmoPolicy")) }
+                .getOrDefault(AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY)
+            if (squad.order != SquadOrder.ATTACK && squad.attackAmmoPolicy == AttackAmmoPolicy.PRESS_ON) {
+                squad.attackAmmoPolicy = AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY
+            }
             return squad
         }
 
-        private fun loadOrder(tag: CompoundTag): SquadOrder = when {
-            tag.contains("Order", Tag.TAG_STRING.toInt()) ->
-                runCatching { SquadOrder.valueOf(tag.getString("Order")) }.getOrDefault(SquadOrder.MOVE)
-            tag.contains("Order", Tag.TAG_INT.toInt()) -> SquadOrder.byOrdinal(tag.getInt("Order"))
-            else -> SquadOrder.MOVE
-        }
+        private fun loadOrder(tag: CompoundTag): SquadOrder =
+            when {
+                tag.contains("Order", Tag.TAG_STRING.toInt()) ->
+                    runCatching { SquadOrder.valueOf(tag.getString("Order")) }.getOrDefault(SquadOrder.MOVE)
+
+                tag.contains("Order", Tag.TAG_INT.toInt()) -> SquadOrder.byOrdinal(tag.getInt("Order"))
+
+                else -> SquadOrder.MOVE
+            }
 
         private fun loadComposition(tag: CompoundTag): List<NpcClass> {
             val names = tag.getList("OriginalComposition", Tag.TAG_STRING.toInt())
-            if (names.isNotEmpty()) return names.mapNotNull { runCatching { NpcClass.valueOf(it.asString) }.getOrNull() }
+            if (names.isNotEmpty()) return names.mapNotNull { runCatching { NpcClass.byName(it.asString) }.getOrNull() }
             return tag.getList("OriginalComposition", Tag.TAG_INT.toInt()).map { NpcClass.byOrdinal((it as IntTag).asInt) }
         }
     }

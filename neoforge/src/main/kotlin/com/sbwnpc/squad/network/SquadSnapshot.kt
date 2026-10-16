@@ -13,26 +13,32 @@ fun sendToClient(player: ServerPlayer, payload: CustomPacketPayload) {
 }
 
 /** Server-side: pack the player's squads into a tag the CommandScreen reads. */
-fun buildSquadSnapshot(mgr: SquadManager, owner: UUID, looseCount: Int, reportsOn: Boolean): CompoundTag = CompoundTag().apply {
-    putInt("Loose", looseCount)
-    putBoolean("Reports", reportsOn)
-    put("Squads", ListTag().apply {
-        mgr.forOwner(owner).forEach { s ->
-            add(CompoundTag().apply {
-                putString("Id", s.id.toString())
-                putString("Name", s.name)
-                putString("Faction", s.faction.name)
-                putInt("Members", s.members.size)
-                putInt("Order", s.order.ordinal)
-                putBoolean("Tank", mgr.isTankSquad(s))
-                putBoolean("Mortar", mgr.isMortarSquad(s))
-                putBoolean("Gunship", mgr.isGunshipSquad(s))
-                putBoolean("Transport", mgr.isTransportSquad(s))
-                s.barracks?.let { putLong("Barracks", it.pos.asLong()) }
-            })
-        }
-    })
-}
+fun buildSquadSnapshot(mgr: SquadManager, owner: UUID, looseCount: Int, reportsOn: Boolean): CompoundTag =
+    CompoundTag().apply {
+        putInt("Loose", looseCount)
+        putBoolean("Reports", reportsOn)
+        put(
+            "Squads",
+            ListTag().apply {
+                mgr.forOwner(owner).forEach { s ->
+                    add(
+                        CompoundTag().apply {
+                            putString("Id", s.id.toString())
+                            putString("Name", s.name)
+                            putString("Faction", s.faction.name)
+                            putInt("Members", s.members.size)
+                            putInt("Order", s.order.ordinal)
+                            putBoolean("Tank", mgr.isTankSquad(s))
+                            putBoolean("Mortar", mgr.isMortarSquad(s))
+                            putBoolean("Gunship", mgr.isGunshipSquad(s))
+                            putBoolean("Transport", mgr.isTransportSquad(s))
+                            s.barracks?.let { putLong("Barracks", it.pos.asLong()) }
+                        },
+                    )
+                }
+            },
+        )
+    }
 
 /** Server-side: where the player's faction stands with every other one, for the Diplomacy screen. */
 fun buildDiplomacySnapshot(player: ServerPlayer): CompoundTag {
@@ -49,10 +55,12 @@ fun buildDiplomacySnapshot(player: ServerPlayer): CompoundTag {
         row.putString("Faction", other.name)
         when {
             diplomacy.allied(own, other) -> row.putString("Status", "ALLY")
+
             diplomacy.truceTicksLeft(own, other) > 0 -> {
                 row.putString("Status", "TRUCE")
                 row.putInt("TruceSeconds", (diplomacy.truceTicksLeft(own, other) / 20).toInt())
             }
+
             else -> row.putString("Status", "HOSTILE")
         }
         val offer = diplomacy.proposals().firstOrNull { p ->

@@ -18,7 +18,9 @@ internal class OpeningFire {
         return tick - since < 100 && shots < if (automatic) 4 else 1
     }
 
-    fun fired() { shots++ }
+    fun fired() {
+        shots++
+    }
 
     fun reset() {
         target = null

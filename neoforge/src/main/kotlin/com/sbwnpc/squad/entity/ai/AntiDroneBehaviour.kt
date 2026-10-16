@@ -2,11 +2,11 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
-import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.DroneAccuracy
 import com.sbwnpc.squad.combat.FriendlyFireGuard
-import com.sbwnpc.squad.entity.DroneRegistry
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.DroneRegistry
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.init.ModMemories
@@ -61,11 +61,9 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
-    private fun eligible(entity: NpcEntity): Boolean =
-        !entity.vehicleTransport && !entity.operatingDrone
+    private fun eligible(entity: NpcEntity): Boolean = !entity.vehicleTransport && !entity.operatingDrone
 
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
-        startCheck.check(entity) { eligible(entity) && threat(entity, level) != null }
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = startCheck.check(entity) { eligible(entity) && threat(entity, level) != null }
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean {
         val level = entity.level() as? ServerLevel ?: return false
@@ -88,13 +86,16 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     // --- detection ---
 
-    private fun isShooter(entity: NpcEntity): Boolean = when (entity.npcClass) {
-        NpcClass.RIFLEMAN, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.TANK_CREW, NpcClass.DRONE_OPERATOR -> true
-        // Helicopter crew carry a sidearm and are strapped into an aircraft; the gunship's own
-        // turret is what deals with a drone, through the ordinary targeting path.
-        NpcClass.MEDIC, NpcClass.GRENADIER, NpcClass.MORTAR_OPERATOR, NpcClass.MORTAR_LOADER,
-        NpcClass.HELICOPTER_PILOT, NpcClass.HELICOPTER_GUNNER -> false
-    }
+    private fun isShooter(entity: NpcEntity): Boolean =
+        when (entity.npcClass) {
+            NpcClass.RIFLEMAN, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.TANK_CREW, NpcClass.DRONE_OPERATOR, NpcClass.SHOTGUNNER -> true
+
+            // Helicopter crew carry a sidearm and are strapped into an aircraft; the gunship's own
+            // turret is what deals with a drone, through the ordinary targeting path.
+            NpcClass.MEDIC, NpcClass.GRENADIER, NpcClass.MORTAR, NpcClass.MORTAR_OPERATOR, NpcClass.MORTAR_LOADER,
+            NpcClass.HELICOPTER_PILOT, NpcClass.HELICOPTER_GUNNER,
+            -> false
+        }
 
     /** The drone this mob should be dealing with right now: the remembered one if still a live,
      *  hostile, in-range threat; otherwise a fresh detection (rate limited). */
@@ -212,7 +213,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         gun.operate()
 
-        if (dist > SHOOT_RANGE || !entity.sensing.hasLineOfSight(drone)) return
+        if (dist > SHOOT_RANGE || !com.sbwnpc.squad.combat.WeaponReach.inRange(entity, entity.eyePosition, aim) || !entity.sensing.hasLineOfSight(drone)) return
         if (entity.tickCount < nextShotTick || !gun.canShoot()) return
         // A drone is a small, fast, evasive target — the same aim a rifleman holds on a person
         // shouldn't land on it as reliably.
@@ -226,7 +227,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (gun.needsTriggerReset) {
             cooldownTicks += (entity.npcRank.semiFireIntervalMs / 50).toInt()
         }
-        nextShotTick = entity.tickCount + cooldownTicks
+        nextShotTick = entity.tickCount + (entity.fireIntervalMillis(gun, cooldownTicks * 50L) / 50).toInt()
     }
 
     companion object {
@@ -234,6 +235,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val DETECT_INTERVAL = 10
         private const val SIGHT_RANGE = 48.0
         private const val HEARING_RANGE = 25.0
+
         /** A remembered drone stays a threat a bit past sight range so it isn't re-detected every scan. */
         private const val TRACK_RANGE = 64.0
         private const val ALERT_RADIUS = 30.0

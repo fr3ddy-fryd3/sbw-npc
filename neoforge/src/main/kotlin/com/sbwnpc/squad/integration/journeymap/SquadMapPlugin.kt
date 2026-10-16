@@ -11,21 +11,21 @@ import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.SquadOrder
 import journeymap.api.v2.client.IClientAPI
 import journeymap.api.v2.client.IClientPlugin
-import journeymap.api.v2.common.JourneyMapPlugin
 import journeymap.api.v2.client.display.IOverlayListener
 import journeymap.api.v2.client.display.MarkerOverlay
 import journeymap.api.v2.client.display.PolygonOverlay
+import journeymap.api.v2.client.event.FullscreenMapEvent
+import journeymap.api.v2.client.event.FullscreenRenderEvent
+import journeymap.api.v2.client.fullscreen.IFullscreen
 import journeymap.api.v2.client.fullscreen.ModPopupMenu
 import journeymap.api.v2.client.model.MapImage
 import journeymap.api.v2.client.model.MapPolygon
 import journeymap.api.v2.client.model.ShapeProperties
 import journeymap.api.v2.client.model.TextProperties
 import journeymap.api.v2.client.util.UIState
-import journeymap.api.v2.client.event.FullscreenMapEvent
-import journeymap.api.v2.client.event.FullscreenRenderEvent
+import journeymap.api.v2.common.JourneyMapPlugin
 import journeymap.api.v2.common.event.ClientEventRegistry
 import journeymap.api.v2.common.event.FullscreenEventRegistry
-import journeymap.api.v2.client.fullscreen.IFullscreen
 import journeymap.api.v2.common.waypoint.Waypoint
 import journeymap.api.v2.common.waypoint.WaypointFactory
 import net.minecraft.core.BlockPos
@@ -61,8 +61,10 @@ import java.awt.geom.Point2D
  * - "Draw patrol route" in that menu turns clicks into route points: left-click adds one (a drag
  *   still pans the map), Backspace takes the last one back, right-click or Enter sends the route
  *   and the selected infantry patrol it, Esc drops it.
- * - Each owned squad's objective is also a JourneyMap waypoint on the minimap. Only objectives
- *   matching the player's faction appear in the world with their distance, kept for the session.
+ * - Each owned squad's objective is also a JourneyMap waypoint on the map and minimap. Only
+ *   objectives matching the player's faction appear in the world with their distance, kept for
+ *   the session. Right-click the waypoint, or the map near it, to send the selected squads to
+ *   join that attack, defence or patrol; joins are listed first.
  *
  * Only ever loaded by JourneyMap itself, so nothing else in the mod may refer to this class.
  */
@@ -74,7 +76,7 @@ class SquadMapPlugin : IClientPlugin {
     private val selected = LinkedHashSet<String>()
 
     /** What the menu needs to know about the player's squads, kept from the last feed each was in. */
-    private class Known(val name: String, val orders: List<SquadOrder>)
+    private class Known(val name: String, val orders: List<SquadOrder>, val faction: SquadFaction)
     private val known = HashMap<String, Known>()
 
     override fun getModId(): String = SquadMod.MODID
@@ -86,7 +88,15 @@ class SquadMapPlugin : IClientPlugin {
         ClientEventRegistry.ENTITY_RADAR_UPDATE_EVENT.subscribe(modId) { event ->
             if (event.wrappedEntity.entityRef.get() is NpcEntity) event.wrappedEntity.setDisable(true)
         }
-        ClientEventRegistry.FULLSCREEN_POPUP_MENU_EVENT.subscribe(modId) { event -> addOrderMenu(event.popupMenu) }
+        // Joins first: the menu grows long, and joining is what a click near an operation is for.
+        ClientEventRegistry.FULLSCREEN_POPUP_MENU_EVENT.subscribe(modId) { event ->
+            addNearbyJoins(event.popupMenu, event.fullscreen.uiState)
+            addOrderMenu(event.popupMenu)
+        }
+        // The objective waypoint's own menu; JourneyMap does not fire the map menu for a click on it.
+        ClientEventRegistry.WAYPOINT_POPUP_MENU_EVENT.subscribe(modId) { event -> addWaypointJoins(event.popupMenu, event.waypoint) }
+        // The popup opens where the cursor is; its own event does not say where that is.
+        FullscreenEventRegistry.FULLSCREEN_MAP_MOVE_EVENT.subscribe(modId) { event -> hovered = event.info?.blockPos }
         FullscreenEventRegistry.FULLSCREEN_MAP_CLICK_EVENT.subscribe(modId) { event ->
             if (event.stage != FullscreenMapEvent.Stage.PRE || event.button != 0) return@subscribe
             if (routeDraft != null) {
@@ -122,7 +132,17 @@ class SquadMapPlugin : IClientPlugin {
 
     /** Points of the route being drawn, or null when not drawing one. */
     private var routeDraft: MutableList<BlockPos>? = null
+
+    /** Block under the cursor on the fullscreen map, where a right-click menu opens. */
+    private var hovered: BlockPos? = null
+
+    /** Operation points drawn by the last redraw, offered for joining from the context menu. */
+    private var operationMarks: List<OperationMark> = emptyList()
+
+    /** The menu that already got join items, so a click on a marker does not list them twice. */
+    private var joinMenu: ModPopupMenu? = null
     private var routeSquads: List<String> = emptyList()
+
     /** A left-click waiting to learn whether it was a click (a point) or the start of a pan. */
     private var pendingPoint: BlockPos? = null
     private var pendingScreen: IntArray? = null
@@ -152,24 +172,26 @@ class SquadMapPlugin : IClientPlugin {
             return
         }
         PacketDistributor.sendToServer(
-            RouteCmdPayload(RouteCmdPayload.MAP_ROUTE, routeSquads.joinToString(","), points.joinToString(" ") { "${it.x} ${it.z}" })
+            RouteCmdPayload(RouteCmdPayload.MAP_ROUTE, routeSquads.joinToString(","), points.joinToString(" ") { "${it.x} ${it.z}" }),
         )
         dropRoute()
     }
 
-    private fun tell(msg: String) =
-        net.minecraft.client.Minecraft.getInstance().player?.displayClientMessage(net.minecraft.network.chat.Component.literal(msg), true)
+    private fun tell(msg: String) = net.minecraft.client.Minecraft.getInstance().player?.displayClientMessage(net.minecraft.network.chat.Component.literal(msg), true)
 
     private fun onRouteKey(event: ScreenEvent.KeyPressed.Pre) {
         val draft = routeDraft ?: return
         if (event.screen !is IFullscreen) return
         when (event.keyCode) {
             GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> sendRoute()
+
             GLFW.GLFW_KEY_BACKSPACE -> {
                 draft.removeLastOrNull()
                 redrawLater()
             }
+
             GLFW.GLFW_KEY_ESCAPE -> dropRoute()
+
             else -> return
         }
         event.isCanceled = true
@@ -209,6 +231,7 @@ class SquadMapPlugin : IClientPlugin {
     /** The map point a Shift+drag started at, and where it has got to. */
     private var boxFrom: BlockPos? = null
     private var boxTo: BlockPos? = null
+
     /** The same start on screen, for drawing — taken on the first frame after the click. */
     private var boxScreenFrom: IntArray? = null
     private var boxDragged = false
@@ -270,15 +293,22 @@ class SquadMapPlugin : IClientPlugin {
             syncWaypoints(null, emptyMap())
             return
         }
-        DebugFlags.log(LogGroup.MAP,
+        DebugFlags.log(
+            LogGroup.MAP,
             "feed: squads={} loose={} vehicles={} enemies={}",
-            list(feed, "Squads").size, list(feed, "Loose").size, list(feed, "Vehicles").size, list(feed, "Enemies").size
+            list(feed, "Squads").size,
+            list(feed, "Loose").size,
+            list(feed, "Vehicles").size,
+            list(feed, "Enemies").size,
         )
         val dim = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(feed.getString("Dim")))
         val playerFaction = if (feed.contains("DefaultFaction", Tag.TAG_INT.toInt())) {
             SquadFaction.entries.getOrNull(feed.getInt("DefaultFaction"))
-        } else com.sbwnpc.squad.client.FactionBanner.faction
+        } else {
+            com.sbwnpc.squad.client.FactionBanner.faction
+        }
         val objectives = HashMap<String, ObjectiveMark>()
+        val operations = LinkedHashMap<OperationKey, OperationMark>()
 
         for (t in list(feed, "Squads")) {
             val faction = faction(t) ?: continue
@@ -298,9 +328,18 @@ class SquadMapPlugin : IClientPlugin {
             marker.setLabel(name)
             marker.setTextProperties(TextProperties().setColor(color).setScale(0.8f).setOffsetY(10))
             val id = t.getUUID("Id").toString()
-            if (own) known[id] = Known(name, SquadOrder.availableFor(
-                t.getBoolean("Tank"), t.getBoolean("Mortar"), t.getBoolean("Gunship"), t.getBoolean("Transport")
-            ))
+            if (own) {
+                known[id] = Known(
+                    name,
+                    SquadOrder.availableFor(
+                        t.getBoolean("Tank"),
+                        t.getBoolean("Mortar"),
+                        t.getBoolean("Gunship"),
+                        t.getBoolean("Transport"),
+                    ),
+                    faction,
+                )
+            }
             if (own) marker.setOverlayListener(SquadListener(id))
             show(marker)
             // Each man of every own squad, so a straggler can be found — dimmer until his squad
@@ -315,18 +354,41 @@ class SquadMapPlugin : IClientPlugin {
             if (isSelected) {
                 // A symbol on screen, like the square itself: an outline drawn in blocks shrank to
                 // nothing inside the square once the map was zoomed out.
-                show(marker(dim, at, MapShapes.FRAME, color, SELECTION_SIZE, 1f).also {
-                    it.setTitle("$name (selected)")
-                    // It sits over the square, so a click on the square can land on it instead.
-                    it.setOverlayListener(SquadListener(id))
-                })
+                show(
+                    marker(dim, at, MapShapes.FRAME, color, SELECTION_SIZE, 1f).also {
+                        it.setTitle("$name (selected)")
+                        // It sits over the square, so a click on the square can land on it instead.
+                        it.setOverlayListener(SquadListener(id))
+                    },
+                )
             }
 
-            t.getIntArray("Obj").takeIf { it.size == 3 }?.let { obj ->
-                if (own) objectives[id] = ObjectiveMark(
-                    "$name: ${order?.name?.lowercase() ?: "?"}", BlockPos(obj[0], obj[1], obj[2]), color,
-                    showInWorld = faction == playerFaction
-                )
+            var inOperation = false
+            if (own) {
+                val goal = t.getIntArray("Goal").takeIf { it.size == 3 }
+                val goalOrder = runCatching { SquadOrder.valueOf(t.getString("GoalOrder")) }.getOrNull()
+                // Only an attack, defence or patrol is worth joining; a squad on the move just passes through.
+                if (goal != null && goalOrder != null && goalOrder in JOINABLE) {
+                    val at = BlockPos(goal[0], goal[1], goal[2])
+                    val mark = operations.getOrPut(OperationKey(goalOrder, at, t.getInt("Allies"))) { OperationMark(goalOrder, at, color, t.getInt("Allies"), faction == playerFaction) }
+                    mark.names += name
+                    mark.squads += id
+                    if (mark.route == null) mark.route = t.getIntArray("Route").takeIf { goalOrder == SquadOrder.PATROL && it.size >= 4 }
+                    // A patrol is drawn by its route; an attack or defence by its one shared point.
+                    inOperation = goalOrder != SquadOrder.PATROL
+                }
+            }
+            // A squad in an operation is shown by the operation's point, not by its own spot in
+            // the line: two squads sent together looked like two separate operations.
+            t.getIntArray("Obj").takeIf { it.size == 3 && !inOperation }?.let { obj ->
+                if (own) {
+                    objectives[id] = ObjectiveMark(
+                        "$name: ${order?.name?.lowercase() ?: "?"}",
+                        BlockPos(obj[0], obj[1], obj[2]),
+                        color,
+                        showInWorld = faction == playerFaction,
+                    )
+                }
                 val center = BlockPos(obj[0], 0, obj[2])
                 val zone = t.getInt("Zone")
                 if (zone > 0) show(outline(dim, circle(center, zone), color, fill = 0.12f))
@@ -359,6 +421,13 @@ class SquadMapPlugin : IClientPlugin {
             val size = if (shape == MapShapes.CIRCLE) LOOSE_SIZE else VEHICLE_SIZE
             show(marker(dim, pos(t), shape, colorOf(faction), size, 1f).also { it.setTitle(faction.label) })
         }
+        for (mark in operations.values) {
+            if (mark.order == SquadOrder.PATROL) continue
+            show(outline(dim, diamond(BlockPos(mark.pos.x, 0, mark.pos.z), OBJECTIVE_SIZE), mark.color))
+            // Keyed by one member, so the waypoint's own menu still finds the operation.
+            objectives[mark.squads.min()] = ObjectiveMark("${mark.names.sorted().joinToString(", ")}: ${mark.order.name.lowercase()}", mark.pos, mark.color, mark.showInWorld)
+        }
+        operationMarks = operations.values.toList()
         routeDraft?.let { draft ->
             for (p in draft) show(outline(dim, diamond(p, OBJECTIVE_SIZE), SELECTION_COLOR, fill = 0.5f))
             if (draft.size >= 2) show(outline(dim, draft, SELECTION_COLOR))
@@ -370,6 +439,7 @@ class SquadMapPlugin : IClientPlugin {
 
     private data class ObjectiveMark(val name: String, val pos: BlockPos, val color: Int, val showInWorld: Boolean)
     private val waypoints = HashMap<String, kotlin.Pair<ObjectiveMark, Waypoint>>()
+
     /** Cleared out of JourneyMap since joining this world. */
     private var staleWaypointsCleared = false
 
@@ -380,7 +450,7 @@ class SquadMapPlugin : IClientPlugin {
         while (it.hasNext()) {
             val (id, entry) = it.next()
             if (marks[id] != entry.first) {
-                runCatching { api.removeWaypoint(modId, entry.second) }
+                runCatching { api.removeWaypoint(modId, entry.second) }.onFailure { SquadMod.LOGGER.warn("JourneyMap kept waypoint {}: {}", entry.first.name, it.toString()) }
                 it.remove()
             }
         }
@@ -391,7 +461,7 @@ class SquadMapPlugin : IClientPlugin {
         // A server running JourneyMap keeps them past the session, "not persistent" or not — and
         // one left from last time belongs to nothing this client knows of, so it never went away.
         if (!staleWaypointsCleared) {
-            runCatching { api.removeAllWaypoints(modId) }
+            runCatching { api.removeAllWaypoints(modId) }.onFailure { SquadMod.LOGGER.warn("JourneyMap kept old waypoints: {}", it.toString()) }
             staleWaypointsCleared = true
         }
         for ((id, mark) in marks) {
@@ -400,6 +470,7 @@ class SquadMapPlugin : IClientPlugin {
                 val wp = WaypointFactory.createClientWaypoint(modId, mark.pos, mark.name, dim, false)
                 wp.setColor(mark.color)
                 wp.setShowBeacon(false)
+                // It also marks the operation on the map; its right-click menu offers joining it.
                 wp.setShowOnMap(true)
                 wp.setShowInWorld(mark.showInWorld)
                 api.addWaypoint(modId, wp)
@@ -413,7 +484,12 @@ class SquadMapPlugin : IClientPlugin {
     }
 
     private fun marker(
-        dim: ResourceKey<Level>, at: BlockPos, shape: MapShapes, color: Int, size: Double, opacity: Float
+        dim: ResourceKey<Level>,
+        at: BlockPos,
+        shape: MapShapes,
+        color: Int,
+        size: Double,
+        opacity: Float,
     ): MarkerOverlay {
         // centerAnchors() centres on the size set so far, so it has to come after the resize —
         // before it, every symbol sat half a full-size texture up and left of its point.
@@ -461,8 +537,11 @@ class SquadMapPlugin : IClientPlugin {
     private fun select(id: String?, add: Boolean) {
         when {
             id == null -> selected.clear()
+
             add -> if (!selected.remove(id)) selected += id
+
             selected.size == 1 && id in selected -> selected.clear()
+
             else -> {
                 selected.clear()
                 selected += id
@@ -475,8 +554,93 @@ class SquadMapPlugin : IClientPlugin {
         net.minecraft.client.Minecraft.getInstance().tell { MapState.latest?.let(::redraw) }
     }
 
-    private fun sendOrder(squads: List<String>, order: SquadOrder, pos: BlockPos) =
-        PacketDistributor.sendToServer(SquadCmdPayload(SquadCmdPayload.MAP_ORDER, squads.joinToString(","), order.ordinal, "${pos.x} ${pos.z}"))
+    private fun sendOrder(squads: List<String>, order: SquadOrder, pos: BlockPos) = PacketDistributor.sendToServer(SquadCmdPayload(SquadCmdPayload.MAP_ORDER, squads.joinToString(","), order.ordinal, "${pos.x} ${pos.z}"))
+
+    // Allies in the key: two operations of unallied factions on one point stay apart.
+    private data class OperationKey(val order: SquadOrder, val pos: BlockPos, val allies: Int)
+
+    private class OperationMark(val order: SquadOrder, val pos: BlockPos, val color: Int, val allies: Int, val showInWorld: Boolean) {
+        val names = ArrayList<String>()
+        val squads = HashSet<String>()
+
+        /** A patrol's route as x, z pairs: joining it means walking the same one. */
+        var route: IntArray? = null
+        val label get() = order.name.lowercase().replaceFirstChar { it.uppercase() }
+    }
+
+    /** Join items for the operation of the squad whose objective [waypoint] marks. */
+    private fun addWaypointJoins(menu: ModPopupMenu, waypoint: Waypoint) {
+        if (waypoint.modId != modId) return
+        val squad = waypoints.entries.firstOrNull { it.value.second.guid == waypoint.guid }?.key
+        DebugFlags.log(LogGroup.MAP, "join-menu: waypoint {} of squad {}, marks={}", waypoint.name, squad?.let { known[it]?.name ?: it }, operationMarks.count { squad != null && squad in it.squads })
+        if (squad == null) return
+        operationMarks.filter { squad in it.squads }.forEach { addJoin(menu, it) }
+    }
+
+    /**
+     * Join items for operation points near the cursor. The waypoint is a few pixels wide, so
+     * hitting it exactly is rare; anything within [JOIN_REACH_PIXELS] of the click counts.
+     */
+    private fun addNearbyJoins(menu: ModPopupMenu, state: UIState) {
+        val at = hovered
+        if (at == null) {
+            DebugFlags.log(LogGroup.MAP, "join-menu: no hovered position, marks={}", operationMarks.size)
+            return
+        }
+        val reach = maxOf(4.0, JOIN_REACH_PIXELS / state.blockSize)
+        if (DebugFlags.on(LogGroup.MAP)) {
+            val marks = operationMarks.joinToString { "${it.order}@${it.pos.toShortString()} d=${"%.1f".format(kotlin.math.hypot((it.pos.x - at.x).toDouble(), (it.pos.z - at.z).toDouble()))} squads=${it.squads.size}" }
+            DebugFlags.log(LogGroup.MAP, "join-menu: at={} reach={} selected={} marks=[{}]", at.toShortString(), "%.1f".format(reach), selected.mapNotNull { known[it]?.name ?: it }, marks)
+        }
+        operationMarks
+            .filter { kotlin.math.hypot((it.pos.x - at.x).toDouble(), (it.pos.z - at.z).toDouble()) <= reach }
+            .sortedBy { kotlin.math.hypot((it.pos.x - at.x).toDouble(), (it.pos.z - at.z).toDouble()) }
+            .forEach { addJoin(menu, it) }
+    }
+
+    private val joinedMarks = HashSet<OperationMark>()
+
+    private fun addJoin(menu: ModPopupMenu, mark: OperationMark) {
+        if (joinMenu === menu && mark in joinedMarks) return
+        if (joinMenu !== menu) {
+            joinMenu = menu
+            joinedMarks.clear()
+        }
+        joinedMarks += mark
+        // Only the operation's allies; the server would refuse the rest anyway.
+        val ids = selected.filter { id -> id !in mark.squads && known[id]?.let { mark.allies and (1 shl it.faction.ordinal) != 0 } == true }
+        if (ids.isEmpty()) {
+            DebugFlags.log(
+                LogGroup.MAP,
+                "join-skip {}@{}: no eligible squad, selected={} inOperation={} unknown={}",
+                mark.order,
+                mark.pos.toShortString(),
+                selected.size,
+                selected.count { it in mark.squads },
+                selected.count { it !in known },
+            )
+            return
+        }
+        val who = if (ids.size == 1) known[ids[0]]?.name ?: "Squad" else "${ids.size} squads"
+        val label = "$who: Join ${mark.label.lowercase()}"
+        if (mark.order == SquadOrder.PATROL) {
+            val route = mark.route ?: return
+            if (ids.none { SquadOrder.PATROL in known[it]?.orders.orEmpty() }) return
+            menu.addMenuItem(label) { _ ->
+                val points = (route.indices step 2).joinToString(" ") { "${route[it]} ${route[it + 1]}" }
+                PacketDistributor.sendToServer(RouteCmdPayload(RouteCmdPayload.MAP_ROUTE, ids.joinToString(","), points))
+            }
+            return
+        }
+        if (mark.order !in SquadOrder.pointOrdersFor(ids.mapNotNull { known[it]?.orders })) {
+            DebugFlags.log(LogGroup.MAP, "join-skip {}@{}: order not available to {}", mark.order, mark.pos.toShortString(), ids.mapNotNull { known[it]?.name })
+            return
+        }
+        DebugFlags.log(LogGroup.MAP, "join-offer {}@{} for {}", mark.order, mark.pos.toShortString(), ids.mapNotNull { known[it]?.name })
+        // One order per squad: a single squad sent to an operation's exact point joins it,
+        // while a new common order there deliberately starts an operation of its own.
+        menu.addMenuItem(label) { _ -> ids.forEach { sendOrder(listOf(it), mark.order, mark.pos) } }
+    }
 
     /** Left-click on a squad's square selects it; right-click switches its order, keeping the
      *  objective it has. */
@@ -490,6 +654,7 @@ class SquadMapPlugin : IClientPlugin {
         }
 
         override fun onOverlayMenuPopup(state: UIState, mouse: Point2D.Double, pos: BlockPos, menu: ModPopupMenu) {
+            DebugFlags.log(LogGroup.MAP, "join-menu: squad marker menu for {} at {}, no joins in it", known[squad]?.name ?: squad, pos.toShortString())
             for (order in known[squad]?.orders.orEmpty()) {
                 menu.addMenuItem("Order: ${order.name.lowercase().replaceFirstChar { it.uppercase() }}") {
                     PacketDistributor.sendToServer(SquadCmdPayload(SquadCmdPayload.SET_ORDER, squad, order.ordinal, ""))
@@ -500,8 +665,7 @@ class SquadMapPlugin : IClientPlugin {
 
     // --- Feed helpers ---
 
-    private fun list(feed: CompoundTag, key: String): List<CompoundTag> =
-        feed.getList(key, Tag.TAG_COMPOUND.toInt()).map { it as CompoundTag }
+    private fun list(feed: CompoundTag, key: String): List<CompoundTag> = feed.getList(key, Tag.TAG_COMPOUND.toInt()).map { it as CompoundTag }
 
     private fun faction(t: CompoundTag): SquadFaction? = SquadFaction.entries.getOrNull(t.getInt("F"))
 
@@ -509,18 +673,27 @@ class SquadMapPlugin : IClientPlugin {
 
     private fun colorOf(faction: SquadFaction): Int = faction.rgb
 
-    private fun square(c: BlockPos, r: Int) = listOf(
-        c.offset(-r, 0, -r), c.offset(r, 0, -r), c.offset(r, 0, r), c.offset(-r, 0, r)
-    )
+    private fun square(c: BlockPos, r: Int) =
+        listOf(
+            c.offset(-r, 0, -r),
+            c.offset(r, 0, -r),
+            c.offset(r, 0, r),
+            c.offset(-r, 0, r),
+        )
 
-    private fun diamond(c: BlockPos, r: Int) = listOf(
-        c.offset(0, 0, -r), c.offset(r, 0, 0), c.offset(0, 0, r), c.offset(-r, 0, 0)
-    )
+    private fun diamond(c: BlockPos, r: Int) =
+        listOf(
+            c.offset(0, 0, -r),
+            c.offset(r, 0, 0),
+            c.offset(0, 0, r),
+            c.offset(-r, 0, 0),
+        )
 
-    private fun circle(c: BlockPos, r: Int) = (0 until CIRCLE_POINTS).map {
-        val a = it * Math.PI * 2 / CIRCLE_POINTS
-        c.offset((Math.cos(a) * r).toInt(), 0, (Math.sin(a) * r).toInt())
-    }
+    private fun circle(c: BlockPos, r: Int) =
+        (0 until CIRCLE_POINTS).map {
+            val a = it * Math.PI * 2 / CIRCLE_POINTS
+            c.offset((Math.cos(a) * r).toInt(), 0, (Math.sin(a) * r).toInt())
+        }
 
     private companion object {
         const val SQUAD_SIZE = 12.0
@@ -533,17 +706,25 @@ class SquadMapPlugin : IClientPlugin {
         const val BARRACKS_SIZE = 2
         const val CIRCLE_POINTS = 32
         const val SELECTION_SIZE = 22.0
+
+        /** Operations other squads can be sent to join. */
+        val JOINABLE = setOf(SquadOrder.ATTACK, SquadOrder.DEFEND, SquadOrder.PATROL)
+
+        /** How close to an operation's point, in screen pixels, a right-click offers to join it. */
+        const val JOIN_REACH_PIXELS = 24.0
         const val SELECTION_COLOR = 0xFFFF55
         const val MEMBER_SIZE = 5.0
+
         /** Blocks a box has to span on one side at least to be a box and not a slipped click. */
         const val MIN_BOX = 2
         const val BOX_FILL = 0x3366CCFF
         const val BOX_EDGE = 0xCC66CCFF.toInt()
+
         /** GUI pixels the mouse may move between press and release for it to still be a click. */
         const val PAN_SLOP = 3
+
         /** The server keeps no more than this many either. */
         const val MAX_ROUTE_POINTS = 32
         const val ROUTE_HINT_Y = 30
-
     }
 }

@@ -17,14 +17,18 @@ class FinishRouteScreen(private val pointCount: Int) : Screen(Component.literal(
         val cx = width / 2
         val y = height / 2 - 10
 
-        addRenderableWidget(Button.builder(Component.literal("Finish ($pointCount points)")) {
-            Minecraft.getInstance().setScreen(NameRouteScreen())
-        }.bounds(cx - 100, y, 200, 20).build())
+        addRenderableWidget(
+            Button.builder(Component.literal("Finish ($pointCount points)")) {
+                Minecraft.getInstance().setScreen(NameRouteScreen())
+            }.bounds(cx - 100, y, 200, 20).build(),
+        )
 
-        addRenderableWidget(Button.builder(Component.literal("Cancel")) {
-            PacketDistributor.sendToServer(RouteCmdPayload(RouteCmdPayload.CANCEL, "", ""))
-            onClose()
-        }.bounds(cx - 100, y + 24, 200, 20).build())
+        addRenderableWidget(
+            Button.builder(Component.literal("Cancel")) {
+                PacketDistributor.sendToServer(RouteCmdPayload(RouteCmdPayload.CANCEL, "", ""))
+                onClose()
+            }.bounds(cx - 100, y + 24, 200, 20).build(),
+        )
     }
 
     override fun render(g: GuiGraphics, mouseX: Int, mouseY: Int, partial: Float) {

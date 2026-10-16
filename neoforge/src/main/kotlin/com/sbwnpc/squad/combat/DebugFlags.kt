@@ -7,7 +7,7 @@ import com.sbwnpc.squad.SquadMod
  * [com.sbwnpc.squad.entity.ai.SeekCoverBehaviour], firing-position choice in
  * [com.sbwnpc.squad.entity.ai.GunAttackBehaviour]) — per user request: these get toggled off
  * temporarily fairly often (e.g. playing with a friend, not wanting the particle spam), so flip
- * [MARKERS_ENABLED] here rather than commenting out individual `sendParticles` call sites scattered
+ * [markersEnabled] here rather than commenting out individual `sendParticles` call sites scattered
  * across files.
  *
  * Trace lines come in [LogGroup]s, each written only while it is listed in
@@ -22,13 +22,15 @@ import com.sbwnpc.squad.SquadMod
  * `buildDevelop`; a release build writes no trace lines at all.
  */
 object DebugFlags {
-    var MARKERS_ENABLED = BuildFlags.DEBUG_ENABLED
+    var markersEnabled = BuildFlags.DEBUG_ENABLED
+
     /** Set from the debug config as it loads and whenever the file is saved. */
     @Volatile
     var enabledGroups: Set<LogGroup> = emptySet()
+
     /** The map feed shows every faction's squads, NPCs and vehicles, not just the player's side
      *  and the enemies it has spotted — for testing, where one player fields every side. */
-    var MAP_SHOWS_ALL = BuildFlags.DEBUG_ENABLED
+    var mapShowsAll = BuildFlags.DEBUG_ENABLED
 
     fun on(group: LogGroup): Boolean = BuildFlags.DEBUG_ENABLED && group in enabledGroups
 

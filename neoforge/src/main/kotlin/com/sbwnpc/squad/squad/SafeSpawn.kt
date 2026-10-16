@@ -17,18 +17,24 @@ import net.minecraft.world.phys.Vec3
  */
 object SafeSpawn {
     private const val SEARCH_RANGE = 6
+
     /** How far out [findClearSpot] is willing to look before giving up. */
     private const val DEFAULT_CLEAR_RADIUS = 16.0
     private const val RING_STEP = 2.0
 
     fun findSafeY(
-        level: ServerLevel, x: Double, z: Double, aroundY: Int, dimensions: EntityDimensions,
-        range: Int = SEARCH_RANGE
+        level: ServerLevel,
+        x: Double,
+        z: Double,
+        aroundY: Int,
+        dimensions: EntityDimensions,
+        range: Int = SEARCH_RANGE,
+        requireSolidFloor: Boolean = false,
     ): Double? {
-        if (isSafe(level, x, aroundY.toDouble(), z, dimensions)) return aroundY.toDouble()
+        if (isSafe(level, x, aroundY.toDouble(), z, dimensions, requireSolidFloor)) return aroundY.toDouble()
         for (offset in 1..range) {
-            if (isSafe(level, x, (aroundY + offset).toDouble(), z, dimensions)) return (aroundY + offset).toDouble()
-            if (isSafe(level, x, (aroundY - offset).toDouble(), z, dimensions)) return (aroundY - offset).toDouble()
+            if (isSafe(level, x, (aroundY + offset).toDouble(), z, dimensions, requireSolidFloor)) return (aroundY + offset).toDouble()
+            if (isSafe(level, x, (aroundY - offset).toDouble(), z, dimensions, requireSolidFloor)) return (aroundY - offset).toDouble()
         }
         return null
     }
@@ -49,10 +55,12 @@ object SafeSpawn {
         preferredZ: Double,
         aroundY: Int,
         dimensions: EntityDimensions,
-        radius: Double = DEFAULT_CLEAR_RADIUS
+        radius: Double = DEFAULT_CLEAR_RADIUS,
+        requireSolidFloor: Boolean = false,
+        acceptsPosition: (Vec3) -> Boolean = { true },
     ): Vec3? {
-        findSafeY(level, preferredX, preferredZ, aroundY, dimensions)
-            ?.let { return Vec3(preferredX, it, preferredZ) }
+        findSafeY(level, preferredX, preferredZ, aroundY, dimensions, requireSolidFloor = requireSolidFloor)
+            ?.let { Vec3(preferredX, it, preferredZ) }?.takeIf(acceptsPosition)?.let { return it }
 
         var ring = RING_STEP
         while (ring <= radius) {
@@ -63,7 +71,8 @@ object SafeSpawn {
                 val angle = 2 * Math.PI * i / samples
                 val x = preferredX + Math.cos(angle) * ring
                 val z = preferredZ + Math.sin(angle) * ring
-                findSafeY(level, x, z, aroundY, dimensions)?.let { return Vec3(x, it, z) }
+                findSafeY(level, x, z, aroundY, dimensions, requireSolidFloor = requireSolidFloor)
+                    ?.let { Vec3(x, it, z) }?.takeIf(acceptsPosition)?.let { return it }
             }
             ring += RING_STEP
         }
@@ -80,10 +89,17 @@ object SafeSpawn {
      * here, then the full climb, and null only when there is truly nowhere.
      */
     fun findStandingSpot(
-        level: ServerLevel, x: Double, z: Double, aroundY: Int, dimensions: EntityDimensions,
-        radius: Double = STANDING_RADIUS
+        level: ServerLevel,
+        x: Double,
+        z: Double,
+        aroundY: Int,
+        dimensions: EntityDimensions,
+        radius: Double = STANDING_RADIUS,
+        requireSolidFloor: Boolean = false,
+        acceptsPosition: (Vec3) -> Boolean = { true },
     ): Vec3? {
-        findSafeY(level, x, z, aroundY, dimensions, LEVEL_RANGE)?.let { return Vec3(x, it, z) }
+        findSafeY(level, x, z, aroundY, dimensions, LEVEL_RANGE, requireSolidFloor)
+            ?.let { Vec3(x, it, z) }?.takeIf(acceptsPosition)?.let { return it }
         var ring = 1.0
         while (ring <= radius) {
             val samples = Math.max(8, Math.round(2 * Math.PI * ring).toInt())
@@ -91,20 +107,34 @@ object SafeSpawn {
                 val angle = 2 * Math.PI * i / samples
                 val cx = x + Math.cos(angle) * ring
                 val cz = z + Math.sin(angle) * ring
-                findSafeY(level, cx, cz, aroundY, dimensions, LEVEL_RANGE)?.let { return Vec3(cx, it, cz) }
+                findSafeY(level, cx, cz, aroundY, dimensions, LEVEL_RANGE, requireSolidFloor)
+                    ?.let { Vec3(cx, it, cz) }?.takeIf(acceptsPosition)?.let { return it }
             }
             ring += 1.0
         }
-        return findClearSpot(level, x, z, aroundY, dimensions, radius)
+        return findClearSpot(level, x, z, aroundY, dimensions, radius, requireSolidFloor, acceptsPosition)
     }
 
     /** How far up or down counts as "about the same height" for [findStandingSpot]. */
     private const val LEVEL_RANGE = 2
     private const val STANDING_RADIUS = 8.0
 
-    private fun isSafe(level: ServerLevel, x: Double, y: Double, z: Double, dimensions: EntityDimensions): Boolean {
+    private fun isSafe(
+        level: ServerLevel,
+        x: Double,
+        y: Double,
+        z: Double,
+        dimensions: EntityDimensions,
+        requireSolidFloor: Boolean,
+    ): Boolean {
         val floor = BlockPos.containing(x, y - 0.1, z)
-        if (level.getBlockState(floor).isAir) return false // nothing solid to stand on
+        if (requireSolidFloor && !level.hasChunkAt(floor)) return false
+        val state = level.getBlockState(floor)
+        if (requireSolidFloor) {
+            if (!state.isFaceSturdy(level, floor, net.minecraft.core.Direction.UP)) return false
+        } else if (state.isAir) {
+            return false
+        }
         return level.noCollision(dimensions.makeBoundingBox(x, y, z))
     }
 }

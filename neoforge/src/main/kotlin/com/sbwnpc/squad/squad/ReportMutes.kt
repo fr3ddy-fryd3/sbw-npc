@@ -38,7 +38,6 @@ class ReportMutes : SavedData() {
             return data
         }
 
-        fun get(server: MinecraftServer): ReportMutes =
-            server.overworld().dataStorage.computeIfAbsent(SavedData.Factory({ ReportMutes() }, ::load, null), FILE)
+        fun get(server: MinecraftServer): ReportMutes = server.overworld().dataStorage.computeIfAbsent(SavedData.Factory({ ReportMutes() }, ::load, null), FILE)
     }
 }

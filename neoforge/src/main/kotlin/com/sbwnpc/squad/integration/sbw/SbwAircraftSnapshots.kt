@@ -14,8 +14,9 @@ object SbwAircraftSnapshots {
     private const val MARKER = "sbwnpc:aircraft_visuals"
 
     @JvmStatic
-    fun isAircraft(entity: Entity): Boolean = entity is VehicleEntity &&
-        (entity.vehicleType == VehicleType.AIRPLANE || entity.vehicleType == VehicleType.HELICOPTER)
+    fun isAircraft(entity: Entity): Boolean =
+        entity is VehicleEntity &&
+            (entity.vehicleType == VehicleType.AIRPLANE || entity.vehicleType == VehicleType.HELICOPTER)
 
     @JvmStatic
     fun write(entity: VehicleEntity, tag: CompoundTag) {
@@ -34,9 +35,29 @@ object SbwAircraftSnapshots {
 
     // Entity.load expects vanilla lists; SBW's flat PosX/MotionX/Yaw fields are not consumed by it.
     internal fun writeMotion(tag: CompoundTag, position: Vec3, motion: Vec3, yaw: Float, pitch: Float) {
-        tag.put("Pos", ListTag().apply { add(DoubleTag.valueOf(position.x)); add(DoubleTag.valueOf(position.y)); add(DoubleTag.valueOf(position.z)) })
-        tag.put("Motion", ListTag().apply { add(DoubleTag.valueOf(motion.x)); add(DoubleTag.valueOf(motion.y)); add(DoubleTag.valueOf(motion.z)) })
-        tag.put("Rotation", ListTag().apply { add(FloatTag.valueOf(yaw)); add(FloatTag.valueOf(pitch)) })
+        tag.put(
+            "Pos",
+            ListTag().apply {
+                add(DoubleTag.valueOf(position.x))
+                add(DoubleTag.valueOf(position.y))
+                add(DoubleTag.valueOf(position.z))
+            },
+        )
+        tag.put(
+            "Motion",
+            ListTag().apply {
+                add(DoubleTag.valueOf(motion.x))
+                add(DoubleTag.valueOf(motion.y))
+                add(DoubleTag.valueOf(motion.z))
+            },
+        )
+        tag.put(
+            "Rotation",
+            ListTag().apply {
+                add(FloatTag.valueOf(yaw))
+                add(FloatTag.valueOf(pitch))
+            },
+        )
     }
 
     @JvmStatic

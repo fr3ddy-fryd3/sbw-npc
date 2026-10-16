@@ -17,8 +17,7 @@ import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent
  *  player renderer, not arbitrary mobs; this lends the same poses to ours. */
 @EventBusSubscriber(Dist.CLIENT)
 object SbwGunPoses : GunPoses {
-    override fun armPose(holder: LivingEntity, stack: ItemStack): HumanoidModel.ArmPose? =
-        if (stack.item is GunItem) PoseTool.pose(holder, InteractionHand.MAIN_HAND, stack) else null
+    override fun armPose(holder: LivingEntity, stack: ItemStack): HumanoidModel.ArmPose? = if (stack.item is GunItem) PoseTool.pose(holder, InteractionHand.MAIN_HAND, stack) else null
 
     @SubscribeEvent
     fun onClientSetup(event: FMLClientSetupEvent) {

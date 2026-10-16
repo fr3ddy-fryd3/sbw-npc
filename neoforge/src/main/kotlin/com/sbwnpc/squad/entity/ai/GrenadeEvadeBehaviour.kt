@@ -2,9 +2,9 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
-import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.GrenadeHazard
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.entity.GrenadeRegistry
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModMemories
@@ -63,8 +63,13 @@ class GrenadeEvadeBehaviour : ExtendedBehaviour<NpcEntity>() {
         fleeTo?.let { entity.navigation.moveTo(it.x, it.y, it.z, SPRINT_SPEED) }
         // The old spot is inside the blast; whatever was headed there has to pick again after.
         FiringSpots.release(entity.uuid)
-        DebugFlags.log(LogGroup.GRENADE, "{} ({}) running from a grenade {} blocks away",
-            entity.uuid, entity.npcClass, "%.1f".format(entity.distanceTo(g)))
+        DebugFlags.log(
+            LogGroup.GRENADE,
+            "{} ({}) running from a grenade {} blocks away",
+            entity.uuid,
+            entity.npcClass,
+            "%.1f".format(entity.distanceTo(g)),
+        )
     }
 
     override fun tick(entity: NpcEntity) {
@@ -119,11 +124,13 @@ class GrenadeEvadeBehaviour : ExtendedBehaviour<NpcEntity>() {
         const val FLEE_MARGIN = 4.0
         const val FLEE_ATTEMPTS = 6
         const val ARRIVED_DISTANCE = 1.5
+
         /** (blocks/tick)^2 below which a grenade counts as having landed. */
         const val SETTLED_SPEED_SQR = 0.3 * 0.3
         const val FLEE_DISTANCE = 14
         const val FLEE_VERTICAL = 4
         const val SPRINT_SPEED = 1.4
+
         /** Well past any fuse — if it hasn't gone off by then, it isn't going to matter. */
         const val MAX_EVADE_TICKS = 100
     }

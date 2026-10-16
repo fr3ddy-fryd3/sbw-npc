@@ -7,7 +7,6 @@ import com.atsuishio.superbwarfare.resource.model.VehicleLODModelReloadListener
 import com.atsuishio.superbwarfare.resource.model.VehicleModelReloadListener
 import com.atsuishio.superbwarfare.resource.vehicle.VehicleResource
 import com.atsuishio.superbwarfare.tools.RenderDistanceHelper
-import com.sbwnpc.squad.SquadMod
 import com.github.mcmodderanchor.simplebedrockmodel.v1.common.resource.GsonUtil
 import com.github.mcmodderanchor.simplebedrockmodel.v1.common.resource.pojo.BedrockModelPOJO
 import com.github.mcmodderanchor.simplebedrockmodel.v2.common.model.baked.BakedBedrockModel
@@ -15,8 +14,9 @@ import com.github.mcmodderanchor.simplebedrockmodel.v2.common.model.baked.BakerO
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.blaze3d.systems.RenderSystem
+import com.mojang.blaze3d.vertex.PoseStack
+import com.sbwnpc.squad.SquadMod
 import net.minecraft.client.Minecraft
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.packs.resources.ResourceManager
@@ -51,7 +51,8 @@ object AircraftLods {
             val result = original.toMutableList()
             // Retain SBW's authored AH-6 meshes, with room for all three distance steps.
             if (mainPath.toString() == "superbwarfare:models/bedrock/vehicle/ah_6.geo.json" &&
-                original.map { it.lodDistance } == listOf(0, 32, 64, 96)) {
+                original.map { it.lodDistance } == listOf(0, 32, 64, 96)
+            ) {
                 return@getOrPut original.mapIndexed { index, entry ->
                     entry.copy(lodDistance = intArrayOf(0, 64, 128, 256)[index])
                 }
@@ -106,10 +107,11 @@ object AircraftLods {
         }
     }
 
-    internal fun bake(source: JsonObject): BakedBedrockModel = BakedBedrockModel.bake(
-        GsonUtil.CLIENT_GSON.fromJson(source, BedrockModelPOJO::class.java),
-        BakerOptions.defaults().withPreservedBoneRegexes(VehicleModelReloadListener.PATTERNS)
-    )
+    internal fun bake(source: JsonObject): BakedBedrockModel =
+        BakedBedrockModel.bake(
+            GsonUtil.CLIENT_GSON.fromJson(source, BedrockModelPOJO::class.java),
+            BakerOptions.defaults().withPreservedBoneRegexes(VehicleModelReloadListener.PATTERNS),
+        )
 
     /** Keep broad panels (including thin wings/rotors), bone transforms, UVs and attachment names. */
     internal fun simplify(source: JsonObject, fraction: Double): JsonObject {

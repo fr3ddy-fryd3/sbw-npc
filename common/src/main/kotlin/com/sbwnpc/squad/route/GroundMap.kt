@@ -29,10 +29,13 @@ object GroundMap {
     private const val REFRESH_TICKS = 600L
     private const val FORGET_TICKS = 36_000L
     private const val MAX_CHUNKS = 40_000
+
     /** Free blocks over the ground counted up to. */
     const val MAX_ROOM = 4
+
     /** Blocks down past trunks at most, to the ground a tree stands on. */
     private const val MAX_TRUNK = 40
+
     /** Blocks of snow or the like lying on the ground counted as floor at most. */
     private const val MAX_LYING = 2
 
@@ -84,49 +87,55 @@ object GroundMap {
         val kind = ByteArray(256)
         val room = ByteArray(256)
         val cursor = BlockPos.MutableBlockPos()
-        for (lx in 0 until 16) for (lz in 0 until 16) {
-            val x = (cx shl 4) + lx
-            val z = (cz shl 4) + lz
-            val i = lx * 16 + lz
-            var y = chunk.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, lx, lz)
-            var trunk = false
-            var steps = 0
-            while (steps++ < MAX_TRUNK && level.getBlockState(cursor.set(x, y, z)).`is`(BlockTags.LOGS)) {
-                trunk = true
-                y--
+        for (lx in 0 until 16) {
+            for (lz in 0 until 16) {
+                val x = (cx shl 4) + lx
+                val z = (cz shl 4) + lz
+                val i = lx * 16 + lz
+                var y = chunk.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, lx, lz)
+                var trunk = false
+                var steps = 0
+                while (steps++ < MAX_TRUNK && level.getBlockState(cursor.set(x, y, z)).`is`(BlockTags.LOGS)) {
+                    trunk = true
+                    y--
+                }
+                val state = level.getBlockState(cursor.set(x, y, z))
+                val fluid = level.getFluidState(cursor)
+                val k = when {
+                    fluid.`is`(FluidTags.WATER) -> Kind.WATER
+
+                    fluid.`is`(FluidTags.LAVA) -> Kind.DANGER
+
+                    trunk -> Kind.TREE
+
+                    state.`is`(Blocks.CACTUS) || state.`is`(Blocks.MAGMA_BLOCK) || state.`is`(Blocks.CAMPFIRE) ||
+                        state.`is`(Blocks.SWEET_BERRY_BUSH) || state.`is`(Blocks.POWDER_SNOW) -> Kind.DANGER
+
+                    else -> null
+                }
+                if (k != null) {
+                    kind[i] = k.ordinal.toByte()
+                    height[i] = (if (k == Kind.WATER) y else y + 1).toShort()
+                    if (k == Kind.WATER) room[i] = roomOver(level, cursor, x, y, z).toByte()
+                    continue
+                }
+                // Whatever lies on the ground without blocking movement — snow, a carpet — is the floor
+                // a man stands on, not something over his head: counted as that, a snowfield read as
+                // ground with no room over it, and no way on foot was found across a snowy mountain.
+                var floor = y
+                var surface = y + topOf(level, cursor.set(x, y, z))
+                while (floor - y < MAX_LYING) {
+                    cursor.set(x, floor + 1, z)
+                    val lying = level.getBlockState(cursor)
+                    val shape = lying.getCollisionShape(level, cursor)
+                    if (shape.isEmpty || lying.blocksMotion()) break
+                    floor++
+                    surface = floor + shape.max(Direction.Axis.Y)
+                }
+                room[i] = roomOver(level, cursor, x, floor, z).toByte()
+                kind[i] = (if (room[i] < 2) Kind.NO_ROOM else Kind.GROUND).ordinal.toByte()
+                height[i] = Math.floor(surface + 0.5).toInt().toShort()
             }
-            val state = level.getBlockState(cursor.set(x, y, z))
-            val fluid = level.getFluidState(cursor)
-            val k = when {
-                fluid.`is`(FluidTags.WATER) -> Kind.WATER
-                fluid.`is`(FluidTags.LAVA) -> Kind.DANGER
-                trunk -> Kind.TREE
-                state.`is`(Blocks.CACTUS) || state.`is`(Blocks.MAGMA_BLOCK) || state.`is`(Blocks.CAMPFIRE) ||
-                    state.`is`(Blocks.SWEET_BERRY_BUSH) || state.`is`(Blocks.POWDER_SNOW) -> Kind.DANGER
-                else -> null
-            }
-            if (k != null) {
-                kind[i] = k.ordinal.toByte()
-                height[i] = (if (k == Kind.WATER) y else y + 1).toShort()
-                if (k == Kind.WATER) room[i] = roomOver(level, cursor, x, y, z).toByte()
-                continue
-            }
-            // Whatever lies on the ground without blocking movement — snow, a carpet — is the floor
-            // a man stands on, not something over his head: counted as that, a snowfield read as
-            // ground with no room over it, and no way on foot was found across a snowy mountain.
-            var floor = y
-            var surface = y + topOf(level, cursor.set(x, y, z))
-            while (floor - y < MAX_LYING) {
-                cursor.set(x, floor + 1, z)
-                val lying = level.getBlockState(cursor)
-                val shape = lying.getCollisionShape(level, cursor)
-                if (shape.isEmpty || lying.blocksMotion()) break
-                floor++
-                surface = floor + shape.max(Direction.Axis.Y)
-            }
-            room[i] = roomOver(level, cursor, x, floor, z).toByte()
-            kind[i] = (if (room[i] < 2) Kind.NO_ROOM else Kind.GROUND).ordinal.toByte()
-            height[i] = Math.floor(surface + 0.5).toInt().toShort()
         }
         return Chunk(height, kind, room, now)
     }

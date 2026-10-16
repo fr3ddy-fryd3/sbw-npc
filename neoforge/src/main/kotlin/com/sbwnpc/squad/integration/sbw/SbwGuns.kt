@@ -1,28 +1,37 @@
 package com.sbwnpc.squad.integration.sbw
 
 import com.atsuishio.superbwarfare.data.gun.Ammo
-import com.atsuishio.superbwarfare.entity.projectile.ProjectileEntity
 import com.atsuishio.superbwarfare.data.gun.AmmoConsumer
 import com.atsuishio.superbwarfare.data.gun.FireMode
 import com.atsuishio.superbwarfare.data.gun.GunData
 import com.atsuishio.superbwarfare.data.gun.GunProp
+import com.atsuishio.superbwarfare.data.gun.ShootParameters
+import com.atsuishio.superbwarfare.entity.projectile.ProjectileEntity
 import com.atsuishio.superbwarfare.init.ModDamageTypes
 import com.atsuishio.superbwarfare.init.ModItems
 import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.sbwnpc.squad.domain.port.Guns
 import com.sbwnpc.squad.domain.port.HandGun
 import com.sbwnpc.squad.domain.port.TriggerMode
+import net.minecraft.core.component.DataComponents
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.nbt.Tag
-import net.minecraft.core.component.DataComponents
 import net.minecraft.resources.ResourceLocation
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
 object SbwGuns : Guns {
+    // IAdvancedHitDetection.findEntitiesOnPath excludes the owner and its entire root vehicle.
+    // FastThrowableProjectile (including grenades) and ProjectileEntity share that filter.
+    override fun canHitEntity(shooter: LivingEntity, target: LivingEntity): Boolean = target !== shooter && target.rootVehicle !== shooter.rootVehicle
+
+    override fun firingSafetyBounds(entity: LivingEntity, flightTicks: Double): AABB = SbwProjectileSafety.bounds(entity, flightTicks)
+
     override fun inHand(holder: LivingEntity): HandGun? {
         val stack = holder.mainHandItem
         if (stack.item !is GunItem) return null
@@ -30,6 +39,10 @@ object SbwGuns : Guns {
     }
 
     override fun isGun(stack: ItemStack): Boolean = stack.item is GunItem
+
+    override fun persist(stack: ItemStack) {
+        if (isGun(stack)) GunData.from(stack).save()
+    }
 
     override fun isRound(entity: Entity): Boolean = entity is ProjectileEntity
 
@@ -48,8 +61,7 @@ object SbwGuns : Guns {
         return data.ammo.get() + data.virtualAmmo.get()
     }
 
-    override fun reserve(stack: ItemStack): Int =
-        if (stack.item is GunItem) GunData.from(stack).virtualAmmo.get() else 0
+    override fun reserve(stack: ItemStack): Int = if (stack.item is GunItem) GunData.from(stack).virtualAmmo.get() else 0
 
     override fun withoutReserve(stack: ItemStack): ItemStack {
         if (stack.item !is GunItem) return stack.copy()
@@ -68,15 +80,17 @@ object SbwGuns : Guns {
         return true
     }
 
-    override fun magazineSize(stack: ItemStack): Int =
-        if (stack.item is GunItem) GunData.from(stack).get(GunProp.MAGAZINE) else 0
+    override fun magazineSize(stack: ItemStack): Int = if (stack.item is GunItem) GunData.from(stack).get(GunProp.MAGAZINE) else 0
 
     override fun ammoItems(stack: ItemStack, rounds: Int): ItemStack {
         if (stack.item !is GunItem || rounds <= 0) return ItemStack.EMPTY
         val consumer = GunData.from(stack).selectedAmmoConsumer()
         if (!consumer.initialized()) consumer.init()
         if (consumer.type != AmmoConsumer.AmmoConsumeType.PLAYER_AMMO &&
-            consumer.type != AmmoConsumer.AmmoConsumeType.ITEM) return ItemStack.EMPTY
+            consumer.type != AmmoConsumer.AmmoConsumeType.ITEM
+        ) {
+            return ItemStack.EMPTY
+        }
         val items = rounds / consumer.loadAmount.coerceAtLeast(1)
         if (items <= 0 || consumer.stack().isEmpty) return ItemStack.EMPTY
         return consumer.stack().copyWithCount(items)
@@ -114,6 +128,7 @@ private const val ARC_SEARCH_STEPS = 16
 
 private class SbwHandGun(private val holder: LivingEntity, private val data: GunData) : HandGun {
     override val roundsPerMinute: Double get() = data.get(GunProp.RPM).toDouble()
+    override val boltCycleTicks: Int get() = data.get(GunProp.BOLT_ACTION_TIME).let { if (it > 0) it + 1 else 0 }
     override val muzzleVelocity: Double get() = data.get(GunProp.VELOCITY).toDouble()
     override val explosionRadius: Double get() = data.get(GunProp.EXPLOSION_RADIUS)
     override val hearingRadius: Double get() = SbwHearing.radius(data)
@@ -123,7 +138,9 @@ private class SbwHandGun(private val holder: LivingEntity, private val data: Gun
     override val triggerMode: TriggerMode
         get() = when (data.selectedFireModeInfo().mode) {
             FireMode.SEMI -> TriggerMode.SEMI
+
             FireMode.BURST -> TriggerMode.BURST
+
             // No mode selected: fire as the old code did, without a trigger reset.
             FireMode.AUTO, null -> TriggerMode.AUTO
         }
@@ -174,7 +191,10 @@ private class SbwHandGun(private val holder: LivingEntity, private val data: Gun
                 h = nh
                 y += vy
                 vy -= gravity
-                if (tick > 2) { vh *= boost; vy *= boost }
+                if (tick > 2) {
+                    vh *= boost
+                    vy *= boost
+                }
             }
             return null
         }
@@ -192,7 +212,14 @@ private class SbwHandGun(private val holder: LivingEntity, private val data: Gun
         return (-high).toFloat()
     }
 
-    override fun shootAt(spread: Double, zoom: Boolean, target: UUID) = data.shoot(holder, spread, zoom, target)
+    override fun shootAt(spread: Double, zoom: Boolean, target: UUID, direction: Vec3?) {
+        if (direction == null) {
+            data.shoot(holder, spread, zoom, target)
+            return
+        }
+        val level = holder.level() as? ServerLevel ?: return
+        data.shoot(ShootParameters(holder, holder, level, holder.eyePosition, direction, data, spread, zoom, target, null))
+    }
 
     override fun shootAt(spread: Double, point: Vec3) = data.shoot(holder, spread, false, null, point)
 

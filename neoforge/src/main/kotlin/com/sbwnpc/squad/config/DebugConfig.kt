@@ -19,7 +19,7 @@ object DebugConfig {
         .comment(
             "Trace-log groups to write to the game log, e.g. [\"path\", \"hearing\"]; \"all\" for every one.",
             "Groups: ${LogGroup.entries.joinToString { it.key }}",
-            "Takes effect as soon as the file is saved."
+            "Takes effect as soon as the file is saved.",
         )
         .defineListAllowEmpty("logGroups", { emptyList<String>() }, { "" }, { it is String })
 
@@ -28,7 +28,10 @@ object DebugConfig {
     fun onConfig(event: ModConfigEvent) {
         if (event.config.spec !== SPEC || event is ModConfigEvent.Unloading) return
         val names = LOG_GROUPS.get()
-        DebugFlags.enabledGroups = if ("all" in names) LogGroup.entries.toSet()
-            else names.mapNotNull(LogGroup::byKey).toSet()
+        DebugFlags.enabledGroups = if ("all" in names) {
+            LogGroup.entries.toSet()
+        } else {
+            names.mapNotNull(LogGroup::byKey).toSet()
+        }
     }
 }

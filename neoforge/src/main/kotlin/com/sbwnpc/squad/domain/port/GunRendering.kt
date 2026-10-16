@@ -16,6 +16,6 @@ interface GunRendering {
         displayContext: ItemDisplayContext,
         poseStack: PoseStack,
         buffer: MultiBufferSource,
-        packedLight: Int
+        packedLight: Int,
     )
 }

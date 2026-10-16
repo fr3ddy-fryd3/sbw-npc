@@ -45,8 +45,10 @@ class CombatPositionTest {
 
     @Test
     fun `a far enemy allows a 24 block approach from the original post`() {
-        assertEquals(Vec3(24.0, 64.0, 0.0),
-            CombatPosition.advancePoint(NpcClass.RIFLEMAN, Vec3(0.0, 64.0, 0.0), Vec3(200.0, 64.0, 0.0)))
+        assertEquals(
+            Vec3(24.0, 64.0, 0.0),
+            CombatPosition.advancePoint(NpcClass.RIFLEMAN, Vec3(0.0, 64.0, 0.0), Vec3(200.0, 64.0, 0.0)),
+        )
         assertNull(CombatPosition.advancePoint(NpcClass.RIFLEMAN, Vec3.ZERO, Vec3(60.0, 0.0, 0.0)))
     }
 

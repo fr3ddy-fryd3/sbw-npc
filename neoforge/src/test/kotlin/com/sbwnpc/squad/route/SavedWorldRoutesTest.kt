@@ -28,16 +28,22 @@ class SavedWorldRoutesTest {
             DataInputStream(file.inputStream().buffered()).use { input ->
                 val magic = ByteArray(4).also { input.readFully(it) }
                 check(String(magic) == "GRND")
-                x0 = input.readInt(); z0 = input.readInt(); w = input.readInt(); h = input.readInt()
-                height = ShortArray(w * h); kind = ByteArray(w * h); room = ByteArray(w * h)
+                x0 = input.readInt()
+                z0 = input.readInt()
+                w = input.readInt()
+                h = input.readInt()
+                height = ShortArray(w * h)
+                kind = ByteArray(w * h)
+                room = ByteArray(w * h)
                 for (i in 0 until w * h) {
-                    height[i] = input.readShort(); kind[i] = input.readByte(); room[i] = input.readByte()
+                    height[i] = input.readShort()
+                    kind[i] = input.readByte()
+                    room[i] = input.readByte()
                 }
             }
         }
 
-        private fun index(x: Int, z: Int): Int =
-            if (x < x0 || z < z0 || x >= x0 + w || z >= z0 + h) -1 else (x - x0) * h + (z - z0)
+        private fun index(x: Int, z: Int): Int = if (x < x0 || z < z0 || x >= x0 + w || z >= z0 + h) -1 else (x - x0) * h + (z - z0)
 
         override fun known(x: Int, z: Int) = index(x, z).let { it >= 0 && kind[it].toInt() != 0 }
         override fun kind(x: Int, z: Int) = index(x, z).let { if (it < 0) GroundMap.Kind.UNKNOWN else GroundMap.Kind.entries[kind[it].toInt()] }
@@ -64,8 +70,10 @@ class SavedWorldRoutesTest {
         val ys = route.trail.map { it.y }
         val wet = route.trail.count { medium.pace == 1.0 && medium.extraCost(Math.floor(it.x).toInt(), Math.floor(it.z).toInt()) > 0 }
         val short = Math.hypot(route.landing.x - trip.goal.x, route.landing.z - trip.goal.z)
-        return ("${trip.name}: ${search.stoppedBy}, ${route.trail.size} columns, cost %.0f, ends %.0f from the goal, " +
-            "lowest y %.0f highest y %.0f, $wet in water, ${search.expanded} units, $ticks ticks, %.0f ms").format(route.length, short, ys.min(), ys.max(), ms)
+        return (
+            "${trip.name}: ${search.stoppedBy}, ${route.trail.size} columns, cost %.0f, ends %.0f from the goal, " +
+                "lowest y %.0f highest y %.0f, $wet in water, ${search.expanded} units, $ticks ticks, %.0f ms"
+            ).format(route.length, short, ys.min(), ys.max(), ms)
     }
 
     /** Only the ground within [radius] of where the traveller has been is known — as in the game,

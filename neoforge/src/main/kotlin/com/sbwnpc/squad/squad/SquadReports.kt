@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.squad
 
+import com.sbwnpc.squad.combat.SidearmKit
 import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.ChatFormatting
@@ -26,9 +27,11 @@ object SquadReports {
         LOW_AMMO(1200, ChatFormatting.YELLOW),
         RESUPPLY(600, ChatFormatting.GRAY),
         ARRIVED(0, ChatFormatting.GREEN),
+        ATTACK_FAILED(0, ChatFormatting.GOLD),
     }
 
     private val lastSent = HashMap<Pair<UUID, Kind>, Long>()
+
     /** The order stamp a MOVE arrival was last called in for, per squad. */
     private val arrivalCalled = HashMap<UUID, Int>()
 
@@ -38,13 +41,16 @@ object SquadReports {
 
     /** Most men each squad has had — what "half" is half of. */
     private val strength = HashMap<UUID, Int>()
+
     /** Squads whose half-strength call has gone out and that haven't been topped back up since. */
     private val halfCalled = HashSet<UUID>()
 
     private const val CHECK_TICKS = 100
     private const val LOW_AMMO_FRACTION = 0.3
+
     /** Squads of one commander this near an ongoing fight don't call it in again. */
     private const val CONTACT_AREA = 100.0
+
     /** A fight nobody has seen the enemy in for this long is over; the next sighting is news. */
     private const val CONTACT_QUIET_TICKS = 600L
 
@@ -58,7 +64,7 @@ object SquadReports {
         lastSent[key] = now
         owner.sendSystemMessage(
             Component.literal("[${squad.name}] ").withStyle(squad.faction.accentStyle)
-                .append(Component.literal(text).withStyle(kind.color))
+                .append(Component.literal(text).withStyle(kind.color)),
         )
     }
 
@@ -98,9 +104,21 @@ object SquadReports {
         send(server, squad, Kind.RESUPPLY, "${className(npc)} going to resupply")
     }
 
+    fun attackFailedAmmo(server: MinecraftServer, squad: Squad, empty: Int, infantry: Int) {
+        send(server, squad, Kind.ATTACK_FAILED, "Attack failed: primary ammunition exhausted ($empty/$infantry). Falling back 100 m")
+    }
+
+    fun attackFailedLosses(server: MinecraftServer, squad: Squad, lostPercent: Int) {
+        send(server, squad, Kind.ATTACK_FAILED, "Attack called off: the attack lost $lostPercent% of its men. Falling back 100 m")
+    }
+
     /** [squad] has taken its point, or fallen back to it, and holds it now. */
     fun holding(server: MinecraftServer, squad: Squad, was: SquadOrder) {
         send(server, squad, Kind.ARRIVED, if (was == SquadOrder.RETREAT) "Fallen back, holding" else "Objective taken, holding")
+    }
+
+    fun landing(server: MinecraftServer, squad: Squad) {
+        send(server, squad, Kind.ARRIVED, "Objective taken, landing")
     }
 
     fun tick(server: MinecraftServer) {
@@ -112,9 +130,12 @@ object SquadReports {
             if (full != null && squad.members.size * 2 > full) halfCalled.remove(squad.id)
             val members = squad.members.mapNotNull { SquadManager.findEntity(server, it) as? NpcEntity }.filter { it.isAlive }
             if (members.isEmpty()) continue
-            val short = members.count { it.ammoFraction() < LOW_AMMO_FRACTION }
+            val ammunition = members.map { it.ammoFraction() }
+            val short = ammunition.count { it < LOW_AMMO_FRACTION }
+            val primaryEmpty = ammunition.count { it <= 0.0 }
+            val empty = members.count { !SidearmKit.hasSmallArmsAmmo(it) }
             if (short > 0 && members.none { it.nearestSupply() != null }) {
-                send(server, squad, Kind.LOW_AMMO, "$short low on ammo, no Supply in reach")
+                send(server, squad, Kind.LOW_AMMO, "$short low on ammo ($primaryEmpty primary empty, $empty out of ammo), no Supply in reach")
             }
             moveArrival(server, squad, members)
         }
@@ -132,8 +153,7 @@ object SquadReports {
     }
 
     /** "MACHINE_GUNNER" -> "Machine gunner". */
-    private fun className(npc: NpcEntity): String =
-        npc.npcClass.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }
+    private fun className(npc: NpcEntity): String = npc.npcClass.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }
 
     private fun bearing(v: Vec3): String {
         val deg = Math.toDegrees(Math.atan2(v.x, -v.z)).let { if (it < 0) it + 360 else it }

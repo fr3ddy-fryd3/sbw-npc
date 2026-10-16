@@ -18,21 +18,31 @@ import net.neoforged.neoforge.common.Tags
 
 /** Eyes only. Firing lanes and cover searches keep their ordinary collider raycasts. */
 object DetectionSightline {
+    enum class Visibility { VISIBLE, FOLIAGE, OBSTACLE }
+
     private const val FOLIAGE_BLOCKS_TO_HIDE = 3
 
-    fun canSee(observer: Entity, target: Entity): Boolean =
-        observer.level() === target.level() && visible(observer.level(), observer.eyePosition, target.eyePosition, observer)
+    fun trace(observer: Entity, target: Entity): Visibility = if (observer.level() === target.level()) trace(observer.level(), observer.eyePosition, target.eyePosition, CollisionContext.of(observer)) else Visibility.OBSTACLE
 
-    fun visible(level: BlockGetter, from: Vec3, to: Vec3, observer: Entity): Boolean =
-        visible(level, from, to, CollisionContext.of(observer))
+    fun canSeeWithin(observer: Entity, target: Entity, range: Double): Boolean = observer.distanceToSqr(target) <= range * range && canSee(observer, target)
 
-    internal fun visible(level: BlockGetter, from: Vec3, to: Vec3, collision: CollisionContext): Boolean {
+    fun canSee(observer: Entity, target: Entity): Boolean = trace(observer, target) == Visibility.VISIBLE
+
+    fun visible(level: BlockGetter, from: Vec3, to: Vec3, observer: Entity): Boolean = visible(level, from, to, CollisionContext.of(observer))
+
+    internal fun visible(level: BlockGetter, from: Vec3, to: Vec3, collision: CollisionContext): Boolean = trace(level, from, to, collision) == Visibility.VISIBLE
+
+    internal fun trace(level: BlockGetter, from: Vec3, to: Vec3, collision: CollisionContext): Visibility {
         if (level is ServerLevel) TickBudget.chargeRaycast(level)
-        return level.clip(DetectionContext(from, to, collision)).type == HitResult.Type.MISS
+        val hit = level.clip(DetectionContext(from, to, collision))
+        return when {
+            hit.type == HitResult.Type.MISS -> Visibility.VISIBLE
+            isGrass(level.getBlockState(hit.blockPos)) -> Visibility.FOLIAGE
+            else -> Visibility.OBSTACLE
+        }
     }
 
-    private class DetectionContext(from: Vec3, to: Vec3, collision: CollisionContext) :
-        ClipContext(from, to, Block.COLLIDER, Fluid.NONE, collision) {
+    private class DetectionContext(from: Vec3, to: Vec3, collision: CollisionContext) : ClipContext(from, to, Block.COLLIDER, Fluid.NONE, collision) {
         private var foliage = 0
 
         override fun getBlockShape(state: BlockState, level: BlockGetter, pos: BlockPos): VoxelShape {

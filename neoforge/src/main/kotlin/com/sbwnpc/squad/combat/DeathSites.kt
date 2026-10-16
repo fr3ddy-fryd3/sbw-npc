@@ -23,8 +23,10 @@ import net.minecraft.world.phys.Vec3
 object DeathSites {
     /** Two deaths this close together are the same site. */
     private const val SAME_SITE = 8.0
+
     /** How close an ally has to be for its look at the spot to count. */
     const val CONFIRM_RANGE = 16.0
+
     /** Matches the alert an investigator walks on (NpcEntity.ALERT_DURATION_TICKS). */
     private const val TTL_TICKS = 200L
 

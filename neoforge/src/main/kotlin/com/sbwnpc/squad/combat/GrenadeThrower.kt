@@ -13,8 +13,7 @@ object GrenadeThrower {
     const val MAX_RANGE = 16.0
 
     /** Every throw path, including the grenade from a foxhole, uses the same reach limit. */
-    internal fun inRange(from: Vec3, target: Vec3): Boolean =
-        from.distanceTo(target) in MIN_RANGE..MAX_RANGE
+    internal fun inRange(from: Vec3, target: Vec3): Boolean = from.distanceTo(target) in MIN_RANGE..MAX_RANGE
 
     fun isSafeToThrow(thrower: NpcEntity, target: Vec3, kind: GrenadeKind): Boolean =
         FriendlyFireGuard.hasClearLineOfFire(thrower, target) &&
@@ -43,7 +42,10 @@ object GrenadeThrower {
     fun throwAt(thrower: NpcEntity, level: ServerLevel, target: Vec3, kind: GrenadeKind, targetVelocity: Vec3 = Vec3.ZERO): Boolean {
         if (thrower.grenadesLeft(kind) <= 0 || !inRange(thrower.position(), target) ||
             !isSafeToThrow(thrower, target, kind) ||
-            !Ports.grenades.arcClear(thrower, level, target, targetVelocity, kind, NEAR_TARGET)) return false
+            !Ports.grenades.arcClear(thrower, level, target, targetVelocity, kind, NEAR_TARGET)
+        ) {
+            return false
+        }
         Ports.grenades.throwAt(thrower, level, target, targetVelocity, kind)
         thrower.spendGrenade(kind)
         return true
