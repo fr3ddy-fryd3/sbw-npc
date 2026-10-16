@@ -35,6 +35,17 @@ class AttackProgressTest {
         assertEquals(AttackPhase.ASSAULT, progress.phase)
     }
 
+    @Test fun `an approach that has not met the defence yet does not assault`() {
+        // In-game 16.10: 16 attackers went DEPLOY to ASSAULT 207 ticks after the order with no
+        // enemy ever seen, then ran into 16 defenders at the objective.
+        val progress = AttackProgress(0)
+        assertEquals(0L, progress.update(207, ready = 16, enemies = 0).ticksSinceContact)
+        progress.update(600, ready = 16, enemies = 0)
+        assertEquals(AttackPhase.DEPLOY, progress.phase)
+        progress.update(700, ready = 30, enemies = 16)
+        assertEquals(AttackPhase.DEPLOY, progress.phase)
+    }
+
     @Test fun `the clearing team is kept between updates`() {
         val progress = AttackProgress(0)
         progress.update(100, ready = 8, enemies = 0, contact = true, occupied = true, threats = 1)

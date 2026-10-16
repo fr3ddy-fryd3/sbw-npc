@@ -15,6 +15,7 @@ enum class AttackPhase {
     /**
      * Observations for one decision. [enemiesAtObjective] and [threatsNearby] are seen, live
      * contacts; [peakEnemiesAtObjective] is the most seen at the objective during this attack.
+     * [ticksSinceContact] stays 0 until the attack first sees an enemy.
      */
     data class Inputs(
         val readyShooters: Int,
@@ -47,7 +48,7 @@ enum class AttackPhase {
          *  [ASSAULT_RATIO] so one casualty does not flip the phase back and forth. */
         const val ABORT_RATIO = 1.5
 
-        /** No enemy seen for this long (10 s) also starts the assault. */
+        /** No enemy seen for this long (10 s) after a contact also starts the assault. */
         const val QUIET_TICKS = 200L
 
         /** The firing line works for at least this long (20 s) before an assault. */

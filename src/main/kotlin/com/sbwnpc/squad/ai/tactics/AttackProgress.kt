@@ -12,7 +12,9 @@ import kotlin.math.max
 class AttackProgress(now: Long) {
     var phase = AttackPhase.DEPLOY
         private set
-    private var lastContactAt = now
+    // Unset until the first contact: an approach that has not met the defence yet is not a quiet
+    // objective, and counting from the order made the attack assault an unseen defence.
+    private var lastContactAt: Long? = null
     private var engagedSince: Long? = null
     private var lastIncomingAt: Long? = null
     private var peakEnemies = 0
@@ -30,7 +32,7 @@ class AttackProgress(now: Long) {
             readyShooters = readyShooters,
             enemiesAtObjective = enemiesAtObjective,
             peakEnemiesAtObjective = peakEnemies,
-            ticksSinceContact = now - lastContactAt,
+            ticksSinceContact = lastContactAt?.let { now - it } ?: 0,
             ticksEngaged = engagedSince?.let { now - it } ?: 0,
             ticksSinceIncoming = now - (lastIncomingAt ?: engagedSince ?: now),
             occupied = occupied,
