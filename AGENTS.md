@@ -180,6 +180,11 @@ KDoc (`/** ... */`) goes on every class, object and non-obvious public or `inter
   The flag is baked into the jar at build time by the generated `BuildFlags` object (see
   `generateBuildFlags` in `build.gradle.kts`). It cannot be passed at runtime.
 - Tests only: `./gradlew test`.
+- Lint and formatting: `./gradlew detekt`, which `build` also runs. It checks the Kotlin sources
+  with detekt and its ktlint formatting rules (`config/detekt/detekt.yml`), and
+  `./gradlew detekt --auto-correct` fixes the formatting findings in place. Older complexity
+  findings are recorded in `config/detekt/baseline.xml`. Fix new findings rather than adding them
+  to the baseline.
 - Compiling (`compileKotlin`) is not a testable artifact. A real jar requires `build`.
 - Deploy for in-game testing: copy the built jar into the **flat** `~/.minecraft/mods/` folder:
   ```
