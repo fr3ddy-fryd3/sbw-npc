@@ -74,6 +74,16 @@ internal class NativePositionAction(
         return update(now)
     }
     override fun tick(now: Long) = update(now)
+
+    override fun reopen(now: Long): Boolean {
+        if (released || task.position == null) return false
+        // Keep the reserved post through displacement; native A* must wait for landing.
+        pendingStart = true
+        deferredAt = null
+        lastProgress = now
+        closest = Double.MAX_VALUE
+        return true
+    }
     private fun update(now: Long): ActionUpdate {
         deferredAt?.let { lastProgress += now - it }
         deferredAt = null

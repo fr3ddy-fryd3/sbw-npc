@@ -11,12 +11,14 @@ class PlanRuntimeTest {
     private val arrived = FactKey("arrived", Boolean::class.javaObjectType)
     private val cover = FactKey("cover", Boolean::class.javaObjectType)
     private val motion = ResourceKey(agent, "motion")
-    private class Action(var response: ActionUpdate = ActionUpdate.Running) : ActionExecution {
+    private class Action(var response: ActionUpdate = ActionUpdate.Running, var reopenable: Boolean = false) : ActionExecution {
         var starts = 0
         var ticks = 0
         var pauses = 0
         var resumes = 0
         var cancellations = 0
+        var reopenings = 0
+        var disposals = 0
         override fun start(now: Long): ActionUpdate {
             starts++
             return response
@@ -33,6 +35,13 @@ class PlanRuntimeTest {
         }
         override fun cancel(now: Long, reason: String) {
             cancellations++
+        }
+        override fun reopen(now: Long): Boolean {
+            reopenings++
+            return reopenable
+        }
+        override fun dispose(now: Long, reason: String) {
+            disposals++
         }
     }
     private fun task(id: String, after: Set<String> = emptySet(), goal: Int = 1, contract: TaskContract = TaskContract(), resources: Set<ResourceKey> = emptySet()) = PlannedTask(id, PrimitiveSpec(id, ActionSpec(ActionKey("move", Int::class.javaObjectType), goal, resources), contract), after)
@@ -250,5 +259,71 @@ class PlanRuntimeTest {
         runtime.clear(2, "already_removed")
         assertEquals(1, disposed)
         assertEquals(0, cancelled)
+    }
+
+    @Test fun `lost completion reopens an opted in action without disposing its retained state`() {
+        val action = Action(reopenable = true)
+        val leases = ResourceLeases()
+        var creates = 0
+        val runtime = PlanRuntime({ _, _ ->
+            creates++
+            action
+        }, leases)
+        val post = task("post", contract = TaskContract(completed = Condition.test(arrived, "not_arrived") { it }), resources = setOf(motion))
+        runtime.install(plan(post), facts(0).observe(arrived, false))
+        runtime.tick(facts(0).observe(arrived, false))
+        action.response = complete(1)
+        runtime.tick(facts(1).observe(arrived, true))
+        val ticket = runtime.reports.getValue("post").ticket
+        assertTrue(runtime.completed)
+        assertNull(leases.owner(motion))
+
+        runtime.install(plan(post), facts(10000).observe(arrived, false))
+        val reopened = runtime.reports.getValue("post")
+        assertEquals(ticket, reopened.ticket)
+        assertEquals(ExecutionStatus.RUNNING, reopened.status)
+        assertTrue(reopened.evidence.isEmpty())
+        assertEquals(0L, reopened.activeTicks)
+        assertFalse(runtime.accept(ticket, complete(10000), facts(10000).observe(arrived, true)))
+        action.response = ActionUpdate.Running
+        runtime.tick(facts(10000).observe(arrived, false))
+        assertEquals(ticket, leases.owner(motion))
+        assertEquals(1, creates)
+        assertEquals(1, action.starts)
+        assertEquals(1, action.reopenings)
+        assertEquals(0, action.disposals)
+        assertEquals(0, action.cancellations)
+
+        action.response = complete(10001)
+        runtime.tick(facts(10001).observe(arrived, true))
+        assertTrue(runtime.completed)
+        runtime.clear(10002, "new_order")
+        assertEquals(1, action.disposals)
+    }
+
+    @Test fun `lost completion replaces an action that declines reopening`() {
+        val actions = ArrayList<Action>()
+        val runtime = PlanRuntime({ _, _ -> Action(complete(0)).also(actions::add) }, ResourceLeases())
+        val post = task("post", contract = TaskContract(completed = Condition.test(arrived, "not_arrived") { it }))
+        runtime.install(plan(post), facts(0).observe(arrived, true))
+        runtime.tick(facts(0).observe(arrived, true))
+        val ticket = runtime.reports.getValue("post").ticket
+        runtime.install(plan(post), facts(1).observe(arrived, false))
+        assertNotEquals(ticket, runtime.reports.getValue("post").ticket)
+        assertEquals(1, actions.single().disposals)
+        assertEquals(0, actions.single().cancellations)
+    }
+
+    @Test fun `a new order never reopens the old completed action`() {
+        val action = Action(complete(0), reopenable = true)
+        val runtime = PlanRuntime({ _, _ -> action }, ResourceLeases())
+        val post = task("post", contract = TaskContract(completed = Condition.test(arrived, "not_arrived") { it }))
+        runtime.install(plan(post), facts(0).observe(arrived, true))
+        runtime.tick(facts(0).observe(arrived, true))
+        val ticket = runtime.reports.getValue("post").ticket
+        runtime.install(plan(post, owner = owner.copy(order = UUID(2, 2))), facts(1).observe(arrived, false))
+        assertNotEquals(ticket, runtime.reports.getValue("post").ticket)
+        assertEquals(0, action.reopenings)
+        assertEquals(1, action.disposals)
     }
 }
