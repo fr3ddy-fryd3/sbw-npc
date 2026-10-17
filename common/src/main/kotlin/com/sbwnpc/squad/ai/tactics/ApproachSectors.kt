@@ -122,16 +122,16 @@ class ApproachSectors<K : Any> {
         const val MIN_GROUP = 3
 
         /**
-         * The members of a squad of [ready] men attacking alone that take a flank: half its [riflemen] and all its
+         * The members of a squad of [size] men attacking alone that take a flank: half its [riflemen] and all its
          * [assault] men (grenadiers, shotgunners), keeping those in [previous] where it can. The
          * machine gunners, snipers, the other riflemen and everyone else hold the head-on line and
          * fire. Empty when either group would be under [MIN_GROUP]: a fire team of three that
          * split sent two of them round a flank and left one to pin the point.
          */
-        fun manoeuvreGroup(riflemen: Collection<UUID>, assault: Collection<UUID>, previous: Set<UUID>, ready: Int): Set<UUID> {
+        fun manoeuvreGroup(riflemen: Collection<UUID>, assault: Collection<UUID>, previous: Set<UUID>, size: Int): Set<UUID> {
             val sorted = riflemen.sortedWith(compareBy<UUID> { it !in previous }.thenBy { it.toString() })
             val group = sorted.take((sorted.size + 1) / 2) + assault
-            return if (group.size >= MIN_GROUP && ready - group.size >= MIN_GROUP) group.toSet() else emptySet()
+            return if (group.size >= MIN_GROUP && size - group.size >= MIN_GROUP) group.toSet() else emptySet()
         }
 
         private fun bearing(from: Point3, to: Point3) = atan2(to.z - from.z, to.x - from.x)

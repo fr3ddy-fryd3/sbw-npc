@@ -586,10 +586,13 @@ object NativeTactics {
             }
             val single = squads.singleOrNull()
             val manoeuvre = single?.let { saved ->
-                val ready = snapshots.getValue(saved.id).members.filter { it.ready }
-                val riflemen = ready.filter { it.role == NpcClass.RIFLEMAN }.map { it.id }
-                val assault = ready.filter { it.role == NpcClass.GRENADIER || it.role == NpcClass.SHOTGUNNER }.map { it.id }
-                ApproachSectors.manoeuvreGroup(riflemen, assault, manoeuvres[saved.id].orEmpty(), ready.size).also { manoeuvres[saved.id] = it }
+                // Counted over every man, not only the ready ones: a man dodging a grenade or with
+                // the medic for a moment would be swapped for one of the fire group, who would run
+                // off to the flank, or would end the split for the whole squad.
+                val squad = snapshots.getValue(saved.id).members
+                val riflemen = squad.filter { it.role == NpcClass.RIFLEMAN }.map { it.id }
+                val assault = squad.filter { it.role == NpcClass.GRENADIER || it.role == NpcClass.SHOTGUNNER }.map { it.id }
+                ApproachSectors.manoeuvreGroup(riflemen, assault, manoeuvres[saved.id].orEmpty(), squad.size).also { manoeuvres[saved.id] = it }
             }.orEmpty()
             if (single != null && manoeuvre.isEmpty()) return emptyMap()
             val members = squads.flatMap { saved -> snapshots.getValue(saved.id).members.map { SectorGroup(saved.id, it.id in manoeuvre) to it } }
