@@ -68,4 +68,18 @@ class ApproachSectorsTest {
     @Test fun `a squad too small for a flank does not split`() {
         assertTrue(ApproachSectors.manoeuvreGroup(listOf(UUID(0, 0)), emptyList(), emptySet()).isEmpty())
     }
+
+    @Test fun `a flanker walks round the objective in fixed steps outside the line's radius`() {
+        val sector = Math.toRadians(-60.0)
+        // Standing head-on, 80 blocks out: the first waypoint is 30 degrees short of the sector.
+        val first = ApproachSectors.arcWaypoint(objective, Point3(80.0, 64.0, 0.0), sector, 100.0)!!
+        assertEquals(-30.0, Math.toDegrees(kotlin.math.atan2(first.z, first.x)), 1e-6)
+        assertEquals(100.0, kotlin.math.hypot(first.x, first.z), 1e-6)
+        // The waypoint stays put while he walks towards it.
+        val halfway = ApproachSectors.arcWaypoint(objective, Point3(95.0, 64.0, -25.0), sector, 100.0)!!
+        assertEquals(first.x, halfway.x, 1e-6)
+        assertEquals(first.z, halfway.z, 1e-6)
+        // Near it, he makes for his post.
+        assertEquals(null, ApproachSectors.arcWaypoint(objective, Point3(86.0, 64.0, -50.0), sector, 100.0))
+    }
 }

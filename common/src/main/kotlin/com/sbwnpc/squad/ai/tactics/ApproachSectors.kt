@@ -5,7 +5,12 @@ import java.util.UUID
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
+import kotlin.math.ceil
+import kotlin.math.cos
 import kotlin.math.hypot
+import kotlin.math.max
+import kotlin.math.sign
+import kotlin.math.sin
 
 /**
  * The bearing from the objective each group of an attack builds its line on, kept for the whole
@@ -56,6 +61,30 @@ class ApproachSectors<K : Any> {
         const val FLANK_ANGLE = PI / 3
 
         private val SECTORS = listOf(0.0, FLANK_ANGLE, -FLANK_ANGLE)
+
+        /** How far round the objective a flanking man walks before taking the next arc waypoint (30°). */
+        const val ARC_STEP = PI / 6
+
+        // Within this much of a waypoint's bearing it counts as reached; without it a man standing
+        // just past a step boundary was sent to a waypoint where he already stood.
+        private const val ARC_TOLERANCE = PI / 18
+
+        /**
+         * The next point on the arc round the [objective] for a man at [from] on his way to his
+         * sector's [bearing], or null once he is near enough the sector to make for his post.
+         *
+         * The arc keeps him at least [radius] (his line's distance) from the objective, out of the
+         * defenders' reach: walking straight to a sector on the far flank crosses the point. The
+         * waypoints are fixed steps back from the sector, so they do not move as he walks.
+         */
+        fun arcWaypoint(objective: Point3, from: Point3, bearing: Double, radius: Double): Point3? {
+            val delta = normalize(bearing - bearing(objective, from))
+            val steps = ceil((abs(delta) - ARC_TOLERANCE) / ARC_STEP).toInt() - 1
+            if (steps <= 0) return null
+            val at = bearing - sign(delta) * steps * ARC_STEP
+            val range = max(radius, distance(objective, from))
+            return Point3(objective.x + cos(at) * range, from.y, objective.z + sin(at) * range)
+        }
 
         /** A squad attacking alone splits only when its manoeuvre group has at least this many. */
         const val MIN_MANOEUVRE = 2

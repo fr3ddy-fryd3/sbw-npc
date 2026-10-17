@@ -13,6 +13,7 @@ import com.sbwnpc.squad.team.Diplomacy
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
+import kotlin.math.hypot
 import kotlin.math.max
 
 /** Production owner: world observation, domain evaluation and native adapters have separate boundaries. */
@@ -90,6 +91,11 @@ object NativeTactics {
         private val attacks = HashMap<UUID, AttackProgress>()
         private val sectors = HashMap<UUID, ApproachSectors<SectorGroup>>()
         private val sectorTraces = HashMap<UUID, Map<SectorGroup, Double>>()
+        private val flankTraces = HashMap<UUID, Int>()
+
+        // Members on the arc to their sector at the last layout: their intent is not kept once the
+        // arc ends, or they would stay on its last waypoint.
+        private val arcing = HashSet<UUID>()
 
         // Per squad attacking alone: the members it sends round a flank, see [approachBearings].
         private val manoeuvres = HashMap<UUID, Set<UUID>>()
@@ -370,6 +376,7 @@ object NativeTactics {
                     attacks.remove(id.id)
                     sectors.remove(id.id)
                     sectorTraces.remove(id.id)
+                    flankTraces.remove(id.id)
                     areaObservedAt.remove(id.id)
                     areaTraces.remove(id.id)
                     unverified.remove(id.id)
@@ -383,6 +390,7 @@ object NativeTactics {
                 allocationOrigins.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 formationDuties.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 plannedContact.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
+                arcing.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 teamAllocators.keys.removeIf { manager.get(it) == null }
                 manoeuvres.keys.removeIf { manager.get(it) == null }
                 retiredAssignments.forEach(ledger::forget)
@@ -537,6 +545,7 @@ object NativeTactics {
                 attacks.remove(operation)
                 sectors.remove(operation)
                 sectorTraces.remove(operation)
+                flankTraces.remove(operation)
             }
             return standing
         }
@@ -634,10 +643,10 @@ object NativeTactics {
             }
             val enemies = contacts.map { it.position.point() }
             val bearings = approachBearings(operation, squads, focus != null)
-            val proposals = if (bearings.isEmpty()) {
+            val objective = attackObjective(operation, squads)
+            val proposals = if (bearings.isEmpty() || objective == null) {
                 OperationFront.propose(actors, enemies, focus?.point(), formationDuties)
             } else {
-                val objective = attackObjective(operation, squads)!!
                 // Only the point's defenders set the sector lines back: a contact off to one side
                 // would push a line far from the fight.
                 val defenders = enemies.filter { OperationTactics.atObjective(it, objective) }
@@ -646,6 +655,20 @@ object NativeTactics {
                 }.associate { it.key to it.value }
             }
             proposals.forEach { (id, proposal) -> formationDuties[id] = proposal.duty }
+            // A man far round the objective from his sector gets there along the arc, not across the point.
+            val waypoints = if (bearings.isEmpty() || objective == null) {
+                emptyMap()
+            } else {
+                members.mapNotNull { member ->
+                    val post = proposals.getValue(member.id).anchor
+                    ApproachSectors.arcWaypoint(objective, member.position.point(), bearings.getValue(member.id), hypot(post.x - objective.x, post.z - objective.z))?.let { member.id to it }
+                }.toMap()
+            }
+            val wasArcing = members.filter { it.id in arcing }.mapTo(HashSet()) { it.id }
+            members.forEach { if (it.id in waypoints) arcing += it.id else arcing -= it.id }
+            if (flankTraces.put(operation, waypoints.size) != waypoints.size && bearings.isNotEmpty()) {
+                DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=flank_march flanking={} of={}", operation, waypoints.size, members.size)
+            }
             return squads.map { saved ->
                 val view = snapshots.getValue(saved.id)
                 val situation = CombatSituation(
@@ -668,7 +691,8 @@ object NativeTactics {
                 // the order's own march, each man's sighted target still drew him off after it.
                 val entry = if (marching && saved.order == SquadOrder.ATTACK) operations.pending(saved.id)?.let { operations.operation(it.operation) }?.entry?.center else null
                 val intents = view.members.map { member ->
-                    val proposal = proposals.getValue(member.id)
+                    val waypoint = waypoints[member.id]
+                    val proposal = waypoint?.let { FrontProposal(CombatDuty.MOVE, it, null) } ?: proposals.getValue(member.id)
                     val choice = entry?.let { DutyChoice(CombatDuty.MOVE, it) } ?: OperationTactics.duty(
                         DutyInputs(
                             order = TacticalOrder.valueOf(saved.order.name),
@@ -683,6 +707,7 @@ object NativeTactics {
                             hasPatrolRoute = view.hasPatrolRoute,
                             reachedMove = actions[member.id]?.let { it.intent.duty == CombatDuty.MOVE && it.reached() } == true,
                             wasFiring = oldIntents[member.id]?.duty == CombatDuty.FIRE,
+                            flanking = waypoint != null,
                         ),
                         FIRE_POST_REACH,
                         CombatPosition.LOCAL_MOVE_RADIUS,
@@ -692,7 +717,7 @@ object NativeTactics {
                     val before = oldIntents[member.id]
                     val requireCover = duty == CombatDuty.MOVE && situation.incoming
                     val requireShelter = situation.incoming && duty in setOf(CombatDuty.MOVE, CombatDuty.FIRE)
-                    val retained = before?.takeIf { oldStrategy?.first == selected && it.duty == duty && it.requireCover == requireCover && it.requireShelter == requireShelter && (focus?.distanceTo(plannedContact[member.id] ?: focus) ?: 0.0) < 8 }
+                    val retained = before?.takeIf { oldStrategy?.first == selected && it.duty == duty && it.requireCover == requireCover && it.requireShelter == requireShelter && (focus?.distanceTo(plannedContact[member.id] ?: focus) ?: 0.0) < 8 && ((waypoint == null && member.id !in wasArcing) || it.anchor.native().distanceTo(proposed) < 4) }
                     if (retained != null) {
                         retained
                     } else {

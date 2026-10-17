@@ -30,6 +30,8 @@ data class AttackMember(val id: UUID, val position: Point3, val ready: Boolean)
  * @property observer a machine gunner or sniper with primary ammo, who watches from height when idle.
  * @property reachedMove the member's current MOVE post is reached.
  * @property wasFiring the member's previous intent was FIRE.
+ * @property flanking the member is on his way round the objective to his sector, see
+ *   [ApproachSectors.arcWaypoint]; [proposal] holds the next waypoint.
  */
 data class DutyInputs(
     val order: TacticalOrder,
@@ -44,6 +46,7 @@ data class DutyInputs(
     val hasPatrolRoute: Boolean,
     val reachedMove: Boolean,
     val wasFiring: Boolean,
+    val flanking: Boolean = false,
 )
 
 data class DutyChoice(val duty: CombatDuty, val anchor: Point3)
@@ -151,6 +154,9 @@ object OperationTactics {
                 !inContact || order in setOf(TacticalOrder.RETREAT, TacticalOrder.MOVE, TacticalOrder.BARRAGE) -> CombatDuty.FOLLOW_ORDER
 
                 order != TacticalOrder.ATTACK -> CombatDuty.FIRE
+
+                // Firing on the way would stop him short of his sector.
+                flanking -> CombatDuty.MOVE
 
                 // A mover that reached its post, or already fired, keeps firing instead of moving on.
                 proposal.duty == CombatDuty.MOVE -> if (reachedMove || wasFiring) CombatDuty.FIRE else CombatDuty.MOVE

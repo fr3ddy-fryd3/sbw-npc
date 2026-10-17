@@ -116,4 +116,10 @@ class OperationTacticsTest {
         assertEquals(DutyChoice(CombatDuty.FIRE, here), duty(proposal = move, reachedMove = true))
         assertEquals(DutyChoice(CombatDuty.FIRE, here), duty(proposal = move, wasFiring = true))
     }
+
+    @Test fun `a flanker keeps walking to his next waypoint even after he fired`() {
+        val waypoint = Point3(30.0, 64.0, 140.0)
+        val inputs = DutyInputs(TacticalOrder.ATTACK, here, FrontProposal(CombatDuty.MOVE, waypoint, null), objective, null, inContact = true, elsewhere = false, scout = false, observer = false, hasPatrolRoute = false, reachedMove = true, wasFiring = true, flanking = true)
+        assertEquals(DutyChoice(CombatDuty.MOVE, waypoint), OperationTactics.duty(inputs, fireReach = 40.0, approachOffset = 10.0))
+    }
 }
