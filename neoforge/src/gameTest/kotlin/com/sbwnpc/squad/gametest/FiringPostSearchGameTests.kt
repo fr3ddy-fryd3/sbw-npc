@@ -64,7 +64,7 @@ object FiringPostSearchGameTests {
         helper.runAtTickTime(20) {
             npc.setOnGround(true)
             BrainUtils.setTargetOfEntity(npc, enemy)
-            // A returned probe has no contact coverOrigin. Both posts have a real firing lane;
+            // Both posts have a real firing lane;
             // the exposed post is closer to the assigned front, the other has a one-block wall.
             task.search = TacticalPositionSearch(npc.position(), listOf(open, sheltered), TacticalAim.resolve(npc, task), deployment = true)
         }

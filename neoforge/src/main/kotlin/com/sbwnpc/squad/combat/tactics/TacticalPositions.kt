@@ -93,9 +93,7 @@ object TacticalPositions {
         val covered: Boolean,
         val aim: TacticalAim?,
         val claimOwner: java.util.UUID?,
-    ) {
-        val focus = aim?.position
-    }
+    )
 
     private fun existingCoverPosition(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, level: ServerLevel, homeRadius: Double, closesWithEnemy: Boolean): Vec3? {
         if (task.job !in TacticalJob.FIRE_SUPPORT) return null
@@ -202,7 +200,6 @@ object TacticalPositions {
         val task = context.task
         val level = context.level
         val search = context.search
-        val focus = context.focus
         val block = BlockPos.containing(raw)
         if (!level.chunkSource.hasChunk(block.x shr 4, block.z shr 4)) {
             search.reject("unloaded")
@@ -530,7 +527,6 @@ object TacticalPositions {
     private fun checkRoute(context: SearchContext, validation: TacticalRouteValidation): TacticalRouteValidation.Outcome {
         val path = validation.path
         val task = context.task
-        val focus = context.focus
         if (!context.policy.closesWithEnemy && !safePath(context.entity, context.view, path)) return TacticalRouteValidation.Outcome.UNSAFE
         for (index in path.nextNodeIndex until path.nodeCount) {
             val node = path.getNode(index)
