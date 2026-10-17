@@ -54,7 +54,8 @@ object TacticalRoutes {
         val from = entity.position()
         val straight = leg(from, task)
         if (task.job == TacticalJob.FLANK || straight == task.anchor) return straight
-        val route = task.route?.takeIf { nodes -> nodes.any { it.distanceTo(from) <= ROUTE_DEVIATION } } ?: plan(entity, task) ?: task.route ?: return straight
+        val known = task.route?.takeUnless { walkedOut(it, from, task.anchor) }
+        val route = known?.takeIf { nodes -> nodes.any { it.distanceTo(from) <= ROUTE_DEVIATION } } ?: plan(entity, task) ?: known ?: return straight
         val start = route.indices.minBy { route[it].distanceToSqr(from) }
         var walked = 0.0
         for (index in start + 1 until route.size) {
@@ -83,17 +84,27 @@ object TacticalRoutes {
      * Vanilla A* returns a path to the nearest node it found when the anchor is out of reach. One
      * that ends where the man stands puts his leg on his own spot; in-game 17.10 movers stood on such
      * legs in an endless arrive-and-search loop (#50). A partial path counts only while it gets him
-     * at least a leg nearer the anchor.
+     * [ROUTE_PROGRESS] nearer the anchor. Asking for a whole leg threw away the paths round a long
+     * obstacle, which gain less per plan, and sent the man into it on the straight leg (#74).
      */
     internal fun route(path: Path, from: Vec3, anchor: Vec3): List<Vec3>? {
         val nodes = (0 until path.nodeCount).map { path.getNode(it).let { node -> Vec3(node.x + 0.5, node.y.toDouble(), node.z + 0.5) } }
         if (nodes.size < 2) return null
-        if (!path.canReach() && nodes.last().distanceTo(anchor) > from.distanceTo(anchor) - ROUTE_LEG) return null
+        if (!path.canReach() && nodes.last().distanceTo(anchor) > from.distanceTo(anchor) - ROUTE_PROGRESS) return null
         return nodes
     }
 
+    /**
+     * Whether the man stands at the end of a partial [route], short of [anchor]. Its last leg would
+     * be his own spot, the #50 loop, so a new route is planned from there.
+     */
+    internal fun walkedOut(route: List<Vec3>, from: Vec3, anchor: Vec3): Boolean = route.last().distanceTo(from) <= ROUTE_DEVIATION && route.last().distanceTo(anchor) > ROUTE_DEVIATION
+
     /** Route length of one leg: about the straight leg's 24 blocks. */
     private const val ROUTE_LEG = 20.0
+
+    /** A partial route has to bring the man at least this much nearer the anchor. */
+    private const val ROUTE_PROGRESS = 6.0
 
     /** Farther than this from every node of its route, a man has a new route planned. */
     private const val ROUTE_DEVIATION = 8.0
