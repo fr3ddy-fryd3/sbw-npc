@@ -40,7 +40,8 @@ class OperationTacticsTest {
         val applied = OperationTactics.apply(SquadMission(AgentId(AgentLevel.SQUAD, id(100)), listOf(TeamMission(AgentId(AgentLevel.TEAM, id(101)), listOf(PositionIntent(AgentId(AgentLevel.NPC, id(1)), CombatDuty.MOVE, Point3(100.0, 64.0, 30.0), Point3(100.0, 64.0, 50.0), defender))))), roles).teams.single().members.single()
         assertEquals(CombatDuty.FIRE, applied.duty)
         assertEquals(Point3(100.0, 64.0, 80.0), applied.anchor)
-        assertFalse(applied.assault)
+        // Inside the role's clearance, or a rifleman never reaches a post 20-30 blocks out (#54).
+        assertTrue(applied.assault)
     }
 
     @Test fun `the closing post is measured from where the assault began`() {

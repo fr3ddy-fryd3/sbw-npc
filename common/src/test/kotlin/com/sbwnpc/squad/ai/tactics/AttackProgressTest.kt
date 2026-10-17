@@ -139,6 +139,15 @@ class AttackProgressTest {
         assertFalse(progress.occupying)
     }
 
+    @Test fun `an assault with the numbers goes onto the point after a minute even off its posts`() {
+        // In-game 17.10 the movers never reached their closing posts and the clock never started.
+        val progress = assaulting(ready = 20, enemies = 4)
+        val movers = ids(4)
+        assertTrue(progress.roles(400, objective, movers, at(movers, 30.0), listOf(defender)).assault.isEmpty())
+        assertTrue(progress.roles(1599, objective, movers, at(movers, 50.0), listOf(defender)).assault.isEmpty())
+        assertEquals(movers.toSet(), progress.roles(1600, objective, movers, at(movers, 50.0), listOf(defender)).assault.keys)
+    }
+
     @Test fun `without a two to one advantage a closed-in assault keeps firing from its posts`() {
         val progress = assaulting(ready = 12, enemies = 4)
         // Not losing (12 >= 1.5 x 7), not twice the defenders either.

@@ -118,8 +118,10 @@ object OperationTactics {
 
                             slot != null -> intent.copy(duty = CombatDuty.MOVE, anchor = slot, requireCover = false, requireShelter = false, minimumHeight = null, assault = true)
 
-                            // Closing in is still fire from cover at the role's own clearance.
-                            post != null -> intent.copy(duty = CombatDuty.FIRE, anchor = post, minimumHeight = null)
+                            // Closing in is still fire from cover, but inside the role's clearance:
+                            // kept to 48 blocks, riflemen never reached a post 20-30 blocks from the
+                            // defenders and the assault stood where it began (#54).
+                            post != null -> intent.copy(duty = CombatDuty.FIRE, anchor = post, minimumHeight = null, assault = true)
 
                             else -> intent
                         }

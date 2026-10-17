@@ -32,8 +32,10 @@ class AttackProgress(now: Long) {
 
     private var lastInputs: AttackPhase.Inputs? = null
 
-    // When half the movers first stood on their closing posts in this assault, see [roles].
+    // When half the movers first stood on their closing posts in this assault, and when the
+    // assault began; see [roles].
     private var closedInSince: Long? = null
+    private var assaultSince: Long? = null
 
     /** The closed-in assault goes onto the point despite defenders still seen round it. */
     var occupying = false
@@ -94,6 +96,7 @@ class AttackProgress(now: Long) {
         if (phase != AttackPhase.ASSAULT) {
             closingOrigins.clear()
             closedInSince = null
+            assaultSince = null
             occupying = false
             return OperationTactics.roles(phase, objective, movers, members, threats, clearing).also { clearing = it.clearing.keys }
         }
@@ -103,9 +106,12 @@ class AttackProgress(now: Long) {
             val positions = members.associate { it.id to it.position }
             val standing = closing.count { (id, post) -> positions[id]?.let { distance(it, post) <= CLOSED_IN_REACH } == true }
             if (closing.isNotEmpty() && standing * 2 >= closing.size && closedInSince == null) closedInSince = now
+            val since = assaultSince ?: now.also { assaultSince = it }
             val inputs = lastInputs
-            occupying = closedInSince?.let { now - it >= CLOSED_IN_TICKS } == true && inputs != null &&
-                inputs.readyShooters >= AttackPhase.ASSAULT_RATIO * inputs.enemiesAtObjective
+            // Whatever keeps the movers off their closing posts, an assault that still has the
+            // numbers does not stand there for good.
+            val due = closedInSince?.let { now - it >= CLOSED_IN_TICKS } == true || now - since >= ASSAULT_LIMIT_TICKS
+            occupying = due && inputs != null && inputs.readyShooters >= AttackPhase.ASSAULT_RATIO * inputs.enemiesAtObjective
         }
         // Going onto the point, the defenders still round it no longer hold the movers back.
         val holding = if (occupying) threats.filterNot { OperationTactics.atObjective(it, objective) } else threats
@@ -123,5 +129,8 @@ class AttackProgress(now: Long) {
 
         /** A mover this near its closing post stands on it. */
         const val CLOSED_IN_REACH = 6.0
+
+        /** An assault with the numbers goes onto the point after this long (60 s) in any case. */
+        const val ASSAULT_LIMIT_TICKS = 1200L
     }
 }
