@@ -230,7 +230,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     }
 
     /** What keeps this NPC where it is when it hears a noise, or null when it is free to go and look. */
-    private fun holdReason(): String? {
+    internal fun holdReason(): String? {
         val order = currentSquad()?.order
         return when {
             diggedIn -> "dug in"

@@ -148,12 +148,16 @@ object Hearing {
         }
     }
 
-    /** Per squad, its [EXPLOSION_CHECK_TEAM] men nearest [at] among those with no target to fight. */
+    /**
+     * Per squad, its [EXPLOSION_CHECK_TEAM] men nearest [at] among those free to go and look. Men
+     * already on their way to look come first, so a string of grenades does not send a new pair
+     * each time.
+     */
     private fun checkTeams(listeners: List<NpcEntity>, at: Vec3): Set<NpcEntity> =
-        listeners.filter { it.squadId != null && it.target == null }
+        listeners.filter { it.squadId != null && it.target == null && it.holdReason() == null }
             .groupBy { it.squadId }
             .values
-            .flatMapTo(HashSet()) { squad -> squad.sortedBy { it.distanceToSqr(at) }.take(EXPLOSION_CHECK_TEAM) }
+            .flatMapTo(HashSet()) { squad -> squad.sortedWith(compareBy<NpcEntity> { !it.isAlert() }.thenBy { it.distanceToSqr(at) }).take(EXPLOSION_CHECK_TEAM) }
 
     fun clearAll() {
         lastShot.clear()

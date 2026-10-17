@@ -109,6 +109,9 @@ object HearingGameTests {
             // The two nearest the blast (x 26.5 and 22.5) go to look; the rest of the squad holds.
             helper.assertTrue(squadMen.filter { it.isAlert() } == squadMen.takeLast(2), "The squad did not send exactly its two nearest men to look")
             helper.assertTrue(loner.isAlert(), "A man without a squad no longer went to look")
+            // A second grenade elsewhere: the same two go, not a new pair.
+            Hearing.explosion(helper.level, helper.absoluteVec(Vec3(10.5, 1.0, 5.5)), 4.0f, thrower)
+            helper.assertTrue(squadMen.filter { it.isAlert() } == squadMen.takeLast(2), "A second explosion sent more of the squad")
             helper.succeed()
         }
     }
