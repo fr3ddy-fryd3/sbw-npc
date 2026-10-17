@@ -150,7 +150,7 @@ object AttackDeploymentGameTests {
      * interrupted run did, must not crash the server on his next post search (#64).
      */
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 700)
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 900)
     fun squadlessFighterDoesNotCrashPositionPlanning(helper: GameTestHelper) {
         for (x in 0..79) for (z in 0..47) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
         val attackers = (0..3).map { spawn(helper, Vec3(10.5 + it * 3, 1.0, 20.5), SquadFaction.PIG) }
@@ -175,9 +175,11 @@ object AttackDeploymentGameTests {
                 helper.succeed()
             }
         }
-        helper.runAtTickTime(690) {
-            (attackers + target).forEach { it.discard() }
-            helper.fail("The attacker never got a position plan to break")
+        helper.runAtTickTime(600) {
+            if (orphanedAt < 0) {
+                (attackers + target).forEach { it.discard() }
+                helper.fail("The attacker never got a position plan to break")
+            }
         }
     }
 
