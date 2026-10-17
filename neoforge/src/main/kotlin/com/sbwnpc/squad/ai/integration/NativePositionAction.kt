@@ -49,10 +49,7 @@ internal class NativePositionAction(
         override fun candidate(view: TacticalSnapshot, task: TacticalTask, point: Vec3, localAnchor: Vec3): Boolean {
             if (intent.minimumHeight?.let { point.y < it } == true) return false
             if (intent.inspection != null && point.distanceTo(intent.inspection.native()) <= 24 && !DetectionSightline.visible(npc.level() as ServerLevel, point.add(0.0, npc.eyeHeight.toDouble(), 0.0), intent.inspection.native().add(0.0, 1.5, 0.0), npc)) return false
-            val remaining = npc.position().distanceTo(task.anchor)
-            // A leg along the walked route may lead away from the anchor for a while to get round.
-            return intent.duty !in setOf(CombatDuty.MOVE, CombatDuty.SEARCH) || point.distanceTo(task.anchor) <= 4 || point.distanceTo(task.anchor) < remaining - 1.5 ||
-                point.distanceTo(localAnchor) <= ROUTE_LEG_REACH
+            return intent.duty !in setOf(CombatDuty.MOVE, CombatDuty.SEARCH) || advances(npc.position(), task.anchor, localAnchor, point)
         }
         override fun route(view: TacticalSnapshot, point: Vec3) = intent.minimumHeight?.let { point.y >= it } != false
     }
@@ -277,8 +274,26 @@ internal class NativePositionAction(
         FiringSpots.release(npc.uuid, claimOwner)
     }
 
-    private companion object {
+    internal companion object {
         /** A candidate this near the route leg is on the way, even while it leads away from the anchor. */
-        const val ROUTE_LEG_REACH = 6.0
+        private const val ROUTE_LEG_REACH = 6.0
+
+        /** How much nearer the anchor, or the leg, a MOVE or SEARCH post has to be than the man. */
+        private const val PROGRESS = 1.5
+
+        /**
+         * Whether a MOVE or SEARCH post at [point] takes a man at [from] on towards [anchor]: it is
+         * at the anchor, nearer it, or near the route leg [localAnchor] and nearer that leg.
+         *
+         * Lying near the leg alone is not enough. A leg next to the man let his own spot through;
+         * the post search turned it into his position, he "arrived", dropped it as an intermediate
+         * post and picked it again every other tick, never failing the query that would have
+         * replanned him (#50).
+         */
+        internal fun advances(from: Vec3, anchor: Vec3, localAnchor: Vec3, point: Vec3): Boolean {
+            if (point.distanceTo(anchor) <= 4 || point.distanceTo(anchor) < from.distanceTo(anchor) - PROGRESS) return true
+            // A leg along the walked route may lead away from the anchor for a while to get round.
+            return point.distanceTo(localAnchor) <= ROUTE_LEG_REACH && point.distanceTo(localAnchor) < from.distanceTo(localAnchor) - PROGRESS
+        }
     }
 }
