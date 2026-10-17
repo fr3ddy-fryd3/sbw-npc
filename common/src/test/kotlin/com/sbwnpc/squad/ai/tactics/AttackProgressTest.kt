@@ -202,6 +202,15 @@ class AttackProgressTest {
         assertEquals(90.0, progress.post(1000, bounder, 50.0))
     }
 
+    @Test fun `a bounder who reaches his post late still fires from it before the next bound`() {
+        val progress = outnumbered(400)
+        val bounder = ids(1)
+        progress.post(400, bounder, 60.0)
+        assertEquals(95.0, progress.post(900, bounder, 93.0))
+        assertEquals(95.0, progress.post(1099, bounder, 93.0))
+        assertEquals(100.0, progress.post(1100, bounder, 93.0))
+    }
+
     @Test fun `a bounder nearer than the bound distance is sent back to it`() {
         val progress = outnumbered(400)
         // 20 blocks from the defender, as an assault called back leaves the men.

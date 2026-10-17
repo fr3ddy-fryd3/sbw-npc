@@ -177,7 +177,7 @@ class AttackProgress(now: Long) {
         if (post != null) {
             if (distance(member.position, post) <= OperationTactics.MOVE_ARRIVAL) boundReached.putIfAbsent(member.id, now)
             val rested = boundReached[member.id]?.let { now - it >= BOUND_PAUSE_TICKS } == true
-            val stuck = now - boundIssued.getValue(member.id) >= BOUND_LIMIT_TICKS
+            val stuck = member.id !in boundReached && now - boundIssued.getValue(member.id) >= BOUND_LIMIT_TICKS
             if (!rested && !stuck) return
         }
         boundPosts[member.id] = OperationTactics.boundPost(member.position, defenders, BOUND_DISTANCE)
