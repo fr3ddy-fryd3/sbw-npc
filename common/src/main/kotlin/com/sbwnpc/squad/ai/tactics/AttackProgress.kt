@@ -180,7 +180,7 @@ class AttackProgress(now: Long) {
             val stuck = now - boundIssued.getValue(member.id) >= BOUND_LIMIT_TICKS
             if (!rested && !stuck) return
         }
-        boundPosts[member.id] = OperationTactics.closingPost(member.position, defenders, BOUND_DISTANCE)
+        boundPosts[member.id] = OperationTactics.boundPost(member.position, defenders, BOUND_DISTANCE)
         boundIssued[member.id] = now
         boundReached.remove(member.id)
     }

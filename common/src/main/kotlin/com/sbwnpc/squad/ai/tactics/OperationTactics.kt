@@ -182,12 +182,22 @@ object OperationTactics {
             DutyChoice(duty, anchor)
         }
 
-    /** Half as far from the nearest of [defenders] as [from], but no nearer than [nearest]. */
-    fun closingPost(from: Point3, defenders: List<Point3>, nearest: Double = CLOSE_DISTANCE): Point3 {
+    /** Half as far from the nearest of [defenders] as [from], but no nearer than [CLOSE_DISTANCE]. */
+    fun closingPost(from: Point3, defenders: List<Point3>): Point3 {
         val enemy = defenders.minBy { distance(it, from) }
         val range = distance(enemy, from)
-        if (range <= nearest) return from
-        return short(enemy, from, max(nearest, range / 2)).copy(y = from.y)
+        if (range <= CLOSE_DISTANCE) return from
+        return short(enemy, from, max(CLOSE_DISTANCE, range / 2)).copy(y = from.y)
+    }
+
+    /**
+     * Half as far from the nearest of [defenders] as [from], and never nearer than [nearest]: from
+     * nearer than that, the post is back at [nearest]. A bound that left the man where he stood
+     * kept men 20 blocks from the defenders after an assault was called back (#65).
+     */
+    fun boundPost(from: Point3, defenders: List<Point3>, nearest: Double): Point3 {
+        val enemy = defenders.minBy { distance(it, from) }
+        return short(enemy, from, max(nearest, distance(enemy, from) / 2)).copy(y = from.y)
     }
 
     /** [post] moved [offset] blocks horizontally towards [from]. */
