@@ -3,8 +3,8 @@ package com.sbwnpc.squad.integration.sbw.client
 import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.mojang.blaze3d.vertex.PoseStack
 import com.sbwnpc.squad.SquadMod
+import com.sbwnpc.squad.domain.port.ClientPorts
 import com.sbwnpc.squad.domain.port.GunRendering
-import com.sbwnpc.squad.domain.port.Ports
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.RenderType
@@ -70,6 +70,6 @@ object SbwStaticGunRendering : SimplePreparableReloadListener<Map<ResourceLocati
 
     @SubscribeEvent
     fun onClientSetup(event: FMLClientSetupEvent) {
-        Ports.gunRendering = this
+        ClientPorts.gunRendering = this
     }
 }

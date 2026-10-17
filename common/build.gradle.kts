@@ -36,9 +36,11 @@ val verifyCommonBoundary = tasks.register("verifyCommonBoundary") {
     group = "verification"
     inputs.files(commonSources)
     doLast {
-        val forbidden = Regex("""\b(?:net\.(?:neoforged|minecraftforge|fabricmc)|com\.atsuishio\.superbwarfare)\.""")
+        val forbidden = Regex(
+            """\b(?:net\.(?:neoforged|minecraftforge|fabricmc)|com\.atsuishio\.superbwarfare|net\.minecraft\.client|com\.mojang\.blaze3d)\.""",
+        )
         val offenders = commonSources.filter { forbidden.containsMatchIn(it.readText()) }
-        check(offenders.isEmpty()) { "Loader/SBW references in common: $offenders" }
+        check(offenders.isEmpty()) { "Loader, SBW or client references in common: $offenders" }
     }
 }
 tasks.named("check") {

@@ -1,6 +1,6 @@
 package com.sbwnpc.squad.experience
 
-import com.sbwnpc.squad.config.SquadConfig
+import com.sbwnpc.squad.config.Settings
 import com.sbwnpc.squad.npc.NpcRank
 import java.util.UUID
 
@@ -43,7 +43,7 @@ object ExperienceRules {
         "Shaw", "Simmons", "Smith", "Stewart", "Sullivan", "Taylor", "Turner", "Walker",
     )
 
-    fun threshold(rank: NpcRank): Double = SquadConfig.experienceThresholds()[rank.ordinal].toDouble()
+    fun threshold(rank: NpcRank): Double = Settings.current.experienceThresholds()[rank.ordinal].toDouble()
     fun rank(xp: Double): NpcRank = NpcRank.entries.lastOrNull { xp >= threshold(it) } ?: NpcRank.RECRUIT
     fun next(rank: NpcRank): Double? = NpcRank.entries.getOrNull(rank.ordinal + 1)?.let(::threshold)
     fun name(id: UUID): String {

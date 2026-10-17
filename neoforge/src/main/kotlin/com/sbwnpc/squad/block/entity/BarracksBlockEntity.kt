@@ -1,6 +1,6 @@
 package com.sbwnpc.squad.block.entity
 
-import com.sbwnpc.squad.config.SquadConfig
+import com.sbwnpc.squad.config.Settings
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModBlockEntities
 import com.sbwnpc.squad.item.SquadToolItem
@@ -98,7 +98,7 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
             }
         }
         val before = queue.save()
-        queue.synchronize(wanted, SquadConfig.recruitIntervalTicks())
+        queue.synchronize(wanted, Settings.current.recruitIntervalTicks())
         if (queue.save() != before) setChanged()
         val pendingInitial = mgr.get(garrison)?.recruitmentRoster?.vacancies()?.any { !it.recruited } == true
         if (queue.next() == null && !pendingInitial) blockedReason = ""
@@ -141,7 +141,7 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
         val mgr = SquadManager.get(level)
         return CompoundTag().apply {
             putInt("RemainingTicks", queue.remainingTicks)
-            putInt("IntervalTicks", SquadConfig.recruitIntervalTicks())
+            putInt("IntervalTicks", Settings.current.recruitIntervalTicks())
             putString(
                 "Reason",
                 when {
@@ -218,7 +218,7 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
             val reason = SquadManager.get(level).recruitAtBarracks(level, be.ref(level), request)
             be.productionResult(reason)
             if (reason == null) {
-                be.queue.complete(request, SquadConfig.recruitIntervalTicks())
+                be.queue.complete(request, Settings.current.recruitIntervalTicks())
                 be.setChanged()
             } else {
                 be.retryTicks = 20

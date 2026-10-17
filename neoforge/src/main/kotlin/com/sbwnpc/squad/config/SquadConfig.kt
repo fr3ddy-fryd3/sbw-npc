@@ -4,7 +4,7 @@ import com.sbwnpc.squad.npc.NpcClass
 import net.neoforged.neoforge.common.ModConfigSpec
 
 /** Server settings (`serverconfig/sbwnpc-server.toml` in each world). */
-object SquadConfig {
+object SquadConfig : SquadSettings {
     private val builder = ModConfigSpec.Builder()
 
     val ACTIVE_SQUAD_CHUNK_LIMIT: ModConfigSpec.IntValue = builder
@@ -18,7 +18,7 @@ object SquadConfig {
             "Each independent NPC returning to Supply counts as one squad against this limit.",
             "0 turns off both squad and barracks tickets.",
         )
-        .defineInRange("activeSquadChunkLimit", 8, 0, 64)
+        .defineInRange("activeSquadChunkLimit", DefaultSquadSettings.ACTIVE_SQUAD_CHUNK_LIMIT, 0, 64)
 
     val NPC_VIEW_DISTANCE: ModConfigSpec.IntValue = builder
         .comment(
@@ -27,41 +27,31 @@ object SquadConfig {
             "divided by 16 or more. Shots past 128 blocks from every player are simulated rather",
             "than fired, whatever this is set to. Higher costs network and client frame rate.",
         )
-        .defineInRange("npcViewDistance", 256, 64, 512)
+        .defineInRange("npcViewDistance", DefaultSquadSettings.NPC_VIEW_DISTANCE, 64, 512)
 
     val RECRUIT_INTERVAL_SECONDS: ModConfigSpec.IntValue = builder
         .comment(
             "Seconds of loaded barracks time between replacements for fallen NPCs, including the first replacement.",
             "Deploy releases the initial garrison together. Unloading pauses the replacement clock.",
         )
-        .defineInRange("recruitIntervalSeconds", 10, 1, 3600)
+        .defineInRange("recruitIntervalSeconds", DefaultSquadSettings.RECRUIT_INTERVAL_SECONDS, 1, 3600)
 
-    val REGULAR_XP = builder.defineInRange("regularExperience", 300, 1, 1000000)
-    val VETERAN_XP = builder.defineInRange("veteranExperience", 1200, 2, 1000000)
-    val ELITE_XP = builder.defineInRange("eliteExperience", 3500, 3, 1000000)
+    val REGULAR_XP = builder.defineInRange("regularExperience", DefaultSquadSettings.REGULAR_XP, 1, 1000000)
+    val VETERAN_XP = builder.defineInRange("veteranExperience", DefaultSquadSettings.VETERAN_XP, 2, 1000000)
+    val ELITE_XP = builder.defineInRange("eliteExperience", DefaultSquadSettings.ELITE_XP, 3, 1000000)
 
     private val CLASS_EXPERIENCE = run {
         builder.comment("Class reward multipliers. Applied once to new XP, including deferred rewards; saved XP is unchanged.").push("experienceMultipliers")
-        val defaults = mapOf(
-            NpcClass.MACHINE_GUNNER to 0.65,
-            NpcClass.SNIPER to 0.5,
-            NpcClass.GRENADIER to 0.75,
-            NpcClass.DRONE_OPERATOR to 0.65,
-            NpcClass.MORTAR to 0.35,
-            NpcClass.TANK_CREW to 0.5,
-            NpcClass.HELICOPTER_PILOT to 0.5,
-            NpcClass.HELICOPTER_GUNNER to 0.5,
-        )
         val values = NpcClass.entries.filter { it.canonical == it }.associateWith {
-            builder.defineInRange(it.name.lowercase(), defaults[it] ?: 1.0, 0.01, 10.0)
+            builder.defineInRange(it.name.lowercase(), DefaultSquadSettings.experienceMultiplier(it), 0.01, 10.0)
         }
         builder.pop()
         values
     }
 
-    fun experienceMultiplier(cls: NpcClass): Double = CLASS_EXPERIENCE.getValue(cls.canonical).let { if (SPEC.isLoaded) it.get() else it.default }
+    override fun experienceMultiplier(cls: NpcClass): Double = CLASS_EXPERIENCE.getValue(cls.canonical).let { if (SPEC.isLoaded) it.get() else it.default }
 
-    fun experienceThresholds(): List<Int> {
+    override fun experienceThresholds(): List<Int> {
         fun value(v: ModConfigSpec.IntValue) = if (SPEC.isLoaded) v.get() else v.default
         val regular = value(REGULAR_XP)
         val veteran = maxOf(regular + 1, value(VETERAN_XP))
@@ -70,11 +60,13 @@ object SquadConfig {
 
     val SPEC: ModConfigSpec = builder.build()
 
-    fun recruitIntervalTicks(): Int = (if (SPEC.isLoaded) RECRUIT_INTERVAL_SECONDS.get() else RECRUIT_INTERVAL_SECONDS.default) * 20
+    override fun recruitIntervalTicks(): Int = (if (SPEC.isLoaded) RECRUIT_INTERVAL_SECONDS.get() else RECRUIT_INTERVAL_SECONDS.default) * 20
+
+    override fun activeSquadChunkLimit(): Int = if (SPEC.isLoaded) ACTIVE_SQUAD_CHUNK_LIMIT.get() else ACTIVE_SQUAD_CHUNK_LIMIT.default
 
     /** [NPC_VIEW_DISTANCE], or its default while no world's config is loaded — the client asks
      *  before it has joined one, and a config value read then throws. */
-    fun npcViewDistance(): Int = if (SPEC.isLoaded) NPC_VIEW_DISTANCE.get() else NPC_VIEW_DISTANCE.default
+    override fun npcViewDistance(): Int = if (SPEC.isLoaded) NPC_VIEW_DISTANCE.get() else NPC_VIEW_DISTANCE.default
 
     /** The same, in the chunks entity tracking counts in. */
     @JvmStatic

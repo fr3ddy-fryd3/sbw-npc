@@ -1,5 +1,7 @@
 package com.sbwnpc.squad
 
+import com.sbwnpc.squad.config.Settings
+import com.sbwnpc.squad.config.SquadConfig
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.init.ModBlockEntities
 import com.sbwnpc.squad.init.ModBlocks
@@ -13,6 +15,8 @@ import com.sbwnpc.squad.integration.sbw.SbwGrenades
 import com.sbwnpc.squad.integration.sbw.SbwGuns
 import com.sbwnpc.squad.integration.sbw.SbwMortars
 import com.sbwnpc.squad.integration.sbw.SbwVehicles
+import com.sbwnpc.squad.network.ClientboundPackets
+import com.sbwnpc.squad.network.NeoForgeClientboundTransport
 import net.minecraft.resources.ResourceLocation
 import net.neoforged.bus.api.IEventBus
 import net.neoforged.fml.ModContainer
@@ -31,6 +35,8 @@ class SquadMod(bus: IEventBus, container: ModContainer) {
         Ports.playerSupply = com.sbwnpc.squad.integration.sbw.SbwPlayerSupply
         Ports.drones = SbwDrones
         Ports.gear = SbwGear
+        ClientboundPackets.transport = NeoForgeClientboundTransport
+        Settings.current = SquadConfig
 
         container.registerConfig(net.neoforged.fml.config.ModConfig.Type.SERVER, com.sbwnpc.squad.config.SquadConfig.SPEC)
         if (com.sbwnpc.squad.combat.BuildFlags.DEBUG_ENABLED) {
@@ -50,9 +56,9 @@ class SquadMod(bus: IEventBus, container: ModContainer) {
     }
 
     companion object {
-        const val MODID = "sbwnpc"
+        const val MODID = ModIdentity.MODID
         val LOGGER = LogManager.getLogger(MODID)
 
-        fun loc(path: String): ResourceLocation = ResourceLocation.fromNamespaceAndPath(MODID, path)
+        fun loc(path: String): ResourceLocation = ModIdentity.loc(path)
     }
 }

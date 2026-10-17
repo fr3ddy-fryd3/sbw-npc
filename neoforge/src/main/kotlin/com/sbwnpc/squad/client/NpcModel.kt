@@ -1,7 +1,7 @@
 package com.sbwnpc.squad.client
 
 import com.sbwnpc.squad.SquadMod
-import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.domain.port.ClientPorts
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.client.model.HumanoidModel
 import net.minecraft.client.model.geom.ModelLayerLocation
@@ -11,7 +11,7 @@ import net.minecraft.client.model.geom.builders.LayerDefinition
 
 /**
  * Plain vanilla humanoid (standard 64x64 player-skin proportions). The only custom bit is the
- * arm pose with a gun, borrowed from the weapons mod rather than authored here (see [Ports.gunPoses]). Everything else (walk/idle/swing/death,
+ * arm pose with a gun, borrowed from the weapons mod rather than authored here (see [ClientPorts.gunPoses]). Everything else (walk/idle/swing/death,
  * ItemInHandLayer, head/armor layers) comes from HumanoidModel / HumanoidMobRenderer.
  */
 class NpcModel(root: ModelPart) : HumanoidModel<NpcEntity>(root) {
@@ -25,7 +25,7 @@ class NpcModel(root: ModelPart) : HumanoidModel<NpcEntity>(root) {
         headPitch: Float,
     ) {
         val stack = entity.mainHandItem
-        val pose = Ports.gunPoses.armPose(entity, stack) ?: ArmPose.EMPTY
+        val pose = ClientPorts.gunPoses.armPose(entity, stack) ?: ArmPose.EMPTY
         this.rightArmPose = pose
         this.leftArmPose = pose
         // HumanoidMobRenderer never sets this — only the player's renderer does.

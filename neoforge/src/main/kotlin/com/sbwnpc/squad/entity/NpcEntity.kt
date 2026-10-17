@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.entity
 
 import com.sbwnpc.squad.combat.SidearmKit
+import com.sbwnpc.squad.config.Settings
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.ai.GrenadeThrowBehaviour
 import com.sbwnpc.squad.entity.ai.IdleLookAroundGoal
@@ -18,6 +19,7 @@ import com.sbwnpc.squad.entity.ai.VehicleTransportClaims
 import com.sbwnpc.squad.experience.ExperienceAwards
 import com.sbwnpc.squad.experience.ExperienceRules
 import com.sbwnpc.squad.init.ModMemories
+import com.sbwnpc.squad.npc.NpcAttributes
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
@@ -39,7 +41,6 @@ import net.minecraft.world.entity.EntityDimensions
 import net.minecraft.world.entity.EntityType
 import net.minecraft.world.entity.EquipmentSlot
 import net.minecraft.world.entity.LivingEntity
-import net.minecraft.world.entity.Mob
 import net.minecraft.world.entity.MobSpawnType
 import net.minecraft.world.entity.PathfinderMob
 import net.minecraft.world.entity.Pose
@@ -89,7 +90,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     fun gainExperience(amount: Double, reason: String) {
         if (level().isClientSide || !amount.isFinite() || amount <= 0 || !isAlive) return
         ensureExperienceIdentity()
-        val multiplier = com.sbwnpc.squad.config.SquadConfig.experienceMultiplier(npcClass)
+        val multiplier = Settings.current.experienceMultiplier(npcClass)
         val earned = amount * multiplier
         experience = (experience + earned).coerceAtMost(1.0e12)
         val promoted = ExperienceRules.rank(experience)
@@ -1080,12 +1081,12 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // respawns far away. Same as iron golems / tamed pets.
     override fun removeWhenFarAway(distanceToClosestPlayer: Double): Boolean = false
 
-    // Drawn as far as the server sends them (SquadConfig.npcViewDistance, applied to tracking by
+    // Drawn as far as the server sends them (Settings.current.npcViewDistance, applied to tracking by
     // EntityTrackingRangeMixin).
     // Vanilla sizes this by the hitbox — 64 x the box's average side x the player's entity-distance
     // setting — which for a man-sized box came to about 70-85 blocks, so NPCs the client had been
     // sent were not drawn at all past that.
-    override fun shouldRenderAtSqrDistance(distance: Double): Boolean = distance < com.sbwnpc.squad.config.SquadConfig.npcViewDistance().let { it.toDouble() * it }
+    override fun shouldRenderAtSqrDistance(distance: Double): Boolean = distance < Settings.current.npcViewDistance().let { it.toDouble() * it }
 
     @Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")
     override fun finalizeSpawn(
@@ -1105,14 +1106,14 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     fun applyRole() {
         val healthAttr = getAttribute(Attributes.MAX_HEALTH)
         if (healthAttr != null) {
-            healthAttr.baseValue = BASE_HEALTH * npcRank.healthMultiplier
+            healthAttr.baseValue = NpcAttributes.BASE_HEALTH * npcRank.healthMultiplier
             health = maxHealth
         }
 
         // Per-class multiplier on top of the shared base — createAttributes() only sets the raw
-        // base (BASE_SPEED) since it runs once at entity-type registration, before npcClass is even
-        // known; this is the real value, same pattern as MAX_HEALTH above.
-        getAttribute(Attributes.MOVEMENT_SPEED)?.baseValue = BASE_SPEED * npcClass.speedMultiplier
+        // base since it runs once at entity-type registration, before npcClass is even known;
+        // this is the real value, same pattern as MAX_HEALTH above.
+        getAttribute(Attributes.MOVEMENT_SPEED)?.baseValue = NpcAttributes.BASE_SPEED * npcClass.speedMultiplier
 
         // One of 2 weapons per weapon category, picked once and kept for this NPC's whole life —
         // pure visual variety across NPCs of the same class, per user request ("разношерстные").
@@ -1175,7 +1176,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     override fun readAdditionalSaveData(compound: CompoundTag) {
         super.readAdditionalSaveData(compound)
         // Saved attributes carry the old base; NPCs from before the change swim at the new pace too.
-        getAttribute(net.neoforged.neoforge.common.NeoForgeMod.SWIM_SPEED)?.baseValue = SWIM_SPEED
+        NeoForgeNpcAttributes.restoreSavedSwimSpeed(this)
         runCatching { npcClass = NpcClass.byName(compound.getString("NpcClass")) }
         npcRank = runCatching { NpcRank.valueOf(compound.getString("NpcRank")) }.getOrDefault(NpcRank.DEFAULT)
         experience = if (compound.contains("Experience")) compound.getDouble("Experience").takeIf { it.isFinite() }?.coerceIn(0.0, 1.0e12) ?: 0.0 else ExperienceRules.threshold(npcRank)
@@ -1376,7 +1377,6 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         private const val AMMO_DROP_CHANCE = 0.28125f
         private const val GRENADE_DROP_CHANCE = 0.0125f
         private val LOOTABLE_SLOTS = listOf(EquipmentSlot.MAINHAND, EquipmentSlot.HEAD, EquipmentSlot.CHEST)
-        private const val BASE_HEALTH = 20.0
         private const val GRENADES_OF_EACH = 2
         const val MEDKITS = 1
         private const val HEARD_LOOK_TICKS = 100
@@ -1392,13 +1392,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         private const val VERY_LOW_AMMO_FRACTION = 0.1
         private const val SUPPLY_SEARCH_RANGE = 96.0
         private const val SUPPLY_CHECK_INTERVAL = 40
-        private const val SWIM_SPEED = 2.0
         private const val VEHICLE_ATTACKER_MEMORY_TICKS = 200
 
-        // internal (not private) — MedicHealBehaviour reuses this to compute its temporary
-        // "sprinting to treat someone" speed on the same BASE_SPEED*multiplier basis as applyRole(),
-        // instead of hardcoding 0.25 a second time.
-        internal const val BASE_SPEED = 0.25
         private const val SUPPRESSION_DURATION_TICKS = 100
         private const val SUPPRESSION_CAP_TICKS = 200
         private const val ALERT_DURATION_TICKS = 200 // ~10s to reach/abandon an investigation lead
@@ -1433,20 +1428,6 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             SynchedEntityData.defineId(NpcEntity::class.java, EntityDataSerializers.INT)
 
         @JvmStatic
-        fun createAttributes(): AttributeSupplier.Builder =
-            Mob.createMobAttributes()
-                .add(Attributes.MAX_HEALTH, BASE_HEALTH)
-                .add(Attributes.MOVEMENT_SPEED, BASE_SPEED) // real per-class value is set in applyRole() — npcClass isn't known yet here
-                .add(Attributes.ATTACK_DAMAGE, 2.0)
-                .add(Attributes.ARMOR, 2.0)
-                // NOT the detection range any more — that's DETECTION_RANGE (still 72, x1.5 per
-                // user request), read by SquadTargetSensor directly. This attribute also sizes the
-                // vanilla pathfinder at construction (maxVisitedNodes = FOLLOW_RANGE * 16, so 72 was
-                // 1152 A* nodes per path search vs 768 at 48) and caps createPath's max distance;
-                // neither needs to grow with detection range, and both scale every repath every
-                // NPC makes. Back to vanilla-ish 48 for the pathing side only.
-                .add(Attributes.FOLLOW_RANGE, 48.0)
-                // Twice the usual pace in water, per user call — a squad fording a river crawled.
-                .add(net.neoforged.neoforge.common.NeoForgeMod.SWIM_SPEED, SWIM_SPEED)
+        fun createAttributes(): AttributeSupplier.Builder = NeoForgeNpcAttributes.create()
     }
 }

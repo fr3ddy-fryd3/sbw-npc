@@ -1,6 +1,6 @@
 package com.sbwnpc.squad.npc
 
-import com.sbwnpc.squad.SquadMod.Companion.loc
+import com.sbwnpc.squad.ModIdentity
 import net.minecraft.ChatFormatting
 import net.minecraft.network.chat.Style
 import net.minecraft.resources.ResourceLocation
@@ -25,7 +25,7 @@ enum class SquadFaction(val label: String, val accentColor: ChatFormatting, val 
 
     val accentStyle: Style = Style.EMPTY.withColor(rgb)
 
-    val texture: ResourceLocation = loc("textures/entity/${name.lowercase()}.png")
+    val texture: ResourceLocation = ModIdentity.loc("textures/entity/${name.lowercase()}.png")
 
     fun next(): SquadFaction = entries[(ordinal + 1) % entries.size]
 
