@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.ai.tactics
 
 import com.sbwnpc.squad.ai.coordination.Point3
+import java.util.UUID
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -55,6 +56,21 @@ class ApproachSectors<K : Any> {
         const val FLANK_ANGLE = PI / 3
 
         private val SECTORS = listOf(0.0, FLANK_ANGLE, -FLANK_ANGLE)
+
+        /** A squad attacking alone splits only when its manoeuvre group has at least this many. */
+        const val MIN_MANOEUVRE = 2
+
+        /**
+         * The members of a squad attacking alone that take a flank: half its [riflemen] and all its
+         * [assault] men (grenadiers, shotgunners), keeping those in [previous] where it can. The
+         * machine gunners, snipers, the other riflemen and everyone else hold the head-on line and
+         * fire. Empty when too few would go for a flank to be worth it.
+         */
+        fun manoeuvreGroup(riflemen: Collection<UUID>, assault: Collection<UUID>, previous: Set<UUID>): Set<UUID> {
+            val sorted = riflemen.sortedWith(compareBy<UUID> { it !in previous }.thenBy { it.toString() })
+            val group = sorted.take((sorted.size + 1) / 2) + assault
+            return if (group.size >= MIN_MANOEUVRE) group.toSet() else emptySet()
+        }
 
         private fun bearing(from: Point3, to: Point3) = atan2(to.z - from.z, to.x - from.x)
 

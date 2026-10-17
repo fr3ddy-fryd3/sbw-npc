@@ -4,6 +4,7 @@ import com.sbwnpc.squad.ai.coordination.Point3
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.util.UUID
 import kotlin.math.PI
 import kotlin.math.abs
 
@@ -51,5 +52,20 @@ class ApproachSectorsTest {
         val bearings = degrees(sectors.bearings(objective, mapOf("fire" to Point3(80.0, 64.0, 0.0), "move" to Point3(70.0, 64.0, 0.0)), contact = true, pinning = "fire"))
         assertEquals(0, bearings["fire"])
         assertEquals(60, abs(bearings.getValue("move")))
+    }
+
+    @Test fun `a squad alone sends half its riflemen round a flank`() {
+        val riflemen = (0L until 6L).map { UUID(0, it) }
+        val grenadier = UUID(1, 0)
+        val group = ApproachSectors.manoeuvreGroup(riflemen, listOf(grenadier), emptySet())
+        assertEquals(4, group.size)
+        assertTrue(grenadier in group)
+        // The same men stay in it.
+        val kept = setOf(UUID(0, 5), UUID(0, 4))
+        assertTrue(ApproachSectors.manoeuvreGroup(riflemen, emptyList(), kept).containsAll(kept))
+    }
+
+    @Test fun `a squad too small for a flank does not split`() {
+        assertTrue(ApproachSectors.manoeuvreGroup(listOf(UUID(0, 0)), emptyList(), emptySet()).isEmpty())
     }
 }

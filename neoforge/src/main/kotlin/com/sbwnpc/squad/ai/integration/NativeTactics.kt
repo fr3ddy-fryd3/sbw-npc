@@ -69,6 +69,9 @@ object NativeTactics {
             !npc.evadingGrenade() && !npc.movementLockedByCover() && !npc.combatLockedByMedic() && npc.retreatPoint() == null
     private val GROUND = setOf(NpcClass.RIFLEMAN, NpcClass.SHOTGUNNER, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.DRONE_OPERATOR)
 
+    /** One group of an attack that takes an approach sector: a squad, or a lone squad's manoeuvre group. */
+    private data class SectorGroup(val squad: UUID, val manoeuvre: Boolean)
+
     private class World(val level: ServerLevel) {
         val pendingDeaths = HashMap<UUID, net.neoforged.neoforge.event.entity.living.LivingDeathEvent>()
         val agents = LinkedHashMap<AgentId, PlanningAgent>()
@@ -85,8 +88,11 @@ object NativeTactics {
         private val areaTraces = HashMap<UUID, String>()
         private val areaOccupied = HashMap<UUID, Boolean>()
         private val attacks = HashMap<UUID, AttackProgress>()
-        private val sectors = HashMap<UUID, ApproachSectors<UUID>>()
-        private val sectorTraces = HashMap<UUID, Map<UUID, Double>>()
+        private val sectors = HashMap<UUID, ApproachSectors<SectorGroup>>()
+        private val sectorTraces = HashMap<UUID, Map<SectorGroup, Double>>()
+
+        // Per squad attacking alone: the members it sends round a flank, see [approachBearings].
+        private val manoeuvres = HashMap<UUID, Set<UUID>>()
         private val losses = HashMap<UUID, OperationLosses>()
         private val standings = HashMap<UUID, OperationStanding>()
         private val unverified = HashMap<UUID, MutableMap<UUID, Vec3>>()
@@ -378,6 +384,7 @@ object NativeTactics {
                 formationDuties.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 plannedContact.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 teamAllocators.keys.removeIf { manager.get(it) == null }
+                manoeuvres.keys.removeIf { manager.get(it) == null }
                 retiredAssignments.forEach(ledger::forget)
                 retiredAssignments.clear()
             } finally {
@@ -553,18 +560,32 @@ object NativeTactics {
         }
 
         /**
-         * Each squad of an attack mapped to the bearing of its approach sector (see [ApproachSectors]);
-         * empty for a single squad, before the first contact or outside an attack. Logs each change.
+         * Each member of an attack mapped to the bearing of its group's approach sector (see
+         * [ApproachSectors]); empty before the first contact or outside an attack. A squad
+         * attacking alone splits into its fire group, which pins head-on, and a manoeuvre group
+         * ([ApproachSectors.manoeuvreGroup]) that takes a flank. Logs each change.
          */
         private fun approachBearings(operation: UUID, squads: List<Squad>, contact: Boolean): Map<UUID, Double> {
             val objective = attackObjective(operation, squads)
-            if (objective == null || squads.size < 2) return emptyMap()
-            val centres = squads.associate { saved -> saved.id to snapshots.getValue(saved.id).center.point() }
-            val bearings = sectors.getOrPut(operation, ::ApproachSectors).bearings(objective, centres, contact)
-            if (bearings.isNotEmpty() && sectorTraces.put(operation, bearings) != bearings) {
-                DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=approach_sectors objective={} bearings={}", operation, objective, bearings.mapValues { Math.toDegrees(it.value).toInt() })
+            if (objective == null) {
+                squads.forEach { manoeuvres.remove(it.id) }
+                return emptyMap()
             }
-            return bearings
+            val single = squads.singleOrNull()
+            val manoeuvre = single?.let { saved ->
+                val ready = snapshots.getValue(saved.id).members.filter { it.ready }
+                val riflemen = ready.filter { it.role == NpcClass.RIFLEMAN }.map { it.id }
+                val assault = ready.filter { it.role == NpcClass.GRENADIER || it.role == NpcClass.SHOTGUNNER }.map { it.id }
+                ApproachSectors.manoeuvreGroup(riflemen, assault, manoeuvres[saved.id].orEmpty()).also { manoeuvres[saved.id] = it }
+            }.orEmpty()
+            if (single != null && manoeuvre.isEmpty()) return emptyMap()
+            val members = squads.flatMap { saved -> snapshots.getValue(saved.id).members.map { SectorGroup(saved.id, it.id in manoeuvre) to it } }
+            val centres = members.groupBy({ it.first }, { it.second.position }).mapValues { (_, at) -> Point3(at.map { it.x }.average(), at.map { it.y }.average(), at.map { it.z }.average()) }
+            val bearings = sectors.getOrPut(operation, ::ApproachSectors).bearings(objective, centres, contact, single?.let { SectorGroup(it.id, false) })
+            if (bearings.isNotEmpty() && sectorTraces.put(operation, bearings) != bearings) {
+                DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=approach_sectors objective={} bearings={}", operation, objective, bearings.entries.associate { (group, bearing) -> group.toString() to Math.toDegrees(bearing).toInt() })
+            }
+            return members.mapNotNull { (group, member) -> bearings[group]?.let { member.id to it } }.toMap()
         }
 
         /** Geometry proposes areas; actual arrival, useful fire and native reachability remain observations. */
@@ -620,7 +641,7 @@ object NativeTactics {
                 // Only the point's defenders set the sector lines back: a contact off to one side
                 // would push a line far from the fight.
                 val defenders = enemies.filter { OperationTactics.atObjective(it, objective) }
-                actors.groupBy { bearings.getValue(it.squad) }.flatMap { (bearing, sector) ->
+                actors.groupBy { bearings.getValue(it.id) }.flatMap { (bearing, sector) ->
                     OperationFront.propose(sector, defenders, objective, formationDuties, bearing).entries
                 }.associate { it.key to it.value }
             }
