@@ -55,12 +55,6 @@ class OperationTacticsTest {
         assertEquals(setOf(id(1)), roles.assault.keys)
     }
 
-    @Test fun `told to occupy, a closed-in assault takes the point despite defenders`() {
-        val roles = OperationTactics.roles(AttackPhase.ASSAULT, objective, listOf(id(1)), listOf(member(1, 40.0)), listOf(Point3(100.0, 64.0, 130.0)), emptySet(), occupy = true)
-        assertTrue(roles.closing.isEmpty())
-        assertEquals(setOf(id(1)), roles.assault.keys)
-    }
-
     @Test fun `the rear guard joins an assault`() {
         val rear = PositionIntent(AgentId(AgentLevel.NPC, id(1)), CombatDuty.REAR_GUARD, Point3(40.0, 64.0, 100.0), Point3(20.0, 64.0, 100.0), objective)
         val mission = SquadMission(AgentId(AgentLevel.SQUAD, id(100)), listOf(TeamMission(AgentId(AgentLevel.TEAM, id(101)), listOf(rear))))

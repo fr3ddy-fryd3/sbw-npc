@@ -62,16 +62,16 @@ object OperationTactics {
     /**
      * Roles for [phase]. While defenders still hold the [objective] an assault closes in under
      * fire: each mover takes a firing post half as far from the nearest defender as it stood
-     * when the assault began ([origins], see [closingPost]). Once none are left at the point, or
-     * once the closed-in assault is told to [occupy] it, the movers occupy a loose ring inside it;
-     * once it is taken, the ready members nearest the [threats] (2 to [MAX_CLEARING_TEAM],
-     * keeping those already sent) each go after the nearest one while the rest hold.
+     * when the assault began ([origins], see [closingPost]). Once none are left at the point the
+     * movers occupy a loose ring inside it; once it is taken, the ready members nearest the
+     * [threats] (2 to [MAX_CLEARING_TEAM], keeping those already sent) each go after the nearest
+     * one while the rest hold.
      */
-    fun roles(phase: AttackPhase, objective: Point3, movers: List<UUID>, members: List<AttackMember>, threats: List<Point3>, previousClearing: Set<UUID>, origins: Map<UUID, Point3> = emptyMap(), occupy: Boolean = false): AttackRoles {
+    fun roles(phase: AttackPhase, objective: Point3, movers: List<UUID>, members: List<AttackMember>, threats: List<Point3>, previousClearing: Set<UUID>, origins: Map<UUID, Point3> = emptyMap()): AttackRoles {
         if (phase == AttackPhase.DEPLOY) return AttackRoles.NONE
         // An assault is not a run onto the defenders: it shortens the range and keeps firing.
-        val defenders = threats.filter { distance(it, objective) <= AttackPhase.OBJECTIVE_RADIUS }
-        if (phase == AttackPhase.ASSAULT && defenders.isNotEmpty() && !occupy) {
+        val defenders = threats.filter { atObjective(it, objective) }
+        if (phase == AttackPhase.ASSAULT && defenders.isNotEmpty()) {
             val positions = members.associate { it.id to it.position }
             val closing = movers.mapNotNull { id -> (origins[id] ?: positions[id])?.let { id to closingPost(it, defenders) } }.toMap()
             return AttackRoles(closing = closing)
@@ -184,6 +184,9 @@ object OperationTactics {
         if (length < 1.0E-4) return post
         return Point3(post.x + dx / length * offset, post.y, post.z + dz / length * offset)
     }
+
+    /** Whether [threat] is near enough [objective] to be one of its defenders. */
+    fun atObjective(threat: Point3, objective: Point3) = distance(threat, objective) <= AttackPhase.OBJECTIVE_RADIUS
 
     private fun distance(a: Point3, b: Point3) = hypot(a.x - b.x, a.z - b.z)
     private fun distance3(a: Point3, b: Point3) = sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) + (a.z - b.z) * (a.z - b.z))

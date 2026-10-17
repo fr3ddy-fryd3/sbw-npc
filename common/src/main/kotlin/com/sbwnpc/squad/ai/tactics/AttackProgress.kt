@@ -107,7 +107,9 @@ class AttackProgress(now: Long) {
             occupying = closedInSince?.let { now - it >= CLOSED_IN_TICKS } == true && inputs != null &&
                 inputs.readyShooters >= AttackPhase.ASSAULT_RATIO * inputs.enemiesAtObjective
         }
-        return OperationTactics.roles(phase, objective, movers, members, threats, clearing, closingOrigins, occupying).also { clearing = it.clearing.keys }
+        // Going onto the point, the defenders still round it no longer hold the movers back.
+        val holding = if (occupying) threats.filterNot { OperationTactics.atObjective(it, objective) } else threats
+        return OperationTactics.roles(phase, objective, movers, members, holding, clearing, closingOrigins).also { clearing = it.clearing.keys }
     }
 
     private fun distance(a: Point3, b: Point3) = kotlin.math.hypot(a.x - b.x, a.z - b.z)
