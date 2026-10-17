@@ -93,6 +93,27 @@ object HearingGameTests {
     }
 
     @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 40, batch = "hearing")
+    fun explosionIsCheckedByTwoOfASquadWhileTheRestTurn(helper: GameTestHelper) {
+        for (x in 0..79) for (z in 0..47) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        val squadMen = (0..4).map { AttackDeploymentGameTests.spawn(helper, Vec3(10.5 + it * 4, 1.0, 20.5), SquadFaction.PIG).apply { isNoAi = true } }
+        val loner = AttackDeploymentGameTests.spawn(helper, Vec3(10.5, 1.0, 30.5), SquadFaction.PIG).apply { isNoAi = true }
+        val thrower = AttackDeploymentGameTests.spawn(helper, Vec3(60.5, 1.0, 20.5), SquadFaction.COW).apply { isNoAi = true }
+        val manager = SquadManager.get(helper.level)
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, squadMen.map { it.uuid })
+        manager.setOrder(squad.id, SquadOrder.ATTACK)
+        cleanup(helper) { (squadMen + loner + thrower).forEach { it.discard() } }
+        helper.runAtTickTime(1) {
+            Hearing.explosion(helper.level, helper.absoluteVec(Vec3(40.5, 1.0, 20.5)), 4.0f, thrower)
+            helper.assertTrue((squadMen + loner).all { it.listening() }, "Not everyone in earshot turned towards the explosion")
+            // The two nearest the blast (x 26.5 and 22.5) go to look; the rest of the squad holds.
+            helper.assertTrue(squadMen.filter { it.isAlert() } == squadMen.takeLast(2), "The squad did not send exactly its two nearest men to look")
+            helper.assertTrue(loner.isAlert(), "A man without a squad no longer went to look")
+            helper.succeed()
+        }
+    }
+
+    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 110, batch = "hearing")
     fun hostileLandingBehindNpcTurnsHeadBeforeAcquiringTarget(helper: GameTestHelper) {
         for (x in 0..23) for (z in 0..11) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
