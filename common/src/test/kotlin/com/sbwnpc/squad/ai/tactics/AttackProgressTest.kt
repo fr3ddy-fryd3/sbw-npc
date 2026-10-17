@@ -185,14 +185,33 @@ class AttackProgressTest {
         val progress = outnumbered(400)
         val bounder = ids(1)
         assertEquals(95.0, progress.post(400, bounder, 60.0))
-        // Still on his way: no new bound however long it takes.
-        assertEquals(95.0, progress.post(2000, bounder, 70.0))
-        assertEquals(95.0, progress.post(2010, bounder, 93.0))
-        assertEquals(95.0, progress.post(2209, bounder, 93.0))
-        // 35 blocks out, the next bound stops at 30.
-        assertEquals(100.0, progress.post(2210, bounder, 93.0))
-        assertEquals(100.0, progress.post(2220, bounder, 100.0))
-        assertEquals(100.0, progress.post(2500, bounder, 100.0))
+        assertEquals(95.0, progress.post(410, bounder, 93.0))
+        assertEquals(95.0, progress.post(609, bounder, 93.0))
+        // 37 blocks out, the next bound stops at 30.
+        assertEquals(100.0, progress.post(610, bounder, 93.0))
+        assertEquals(100.0, progress.post(620, bounder, 100.0))
+        assertEquals(100.0, progress.post(900, bounder, 100.0))
+    }
+
+    @Test fun `a bounder who never reaches his post takes a new one from where he is`() {
+        val progress = outnumbered(400)
+        val bounder = ids(1)
+        assertEquals(95.0, progress.post(400, bounder, 60.0))
+        assertEquals(95.0, progress.post(999, bounder, 50.0))
+        // Stuck 80 blocks out: half of it.
+        assertEquals(90.0, progress.post(1000, bounder, 50.0))
+    }
+
+    @Test fun `back on the line after a called off assault the bounds wait for the line to work again`() {
+        val progress = AttackProgress(0)
+        progress.update(0, ready = 23, enemies = 8, incoming = true)
+        progress.update(400, ready = 23, enemies = 4, incoming = true)
+        assertEquals(AttackPhase.ASSAULT, progress.phase)
+        progress.update(420, ready = 21, enemies = 15, incoming = true)
+        assertEquals(AttackPhase.DEPLOY, progress.phase)
+        val bounder = ids(1).toSet()
+        assertTrue(progress.bounds(819, objective, bounder, at(ids(1), 60.0), listOf(defender)).isEmpty())
+        assertEquals(1, progress.bounds(820, objective, bounder, at(ids(1), 60.0), listOf(defender)).size)
     }
 
     @Test fun `bounds are kept while no defender is known and dropped for men no longer bounding`() {
