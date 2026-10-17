@@ -179,6 +179,19 @@ object FiringPostSearchGameTests {
         }
     }
 
+    /** A post planned at another height than the ground at its spot goes onto that ground (#55). */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 20, batch = "post-ground")
+    fun plannedPostOffTheGroundGoesOntoIt(helper: GameTestHelper) {
+        for (x in 0..15) for (z in 0..15) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        val ground = helper.absoluteVec(Vec3(8.3, 1.0, 8.7))
+        val near = com.sbwnpc.squad.combat.tactics.DryGround.near(helper.level, ground.add(0.0, 9.0, 0.0), ground)
+        val far = com.sbwnpc.squad.combat.tactics.DryGround.near(helper.level, ground.add(0.0, 20.0, 0.0), ground)
+        helper.assertTrue(near == ground, "A post 9 blocks up stayed off the ground: $near")
+        helper.assertTrue(far == ground, "A post 20 blocks up stayed off the ground: $far")
+        helper.succeed()
+    }
+
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 200, batch = "firing-search")
     fun firingSearchFindsReachablePostBesideBlockedHill(helper: GameTestHelper) {
