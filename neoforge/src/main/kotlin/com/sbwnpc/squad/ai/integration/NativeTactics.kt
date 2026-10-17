@@ -589,7 +589,7 @@ object NativeTactics {
                 val ready = snapshots.getValue(saved.id).members.filter { it.ready }
                 val riflemen = ready.filter { it.role == NpcClass.RIFLEMAN }.map { it.id }
                 val assault = ready.filter { it.role == NpcClass.GRENADIER || it.role == NpcClass.SHOTGUNNER }.map { it.id }
-                ApproachSectors.manoeuvreGroup(riflemen, assault, manoeuvres[saved.id].orEmpty()).also { manoeuvres[saved.id] = it }
+                ApproachSectors.manoeuvreGroup(riflemen, assault, manoeuvres[saved.id].orEmpty(), ready.size).also { manoeuvres[saved.id] = it }
             }.orEmpty()
             if (single != null && manoeuvre.isEmpty()) return emptyMap()
             val members = squads.flatMap { saved -> snapshots.getValue(saved.id).members.map { SectorGroup(saved.id, it.id in manoeuvre) to it } }
@@ -659,8 +659,9 @@ object NativeTactics {
                 }.associate { it.key to it.value }
             }
             proposals.forEach { (id, proposal) -> formationDuties[id] = proposal.duty }
-            // A man far round the objective from his sector gets there along the arc, not across the point.
-            val waypoints = if (bearings.isEmpty() || objective == null) {
+            // A man far round the objective from his sector gets there along the arc, not across the
+            // point. Once the assault is on, its closing posts lead him to the point instead.
+            val waypoints = if (bearings.isEmpty() || objective == null || (attacks[operation]?.phase ?: AttackPhase.DEPLOY) != AttackPhase.DEPLOY) {
                 emptyMap()
             } else {
                 members.mapNotNull { member ->

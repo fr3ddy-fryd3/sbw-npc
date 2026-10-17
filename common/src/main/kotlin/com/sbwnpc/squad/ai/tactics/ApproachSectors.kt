@@ -86,19 +86,20 @@ class ApproachSectors<K : Any> {
             return Point3(objective.x + cos(at) * range, from.y, objective.z + sin(at) * range)
         }
 
-        /** A squad attacking alone splits only when its manoeuvre group has at least this many. */
-        const val MIN_MANOEUVRE = 2
+        /** A squad attacking alone splits only when each of its two groups has at least this many. */
+        const val MIN_GROUP = 3
 
         /**
-         * The members of a squad attacking alone that take a flank: half its [riflemen] and all its
+         * The members of a squad of [ready] men attacking alone that take a flank: half its [riflemen] and all its
          * [assault] men (grenadiers, shotgunners), keeping those in [previous] where it can. The
          * machine gunners, snipers, the other riflemen and everyone else hold the head-on line and
-         * fire. Empty when too few would go for a flank to be worth it.
+         * fire. Empty when either group would be under [MIN_GROUP]: a fire team of three that
+         * split sent two of them round a flank and left one to pin the point.
          */
-        fun manoeuvreGroup(riflemen: Collection<UUID>, assault: Collection<UUID>, previous: Set<UUID>): Set<UUID> {
+        fun manoeuvreGroup(riflemen: Collection<UUID>, assault: Collection<UUID>, previous: Set<UUID>, ready: Int): Set<UUID> {
             val sorted = riflemen.sortedWith(compareBy<UUID> { it !in previous }.thenBy { it.toString() })
             val group = sorted.take((sorted.size + 1) / 2) + assault
-            return if (group.size >= MIN_MANOEUVRE) group.toSet() else emptySet()
+            return if (group.size >= MIN_GROUP && ready - group.size >= MIN_GROUP) group.toSet() else emptySet()
         }
 
         private fun bearing(from: Point3, to: Point3) = atan2(to.z - from.z, to.x - from.x)
