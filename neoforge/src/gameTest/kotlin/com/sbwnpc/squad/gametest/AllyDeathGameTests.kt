@@ -13,18 +13,19 @@ import java.nio.file.Path
 import java.util.UUID
 
 /**
- * What a squad does when one of its men dies beside it (#66). These scenes record the allies'
- * reaction to a report file; they assert only that the scene ran.
+ * What a squad does when one of its men dies beside it (#66): the allies grow wary of where the
+ * threat came from, the killer when known, else the body. Their reaction is also written to a
+ * report file.
  */
 @PrefixGameTestTemplate(false)
 object AllyDeathGameTests {
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 200, batch = "ally-death")
-    fun allyKilledByUnseenShooterIsRecorded(helper: GameTestHelper) = allyDeath(helper, "unseen-shooter", killer = true)
+    fun allyKilledByUnseenShooterMakesTheSquadWary(helper: GameTestHelper) = allyDeath(helper, "unseen-shooter", killer = true)
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 200, batch = "ally-death-unknown")
-    fun allyDeadOfUnknownCauseIsRecorded(helper: GameTestHelper) = allyDeath(helper, "unknown-cause", killer = false)
+    fun allyDeadOfUnknownCauseMakesTheSquadWary(helper: GameTestHelper) = allyDeath(helper, "unknown-cause", killer = false)
 
     private fun allyDeath(helper: GameTestHelper, name: String, killer: Boolean) {
         for (x in 0..79) for (z in 0..47) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
@@ -39,6 +40,7 @@ object AllyDeathGameTests {
         val start = allies.associateWith { it.position() }
         val startYaw = allies.associateWith { it.yHeadRot }
         val lines = ArrayList<String>()
+        val body = victim.position()
         helper.runAtTickTime(40) {
             if (killer) victim.hurt(helper.level.damageSources().mobAttack(shooter), 1000f) else victim.kill()
             lines += "tick 40: victim dead=${!victim.isAlive} killer=$killer"
@@ -46,12 +48,18 @@ object AllyDeathGameTests {
         for (tick in listOf(45, 60, 100, 160)) {
             helper.runAtTickTime(tick.toLong()) {
                 allies.forEach {
-                    lines += "tick $tick ${it.uuid.toString().take(8)} alert=${it.isAlert()} listening=${it.listening()} target=${it.target?.uuid?.toString()?.take(8)} " +
+                    lines += "tick $tick ${it.uuid.toString().take(8)} wary=${it.wary()} alert=${it.isAlert()} listening=${it.listening()} target=${it.target?.uuid?.toString()?.take(8)} " +
                         "moved=${"%.1f".format(it.position().distanceTo(start.getValue(it)))} turned=${"%.0f".format(Math.abs(it.yHeadRot - startYaw.getValue(it)))}"
                 }
             }
         }
+        helper.runAtTickTime(45) {
+            val threat = if (killer) shooter.position() else body
+            helper.assertTrue(allies.all { it.wary() && it.waryToward() == threat }, "Not every ally grew wary of where the threat came from")
+        }
         helper.runAtTickTime(170) {
+            helper.assertTrue(allies.all { it.wary() }, "An ally stopped being wary within 6 seconds")
+            helper.assertTrue(allies.all { it.target != null || it.position().distanceTo(start.getValue(it)) < 4.0 }, "A wary ally with nothing to fight wandered off")
             val reports = Files.createDirectories(Path.of(System.getProperty("sbwnpc.gameTestReports")))
             Files.writeString(reports.resolve("ally-death-$name.txt"), lines.joinToString("\n") + "\n")
             manager.deleteSquad(helper.level, squad.id)

@@ -257,6 +257,29 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         )
     }
 
+    // Wariness (#66): where a threat to the squad came from, and until when the NPC watches it.
+    private var waryAt: Vec3? = null
+    private var waryUntilTick = 0
+
+    /** Whether the NPC is wary: a squadmate fell nearby, so it watches where the threat came from. */
+    fun wary(): Boolean = waryAt != null && tickCount < waryUntilTick
+
+    /** Where the threat the NPC is wary of came from, while it is wary. */
+    fun waryToward(): Vec3? = waryAt?.takeIf { wary() }
+
+    /**
+     * Makes the NPC wary of a threat from [toward] for [WARY_TICKS]: it turns there now, then
+     * sweeps that sector instead of looking about at random, and stops idle wandering.
+     */
+    fun becomeWary(toward: Vec3) {
+        waryAt = toward
+        waryUntilTick = tickCount + WARY_TICKS
+        if (target == null) {
+            heardAt = toward
+            heardUntilTick = tickCount + HEARD_LOOK_TICKS
+        }
+    }
+
     /** Turned toward what it last heard for a few seconds, over the idle look-around. */
     fun listening(): Boolean = heardAt != null && tickCount < heardUntilTick
 
@@ -775,6 +798,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         super.registerGoals()
         this.goalSelector.addGoal(0, FloatGoal(this))
         this.goalSelector.addGoal(1, ClimbOnTopOfPowderSnowGoal(this, level()))
+        this.goalSelector.addGoal(5, com.sbwnpc.squad.entity.ai.WaryScanGoal(this))
         this.goalSelector.addGoal(6, IdleLookAroundGoal(this))
         this.goalSelector.addGoal(7, IdleWanderGoal(this, SquadOrderBehaviour.WALK_SPEED_MODIFIER))
     }
@@ -1363,10 +1387,17 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         val faction = com.sbwnpc.squad.team.SquadTeams.factionOf(this) ?: return
         val level = level() as? ServerLevel ?: return
         val attacker = cause.entity as? LivingEntity
-        if (attacker != null && attacker.isAlive && com.sbwnpc.squad.team.SquadTeams.isHostile(this, attacker)) {
-            com.sbwnpc.squad.combat.TeamAwareness.reportUnseen(faction, attacker.uuid, level.gameTime)
+        val knownKiller = attacker != null && attacker.isAlive && com.sbwnpc.squad.team.SquadTeams.isHostile(this, attacker)
+        if (knownKiller) {
+            com.sbwnpc.squad.combat.TeamAwareness.reportUnseen(faction, attacker!!.uuid, level.gameTime)
         } else {
             com.sbwnpc.squad.combat.Alarm.raiseDeath(this, DEATH_ALARM_RADIUS)
+        }
+        // Neither of those shows on the allies who were not sent to look: in-game they went on as
+        // if nothing had happened (#66). Everyone near grows wary of where the threat came from.
+        val toward = if (knownKiller) attacker!!.position() else position()
+        com.sbwnpc.squad.entity.NpcRegistry.forEachWithin(level, position(), DEATH_ALARM_RADIUS, exclude = this) {
+            if (it.isAlive && com.sbwnpc.squad.team.SquadTeams.factionOf(it) == faction) it.becomeWary(toward)
         }
     }
 
@@ -1380,6 +1411,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         private const val GRENADES_OF_EACH = 2
         const val MEDKITS = 1
         private const val HEARD_LOOK_TICKS = 100
+
+        /** How long (30 s) an NPC stays wary after a squadmate fell nearby. */
+        private const val WARY_TICKS = 600
 
         /** One hearing trace line per NPC per this many ticks — a firefight is a noise a second. */
         private const val HEARING_LOG_TICKS = 40
