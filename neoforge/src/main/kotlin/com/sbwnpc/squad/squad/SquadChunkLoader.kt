@@ -27,7 +27,7 @@ import java.util.UUID
  * anyway — and dropping them there was worse than useless: a player's own range only runs
  * entities a couple of chunks short of its edge, and squads in that gap froze as the player flew
  * back toward them. Only squads away from every player count against
- * the configured chunk limit, those in a fight first.
+ * [SquadSettings.activeSquadChunkLimit][com.sbwnpc.squad.config.SquadSettings.activeSquadChunkLimit], those in a fight first.
  *
  * Where each squad was is kept on the squad itself ([Squad.lastSeen]), so one ordered off while
  * asleep — even after a restart — is found and woken where it was left. A squad's assigned

@@ -1,9 +1,12 @@
 package com.sbwnpc.squad.combat.tactics
 
 import com.sbwnpc.squad.combat.CombatPositionSafety
+import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import com.sbwnpc.squad.npc.NpcClass
+import net.minecraft.world.level.pathfinder.Path
 import net.minecraft.world.phys.Vec3
 import kotlin.math.*
 
@@ -67,8 +70,26 @@ object TacticalRoutes {
         if (now < task.nextRoutePlan || !TacticalBudget.path(entity)) return null
         task.nextRoutePlan = now + ROUTE_RETRY_TICKS
         val path = TacticalBudget.measure(entity) { navigation.createPositionPath(setOf(VehicleAwareNavigation.walkingNode(task.anchor)), allowDetour = true) } ?: return null
+        val route = route(path, entity.position(), task.anchor)
+        if (route == null) {
+            DebugFlags.log(LogGroup.PATH, "[tactics] {} plan={} event=route_leg_rejected reaches={} nodes={} end={} anchor={}", entity.uuid, task.plan, path.canReach(), path.nodeCount, path.endNode?.asBlockPos(), task.anchor)
+        }
+        return route?.also { task.route = it }
+    }
+
+    /**
+     * The walked route [path] gives from [from] to [anchor], or null when it is no way there.
+     *
+     * Vanilla A* returns a path to the nearest node it found when the anchor is out of reach. One
+     * that ends where the man stands puts his leg on his own spot; in-game 17.10 movers stood on such
+     * legs in an endless arrive-and-search loop (#50). A partial path counts only while it gets him
+     * at least a leg nearer the anchor.
+     */
+    internal fun route(path: Path, from: Vec3, anchor: Vec3): List<Vec3>? {
         val nodes = (0 until path.nodeCount).map { path.getNode(it).let { node -> Vec3(node.x + 0.5, node.y.toDouble(), node.z + 0.5) } }
-        return nodes.takeIf { it.size >= 2 }?.also { task.route = it }
+        if (nodes.size < 2) return null
+        if (!path.canReach() && nodes.last().distanceTo(anchor) > from.distanceTo(anchor) - ROUTE_LEG) return null
+        return nodes
     }
 
     /** Route length of one leg: about the straight leg's 24 blocks. */
