@@ -23,7 +23,7 @@ entity, economy, army spawning and territorial policy are not implemented here.
 | [Commander AI](#commander-ai-army-resources-and-territory) | **Not implemented** (#12). |
 | [Teams for subtasks](#teams-for-subtasks) | **Implemented** (`TaskTeamAllocator`, up to six by default, keeping teams through changes of strength). |
 | [Completing an area ATTACK](#proposal-completing-an-area-attack) | **Implemented** (`AreaControlClock`: occupation, inspection and 600 safe ticks, i.e. 30 s), plus attack phases deploy/assault/clear (`AttackPhase`). |
-| [Risk and withdrawal](#proposal-risk-and-withdrawal) | **Implemented with other thresholds**: the operation reviews its plan at 30% losses and withdraws at 60% (`OperationLosses`); a squad's own strategy withdraws at 40% under fire without a way to carry on (`StrategyEvaluation`). Squads with a barracks fight on (#57). |
+| [Risk and withdrawal](#proposal-risk-and-withdrawal) | **Implemented with other thresholds**: the operation reviews its plan at 30% losses and withdraws at 60% (`OperationLosses`); a squad's own strategy withdraws at 40% under fire without a way to carry on (`StrategyEvaluation`). Squads with a barracks fighting on instead of withdrawing: not implemented yet (#57). |
 | [Choosing strategies and plans](#proposal-choosing-strategies-and-plans) | **Partly**: the HTN core and utility scoring exist; utility is used for the squad's strategy only, not for the operation or the Commander ([UTILITY-DESIGN.md](UTILITY-DESIGN.md)). |
 | [Performance](#performance-150-visible-600-active) | **Partly measured**: a 600-NPC movement scene measures server cost; client FPS with 150 in view is not measured (#11). |
 

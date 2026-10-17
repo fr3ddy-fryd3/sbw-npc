@@ -55,7 +55,7 @@ bash setup-minecraft-headless.sh --offline --report repeat
 | `--unit` | Run JUnit instead of GameTests |
 | `--all` | Run every registered GameTest |
 | `--filter METHODS` | Run the GameTest methods with these exact names, comma-separated. An unknown name stops the run with `Unknown GameTest` and the list of available ones |
-| `--report NAME` | Report directory name (default `cloud-YYYYmmdd-HHMMSS`) |
+| `--report NAME` | Report directory name (default `cloud-YYYYmmdd-HHMMSS`). ASCII letters, digits, `-` and `_` only; a repeated name overwrites the report, so give runs you want to compare different names |
 | `--offline` | Use cached downloads and Gradle dependencies only |
 | `--no-system-install` | Don't install missing base tools through `apt-get` |
 
@@ -77,13 +77,35 @@ Gradle properties the scenes read:
 | `gameTestWatchNpc` | The NPC whose trace a saved battle replay records |
 | `gameTestNegativeControl` | `true` breaks the flat-ground move scene on purpose, to check it can fail |
 
+Without a filter every registered scene runs. After the run Gradle requires a fresh server log
+containing `GAME TESTS COMPLETE`: a JVM that exits before the scenes ran counts as a failure even with
+exit code 0. GameTests are a separate run; `./gradlew test` runs JUnit only.
+
+To check the bench can fail at all:
+
+```bash
+"$HEADLESS_GRADLE_BIN" runGameTestServer -PgameTestReportName=negative-control -PgameTestNegativeControl=true
+```
+
+This switches off the AI of the NPC on the flat route only. Expected: `moveAcrossFlatGround` fails its
+progress check, the platform scene passes, and Gradle reports a failure.
+
 ## Output
 
 - Setup and run log: `build/headless/logs/<report>.log`.
 - Server log, CSV and TXT files written by the scenes: `neoforge/build/reports/gameTest/<report>/`.
 - JUnit XML/HTML: `<module>/build/test-results/test/`, `<module>/build/reports/tests/test/`.
 
-The script does not copy the jar into an installed Minecraft and does not touch user worlds.
+Scenes that count search work (`htnSixHundredActiveNpcMovementBudget`,
+`fourDefendSquadsMeasureNativeWorkAndHoldSeparateAreas`, through `NativeCombatWork`) also write
+`operation-work.csv` (per NPC: navigation calls, native A* runs, the most per tick and per 20 ticks,
+repeated requests within a tick, position searches) and `operation-work.txt` (distributions of A*
+call and server tick durations). These are server measurements with their own overhead, not client
+FPS and not a comparison of two versions.
+
+The script does not copy the jar into an installed Minecraft and does not touch user worlds. On a
+dedicated server SBW logs that its client-only `ClientLevelMixin` is unavailable; that is expected
+and harmless.
 
 ## Things to know
 
@@ -99,6 +121,15 @@ The script does not copy the jar into an installed Minecraft and does not touch 
   hitscan roll (`OffscreenFire`) instead of real SBW rounds. Combat scenes that measure rounds add a
   fake player (`FakePlayerFactory`) near the fight and check `OffscreenFire.hasWitness`.
 - **Debug logs are on in scenes** that set `DebugFlags.enabledGroups`; others log only test results.
+
+## Limits
+
+The scenes run the real SmartBrainLib behaviours, `VehicleAwareNavigation`, `NpcMoveControl`,
+collisions, tactics and SBW weapons, but on built arenas: natural complex cover, deep pits, Dynamic
+Trees, narrow passes and rivers are not covered. Targets with raised health let deployment and fire
+be observed but do not measure how well ordinary enemies are killed. A line check confirms a line
+held for its window, not in every later phase. Success of a MOVE or an isolated firefight does not
+prove a whole battle or a player's case is fixed.
 
 ## Where scenes live
 
