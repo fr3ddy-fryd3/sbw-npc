@@ -184,11 +184,15 @@ object FiringPostSearchGameTests {
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 20, batch = "post-ground")
     fun plannedPostOffTheGroundGoesOntoIt(helper: GameTestHelper) {
         for (x in 0..15) for (z in 0..15) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        // A canopy over one spot, a hill over another.
+        for (x in 9..11) for (z in 2..4) helper.setBlock(BlockPos(x, 6, z), Blocks.OAK_LEAVES)
+        for (x in 2..4) for (z in 9..11) for (y in 1..5) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
+        fun post(x: Double, y: Double, z: Double) = com.sbwnpc.squad.combat.tactics.DryGround.near(helper.level, helper.absoluteVec(Vec3(x, y, z)), helper.absoluteVec(Vec3(x, 1.0, z)))
         val ground = helper.absoluteVec(Vec3(8.3, 1.0, 8.7))
-        val near = com.sbwnpc.squad.combat.tactics.DryGround.near(helper.level, ground.add(0.0, 9.0, 0.0), ground)
-        val far = com.sbwnpc.squad.combat.tactics.DryGround.near(helper.level, ground.add(0.0, 20.0, 0.0), ground)
-        helper.assertTrue(near == ground, "A post 9 blocks up stayed off the ground: $near")
-        helper.assertTrue(far == ground, "A post 20 blocks up stayed off the ground: $far")
+        helper.assertTrue(post(8.3, 10.0, 8.7) == ground, "A post 9 blocks up stayed off the ground: ${post(8.3, 10.0, 8.7)}")
+        helper.assertTrue(post(8.3, 14.0, 8.7) == ground, "A post 13 blocks up stayed off the ground: ${post(8.3, 14.0, 8.7)}")
+        helper.assertTrue(post(10.3, 9.0, 3.7) == helper.absoluteVec(Vec3(10.3, 1.0, 3.7)), "A post over a canopy went onto the leaves: ${post(10.3, 9.0, 3.7)}")
+        helper.assertTrue(post(3.3, 2.0, 10.7) == helper.absoluteVec(Vec3(3.3, 6.0, 10.7)), "A post inside a hill did not go onto it: ${post(3.3, 2.0, 10.7)}")
         helper.succeed()
     }
 
