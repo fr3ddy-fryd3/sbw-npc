@@ -38,7 +38,7 @@ enum class AttackPhase {
         // Standing on the point does not win it against a defence that still outnumbers them.
         if (inputs.occupied && !losing) return if (inputs.threatsNearby > 0) CLEAR else ASSAULT
         return when (this) {
-            DEPLOY -> if (quiet || (superior(inputs) && suppressed(inputs)) || overwhelming(inputs)) ASSAULT else DEPLOY
+            DEPLOY -> if (quiet || assaultable(inputs)) ASSAULT else DEPLOY
 
             // Lost ground before the objective is taken: back to the firing line rather than
             // walking the assault group into a fight it no longer wins.
@@ -81,6 +81,9 @@ enum class AttackPhase {
 
         /** How long (40 s) the firing line works before overwhelming numbers alone start the assault. */
         const val OVERWHELMING_ENGAGE_TICKS = 2 * ENGAGE_TICKS
+
+        /** The firing line has done enough for the numbers it has: see [superior] and [overwhelming]. */
+        private fun assaultable(inputs: Inputs) = (superior(inputs) && suppressed(inputs)) || overwhelming(inputs)
 
         private fun superior(inputs: Inputs) = inputs.readyShooters >= ASSAULT_RATIO * inputs.enemiesAtObjective
 
