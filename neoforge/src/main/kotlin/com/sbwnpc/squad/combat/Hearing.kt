@@ -32,6 +32,9 @@ object Hearing {
     private const val MIN_EXPLOSION = 24.0
     private const val MAX_EXPLOSION = 128.0
 
+    /** How many men of a squad go to look at an explosion; the rest only turn towards it. */
+    const val EXPLOSION_CHECK_TEAM = 2
+
     /** A machine gun is heard as it opens up, not ten times a second. */
     private const val SHOOTER_INTERVAL_TICKS = 20L
 
@@ -93,23 +96,44 @@ object Hearing {
         )
     }
 
-    /** An explosion of [power] went off at [at], set off by [source] if anyone. */
+    /**
+     * An explosion of [power] went off at [at], set off by [source] if anyone. Only the
+     * [EXPLOSION_CHECK_TEAM] nearest free men of each squad go to look; everyone else in earshot
+     * turns towards it. Each man deciding alone, whole squads left their position for a single
+     * grenade (#61).
+     */
     fun explosion(level: ServerLevel, at: Vec3, power: Float, source: Entity?) {
-        noise(level, at, (power * EXPLOSION_SCALE).coerceIn(MIN_EXPLOSION, MAX_EXPLOSION), source, "explosion $power")
+        val radius = (power * EXPLOSION_SCALE).coerceIn(MIN_EXPLOSION, MAX_EXPLOSION)
+        val heard = listeners(level, at, radius, source, allSides = false)
+        val lookers = checkTeams(heard.listeners, at)
+        heard.listeners.forEach { it.hear(at, goLook = it.squadId == null || it in lookers) }
+        log("explosion $power", source, at, radius, heard)
     }
 
     private fun noise(level: ServerLevel, at: Vec3, radius: Double, source: Entity?, kind: String, footstep: Boolean = false, allSides: Boolean = false) {
-        var heard = 0
+        val heard = listeners(level, at, radius, source, allSides)
+        heard.listeners.forEach { npc ->
+            npc.hear(at, nearbyFootstep = footstep && npc.distanceToSqr(at) <= CLOSE_FOOTSTEP_RADIUS * CLOSE_FOOTSTEP_RADIUS)
+        }
+        log(kind, source, at, radius, heard)
+    }
+
+    /** The NPCs within [radius] of a noise, and of those the ones that hear it. */
+    private class Heard(val listeners: List<NpcEntity>, val inRange: Int)
+
+    private fun listeners(level: ServerLevel, at: Vec3, radius: Double, source: Entity?, allSides: Boolean): Heard {
         var inRange = 0
+        val listeners = ArrayList<NpcEntity>()
         NpcRegistry.forEachWithin(level, at, radius, exclude = source) { npc ->
             inRange++
-            if (npc.isAlive && (allSides || source == null || SquadTeams.isHostile(npc, source))) {
-                npc.hear(at, nearbyFootstep = footstep && npc.distanceToSqr(at) <= CLOSE_FOOTSTEP_RADIUS * CLOSE_FOOTSTEP_RADIUS)
-                heard++
-            }
+            if (npc.isAlive && (allSides || source == null || SquadTeams.isHostile(npc, source))) listeners += npc
         }
+        return Heard(listeners, inRange)
+    }
+
+    private fun log(kind: String, source: Entity?, at: Vec3, radius: Double, heard: Heard) {
         // A player's noise is logged even unheard, to tell "nobody near" from "nobody hostile".
-        if ((heard > 0 || source is net.minecraft.world.entity.player.Player) && DebugFlags.on(LogGroup.HEARING)) {
+        if ((heard.listeners.isNotEmpty() || source is net.minecraft.world.entity.player.Player) && DebugFlags.on(LogGroup.HEARING)) {
             DebugFlags.log(
                 LogGroup.HEARING,
                 "{} by {} at {} radius {} heard by {} of {} NPCs in range sourceFaction={}",
@@ -117,12 +141,19 @@ object Hearing {
                 source?.let { it.uuid.toString().take(8) + " " + it.type.descriptionId } ?: "nobody",
                 BlockPos.containing(at),
                 "%.0f".format(radius),
-                heard,
-                inRange,
+                heard.listeners.size,
+                heard.inRange,
                 source?.let { SquadTeams.sideOf(it) },
             )
         }
     }
+
+    /** Per squad, its [EXPLOSION_CHECK_TEAM] men nearest [at] among those with no target to fight. */
+    private fun checkTeams(listeners: List<NpcEntity>, at: Vec3): Set<NpcEntity> =
+        listeners.filter { it.squadId != null && it.target == null }
+            .groupBy { it.squadId }
+            .values
+            .flatMapTo(HashSet()) { squad -> squad.sortedBy { it.distanceToSqr(at) }.take(EXPLOSION_CHECK_TEAM) }
 
     fun clearAll() {
         lastShot.clear()
