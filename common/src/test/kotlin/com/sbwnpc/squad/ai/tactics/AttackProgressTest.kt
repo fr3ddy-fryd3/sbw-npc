@@ -157,4 +157,60 @@ class AttackProgressTest {
         progress.roles(410, objective, movers, at(movers, 80.0), listOf(defender))
         assertTrue(progress.roles(1000, objective, movers, at(movers, 80.0), listOf(defender)).assault.isEmpty())
     }
+
+    // 11 against 14 under fire: never an assault, see #65.
+    private fun outnumbered(now: Long, sectorsHeld: Boolean = true) =
+        AttackProgress(0).apply {
+            observe(0, true, true, 11, 14, false, 14, sectorsHeld)
+            observe(now, true, true, 11, 14, false, 14, sectorsHeld)
+            assertEquals(AttackPhase.DEPLOY, phase)
+        }
+
+    private fun AttackProgress.post(now: Long, bounder: List<UUID>, z: Double) = bounds(now, objective, bounder.toSet(), at(bounder, z), listOf(defender)).values.single().z
+
+    @Test fun `bounders close in only once the firing line has worked`() {
+        val bounders = ids(2).toSet()
+        val members = at(ids(4), 60.0)
+        assertTrue(outnumbered(399).bounds(399, objective, bounders, members, listOf(defender)).isEmpty())
+        // Half the 70 blocks to the defender; the other two keep the line.
+        assertEquals(bounders.associateWith { Point3(100.0, 64.0, 95.0) }, outnumbered(400).bounds(400, objective, bounders, members, listOf(defender)))
+    }
+
+    @Test fun `bounders do not close in while the flanks are still on their way`() {
+        val progress = outnumbered(1000, sectorsHeld = false)
+        assertTrue(progress.bounds(1000, objective, ids(2).toSet(), at(ids(2), 60.0), listOf(defender)).isEmpty())
+    }
+
+    @Test fun `a bounder takes the next bound after firing from his post, down to the bound distance`() {
+        val progress = outnumbered(400)
+        val bounder = ids(1)
+        assertEquals(95.0, progress.post(400, bounder, 60.0))
+        // Still on his way: no new bound however long it takes.
+        assertEquals(95.0, progress.post(2000, bounder, 70.0))
+        assertEquals(95.0, progress.post(2010, bounder, 93.0))
+        assertEquals(95.0, progress.post(2209, bounder, 93.0))
+        // 35 blocks out, the next bound stops at 30.
+        assertEquals(100.0, progress.post(2210, bounder, 93.0))
+        assertEquals(100.0, progress.post(2220, bounder, 100.0))
+        assertEquals(100.0, progress.post(2500, bounder, 100.0))
+    }
+
+    @Test fun `bounds are kept while no defender is known and dropped for men no longer bounding`() {
+        val progress = outnumbered(400)
+        val (first, second) = ids(2)
+        val members = at(listOf(first, second), 60.0)
+        progress.bounds(400, objective, setOf(first, second), members, listOf(defender))
+        assertEquals(setOf(first, second), progress.bounds(410, objective, setOf(first, second), members, emptyList()).keys)
+        assertEquals(setOf(first), progress.bounds(420, objective, setOf(first), members, listOf(defender)).keys)
+        assertEquals(setOf(first), progress.bounders)
+    }
+
+    @Test fun `bounds end with the deployment`() {
+        val progress = outnumbered(400)
+        progress.bounds(400, objective, ids(2).toSet(), at(ids(2), 60.0), listOf(defender))
+        progress.update(600, ready = 11, enemies = 0, contact = false)
+        assertEquals(AttackPhase.ASSAULT, progress.phase)
+        assertTrue(progress.bounds(600, objective, ids(2).toSet(), at(ids(2), 60.0), listOf(defender)).isEmpty())
+        assertTrue(progress.bounders.isEmpty())
+    }
 }

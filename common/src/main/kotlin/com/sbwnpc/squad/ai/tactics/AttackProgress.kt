@@ -37,6 +37,14 @@ class AttackProgress(now: Long) {
     private var closedInSince: Long? = null
     private var assaultSince: Long? = null
 
+    // Each bounding man's current post and when he first stood on it; see [bounds].
+    private val boundPosts = HashMap<UUID, Point3>()
+    private val boundReached = HashMap<UUID, Long>()
+    private var bounding = false
+
+    /** The members on a bound, see [bounds]: they close on the defenders and keep off the arc. */
+    val bounders: Set<UUID> get() = boundPosts.keys.toSet()
+
     /** The closed-in assault goes onto the point despite defenders still seen round it. */
     var occupying = false
         private set
@@ -122,6 +130,45 @@ class AttackProgress(now: Long) {
         return due && inputs.readyShooters >= AttackPhase.ASSAULT_RATIO * inputs.enemiesAtObjective
     }
 
+    /**
+     * The closing post of each ready one of [bounders] while the attack deploys; empty in the other
+     * phases. Once the firing line has worked [AttackPhase.ENGAGE_TICKS] with the flanks in their
+     * sectors, each takes a post halfway to the nearest defender, no nearer than [BOUND_DISTANCE],
+     * and the next one after standing on it for [BOUND_PAUSE_TICKS]. Each man keeps his own clock,
+     * so the group does not all run at once.
+     *
+     * Without the numbers to assault, a line 56 blocks out barely hit anything: in-game 17.10 a
+     * squad of 11 against 14 stood there for good and seemed to do nothing (#65).
+     */
+    fun bounds(now: Long, objective: Point3, bounders: Set<UUID>, members: List<AttackMember>, threats: List<Point3>): Map<UUID, Point3> {
+        val inputs = lastInputs
+        if (phase != AttackPhase.DEPLOY) {
+            bounding = false
+            boundPosts.clear()
+            boundReached.clear()
+            return emptyMap()
+        }
+        if (!bounding) bounding = inputs != null && inputs.ticksEngaged >= AttackPhase.ENGAGE_TICKS && inputs.sectorsHeld
+        boundPosts.keys.retainAll(bounders)
+        boundReached.keys.retainAll(bounders)
+        if (!bounding) return emptyMap()
+        val ready = members.filter { it.ready && it.id in bounders }
+        val defenders = threats.filter { OperationTactics.atObjective(it, objective) }
+        // With no defender known for a moment, the posts already taken stay: dropping them would
+        // send the men back to the line and out again.
+        if (defenders.isNotEmpty()) ready.forEach { bound(now, it, defenders) }
+        return ready.mapNotNull { member -> boundPosts[member.id]?.let { member.id to it } }.toMap()
+    }
+
+    /** Gives [member] his first bound, or the next one once he has fired from his post long enough. */
+    private fun bound(now: Long, member: AttackMember, defenders: List<Point3>) {
+        val post = boundPosts[member.id] ?: return boundPosts.set(member.id, OperationTactics.closingPost(member.position, defenders, BOUND_DISTANCE))
+        if (distance(member.position, post) <= OperationTactics.MOVE_ARRIVAL) boundReached.putIfAbsent(member.id, now)
+        if (boundReached[member.id]?.let { now - it >= BOUND_PAUSE_TICKS } != true) return
+        boundPosts[member.id] = OperationTactics.closingPost(post, defenders, BOUND_DISTANCE)
+        boundReached.remove(member.id)
+    }
+
     private fun distance(a: Point3, b: Point3) = kotlin.math.hypot(a.x - b.x, a.z - b.z)
 
     companion object {
@@ -136,5 +183,11 @@ class AttackProgress(now: Long) {
 
         /** An assault with the numbers goes onto the point after this long (60 s) in any case. */
         const val ASSAULT_LIMIT_TICKS = 1200L
+
+        /** A bound stops this far from the nearest defender: nearer than the line, short of an assault. */
+        const val BOUND_DISTANCE = 30.0
+
+        /** A bounding man fires from each post this long (10 s) before the next bound. */
+        const val BOUND_PAUSE_TICKS = 200L
     }
 }

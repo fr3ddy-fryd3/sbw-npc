@@ -100,6 +100,7 @@ object NativeTactics {
 
         // Per squad attacking alone: the members it sends round a flank, see [approachBearings].
         private val manoeuvres = HashMap<UUID, Set<UUID>>()
+        private val boundTraces = HashMap<UUID, Map<UUID, Point3>>()
         private val losses = HashMap<UUID, OperationLosses>()
         private val standings = HashMap<UUID, OperationStanding>()
         private val unverified = HashMap<UUID, MutableMap<UUID, Vec3>>()
@@ -366,7 +367,13 @@ object NativeTactics {
                     } else {
                         null
                     }
-                    val roles = if (secure != null) attackRoles(operation, secure, active, now) else AttackRoles.NONE.also { attacks.remove(operation) }
+                    val roles = if (secure != null) {
+                        attackRoles(operation, secure, active, now, holding = standing == OperationStanding.REVIEW)
+                    } else {
+                        attacks.remove(operation)
+                        boundTraces.remove(operation)
+                        AttackRoles.NONE
+                    }
                     ensure(root).command(operation, TacticalDomain.OPERATION.call(OperationMission(squadMissions, secure, roles)), facts(root, now))
                 }
                 agents.keys.filter { it.level == AgentLevel.OPERATION && it !in roots }.toList().forEach { id ->
@@ -378,6 +385,7 @@ object NativeTactics {
                     sectors.remove(id.id)
                     sectorTraces.remove(id.id)
                     flankTraces.remove(id.id)
+                    boundTraces.remove(id.id)
                     sectorsHeld.remove(id.id)
                     areaObservedAt.remove(id.id)
                     areaTraces.remove(id.id)
@@ -473,8 +481,13 @@ object NativeTactics {
             }
         }
 
-        /** Reports the attack's observations to its [AttackProgress] and returns the roles of its phase. */
-        private fun attackRoles(operation: UUID, task: AreaControlTask, squads: List<Squad>, now: Long): AttackRoles {
+        /**
+         * Reports the attack's observations to its [AttackProgress] and returns the roles of its
+         * phase. A lone squad's manoeuvre group closes in by bounds unless the squad withdraws or
+         * holds, or the operation is [holding] while it reviews its losses: a bound lifts the
+         * squad's own strategy for those men.
+         */
+        private fun attackRoles(operation: UUID, task: AreaControlTask, squads: List<Squad>, now: Long, holding: Boolean): AttackRoles {
             val progress = attacks.getOrPut(operation) { AttackProgress(now) }
             val objective = task.objective.native()
             val contacts = squads.flatMap { combatView(it.id)?.contacts.orEmpty() }.filter { now - it.seenAt <= 200 }.distinctBy { it.id }
@@ -497,19 +510,24 @@ object NativeTactics {
             )
             if (progress.phase != before) DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=attack_phase from={} to={} inputs={}", operation, before, progress.phase, inputs)
             val occupying = progress.occupying
+            val bounders = squads.singleOrNull()
+                ?.takeIf { !holding && strategies[it.id]?.first in setOf(CombatStrategy.ADVANCE, CombatStrategy.GAIN_HEIGHT) }
+                ?.let { squad -> manoeuvres[squad.id].orEmpty() - arcing }
+                .orEmpty()
+            val attackers = members.map { AttackMember(it.id, it.position.point(), it.ready) }
+            val known = (threats.map { it.position.point() } + defenders).distinct()
             // Every ready man takes part in an assault, not only the front rows of the line: the
             // flanks and rear guard a reinforcement was added to never left the firing line (#54).
-            return progress.roles(
-                now,
-                task.objective,
-                members.filter { it.ready }.map { it.id },
-                members.map { AttackMember(it.id, it.position.point(), it.ready) },
-                (threats.map { it.position.point() } + defenders).distinct(),
-            ).also {
-                if (progress.occupying && !occupying) {
-                    DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=assault_occupy ready={} defenders={} movers={}", operation, inputs.readyShooters, defenders.size, it.assault.size)
-                }
+            val roles = progress.roles(now, task.objective, members.filter { it.ready }.map { it.id }, attackers, known)
+            if (progress.occupying && !occupying) {
+                DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=assault_occupy ready={} defenders={} movers={}", operation, inputs.readyShooters, defenders.size, roles.assault.size)
             }
+            // Bounds come only while deploying, when the roles have no closing posts of their own.
+            val bounds = progress.bounds(now, task.objective, bounders, attackers, known)
+            if (boundTraces.put(operation, bounds) != bounds && bounds.isNotEmpty()) {
+                DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=bound rangeToPost={}", operation, bounds.mapValues { (id, post) -> "%.0f->%.0f".format(nearest(defenders, attackers.first { it.id == id }.position), nearest(defenders, post)) })
+            }
+            return if (bounds.isEmpty()) roles else roles.copy(closing = bounds)
         }
 
         /**
@@ -549,10 +567,13 @@ object NativeTactics {
                 sectors.remove(operation)
                 sectorTraces.remove(operation)
                 flankTraces.remove(operation)
+                boundTraces.remove(operation)
                 sectorsHeld.remove(operation)
             }
             return standing
         }
+
+        private fun nearest(points: List<Point3>, from: Point3) = points.minOfOrNull { hypot(it.x - from.x, it.z - from.z) } ?: 0.0
 
         /** Whether a reinforcement on its way stops to fight, see [ReinforcementMarch]; logs each change. */
         private fun reinforcementEngaged(squad: UUID, contacts: List<TacticalContact>, members: List<TacticalMember>, now: Long): Boolean {
@@ -585,6 +606,8 @@ object NativeTactics {
                 return emptyMap()
             }
             val single = squads.singleOrNull()
+            // Joined by another squad, a squad no longer splits; its old split must not bound on.
+            if (single == null) squads.forEach { manoeuvres.remove(it.id) }
             val manoeuvre = single?.let { saved ->
                 // Counted over every man, not only the ready ones: a man dodging a grenade or with
                 // the medic for a moment would be swapped for one of the fire group, who would run
@@ -667,7 +690,10 @@ object NativeTactics {
             val waypoints = if (bearings.isEmpty() || objective == null || (attacks[operation]?.phase ?: AttackPhase.DEPLOY) != AttackPhase.DEPLOY) {
                 emptyMap()
             } else {
-                members.mapNotNull { member ->
+                // A man closing in by bounds may stray off his sector's bearing; called back onto
+                // the arc, he would leave the bound and come back to it.
+                val bounders = attacks[operation]?.bounders.orEmpty()
+                members.filter { it.id !in bounders }.mapNotNull { member ->
                     val post = proposals.getValue(member.id).anchor
                     ApproachSectors.arcWaypoint(objective, member.position.point(), bearings.getValue(member.id), hypot(post.x - objective.x, post.z - objective.z))?.let { member.id to it }
                 }.toMap()
