@@ -75,12 +75,22 @@ class ApproachSectorsTest {
         // Standing head-on, 80 blocks out: the first waypoint is 30 degrees short of the sector.
         val first = ApproachSectors.arcWaypoint(objective, Point3(80.0, 64.0, 0.0), sector, 100.0)!!
         assertEquals(-30.0, Math.toDegrees(kotlin.math.atan2(first.z, first.x)), 1e-6)
-        assertEquals(100.0, kotlin.math.hypot(first.x, first.z), 1e-6)
+        assertEquals(100.0 + ApproachSectors.ARC_MARGIN, kotlin.math.hypot(first.x, first.z), 1e-6)
         // The waypoint stays put while he walks towards it.
-        val halfway = ApproachSectors.arcWaypoint(objective, Point3(95.0, 64.0, -25.0), sector, 100.0)!!
+        val halfway = ApproachSectors.arcWaypoint(objective, Point3(105.0, 64.0, -28.0), sector, 100.0)!!
         assertEquals(first.x, halfway.x, 1e-6)
         assertEquals(first.z, halfway.z, 1e-6)
         // Near it, he makes for his post.
         assertEquals(null, ApproachSectors.arcWaypoint(objective, Point3(86.0, 64.0, -50.0), sector, 100.0))
+    }
+
+    @Test fun `flanks go to the side each squad already stands on`() {
+        // Headless battle on the owner's terrain, 17.10: the second squad, standing next to the
+        // pinning one, took the side the third stood on and the third walked round the point.
+        val sectors = ApproachSectors<String>()
+        val squads = mapOf("pin" to Point3(70.0, 64.0, 0.0), "beside" to Point3(72.0, 64.0, 4.0), "off" to Point3(10.0, 64.0, 75.0))
+        val bearings = degrees(sectors.bearings(objective, squads, contact = true))
+        assertEquals(60, bearings["off"])
+        assertEquals(-60, bearings["beside"])
     }
 }
