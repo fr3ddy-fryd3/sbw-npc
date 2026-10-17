@@ -18,6 +18,13 @@ class AttackPhaseTest {
         assertEquals(AttackPhase.DEPLOY, AttackPhase.DEPLOY.next(inputs(ready = 8, enemies = 4, peak = 8, engaged = 399)))
     }
 
+    @Test fun `three to one starts the assault once the firing line has worked twice as long`() {
+        // In-game 17.10: 48 attackers never assaulted 16 defenders who neither thinned nor fell silent (#54).
+        assertEquals(AttackPhase.DEPLOY, AttackPhase.DEPLOY.next(inputs(ready = 48, enemies = 16, engaged = 799)))
+        assertEquals(AttackPhase.ASSAULT, AttackPhase.DEPLOY.next(inputs(ready = 48, enemies = 16, engaged = 800)))
+        assertEquals(AttackPhase.DEPLOY, AttackPhase.DEPLOY.next(inputs(ready = 47, enemies = 16, engaged = 2000)))
+    }
+
     @Test fun `assault starts when no enemy was seen for ten seconds`() {
         assertEquals(AttackPhase.DEPLOY, AttackPhase.DEPLOY.next(inputs(ready = 2, enemies = 4, quiet = 199, engaged = 0)))
         assertEquals(AttackPhase.ASSAULT, AttackPhase.DEPLOY.next(inputs(ready = 2, enemies = 0, quiet = 200, engaged = 0)))
