@@ -2,7 +2,7 @@ package com.sbwnpc.squad.squad
 
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
-import com.sbwnpc.squad.config.SquadConfig
+import com.sbwnpc.squad.config.Settings
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import net.minecraft.core.BlockPos
@@ -27,7 +27,7 @@ import java.util.UUID
  * anyway — and dropping them there was worse than useless: a player's own range only runs
  * entities a couple of chunks short of its edge, and squads in that gap froze as the player flew
  * back toward them. Only squads away from every player count against
- * [SquadConfig.ACTIVE_SQUAD_CHUNK_LIMIT], those in a fight first.
+ * the configured chunk limit, those in a fight first.
  *
  * Where each squad was is kept on the squad itself ([Squad.lastSeen]), so one ordered off while
  * asleep — even after a restart — is found and woken where it was left. A squad's assigned
@@ -60,7 +60,7 @@ object SquadChunkLoader {
     fun tick(server: MinecraftServer) {
         if (server.tickCount % INTERVAL_TICKS != 0) return
         val mgr = SquadManager.get(server)
-        val limit = SquadConfig.ACTIVE_SQUAD_CHUNK_LIMIT.get()
+        val limit = Settings.current.activeSquadChunkLimit()
         val wanted = HashSet<Spot>()
         val farBusy = ArrayList<kotlin.Pair<Set<Spot>, Int>>()
         for (squad in mgr.all()) {

@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.entity
 
 import com.sbwnpc.squad.combat.SidearmKit
+import com.sbwnpc.squad.config.Settings
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.ai.GrenadeThrowBehaviour
 import com.sbwnpc.squad.entity.ai.IdleLookAroundGoal
@@ -89,7 +90,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     fun gainExperience(amount: Double, reason: String) {
         if (level().isClientSide || !amount.isFinite() || amount <= 0 || !isAlive) return
         ensureExperienceIdentity()
-        val multiplier = com.sbwnpc.squad.config.SquadConfig.experienceMultiplier(npcClass)
+        val multiplier = Settings.current.experienceMultiplier(npcClass)
         val earned = amount * multiplier
         experience = (experience + earned).coerceAtMost(1.0e12)
         val promoted = ExperienceRules.rank(experience)
@@ -1080,12 +1081,12 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // respawns far away. Same as iron golems / tamed pets.
     override fun removeWhenFarAway(distanceToClosestPlayer: Double): Boolean = false
 
-    // Drawn as far as the server sends them (SquadConfig.npcViewDistance, applied to tracking by
+    // Drawn as far as the server sends them (Settings.current.npcViewDistance, applied to tracking by
     // EntityTrackingRangeMixin).
     // Vanilla sizes this by the hitbox — 64 x the box's average side x the player's entity-distance
     // setting — which for a man-sized box came to about 70-85 blocks, so NPCs the client had been
     // sent were not drawn at all past that.
-    override fun shouldRenderAtSqrDistance(distance: Double): Boolean = distance < com.sbwnpc.squad.config.SquadConfig.npcViewDistance().let { it.toDouble() * it }
+    override fun shouldRenderAtSqrDistance(distance: Double): Boolean = distance < Settings.current.npcViewDistance().let { it.toDouble() * it }
 
     @Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")
     override fun finalizeSpawn(

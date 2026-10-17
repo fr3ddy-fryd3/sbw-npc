@@ -1,5 +1,7 @@
 package com.sbwnpc.squad
 
+import com.sbwnpc.squad.config.Settings
+import com.sbwnpc.squad.config.SquadConfig
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.init.ModBlockEntities
 import com.sbwnpc.squad.init.ModBlocks
@@ -34,6 +36,7 @@ class SquadMod(bus: IEventBus, container: ModContainer) {
         Ports.drones = SbwDrones
         Ports.gear = SbwGear
         ClientboundPackets.transport = NeoForgeClientboundTransport
+        Settings.current = SquadConfig
 
         container.registerConfig(net.neoforged.fml.config.ModConfig.Type.SERVER, com.sbwnpc.squad.config.SquadConfig.SPEC)
         if (com.sbwnpc.squad.combat.BuildFlags.DEBUG_ENABLED) {
