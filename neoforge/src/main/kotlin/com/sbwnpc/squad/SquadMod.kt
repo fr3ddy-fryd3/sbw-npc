@@ -13,6 +13,8 @@ import com.sbwnpc.squad.integration.sbw.SbwGrenades
 import com.sbwnpc.squad.integration.sbw.SbwGuns
 import com.sbwnpc.squad.integration.sbw.SbwMortars
 import com.sbwnpc.squad.integration.sbw.SbwVehicles
+import com.sbwnpc.squad.network.ClientboundPackets
+import com.sbwnpc.squad.network.NeoForgeClientboundTransport
 import net.minecraft.resources.ResourceLocation
 import net.neoforged.bus.api.IEventBus
 import net.neoforged.fml.ModContainer
@@ -31,6 +33,7 @@ class SquadMod(bus: IEventBus, container: ModContainer) {
         Ports.playerSupply = com.sbwnpc.squad.integration.sbw.SbwPlayerSupply
         Ports.drones = SbwDrones
         Ports.gear = SbwGear
+        ClientboundPackets.transport = NeoForgeClientboundTransport
 
         container.registerConfig(net.neoforged.fml.config.ModConfig.Type.SERVER, com.sbwnpc.squad.config.SquadConfig.SPEC)
         if (com.sbwnpc.squad.combat.BuildFlags.DEBUG_ENABLED) {
