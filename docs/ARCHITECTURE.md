@@ -163,6 +163,24 @@ comments above the task lists in `NpcEntity`.
 - **Budgets**: `TickBudget` caps the expensive terrain raycasts per server tick, because a whole
   squad tends to search for cover or firing spots on the same tick.
 
+## Squad tactics (HTN)
+
+Ground squads in a fight are planned by an HTN controller, not by the behaviours alone:
+
+- `common/.../ai/planning` is the general core (HTN domains and planning sessions, the plan
+  runtime, utility scoring); `ai/coordination` holds joint operations and the hand-over of
+  subtasks; `ai/tactics` holds the domain: `TacticalDomain`, attack phases (`AttackPhase`,
+  `AttackProgress`), members' duties (`OperationTactics`), the front (`OperationFront`) and the
+  operation's losses (`OperationLosses`). All of it is pure and unit-tested.
+- `neoforge/.../ai/integration/NativeTactics` gathers squad snapshots, runs the planning agents of
+  each operation, squad, team and NPC, and hands every NPC a `PositionIntent`;
+  `NativePositionAction` carries one out with the services in `combat/tactics`.
+- Behaviours read the assignment through `combat/tactics/SquadTactics`, so a man's own shooting,
+  cover and reactions keep working under the plan.
+
+Details: [AI-RUNTIME.md](AI-RUNTIME.md), [TACTICS-ARCHITECTURE.md](TACTICS-ARCHITECTURE.md); the
+target design: [AI-ARCHITECTURE-DESIGN.md](AI-ARCHITECTURE-DESIGN.md).
+
 ## Routing and vehicles
 
 - Short moves use vanilla pathfinding through `VehicleAwareNavigation` and `NpcMoveControl`.
