@@ -6,9 +6,13 @@ things go; the code's own KDoc covers the details. Build, workflow and coding ru
 
 Kotlin packages below are relative to `com/sbwnpc/squad/`. Shared sources live under
 `common/src/main/kotlin/`: routing and the HTN core (`ai/planning`, `ai/coordination`,
-`ai/tactics`), with their JUnit tests in `common/src/test/kotlin/`. NeoForge-owned sources live
-under `neoforge/src/main/kotlin/`, including the HTN adapter `ai/integration`. Shared assets/data live in `common/src/main/resources/`.
-NeoForge recompiles common sources; `:common:check` checks them against vanilla Minecraft.
+`ai/tactics`), the server-side SBW port interfaces, NPC classes and other static game data,
+experience rules, packet schemas and the loader-neutral settings view, with their JUnit tests in
+`common/src/test/kotlin/`. NeoForge-owned sources live under `neoforge/src/main/kotlin/`,
+including the HTN adapter `ai/integration`, the SBW adapter, packet registration and delivery, the
+TOML config and all client code. Shared assets/data live in `common/src/main/resources/`.
+NeoForge recompiles common sources; `:common:check` checks them against vanilla Minecraft and
+rejects loader, SBW and client imports.
 Build conventions live in `build-logic/`; root build commands delegate to these modules.
 
 ## The big picture
@@ -31,25 +35,25 @@ command and supply it. The pieces, roughly from the outside in:
 
 | Package | What lives there |
 |---|---|
-| (root) | `SquadMod` (mod entry point), `ServerTick` (server-wide per-tick drivers), `ServerLifecycle` (clears runtime state when a world stops) |
+| (root) | `SquadMod` (mod entry point), `ServerTick` (server-wide per-tick drivers), `ServerLifecycle` (clears runtime state when a world stops); in common, `ModIdentity` (mod id and `loc()`) |
 | `init/` | Deferred registers: entities, items, blocks, block entities, SmartBrainLib sensors and memory types |
 | `entity/` | `NpcEntity` itself, posture, stuck recovery, and live per-level indexes (`NpcRegistry`, `EntityIndex`, drone and grenade registries) |
 | `entity/ai/` | Brain behaviours (`*Behaviour.kt`), the target sensor, and the helpers they share: flight controllers, march and route progress trackers, claim registries for mortars and transport seats |
 | `squad/` | Squad model and persistence, orders, selection, deployment, routes (patrol routes and recording), radio reports, chunk loading for squads away from players |
-| `npc/` | Static game data: classes (`NpcClass`), ranks, factions, squad presets, vehicle model choices |
+| `npc/` | Static game data (common): classes (`NpcClass`), ranks, factions, squad presets, vehicle model choices, vanilla NPC attributes (`NpcAttributes`; NeoForge adds swim speed in `entity/NeoForgeNpcAttributes`) |
 | `combat/` | Perception (vision, hearing, sightlines, team awareness), fire control (friendly-fire guard, fire allocation, firing spots, cover positions), grenades, withdrawal, suppression, tick budgets, debug switches |
 | `route/` | Long-route planner over a cell grid (`CellPlanner`) for walkers and vehicles, the remembered ground map, and the shared planning budget |
 | `vehicle/` | Helicopter flight and airspace separation, pilotless helicopters, boats (water map and routes), tree avoidance, driver allegiance |
 | `team/` | Factions as vanilla scoreboard teams (`SquadTeams`), alliances (`AllianceRegistry`) and the voting rules that change them (`Diplomacy`) |
 | `block/` | Barracks (respawns a squad's missing members) and supply point (refills gear) blocks and their block entities |
 | `item/` | The squad tool (recruit and command modes) and how it is granted |
-| `network/` | `Payloads.kt` (every `CustomPacketPayload`), `ModNetwork` (registration and server handlers), snapshot builders the screens read |
+| `network/` | In common: `Payloads.kt` (every `CustomPacketPayload`) and `sendToClient`, which goes through the loader's `ClientboundTransport`. In NeoForge: `ModNetwork` (registration and server handlers), `NeoForgeClientboundTransport`, snapshot builders the screens read |
 | `client/` | HUD, key bindings, tool input, client payload handlers, NPC model and renderers, map state, screens under `client/screen/` |
 | `map/` | `MapFeed`: what each player's map shows, pushed from the server once a second |
-| `domain/port/` | Interfaces for everything taken from SuperbWarfare (`Guns`, `Vehicles`, `Mortars`, `Grenades`, `Drones`, `Gear`, `PlayerSupply`, client-side `GunPoses`, `GunRendering`) and the `Ports` object that holds the implementations |
+| `domain/port/` | Interfaces for everything taken from SuperbWarfare. In common: `Guns`, `Vehicles`, `Mortars`, `Grenades`, `Drones`, `Gear`, `PlayerSupply` and the `Ports` object that holds their implementations. In NeoForge: the client-only `GunPoses` and `GunRendering`, held by `ClientPorts` |
 | `integration/sbw/` | The SuperbWarfare adapter: implements the ports, plus SBW-specific extras (creative tab, aircraft snapshots, boarding); `integration/sbw/client/` holds the rendering side |
 | `integration/journeymap/` | Optional JourneyMap plugin that draws the map feed and takes orders from the map |
-| `config/` | `SquadConfig` (server config, `serverconfig/sbwnpc-server.toml`) and `DebugConfig` (debug builds only) |
+| `config/` | In common: `SquadSettings`, the gameplay settings view, read through `Settings.current` (`DefaultSquadSettings` until the loader installs its own and in plain JVM tests). In NeoForge: `SquadConfig` (server config, `serverconfig/sbwnpc-server.toml`), which implements it, and `DebugConfig` (debug builds only) |
 | `util/` | Small shared helpers: timers, terrain queries, item stack data, the perf probe |
 
 Java mixins live in `neoforge/src/main/java/com/sbwnpc/squad/mixin/`, listed in
@@ -62,10 +66,13 @@ Java mixins live in `neoforge/src/main/java/com/sbwnpc/squad/mixin/`, listed in
 `SquadMod`'s constructor does all the wiring, once:
 
 1. Points each port in `Ports` at its SBW implementation (`Ports.guns = SbwGuns`, ...). The two
-   client-only ports are set in `FMLClientSetupEvent` handlers inside `integration/sbw/client/`.
-2. Registers the server config, and the debug config when the jar was built with
+   client-only ports in `ClientPorts` are set in `FMLClientSetupEvent` handlers inside
+   `integration/sbw/client/`.
+2. Installs the loader's packet delivery (`ClientboundPackets.transport`) and settings
+   (`Settings.current = SquadConfig`) for common code.
+3. Registers the server config, and the debug config when the jar was built with
    `./gradlew buildDevelop`.
-3. Registers the deferred registers from `init/` and forces `ModSensors`/`ModMemories` to load so
+4. Registers the deferred registers from `init/` and forces `ModSensors`/`ModMemories` to load so
    SmartBrainLib's registrations happen before the registries close.
 
 Everything else hooks in through `@EventBusSubscriber` objects: the game events each subsystem
@@ -128,7 +135,7 @@ comments above the task lists in `NpcEntity`.
   return live collections; copy before keeping a snapshot.
 - `OrderArrival` turns Attack and Retreat into Defend once most of the squad has arrived.
 - `SquadChunkLoader` keeps chunks loaded around busy squads so they keep moving and fighting away
-  from players (bounded by `SquadConfig.ACTIVE_SQUAD_CHUNK_LIMIT`).
+  from players (bounded by the `activeSquadChunkLimit` setting).
 - `SquadReports` sends radio calls (contact, losses, low ammo, arrival) to the owner's chat.
 - `RouteManager` (`SavedData`) holds named patrol routes per player; `RouteRecording` records new
   ones as the player walks.
@@ -242,5 +249,5 @@ Gameplay behaviour is verified by playtesting in game, not by these tests.
 | Persistent world state | A `SavedData`, or a field on an existing one with save and load. |
 | Runtime-only global state | An `object` with a `clearAll()`, called from `ServerLifecycle.onServerStopped`. |
 | Periodic server work | A `tick(server)` called from `ServerTick`. Spread expensive work with a budget like `TickBudget` or `PlanBudget`. |
-| A server setting | An entry in `SquadConfig`. |
+| A server setting | An entry in `SquadConfig`. If common code reads it, also a method on `SquadSettings` with its default in `DefaultSquadSettings`, and read it through `Settings.current`. |
 | An NPC class or faction | `npc/NpcClass` or `npc/SquadFaction`, plus textures and lang entries under `common/src/main/resources/assets/sbwnpc/`. |
