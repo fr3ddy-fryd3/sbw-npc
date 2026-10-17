@@ -527,9 +527,12 @@ object NativeTactics {
                 }
                 losses.remove(operation)
                 standings.remove(operation)
+                // The squads with a barracks fight on. This update still lists the withdrawn squads
+                // with the operation's, so it is skipped like a full withdrawal; the next one plans
+                // the attack without them.
                 if (attacking.size < all.size) {
                     attacking.forEach { operations.detach(it.id) }
-                    return OperationStanding.STEADY
+                    return standing
                 }
                 operations.finish(operation, OperationStatus.CANCELLED)
                 attacks.remove(operation)
