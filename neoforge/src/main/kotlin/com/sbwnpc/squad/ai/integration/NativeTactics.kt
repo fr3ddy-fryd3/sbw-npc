@@ -493,12 +493,17 @@ object NativeTactics {
         /**
          * The attacking operation's standing after its losses, over every squad in it, loaded or
          * not. On [OperationStanding.WITHDRAW] the attack is called off here and each squad falls back.
+         *
+         * Squads with a barracks are left out: it replaces their fallen, so they fight on whatever
+         * they lose (#57). Their men do not count, and a withdrawal pulls back only the squads
+         * without one; the attack goes on while a squad with a barracks is still in it.
          */
         private fun standing(operation: UUID, now: Long): OperationStanding {
             val manager = SquadManager.get(level)
-            val attacking = (operations.operation(operation)?.members?.keys ?: setOf(operation))
+            val all = (operations.operation(operation)?.members?.keys ?: setOf(operation))
                 .mapNotNull(manager::get)
                 .filter { it.order == SquadOrder.ATTACK && it.commandOutcome == CommandOutcome.ACTIVE && operations.pending(it.id) == null }
+            val attacking = all.filter { it.barracks == null }
             if (attacking.isEmpty()) {
                 losses.remove(operation)
                 standings.remove(operation)
@@ -520,9 +525,13 @@ object NativeTactics {
                     if (view != null && reference != null) manager.setObjective(level, squad.id, net.minecraft.core.BlockPos.containing(AttackAmmoWithdrawal.fallBack(level, reference, view)))
                     com.sbwnpc.squad.squad.SquadReports.attackFailedLosses(level.server, squad, (fraction * 100).toInt())
                 }
-                operations.finish(operation, OperationStatus.CANCELLED)
                 losses.remove(operation)
                 standings.remove(operation)
+                if (attacking.size < all.size) {
+                    attacking.forEach { operations.detach(it.id) }
+                    return OperationStanding.STEADY
+                }
+                operations.finish(operation, OperationStatus.CANCELLED)
                 attacks.remove(operation)
             }
             return standing
@@ -594,13 +603,15 @@ object NativeTactics {
                 val view = snapshots.getValue(saved.id)
                 val situation = CombatSituation(
                     focus != null,
-                    // An operation reviewing its losses holds the line it has instead of pushing on.
-                    saved.order == SquadOrder.ATTACK && !holding,
+                    // An operation reviewing its losses holds the line it has instead of pushing on;
+                    // a squad with a barracks presses on (#57).
+                    saved.order == SquadOrder.ATTACK && (!holding || saved.barracks != null),
                     focus?.y?.let { it > view.center.y + 4 } == true,
                     view.incoming.isNotEmpty(),
                     view.fighting.size.toDouble() / max(1, view.members.size),
                     1.0 - saved.members.size.toDouble() / max(1, max(view.peakStrength, saved.members.size)),
                     view.fighting.isNotEmpty(),
+                    reinforced = saved.barracks != null,
                 )
                 val evaluation = StrategyEvaluation.evaluate(facts(AgentId(AgentLevel.SQUAD, saved.id), now), situation)
                 val oldStrategy = strategies[saved.id]

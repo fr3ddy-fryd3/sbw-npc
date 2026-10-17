@@ -235,7 +235,13 @@ object TacticalDomain {
         }
 }
 
-data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean)
+/**
+ * One squad's fight as [StrategyEvaluation] sees it.
+ *
+ * @property reinforced the squad has a barracks that replaces its fallen, so its losses never
+ *   make it withdraw (#57).
+ */
+data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean, val reinforced: Boolean = false)
 object StrategyEvaluation {
     fun evaluate(facts: FactSnapshot, situation: CombatSituation): DecisionEvaluation<CombatStrategy> {
         fun candidate(strategy: CombatStrategy, allowed: Boolean, score: Double, reason: String) =
@@ -251,7 +257,7 @@ object StrategyEvaluation {
                 candidate(CombatStrategy.ADVANCE, (situation.offensive && situation.continuation) || !situation.contact, 0.55 + situation.readyFraction * 0.2, "advance_capacity"),
                 candidate(CombatStrategy.HOLD, true, if (!situation.offensive && situation.contact) 0.9 else 0.4, "hold_sector"),
                 candidate(CombatStrategy.GAIN_HEIGHT, situation.contact && situation.higherEnemy && situation.offensive, 0.93, "enemy_above"),
-                candidate(CombatStrategy.WITHDRAW, situation.incoming && situation.lossFraction >= 0.4 && !situation.continuation, 0.95, "losses_without_continuation"),
+                candidate(CombatStrategy.WITHDRAW, situation.incoming && situation.lossFraction >= 0.4 && !situation.continuation && !situation.reinforced, 0.95, "losses_without_continuation"),
             ),
         )
     }
