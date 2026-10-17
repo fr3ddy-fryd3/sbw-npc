@@ -145,6 +145,42 @@ object AttackDeploymentGameTests {
         }
     }
 
+    /**
+     * A fighting man whose entity no longer names his squad, as one left over in a world by an
+     * interrupted run did, must not crash the server on his next post search (#64).
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 700)
+    fun squadlessFighterDoesNotCrashPositionPlanning(helper: GameTestHelper) {
+        for (x in 0..79) for (z in 0..47) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        val attackers = (0..3).map { spawn(helper, Vec3(10.5 + it * 3, 1.0, 20.5), SquadFaction.PIG) }
+        val target = spawn(helper, Vec3(50.5, 1.0, 20.5), SquadFaction.COW).apply {
+            isNoAi = true
+            getAttribute(Attributes.MAX_HEALTH)!!.baseValue = 5000.0
+            health = maxHealth
+        }
+        val manager = SquadManager.get(helper.level)
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, attackers.map { it.uuid })
+        manager.setOrder(squad.id, SquadOrder.ATTACK)
+        manager.setObjective(helper.level, squad.id, helper.absolutePos(BlockPos(50, 1, 20)))
+        val orphan = attackers.first()
+        var orphanedAt = -1L
+        helper.onEachTick {
+            if (orphanedAt < 0 && com.sbwnpc.squad.ai.integration.NativeTactics.assignment(orphan) != null) {
+                orphan.squadId = null
+                orphanedAt = helper.tick
+            }
+            if (orphanedAt >= 0 && helper.tick >= orphanedAt + 200) {
+                (attackers + target).forEach { it.discard() }
+                helper.succeed()
+            }
+        }
+        helper.runAtTickTime(690) {
+            (attackers + target).forEach { it.discard() }
+            helper.fail("The attacker never got a position plan to break")
+        }
+    }
+
     /** Use SBW damage sources directly to distinguish damage from reporting a hostile contact. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 40)
