@@ -168,7 +168,9 @@ object NativeTactics {
                             val npc = requireNotNull(level.getEntity(intent.actor.id) as? NpcEntity)
                             NativePositionAction(intent, npc, { requireNotNull(combatView(npc.squadId!!)) }, { covering(intent) }, { failed, rejections ->
                                 failures[failed.actor.id] = LocalPositionFailure(original.anchor, level.gameTime, (failures[failed.actor.id]?.takeIf { it.anchor == original.anchor }?.attempts ?: 0) + 1, rejections.toMap())
-                                DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=local_failure rejected={}", failed.actor.id, rejections)
+                                // Heights tell a front anchor off the ground (a slope, a ridge) from a crowded area (#55).
+                                val ground = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, net.minecraft.util.Mth.floor(failed.anchor.x), net.minecraft.util.Mth.floor(failed.anchor.z))
+                                DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=local_failure duty={} rejected={} anchorY={} groundY={} actorY={}", failed.actor.id, failed.duty, rejections, "%.0f".format(failed.anchor.y), ground, "%.0f".format(npc.y))
                             }).also { actions[intent.actor.id] = it }
                         },
                     ),
