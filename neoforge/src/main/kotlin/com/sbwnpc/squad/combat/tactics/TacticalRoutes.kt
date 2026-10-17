@@ -54,8 +54,12 @@ object TacticalRoutes {
         val from = entity.position()
         val straight = leg(from, task)
         if (task.job == TacticalJob.FLANK || straight == task.anchor) return straight
-        val known = task.route?.takeUnless { walkedOut(it, from, task.anchor) }
-        val route = known?.takeIf { nodes -> nodes.any { it.distanceTo(from) <= ROUTE_DEVIATION } } ?: plan(entity, task) ?: known ?: return straight
+        if (task.route?.let { walkedOut(it, from, task.anchor) } == true) {
+            // Its last leg would be his own spot: plan the next stretch now, not after the retry delay.
+            task.route = null
+            task.nextRoutePlan = minOf(task.nextRoutePlan, entity.level().gameTime)
+        }
+        val route = task.route?.takeIf { nodes -> nodes.any { it.distanceTo(from) <= ROUTE_DEVIATION } } ?: plan(entity, task) ?: task.route ?: return straight
         val start = route.indices.minBy { route[it].distanceToSqr(from) }
         var walked = 0.0
         for (index in start + 1 until route.size) {
@@ -95,13 +99,19 @@ object TacticalRoutes {
     }
 
     /**
-     * Whether the man stands at the end of a partial [route], short of [anchor]. Its last leg would
-     * be his own spot, the #50 loop, so a new route is planned from there.
+     * Whether the man has walked a partial [route] to its end, short of [anchor]: the node nearest
+     * him is its last and he stands on it. Its last leg would be his own spot, the #50 loop.
      */
-    internal fun walkedOut(route: List<Vec3>, from: Vec3, anchor: Vec3): Boolean = route.last().distanceTo(from) <= ROUTE_DEVIATION && route.last().distanceTo(anchor) > ROUTE_DEVIATION
+    internal fun walkedOut(route: List<Vec3>, from: Vec3, anchor: Vec3): Boolean =
+        route.indices.minBy { route[it].distanceToSqr(from) } == route.lastIndex &&
+            route.last().distanceTo(from) <= ROUTE_END_REACH &&
+            route.last().distanceTo(anchor) > ROUTE_DEVIATION
 
     /** Route length of one leg: about the straight leg's 24 blocks. */
     private const val ROUTE_LEG = 20.0
+
+    /** A man this near the end of a partial route has walked it. */
+    private const val ROUTE_END_REACH = 3.0
 
     /** A partial route has to bring the man at least this much nearer the anchor. */
     private const val ROUTE_PROGRESS = 6.0

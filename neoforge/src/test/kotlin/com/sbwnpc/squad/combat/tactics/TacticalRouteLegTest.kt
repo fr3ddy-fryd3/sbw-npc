@@ -48,6 +48,14 @@ class TacticalRouteLegTest {
         assertFalse(TacticalRoutes.walkedOut(full, Vec3(41.0, 63.0, 12.5), anchor))
     }
 
+    @Test fun `a short route round an obstacle is not used up before it is walked`() {
+        // Out along the wall and back in: its end is 7 blocks from where he starts.
+        val round = listOf(from, Vec3(90.5, 63.0, 22.5), Vec3(83.5, 63.0, 22.5), Vec3(83.5, 63.0, 12.5))
+        assertFalse(TacticalRoutes.walkedOut(round, from, anchor))
+        assertFalse(TacticalRoutes.walkedOut(round, Vec3(88.0, 63.0, 22.5), anchor))
+        assertTrue(TacticalRoutes.walkedOut(round, Vec3(83.5, 63.0, 13.5), anchor))
+    }
+
     @Test fun `a path of a single node is no route`() {
         assertNull(TacticalRoutes.route(path(true, 90), from, anchor))
     }
