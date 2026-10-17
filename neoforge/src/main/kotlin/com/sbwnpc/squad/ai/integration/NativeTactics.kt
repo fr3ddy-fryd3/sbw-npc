@@ -92,6 +92,7 @@ object NativeTactics {
         private val sectors = HashMap<UUID, ApproachSectors<SectorGroup>>()
         private val sectorTraces = HashMap<UUID, Map<SectorGroup, Double>>()
         private val flankTraces = HashMap<UUID, Int>()
+        private val sectorsHeld = HashMap<UUID, Boolean>()
 
         // Members on the arc to their sector at the last layout: their intent is not kept once the
         // arc ends, or they would stay on its last waypoint.
@@ -377,6 +378,7 @@ object NativeTactics {
                     sectors.remove(id.id)
                     sectorTraces.remove(id.id)
                     flankTraces.remove(id.id)
+                    sectorsHeld.remove(id.id)
                     areaObservedAt.remove(id.id)
                     areaTraces.remove(id.id)
                     unverified.remove(id.id)
@@ -491,6 +493,7 @@ object NativeTactics {
                 enemiesAtObjective = defenders.size,
                 occupied = areaOccupied[operation] == true,
                 threatsNearby = threats.size,
+                sectorsHeld = sectorsHeld[operation] != false,
             )
             if (progress.phase != before) DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=attack_phase from={} to={} inputs={}", operation, before, progress.phase, inputs)
             val occupying = progress.occupying
@@ -546,6 +549,7 @@ object NativeTactics {
                 sectors.remove(operation)
                 sectorTraces.remove(operation)
                 flankTraces.remove(operation)
+                sectorsHeld.remove(operation)
             }
             return standing
         }
@@ -666,8 +670,11 @@ object NativeTactics {
             }
             val wasArcing = members.filter { it.id in arcing }.mapTo(HashSet()) { it.id }
             members.forEach { if (it.id in waypoints) arcing += it.id else arcing -= it.id }
+            // A sector is held once at most half its ready men are still on the arc.
+            val held = members.filter { it.ready }.groupBy { bearings[it.id] }.values.all { group -> group.count { it.id in waypoints } * 2 <= group.size }
+            sectorsHeld[operation] = held
             if (flankTraces.put(operation, waypoints.size) != waypoints.size && bearings.isNotEmpty()) {
-                DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=flank_march flanking={} of={}", operation, waypoints.size, members.size)
+                DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=flank_march flanking={} of={} held={}", operation, waypoints.size, members.size, held)
             }
             return squads.map { saved ->
                 val view = snapshots.getValue(saved.id)

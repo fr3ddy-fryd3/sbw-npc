@@ -56,7 +56,7 @@ class AttackProgress(now: Long) {
     }
 
     /** Records one update's observations and advances [phase]; returns the inputs it decided on. */
-    fun observe(now: Long, contactSeen: Boolean, incoming: Boolean, readyShooters: Int, enemiesAtObjective: Int, occupied: Boolean, threatsNearby: Int): AttackPhase.Inputs {
+    fun observe(now: Long, contactSeen: Boolean, incoming: Boolean, readyShooters: Int, enemiesAtObjective: Int, occupied: Boolean, threatsNearby: Int, sectorsHeld: Boolean = true): AttackPhase.Inputs {
         if (contactSeen) {
             lastContactAt = now
             if (engagedSince == null) engagedSince = now
@@ -75,6 +75,7 @@ class AttackProgress(now: Long) {
             threatsNearby = threatsNearby,
             aborted = aborted,
             peakThreatsNearby = peakThreats,
+            sectorsHeld = sectorsHeld,
         )
         val next = phase.next(inputs)
         if (phase != AttackPhase.DEPLOY && next == AttackPhase.DEPLOY) aborted = true
