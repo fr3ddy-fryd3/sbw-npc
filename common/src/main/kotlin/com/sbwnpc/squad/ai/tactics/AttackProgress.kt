@@ -27,6 +27,34 @@ class AttackProgress(now: Long) {
     // the post stays put while the man walks to it.
     private val closingOrigins = HashMap<UUID, Point3>()
 
+    // Defenders seen at the objective and when, kept past the short contact memory: see [defenders].
+    private val knownDefenders = HashMap<UUID, Pair<Point3, Long>>()
+
+    private var lastInputs: AttackPhase.Inputs? = null
+
+    // When half the movers first stood on their closing posts in this assault, and when the
+    // assault began; see [roles].
+    private var closedInSince: Long? = null
+    private var assaultSince: Long? = null
+
+    /** The closed-in assault goes onto the point despite defenders still seen round it. */
+    var occupying = false
+        private set
+
+    /**
+     * The defenders at the objective this attack knows of: those [seen] now, and those seen within
+     * [DEFENDER_MEMORY_TICKS] that are still [alive]. Returns their last known positions.
+     *
+     * Contacts last 10 s. In-game 17.10, 12 attackers against 16 defenders went to ASSAULT when
+     * only 5 of them were in sight: the rest had stepped out of view, not died, and the "thinned"
+     * defence beat the attack back with a third of it lost (#54).
+     */
+    fun defenders(now: Long, seen: Map<UUID, Point3>, alive: (UUID) -> Boolean): List<Point3> {
+        seen.forEach { (id, position) -> knownDefenders[id] = position to now }
+        knownDefenders.entries.removeIf { (id, known) -> now - known.second > DEFENDER_MEMORY_TICKS || !alive(id) }
+        return knownDefenders.values.map { it.first }
+    }
+
     /** Records one update's observations and advances [phase]; returns the inputs it decided on. */
     fun observe(now: Long, contactSeen: Boolean, incoming: Boolean, readyShooters: Int, enemiesAtObjective: Int, occupied: Boolean, threatsNearby: Int): AttackPhase.Inputs {
         if (contactSeen) {
@@ -51,16 +79,58 @@ class AttackProgress(now: Long) {
         val next = phase.next(inputs)
         if (phase != AttackPhase.DEPLOY && next == AttackPhase.DEPLOY) aborted = true
         phase = next
+        lastInputs = inputs
         return inputs
     }
 
-    /** The roles the current [phase] implies, keeping the members already sent clearing. */
-    fun roles(objective: Point3, movers: List<UUID>, members: List<AttackMember>, threats: List<Point3>): AttackRoles {
-        if (phase == AttackPhase.ASSAULT) {
-            members.filter { it.id in movers }.forEach { closingOrigins.putIfAbsent(it.id, it.position) }
-        } else {
+    /**
+     * The roles the current [phase] implies, keeping the members already sent clearing.
+     *
+     * A closed-in assault does not stop at its closing posts. Once half the movers have stood on
+     * theirs for [CLOSED_IN_TICKS] with the attack still twice the known defenders, they go onto
+     * the point, and taking it hands the rest to [AttackPhase.CLEAR]. Closing in alone ended
+     * nothing: in-game 17.10 an assault stood 20 blocks from the defenders for a quarter of an
+     * hour, reinforcements included, waiting for the last one near the point to fall (#54).
+     */
+    fun roles(now: Long, objective: Point3, movers: List<UUID>, members: List<AttackMember>, threats: List<Point3>): AttackRoles {
+        if (phase != AttackPhase.ASSAULT) {
             closingOrigins.clear()
+            closedInSince = null
+            assaultSince = null
+            occupying = false
+            return OperationTactics.roles(phase, objective, movers, members, threats, clearing).also { clearing = it.clearing.keys }
         }
-        return OperationTactics.roles(phase, objective, movers, members, threats, clearing, closingOrigins).also { clearing = it.clearing.keys }
+        members.filter { it.id in movers }.forEach { closingOrigins.putIfAbsent(it.id, it.position) }
+        if (!occupying) {
+            val closing = OperationTactics.roles(phase, objective, movers, members, threats, clearing, closingOrigins).closing
+            val positions = members.associate { it.id to it.position }
+            val standing = closing.count { (id, post) -> positions[id]?.let { distance(it, post) <= CLOSED_IN_REACH } == true }
+            if (closing.isNotEmpty() && standing * 2 >= closing.size && closedInSince == null) closedInSince = now
+            val since = assaultSince ?: now.also { assaultSince = it }
+            val inputs = lastInputs
+            // Whatever keeps the movers off their closing posts, an assault that still has the
+            // numbers does not stand there for good.
+            val due = closedInSince?.let { now - it >= CLOSED_IN_TICKS } == true || now - since >= ASSAULT_LIMIT_TICKS
+            occupying = due && inputs != null && inputs.readyShooters >= AttackPhase.ASSAULT_RATIO * inputs.enemiesAtObjective
+        }
+        // Going onto the point, the defenders still round it no longer hold the movers back.
+        val holding = if (occupying) threats.filterNot { OperationTactics.atObjective(it, objective) } else threats
+        return OperationTactics.roles(phase, objective, movers, members, holding, clearing, closingOrigins).also { clearing = it.clearing.keys }
+    }
+
+    private fun distance(a: Point3, b: Point3) = kotlin.math.hypot(a.x - b.x, a.z - b.z)
+
+    companion object {
+        /** A defender unseen this long (30 s) and not known dead is no longer counted. */
+        const val DEFENDER_MEMORY_TICKS = 600L
+
+        /** Half the movers on their closing posts this long (20 s) before going onto the point. */
+        const val CLOSED_IN_TICKS = 400L
+
+        /** A mover this near its closing post stands on it. */
+        const val CLOSED_IN_REACH = 6.0
+
+        /** An assault with the numbers goes onto the point after this long (60 s) in any case. */
+        const val ASSAULT_LIMIT_TICKS = 1200L
     }
 }

@@ -61,16 +61,16 @@ object OperationTactics {
 
     /**
      * Roles for [phase]. While defenders still hold the [objective] an assault closes in under
-     * fire: each front mover takes a firing post half as far from the nearest defender as it
-     * stood when the assault began ([origins], see [closingPost]). Once none are left at the
-     * point the movers occupy a loose ring inside it; once it is taken, the ready members nearest
-     * the [threats] (2 to [MAX_CLEARING_TEAM], keeping those already sent) each go after the
-     * nearest one while the rest hold.
+     * fire: each mover takes a firing post half as far from the nearest defender as it stood
+     * when the assault began ([origins], see [closingPost]). Once none are left at the point the
+     * movers occupy a loose ring inside it; once it is taken, the ready members nearest the
+     * [threats] (2 to [MAX_CLEARING_TEAM], keeping those already sent) each go after the nearest
+     * one while the rest hold.
      */
     fun roles(phase: AttackPhase, objective: Point3, movers: List<UUID>, members: List<AttackMember>, threats: List<Point3>, previousClearing: Set<UUID>, origins: Map<UUID, Point3> = emptyMap()): AttackRoles {
         if (phase == AttackPhase.DEPLOY) return AttackRoles.NONE
         // An assault is not a run onto the defenders: it shortens the range and keeps firing.
-        val defenders = threats.filter { distance(it, objective) <= AttackPhase.OBJECTIVE_RADIUS }
+        val defenders = threats.filter { atObjective(it, objective) }
         if (phase == AttackPhase.ASSAULT && defenders.isNotEmpty()) {
             val positions = members.associate { it.id to it.position }
             val closing = movers.mapNotNull { id -> (origins[id] ?: positions[id])?.let { id to closingPost(it, defenders) } }.toMap()
@@ -109,15 +109,19 @@ object OperationTactics {
                         val slot = roles.assault[intent.actor.id]
                         val post = roles.closing[intent.actor.id]
                         when {
-                            // Special duties (inspection, rear guard, marching orders) keep their own work.
-                            intent.duty !in setOf(CombatDuty.MOVE, CombatDuty.FIRE) -> intent
+                            // Special duties (inspection, observation, marching orders) keep their own
+                            // work. The rear guard joins an assault: left behind 84 blocks back, the
+                            // men a reinforcement added never reached the fight (#54).
+                            intent.duty !in setOf(CombatDuty.MOVE, CombatDuty.FIRE, CombatDuty.REAR_GUARD) -> intent
 
                             target != null -> intent.copy(duty = CombatDuty.SEARCH, anchor = target, focus = target, inspection = target, requireCover = false, requireShelter = false, minimumHeight = null, assault = true)
 
                             slot != null -> intent.copy(duty = CombatDuty.MOVE, anchor = slot, requireCover = false, requireShelter = false, minimumHeight = null, assault = true)
 
-                            // Closing in is still fire from cover at the role's own clearance.
-                            post != null -> intent.copy(duty = CombatDuty.FIRE, anchor = post, minimumHeight = null)
+                            // Closing in is still fire from cover, but inside the role's clearance:
+                            // kept to 48 blocks, riflemen never reached a post 20-30 blocks from the
+                            // defenders and the assault stood where it began (#54).
+                            post != null -> intent.copy(duty = CombatDuty.FIRE, anchor = post, minimumHeight = null, assault = true)
 
                             else -> intent
                         }
@@ -182,6 +186,9 @@ object OperationTactics {
         if (length < 1.0E-4) return post
         return Point3(post.x + dx / length * offset, post.y, post.z + dz / length * offset)
     }
+
+    /** Whether [threat] is near enough [objective] to be one of its defenders. */
+    fun atObjective(threat: Point3, objective: Point3) = distance(threat, objective) <= AttackPhase.OBJECTIVE_RADIUS
 
     private fun distance(a: Point3, b: Point3) = hypot(a.x - b.x, a.z - b.z)
     private fun distance3(a: Point3, b: Point3) = sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) + (a.z - b.z) * (a.z - b.z))

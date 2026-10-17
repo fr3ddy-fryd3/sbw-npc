@@ -40,7 +40,8 @@ class OperationTacticsTest {
         val applied = OperationTactics.apply(SquadMission(AgentId(AgentLevel.SQUAD, id(100)), listOf(TeamMission(AgentId(AgentLevel.TEAM, id(101)), listOf(PositionIntent(AgentId(AgentLevel.NPC, id(1)), CombatDuty.MOVE, Point3(100.0, 64.0, 30.0), Point3(100.0, 64.0, 50.0), defender))))), roles).teams.single().members.single()
         assertEquals(CombatDuty.FIRE, applied.duty)
         assertEquals(Point3(100.0, 64.0, 80.0), applied.anchor)
-        assertFalse(applied.assault)
+        // Inside the role's clearance, or a rifleman never reaches a post 20-30 blocks out (#54).
+        assertTrue(applied.assault)
     }
 
     @Test fun `the closing post is measured from where the assault began`() {
@@ -53,6 +54,15 @@ class OperationTacticsTest {
         val roles = OperationTactics.roles(AttackPhase.ASSAULT, objective, listOf(id(1)), listOf(member(1, 40.0)), listOf(Point3(100.0, 64.0, 200.0)), emptySet())
         assertTrue(roles.closing.isEmpty())
         assertEquals(setOf(id(1)), roles.assault.keys)
+    }
+
+    @Test fun `the rear guard joins an assault`() {
+        val rear = PositionIntent(AgentId(AgentLevel.NPC, id(1)), CombatDuty.REAR_GUARD, Point3(40.0, 64.0, 100.0), Point3(20.0, 64.0, 100.0), objective)
+        val mission = SquadMission(AgentId(AgentLevel.SQUAD, id(100)), listOf(TeamMission(AgentId(AgentLevel.TEAM, id(101)), listOf(rear))))
+        val post = Point3(70.0, 64.0, 100.0)
+        val applied = OperationTactics.apply(mission, AttackRoles(closing = mapOf(id(1) to post))).teams.single().members.single()
+        assertEquals(CombatDuty.FIRE, applied.duty)
+        assertEquals(post, applied.anchor)
     }
 
     @Test fun `clearing sends the nearest ready members and keeps the team stable`() {

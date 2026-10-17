@@ -2,6 +2,8 @@ package com.sbwnpc.squad.ai.tactics
 
 import com.sbwnpc.squad.ai.coordination.Point3
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.util.UUID
 
@@ -77,9 +79,82 @@ class AttackProgressTest {
         val ids = (1..8).map { UUID(0, it.toLong()) }
         val objective = Point3(100.0, 64.0, 100.0)
         val straggler = Point3(160.0, 64.0, 100.0)
-        val first = progress.roles(objective, ids, ids.mapIndexed { i, id -> AttackMember(id, Point3(100.0 + i * 2, 64.0, 100.0), true) }, listOf(straggler))
+        val first = progress.roles(100, objective, ids, ids.mapIndexed { i, id -> AttackMember(id, Point3(100.0 + i * 2, 64.0, 100.0), true) }, listOf(straggler))
         // The others are now nearer, but the team already sent stays.
-        val second = progress.roles(objective, ids, ids.mapIndexed { i, id -> AttackMember(id, Point3(160.0 - i * 2, 64.0, 100.0), true) }, listOf(straggler))
+        val second = progress.roles(110, objective, ids, ids.mapIndexed { i, id -> AttackMember(id, Point3(160.0 - i * 2, 64.0, 100.0), true) }, listOf(straggler))
         assertEquals(first.clearing.keys, second.clearing.keys)
+    }
+
+    private val objective = Point3(100.0, 64.0, 100.0)
+    private val defender = Point3(100.0, 64.0, 130.0)
+    private fun ids(n: Int) = (1..n).map { UUID(0, it.toLong()) }
+    private fun at(ids: List<UUID>, z: Double) = ids.map { AttackMember(it, Point3(100.0, 64.0, z), true) }
+
+    @Test fun `defenders out of sight are counted until forgotten or dead`() {
+        val progress = AttackProgress(0)
+        val (a, b, c) = ids(3)
+        val seen = mapOf(a to objective, b to objective, c to objective)
+        assertEquals(3, progress.defenders(0, seen) { true }.size)
+        assertEquals(3, progress.defenders(100, mapOf(a to objective)) { true }.size)
+        assertEquals(2, progress.defenders(200, mapOf(a to objective)) { it != c }.size)
+        assertEquals(1, progress.defenders(601, mapOf(a to objective)) { true }.size)
+    }
+
+    @Test fun `a defence that only stepped out of sight is not assaulted`() {
+        // In-game 17.10: 12 attackers assaulted 16 defenders when 5 were in sight (#54).
+        val progress = AttackProgress(0)
+        val defenders = ids(16).associateWith { objective }
+        progress.update(0, ready = 12, enemies = progress.defenders(0, defenders) { true }.size, incoming = true)
+        val inSight = defenders.entries.take(5).associate { it.toPair() }
+        progress.update(500, ready = 12, enemies = progress.defenders(500, inSight) { true }.size)
+        assertEquals(AttackPhase.DEPLOY, progress.phase)
+    }
+
+    private fun assaulting(ready: Int, enemies: Int): AttackProgress {
+        val progress = AttackProgress(0)
+        progress.update(0, ready = ready, enemies = enemies * 2, incoming = true)
+        progress.update(400, ready = ready, enemies = enemies, incoming = true)
+        assertEquals(AttackPhase.ASSAULT, progress.phase)
+        return progress
+    }
+
+    @Test fun `a closed-in assault with the advantage goes onto the point after twenty seconds`() {
+        val progress = assaulting(ready = 20, enemies = 4)
+        val movers = ids(4)
+        assertTrue(progress.roles(400, objective, movers, at(movers, 30.0), listOf(defender)).closing.isNotEmpty())
+        // On their closing posts (half way to the defender) from tick 410.
+        assertTrue(progress.roles(410, objective, movers, at(movers, 80.0), listOf(defender)).assault.isEmpty())
+        assertTrue(progress.roles(809, objective, movers, at(movers, 80.0), listOf(defender)).assault.isEmpty())
+        val roles = progress.roles(810, objective, movers, at(movers, 80.0), listOf(defender))
+        assertTrue(progress.occupying)
+        assertEquals(movers.toSet(), roles.assault.keys)
+        assertTrue(roles.closing.isEmpty())
+    }
+
+    @Test fun `movers still on their way to their closing posts do not start the clock`() {
+        val progress = assaulting(ready = 20, enemies = 4)
+        val movers = ids(4)
+        progress.roles(400, objective, movers, at(movers, 30.0), listOf(defender))
+        assertTrue(progress.roles(1000, objective, movers, at(movers, 50.0), listOf(defender)).assault.isEmpty())
+        assertFalse(progress.occupying)
+    }
+
+    @Test fun `an assault with the numbers goes onto the point after a minute even off its posts`() {
+        // In-game 17.10 the movers never reached their closing posts and the clock never started.
+        val progress = assaulting(ready = 20, enemies = 4)
+        val movers = ids(4)
+        assertTrue(progress.roles(400, objective, movers, at(movers, 30.0), listOf(defender)).assault.isEmpty())
+        assertTrue(progress.roles(1599, objective, movers, at(movers, 50.0), listOf(defender)).assault.isEmpty())
+        assertEquals(movers.toSet(), progress.roles(1600, objective, movers, at(movers, 50.0), listOf(defender)).assault.keys)
+    }
+
+    @Test fun `without a two to one advantage a closed-in assault keeps firing from its posts`() {
+        val progress = assaulting(ready = 12, enemies = 4)
+        // Not losing (12 >= 1.5 x 7), not twice the defenders either.
+        progress.update(410, ready = 12, enemies = 7, incoming = true)
+        assertEquals(AttackPhase.ASSAULT, progress.phase)
+        val movers = ids(4)
+        progress.roles(410, objective, movers, at(movers, 80.0), listOf(defender))
+        assertTrue(progress.roles(1000, objective, movers, at(movers, 80.0), listOf(defender)).assault.isEmpty())
     }
 }

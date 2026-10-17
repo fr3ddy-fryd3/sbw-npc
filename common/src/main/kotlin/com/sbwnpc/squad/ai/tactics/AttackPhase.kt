@@ -38,7 +38,7 @@ enum class AttackPhase {
         // Standing on the point does not win it against a defence that still outnumbers them.
         if (inputs.occupied && !losing) return if (inputs.threatsNearby > 0) CLEAR else ASSAULT
         return when (this) {
-            DEPLOY -> if (quiet || (superior(inputs) && suppressed(inputs))) ASSAULT else DEPLOY
+            DEPLOY -> if (quiet || (superior(inputs) && suppressed(inputs)) || overwhelming(inputs)) ASSAULT else DEPLOY
 
             // Lost ground before the objective is taken: back to the firing line rather than
             // walking the assault group into a fight it no longer wins.
@@ -76,7 +76,17 @@ enum class AttackPhase {
         /** Enemies this close to the objective count as holding it. */
         const val OBJECTIVE_RADIUS = 48.0
 
+        /** Ready shooters per known defender that start an assault without the defence thinning. */
+        const val OVERWHELMING_RATIO = 3.0
+
+        /** How long (40 s) the firing line works before overwhelming numbers alone start the assault. */
+        const val OVERWHELMING_ENGAGE_TICKS = 2 * ENGAGE_TICKS
+
         private fun superior(inputs: Inputs) = inputs.readyShooters >= ASSAULT_RATIO * inputs.enemiesAtObjective
+
+        // A defence counted from memory thins only as its men die, and sixteen men under fire never
+        // fall silent: in-game 17.10, 48 attackers stood off 16 defenders and never assaulted (#54).
+        private fun overwhelming(inputs: Inputs) = inputs.ticksEngaged >= OVERWHELMING_ENGAGE_TICKS && inputs.readyShooters >= OVERWHELMING_RATIO * inputs.enemiesAtObjective
 
         // A fresh force facing an untouched defence is not yet winning: the firing line first
         // has to thin it out or silence it. After a called-off assault silence no longer counts:
