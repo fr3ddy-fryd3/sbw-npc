@@ -61,17 +61,17 @@ object OperationTactics {
 
     /**
      * Roles for [phase]. While defenders still hold the [objective] an assault closes in under
-     * fire: each front mover takes a firing post half as far from the nearest defender as it
-     * stood when the assault began ([origins], see [closingPost]). Once none are left at the
-     * point the movers occupy a loose ring inside it; once it is taken, the ready members nearest
-     * the [threats] (2 to [MAX_CLEARING_TEAM], keeping those already sent) each go after the
-     * nearest one while the rest hold.
+     * fire: each mover takes a firing post half as far from the nearest defender as it stood
+     * when the assault began ([origins], see [closingPost]). Once none are left at the point, or
+     * once the closed-in assault is told to [occupy] it, the movers occupy a loose ring inside it;
+     * once it is taken, the ready members nearest the [threats] (2 to [MAX_CLEARING_TEAM],
+     * keeping those already sent) each go after the nearest one while the rest hold.
      */
-    fun roles(phase: AttackPhase, objective: Point3, movers: List<UUID>, members: List<AttackMember>, threats: List<Point3>, previousClearing: Set<UUID>, origins: Map<UUID, Point3> = emptyMap()): AttackRoles {
+    fun roles(phase: AttackPhase, objective: Point3, movers: List<UUID>, members: List<AttackMember>, threats: List<Point3>, previousClearing: Set<UUID>, origins: Map<UUID, Point3> = emptyMap(), occupy: Boolean = false): AttackRoles {
         if (phase == AttackPhase.DEPLOY) return AttackRoles.NONE
         // An assault is not a run onto the defenders: it shortens the range and keeps firing.
         val defenders = threats.filter { distance(it, objective) <= AttackPhase.OBJECTIVE_RADIUS }
-        if (phase == AttackPhase.ASSAULT && defenders.isNotEmpty()) {
+        if (phase == AttackPhase.ASSAULT && defenders.isNotEmpty() && !occupy) {
             val positions = members.associate { it.id to it.position }
             val closing = movers.mapNotNull { id -> (origins[id] ?: positions[id])?.let { id to closingPost(it, defenders) } }.toMap()
             return AttackRoles(closing = closing)
@@ -109,8 +109,10 @@ object OperationTactics {
                         val slot = roles.assault[intent.actor.id]
                         val post = roles.closing[intent.actor.id]
                         when {
-                            // Special duties (inspection, rear guard, marching orders) keep their own work.
-                            intent.duty !in setOf(CombatDuty.MOVE, CombatDuty.FIRE) -> intent
+                            // Special duties (inspection, observation, marching orders) keep their own
+                            // work. The rear guard joins an assault: left behind 84 blocks back, the
+                            // men a reinforcement added never reached the fight (#54).
+                            intent.duty !in setOf(CombatDuty.MOVE, CombatDuty.FIRE, CombatDuty.REAR_GUARD) -> intent
 
                             target != null -> intent.copy(duty = CombatDuty.SEARCH, anchor = target, focus = target, inspection = target, requireCover = false, requireShelter = false, minimumHeight = null, assault = true)
 

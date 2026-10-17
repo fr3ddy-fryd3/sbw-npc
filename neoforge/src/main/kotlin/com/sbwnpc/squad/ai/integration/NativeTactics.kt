@@ -459,23 +459,35 @@ object NativeTactics {
             val contacts = squads.flatMap { combatView(it.id)?.contacts.orEmpty() }.filter { now - it.seenAt <= 200 }.distinctBy { it.id }
             val members = squads.flatMap { snapshots[it.id]?.members.orEmpty() }
             val threats = contacts.filter { it.position.distanceTo(objective) <= AREA_THREAT_RADIUS }
+            val defenders = progress.defenders(
+                now,
+                contacts.filter { it.position.distanceTo(objective) <= AttackPhase.OBJECTIVE_RADIUS }.associate { it.id to it.position.point() },
+            ) { id -> (level.getEntity(id) as? net.minecraft.world.entity.LivingEntity)?.isAlive == true }
             val before = progress.phase
             val inputs = progress.observe(
                 now,
                 contactSeen = contacts.isNotEmpty(),
                 incoming = squads.any { snapshots[it.id]?.incoming?.isNotEmpty() == true },
                 readyShooters = members.count { it.ready },
-                enemiesAtObjective = contacts.count { it.position.distanceTo(objective) <= AttackPhase.OBJECTIVE_RADIUS },
+                enemiesAtObjective = defenders.size,
                 occupied = areaOccupied[operation] == true,
                 threatsNearby = threats.size,
             )
             if (progress.phase != before) DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=attack_phase from={} to={} inputs={}", operation, before, progress.phase, inputs)
+            val occupying = progress.occupying
+            // Every ready man takes part in an assault, not only the front rows of the line: the
+            // flanks and rear guard a reinforcement was added to never left the firing line (#54).
             return progress.roles(
+                now,
                 task.objective,
-                members.filter { formationDuties[it.id] == CombatDuty.MOVE }.map { it.id },
+                members.filter { it.ready }.map { it.id },
                 members.map { AttackMember(it.id, it.position.point(), it.ready) },
-                threats.map { it.position.point() },
-            )
+                (threats.map { it.position.point() } + defenders).distinct(),
+            ).also {
+                if (progress.occupying && !occupying) {
+                    DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=assault_occupy ready={} defenders={} movers={}", operation, inputs.readyShooters, defenders.size, it.assault.size)
+                }
+            }
         }
 
         /**
