@@ -281,6 +281,9 @@ internal class NativePositionAction(
         /** How much nearer the anchor, or the leg, a MOVE or SEARCH post has to be than the man. */
         private const val PROGRESS = 1.5
 
+        /** A MOVE or SEARCH post this near its anchor is the anchor itself, as in [reached]. */
+        private const val AT_ANCHOR = 4.0
+
         /**
          * Whether a MOVE or SEARCH post at [point] takes a man at [from] on towards [anchor]: it is
          * at the anchor, nearer it, or near the route leg [localAnchor] and nearer that leg.
@@ -291,7 +294,7 @@ internal class NativePositionAction(
          * replanned him (#50).
          */
         internal fun advances(from: Vec3, anchor: Vec3, localAnchor: Vec3, point: Vec3): Boolean {
-            if (point.distanceTo(anchor) <= 4 || point.distanceTo(anchor) < from.distanceTo(anchor) - PROGRESS) return true
+            if (point.distanceTo(anchor) <= AT_ANCHOR || point.distanceTo(anchor) < from.distanceTo(anchor) - PROGRESS) return true
             // A leg along the walked route may lead away from the anchor for a while to get round.
             return point.distanceTo(localAnchor) <= ROUTE_LEG_REACH && point.distanceTo(localAnchor) < from.distanceTo(localAnchor) - PROGRESS
         }
