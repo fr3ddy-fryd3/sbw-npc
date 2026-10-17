@@ -183,6 +183,10 @@ KDoc (`/** ... */`) goes on every class, object and non-obvious public or `inter
   The flag is baked into the jar at build time by the generated `BuildFlags` object (see
   `generateBuildFlags` in `build.gradle.kts`). It cannot be passed at runtime.
 - Tests only: `./gradlew test`.
+- Code smells: `./gradlew detekt`, which `check` and `build` also run for each module. It runs
+  detekt's code-smell rules only (`config/detekt/detekt.yml`); formatting is ktlint's job
+  (`formatKotlin`, `checkKotlinStyle`, see `docs/CODE-STYLE.md`). Findings that predate detekt are
+  in each module's `detekt-baseline.xml`. Fix new findings rather than adding them to the baseline.
 - Cloud or headless setup: `bash setup-minecraft-headless.sh --prepare`. Then run
   `bash setup-minecraft-headless.sh` for three real server smoke scenes, `--unit` for JUnit, or
   `--filter methodA,methodB --report name` for selected GameTests. `docs/HEADLESS-TESTS.md` covers
