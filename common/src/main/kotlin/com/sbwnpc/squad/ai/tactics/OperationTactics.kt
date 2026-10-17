@@ -59,6 +59,9 @@ object OperationTactics {
     /** Most attackers sent after enemies left around a taken objective. */
     const val MAX_CLEARING_TEAM = 4
 
+    /** A mover this near (horizontally) his front slot has arrived and fires from where he is. */
+    const val MOVE_ARRIVAL = 8.0
+
     /** Closing in, a mover halves its distance to the point's nearest defender, down to this. */
     const val CLOSE_DISTANCE = 20.0
 
@@ -159,7 +162,10 @@ object OperationTactics {
                 flanking -> CombatDuty.MOVE
 
                 // A mover that reached its post, or already fired, keeps firing instead of moving on.
-                proposal.duty == CombatDuty.MOVE -> if (reachedMove || wasFiring) CombatDuty.FIRE else CombatDuty.MOVE
+                // So does one that stands in his slot's area without a post: where no post has a
+                // firing lane, in-game 17.10 a flank's movers ran between search posts 10-15 blocks
+                // apart round their slot for minutes (#58).
+                proposal.duty == CombatDuty.MOVE -> if (reachedMove || wasFiring || distance(position, proposal.anchor) <= MOVE_ARRIVAL) CombatDuty.FIRE else CombatDuty.MOVE
 
                 approach -> CombatDuty.MOVE
 

@@ -122,4 +122,11 @@ class OperationTacticsTest {
         val inputs = DutyInputs(TacticalOrder.ATTACK, here, FrontProposal(CombatDuty.MOVE, waypoint, null), objective, null, inContact = true, elsewhere = false, scout = false, observer = false, hasPatrolRoute = false, reachedMove = true, wasFiring = true, flanking = true)
         assertEquals(DutyChoice(CombatDuty.MOVE, waypoint), OperationTactics.duty(inputs, fireReach = 40.0, approachOffset = 10.0))
     }
+
+    @Test fun `a mover in his slot's area fires from where he is even without a post`() {
+        val near = FrontProposal(CombatDuty.MOVE, Point3(here.x + 6.0, here.y, here.z), null)
+        assertEquals(DutyChoice(CombatDuty.FIRE, here), duty(proposal = near))
+        val far = FrontProposal(CombatDuty.MOVE, Point3(here.x + 20.0, here.y, here.z), null)
+        assertEquals(CombatDuty.MOVE, duty(proposal = far).duty)
+    }
 }
