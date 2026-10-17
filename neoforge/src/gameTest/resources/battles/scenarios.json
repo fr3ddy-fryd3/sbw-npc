@@ -23,6 +23,11 @@
     ],
     "defenders": [
       { "preset": "SIXTEEN", "at": [-97, -264] }
-    ]
+    ],
+    "expect": {
+      "note": "Even numbers: an attack assaults only at two to one, so the point is not expected to fall.",
+      "assault": false,
+      "taken": false
+    }
   }
 }
