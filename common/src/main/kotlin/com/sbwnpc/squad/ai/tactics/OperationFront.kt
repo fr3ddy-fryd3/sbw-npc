@@ -4,21 +4,29 @@ import com.sbwnpc.squad.ai.coordination.Point3
 import java.util.UUID
 import kotlin.math.abs
 import kotlin.math.ceil
+import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sin
 
 data class FormationActor(val id: UUID, val squad: UUID, val position: Point3, val engagementDistance: Double = 56.0)
 data class FrontProposal(val duty: CombatDuty, val anchor: Point3, val watch: Point3?)
 
 /** Proposes a curved front from reported enemy extent; surplus capacity covers depth and rear. */
 object OperationFront {
-    fun propose(actors: List<FormationActor>, enemies: List<Point3>, focus: Point3?, priorDuties: Map<UUID, CombatDuty> = emptyMap()): Map<UUID, FrontProposal> {
+    /**
+     * Each of [actors] mapped to its duty and post on a front facing [focus]. Without [approach]
+     * the front faces it from the actors' centre. With [approach] (a bearing in radians from
+     * [focus], see [ApproachSectors]) the front stands on that bearing instead, and is moved back
+     * so every one of [enemies], not only [focus], is at least each row's distance in front of it.
+     */
+    fun propose(actors: List<FormationActor>, enemies: List<Point3>, focus: Point3?, priorDuties: Map<UUID, CombatDuty> = emptyMap(), approach: Double? = null): Map<UUID, FrontProposal> {
         if (actors.isEmpty()) return emptyMap()
         require(actors.map { it.id }.distinct().size == actors.size)
         val center = Point3(actors.map { it.position.x }.average(), actors.map { it.position.y }.average(), actors.map { it.position.z }.average())
-        val dx = (focus?.x ?: center.x) - center.x
-        val dz = (focus?.z ?: center.z + 1) - center.z
+        val dx = approach?.let { -cos(it) } ?: ((focus?.x ?: center.x) - center.x)
+        val dz = approach?.let { -sin(it) } ?: ((focus?.z ?: center.z + 1) - center.z)
         val length = hypot(dx, dz)
         val fx = if (length > 0.01) dx / length else 0.0
         val fz = if (length > 0.01) dz / length else 1.0
@@ -29,6 +37,8 @@ object OperationFront {
         val extents = enemies.map(::projection)
         val enemyMin = extents.minOrNull() ?: 0.0
         val enemyMax = extents.maxOrNull() ?: 0.0
+        // Depth is measured from the enemy nearest the line, so the line is out of reach of all of them.
+        val reach = if (approach == null) 0.0 else min(0.0, enemies.minOfOrNull { (it.x - origin.x) * fx + (it.z - origin.z) * fz } ?: 0.0)
         val width = max(48.0, enemyMax - enemyMin + 24)
         // Capacity per row follows the enemy width at the former 3-block pitch; the wider spacing
         // lengthens the row rather than sending more men to the rear.
@@ -107,7 +117,7 @@ object OperationFront {
                         depth = -84.0 - index / 12 * 4
                     }
                 }
-                val anchor = Point3(origin.x + fx * depth + sx * lateral, origin.y, origin.z + fz * depth + sz * lateral)
+                val anchor = Point3(origin.x + fx * (depth + reach) + sx * lateral, origin.y, origin.z + fz * (depth + reach) + sz * lateral)
                 val watch = if (duty == CombatDuty.REAR_GUARD) Point3(anchor.x - fx * 20, anchor.y, anchor.z - fz * 20) else focus
                 result[actor.id] = FrontProposal(duty, anchor, watch)
             }

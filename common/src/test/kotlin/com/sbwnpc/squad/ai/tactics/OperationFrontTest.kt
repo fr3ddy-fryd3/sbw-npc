@@ -76,4 +76,14 @@ class OperationFrontTest {
         actors.forEach { assertEquals(before.getValue(it.id).duty, after.getValue(it.id).duty) }
         assertTrue(reinforcement.any { after.getValue(it.id).duty == CombatDuty.REAR_GUARD })
     }
+
+    @Test fun `a front on an approach bearing faces the objective from it and stays out of every enemy's reach`() {
+        val objective = Point3(0.0, 1.0, 0.0)
+        val enemies = listOf(objective, Point3(30.0, 1.0, 40.0), Point3(-20.0, 1.0, 10.0))
+        val proposals = OperationFront.propose(actors.take(16), enemies, objective, approach = Math.PI / 2)
+        proposals.values.filter { it.duty == CombatDuty.MOVE || it.duty == CombatDuty.FIRE }.forEach { proposal ->
+            // Bearing 90 degrees: the line stands on +z of the objective.
+            assertTrue(proposal.anchor.z > 40.0 + 56.0 - 1e-6, "${proposal.anchor}")
+        }
+    }
 }

@@ -85,6 +85,8 @@ object NativeTactics {
         private val areaTraces = HashMap<UUID, String>()
         private val areaOccupied = HashMap<UUID, Boolean>()
         private val attacks = HashMap<UUID, AttackProgress>()
+        private val sectors = HashMap<UUID, ApproachSectors<UUID>>()
+        private val sectorTraces = HashMap<UUID, Map<UUID, Double>>()
         private val losses = HashMap<UUID, OperationLosses>()
         private val standings = HashMap<UUID, OperationStanding>()
         private val unverified = HashMap<UUID, MutableMap<UUID, Vec3>>()
@@ -360,6 +362,8 @@ object NativeTactics {
                     areaClocks.remove(id.id)
                     areaOccupied.remove(id.id)
                     attacks.remove(id.id)
+                    sectors.remove(id.id)
+                    sectorTraces.remove(id.id)
                     areaObservedAt.remove(id.id)
                     areaTraces.remove(id.id)
                     unverified.remove(id.id)
@@ -524,6 +528,8 @@ object NativeTactics {
                 losses.remove(operation)
                 standings.remove(operation)
                 attacks.remove(operation)
+                sectors.remove(operation)
+                sectorTraces.remove(operation)
             }
             return standing
         }
@@ -538,6 +544,27 @@ object NativeTactics {
                 DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=reinforcement_march engaged={} nearestContact={} ticksSinceFire={}", squad, engaged, nearest?.let { "%.0f".format(it) }, sinceFire)
             }
             return engaged
+        }
+
+        /** Where an attacking operation's squads close on: its area objective, or the order's own. */
+        private fun attackObjective(operation: UUID, squads: List<Squad>): Point3? {
+            if (squads.any { it.order != SquadOrder.ATTACK }) return null
+            return currentAreaTask(operation)?.objective ?: squads.first().objective?.center?.point()
+        }
+
+        /**
+         * Each squad of an attack mapped to the bearing of its approach sector (see [ApproachSectors]);
+         * empty for a single squad, before the first contact or outside an attack. Logs each change.
+         */
+        private fun approachBearings(operation: UUID, squads: List<Squad>, contact: Boolean): Map<UUID, Double> {
+            val objective = attackObjective(operation, squads)
+            if (objective == null || squads.size < 2) return emptyMap()
+            val centres = squads.associate { saved -> saved.id to snapshots.getValue(saved.id).center.point() }
+            val bearings = sectors.getOrPut(operation, ::ApproachSectors).bearings(objective, centres, contact)
+            if (bearings.isNotEmpty() && sectorTraces.put(operation, bearings) != bearings) {
+                DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=approach_sectors objective={} bearings={}", operation, objective, bearings.mapValues { Math.toDegrees(it.value).toInt() })
+            }
+            return bearings
         }
 
         /** Geometry proposes areas; actual arrival, useful fire and native reachability remain observations. */
@@ -572,23 +599,31 @@ object NativeTactics {
             }
             val existingScouts = squads.flatMap { missions[it.id]?.teams.orEmpty() }.flatMap { it.members }.filter { it.duty == CombatDuty.SEARCH }.mapTo(HashSet()) { it.actor.id }
             val scouts = if (inspect != null) squads.flatMap { snapshots.getValue(it.id).members }.filter { it.ready }.sortedWith(compareBy<TacticalMember> { it.id !in existingScouts }.thenBy { it.position.distanceTo(inspect) }).take(2).mapTo(HashSet()) { it.id } else emptySet()
-            val proposals = OperationFront.propose(
-                squads.flatMap { saved ->
-                    snapshots.getValue(saved.id).members.map { member ->
-                        val previous = missions[saved.id]?.teams?.flatMap { it.members }?.firstOrNull { it.actor.id == member.id }
-                        if (previous?.duty == CombatDuty.FOLLOW_ORDER) allocationOrigins.remove(member.id)
-                        FormationActor(
-                            member.id,
-                            saved.id,
-                            allocationOrigins.getOrPut(member.id) { member.position.point() },
-                            max(CombatPositionSafety.clearance(member.role) + 8, member.role.assaultDistance + 8),
-                        )
-                    }
-                },
-                contacts.map { it.position.point() },
-                focus?.point(),
-                formationDuties,
-            )
+            val actors = squads.flatMap { saved ->
+                snapshots.getValue(saved.id).members.map { member ->
+                    val previous = missions[saved.id]?.teams?.flatMap { it.members }?.firstOrNull { it.actor.id == member.id }
+                    if (previous?.duty == CombatDuty.FOLLOW_ORDER) allocationOrigins.remove(member.id)
+                    FormationActor(
+                        member.id,
+                        saved.id,
+                        allocationOrigins.getOrPut(member.id) { member.position.point() },
+                        max(CombatPositionSafety.clearance(member.role) + 8, member.role.assaultDistance + 8),
+                    )
+                }
+            }
+            val enemies = contacts.map { it.position.point() }
+            val bearings = approachBearings(operation, squads, focus != null)
+            val proposals = if (bearings.isEmpty()) {
+                OperationFront.propose(actors, enemies, focus?.point(), formationDuties)
+            } else {
+                val objective = attackObjective(operation, squads)!!
+                // Only the point's defenders set the sector lines back: a contact off to one side
+                // would push a line far from the fight.
+                val defenders = enemies.filter { OperationTactics.atObjective(it, objective) }
+                actors.groupBy { bearings.getValue(it.squad) }.flatMap { (bearing, sector) ->
+                    OperationFront.propose(sector, defenders, objective, formationDuties, bearing).entries
+                }.associate { it.key to it.value }
+            }
             proposals.forEach { (id, proposal) -> formationDuties[id] = proposal.duty }
             return squads.map { saved ->
                 val view = snapshots.getValue(saved.id)
