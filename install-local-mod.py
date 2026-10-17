@@ -27,7 +27,7 @@ def install(source: Path, mods: Path) -> Path:
     staging = Path(staging)
     try:
         shutil.copy2(source, staging)
-        with staging.open("rb") as stream:
+        with staging.open("r+b") as stream:
             os.fsync(stream.fileno())
         if hashlib.sha256(staging.read_bytes()).digest() != hashlib.sha256(source.read_bytes()).digest():
             raise ValueError("The staged JAR does not match the build")
