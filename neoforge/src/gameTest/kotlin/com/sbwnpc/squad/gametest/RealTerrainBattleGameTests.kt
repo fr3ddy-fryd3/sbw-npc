@@ -103,6 +103,10 @@ object RealTerrainBattleGameTests {
         val radius = (scenario.attackers + scenario.defenders).maxOf { kotlin.math.hypot((it.x - scenario.objective.x).toDouble(), (it.z - scenario.objective.z).toDouble()) }.toInt() + 64
         val replay = SavedBattleReplay(level, copyRegions(Path.of(System.getProperty("sbwnpc.gameTestBattleSaves")).resolve(scenario.world), report.resolve("fixture"), scenario.objective, radius))
         replay.restoreTerrain(scenario.objective, radius)
+        // The test world persists between runs: NPCs left in these chunks by an interrupted run
+        // load again without their squads and would fight in this battle.
+        val area = net.minecraft.world.phys.AABB(scenario.objective).inflate(radius.toDouble(), 384.0, radius.toDouble())
+        level.getEntitiesOfClass(NpcEntity::class.java, area).forEach(Entity::discard)
         val manager = SquadManager.get(level)
         val previousGroups = DebugFlags.enabledGroups
         DebugFlags.enabledGroups = previousGroups + setOf(LogGroup.ORDER, LogGroup.FIRE)
