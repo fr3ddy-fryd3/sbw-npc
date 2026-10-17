@@ -3,7 +3,7 @@ package com.sbwnpc.squad.client.renderer
 import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.math.Axis
 import com.sbwnpc.squad.client.NpcModel
-import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.domain.port.ClientPorts
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.util.PerfProbe
 import net.minecraft.client.Minecraft
@@ -57,7 +57,7 @@ class NpcItemInHandLayer(
         packedLight: Int,
     ) {
         if (stack.isEmpty) return
-        if (!Ports.gunRendering.supports(stack)) {
+        if (!ClientPorts.gunRendering.supports(stack)) {
             super.renderArmWithItem(entity, stack, displayContext, arm, poseStack, buffer, packedLight)
             return
         }
@@ -68,7 +68,7 @@ class NpcItemInHandLayer(
             poseStack.mulPose(Axis.XP.rotationDegrees(-90.0f))
             poseStack.mulPose(Axis.YP.rotationDegrees(180.0f))
             poseStack.translate(if (arm == HumanoidArm.LEFT) -1.0f / 16 else 1.0f / 16, 0.125f, -0.625f)
-            Ports.gunRendering.render(entity, stack, displayContext, poseStack, buffer, packedLight)
+            ClientPorts.gunRendering.render(entity, stack, displayContext, poseStack, buffer, packedLight)
         } finally {
             poseStack.popPose()
         }

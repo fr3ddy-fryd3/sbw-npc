@@ -2,8 +2,8 @@ package com.sbwnpc.squad.integration.sbw.client
 
 import com.atsuishio.superbwarfare.client.PoseTool
 import com.atsuishio.superbwarfare.item.gun.GunItem
+import com.sbwnpc.squad.domain.port.ClientPorts
 import com.sbwnpc.squad.domain.port.GunPoses
-import com.sbwnpc.squad.domain.port.Ports
 import net.minecraft.client.model.HumanoidModel
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.LivingEntity
@@ -21,6 +21,6 @@ object SbwGunPoses : GunPoses {
 
     @SubscribeEvent
     fun onClientSetup(event: FMLClientSetupEvent) {
-        Ports.gunPoses = SbwGunPoses
+        ClientPorts.gunPoses = SbwGunPoses
     }
 }

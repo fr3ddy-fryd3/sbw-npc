@@ -50,9 +50,9 @@ class SquadMod(bus: IEventBus, container: ModContainer) {
     }
 
     companion object {
-        const val MODID = "sbwnpc"
+        const val MODID = ModIdentity.MODID
         val LOGGER = LogManager.getLogger(MODID)
 
-        fun loc(path: String): ResourceLocation = ResourceLocation.fromNamespaceAndPath(MODID, path)
+        fun loc(path: String): ResourceLocation = ModIdentity.loc(path)
     }
 }
