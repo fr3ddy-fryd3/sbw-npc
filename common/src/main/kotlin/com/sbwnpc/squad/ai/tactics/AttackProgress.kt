@@ -101,21 +101,24 @@ class AttackProgress(now: Long) {
             return OperationTactics.roles(phase, objective, movers, members, threats, clearing).also { clearing = it.clearing.keys }
         }
         members.filter { it.id in movers }.forEach { closingOrigins.putIfAbsent(it.id, it.position) }
-        if (!occupying) {
-            val closing = OperationTactics.roles(phase, objective, movers, members, threats, clearing, closingOrigins).closing
-            val positions = members.associate { it.id to it.position }
-            val standing = closing.count { (id, post) -> positions[id]?.let { distance(it, post) <= CLOSED_IN_REACH } == true }
-            if (closing.isNotEmpty() && standing * 2 >= closing.size && closedInSince == null) closedInSince = now
-            val since = assaultSince ?: now.also { assaultSince = it }
-            val inputs = lastInputs
-            // Whatever keeps the movers off their closing posts, an assault that still has the
-            // numbers does not stand there for good.
-            val due = closedInSince?.let { now - it >= CLOSED_IN_TICKS } == true || now - since >= ASSAULT_LIMIT_TICKS
-            occupying = due && inputs != null && inputs.readyShooters >= AttackPhase.ASSAULT_RATIO * inputs.enemiesAtObjective
-        }
+        if (!occupying) occupying = closedIn(now, objective, movers, members, threats)
         // Going onto the point, the defenders still round it no longer hold the movers back.
         val holding = if (occupying) threats.filterNot { OperationTactics.atObjective(it, objective) } else threats
         return OperationTactics.roles(phase, objective, movers, members, holding, clearing, closingOrigins).also { clearing = it.clearing.keys }
+    }
+
+    /** Whether the closed-in assault is due to go onto the point now; starts its clocks on the way. */
+    private fun closedIn(now: Long, objective: Point3, movers: List<UUID>, members: List<AttackMember>, threats: List<Point3>): Boolean {
+        val closing = OperationTactics.roles(phase, objective, movers, members, threats, clearing, closingOrigins).closing
+        val positions = members.associate { it.id to it.position }
+        val standing = closing.count { (id, post) -> positions[id]?.let { distance(it, post) <= CLOSED_IN_REACH } == true }
+        if (closing.isNotEmpty() && standing * 2 >= closing.size && closedInSince == null) closedInSince = now
+        val since = assaultSince ?: now.also { assaultSince = it }
+        // Whatever keeps the movers off their closing posts, an assault that still has the
+        // numbers does not stand there for good.
+        val due = closedInSince?.let { now - it >= CLOSED_IN_TICKS } == true || now - since >= ASSAULT_LIMIT_TICKS
+        val inputs = lastInputs ?: return false
+        return due && inputs.readyShooters >= AttackPhase.ASSAULT_RATIO * inputs.enemiesAtObjective
     }
 
     private fun distance(a: Point3, b: Point3) = kotlin.math.hypot(a.x - b.x, a.z - b.z)
