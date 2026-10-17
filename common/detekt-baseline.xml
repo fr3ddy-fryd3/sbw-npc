@@ -1,0 +1,136 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:Assignments.kt$AssignmentLedger$(current.status in terminal &amp;&amp; !(current.continuous &amp;&amp; current.status == AssignmentStatus.SUCCEEDED)) || !live(ticket.parent)</ID>
+    <ID>ComplexCondition:Assignments.kt$AssignmentLedger$(current.status in terminal &amp;&amp; !(current.continuous &amp;&amp; current.status == AssignmentStatus.SUCCEEDED)) || !live(ticket.parent) || current.task.key != task.key</ID>
+    <ID>ComplexCondition:Assignments.kt$AssignmentLedger$current.ticket != report.ticket || report.revision != current.revision || (current.status in terminal &amp;&amp; !(current.continuous &amp;&amp; current.status == AssignmentStatus.SUCCEEDED)) || !live(current.ticket.parent)</ID>
+    <ID>ComplexCondition:Assignments.kt$AssignmentLedger$previous != null &amp;&amp; previous.ticket.parent != parent &amp;&amp; previous.status != AssignmentStatus.REVOKED &amp;&amp; live(previous.ticket.parent) &amp;&amp; authorized(previous.ticket.parent.owner.agent, child)</ID>
+    <ID>ComplexCondition:Assignments.kt$AssignmentLedger$previous != null &amp;&amp; previous.ticket.parent == parent &amp;&amp; previous.task == task &amp;&amp; previous.continuous == continuous &amp;&amp; previous.status != AssignmentStatus.REVOKED</ID>
+    <ID>ComplexCondition:CellPlanner.kt$CellPlanner.Search$dx != 0 &amp;&amp; dz != 0 &amp;&amp; (!medium.open(x + dx, z) || !medium.open(x, z + dz))</ID>
+    <ID>ComplexCondition:Execution.kt$PlanRuntime$entry.ticket != ticket || !entry.acceptsExternal || !entry.started || entry.status !in setOf(ExecutionStatus.RUNNING, ExecutionStatus.SUSPENDED)</ID>
+    <ID>ComplexCondition:PlanningAgent.kt$PlanningAgent$runtime.completed &amp;&amp; search == null &amp;&amp; waiting.isEmpty() &amp;&amp; status == PlanningStatus.EXECUTING</ID>
+    <ID>ComplexCondition:PlanningAgent.kt$PlanningAgent$search == null &amp;&amp; status in setOf(PlanningStatus.EXECUTING, PlanningStatus.COMPLETED) &amp;&amp; old != null &amp;&amp; !old.inputUnchanged(facts)</ID>
+    <ID>CyclomaticComplexMethod:Assignments.kt$AssignmentLedger$fun delegate(parent: ExecutionTicket, child: AgentId, task: TaskCall&lt;*&gt;, now: Long, continuous: Boolean = false): DelegationResult</ID>
+    <ID>CyclomaticComplexMethod:Assignments.kt$AssignmentLedger$fun report(report: ChildReport, now: Long): Boolean</ID>
+    <ID>CyclomaticComplexMethod:CellPlanner.kt$CellPlanner.Search$fun step(budget: Int): Boolean</ID>
+    <ID>CyclomaticComplexMethod:CellPlanner.kt$CellPlanner.Search$private fun partsOf(cell: Long): IntArray</ID>
+    <ID>CyclomaticComplexMethod:CellPlanner.kt$CellPlanner.Search$private fun visitCell(n: Long, cg: Double)</ID>
+    <ID>CyclomaticComplexMethod:Execution.kt$PlanRuntime$fun install(next: HtnPlan, facts: FactSnapshot): Boolean</ID>
+    <ID>CyclomaticComplexMethod:Execution.kt$PlanRuntime$fun tick(facts: FactSnapshot, work: Int = 64)</ID>
+    <ID>CyclomaticComplexMethod:GroundMap.kt$GroundMap$private fun read(level: ServerLevel, cx: Int, cz: Int, now: Long): Chunk</ID>
+    <ID>CyclomaticComplexMethod:HtnPlanner.kt$HtnPlanningSession$fun advance(work: Int): PlanningResult</ID>
+    <ID>CyclomaticComplexMethod:OperationFront.kt$OperationFront$fun propose(actors: List&lt;FormationActor&gt;, enemies: List&lt;Point3&gt;, focus: Point3?, priorDuties: Map&lt;UUID, CombatDuty&gt; = emptyMap()): Map&lt;UUID, FrontProposal&gt;</ID>
+    <ID>CyclomaticComplexMethod:OperationTactics.kt$OperationTactics$fun duty(inputs: DutyInputs, fireReach: Double, approachOffset: Double): DutyChoice</ID>
+    <ID>CyclomaticComplexMethod:Operations.kt$OperationRegistry$fun command(batch: CommandBatch): OperationCommandResult</ID>
+    <ID>CyclomaticComplexMethod:PlanningAgent.kt$PlanningAgent$fun tick(facts: FactSnapshot, planningWork: Int = 4, executionWork: Int = 64)</ID>
+    <ID>LongMethod:CellPlanner.kt$CellPlanner.Search$fun step(budget: Int): Boolean</ID>
+    <ID>LongMethod:CellPlanner.kt$CellPlanner.Search$private fun visitCell(n: Long, cg: Double)</ID>
+    <ID>LongMethod:OperationFront.kt$OperationFront$fun propose(actors: List&lt;FormationActor&gt;, enemies: List&lt;Point3&gt;, focus: Point3?, priorDuties: Map&lt;UUID, CombatDuty&gt; = emptyMap()): Map&lt;UUID, FrontProposal&gt;</ID>
+    <ID>LongParameterList:AreaControlClock.kt$AreaControlClock$(now: Long, loaded: Boolean, occupied: Boolean, inspected: Boolean, threat: Boolean, incoming: Boolean)</ID>
+    <ID>LongParameterList:AttackPhaseTest.kt$AttackPhaseTest$(ready: Int, enemies: Int, peak: Int = enemies, quiet: Long = 0, engaged: Long = 400, silent: Long = 0, occupied: Boolean = false, threats: Int = 0, aborted: Boolean = false, peakThreats: Int = threats)</ID>
+    <ID>LongParameterList:AttackProgress.kt$AttackProgress$(now: Long, contactSeen: Boolean, incoming: Boolean, readyShooters: Int, enemiesAtObjective: Int, occupied: Boolean, threatsNearby: Int)</ID>
+    <ID>LongParameterList:AttackProgressTest.kt$AttackProgressTest$(now: Long, ready: Int, enemies: Int, contact: Boolean = enemies &gt; 0, incoming: Boolean = false, occupied: Boolean = false, threats: Int = enemies)</ID>
+    <ID>LongParameterList:CellPlanner.kt$CellPlanner.Route$( val route: List&lt;Vec3&gt;, /** Every column of the way, a block or so apart — for walking it in a column of men. */ val trail: List&lt;Vec3&gt;, val landing: Vec3, val shore: Vec3, val length: Double, val complete: Boolean, private val pace: Double, )</ID>
+    <ID>LongParameterList:Facts.kt$FactSnapshot$(key: FactKey&lt;T&gt;, value: T, observedAt: Long = now, availableAt: Long = observedAt, expiresAt: Long = Long.MAX_VALUE, source: String = "observation")</ID>
+    <ID>LongParameterList:Grenades.kt$Grenades$(thrower: LivingEntity, level: ServerLevel, target: Vec3, targetVelocity: Vec3, kind: GrenadeKind, nearTarget: Double)</ID>
+    <ID>LongParameterList:HtnPlanner.kt$HtnPlanningSession$( private val domain: HtnDomain, private val owner: PlanOwner, root: TaskCall&lt;*&gt;, private val facts: FactSnapshot, private val maxExpansions: Int = 4096, private val maxDepth: Int = 64, private val event: (PlanningEvent) -&gt; Unit = {}, )</ID>
+    <ID>LongParameterList:NpcClass.kt$NpcClass$( val weaponPool: List&lt;ResourceLocation&gt;, val shootDistanceMultiplier: Double = 1.0, val accuracyMultiplier: Double = 1.0, val speedMultiplier: Double = 1.4, // "everyone else" default per user request — was the one global value before /** Rear offset from a contacted enemy; ordinary order movement still reaches its objective. */ val attackStandoffDistance: Double = 0.0, /** Movement clearance; short-range assault weapons need to approach closer than rifles. */ val combatClearance: Double = 48.0, /** Most primaries can fire at shared contacts beyond detection range. */ val maxFireDistance: Double = Double.POSITIVE_INFINITY, )</ID>
+    <ID>LongParameterList:OperationTactics.kt$OperationTactics$(phase: AttackPhase, objective: Point3, movers: List&lt;UUID&gt;, members: List&lt;AttackMember&gt;, threats: List&lt;Point3&gt;, previousClearing: Set&lt;UUID&gt;, origins: Map&lt;UUID, Point3&gt; = emptyMap())</ID>
+    <ID>LongParameterList:OperationTacticsTest.kt$OperationTacticsTest$(order: TacticalOrder = TacticalOrder.ATTACK, proposal: FrontProposal = FrontProposal(CombatDuty.FIRE, Point3(60.0, 64.0, 100.0), null), inContact: Boolean = true, scout: Boolean = false, observer: Boolean = false, reachedMove: Boolean = false, wasFiring: Boolean = false, elsewhere: Boolean = false)</ID>
+    <ID>LongParameterList:Payloads.kt$ConfigureToolPayload$( val cls: Int, val rank: Int, val faction: Int, val preset: Int, val vehicle: Boolean, val vehicleModel: Int, val tankModel: Int, val heliModel: Int, )</ID>
+    <ID>MagicNumber:CellPlanner.kt$CellPlanner$3</ID>
+    <ID>MagicNumber:CellPlanner.kt$CellPlanner.Search$0.5</ID>
+    <ID>MagicNumber:CellPlanner.kt$CellPlanner.Search$1e-9</ID>
+    <ID>MagicNumber:Driving.kt$Driving$0.5</ID>
+    <ID>MagicNumber:Execution.kt$ResourceLeases$20.0</ID>
+    <ID>MagicNumber:GroundMap.kt$GroundMap$0.5</ID>
+    <ID>MagicNumber:GroundMap.kt$GroundMap$15</ID>
+    <ID>MagicNumber:GroundMap.kt$GroundMap$16</ID>
+    <ID>MagicNumber:GroundMap.kt$GroundMap$256</ID>
+    <ID>MagicNumber:GroundMap.kt$GroundMap$4</ID>
+    <ID>MagicNumber:HtnPlanner.kt$HtnPlanningSession$31</ID>
+    <ID>MagicNumber:HtnPlanner.kt$HtnPlanningSession$32</ID>
+    <ID>MagicNumber:NpcAttributes.kt$NpcAttributes$48.0</ID>
+    <ID>MagicNumber:NpcClass.kt$NpcClass$120</ID>
+    <ID>MagicNumber:NpcClass.kt$NpcClass$180</ID>
+    <ID>MagicNumber:NpcClass.kt$NpcClass$20</ID>
+    <ID>MagicNumber:NpcClass.kt$NpcClass$210</ID>
+    <ID>MagicNumber:NpcClass.kt$NpcClass$24.0</ID>
+    <ID>MagicNumber:NpcClass.kt$NpcClass$320</ID>
+    <ID>MagicNumber:NpcClass.kt$NpcClass$400</ID>
+    <ID>MagicNumber:NpcClass.kt$NpcClass$50</ID>
+    <ID>MagicNumber:NpcClass.kt$NpcClass$60</ID>
+    <ID>MagicNumber:NpcClass.kt$NpcClass$64</ID>
+    <ID>MagicNumber:NpcClass.kt$NpcClass$85</ID>
+    <ID>MagicNumber:NpcRank.kt$NpcRank.ELITE$1.3</ID>
+    <ID>MagicNumber:NpcRank.kt$NpcRank.ELITE$10</ID>
+    <ID>MagicNumber:NpcRank.kt$NpcRank.ELITE$3.0</ID>
+    <ID>MagicNumber:NpcRank.kt$NpcRank.ELITE$450</ID>
+    <ID>MagicNumber:NpcRank.kt$NpcRank.RECRUIT$0.7</ID>
+    <ID>MagicNumber:NpcRank.kt$NpcRank.RECRUIT$32</ID>
+    <ID>MagicNumber:NpcRank.kt$NpcRank.RECRUIT$7.0</ID>
+    <ID>MagicNumber:NpcRank.kt$NpcRank.RECRUIT$900</ID>
+    <ID>MagicNumber:NpcRank.kt$NpcRank.REGULAR$0.9</ID>
+    <ID>MagicNumber:NpcRank.kt$NpcRank.REGULAR$24</ID>
+    <ID>MagicNumber:NpcRank.kt$NpcRank.REGULAR$5.5</ID>
+    <ID>MagicNumber:NpcRank.kt$NpcRank.REGULAR$700</ID>
+    <ID>MagicNumber:NpcRank.kt$NpcRank.VETERAN$1.1</ID>
+    <ID>MagicNumber:NpcRank.kt$NpcRank.VETERAN$16</ID>
+    <ID>MagicNumber:NpcRank.kt$NpcRank.VETERAN$4.0</ID>
+    <ID>MagicNumber:NpcRank.kt$NpcRank.VETERAN$550</ID>
+    <ID>MagicNumber:OperationFront.kt$OperationFront$0.01</ID>
+    <ID>MagicNumber:OperationFront.kt$OperationFront$0.15</ID>
+    <ID>MagicNumber:OperationFront.kt$OperationFront$1.5</ID>
+    <ID>MagicNumber:OperationFront.kt$OperationFront$12</ID>
+    <ID>MagicNumber:OperationFront.kt$OperationFront$20</ID>
+    <ID>MagicNumber:OperationFront.kt$OperationFront$24</ID>
+    <ID>MagicNumber:OperationFront.kt$OperationFront$3</ID>
+    <ID>MagicNumber:OperationFront.kt$OperationFront$4</ID>
+    <ID>MagicNumber:OperationFront.kt$OperationFront$48.0</ID>
+    <ID>MagicNumber:OperationFront.kt$OperationFront$5.5</ID>
+    <ID>MagicNumber:OperationFront.kt$OperationFront$84.0</ID>
+    <ID>MagicNumber:OperationTactics.kt$OperationTactics$1.0E-4</ID>
+    <ID>MagicNumber:OperationTactics.kt$OperationTactics$4</ID>
+    <ID>MagicNumber:OperationTactics.kt$OperationTactics$4.0</ID>
+    <ID>MagicNumber:OperationTactics.kt$OperationTactics$8</ID>
+    <ID>MagicNumber:SquadFaction.kt$SquadFaction$0xFFFFFF</ID>
+    <ID>MagicNumber:SquadFaction.kt$SquadFaction.COW$0x80A0FF</ID>
+    <ID>MagicNumber:SquadPreset.kt$SquadPreset.DRONE_TEAM$4</ID>
+    <ID>MagicNumber:SquadPreset.kt$SquadPreset.FIVE$3</ID>
+    <ID>MagicNumber:SquadPreset.kt$SquadPreset.SEVEN$3</ID>
+    <ID>MagicNumber:SquadPreset.kt$SquadPreset.SIXTEEN$9</ID>
+    <ID>MagicNumber:SquadPreset.kt$SquadPreset.THIRTY_TWO$18</ID>
+    <ID>MagicNumber:SquadPreset.kt$SquadPreset.THIRTY_TWO$4</ID>
+    <ID>MagicNumber:SquadSettings.kt$DefaultSquadSettings$0.35</ID>
+    <ID>MagicNumber:SquadSettings.kt$DefaultSquadSettings$0.5</ID>
+    <ID>MagicNumber:SquadSettings.kt$DefaultSquadSettings$0.65</ID>
+    <ID>MagicNumber:SquadSettings.kt$DefaultSquadSettings$0.75</ID>
+    <ID>MagicNumber:SquadSettings.kt$DefaultSquadSettings$20</ID>
+    <ID>MagicNumber:TacticalDomain.kt$StrategyEvaluation$0.2</ID>
+    <ID>MagicNumber:TacticalDomain.kt$StrategyEvaluation$0.4</ID>
+    <ID>MagicNumber:TacticalDomain.kt$StrategyEvaluation$0.55</ID>
+    <ID>MagicNumber:TacticalDomain.kt$StrategyEvaluation$0.9</ID>
+    <ID>MagicNumber:TacticalDomain.kt$StrategyEvaluation$0.93</ID>
+    <ID>MagicNumber:TacticalDomain.kt$StrategyEvaluation$0.95</ID>
+    <ID>MagicNumber:TacticalDomain.kt$TacticalDomain$0.01</ID>
+    <ID>MagicNumber:TacticalDomain.kt$TacticalDomain$12.0</ID>
+    <ID>MagicNumber:TacticalDomain.kt$TacticalDomain$16.0</ID>
+    <ID>MagicNumber:TacticalDomain.kt$TacticalDomain$24.0</ID>
+    <ID>MagicNumber:TacticalDomain.kt$TacticalDomain$36.0</ID>
+    <ID>MagicNumber:TacticalDomain.kt$TacticalDomain$48</ID>
+    <ID>MagicNumber:VehicleModels.kt$HelicopterModel.AH_6$3</ID>
+    <ID>MagicNumber:Walking.kt$Walking$0.5</ID>
+    <ID>NestedBlockDepth:Assignments.kt$AssignmentLedger$fun revoke(ticket: AssignmentTicket, now: Long, reason: String): Boolean</ID>
+    <ID>NestedBlockDepth:CellPlanner.kt$CellPlanner$fun search(medium: Medium, from: Vec3, goal: Vec3): Search?</ID>
+    <ID>NestedBlockDepth:CellPlanner.kt$CellPlanner.Search$fun step(budget: Int): Boolean</ID>
+    <ID>NestedBlockDepth:CellPlanner.kt$CellPlanner.Search$private fun visitCell(n: Long, cg: Double)</ID>
+    <ID>NestedBlockDepth:GroundMap.kt$GroundMap$private fun read(level: ServerLevel, cx: Int, cz: Int, now: Long): Chunk</ID>
+    <ID>TooManyFunctions:CellPlanner.kt$CellPlanner$Search</ID>
+    <ID>TooManyFunctions:Drones.kt$Drones</ID>
+    <ID>TooManyFunctions:Execution.kt$PlanRuntime</ID>
+    <ID>TooManyFunctions:Guns.kt$Guns</ID>
+    <ID>TooManyFunctions:Mortars.kt$Mortars</ID>
+    <ID>TooManyFunctions:Vehicles.kt$Vehicles</ID>
+  </CurrentIssues>
+</SmellBaseline>

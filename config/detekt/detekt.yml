@@ -1,0 +1,33 @@
+# Overrides on top of detekt's default config (buildUponDefaultConfig in the jvm conventions).
+# Rule reference: https://detekt.dev/docs/rules/style
+#
+# detekt checks code smells only; ktlint and .editorconfig own formatting (docs/CODE-STYLE.md).
+# The rules switched off below either repeat ktlint's checks or fight idioms the codebase uses on
+# purpose. Findings that predate detekt are recorded in each module's detekt-baseline.xml, so new
+# code is still held to the limits. Regenerate a baseline with ./gradlew detektBaseline only after
+# removing an entry's cause, never to hide a new finding.
+
+config:
+  validation: true
+
+style:
+  # Formatting rules ktlint already applies, or deliberately relaxes in .editorconfig.
+  MaxLineLength:
+    active: false
+  WildcardImport:
+    active: false
+  NewLineAtEndOfFile:
+    active: false
+  # Thresholds get a named constant with its unit (docs/CODE-STYLE.md). Scenario coordinates in
+  # GameTests are exempt like those in unit tests; the list repeats detekt's default excludes.
+  MagicNumber:
+    excludes: ['**/test/**', '**/gameTest/**', '**/*.kts']
+  # Early-continue scans over candidates (cover spots, seats, targets) are the house idiom.
+  LoopWithTooManyJumpStatements:
+    active: false
+  # Guard clauses with early returns are the house idiom for AI checks.
+  ReturnCount:
+    active: false
+  # NeoForge event handlers and SavedData loaders must take these even when they don't read them.
+  UnusedParameter:
+    allowedNames: 'ignored|expected|event|registries'
