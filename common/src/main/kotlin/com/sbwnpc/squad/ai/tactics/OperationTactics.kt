@@ -27,7 +27,7 @@ data class AttackMember(val id: UUID, val position: Point3, val ready: Boolean)
  *
  * @property elsewhere the order's objective is in another dimension.
  * @property inContact the operation has a live contact to fight.
- * @property observer a machine gunner or sniper with primary ammo, who watches from height when idle.
+ * @property observer a machine gunner or sniper with primary ammo, who holds a height in defence, in a fight too.
  * @property reachedMove the member's current MOVE post is reached.
  * @property wasFiring the member's previous intent was FIRE.
  * @property flanking the member is on his way round the objective to his sector, see
@@ -152,7 +152,9 @@ object OperationTactics {
 
                 scout && order == TacticalOrder.ATTACK -> CombatDuty.SEARCH
 
-                !inContact && (order == TacticalOrder.DEFEND || (order == TacticalOrder.PATROL && !hasPatrolRoute)) && observer -> CombatDuty.OBSERVE
+                // A sentry fights from his height. Sent to fire from where he stood, a gunner stayed below
+                // the tower, and a sentry left it whenever a reported target hid (#73).
+                (order == TacticalOrder.DEFEND || (order == TacticalOrder.PATROL && !hasPatrolRoute)) && observer -> CombatDuty.OBSERVE
 
                 !inContact || order in setOf(TacticalOrder.RETREAT, TacticalOrder.MOVE, TacticalOrder.BARRAGE) -> CombatDuty.FOLLOW_ORDER
 

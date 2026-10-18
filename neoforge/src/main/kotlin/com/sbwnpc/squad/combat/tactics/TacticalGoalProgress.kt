@@ -7,17 +7,9 @@ import net.minecraft.world.phys.Vec3
 object TacticalGoalProgress {
     fun reached(task: TacticalTask, point: Vec3): Boolean = point.distanceTo(task.anchor) <= GOAL_RADIUS
 
-    fun permitsAdvance(task: TacticalTask, origin: Vec3, point: Vec3, deploying: Boolean): Boolean {
-        val front = task.frontage
-        if (deploying && front != null) {
-            if (task.permitsFront(point)) return true
-            return !FiringPostArrival.reached(origin, point) &&
-                point.subtract(front.point).horizontalDistance() < origin.subtract(front.point).horizontalDistance() - MINIMUM_GAIN
-        }
+    fun permitsAdvance(task: TacticalTask, origin: Vec3, point: Vec3): Boolean {
         if (task.job !in setOf(TacticalJob.ADVANCE, TacticalJob.SEARCH, TacticalJob.RESERVE, TacticalJob.OBSERVE)) return true
-        // Arrival near the anchor is insufficient while still outside the assigned lane.
-        // Deployment must not repeatedly select the actor's current intermediate position.
-        if (reached(task, point) && (!deploying || task.permitsFront(point))) return true
+        if (reached(task, point)) return true
         return !FiringPostArrival.reached(origin, point) &&
             point.distanceTo(task.anchor) < origin.distanceTo(task.anchor) - MINIMUM_GAIN
     }

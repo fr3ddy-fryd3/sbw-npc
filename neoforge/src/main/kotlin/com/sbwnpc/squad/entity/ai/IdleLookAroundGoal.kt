@@ -23,6 +23,6 @@ import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal
  * the actual random-look logic itself is untouched vanilla behaviour.
  */
 class IdleLookAroundGoal(private val npc: NpcEntity) : RandomLookAroundGoal(npc) {
-    override fun canUse(): Boolean = npc.target == null && !npc.listening() && !com.sbwnpc.squad.ai.integration.NativeTactics.ownsLook(npc) && super.canUse()
-    override fun canContinueToUse(): Boolean = npc.target == null && !npc.listening() && !com.sbwnpc.squad.ai.integration.NativeTactics.ownsLook(npc) && super.canContinueToUse()
+    override fun canUse(): Boolean = npc.target == null && !npc.listening() && !npc.wary() && !com.sbwnpc.squad.ai.integration.NativeTactics.ownsLook(npc) && super.canUse()
+    override fun canContinueToUse(): Boolean = npc.target == null && !npc.listening() && !npc.wary() && !com.sbwnpc.squad.ai.integration.NativeTactics.ownsLook(npc) && super.canContinueToUse()
 }

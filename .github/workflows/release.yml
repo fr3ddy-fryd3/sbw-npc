@@ -31,6 +31,10 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - uses: gradle/actions/setup-gradle@v4
 
       # Linters register on check alongside the unit tests (ktlint's checkKotlinStyle on
@@ -38,9 +42,15 @@ jobs:
       - name: Lint and test
         run: ./gradlew --console=plain check
 
+      - name: Dedicated server smoke
+        run: ./gradlew --console=plain runGameTestServer -PgameTestFilter=moveAcrossFlatGround,survivalRecruitmentRestrictsDeploymentButKeepsExistingGarrisons,classMultipliersApplyOnceToKillsDeferredRewardsAndSavedExperience -PgameTestReportName=release-smoke
+
       # Plain build is the production build: DebugFlags stay off.
       - name: Build
         run: ./gradlew --console=plain build
+
+      - name: Verify production artifact and pinned input
+        run: python3 scripts/verify-release-artifact.py
 
       - name: Create release
         env:

@@ -41,9 +41,6 @@ object TacticalFirePosts {
 
     fun withinPost(anchor: Vec3, candidate: Vec3, recovery: Boolean = false): Boolean = candidate.subtract(anchor).horizontalDistance() <= (if (recovery) RECOVERY_RADIUS else CombatPosition.LOCAL_MOVE_RADIUS) + 0.01
 
-    /** An exhausted local query already tried the owned strip; repeating it is not movement progress. */
-    fun recoverAfterSearch(task: TacticalTask, from: Vec3): Boolean = task.job in TacticalJob.FIRING_POSITIONS && task.frontage?.let { withinPost(it.point, from, recovery = true) } == true
-
     /** A failed strip search may use nearby terrain without losing the job or its fixed search origin. */
     fun expand(task: TacticalTask, from: Vec3): Boolean {
         if (!task.localFireRecovery || task.expandedFireSearch) return false
@@ -59,7 +56,7 @@ object TacticalFirePosts {
     /** An unsuccessful coordinated search still owns the member's job and threat sector. */
     fun recover(task: TacticalTask, post: Vec3): Boolean {
         if (task.job !in TacticalJob.FIRING_POSITIONS) return false
-        task.localFirePost = task.frontage?.point ?: post
+        task.localFirePost = post
         task.position = null
         task.search = null
         return true

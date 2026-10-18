@@ -181,9 +181,15 @@ object NativeTactics {
                             require(ticket.owner.agent == intent.actor)
                             val original = goals[intent.actor] ?: intent
                             val npc = requireNotNull(level.getEntity(intent.actor.id) as? NpcEntity)
-                            NativePositionAction(intent, npc, { requireNotNull(combatView(npc.squadId!!)) }, { covering(intent) }, { failed, rejections ->
+                            NativePositionAction(intent, npc, { npc.squadId?.let(::combatView) }, { failed, rejections, searched ->
                                 failures[failed.actor.id] = LocalPositionFailure(original.anchor, level.gameTime, (failures[failed.actor.id]?.takeIf { it.anchor == original.anchor }?.attempts ?: 0) + 1, rejections.toMap())
-                                DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=local_failure rejected={}", failed.actor.id, rejections)
+                                // Heights tell a front anchor off the ground (a slope, a ridge) from a crowded area (#55).
+                                // The planned anchor is put on the ground before the search; searched is where it looked.
+                                val ground = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, net.minecraft.util.Mth.floor(searched.x), net.minecraft.util.Mth.floor(searched.z))
+                                DebugFlags.log(
+                                    LogGroup.ORDER, "[htn] actor={} event=local_failure duty={} rejected={} anchorY={} searchedY={} groundY={} actorY={} distance={}",
+                                    failed.actor.id, failed.duty, rejections, "%.0f".format(failed.anchor.y), "%.0f".format(searched.y), ground, "%.0f".format(npc.y), "%.0f".format(npc.position().distanceTo(searched)),
+                                )
                             }).also { actions[intent.actor.id] = it }
                         },
                     ),
@@ -254,7 +260,10 @@ object NativeTactics {
                 val destroyedTargets = pendingDeaths.filterValues { !it.isCanceled && it.entity.isDeadOrDying }.keys.toSet()
                 pendingDeaths.clear()
                 val loaded = manager.all().mapNotNull { saved ->
-                    val npcs = saved.members.mapNotNull { level.getEntity(it) as? NpcEntity }.filter { it.isAlive && it.vehicle == null && it.npcClass in GROUND }
+                    // A member whose entity names no squad or another one is not planned for: such an NPC,
+                    // left over in a world from an interrupted run, got an agent and crashed the server
+                    // on its first post search (#64).
+                    val npcs = saved.members.mapNotNull { level.getEntity(it) as? NpcEntity }.filter { it.isAlive && it.vehicle == null && it.npcClass in GROUND && it.squadId == saved.id }
                     if (npcs.isEmpty()) null else saved to npcs
                 }
                 val activeIds = loaded.mapTo(HashSet()) { it.first.id }
@@ -515,12 +524,17 @@ object NativeTactics {
         /**
          * The attacking operation's standing after its losses, over every squad in it, loaded or
          * not. On [OperationStanding.WITHDRAW] the attack is called off here and each squad falls back.
+         *
+         * Squads with a barracks are left out: it replaces their fallen, so they fight on whatever
+         * they lose (#57). Their men do not count, and a withdrawal pulls back only the squads
+         * without one; the attack goes on while a squad with a barracks is still in it.
          */
         private fun standing(operation: UUID, now: Long): OperationStanding {
             val manager = SquadManager.get(level)
-            val attacking = (operations.operation(operation)?.members?.keys ?: setOf(operation))
+            val all = (operations.operation(operation)?.members?.keys ?: setOf(operation))
                 .mapNotNull(manager::get)
                 .filter { it.order == SquadOrder.ATTACK && it.commandOutcome == CommandOutcome.ACTIVE && operations.pending(it.id) == null }
+            val attacking = all.filter { it.barracks == null }
             if (attacking.isEmpty()) {
                 losses.remove(operation)
                 standings.remove(operation)
@@ -542,9 +556,16 @@ object NativeTactics {
                     if (view != null && reference != null) manager.setObjective(level, squad.id, net.minecraft.core.BlockPos.containing(AttackAmmoWithdrawal.fallBack(level, reference, view)))
                     com.sbwnpc.squad.squad.SquadReports.attackFailedLosses(level.server, squad, (fraction * 100).toInt())
                 }
-                operations.finish(operation, OperationStatus.CANCELLED)
                 losses.remove(operation)
                 standings.remove(operation)
+                // The squads with a barracks fight on. This update still lists the withdrawn squads
+                // with the operation's, so it is skipped like a full withdrawal; the next one plans
+                // the attack without them.
+                if (attacking.size < all.size) {
+                    attacking.forEach { operations.detach(it.id) }
+                    return standing
+                }
+                operations.finish(operation, OperationStatus.CANCELLED)
                 attacks.remove(operation)
                 sectors.remove(operation)
                 sectorTraces.remove(operation)
@@ -681,13 +702,15 @@ object NativeTactics {
                 val view = snapshots.getValue(saved.id)
                 val situation = CombatSituation(
                     focus != null,
-                    // An operation reviewing its losses holds the line it has instead of pushing on.
-                    saved.order == SquadOrder.ATTACK && !holding,
+                    // An operation reviewing its losses holds the line it has instead of pushing on;
+                    // a squad with a barracks presses on (#57).
+                    saved.order == SquadOrder.ATTACK && (!holding || saved.barracks != null),
                     focus?.y?.let { it > view.center.y + 4 } == true,
                     view.incoming.isNotEmpty(),
                     view.fighting.size.toDouble() / max(1, view.members.size),
                     1.0 - saved.members.size.toDouble() / max(1, max(view.peakStrength, saved.members.size)),
                     view.fighting.isNotEmpty(),
+                    reinforced = saved.barracks != null,
                 )
                 val evaluation = StrategyEvaluation.evaluate(facts(AgentId(AgentLevel.SQUAD, saved.id), now), situation)
                 val oldStrategy = strategies[saved.id]
@@ -725,7 +748,15 @@ object NativeTactics {
                     val before = oldIntents[member.id]
                     val requireCover = duty == CombatDuty.MOVE && situation.incoming
                     val requireShelter = situation.incoming && duty in setOf(CombatDuty.MOVE, CombatDuty.FIRE)
-                    val retained = before?.takeIf { oldStrategy?.first == selected && it.duty == duty && it.requireCover == requireCover && it.requireShelter == requireShelter && (focus?.distanceTo(plannedContact[member.id] ?: focus) ?: 0.0) < 8 && ((waypoint == null && member.id !in wasArcing) || it.anchor.native().distanceTo(proposed) < 4) }
+                    // A height post is chosen by height round its anchor, not by where the enemy is or by
+                    // the squad's strategy, which reshapes a sentry's task only to withdraw. Rebuilt on
+                    // either, a sentry's post was thrown away and searched again every few seconds (#73).
+                    val heightPost = duty == CombatDuty.OBSERVE && before?.anchor == proposed.point()
+                    val samePost = heightPost || (
+                        oldStrategy?.first == selected && (focus?.distanceTo(plannedContact[member.id] ?: focus) ?: 0.0) < 8 &&
+                            ((waypoint == null && member.id !in wasArcing) || before?.anchor?.native()?.distanceTo(proposed)?.let { it < 4 } == true)
+                        )
+                    val retained = before?.takeIf { it.duty == duty && it.requireCover == requireCover && it.requireShelter == requireShelter && samePost }
                     if (retained != null) {
                         retained
                     } else {
