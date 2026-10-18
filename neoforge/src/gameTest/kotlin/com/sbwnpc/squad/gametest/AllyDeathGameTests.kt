@@ -101,7 +101,11 @@ object AllyDeathGameTests {
         helper.runAtTickTime(40) { men.first().kill() }
         helper.runAtTickTime(60) {
             helper.assertTrue(allies.all { it.wary() }, "The allies did not grow wary")
-            enemy = AttackDeploymentGameTests.spawn(helper, Vec3(45.5, 1.0, 24.5), SquadFaction.COW).apply { isNoAi = true }
+            // Invulnerable: the first ally to fire must not kill it before the others take it as target.
+            enemy = AttackDeploymentGameTests.spawn(helper, Vec3(45.5, 1.0, 24.5), SquadFaction.COW).apply {
+                isNoAi = true
+                isInvulnerable = true
+            }
         }
         helper.onEachTick {
             val seen = enemy ?: return@onEachTick

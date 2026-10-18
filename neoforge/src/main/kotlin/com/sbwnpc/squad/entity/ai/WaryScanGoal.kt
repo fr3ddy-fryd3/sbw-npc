@@ -2,6 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.world.entity.ai.goal.Goal
+import net.minecraft.world.phys.Vec3
 import java.util.EnumSet
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -13,6 +14,7 @@ import kotlin.math.sin
  */
 class WaryScanGoal(private val npc: NpcEntity) : Goal() {
     private var nextTurn = 0
+    private var point: Vec3? = null
 
     init {
         flags = EnumSet.of(Flag.LOOK)
@@ -26,15 +28,20 @@ class WaryScanGoal(private val npc: NpcEntity) : Goal() {
 
     override fun start() {
         nextTurn = 0
+        point = null
     }
 
     override fun tick() {
-        if (npc.tickCount < nextTurn) return
         val threat = npc.waryToward() ?: return
-        nextTurn = npc.tickCount + TURN_TICKS
-        val bearing = atan2(threat.z - npc.z, threat.x - npc.x)
-        val angle = bearing + (npc.random.nextDouble() * 2 - 1) * SECTOR
-        npc.lookControl.setLookAt(npc.x + cos(angle) * LOOK_DISTANCE, npc.eyeY, npc.z + sin(angle) * LOOK_DISTANCE)
+        if (npc.tickCount >= nextTurn) {
+            nextTurn = npc.tickCount + TURN_TICKS
+            val bearing = atan2(threat.z - npc.z, threat.x - npc.x)
+            val angle = bearing + (npc.random.nextDouble() * 2 - 1) * SECTOR
+            point = Vec3(npc.x + cos(angle) * LOOK_DISTANCE, npc.eyeY, npc.z + sin(angle) * LOOK_DISTANCE)
+        }
+        // Vanilla's LookControl turns the head for two ticks per setLookAt, about 10 degrees each:
+        // asked once per turn, the head stopped a fraction of the way there.
+        point?.let { npc.lookControl.setLookAt(it.x, it.y, it.z) }
     }
 
     private companion object {
