@@ -15,7 +15,7 @@ is Kotlin; Java is used for mixins into Minecraft and SuperbWarfare.
 |---|---|
 | [neoforge/src/main/kotlin/com/sbwnpc/squad/](../neoforge/src/main/kotlin/com/sbwnpc/squad/) | The mod's main code |
 | [common/src/main/kotlin/com/sbwnpc/squad/](../common/src/main/kotlin/com/sbwnpc/squad/) | Loader-independent code |
-| [neoforge/src/main/java/com/sbwnpc/squad/mixin/](../neoforge/src/main/java/com/sbwnpc/squad/mixin/) | Mixins into Minecraft and SuperbWarfare classes |
+| [neoforge/src/main/java/com/sbwnpc/squad/mixin/](../neoforge/src/main/java/com/sbwnpc/squad/mixin/), [common/src/main/java/com/sbwnpc/squad/mixin/](../common/src/main/java/com/sbwnpc/squad/mixin/) | Mixins into Minecraft and SuperbWarfare classes; the loader-independent accessors in common |
 | [neoforge/src/main/resources/](../neoforge/src/main/resources/), [common/src/main/resources/](../common/src/main/resources/) | Textures, models, translations, metadata and the mixin list |
 | [neoforge/src/test/kotlin/com/sbwnpc/squad/](../neoforge/src/test/kotlin/com/sbwnpc/squad/), [common/src/test/kotlin/com/sbwnpc/squad/](../common/src/test/kotlin/com/sbwnpc/squad/) | Automatic tests, laid out like the main code |
 | [gradle.properties](../gradle.properties) | Versions of the mod, Minecraft and dependencies |

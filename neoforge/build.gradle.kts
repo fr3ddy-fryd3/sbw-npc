@@ -206,6 +206,12 @@ val commonGeneratedKotlin by configurations.creating {
     isTransitive = false
 }
 
+val commonJava by configurations.creating {
+    isCanBeConsumed = false
+    isTransitive = false
+}
+sourceSets.main.get().java.srcDir(commonJava)
+
 sourceSets.main.get().resources {
     srcDir("src/generated/resources")
     srcDir(commonResources)
@@ -218,6 +224,7 @@ dependencies {
     add(commonKotlin.name, project(mapOf("path" to ":common", "configuration" to "commonKotlin")))
     add(commonResources.name, project(mapOf("path" to ":common", "configuration" to "commonResources")))
     add(commonGeneratedKotlin.name, project(mapOf("path" to ":common", "configuration" to "commonGeneratedKotlin")))
+    add(commonJava.name, project(mapOf("path" to ":common", "configuration" to "commonJava")))
 
     implementation("thedarkcolour:kotlinforforge-neoforge:${project.property("kotlinforforge_version")}")
 

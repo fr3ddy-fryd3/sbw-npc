@@ -26,6 +26,11 @@ val commonResources by configurations.creating {
     isCanBeConsumed = true
 }
 artifacts.add(commonResources.name, file("src/main/resources"))
+val commonJava by configurations.creating {
+    isCanBeResolved = false
+    isCanBeConsumed = true
+}
+artifacts.add(commonJava.name, file("src/main/java"))
 
 // Bakes DebugFlags' startup default into the jar at build time, so a locally-built dev jar comes
 // up with verbose trace logging/markers on without touching runtime code, while a plain/production
@@ -89,6 +94,8 @@ tasks.named("check") {
 
 // Shared sources keep their plain JVM tests here, against vanilla Minecraft only.
 dependencies {
+    // Mixins shared by every loader; each loader brings its own Mixin at runtime.
+    compileOnly("net.fabricmc:sponge-mixin:0.15.2+mixin.0.8.7")
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
