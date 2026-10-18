@@ -166,7 +166,7 @@ object NativeTactics {
                             require(ticket.owner.agent == intent.actor)
                             val original = goals[intent.actor] ?: intent
                             val npc = requireNotNull(level.getEntity(intent.actor.id) as? NpcEntity)
-                            NativePositionAction(intent, npc, { npc.squadId?.let(::combatView) }, { covering(intent) }, { failed, rejections ->
+                            NativePositionAction(intent, npc, { npc.squadId?.let(::combatView) }, { failed, rejections ->
                                 failures[failed.actor.id] = LocalPositionFailure(original.anchor, level.gameTime, (failures[failed.actor.id]?.takeIf { it.anchor == original.anchor }?.attempts ?: 0) + 1, rejections.toMap())
                                 DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=local_failure rejected={}", failed.actor.id, rejections)
                             }).also { actions[intent.actor.id] = it }
