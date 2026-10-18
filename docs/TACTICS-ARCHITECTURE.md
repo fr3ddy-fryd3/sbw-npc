@@ -1,33 +1,46 @@
-# Исполнение тактики: `combat/tactics`
+# Tactics execution: `combat/tactics`
 
-Решения о тактике принимает HTN-контроллер: операции, отряды, подгруппы и NPC описаны в [AI-RUNTIME.md](AI-RUNTIME.md) и [AI-ARCHITECTURE-DESIGN.md](AI-ARCHITECTURE-DESIGN.md). Модуль `combat/tactics` в `neoforge/` — это сервисы, через которые решения исполняются в мире Minecraft. Он ничего не выбирает сам: не решает, атаковать или обходить, и не хранит план.
+Tactical decisions are made by the HTN controller: operations, squads, teams and NPCs are described
+in [AI-RUNTIME.md](AI-RUNTIME.md) and [AI-ARCHITECTURE-DESIGN.md](AI-ARCHITECTURE-DESIGN.md). The
+`combat/tactics` package in `neoforge/` holds the services that carry those decisions out in the
+Minecraft world. It decides nothing itself: it does not choose to attack or go round, and keeps no
+plan.
 
-Прежний контроллер на шаблонах (FLANK, BOUND, ENCIRCLE и другие) с его состояниями, правилами выбора и операциями атаки удалён. Сцены, которые его проверяли, перечислены в задаче об удалении.
+The former template controller (FLANK, BOUND, ENCIRCLE and others), with its states, selection rules
+and attack operations, has been removed. The scenes that tested it are listed in the issue that
+removed it.
 
-## Кто вызывает
+## Callers
 
-- `ai/integration/NativeTactics` собирает снимок отряда через `TacticalSnapshotCollector` и раздаёт назначения NPC.
-- `ai/integration/NativePositionAction` исполняет одно назначение. Он создаёт `TacticalTask` и вызывает `TacticalPositions.find` со своей политикой отбора точек, затем ведёт NPC по найденному пути.
-- Поведения SmartBrainLib (`GunAttackBehaviour`, `SquadTargetSensor` и другие) читают назначение через `SquadTactics` и общие контакты отряда.
+- `ai/integration/NativeTactics` collects a squad snapshot through `TacticalSnapshotCollector` and
+  hands out NPC assignments.
+- `ai/integration/NativePositionAction` carries out one assignment. It creates a `TacticalTask`,
+  calls `TacticalPositions.find` with its own point policy, then walks the NPC along the path found.
+- SmartBrainLib behaviours (`GunAttackBehaviour`, `SquadTargetSensor` and others) read the assignment
+  through `SquadTactics` and the squad's shared contacts.
 
-## Файлы
+## Files
 
-| Файл | Отвечает за |
+| File | Responsible for |
 |---|---|
-| `SquadTacticalState` | Общие контакты отряда и последний снимок, по которому планировал HTN. Состояния и плана нет. |
-| `SquadTactics` | Точка входа для поведений: назначение NPC, приём доклада о контакте, разрешение на выстрел. |
-| `TacticalSnapshotCollector`, `TacticalModel`, `TacticalTerrain` | Неизменяемый снимок: участники, контакты, входящий огонь, ограниченные пробы рельефа. |
-| `TacticalTask` | Состояние исполнения одного поиска позиции: курсор поиска, выбранная точка, путь, прогресс. Принадлежит исполнителю. |
-| `TacticalPositions`, `TacticalPositionPolicy`, `TacticalPositionScore` | Поиск огневой точки или точки перехода по настоящим коллайдерам, лучам и навигации. Политика вызывающего добавляет свои ограничения. |
-| `TacticalRoutes`, `TacticalRouteValidation`, `TacticalGoalProgress`, `DryGround` | Участки пути по реальному маршруту, проверка построенного пути, прогресс к цели, перенос точки с воды на сушу. |
-| `TacticalClearance`, `TacticalContactApproach`, `TacticalAim`, `TacticalEvidence` | Дистанция до известных врагов, подход к району контакта, прицел точки, подтверждение огня. |
-| `TacticalFirePosts`, `TacticalFrontPost`, `DefensiveOverwatch` | Локальный поиск огневой точки, полоса огня, защищённые посты на высоте при обороне. |
-| `TacticalTargets`, `TacticalTargetSelection` | Выбор цели из общих контактов без перераспределения на каждом скане. |
-| `TacticalBudget`, `TacticalRules` | Общий бюджет поиска путей; ограничения приказа при поиске. |
-| `AttackAmmoWithdrawal` | Отход атаки без патронов через сохранённый приказ отряда. |
+| `SquadTacticalState` | The squad's shared contacts and the last snapshot the HTN planned from. No state machine, no plan. |
+| `SquadTactics` | Entry point for behaviours: an NPC's assignment, contact reports, permission to fire. |
+| `TacticalSnapshotCollector`, `TacticalModel`, `TacticalTerrain` | Immutable snapshot: members, contacts, incoming fire, bounded terrain probes. |
+| `TacticalTask` | Execution state of one position search: search cursor, chosen point, path, progress. Owned by the executor. |
+| `TacticalPositions`, `TacticalPositionPolicy`, `TacticalPositionScore` | Search for a firing or transit point against real colliders, rays and navigation. The caller's policy adds its own constraints. |
+| `TacticalRoutes`, `TacticalRouteValidation`, `TacticalGoalProgress`, `DryGround` | Legs along the walked route, checking a built path, progress to the goal, moving a point off water onto land. |
+| `TacticalClearance`, `TacticalContactApproach`, `TacticalAim`, `TacticalEvidence` | Distance to known enemies, approach to a contact's area, aim from a point, evidence of fire. |
+| `TacticalFirePosts`, `TacticalFrontPost`, `DefensiveOverwatch` | Local firing-post search, a firing strip, protected high posts on defence. |
+| `TacticalTargets`, `TacticalTargetSelection` | Target choice from the shared contacts without reassigning on every scan. |
+| `TacticalBudget`, `TacticalRules` | Shared path-search budget; order constraints during the search. |
+| `AttackAmmoWithdrawal` | Withdrawal of an attack out of ammunition through the squad's saved order. |
 
-## Правила
+## Rules
 
-- Поиск позиции не ветвится по виду манёвра. Особые условия приходят в политике `TacticalPositionPolicy`, которую передаёт вызывающий.
-- `TacticalTask` — состояние исполнения, а не назначение. Назначение — это `PositionIntent` HTN; повторный расчёт того же назначения сохраняет поиск и путь (`NativePositionAction.revise`).
-- Все реальные действия проходят прежние физические проверки: коллайдеры, лучи, путь, безопасная дистанция и полоса огня.
+- The position search does not branch on the kind of manoeuvre. Special conditions come in the
+  `TacticalPositionPolicy` the caller passes.
+- `TacticalTask` is execution state, not an assignment. The assignment is the HTN's
+  `PositionIntent`; recomputing the same assignment keeps the search and the path
+  (`NativePositionAction.revise`).
+- Every real action goes through the same physical checks: colliders, rays, path, safe distance
+  and firing lane.

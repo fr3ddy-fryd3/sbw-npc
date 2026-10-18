@@ -17,8 +17,8 @@ class FiringPostArrivalTest {
         assertFalse(FiringPostArrival.reached(post.add(0.0, 1.0, 0.0), post))
     }
 
-    @Test fun `flankers and covering members cannot confirm cover from an adjacent exposed block`() {
-        for (job in listOf(TacticalJob.COVER, TacticalJob.WAIT, TacticalJob.OVERWATCH, TacticalJob.FLANK)) {
+    @Test fun `covering members cannot confirm cover from an adjacent exposed block`() {
+        for (job in listOf(TacticalJob.COVER, TacticalJob.WAIT, TacticalJob.OVERWATCH)) {
             val task = TacticalTask(job, post, null, 1).also { it.position = post }
             val member = TacticalMember(UUID(0, 1), post.add(1.0, 0.0, 0.0), canFire = true)
             assertFalse(TacticalEvidence.settled(member, task), job.toString())

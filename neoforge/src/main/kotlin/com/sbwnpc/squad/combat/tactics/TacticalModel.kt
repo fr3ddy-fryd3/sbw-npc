@@ -8,7 +8,6 @@ import java.util.UUID
 enum class TacticalJob {
     COVER,
     ADVANCE,
-    FLANK,
     OBSERVE,
     SEARCH,
     REGROUP,
@@ -20,7 +19,7 @@ enum class TacticalJob {
     ;
 
     companion object {
-        val RUNNING = setOf(ADVANCE, FLANK, REGROUP, RETREAT)
+        val RUNNING = setOf(ADVANCE, REGROUP, RETREAT)
         val FIRE_SUPPORT = setOf(COVER, WAIT)
         val FIRING_POSITIONS = FIRE_SUPPORT + setOf(ANTI_ARMOUR, OVERWATCH)
     }

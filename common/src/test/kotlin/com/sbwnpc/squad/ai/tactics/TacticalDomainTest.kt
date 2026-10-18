@@ -70,6 +70,14 @@ class TacticalDomainTest {
         assertEquals(CombatStrategy.GAIN_HEIGHT, height.ranked.first().value)
     }
 
+    @Test fun `a squad with a barracks does not withdraw on its losses`() {
+        val squadFacts = FactSnapshot(AgentId(AgentLevel.SQUAD, UUID(3, 3)), 0)
+        val beaten = CombatSituation(true, true, false, true, 0.5, 0.5, false)
+        assertEquals(CombatStrategy.WITHDRAW, StrategyEvaluation.evaluate(squadFacts, beaten).ranked.first().value)
+        val reinforced = StrategyEvaluation.evaluate(squadFacts, beaten.copy(reinforced = true))
+        assertTrue(reinforced.excluded.any { it.id == CombatStrategy.WITHDRAW.name })
+    }
+
     @Test fun `withdrawal changes execution goal away from known threat without requiring cover fire`() {
         val squadId = AgentId(AgentLevel.SQUAD, UUID(0, 9))
         val mission = SquadMission(squadId, listOf(TeamMission(AgentId(AgentLevel.TEAM, UUID(0, 8)), listOf(intent))))
@@ -82,5 +90,18 @@ class TacticalDomainTest {
         assertFalse(retreat.requireShelter)
         assertEquals(CombatDuty.MOVE, retreat.duty)
         assertEquals(Point3(50.0, 1.0, 0.0), intent.anchor)
+    }
+
+    @Test fun `a sentry withdrawing from his height may come down`() {
+        val squadId = AgentId(AgentLevel.SQUAD, UUID(0, 9))
+        val sentry = intent.copy(duty = CombatDuty.OBSERVE, minimumHeight = intent.origin.y - 2, elevationWeight = 3.0)
+        val mission = SquadMission(squadId, listOf(TeamMission(AgentId(AgentLevel.TEAM, UUID(0, 8)), listOf(sentry))))
+        val input = FactSnapshot(squadId, 0).observe(TacticalFacts.STRATEGY, CombatStrategy.WITHDRAW)
+        val result = HtnPlanningSession(TacticalDomain.squad, PlanOwner(squadId, UUID(1, 1)), TacticalDomain.SQUAD.call(mission), input).advance(20) as PlanningResult.Ready
+        val delegation = result.plan.tasks.single().spec.action.parameters as com.sbwnpc.squad.ai.coordination.DelegationTask
+        val retreat = (delegation.task.parameters as TeamMission).members.single()
+        assertEquals(CombatDuty.MOVE, retreat.duty)
+        assertNull(retreat.minimumHeight)
+        assertEquals(0.0, retreat.elevationWeight)
     }
 }
