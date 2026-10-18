@@ -37,11 +37,6 @@ object TacticalRoutes {
         return candidates.sortedBy { it.distanceTo(task.anchor) + it.distanceTo(from) }
     }
 
-    /** A firing-lane probe opens the angle without becoming an unsupported charge. */
-    fun safeLaneProbe(from: Vec3, point: Vec3, focus: Vec3, approach: Double = 4.0): Boolean =
-        point.subtract(from).horizontalDistance() <= 16.0 &&
-            point.subtract(focus).horizontalDistance() >= from.subtract(focus).horizontalDistance() - approach
-
     /**
      * The next leg along the way a man can actually walk to [TacticalTask.anchor].
      *

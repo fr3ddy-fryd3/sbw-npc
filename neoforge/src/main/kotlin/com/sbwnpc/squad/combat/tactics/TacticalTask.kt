@@ -3,26 +3,21 @@ package com.sbwnpc.squad.combat.tactics
 import net.minecraft.world.phys.Vec3
 
 class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val plan: Int) {
-    internal var operationMember: java.util.UUID? = null
     var position: Vec3? = null
     internal var usesObservedAim = false
     internal var observedAim: TacticalAim? = null
-    var firingTarget: java.util.UUID? = null
     var nextSearch = Long.MIN_VALUE
     var failures = 0
     var lastProgress = 0L
     var closest = Double.MAX_VALUE
     var search: TacticalPositionSearch? = null
     var nextValidation = Long.MIN_VALUE
-    var staging: Vec3? = null
     var frontage: TacticalFrontPost? = null
 
     /** The walked route to [anchor] a transit leg follows, see [TacticalRoutes.routeLeg]. */
     var route: List<Vec3>? = null
     var nextRoutePlan = Long.MIN_VALUE
 
-    /** Local shelter takes precedence over assembling on an exposed nominal attack line. */
-    var coverOrigin: Vec3? = null
     fun permitsFront(point: Vec3): Boolean =
         if (expandedFireSearch) {
             TacticalFirePosts.withinPost(localFirePost!!, point, recovery = true)
@@ -30,8 +25,6 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
             frontage?.permits(point, localFireRecovery) != false
         }
     fun deployingFront(point: Vec3): Boolean = !permitsFront(point)
-    var opensLane = false
-    var probeAdvance = 4.0
     var maneuverPost = false
 
     /** Retains assignment/sector while the individual shooter searches a bounded local post. */
@@ -40,37 +33,10 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
     var expandedFireSearch = false
         internal set
 
-    /** A blind attack post may join the next strip after exhausting its local firing search. */
-    var fireTransit: Vec3? = null
-        internal set
     var pausedAt: Long? = null
         private set
     private var pauseReason: String? = null
     internal var navigationPath: net.minecraft.world.level.pathfinder.Path? = null
-    private var deploymentStarted = false
-
-    /** A support-role exchange keeps the physical post and owned route of each actor. */
-    internal fun withJob(next: TacticalJob, anchor: Vec3): TacticalTask =
-        TacticalTask(next, anchor, focus, plan).also {
-            it.position = position
-            it.operationMember = operationMember
-            it.firingTarget = firingTarget
-            it.nextSearch = nextSearch
-            it.nextValidation = nextValidation
-            it.search = search
-            it.failures = failures
-            it.lastProgress = lastProgress
-            it.closest = closest
-            it.frontage = frontage
-            it.coverOrigin = coverOrigin
-            it.staging = if (next == TacticalJob.WAIT) staging ?: position ?: this.anchor else null
-            it.localFirePost = localFirePost
-            it.expandedFireSearch = expandedFireSearch
-            it.fireTransit = fireTransit
-            it.navigationPath = navigationPath
-            it.deploymentStarted = deploymentStarted
-            navigationPath = null
-        }
 
     internal fun suspend(now: Long, reason: String): Boolean {
         if (pauseReason == reason) return false
