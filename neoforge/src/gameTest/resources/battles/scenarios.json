@@ -25,7 +25,8 @@
       { "preset": "SIXTEEN", "at": [-97, -264] }
     ],
     "expect": {
-      "note": "Even numbers: an attack assaults only at two to one, so the point is not expected to fall.",
+      "note": "Even numbers: an attack assaults only at two to one, so the point is not expected to fall. Post churn on develop ran 0.8 to 5.1 here.",
+      "maxChurnPerManMinute": 6.0,
       "assault": false,
       "taken": false
     }

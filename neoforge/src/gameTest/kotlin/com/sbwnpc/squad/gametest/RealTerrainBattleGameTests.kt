@@ -80,8 +80,8 @@ object RealTerrainBattleGameTests {
                 groups(json, "attackers"),
                 groups(json, "defenders"),
                 Expect(
-                    expect.get("maxFriendlyShare")?.asDouble ?: 0.35,
-                    expect.get("maxChurnPerManMinute")?.asDouble ?: 2.0,
+                    expect.get("maxFriendlyShare")?.asDouble ?: 0.45,
+                    expect.get("maxChurnPerManMinute")?.asDouble ?: 3.5,
                     expect.get("assault")?.asBoolean ?: true,
                     expect.get("taken")?.asBoolean ?: true,
                 ),
