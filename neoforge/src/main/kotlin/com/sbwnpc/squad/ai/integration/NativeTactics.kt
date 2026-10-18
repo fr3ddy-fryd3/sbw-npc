@@ -636,10 +636,10 @@ object NativeTactics {
                     val before = oldIntents[member.id]
                     val requireCover = duty == CombatDuty.MOVE && situation.incoming
                     val requireShelter = situation.incoming && duty in setOf(CombatDuty.MOVE, CombatDuty.FIRE)
-                    // A height post is chosen by height, not by where the enemy is or by the squad's
-                    // strategy, which reshapes a sentry's task only to withdraw. Rebuilt on either, a
-                    // sentry's post was thrown away and searched again every few seconds (#73).
-                    val heightPost = duty == CombatDuty.OBSERVE
+                    // A height post is chosen by height round its anchor, not by where the enemy is or by
+                    // the squad's strategy, which reshapes a sentry's task only to withdraw. Rebuilt on
+                    // either, a sentry's post was thrown away and searched again every few seconds (#73).
+                    val heightPost = duty == CombatDuty.OBSERVE && before?.anchor == proposed.point()
                     val samePost = heightPost || (oldStrategy?.first == selected && (focus?.distanceTo(plannedContact[member.id] ?: focus) ?: 0.0) < 8)
                     val retained = before?.takeIf { it.duty == duty && it.requireCover == requireCover && it.requireShelter == requireShelter && samePost }
                     if (retained != null) {
