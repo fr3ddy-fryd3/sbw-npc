@@ -686,7 +686,13 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             // A known ally's stray round is damage, but is not a new enemy contact.
             if (source.entity?.let { SquadTeams.sameSide(this, it) } == true) return result
             incomingFire.record(eyePosition, source.directEntity?.takeIf { it !== source.entity }?.deltaMovement, source.entity?.eyePosition ?: source.sourcePosition, level().gameTime)
-            suppress(incomingFire.point(level().gameTime) ?: source.sourcePosition ?: position())
+            val from = incomingFire.point(level().gameTime) ?: source.sourcePosition ?: position()
+            suppress(from)
+            // Shot by someone it cannot see: it and the men round it watch where the fire came from (#66).
+            if (target == null) {
+                becomeWary(from)
+                warnSquadmates(from, HIT_WARNING_RADIUS)
+            }
             com.sbwnpc.squad.combat.DebugFlags.log(
                 com.sbwnpc.squad.combat.LogGroup.ORDER,
                 "[return-fire] {} hit, sector={} rounds={}",
@@ -1400,8 +1406,14 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         }
         // Neither of those shows on the allies who were not sent to look: in-game they went on as
         // if nothing had happened (#66). Everyone near grows wary of where the threat came from.
-        val toward = if (knownKiller) attacker!!.position() else position()
-        com.sbwnpc.squad.entity.NpcRegistry.forEachWithin(level, position(), DEATH_ALARM_RADIUS, exclude = this) {
+        warnSquadmates(if (knownKiller) attacker!!.position() else position(), DEATH_ALARM_RADIUS)
+    }
+
+    /** Makes the living men of this NPC's faction within [radius] wary of a threat from [toward]. */
+    private fun warnSquadmates(toward: Vec3, radius: Double) {
+        val faction = com.sbwnpc.squad.team.SquadTeams.factionOf(this) ?: return
+        val level = level() as? ServerLevel ?: return
+        com.sbwnpc.squad.entity.NpcRegistry.forEachWithin(level, position(), radius, exclude = this) {
             if (it.isAlive && com.sbwnpc.squad.team.SquadTeams.factionOf(it) == faction) it.becomeWary(toward)
         }
     }
@@ -1417,8 +1429,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         const val MEDKITS = 1
         private const val HEARD_LOOK_TICKS = 100
 
-        /** How long (30 s) an NPC stays wary after a squadmate fell nearby. */
+        /** How long (30 s) an NPC stays wary after a squadmate fell or it was shot from out of sight. */
         private const val WARY_TICKS = 600
+
+        /** How far (16 blocks) the men round an NPC shot by an unseen enemy grow wary with it. */
+        private const val HIT_WARNING_RADIUS = 16.0
 
         /** One hearing trace line per NPC per this many ticks — a firefight is a noise a second. */
         private const val HEARING_LOG_TICKS = 40

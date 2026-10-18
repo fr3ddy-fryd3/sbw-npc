@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.gametest
 
+import com.atsuishio.superbwarfare.init.ModDamageTypes
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.SquadManager
@@ -14,9 +15,9 @@ import java.nio.file.Path
 import java.util.UUID
 
 /**
- * What a squad does when one of its men dies beside it (#66): the allies grow wary of where the
- * threat came from, the killer when known, else the body. Their reaction is also written to a
- * report file.
+ * What a squad does when one of its men dies or is shot beside it (#66): the allies grow wary of
+ * where the threat came from, the killer or the fire when known, else the body. Their reaction to
+ * a death is also written to a report file.
  */
 @PrefixGameTestTemplate(false)
 object AllyDeathGameTests {
@@ -27,6 +28,33 @@ object AllyDeathGameTests {
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 300, batch = "ally-death-unknown")
     fun allyDeadOfUnknownCauseMakesTheSquadWary(helper: GameTestHelper) = allyDeath(helper, "unknown-cause", killer = false)
+
+    /** A man shot by an enemy he cannot see grows wary of the fire, and so do the men round him. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 200, batch = "ally-hit")
+    fun hitByUnseenShooterMakesTheManAndThoseRoundHimWary(helper: GameTestHelper) {
+        for (x in 0..79) for (z in 0..47) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        for (z in 10..38) for (y in 1..4) helper.setBlock(BlockPos(50, y, z), Blocks.STONE)
+        val men = (0..4).map { AttackDeploymentGameTests.spawn(helper, Vec3(20.5 + it % 3 * 3, 1.0, 22.5 + it / 3 * 3), SquadFaction.PIG) }
+        // Farther than the warning reaches.
+        val far = AttackDeploymentGameTests.spawn(helper, Vec3(20.5, 1.0, 45.5), SquadFaction.PIG)
+        val shooter = AttackDeploymentGameTests.spawn(helper, Vec3(60.5, 1.0, 24.5), SquadFaction.COW).apply { isNoAi = true }
+        val manager = SquadManager.get(helper.level)
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, men.map { it.uuid })
+        val hit = men.first()
+        helper.runAtTickTime(40) {
+            helper.assertTrue(men.none { it.wary() }, "A man was wary before the shot")
+            hit.hurt(ModDamageTypes.causeGunFireDamage(helper.level.registryAccess(), shooter, shooter), 2f)
+        }
+        helper.runAtTickTime(45) {
+            helper.assertTrue(hit.isAlive && hit.wary(), "The man shot from out of sight did not grow wary")
+            helper.assertTrue(men.drop(1).all { it.wary() }, "The men round him did not grow wary")
+            helper.assertTrue(!far.wary(), "A man beyond the warning radius grew wary")
+            manager.deleteSquad(helper.level, squad.id)
+            (men + far + shooter).forEach { it.discard() }
+            helper.succeed()
+        }
+    }
 
     /** Wariness only steers an idle NPC's eyes: an enemy in the open is still fought. */
     @JvmStatic
