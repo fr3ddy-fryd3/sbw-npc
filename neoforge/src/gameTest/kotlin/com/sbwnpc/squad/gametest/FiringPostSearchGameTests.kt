@@ -187,12 +187,24 @@ object FiringPostSearchGameTests {
         // A canopy over one spot, a hill over another.
         for (x in 9..11) for (z in 2..4) helper.setBlock(BlockPos(x, 6, z), Blocks.OAK_LEAVES)
         for (x in 2..4) for (z in 9..11) for (y in 1..5) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
+        // A pond over a cave: the lakebed is not footing, and neither is the cave floor under it.
+        for (x in 12..14) {
+            for (z in 12..14) {
+                helper.setBlock(BlockPos(x, 1, z), Blocks.STONE)
+                helper.setBlock(BlockPos(x, 4, z), Blocks.STONE)
+                helper.setBlock(BlockPos(x, 5, z), Blocks.WATER)
+            }
+        }
         fun post(x: Double, y: Double, z: Double) = com.sbwnpc.squad.combat.tactics.DryGround.near(helper.level, helper.absoluteVec(Vec3(x, y, z)), helper.absoluteVec(Vec3(x, 1.0, z)))
         val ground = helper.absoluteVec(Vec3(8.3, 1.0, 8.7))
         helper.assertTrue(post(8.3, 10.0, 8.7) == ground, "A post 9 blocks up stayed off the ground: ${post(8.3, 10.0, 8.7)}")
         helper.assertTrue(post(8.3, 14.0, 8.7) == ground, "A post 13 blocks up stayed off the ground: ${post(8.3, 14.0, 8.7)}")
         helper.assertTrue(post(10.3, 9.0, 3.7) == helper.absoluteVec(Vec3(10.3, 1.0, 3.7)), "A post over a canopy went onto the leaves: ${post(10.3, 9.0, 3.7)}")
         helper.assertTrue(post(3.3, 2.0, 10.7) == helper.absoluteVec(Vec3(3.3, 6.0, 10.7)), "A post inside a hill did not go onto it: ${post(3.3, 2.0, 10.7)}")
+        helper.assertTrue(post(8.3, 45.0, 8.7) == ground, "A post 44 blocks up stayed off the ground: ${post(8.3, 45.0, 8.7)}")
+        val pond = post(13.3, 9.0, 13.7)
+        val inPond = helper.relativeVec(pond).let { it.x in 12.0..15.0 && it.z in 12.0..15.0 }
+        helper.assertTrue(!inPond && !helper.level.getBlockState(BlockPos.containing(pond).below()).isAir, "A post over a pond did not go to dry ground beside it: $pond")
         helper.succeed()
     }
 

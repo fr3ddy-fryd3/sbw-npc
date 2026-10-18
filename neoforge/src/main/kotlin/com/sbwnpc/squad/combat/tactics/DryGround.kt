@@ -5,6 +5,7 @@ import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.tags.BlockTags
 import net.minecraft.util.Mth
+import net.minecraft.world.level.levelgen.Heightmap
 import net.minecraft.world.phys.Vec3
 import kotlin.math.PI
 import kotlin.math.cos
@@ -25,14 +26,8 @@ object DryGround {
     /** How far from the planned point dry ground is looked for. */
     const val REACH = 32
 
-    /** How far up or down a planned point is followed to its footing. */
+    /** How far up or down a planned point is followed before the heightmap answers instead. */
     private const val SCAN = 32
-
-    /** Half a block below the feet is inside the block they stand on, slab or full. */
-    private const val HALF_BLOCK = 0.5
-
-    /** How far the other way it is followed when that finds nothing. */
-    private const val BACK_SCAN = 12
 
     /**
      * [point] moved up or down onto the footing at its spot (or left as it is when its ground isn't
@@ -47,7 +42,7 @@ object DryGround {
             val footing = (0 until steps).mapNotNull { index ->
                 val angle = 2 * PI * index / steps
                 val probe = Vec3(point.x + cos(angle) * radius, point.y, point.z + sin(angle) * radius)
-                if (loaded(level, probe)) Terrain.feetAt(level, probe) else null
+                if (loaded(level, probe)) footing(level, probe) else null
             }
             footing.minByOrNull { it.distanceToSqr(side.x, it.y, side.z) }?.let { return it }
         }
@@ -55,21 +50,41 @@ object DryGround {
     }
 
     /**
-     * The footing at [point]'s spot with room for a man: below it when it hangs in the air, above
-     * it when it lies inside the ground, then the other way. Leaves are not footing, so a post over
-     * woodland goes to the ground rather than onto the canopy.
+     * The ground at [point]'s spot when a man can stand on it: the first surface below a point in
+     * the air, the top of the ground a point lies inside. Leaves are passed through, so a post over
+     * woodland goes to the ground rather than onto the canopy. Water is no footing and stops the
+     * walk, so a lake post goes to the shore and not to a cave under the lakebed.
      */
     private fun footing(level: ServerLevel, point: Vec3): Vec3? {
-        val first = if (room(level, point)) -1 else 1
-        return scan(level, point, first, SCAN) ?: scan(level, point, -first, BACK_SCAN)
-    }
-
-    private fun scan(level: ServerLevel, point: Vec3, step: Int, range: Int): Vec3? =
-        (0..range).firstNotNullOfOrNull { offset ->
-            Terrain.feetAt(level, point.add(0.0, (step * offset).toDouble(), 0.0), guard = 0) { feet ->
-                room(level, feet) && !level.getBlockState(BlockPos.containing(feet.x, feet.y - HALF_BLOCK, feet.z)).`is`(BlockTags.LEAVES)
+        var block = BlockPos.containing(point)
+        val inAir = passable(level, block)
+        repeat(SCAN) {
+            if (inAir) {
+                val below = block.below()
+                if (!passable(level, below)) return surface(level, below)
+                block = below
+            } else {
+                val above = block.above()
+                if (passable(level, above)) return surface(level, block)
+                block = above
             }
         }
+        // Farther off than the walk: a point planned at a target's height far above the ground.
+        val top = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, block.x, block.z) - 1
+        return surface(level, BlockPos(block.x, top, block.z))
+    }
+
+    private fun passable(level: ServerLevel, block: BlockPos): Boolean {
+        val state = level.getBlockState(block)
+        return state.fluidState.isEmpty && (state.getCollisionShape(level, block).isEmpty || state.`is`(BlockTags.LEAVES))
+    }
+
+    /** The feet on top of [floor], when it is dry ground with room for a man above it. */
+    private fun surface(level: ServerLevel, floor: BlockPos): Vec3? {
+        val state = level.getBlockState(floor)
+        if (!state.fluidState.isEmpty || state.`is`(BlockTags.LEAVES)) return null
+        return Terrain.feetAt(level, Vec3.atCenterOf(floor), guard = 0) { room(level, it) }
+    }
 
     /** Whether a man's body fits with his feet at [feet]. */
     private fun room(level: ServerLevel, feet: Vec3): Boolean {
