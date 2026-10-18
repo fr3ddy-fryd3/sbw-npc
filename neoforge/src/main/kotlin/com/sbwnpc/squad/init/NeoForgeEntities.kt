@@ -1,6 +1,8 @@
 package com.sbwnpc.squad.init
 
 import com.sbwnpc.squad.ModIdentity
+import com.sbwnpc.squad.entity.NeoForgeNpcAttributes
+import com.sbwnpc.squad.entity.NeoForgeNpcEntity
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.world.entity.EntityType
@@ -18,7 +20,7 @@ object NeoForgeEntities {
 
     @JvmField
     val NPC: DeferredHolder<EntityType<*>, EntityType<NpcEntity>> = REGISTRY.register("npc") { ->
-        EntityType.Builder.of(::NpcEntity, MobCategory.CREATURE)
+        EntityType.Builder.of<NpcEntity>({ type, level -> NeoForgeNpcEntity(type, level) }, MobCategory.CREATURE)
             .sized(0.6f, 1.95f)
             .eyeHeight(1.74f)
             // In chunks. Only the fallback: the range actually used is the server config's
@@ -34,6 +36,6 @@ object NeoForgeEntities {
 
     @SubscribeEvent
     fun registerAttributes(event: EntityAttributeCreationEvent) {
-        event.put(NPC.get(), NpcEntity.createAttributes().build())
+        event.put(NPC.get(), NeoForgeNpcAttributes.create().build())
     }
 }

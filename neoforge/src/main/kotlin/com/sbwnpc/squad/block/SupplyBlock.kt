@@ -57,7 +57,7 @@ class SupplyBlock :
 
     override fun getRenderShape(state: BlockState) = RenderShape.MODEL
 
-    override fun newBlockEntity(pos: BlockPos, state: BlockState): BlockEntity = SupplyBlockEntity(pos, state)
+    override fun newBlockEntity(pos: BlockPos, state: BlockState): BlockEntity? = ModBlockEntities.SUPPLY.get().create(pos, state)
 
     override fun <T : BlockEntity> getTicker(level: Level, state: BlockState, type: BlockEntityType<T>): BlockEntityTicker<T>? {
         if (level.isClientSide) return null

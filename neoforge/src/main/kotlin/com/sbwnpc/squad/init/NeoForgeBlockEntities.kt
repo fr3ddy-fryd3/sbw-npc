@@ -2,6 +2,7 @@ package com.sbwnpc.squad.init
 
 import com.sbwnpc.squad.ModIdentity
 import com.sbwnpc.squad.block.entity.BarracksBlockEntity
+import com.sbwnpc.squad.block.entity.NeoForgeSupplyBlockEntity
 import com.sbwnpc.squad.block.entity.SupplyBlockEntity
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.world.level.block.entity.BlockEntityType
@@ -22,8 +23,8 @@ object NeoForgeBlockEntities {
 
     @JvmField
     val SUPPLY = REGISTRY.register("supply") { ->
-        BlockEntityType.Builder.of(
-            { pos, state -> SupplyBlockEntity(pos, state) },
+        BlockEntityType.Builder.of<SupplyBlockEntity>(
+            { pos, state -> NeoForgeSupplyBlockEntity(pos, state) },
             ModBlocks.SUPPLY.get(),
         ).build(null)
     }

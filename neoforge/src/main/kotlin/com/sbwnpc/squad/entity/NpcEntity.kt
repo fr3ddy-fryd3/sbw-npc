@@ -740,21 +740,6 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         return index
     }
 
-    // NpcRegistry bookkeeping — see that object. NeoForge's lifecycle hooks, so this covers every
-    // add/remove path (spawn, chunk load/unload, death, /kill, dimension change) without needing a
-    // separate event subscriber.
-    override fun onAddedToLevel() {
-        super.onAddedToLevel()
-        // Chunk loading calls this hook even when EntityJoinLevelEvent cancelled the addition.
-        if (!isRemoved) NpcRegistry.add(this)
-    }
-
-    override fun onRemovedFromLevel() {
-        if (!level().isClientSide) com.sbwnpc.squad.entity.ai.SquadMarch.forgetIndividual(uuid)
-        NpcRegistry.remove(this)
-        super.onRemovedFromLevel()
-    }
-
     /** Where this NPC "belongs" per its squad: the guarded entity, else the objective point. */
     fun homeCenter(): Vec3? {
         val requested = orderCenter() ?: return null
@@ -1213,8 +1198,6 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     override fun readAdditionalSaveData(compound: CompoundTag) {
         super.readAdditionalSaveData(compound)
-        // Saved attributes carry the old base; NPCs from before the change swim at the new pace too.
-        NeoForgeNpcAttributes.restoreSavedSwimSpeed(this)
         runCatching { npcClass = NpcClass.byName(compound.getString("NpcClass")) }
         npcRank = runCatching { NpcRank.valueOf(compound.getString("NpcRank")) }.getOrDefault(NpcRank.DEFAULT)
         experience = if (compound.contains("Experience")) compound.getDouble("Experience").takeIf { it.isFinite() }?.coerceIn(0.0, 1.0e12) ?: 0.0 else ExperienceRules.threshold(npcRank)
@@ -1488,6 +1471,6 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             SynchedEntityData.defineId(NpcEntity::class.java, EntityDataSerializers.INT)
 
         @JvmStatic
-        fun createAttributes(): AttributeSupplier.Builder = NeoForgeNpcAttributes.create()
+        fun createAttributes(): AttributeSupplier.Builder = NpcAttributes.create()
     }
 }
