@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.experience
 
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.projectile.Projectile
@@ -37,6 +38,6 @@ object ExperienceEvents {
         val shares = ExperienceAwards.shares(owner, projectile)
         val tag = net.minecraft.nbt.CompoundTag()
         shares.forEach { (id, share) -> tag.putDouble(id.toString(), share) }
-        projectile.persistentData.put("sbwnpcExperienceCrew", tag)
+        Ports.loader.persistentData(projectile).put("sbwnpcExperienceCrew", tag)
     }
 }

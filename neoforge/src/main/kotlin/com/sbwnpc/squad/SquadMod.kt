@@ -17,6 +17,7 @@ import com.sbwnpc.squad.integration.sbw.SbwMortars
 import com.sbwnpc.squad.integration.sbw.SbwVehicles
 import com.sbwnpc.squad.network.ClientboundPackets
 import com.sbwnpc.squad.network.NeoForgeClientboundTransport
+import com.sbwnpc.squad.platform.NeoForgeLoaderHooks
 import net.neoforged.bus.api.IEventBus
 import net.neoforged.fml.ModContainer
 import net.neoforged.fml.common.Mod
@@ -33,6 +34,7 @@ class SquadMod(bus: IEventBus, container: ModContainer) {
         Ports.playerSupply = com.sbwnpc.squad.integration.sbw.SbwPlayerSupply
         Ports.drones = SbwDrones
         Ports.gear = SbwGear
+        Ports.loader = NeoForgeLoaderHooks
         ClientboundPackets.transport = NeoForgeClientboundTransport
         Settings.current = SquadConfig
 
