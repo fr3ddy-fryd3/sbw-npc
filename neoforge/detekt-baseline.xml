@@ -13,7 +13,6 @@
     <ID>ComplexCondition:DefensiveOverwatchGameTests.kt$DefensiveOverwatchGameTests$event.level === helper.level &amp;&amp; round != null &amp;&amp; Ports.guns.isRound(round) &amp;&amp; actor != null &amp;&amp; round.owner === actor &amp;&amp; heldPost?.let { FiringPostArrival.reached(actor.position(), it) } == true</ID>
     <ID>ComplexCondition:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$phase != Phase.LAUNCH &amp;&amp; phase != Phase.RETURN &amp;&amp; (drone.onGround() || drone.horizontalCollision || drone.verticalCollision)</ID>
     <ID>ComplexCondition:ExperienceAwards.kt$ExperienceAwards$loader != null &amp;&amp; loader !== npc &amp;&amp; tube != null &amp;&amp; MortarClaims.atPost(loader, tube)</ID>
-    <ID>ComplexCondition:ExperienceLedger.kt$ExperienceLedger$!fraction.isFinite() || fraction &lt;= 0 || shares.isEmpty() || tag.getBoolean("Finished")</ID>
     <ID>ComplexCondition:FriendlyFireGuard.kt$FriendlyFireGuard$blastClear &amp;&amp; checkBlast &amp;&amp; canBeHurt(ally) &amp;&amp; ally.position().distanceTo(impactPoint) &lt;= blastRadius</ID>
     <ID>ComplexCondition:GrenadeThrower.kt$GrenadeThrower$thrower.grenadesLeft(kind) &lt;= 0 || !inRange(thrower.position(), target) || !isSafeToThrow(thrower, target, kind) || !Ports.grenades.arcClear(thrower, level, target, targetVelocity, kind, NEAR_TARGET)</ID>
     <ID>ComplexCondition:GroupOrders.kt$GroupOrders$selected.size != squadIds.size || selected.isEmpty() || selected.map { it.id }.distinct().size != selected.size || selected.any { it.owner != selected.first().owner } || selected.any { saved -&gt; saved.lastSeenDim?.let { it != level.dimension() } == true &amp;&amp; saved.members.none { level.getEntity(it) != null } } || selected.any { a -&gt; selected.any { b -&gt; !com.sbwnpc.squad.team.Diplomacy.allied(a.faction, b.faction) } }</ID>
@@ -44,7 +43,6 @@
     <ID>ComplexCondition:NativePositionAction.kt$NativePositionAction$task.position != null &amp;&amp; ((!intent.assault &amp;&amp; !TacticalClearance.permitsPosition(npc.npcClass, npc.position(), task.position!!, view)) || GrenadeHazard.threatens(npc.level() as ServerLevel, task.position!!))</ID>
     <ID>ComplexCondition:NpcEntity.kt$NpcEntity$busyWithRole() || vehicle != null || combatLockedByMedic() || com.sbwnpc.squad.ai.integration.NativeTactics.ownsLook(this)</ID>
     <ID>ComplexCondition:NpcEntity.kt$NpcEntity$level().isClientSide || !amount.isFinite() || amount &lt;= 0 || !isAlive</ID>
-    <ID>ComplexCondition:NpcMoveControl.kt$NpcMoveControl$!moving || operation != Operation.WAIT || !mob.onGround() || mob.isInWater || !mob.horizontalCollision</ID>
     <ID>ComplexCondition:NpcPosture.kt$NpcPosture$!moving &amp;&amp; npc.onGround() &amp;&amp; !npc.isPassenger &amp;&amp; !npc.isInWater &amp;&amp; position</ID>
     <ID>ComplexCondition:NpcPosture.kt$NpcPosture$crouch &amp;&amp; overwatch &amp;&amp; !npc.isCrouching &amp;&amp; npc.target != null</ID>
     <ID>ComplexCondition:NpcPosture.kt$NpcPosture$npc.isCrouching &amp;&amp; npc.target != null &amp;&amp; blockedSince != null &amp;&amp; tick - blockedSince &gt;= SIGHT_LOST_STAND_TICKS</ID>
@@ -119,7 +117,6 @@
     <ID>CyclomaticComplexMethod:GunAttackBehaviour.kt$GunAttackBehaviour$private fun tickShooting(entity: NpcEntity, target: LivingEntity, gun: HandGun, canShootTarget: Boolean)</ID>
     <ID>CyclomaticComplexMethod:GunAttackBehaviour.kt$GunAttackBehaviour$private fun tryHoldingAdvance(entity: NpcEntity, target: LivingEntity): Boolean</ID>
     <ID>CyclomaticComplexMethod:GunAttackBehaviour.kt$GunAttackBehaviour$private fun updateCombatMovement( entity: NpcEntity, target: LivingEntity, squad: Squad?, holding: Boolean, gun: HandGun, clearShot: Boolean, ): CombatMovement</ID>
-    <ID>CyclomaticComplexMethod:HelicopterFlightControllerTest.kt$HelicopterFlightControllerTest.Heli$fun step(cmd: HelicopterFlightController.Command)</ID>
     <ID>CyclomaticComplexMethod:HelicopterOrbitGameTests.kt$HelicopterOrbitGameTests$@JvmStatic @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 1800, batch = "transport-bench-orbit") fun transportOrbitsEnemyAndUsesSurvivingBench(helper: GameTestHelper)</ID>
     <ID>CyclomaticComplexMethod:HelicopterOrbitGameTests.kt$HelicopterOrbitGameTests$@JvmStatic @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 2400, batch = "transport-moving-retreat") fun transportTracksMovingContactThenRetreatsAndLands(helper: GameTestHelper)</ID>
     <ID>CyclomaticComplexMethod:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$override fun tick(entity: NpcEntity)</ID>
@@ -205,7 +202,6 @@
     <ID>CyclomaticComplexMethod:TacticalTerrain.kt$TacticalTerrain$fun assess(level: ServerLevel, members: List&lt;NpcEntity&gt;, destination: Vec3?, threat: Vec3?): Assessment</ID>
     <ID>CyclomaticComplexMethod:TargetMemoryGameTests.kt$TargetMemoryGameTests$@JvmStatic @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 60, batch = "target-life-memory") fun distantPlayerRespawnRequiresFreshDetectionWithoutErasingOtherEnemies(helper: GameTestHelper)</ID>
     <ID>CyclomaticComplexMethod:TeamAwareness.kt$TeamAwareness$fun sightings(faction: SquadFaction, tick: Long): List&lt;Sighting&gt;</ID>
-    <ID>CyclomaticComplexMethod:Terrain.kt$Terrain$fun feetAt(level: BlockGetter, raw: Vec3, guard: Int = 12, clearance: (Vec3) -&gt; Boolean = { true }): Vec3?</ID>
     <ID>CyclomaticComplexMethod:TerrainAttackGameTests.kt$TerrainAttackGameTests$private fun ridge(helper: GameTestHelper, returnFire: Boolean, brokenPosts: Boolean = false, villageCover: Boolean = false, sustained: Boolean = false)</ID>
     <ID>CyclomaticComplexMethod:VehicleAmmoSupply.kt$VehicleAmmoSupply$fun replenish(npc: NpcEntity): Int</ID>
     <ID>CyclomaticComplexMethod:VehicleAwareNavigation.kt$VehicleAwareNavigation$override fun createPath(pos: BlockPos, accuracy: Int): Path?</ID>
@@ -245,7 +241,6 @@
     <ID>LongMethod:FoliageCombatGameTests.kt$FoliageCombatGameTests$@JvmStatic @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 400, batch = "foliage") fun foliageKeepsPhysicalPostAndAllowsOnlyTwoSafeBursts(helper: GameTestHelper)</ID>
     <ID>LongMethod:GunAttackBehaviour.kt$GunAttackBehaviour$private fun tickShooting(entity: NpcEntity, target: LivingEntity, gun: HandGun, canShootTarget: Boolean)</ID>
     <ID>LongMethod:GunAttackBehaviour.kt$GunAttackBehaviour$private fun updateCombatMovement( entity: NpcEntity, target: LivingEntity, squad: Squad?, holding: Boolean, gun: HandGun, clearShot: Boolean, ): CombatMovement</ID>
-    <ID>LongMethod:HelicopterFlightControllerTest.kt$HelicopterFlightControllerTest.Heli$fun step(cmd: HelicopterFlightController.Command)</ID>
     <ID>LongMethod:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$override fun tick(entity: NpcEntity)</ID>
     <ID>LongMethod:HtnTacticsGameTests.kt$HtnTacticsGameTests$@JvmStatic @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1600, batch = "htn-reinforcement") fun htnReinforcementJoinsOnArrivalAndCanLeaveIndependently(helper: GameTestHelper)</ID>
     <ID>LongMethod:HtnTacticsGameTests.kt$HtnTacticsGameTests$private fun jointAttack(helper: GameTestHelper, wide: Boolean)</ID>
@@ -290,8 +285,6 @@
     <ID>LongMethod:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun tickSeeking(entity: NpcEntity, level: ServerLevel)</ID>
     <ID>LongParameterList:AttackDeploymentGameTests.kt$AttackDeploymentGameTests$(helper: GameTestHelper, at: Vec3, faction: SquadFaction, identity: UUID? = null, randomSeed: Long? = null, role: NpcClass = NpcClass.RIFLEMAN)</ID>
     <ID>LongParameterList:BoatTrips.kt$BoatTrips$(npc: NpcEntity, boat: Entity, goal: Vec3, search: CellPlanner.Search, decision: Decision, squadName: String)</ID>
-    <ID>LongParameterList:CombatPositionSafety.kt$CombatPositionSafety$(origin: Vec3, from: Vec3, to: Vec3, threat: Vec3, clearance: Double, tolerance: Double = PATH_NODE_TOLERANCE)</ID>
-    <ID>LongParameterList:DroneFlightController.kt$DroneFlightController$(pos: Vec3, yaw: Float, horizontalSpeed: Double, target: Vec3, desiredY: Double, cruiseSpeed: Double)</ID>
     <ID>LongParameterList:FriendlyFireGuard.kt$FriendlyFireGuard$( shooter: NpcEntity, aimPoint: Vec3, spread: Double, impactPoint: Vec3, blastRadius: Double, from: Vec3 = shooter.eyePosition, )</ID>
     <ID>LongParameterList:GroupOrders.kt$GroupOrders$(level: ServerLevel, mgr: SquadManager, routes: RouteManager, owner: UUID, squadIds: List&lt;UUID&gt;, points: List&lt;kotlin.Pair&lt;Int, Int&gt;&gt;)</ID>
     <ID>LongParameterList:GroupOrders.kt$GroupOrders$(level: ServerLevel, mgr: SquadManager, selected: List&lt;Squad&gt;, order: SquadOrder, x: Int, z: Int)</ID>
@@ -302,8 +295,6 @@
     <ID>LongParameterList:GunAttackBehaviour.kt$GunAttackBehaviour$( search: FiringSearch, level: ServerLevel, entity: NpcEntity, target: LivingEntity, eyeHeight: Double, hulls: List&lt;AABB&gt;, taken: List&lt;Vec3&gt;, startingScore: Double, )</ID>
     <ID>LongParameterList:GunRendering.kt$GunRendering$( holder: LivingEntity, stack: ItemStack, displayContext: ItemDisplayContext, poseStack: PoseStack, buffer: MultiBufferSource, packedLight: Int, )</ID>
     <ID>LongParameterList:Hearing.kt$Hearing$(level: ServerLevel, at: Vec3, radius: Double, source: Entity?, kind: String, footstep: Boolean = false, allSides: Boolean = false)</ID>
-    <ID>LongParameterList:HelicopterFlightController.kt$HelicopterFlightController$( pos: Vec3, yaw: Float, pitch: Float, roll: Float, rollRate: Float, velocity: Vec3, target: Vec3, desiredY: Double, cruiseSpeed: Double, tuning: Tuning, facing: Vec3? = null, )</ID>
-    <ID>LongParameterList:HelicopterFlightControllerTest.kt$HelicopterFlightControllerTest.Heli$( var pos: Vec3, var yaw: Float, private val increment: Float = 0.8f, private val decrement: Float = 0.8f, private val liftSpeed: Float = 1f, private val yawSpeed: Float = 0.85f, private val pitchSpeed: Float = 0.75f, private val rollSpeed: Float = 0.6f, )</ID>
     <ID>LongParameterList:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$( level: ServerLevel, heli: Entity, station: Vec3, facing: Vec3?, speed: Double, rollRate: Float, clearance: Double, )</ID>
     <ID>LongParameterList:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour.Mission$( val station: Vec3, val facing: Vec3?, val landOnArrival: Boolean, val speed: Double, /** What "am I already where I belong?" is measured against. For a patrol that is the * centre of the area, not the point on the circle being flown to next — otherwise a * helicopter parked dead on its own objective still sees 70 blocks to the next waypoint * and scrambles the moment it is deployed. */ val anchor: Vec3 = station, /** How high over the terrain this leg is flown. A patrol sits low enough to see and be * seen; anything else keeps the safe margin. */ val clearance: Double = CRUISE_CLEARANCE, val patrol: Boolean = false, val attackOrbit: Boolean = false, )</ID>
     <ID>LongParameterList:InfantryMovementGameTests.kt$InfantryMovementGameTests$( helper: GameTestHelper, scenario: String, destination: BlockPos, needsClimb: Boolean, blockHeadroom: Boolean = false, partialFloor: Boolean = false, opposedAim: Boolean = false, avoidPowderSnow: Boolean = false, preservePowderSnow: Boolean = false, start: Vec3 = Vec3(3.5, 1.0, 6.5), )</ID>
@@ -328,7 +319,6 @@
     <ID>LongParameterList:TacticalPositions.kt$TacticalPositions$(context: SearchContext, candidate: Vec3, exposure: Int, firing: Boolean, mustShoot: Boolean, nearbyCover: Boolean)</ID>
     <ID>LongParameterList:TacticalPositions.kt$TacticalPositions$(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, level: ServerLevel, homeRadius: Double, clearance: Double)</ID>
     <ID>LongParameterList:TacticalPositions.kt$TacticalPositions$(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, level: ServerLevel, homeRadius: Double, overwatch: Boolean, query: Query)</ID>
-    <ID>LongParameterList:TacticalTargetSelection.kt$TacticalTargetSelection$(candidates: List&lt;T&gt;, current: T?, cursor: Int, assess: (T) -&gt; Opportunity, allocate: (List&lt;T&gt;) -&gt; T?, reconsiderCurrent: Boolean = false)</ID>
     <ID>MagicNumber:AircraftLods.kt$AircraftLods$0.15</ID>
     <ID>MagicNumber:AircraftLods.kt$AircraftLods$0.35</ID>
     <ID>MagicNumber:AircraftLods.kt$AircraftLods$128</ID>
@@ -338,9 +328,6 @@
     <ID>MagicNumber:AircraftLods.kt$AircraftLods$96</ID>
     <ID>MagicNumber:AircraftVisibility.kt$AircraftVisibility$0.01</ID>
     <ID>MagicNumber:AircraftVisibility.kt$AircraftVisibility$512f</ID>
-    <ID>MagicNumber:Airspace.kt$Airspace$1.0e-3</ID>
-    <ID>MagicNumber:Airspace.kt$Airspace$1.0e-6</ID>
-    <ID>MagicNumber:AmmoRetreat.kt$AmmoRetreat$12.0</ID>
     <ID>MagicNumber:AntiDroneBehaviour.kt$AntiDroneBehaviour$0.5</ID>
     <ID>MagicNumber:AntiDroneBehaviour.kt$AntiDroneBehaviour$1.0e-6</ID>
     <ID>MagicNumber:AntiDroneBehaviour.kt$AntiDroneBehaviour$1200.0</ID>
@@ -359,12 +346,6 @@
     <ID>MagicNumber:AttackAmmoWithdrawal.kt$AttackAmmoWithdrawal$4</ID>
     <ID>MagicNumber:AttackAmmoWithdrawal.kt$AttackAmmoWithdrawal$4.0</ID>
     <ID>MagicNumber:AttackAmmoWithdrawal.kt$AttackAmmoWithdrawal$8.0</ID>
-    <ID>MagicNumber:AutomaticBurst.kt$AutomaticBurst$11</ID>
-    <ID>MagicNumber:AutomaticBurst.kt$AutomaticBurst$12</ID>
-    <ID>MagicNumber:AutomaticBurst.kt$AutomaticBurst$16</ID>
-    <ID>MagicNumber:AutomaticBurst.kt$AutomaticBurst$20</ID>
-    <ID>MagicNumber:AutomaticBurst.kt$AutomaticBurst$3</ID>
-    <ID>MagicNumber:AutomaticBurst.kt$AutomaticBurst$6</ID>
     <ID>MagicNumber:BarracksBlock.kt$BarracksBlock$12.0f</ID>
     <ID>MagicNumber:BarracksBlock.kt$BarracksBlock$6.0f</ID>
     <ID>MagicNumber:BarracksBlockEntity.kt$BarracksBlockEntity.Companion$20</ID>
@@ -388,9 +369,6 @@
     <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$42</ID>
     <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$46</ID>
     <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$75</ID>
-    <ID>MagicNumber:BenchAttackOrbit.kt$BenchAttackOrbit$3</ID>
-    <ID>MagicNumber:BenchAttackOrbit.kt$BenchAttackOrbit$80f</ID>
-    <ID>MagicNumber:BenchAttackOrbit.kt$BenchAttackOrbit$90f</ID>
     <ID>MagicNumber:BlindReturnFireBehaviour.kt$BlindReturnFireBehaviour$1200.0</ID>
     <ID>MagicNumber:BlindReturnFireBehaviour.kt$BlindReturnFireBehaviour$20</ID>
     <ID>MagicNumber:BlindReturnFireBehaviour.kt$BlindReturnFireBehaviour$50</ID>
@@ -410,12 +388,6 @@
     <ID>MagicNumber:ChooseFactionScreen.kt$ChooseFactionScreen$60</ID>
     <ID>MagicNumber:ChooseFactionScreen.kt$ChooseFactionScreen$8</ID>
     <ID>MagicNumber:ChooseFactionScreen.kt$ChooseFactionScreen$84</ID>
-    <ID>MagicNumber:CombatPathRetry.kt$CombatPathRetry$0.01</ID>
-    <ID>MagicNumber:CombatPathRetry.kt$CombatPathRetry$0.25</ID>
-    <ID>MagicNumber:CombatPathRetry.kt$CombatPathRetry$10</ID>
-    <ID>MagicNumber:CombatPositionSafety.kt$CombatPositionSafety$0.5</ID>
-    <ID>MagicNumber:CombatPositionSafety.kt$CombatPositionSafety$1.0e-9</ID>
-    <ID>MagicNumber:CombatPositionSafety.kt$CombatPositionSafety$20</ID>
     <ID>MagicNumber:CommandScreen.kt$CommandScreen$0xAAAAAA</ID>
     <ID>MagicNumber:CommandScreen.kt$CommandScreen$0xBBBBBB</ID>
     <ID>MagicNumber:CommandScreen.kt$CommandScreen$0xFFFFFF</ID>
@@ -451,20 +423,6 @@
     <ID>MagicNumber:CoverSearch.kt$CoverSearch$64</ID>
     <ID>MagicNumber:CoverSearch.kt$CoverSearch$7</ID>
     <ID>MagicNumber:DeathSites.kt$DeathSites$0.5</ID>
-    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$0.2</ID>
-    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$0.9</ID>
-    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$1.5</ID>
-    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$1000.0</ID>
-    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$2</ID>
-    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$2.5</ID>
-    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$24.0</ID>
-    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$32</ID>
-    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$4</ID>
-    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$5.0</ID>
-    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$6.0</ID>
-    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$7</ID>
-    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$8</ID>
-    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$8.0</ID>
     <ID>MagicNumber:Diplomacy.kt$Diplomacy$20</ID>
     <ID>MagicNumber:Diplomacy.kt$Diplomacy$60</ID>
     <ID>MagicNumber:DiplomacyScreen.kt$DiplomacyScreen$0xFFFFFF</ID>
@@ -474,15 +432,11 @@
     <ID>MagicNumber:DiplomacyScreen.kt$DiplomacyScreen$60</ID>
     <ID>MagicNumber:DiplomacyScreen.kt$DiplomacyScreen$8</ID>
     <ID>MagicNumber:DiplomacyScreen.kt$DiplomacyScreen$90</ID>
-    <ID>MagicNumber:DroneFlightController.kt$DroneFlightController$0.5</ID>
-    <ID>MagicNumber:DroneFlightController.kt$DroneFlightController$1.4</ID>
     <ID>MagicNumber:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$0.5</ID>
     <ID>MagicNumber:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$1.5</ID>
     <ID>MagicNumber:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$1e-3</ID>
     <ID>MagicNumber:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$1e-6</ID>
     <ID>MagicNumber:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$8</ID>
-    <ID>MagicNumber:DryGround.kt$DryGround$4</ID>
-    <ID>MagicNumber:DryGround.kt$DryGround$8</ID>
     <ID>MagicNumber:ExperienceAwards.kt$ExperienceAwards$0.0025</ID>
     <ID>MagicNumber:ExperienceAwards.kt$ExperienceAwards$0.25</ID>
     <ID>MagicNumber:ExperienceAwards.kt$ExperienceAwards$0.5</ID>
@@ -493,10 +447,7 @@
     <ID>MagicNumber:ExperienceAwards.kt$ExperienceAwards$300.0</ID>
     <ID>MagicNumber:ExperienceAwards.kt$ExperienceAwards$40</ID>
     <ID>MagicNumber:ExperienceAwards.kt$ExperienceAwards$60</ID>
-    <ID>MagicNumber:ExperienceLedger.kt$ExperienceLedger$0.7</ID>
     <ID>MagicNumber:FactionBanner.kt$FactionBanner$0xAAAAAA</ID>
-    <ID>MagicNumber:FailedWalkingSteps.kt$FailedWalkingSteps$200</ID>
-    <ID>MagicNumber:FailedWalkingSteps.kt$FailedWalkingSteps$32</ID>
     <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$0xAAAAAA</ID>
     <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$0xFFFFFF</ID>
     <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$10</ID>
@@ -506,12 +457,6 @@
     <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$22</ID>
     <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$24</ID>
     <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$34</ID>
-    <ID>MagicNumber:FiringCone.kt$FiringCone$0.0172275</ID>
-    <ID>MagicNumber:FiringCone.kt$FiringCone$0.5</ID>
-    <ID>MagicNumber:FiringCone.kt$FiringCone$1.0e-6</ID>
-    <ID>MagicNumber:FiringCone.kt$FiringCone$3.0</ID>
-    <ID>MagicNumber:FiringObstruction.kt$FiringObstruction$160</ID>
-    <ID>MagicNumber:FiringObstruction.kt$FiringObstruction$80</ID>
     <ID>MagicNumber:FiringOpportunity.kt$FiringOpportunity$128.0</ID>
     <ID>MagicNumber:FiringPostArrival.kt$FiringPostArrival$0.25</ID>
     <ID>MagicNumber:FiringSpots.kt$FiringSpots$4</ID>
@@ -521,13 +466,6 @@
     <ID>MagicNumber:GrenadeEvadeBehaviour.kt$GrenadeEvadeBehaviour$4.0</ID>
     <ID>MagicNumber:GrenadeUseBehaviour.kt$GrenadeUseBehaviour$100</ID>
     <ID>MagicNumber:GrenadeUseBehaviour.kt$GrenadeUseBehaviour$6.0</ID>
-    <ID>MagicNumber:GroundRouteProgress.kt$GroundRouteProgress$1e-6</ID>
-    <ID>MagicNumber:GroundRouteProgress.kt$GroundRouteProgress$4</ID>
-    <ID>MagicNumber:GroundTravelProgress.kt$GroundTravelProgress$0xFFFFFFFFL</ID>
-    <ID>MagicNumber:GroundTravelProgress.kt$GroundTravelProgress$1200</ID>
-    <ID>MagicNumber:GroundTravelProgress.kt$GroundTravelProgress$32</ID>
-    <ID>MagicNumber:GroundTravelProgress.kt$GroundTravelProgress$4</ID>
-    <ID>MagicNumber:GroundTravelProgress.kt$GroundTravelProgress$8192</ID>
     <ID>MagicNumber:GroupOrders.kt$GroupOrders$15</ID>
     <ID>MagicNumber:GroupOrders.kt$GroupOrders$4</ID>
     <ID>MagicNumber:GunAttackBehaviour.kt$GunAttackBehaviour$0.3</ID>
@@ -548,13 +486,6 @@
     <ID>MagicNumber:Hearing.kt$Hearing$1024</ID>
     <ID>MagicNumber:Hearing.kt$Hearing$512</ID>
     <ID>MagicNumber:Hearing.kt$Hearing$8</ID>
-    <ID>MagicNumber:HelicopterAttackCompletion.kt$HelicopterAttackCompletion$200</ID>
-    <ID>MagicNumber:HelicopterFlightController.kt$HelicopterFlightController$0.2f</ID>
-    <ID>MagicNumber:HelicopterFlightController.kt$HelicopterFlightController$0.5f</ID>
-    <ID>MagicNumber:HelicopterFlightController.kt$HelicopterFlightController$1.0e-6</ID>
-    <ID>MagicNumber:HelicopterFlightController.kt$HelicopterFlightController$1.5</ID>
-    <ID>MagicNumber:HelicopterFlightController.kt$HelicopterFlightController$1.5f</ID>
-    <ID>MagicNumber:HelicopterFlightController.kt$HelicopterFlightController$10f</ID>
     <ID>MagicNumber:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$1e-4</ID>
     <ID>MagicNumber:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$1e-6</ID>
     <ID>MagicNumber:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$20</ID>
@@ -570,19 +501,7 @@
     <ID>MagicNumber:HudClientEvents.kt$HudClientEvents$0xFFFFFF</ID>
     <ID>MagicNumber:HudClientEvents.kt$HudClientEvents$8</ID>
     <ID>MagicNumber:HudKeys.kt$HudKeys$9</ID>
-    <ID>MagicNumber:IncomingFire.kt$IncomingFire$0.12</ID>
-    <ID>MagicNumber:IncomingFire.kt$IncomingFire$0.15</ID>
-    <ID>MagicNumber:IncomingFire.kt$IncomingFire$0.7</ID>
-    <ID>MagicNumber:IncomingFire.kt$IncomingFire$10</ID>
-    <ID>MagicNumber:IncomingFire.kt$IncomingFire$160</ID>
-    <ID>MagicNumber:IncomingFire.kt$IncomingFire$3</ID>
-    <ID>MagicNumber:IncomingFire.kt$IncomingFire$60</ID>
-    <ID>MagicNumber:IncomingFire.kt$IncomingFire$600</ID>
-    <ID>MagicNumber:IncomingFire.kt$IncomingFire$96.0</ID>
-    <ID>MagicNumber:IncomingFire.kt$IncomingFire.Companion$1.0e-6</ID>
-    <ID>MagicNumber:IncomingFire.kt$IncomingFire.Companion$12.0</ID>
     <ID>MagicNumber:InvestigateBehaviour.kt$InvestigateBehaviour$8</ID>
-    <ID>MagicNumber:MarchProgress.kt$MarchProgress$33</ID>
     <ID>MagicNumber:MedicHealBehaviour.kt$MedicHealBehaviour$0.3</ID>
     <ID>MagicNumber:MedicHealBehaviour.kt$MedicHealBehaviour$0.5</ID>
     <ID>MagicNumber:MedicHealBehaviour.kt$MedicHealBehaviour$1.5f</ID>
@@ -666,11 +585,6 @@
     <ID>MagicNumber:NpcItemInHandLayer.kt$NpcItemInHandLayer$180.0f</ID>
     <ID>MagicNumber:NpcItemInHandLayer.kt$NpcItemInHandLayer$90.0f</ID>
     <ID>MagicNumber:NpcModel.kt$NpcModel.Companion$64</ID>
-    <ID>MagicNumber:NpcMoveControl.kt$NpcMoveControl$0.04</ID>
-    <ID>MagicNumber:NpcMoveControl.kt$NpcMoveControl$0.05</ID>
-    <ID>MagicNumber:NpcMoveControl.kt$NpcMoveControl$180.0</ID>
-    <ID>MagicNumber:NpcMoveControl.kt$NpcMoveControl$90.0</ID>
-    <ID>MagicNumber:NpcMoveControl.kt$NpcMoveControl$90f</ID>
     <ID>MagicNumber:NpcPosture.kt$NpcPosture$1.0e-7</ID>
     <ID>MagicNumber:NpcRenderer.kt$NpcRenderer$0.125</ID>
     <ID>MagicNumber:NpcRenderer.kt$NpcRenderer$0.5f</ID>
@@ -679,8 +593,6 @@
     <ID>MagicNumber:NpcStuckRecovery.kt$NpcStuckRecovery$4</ID>
     <ID>MagicNumber:NpcStuckRecovery.kt$NpcStuckRecovery$6</ID>
     <ID>MagicNumber:NpcStuckRecovery.kt$NpcStuckRecovery$600</ID>
-    <ID>MagicNumber:OpeningFire.kt$OpeningFire$100</ID>
-    <ID>MagicNumber:OpeningFire.kt$OpeningFire$4</ID>
     <ID>MagicNumber:OrderArrival.kt$OrderArrival$0.5</ID>
     <ID>MagicNumber:OrderArrival.kt$OrderArrival$200</ID>
     <ID>MagicNumber:OrderArrival.kt$OrderArrival$3</ID>
@@ -714,7 +626,6 @@
     <ID>MagicNumber:RenameScreen.kt$RenameScreen$36</ID>
     <ID>MagicNumber:RenameScreen.kt$RenameScreen$4</ID>
     <ID>MagicNumber:RenameScreen.kt$RenameScreen$96</ID>
-    <ID>MagicNumber:RouteManager.kt$RouteManager$24</ID>
     <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$0xAAAAAA</ID>
     <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$0xFFFFFF</ID>
     <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$108</ID>
@@ -772,8 +683,6 @@
     <ID>MagicNumber:SidearmKit.kt$SidearmKit$70</ID>
     <ID>MagicNumber:SidearmKit.kt$SidearmKit$85</ID>
     <ID>MagicNumber:Sightline.kt$Sightline$1.0e-7</ID>
-    <ID>MagicNumber:SquadAreaLayout.kt$SquadAreaLayout$16</ID>
-    <ID>MagicNumber:SquadAreaLayout.kt$SquadAreaLayout$8.0</ID>
     <ID>MagicNumber:SquadAreas.kt$SquadAreas$0.001</ID>
     <ID>MagicNumber:SquadAreas.kt$SquadAreas$20</ID>
     <ID>MagicNumber:SquadAreas.kt$SquadAreas$200</ID>
@@ -920,8 +829,6 @@
     <ID>MagicNumber:TacticalFirePosts.kt$TacticalFirePosts$4.0</ID>
     <ID>MagicNumber:TacticalFirePosts.kt$TacticalFirePosts$8</ID>
     <ID>MagicNumber:TacticalFirePosts.kt$TacticalFirePosts$8.0</ID>
-    <ID>MagicNumber:TacticalModel.kt$TacticalSnapshot$0.3</ID>
-    <ID>MagicNumber:TacticalModel.kt$TacticalSnapshot$40</ID>
     <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$0.01</ID>
     <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$0.1</ID>
     <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$0.5</ID>
@@ -944,7 +851,6 @@
     <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$64.0</ID>
     <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$8.0</ID>
     <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$9</ID>
-    <ID>MagicNumber:TacticalRouteValidation.kt$TacticalRouteValidation$20</ID>
     <ID>MagicNumber:TacticalRoutes.kt$TacticalRoutes$0.5</ID>
     <ID>MagicNumber:TacticalRoutes.kt$TacticalRoutes$1.0e-6</ID>
     <ID>MagicNumber:TacticalRoutes.kt$TacticalRoutes$16.0</ID>
@@ -964,7 +870,6 @@
     <ID>MagicNumber:TacticalTerrain.kt$TacticalTerrain$4</ID>
     <ID>MagicNumber:TacticalTerrain.kt$TacticalTerrain$4.0</ID>
     <ID>MagicNumber:TeamAwareness.kt$TeamAwareness$4</ID>
-    <ID>MagicNumber:Terrain.kt$Terrain$0.5</ID>
     <ID>MagicNumber:TickBudget.kt$RaycastWorkBudget$32</ID>
     <ID>MagicNumber:TickBudget.kt$RaycastWorkBudget$436</ID>
     <ID>MagicNumber:TickBudget.kt$RaycastWorkBudget$500</ID>
@@ -972,12 +877,6 @@
     <ID>MagicNumber:TickBudget.kt$RaycastWorkBudget$64</ID>
     <ID>MagicNumber:TickBudget.kt$RaycastWorkBudget$8</ID>
     <ID>MagicNumber:TickBudget.kt$TickBudget$20</ID>
-    <ID>MagicNumber:TreeAvoidance.kt$TreeAvoidance$0.01</ID>
-    <ID>MagicNumber:TreeAvoidance.kt$TreeAvoidance$1.0e-4</ID>
-    <ID>MagicNumber:TreeAvoidance.kt$TreeAvoidance$20.0</ID>
-    <ID>MagicNumber:TreeAvoidance.kt$TreeAvoidance$40.0</ID>
-    <ID>MagicNumber:TreeAvoidance.kt$TreeAvoidance$60.0</ID>
-    <ID>MagicNumber:TreeAvoidance.kt$TreeAvoidance$85.0</ID>
     <ID>MagicNumber:VehicleAmmoSupply.kt$VehicleAmmoSupply$36.0</ID>
     <ID>MagicNumber:VehicleAmmoSupply.kt$VehicleAmmoSupply$40</ID>
     <ID>MagicNumber:VehicleAmmoSupply.kt$VehicleAmmoSupply$6.0</ID>
@@ -1004,32 +903,10 @@
     <ID>MagicNumber:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$64</ID>
     <ID>MagicNumber:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$75.0</ID>
     <ID>MagicNumber:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$8</ID>
-    <ID>MagicNumber:Vision.kt$Vision$1.0e-6</ID>
-    <ID>MagicNumber:Vision.kt$Vision$36.0</ID>
-    <ID>MagicNumber:Vision.kt$Vision$6.25</ID>
-    <ID>MagicNumber:WalkingClearance.kt$WalkingClearance$0.001</ID>
-    <ID>MagicNumber:WalkingClearance.kt$WalkingClearance$0.05</ID>
-    <ID>MagicNumber:WalkingClearance.kt$WalkingClearance$0.5</ID>
-    <ID>MagicNumber:WalkingClearance.kt$WalkingClearance$0.8</ID>
-    <ID>MagicNumber:WalkingClearance.kt$WalkingClearance$3</ID>
-    <ID>MagicNumber:WalkingClearance.kt$WalkingClearance$4</ID>
-    <ID>MagicNumber:WalkingClearance.kt$WalkingClearance$4f</ID>
-    <ID>MagicNumber:WalkingClearance.kt$WalkingClearance$8</ID>
-    <ID>MagicNumber:WaterMap.kt$WaterMap$0.5</ID>
-    <ID>MagicNumber:WaterMap.kt$WaterMap$15</ID>
-    <ID>MagicNumber:WaterMap.kt$WaterMap$16</ID>
-    <ID>MagicNumber:WaterMap.kt$WaterMap$256</ID>
-    <ID>MagicNumber:WaterMap.kt$WaterMap$4</ID>
-    <ID>MagicNumber:WaterRoutes.kt$WaterRoutes$0.5</ID>
-    <ID>MagicNumber:WaterRoutes.kt$WaterRoutes$3</ID>
-    <ID>MagicNumber:WaterRoutes.kt$WaterRoutes$4</ID>
-    <ID>MagicNumber:WaterRoutes.kt$WaterRoutes.Water$0.5</ID>
     <ID>MagicNumber:Withdrawal.kt$Withdrawal$1.0e-4</ID>
     <ID>MagicNumber:Withdrawal.kt$Withdrawal$24.0</ID>
     <ID>MagicNumber:Withdrawal.kt$Withdrawal$8</ID>
     <ID>MemberNameEqualsClassName:SavedWorldRoutesTest.kt$SavedWorldRoutesTest.Seen$private fun seen(x: Int, z: Int)</ID>
-    <ID>MemberNameEqualsClassName:WaterRoutes.kt$WaterRoutes.Water$private fun water(x: Int, z: Int): Boolean</ID>
-    <ID>MemberNameEqualsClassName:WaterRoutes.kt$WaterRoutes.Water$private val water = HashMap&lt;Long, Boolean&gt;()</ID>
     <ID>NestedBlockDepth:AircraftLodsTest.kt$AircraftLodsTest$@Test fun `all built in aircraft bake cheaper distant geometry without changing their skeleton`()</ID>
     <ID>NestedBlockDepth:CoverSearch.kt$CoverSearch$fun find(entity: NpcEntity, level: ServerLevel, threat: Vec3, excluded: Set&lt;BlockPos&gt; = emptySet(), permitted: (Vec3) -&gt; Boolean = { true }): BlockPos?</ID>
     <ID>NestedBlockDepth:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$private fun refreshTarget(entity: NpcEntity, level: ServerLevel, drone: Entity): Boolean</ID>
@@ -1051,10 +928,8 @@
     <ID>NestedBlockDepth:TacticalRoutes.kt$TacticalRoutes$fun leg(from: Vec3, task: TacticalTask): Vec3</ID>
     <ID>NestedBlockDepth:TeamAwareness.kt$TeamAwareness$fun relayedContacts(faction: SquadFaction, tick: Long, window: Long = RECENT_WINDOW_TICKS): List&lt;UUID&gt;</ID>
     <ID>NestedBlockDepth:TerrainAttackGameTests.kt$TerrainAttackGameTests$private fun ridge(helper: GameTestHelper, returnFire: Boolean, brokenPosts: Boolean = false, villageCover: Boolean = false, sustained: Boolean = false)</ID>
-    <ID>NestedBlockDepth:TreeAvoidance.kt$TreeAvoidance$private fun hasTree(level: Level, box: AABB): Boolean</ID>
     <ID>NestedBlockDepth:VehicleAwareNavigation.kt$VehicleAwareNavigation$private fun choosePath(pos: BlockPos, accuracy: Int): Path?</ID>
     <ID>NestedBlockDepth:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun recoverIfStuck(entity: NpcEntity, vehicle: Entity, home: Vec3): Boolean</ID>
-    <ID>NestedBlockDepth:WaterMap.kt$WaterMap$private fun read(level: ServerLevel, y: Int, cx: Int, cz: Int, now: Long): Chunk</ID>
     <ID>ThrowingExceptionsWithoutMessageOrCause:NpcEntity.kt$NpcEntity$Throwable()</ID>
     <ID>ThrowingExceptionsWithoutMessageOrCause:VehicleAwareNavigation.kt$VehicleAwareNavigation$Throwable()</ID>
     <ID>TooGenericExceptionCaught:AircraftLods.kt$AircraftLods$exception: Exception</ID>
@@ -1099,7 +974,6 @@
     <ID>TooManyFunctions:SquadMarch.kt$SquadMarch</ID>
     <ID>TooManyFunctions:SquadOrderBehaviour.kt$SquadOrderBehaviour : ExtendedBehaviour</ID>
     <ID>TooManyFunctions:SquadReports.kt$SquadReports</ID>
-    <ID>TooManyFunctions:SquadSelection.kt$SquadSelection</ID>
     <ID>TooManyFunctions:SquadTactics.kt$SquadTactics</ID>
     <ID>TooManyFunctions:SquadTargetSensor.kt$SquadTargetSensor : ExtendedSensor</ID>
     <ID>TooManyFunctions:SquadTeams.kt$SquadTeams</ID>
