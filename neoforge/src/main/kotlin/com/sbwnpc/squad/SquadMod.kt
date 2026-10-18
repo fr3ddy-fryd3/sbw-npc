@@ -3,12 +3,12 @@ package com.sbwnpc.squad
 import com.sbwnpc.squad.config.Settings
 import com.sbwnpc.squad.config.SquadConfig
 import com.sbwnpc.squad.domain.port.Ports
-import com.sbwnpc.squad.init.ModBlockEntities
 import com.sbwnpc.squad.init.ModBlocks
-import com.sbwnpc.squad.init.ModEntities
 import com.sbwnpc.squad.init.ModItems
 import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.init.ModSensors
+import com.sbwnpc.squad.init.NeoForgeBlockEntities
+import com.sbwnpc.squad.init.NeoForgeEntities
 import com.sbwnpc.squad.integration.sbw.SbwDrones
 import com.sbwnpc.squad.integration.sbw.SbwGear
 import com.sbwnpc.squad.integration.sbw.SbwGrenades
@@ -42,10 +42,10 @@ class SquadMod(bus: IEventBus, container: ModContainer) {
             bus.addListener(com.sbwnpc.squad.config.DebugConfig::onConfig)
         }
 
-        ModEntities.REGISTRY.register(bus)
+        NeoForgeEntities.REGISTRY.register(bus)
         ModItems.ITEMS.register(bus)
         ModBlocks.REGISTRY.register(bus)
-        ModBlockEntities.REGISTRY.register(bus)
+        NeoForgeBlockEntities.REGISTRY.register(bus)
         // Forces ModSensors'/ModMemories' static fields (and the SmartBrainLib sensor/memory
         // registration side-effects they trigger) to run now, before the registry closes — same
         // trick the library's own SBLSensors/SBLMemoryTypes use themselves.

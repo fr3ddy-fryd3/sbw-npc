@@ -509,11 +509,6 @@
     <ID>MagicNumber:MedicHealBehaviour.kt$MedicHealBehaviour$12</ID>
     <ID>MagicNumber:MedicHealBehaviour.kt$MedicHealBehaviour$30f</ID>
     <ID>MagicNumber:MedicHealBehaviour.kt$MedicHealBehaviour$40</ID>
-    <ID>MagicNumber:ModEntities.kt$ModEntities$0.6f</ID>
-    <ID>MagicNumber:ModEntities.kt$ModEntities$1.74f</ID>
-    <ID>MagicNumber:ModEntities.kt$ModEntities$1.95f</ID>
-    <ID>MagicNumber:ModEntities.kt$ModEntities$16</ID>
-    <ID>MagicNumber:ModEntities.kt$ModEntities$3</ID>
     <ID>MagicNumber:MortarClaims.kt$MortarClaims$36.0</ID>
     <ID>MagicNumber:MortarClaims.kt$MortarClaims$6.25</ID>
     <ID>MagicNumber:MortarCrewBehaviour.kt$MortarCrewBehaviour$0.5</ID>
@@ -567,6 +562,11 @@
     <ID>MagicNumber:NativeTactics.kt$NativeTactics.World$4.0</ID>
     <ID>MagicNumber:NativeTactics.kt$NativeTactics.World$48.0</ID>
     <ID>MagicNumber:NativeTactics.kt$NativeTactics.World$8</ID>
+    <ID>MagicNumber:NeoForgeEntities.kt$NeoForgeEntities$0.6f</ID>
+    <ID>MagicNumber:NeoForgeEntities.kt$NeoForgeEntities$1.74f</ID>
+    <ID>MagicNumber:NeoForgeEntities.kt$NeoForgeEntities$1.95f</ID>
+    <ID>MagicNumber:NeoForgeEntities.kt$NeoForgeEntities$16</ID>
+    <ID>MagicNumber:NeoForgeEntities.kt$NeoForgeEntities$3</ID>
     <ID>MagicNumber:NpcEntity.kt$NpcEntity$0.5</ID>
     <ID>MagicNumber:NpcEntity.kt$NpcEntity$1.0e12</ID>
     <ID>MagicNumber:NpcEntity.kt$NpcEntity$100</ID>

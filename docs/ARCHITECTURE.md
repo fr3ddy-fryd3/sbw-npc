@@ -36,7 +36,7 @@ command and supply it. The pieces, roughly from the outside in:
 | Package | What lives there |
 |---|---|
 | (root) | `SquadMod` (mod entry point), `ServerTick` (server-wide per-tick drivers), `ServerLifecycle` (clears runtime state when a world stops); in common, `ModIdentity` (mod id, logger and `loc()`) |
-| `init/` | Deferred registers: entities, items, blocks, block entities, SmartBrainLib sensors and memory types |
+| `init/` | Deferred registers: entities, items, blocks, block entities, SmartBrainLib sensors and memory types. Shared code reaches the entity and block entity types through the `ModEntities` and `ModBlockEntities` handles, which `NeoForgeEntities` and `NeoForgeBlockEntities` bind as they register |
 | `entity/` | `NpcEntity` itself, posture, stuck recovery, and live per-level indexes (`NpcRegistry`, `EntityIndex`, drone and grenade registries) |
 | `entity/ai/` | Brain behaviours (`*Behaviour.kt`), the target sensor, and the helpers they share: flight controllers, march and route progress trackers, claim registries for mortars and transport seats |
 | `squad/` | Squad model and persistence, orders, selection, deployment, routes (patrol routes and recording), radio reports, chunk loading for squads away from players |
