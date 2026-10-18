@@ -68,6 +68,7 @@ internal class NativePositionAction(
 
     override fun start(now: Long): ActionUpdate {
         lastProgress = now
+        DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=post_action_started duty={} job={} anchor={} focus={}", npc.uuid, intent.duty, task.job, task.anchor, task.focus)
         return update(now)
     }
     override fun tick(now: Long) = update(now)
@@ -105,6 +106,7 @@ internal class NativePositionAction(
                 val direction = intent.focus?.native() ?: intent.anchor.native().add(npc.lookAngle.scale(8.0))
                 npc.lookControl.setLookAt(direction.x, direction.y + 1.5, direction.z)
             }
+            DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=post_action_completed duty={} position={}", npc.uuid, intent.duty, task.position)
             return ActionUpdate.Completed(listOf(ActionEvidence("physical_post_arrival", now, "${npc.uuid}:${task.position}")))
         }
         if (task.position == null || task.search != null) {
