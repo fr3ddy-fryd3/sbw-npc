@@ -61,6 +61,18 @@ internal class SavedBattleReplay(private val level: ServerLevel, private val roo
         require(manager.all().all { it.barracks == null && it.routeId == null }) { "This replay requires saved barracks/routes as additional fixtures" }
     }
 
+    /**
+     * Imports only the saved blocks of the chunks within [radius] blocks of [center]: no entities,
+     * squads or factions, for a battle the scene deploys itself on real terrain.
+     */
+    fun restoreTerrain(center: BlockPos, radius: Int) {
+        val min = ChunkPos(center.offset(-radius, 0, -radius))
+        val max = ChunkPos(center.offset(radius, 0, radius))
+        readRegions("region") { pos, chunk ->
+            if (pos.x in min.x..max.x && pos.z in min.z..max.z) restoreChunk(pos, chunk)
+        }
+    }
+
     private fun readEntityTags(): List<CompoundTag> =
         buildList {
             readRegions("entities") { _, chunk ->

@@ -22,16 +22,15 @@ data class NativeAssignment(val job: TacticalJob, val anchor: Vec3, val focus: V
 internal class NativePositionAction(
     intent: PositionIntent,
     private val npc: NpcEntity,
-    private val snapshot: () -> TacticalSnapshot,
-    private val cover: () -> Boolean,
-    private val exhausted: (PositionIntent, Map<String, Int>) -> Unit,
+    private val snapshot: () -> TacticalSnapshot?,
+    private val exhausted: (PositionIntent, Map<String, Int>, Vec3) -> Unit,
 ) : ActionExecution {
     var intent = intent
         private set
     private val claimOwner = java.util.UUID.randomUUID()
     private val task = TacticalTask(
         when (intent.duty) {
-            CombatDuty.FIRE -> if (AntiArmourKit.loaded(npc) && snapshot().contacts.any { it.armoured }) TacticalJob.ANTI_ARMOUR else TacticalJob.COVER
+            CombatDuty.FIRE -> if (AntiArmourKit.loaded(npc) && snapshot()?.contacts.orEmpty().any { it.armoured }) TacticalJob.ANTI_ARMOUR else TacticalJob.COVER
             CombatDuty.MOVE -> TacticalJob.ADVANCE
             CombatDuty.SEARCH -> TacticalJob.SEARCH
             CombatDuty.REAR_GUARD -> TacticalJob.RESERVE
@@ -63,7 +62,7 @@ internal class NativePositionAction(
     val assignment get() = NativeAssignment(task.job, task.anchor, task.focus, task.position, task.localFirePost, task.localFireRecovery)
     fun reached(): Boolean =
         task.position?.let { FiringPostArrival.reached(npc.position(), it) } == true &&
-            (intent.duty !in setOf(CombatDuty.MOVE, CombatDuty.SEARCH) || task.position!!.distanceTo(task.anchor) <= 4 || task.maneuverPost) &&
+            (intent.duty !in setOf(CombatDuty.MOVE, CombatDuty.SEARCH) || task.position!!.distanceTo(task.anchor) <= 4) &&
             (intent.inspection?.let { DetectionSightline.visible(npc.level() as ServerLevel, npc.eyePosition, it.native().add(0.0, 1.5, 0.0), npc) } != false)
 
     override fun start(now: Long): ActionUpdate {
@@ -85,7 +84,8 @@ internal class NativePositionAction(
         deferredAt?.let { lastProgress += now - it }
         deferredAt = null
         if (intent.duty == CombatDuty.FOLLOW_ORDER) return ActionUpdate.Running
-        val view = snapshot()
+        // Gone with its squad (disbanded, deleted) while the plan still ran: fail, never throw (#64).
+        val view = snapshot() ?: return ActionUpdate.Failed("no_squad_view")
         if (pendingStart) {
             // Finish native jumps before relinquishing a previous ordinary march route.
             if ((npc.navigation as? VehicleAwareNavigation)?.canPlan == false) return deferred(now, "native_jump")
@@ -108,18 +108,17 @@ internal class NativePositionAction(
             return ActionUpdate.Completed(listOf(ActionEvidence("physical_post_arrival", now, "${npc.uuid}:${task.position}")))
         }
         if (task.position == null || task.search != null) {
-            val result = TacticalPositions.find(npc, task, view, TacticalPositions.Query(policy, cover(), claimOwner))
+            val result = TacticalPositions.find(npc, task, view, TacticalPositions.Query(policy, claimOwner))
             when (result.outcome) {
                 TacticalPositions.Outcome.DEFERRED -> return deferred(now, "position_query_budget")
 
                 TacticalPositions.Outcome.UNREACHABLE -> {
-                    exhausted(intent, result.rejections)
+                    exhausted(intent, result.rejections, task.anchor)
                     return ActionUpdate.Failed("local_position_query_exhausted")
                 }
 
                 TacticalPositions.Outcome.FOUND -> {
                     task.position = result.position
-                    task.maneuverPost = result.maneuverPost
                     lastProgress = now
                     closest = Double.MAX_VALUE
                 }
@@ -133,7 +132,7 @@ internal class NativePositionAction(
             lastProgress = now
         }
         if (FiringPostArrival.reached(npc.position(), destination)) {
-            if (intent.duty in setOf(CombatDuty.MOVE, CombatDuty.SEARCH) && destination.distanceTo(task.anchor) > 4 && !task.maneuverPost) {
+            if (intent.duty in setOf(CombatDuty.MOVE, CombatDuty.SEARCH) && destination.distanceTo(task.anchor) > 4) {
                 invalidate(now, "intermediate_reached")
                 return ActionUpdate.Running
             }
@@ -145,7 +144,7 @@ internal class NativePositionAction(
             return ActionUpdate.Running
         }
         if (now - lastProgress >= 120 && (npc.navigation as? VehicleAwareNavigation)?.canPlan != false) {
-            exhausted(intent, mapOf("movement_stalled" to 1))
+            exhausted(intent, mapOf("movement_stalled" to 1), task.anchor)
             return ActionUpdate.Failed("local_movement_stalled")
         }
         if (FiringPostArrival.steer(npc, destination, 1.3)) return ActionUpdate.Running

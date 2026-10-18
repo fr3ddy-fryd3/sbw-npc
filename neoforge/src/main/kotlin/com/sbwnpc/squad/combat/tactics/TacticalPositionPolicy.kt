@@ -11,7 +11,6 @@ interface TacticalPositionPolicy {
     fun route(view: TacticalSnapshot, point: Vec3): Boolean = true
     fun route(view: TacticalSnapshot, task: TacticalTask, origin: Vec3, point: Vec3): Boolean = route(view, point)
     fun score(view: TacticalSnapshot, task: TacticalTask, point: Vec3, exposure: Int): Double = 0.0
-    val permitsExposedFlankAdvance: Boolean get() = false
     fun requiresShelter(view: TacticalSnapshot, task: TacticalTask): Boolean = false
 
     /** An assault closes on the enemy it was ordered to take: no role clearance from contacts. */

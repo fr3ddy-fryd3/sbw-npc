@@ -723,9 +723,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun moveTowardFormationSlot(entity: NpcEntity, target: LivingEntity) {
         val targetPos = target.position()
         // Opened out under fire: the marching interval puts the whole squad in one burst.
-        val front = SquadTactics.frontPost(entity)
-        // A front owns the lateral lane; its current depth is not an assault destination.
-        val slot = front?.let { it.point.add(it.forward.scale(CombatPosition.MAX_ADVANCE_DISTANCE)) } ?: SquadFormation.slotTarget(
+        val slot = SquadFormation.slotTarget(
             entity,
             targetPos,
             targetPos.subtract(entity.position()),

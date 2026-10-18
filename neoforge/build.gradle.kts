@@ -111,6 +111,8 @@ neoForge {
             systemProperty("sbwnpc.gameTestNegativeControl", providers.gradleProperty("gameTestNegativeControl").orElse("false").get())
             systemProperty("sbwnpc.gameTestFilter", providers.gradleProperty("gameTestFilter").orElse("").get())
             systemProperty("sbwnpc.gameTestReplay", providers.gradleProperty("gameTestReplay").orElse("").get())
+            systemProperty("sbwnpc.gameTestBattleSaves", providers.gradleProperty("gameTestBattleSaves").orElse("").get())
+            systemProperty("sbwnpc.gameTestBattles", providers.gradleProperty("gameTestBattles").orElse("").get())
             systemProperty("sbwnpc.gameTestWatchNpc", providers.gradleProperty("gameTestWatchNpc").orElse("f8104e12-9378-4094-8cc7-54145ce8df70").get())
             logLevel = org.slf4j.event.Level.INFO
         }
