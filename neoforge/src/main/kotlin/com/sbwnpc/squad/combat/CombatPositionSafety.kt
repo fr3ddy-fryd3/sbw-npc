@@ -13,6 +13,15 @@ object CombatPositionSafety {
 
     fun clearance(role: NpcClass): Double = maxOf(role.combatClearance, role.attackStandoffDistance)
 
+    /**
+     * How near a man in an assault may come to a known enemy (16 blocks, a shotgunner's clearance).
+     * An assault shortens the range and keeps firing; it never runs onto the enemy (#88).
+     */
+    const val ASSAULT_CLEARANCE = 16.0
+
+    /** [clearance] for [role], cut to [ASSAULT_CLEARANCE] in an assault. */
+    fun clearance(role: NpcClass, assault: Boolean): Double = if (assault) minOf(clearance(role), ASSAULT_CLEARANCE) else clearance(role)
+
     /** An approaching enemy does not force a defender to leave; further approach is forbidden. */
     fun permits(from: Vec3, point: Vec3, threat: Vec3, clearance: Double): Boolean = point.subtract(threat).horizontalDistance() >= minOf(clearance, from.subtract(threat).horizontalDistance()) - POSITION_TOLERANCE
 

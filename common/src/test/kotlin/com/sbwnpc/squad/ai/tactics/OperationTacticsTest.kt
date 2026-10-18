@@ -85,8 +85,11 @@ class OperationTacticsTest {
         assertEquals(CombatDuty.MOVE, applied[0].duty)
         assertEquals(slot, applied[0].anchor)
         assertTrue(applied[0].assault && !applied[0].requireShelter)
-        assertEquals(CombatDuty.SEARCH, applied[1].duty)
-        assertEquals(target, applied[1].inspection)
+        // A clearing man fires at the enemy from a post short of him, never from the enemy's spot.
+        assertEquals(CombatDuty.FIRE, applied[1].duty)
+        assertEquals(target, applied[1].focus)
+        assertTrue(kotlin.math.hypot(applied[1].anchor.x - target.x, applied[1].anchor.z - target.z) >= OperationTactics.CLOSE_DISTANCE)
+        assertTrue(applied[1].assault)
         assertEquals(intent(3), applied[2])
         assertSame(mission, OperationTactics.apply(mission, AttackRoles.NONE))
     }

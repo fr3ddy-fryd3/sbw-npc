@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.combat.tactics
 
+import com.sbwnpc.squad.combat.CombatPositionSafety
 import com.sbwnpc.squad.npc.NpcClass
 import net.minecraft.world.phys.Vec3
 
@@ -14,8 +15,8 @@ interface TacticalPositionPolicy {
     val permitsExposedFlankAdvance: Boolean get() = false
     fun requiresShelter(view: TacticalSnapshot, task: TacticalTask): Boolean = false
 
-    /** An assault closes on the enemy it was ordered to take: no role clearance from contacts. */
-    val closesWithEnemy: Boolean get() = false
+    /** How near a known enemy a post or route may come; an assault cuts it, never drops it (#88). */
+    fun clearance(role: NpcClass): Double = CombatPositionSafety.clearance(role)
 }
 
 object DefaultTacticalPositions : TacticalPositionPolicy

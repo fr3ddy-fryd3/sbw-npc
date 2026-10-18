@@ -103,7 +103,7 @@ object OperationTactics {
     /**
      * [mission] with its members' intents rewritten for [roles]. An assault crosses open ground
      * under fire on purpose, so cover is preferred by exposure but not required, and the role
-     * clearance from contacts is lifted for these members only.
+     * clearance from contacts is cut for these members to a short standoff, never lifted (#88).
      */
     fun apply(mission: SquadMission, roles: AttackRoles): SquadMission {
         if (roles == AttackRoles.NONE) return mission
@@ -120,7 +120,9 @@ object OperationTactics {
                             // men a reinforcement added never reached the fight (#54).
                             intent.duty !in setOf(CombatDuty.MOVE, CombatDuty.FIRE, CombatDuty.REAR_GUARD) -> intent
 
-                            target != null -> intent.copy(duty = CombatDuty.SEARCH, anchor = target, focus = target, inspection = target, requireCover = false, requireShelter = false, minimumHeight = null, assault = true)
+                            // A clearing man shoots the enemy left near the point from a post short of
+                            // him: sent to the enemy's own spot, the men ran right up to it (#88).
+                            target != null -> intent.copy(duty = CombatDuty.FIRE, anchor = closingPost(intent.origin, listOf(target)), focus = target, requireCover = false, requireShelter = false, minimumHeight = null, assault = true)
 
                             slot != null -> intent.copy(duty = CombatDuty.MOVE, anchor = slot, requireCover = false, requireShelter = false, minimumHeight = null, assault = true)
 

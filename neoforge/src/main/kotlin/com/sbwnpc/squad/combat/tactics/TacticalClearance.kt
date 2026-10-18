@@ -11,7 +11,11 @@ object TacticalClearance {
 
     fun threats(view: TacticalSnapshot): List<Vec3> = view.contacts.filter { view.now - it.seenAt <= CONTACT_MEMORY_TICKS }.map { it.position }
 
-    fun permitsPosition(role: NpcClass, origin: Vec3, point: Vec3, view: TacticalSnapshot): Boolean = threats(view).all { CombatPositionSafety.permits(origin, point, it, CombatPositionSafety.clearance(role)) }
+    fun permitsPosition(role: NpcClass, origin: Vec3, point: Vec3, view: TacticalSnapshot): Boolean = permitsPosition(CombatPositionSafety.clearance(role), origin, point, view)
 
-    fun permitsPath(role: NpcClass, origin: Vec3, path: Path, view: TacticalSnapshot): Boolean = CombatPositionSafety.permitsPath(origin, path, threats(view), CombatPositionSafety.clearance(role))
+    fun permitsPosition(clearance: Double, origin: Vec3, point: Vec3, view: TacticalSnapshot): Boolean = threats(view).all { CombatPositionSafety.permits(origin, point, it, clearance) }
+
+    fun permitsPath(role: NpcClass, origin: Vec3, path: Path, view: TacticalSnapshot): Boolean = permitsPath(CombatPositionSafety.clearance(role), origin, path, view)
+
+    fun permitsPath(clearance: Double, origin: Vec3, path: Path, view: TacticalSnapshot): Boolean = CombatPositionSafety.permitsPath(origin, path, threats(view), clearance)
 }
