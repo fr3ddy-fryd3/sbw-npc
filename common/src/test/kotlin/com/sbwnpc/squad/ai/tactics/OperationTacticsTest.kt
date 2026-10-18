@@ -102,6 +102,7 @@ class OperationTacticsTest {
         assertEquals(DutyChoice(CombatDuty.OBSERVE, objective), duty(order = TacticalOrder.DEFEND, inContact = false, observer = true))
         assertEquals(DutyChoice(CombatDuty.OBSERVE, objective), duty(order = TacticalOrder.DEFEND, observer = true))
         assertEquals(DutyChoice(CombatDuty.FIRE, Point3(60.0, 64.0, 100.0)), duty(observer = true))
+        assertEquals(DutyChoice(CombatDuty.OBSERVE, objective), duty(order = TacticalOrder.PATROL, observer = true))
         assertEquals(CombatDuty.FOLLOW_ORDER, duty(elsewhere = true, scout = true).duty)
         assertEquals(DutyChoice(CombatDuty.SEARCH, Point3(90.0, 64.0, 100.0)), duty(scout = true))
     }

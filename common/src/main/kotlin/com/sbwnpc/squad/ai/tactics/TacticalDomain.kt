@@ -102,7 +102,7 @@ object TacticalDomain {
                                                 val dx = intent.origin.x - (intent.focus?.x ?: intent.anchor.x)
                                                 val dz = intent.origin.z - (intent.focus?.z ?: intent.anchor.z + 1)
                                                 val length = kotlin.math.hypot(dx, dz).coerceAtLeast(0.01)
-                                                intent.copy(duty = CombatDuty.MOVE, anchor = Point3(intent.origin.x + dx / length * 48, intent.origin.y, intent.origin.z + dz / length * 48), requireCover = false, requireShelter = false, exposureWeight = 10.0)
+                                                intent.copy(duty = CombatDuty.MOVE, anchor = Point3(intent.origin.x + dx / length * 48, intent.origin.y, intent.origin.z + dz / length * 48), requireCover = false, requireShelter = false, exposureWeight = 10.0, minimumHeight = null, elevationWeight = 0.0)
                                             } else {
                                                 intent
                                             }
