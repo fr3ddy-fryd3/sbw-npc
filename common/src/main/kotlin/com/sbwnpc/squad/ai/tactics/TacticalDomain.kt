@@ -64,7 +64,7 @@ object TacticalDomain {
                 ) + AttackPhase.entries.map { phase ->
                     Method<OperationMission>(phase.name.lowercase(), eligible = {
                         Condition.test(TacticalFacts.ATTACK_PHASE, "other_attack_phase") { it == phase }
-                    }, decompose = { mission, _ -> coordinate(mission, if (phase == AttackPhase.DEPLOY) AttackRoles.NONE else mission.attack) })
+                    }, decompose = { mission, _ -> coordinate(mission, mission.attack) })
                 },
             ),
             delegate(),

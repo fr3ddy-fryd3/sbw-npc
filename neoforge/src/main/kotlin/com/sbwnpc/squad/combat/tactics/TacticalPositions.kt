@@ -62,7 +62,7 @@ object TacticalPositions {
         val overwatch = task.job == TacticalJob.OVERWATCH && !task.localFireRecovery
         val homeRadius = SquadFormation.perimeterRadius(view.members.size) + 10.0 +
             if (task.job == TacticalJob.OVERWATCH) DefensiveOverwatch.RADIUS else 0.0
-        val heldPosition = existingCoverPosition(entity, task, view, level, homeRadius, query.policy.closesWithEnemy)
+        val heldPosition = existingCoverPosition(entity, task, view, level, homeRadius, query.policy.clearance(entity.npcClass))
         if (heldPosition != null) {
             DebugFlags.log(LogGroup.ORDER, "[tactics] {} plan={} event=position_kept position={} reason=usable_nearby_cover", entity.uuid, task.plan, heldPosition)
             return finish(task, heldPosition)
@@ -92,7 +92,7 @@ object TacticalPositions {
         val claimOwner: java.util.UUID?,
     )
 
-    private fun existingCoverPosition(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, level: ServerLevel, homeRadius: Double, closesWithEnemy: Boolean): Vec3? {
+    private fun existingCoverPosition(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, level: ServerLevel, homeRadius: Double, clearance: Double): Vec3? {
         if (task.job !in TacticalJob.FIRE_SUPPORT) return null
         val member = view.members.firstOrNull { it.id == entity.uuid } ?: return null
         if (!TacticalEvidence.covers(member, task)) return null
@@ -101,7 +101,7 @@ object TacticalPositions {
         if (!TacticalFirePosts.withinPost(post, point, task.localFireRecovery)) return null
         if (task.expandedFireSearch && FiringSpots.crowded(point, FiringSpots.nearbyWithBodies(level, entity, 64.0))) return null
         if (!TacticalRules.withinOrder(view, point, homeRadius) || GrenadeHazard.threatens(level, point)) return null
-        if ((!closesWithEnemy && !safeDistance(entity, view, point)) || !TickBudget.hasRaycasts(level)) return null
+        if (!safeDistance(entity, view, point, clearance) || !TickBudget.hasRaycasts(level)) return null
         val aim = TacticalAim.resolve(entity, task) ?: return null
         val sheltered = DefensiveOverwatch.nearbyCover(point, aim.eye) { from, to -> Sightline.blocked(level, from, to, entity) }
         return point.takeIf { sheltered && firingReady(entity, task, point) }
@@ -200,7 +200,7 @@ object TacticalPositions {
             return
         }
         if (!context.policy.candidate(context.view, task, candidate, context.localAnchor)) return
-        if (!context.policy.closesWithEnemy && !safeDistance(entity, context.view, candidate)) {
+        if (!safeDistance(entity, context.view, candidate, context.policy.clearance(entity.npcClass))) {
             search.reject("close_enemy")
             return
         }
@@ -297,7 +297,7 @@ object TacticalPositions {
                 search.skipRejectedRoutes()
                 continue
             }
-            if (FiringPostArrival.reached(entity.position(), candidate) && (context.policy.closesWithEnemy || safeDistance(entity, context.view, candidate))) {
+            if (FiringPostArrival.reached(entity.position(), candidate) && safeDistance(entity, context.view, candidate, context.policy.clearance(entity.npcClass))) {
                 entity.navigation.stop()
                 task.navigationPath = null
                 FiringSpots.claim(entity.uuid, entity.position(), context.claimOwner)
@@ -414,7 +414,7 @@ object TacticalPositions {
         }
 
     private fun safeRoute(context: SearchContext, path: Path): Boolean {
-        if (!context.policy.closesWithEnemy && !safePath(context.entity, context.view, path)) return false
+        if (!safePath(context.entity, context.view, path, context.policy.clearance(context.entity.npcClass))) return false
         return (path.nextNodeIndex until path.nodeCount).none { index ->
             val node = path.getNode(index)
             val foot = Vec3(node.x + 0.5, node.y.toDouble(), node.z + 0.5)
@@ -423,10 +423,10 @@ object TacticalPositions {
         }
     }
 
-    fun safeDistance(entity: NpcEntity, view: TacticalSnapshot, point: Vec3): Boolean = TacticalClearance.permitsPosition(entity.npcClass, entity.position(), point, view)
+    fun safeDistance(entity: NpcEntity, view: TacticalSnapshot, point: Vec3, clearance: Double = CombatPositionSafety.clearance(entity.npcClass)): Boolean = TacticalClearance.permitsPosition(clearance, entity.position(), point, view)
 
     /** Repaths and already-running paths must respect newly reported or approaching enemies too. */
-    fun safePath(entity: NpcEntity, view: TacticalSnapshot, path: Path): Boolean = TacticalClearance.permitsPath(entity.npcClass, entity.position(), path, view)
+    fun safePath(entity: NpcEntity, view: TacticalSnapshot, path: Path, clearance: Double = CombatPositionSafety.clearance(entity.npcClass)): Boolean = TacticalClearance.permitsPath(clearance, entity.position(), path, view)
 
     internal fun reaches(path: Path?, candidate: Vec3): Boolean =
         path?.canReach() == true && path.endNode?.let {

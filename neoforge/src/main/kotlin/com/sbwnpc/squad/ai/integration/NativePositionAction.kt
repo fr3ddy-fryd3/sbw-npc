@@ -7,6 +7,7 @@ import com.sbwnpc.squad.combat.*
 import com.sbwnpc.squad.combat.tactics.*
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
+import com.sbwnpc.squad.npc.NpcClass
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.phys.Vec3
 
@@ -44,7 +45,7 @@ internal class NativePositionAction(
     private val policy = object : TacticalPositionPolicy {
         override fun score(view: TacticalSnapshot, task: TacticalTask, point: Vec3, exposure: Int) = exposure * intent.exposureWeight - (point.y - intent.origin.y).coerceIn(-2.0, 8.0) * intent.elevationWeight
         override fun requiresShelter(view: TacticalSnapshot, task: TacticalTask) = intent.requireShelter
-        override val closesWithEnemy get() = intent.assault
+        override fun clearance(role: NpcClass) = CombatPositionSafety.clearance(role, intent.assault)
         override fun candidate(view: TacticalSnapshot, task: TacticalTask, point: Vec3, localAnchor: Vec3): Boolean {
             if (intent.minimumHeight?.let { point.y < it } == true) return false
             if (intent.inspection != null && point.distanceTo(intent.inspection.native()) <= 24 && !DetectionSightline.visible(npc.level() as ServerLevel, point.add(0.0, npc.eyeHeight.toDouble(), 0.0), intent.inspection.native().add(0.0, 1.5, 0.0), npc)) return false
@@ -93,13 +94,20 @@ internal class NativePositionAction(
             pendingStart = false
             npc.navigation.stop()
         }
-        val observation = view.contacts.firstOrNull { it.id == npc.target?.uuid } ?: view.contacts.maxByOrNull { it.priority }
+        // An assault post is measured from one enemy (ClosingPost): the search looks for a shot at
+        // him, not at the man's own target, who may be far beyond his weapon's reach (#65).
+        val enemy = intent.focus?.takeIf { intent.assault && intent.duty == CombatDuty.FIRE }?.native()
+        val observation = if (enemy != null) {
+            view.contacts.filter { it.position.distanceTo(enemy) <= ENEMY_MOVED }.minByOrNull { it.position.distanceToSqr(enemy) }
+        } else {
+            view.contacts.firstOrNull { it.id == npc.target?.uuid } ?: view.contacts.maxByOrNull { it.priority }
+        }
         task.usesObservedAim = true
         task.observedAim = observation?.let { TacticalAim(it.id, it.position, it.position.add(0.0, 1.5, 0.0)) }
             ?: intent.focus?.native()?.let { TacticalAim(null, it, it.add(0.0, 1.5, 0.0)) }
-        if (task.position != null && ((!intent.assault && !TacticalClearance.permitsPosition(npc.npcClass, npc.position(), task.position!!, view)) || GrenadeHazard.threatens(npc.level() as ServerLevel, task.position!!))) invalidate(now, "post_not_permitted")
+        if (task.position != null && ((!TacticalClearance.permitsPosition(policy.clearance(npc.npcClass), npc.position(), task.position!!, view)) || GrenadeHazard.threatens(npc.level() as ServerLevel, task.position!!))) invalidate(now, "post_not_permitted")
         val path = npc.navigation.path
-        if (!intent.assault && path != null && path === task.navigationPath && !path.isDone && !TacticalClearance.permitsPath(npc.npcClass, npc.position(), path, view)) invalidate(now, "path_not_permitted")
+        if (path != null && path === task.navigationPath && !path.isDone && !TacticalClearance.permitsPath(policy.clearance(npc.npcClass), npc.position(), path, view)) invalidate(now, "path_not_permitted")
         if (reached()) {
             releasePath()
             if (npc.target == null && intent.duty in setOf(CombatDuty.REAR_GUARD, CombatDuty.OBSERVE, CombatDuty.SEARCH)) {
@@ -153,7 +161,7 @@ internal class NativePositionAction(
         if (npc.navigation.isDone) {
             if (!TacticalBudget.path(npc)) return deferred(now, "native_path_budget")
             val route = TacticalPositions.pathToPosition(npc, destination)
-            if (!TacticalPositions.reaches(route, destination) || (!intent.assault && !TacticalClearance.permitsPath(npc.npcClass, npc.position(), route!!, view))) {
+            if (!TacticalPositions.reaches(route, destination) || !TacticalClearance.permitsPath(policy.clearance(npc.npcClass), npc.position(), route!!, view)) {
                 invalidate(now, "route_unreachable")
                 return ActionUpdate.Running
             }
@@ -284,6 +292,9 @@ internal class NativePositionAction(
 
         /** A MOVE or SEARCH post this near its anchor is the anchor itself, as in [reached]. */
         private const val AT_ANCHOR = 4.0
+
+        /** How far an assault post's enemy may have moved since the post was planned and still be him. */
+        private const val ENEMY_MOVED = 8.0
 
         /**
          * Whether a MOVE or SEARCH post at [point] takes a man at [from] on towards [anchor]: it is

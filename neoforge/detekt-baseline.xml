@@ -40,7 +40,7 @@
     <ID>ComplexCondition:MedicHealBehaviour.kt$MedicHealBehaviour$cached == null || (cached.isAlive &amp;&amp; needsHealing(entity, cached) &amp;&amp; available(entity, cached))</ID>
     <ID>ComplexCondition:MortarCrewBehaviour.kt$MortarCrewBehaviour$current != null &amp;&amp; Ports.vehicles.isOperational(current) &amp;&amp; !SquadTeams.isHostile(entity, current) &amp;&amp; MortarClaims.assign(current, entity) != null</ID>
     <ID>ComplexCondition:MortarCrewGameTests.kt$MortarCrewGameTests$expected == null &amp;&amp; scene.mortar.persistentData.contains("sbwnpcLastMortarShot") &amp;&amp; !Ports.mortars.isFiring(scene.mortar) &amp;&amp; Ports.mortars.hasShell(scene.mortar)</ID>
-    <ID>ComplexCondition:NativePositionAction.kt$NativePositionAction$!intent.assault &amp;&amp; path != null &amp;&amp; path === task.navigationPath &amp;&amp; !path.isDone &amp;&amp; !TacticalClearance.permitsPath(npc.npcClass, npc.position(), path, view)</ID>
+    <ID>ComplexCondition:NativePositionAction.kt$NativePositionAction$path != null &amp;&amp; path === task.navigationPath &amp;&amp; !path.isDone &amp;&amp; !TacticalClearance.permitsPath(policy.clearance(npc.npcClass), npc.position(), path, view)</ID>
     <ID>ComplexCondition:NativePositionAction.kt$NativePositionAction$task.position != null &amp;&amp; ((!intent.assault &amp;&amp; !TacticalClearance.permitsPosition(npc.npcClass, npc.position(), task.position!!, view)) || GrenadeHazard.threatens(npc.level() as ServerLevel, task.position!!))</ID>
     <ID>ComplexCondition:NpcEntity.kt$NpcEntity$busyWithRole() || vehicle != null || combatLockedByMedic() || com.sbwnpc.squad.ai.integration.NativeTactics.ownsLook(this)</ID>
     <ID>ComplexCondition:NpcEntity.kt$NpcEntity$level().isClientSide || !amount.isFinite() || amount &lt;= 0 || !isAlive</ID>
@@ -193,7 +193,7 @@
     <ID>CyclomaticComplexMethod:SquadTargetSensor.kt$SquadTargetSensor$private fun nearestGroundTarget(mob: NpcEntity, level: ServerLevel): LivingEntity?</ID>
     <ID>CyclomaticComplexMethod:SquadToolItem.kt$SquadToolItem$override fun interactLivingEntity(stack: ItemStack, player: Player, target: LivingEntity, hand: InteractionHand): InteractionResult</ID>
     <ID>CyclomaticComplexMethod:SquadToolItem.kt$SquadToolItem$override fun useOn(context: UseOnContext): InteractionResult</ID>
-    <ID>CyclomaticComplexMethod:TacticalPositions.kt$TacticalPositions$private fun existingCoverPosition(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, level: ServerLevel, homeRadius: Double, closesWithEnemy: Boolean): Vec3?</ID>
+    <ID>CyclomaticComplexMethod:TacticalPositions.kt$TacticalPositions$private fun existingCoverPosition(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, level: ServerLevel, homeRadius: Double, clearance: Double): Vec3?</ID>
     <ID>CyclomaticComplexMethod:TacticalPositions.kt$TacticalPositions$private fun findReachablePosition(context: SearchContext): Result</ID>
     <ID>CyclomaticComplexMethod:TacticalPositions.kt$TacticalPositions$private fun prepareSearch(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, level: ServerLevel, homeRadius: Double, overwatch: Boolean, query: Query): SearchContext</ID>
     <ID>CyclomaticComplexMethod:TacticalPositions.kt$TacticalPositions$private fun routeBatch(context: SearchContext, first: Vec3, destinations: List&lt;Vec3&gt;): List&lt;Vec3&gt;</ID>
@@ -326,7 +326,7 @@
     <ID>LongParameterList:SquadManager.kt$SquadManager$(level: ServerLevel, squad: Squad, slot: RecruitmentRoster.Slot, npc: NpcEntity, spot: Vec3, yaw: Float)</ID>
     <ID>LongParameterList:SquadMapPlugin.kt$SquadMapPlugin$( dim: ResourceKey&lt;Level&gt;, at: BlockPos, shape: MapShapes, color: Int, size: Double, opacity: Float, )</ID>
     <ID>LongParameterList:TacticalPositions.kt$TacticalPositions$(context: SearchContext, candidate: Vec3, exposure: Int, firing: Boolean, mustShoot: Boolean, nearbyCover: Boolean)</ID>
-    <ID>LongParameterList:TacticalPositions.kt$TacticalPositions$(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, level: ServerLevel, homeRadius: Double, closesWithEnemy: Boolean)</ID>
+    <ID>LongParameterList:TacticalPositions.kt$TacticalPositions$(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, level: ServerLevel, homeRadius: Double, clearance: Double)</ID>
     <ID>LongParameterList:TacticalPositions.kt$TacticalPositions$(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, level: ServerLevel, homeRadius: Double, overwatch: Boolean, query: Query)</ID>
     <ID>LongParameterList:TacticalTargetSelection.kt$TacticalTargetSelection$(candidates: List&lt;T&gt;, current: T?, cursor: Int, assess: (T) -&gt; Opportunity, allocate: (List&lt;T&gt;) -&gt; T?, reconsiderCurrent: Boolean = false)</ID>
     <ID>MagicNumber:AircraftLods.kt$AircraftLods$0.15</ID>
