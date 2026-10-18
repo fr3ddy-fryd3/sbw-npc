@@ -19,7 +19,7 @@ is Kotlin; Java is used for mixins into Minecraft and SuperbWarfare.
 | [neoforge/src/main/resources/](../neoforge/src/main/resources/), [common/src/main/resources/](../common/src/main/resources/) | Textures, models, translations, metadata and the mixin list |
 | [neoforge/src/test/kotlin/com/sbwnpc/squad/](../neoforge/src/test/kotlin/com/sbwnpc/squad/), [common/src/test/kotlin/com/sbwnpc/squad/](../common/src/test/kotlin/com/sbwnpc/squad/) | Automatic tests, laid out like the main code |
 | [gradle.properties](../gradle.properties) | Versions of the mod, Minecraft and dependencies |
-| [build.gradle.kts](../build.gradle.kts), [neoforge/build.gradle.kts](../neoforge/build.gradle.kts), [common/build.gradle.kts](../common/build.gradle.kts) | Root tasks; the NeoForge build, scenes, ktlint and `BuildFlags`; the common module's checks |
+| [build.gradle.kts](../build.gradle.kts), [neoforge/build.gradle.kts](../neoforge/build.gradle.kts), [common/build.gradle.kts](../common/build.gradle.kts) | Root tasks; the NeoForge build, scenes and ktlint; the common module's checks and `BuildFlags` |
 | [settings.gradle.kts](../settings.gradle.kts) | The `common` and `neoforge` modules, `build-logic` and the SuperbWarfare input |
 | `SuperbWarfare/` | A separate local checkout of the dependency; not part of this repository |
 | `build/` | Build output, test reports and generated files |
@@ -152,6 +152,6 @@ player**. These are different things despite the similar names.
 | Attack scenes and work counting | `neoforge/src/gameTest/.../AttackDeploymentGameTests.kt`, `HtnTacticsGameTests.kt`, `NativeCombatWork.kt` |
 | Replaying a saved battle and the causes of idling | `neoforge/src/gameTest/.../SavedBattleGameTests.kt`, `SavedBattleReplay.kt`, `CombatParticipationTrace.kt` |
 | Headless GameTest world and reports | `neoforge/build/gametest/server/`, `neoforge/build/reports/gameTest/` |
-| BuildFlags generation | `build.gradle.kts`; output in `build/generated/buildFlags/` |
+| BuildFlags generation | `common/build.gradle.kts`; output in `common/build/generated/buildFlags/` |
 | Diagnostic log groups | [combat/LogGroup.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/LogGroup.kt) |
 | Diagnostic settings | [combat/DebugFlags.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/DebugFlags.kt); in game, `config/sbwnpc-debug.toml` |
