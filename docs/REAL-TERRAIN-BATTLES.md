@@ -65,6 +65,9 @@ groups are switched on for the run:
 - **intermediateReachedPerManMinute**: posts reached on the way and replaced, per man per minute;
   men running back and forth between posts push it up.
 - **exhaustedPerManMinute**: local post searches that found nothing.
+- **pointBlankShare**: of the attackers sampled once a second while defenders lived, the share
+  nearer than 8 blocks to one; with **nearestToDefender**, the closest any attacker came. Men must
+  not run right up to the enemy, assault included.
 
 ## Limits
 

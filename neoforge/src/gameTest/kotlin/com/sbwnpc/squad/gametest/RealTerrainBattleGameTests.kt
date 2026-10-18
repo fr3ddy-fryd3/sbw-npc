@@ -186,17 +186,50 @@ object RealTerrainBattleGameTests {
         val phases = LinkedHashMap<AttackPhase, Int>()
         val timeline = report.resolve("timeline.csv")
         Files.writeString(timeline, "tick,attackersAlive,defendersAlive,phase\n")
+        val closeness = Closeness()
         helper.onEachTick {
             if (helper.tick % 20L != 0L) return@onEachTick
+            closeness.sample(attack.flatMap { it.second }.filter { it.isAlive }, defence.flatMap { it.second }.filter { it.isAlive })
             val phase = attack.flatMap { it.second }.filter { it.isAlive }.mapNotNull(NativeTactics::attackPhase).maxOrNull()
             if (phase != null) phases.putIfAbsent(phase, helper.tick.toInt())
             Files.writeString(timeline, "${helper.tick},${attack.sumOf { (_, m) -> m.count { it.isAlive } }},${defence.sumOf { (_, m) -> m.count { it.isAlive } }},$phase\n", java.nio.file.StandardOpenOption.APPEND)
         }
-        helper.runAtTickTime(scenario.ticks.toLong()) { judge(helper, scenario, Fought(attack, defence, phases, manTicks), marker, report) }
+        helper.runAtTickTime(scenario.ticks.toLong()) { judge(helper, scenario, Fought(attack, defence, phases, manTicks, closeness), marker, report) }
     }
 
     /** The sides as they stand at the end of the battle, with the phases the attack went through. */
-    private class Fought(val attack: List<Pair<UUID, List<NpcEntity>>>, val defence: List<Pair<UUID, List<NpcEntity>>>, val phases: Map<AttackPhase, Int>, val manTicks: Long)
+    private class Fought(val attack: List<Pair<UUID, List<NpcEntity>>>, val defence: List<Pair<UUID, List<NpcEntity>>>, val phases: Map<AttackPhase, Int>, val manTicks: Long, val closeness: Closeness)
+
+    /**
+     * How near the attackers came to living defenders, sampled once a second: the owner's rule is
+     * that men never run right up to the enemy, assault included (#88).
+     */
+    private class Closeness {
+        var samples = 0
+            private set
+        var pointBlank = 0
+            private set
+        var nearest = Double.MAX_VALUE
+            private set
+
+        fun sample(attackers: List<NpcEntity>, defenders: List<NpcEntity>) {
+            if (defenders.isEmpty()) return
+            for (man in attackers) {
+                val range = defenders.minOf { it.position().subtract(man.position()).horizontalDistance() }
+                samples++
+                if (range < POINT_BLANK) pointBlank++
+                nearest = minOf(nearest, range)
+            }
+        }
+
+        /** Of the attacker samples, the share within [POINT_BLANK] of a living defender. */
+        fun share() = if (samples == 0) 0.0 else pointBlank.toDouble() / samples
+
+        companion object {
+            /** Nearer than this (8 blocks) to a living defender counts as run right up to him. */
+            const val POINT_BLANK = 8.0
+        }
+    }
 
     /** Writes the battle's summary and checks it against the scenario's thresholds. */
     private fun judge(helper: GameTestHelper, scenario: Scenario, fought: Fought, marker: String, report: Path) {
@@ -221,6 +254,7 @@ object RealTerrainBattleGameTests {
             appendLine("taken=$taken")
             appendLine("fireGates=${metrics.fireGates.entries.sortedByDescending { it.value }.joinToString { "${it.key}=${it.value}" }}")
             appendLine("friendlyShare=${"%.2f".format(metrics.share("FRIENDLY_OR_VEHICLE"))} readyShare=${"%.2f".format(metrics.share("READY"))}")
+            appendLine("pointBlankShare=${"%.3f".format(fought.closeness.share())} pointBlankSamples=${fought.closeness.pointBlank} nearestToDefender=${"%.1f".format(fought.closeness.nearest)}")
             appendLine("intermediateReachedPerManMinute=${"%.2f".format(churn)} exhaustedPerManMinute=${"%.2f".format(metrics.exhaustedSearches / manMinutes)}")
         }
         Files.writeString(report.resolve("summary.txt"), summary)
