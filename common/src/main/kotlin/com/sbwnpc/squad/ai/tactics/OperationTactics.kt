@@ -113,7 +113,8 @@ object OperationTactics {
     fun keepStandoff(slot: Point3, threats: List<Point3>): Point3 {
         var point = slot
         repeat(STANDOFF_PASSES) {
-            val near = threats.firstOrNull { distance(it, point) < ASSAULT_STANDOFF } ?: return point
+            // The nearest first, so the result does not depend on the order contacts are listed in.
+            val near = threats.filter { distance(it, point) < ASSAULT_STANDOFF }.minByOrNull { distance(it, point) } ?: return point
             point = if (distance(near, point) < SAME_SPOT) {
                 Point3(near.x + ASSAULT_STANDOFF, point.y, near.z)
             } else {
