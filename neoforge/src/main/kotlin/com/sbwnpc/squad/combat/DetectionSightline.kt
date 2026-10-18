@@ -1,10 +1,14 @@
 package com.sbwnpc.squad.combat
 
 import net.minecraft.core.BlockPos
+import net.minecraft.core.registries.Registries
+import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.tags.TagKey
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.level.BlockGetter
 import net.minecraft.world.level.ClipContext
+import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.StainedGlassPaneBlock
 import net.minecraft.world.level.block.TransparentBlock
@@ -14,13 +18,17 @@ import net.minecraft.world.phys.Vec3
 import net.minecraft.world.phys.shapes.CollisionContext
 import net.minecraft.world.phys.shapes.Shapes
 import net.minecraft.world.phys.shapes.VoxelShape
-import net.neoforged.neoforge.common.Tags
 
 /** Eyes only. Firing lanes and cover searches keep their ordinary collider raycasts. */
 object DetectionSightline {
     enum class Visibility { VISIBLE, FOLIAGE, OBSTACLE }
 
     private const val FOLIAGE_BLOCKS_TO_HIDE = 3
+
+    // The shared `c:` convention tags, the ones NeoForge's Tags.Blocks names, read by id so the
+    // check does not depend on a loader's tag class.
+    private val GLASS_BLOCKS: TagKey<Block> = TagKey.create(Registries.BLOCK, ResourceLocation.fromNamespaceAndPath("c", "glass_blocks"))
+    private val GLASS_PANES: TagKey<Block> = TagKey.create(Registries.BLOCK, ResourceLocation.fromNamespaceAndPath("c", "glass_panes"))
 
     fun trace(observer: Entity, target: Entity): Visibility = if (observer.level() === target.level()) trace(observer.level(), observer.eyePosition, target.eyePosition, CollisionContext.of(observer)) else Visibility.OBSTACLE
 
@@ -62,6 +70,6 @@ object DetectionSightline {
             state.`is`(Blocks.FERN) || state.`is`(Blocks.LARGE_FERN)
 
     private fun isGlass(state: BlockState): Boolean =
-        state.`is`(Tags.Blocks.GLASS_BLOCKS) || state.`is`(Tags.Blocks.GLASS_PANES) ||
+        state.`is`(GLASS_BLOCKS) || state.`is`(GLASS_PANES) ||
             state.block is TransparentBlock || state.block is StainedGlassPaneBlock || state.`is`(Blocks.GLASS_PANE)
 }
