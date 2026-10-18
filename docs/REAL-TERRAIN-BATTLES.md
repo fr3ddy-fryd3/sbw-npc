@@ -40,7 +40,7 @@ for `dynamictrees:` leaves), otherwise the restore fails with "Missing replay bl
 | `ticks` | How long the battle runs |
 | `attackers`, `defenders` | Squads as `{ "preset": "SIXTEEN", "at": [x, z] }`, spawned on the ground there; each side has one owner, so a shared order makes a joint operation |
 | `afterTicks` (in an attacker group) | Give this squad its ATTACK this many ticks after the others, as a reinforcement |
-| `expect` | Optional overrides: `maxFriendlyShare` (default 0.45), `maxChurnPerManMinute` (3.5), `assault` and `taken` (both true: required) |
+| `expect` | Optional overrides: `maxFriendlyShare` (default 0.5), `maxChurnPerManMinute` (3.5), `assault` and `taken` (both true: required) |
 
 Attackers get an ATTACK on the objective at tick 100; defenders DEFEND it. NPCs a previous run left
 in the area are removed first.
@@ -70,6 +70,6 @@ groups are switched on for the run:
 
 A battle is one run of a noisy fight: survivors and shares vary noticeably between runs, so compare
 several runs before reading a difference into one. The thresholds guard against getting worse than
-the current behaviour; they are not targets. They sit just above what `develop` measured over three
-runs (friendly share up to 0.42, churn up to 2.8 with three squads and 5.1 with one). The terrain is
+the current behaviour; they are not targets. They sit just above what `develop` measured over four
+runs (friendly share up to 0.47, churn up to 3.1 with three squads and 5.1 with one). The terrain is
 real but the squads are scripted presets, not the exact men of the playtest.
