@@ -7,7 +7,7 @@ import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import net.minecraft.world.level.pathfinder.Path
 import net.minecraft.world.phys.Vec3
 
-/** Short route legs prevent a rear flank destination from routing straight through the enemy. */
+/** Short route legs along the walked route keep a distant destination from routing straight through the enemy. */
 object TacticalRoutes {
     /** Reserves and observers still have to reach their assigned area before holding it. */
     val TRANSIT_JOBS = TacticalJob.RUNNING + setOf(TacticalJob.SEARCH, TacticalJob.RESERVE, TacticalJob.OBSERVE)
