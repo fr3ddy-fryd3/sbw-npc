@@ -5,10 +5,6 @@ import com.sbwnpc.squad.entity.EntityIndex
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.server.MinecraftServer
 import net.minecraft.world.entity.projectile.Projectile
-import net.neoforged.bus.api.SubscribeEvent
-import net.neoforged.fml.common.EventBusSubscriber
-import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent
-import net.neoforged.neoforge.event.entity.EntityLeaveLevelEvent
 
 /**
  * Clears away NPC rounds that have stopped in the air. A round that misses flies on, and one that
@@ -17,15 +13,8 @@ import net.neoforged.neoforge.event.entity.EntityLeaveLevelEvent
  * along the edge of the ticking area, every one an entity the server keeps and sends to players.
  * Players' own rounds are SBW's to look after and left alone.
  */
-@EventBusSubscriber
 object StrayRounds : EntityIndex({ Ports.guns.isRound(it) }) {
     private const val SWEEP_TICKS = 20
-
-    @SubscribeEvent
-    fun onJoin(event: EntityJoinLevelEvent) = join(event)
-
-    @SubscribeEvent
-    fun onLeave(event: EntityLeaveLevelEvent) = leave(event)
 
     fun tick(server: MinecraftServer) {
         if (server.tickCount % SWEEP_TICKS != 0) return

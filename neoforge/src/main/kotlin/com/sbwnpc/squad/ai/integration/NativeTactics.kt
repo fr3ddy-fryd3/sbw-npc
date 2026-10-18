@@ -11,6 +11,7 @@ import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.*
 import com.sbwnpc.squad.team.Diplomacy
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
 import kotlin.math.hypot
@@ -51,12 +52,16 @@ object NativeTactics {
 
     /** Whether [squad] currently counts towards some operation's area completion. */
     fun holdsArea(squad: UUID) = worlds.values.any { it.holdsArea(squad) }
-    fun targetDeath(event: net.neoforged.neoforge.event.entity.living.LivingDeathEvent) {
-        val entity = event.entity
+
+    /**
+     * Notes the death of a commanded objective target. [cancelled] is read at the next tactics tick,
+     * so a later handler of the loader's death event can still call the death off.
+     */
+    fun targetDeath(entity: LivingEntity, cancelled: () -> Boolean) {
         val level = entity.level() as? ServerLevel ?: return
         val world = worlds[level] ?: return
         if (SquadManager.get(level).all().any { it.commandOutcome == CommandOutcome.ACTIVE && (it.command?.goal as? ObjectiveKey.Entity)?.id == entity.uuid }) {
-            world.pendingDeaths[entity.uuid] = event
+            world.pendingDeaths[entity.uuid] = PendingDeath(entity, cancelled)
         }
     }
     fun clearAll() {
@@ -70,11 +75,13 @@ object NativeTactics {
             !npc.evadingGrenade() && !npc.movementLockedByCover() && !npc.combatLockedByMedic() && npc.retreatPoint() == null
     private val GROUND = setOf(NpcClass.RIFLEMAN, NpcClass.SHOTGUNNER, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.DRONE_OPERATOR)
 
+    private class PendingDeath(val entity: LivingEntity, val cancelled: () -> Boolean)
+
     /** One group of an attack that takes an approach sector: a squad, or a lone squad's manoeuvre group. */
     private data class SectorGroup(val squad: UUID, val manoeuvre: Boolean)
 
     private class World(val level: ServerLevel) {
-        val pendingDeaths = HashMap<UUID, net.neoforged.neoforge.event.entity.living.LivingDeathEvent>()
+        val pendingDeaths = HashMap<UUID, PendingDeath>()
         val agents = LinkedHashMap<AgentId, PlanningAgent>()
         val actions = HashMap<UUID, NativePositionAction>()
         val operations = OperationRegistry({ a, b -> Diplomacy.allied(SquadFaction.valueOf(a), SquadFaction.valueOf(b)) }, { _, _ -> true })
@@ -258,7 +265,7 @@ object NativeTactics {
                 sharedViews.clear()
                 val manager = SquadManager.get(level)
                 // Inspect after the complete event dispatch: a cancelled death is not success.
-                val destroyedTargets = pendingDeaths.filterValues { !it.isCanceled && it.entity.isDeadOrDying }.keys.toSet()
+                val destroyedTargets = pendingDeaths.filterValues { !it.cancelled() && it.entity.isDeadOrDying }.keys.toSet()
                 pendingDeaths.clear()
                 val loaded = manager.all().mapNotNull { saved ->
                     // A member whose entity names no squad or another one is not planned for: such an NPC,
