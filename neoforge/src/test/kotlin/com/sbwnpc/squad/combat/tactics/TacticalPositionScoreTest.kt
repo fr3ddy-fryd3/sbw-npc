@@ -1,41 +1,13 @@
 package com.sbwnpc.squad.combat.tactics
 
-import net.minecraft.world.phys.Vec3
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 
 class TacticalPositionScoreTest {
-    @Test fun `a native transit batch excludes shorter routes that sacrifice the chosen progress`() {
-        val goal = Vec3(12.0, 0.0, 0.0)
-        val best = TacticalPositionScore.coveredTransitStep(Vec3.ZERO, goal, goal)
-        assertTrue(best.sameRouteTier(TacticalPositionScore.coveredTransitStep(Vec3.ZERO, goal, Vec3(11.0, 0.0, 0.0))))
-        assertFalse(best.sameRouteTier(TacticalPositionScore.coveredTransitStep(Vec3.ZERO, goal, Vec3(4.0, 0.0, 0.0))))
-        // Ordinary firing-post batches still group by actual shelter and exposure.
+    @Test fun `a route batch holds one shelter and exposure tier whatever the cost`() {
         assertTrue(TacticalPositionScore(false, 0, 1.0).sameRouteTier(TacticalPositionScore(false, 0, 20.0)))
-        assertFalse(best.sameRouteTier(TacticalPositionScore(true, 0, 0.0)))
-    }
-
-    @Test fun `a covered flank prefers progress and a necessary sideways step over retreat`() {
-        val origin = Vec3.ZERO
-        val goal = Vec3(64.0, 0.0, 0.0)
-        val forward = TacticalPositionScore.coveredTransitStep(origin, goal, Vec3(24.0, 0.0, 0.0))
-        val sideways = TacticalPositionScore.coveredTransitStep(origin, goal, Vec3(0.0, 0.0, 24.0))
-        val backward = TacticalPositionScore.coveredTransitStep(origin, goal, Vec3(-8.0, 0.0, 0.0))
-        assertTrue(forward < sideways)
-        assertTrue(sideways < backward)
-    }
-
-    @Test fun `straight deployment favors approaching the goal over standing anywhere along its route`() {
-        val origin = Vec3.ZERO
-        val goal = Vec3(12.0, 0.0, 0.0)
-        val idle = TacticalPositionScore.coveredTransitStep(origin, goal, origin)
-        val middle = TacticalPositionScore.coveredTransitStep(origin, goal, Vec3(6.0, 0.0, 0.0))
-        val arrived = TacticalPositionScore.coveredTransitStep(origin, goal, goal)
-        assertTrue(middle < idle)
-        assertTrue(arrived < middle)
-        // A catch-up assignment can lead backward; explicit movement still follows its goal.
-        val catchingUp = TacticalPositionScore.coveredTransitStep(goal, origin, Vec3(6.0, 0.0, 0.0))
-        assertTrue(catchingUp < TacticalPositionScore.coveredTransitStep(goal, origin, goal))
+        assertFalse(TacticalPositionScore(false, 0, 1.0).sameRouteTier(TacticalPositionScore(true, 0, 0.0)))
+        assertFalse(TacticalPositionScore(true, 1, 1.0).sameRouteTier(TacticalPositionScore(true, 2, 1.0)))
     }
 
     @Test fun `shelter ranks before exposure and movement cost`() {

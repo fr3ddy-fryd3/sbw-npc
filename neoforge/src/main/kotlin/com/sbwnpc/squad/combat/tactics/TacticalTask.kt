@@ -12,20 +12,14 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
     var closest = Double.MAX_VALUE
     var search: TacticalPositionSearch? = null
     var nextValidation = Long.MIN_VALUE
-    var frontage: TacticalFrontPost? = null
 
     /** The walked route to [anchor] a transit leg follows, see [TacticalRoutes.routeLeg]. */
     var route: List<Vec3>? = null
     var nextRoutePlan = Long.MIN_VALUE
 
-    fun permitsFront(point: Vec3): Boolean =
-        if (expandedFireSearch) {
-            TacticalFirePosts.withinPost(localFirePost!!, point, recovery = true)
-        } else {
-            frontage?.permits(point, localFireRecovery) != false
-        }
+    /** An expanded fire search keeps the man within reach of the post it started from. */
+    fun permitsFront(point: Vec3): Boolean = !expandedFireSearch || TacticalFirePosts.withinPost(localFirePost!!, point, recovery = true)
     fun deployingFront(point: Vec3): Boolean = !permitsFront(point)
-    var maneuverPost = false
 
     /** Retains assignment/sector while the individual shooter searches a bounded local post. */
     var localFirePost: Vec3? = null
@@ -62,7 +56,7 @@ class TacticalTask(val job: TacticalJob, val anchor: Vec3, var focus: Vec3?, val
 }
 
 /** Keeps progress across tick budgets, including candidates after an unreachable first choice. */
-class TacticalPositionSearch(val origin: Vec3, probes: List<Vec3>, val aim: TacticalAim? = null, val deployment: Boolean = false) {
+class TacticalPositionSearch(val origin: Vec3, probes: List<Vec3>, val aim: TacticalAim? = null) {
     var probes = probes
         private set
     private val probedCells = probes.mapTo(HashSet()) { net.minecraft.core.BlockPos.containing(it) }
@@ -107,10 +101,9 @@ class TacticalPositionSearch(val origin: Vec3, probes: List<Vec3>, val aim: Tact
 
     /** Use a real nearby covered candidate before a moving target invalidates a long scan.
      * Height searches still finish their full scan before ranking the highest protected floor. */
-    internal fun readyBatch(overwatch: Boolean): Boolean = !overwatch && scored.values.any { !it.open && it.purpose != TacticalPositionScore.Purpose.COVERED_TRANSIT }
+    internal fun readyBatch(overwatch: Boolean): Boolean = !overwatch && scored.values.any { !it.open }
 
-    fun needsRestart(position: Vec3, currentAim: TacticalAim?, deployment: Boolean = this.deployment): Boolean {
-        if (this.deployment != deployment) return true
+    fun needsRestart(position: Vec3, currentAim: TacticalAim?): Boolean {
         if (origin.distanceTo(position) > 4.0 || aim?.target != currentAim?.target) return true
         if (aim == null || currentAim == null) return aim != currentAim
         return aim.eye.distanceTo(currentAim.eye) > 2.0
