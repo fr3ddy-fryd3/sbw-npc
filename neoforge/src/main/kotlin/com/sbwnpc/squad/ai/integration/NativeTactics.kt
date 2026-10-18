@@ -166,7 +166,7 @@ object NativeTactics {
                             require(ticket.owner.agent == intent.actor)
                             val original = goals[intent.actor] ?: intent
                             val npc = requireNotNull(level.getEntity(intent.actor.id) as? NpcEntity)
-                            NativePositionAction(intent, npc, { requireNotNull(combatView(npc.squadId!!)) }, { covering(intent) }, { failed, rejections, searched ->
+                            NativePositionAction(intent, npc, { npc.squadId?.let(::combatView) }, { failed, rejections, searched ->
                                 failures[failed.actor.id] = LocalPositionFailure(original.anchor, level.gameTime, (failures[failed.actor.id]?.takeIf { it.anchor == original.anchor }?.attempts ?: 0) + 1, rejections.toMap())
                                 // Heights tell a front anchor off the ground (a slope, a ridge) from a crowded area (#55).
                                 // The planned anchor is put on the ground before the search; searched is where it looked.
@@ -245,7 +245,10 @@ object NativeTactics {
                 val destroyedTargets = pendingDeaths.filterValues { !it.isCanceled && it.entity.isDeadOrDying }.keys.toSet()
                 pendingDeaths.clear()
                 val loaded = manager.all().mapNotNull { saved ->
-                    val npcs = saved.members.mapNotNull { level.getEntity(it) as? NpcEntity }.filter { it.isAlive && it.vehicle == null && it.npcClass in GROUND }
+                    // A member whose entity names no squad or another one is not planned for: such an NPC,
+                    // left over in a world from an interrupted run, got an agent and crashed the server
+                    // on its first post search (#64).
+                    val npcs = saved.members.mapNotNull { level.getEntity(it) as? NpcEntity }.filter { it.isAlive && it.vehicle == null && it.npcClass in GROUND && it.squadId == saved.id }
                     if (npcs.isEmpty()) null else saved to npcs
                 }
                 val activeIds = loaded.mapTo(HashSet()) { it.first.id }

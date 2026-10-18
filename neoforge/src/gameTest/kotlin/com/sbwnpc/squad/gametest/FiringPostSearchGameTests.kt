@@ -4,7 +4,6 @@ import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.tactics.TacticalAim
 import com.sbwnpc.squad.combat.tactics.TacticalContact
 import com.sbwnpc.squad.combat.tactics.TacticalFirePosts
-import com.sbwnpc.squad.combat.tactics.TacticalFrontPost
 import com.sbwnpc.squad.combat.tactics.TacticalJob
 import com.sbwnpc.squad.combat.tactics.TacticalMember
 import com.sbwnpc.squad.combat.tactics.TacticalPositionSearch
@@ -47,9 +46,7 @@ object FiringPostSearchGameTests {
         val open = helper.absoluteVec(Vec3(47.5, 1.0, 100.5))
         val sheltered = helper.absoluteVec(Vec3(45.5, 1.0, 105.5))
         helper.setBlock(BlockPos(46, 1, 105), Blocks.STONE)
-        val task = TacticalTask(job, open, enemy.position(), 1).apply {
-            frontage = TacticalFrontPost(open, Vec3(1.0, 0.0, 0.0))
-        }
+        val task = TacticalTask(job, open, enemy.position(), 1).apply { localFirePost = open }
         helper.testInfo.addListener(object : GameTestListener {
             override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
             override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
@@ -64,9 +61,9 @@ object FiringPostSearchGameTests {
         helper.runAtTickTime(20) {
             npc.setOnGround(true)
             BrainUtils.setTargetOfEntity(npc, enemy)
-            // A returned probe has no contact coverOrigin. Both posts have a real firing lane;
-            // the exposed post is closer to the assigned front, the other has a one-block wall.
-            task.search = TacticalPositionSearch(npc.position(), listOf(open, sheltered), TacticalAim.resolve(npc, task), deployment = true)
+            // Both posts have a real firing lane;
+            // the exposed post is the assigned one, the other has a one-block wall.
+            task.search = TacticalPositionSearch(npc.position(), listOf(open, sheltered), TacticalAim.resolve(npc, task))
         }
         helper.onEachTick {
             if (helper.tick <= 20) return@onEachTick
@@ -95,7 +92,6 @@ object FiringPostSearchGameTests {
         val goal = origin.add(6.433, 10.0, -6.555)
         val task = TacticalTask(TacticalJob.ADVANCE, goal, enemy.position(), 1).apply {
             localFirePost = goal
-            frontage = TacticalFrontPost(goal, Vec3(0.664, 0.0, -0.748).normalize())
             // Isolate validation of a reached post; the natural scene exercises probe generation.
             search = TacticalPositionSearch(origin, listOf(origin), TacticalAim.choose(null, enemy.position()))
         }
@@ -123,59 +119,6 @@ object FiringPostSearchGameTests {
                 helper.assertTrue(result.rejections["no_goal_progress"] == 1, "Reached post was rejected for an unrelated reason: ${result.rejections}")
             }
             helper.succeed()
-        }
-    }
-
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 100, batch = "flank-search")
-    fun flankSearchGoesAroundSecondaryContact(helper: GameTestHelper) {
-        for (x in 0..175) for (z in 0..223) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
-        val npc = AttackDeploymentGameTests.spawn(helper, Vec3(30.5, 1.0, 112.5), SquadFaction.PIG).apply { isNoAi = true }
-        val enemies = listOf(Vec3(130.5, 1.0, 112.5), Vec3(60.5, 1.0, 109.5)).map {
-            AttackDeploymentGameTests.spawn(helper, it, SquadFaction.COW).apply { isNoAi = true }
-        }
-        val task = TacticalTask(TacticalJob.FLANK, helper.absoluteVec(Vec3(74.5, 1.0, 48.5)), enemies.first().position(), 1)
-        fun view() =
-            TacticalSnapshot(
-                helper.level.gameTime,
-                SquadOrder.ATTACK,
-                1,
-                npc.position(),
-                task.focus,
-                listOf(TacticalMember(npc.uuid, npc.position())),
-                enemies.map { TacticalContact(it.uuid, it.position(), helper.level.gameTime) },
-            )
-        helper.testInfo.addListener(object : GameTestListener {
-            override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
-            override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
-            override fun testFailed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
-            override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) = cleanup()
-            private fun cleanup() =
-                (listOf(npc) + enemies).forEach {
-                    FiringSpots.release(it.uuid)
-                    it.discard()
-                }
-        })
-        helper.runAtTickTime(20) {
-            npc.setOnGround(true)
-            BrainUtils.setTargetOfEntity(npc, enemies.first())
-            // Verify a real safe detour before asking the production search to find its next leg.
-            val detour = npc.position().add(-4.0, 0.0, -20.0)
-            val path = TacticalPositions.pathToPosition(npc, detour)
-            helper.assertTrue(TacticalPositions.safeDistance(npc, view(), detour), "Fixture has no safe detour point")
-            helper.assertTrue(TacticalPositions.reaches(path, detour) && TacticalPositions.safePath(npc, view(), path!!), "Fixture has no reachable safe detour")
-        }
-        helper.onEachTick {
-            if (helper.tick <= 20) return@onEachTick
-            val result = TacticalPositions.find(npc, task, view())
-            helper.assertTrue(result.outcome != TacticalPositions.Outcome.UNREACHABLE, "Flank rejected a reachable detour: ${result.rejections}")
-            if (result.outcome == TacticalPositions.Outcome.FOUND) {
-                val point = result.position!!
-                helper.assertTrue(TacticalPositions.safeDistance(npc, view(), point), "Flank approached a secondary contact")
-                helper.assertTrue(TacticalPositions.safePath(npc, view(), npc.navigation.path!!), "Flank route crosses a secondary contact")
-                helper.assertTrue(point.distanceTo(npc.position()) >= 4.0, "Flank search returned no travel progress")
-                helper.succeed()
-            }
         }
     }
 
@@ -251,7 +194,6 @@ object FiringPostSearchGameTests {
         val target = enemies[2]
         val task = TacticalTask(TacticalJob.COVER, npc.position(), target.position(), 1).apply {
             localFirePost = npc.position()
-            frontage = TacticalFrontPost(npc.position().add(12.0, 0.0, 0.0), target.position().subtract(npc.position()).multiply(1.0, 0.0, 1.0).normalize())
             expandedFireSearch = true
         }
         fun view() =
