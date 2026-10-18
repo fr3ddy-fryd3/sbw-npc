@@ -107,12 +107,6 @@
     <ID>MagicNumber:SquadSettings.kt$DefaultSquadSettings$0.65</ID>
     <ID>MagicNumber:SquadSettings.kt$DefaultSquadSettings$0.75</ID>
     <ID>MagicNumber:SquadSettings.kt$DefaultSquadSettings$20</ID>
-    <ID>MagicNumber:TacticalDomain.kt$StrategyEvaluation$0.2</ID>
-    <ID>MagicNumber:TacticalDomain.kt$StrategyEvaluation$0.4</ID>
-    <ID>MagicNumber:TacticalDomain.kt$StrategyEvaluation$0.55</ID>
-    <ID>MagicNumber:TacticalDomain.kt$StrategyEvaluation$0.9</ID>
-    <ID>MagicNumber:TacticalDomain.kt$StrategyEvaluation$0.93</ID>
-    <ID>MagicNumber:TacticalDomain.kt$StrategyEvaluation$0.95</ID>
     <ID>MagicNumber:TacticalDomain.kt$TacticalDomain$0.01</ID>
     <ID>MagicNumber:TacticalDomain.kt$TacticalDomain$12.0</ID>
     <ID>MagicNumber:TacticalDomain.kt$TacticalDomain$16.0</ID>
