@@ -260,6 +260,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // Wariness (#66): where a threat to the squad came from, and until when the NPC watches it.
     private var waryAt: Vec3? = null
     private var waryUntilTick = 0
+    private var lastHitWarning = Int.MIN_VALUE / 2
 
     /** Whether the NPC is wary: a squadmate fell nearby, so it watches where the threat came from. */
     fun wary(): Boolean = waryAt != null && tickCount < waryUntilTick
@@ -688,8 +689,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             incomingFire.record(eyePosition, source.directEntity?.takeIf { it !== source.entity }?.deltaMovement, source.entity?.eyePosition ?: source.sourcePosition, level().gameTime)
             val from = incomingFire.point(level().gameTime) ?: source.sourcePosition ?: position()
             suppress(from)
-            // Shot by someone it cannot see: it and the men round it watch where the fire came from (#66).
-            if (target == null) {
+            // Shot by someone it cannot see: it and the men round it watch where the fire came from
+            // (#66). A dead man's squad was warned by die(); a burst warns once, not every round.
+            if (target == null && isAlive && tickCount - lastHitWarning >= HIT_WARNING_TICKS) {
+                lastHitWarning = tickCount
                 becomeWary(from)
                 warnSquadmates(from, HIT_WARNING_RADIUS)
             }
@@ -1434,6 +1437,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
         /** How far (16 blocks) the men round an NPC shot by an unseen enemy grow wary with it. */
         private const val HIT_WARNING_RADIUS = 16.0
+
+        /** One warning per this many ticks (1 s) of being shot, whatever the rate of fire. */
+        private const val HIT_WARNING_TICKS = 20
 
         /** One hearing trace line per NPC per this many ticks — a firefight is a noise a second. */
         private const val HEARING_LOG_TICKS = 40

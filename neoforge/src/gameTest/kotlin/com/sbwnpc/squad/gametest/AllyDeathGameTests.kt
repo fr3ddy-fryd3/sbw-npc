@@ -131,7 +131,7 @@ object AllyDeathGameTests {
      */
     private fun checkSweep(helper: GameTestHelper, allies: List<NpcEntity>, lines: MutableList<String>) {
         val sweeps = allies.associateWith { ArrayList<Float>() }
-        for (tick in listOf(150, 190, 230)) helper.runAtTickTime(tick.toLong()) { sweeps.forEach { (ally, yaws) -> yaws += ally.yHeadRot } }
+        for (tick in 150..230 step 10) helper.runAtTickTime(tick.toLong()) { sweeps.forEach { (ally, yaws) -> yaws += ally.yHeadRot } }
         helper.runAtTickTime(239) {
             lines += sweeps.entries.joinToString("\n") { (ally, yaws) -> "sweep ${ally.uuid.toString().take(8)} yaws=$yaws" }
             val idle = allies.filter { it.target == null }
@@ -142,6 +142,6 @@ object AllyDeathGameTests {
         }
     }
 
-    /** Whether the head yaws sampled over time moved by more than a few degrees at least once. */
-    private fun sweeping(yaws: List<Float>) = yaws.zipWithNext().any { (a, b) -> kotlin.math.abs(net.minecraft.util.Mth.wrapDegrees(b - a)) > 5f }
+    /** Whether the head yaws sampled over time spread over more than a few degrees. */
+    private fun sweeping(yaws: List<Float>) = yaws.any { kotlin.math.abs(net.minecraft.util.Mth.wrapDegrees(it - yaws.first())) > 5f }
 }
