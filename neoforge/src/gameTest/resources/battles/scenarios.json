@@ -1,0 +1,34 @@
+{
+  "three-squads-hill-point": {
+    "about": "Owner's playtest 17.10 16:39: three squads of 16 attack a point on a rise held by 16.",
+    "world": "New World (1)",
+    "objective": [-96, 72, -254],
+    "ticks": 4800,
+    "attackers": [
+      { "preset": "SIXTEEN", "at": [-54, -215] },
+      { "preset": "SIXTEEN", "at": [-58, -210] },
+      { "preset": "SIXTEEN", "at": [-92, -194] }
+    ],
+    "defenders": [
+      { "preset": "SIXTEEN", "at": [-97, -264] }
+    ]
+  },
+  "lone-squad-hill-point": {
+    "about": "Owner's playtest 17.10 16:47: one squad of 16 attacks the same point held by 16.",
+    "world": "New World (1)",
+    "objective": [-95, 72, -258],
+    "ticks": 4800,
+    "attackers": [
+      { "preset": "SIXTEEN", "at": [-36, -125] }
+    ],
+    "defenders": [
+      { "preset": "SIXTEEN", "at": [-97, -264] }
+    ],
+    "expect": {
+      "note": "Even numbers: an attack assaults only at two to one, so the point is not expected to fall. Post churn on develop ran 0.8 to 5.1 here.",
+      "maxChurnPerManMinute": 6.0,
+      "assault": false,
+      "taken": false
+    }
+  }
+}
