@@ -27,6 +27,24 @@ class OperationTacticsTest {
         roles.assault.values.forEach { assertTrue(hypot(it.x - objective.x, it.z - objective.z) <= 12.0) }
     }
 
+    @Test fun `going onto a point a defender still stands at, no man comes nearer him than the standoff`() {
+        val movers = (1..12).map(::id)
+        val defender = Point3(103.0, 64.0, 98.0)
+        val roles = OperationTactics.roles(AttackPhase.ASSAULT, objective, movers, movers.indices.map { member(it + 1, 40.0) }, emptyList(), emptySet(), standoffFrom = listOf(defender))
+        assertEquals(movers.toSet(), roles.assault.keys)
+        roles.assault.values.forEach {
+            assertTrue(hypot(it.x - defender.x, it.z - defender.z) >= OperationTactics.ASSAULT_STANDOFF - 1.0E-6, "slot $it is beside the defender")
+            // Still near enough the point to count as occupying it.
+            assertTrue(hypot(it.x - objective.x, it.z - objective.z) <= 24.0, "slot $it is off the point")
+        }
+    }
+
+    @Test fun `a clearing man already within the closing distance holds where he is`() {
+        val target = Point3(118.0, 64.0, 100.0)
+        val near = Point3(100.0, 64.0, 100.0)
+        assertEquals(near, OperationTactics.closingPost(near, listOf(target)))
+    }
+
     @Test fun `an assault on a held point closes in to fire instead of running onto it`() {
         // In-game 16.10: "an assault is not running right up, it is closing the range and pressing with fire".
         val defender = Point3(100.0, 64.0, 130.0)

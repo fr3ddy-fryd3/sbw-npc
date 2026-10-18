@@ -120,7 +120,7 @@ class AttackProgress(now: Long) {
         if (!occupying) occupying = closedIn(now, objective, movers, members, threats)
         // Going onto the point, the defenders still round it no longer hold the movers back.
         val holding = if (occupying) threats.filterNot { OperationTactics.atObjective(it, objective) } else threats
-        return OperationTactics.roles(phase, objective, movers, members, holding, clearing, closingOrigins).also { clearing = it.clearing.keys }
+        return OperationTactics.roles(phase, objective, movers, members, holding, clearing, closingOrigins, standoffFrom = threats).also { clearing = it.clearing.keys }
     }
 
     /** Whether the closed-in assault is due to go onto the point now; starts its clocks on the way. */

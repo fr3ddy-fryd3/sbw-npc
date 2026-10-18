@@ -66,6 +66,12 @@ object OperationTactics {
     const val CLOSE_DISTANCE = 20.0
 
     /**
+     * How near (16 blocks) a man in an assault may come to a known enemy. An assault shortens the
+     * range and keeps firing; it never runs onto the enemy (#88).
+     */
+    const val ASSAULT_STANDOFF = 16.0
+
+    /**
      * Roles for [phase]. While defenders still hold the [objective] an assault closes in under
      * fire: each mover takes a firing post half as far from the nearest defender as it stood
      * when the assault began ([origins], see [closingPost]). Once none are left at the point the
@@ -73,7 +79,7 @@ object OperationTactics {
      * [threats] (2 to [MAX_CLEARING_TEAM], keeping those already sent) each go after the nearest
      * one while the rest hold.
      */
-    fun roles(phase: AttackPhase, objective: Point3, movers: List<UUID>, members: List<AttackMember>, threats: List<Point3>, previousClearing: Set<UUID>, origins: Map<UUID, Point3> = emptyMap()): AttackRoles {
+    fun roles(phase: AttackPhase, objective: Point3, movers: List<UUID>, members: List<AttackMember>, threats: List<Point3>, previousClearing: Set<UUID>, origins: Map<UUID, Point3> = emptyMap(), standoffFrom: List<Point3> = threats): AttackRoles {
         if (phase == AttackPhase.DEPLOY) return AttackRoles.NONE
         // An assault is not a run onto the defenders: it shortens the range and keeps firing.
         val defenders = threats.filter { atObjective(it, objective) }
@@ -95,10 +101,32 @@ object OperationTactics {
             // A loose ring, so the assault group does not pile onto one block.
             val ring = 4.0 + index / 8 * 4.0
             val angle = index * Math.PI / 4 + index / 8 * Math.PI / 8
-            id to Point3(objective.x + cos(angle) * ring, objective.y, objective.z + sin(angle) * ring)
+            id to keepStandoff(Point3(objective.x + cos(angle) * ring, objective.y, objective.z + sin(angle) * ring), standoffFrom)
         }
         return AttackRoles(assault, clearing)
     }
+
+    /**
+     * [slot] pushed out until it is [ASSAULT_STANDOFF] from every one of [threats]. Going onto a
+     * point a defender still stands near, the ring would have put men right beside him (#88).
+     */
+    fun keepStandoff(slot: Point3, threats: List<Point3>): Point3 {
+        var point = slot
+        repeat(STANDOFF_PASSES) {
+            val near = threats.firstOrNull { distance(it, point) < ASSAULT_STANDOFF } ?: return point
+            point = if (distance(near, point) < SAME_SPOT) {
+                Point3(near.x + ASSAULT_STANDOFF, point.y, near.z)
+            } else {
+                short(near, point, ASSAULT_STANDOFF).copy(y = point.y)
+            }
+        }
+        return point
+    }
+
+    /** Pushing a slot clear of one enemy can bring it near another; this many tries settle it. */
+    private const val STANDOFF_PASSES = 4
+
+    private const val SAME_SPOT = 0.01
 
     /**
      * [mission] with its members' intents rewritten for [roles]. An assault crosses open ground
