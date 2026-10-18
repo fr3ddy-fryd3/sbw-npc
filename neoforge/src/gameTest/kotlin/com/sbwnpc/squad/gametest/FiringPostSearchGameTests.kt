@@ -181,7 +181,7 @@ object FiringPostSearchGameTests {
 
     /** A post planned at another height than the ground at its spot goes onto that ground (#55). */
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 20, batch = "post-ground")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 20, batch = "post-ground", skyAccess = true)
     fun plannedPostOffTheGroundGoesOntoIt(helper: GameTestHelper) {
         for (x in 0..15) for (z in 0..15) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
         // A canopy over one spot, a hill over another.
@@ -201,6 +201,7 @@ object FiringPostSearchGameTests {
         helper.assertTrue(post(8.3, 14.0, 8.7) == ground, "A post 13 blocks up stayed off the ground: ${post(8.3, 14.0, 8.7)}")
         helper.assertTrue(post(10.3, 9.0, 3.7) == helper.absoluteVec(Vec3(10.3, 1.0, 3.7)), "A post over a canopy went onto the leaves: ${post(10.3, 9.0, 3.7)}")
         helper.assertTrue(post(3.3, 2.0, 10.7) == helper.absoluteVec(Vec3(3.3, 6.0, 10.7)), "A post inside a hill did not go onto it: ${post(3.3, 2.0, 10.7)}")
+        // Sky access: the barrier roof GameTest puts over a closed scene would be the first floor below.
         helper.assertTrue(post(8.3, 45.0, 8.7) == ground, "A post 44 blocks up stayed off the ground: ${post(8.3, 45.0, 8.7)}")
         val pond = post(13.3, 9.0, 13.7)
         val inPond = helper.relativeVec(pond).let { it.x in 12.0..15.0 && it.z in 12.0..15.0 }
