@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.gametest
 
+import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.SquadManager
 import net.minecraft.core.BlockPos
@@ -26,6 +27,33 @@ object AllyDeathGameTests {
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 200, batch = "ally-death-unknown")
     fun allyDeadOfUnknownCauseMakesTheSquadWary(helper: GameTestHelper) = allyDeath(helper, "unknown-cause", killer = false)
+
+    /** Wariness only steers an idle NPC's eyes: an enemy in the open is still fought. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 400, batch = "ally-death-engage")
+    fun waryAlliesStillEngageAVisibleEnemy(helper: GameTestHelper) {
+        for (x in 0..79) for (z in 0..47) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        val men = (0..4).map { AttackDeploymentGameTests.spawn(helper, Vec3(20.5 + it % 3 * 3, 1.0, 22.5 + it / 3 * 3), SquadFaction.PIG) }
+        val manager = SquadManager.get(helper.level)
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, men.map { it.uuid })
+        val allies = men.drop(1)
+        val engaged = HashSet<UUID>()
+        var enemy: NpcEntity? = null
+        helper.runAtTickTime(40) { men.first().kill() }
+        helper.runAtTickTime(60) {
+            helper.assertTrue(allies.all { it.wary() }, "The allies did not grow wary")
+            enemy = AttackDeploymentGameTests.spawn(helper, Vec3(45.5, 1.0, 24.5), SquadFaction.COW).apply { isNoAi = true }
+        }
+        helper.onEachTick {
+            val seen = enemy ?: return@onEachTick
+            allies.filter { it.target == seen }.forEach { engaged += it.uuid }
+            if (allies.all { it.uuid in engaged }) {
+                manager.deleteSquad(helper.level, squad.id)
+                (men + seen).forEach { it.discard() }
+                helper.succeed()
+            }
+        }
+    }
 
     private fun allyDeath(helper: GameTestHelper, name: String, killer: Boolean) {
         for (x in 0..79) for (z in 0..47) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
@@ -58,10 +86,10 @@ object AllyDeathGameTests {
             helper.assertTrue(allies.all { it.wary() && it.waryToward() == threat }, "Not every ally grew wary of where the threat came from")
         }
         helper.runAtTickTime(170) {
-            helper.assertTrue(allies.all { it.wary() }, "An ally stopped being wary within 6 seconds")
-            helper.assertTrue(allies.all { it.target != null || it.position().distanceTo(start.getValue(it)) < 4.0 }, "A wary ally with nothing to fight wandered off")
             val reports = Files.createDirectories(Path.of(System.getProperty("sbwnpc.gameTestReports")))
             Files.writeString(reports.resolve("ally-death-$name.txt"), lines.joinToString("\n") + "\n")
+            helper.assertTrue(allies.all { it.wary() }, "An ally stopped being wary within 6 seconds")
+            helper.assertTrue(allies.all { it.target != null || it.position().distanceTo(start.getValue(it)) < 4.0 }, "A wary ally with nothing to fight wandered off")
             manager.deleteSquad(helper.level, squad.id)
             (men + shooter).forEach { it.discard() }
             helper.succeed()

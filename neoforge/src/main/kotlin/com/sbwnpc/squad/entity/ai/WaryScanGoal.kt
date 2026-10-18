@@ -18,7 +18,7 @@ class WaryScanGoal(private val npc: NpcEntity) : Goal() {
         flags = EnumSet.of(Flag.LOOK)
     }
 
-    private fun eligible() = npc.target == null && npc.wary() && !npc.listening() && !com.sbwnpc.squad.ai.integration.NativeTactics.ownsLook(npc)
+    private fun eligible() = npc.target == null && npc.wary() && !npc.listening() && !npc.lookOwnedElsewhere()
 
     override fun canUse(): Boolean = eligible()
 

@@ -274,8 +274,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     fun becomeWary(toward: Vec3) {
         waryAt = toward
         waryUntilTick = tickCount + WARY_TICKS
-        if (target == null) {
+        // A noise still being listened to is fresher than the body; a stale in-combat flag would
+        // turn the body into a "nearby noise" for the next target it cannot see.
+        if (target == null && !listening()) {
             heardAt = toward
+            heardDuringCombat = false
             heardUntilTick = tickCount + HEARD_LOOK_TICKS
         }
     }
@@ -294,10 +297,12 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             heardDuringCombat = false
             return
         }
-        // Active role/vehicle/medical controllers keep ownership of their look direction.
-        if (busyWithRole() || vehicle != null || combatLockedByMedic() || com.sbwnpc.squad.ai.integration.NativeTactics.ownsLook(this)) return
+        if (lookOwnedElsewhere()) return
         lookControl.setLookAt(at.x, at.y, at.z)
     }
+
+    /** Whether an active role, vehicle, medical or tactics controller owns the look direction. */
+    fun lookOwnedElsewhere(): Boolean = busyWithRole() || vehicle != null || combatLockedByMedic() || com.sbwnpc.squad.ai.integration.NativeTactics.ownsLook(this)
 
     /** Called by [com.sbwnpc.squad.entity.ai.InvestigateBehaviour] once it reaches the alert
      *  position (or gives up navigating to it) — ends the investigation instead of waiting out the
