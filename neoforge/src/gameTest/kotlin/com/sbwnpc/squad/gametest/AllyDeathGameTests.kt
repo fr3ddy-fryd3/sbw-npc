@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.gametest
 
+import com.atsuishio.superbwarfare.entity.projectile.ProjectileEntity
 import com.atsuishio.superbwarfare.init.ModDamageTypes
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.SquadFaction
@@ -52,6 +53,36 @@ object AllyDeathGameTests {
             helper.assertTrue(!far.wary(), "A man beyond the warning radius grew wary")
             manager.deleteSquad(helper.level, squad.id)
             (men + far + shooter).forEach { it.discard() }
+            helper.succeed()
+        }
+    }
+
+    /** A round striking the ground beside a man makes him wary of where it came from; one farther off does not. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 200, batch = "near-miss")
+    fun roundLandingBesideAManMakesHimWary(helper: GameTestHelper) {
+        for (x in 0..79) for (z in 0..47) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        // The shooter stands behind a wall, so the men have no target to explain the round.
+        for (z in 10..38) for (y in 1..4) helper.setBlock(BlockPos(50, y, z), Blocks.STONE)
+        val man = AttackDeploymentGameTests.spawn(helper, Vec3(20.5, 1.0, 22.5), SquadFaction.PIG)
+        val far = AttackDeploymentGameTests.spawn(helper, Vec3(20.5, 1.0, 32.5), SquadFaction.PIG)
+        val shooter = AttackDeploymentGameTests.spawn(helper, Vec3(60.5, 1.0, 22.5), SquadFaction.COW).apply { isNoAi = true }
+        val impact = helper.absoluteVec(Vec3(22.5, 1.0, 22.5))
+        helper.runAtTickTime(40) {
+            helper.assertTrue(!man.wary() && !far.wary(), "A man was wary before the round")
+            val start = helper.absoluteVec(Vec3(40.5, 6.0, 22.5))
+            ProjectileEntity(helper.level).shooter(shooter).damage(1f).apply {
+                setPos(start)
+                shoot(null, impact.x - start.x, impact.y - start.y, impact.z - start.z, 8f, 0f)
+                helper.level.addFreshEntity(this)
+            }
+        }
+        helper.runAtTickTime(60) {
+            helper.assertTrue(man.wary(), "A round landing two blocks off did not make the man wary")
+            val toward = man.waryToward()!!
+            helper.assertTrue(toward.x > impact.x && toward.y > impact.y, "The man looked away from where the round came from: $toward")
+            helper.assertTrue(!far.wary(), "A man ten blocks from the impact grew wary")
+            (listOf(man, far, shooter)).forEach { it.discard() }
             helper.succeed()
         }
     }
