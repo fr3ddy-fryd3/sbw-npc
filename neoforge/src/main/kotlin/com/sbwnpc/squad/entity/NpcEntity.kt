@@ -262,7 +262,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     private var waryUntilTick = 0
     private var lastHitWarning = Int.MIN_VALUE / 2
 
-    /** Whether the NPC is wary: a squadmate fell nearby, so it watches where the threat came from. */
+    /** Whether the NPC is wary: a squadmate fell, a round hit or missed it narrowly, so it watches where the threat came from. */
     fun wary(): Boolean = waryAt != null && tickCount < waryUntilTick
 
     /** Where the threat the NPC is wary of came from, while it is wary. */
