@@ -22,7 +22,7 @@ data class NativeAssignment(val job: TacticalJob, val anchor: Vec3, val focus: V
 internal class NativePositionAction(
     intent: PositionIntent,
     private val npc: NpcEntity,
-    private val snapshot: () -> TacticalSnapshot,
+    private val snapshot: () -> TacticalSnapshot?,
     private val exhausted: (PositionIntent, Map<String, Int>) -> Unit,
 ) : ActionExecution {
     var intent = intent
@@ -30,7 +30,7 @@ internal class NativePositionAction(
     private val claimOwner = java.util.UUID.randomUUID()
     private val task = TacticalTask(
         when (intent.duty) {
-            CombatDuty.FIRE -> if (AntiArmourKit.loaded(npc) && snapshot().contacts.any { it.armoured }) TacticalJob.ANTI_ARMOUR else TacticalJob.COVER
+            CombatDuty.FIRE -> if (AntiArmourKit.loaded(npc) && snapshot()?.contacts.orEmpty().any { it.armoured }) TacticalJob.ANTI_ARMOUR else TacticalJob.COVER
             CombatDuty.MOVE -> TacticalJob.ADVANCE
             CombatDuty.SEARCH -> TacticalJob.SEARCH
             CombatDuty.REAR_GUARD -> TacticalJob.RESERVE
@@ -84,7 +84,8 @@ internal class NativePositionAction(
         deferredAt?.let { lastProgress += now - it }
         deferredAt = null
         if (intent.duty == CombatDuty.FOLLOW_ORDER) return ActionUpdate.Running
-        val view = snapshot()
+        // Gone with its squad (disbanded, deleted) while the plan still ran: fail, never throw (#64).
+        val view = snapshot() ?: return ActionUpdate.Failed("no_squad_view")
         if (pendingStart) {
             // Finish native jumps before relinquishing a previous ordinary march route.
             if ((npc.navigation as? VehicleAwareNavigation)?.canPlan == false) return deferred(now, "native_jump")
