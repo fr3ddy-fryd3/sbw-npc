@@ -5,12 +5,15 @@ things go; the code's own KDoc covers the details. Build, workflow and coding ru
 [AGENTS.md](../AGENTS.md).
 
 Kotlin packages below are relative to `com/sbwnpc/squad/`. Shared sources live under
-`common/src/main/kotlin/`: routing and the HTN core (`ai/planning`, `ai/coordination`,
-`ai/tactics`), the server-side SBW port interfaces, NPC classes and other static game data,
-experience rules, packet schemas and the loader-neutral settings view, with their JUnit tests in
-`common/src/test/kotlin/`. NeoForge-owned sources live under `neoforge/src/main/kotlin/`,
-including the HTN adapter `ai/integration`, the SBW adapter, packet registration and delivery, the
-TOML config and all client code. Shared assets/data live in `common/src/main/resources/`.
+`common/src/main/kotlin/`: the gameplay itself (`NpcEntity` and its SmartBrainLib behaviours,
+squads and orders, combat, tactics and the HTN adapter `ai/integration`), routing and the HTN core
+(`ai/planning`, `ai/coordination`, `ai/tactics`), the server-side SBW port interfaces, NPC classes
+and other static game data, experience rules, packet schemas and the loader-neutral settings view,
+with their JUnit tests in `common/src/test/kotlin/`. NeoForge-owned sources live under
+`neoforge/src/main/kotlin/`: the entry point and registration, NeoForge event subscribers, the
+subclasses that carry NeoForge's own entity hooks (`NeoForgeNpcEntity`, `NeoForgeSupplyBlockEntity`),
+`platform/NeoForgeLoaderHooks`, the SBW adapter, packet registration and delivery, the TOML config
+and all client code. Shared assets/data live in `common/src/main/resources/`.
 NeoForge recompiles common sources; `:common:check` checks them against vanilla Minecraft and
 rejects loader, SBW and client imports.
 Build conventions live in `build-logic/`; root build commands delegate to these modules.
@@ -173,7 +176,7 @@ Ground squads in a fight are planned by an HTN controller, not by the behaviours
   subtasks; `ai/tactics` holds the domain: `TacticalDomain`, attack phases (`AttackPhase`,
   `AttackProgress`), members' duties (`OperationTactics`), the front (`OperationFront`) and the
   operation's losses (`OperationLosses`). All of it is pure and unit-tested.
-- `neoforge/.../ai/integration/NativeTactics` gathers squad snapshots, runs the planning agents of
+- `common/.../ai/integration/NativeTactics` gathers squad snapshots, runs the planning agents of
   each operation, squad, team and NPC, and hands every NPC a `PositionIntent`;
   `NativePositionAction` carries one out with the services in `combat/tactics`.
 - Behaviours read the assignment through `combat/tactics/SquadTactics`, so a man's own shooting,
@@ -248,7 +251,7 @@ work runs in the NPC's own brain.
 
 ## Tests
 
-JUnit 5 tests in `neoforge/src/test/kotlin/com/sbwnpc/squad/`, mirroring the main packages. They cover the
+JUnit 5 tests in `common/src/test/kotlin/com/sbwnpc/squad/`, and in `neoforge/src/test/kotlin/com/sbwnpc/squad/` for those that need the game bootstrapped (block registry) or check the NeoForge module, mirroring the main packages. They cover the
 pure logic that can run without a game: sightlines and vision, formations, fire decisions, flight
 controllers, route progress, the cell planner, static gun models. `SbwBoundaryTest` scans the sources
 for SBW imports outside the adapter, and `SbwMixinIntegrationTest` checks that the mixins still

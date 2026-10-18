@@ -1,7 +1,7 @@
 # Tactical core: what is implemented
 
 Code in `develop`: the core is in `common/src/main/kotlin/com/sbwnpc/squad/ai/`, the adapter
-`ai/integration` in `neoforge/`. Ground tactics run in game through `NativeTactics`; the former
+`ai/integration` beside it in `common/`. Ground tactics run in game through `NativeTactics`; the former
 template controller has been removed. This document describes the contracts that exist now. The
 target design they come from is [AI-ARCHITECTURE-DESIGN.md](AI-ARCHITECTURE-DESIGN.md); how they are
 tested is in [TACTICAL-TESTS.md](TACTICAL-TESTS.md).

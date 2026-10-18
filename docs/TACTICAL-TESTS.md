@@ -13,8 +13,10 @@
 | Joint attack, capture, reinforcement, water, withdrawal on losses | `neoforge/src/gameTest/.../HtnTacticsGameTests.kt` | Real squads under the HTN, real paths and shots |
 | Deployment and fire in the open | `neoforge/src/gameTest/.../AttackDeploymentGameTests.kt` | 16 real riflemen, real SBW bullets, the physical line and damage sources; targets without AI |
 
-Main directory: [neoforge/src/test/kotlin/com/sbwnpc/squad/combat/tactics/](../neoforge/src/test/kotlin/com/sbwnpc/squad/combat/tactics/).
-Ground, ray and arrival checks are one level up, in [combat/](../neoforge/src/test/kotlin/com/sbwnpc/squad/combat/).
+Main directory: [common/src/test/kotlin/com/sbwnpc/squad/combat/tactics/](../common/src/test/kotlin/com/sbwnpc/squad/combat/tactics/).
+Ground, ray and arrival checks are one level up, in [combat/](../common/src/test/kotlin/com/sbwnpc/squad/combat/).
+Tests that need the block registry bootstrapped (overwatch cover, tactical ground, sightlines) stay in
+[neoforge/src/test/kotlin/com/sbwnpc/squad/combat/](../neoforge/src/test/kotlin/com/sbwnpc/squad/combat/).
 The tests of the former tactics controller were removed with it.
 
 ## Changing tests
