@@ -17,16 +17,14 @@ import com.sbwnpc.squad.integration.sbw.SbwMortars
 import com.sbwnpc.squad.integration.sbw.SbwVehicles
 import com.sbwnpc.squad.network.ClientboundPackets
 import com.sbwnpc.squad.network.NeoForgeClientboundTransport
-import net.minecraft.resources.ResourceLocation
 import net.neoforged.bus.api.IEventBus
 import net.neoforged.fml.ModContainer
 import net.neoforged.fml.common.Mod
-import org.apache.logging.log4j.LogManager
 
-@Mod(SquadMod.MODID)
+@Mod(ModIdentity.MODID)
 class SquadMod(bus: IEventBus, container: ModContainer) {
     init {
-        LOGGER.info("SBW Squads initializing")
+        ModIdentity.LOGGER.info("SBW Squads initializing")
 
         Ports.guns = SbwGuns
         Ports.vehicles = SbwVehicles
@@ -53,12 +51,5 @@ class SquadMod(bus: IEventBus, container: ModContainer) {
         // trick the library's own SBLSensors/SBLMemoryTypes use themselves.
         ModSensors.init()
         ModMemories.init()
-    }
-
-    companion object {
-        const val MODID = ModIdentity.MODID
-        val LOGGER = LogManager.getLogger(MODID)
-
-        fun loc(path: String): ResourceLocation = ModIdentity.loc(path)
     }
 }

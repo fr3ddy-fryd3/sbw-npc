@@ -1,6 +1,6 @@
 package com.sbwnpc.squad.combat
 
-import com.sbwnpc.squad.SquadMod
+import com.sbwnpc.squad.ModIdentity
 
 /**
  * Central switch for in-game debug particle markers (cover-search choice in
@@ -37,6 +37,6 @@ object DebugFlags {
     /** Same `{}`-placeholder contract as `Logger.info(format, args...)`, written as `[group-debug] ...`
      *  — the formatting and the write are skipped while [group] is off. */
     fun log(group: LogGroup, format: String, vararg args: Any?) {
-        if (on(group)) SquadMod.LOGGER.info(group.tag + format, *args)
+        if (on(group)) ModIdentity.LOGGER.info(group.tag + format, *args)
     }
 }

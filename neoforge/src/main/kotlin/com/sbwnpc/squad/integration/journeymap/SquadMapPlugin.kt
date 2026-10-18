@@ -1,6 +1,6 @@
 package com.sbwnpc.squad.integration.journeymap
 
-import com.sbwnpc.squad.SquadMod
+import com.sbwnpc.squad.ModIdentity
 import com.sbwnpc.squad.client.MapState
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
@@ -79,7 +79,7 @@ class SquadMapPlugin : IClientPlugin {
     private class Known(val name: String, val orders: List<SquadOrder>, val faction: SquadFaction)
     private val known = HashMap<String, Known>()
 
-    override fun getModId(): String = SquadMod.MODID
+    override fun getModId(): String = ModIdentity.MODID
 
     override fun initialize(api: IClientAPI) {
         this.api = api
@@ -450,7 +450,7 @@ class SquadMapPlugin : IClientPlugin {
         while (it.hasNext()) {
             val (id, entry) = it.next()
             if (marks[id] != entry.first) {
-                runCatching { api.removeWaypoint(modId, entry.second) }.onFailure { SquadMod.LOGGER.warn("JourneyMap kept waypoint {}: {}", entry.first.name, it.toString()) }
+                runCatching { api.removeWaypoint(modId, entry.second) }.onFailure { ModIdentity.LOGGER.warn("JourneyMap kept waypoint {}: {}", entry.first.name, it.toString()) }
                 it.remove()
             }
         }
@@ -461,7 +461,7 @@ class SquadMapPlugin : IClientPlugin {
         // A server running JourneyMap keeps them past the session, "not persistent" or not — and
         // one left from last time belongs to nothing this client knows of, so it never went away.
         if (!staleWaypointsCleared) {
-            runCatching { api.removeAllWaypoints(modId) }.onFailure { SquadMod.LOGGER.warn("JourneyMap kept old waypoints: {}", it.toString()) }
+            runCatching { api.removeAllWaypoints(modId) }.onFailure { ModIdentity.LOGGER.warn("JourneyMap kept old waypoints: {}", it.toString()) }
             staleWaypointsCleared = true
         }
         for ((id, mark) in marks) {
@@ -475,12 +475,12 @@ class SquadMapPlugin : IClientPlugin {
                 wp.setShowInWorld(mark.showInWorld)
                 api.addWaypoint(modId, wp)
                 waypoints[id] = mark to wp
-            }.onFailure { SquadMod.LOGGER.warn("JourneyMap refused a waypoint: {}", it.toString()) }
+            }.onFailure { ModIdentity.LOGGER.warn("JourneyMap refused a waypoint: {}", it.toString()) }
         }
     }
 
     private fun show(overlay: journeymap.api.v2.client.display.Displayable) {
-        runCatching { api.show(overlay) }.onFailure { SquadMod.LOGGER.warn("JourneyMap refused an overlay: {}", it.toString()) }
+        runCatching { api.show(overlay) }.onFailure { ModIdentity.LOGGER.warn("JourneyMap refused an overlay: {}", it.toString()) }
     }
 
     private fun marker(

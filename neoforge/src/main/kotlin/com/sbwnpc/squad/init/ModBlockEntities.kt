@@ -1,6 +1,6 @@
 package com.sbwnpc.squad.init
 
-import com.sbwnpc.squad.SquadMod
+import com.sbwnpc.squad.ModIdentity
 import com.sbwnpc.squad.block.entity.BarracksBlockEntity
 import com.sbwnpc.squad.block.entity.SupplyBlockEntity
 import net.minecraft.core.registries.BuiltInRegistries
@@ -9,7 +9,7 @@ import net.neoforged.neoforge.registries.DeferredRegister
 
 object ModBlockEntities {
     val REGISTRY: DeferredRegister<BlockEntityType<*>> =
-        DeferredRegister.create(BuiltInRegistries.BLOCK_ENTITY_TYPE, SquadMod.MODID)
+        DeferredRegister.create(BuiltInRegistries.BLOCK_ENTITY_TYPE, ModIdentity.MODID)
 
     @JvmField
     val BARRACKS = REGISTRY.register("barracks") { ->

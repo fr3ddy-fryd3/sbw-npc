@@ -1,6 +1,6 @@
 package com.sbwnpc.squad.integration.journeymap
 
-import com.sbwnpc.squad.SquadMod
+import com.sbwnpc.squad.ModIdentity
 import net.minecraft.resources.ResourceLocation
 
 /**
@@ -19,7 +19,7 @@ internal enum class MapShapes {
 
     ;
 
-    val location: ResourceLocation = SquadMod.loc("textures/map/${name.lowercase()}.png")
+    val location: ResourceLocation = ModIdentity.loc("textures/map/${name.lowercase()}.png")
 
     companion object {
         const val SIZE = 32

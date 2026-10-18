@@ -2,7 +2,7 @@ package com.sbwnpc.squad.integration.sbw.client
 
 import com.google.gson.JsonElement
 import com.google.gson.JsonParser
-import com.sbwnpc.squad.SquadMod
+import com.sbwnpc.squad.ModIdentity
 import net.minecraft.resources.FileToIdConverter
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.packs.resources.ResourceManager
@@ -28,7 +28,7 @@ internal object StaticGunModels {
                     .getAsJsonObject("Model") ?: continue
                 val geometry = lastLocation(model.get("LODModel"))
                 if (geometry == null) {
-                    SquadMod.LOGGER.warn("NPC gun {} has no LOD model; skipping its static rendering", gun)
+                    ModIdentity.LOGGER.warn("NPC gun {} has no LOD model; skipping its static rendering", gun)
                     continue
                 }
                 val texture = lastLocation(model.get("LODTexture")) ?: lastLocation(model.get("Texture"))
@@ -39,7 +39,7 @@ internal object StaticGunModels {
                 }
                 guns[gun] = StaticGunModel(geometry, texture, mesh)
             } catch (e: Exception) {
-                SquadMod.LOGGER.error("Cannot load NPC static gun {} from {}", gun, location, e)
+                ModIdentity.LOGGER.error("Cannot load NPC static gun {} from {}", gun, location, e)
             }
         }
         return guns
