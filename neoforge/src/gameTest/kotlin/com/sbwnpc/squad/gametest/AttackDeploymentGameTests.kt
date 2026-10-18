@@ -279,7 +279,7 @@ object AttackDeploymentGameTests {
 
         val manager = SquadManager.get(helper.level)
         val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, attackers.map { it.uuid })
-        val trace = AttackTrace(helper, squad, attackers)
+        val trace = AttackTrace(helper, squad, attackers, Vec3(96.5, 1.0, 64.5))
         val attackerIds = attackers.map { it.uuid }.toSet()
         val targetIds = targets.map { it.uuid }.toSet()
         DebugFlags.enabledGroups = setOf(LogGroup.ORDER, LogGroup.PATH, LogGroup.STUCK)
@@ -318,7 +318,8 @@ object AttackDeploymentGameTests {
                 helper.assertTrue(trace.friendlyHits == 0, "Attackers were hit by friendly rounds; see attack-damage.csv")
                 helper.assertTrue(trace.maxShotAngle <= 15.0, "Rifle projectile direction diverged from its target by more than 15 degrees; see attack-rounds.csv")
                 helper.assertTrue(trace.unsafeRounds == 0, "A round was fired despite a blocked friendly lane; see attack-rounds.csv")
-                helper.assertTrue(trace.longestLineHold >= 40, "Attack did not sustain a spaced line of at least 12/16 NPCs for 40 ticks; see attack-summary.txt")
+                helper.assertTrue(trace.longestLineHold >= 40, "The head-on group did not sustain a spaced line of at least 6 NPCs for 40 ticks; see attack-summary.txt")
+                helper.assertTrue(trace.maxFlanking >= 4, "Fewer than 4 NPCs took a flank 40 degrees or more round the objective; see attack-summary.txt")
                 helper.assertTrue(trace.projectileShooters >= 12, "Fewer than 12/16 NPCs fired real SBW rounds; see attack-summary.txt")
                 helper.assertTrue(trace.ammoSpent >= 12, "Weapon ammunition was not consumed")
                 helper.succeed()

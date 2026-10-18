@@ -19,7 +19,7 @@ import kotlin.math.acos
 import kotlin.math.hypot
 
 /** Read actual entities without altering their assignment, navigation or weapons. */
-class AttackTrace(private val helper: GameTestHelper, private val squad: Squad, private val members: List<NpcEntity>) {
+class AttackTrace(private val helper: GameTestHelper, private val squad: Squad, private val members: List<NpcEntity>, private val objective: net.minecraft.world.phys.Vec3) {
     private val directory = Path.of(System.getProperty("sbwnpc.gameTestReports"))
     private val rounds = HashMap<UUID, Int>()
 
@@ -33,6 +33,13 @@ class AttackTrace(private val helper: GameTestHelper, private val squad: Squad, 
         private set
     var maxAligned = 0
         private set
+
+    /** The most members seen at once [FLANK_ANGLE] or more round the objective from the squad's start. */
+    var maxFlanking = 0
+        private set
+    private val headOn = members.map { helper.relativeVec(it.position()) }.let { start ->
+        kotlin.math.atan2(start.map { it.z }.average() - objective.z, start.map { it.x }.average() - objective.x)
+    }
     var maxShotAngle = 0.0
         private set
     var unsafeRounds = 0
@@ -106,7 +113,15 @@ class AttackTrace(private val helper: GameTestHelper, private val squad: Squad, 
         val width = if (aligned.isEmpty()) 0.0 else aligned.maxOf { it.z } - aligned.minOf { it.z }
         val spacing = points.indices.flatMap { a -> (a + 1 until points.size).map { b -> hypot(points[a].x - points[b].x, points[a].z - points[b].z) } }.minOrNull() ?: 0.0
         maxAligned = maxOf(maxAligned, aligned.size)
-        lineHold = if (aligned.size >= 12 && width >= 66.0 && spacing >= 3.0) lineHold + 1 else 0
+        // The head-on group of a lone squad holds its line while the other half takes a flank (#58).
+        lineHold = if (aligned.size >= LINE && width >= (LINE - 1) * 3.0 && spacing >= 3.0) lineHold + 1 else 0
+        maxFlanking = maxOf(
+            maxFlanking,
+            points.count { point ->
+                val off = Math.toDegrees(kotlin.math.atan2(point.z - objective.z, point.x - objective.x) - headOn).let { ((it % 360) + 540) % 360 - 180 }
+                kotlin.math.abs(off) >= FLANK_ANGLE
+            },
+        )
         longestLineHold = maxOf(longestLineHold, lineHold)
         if (helper.tick % 10 != 0L) return
         val lead = members.firstOrNull { it.isAlive }
@@ -134,8 +149,16 @@ class AttackTrace(private val helper: GameTestHelper, private val squad: Squad, 
     fun finish() {
         Files.writeString(
             directory.resolve("attack-summary.txt"),
-            "squad=${squad.id}\nmaxAligned=$maxAligned\nlongestLineHold=$longestLineHold\nprojectileShooters=$projectileShooters\nrounds=${rounds.values.sum()}\nenemyRounds=$enemyRounds\nalive=${members.count { it.isAlive }}\nammoSpent=$ammoSpent\nmaxShotAngle=$maxShotAngle\nunsafeRounds=$unsafeRounds\nfriendlyHits=$friendlyHits\n" +
+            "squad=${squad.id}\nmaxAligned=$maxAligned\nmaxFlanking=$maxFlanking\nlongestLineHold=$longestLineHold\nprojectileShooters=$projectileShooters\nrounds=${rounds.values.sum()}\nenemyRounds=$enemyRounds\nalive=${members.count { it.isAlive }}\nammoSpent=$ammoSpent\nmaxShotAngle=$maxShotAngle\nunsafeRounds=$unsafeRounds\nfriendlyHits=$friendlyHits\n" +
                 rounds.entries.joinToString("\n") { "${it.key}=${it.value}" } + "\n",
         )
+    }
+
+    private companion object {
+        /** Men a held line needs: the fire group's riflemen, half of sixteen less the stragglers. */
+        const val LINE = 6
+
+        /** Degrees round the objective from the start that count as on a flank. */
+        const val FLANK_ANGLE = 40.0
     }
 }

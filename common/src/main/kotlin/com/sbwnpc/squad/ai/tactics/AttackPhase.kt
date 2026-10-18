@@ -17,7 +17,8 @@ enum class AttackPhase {
      * contacts; [peakEnemiesAtObjective] is the most seen at the objective during this attack.
      * [ticksSinceContact] stays 0 until the attack first sees an enemy. [aborted] is set once
      * an assault of this attack has been called off; [peakThreatsNearby] is the most threats
-     * seen round the objective during this attack.
+     * seen round the objective during this attack. [sectorsHeld] is false while a group is still
+     * on its way round to its approach sector (see [ApproachSectors]).
      */
     data class Inputs(
         val readyShooters: Int,
@@ -30,6 +31,7 @@ enum class AttackPhase {
         val threatsNearby: Int,
         val aborted: Boolean = false,
         val peakThreatsNearby: Int = threatsNearby,
+        val sectorsHeld: Boolean = true,
     )
 
     fun next(inputs: Inputs): AttackPhase {
@@ -76,14 +78,20 @@ enum class AttackPhase {
         /** Enemies this close to the objective count as holding it. */
         const val OBJECTIVE_RADIUS = 48.0
 
+        /** How long (60 s) an assault the numbers allow waits for the flanks to reach their sectors. */
+        const val SECTOR_LIMIT_TICKS = 1200L
+
         /** Ready shooters per known defender that start an assault without the defence thinning. */
         const val OVERWHELMING_RATIO = 3.0
 
         /** How long (40 s) the firing line works before overwhelming numbers alone start the assault. */
         const val OVERWHELMING_ENGAGE_TICKS = 2 * ENGAGE_TICKS
 
-        /** The firing line has done enough for the numbers it has: see [superior] and [overwhelming]. */
-        private fun assaultable(inputs: Inputs) = (superior(inputs) && suppressed(inputs)) || overwhelming(inputs)
+        /** The firing line has done enough for the numbers it has, see [superior] and [overwhelming], and the flanks are in. */
+        private fun assaultable(inputs: Inputs) = ((superior(inputs) && suppressed(inputs)) || overwhelming(inputs)) && flanksIn(inputs)
+
+        // The flanks go in together with the head-on line, not after it has gone alone.
+        private fun flanksIn(inputs: Inputs) = inputs.sectorsHeld || inputs.ticksEngaged >= SECTOR_LIMIT_TICKS
 
         private fun superior(inputs: Inputs) = inputs.readyShooters >= ASSAULT_RATIO * inputs.enemiesAtObjective
 
