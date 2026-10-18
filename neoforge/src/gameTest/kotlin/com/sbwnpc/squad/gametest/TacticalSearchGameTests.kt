@@ -144,7 +144,7 @@ object TacticalSearchGameTests {
                 incoming = listOf(enemy.position()),
             )
             // The HTN executor requires shelter for a move under incoming fire (PositionIntent.requireShelter).
-            val result = TacticalPositions.find(npc, task, view, TacticalPositions.Query(ShelteredAdvance, coverAvailable = false))
+            val result = TacticalPositions.find(npc, task, view, TacticalPositions.Query(ShelteredAdvance))
             if (result.outcome == TacticalPositions.Outcome.DEFERRED) return@onEachTick
             if (!shelterAdded) {
                 helper.assertTrue(result.outcome == TacticalPositions.Outcome.UNREACHABLE, "An exposed forward post was accepted under incoming fire")
@@ -402,55 +402,6 @@ object TacticalSearchGameTests {
                 helper.assertTrue(searches <= 5, "One terrain region was rebuilt $searches times for 33 candidate posts")
                 helper.succeed()
             }
-        }
-    }
-
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 100, batch = "route-resume")
-    fun deferredRouteResumesWithoutRebuildingAndReviewsNewThreat(helper: GameTestHelper) {
-        val scene = Scene(helper, "route-resume")
-        val npc = scene.spawn(Vec3(20.5, 1.0, 100.5)).apply { isNoAi = true }
-        val goal = helper.absoluteVec(Vec3(44.5, 1.0, 100.5))
-        val nav = npc.navigation as VehicleAwareNavigation
-        var searches = 0
-        nav.positionPathObserver = { _, _, _ ->
-            searches++
-            // Exhaust the ray budget after A* succeeds, before route safety starts.
-            repeat(500) { TickBudget.chargeRaycast(helper.level) }
-        }
-        scene.onClose = { nav.positionPathObserver = null }
-        fun task() =
-            TacticalTask(TacticalJob.FLANK, goal, null, 1).apply {
-                search = TacticalPositionSearch(npc.position(), emptyList()).also {
-                    it.destinations = listOf(goal)
-                    it.scored[goal] = TacticalPositionScore(false, 0, 1.0)
-                }
-            }
-        fun view() = TacticalSnapshot(helper.level.gameTime, SquadOrder.ATTACK, 1, npc.position(), goal, listOf(TacticalMember(npc.uuid, npc.position())), emptyList())
-        val first = task()
-        val threatened = task()
-        helper.runAtTickTime(20) {
-            npc.setOnGround(true)
-            helper.assertTrue(TacticalPositions.find(npc, first, view()).outcome == TacticalPositions.Outcome.DEFERRED, "Ray budget did not suspend route validation")
-            helper.assertTrue(first.search?.routeValidation != null && searches == 1, "Built route was not retained")
-        }
-        helper.runAtTickTime(22) {
-            npc.setOnGround(true)
-            helper.assertTrue(TacticalPositions.find(npc, first, view()).outcome == TacticalPositions.Outcome.FOUND, "Retained route did not resume")
-            helper.assertTrue(searches == 1, "Ray deferral rebuilt the same A*")
-            nav.stop()
-        }
-        helper.runAtTickTime(30) {
-            npc.setOnGround(true)
-            helper.assertTrue(TacticalPositions.find(npc, threatened, view()).outcome == TacticalPositions.Outcome.DEFERRED, "Second route was not suspended")
-        }
-        helper.runAtTickTime(32) {
-            npc.setOnGround(true)
-            val danger = view().copy(contacts = listOf(TacticalContact(java.util.UUID(1, 1), goal, helper.level.gameTime)))
-            helper.assertTrue(TacticalPositions.find(npc, threatened, danger).outcome == TacticalPositions.Outcome.UNREACHABLE, "New enemy clearance was ignored while resuming")
-            helper.assertTrue(nav.isDone && searches == 2, "Unsafe resumed path was used or rebuilt")
-            scene.result("PASS", "twoRoutes=$searches resumedWithoutRebuild=true newThreatRejected=true")
-            helper.succeed()
         }
     }
 

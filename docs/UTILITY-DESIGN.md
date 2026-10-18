@@ -1,80 +1,131 @@
-# Utility в новой архитектуре
+# Utility in the AI architecture
 
-Статус: Utility-оценка реализована в `common/src/main/kotlin/com/sbwnpc/squad/ai/planning/Utility.kt` и используется при выборе стратегии отряда (`StrategyEvaluation`). Ниже — контракт и границы.
+Status:
 
-## Назначение
+- **Implemented:** the general utility evaluation (`UtilityEvaluation` in
+  `common/src/main/kotlin/com/sbwnpc/squad/ai/planning/Utility.kt`), the stability policy
+  (`DecisionStability`), and its one current use, the squad's strategy (`StrategyEvaluation`:
+  advance, hold, gain height, withdraw).
+- **Proposed, not implemented:** utility at the operation and Commander levels, the scoped contexts
+  (`CommanderContext`, `OperationContext`, `SquadContext`) and the examples below. They are design
+  for later work, not a description of the code.
 
-Utility оценивает относительную предпочтительность вариантов по доступным сведениям и заданным предпочтениям. Оценка — не вероятность успеха и не разрешение выполнить действие. У разных уровней разные наборы вариантов и данных; их численные оценки не сравниваются друг с другом.
+## Purpose
 
-HTN также умеет выбирать альтернативные методы по условиям. Utility добавляет сравнение предпочтений там, где допустимы несколько методов или целей с различной ценой, риском и ожидаемой пользой. Поэтому никакое действие не обязано проходить через utility только потому, что она присутствует в архитектуре.
+Utility scores how preferable options are, given the information available and set preferences. A
+score is not a probability of success and not permission to act. Each level has its own options and
+data; their scores are not compared across levels.
 
-Предложенные области применения:
+The HTN can already pick alternative methods by their conditions. Utility adds a comparison of
+preferences where several methods or goals are allowed, with different cost, risk and expected
+benefit. So no action has to go through utility just because it exists in the architecture.
 
-| Владелец решения | Варианты | Доступные факторы |
+Proposed uses:
+
+| Decision owner | Options | Factors available |
 |---|---|---|
-| Commander | Защитить район, захватить объект, произвести состав, оставить резерв | Известные угрозы, территория, свободные ресурсы, резерв, характер, имеющаяся армия |
-| Операция | Фронтальное давление, левый/правый обход, ожидание подкрепления, перераспределение ролей | Цель и её ограничения, доклады отрядов, подходы, реальные возможности поддержки, актуальность сведений |
-| Отряд | Выполнить назначенную роль через доступный подход, сменить способ, перегруппироваться или сообщить невозможность | Своя задача, местная ситуация, участники, боезапас, здоровье, рельеф, разрешённые обязательства |
+| Commander | Defend an area, take an objective, produce units, keep a reserve | Known threats, territory, free resources, reserve, character, the army it has |
+| Operation | Frontal pressure, a left or right flank, wait for reinforcements, reassign roles | The goal and its limits, squad reports, approaches, real support available, how fresh the information is |
+| Squad | Carry out its role by an available approach, change the method, regroup, or report it cannot | Its task, the local situation, members, ammunition, health, terrain, allowed commitments |
 
-Позиции и пути конкретного NPC выбирает локальный сервис исполнения. Ему могут быть полезны численные оценки кандидатов, но это отдельная задача с отдельным контекстом; она не читает оценки кошелька Commander или глобальной стратегии операции.
+An NPC's positions and paths are chosen by the local execution service. Numerical scores of
+candidates can help it, but that is a separate problem with its own context; it does not read the
+Commander's budget or the operation's strategy scores.
 
-## Пример
+## Example (proposed)
 
-Два отряда получили общий ATTACK. Операция рассматривает варианты. Числа ниже иллюстрируют интерфейс и не являются готовой формулой баланса:
+Two squads got a shared ATTACK. The operation weighs its options. The numbers only illustrate the
+interface; they are not a balanced formula:
 
-| Вариант | Допустимость | Оценка | Объяснение |
+| Option | Allowed | Score | Why |
 |---|---|---|---|
-| Давление фронтом | Да | 0,46 | Быстрый подход, значительная ожидаемая экспозиция |
-| Обход слева | Нет | Не оценивается | Выходит за разрешённую область приказа |
-| Обход справа | Да | 0,78 | Доступное прикрытие и подход, приемлемая цена по времени |
-| Ждать подкрепление | Да | 0,62 | Вероятное усиление по подтверждённому докладу, цена ожидания |
+| Frontal pressure | Yes | 0.46 | Quick approach, high expected exposure |
+| Left flank | No | Not scored | Leaves the area the order allows |
+| Right flank | Yes | 0.78 | Cover and an approach available, acceptable cost in time |
+| Wait for reinforcements | Yes | 0.62 | Likely reinforcement from a confirmed report, cost of waiting |
 
-Utility возвращает ранжированные предложения. Владелец решения проверяет условия смены текущего решения и запрашивает план для выбранного варианта. HTN разлагает его: обеспечить поддержку, назначить подходящий отряд на обход, поставить подзадачи его подгруппам, затем выполнить согласованные действия. Реальная готовность поддержки подтверждается исполнением, а не положительным фактором в оценке.
+Utility returns ranked proposals. The decision owner checks the conditions for changing its current
+decision and asks for a plan for the chosen option. The HTN breaks it down: secure support, send a
+suitable squad round the flank, give its teams their subtasks, then carry out the agreed actions.
+Whether support is actually ready is confirmed by execution, not by a positive factor in a score.
 
-Если выяснилась невозможность конкретного подхода, владелец получает результат с областью проверки и причиной. Появляются новые сведения, пригодные для пересмотра. Сам оценщик не меняет приказ, не удаляет задачи и не расширяет радиус поиска.
+If one approach turns out impossible, the owner gets a result with the area that was checked and the
+reason. That is new information for a review. The evaluator itself does not change the order, remove
+tasks or widen the search.
 
-## Контракт оценки
+## The scoring contract
 
-Вход: неизменяемый снимок для данного уровня, допустимые варианты, профиль предпочтений, значимые зависимости и версия данных.
+Input: an immutable snapshot for the level, the allowed options, a preference profile, relevant
+dependencies and the data version.
 
-Выход: идентификатор варианта, оценка, перечень факторов/вкладов, неизвестные данные и основания оценки. Отдельно сохраняются исключённые варианты с причинами недопустимости.
+Output: the option's id, its score, the factors and their contributions, unknown data and the basis
+of the score. Excluded options are kept separately with the reasons they are not allowed.
 
-Жёсткая недопустимость отличается от низкой привлекательности. Нарушение полномочий, приказа, ресурса или физического ограничения исключает вариант; высокий вес агрессивности не компенсирует запрет. Недостаток сведений получает явное состояние `Unknown`, а не значение «пути нет» или «врагов нет». При необходимости возникает задача разведки/уточнения, а не выдуманная уверенность.
+Being forbidden is different from being unattractive. Breaking authority, the order, a resource or a
+physical limit excludes an option; a high aggression weight does not make up for a ban. Missing
+information gets an explicit `Unknown` state, not "no path" or "no enemies". Where needed it creates
+a scouting or clarification task, not invented certainty.
 
-Факторы используют согласованный масштаб внутри конкретного решения и документированные кривые. Простое сложение любых удобных чисел недостаточно: коррелирующие факторы могут дважды учитывать один риск, среднее может скрыть критический дефицит. Модель агрегации и поведение на граничных условиях проверяются для каждого набора вариантов.
+Factors use one agreed scale within a decision and documented curves. Adding up convenient numbers is
+not enough: correlated factors can count one risk twice, and an average can hide a critical
+shortfall. The aggregation and the behaviour at the boundaries are checked for each set of options.
 
-## Границы компонентов
+## Component boundaries
 
-1. Восприятие, модель ресурсов и тактические запросы поставляют датированные факты. Оценщик не выполняет запросы Minecraft, лучи или A* и не изменяет сведения.
-2. Доменные модули описывают варианты и собственные факторы. Общий механизм utility не знает `AttackHeight`, `FlankLeft`, типа оружия или состояния конкретного NPC.
-3. Владелец решения выбирает момент пересмотра и применяет политику устойчивости. Оценщик не владеет текущим планом, таймерами прерывания и ресурсами исполнения.
-4. HTN строит план по целям, условиям и допустимым методам. Реальные результаты исполнения уточняют его осуществимость.
-5. Runtime исполняет план, удерживает ресурсы и возвращает результаты. Он не получает прямого доступа к формулам предпочтений Commander.
+1. Perception, the resource model and tactical queries supply dated facts. The evaluator does not
+   run Minecraft queries, rays or A* and does not change the facts.
+2. Domain modules describe the options and their own factors. The general utility mechanism knows
+   nothing of specific manoeuvres, weapon types or a particular NPC's state.
+3. The decision owner chooses when to review and applies the stability policy. The evaluator owns no
+   current plan, interrupt timers or execution resources.
+4. The HTN builds the plan from goals, conditions and allowed methods. Actual execution results
+   refine whether it is feasible.
+5. The runtime carries out the plan, holds resources and returns results. It has no direct access to
+   the Commander's preference formulas.
 
-Ключевой контракт: `снимок + варианты + предпочтения → оценки и объяснения`. Побочные эффекты в этом преобразовании запрещены.
+The key contract: `snapshot + options + preferences → scores and explanations`. No side effects are
+allowed in this mapping.
 
-Снимки имеют предметную область: `CommanderContext`, `OperationContext`, `SquadContext`. Фактор получает нужные ему сведения через контракт своего уровня. Общий изменяемый blackboard, из которого любой фактор может читать/переписывать любой план, недопустим. Общность экономии алгоритмов не означает один общий экземпляр состояния на всех участников.
+Snapshots are scoped to their level. A factor gets what it needs through its level's contract. A
+shared mutable blackboard from which any factor can read or rewrite any plan is not allowed. Sharing
+algorithms to save work does not mean one shared instance of state for everyone.
 
-## Устойчивость выбора
+## Stable choices
 
-Незначительное изменение оценки не должно постоянно менять обход, цель и назначенных участников. Предлагается отдельная политика принятия решения: заметное преимущество нового варианта, стоимость переключения, условия продолжения и подходящая точка передачи ресурсов.
+A small change in a score should not keep switching the flank, the goal and the assigned members. A
+separate decision policy is used: a clear advantage for the new option, a cost of switching,
+conditions to carry on, and a suitable point to hand over resources (`DecisionStability`).
 
-Если нынешний вариант стал запрещённым/неосуществимым или появилась немедленная опасность, обычная устойчивость не блокирует нужную реакцию. Аварийное прерывание принадлежит правилам безопасности и runtime. Более высокая оценка сама по себе не отменяет текущую задачу автоматически.
+If the current option has become forbidden or infeasible, or there is immediate danger, ordinary
+stability does not block the needed reaction. Emergency interruption belongs to the safety rules and
+the runtime. A higher score alone does not cancel the current task.
 
-Вычисления выполняются в бюджете своего уровня по событиям и допустимой частоте. Распределение запросов по тикам и задержки относятся к планировщику работы, а не к скрытым таймерам в оценочных функциях.
+Scoring runs in its level's budget, on events and at an allowed rate. Spreading requests over ticks
+and delays belong to the work scheduler, not to hidden timers in scoring functions.
 
-## Проверки против повторной связанности
+## Checks against new coupling
 
-- Новый фактор меняет только объявленное сравнение вариантов своего уровня и не изменяет факты/исполнение.
-- Добавление стратегии описывает её варианты, условия и HTN-методы в доменном модуле; общий механизм оценки, отмены, навигации и стрельбы не требует исключений по названию стратегии.
-- Смена характера Commander влияет на его предпочтения и явно переданную политику риска. Она не переписывает назначения отдельного NPC и не снимает ограничения безопасности.
-- Один снимок и одинаковый профиль дают воспроизводимые оценки, включая причины исключения; зависимости от времени/случайности должны быть явными.
-- Взаимодействия факторов проверяются комбинациями и границами: высокий риск, неизвестный подход, ресурс чуть выше/ниже стоимости, отсутствие требуемой поддержки.
-- Колебания соседних оценок не вызывают бесконечного переключения; потеря действительной применимости даёт своевременную реакцию.
-- Вариант с наибольшей оценкой не считается выполненным без фактических результатов нижних уровней.
+- A new factor changes only the declared comparison of its level's options and does not change
+  facts or execution.
+- Adding a strategy describes its options, conditions and HTN methods in the domain module; the
+  general scoring, cancellation, navigation and firing need no exceptions by strategy name.
+- Changing the Commander's character affects its preferences and the risk policy it passes on
+  explicitly. It does not rewrite a single NPC's assignments or lift safety limits.
+- The same snapshot and profile give reproducible scores, reasons for exclusion included; any
+  dependence on time or randomness is explicit.
+- Factor interactions are tested in combinations and at boundaries: high risk, an unknown approach,
+  a resource just above or below the cost, required support missing.
+- Swings of neighbouring scores do not cause endless switching; losing real applicability gets a
+  timely reaction.
+- The highest-scoring option is not taken as done without actual results from the levels below.
 
-Архитектура всё равно имеет явные зависимости: стратегия использует сведения, план использует стратегию, исполнение возвращает результаты. Задача — сделать эти зависимости направленными, ограниченными и проверяемыми. Само название Utility не гарантирует этого разделения.
+The architecture still has explicit dependencies: strategy uses information, the plan uses
+strategy, execution returns results. The task is to keep those dependencies directed, bounded and
+testable. Calling something utility does not guarantee that separation.
 
-## Источник
+## Source
 
-[David Graham, An Introduction to Utility Theory](https://www.gameaipro.com/GameAIPro/GameAIPro_Chapter09_An_Introduction_to_Utility_Theory.pdf) описывает сравнение оценок вариантов, влияние предпочтений и проблему колебаний выбора. Предложенные здесь интерфейсы, области контекста и границы применения — проектные решения для sbw-npc.
+[David Graham, An Introduction to Utility Theory](https://www.gameaipro.com/GameAIPro/GameAIPro_Chapter09_An_Introduction_to_Utility_Theory.pdf)
+describes comparing option scores, the effect of preferences and the problem of oscillating
+choices. The interfaces, context scopes and boundaries proposed here are design decisions for
+sbw-npc.
