@@ -1,51 +1,83 @@
-# Как читать и дополнять код
+# Reading and extending the code
 
-Расположение механик описано в [карте проекта](PROJECT-STRUCTURE.md), устройство тактики — в [TACTICS-ARCHITECTURE.md](TACTICS-ARCHITECTURE.md). Этот документ описывает правила оформления и разделения логики. Базовый стиль опирается на [официальные соглашения Kotlin](https://kotlinlang.org/docs/coding-conventions.html); автоматическая проверка использует [ktlint 1.8.0](https://ktlint.github.io/ktlint/1.8.0/).
+Where the mechanics live is in the [project map](PROJECT-STRUCTURE.md); how tactics work is in
+[AI-RUNTIME.md](AI-RUNTIME.md) and [TACTICS-ARCHITECTURE.md](TACTICS-ARCHITECTURE.md). This document
+covers formatting and how logic is split. The base style follows the
+[official Kotlin conventions](https://kotlinlang.org/docs/coding-conventions.html); the automatic
+check uses [ktlint 1.8.0](https://ktlint.github.io/ktlint/1.8.0/).
 
-## Оформление
+## Formatting
 
-Перед коммитом:
+Before a commit:
 
 ```bash
 ./gradlew formatKotlin checkKotlinStyle test --console=plain
 git diff --check
 ```
 
-`formatKotlin` изменяет Kotlin в основном коде и тестах. `checkKotlinStyle` проверяет те же файлы и входит в Gradle `check`. `detekt` (тоже в `check`) ищет запахи кода: слишком сложные методы, безымянные пороги, неиспользуемые параметры. Форматирование он не проверяет. Настройки — в [config/detekt/detekt.yml](../config/detekt/detekt.yml), старые находки записаны в `detekt-baseline.xml` каждого модуля; новые исправляются, а не добавляются туда. Настройки лежат в [.editorconfig](../.editorconfig). Зависимость форматтера находится в отдельной конфигурации `kotlinStyle` и не попадает в мод.
+`formatKotlin` rewrites Kotlin in the main code and tests. `checkKotlinStyle` checks the same files
+and is part of Gradle `check`. `detekt` (also in `check`) looks for code smells: methods that are too
+complex, unnamed thresholds, unused parameters. It does not check formatting. Its settings are in
+[config/detekt/detekt.yml](../config/detekt/detekt.yml); older findings are recorded in each
+module's `detekt-baseline.xml`, and new ones are fixed rather than added there. Formatter settings
+are in [.editorconfig](../.editorconfig). The formatter dependency sits in its own `kotlinStyle`
+configuration and does not end up in the mod.
 
-Многострочное условие оформляется с фигурными скобками. Каждый этап метода отделяется пустой строкой. Для конструктора с несколькими булевыми полями используются именованные аргументы: `ready = ready`, `canFire = canFire`, `suppressed = npc.isSuppressed()`.
+A multi-line condition gets braces. Each stage of a method is separated by a blank line. A
+constructor with several boolean fields uses named arguments: `ready = ready`,
+`canFire = canFire`, `suppressed = npc.isSuppressed()`.
 
-Не удаляй стрелку в лямбдах вида `{ -> ... }` при регистрации NeoForge. Она задаёт отсутствие параметров и помогает выбрать перегрузку `Supplier`, когда рядом существует `Function`. Правило форматтера `function-literal` отключено по этой причине. Длинные диагностические строки и существующие wildcard-импорты также исключены из обязательных проверок; это не повод сжимать условия в одну строку.
+Don't remove the arrow in lambdas like `{ -> ... }` in NeoForge registration. It states that there
+are no parameters and helps pick the `Supplier` overload when a `Function` one exists too. The
+formatter's `function-literal` rule is disabled for this reason. Long diagnostic strings and
+existing wildcard imports are also excluded from the mandatory checks; that is no reason to squeeze
+conditions onto one line.
 
-## Разделение логики
+## Splitting logic
 
-Метод обновления должен показывать порядок действий. Расчёты и исполнение этапа находятся в методах с именами по смыслу: `updateAim`, `updateFiringLane`, `recoverIfStuck`, `scoreCandidate`. Разделяй методы по ответственности; маленький последовательный алгоритм можно оставить целиком.
+An update method should show the order of its steps. The computation and execution of a step live
+in methods named for what they mean: `updateAim`, `updateFiringLane`, `recoverIfStuck`,
+`scoreCandidate`. Split methods by responsibility; a small sequential algorithm can stay whole.
 
-Сложное условие получает имя, которое объясняет его игровой смысл: `waitingShooterAvailable`, `hasHeightAdvantage`, `canFireNow`. Названия `a`, `b`, `t` допустимы для короткой математической формулы; для цели, участника или маршрута используй `target`, `member`, `path`.
+A complex condition gets a name that explains its meaning in game: `waitingShooterAvailable`,
+`hasHeightAdvantage`, `canFireNow`. Names like `a`, `b`, `t` are fine for a short formula; for a
+target, member or route use `target`, `member`, `path`.
 
-Порог должен объяснять назначение и единицу. Например, `BLOCKED_SIGHT_TICKS` измеряется в тиках, `CONTACT_RADIUS` — в блоках. Одинаковые числа с разным смыслом имеют разные имена. При извлечении формулы сохраняй порядок арифметических операций и границы сравнений.
+A threshold's name says what it is for and its unit. For example `BLOCKED_SIGHT_TICKS` is in ticks,
+`CONTACT_RADIUS` in blocks. Equal numbers with different meanings get different names. When
+extracting a formula, keep the order of arithmetic and the comparison boundaries.
 
-Проверки, которые обращаются к миру, читают навигацию, расходуют бюджет, меняют состояние или используют случайные числа, выполняются в прежнем порядке. Не вычисляй все условия заранее, если раньше короткое замыкание пропускало часть вызовов. Выход из этапа должен явно показывать, продолжится ли тик.
+Checks that touch the world, read navigation, spend budget, change state or use random numbers run
+in their original order. Don't compute every condition up front if short-circuiting used to skip
+some calls. Leaving a step shows plainly whether the tick goes on.
 
-## Где дополнять тактику
+## Where to extend tactics
 
-| Изменение | Место |
+| Change | Place |
 |---|---|
-| Приоритет ситуации | `TacticalRules.priorityOrder` |
-| Условие и результат выбора | Именованное правило в `TacticalDecisionRules` |
-| Общая геометрия и признаки ситуации | `TacticalSituation` |
-| Сбор данных из мира | `TacticalSnapshotCollector` |
-| Допустимость замены активного плана | `TacticalSelectionPolicy` |
-| Переходы, прогресс и назначения манёвра | Соответствующий класс State |
-| Ограничения и оценка позиции | `TacticalPositionPolicy` |
-| Перебор точек и проверка пути | Этапы в `TacticalPositions` |
+| A way of carrying out an order at the operation, squad, team or NPC level | HTN methods in `TacticalDomain` (`common/.../ai/tactics`) |
+| A squad's strategy (advance, hold, gain height, withdraw) | `StrategyEvaluation`, scored with `UtilityEvaluation` |
+| Attack phases and their transitions | `AttackPhase`; the history and roles of a running attack in `AttackProgress` |
+| A member's duty and post in an operation | `OperationTactics`, `OperationFront` |
+| An operation's losses and when it withdraws | `OperationLosses` |
+| Collecting data from the world | `TacticalSnapshotCollector` |
+| Gathering observations and applying decisions in the world | `ai/integration/NativeTactics`, `NativePositionAction` |
+| Constraints and scoring of a position | `TacticalPositionPolicy` |
+| Enumerating points and checking a route | Stages in `TacticalPositions` |
 
-Правило возвращает `null`, когда неприменимо, или `TacticalChoice` с причиной, когда выбор сделан. Первое применимое правило завершает оценку. Новое правило проверяется вместе с условиями, которые могут одновременно сработать выше и ниже него. Примеры таких проверок находятся в `TacticalRulePriorityTest`.
+A decision belongs in a pure function or object in `common/.../ai/tactics`, with unit tests;
+`NativeTactics` gathers observations and applies results. Decisions still made inside
+`NativeTactics` are being moved out (#45).
 
-## Комментарии, диагностика и проверки
+## Comments, diagnostics and tests
 
-Комментарий объясняет причину ограничения, контракт или единицы формулы. Имена методов описывают действие. История переписки и подробный рассказ о старом баге не должны заслонять текущую реализацию.
+A comment explains the reason for a constraint, a contract or the units of a formula. Method names
+describe the action. The history of a discussion or a long story of an old bug should not hide the
+current implementation. The full comment rules are in [AGENTS.md](../AGENTS.md).
 
-При рефакторинге сохраняй причины событий и поля логов: они связывают наблюдаемое поведение с правилом, фазой и заданием. Проверки логирования выполняются до дорогого сбора диагностических данных.
+When refactoring, keep event reasons and log fields: they connect observed behaviour with the rule,
+phase and task. Check whether logging is on before collecting expensive diagnostics.
 
-Автотесты проверяют результат сценария, приоритеты, границы условий и освобождение ресурсов. Успешная компиляция и тесты подтверждают только эти проверки. Достижимость маршрутов и эффективность тактики дополнительно проверяются в игре.
+Automatic tests check a scene's outcome, priorities, condition boundaries and the release of
+resources. Passing compilation and tests confirms only those checks. Reachable routes and how well
+tactics work are also checked in game.
