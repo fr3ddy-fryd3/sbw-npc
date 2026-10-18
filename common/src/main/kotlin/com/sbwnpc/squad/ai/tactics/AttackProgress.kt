@@ -38,7 +38,7 @@ class AttackProgress(now: Long) {
     private var assaultSince: Long? = null
 
     // Each bounding man's current post, when he got it and when he first stood on it; see [bounds].
-    private val boundPosts = HashMap<UUID, Point3>()
+    private val boundPosts = HashMap<UUID, ClosingPost>()
     private val boundIssued = HashMap<UUID, Long>()
     private val boundReached = HashMap<UUID, Long>()
     private var bounding = false
@@ -127,7 +127,7 @@ class AttackProgress(now: Long) {
     private fun closedIn(now: Long, objective: Point3, movers: List<UUID>, members: List<AttackMember>, threats: List<Point3>): Boolean {
         val closing = OperationTactics.roles(phase, objective, movers, members, threats, clearing, closingOrigins).closing
         val positions = members.associate { it.id to it.position }
-        val standing = closing.count { (id, post) -> positions[id]?.let { distance(it, post) <= CLOSED_IN_REACH } == true }
+        val standing = closing.count { (id, post) -> positions[id]?.let { distance(it, post.post) <= CLOSED_IN_REACH } == true }
         if (closing.isNotEmpty() && standing * 2 >= closing.size && closedInSince == null) closedInSince = now
         val since = assaultSince ?: now.also { assaultSince = it }
         // Whatever keeps the movers off their closing posts, an assault that still has the
@@ -149,7 +149,7 @@ class AttackProgress(now: Long) {
      * Without the numbers to assault, a line 56 blocks out barely hit anything: in-game 17.10 a
      * squad of 11 against 14 stood there for good and seemed to do nothing (#65).
      */
-    fun bounds(now: Long, objective: Point3, bounders: Set<UUID>, members: List<AttackMember>, threats: List<Point3>): Map<UUID, Point3> {
+    fun bounds(now: Long, objective: Point3, bounders: Set<UUID>, members: List<AttackMember>, threats: List<Point3>): Map<UUID, ClosingPost> {
         val inputs = lastInputs
         if (phase != AttackPhase.DEPLOY) {
             bounding = false
@@ -175,7 +175,7 @@ class AttackProgress(now: Long) {
     private fun bound(now: Long, member: AttackMember, defenders: List<Point3>) {
         val post = boundPosts[member.id]
         if (post != null) {
-            if (distance(member.position, post) <= OperationTactics.MOVE_ARRIVAL) boundReached.putIfAbsent(member.id, now)
+            if (distance(member.position, post.post) <= OperationTactics.MOVE_ARRIVAL) boundReached.putIfAbsent(member.id, now)
             val rested = boundReached[member.id]?.let { now - it >= BOUND_PAUSE_TICKS } == true
             val stuck = member.id !in boundReached && now - boundIssued.getValue(member.id) >= BOUND_LIMIT_TICKS
             if (!rested && !stuck) return

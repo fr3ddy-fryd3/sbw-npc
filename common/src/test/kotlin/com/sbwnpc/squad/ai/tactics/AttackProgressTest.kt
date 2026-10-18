@@ -166,14 +166,14 @@ class AttackProgressTest {
             assertEquals(AttackPhase.DEPLOY, phase)
         }
 
-    private fun AttackProgress.post(now: Long, bounder: List<UUID>, z: Double) = bounds(now, objective, bounder.toSet(), at(bounder, z), listOf(defender)).values.single().z
+    private fun AttackProgress.post(now: Long, bounder: List<UUID>, z: Double) = bounds(now, objective, bounder.toSet(), at(bounder, z), listOf(defender)).values.single().post.z
 
     @Test fun `bounders close in only once the firing line has worked`() {
         val bounders = ids(2).toSet()
         val members = at(ids(4), 60.0)
         assertTrue(outnumbered(399).bounds(399, objective, bounders, members, listOf(defender)).isEmpty())
-        // Half the 70 blocks to the defender; the other two keep the line.
-        assertEquals(bounders.associateWith { Point3(100.0, 64.0, 95.0) }, outnumbered(400).bounds(400, objective, bounders, members, listOf(defender)))
+        // Half the 70 blocks to the defender, firing at him; the other two keep the line.
+        assertEquals(bounders.associateWith { ClosingPost(Point3(100.0, 64.0, 95.0), defender) }, outnumbered(400).bounds(400, objective, bounders, members, listOf(defender)))
     }
 
     @Test fun `bounders do not close in while the flanks are still on their way`() {

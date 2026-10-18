@@ -42,7 +42,7 @@ class OperationTacticsTest {
     @Test fun `a clearing man already within the closing distance holds where he is`() {
         val target = Point3(118.0, 64.0, 100.0)
         val near = Point3(100.0, 64.0, 100.0)
-        assertEquals(near, OperationTactics.closingPost(near, listOf(target)))
+        assertEquals(ClosingPost(near, target), OperationTactics.closingPost(near, listOf(target)))
     }
 
     @Test fun `an assault on a held point closes in to fire instead of running onto it`() {
@@ -52,12 +52,14 @@ class OperationTacticsTest {
         val members = listOf(AttackMember(id(1), Point3(100.0, 64.0, 30.0), true), AttackMember(id(2), Point3(100.0, 64.0, 120.0), true))
         val roles = OperationTactics.roles(AttackPhase.ASSAULT, objective, movers, members, listOf(defender), emptySet())
         assertTrue(roles.assault.isEmpty())
-        assertEquals(Point3(100.0, 64.0, 80.0), roles.closing[id(1)])
+        assertEquals(ClosingPost(Point3(100.0, 64.0, 80.0), defender), roles.closing[id(1)])
         // Already this close, a man holds where he is.
-        assertEquals(Point3(100.0, 64.0, 120.0), roles.closing[id(2)])
+        assertEquals(ClosingPost(Point3(100.0, 64.0, 120.0), defender), roles.closing[id(2)])
         val applied = OperationTactics.apply(SquadMission(AgentId(AgentLevel.SQUAD, id(100)), listOf(TeamMission(AgentId(AgentLevel.TEAM, id(101)), listOf(PositionIntent(AgentId(AgentLevel.NPC, id(1)), CombatDuty.MOVE, Point3(100.0, 64.0, 30.0), Point3(100.0, 64.0, 50.0), defender))))), roles).teams.single().members.single()
         assertEquals(CombatDuty.FIRE, applied.duty)
         assertEquals(Point3(100.0, 64.0, 80.0), applied.anchor)
+        // He fires at the defender his post was measured from.
+        assertEquals(defender, applied.focus)
         // Inside the role's clearance, or a rifleman never reaches a post 20-30 blocks out (#54).
         assertTrue(applied.assault)
     }
@@ -65,7 +67,7 @@ class OperationTacticsTest {
     @Test fun `the closing post is measured from where the assault began`() {
         val defender = Point3(100.0, 64.0, 130.0)
         val roles = OperationTactics.roles(AttackPhase.ASSAULT, objective, listOf(id(1)), listOf(AttackMember(id(1), Point3(100.0, 64.0, 70.0), true)), listOf(defender), emptySet(), mapOf(id(1) to Point3(100.0, 64.0, 30.0)))
-        assertEquals(Point3(100.0, 64.0, 80.0), roles.closing[id(1)])
+        assertEquals(ClosingPost(Point3(100.0, 64.0, 80.0), defender), roles.closing[id(1)])
     }
 
     @Test fun `with no defender left at the point the assault occupies it`() {
@@ -78,7 +80,7 @@ class OperationTacticsTest {
         val rear = PositionIntent(AgentId(AgentLevel.NPC, id(1)), CombatDuty.REAR_GUARD, Point3(40.0, 64.0, 100.0), Point3(20.0, 64.0, 100.0), objective)
         val mission = SquadMission(AgentId(AgentLevel.SQUAD, id(100)), listOf(TeamMission(AgentId(AgentLevel.TEAM, id(101)), listOf(rear))))
         val post = Point3(70.0, 64.0, 100.0)
-        val applied = OperationTactics.apply(mission, AttackRoles(closing = mapOf(id(1) to post))).teams.single().members.single()
+        val applied = OperationTactics.apply(mission, AttackRoles(closing = mapOf(id(1) to ClosingPost(post, objective)))).teams.single().members.single()
         assertEquals(CombatDuty.FIRE, applied.duty)
         assertEquals(post, applied.anchor)
     }

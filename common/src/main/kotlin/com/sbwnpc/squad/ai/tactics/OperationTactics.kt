@@ -13,11 +13,21 @@ import kotlin.math.sqrt
  * Who assaults into the objective and where, who goes after the enemies left around it, and who
  * closes on the point's defenders to fire from nearer.
  */
-data class AttackRoles(val assault: Map<UUID, Point3> = emptyMap(), val clearing: Map<UUID, Point3> = emptyMap(), val closing: Map<UUID, Point3> = emptyMap()) {
+data class AttackRoles(val assault: Map<UUID, Point3> = emptyMap(), val clearing: Map<UUID, Point3> = emptyMap(), val closing: Map<UUID, ClosingPost> = emptyMap()) {
     companion object {
         val NONE = AttackRoles()
     }
 }
+
+/**
+ * A firing [post] nearer the defenders, and the [enemy] it was measured from: the man fires at
+ * him from there.
+ *
+ * Aimed at whatever his own target was, a shotgunner on a bound 30 blocks from the nearest
+ * defender rejected every post as out of range of a defender 68 blocks off, and never moved
+ * (in-game 18.10, #65).
+ */
+data class ClosingPost(val post: Point3, val enemy: Point3)
 
 /** A member as the operation's attack roles see it. */
 data class AttackMember(val id: UUID, val position: Point3, val ready: Boolean)
@@ -151,14 +161,14 @@ object OperationTactics {
 
                             // A clearing man shoots the enemy left near the point from a post short of
                             // him: sent to the enemy's own spot, the men ran right up to it (#88).
-                            target != null -> intent.copy(duty = CombatDuty.FIRE, anchor = closingPost(intent.origin, listOf(target)), focus = target, requireCover = false, requireShelter = false, minimumHeight = null, assault = true)
+                            target != null -> intent.copy(duty = CombatDuty.FIRE, anchor = closingPost(intent.origin, listOf(target)).post, focus = target, requireCover = false, requireShelter = false, minimumHeight = null, assault = true)
 
                             slot != null -> intent.copy(duty = CombatDuty.MOVE, anchor = slot, requireCover = false, requireShelter = false, minimumHeight = null, assault = true)
 
                             // Closing in is still fire from cover, but inside the role's clearance:
                             // kept to 48 blocks, riflemen never reached a post 20-30 blocks from the
                             // defenders and the assault stood where it began (#54).
-                            post != null -> intent.copy(duty = CombatDuty.FIRE, anchor = post, minimumHeight = null, assault = true)
+                            post != null -> intent.copy(duty = CombatDuty.FIRE, anchor = post.post, focus = post.enemy, minimumHeight = null, assault = true)
 
                             else -> intent
                         }
@@ -216,11 +226,11 @@ object OperationTactics {
         }
 
     /** Half as far from the nearest of [defenders] as [from], but no nearer than [CLOSE_DISTANCE]. */
-    fun closingPost(from: Point3, defenders: List<Point3>): Point3 {
+    fun closingPost(from: Point3, defenders: List<Point3>): ClosingPost {
         val enemy = defenders.minBy { distance(it, from) }
         val range = distance(enemy, from)
-        if (range <= CLOSE_DISTANCE) return from
-        return short(enemy, from, max(CLOSE_DISTANCE, range / 2)).copy(y = from.y)
+        if (range <= CLOSE_DISTANCE) return ClosingPost(from, enemy)
+        return ClosingPost(short(enemy, from, max(CLOSE_DISTANCE, range / 2)).copy(y = from.y), enemy)
     }
 
     /**
@@ -228,9 +238,9 @@ object OperationTactics {
      * nearer than that, the post is back at [nearest]. A bound that left the man where he stood
      * kept men 20 blocks from the defenders after an assault was called back (#65).
      */
-    fun boundPost(from: Point3, defenders: List<Point3>, nearest: Double): Point3 {
+    fun boundPost(from: Point3, defenders: List<Point3>, nearest: Double): ClosingPost {
         val enemy = defenders.minBy { distance(it, from) }
-        return short(enemy, from, max(nearest, distance(enemy, from) / 2)).copy(y = from.y)
+        return ClosingPost(short(enemy, from, max(nearest, distance(enemy, from) / 2)).copy(y = from.y), enemy)
     }
 
     /** [post] moved [offset] blocks horizontally towards [from]. */

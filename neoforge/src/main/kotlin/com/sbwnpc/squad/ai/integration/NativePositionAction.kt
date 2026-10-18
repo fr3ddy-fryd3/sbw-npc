@@ -94,7 +94,14 @@ internal class NativePositionAction(
             pendingStart = false
             npc.navigation.stop()
         }
-        val observation = view.contacts.firstOrNull { it.id == npc.target?.uuid } ?: view.contacts.maxByOrNull { it.priority }
+        // An assault post is measured from one enemy (ClosingPost): the search looks for a shot at
+        // him, not at the man's own target, who may be far beyond his weapon's reach (#65).
+        val enemy = intent.focus?.takeIf { intent.assault && intent.duty == CombatDuty.FIRE }?.native()
+        val observation = if (enemy != null) {
+            view.contacts.filter { it.position.distanceTo(enemy) <= ENEMY_MOVED }.minByOrNull { it.position.distanceToSqr(enemy) }
+        } else {
+            view.contacts.firstOrNull { it.id == npc.target?.uuid } ?: view.contacts.maxByOrNull { it.priority }
+        }
         task.usesObservedAim = true
         task.observedAim = observation?.let { TacticalAim(it.id, it.position, it.position.add(0.0, 1.5, 0.0)) }
             ?: intent.focus?.native()?.let { TacticalAim(null, it, it.add(0.0, 1.5, 0.0)) }
@@ -285,6 +292,9 @@ internal class NativePositionAction(
 
         /** A MOVE or SEARCH post this near its anchor is the anchor itself, as in [reached]. */
         private const val AT_ANCHOR = 4.0
+
+        /** How far an assault post's enemy may have moved since the post was planned and still be him. */
+        private const val ENEMY_MOVED = 8.0
 
         /**
          * Whether a MOVE or SEARCH post at [point] takes a man at [from] on towards [anchor]: it is

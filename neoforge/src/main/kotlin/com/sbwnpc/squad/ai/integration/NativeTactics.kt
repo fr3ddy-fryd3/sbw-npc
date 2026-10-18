@@ -100,7 +100,7 @@ object NativeTactics {
 
         // Per squad attacking alone: the members it sends round a flank, see [approachBearings].
         private val manoeuvres = HashMap<UUID, Set<UUID>>()
-        private val boundTraces = HashMap<UUID, Map<UUID, Point3>>()
+        private val boundTraces = HashMap<UUID, Map<UUID, ClosingPost>>()
         private val losses = HashMap<UUID, OperationLosses>()
         private val standings = HashMap<UUID, OperationStanding>()
         private val unverified = HashMap<UUID, MutableMap<UUID, Vec3>>()
@@ -534,7 +534,7 @@ object NativeTactics {
             // Bounds come only while deploying, when the roles have no closing posts of their own.
             val bounds = progress.bounds(now, task.objective, bounders, attackers, known)
             if (boundTraces.put(operation, bounds) != bounds && bounds.isNotEmpty()) {
-                DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=bound rangeToPost={}", operation, bounds.mapValues { (id, post) -> "%.0f->%.0f".format(nearest(defenders, attackers.first { it.id == id }.position), nearest(defenders, post)) })
+                DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=bound rangeToPost={}", operation, bounds.mapValues { (id, post) -> "%.0f->%.0f".format(nearest(defenders, attackers.first { it.id == id }.position), nearest(defenders, post.post)) })
             }
             return if (bounds.isEmpty()) roles else roles.copy(closing = bounds)
         }
