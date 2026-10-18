@@ -23,7 +23,7 @@ internal class NativePositionAction(
     intent: PositionIntent,
     private val npc: NpcEntity,
     private val snapshot: () -> TacticalSnapshot?,
-    private val exhausted: (PositionIntent, Map<String, Int>) -> Unit,
+    private val exhausted: (PositionIntent, Map<String, Int>, Vec3) -> Unit,
 ) : ActionExecution {
     var intent = intent
         private set
@@ -113,7 +113,7 @@ internal class NativePositionAction(
                 TacticalPositions.Outcome.DEFERRED -> return deferred(now, "position_query_budget")
 
                 TacticalPositions.Outcome.UNREACHABLE -> {
-                    exhausted(intent, result.rejections)
+                    exhausted(intent, result.rejections, task.anchor)
                     return ActionUpdate.Failed("local_position_query_exhausted")
                 }
 
@@ -144,7 +144,7 @@ internal class NativePositionAction(
             return ActionUpdate.Running
         }
         if (now - lastProgress >= 120 && (npc.navigation as? VehicleAwareNavigation)?.canPlan != false) {
-            exhausted(intent, mapOf("movement_stalled" to 1))
+            exhausted(intent, mapOf("movement_stalled" to 1), task.anchor)
             return ActionUpdate.Failed("local_movement_stalled")
         }
         if (FiringPostArrival.steer(npc, destination, 1.3)) return ActionUpdate.Running
