@@ -57,9 +57,11 @@ In `neoforge/build/reports/gameTest/<report>/battle-<scenario>/`:
 The metrics come from the server log after the battle's start marker, so the order and fire log
 groups are switched on for the run:
 
-- **friendlyShare**: the share of fire attempts held because an ally or vehicle was in the lane
-  (`FRIENDLY_OR_VEHICLE`). High values mean men bunch or stand in each other's lanes.
-- **readyShare**: the share of attempts that fired.
+- **friendlyShare**: of the attackers' logged fire gates, the share held because an ally or vehicle
+  was in the lane (`FRIENDLY_OR_VEHICLE`). A gate is logged when a man's target or blocker changes,
+  not on every shot, so this counts changes of state. High values mean men bunch or stand in each
+  other's lanes.
+- **readyShare**: the share of logged gates that let the man fire.
 - **intermediateReachedPerManMinute**: posts reached on the way and replaced, per man per minute;
   men running back and forth between posts push it up.
 - **exhaustedPerManMinute**: local post searches that found nothing.

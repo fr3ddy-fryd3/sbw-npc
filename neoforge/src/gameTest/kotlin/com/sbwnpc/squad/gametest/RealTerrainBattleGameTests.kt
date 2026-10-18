@@ -33,6 +33,8 @@ import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.common.NeoForge
 import net.neoforged.neoforge.common.util.FakePlayerFactory
 import net.neoforged.neoforge.event.tick.ServerTickEvent
+import java.io.InputStreamReader
+import java.nio.charset.CodingErrorAction
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -60,7 +62,11 @@ object RealTerrainBattleGameTests {
     @GameTestGenerator
     fun realTerrainBattles(): Collection<TestFunction> {
         val wanted = System.getProperty("sbwnpc.gameTestBattles", "").split(',').filter { it.isNotBlank() }.toSet()
-        return scenarios().filter { wanted.isEmpty() || it.name in wanted }.map { scenario ->
+        val all = scenarios()
+        val unknown = wanted - all.map { it.name }.toSet()
+        // A misspelt name would otherwise register nothing and the run would report success.
+        require(unknown.isEmpty()) { "Unknown battle scenarios: $unknown" }
+        return all.filter { wanted.isEmpty() || it.name in wanted }.map { scenario ->
             // One batch each: every scenario fights at the save's own coordinates.
             TestFunction("battle-${scenario.name}", "battle_${scenario.name}", "sbwnpc:movement_arena", Rotation.NONE, scenario.ticks + 200, 0, true, false, 1, 1, true) { helper -> run(helper, scenario) }
         }
@@ -102,7 +108,7 @@ object RealTerrainBattleGameTests {
         Files.createDirectories(report)
         val radius = (scenario.attackers + scenario.defenders).maxOf { kotlin.math.hypot((it.x - scenario.objective.x).toDouble(), (it.z - scenario.objective.z).toDouble()) }.toInt() + 64
         val replay = SavedBattleReplay(level, copyRegions(Path.of(System.getProperty("sbwnpc.gameTestBattleSaves")).resolve(scenario.world), report.resolve("fixture"), scenario.objective, radius))
-        replay.restoreTerrain(scenario.objective, radius)
+        restore(replay, scenario.objective, radius)
         // The test world persists between runs: NPCs left in these chunks by an interrupted run
         // load again without their squads and would fight in this battle.
         val area = net.minecraft.world.phys.AABB(scenario.objective).inflate(radius.toDouble(), 384.0, radius.toDouble())
@@ -114,7 +120,7 @@ object RealTerrainBattleGameTests {
         NeoForge.EVENT_BUS.addListener<ServerTickEvent.Pre>(pacer)
         val npcs = mutableListOf<NpcEntity>()
         val squads = mutableListOf<UUID>()
-        val observer = FakePlayerFactory.get(level, GameProfile(UUID.randomUUID(), "battle-observer")).apply {
+        val observer = FakePlayerFactory.get(level, GameProfile(UUID.nameUUIDFromBytes("battle-observer:${scenario.name}".toByteArray()), "battle-observer")).apply {
             gameMode.changeGameModeForPlayer(GameType.CREATIVE)
             moveTo(scenario.objective.x + 0.5, scenario.objective.y + 32.0, scenario.objective.z + 0.5, 0f, 0f)
             setNoGravity(true)
@@ -162,15 +168,18 @@ object RealTerrainBattleGameTests {
         val defence = scenario.defenders.map { deploy(it, SquadFaction.COW) }
         defence.forEach { (id, _) -> manager.issueOrderAt(level, id, SquadOrder.DEFEND, scenario.objective) }
         val attack = mutableListOf<Pair<UUID, List<NpcEntity>>>()
-        fun send(groups: List<Group>) {
+        // Man-ticks under orders: a reinforcement fights for less of the battle than the first wave.
+        var manTicks = 0L
+        fun send(groups: List<Group>, at: Int) {
             val deployed = groups.map { deploy(it, SquadFaction.PIG) }
             attack += deployed
+            manTicks += deployed.sumOf { it.second.size } * (scenario.ticks - at).toLong()
             val replies = GroupOrders.apply(level, manager, deployed.map { it.first }, SquadOrder.ATTACK, scenario.objective.x, scenario.objective.z)
             helper.assertTrue(replies.none { "cancelled" in it || "unchanged" in it }, "The attack order was refused: $replies")
         }
         // The defence settles in before the attack is ordered, as it had in the playtest.
-        helper.runAtTickTime(100) { send(scenario.attackers.filter { it.afterTicks == 0 }) }
-        scenario.attackers.filter { it.afterTicks > 0 }.groupBy { it.afterTicks }.forEach { (after, groups) -> helper.runAtTickTime(100L + after) { send(groups) } }
+        helper.runAtTickTime(100) { send(scenario.attackers.filter { it.afterTicks == 0 }, 100) }
+        scenario.attackers.filter { it.afterTicks > 0 }.groupBy { it.afterTicks }.forEach { (after, groups) -> helper.runAtTickTime(100L + after) { send(groups, 100 + after) } }
 
         val marker = "battle-start ${scenario.name} ${UUID.randomUUID()}"
         LOGGER.info(marker)
@@ -179,37 +188,74 @@ object RealTerrainBattleGameTests {
         Files.writeString(timeline, "tick,attackersAlive,defendersAlive,phase\n")
         helper.onEachTick {
             if (helper.tick % 20L != 0L) return@onEachTick
-            val phase = attack.flatMap { it.second }.firstOrNull { it.isAlive }?.let(NativeTactics::attackPhase)
+            val phase = attack.flatMap { it.second }.filter { it.isAlive }.mapNotNull(NativeTactics::attackPhase).maxOrNull()
             if (phase != null) phases.putIfAbsent(phase, helper.tick.toInt())
             Files.writeString(timeline, "${helper.tick},${attack.sumOf { (_, m) -> m.count { it.isAlive } }},${defence.sumOf { (_, m) -> m.count { it.isAlive } }},$phase\n", java.nio.file.StandardOpenOption.APPEND)
         }
-        helper.runAtTickTime(scenario.ticks.toLong()) {
-            val attackers = attack.flatMap { it.second }
-            val metrics = BattleLogMetrics(attack.mapTo(HashSet()) { it.first }, attackers.mapTo(HashSet()) { it.uuid })
-            Files.readAllLines(Path.of("logs/latest.log")).dropWhile { marker !in it }.forEach(metrics::accept)
-            val manMinutes = attackers.size * (scenario.ticks - 100) / 1200.0
-            val churn = metrics.intermediateReached / manMinutes
-            val defendersAlive = defence.sumOf { (_, m) -> m.count { it.isAlive } }
-            val taken = phases.containsKey(AttackPhase.CLEAR) || defendersAlive == 0
-            val summary = buildString {
-                appendLine("scenario=${scenario.name}")
-                appendLine("attackers=${attackers.size} alive=${attackers.count { it.isAlive }}")
-                appendLine("defenders=${defence.sumOf { it.second.size }} alive=$defendersAlive")
-                appendLine("phases=${phases.entries.joinToString { "${it.key}@${it.value}" }}")
-                appendLine("taken=$taken")
-                appendLine("fireGates=${metrics.fireGates.entries.sortedByDescending { it.value }.joinToString { "${it.key}=${it.value}" }}")
-                appendLine("friendlyShare=${"%.2f".format(metrics.share("FRIENDLY_OR_VEHICLE"))} readyShare=${"%.2f".format(metrics.share("READY"))}")
-                appendLine("intermediateReachedPerManMinute=${"%.2f".format(churn)} exhaustedPerManMinute=${"%.2f".format(metrics.exhaustedSearches / manMinutes)}")
-            }
-            Files.writeString(report.resolve("summary.txt"), summary)
-            LOGGER.info("[battle] {}", summary.replace('\n', ' '))
-            val expect = scenario.expect
-            helper.assertTrue(metrics.share("FRIENDLY_OR_VEHICLE") <= expect.maxFriendlyShare, "Friendly or vehicle in the lane held over ${expect.maxFriendlyShare} of shots; see summary.txt")
-            helper.assertTrue(churn <= expect.maxChurnPerManMinute, "Movers ran between posts: ${"%.2f".format(churn)} intermediate posts per man per minute; see summary.txt")
-            helper.assertTrue(!expect.assault || phases.containsKey(AttackPhase.ASSAULT), "The attack never assaulted; see timeline.csv")
-            helper.assertTrue(!expect.taken || taken, "The objective was not taken; see timeline.csv")
-            helper.succeed()
+        helper.runAtTickTime(scenario.ticks.toLong()) { judge(helper, scenario, Fought(attack, defence, phases, manTicks), marker, report) }
+    }
+
+    /** The sides as they stand at the end of the battle, with the phases the attack went through. */
+    private class Fought(val attack: List<Pair<UUID, List<NpcEntity>>>, val defence: List<Pair<UUID, List<NpcEntity>>>, val phases: Map<AttackPhase, Int>, val manTicks: Long)
+
+    /** Writes the battle's summary and checks it against the scenario's thresholds. */
+    private fun judge(helper: GameTestHelper, scenario: Scenario, fought: Fought, marker: String, report: Path) {
+        val attack = fought.attack
+        val defence = fought.defence
+        val phases = fought.phases
+        val manTicks = fought.manTicks
+        val attackers = attack.flatMap { it.second }
+        val metrics = BattleLogMetrics(attack.mapTo(HashSet()) { it.first }, attackers.mapTo(HashSet()) { it.uuid })
+        // Without these every share reads 0 and every threshold would pass unmeasured.
+        helper.assertTrue(readLog(marker, metrics), "The battle's start marker is not in logs/latest.log")
+        helper.assertTrue(metrics.fireGates.isNotEmpty(), "No fire gate of the attackers was logged; the metrics measured nothing")
+        val manMinutes = manTicks / 1200.0
+        val churn = metrics.intermediateReached / manMinutes
+        val defendersAlive = defence.sumOf { (_, m) -> m.count { it.isAlive } }
+        val taken = phases.containsKey(AttackPhase.CLEAR) || defendersAlive == 0
+        val summary = buildString {
+            appendLine("scenario=${scenario.name}")
+            appendLine("attackers=${attackers.size} alive=${attackers.count { it.isAlive }}")
+            appendLine("defenders=${defence.sumOf { it.second.size }} alive=$defendersAlive")
+            appendLine("phases=${phases.entries.joinToString { "${it.key}@${it.value}" }}")
+            appendLine("taken=$taken")
+            appendLine("fireGates=${metrics.fireGates.entries.sortedByDescending { it.value }.joinToString { "${it.key}=${it.value}" }}")
+            appendLine("friendlyShare=${"%.2f".format(metrics.share("FRIENDLY_OR_VEHICLE"))} readyShare=${"%.2f".format(metrics.share("READY"))}")
+            appendLine("intermediateReachedPerManMinute=${"%.2f".format(churn)} exhaustedPerManMinute=${"%.2f".format(metrics.exhaustedSearches / manMinutes)}")
         }
+        Files.writeString(report.resolve("summary.txt"), summary)
+        LOGGER.info("[battle] {}", summary.replace('\n', ' '))
+        val expect = scenario.expect
+        helper.assertTrue(metrics.share("FRIENDLY_OR_VEHICLE") <= expect.maxFriendlyShare, "Friendly or vehicle in the lane held over ${expect.maxFriendlyShare} of shots; see summary.txt")
+        helper.assertTrue(churn <= expect.maxChurnPerManMinute, "Movers ran between posts: ${"%.2f".format(churn)} intermediate posts per man per minute; see summary.txt")
+        helper.assertTrue(!expect.assault || phases.containsKey(AttackPhase.ASSAULT), "The attack never assaulted; see timeline.csv")
+        helper.assertTrue(!expect.taken || taken, "The objective was not taken; see timeline.csv")
+        helper.succeed()
+    }
+
+    private fun restore(replay: SavedBattleReplay, objective: BlockPos, radius: Int) {
+        var restored = false
+        try {
+            replay.restoreTerrain(objective, radius)
+            restored = true
+        } finally {
+            // The test's cleanup listener is not attached yet; release the forced chunks here.
+            if (!restored) replay.close()
+        }
+    }
+
+    /** Feeds the server log after [marker] to [metrics]; false when the marker is not there. */
+    private fun readLog(marker: String, metrics: BattleLogMetrics): Boolean {
+        var started = false
+        // A long trace log is streamed, and a stray byte from another mod must not end the read.
+        val decoder = Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPLACE).onUnmappableCharacter(CodingErrorAction.REPLACE)
+        InputStreamReader(Files.newInputStream(Path.of("logs/latest.log")), decoder).buffered().useLines { lines ->
+            lines.dropWhile { marker !in it }.forEach {
+                started = true
+                metrics.accept(it)
+            }
+        }
+        return started
     }
 
     /** Copies the region files covering [radius] round [center] so the save itself is never opened for writing. */
@@ -221,7 +267,9 @@ object RealTerrainBattleGameTests {
         for (x in regions) {
             for (z in rows) {
                 val file = save.resolve("region/r.$x.$z.mca")
-                if (Files.exists(file)) Files.copy(file, target.resolve(file.fileName), StandardCopyOption.REPLACE_EXISTING)
+                // A wrong world name or a missing region would leave the battle on blank test terrain.
+                check(Files.exists(file)) { "The save has no $file" }
+                Files.copy(file, target.resolve(file.fileName), StandardCopyOption.REPLACE_EXISTING)
             }
         }
         return fixture
