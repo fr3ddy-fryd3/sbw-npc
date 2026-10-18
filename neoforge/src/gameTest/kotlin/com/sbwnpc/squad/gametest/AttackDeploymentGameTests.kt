@@ -10,6 +10,7 @@ import com.sbwnpc.squad.init.ModEntities
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
+import com.sbwnpc.squad.squad.BarracksRef
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
@@ -142,6 +143,44 @@ object AttackDeploymentGameTests {
             rear.filter { it.lastShotTick >= 0 }.forEach { fired += it.uuid }
             val arrived = rear.count { it.distanceTo(enemy) <= NpcClass.RIFLEMAN.assaultDistance + 12.0 }
             if (observed && arrived == rear.size && fired.size == rear.size) helper.succeed()
+        }
+    }
+
+    /**
+     * Two attacks lose two thirds of their men: the squad without a barracks withdraws, the one
+     * whose barracks replaces its fallen keeps attacking (#57).
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 400)
+    fun barracksSquadFightsOnAfterHeavyLosses(helper: GameTestHelper) {
+        for (x in 0..79) for (z in 0..47) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        val manager = SquadManager.get(helper.level)
+        fun attack(z: Double): Pair<UUID, List<NpcEntity>> {
+            val men = (0..5).map { spawn(helper, Vec3(10.5 + it * 3, 1.0, z), SquadFaction.PIG) }
+            val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, men.map { it.uuid })
+            manager.setOrder(squad.id, SquadOrder.ATTACK)
+            manager.setObjective(helper.level, squad.id, helper.absolutePos(BlockPos(60, 1, 24)))
+            return squad.id to men
+        }
+        val (reinforced, reinforcedMen) = attack(12.5)
+        val (plain, plainMen) = attack(36.5)
+        manager.assignBarracks(reinforced, BarracksRef(helper.level.dimension(), helper.absolutePos(BlockPos(2, 1, 2))))
+        val target = spawn(helper, Vec3(60.5, 1.0, 24.5), SquadFaction.COW).apply {
+            isNoAi = true
+            getAttribute(Attributes.MAX_HEALTH)!!.baseValue = 5000.0
+            health = maxHealth
+        }
+        val all = reinforcedMen + plainMen + target
+        helper.runAtTickTime(100) { (reinforcedMen.take(4) + plainMen.take(4)).forEach { it.kill() } }
+        helper.runAtTickTime(300) {
+            try {
+                helper.assertTrue(manager.get(plain)?.order == SquadOrder.RETREAT, "The squad without a barracks did not withdraw after losing two thirds")
+                helper.assertTrue(manager.get(reinforced)?.order == SquadOrder.ATTACK, "The squad with a barracks withdrew on its losses")
+                helper.succeed()
+            } finally {
+                manager.assignBarracks(reinforced, null)
+                all.forEach { it.discard() }
+            }
         }
     }
 

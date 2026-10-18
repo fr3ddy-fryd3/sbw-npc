@@ -84,7 +84,7 @@ private object GainHeight : SquadStrategy {
 private object Withdraw : SquadStrategy {
     override val reason = "losses_without_continuation"
 
-    override fun allowed(situation: CombatSituation) = situation.incoming && situation.lossFraction >= LOSSES && !situation.continuation
+    override fun allowed(situation: CombatSituation) = situation.incoming && situation.lossFraction >= LOSSES && !situation.continuation && !situation.reinforced
 
     override fun score(situation: CombatSituation) = SCORE
 

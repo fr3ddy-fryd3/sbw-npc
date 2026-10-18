@@ -216,7 +216,13 @@ object TacticalDomain {
         }
 }
 
-data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean)
+/**
+ * One squad's fight as [StrategyEvaluation] sees it.
+ *
+ * @property reinforced the squad has a barracks that replaces its fallen, so its losses never
+ *   make it withdraw (#57).
+ */
+data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean, val reinforced: Boolean = false)
 object StrategyEvaluation {
     fun evaluate(facts: FactSnapshot, situation: CombatSituation): DecisionEvaluation<CombatStrategy> {
         val candidates = CombatStrategy.entries.map { strategy ->
