@@ -67,8 +67,7 @@
     <ID>ComplexCondition:SquadTactics.kt$SquadTactics$entity.vehicle != null || entity.busyWithRole() || entity.combatLockedByMedic() || entity.resupplying</ID>
     <ID>ComplexCondition:SquadTactics.kt$SquadTactics$npc.vehicle != null || npc.npcClass !in GROUND_ROLES || !target.isAlive || !npc.isEnemy(target)</ID>
     <ID>ComplexCondition:SquadTactics.kt$SquadTactics$task.job == TacticalJob.ANTI_ARMOUR &amp;&amp; AntiArmourKit.loaded(entity) &amp;&amp; AntiArmourKit.worthARocket(entity, target) &amp;&amp; DetectionSightline.canSee(entity, target)</ID>
-    <ID>ComplexCondition:TacticalContactApproach.kt$TacticalContactApproach$!view.offensive || member.canFire || !member.primaryAmmo || focus == null</ID>
-    <ID>ComplexCondition:TacticalPositions.kt$TacticalPositions$!context.deployment &amp;&amp; context.view.offensive &amp;&amp; !entity.usingSidearm &amp;&amp; task.job in TacticalJob.FIRE_SUPPORT &amp;&amp; aim != null &amp;&amp; !WeaponReach.inRange(entity, eye, aim.eye)</ID>
+    <ID>ComplexCondition:TacticalPositions.kt$TacticalPositions$context.view.offensive &amp;&amp; !entity.usingSidearm &amp;&amp; task.job in TacticalJob.FIRE_SUPPORT &amp;&amp; aim != null &amp;&amp; !WeaponReach.inRange(entity, eye, aim.eye)</ID>
     <ID>ComplexCondition:TacticalPositions.kt$TacticalPositions$firstScore == null || score == null || !firstScore.sameRouteTier(score) || (context.overwatch &amp;&amp; kotlin.math.abs(point.y - first.y) &gt; 0.01)</ID>
     <ID>ComplexCondition:TacticalPositions.kt$TacticalPositions$task.job in RUNNING_JOBS + setOf(TacticalJob.OVERWATCH, TacticalJob.SEARCH) || task.deployingFront(from) || (task.job in setOf(TacticalJob.RESERVE, TacticalJob.OBSERVE) &amp;&amp; !TacticalGoalProgress.reached(task, from))</ID>
     <ID>ComplexCondition:TacticalSearchGameTests.kt$TacticalSearchGameTests$helper.tick &gt;= 360 &amp;&amp; finished.size == 32 &amp;&amp; fired.all { it.size == 16 } &amp;&amp; activeShooters.all { it &gt;= 8 } &amp;&amp; advanced.all { it.size &gt;= 12 }</ID>
@@ -196,7 +195,6 @@
     <ID>CyclomaticComplexMethod:SquadToolItem.kt$SquadToolItem$override fun useOn(context: UseOnContext): InteractionResult</ID>
     <ID>CyclomaticComplexMethod:TacticalPositions.kt$TacticalPositions$private fun existingCoverPosition(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, level: ServerLevel, homeRadius: Double, closesWithEnemy: Boolean): Vec3?</ID>
     <ID>CyclomaticComplexMethod:TacticalPositions.kt$TacticalPositions$private fun findReachablePosition(context: SearchContext): Result</ID>
-    <ID>CyclomaticComplexMethod:TacticalPositions.kt$TacticalPositions$private fun formationRejection(context: SearchContext, candidate: Vec3, nearbyCover: Boolean): String?</ID>
     <ID>CyclomaticComplexMethod:TacticalPositions.kt$TacticalPositions$private fun prepareSearch(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, level: ServerLevel, homeRadius: Double, overwatch: Boolean, query: Query): SearchContext</ID>
     <ID>CyclomaticComplexMethod:TacticalPositions.kt$TacticalPositions$private fun routeBatch(context: SearchContext, first: Vec3, destinations: List&lt;Vec3&gt;): List&lt;Vec3&gt;</ID>
     <ID>CyclomaticComplexMethod:TacticalPositions.kt$TacticalPositions$private fun scoreCandidate(context: SearchContext, raw: Vec3)</ID>
@@ -230,7 +228,6 @@
     <ID>ExplicitItLambdaParameter:MapFeed.kt$MapFeed${ mask, it -&gt; mask or (1 shl it.ordinal) }</ID>
     <ID>ForEachOnRange:HtnTacticsGameTests.kt$HtnTacticsGameTests$0 until 16</ID>
     <ID>ForEachOnRange:HtnTacticsGameTests.kt$HtnTacticsGameTests$0 until 4</ID>
-    <ID>FunctionOnlyReturningConstant:SquadTactics.kt$SquadTactics$fun frontPost(entity: NpcEntity): TacticalFrontPost?</ID>
     <ID>FunctionOnlyReturningConstant:SquadTactics.kt$SquadTactics$fun holdsAfterFailure(entity: NpcEntity): Boolean</ID>
     <ID>LargeClass:GunAttackBehaviour.kt$GunAttackBehaviour : ExtendedBehaviour</ID>
     <ID>LargeClass:NativeTactics.kt$NativeTactics$World</ID>
@@ -923,7 +920,6 @@
     <ID>MagicNumber:TacticalFirePosts.kt$TacticalFirePosts$4.0</ID>
     <ID>MagicNumber:TacticalFirePosts.kt$TacticalFirePosts$8</ID>
     <ID>MagicNumber:TacticalFirePosts.kt$TacticalFirePosts$8.0</ID>
-    <ID>MagicNumber:TacticalFrontPost.kt$TacticalFrontPost$0.5</ID>
     <ID>MagicNumber:TacticalModel.kt$TacticalSnapshot$0.3</ID>
     <ID>MagicNumber:TacticalModel.kt$TacticalSnapshot$40</ID>
     <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$0.01</ID>

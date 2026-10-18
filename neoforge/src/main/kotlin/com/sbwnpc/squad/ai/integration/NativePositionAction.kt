@@ -23,7 +23,6 @@ internal class NativePositionAction(
     intent: PositionIntent,
     private val npc: NpcEntity,
     private val snapshot: () -> TacticalSnapshot,
-    private val cover: () -> Boolean,
     private val exhausted: (PositionIntent, Map<String, Int>) -> Unit,
 ) : ActionExecution {
     var intent = intent
@@ -63,7 +62,7 @@ internal class NativePositionAction(
     val assignment get() = NativeAssignment(task.job, task.anchor, task.focus, task.position, task.localFirePost, task.localFireRecovery)
     fun reached(): Boolean =
         task.position?.let { FiringPostArrival.reached(npc.position(), it) } == true &&
-            (intent.duty !in setOf(CombatDuty.MOVE, CombatDuty.SEARCH) || task.position!!.distanceTo(task.anchor) <= 4 || task.maneuverPost) &&
+            (intent.duty !in setOf(CombatDuty.MOVE, CombatDuty.SEARCH) || task.position!!.distanceTo(task.anchor) <= 4) &&
             (intent.inspection?.let { DetectionSightline.visible(npc.level() as ServerLevel, npc.eyePosition, it.native().add(0.0, 1.5, 0.0), npc) } != false)
 
     override fun start(now: Long): ActionUpdate {
@@ -108,7 +107,7 @@ internal class NativePositionAction(
             return ActionUpdate.Completed(listOf(ActionEvidence("physical_post_arrival", now, "${npc.uuid}:${task.position}")))
         }
         if (task.position == null || task.search != null) {
-            val result = TacticalPositions.find(npc, task, view, TacticalPositions.Query(policy, cover(), claimOwner))
+            val result = TacticalPositions.find(npc, task, view, TacticalPositions.Query(policy, claimOwner))
             when (result.outcome) {
                 TacticalPositions.Outcome.DEFERRED -> return deferred(now, "position_query_budget")
 
@@ -119,7 +118,6 @@ internal class NativePositionAction(
 
                 TacticalPositions.Outcome.FOUND -> {
                     task.position = result.position
-                    task.maneuverPost = result.maneuverPost
                     lastProgress = now
                     closest = Double.MAX_VALUE
                 }
@@ -133,7 +131,7 @@ internal class NativePositionAction(
             lastProgress = now
         }
         if (FiringPostArrival.reached(npc.position(), destination)) {
-            if (intent.duty in setOf(CombatDuty.MOVE, CombatDuty.SEARCH) && destination.distanceTo(task.anchor) > 4 && !task.maneuverPost) {
+            if (intent.duty in setOf(CombatDuty.MOVE, CombatDuty.SEARCH) && destination.distanceTo(task.anchor) > 4) {
                 invalidate(now, "intermediate_reached")
                 return ActionUpdate.Running
             }
