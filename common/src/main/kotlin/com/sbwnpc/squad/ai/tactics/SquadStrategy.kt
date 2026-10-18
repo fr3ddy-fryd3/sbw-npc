@@ -99,6 +99,9 @@ private object Withdraw : SquadStrategy {
             requireCover = false,
             requireShelter = false,
             exposureWeight = EXPOSURE_WEIGHT,
+            // A sentry withdraws from his height too: kept, the floor refused every post below it.
+            minimumHeight = null,
+            elevationWeight = 0.0,
         )
     }
 

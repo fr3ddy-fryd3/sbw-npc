@@ -83,4 +83,17 @@ class TacticalDomainTest {
         assertEquals(CombatDuty.MOVE, retreat.duty)
         assertEquals(Point3(50.0, 1.0, 0.0), intent.anchor)
     }
+
+    @Test fun `a sentry withdrawing from his height may come down`() {
+        val squadId = AgentId(AgentLevel.SQUAD, UUID(0, 9))
+        val sentry = intent.copy(duty = CombatDuty.OBSERVE, minimumHeight = intent.origin.y - 2, elevationWeight = 3.0)
+        val mission = SquadMission(squadId, listOf(TeamMission(AgentId(AgentLevel.TEAM, UUID(0, 8)), listOf(sentry))))
+        val input = FactSnapshot(squadId, 0).observe(TacticalFacts.STRATEGY, CombatStrategy.WITHDRAW)
+        val result = HtnPlanningSession(TacticalDomain.squad, PlanOwner(squadId, UUID(1, 1)), TacticalDomain.SQUAD.call(mission), input).advance(20) as PlanningResult.Ready
+        val delegation = result.plan.tasks.single().spec.action.parameters as com.sbwnpc.squad.ai.coordination.DelegationTask
+        val retreat = (delegation.task.parameters as TeamMission).members.single()
+        assertEquals(CombatDuty.MOVE, retreat.duty)
+        assertNull(retreat.minimumHeight)
+        assertEquals(0.0, retreat.elevationWeight)
+    }
 }
