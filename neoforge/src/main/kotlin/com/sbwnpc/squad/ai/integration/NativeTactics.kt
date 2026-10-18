@@ -166,11 +166,15 @@ object NativeTactics {
                             require(ticket.owner.agent == intent.actor)
                             val original = goals[intent.actor] ?: intent
                             val npc = requireNotNull(level.getEntity(intent.actor.id) as? NpcEntity)
-                            NativePositionAction(intent, npc, { requireNotNull(combatView(npc.squadId!!)) }, { covering(intent) }, { failed, rejections ->
+                            NativePositionAction(intent, npc, { requireNotNull(combatView(npc.squadId!!)) }, { covering(intent) }, { failed, rejections, searched ->
                                 failures[failed.actor.id] = LocalPositionFailure(original.anchor, level.gameTime, (failures[failed.actor.id]?.takeIf { it.anchor == original.anchor }?.attempts ?: 0) + 1, rejections.toMap())
                                 // Heights tell a front anchor off the ground (a slope, a ridge) from a crowded area (#55).
-                                val ground = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, net.minecraft.util.Mth.floor(failed.anchor.x), net.minecraft.util.Mth.floor(failed.anchor.z))
-                                DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=local_failure duty={} rejected={} anchorY={} groundY={} actorY={}", failed.actor.id, failed.duty, rejections, "%.0f".format(failed.anchor.y), ground, "%.0f".format(npc.y))
+                                // The planned anchor is put on the ground before the search; searched is where it looked.
+                                val ground = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, net.minecraft.util.Mth.floor(searched.x), net.minecraft.util.Mth.floor(searched.z))
+                                DebugFlags.log(
+                                    LogGroup.ORDER, "[htn] actor={} event=local_failure duty={} rejected={} anchorY={} searchedY={} groundY={} actorY={} distance={}",
+                                    failed.actor.id, failed.duty, rejections, "%.0f".format(failed.anchor.y), "%.0f".format(searched.y), ground, "%.0f".format(npc.y), "%.0f".format(npc.position().distanceTo(searched)),
+                                )
                             }).also { actions[intent.actor.id] = it }
                         },
                     ),
