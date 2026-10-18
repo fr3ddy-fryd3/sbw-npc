@@ -21,11 +21,11 @@ import java.util.UUID
 @PrefixGameTestTemplate(false)
 object AllyDeathGameTests {
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 200, batch = "ally-death")
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 300, batch = "ally-death")
     fun allyKilledByUnseenShooterMakesTheSquadWary(helper: GameTestHelper) = allyDeath(helper, "unseen-shooter", killer = true)
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 200, batch = "ally-death-unknown")
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 300, batch = "ally-death-unknown")
     fun allyDeadOfUnknownCauseMakesTheSquadWary(helper: GameTestHelper) = allyDeath(helper, "unknown-cause", killer = false)
 
     /** Wariness only steers an idle NPC's eyes: an enemy in the open is still fought. */
@@ -85,14 +85,35 @@ object AllyDeathGameTests {
             val threat = if (killer) shooter.position() else body
             helper.assertTrue(allies.all { it.wary() && it.waryToward() == threat }, "Not every ally grew wary of where the threat came from")
         }
-        helper.runAtTickTime(170) {
+        checkSweep(helper, allies, lines)
+        helper.runAtTickTime(240) {
             val reports = Files.createDirectories(Path.of(System.getProperty("sbwnpc.gameTestReports")))
             Files.writeString(reports.resolve("ally-death-$name.txt"), lines.joinToString("\n") + "\n")
-            helper.assertTrue(allies.all { it.wary() }, "An ally stopped being wary within 6 seconds")
+            helper.assertTrue(allies.all { it.wary() }, "An ally stopped being wary within 10 seconds")
             helper.assertTrue(allies.all { it.target != null || it.position().distanceTo(start.getValue(it)) < 4.0 }, "A wary ally with nothing to fight wandered off")
             manager.deleteSquad(helper.level, squad.id)
             (men + shooter).forEach { it.discard() }
             helper.succeed()
         }
     }
+
+    /**
+     * Checks that once the turn to the threat is over (the heard look, 100 ticks) an idle wary ally
+     * sweeps its sector: its head keeps moving rather than staying fixed on one bearing.
+     */
+    private fun checkSweep(helper: GameTestHelper, allies: List<NpcEntity>, lines: MutableList<String>) {
+        val sweeps = allies.associateWith { ArrayList<Float>() }
+        for (tick in listOf(150, 190, 230)) helper.runAtTickTime(tick.toLong()) { sweeps.forEach { (ally, yaws) -> yaws += ally.yHeadRot } }
+        helper.runAtTickTime(239) {
+            lines += sweeps.entries.joinToString("\n") { (ally, yaws) -> "sweep ${ally.uuid.toString().take(8)} yaws=$yaws" }
+            val idle = allies.filter { it.target == null }
+            helper.assertTrue(
+                idle.all { sweeping(sweeps.getValue(it)) },
+                "A wary ally with nothing to fight kept its eyes fixed instead of sweeping: $sweeps",
+            )
+        }
+    }
+
+    /** Whether the head yaws sampled over time moved by more than a few degrees at least once. */
+    private fun sweeping(yaws: List<Float>) = yaws.zipWithNext().any { (a, b) -> kotlin.math.abs(net.minecraft.util.Mth.wrapDegrees(b - a)) > 5f }
 }
