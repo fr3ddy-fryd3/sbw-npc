@@ -167,9 +167,11 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun benchHoldReason(entity: NpcEntity, heli: Entity): String? {
         val seat = Ports.vehicles.seatOf(heli, entity)
         if (seat < FIRST_BENCH_SEAT) return "seat $seat is not a bench seat"
-        val target = entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) } ?: return "no target"
         val gun = Ports.guns.inHand(entity) ?: return "no gun in hand"
+        // Before the target check: SBW cools a barrel and starts a reload only in this tick, and an
+        // M2HB that overheated on the last target would otherwise stay locked until the next one.
         gun.operate()
+        val target = entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) } ?: return "no target"
 
         val aim = target.position().add(0.0, target.bbHeight * 0.5, 0.0)
         if (!Helicopters.hasTurret(heli) && !BenchAttackOrbit.canAim(seat, heli.yRot, entity.eyePosition, aim)) return "target outside the seat's firing arc"
