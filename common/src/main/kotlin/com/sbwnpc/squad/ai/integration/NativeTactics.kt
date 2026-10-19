@@ -24,6 +24,9 @@ object NativeTactics {
 
     /** Seen enemies this close to an attacked area keep it from counting as held. */
     private const val AREA_THREAT_RADIUS = 128.0
+
+    /** Roles whose long-range weapons fight from a height post, see [OperationTactics.duty]. */
+    private val HEIGHT_ROLES = setOf(NpcClass.MACHINE_GUNNER, NpcClass.SNIPER)
     private val worlds = HashMap<ServerLevel, World>()
     private fun world(npc: NpcEntity) = worlds.getOrPut(npc.level() as ServerLevel) { World(npc.level() as ServerLevel) }
     fun refresh(npc: NpcEntity) {
@@ -770,7 +773,8 @@ object NativeTactics {
                             inContact = focus != null,
                             elsewhere = saved.objectiveDimension?.let { it != level.dimension() } == true,
                             scout = member.id in scouts,
-                            observer = member.primaryAmmo && member.role in setOf(NpcClass.MACHINE_GUNNER, NpcClass.SNIPER),
+                            heightRole = member.role in HEIGHT_ROLES,
+                            primaryAmmo = member.primaryAmmo,
                             hasPatrolRoute = view.hasPatrolRoute,
                             reachedMove = actions[member.id]?.let { it.intent.duty == CombatDuty.MOVE && it.reached() } == true,
                             wasFiring = oldIntents[member.id]?.duty == CombatDuty.FIRE,
