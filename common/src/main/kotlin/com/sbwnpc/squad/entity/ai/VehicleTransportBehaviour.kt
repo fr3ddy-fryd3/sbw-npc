@@ -5,6 +5,7 @@ import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.domain.port.Mobility
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.npc.NpcClass
@@ -307,7 +308,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         arrivalWaitStartTick = -1
         tripDestination = null
         observedDamageStamp = 0L
-        entity.vehicleTransport = true
+        entity.claim(NpcActivity.VEHICLE, this)
         DebugFlags.log(
             LogGroup.VEHICLE,
             "{} starting vehicle transport, home={} dist={}",
@@ -338,7 +339,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         route = emptyList()
         nextRouteTick = 0
         arrivalWaitStartTick = -1
-        entity.vehicleTransport = true
+        entity.claim(NpcActivity.VEHICLE, this)
 
         if (Ports.vehicles.seatOf(vehicle, entity) == 0) {
             VehicleTransportClaims.claimDriver(vehicle.uuid, entity.uuid)
@@ -357,7 +358,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun stop(entity: NpcEntity) {
         startCheck.reset()
         VehicleTransportClaims.release(entity.uuid)
-        entity.vehicleTransport = false
+        entity.release(NpcActivity.VEHICLE, this)
         phase = Phase.SEEKING
         targetVehicleId = null
         tripDestination = null

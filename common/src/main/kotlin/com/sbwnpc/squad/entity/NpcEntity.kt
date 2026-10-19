@@ -530,14 +530,33 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             activities = activities.with(NpcActivity.DUG_IN, value)
         }
 
-    // Set/cleared by vehicle behaviours while the mob is seeking/boarding/driving/
-    // riding a vehicle to cover long squad-transit distances. Same "hands off this mob" contract as
+    // Claimed by the vehicle behaviours while the mob is seeking/boarding/driving/riding a vehicle
+    // to cover long squad-transit distances, see [claim]. Same "hands off this mob" contract as
     // diggedIn — every other movement/role behaviour must stand down while this is true.
-    var vehicleTransport: Boolean
+    val vehicleTransport: Boolean
         get() = activities.has(NpcActivity.VEHICLE)
-        set(value) {
-            activities = activities.with(NpcActivity.VEHICLE, value)
+
+    // Not created with the other fields: the vanilla constructor reads [activities] before this
+    // class's initializers run.
+    private var claims: ActivityClaims? = null
+
+    /**
+     * [owner] takes up [activity]. It stays on until every owner has called [release], so one
+     * behaviour stopping does not end an activity another still holds. Holding two activities that
+     * [NpcActivities.excluding] names is traced in the `vehicle` log group.
+     */
+    fun claim(activity: NpcActivity, owner: Any) {
+        val conflicts = (claims ?: ActivityClaims().also { claims = it }).claim(activity, owner, activities)
+        if (conflicts.isNotEmpty()) {
+            com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.VEHICLE, "{} event=activity_conflict claimed={} held={} owner={}", uuid, activity, conflicts, owner.javaClass.simpleName)
         }
+        activities = activities.with(activity, true)
+    }
+
+    /** [owner] puts [activity] down; it ends here only if nobody else holds it. */
+    fun release(activity: NpcActivity, owner: Any) {
+        if (claims?.release(activity, owner) != false) activities = activities.with(activity, false)
+    }
 
     // Set/cleared only by DroneOperatorBehaviour while a DRONE_OPERATOR has a drone in the air —
     // same "hands off this mob" contract as vehicleTransport (no shooting, no squad movement, no

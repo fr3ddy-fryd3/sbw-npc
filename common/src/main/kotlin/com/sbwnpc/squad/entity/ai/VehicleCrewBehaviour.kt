@@ -2,6 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.TankModel
@@ -66,19 +67,19 @@ class VehicleCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = assignedVehicle(entity) != null
 
     override fun start(entity: NpcEntity) {
-        entity.vehicleTransport = true
+        entity.claim(NpcActivity.VEHICLE, this)
     }
 
     override fun stop(entity: NpcEntity) {
         startCheck.reset()
-        entity.vehicleTransport = false
+        entity.release(NpcActivity.VEHICLE, this)
         entity.navigation.stop()
     }
 
     override fun tick(entity: NpcEntity) {
         // VehicleTransportBehaviour may stop when Fight becomes active; the permanent crew contract
         // still applies while the assigned vehicle is operational.
-        entity.vehicleTransport = true
+        entity.claim(NpcActivity.VEHICLE, this)
         val vehicle = assignedVehicle(entity) ?: return
         if (entity.vehicle === vehicle) {
             entity.navigation.stop()
