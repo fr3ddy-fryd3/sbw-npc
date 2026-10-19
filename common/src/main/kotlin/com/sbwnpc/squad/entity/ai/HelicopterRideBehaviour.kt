@@ -12,6 +12,7 @@ import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
 import com.sbwnpc.squad.vehicle.Helicopters
+import com.sbwnpc.squad.vehicle.PilotlessDrop
 import net.minecraft.commands.arguments.EntityAnchorArgument
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
@@ -94,6 +95,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         // passengers of a destroyed aircraft itself (DestroyInfo.CrashPassengers); stepping out at
         // altitude first only adds a fall to it.
         val level = entity.level() as? ServerLevel ?: return
+        pilotless.tick(level, heli)
         if (!Helicopters.isGrounded(level, heli)) {
             groundedSince = Int.MIN_VALUE / 2
             return
@@ -163,6 +165,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private var lastBenchLogTick = Int.MIN_VALUE / 2
+    private val pilotless = PilotlessDrop()
 
     /**
      * A gunner riding in the cockpit, where he cannot fire, moves to a bench that has gone empty,

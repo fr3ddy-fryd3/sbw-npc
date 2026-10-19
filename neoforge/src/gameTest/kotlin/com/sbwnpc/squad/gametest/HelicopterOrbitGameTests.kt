@@ -258,6 +258,41 @@ object HelicopterOrbitGameTests {
         }
     }
 
+    /**
+     * The pilot dies in the air and nobody takes the controls: after 5 s the aircraft goes down
+     * instead of hanging there under a gunner SBW now counts as its pilot (#127).
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 2400, batch = "transport-pilotless")
+    fun pilotlessTransportComesDown(helper: GameTestHelper) {
+        val scene = Scene(helper, spawnEnemy = false)
+        var airborneSince: Long? = null
+        var killedAt: Long? = null
+        var heightAtKill = 0.0
+        helper.onEachTick {
+            val height = scene.heli.y - Helicopters.groundY(helper.level, scene.heli.x, scene.heli.z)
+            val since = killedAt?.let { helper.tick - it }
+            if (since == null) {
+                scene.tick()
+                if (scene.airborne && airborneSince == null) airborneSince = helper.tick
+                if (airborneSince?.let { helper.tick - it >= 100 } != true || height < 15.0) return@onEachTick
+                val pilot = Ports.vehicles.seating(scene.heli).getOrNull(0) as? NpcEntity
+                helper.assertTrue(pilot != null, "No pilot in seat 0")
+                pilot!!.hurt(helper.level.damageSources().explosion(null, null), 1000f)
+                killedAt = helper.tick
+                heightAtKill = height
+                return@onEachTick
+            }
+            // Within the 5 s a player could still take over: it must not drop yet.
+            if (since == 80L) helper.assertTrue(height >= heightAtKill - 8.0, "Fell before anyone had a chance to take the controls: ${heightAtKill.toInt()} -> ${height.toInt()}")
+            if (since > 100L && height < 1.5) {
+                scene.result("killedAt=$killedAt heightAtKill=$heightAtKill downAfter=$since")
+                helper.succeed()
+            }
+            if (since >= 700L) helper.fail("A pilotless transport still hangs ${height.toInt()} blocks up")
+        }
+    }
+
     /** A bench gunner dies in flight: the gunner riding in the cockpit moves to his bench and fires from it (#124). */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 2400, batch = "transport-bench-takeover")
