@@ -7,6 +7,7 @@ import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.BenchAttackOrbit
+import com.sbwnpc.squad.entity.ai.HelicopterAttackCompletion
 import com.sbwnpc.squad.item.SquadToolItem
 import com.sbwnpc.squad.npc.HelicopterModel
 import com.sbwnpc.squad.npc.NpcClass
@@ -50,8 +51,21 @@ object HelicopterOrbitGameTests {
     @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 1800, batch = "gunship-empty-attack")
     fun gunshipCompletesEmptyAttackWithMoveAndLanding(helper: GameTestHelper) = emptyAttack(helper, HelicopterModel.MI_28)
 
-    private fun emptyAttack(helper: GameTestHelper, model: HelicopterModel) {
-        val scene = Scene(helper, model = model, spawnEnemy = false)
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 2400, batch = "transport-ridge-attack")
+    fun transportComesDownAfterARidgeBeforeAnEmptyAttackCompletes(helper: GameTestHelper) = emptyAttack(helper, HelicopterModel.AH_6, ridge = true)
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 2400, batch = "gunship-ridge-attack")
+    fun gunshipComesDownAfterARidgeBeforeAnEmptyAttackCompletes(helper: GameTestHelper) = emptyAttack(helper, HelicopterModel.MI_28, ridge = true)
+
+    /**
+     * An empty attack completes, and only once the aircraft could have seen the objective. With a
+     * [ridge] on the way it climbs over it, so it has to come back down before the quiet interval
+     * counts: it used to hold the ridge height all the way and complete from far above (#119).
+     */
+    private fun emptyAttack(helper: GameTestHelper, model: HelicopterModel, ridge: Boolean = false) {
+        val scene = Scene(helper, model = model, spawnEnemy = false, ridge = ridge)
         var moveAt: Long? = null
         helper.onEachTick {
             scene.tick()
@@ -60,9 +74,11 @@ object HelicopterOrbitGameTests {
             if (scene.squad.order == SquadOrder.MOVE && moveAt == null) {
                 moveAt = helper.tick
                 helper.assertTrue(helper.tick >= 200, "Empty attack completed before the quiet interval")
+                val range = scene.heli.position().distanceTo(Vec3.atCenterOf(scene.squad.objective!!))
+                helper.assertTrue(range <= HelicopterAttackCompletion.SURVEY_RANGE, "Empty attack completed ${range.toInt()} blocks from the objective")
             }
-            // The quiet interval starts once the aircraft is near the objective, not with the order.
-            if (helper.tick >= 800) helper.assertTrue(moveAt != null, "Empty attack never switched to MOVE")
+            // The quiet interval starts once the aircraft is near the objective and down over it, not with the order.
+            if (helper.tick >= (if (ridge) 1600 else 800)) helper.assertTrue(moveAt != null, "Empty attack never switched to MOVE")
             val pilot = scene.crew.first()
             val arrived = com.sbwnpc.squad.combat.SquadFormation.reachedPoint(pilot, pilot.homeCenter()!!, scene.crew.size)
             if (moveAt != null && Helicopters.isGrounded(helper.level, scene.heli) && arrived) {
@@ -299,7 +315,7 @@ object HelicopterOrbitGameTests {
         }
     }
 
-    private class Scene(val helper: GameTestHelper, model: HelicopterModel = HelicopterModel.AH_6, private val attack: Boolean = true, private val spawnEnemy: Boolean = true) {
+    private class Scene(val helper: GameTestHelper, model: HelicopterModel = HelicopterModel.AH_6, private val attack: Boolean = true, private val spawnEnemy: Boolean = true, ridge: Boolean = false) {
         val pad = helper.absoluteVec(Vec3(28.5, 1.0, 100.5))
         val heli = Ports.vehicles.create(helper.level, model)!!
         val crew = mutableListOf<NpcEntity>()
@@ -315,6 +331,15 @@ object HelicopterOrbitGameTests {
             // Vanilla test barriers must not become heightmap terrain or a false ceiling for aircraft.
             StructureUtils.removeBarriers(helper.bounds, helper.level)
             for (x in 0..191) for (z in 0..191) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+            // A hill on the approach, peaking 30 high at x 80 and gone 25 blocks before the objective at
+            // x 140. Sloped and not wall to wall, so a low-flying gunship can climb it and the ground
+            // round it stays one walkable area.
+            if (ridge) {
+                for (x in 45..115) {
+                    val top = (30.0 * (1.0 - abs(x - 80) / 35.0)).toInt()
+                    for (z in 70..130) for (y in 1..top) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
+                }
+            }
             DebugFlags.enabledGroups = setOf(LogGroup.HELI, LogGroup.ORDER)
             heli.moveTo(pad.x, pad.y, pad.z, -90f, 0f)
             helper.level.addFreshEntity(heli)
