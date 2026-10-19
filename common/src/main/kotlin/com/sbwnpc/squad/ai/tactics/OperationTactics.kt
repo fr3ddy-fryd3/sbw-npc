@@ -7,7 +7,6 @@ import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.sin
-import kotlin.math.sqrt
 
 /**
  * Who assaults into the objective and where, who goes after the enemies left around it, and who
@@ -189,7 +188,7 @@ object OperationTactics {
     fun duty(inputs: DutyInputs, fireReach: Double, approachOffset: Double): DutyChoice =
         with(inputs) {
             val proposal = proposal
-            val approach = proposal.duty == CombatDuty.FIRE && distance3(position, proposal.anchor) > fireReach
+            val approach = proposal.duty == CombatDuty.FIRE && position.distanceTo(proposal.anchor) > fireReach
             val duty = when {
                 elsewhere -> CombatDuty.FOLLOW_ORDER
 
@@ -259,5 +258,4 @@ object OperationTactics {
     fun atObjective(threat: Point3, objective: Point3) = distance(threat, objective) <= AttackPhase.OBJECTIVE_RADIUS
 
     private fun distance(a: Point3, b: Point3) = hypot(a.x - b.x, a.z - b.z)
-    private fun distance3(a: Point3, b: Point3) = sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) + (a.z - b.z) * (a.z - b.z))
 }

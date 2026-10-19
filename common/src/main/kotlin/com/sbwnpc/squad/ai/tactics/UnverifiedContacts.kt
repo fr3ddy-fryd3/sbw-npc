@@ -2,7 +2,6 @@ package com.sbwnpc.squad.ai.tactics
 
 import com.sbwnpc.squad.ai.coordination.Point3
 import java.util.UUID
-import kotlin.math.sqrt
 
 /**
  * How long a remembered enemy position keeps an area from counting as checked once nobody sees
@@ -48,8 +47,6 @@ object UnverifiedContacts {
      */
     fun scouts(candidates: List<Pair<UUID, Point3>>, current: Set<UUID>, inspect: Point3?): Set<UUID> {
         if (inspect == null) return emptySet()
-        return candidates.sortedWith(compareBy<Pair<UUID, Point3>> { it.first !in current }.thenBy { distance(it.second, inspect) }).take(SCOUTS).mapTo(HashSet()) { it.first }
+        return candidates.sortedWith(compareBy<Pair<UUID, Point3>> { it.first !in current }.thenBy { it.second.distanceTo(inspect) }).take(SCOUTS).mapTo(HashSet()) { it.first }
     }
-
-    private fun distance(a: Point3, b: Point3) = sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) + (a.z - b.z) * (a.z - b.z))
 }

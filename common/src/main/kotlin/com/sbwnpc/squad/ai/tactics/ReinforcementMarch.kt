@@ -1,7 +1,6 @@
 package com.sbwnpc.squad.ai.tactics
 
 import com.sbwnpc.squad.ai.coordination.Point3
-import kotlin.math.sqrt
 
 /**
  * When a reinforcement on its way to an operation stops marching to fight.
@@ -31,7 +30,5 @@ object ReinforcementMarch {
      * How far the operation's nearest contact is from the nearest of the squad's [members], for
      * [engaged]: null without contacts. Measured in three dimensions.
      */
-    fun nearestContact(contacts: List<Point3>, members: List<Point3>): Double? = contacts.minOfOrNull { contact -> members.minOfOrNull { distance(it, contact) } ?: Double.MAX_VALUE }
-
-    private fun distance(a: Point3, b: Point3) = sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) + (a.z - b.z) * (a.z - b.z))
+    fun nearestContact(contacts: List<Point3>, members: List<Point3>): Double? = contacts.minOfOrNull { contact -> members.minOfOrNull { it.distanceTo(contact) } ?: Double.MAX_VALUE }
 }
