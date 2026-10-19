@@ -320,6 +320,8 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         /** Seats 0 and 1 are the cockpit; the side benches start here. */
         const val FIRST_BENCH_SEAT = 2
+
+        /** The AH-6's second cockpit seat, beside the pilot: no gun of its own. */
         const val COCKPIT_PASSENGER_SEAT = 1
         const val BENCH_LOG_TICKS = 40
 

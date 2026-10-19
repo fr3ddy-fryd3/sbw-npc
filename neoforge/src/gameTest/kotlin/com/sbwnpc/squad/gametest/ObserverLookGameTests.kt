@@ -13,8 +13,6 @@ import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
-import java.nio.file.Files
-import java.nio.file.Path
 import java.util.UUID
 
 @PrefixGameTestTemplate(false)
@@ -44,14 +42,16 @@ object ObserverLookGameTests {
         manager.setOrder(squad.id, SquadOrder.DEFEND)
         manager.setObjective(helper.level, squad.id, helper.absolutePos(BlockPos(64, 1, 64)))
         var steepest = 0f
-        val trace = StringBuilder("tick,member,xRot,yRot,ownsLook,target\n")
+        var watched = false
         helper.onEachTick {
-            if (helper.tick % 10 == 0L) npcs.forEach { trace.append("${helper.tick},${it.uuid.toString().take(8)},${"%.1f".format(it.xRot)},${"%.1f".format(it.yRot)},${SquadTactics.ownsLook(it)},${it.target != null}\n") }
             if (helper.tick < 300) return@onEachTick
             // Negative pitch is up. Only men with nothing to aim at: a target may well be up a tower.
-            npcs.filter { it.isAlive && it.target == null }.forEach { steepest = minOf(steepest, it.xRot) }
+            npcs.filter { it.isAlive && it.target == null }.forEach {
+                steepest = minOf(steepest, it.xRot)
+                if (SquadTactics.ownsLook(it)) watched = true
+            }
             if (helper.tick >= 900) {
-                Path.of(System.getProperty("sbwnpc.gameTestReports"), "${helper.testInfo.testName}.csv").also { Files.createDirectories(it.parent) }.let { Files.writeString(it, trace) }
+                helper.assertTrue(watched, "Nobody reached a post to watch from, so the look was never tested")
                 helper.assertTrue(steepest >= -15f, "An observer with nothing to watch looked ${-steepest.toInt()} degrees up")
                 helper.succeed()
             }
