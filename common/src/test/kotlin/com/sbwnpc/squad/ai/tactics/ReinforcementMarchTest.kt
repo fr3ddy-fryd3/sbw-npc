@@ -1,6 +1,9 @@
 package com.sbwnpc.squad.ai.tactics
 
+import com.sbwnpc.squad.ai.coordination.Point3
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -26,5 +29,17 @@ class ReinforcementMarchTest {
         assertTrue(ReinforcementMarch.engaged(52.0, Long.MAX_VALUE, fighting = true))
         assertFalse(ReinforcementMarch.engaged(52.0, Long.MAX_VALUE, fighting = false))
         assertFalse(ReinforcementMarch.engaged(65.0, Long.MAX_VALUE, fighting = true))
+    }
+
+    @Test fun `the nearest contact is measured from the nearest man, height included`() {
+        val men = listOf(Point3(0.0, 64.0, 0.0), Point3(100.0, 64.0, 0.0))
+        val contacts = listOf(Point3(130.0, 64.0, 0.0), Point3(0.0, 104.0, 0.0))
+        assertEquals(30.0, ReinforcementMarch.nearestContact(contacts, men))
+        assertEquals(40.0, ReinforcementMarch.nearestContact(listOf(Point3(0.0, 104.0, 0.0)), men))
+    }
+
+    @Test fun `without contacts there is no nearest one`() {
+        assertNull(ReinforcementMarch.nearestContact(emptyList(), listOf(Point3(0.0, 64.0, 0.0))))
+        assertEquals(Double.MAX_VALUE, ReinforcementMarch.nearestContact(listOf(Point3(0.0, 64.0, 0.0)), emptyList()))
     }
 }

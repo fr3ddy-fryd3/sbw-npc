@@ -1,5 +1,7 @@
 package com.sbwnpc.squad.ai.tactics
 
+import com.sbwnpc.squad.ai.coordination.Point3
+
 /**
  * When a reinforcement on its way to an operation stops marching to fight.
  *
@@ -23,4 +25,10 @@ object ReinforcementMarch {
     const val QUIET_TICKS = 600L
 
     fun engaged(nearestContact: Double?, ticksSinceIncoming: Long, fighting: Boolean = false): Boolean = ticksSinceIncoming < QUIET_TICKS || (nearestContact != null && nearestContact <= if (fighting) DISENGAGE_RADIUS else ENGAGE_RADIUS)
+
+    /**
+     * How far the operation's nearest contact is from the nearest of the squad's [members], for
+     * [engaged]: null without contacts. Measured in three dimensions.
+     */
+    fun nearestContact(contacts: List<Point3>, members: List<Point3>): Double? = contacts.minOfOrNull { contact -> members.minOfOrNull { it.distanceTo(contact) } ?: Double.MAX_VALUE }
 }

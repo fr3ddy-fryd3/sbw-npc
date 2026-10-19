@@ -24,6 +24,9 @@ object NativeTactics {
 
     /** Seen enemies this close to an attacked area keep it from counting as held. */
     private const val AREA_THREAT_RADIUS = 128.0
+
+    /** Roles whose long-range weapons fight from a height post, see [OperationTactics.duty]. */
+    private val HEIGHT_ROLES = setOf(NpcClass.MACHINE_GUNNER, NpcClass.SNIPER)
     private val worlds = HashMap<ServerLevel, World>()
     private fun world(npc: NpcEntity) = worlds.getOrPut(npc.level() as ServerLevel) { World(npc.level() as ServerLevel) }
     fun refresh(npc: NpcEntity) {
@@ -606,7 +609,7 @@ object NativeTactics {
         /** Whether a reinforcement on its way stops to fight, see [ReinforcementMarch]; logs each change. */
         private fun reinforcementEngaged(squad: UUID, contacts: List<TacticalContact>, members: List<TacticalMember>, now: Long): Boolean {
             if (snapshots[squad]?.incoming?.isNotEmpty() == true) reinforcementFire[squad] = now
-            val nearest = contacts.minOfOrNull { contact -> members.minOfOrNull { it.position.distanceTo(contact.position) } ?: Double.MAX_VALUE }
+            val nearest = ReinforcementMarch.nearestContact(contacts.map { it.position.point() }, members.map { it.position.point() })
             val sinceFire = reinforcementFire[squad]?.let { now - it } ?: Long.MAX_VALUE
             val engaged = ReinforcementMarch.engaged(nearest, sinceFire, fighting = reinforcementEngaged[squad] == true)
             if (reinforcementEngaged.put(squad, engaged) != engaged) {
@@ -678,15 +681,12 @@ object NativeTactics {
                 remembered[it.id] = it.position
                 rememberedSeen[it.id] = now
             }
-            val inspect = if (focus == null && !marching) {
-                val anchor = currentAreaTask(operation)?.objective?.native() ?: squads.first().objective?.let { Vec3.atBottomCenterOf(it) } ?: center
-                UnverifiedContacts.scoutTarget(anchor.point(), remembered.values.map { it.point() })?.native()
-                    ?: squads.firstOrNull { it.order == SquadOrder.ATTACK && it.commandOutcome == CommandOutcome.ACTIVE }?.objective?.let { Vec3.atBottomCenterOf(it) }
-            } else {
-                null
-            }
+            val inspectAnchor = { UnverifiedContacts.inspectAnchor(currentAreaTask(operation)?.objective, squads.first().objective?.let { Vec3.atBottomCenterOf(it).point() }, center.point()) }
+            val activeAttack = squads.firstOrNull { it.order == SquadOrder.ATTACK && it.commandOutcome == CommandOutcome.ACTIVE }?.objective?.let { Vec3.atBottomCenterOf(it).point() }
+            val inspect = UnverifiedContacts.inspectTarget(focus != null, marching, inspectAnchor, remembered.values.map { it.point() }, activeAttack)?.native()
             val existingScouts = squads.flatMap { missions[it.id]?.teams.orEmpty() }.flatMap { it.members }.filter { it.duty == CombatDuty.SEARCH }.mapTo(HashSet()) { it.actor.id }
-            val scouts = if (inspect != null) squads.flatMap { snapshots.getValue(it.id).members }.filter { it.ready }.sortedWith(compareBy<TacticalMember> { it.id !in existingScouts }.thenBy { it.position.distanceTo(inspect) }).take(2).mapTo(HashSet()) { it.id } else emptySet()
+            val candidates = squads.flatMap { snapshots.getValue(it.id).members }.filter { it.ready }.map { it.id to it.position.point() }
+            val scouts = UnverifiedContacts.scouts(candidates, existingScouts, inspect?.point())
             val actors = squads.flatMap { saved ->
                 snapshots.getValue(saved.id).members.map { member ->
                     val previous = missions[saved.id]?.teams?.flatMap { it.members }?.firstOrNull { it.actor.id == member.id }
@@ -770,7 +770,8 @@ object NativeTactics {
                             inContact = focus != null,
                             elsewhere = saved.objectiveDimension?.let { it != level.dimension() } == true,
                             scout = member.id in scouts,
-                            observer = member.primaryAmmo && member.role in setOf(NpcClass.MACHINE_GUNNER, NpcClass.SNIPER),
+                            heightRole = member.role in HEIGHT_ROLES,
+                            primaryAmmo = member.primaryAmmo,
                             hasPatrolRoute = view.hasPatrolRoute,
                             reachedMove = actions[member.id]?.let { it.intent.duty == CombatDuty.MOVE && it.reached() } == true,
                             wasFiring = oldIntents[member.id]?.duty == CombatDuty.FIRE,
@@ -782,8 +783,8 @@ object NativeTactics {
                     val duty = choice.duty
                     val proposed = choice.anchor.native()
                     val before = oldIntents[member.id]
-                    val requireCover = duty == CombatDuty.MOVE && situation.incoming
-                    val requireShelter = situation.incoming && duty in setOf(CombatDuty.MOVE, CombatDuty.FIRE)
+                    val requireCover = PostRequirements.cover(duty, situation.incoming)
+                    val requireShelter = PostRequirements.shelter(duty, situation.incoming)
                     // A height post is chosen by height round its anchor, not by where the enemy is or by
                     // the squad's strategy, which reshapes a sentry's task only to withdraw. Rebuilt on
                     // either, a sentry's post was thrown away and searched again every few seconds (#73).
