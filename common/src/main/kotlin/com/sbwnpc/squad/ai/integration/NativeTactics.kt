@@ -609,7 +609,7 @@ object NativeTactics {
         /** Whether a reinforcement on its way stops to fight, see [ReinforcementMarch]; logs each change. */
         private fun reinforcementEngaged(squad: UUID, contacts: List<TacticalContact>, members: List<TacticalMember>, now: Long): Boolean {
             if (snapshots[squad]?.incoming?.isNotEmpty() == true) reinforcementFire[squad] = now
-            val nearest = contacts.minOfOrNull { contact -> members.minOfOrNull { it.position.distanceTo(contact.position) } ?: Double.MAX_VALUE }
+            val nearest = ReinforcementMarch.nearestContact(contacts.map { it.position.point() }, members.map { it.position.point() })
             val sinceFire = reinforcementFire[squad]?.let { now - it } ?: Long.MAX_VALUE
             val engaged = ReinforcementMarch.engaged(nearest, sinceFire, fighting = reinforcementEngaged[squad] == true)
             if (reinforcementEngaged.put(squad, engaged) != engaged) {
