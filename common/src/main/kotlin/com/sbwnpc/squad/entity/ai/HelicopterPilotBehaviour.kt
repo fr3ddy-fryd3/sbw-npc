@@ -367,7 +367,8 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         val focusAlive = squad.focusEntity?.let { level.getEntity(it)?.isAlive } == true
         // Nothing is seen on the way to the objective, so the quiet interval would run out in
         // flight and the MOVE order below would put the aircraft down on a fight it never reached.
-        val busy = crewEngaged || reported || focusAlive || !nearObjective(heli, squad)
+        // One that has met the enemy is already at the fight, which may be far from the objective.
+        val busy = crewEngaged || reported || focusAlive || (lastContactPos == null && !nearObjective(heli, squad))
         if (!attackCompletion.observe(squad.orderStamp, level.gameTime, busy)) return
         val destination = squad.objective ?: net.minecraft.core.BlockPos.containing(lastContactPos ?: heli.position())
         val manager = com.sbwnpc.squad.squad.SquadManager.get(level)

@@ -61,7 +61,8 @@ object HelicopterOrbitGameTests {
                 moveAt = helper.tick
                 helper.assertTrue(helper.tick >= 200, "Empty attack completed before the quiet interval")
             }
-            if (helper.tick >= 400) helper.assertTrue(moveAt != null, "Empty attack never switched to MOVE")
+            // The quiet interval starts once the aircraft is near the objective, not with the order.
+            if (helper.tick >= 800) helper.assertTrue(moveAt != null, "Empty attack never switched to MOVE")
             val pilot = scene.crew.first()
             val arrived = com.sbwnpc.squad.combat.SquadFormation.reachedPoint(pilot, pilot.homeCenter()!!, scene.crew.size)
             if (moveAt != null && Helicopters.isGrounded(helper.level, scene.heli) && arrived) {
