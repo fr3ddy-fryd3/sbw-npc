@@ -3,7 +3,6 @@ package com.sbwnpc.squad.combat.tactics
 import com.sbwnpc.squad.combat.*
 import com.sbwnpc.squad.combat.WeaponReach
 import com.sbwnpc.squad.entity.NpcEntity
-import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import com.sbwnpc.squad.util.Terrain
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
@@ -28,7 +27,7 @@ object TacticalPositions {
         if (pending != null) {
             // Native A* admission is independent of the raycast queue. A request that only
             // reappears on its next ray turn can expire and block every successor meanwhile.
-            if ((entity.navigation as? VehicleAwareNavigation)?.canPlan == false) return Result(Outcome.DEFERRED)
+            if ((entity.navigation as? PositionPaths)?.canPlan == false) return Result(Outcome.DEFERRED)
             val overwatch = task.job == TacticalJob.OVERWATCH && !task.localFireRecovery
             if (search.needsRestart(entity.position(), if (overwatch) null else TacticalAim.resolve(entity, task))) {
                 task.search = null
@@ -47,7 +46,7 @@ object TacticalPositions {
     private fun recordPath(entity: NpcEntity, task: TacticalTask, search: TacticalPositionSearch, batch: List<Vec3>, path: Path?) {
         search.pendingPath = null
         search.pathAttempts++
-        val selected = path?.takeIf { it.canReach() }?.let { route -> batch.firstOrNull { VehicleAwareNavigation.walkingNode(it) == route.target } }
+        val selected = path?.takeIf { it.canReach() }?.let { route -> batch.firstOrNull { PositionPaths.walkingNode(it) == route.target } }
         if (selected != null) {
             search.routeValidation = TacticalRouteValidation(path!!, entity.level().gameTime, selected)
         } else {
@@ -58,7 +57,7 @@ object TacticalPositions {
 
     private fun findInTurn(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, query: Query): Result {
         val level = entity.level() as ServerLevel
-        if ((entity.navigation as? VehicleAwareNavigation)?.canPlan == false) return Result(Outcome.DEFERRED)
+        if ((entity.navigation as? PositionPaths)?.canPlan == false) return Result(Outcome.DEFERRED)
         val overwatch = task.job == TacticalJob.OVERWATCH && !task.localFireRecovery
         val homeRadius = SquadFormation.perimeterRadius(view.members.size) + 10.0 +
             if (task.job == TacticalJob.OVERWATCH) DefensiveOverwatch.RADIUS else 0.0
@@ -408,9 +407,9 @@ object TacticalPositions {
 
     fun pathToCandidates(entity: NpcEntity, points: List<Vec3>, allowDetour: Boolean = false): Path? =
         TacticalBudget.measure(entity) {
-            val targets = points.mapTo(LinkedHashSet()) { VehicleAwareNavigation.walkingNode(it) }
+            val targets = points.mapTo(LinkedHashSet()) { PositionPaths.walkingNode(it) }
             val navigation = entity.navigation
-            if (navigation is VehicleAwareNavigation) navigation.createPositionPath(targets, allowDetour) else navigation.createPath(targets, 0)
+            if (navigation is PositionPaths) navigation.createPositionPath(targets, allowDetour) else navigation.createPath(targets, 0)
         }
 
     private fun safeRoute(context: SearchContext, path: Path): Boolean {
@@ -436,8 +435,8 @@ object TacticalPositions {
     fun pathToPosition(entity: NpcEntity, point: Vec3): Path? {
         val navigation = entity.navigation
         return TacticalBudget.measure(entity) {
-            if (navigation is VehicleAwareNavigation) {
-                navigation.createPositionPath(VehicleAwareNavigation.walkingNode(point))
+            if (navigation is PositionPaths) {
+                navigation.createPositionPath(setOf(PositionPaths.walkingNode(point)))
             } else {
                 navigation.createPath(point.x, point.y, point.z, 0)
             }

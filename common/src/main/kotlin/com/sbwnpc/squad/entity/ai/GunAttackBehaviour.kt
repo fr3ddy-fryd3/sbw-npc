@@ -24,6 +24,7 @@ import com.sbwnpc.squad.combat.TickBudget
 import com.sbwnpc.squad.combat.WeaponReach
 import com.sbwnpc.squad.combat.Withdrawal
 import com.sbwnpc.squad.combat.tactics.DefensiveOverwatch
+import com.sbwnpc.squad.combat.tactics.PositionPaths
 import com.sbwnpc.squad.combat.tactics.SquadTactics
 import com.sbwnpc.squad.combat.tactics.TacticalBudget
 import com.sbwnpc.squad.combat.tactics.TacticalFirePosts
@@ -585,7 +586,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         // Rejected geometry cannot become the first candidate again while waiting for A*.
         search.remaining.removeAll { it in batch && it.point !in points }
         val path = if (points.isEmpty()) null else TacticalPositions.pathToCandidates(entity, points)
-        val chosen = path?.takeIf { it.canReach() }?.let { route -> points.firstOrNull { VehicleAwareNavigation.walkingNode(it) == route.target } }
+        val chosen = path?.takeIf { it.canReach() }?.let { route -> points.firstOrNull { PositionPaths.walkingNode(it) == route.target } }
         if (chosen != null && safeCombatPath(entity, target, path!!)) {
             selectedFiringPath = path
             firingSearch = null
