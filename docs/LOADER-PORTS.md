@@ -13,7 +13,7 @@ the first builds showed. Measured 2026-10-19 on `develop` (a02de96) plus the `fa
 - **Fabric first.** Same Minecraft, Java and Mojang names as NeoForge; `common` compiles unchanged.
 - **Forge second, by concentrating the 1.20.1 differences in a few seams** instead of copying
   files (see below).
-- **Only the loader chosen with `-Ploader=<neoforge|fabric>` is configured** (default `neoforge`).
+- **Only the loader chosen with `-Ploader=<neoforge|fabric|forge>` is configured** (default `neoforge`).
   A NeoForge build never needs Loom or the Fabric Maven.
 
 ## Fabric (#15)
@@ -64,22 +64,29 @@ a Fabric GameTest or server scene run in CI; the `enabled` profile and release a
 
 ## Forge, Minecraft 1.20.1 (#16)
 
-`common` was compiled against 1.20.1 with Mojang names (Java 17 output, SmartBrainLib 1.15):
+**Toolchain.** `net.neoforged.moddev.legacyforge` 2.0.80, the ModDevGradle version the repo
+already uses, builds against Forge 1.20.1-47.4.0 on Gradle 9.5 (ForgeGradle is not needed). The
+`forge` module (`-Ploader=forge`) applies it with Java 17 output, KotlinForForge 4.11.0 and
+SmartBrainLib 1.15; versions are in `gradle/forge.properties`. SBW's own Kotlin is 2.0.0 and
+KotlinForForge 4.11.0 ships that runtime, against this repo's 2.1.20 compiler: the runtime
+version still has to be chosen together with the compiler (open).
 
-- **441 errors, in 33 of about 229 files.** No JDK 21-only API is used.
+**`common` against 1.20.1.** `./gradlew -Ploader=forge :forge:compileKotlin` is the to-do list: 429
+errors in 29 of about 229 files, and no JDK 21-only API is used.
+
 - `network/Payloads.kt`: 222. It is built on `CustomPacketPayload`, `StreamCodec` and
   `RegistryFriendlyByteBuf`, which 1.20.1 does not have. This one file is rewritten for 1.20.1
   (a `FriendlyByteBuf` codec per packet).
-- `entity/ai/VehicleAwareNavigation.kt` 53, `VehicleRoutes.kt` 13 (`PathType`,
+- `entity/ai/VehicleAwareNavigation.kt` 53 and `VehicleRoutes.kt` 13 (`PathType`,
   `PathfindingContext`), `entity/NpcEntity.kt` 28 (save/load signatures, pathing), `squad/*`
-  about 40 (`SavedData` factory and `HolderLookup.Provider`), `block/*` about 30 (block codecs,
-  `useWithoutItem`, `DimensionTransition`), the rest 1-9 each (`ResourceLocation.fromNamespaceAndPath`,
-  `registryAccess`, `bottomCenter`).
+  about 37 (`SavedData` factory and `HolderLookup.Provider`), `block/*` about 30 (block codecs,
+  `useWithoutItem`, `DimensionTransition`), the rest 1-9 each
+  (`ResourceLocation.fromNamespaceAndPath`, `registryAccess`, `bottomCenter`).
 
-Approach: move each differing call behind a small interface in `common`, with the 1.21 version as
-the shared implementation and the 1.20.1 version in the Forge module. Entity and `SavedData`
-overrides whose signatures differ (`saveAdditional`, `save`) cannot be bridged by an interface;
-they delegate to a shared function from a thin per-version override.
+**Approach.** Move each differing call behind a small interface in `common`, with the 1.21
+version as the shared implementation and the 1.20.1 version in the Forge module. Entity and
+`SavedData` overrides whose signatures differ (`saveAdditional`, `save`) cannot be bridged by an
+interface; they delegate to a shared function from a thin per-version override.
 
 Further Forge work, none started: the `forge` module (ForgeGradle, reobfuscation, KotlinForForge
 and Kotlin version agreed with SBW's, JourneyMap on Forge 47.x), the SBW adapter against SBW
