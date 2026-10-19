@@ -13,6 +13,7 @@ neoForge {
         minecraftVersion = project.property("parchment_minecraft_version") as String
         mappingsVersion = project.property("parchment_mappings_version") as String
     }
+    addModdingDependenciesTo(sourceSets.test.get())
 }
 
 val commonKotlin by configurations.creating {

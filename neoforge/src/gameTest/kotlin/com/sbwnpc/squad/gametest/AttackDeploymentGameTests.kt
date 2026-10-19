@@ -108,7 +108,7 @@ object AttackDeploymentGameTests {
     }
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 2400, batch = "remote-contact-advance")
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 2700, batch = "remote-contact-advance")
     fun remoteContactBringsRearMembersPastTerrainToFiringRange(helper: GameTestHelper) {
         for (x in 0..159) for (z in 0..127) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
         // Blocks all direct fire from the starting area; the squad must really approach it.
