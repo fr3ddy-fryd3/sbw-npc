@@ -485,6 +485,7 @@ object TacticalPositions {
         task.search = null
         return Result(Outcome.FOUND, point)
     }
+
     /**
      * Whether [point] stands on the top of a scaffolding column, the shaft a tower is climbed through.
      *
