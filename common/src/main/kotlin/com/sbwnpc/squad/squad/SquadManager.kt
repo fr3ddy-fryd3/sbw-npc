@@ -3,6 +3,7 @@ package com.sbwnpc.squad.squad
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModEntities
 import com.sbwnpc.squad.item.SquadToolItem
+import com.sbwnpc.squad.npc.HelicopterModel
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
@@ -547,6 +548,11 @@ class SquadManager : SavedData() {
             requireSolidFloor = true,
         ) ?: return "No safe space near the barracks"
         if (!addRecruit(level, squad, slot, npc, spot, level.random.nextFloat() * 360f)) return "NPC spawn rejected"
+        val composition = squad.originalComposition.sorted()
+        HelicopterModel.entries.firstOrNull { it.crew.sorted() == composition }?.let { model ->
+            val crew = squad.members.mapNotNull { level.getEntity(it) as? NpcEntity }.filter { it.isAlive }
+            SquadDeployment.armHeavyGunner(model, crew, fresh = listOf(npc))
+        }
         com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER, "Barracks {} replaced {} in {} ({}) with {}", barracks.pos, slot.role, squad.name, squad.faction, npc.uuid)
         return null
     }
