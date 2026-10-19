@@ -80,7 +80,7 @@ class NpcItemInHandLayer(
     private fun traceEmptyHand(entity: NpcEntity) {
         if (!com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.EQUIP) || !entity.mainHandItem.isEmpty) return
         if (entity.tickCount < EMPTY_HAND_GRACE_TICKS || !reportedEmpty.add(entity.id)) return
-        com.sbwnpc.squad.SquadMod.LOGGER.info(
+        com.sbwnpc.squad.ModIdentity.LOGGER.info(
             "[equip-debug] client: NPC {} (entity {}) has an empty main hand {} ticks after appearing; offhand={} head={} chest={} vehicle={}",
             entity.uuid,
             entity.id,

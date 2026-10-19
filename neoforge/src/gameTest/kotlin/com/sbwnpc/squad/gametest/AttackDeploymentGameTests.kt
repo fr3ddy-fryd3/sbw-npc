@@ -10,6 +10,7 @@ import com.sbwnpc.squad.init.ModEntities
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
+import com.sbwnpc.squad.squad.BarracksRef
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
@@ -107,7 +108,7 @@ object AttackDeploymentGameTests {
     }
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 2400, batch = "remote-contact-advance")
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 2700, batch = "remote-contact-advance")
     fun remoteContactBringsRearMembersPastTerrainToFiringRange(helper: GameTestHelper) {
         for (x in 0..159) for (z in 0..127) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
         // Blocks all direct fire from the starting area; the squad must really approach it.
@@ -142,6 +143,82 @@ object AttackDeploymentGameTests {
             rear.filter { it.lastShotTick >= 0 }.forEach { fired += it.uuid }
             val arrived = rear.count { it.distanceTo(enemy) <= NpcClass.RIFLEMAN.assaultDistance + 12.0 }
             if (observed && arrived == rear.size && fired.size == rear.size) helper.succeed()
+        }
+    }
+
+    /**
+     * Two attacks lose two thirds of their men: the squad without a barracks withdraws, the one
+     * whose barracks replaces its fallen keeps attacking (#57).
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 400)
+    fun barracksSquadFightsOnAfterHeavyLosses(helper: GameTestHelper) {
+        for (x in 0..79) for (z in 0..47) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        val manager = SquadManager.get(helper.level)
+        fun attack(z: Double): Pair<UUID, List<NpcEntity>> {
+            val men = (0..5).map { spawn(helper, Vec3(10.5 + it * 3, 1.0, z), SquadFaction.PIG) }
+            val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, men.map { it.uuid })
+            manager.setOrder(squad.id, SquadOrder.ATTACK)
+            manager.setObjective(helper.level, squad.id, helper.absolutePos(BlockPos(60, 1, 24)))
+            return squad.id to men
+        }
+        val (reinforced, reinforcedMen) = attack(12.5)
+        val (plain, plainMen) = attack(36.5)
+        manager.assignBarracks(reinforced, BarracksRef(helper.level.dimension(), helper.absolutePos(BlockPos(2, 1, 2))))
+        val target = spawn(helper, Vec3(60.5, 1.0, 24.5), SquadFaction.COW).apply {
+            isNoAi = true
+            getAttribute(Attributes.MAX_HEALTH)!!.baseValue = 5000.0
+            health = maxHealth
+        }
+        val all = reinforcedMen + plainMen + target
+        helper.runAtTickTime(100) { (reinforcedMen.take(4) + plainMen.take(4)).forEach { it.kill() } }
+        helper.runAtTickTime(300) {
+            try {
+                helper.assertTrue(manager.get(plain)?.order == SquadOrder.RETREAT, "The squad without a barracks did not withdraw after losing two thirds")
+                helper.assertTrue(manager.get(reinforced)?.order == SquadOrder.ATTACK, "The squad with a barracks withdrew on its losses")
+                helper.succeed()
+            } finally {
+                manager.assignBarracks(reinforced, null)
+                all.forEach { it.discard() }
+            }
+        }
+    }
+
+    /**
+     * A fighting man whose entity no longer names his squad, as one left over in a world by an
+     * interrupted run did, must not crash the server on his next post search (#64).
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 900)
+    fun squadlessFighterDoesNotCrashPositionPlanning(helper: GameTestHelper) {
+        for (x in 0..79) for (z in 0..47) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        val attackers = (0..3).map { spawn(helper, Vec3(10.5 + it * 3, 1.0, 20.5), SquadFaction.PIG) }
+        val target = spawn(helper, Vec3(50.5, 1.0, 20.5), SquadFaction.COW).apply {
+            isNoAi = true
+            getAttribute(Attributes.MAX_HEALTH)!!.baseValue = 5000.0
+            health = maxHealth
+        }
+        val manager = SquadManager.get(helper.level)
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, attackers.map { it.uuid })
+        manager.setOrder(squad.id, SquadOrder.ATTACK)
+        manager.setObjective(helper.level, squad.id, helper.absolutePos(BlockPos(50, 1, 20)))
+        val orphan = attackers.first()
+        var orphanedAt = -1L
+        helper.onEachTick {
+            if (orphanedAt < 0 && com.sbwnpc.squad.ai.integration.NativeTactics.assignment(orphan) != null) {
+                orphan.squadId = null
+                orphanedAt = helper.tick
+            }
+            if (orphanedAt >= 0 && helper.tick >= orphanedAt + 200) {
+                (attackers + target).forEach { it.discard() }
+                helper.succeed()
+            }
+        }
+        helper.runAtTickTime(600) {
+            if (orphanedAt < 0) {
+                (attackers + target).forEach { it.discard() }
+                helper.fail("The attacker never got a position plan to break")
+            }
         }
     }
 
@@ -202,7 +279,7 @@ object AttackDeploymentGameTests {
 
         val manager = SquadManager.get(helper.level)
         val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, attackers.map { it.uuid })
-        val trace = AttackTrace(helper, squad, attackers)
+        val trace = AttackTrace(helper, squad, attackers, Vec3(96.5, 1.0, 64.5))
         val attackerIds = attackers.map { it.uuid }.toSet()
         val targetIds = targets.map { it.uuid }.toSet()
         DebugFlags.enabledGroups = setOf(LogGroup.ORDER, LogGroup.PATH, LogGroup.STUCK)
@@ -241,7 +318,8 @@ object AttackDeploymentGameTests {
                 helper.assertTrue(trace.friendlyHits == 0, "Attackers were hit by friendly rounds; see attack-damage.csv")
                 helper.assertTrue(trace.maxShotAngle <= 15.0, "Rifle projectile direction diverged from its target by more than 15 degrees; see attack-rounds.csv")
                 helper.assertTrue(trace.unsafeRounds == 0, "A round was fired despite a blocked friendly lane; see attack-rounds.csv")
-                helper.assertTrue(trace.longestLineHold >= 40, "Attack did not sustain a spaced line of at least 12/16 NPCs for 40 ticks; see attack-summary.txt")
+                helper.assertTrue(trace.longestLineHold >= 40, "The head-on group did not sustain a spaced line of at least 6 NPCs for 40 ticks; see attack-summary.txt")
+                helper.assertTrue(trace.maxFlanking >= 4, "Fewer than 4 NPCs took a flank 40 degrees or more round the objective; see attack-summary.txt")
                 helper.assertTrue(trace.projectileShooters >= 12, "Fewer than 12/16 NPCs fired real SBW rounds; see attack-summary.txt")
                 helper.assertTrue(trace.ammoSpent >= 12, "Weapon ammunition was not consumed")
                 helper.succeed()

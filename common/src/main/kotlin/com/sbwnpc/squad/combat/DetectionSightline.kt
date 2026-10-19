@@ -1,0 +1,75 @@
+package com.sbwnpc.squad.combat
+
+import net.minecraft.core.BlockPos
+import net.minecraft.core.registries.Registries
+import net.minecraft.resources.ResourceLocation
+import net.minecraft.server.level.ServerLevel
+import net.minecraft.tags.TagKey
+import net.minecraft.world.entity.Entity
+import net.minecraft.world.level.BlockGetter
+import net.minecraft.world.level.ClipContext
+import net.minecraft.world.level.block.Block
+import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.level.block.StainedGlassPaneBlock
+import net.minecraft.world.level.block.TransparentBlock
+import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.phys.HitResult
+import net.minecraft.world.phys.Vec3
+import net.minecraft.world.phys.shapes.CollisionContext
+import net.minecraft.world.phys.shapes.Shapes
+import net.minecraft.world.phys.shapes.VoxelShape
+
+/** Eyes only. Firing lanes and cover searches keep their ordinary collider raycasts. */
+object DetectionSightline {
+    enum class Visibility { VISIBLE, FOLIAGE, OBSTACLE }
+
+    private const val FOLIAGE_BLOCKS_TO_HIDE = 3
+
+    // The shared `c:` convention tags, the ones NeoForge's Tags.Blocks names, read by id so the
+    // check does not depend on a loader's tag class.
+    private val GLASS_BLOCKS: TagKey<Block> = TagKey.create(Registries.BLOCK, ResourceLocation.fromNamespaceAndPath("c", "glass_blocks"))
+    private val GLASS_PANES: TagKey<Block> = TagKey.create(Registries.BLOCK, ResourceLocation.fromNamespaceAndPath("c", "glass_panes"))
+
+    fun trace(observer: Entity, target: Entity): Visibility = if (observer.level() === target.level()) trace(observer.level(), observer.eyePosition, target.eyePosition, CollisionContext.of(observer)) else Visibility.OBSTACLE
+
+    fun canSeeWithin(observer: Entity, target: Entity, range: Double): Boolean = observer.distanceToSqr(target) <= range * range && canSee(observer, target)
+
+    fun canSee(observer: Entity, target: Entity): Boolean = trace(observer, target) == Visibility.VISIBLE
+
+    fun visible(level: BlockGetter, from: Vec3, to: Vec3, observer: Entity): Boolean = visible(level, from, to, CollisionContext.of(observer))
+
+    internal fun visible(level: BlockGetter, from: Vec3, to: Vec3, collision: CollisionContext): Boolean = trace(level, from, to, collision) == Visibility.VISIBLE
+
+    internal fun trace(level: BlockGetter, from: Vec3, to: Vec3, collision: CollisionContext): Visibility {
+        if (level is ServerLevel) TickBudget.chargeRaycast(level)
+        val hit = level.clip(DetectionContext(from, to, collision))
+        return when {
+            hit.type == HitResult.Type.MISS -> Visibility.VISIBLE
+            isGrass(level.getBlockState(hit.blockPos)) -> Visibility.FOLIAGE
+            else -> Visibility.OBSTACLE
+        }
+    }
+
+    private class DetectionContext(from: Vec3, to: Vec3, collision: CollisionContext) : ClipContext(from, to, Block.COLLIDER, Fluid.NONE, collision) {
+        private var foliage = 0
+
+        override fun getBlockShape(state: BlockState, level: BlockGetter, pos: BlockPos): VoxelShape {
+            if (isGrass(state)) {
+                // Vanilla traverses each voxel once. Count block cells, not samples or plant halves
+                // outside the ray; gaps between patches do not restore the sight budget.
+                foliage++
+                return if (foliage >= FOLIAGE_BLOCKS_TO_HIDE) Shapes.block() else Shapes.empty()
+            }
+            if (isGlass(state)) return Shapes.empty()
+            return super.getBlockShape(state, level, pos)
+        }
+    }
+
+    private fun isGrass(state: BlockState): Boolean =
+        state.`is`(Blocks.SHORT_GRASS) || state.`is`(Blocks.TALL_GRASS) ||
+            state.`is`(Blocks.FERN) || state.`is`(Blocks.LARGE_FERN)
+
+    private fun isGlass(state: BlockState): Boolean =
+        state.`is`(GLASS_BLOCKS) || state.`is`(GLASS_PANES) ||
+            state.block is TransparentBlock || state.block is StainedGlassPaneBlock || state.`is`(Blocks.GLASS_PANE)
+}

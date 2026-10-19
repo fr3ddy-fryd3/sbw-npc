@@ -7,7 +7,6 @@ import com.sbwnpc.squad.ai.planning.*
 import kotlin.math.max
 
 enum class CombatDuty { FIRE, MOVE, REAR_GUARD, OBSERVE, SEARCH, FOLLOW_ORDER }
-enum class CombatStrategy { ADVANCE, HOLD, GAIN_HEIGHT, WITHDRAW }
 data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null, val elevationWeight: Double = 0.0, val assault: Boolean = false, val standoff: Double = 0.0) {
     init {
         require(actor.level == AgentLevel.NPC && exposureWeight.isFinite() && exposureWeight >= 0 && elevationWeight.isFinite() && elevationWeight >= 0)
@@ -65,7 +64,7 @@ object TacticalDomain {
                 ) + AttackPhase.entries.map { phase ->
                     Method<OperationMission>(phase.name.lowercase(), eligible = {
                         Condition.test(TacticalFacts.ATTACK_PHASE, "other_attack_phase") { it == phase }
-                    }, decompose = { mission, _ -> coordinate(mission, if (phase == AttackPhase.DEPLOY) AttackRoles.NONE else mission.attack) })
+                    }, decompose = { mission, _ -> coordinate(mission, mission.attack) })
                 },
             ),
             delegate(),
@@ -91,25 +90,7 @@ object TacticalDomain {
                             val tasks = mission.teams.map { team ->
                                 val selected = team.copy(
                                     // A member assaulting for the operation keeps its role whatever the squad's own strategy.
-                                    members = team.members.map { intent ->
-                                        if (intent.assault) return@map intent
-                                        when (strategy) {
-                                            CombatStrategy.HOLD -> if (intent.duty == CombatDuty.MOVE) intent.copy(duty = CombatDuty.FIRE, anchor = intent.origin, requireCover = false) else intent
-
-                                            CombatStrategy.GAIN_HEIGHT -> intent.copy(minimumHeight = intent.origin.y - 2, elevationWeight = 3.0)
-
-                                            CombatStrategy.WITHDRAW -> if (intent.duty != CombatDuty.FOLLOW_ORDER) {
-                                                val dx = intent.origin.x - (intent.focus?.x ?: intent.anchor.x)
-                                                val dz = intent.origin.z - (intent.focus?.z ?: intent.anchor.z + 1)
-                                                val length = kotlin.math.hypot(dx, dz).coerceAtLeast(0.01)
-                                                intent.copy(duty = CombatDuty.MOVE, anchor = Point3(intent.origin.x + dx / length * 48, intent.origin.y, intent.origin.z + dz / length * 48), requireCover = false, requireShelter = false, exposureWeight = 10.0)
-                                            } else {
-                                                intent
-                                            }
-
-                                            CombatStrategy.ADVANCE -> intent
-                                        }
-                                    },
+                                    members = team.members.map { intent -> if (intent.assault) intent else strategy.rules.shape(intent) },
                                 )
                                 DelegationTask(team.agent, TEAM.call(selected))
                             }
@@ -235,24 +216,24 @@ object TacticalDomain {
         }
 }
 
-data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean)
+/**
+ * One squad's fight as [StrategyEvaluation] sees it.
+ *
+ * @property reinforced the squad has a barracks that replaces its fallen, so its losses never
+ *   make it withdraw (#57).
+ */
+data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean, val reinforced: Boolean = false)
 object StrategyEvaluation {
     fun evaluate(facts: FactSnapshot, situation: CombatSituation): DecisionEvaluation<CombatStrategy> {
-        fun candidate(strategy: CombatStrategy, allowed: Boolean, score: Double, reason: String) =
+        val candidates = CombatStrategy.entries.map { strategy ->
+            val rules = strategy.rules
             DecisionCandidate(
                 strategy.name,
                 strategy,
-                Condition { if (allowed) Verdict.Allowed else Verdict.Rejected(reason) },
-                { UtilityScore(score, reason = reason) },
+                Condition { if (rules.allowed(situation)) Verdict.Allowed else Verdict.Rejected(rules.reason) },
+                { UtilityScore(rules.score(situation), reason = rules.reason) },
             )
-        return UtilityEvaluation.rank(
-            facts,
-            listOf(
-                candidate(CombatStrategy.ADVANCE, (situation.offensive && situation.continuation) || !situation.contact, 0.55 + situation.readyFraction * 0.2, "advance_capacity"),
-                candidate(CombatStrategy.HOLD, true, if (!situation.offensive && situation.contact) 0.9 else 0.4, "hold_sector"),
-                candidate(CombatStrategy.GAIN_HEIGHT, situation.contact && situation.higherEnemy && situation.offensive, 0.93, "enemy_above"),
-                candidate(CombatStrategy.WITHDRAW, situation.incoming && situation.lossFraction >= 0.4 && !situation.continuation, 0.95, "losses_without_continuation"),
-            ),
-        )
+        }
+        return UtilityEvaluation.rank(facts, candidates)
     }
 }

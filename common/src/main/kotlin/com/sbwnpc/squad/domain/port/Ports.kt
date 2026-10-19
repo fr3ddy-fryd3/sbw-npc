@@ -9,4 +9,5 @@ object Ports {
     lateinit var drones: Drones
     lateinit var gear: Gear
     lateinit var playerSupply: PlayerSupply
+    lateinit var loader: LoaderHooks
 }

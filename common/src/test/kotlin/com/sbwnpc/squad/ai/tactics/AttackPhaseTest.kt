@@ -74,4 +74,12 @@ class AttackPhaseTest {
         assertEquals(AttackPhase.ASSAULT, AttackPhase.CLEAR.next(inputs(ready = 12, enemies = 0, peak = 15, occupied = false, threats = 0)))
         assertEquals(AttackPhase.DEPLOY, AttackPhase.CLEAR.next(inputs(ready = 5, enemies = 4, occupied = false, threats = 4)))
     }
+
+    @Test fun `the assault waits for the flanks to reach their sectors, but not for ever`() {
+        val ready = inputs(ready = 8, enemies = 4, peak = 8).copy(sectorsHeld = false)
+        assertEquals(AttackPhase.DEPLOY, AttackPhase.DEPLOY.next(ready))
+        assertEquals(AttackPhase.ASSAULT, AttackPhase.DEPLOY.next(ready.copy(ticksEngaged = AttackPhase.SECTOR_LIMIT_TICKS)))
+        // A defence gone quiet is assaulted whatever the flanks are doing.
+        assertEquals(AttackPhase.ASSAULT, AttackPhase.DEPLOY.next(inputs(ready = 2, enemies = 0, quiet = 200, engaged = 0).copy(sectorsHeld = false)))
+    }
 }

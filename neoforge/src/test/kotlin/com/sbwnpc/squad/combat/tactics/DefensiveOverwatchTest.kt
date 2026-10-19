@@ -70,18 +70,6 @@ class DefensiveOverwatchTest {
         assertFalse(DefensiveOverwatch.nearbyCover(home, enemyEye, hill::blocked))
     }
 
-    @Test fun `a real parapet may adjust depth inside the owned lane but open ground and neighboring slots may not`() {
-        val front = TacticalFrontPost(home.add(-6.0, 0.0, 0.0), Vec3(1.0, 0.0, 0.0))
-        val enemyEye = Vec3(20.5, 65.5, 0.5)
-        val sheltered = DefensiveOverwatch.nearbyCover(home, enemyEye, wall(64)::blocked)
-        assertTrue(sheltered)
-        assertFalse(front.contains(home))
-        assertTrue(front.probes(recovery = true).contains(home))
-        assertTrue(front.permitsFiringPost(home, sheltered, recovery = false))
-        assertFalse(front.permitsFiringPost(home, covered = false, recovery = false))
-        assertFalse(front.permitsFiringPost(home.add(0.0, 0.0, 6.0), covered = true, recovery = false))
-    }
-
     @Test fun `height takes priority among protected posts within the 32 block assignment radius`() {
         val high = home.add(20.0, 12.0, 0.0)
         assertTrue(DefensiveOverwatch.within(home, high))

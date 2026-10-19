@@ -39,7 +39,7 @@ object ServerLifecycle {
 
     @SubscribeEvent
     fun onTacticalTargetDeath(event: net.neoforged.neoforge.event.entity.living.LivingDeathEvent) {
-        if (event.entity.level() is net.minecraft.server.level.ServerLevel) com.sbwnpc.squad.ai.integration.NativeTactics.targetDeath(event)
+        if (event.entity.level() is net.minecraft.server.level.ServerLevel) com.sbwnpc.squad.ai.integration.NativeTactics.targetDeath(event.entity) { event.isCanceled }
     }
 
     @SubscribeEvent

@@ -7,50 +7,475 @@
     <ID>ComplexCondition:Assignments.kt$AssignmentLedger$current.ticket != report.ticket || report.revision != current.revision || (current.status in terminal &amp;&amp; !(current.continuous &amp;&amp; current.status == AssignmentStatus.SUCCEEDED)) || !live(current.ticket.parent)</ID>
     <ID>ComplexCondition:Assignments.kt$AssignmentLedger$previous != null &amp;&amp; previous.ticket.parent != parent &amp;&amp; previous.status != AssignmentStatus.REVOKED &amp;&amp; live(previous.ticket.parent) &amp;&amp; authorized(previous.ticket.parent.owner.agent, child)</ID>
     <ID>ComplexCondition:Assignments.kt$AssignmentLedger$previous != null &amp;&amp; previous.ticket.parent == parent &amp;&amp; previous.task == task &amp;&amp; previous.continuous == continuous &amp;&amp; previous.status != AssignmentStatus.REVOKED</ID>
+    <ID>ComplexCondition:BlindReturnFireBehaviour.kt$BlindReturnFireBehaviour$entity.busyWithRole() || entity.combatLockedByCover() || entity.combatLockedByMedic() || entity.resupplying || entity.vehicle != null || entity.evadingGrenade()</ID>
     <ID>ComplexCondition:CellPlanner.kt$CellPlanner.Search$dx != 0 &amp;&amp; dz != 0 &amp;&amp; (!medium.open(x + dx, z) || !medium.open(x, z + dz))</ID>
+    <ID>ComplexCondition:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$phase != Phase.LAUNCH &amp;&amp; phase != Phase.RETURN &amp;&amp; (drone.onGround() || drone.horizontalCollision || drone.verticalCollision)</ID>
     <ID>ComplexCondition:Execution.kt$PlanRuntime$entry.ticket != ticket || !entry.acceptsExternal || !entry.started || entry.status !in setOf(ExecutionStatus.RUNNING, ExecutionStatus.SUSPENDED)</ID>
+    <ID>ComplexCondition:ExperienceAwards.kt$ExperienceAwards$loader != null &amp;&amp; loader !== npc &amp;&amp; tube != null &amp;&amp; MortarClaims.atPost(loader, tube)</ID>
+    <ID>ComplexCondition:ExperienceLedger.kt$ExperienceLedger$!fraction.isFinite() || fraction &lt;= 0 || shares.isEmpty() || tag.getBoolean("Finished")</ID>
+    <ID>ComplexCondition:FriendlyFireGuard.kt$FriendlyFireGuard$blastClear &amp;&amp; checkBlast &amp;&amp; canBeHurt(ally) &amp;&amp; ally.position().distanceTo(impactPoint) &lt;= blastRadius</ID>
+    <ID>ComplexCondition:GrenadeThrower.kt$GrenadeThrower$thrower.grenadesLeft(kind) &lt;= 0 || !inRange(thrower.position(), target) || !isSafeToThrow(thrower, target, kind) || !Ports.grenades.arcClear(thrower, level, target, targetVelocity, kind, NEAR_TARGET)</ID>
+    <ID>ComplexCondition:GroupOrders.kt$GroupOrders$selected.size != squadIds.size || selected.isEmpty() || selected.map { it.id }.distinct().size != selected.size || selected.any { it.owner != selected.first().owner } || selected.any { saved -&gt; saved.lastSeenDim?.let { it != level.dimension() } == true &amp;&amp; saved.members.none { level.getEntity(it) != null } } || selected.any { a -&gt; selected.any { b -&gt; !com.sbwnpc.squad.team.Diplomacy.allied(a.faction, b.faction) } }</ID>
+    <ID>ComplexCondition:GunAttackBehaviour.kt$GunAttackBehaviour$!lineIsClear &amp;&amp; !entity.diggedIn &amp;&amp; !fallingBack &amp;&amp; entity.coverPeekPoint == null</ID>
+    <ID>ComplexCondition:GunAttackBehaviour.kt$GunAttackBehaviour$current != null &amp;&amp; !current.isDone &amp;&amp; TacticalPositions.reaches(current, point) &amp;&amp; safeCombatPath(entity, target, current)</ID>
+    <ID>ComplexCondition:GunAttackBehaviour.kt$GunAttackBehaviour$entity.tickCount &gt;= nextSidestepTick &amp;&amp; (firingPos == null || entity.navigation.isDone || atSpot(entity, firingPos!!))</ID>
+    <ID>ComplexCondition:GunAttackBehaviour.kt$GunAttackBehaviour$held != null &amp;&amp; entity.tickCount &gt;= nextPositionCheckTick &amp;&amp; atSpot(entity, held) &amp;&amp; !GrenadeHazard.threatens(level, held) &amp;&amp; TickBudget.hasRaycasts(level) &amp;&amp; // With the hulls on the line: a spot a vehicle has since pulled in front of is no longer // "still has a shot", and keeping it had defenders standing behind a hull, never firing. concealmentScore( level, entity, target, held, entity.eyeHeight.toDouble(), Sightline.vehicleHulls(level, AABB(held, target.position()).inflate(VEHICLE_LANE_MARGIN), entity, target), )?.let { it &gt; 0.0 } == true &amp;&amp; !FiringSpots.crowded(held, FiringSpots.nearbyWithBodies(level, entity, STUCK_SEARCH_RADIUS)) &amp;&amp; FriendlyFireGuard.assess(entity, target.eyePosition, entity.spread, target.position(), 0.0).lineClear</ID>
+    <ID>ComplexCondition:Hearing.kt$Hearing$npc.isAlive &amp;&amp; (allSides || source == null || SquadTeams.isHostile(npc, source))</ID>
+    <ID>ComplexCondition:HelicopterRideBehaviour.kt$HelicopterRideBehaviour$entity.vehicle != null || entity.diggedIn || entity.operatingDrone || entity.antiDroneEngaged</ID>
+    <ID>ComplexCondition:MedicHealBehaviour.kt$MedicHealBehaviour$cached == null || (cached.isAlive &amp;&amp; needsHealing(entity, cached) &amp;&amp; available(entity, cached))</ID>
+    <ID>ComplexCondition:MortarCrewBehaviour.kt$MortarCrewBehaviour$current != null &amp;&amp; Ports.vehicles.isOperational(current) &amp;&amp; !SquadTeams.isHostile(entity, current) &amp;&amp; MortarClaims.assign(current, entity) != null</ID>
+    <ID>ComplexCondition:NativePositionAction.kt$NativePositionAction$path != null &amp;&amp; path === task.navigationPath &amp;&amp; !path.isDone &amp;&amp; !TacticalClearance.permitsPath(policy.clearance(npc.npcClass), npc.position(), path, view)</ID>
+    <ID>ComplexCondition:NativePositionAction.kt$NativePositionAction$task.position != null &amp;&amp; ((!intent.assault &amp;&amp; !TacticalClearance.permitsPosition(npc.npcClass, npc.position(), task.position!!, view)) || GrenadeHazard.threatens(npc.level() as ServerLevel, task.position!!))</ID>
+    <ID>ComplexCondition:NpcEntity.kt$NpcEntity$busyWithRole() || vehicle != null || combatLockedByMedic() || com.sbwnpc.squad.ai.integration.NativeTactics.ownsLook(this)</ID>
+    <ID>ComplexCondition:NpcEntity.kt$NpcEntity$level().isClientSide || !amount.isFinite() || amount &lt;= 0 || !isAlive</ID>
+    <ID>ComplexCondition:NpcMoveControl.kt$NpcMoveControl$!moving || operation != Operation.WAIT || !mob.onGround() || mob.isInWater || !mob.horizontalCollision</ID>
+    <ID>ComplexCondition:NpcPosture.kt$NpcPosture$!moving &amp;&amp; npc.onGround() &amp;&amp; !npc.isPassenger &amp;&amp; !npc.isInWater &amp;&amp; position</ID>
+    <ID>ComplexCondition:NpcPosture.kt$NpcPosture$crouch &amp;&amp; overwatch &amp;&amp; !npc.isCrouching &amp;&amp; npc.target != null</ID>
+    <ID>ComplexCondition:NpcPosture.kt$NpcPosture$npc.isCrouching &amp;&amp; npc.target != null &amp;&amp; blockedSince != null &amp;&amp; tick - blockedSince &gt;= SIGHT_LOST_STAND_TICKS</ID>
+    <ID>ComplexCondition:OrderArrival.kt$OrderArrival$squad.order == SquadOrder.ATTACK &amp;&amp; !mgr.isGunshipSquad(squad) &amp;&amp; !mgr.isTransportSquad(squad) &amp;&amp; !mgr.isTankSquad(squad) &amp;&amp; !mgr.isMortarSquad(squad)</ID>
+    <ID>ComplexCondition:OutOfAmmoBehaviour.kt$OutOfAmmoBehaviour$entity.isPassenger || entity.vehicleTransport || entity.servingMortar || entity.operatingDrone</ID>
+    <ID>ComplexCondition:OutOfAmmoBehaviour.kt$OutOfAmmoBehaviour$entity.movementLockedByCover() || entity.coverPeekPoint != null || entity.evadingGrenade() || entity.combatLockedByMedic()</ID>
     <ID>ComplexCondition:PlanningAgent.kt$PlanningAgent$runtime.completed &amp;&amp; search == null &amp;&amp; waiting.isEmpty() &amp;&amp; status == PlanningStatus.EXECUTING</ID>
     <ID>ComplexCondition:PlanningAgent.kt$PlanningAgent$search == null &amp;&amp; status in setOf(PlanningStatus.EXECUTING, PlanningStatus.COMPLETED) &amp;&amp; old != null &amp;&amp; !old.inputUnchanged(facts)</ID>
+    <ID>ComplexCondition:SeekCoverBehaviour.kt$SeekCoverBehaviour$!(hurtEnough &amp;&amp; diggableGround &amp;&amp; flatEnough &amp;&amp; covered)</ID>
+    <ID>ComplexCondition:SeekCoverBehaviour.kt$SeekCoverBehaviour$entity.tickCount &gt;= phaseUntilTick || (!blindReply &amp;&amp; (target == null || !target.isAlive))</ID>
+    <ID>ComplexCondition:SeekCoverBehaviour.kt$SeekCoverBehaviour$target != null &amp;&amp; target.isAlive &amp;&amp; !ally.combatLockedByCover() &amp;&amp; ally.sensing.hasLineOfSight(target)</ID>
+    <ID>ComplexCondition:SquadFormation.kt$SquadFormation$(shape == Shape.RING &amp;&amp; !rearSupport) || shape == Shape.PERIMETER || shape == Shape.SCATTER</ID>
+    <ID>ComplexCondition:SquadManager.kt$SquadManager$npc != null &amp;&amp; npc.npcClass == NpcClass.DRONE_OPERATOR &amp;&amp; npc.isAlive &amp;&amp; npc.position().distanceToSqr(pos) &lt;= RESUPPLY_RADIUS * RESUPPLY_RADIUS</ID>
+    <ID>ComplexCondition:SquadMarch.kt$SquadMarch$atEnd &amp;&amp; !march.complete &amp;&amp; level.gameTime - march.plannedAt &gt;= MIN_REPLAN_TICKS &amp;&amp; lastPlanTick != level.gameTime</ID>
+    <ID>ComplexCondition:SquadOrderBehaviour.kt$SquadOrderBehaviour$member.target != null || member.vehicle != null || member.vehicleTransport || member.servingMortar || member.operatingDrone || member.diggedIn</ID>
+    <ID>ComplexCondition:SquadTactics.kt$SquadTactics$entity.vehicle != null || entity.busyWithRole() || entity.combatLockedByMedic() || entity.resupplying</ID>
+    <ID>ComplexCondition:SquadTactics.kt$SquadTactics$npc.vehicle != null || npc.npcClass !in GROUND_ROLES || !target.isAlive || !npc.isEnemy(target)</ID>
+    <ID>ComplexCondition:SquadTactics.kt$SquadTactics$task.job == TacticalJob.ANTI_ARMOUR &amp;&amp; AntiArmourKit.loaded(entity) &amp;&amp; AntiArmourKit.worthARocket(entity, target) &amp;&amp; DetectionSightline.canSee(entity, target)</ID>
+    <ID>ComplexCondition:TacticalPositions.kt$TacticalPositions$context.view.offensive &amp;&amp; !entity.usingSidearm &amp;&amp; task.job in TacticalJob.FIRE_SUPPORT &amp;&amp; aim != null &amp;&amp; !WeaponReach.inRange(entity, eye, aim.eye)</ID>
+    <ID>ComplexCondition:TacticalPositions.kt$TacticalPositions$firstScore == null || score == null || !firstScore.sameRouteTier(score) || (context.overwatch &amp;&amp; kotlin.math.abs(point.y - first.y) &gt; 0.01)</ID>
+    <ID>ComplexCondition:TacticalPositions.kt$TacticalPositions$task.job in RUNNING_JOBS + setOf(TacticalJob.OVERWATCH, TacticalJob.SEARCH) || task.deployingFront(from) || (task.job in setOf(TacticalJob.RESERVE, TacticalJob.OBSERVE) &amp;&amp; !TacticalGoalProgress.reached(task, from))</ID>
+    <ID>ComplexCondition:VehicleAwareNavigation.kt$VehicleAwareNavigation$com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.PATH) &amp;&amp; ((result == null &amp;&amp; canPlan) || mob.tickCount - lastPathLogTick &gt;= PATH_LOG_TICKS)</ID>
+    <ID>ComplexCondition:VehicleAwareNavigation.kt$VehicleAwareNavigation$current != null &amp;&amp; !current.isDone &amp;&amp; goal != null &amp;&amp; goal.closerThan(pos, GOAL_DRIFT)</ID>
+    <ID>ComplexCondition:VehicleAwareNavigation.kt$VehicleAwareNavigation$mob.onClimbable() || !mob.onGround() || !mob.horizontalCollision || next.y &lt;= from.y</ID>
+    <ID>ComplexCondition:VehicleAwareNavigation.kt$VehicleAwareNavigation$near != null &amp;&amp; !near.canReach() &amp;&amp; near.distToTarget &gt; SHORT_OF_GOAL &amp;&amp; npc != null &amp;&amp; (npc.target == null || resupplyTrip(npc))</ID>
+    <ID>ComplexCondition:VehicleAwareNavigation.kt$VehicleAwareNodeEvaluator$origin != null &amp;&amp; origin.x == x &amp;&amp; origin.z == z &amp;&amp; kotlin.math.abs(origin.y - y) &lt;= 1</ID>
+    <ID>ComplexCondition:VehicleCrewBehaviour.kt$VehicleCrewBehaviour$vehicle != null &amp;&amp; entity.vehicle !== vehicle &amp;&amp; entity.target != null &amp;&amp; Helicopters.isHelicopter(vehicle) &amp;&amp; !Helicopters.canFly(vehicle)</ID>
+    <ID>ComplexCondition:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$!boatRouteComplete &amp;&amp; boatRoute.isNotEmpty() &amp;&amp; entity.tickCount &gt;= boatLookAheadTick &amp;&amp; horizontalDistance(vehicle.position(), boatRoute.last()) &lt; BOAT_LOOKAHEAD</ID>
+    <ID>ComplexCondition:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$!driveRouteComplete &amp;&amp; driveSearch == null &amp;&amp; entity.tickCount &gt;= driveLookAheadTick &amp;&amp; horizontalDistance(vehicle.position(), driveRoute.last()) &lt; DRIVE_LOOKAHEAD</ID>
+    <ID>ComplexCondition:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$ally.vehicle !== vehicle &amp;&amp; ally.isAlive &amp;&amp; SquadTeams.factionOf(ally) == faction &amp;&amp; (1..samples).any { step -&gt; vehicleOverlaps(vehicle, ally, offset.scale(step.toDouble() / samples)) }</ID>
+    <ID>ComplexCondition:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$boatRoute.isEmpty() &amp;&amp; trip != null &amp;&amp; trip.route.route.isNotEmpty() &amp;&amp; trip.route.route.first().distanceTo(vehicle.position()) &lt; BOAT_WAYPOINT_RADIUS * 2</ID>
+    <ID>ComplexCondition:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$vehicle == null || !Ports.vehicles.isOperational(vehicle) || Ports.vehicles.isLocked(vehicle) || hasBlockingPlayerAboard(vehicle, entity) || vehicle.passengers.size &gt;= Ports.vehicles.seatCount(vehicle)</ID>
     <ID>CyclomaticComplexMethod:Assignments.kt$AssignmentLedger$fun delegate(parent: ExecutionTicket, child: AgentId, task: TaskCall&lt;*&gt;, now: Long, continuous: Boolean = false): DelegationResult</ID>
     <ID>CyclomaticComplexMethod:Assignments.kt$AssignmentLedger$fun report(report: ChildReport, now: Long): Boolean</ID>
+    <ID>CyclomaticComplexMethod:BarracksBlockEntity.kt$BarracksBlockEntity$private fun refresh(level: ServerLevel)</ID>
+    <ID>CyclomaticComplexMethod:BlindReturnFireBehaviour.kt$BlindReturnFireBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>CyclomaticComplexMethod:BoatTrips.kt$BoatTrips$fun tripsFor(npc: NpcEntity, goal: Vec3, waterAhead: Boolean, usable: (Entity) -&gt; Boolean): List&lt;Trip&gt;?</ID>
     <ID>CyclomaticComplexMethod:CellPlanner.kt$CellPlanner.Search$fun step(budget: Int): Boolean</ID>
     <ID>CyclomaticComplexMethod:CellPlanner.kt$CellPlanner.Search$private fun partsOf(cell: Long): IntArray</ID>
     <ID>CyclomaticComplexMethod:CellPlanner.kt$CellPlanner.Search$private fun visitCell(n: Long, cg: Double)</ID>
+    <ID>CyclomaticComplexMethod:CoverPeekSearch.kt$CoverPeekSearch$fun find(entity: NpcEntity, level: ServerLevel, aim: Vec3, target: LivingEntity?): Result?</ID>
+    <ID>CyclomaticComplexMethod:Diplomacy.kt$Diplomacy$private fun resolve(server: MinecraftServer, reg: AllianceRegistry)</ID>
+    <ID>CyclomaticComplexMethod:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>CyclomaticComplexMethod:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$private fun retarget(entity: NpcEntity, level: ServerLevel, drone: Entity): Boolean</ID>
+    <ID>CyclomaticComplexMethod:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$private fun scanForEnemy(entity: NpcEntity): StrikeTarget?</ID>
     <ID>CyclomaticComplexMethod:Execution.kt$PlanRuntime$fun install(next: HtnPlan, facts: FactSnapshot): Boolean</ID>
     <ID>CyclomaticComplexMethod:Execution.kt$PlanRuntime$fun tick(facts: FactSnapshot, work: Int = 64)</ID>
+    <ID>CyclomaticComplexMethod:ExperienceAwards.kt$ExperienceAwards$fun damage(victim: Entity, source: DamageSource, fraction: Double, dead: Boolean)</ID>
+    <ID>CyclomaticComplexMethod:GrenadeUseBehaviour.kt$GrenadeUseBehaviour$private fun clusterPoint(entity: NpcEntity, level: ServerLevel): Vec3?</ID>
     <ID>CyclomaticComplexMethod:GroundMap.kt$GroundMap$private fun read(level: ServerLevel, cx: Int, cz: Int, now: Long): Chunk</ID>
+    <ID>CyclomaticComplexMethod:GroupOrders.kt$GroupOrders$private fun resolve(kind: Kind, order: SquadOrder): kotlin.Pair&lt;SquadOrder, Placement&gt;?</ID>
+    <ID>CyclomaticComplexMethod:GunAttackBehaviour.kt$GunAttackBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>CyclomaticComplexMethod:GunAttackBehaviour.kt$GunAttackBehaviour$private fun clearBlockedFiringLane(entity: NpcEntity, target: LivingEntity, tacticalMovement: Boolean)</ID>
+    <ID>CyclomaticComplexMethod:GunAttackBehaviour.kt$GunAttackBehaviour$private fun collectFiringCandidates( search: FiringSearch, level: ServerLevel, entity: NpcEntity, target: LivingEntity, eyeHeight: Double, hulls: List&lt;AABB&gt;, taken: List&lt;Vec3&gt;, startingScore: Double, ): Boolean</ID>
+    <ID>CyclomaticComplexMethod:GunAttackBehaviour.kt$GunAttackBehaviour$private fun holdFiringPosition(entity: NpcEntity, target: LivingEntity)</ID>
+    <ID>CyclomaticComplexMethod:GunAttackBehaviour.kt$GunAttackBehaviour$private fun navigateCombat(entity: NpcEntity, target: LivingEntity, point: Vec3): Boolean</ID>
+    <ID>CyclomaticComplexMethod:GunAttackBehaviour.kt$GunAttackBehaviour$private fun sweep( level: ServerLevel, entity: NpcEntity, target: LivingEntity, origin: Vec3, eyeHeight: Double, hulls: List&lt;AABB&gt;, taken: List&lt;Vec3&gt;, radius: Double, step: Int, startingScore: Double, ): Vec3?</ID>
+    <ID>CyclomaticComplexMethod:GunAttackBehaviour.kt$GunAttackBehaviour$private fun tickShooting(entity: NpcEntity, target: LivingEntity, gun: HandGun, canShootTarget: Boolean)</ID>
+    <ID>CyclomaticComplexMethod:GunAttackBehaviour.kt$GunAttackBehaviour$private fun tryHoldingAdvance(entity: NpcEntity, target: LivingEntity): Boolean</ID>
+    <ID>CyclomaticComplexMethod:GunAttackBehaviour.kt$GunAttackBehaviour$private fun updateCombatMovement( entity: NpcEntity, target: LivingEntity, squad: Squad?, holding: Boolean, gun: HandGun, clearShot: Boolean, ): CombatMovement</ID>
+    <ID>CyclomaticComplexMethod:HelicopterFlightControllerTest.kt$HelicopterFlightControllerTest.Heli$fun step(cmd: HelicopterFlightController.Command)</ID>
+    <ID>CyclomaticComplexMethod:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>CyclomaticComplexMethod:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$private fun decideMission( entity: NpcEntity, heli: Entity, target: LivingEntity?, home: Vec3, airworthy: Boolean, ): Mission</ID>
+    <ID>CyclomaticComplexMethod:HelicopterRideBehaviour.kt$HelicopterRideBehaviour$private fun benchHoldReason(entity: NpcEntity, heli: Entity): String?</ID>
     <ID>CyclomaticComplexMethod:HtnPlanner.kt$HtnPlanningSession$fun advance(work: Int): PlanningResult</ID>
-    <ID>CyclomaticComplexMethod:OperationFront.kt$OperationFront$fun propose(actors: List&lt;FormationActor&gt;, enemies: List&lt;Point3&gt;, focus: Point3?, priorDuties: Map&lt;UUID, CombatDuty&gt; = emptyMap()): Map&lt;UUID, FrontProposal&gt;</ID>
+    <ID>CyclomaticComplexMethod:InvestigateBehaviour.kt$InvestigateBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>CyclomaticComplexMethod:MapFeed.kt$MapFeed$fun build(server: MinecraftServer, level: net.minecraft.server.level.ServerLevel, viewer: UUID, faction: SquadFaction): CompoundTag</ID>
+    <ID>CyclomaticComplexMethod:MedicHealBehaviour.kt$MedicHealBehaviour$private fun scanCandidate(entity: NpcEntity): LivingEntity?</ID>
+    <ID>CyclomaticComplexMethod:MortarCrewBehaviour.kt$MortarCrewBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>CyclomaticComplexMethod:MortarCrewBehaviour.kt$MortarCrewBehaviour$private fun eligible(entity: NpcEntity): Boolean</ID>
+    <ID>CyclomaticComplexMethod:NativePositionAction.kt$NativePositionAction$override fun revise(spec: ActionSpec&lt;*&gt;, now: Long): Boolean</ID>
+    <ID>CyclomaticComplexMethod:NativePositionAction.kt$NativePositionAction$private fun update(now: Long): ActionUpdate</ID>
+    <ID>CyclomaticComplexMethod:NativeTactics.kt$NativeTactics.World$fun refresh(reference: NpcEntity)</ID>
+    <ID>CyclomaticComplexMethod:NativeTactics.kt$NativeTactics.World$private fun layout(squads: List&lt;Squad&gt;, now: Long, holding: Boolean = false): List&lt;SquadMission&gt;</ID>
+    <ID>CyclomaticComplexMethod:NativeTactics.kt$NativeTactics.World$private fun observeArea(task: AreaControlTask, squads: List&lt;Squad&gt;, now: Long)</ID>
+    <ID>CyclomaticComplexMethod:NpcEntity.kt$NpcEntity$fun hear(at: Vec3, nearbyFootstep: Boolean = false)</ID>
+    <ID>CyclomaticComplexMethod:NpcEntity.kt$NpcEntity$fun resupply(): Boolean</ID>
+    <ID>CyclomaticComplexMethod:NpcEntity.kt$NpcEntity$internal fun orderCenter(): Vec3?</ID>
+    <ID>CyclomaticComplexMethod:NpcEntity.kt$NpcEntity$override fun dropCustomDeathLoot(level: ServerLevel, damageSource: DamageSource, recentlyHit: Boolean)</ID>
+    <ID>CyclomaticComplexMethod:NpcEntity.kt$NpcEntity$override fun readAdditionalSaveData(compound: CompoundTag)</ID>
+    <ID>CyclomaticComplexMethod:NpcPosture.kt$NpcPosture$fun tick()</ID>
+    <ID>CyclomaticComplexMethod:NpcStuckRecovery.kt$NpcStuckRecovery$fun tick()</ID>
+    <ID>CyclomaticComplexMethod:OperationFront.kt$OperationFront$fun propose(actors: List&lt;FormationActor&gt;, enemies: List&lt;Point3&gt;, focus: Point3?, priorDuties: Map&lt;UUID, CombatDuty&gt; = emptyMap(), approach: Double? = null): Map&lt;UUID, FrontProposal&gt;</ID>
     <ID>CyclomaticComplexMethod:OperationTactics.kt$OperationTactics$fun duty(inputs: DutyInputs, fireReach: Double, approachOffset: Double): DutyChoice</ID>
     <ID>CyclomaticComplexMethod:Operations.kt$OperationRegistry$fun command(batch: CommandBatch): OperationCommandResult</ID>
+    <ID>CyclomaticComplexMethod:OrderArrival.kt$OrderArrival$fun tick(server: MinecraftServer)</ID>
+    <ID>CyclomaticComplexMethod:OutOfAmmoBehaviour.kt$OutOfAmmoBehaviour$override fun tick(entity: NpcEntity)</ID>
     <ID>CyclomaticComplexMethod:PlanningAgent.kt$PlanningAgent$fun tick(facts: FactSnapshot, planningWork: Int = 4, executionWork: Int = 64)</ID>
+    <ID>CyclomaticComplexMethod:SeekCoverBehaviour.kt$SeekCoverBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>CyclomaticComplexMethod:SeekCoverBehaviour.kt$SeekCoverBehaviour$private fun tickInCover(entity: NpcEntity, level: ServerLevel)</ID>
+    <ID>CyclomaticComplexMethod:SeekCoverBehaviour.kt$SeekCoverBehaviour$private fun tickMovingToCover(entity: NpcEntity, level: ServerLevel, threat: Vec3)</ID>
+    <ID>CyclomaticComplexMethod:SeekCoverBehaviour.kt$SeekCoverBehaviour$private fun tickPeeking(entity: NpcEntity)</ID>
+    <ID>CyclomaticComplexMethod:Squad.kt$Squad$fun save(): CompoundTag</ID>
+    <ID>CyclomaticComplexMethod:Squad.kt$Squad.Companion$fun load(tag: CompoundTag): Squad</ID>
+    <ID>CyclomaticComplexMethod:SquadAreas.kt$SquadAreas$private fun refresh(level: ServerLevel, world: World)</ID>
+    <ID>CyclomaticComplexMethod:SquadAreas.kt$SquadAreas$private fun validate(level: ServerLevel, world: World)</ID>
+    <ID>CyclomaticComplexMethod:SquadChunkLoader.kt$SquadChunkLoader$fun tick(server: MinecraftServer)</ID>
+    <ID>CyclomaticComplexMethod:SquadDetailsSnapshot.kt$fun buildSquadDetailsSnapshot(manager: SquadManager, server: MinecraftServer, owner: UUID, id: UUID, refresh: Boolean = false): CompoundTag?</ID>
+    <ID>CyclomaticComplexMethod:SquadFormation.kt$SquadFormation$private fun localOffset(shape: Shape, slotIndex: Int, squadSize: Int, spacing: Double = SLOT_SPACING): Vec3</ID>
+    <ID>CyclomaticComplexMethod:SquadManager.kt$SquadManager$fun deployInitialAtBarracks( level: ServerLevel, barracks: BarracksRef, squadId: UUID, cfg: com.sbwnpc.squad.item.SquadToolItem.Config, yaw: Float, ): String?</ID>
+    <ID>CyclomaticComplexMethod:SquadMarch.kt$SquadMarch$fun crossingAhead(npc: NpcEntity): Crossing?</ID>
+    <ID>CyclomaticComplexMethod:SquadMarch.kt$SquadMarch$fun waypointFor(npc: NpcEntity, goal: BlockPos, followFormation: Boolean = true): Waypoint?</ID>
+    <ID>CyclomaticComplexMethod:SquadMarch.kt$SquadMarch$private fun planLong(level: ServerLevel, npc: NpcEntity, march: March, goal: BlockPos, squadName: String)</ID>
+    <ID>CyclomaticComplexMethod:SquadMerging.kt$SquadMerging$fun problem(source: Squad?, destination: Squad?, owner: UUID): String?</ID>
+    <ID>CyclomaticComplexMethod:SquadOrderBehaviour.kt$SquadOrderBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>CyclomaticComplexMethod:SquadTactics.kt$SquadTactics$fun observe(npc: NpcEntity, target: LivingEntity)</ID>
+    <ID>CyclomaticComplexMethod:SquadTargetSensor.kt$SquadTargetSensor$private fun computeDesired(mob: NpcEntity, level: ServerLevel, directTarget: LivingEntity?, reconsider: Boolean): LivingEntity?</ID>
+    <ID>CyclomaticComplexMethod:SquadTargetSensor.kt$SquadTargetSensor$private fun nearestGroundTarget(mob: NpcEntity, level: ServerLevel): LivingEntity?</ID>
+    <ID>CyclomaticComplexMethod:SquadToolItem.kt$SquadToolItem$override fun interactLivingEntity(stack: ItemStack, player: Player, target: LivingEntity, hand: InteractionHand): InteractionResult</ID>
+    <ID>CyclomaticComplexMethod:SquadToolItem.kt$SquadToolItem$override fun useOn(context: UseOnContext): InteractionResult</ID>
+    <ID>CyclomaticComplexMethod:TacticalPositions.kt$TacticalPositions$private fun existingCoverPosition(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, level: ServerLevel, homeRadius: Double, clearance: Double): Vec3?</ID>
+    <ID>CyclomaticComplexMethod:TacticalPositions.kt$TacticalPositions$private fun findReachablePosition(context: SearchContext): Result</ID>
+    <ID>CyclomaticComplexMethod:TacticalPositions.kt$TacticalPositions$private fun prepareSearch(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, level: ServerLevel, homeRadius: Double, overwatch: Boolean, query: Query): SearchContext</ID>
+    <ID>CyclomaticComplexMethod:TacticalPositions.kt$TacticalPositions$private fun routeBatch(context: SearchContext, first: Vec3, destinations: List&lt;Vec3&gt;): List&lt;Vec3&gt;</ID>
+    <ID>CyclomaticComplexMethod:TacticalPositions.kt$TacticalPositions$private fun scoreCandidate(context: SearchContext, raw: Vec3)</ID>
+    <ID>CyclomaticComplexMethod:TacticalSnapshotCollector.kt$TacticalSnapshotCollector$private fun describeMember(npc: NpcEntity, visibleTargetIds: Set&lt;UUID&gt;): TacticalMember</ID>
+    <ID>CyclomaticComplexMethod:TacticalTerrain.kt$TacticalTerrain$fun assess(level: ServerLevel, members: List&lt;NpcEntity&gt;, destination: Vec3?, threat: Vec3?): Assessment</ID>
+    <ID>CyclomaticComplexMethod:TeamAwareness.kt$TeamAwareness$fun sightings(faction: SquadFaction, tick: Long): List&lt;Sighting&gt;</ID>
+    <ID>CyclomaticComplexMethod:Terrain.kt$Terrain$fun feetAt(level: BlockGetter, raw: Vec3, guard: Int = 12, clearance: (Vec3) -&gt; Boolean = { true }): Vec3?</ID>
+    <ID>CyclomaticComplexMethod:VehicleAmmoSupply.kt$VehicleAmmoSupply$fun replenish(npc: NpcEntity): Int</ID>
+    <ID>CyclomaticComplexMethod:VehicleAwareNavigation.kt$VehicleAwareNavigation$override fun createPath(pos: BlockPos, accuracy: Int): Path?</ID>
+    <ID>CyclomaticComplexMethod:VehicleAwareNavigation.kt$VehicleAwareNavigation$private fun choosePath(pos: BlockPos, accuracy: Int): Path?</ID>
+    <ID>CyclomaticComplexMethod:VehicleAwareNavigation.kt$VehicleAwareNodeEvaluator$override fun getNeighbors(output: Array&lt;Node&gt;, node: Node): Int</ID>
+    <ID>CyclomaticComplexMethod:VehicleAwareNavigation.kt$VehicleAwareNodeEvaluator$override fun getPathTypeOfMob(context: PathfindingContext, x: Int, y: Int, z: Int, mob: Mob): PathType</ID>
+    <ID>CyclomaticComplexMethod:VehicleCombatSupportBehaviour.kt$VehicleCombatSupportBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>CyclomaticComplexMethod:VehicleTargeting.kt$VehicleTargeting$fun closestVisibleHostileAircrew(entity: NpcEntity, level: ServerLevel, groundRange: Double): LivingEntity?</ID>
+    <ID>CyclomaticComplexMethod:VehicleTargeting.kt$VehicleTargeting$fun closestVisibleHostileVehicleOccupant( entity: NpcEntity, level: ServerLevel, range: Double, ): LivingEntity?</ID>
+    <ID>CyclomaticComplexMethod:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun boatWaypoint(entity: NpcEntity, vehicle: Entity, landing: Vec3): Vec3?</ID>
+    <ID>CyclomaticComplexMethod:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun driveWaypoint(entity: NpcEntity, vehicle: Entity, home: Vec3): Vec3?</ID>
+    <ID>CyclomaticComplexMethod:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun eligible(entity: NpcEntity, checkGiveup: Boolean): Boolean</ID>
+    <ID>CyclomaticComplexMethod:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun tickBoarding(entity: NpcEntity, level: ServerLevel)</ID>
+    <ID>CyclomaticComplexMethod:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun tickSeeking(entity: NpcEntity, level: ServerLevel)</ID>
+    <ID>CyclomaticComplexMethod:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun tickWaiting(entity: NpcEntity, level: ServerLevel)</ID>
+    <ID>CyclomaticComplexMethod:Withdrawal.kt$Withdrawal$private fun update(level: ServerLevel, squad: Squad, state: State)</ID>
+    <ID>EmptyFunctionBlock:ModMemories.kt$ModMemories${}</ID>
+    <ID>EmptyFunctionBlock:ModSensors.kt$ModSensors${}</ID>
+    <ID>ExplicitItLambdaParameter:MapFeed.kt$MapFeed${ mask, it -&gt; mask or (1 shl it.ordinal) }</ID>
+    <ID>FunctionOnlyReturningConstant:SquadTactics.kt$SquadTactics$fun holdsAfterFailure(entity: NpcEntity): Boolean</ID>
+    <ID>LargeClass:GunAttackBehaviour.kt$GunAttackBehaviour : ExtendedBehaviour</ID>
+    <ID>LargeClass:NativeTactics.kt$NativeTactics$World</ID>
+    <ID>LargeClass:NpcEntity.kt$NpcEntity : PathfinderMobSmartBrainOwner</ID>
+    <ID>LargeClass:VehicleTransportBehaviour.kt$VehicleTransportBehaviour : ExtendedBehaviour</ID>
+    <ID>LongMethod:BlindReturnFireBehaviour.kt$BlindReturnFireBehaviour$override fun tick(entity: NpcEntity)</ID>
     <ID>LongMethod:CellPlanner.kt$CellPlanner.Search$fun step(budget: Int): Boolean</ID>
     <ID>LongMethod:CellPlanner.kt$CellPlanner.Search$private fun visitCell(n: Long, cg: Double)</ID>
-    <ID>LongMethod:OperationFront.kt$OperationFront$fun propose(actors: List&lt;FormationActor&gt;, enemies: List&lt;Point3&gt;, focus: Point3?, priorDuties: Map&lt;UUID, CombatDuty&gt; = emptyMap()): Map&lt;UUID, FrontProposal&gt;</ID>
+    <ID>LongMethod:GunAttackBehaviour.kt$GunAttackBehaviour$private fun tickShooting(entity: NpcEntity, target: LivingEntity, gun: HandGun, canShootTarget: Boolean)</ID>
+    <ID>LongMethod:GunAttackBehaviour.kt$GunAttackBehaviour$private fun updateCombatMovement( entity: NpcEntity, target: LivingEntity, squad: Squad?, holding: Boolean, gun: HandGun, clearShot: Boolean, ): CombatMovement</ID>
+    <ID>LongMethod:HelicopterFlightControllerTest.kt$HelicopterFlightControllerTest.Heli$fun step(cmd: HelicopterFlightController.Command)</ID>
+    <ID>LongMethod:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>LongMethod:MapFeed.kt$MapFeed$fun build(server: MinecraftServer, level: net.minecraft.server.level.ServerLevel, viewer: UUID, faction: SquadFaction): CompoundTag</ID>
+    <ID>LongMethod:MortarCrewBehaviour.kt$MortarCrewBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>LongMethod:NativePositionAction.kt$NativePositionAction$private fun update(now: Long): ActionUpdate</ID>
+    <ID>LongMethod:NativeTactics.kt$NativeTactics.World$fun refresh(reference: NpcEntity)</ID>
+    <ID>LongMethod:NativeTactics.kt$NativeTactics.World$private fun layout(squads: List&lt;Squad&gt;, now: Long, holding: Boolean = false): List&lt;SquadMission&gt;</ID>
+    <ID>LongMethod:NativeTactics.kt$NativeTactics.World$private fun observeArea(task: AreaControlTask, squads: List&lt;Squad&gt;, now: Long)</ID>
+    <ID>LongMethod:NpcEntity.kt$NpcEntity$override fun readAdditionalSaveData(compound: CompoundTag)</ID>
+    <ID>LongMethod:NpcStuckRecovery.kt$NpcStuckRecovery$fun tick()</ID>
+    <ID>LongMethod:OperationFront.kt$OperationFront$fun propose(actors: List&lt;FormationActor&gt;, enemies: List&lt;Point3&gt;, focus: Point3?, priorDuties: Map&lt;UUID, CombatDuty&gt; = emptyMap(), approach: Double? = null): Map&lt;UUID, FrontProposal&gt;</ID>
+    <ID>LongMethod:OutOfAmmoBehaviour.kt$OutOfAmmoBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>LongMethod:SeekCoverBehaviour.kt$SeekCoverBehaviour$private fun tickMovingToCover(entity: NpcEntity, level: ServerLevel, threat: Vec3)</ID>
+    <ID>LongMethod:SquadDetailsSnapshot.kt$fun buildSquadDetailsSnapshot(manager: SquadManager, server: MinecraftServer, owner: UUID, id: UUID, refresh: Boolean = false): CompoundTag?</ID>
+    <ID>LongMethod:SquadMarch.kt$SquadMarch$private fun planLong(level: ServerLevel, npc: NpcEntity, march: March, goal: BlockPos, squadName: String)</ID>
+    <ID>LongMethod:SquadOrderBehaviour.kt$SquadOrderBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>LongMethod:TacticalPositions.kt$TacticalPositions$private fun findReachablePosition(context: SearchContext): Result</ID>
+    <ID>LongMethod:TacticalPositions.kt$TacticalPositions$private fun prepareSearch(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, level: ServerLevel, homeRadius: Double, overwatch: Boolean, query: Query): SearchContext</ID>
+    <ID>LongMethod:TacticalPositions.kt$TacticalPositions$private fun scoreCandidate(context: SearchContext, raw: Vec3)</ID>
+    <ID>LongMethod:VehicleAwareNavigation.kt$VehicleAwareNavigation$private fun choosePath(pos: BlockPos, accuracy: Int): Path?</ID>
+    <ID>LongMethod:VehicleCombatSupportBehaviour.kt$VehicleCombatSupportBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>LongMethod:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun driveWaypoint(entity: NpcEntity, vehicle: Entity, home: Vec3): Vec3?</ID>
+    <ID>LongMethod:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun tickBoarding(entity: NpcEntity, level: ServerLevel)</ID>
+    <ID>LongMethod:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun tickSeeking(entity: NpcEntity, level: ServerLevel)</ID>
     <ID>LongParameterList:AreaControlClock.kt$AreaControlClock$(now: Long, loaded: Boolean, occupied: Boolean, inspected: Boolean, threat: Boolean, incoming: Boolean)</ID>
     <ID>LongParameterList:AttackPhaseTest.kt$AttackPhaseTest$(ready: Int, enemies: Int, peak: Int = enemies, quiet: Long = 0, engaged: Long = 400, silent: Long = 0, occupied: Boolean = false, threats: Int = 0, aborted: Boolean = false, peakThreats: Int = threats)</ID>
-    <ID>LongParameterList:AttackProgress.kt$AttackProgress$(now: Long, contactSeen: Boolean, incoming: Boolean, readyShooters: Int, enemiesAtObjective: Int, occupied: Boolean, threatsNearby: Int)</ID>
+    <ID>LongParameterList:AttackProgress.kt$AttackProgress$(now: Long, contactSeen: Boolean, incoming: Boolean, readyShooters: Int, enemiesAtObjective: Int, occupied: Boolean, threatsNearby: Int, sectorsHeld: Boolean = true)</ID>
     <ID>LongParameterList:AttackProgressTest.kt$AttackProgressTest$(now: Long, ready: Int, enemies: Int, contact: Boolean = enemies &gt; 0, incoming: Boolean = false, occupied: Boolean = false, threats: Int = enemies)</ID>
+    <ID>LongParameterList:BoatTrips.kt$BoatTrips$(npc: NpcEntity, boat: Entity, goal: Vec3, search: CellPlanner.Search, decision: Decision, squadName: String)</ID>
     <ID>LongParameterList:CellPlanner.kt$CellPlanner.Route$( val route: List&lt;Vec3&gt;, /** Every column of the way, a block or so apart — for walking it in a column of men. */ val trail: List&lt;Vec3&gt;, val landing: Vec3, val shore: Vec3, val length: Double, val complete: Boolean, private val pace: Double, )</ID>
+    <ID>LongParameterList:CombatPositionSafety.kt$CombatPositionSafety$(origin: Vec3, from: Vec3, to: Vec3, threat: Vec3, clearance: Double, tolerance: Double = PATH_NODE_TOLERANCE)</ID>
+    <ID>LongParameterList:DroneFlightController.kt$DroneFlightController$(pos: Vec3, yaw: Float, horizontalSpeed: Double, target: Vec3, desiredY: Double, cruiseSpeed: Double)</ID>
     <ID>LongParameterList:Facts.kt$FactSnapshot$(key: FactKey&lt;T&gt;, value: T, observedAt: Long = now, availableAt: Long = observedAt, expiresAt: Long = Long.MAX_VALUE, source: String = "observation")</ID>
+    <ID>LongParameterList:FriendlyFireGuard.kt$FriendlyFireGuard$( shooter: NpcEntity, aimPoint: Vec3, spread: Double, impactPoint: Vec3, blastRadius: Double, from: Vec3 = shooter.eyePosition, )</ID>
     <ID>LongParameterList:Grenades.kt$Grenades$(thrower: LivingEntity, level: ServerLevel, target: Vec3, targetVelocity: Vec3, kind: GrenadeKind, nearTarget: Double)</ID>
+    <ID>LongParameterList:GroupOrders.kt$GroupOrders$(level: ServerLevel, mgr: SquadManager, routes: RouteManager, owner: UUID, squadIds: List&lt;UUID&gt;, points: List&lt;kotlin.Pair&lt;Int, Int&gt;&gt;)</ID>
+    <ID>LongParameterList:GroupOrders.kt$GroupOrders$(level: ServerLevel, mgr: SquadManager, selected: List&lt;Squad&gt;, order: SquadOrder, x: Int, z: Int)</ID>
+    <ID>LongParameterList:GroupOrders.kt$GroupOrders$(level: ServerLevel, mgr: SquadManager, squadIds: List&lt;UUID&gt;, order: SquadOrder, x: Int, z: Int)</ID>
+    <ID>LongParameterList:GunAttackBehaviour.kt$GunAttackBehaviour$( entity: NpcEntity, target: LivingEntity, squad: Squad?, holding: Boolean, gun: HandGun, clearShot: Boolean, )</ID>
+    <ID>LongParameterList:GunAttackBehaviour.kt$GunAttackBehaviour$( level: ServerLevel, entity: NpcEntity, target: LivingEntity, origin: Vec3, eyeHeight: Double, hulls: List&lt;AABB&gt;, taken: List&lt;Vec3&gt;, radius: Double, step: Int, startingScore: Double, )</ID>
+    <ID>LongParameterList:GunAttackBehaviour.kt$GunAttackBehaviour$( level: ServerLevel, entity: NpcEntity, target: LivingEntity, pos: Vec3, eyeHeight: Double, vehicleHulls: List&lt;AABB&gt;, )</ID>
+    <ID>LongParameterList:GunAttackBehaviour.kt$GunAttackBehaviour$( search: FiringSearch, level: ServerLevel, entity: NpcEntity, target: LivingEntity, eyeHeight: Double, hulls: List&lt;AABB&gt;, taken: List&lt;Vec3&gt;, startingScore: Double, )</ID>
+    <ID>LongParameterList:Hearing.kt$Hearing$(level: ServerLevel, at: Vec3, radius: Double, source: Entity?, kind: String, footstep: Boolean = false, allSides: Boolean = false)</ID>
+    <ID>LongParameterList:HelicopterFlightController.kt$HelicopterFlightController$( pos: Vec3, yaw: Float, pitch: Float, roll: Float, rollRate: Float, velocity: Vec3, target: Vec3, desiredY: Double, cruiseSpeed: Double, tuning: Tuning, facing: Vec3? = null, )</ID>
+    <ID>LongParameterList:HelicopterFlightControllerTest.kt$HelicopterFlightControllerTest.Heli$( var pos: Vec3, var yaw: Float, private val increment: Float = 0.8f, private val decrement: Float = 0.8f, private val liftSpeed: Float = 1f, private val yawSpeed: Float = 0.85f, private val pitchSpeed: Float = 0.75f, private val rollSpeed: Float = 0.6f, )</ID>
+    <ID>LongParameterList:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$( level: ServerLevel, heli: Entity, station: Vec3, facing: Vec3?, speed: Double, rollRate: Float, clearance: Double, )</ID>
+    <ID>LongParameterList:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour.Mission$( val station: Vec3, val facing: Vec3?, val landOnArrival: Boolean, val speed: Double, /** What "am I already where I belong?" is measured against. For a patrol that is the * centre of the area, not the point on the circle being flown to next — otherwise a * helicopter parked dead on its own objective still sees 70 blocks to the next waypoint * and scrambles the moment it is deployed. */ val anchor: Vec3 = station, /** How high over the terrain this leg is flown. A patrol sits low enough to see and be * seen; anything else keeps the safe margin. */ val clearance: Double = CRUISE_CLEARANCE, val patrol: Boolean = false, val attackOrbit: Boolean = false, )</ID>
     <ID>LongParameterList:HtnPlanner.kt$HtnPlanningSession$( private val domain: HtnDomain, private val owner: PlanOwner, root: TaskCall&lt;*&gt;, private val facts: FactSnapshot, private val maxExpansions: Int = 4096, private val maxDepth: Int = 64, private val event: (PlanningEvent) -&gt; Unit = {}, )</ID>
     <ID>LongParameterList:NpcClass.kt$NpcClass$( val weaponPool: List&lt;ResourceLocation&gt;, val shootDistanceMultiplier: Double = 1.0, val accuracyMultiplier: Double = 1.0, val speedMultiplier: Double = 1.4, // "everyone else" default per user request — was the one global value before /** Rear offset from a contacted enemy; ordinary order movement still reaches its objective. */ val attackStandoffDistance: Double = 0.0, /** Movement clearance; short-range assault weapons need to approach closer than rifles. */ val combatClearance: Double = 48.0, /** Most primaries can fire at shared contacts beyond detection range. */ val maxFireDistance: Double = Double.POSITIVE_INFINITY, )</ID>
-    <ID>LongParameterList:OperationTactics.kt$OperationTactics$(phase: AttackPhase, objective: Point3, movers: List&lt;UUID&gt;, members: List&lt;AttackMember&gt;, threats: List&lt;Point3&gt;, previousClearing: Set&lt;UUID&gt;, origins: Map&lt;UUID, Point3&gt; = emptyMap())</ID>
+    <ID>LongParameterList:OperationTactics.kt$OperationTactics$(phase: AttackPhase, objective: Point3, movers: List&lt;UUID&gt;, members: List&lt;AttackMember&gt;, threats: List&lt;Point3&gt;, previousClearing: Set&lt;UUID&gt;, origins: Map&lt;UUID, Point3&gt; = emptyMap(), standoffFrom: List&lt;Point3&gt; = threats)</ID>
     <ID>LongParameterList:OperationTacticsTest.kt$OperationTacticsTest$(order: TacticalOrder = TacticalOrder.ATTACK, proposal: FrontProposal = FrontProposal(CombatDuty.FIRE, Point3(60.0, 64.0, 100.0), null), inContact: Boolean = true, scout: Boolean = false, observer: Boolean = false, reachedMove: Boolean = false, wasFiring: Boolean = false, elsewhere: Boolean = false)</ID>
     <ID>LongParameterList:Payloads.kt$ConfigureToolPayload$( val cls: Int, val rank: Int, val faction: Int, val preset: Int, val vehicle: Boolean, val vehicleModel: Int, val tankModel: Int, val heliModel: Int, )</ID>
+    <ID>LongParameterList:SafeSpawn.kt$SafeSpawn$( level: ServerLevel, preferredX: Double, preferredZ: Double, aroundY: Int, dimensions: EntityDimensions, radius: Double = DEFAULT_CLEAR_RADIUS, requireSolidFloor: Boolean = false, acceptsPosition: (Vec3) -&gt; Boolean = { true }, )</ID>
+    <ID>LongParameterList:SafeSpawn.kt$SafeSpawn$( level: ServerLevel, x: Double, y: Double, z: Double, dimensions: EntityDimensions, requireSolidFloor: Boolean, )</ID>
+    <ID>LongParameterList:SafeSpawn.kt$SafeSpawn$( level: ServerLevel, x: Double, z: Double, aroundY: Int, dimensions: EntityDimensions, radius: Double = STANDING_RADIUS, requireSolidFloor: Boolean = false, acceptsPosition: (Vec3) -&gt; Boolean = { true }, )</ID>
+    <ID>LongParameterList:SafeSpawn.kt$SafeSpawn$( level: ServerLevel, x: Double, z: Double, aroundY: Int, dimensions: EntityDimensions, range: Int = SEARCH_RANGE, requireSolidFloor: Boolean = false, )</ID>
+    <ID>LongParameterList:SeekCoverBehaviour.kt$SeekCoverBehaviour$(entity: NpcEntity, level: ServerLevel, cover: BlockPos, aim: Vec3, target: LivingEntity?, blind: Boolean)</ID>
+    <ID>LongParameterList:Sightline.kt$Sightline$( level: ServerLevel, from: Vec3, to: Vec3, passer: Entity, hulls: List&lt;AABB&gt;, spreadDegrees: Double = 0.0, )</ID>
+    <ID>LongParameterList:Squad.kt$Squad$( val id: UUID, var name: String, var faction: SquadFaction, var order: SquadOrder, val members: MutableList&lt;UUID&gt;, var objective: BlockPos?, /** Entity the squad is focused on: attack it (ATTACK) or guard it (DEFEND). */ var focusEntity: UUID?, val owner: UUID, /** Barracks this squad resupplies from, if any. */ var barracks: BarracksRef? = null, /** Classes the squad was formed/last topped up with. */ var originalComposition: List&lt;NpcClass&gt; = emptyList(), /** Legacy recruitment setting retained in saved data; new soldiers start as RECRUIT. */ var rank: NpcRank = NpcRank.DEFAULT, /** Patrol route this squad walks when on PATROL order, if any — see `Route`/`SquadOrderBehaviour`. */ var routeId: UUID? = null, /** The fixed rally point for the current MOVE command. */ var moveAssembly: BlockPos? = null, /** True once every member has reached its slot at [moveAssembly]. */ var moveFormationReady: Boolean = false, )</ID>
+    <ID>LongParameterList:SquadDeployment.kt$SquadDeployment$( level: ServerLevel, center: BlockPos, facingYaw: Float, composition: List&lt;NpcClass&gt;, rank: NpcRank, faction: SquadFaction, difficulty: net.minecraft.world.DifficultyInstance, )</ID>
+    <ID>LongParameterList:SquadDeployment.kt$SquadDeployment$( level: ServerLevel, center: BlockPos, facingYaw: Float, composition: List&lt;NpcClass&gt;, rank: NpcRank, faction: SquadFaction, difficulty: net.minecraft.world.DifficultyInstance, spacing: Double = 2.0, )</ID>
+    <ID>LongParameterList:SquadDeployment.kt$SquadDeployment$( level: ServerLevel, center: BlockPos, yaw: Float, faction: SquadFaction, crew: List&lt;NpcEntity&gt;, model: HelicopterModel, )</ID>
+    <ID>LongParameterList:SquadDeployment.kt$SquadDeployment$( level: ServerLevel, center: BlockPos, yaw: Float, faction: SquadFaction, crew: List&lt;NpcEntity&gt;, model: TankModel, )</ID>
+    <ID>LongParameterList:SquadDeployment.kt$SquadDeployment$( level: ServerLevel, center: BlockPos, yaw: Float, faction: SquadFaction, model: TransportVehicle, squad: List&lt;NpcEntity&gt;, )</ID>
+    <ID>LongParameterList:SquadFormation.kt$SquadFormation$( mob: NpcEntity, anchor: Vec3, fallbackFacing: Vec3, arrived: Boolean, spacing: Double = SLOT_SPACING, combat: Boolean = false, )</ID>
+    <ID>LongParameterList:SquadFormation.kt$SquadFormation$( order: SquadOrder, arrived: Boolean, cls: NpcClass, slotIndex: Int, squadSize: Int, spacing: Double = SLOT_SPACING, combat: Boolean = false, )</ID>
+    <ID>LongParameterList:SquadManager.kt$SquadManager$( level: ServerLevel, owner: UUID, faction: SquadFaction, members: List&lt;UUID&gt;, originalComposition: List&lt;NpcClass&gt;? = null, rank: NpcRank? = null, )</ID>
+    <ID>LongParameterList:SquadManager.kt$SquadManager$(level: ServerLevel, squad: Squad, slot: RecruitmentRoster.Slot, npc: NpcEntity, spot: Vec3, yaw: Float)</ID>
+    <ID>LongParameterList:TacticalPositions.kt$TacticalPositions$(context: SearchContext, candidate: Vec3, exposure: Int, firing: Boolean, mustShoot: Boolean, nearbyCover: Boolean)</ID>
+    <ID>LongParameterList:TacticalPositions.kt$TacticalPositions$(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, level: ServerLevel, homeRadius: Double, clearance: Double)</ID>
+    <ID>LongParameterList:TacticalPositions.kt$TacticalPositions$(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, level: ServerLevel, homeRadius: Double, overwatch: Boolean, query: Query)</ID>
+    <ID>LongParameterList:TacticalTargetSelection.kt$TacticalTargetSelection$(candidates: List&lt;T&gt;, current: T?, cursor: Int, assess: (T) -&gt; Opportunity, allocate: (List&lt;T&gt;) -&gt; T?, reconsiderCurrent: Boolean = false)</ID>
+    <ID>MagicNumber:Airspace.kt$Airspace$1.0e-3</ID>
+    <ID>MagicNumber:Airspace.kt$Airspace$1.0e-6</ID>
+    <ID>MagicNumber:AmmoRetreat.kt$AmmoRetreat$12.0</ID>
+    <ID>MagicNumber:AntiDroneBehaviour.kt$AntiDroneBehaviour$0.5</ID>
+    <ID>MagicNumber:AntiDroneBehaviour.kt$AntiDroneBehaviour$1.0e-6</ID>
+    <ID>MagicNumber:AntiDroneBehaviour.kt$AntiDroneBehaviour$1200.0</ID>
+    <ID>MagicNumber:AntiDroneBehaviour.kt$AntiDroneBehaviour$50</ID>
+    <ID>MagicNumber:AntiDroneBehaviour.kt$AntiDroneBehaviour$50L</ID>
+    <ID>MagicNumber:AttackAmmoWithdrawal.kt$AttackAmmoWithdrawal$0.01</ID>
+    <ID>MagicNumber:AttackAmmoWithdrawal.kt$AttackAmmoWithdrawal$12.0</ID>
+    <ID>MagicNumber:AttackAmmoWithdrawal.kt$AttackAmmoWithdrawal$32</ID>
+    <ID>MagicNumber:AttackAmmoWithdrawal.kt$AttackAmmoWithdrawal$4</ID>
+    <ID>MagicNumber:AttackAmmoWithdrawal.kt$AttackAmmoWithdrawal$4.0</ID>
+    <ID>MagicNumber:AttackAmmoWithdrawal.kt$AttackAmmoWithdrawal$8.0</ID>
+    <ID>MagicNumber:AutomaticBurst.kt$AutomaticBurst$11</ID>
+    <ID>MagicNumber:AutomaticBurst.kt$AutomaticBurst$12</ID>
+    <ID>MagicNumber:AutomaticBurst.kt$AutomaticBurst$16</ID>
+    <ID>MagicNumber:AutomaticBurst.kt$AutomaticBurst$20</ID>
+    <ID>MagicNumber:AutomaticBurst.kt$AutomaticBurst$3</ID>
+    <ID>MagicNumber:AutomaticBurst.kt$AutomaticBurst$6</ID>
+    <ID>MagicNumber:BarracksBlock.kt$BarracksBlock$12.0f</ID>
+    <ID>MagicNumber:BarracksBlock.kt$BarracksBlock$6.0f</ID>
+    <ID>MagicNumber:BarracksBlockEntity.kt$BarracksBlockEntity.Companion$20</ID>
+    <ID>MagicNumber:BarracksBlockEntity.kt$BarracksBlockEntity.Companion$20L</ID>
+    <ID>MagicNumber:BenchAttackOrbit.kt$BenchAttackOrbit$3</ID>
+    <ID>MagicNumber:BenchAttackOrbit.kt$BenchAttackOrbit$80f</ID>
+    <ID>MagicNumber:BenchAttackOrbit.kt$BenchAttackOrbit$90f</ID>
+    <ID>MagicNumber:BlindReturnFireBehaviour.kt$BlindReturnFireBehaviour$1200.0</ID>
+    <ID>MagicNumber:BlindReturnFireBehaviour.kt$BlindReturnFireBehaviour$20</ID>
+    <ID>MagicNumber:BlindReturnFireBehaviour.kt$BlindReturnFireBehaviour$50</ID>
+    <ID>MagicNumber:BlindReturnFireBehaviour.kt$BlindReturnFireBehaviour$50.0</ID>
+    <ID>MagicNumber:BlindReturnFireBehaviour.kt$BlindReturnFireBehaviour$9.0</ID>
+    <ID>MagicNumber:BlindReturnFireBehaviour.kt$BlindReturnFireBehaviour$90f</ID>
+    <ID>MagicNumber:BoatTrips.kt$BoatTrips$15</ID>
+    <ID>MagicNumber:BoatTrips.kt$BoatTrips$32.0</ID>
+    <ID>MagicNumber:BoatTrips.kt$BoatTrips$4</ID>
+    <ID>MagicNumber:BoatTrips.kt$BoatTrips$8</ID>
     <ID>MagicNumber:CellPlanner.kt$CellPlanner$3</ID>
     <ID>MagicNumber:CellPlanner.kt$CellPlanner.Search$0.5</ID>
     <ID>MagicNumber:CellPlanner.kt$CellPlanner.Search$1e-9</ID>
+    <ID>MagicNumber:CombatPathRetry.kt$CombatPathRetry$0.01</ID>
+    <ID>MagicNumber:CombatPathRetry.kt$CombatPathRetry$0.25</ID>
+    <ID>MagicNumber:CombatPathRetry.kt$CombatPathRetry$10</ID>
+    <ID>MagicNumber:CombatPositionSafety.kt$CombatPositionSafety$0.5</ID>
+    <ID>MagicNumber:CombatPositionSafety.kt$CombatPositionSafety$1.0e-9</ID>
+    <ID>MagicNumber:CombatPositionSafety.kt$CombatPositionSafety$20</ID>
+    <ID>MagicNumber:CoverPeekSearch.kt$CoverPeekSearch$0.5</ID>
+    <ID>MagicNumber:CoverPeekSearch.kt$CoverPeekSearch$1.5</ID>
+    <ID>MagicNumber:CoverPeekSearch.kt$CoverPeekSearch$16.0</ID>
+    <ID>MagicNumber:CoverPeekSearch.kt$CoverPeekSearch$2.5</ID>
+    <ID>MagicNumber:CoverPeekSearch.kt$CoverPeekSearch$3.0</ID>
+    <ID>MagicNumber:CoverPeekSearch.kt$CoverPeekSearch$3.5</ID>
+    <ID>MagicNumber:CoverPeekSearch.kt$CoverPeekSearch$9.0</ID>
+    <ID>MagicNumber:CoverSearch.kt$CoverSearch$0.5</ID>
+    <ID>MagicNumber:CoverSearch.kt$CoverSearch$1.5</ID>
+    <ID>MagicNumber:CoverSearch.kt$CoverSearch$4</ID>
+    <ID>MagicNumber:CoverSearch.kt$CoverSearch$4.0</ID>
+    <ID>MagicNumber:CoverSearch.kt$CoverSearch$64</ID>
+    <ID>MagicNumber:CoverSearch.kt$CoverSearch$7</ID>
+    <ID>MagicNumber:DeathSites.kt$DeathSites$0.5</ID>
+    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$0.2</ID>
+    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$0.9</ID>
+    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$1.5</ID>
+    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$1000.0</ID>
+    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$2</ID>
+    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$2.5</ID>
+    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$24.0</ID>
+    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$32</ID>
+    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$4</ID>
+    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$5.0</ID>
+    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$6.0</ID>
+    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$7</ID>
+    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$8</ID>
+    <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$8.0</ID>
+    <ID>MagicNumber:Diplomacy.kt$Diplomacy$20</ID>
+    <ID>MagicNumber:Diplomacy.kt$Diplomacy$60</ID>
     <ID>MagicNumber:Driving.kt$Driving$0.5</ID>
+    <ID>MagicNumber:DroneFlightController.kt$DroneFlightController$0.5</ID>
+    <ID>MagicNumber:DroneFlightController.kt$DroneFlightController$1.4</ID>
+    <ID>MagicNumber:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$0.5</ID>
+    <ID>MagicNumber:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$1.5</ID>
+    <ID>MagicNumber:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$1e-3</ID>
+    <ID>MagicNumber:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$1e-6</ID>
+    <ID>MagicNumber:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$8</ID>
+    <ID>MagicNumber:DryGround.kt$DryGround$4</ID>
+    <ID>MagicNumber:DryGround.kt$DryGround$8</ID>
     <ID>MagicNumber:Execution.kt$ResourceLeases$20.0</ID>
+    <ID>MagicNumber:ExperienceAwards.kt$ExperienceAwards$0.0025</ID>
+    <ID>MagicNumber:ExperienceAwards.kt$ExperienceAwards$0.25</ID>
+    <ID>MagicNumber:ExperienceAwards.kt$ExperienceAwards$0.5</ID>
+    <ID>MagicNumber:ExperienceAwards.kt$ExperienceAwards$0.75</ID>
+    <ID>MagicNumber:ExperienceAwards.kt$ExperienceAwards$100.0</ID>
+    <ID>MagicNumber:ExperienceAwards.kt$ExperienceAwards$20</ID>
+    <ID>MagicNumber:ExperienceAwards.kt$ExperienceAwards$30.0</ID>
+    <ID>MagicNumber:ExperienceAwards.kt$ExperienceAwards$300.0</ID>
+    <ID>MagicNumber:ExperienceAwards.kt$ExperienceAwards$40</ID>
+    <ID>MagicNumber:ExperienceAwards.kt$ExperienceAwards$60</ID>
+    <ID>MagicNumber:ExperienceLedger.kt$ExperienceLedger$0.7</ID>
+    <ID>MagicNumber:FailedWalkingSteps.kt$FailedWalkingSteps$200</ID>
+    <ID>MagicNumber:FailedWalkingSteps.kt$FailedWalkingSteps$32</ID>
+    <ID>MagicNumber:FiringCone.kt$FiringCone$0.0172275</ID>
+    <ID>MagicNumber:FiringCone.kt$FiringCone$0.5</ID>
+    <ID>MagicNumber:FiringCone.kt$FiringCone$1.0e-6</ID>
+    <ID>MagicNumber:FiringCone.kt$FiringCone$3.0</ID>
+    <ID>MagicNumber:FiringObstruction.kt$FiringObstruction$160</ID>
+    <ID>MagicNumber:FiringObstruction.kt$FiringObstruction$80</ID>
+    <ID>MagicNumber:FiringOpportunity.kt$FiringOpportunity$128.0</ID>
+    <ID>MagicNumber:FiringPostArrival.kt$FiringPostArrival$0.25</ID>
+    <ID>MagicNumber:FiringSpots.kt$FiringSpots$4</ID>
+    <ID>MagicNumber:FriendlyFireGuard.kt$FriendlyFireGuard$1.0e-6</ID>
+    <ID>MagicNumber:FriendlyFireGuard.kt$FriendlyFireGuard$20.0</ID>
+    <ID>MagicNumber:GrenadeEvadeBehaviour.kt$GrenadeEvadeBehaviour$1e-4</ID>
+    <ID>MagicNumber:GrenadeEvadeBehaviour.kt$GrenadeEvadeBehaviour$4.0</ID>
+    <ID>MagicNumber:GrenadeUseBehaviour.kt$GrenadeUseBehaviour$100</ID>
+    <ID>MagicNumber:GrenadeUseBehaviour.kt$GrenadeUseBehaviour$6.0</ID>
     <ID>MagicNumber:GroundMap.kt$GroundMap$0.5</ID>
     <ID>MagicNumber:GroundMap.kt$GroundMap$15</ID>
     <ID>MagicNumber:GroundMap.kt$GroundMap$16</ID>
     <ID>MagicNumber:GroundMap.kt$GroundMap$256</ID>
     <ID>MagicNumber:GroundMap.kt$GroundMap$4</ID>
+    <ID>MagicNumber:GroundRouteProgress.kt$GroundRouteProgress$1e-6</ID>
+    <ID>MagicNumber:GroundRouteProgress.kt$GroundRouteProgress$4</ID>
+    <ID>MagicNumber:GroundTravelProgress.kt$GroundTravelProgress$0xFFFFFFFFL</ID>
+    <ID>MagicNumber:GroundTravelProgress.kt$GroundTravelProgress$1200</ID>
+    <ID>MagicNumber:GroundTravelProgress.kt$GroundTravelProgress$32</ID>
+    <ID>MagicNumber:GroundTravelProgress.kt$GroundTravelProgress$4</ID>
+    <ID>MagicNumber:GroundTravelProgress.kt$GroundTravelProgress$8192</ID>
+    <ID>MagicNumber:GroupOrders.kt$GroupOrders$15</ID>
+    <ID>MagicNumber:GroupOrders.kt$GroupOrders$4</ID>
+    <ID>MagicNumber:GunAttackBehaviour.kt$GunAttackBehaviour$0.3</ID>
+    <ID>MagicNumber:GunAttackBehaviour.kt$GunAttackBehaviour$0.5</ID>
+    <ID>MagicNumber:GunAttackBehaviour.kt$GunAttackBehaviour$1.5f</ID>
+    <ID>MagicNumber:GunAttackBehaviour.kt$GunAttackBehaviour$1000</ID>
+    <ID>MagicNumber:GunAttackBehaviour.kt$GunAttackBehaviour$12</ID>
+    <ID>MagicNumber:GunAttackBehaviour.kt$GunAttackBehaviour$128.0</ID>
+    <ID>MagicNumber:GunAttackBehaviour.kt$GunAttackBehaviour$16</ID>
+    <ID>MagicNumber:GunAttackBehaviour.kt$GunAttackBehaviour$24</ID>
+    <ID>MagicNumber:GunAttackBehaviour.kt$GunAttackBehaviour$30f</ID>
+    <ID>MagicNumber:GunAttackBehaviour.kt$GunAttackBehaviour$4.0</ID>
+    <ID>MagicNumber:GunAttackBehaviour.kt$GunAttackBehaviour$50.0</ID>
+    <ID>MagicNumber:GunAttackBehaviour.kt$GunAttackBehaviour$60.0</ID>
+    <ID>MagicNumber:GunAttackBehaviour.kt$GunAttackBehaviour$8</ID>
+    <ID>MagicNumber:GunAttackBehaviour.kt$GunAttackBehaviour.FiringSearch$16.0</ID>
+    <ID>MagicNumber:GunAttackBehaviour.kt$GunAttackBehaviour.FiringSearch$4.0</ID>
+    <ID>MagicNumber:Hearing.kt$Hearing$1024</ID>
+    <ID>MagicNumber:Hearing.kt$Hearing$512</ID>
+    <ID>MagicNumber:Hearing.kt$Hearing$8</ID>
+    <ID>MagicNumber:HelicopterAttackCompletion.kt$HelicopterAttackCompletion$200</ID>
+    <ID>MagicNumber:HelicopterFlightController.kt$HelicopterFlightController$0.2f</ID>
+    <ID>MagicNumber:HelicopterFlightController.kt$HelicopterFlightController$0.5f</ID>
+    <ID>MagicNumber:HelicopterFlightController.kt$HelicopterFlightController$1.0e-6</ID>
+    <ID>MagicNumber:HelicopterFlightController.kt$HelicopterFlightController$1.5</ID>
+    <ID>MagicNumber:HelicopterFlightController.kt$HelicopterFlightController$1.5f</ID>
+    <ID>MagicNumber:HelicopterFlightController.kt$HelicopterFlightController$10f</ID>
+    <ID>MagicNumber:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$1e-4</ID>
+    <ID>MagicNumber:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$1e-6</ID>
+    <ID>MagicNumber:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$20</ID>
+    <ID>MagicNumber:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$200</ID>
+    <ID>MagicNumber:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$24.0</ID>
+    <ID>MagicNumber:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$3</ID>
+    <ID>MagicNumber:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$8</ID>
+    <ID>MagicNumber:HelicopterRideBehaviour.kt$HelicopterRideBehaviour$0.5</ID>
+    <ID>MagicNumber:HelicopterRideBehaviour.kt$HelicopterRideBehaviour$1200.0</ID>
+    <ID>MagicNumber:HelicopterRideBehaviour.kt$HelicopterRideBehaviour$50</ID>
+    <ID>MagicNumber:HelicopterRideBehaviour.kt$HelicopterRideBehaviour$50L</ID>
     <ID>MagicNumber:HtnPlanner.kt$HtnPlanningSession$31</ID>
     <ID>MagicNumber:HtnPlanner.kt$HtnPlanningSession$32</ID>
+    <ID>MagicNumber:IncomingFire.kt$IncomingFire$0.12</ID>
+    <ID>MagicNumber:IncomingFire.kt$IncomingFire$0.15</ID>
+    <ID>MagicNumber:IncomingFire.kt$IncomingFire$0.7</ID>
+    <ID>MagicNumber:IncomingFire.kt$IncomingFire$10</ID>
+    <ID>MagicNumber:IncomingFire.kt$IncomingFire$160</ID>
+    <ID>MagicNumber:IncomingFire.kt$IncomingFire$3</ID>
+    <ID>MagicNumber:IncomingFire.kt$IncomingFire$60</ID>
+    <ID>MagicNumber:IncomingFire.kt$IncomingFire$600</ID>
+    <ID>MagicNumber:IncomingFire.kt$IncomingFire$96.0</ID>
+    <ID>MagicNumber:IncomingFire.kt$IncomingFire.Companion$1.0e-6</ID>
+    <ID>MagicNumber:IncomingFire.kt$IncomingFire.Companion$12.0</ID>
+    <ID>MagicNumber:InvestigateBehaviour.kt$InvestigateBehaviour$8</ID>
+    <ID>MagicNumber:MarchProgress.kt$MarchProgress$33</ID>
+    <ID>MagicNumber:MedicHealBehaviour.kt$MedicHealBehaviour$0.3</ID>
+    <ID>MagicNumber:MedicHealBehaviour.kt$MedicHealBehaviour$0.5</ID>
+    <ID>MagicNumber:MedicHealBehaviour.kt$MedicHealBehaviour$1.5f</ID>
+    <ID>MagicNumber:MedicHealBehaviour.kt$MedicHealBehaviour$100</ID>
+    <ID>MagicNumber:MedicHealBehaviour.kt$MedicHealBehaviour$12</ID>
+    <ID>MagicNumber:MedicHealBehaviour.kt$MedicHealBehaviour$30f</ID>
+    <ID>MagicNumber:MedicHealBehaviour.kt$MedicHealBehaviour$40</ID>
+    <ID>MagicNumber:MortarClaims.kt$MortarClaims$36.0</ID>
+    <ID>MagicNumber:MortarClaims.kt$MortarClaims$6.25</ID>
+    <ID>MagicNumber:MortarCrewBehaviour.kt$MortarCrewBehaviour$0.5</ID>
+    <ID>MagicNumber:MortarCrewBehaviour.kt$MortarCrewBehaviour$1.8</ID>
+    <ID>MagicNumber:MortarCrewBehaviour.kt$MortarCrewBehaviour$2.5</ID>
+    <ID>MagicNumber:MortarCrewBehaviour.kt$MortarCrewBehaviour$20</ID>
+    <ID>MagicNumber:MortarCrewBehaviour.kt$MortarCrewBehaviour$25.0</ID>
+    <ID>MagicNumber:MortarCrewBehaviour.kt$MortarCrewBehaviour$3.0</ID>
+    <ID>MagicNumber:MortarCrewBehaviour.kt$MortarCrewBehaviour$8</ID>
+    <ID>MagicNumber:MortarDeployment.kt$MortarDeployment$90.0</ID>
+    <ID>MagicNumber:NativePositionAction.kt$NativeAssignment$32.0</ID>
+    <ID>MagicNumber:NativePositionAction.kt$NativePositionAction$0.5</ID>
+    <ID>MagicNumber:NativePositionAction.kt$NativePositionAction$1.3</ID>
+    <ID>MagicNumber:NativePositionAction.kt$NativePositionAction$1.5</ID>
+    <ID>MagicNumber:NativePositionAction.kt$NativePositionAction$120</ID>
+    <ID>MagicNumber:NativePositionAction.kt$NativePositionAction$3.0</ID>
+    <ID>MagicNumber:NativePositionAction.kt$NativePositionAction$30.0</ID>
+    <ID>MagicNumber:NativePositionAction.kt$NativePositionAction$4</ID>
+    <ID>MagicNumber:NativePositionAction.kt$NativePositionAction$4.0</ID>
+    <ID>MagicNumber:NativePositionAction.kt$NativePositionAction$8.0</ID>
+    <ID>MagicNumber:NativePositionAction.kt$NativePositionAction.&lt;no name provided&gt;$1.5</ID>
+    <ID>MagicNumber:NativePositionAction.kt$NativePositionAction.&lt;no name provided&gt;$2.0</ID>
+    <ID>MagicNumber:NativePositionAction.kt$NativePositionAction.&lt;no name provided&gt;$24</ID>
+    <ID>MagicNumber:NativePositionAction.kt$NativePositionAction.&lt;no name provided&gt;$4</ID>
+    <ID>MagicNumber:NativePositionAction.kt$NativePositionAction.&lt;no name provided&gt;$8.0</ID>
+    <ID>MagicNumber:NativeTactics.kt$NativeTactics.World$0.5</ID>
+    <ID>MagicNumber:NativeTactics.kt$NativeTactics.World$1.5</ID>
+    <ID>MagicNumber:NativeTactics.kt$NativeTactics.World$10</ID>
+    <ID>MagicNumber:NativeTactics.kt$NativeTactics.World$100</ID>
+    <ID>MagicNumber:NativeTactics.kt$NativeTactics.World$16</ID>
+    <ID>MagicNumber:NativeTactics.kt$NativeTactics.World$16.0</ID>
+    <ID>MagicNumber:NativeTactics.kt$NativeTactics.World$160</ID>
+    <ID>MagicNumber:NativeTactics.kt$NativeTactics.World$200</ID>
+    <ID>MagicNumber:NativeTactics.kt$NativeTactics.World$24</ID>
+    <ID>MagicNumber:NativeTactics.kt$NativeTactics.World$24.0</ID>
+    <ID>MagicNumber:NativeTactics.kt$NativeTactics.World$3</ID>
+    <ID>MagicNumber:NativeTactics.kt$NativeTactics.World$32.0</ID>
+    <ID>MagicNumber:NativeTactics.kt$NativeTactics.World$4</ID>
+    <ID>MagicNumber:NativeTactics.kt$NativeTactics.World$4.0</ID>
+    <ID>MagicNumber:NativeTactics.kt$NativeTactics.World$48.0</ID>
+    <ID>MagicNumber:NativeTactics.kt$NativeTactics.World$8</ID>
     <ID>MagicNumber:NpcAttributes.kt$NpcAttributes$48.0</ID>
     <ID>MagicNumber:NpcClass.kt$NpcClass$120</ID>
     <ID>MagicNumber:NpcClass.kt$NpcClass$180</ID>
@@ -63,6 +488,24 @@
     <ID>MagicNumber:NpcClass.kt$NpcClass$60</ID>
     <ID>MagicNumber:NpcClass.kt$NpcClass$64</ID>
     <ID>MagicNumber:NpcClass.kt$NpcClass$85</ID>
+    <ID>MagicNumber:NpcEntity.kt$NpcEntity$0.5</ID>
+    <ID>MagicNumber:NpcEntity.kt$NpcEntity$1.0e12</ID>
+    <ID>MagicNumber:NpcEntity.kt$NpcEntity$100</ID>
+    <ID>MagicNumber:NpcEntity.kt$NpcEntity$20</ID>
+    <ID>MagicNumber:NpcEntity.kt$NpcEntity$200</ID>
+    <ID>MagicNumber:NpcEntity.kt$NpcEntity$3</ID>
+    <ID>MagicNumber:NpcEntity.kt$NpcEntity$4</ID>
+    <ID>MagicNumber:NpcEntity.kt$NpcEntity$5</ID>
+    <ID>MagicNumber:NpcEntity.kt$NpcEntity$50L</ID>
+    <ID>MagicNumber:NpcEntity.kt$NpcEntity$6</ID>
+    <ID>MagicNumber:NpcEntity.kt$NpcEntity$7</ID>
+    <ID>MagicNumber:NpcEntity.kt$NpcEntity$8</ID>
+    <ID>MagicNumber:NpcMoveControl.kt$NpcMoveControl$0.04</ID>
+    <ID>MagicNumber:NpcMoveControl.kt$NpcMoveControl$0.05</ID>
+    <ID>MagicNumber:NpcMoveControl.kt$NpcMoveControl$180.0</ID>
+    <ID>MagicNumber:NpcMoveControl.kt$NpcMoveControl$90.0</ID>
+    <ID>MagicNumber:NpcMoveControl.kt$NpcMoveControl$90f</ID>
+    <ID>MagicNumber:NpcPosture.kt$NpcPosture$1.0e-7</ID>
     <ID>MagicNumber:NpcRank.kt$NpcRank.ELITE$1.3</ID>
     <ID>MagicNumber:NpcRank.kt$NpcRank.ELITE$10</ID>
     <ID>MagicNumber:NpcRank.kt$NpcRank.ELITE$3.0</ID>
@@ -79,6 +522,13 @@
     <ID>MagicNumber:NpcRank.kt$NpcRank.VETERAN$16</ID>
     <ID>MagicNumber:NpcRank.kt$NpcRank.VETERAN$4.0</ID>
     <ID>MagicNumber:NpcRank.kt$NpcRank.VETERAN$550</ID>
+    <ID>MagicNumber:NpcStuckRecovery.kt$NpcStuckRecovery$0.5</ID>
+    <ID>MagicNumber:NpcStuckRecovery.kt$NpcStuckRecovery$1.0e-3</ID>
+    <ID>MagicNumber:NpcStuckRecovery.kt$NpcStuckRecovery$4</ID>
+    <ID>MagicNumber:NpcStuckRecovery.kt$NpcStuckRecovery$6</ID>
+    <ID>MagicNumber:NpcStuckRecovery.kt$NpcStuckRecovery$600</ID>
+    <ID>MagicNumber:OpeningFire.kt$OpeningFire$100</ID>
+    <ID>MagicNumber:OpeningFire.kt$OpeningFire$4</ID>
     <ID>MagicNumber:OperationFront.kt$OperationFront$0.01</ID>
     <ID>MagicNumber:OperationFront.kt$OperationFront$0.15</ID>
     <ID>MagicNumber:OperationFront.kt$OperationFront$1.5</ID>
@@ -94,43 +544,337 @@
     <ID>MagicNumber:OperationTactics.kt$OperationTactics$4</ID>
     <ID>MagicNumber:OperationTactics.kt$OperationTactics$4.0</ID>
     <ID>MagicNumber:OperationTactics.kt$OperationTactics$8</ID>
+    <ID>MagicNumber:OrderArrival.kt$OrderArrival$0.5</ID>
+    <ID>MagicNumber:OrderArrival.kt$OrderArrival$200</ID>
+    <ID>MagicNumber:OrderArrival.kt$OrderArrival$3</ID>
+    <ID>MagicNumber:OrderArrival.kt$OrderArrival$4</ID>
+    <ID>MagicNumber:OrderArrival.kt$OrderArrival$6.0</ID>
+    <ID>MagicNumber:OutOfAmmoBehaviour.kt$OutOfAmmoBehaviour$6</ID>
+    <ID>MagicNumber:RouteManager.kt$RouteManager$24</ID>
+    <ID>MagicNumber:SafeSpawn.kt$SafeSpawn$0.1</ID>
+    <ID>MagicNumber:SafeSpawn.kt$SafeSpawn$8</ID>
+    <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$0.3</ID>
+    <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$0.5</ID>
+    <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$1.0e-6</ID>
+    <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$1.5</ID>
+    <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$1.5f</ID>
+    <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$100</ID>
+    <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$12</ID>
+    <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$40</ID>
+    <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$512</ID>
+    <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$60</ID>
+    <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$64.0</ID>
+    <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$80</ID>
+    <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$9</ID>
+    <ID>MagicNumber:SelectionHighlight.kt$SelectionHighlight$0.05</ID>
+    <ID>MagicNumber:SelectionHighlight.kt$SelectionHighlight$0.15</ID>
+    <ID>MagicNumber:SelectionHighlight.kt$SelectionHighlight$0.3</ID>
+    <ID>MagicNumber:SelectionHighlight.kt$SelectionHighlight$0xFFFFFF</ID>
+    <ID>MagicNumber:SelectionHighlight.kt$SelectionHighlight$3</ID>
+    <ID>MagicNumber:SelfTreatBehaviour.kt$SelfTreatBehaviour$0.3</ID>
+    <ID>MagicNumber:SelfTreatBehaviour.kt$SelfTreatBehaviour$0.5</ID>
+    <ID>MagicNumber:SelfTreatBehaviour.kt$SelfTreatBehaviour$1.5f</ID>
+    <ID>MagicNumber:SelfTreatBehaviour.kt$SelfTreatBehaviour$12</ID>
+    <ID>MagicNumber:SidearmKit.kt$SidearmKit$63</ID>
+    <ID>MagicNumber:SidearmKit.kt$SidearmKit$68</ID>
+    <ID>MagicNumber:SidearmKit.kt$SidearmKit$70</ID>
+    <ID>MagicNumber:SidearmKit.kt$SidearmKit$85</ID>
+    <ID>MagicNumber:Sightline.kt$Sightline$1.0e-7</ID>
+    <ID>MagicNumber:SquadAreaLayout.kt$SquadAreaLayout$16</ID>
+    <ID>MagicNumber:SquadAreaLayout.kt$SquadAreaLayout$8.0</ID>
+    <ID>MagicNumber:SquadAreas.kt$SquadAreas$0.001</ID>
+    <ID>MagicNumber:SquadAreas.kt$SquadAreas$20</ID>
+    <ID>MagicNumber:SquadAreas.kt$SquadAreas$200</ID>
+    <ID>MagicNumber:SquadAreas.kt$SquadAreas$3.0</ID>
+    <ID>MagicNumber:SquadAreas.kt$SquadAreas$48.0</ID>
+    <ID>MagicNumber:SquadAreas.kt$SquadAreas$6</ID>
+    <ID>MagicNumber:SquadAreas.kt$SquadAreas$6.0</ID>
+    <ID>MagicNumber:SquadAreas.kt$SquadAreas$72.0</ID>
+    <ID>MagicNumber:SquadAreas.kt$SquadAreas$8</ID>
+    <ID>MagicNumber:SquadChunkLoader.kt$SquadChunkLoader$0.5</ID>
+    <ID>MagicNumber:SquadChunkLoader.kt$SquadChunkLoader$16.0</ID>
+    <ID>MagicNumber:SquadChunkLoader.kt$SquadChunkLoader$32.0</ID>
+    <ID>MagicNumber:SquadDeployment.kt$SquadDeployment$0.5</ID>
+    <ID>MagicNumber:SquadDeployment.kt$SquadDeployment$12.0</ID>
+    <ID>MagicNumber:SquadDeployment.kt$SquadDeployment$180f</ID>
+    <ID>MagicNumber:SquadDeployment.kt$SquadDeployment$8.0</ID>
     <ID>MagicNumber:SquadFaction.kt$SquadFaction$0xFFFFFF</ID>
     <ID>MagicNumber:SquadFaction.kt$SquadFaction.COW$0x80A0FF</ID>
+    <ID>MagicNumber:SquadFormation.kt$SquadFormation$0.4</ID>
+    <ID>MagicNumber:SquadFormation.kt$SquadFormation$1.5</ID>
+    <ID>MagicNumber:SquadFormation.kt$SquadFormation$12</ID>
+    <ID>MagicNumber:SquadFormation.kt$SquadFormation$14.0</ID>
+    <ID>MagicNumber:SquadFormation.kt$SquadFormation$16</ID>
+    <ID>MagicNumber:SquadFormation.kt$SquadFormation$2654435761L</ID>
+    <ID>MagicNumber:SquadFormation.kt$SquadFormation$30.0</ID>
+    <ID>MagicNumber:SquadFormation.kt$SquadFormation$32.0</ID>
+    <ID>MagicNumber:SquadFormation.kt$SquadFormation$4</ID>
+    <ID>MagicNumber:SquadFormation.kt$SquadFormation$4.5</ID>
+    <ID>MagicNumber:SquadFormation.kt$SquadFormation$50.0</ID>
+    <ID>MagicNumber:SquadFormation.kt$SquadFormation$8</ID>
+    <ID>MagicNumber:SquadManager.kt$SquadManager$0.02</ID>
+    <ID>MagicNumber:SquadManager.kt$SquadManager$0.3</ID>
+    <ID>MagicNumber:SquadManager.kt$SquadManager$0.5</ID>
+    <ID>MagicNumber:SquadManager.kt$SquadManager$0.6</ID>
+    <ID>MagicNumber:SquadManager.kt$SquadManager$0.7</ID>
+    <ID>MagicNumber:SquadManager.kt$SquadManager$1.5f</ID>
+    <ID>MagicNumber:SquadManager.kt$SquadManager$360f</ID>
+    <ID>MagicNumber:SquadManager.kt$SquadManager$40</ID>
+    <ID>MagicNumber:SquadMarch.kt$SquadMarch$0.5</ID>
+    <ID>MagicNumber:SquadMarch.kt$SquadMarch$1.0e-3</ID>
+    <ID>MagicNumber:SquadMarch.kt$SquadMarch$1.0e6</ID>
+    <ID>MagicNumber:SquadMarch.kt$SquadMarch$1.5</ID>
+    <ID>MagicNumber:SquadMarch.kt$SquadMarch$15</ID>
+    <ID>MagicNumber:SquadMarch.kt$SquadMarch$200</ID>
+    <ID>MagicNumber:SquadMarch.kt$SquadMarch$4</ID>
+    <ID>MagicNumber:SquadMarch.kt$SquadMarch$8</ID>
+    <ID>MagicNumber:SquadMarch.kt$SquadMarch$8.0</ID>
+    <ID>MagicNumber:SquadOrderBehaviour.kt$SquadOrderBehaviour$0.3</ID>
+    <ID>MagicNumber:SquadOrderBehaviour.kt$SquadOrderBehaviour$1.0e-4</ID>
+    <ID>MagicNumber:SquadOrderBehaviour.kt$SquadOrderBehaviour$1.0e-6</ID>
+    <ID>MagicNumber:SquadOrderBehaviour.kt$SquadOrderBehaviour$1.5</ID>
+    <ID>MagicNumber:SquadOrderBehaviour.kt$SquadOrderBehaviour$10.0</ID>
+    <ID>MagicNumber:SquadOrderBehaviour.kt$SquadOrderBehaviour$12</ID>
+    <ID>MagicNumber:SquadOrderBehaviour.kt$SquadOrderBehaviour$2.5</ID>
+    <ID>MagicNumber:SquadOrderBehaviour.kt$SquadOrderBehaviour$3.0</ID>
+    <ID>MagicNumber:SquadOrderBehaviour.kt$SquadOrderBehaviour$4.0</ID>
     <ID>MagicNumber:SquadPreset.kt$SquadPreset.DRONE_TEAM$4</ID>
     <ID>MagicNumber:SquadPreset.kt$SquadPreset.FIVE$3</ID>
     <ID>MagicNumber:SquadPreset.kt$SquadPreset.SEVEN$3</ID>
     <ID>MagicNumber:SquadPreset.kt$SquadPreset.SIXTEEN$9</ID>
     <ID>MagicNumber:SquadPreset.kt$SquadPreset.THIRTY_TWO$18</ID>
     <ID>MagicNumber:SquadPreset.kt$SquadPreset.THIRTY_TWO$4</ID>
+    <ID>MagicNumber:SquadReports.kt$SquadReports$0.5</ID>
+    <ID>MagicNumber:SquadReports.kt$SquadReports$22.5</ID>
+    <ID>MagicNumber:SquadReports.kt$SquadReports$3</ID>
+    <ID>MagicNumber:SquadReports.kt$SquadReports$360</ID>
+    <ID>MagicNumber:SquadReports.kt$SquadReports$4</ID>
+    <ID>MagicNumber:SquadReports.kt$SquadReports$45</ID>
+    <ID>MagicNumber:SquadReports.kt$SquadReports$8</ID>
+    <ID>MagicNumber:SquadReports.kt$SquadReports.Kind.LOW_AMMO$1200</ID>
+    <ID>MagicNumber:SquadReports.kt$SquadReports.Kind.RESUPPLY$600</ID>
     <ID>MagicNumber:SquadSettings.kt$DefaultSquadSettings$0.35</ID>
     <ID>MagicNumber:SquadSettings.kt$DefaultSquadSettings$0.5</ID>
     <ID>MagicNumber:SquadSettings.kt$DefaultSquadSettings$0.65</ID>
     <ID>MagicNumber:SquadSettings.kt$DefaultSquadSettings$0.75</ID>
     <ID>MagicNumber:SquadSettings.kt$DefaultSquadSettings$20</ID>
-    <ID>MagicNumber:TacticalDomain.kt$StrategyEvaluation$0.2</ID>
-    <ID>MagicNumber:TacticalDomain.kt$StrategyEvaluation$0.4</ID>
-    <ID>MagicNumber:TacticalDomain.kt$StrategyEvaluation$0.55</ID>
-    <ID>MagicNumber:TacticalDomain.kt$StrategyEvaluation$0.9</ID>
-    <ID>MagicNumber:TacticalDomain.kt$StrategyEvaluation$0.93</ID>
-    <ID>MagicNumber:TacticalDomain.kt$StrategyEvaluation$0.95</ID>
+    <ID>MagicNumber:SquadSnapshot.kt$20</ID>
+    <ID>MagicNumber:SquadTactics.kt$SquadTactics$256.0</ID>
+    <ID>MagicNumber:SquadTactics.kt$SquadTactics$8</ID>
+    <ID>MagicNumber:SquadTargetSensor.kt$SquadTargetSensor$36.0</ID>
+    <ID>MagicNumber:SquadTargetSensor.kt$SquadTargetSensor$4</ID>
+    <ID>MagicNumber:SquadTargetSensor.kt$SquadTargetSensor$6.0</ID>
+    <ID>MagicNumber:SquadToolItem.kt$SquadToolItem$220.0</ID>
+    <ID>MagicNumber:SupplyBlock.kt$SupplyBlock$4.0f</ID>
+    <ID>MagicNumber:SupplyBlock.kt$SupplyBlock$8.0f</ID>
+    <ID>MagicNumber:SupplyPoints.kt$SupplyPoints$4</ID>
+    <ID>MagicNumber:TacticalAim.kt$TacticalAim.Companion$1.5</ID>
+    <ID>MagicNumber:TacticalBudget.kt$TacticalBudget$20</ID>
+    <ID>MagicNumber:TacticalBudget.kt$TacticalPathBudget$4</ID>
+    <ID>MagicNumber:TacticalBudget.kt$TacticalPathBudget$6</ID>
+    <ID>MagicNumber:TacticalBudget.kt$TacticalPathBudget$8_000_000</ID>
     <ID>MagicNumber:TacticalDomain.kt$TacticalDomain$0.01</ID>
     <ID>MagicNumber:TacticalDomain.kt$TacticalDomain$12.0</ID>
     <ID>MagicNumber:TacticalDomain.kt$TacticalDomain$16.0</ID>
     <ID>MagicNumber:TacticalDomain.kt$TacticalDomain$24.0</ID>
     <ID>MagicNumber:TacticalDomain.kt$TacticalDomain$36.0</ID>
     <ID>MagicNumber:TacticalDomain.kt$TacticalDomain$48</ID>
+    <ID>MagicNumber:TacticalEvidence.kt$TacticalEvidence$18.0</ID>
+    <ID>MagicNumber:TacticalEvidence.kt$TacticalEvidence$2.5</ID>
+    <ID>MagicNumber:TacticalFirePosts.kt$TacticalFirePosts$0.01</ID>
+    <ID>MagicNumber:TacticalFirePosts.kt$TacticalFirePosts$16</ID>
+    <ID>MagicNumber:TacticalFirePosts.kt$TacticalFirePosts$16.0</ID>
+    <ID>MagicNumber:TacticalFirePosts.kt$TacticalFirePosts$20.0</ID>
+    <ID>MagicNumber:TacticalFirePosts.kt$TacticalFirePosts$4</ID>
+    <ID>MagicNumber:TacticalFirePosts.kt$TacticalFirePosts$4.0</ID>
+    <ID>MagicNumber:TacticalFirePosts.kt$TacticalFirePosts$8</ID>
+    <ID>MagicNumber:TacticalFirePosts.kt$TacticalFirePosts$8.0</ID>
+    <ID>MagicNumber:TacticalModel.kt$TacticalSnapshot$0.3</ID>
+    <ID>MagicNumber:TacticalModel.kt$TacticalSnapshot$40</ID>
+    <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$0.01</ID>
+    <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$0.1</ID>
+    <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$0.5</ID>
+    <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$0.6</ID>
+    <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$0.8</ID>
+    <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$0.9</ID>
+    <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$1.3</ID>
+    <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$1.5</ID>
+    <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$10.0</ID>
+    <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$12</ID>
+    <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$12.0</ID>
+    <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$14.0</ID>
+    <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$16</ID>
+    <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$2.5</ID>
+    <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$200</ID>
+    <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$3</ID>
+    <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$4</ID>
+    <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$4.0</ID>
+    <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$48.0</ID>
+    <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$64.0</ID>
+    <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$8.0</ID>
+    <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$9</ID>
+    <ID>MagicNumber:TacticalRouteValidation.kt$TacticalRouteValidation$20</ID>
+    <ID>MagicNumber:TacticalRoutes.kt$TacticalRoutes$0.5</ID>
+    <ID>MagicNumber:TacticalRoutes.kt$TacticalRoutes$1.0e-6</ID>
+    <ID>MagicNumber:TacticalRoutes.kt$TacticalRoutes$16.0</ID>
+    <ID>MagicNumber:TacticalRoutes.kt$TacticalRoutes$24.0</ID>
+    <ID>MagicNumber:TacticalRoutes.kt$TacticalRoutes$3.0</ID>
+    <ID>MagicNumber:TacticalRoutes.kt$TacticalRoutes$4.0</ID>
+    <ID>MagicNumber:TacticalRoutes.kt$TacticalRoutes$64.0</ID>
+    <ID>MagicNumber:TacticalRoutes.kt$TacticalRoutes$8.0</ID>
+    <ID>MagicNumber:TacticalSnapshotCollector.kt$TacticalSnapshotCollector$128.0</ID>
+    <ID>MagicNumber:TacticalTargets.kt$TacticalTargets$12.0</ID>
+    <ID>MagicNumber:TacticalTargets.kt$TacticalTargets$200</ID>
+    <ID>MagicNumber:TacticalTask.kt$TacticalPositionSearch$4.0</ID>
+    <ID>MagicNumber:TacticalTask.kt$TacticalTask$4.0</ID>
+    <ID>MagicNumber:TacticalTerrain.kt$TacticalTerrain$0.01</ID>
+    <ID>MagicNumber:TacticalTerrain.kt$TacticalTerrain$1.5</ID>
+    <ID>MagicNumber:TacticalTerrain.kt$TacticalTerrain$3</ID>
+    <ID>MagicNumber:TacticalTerrain.kt$TacticalTerrain$4</ID>
+    <ID>MagicNumber:TacticalTerrain.kt$TacticalTerrain$4.0</ID>
+    <ID>MagicNumber:TeamAwareness.kt$TeamAwareness$4</ID>
+    <ID>MagicNumber:Terrain.kt$Terrain$0.5</ID>
+    <ID>MagicNumber:TickBudget.kt$RaycastWorkBudget$32</ID>
+    <ID>MagicNumber:TickBudget.kt$RaycastWorkBudget$436</ID>
+    <ID>MagicNumber:TickBudget.kt$RaycastWorkBudget$500</ID>
+    <ID>MagicNumber:TickBudget.kt$RaycastWorkBudget$6</ID>
+    <ID>MagicNumber:TickBudget.kt$RaycastWorkBudget$64</ID>
+    <ID>MagicNumber:TickBudget.kt$RaycastWorkBudget$8</ID>
+    <ID>MagicNumber:TickBudget.kt$TickBudget$20</ID>
+    <ID>MagicNumber:TreeAvoidance.kt$TreeAvoidance$0.01</ID>
+    <ID>MagicNumber:TreeAvoidance.kt$TreeAvoidance$1.0e-4</ID>
+    <ID>MagicNumber:TreeAvoidance.kt$TreeAvoidance$20.0</ID>
+    <ID>MagicNumber:TreeAvoidance.kt$TreeAvoidance$40.0</ID>
+    <ID>MagicNumber:TreeAvoidance.kt$TreeAvoidance$60.0</ID>
+    <ID>MagicNumber:TreeAvoidance.kt$TreeAvoidance$85.0</ID>
+    <ID>MagicNumber:VehicleAmmoSupply.kt$VehicleAmmoSupply$36.0</ID>
+    <ID>MagicNumber:VehicleAmmoSupply.kt$VehicleAmmoSupply$40</ID>
+    <ID>MagicNumber:VehicleAmmoSupply.kt$VehicleAmmoSupply$6.0</ID>
+    <ID>MagicNumber:VehicleAwareNavigation.kt$VehicleAwareNavigation$0.5</ID>
+    <ID>MagicNumber:VehicleAwareNavigation.kt$VehicleAwareNavigation$15</ID>
+    <ID>MagicNumber:VehicleAwareNavigation.kt$VehicleAwareNavigation$4</ID>
+    <ID>MagicNumber:VehicleAwareNavigation.kt$VehicleAwareNavigation$48.0</ID>
+    <ID>MagicNumber:VehicleAwareNavigation.kt$VehicleAwareNavigation$8</ID>
+    <ID>MagicNumber:VehicleAwareNavigation.kt$VehicleAwareNavigation$8.0</ID>
+    <ID>MagicNumber:VehicleAwareNavigation.kt$VehicleAwareNavigation$80.0</ID>
+    <ID>MagicNumber:VehicleAwareNavigation.kt$VehicleAwareNavigation.Companion$0.5</ID>
     <ID>MagicNumber:VehicleModels.kt$HelicopterModel.AH_6$3</ID>
+    <ID>MagicNumber:VehicleRoutes.kt$VehicleRoutes$0.5</ID>
+    <ID>MagicNumber:VehicleRoutes.kt$VehicleRoutes$15</ID>
+    <ID>MagicNumber:VehicleRoutes.kt$VehicleRoutes$4</ID>
+    <ID>MagicNumber:VehicleRoutes.kt$VehicleRoutes$8</ID>
+    <ID>MagicNumber:VehicleRoutes.kt$VehicleRoutes$8.0</ID>
+    <ID>MagicNumber:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$0.0025</ID>
+    <ID>MagicNumber:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$0.4</ID>
+    <ID>MagicNumber:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$0.55</ID>
+    <ID>MagicNumber:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$1.0e-6</ID>
+    <ID>MagicNumber:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$1e-6</ID>
+    <ID>MagicNumber:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$20.0</ID>
+    <ID>MagicNumber:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$45.0</ID>
+    <ID>MagicNumber:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$64</ID>
+    <ID>MagicNumber:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$75.0</ID>
+    <ID>MagicNumber:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$8</ID>
+    <ID>MagicNumber:Vision.kt$Vision$1.0e-6</ID>
+    <ID>MagicNumber:Vision.kt$Vision$36.0</ID>
+    <ID>MagicNumber:Vision.kt$Vision$6.25</ID>
     <ID>MagicNumber:Walking.kt$Walking$0.5</ID>
+    <ID>MagicNumber:WalkingClearance.kt$WalkingClearance$0.001</ID>
+    <ID>MagicNumber:WalkingClearance.kt$WalkingClearance$0.05</ID>
+    <ID>MagicNumber:WalkingClearance.kt$WalkingClearance$0.5</ID>
+    <ID>MagicNumber:WalkingClearance.kt$WalkingClearance$0.8</ID>
+    <ID>MagicNumber:WalkingClearance.kt$WalkingClearance$3</ID>
+    <ID>MagicNumber:WalkingClearance.kt$WalkingClearance$4</ID>
+    <ID>MagicNumber:WalkingClearance.kt$WalkingClearance$4f</ID>
+    <ID>MagicNumber:WalkingClearance.kt$WalkingClearance$8</ID>
+    <ID>MagicNumber:WaterMap.kt$WaterMap$0.5</ID>
+    <ID>MagicNumber:WaterMap.kt$WaterMap$15</ID>
+    <ID>MagicNumber:WaterMap.kt$WaterMap$16</ID>
+    <ID>MagicNumber:WaterMap.kt$WaterMap$256</ID>
+    <ID>MagicNumber:WaterMap.kt$WaterMap$4</ID>
+    <ID>MagicNumber:WaterRoutes.kt$WaterRoutes$0.5</ID>
+    <ID>MagicNumber:WaterRoutes.kt$WaterRoutes$3</ID>
+    <ID>MagicNumber:WaterRoutes.kt$WaterRoutes$4</ID>
+    <ID>MagicNumber:WaterRoutes.kt$WaterRoutes.Water$0.5</ID>
+    <ID>MagicNumber:Withdrawal.kt$Withdrawal$1.0e-4</ID>
+    <ID>MagicNumber:Withdrawal.kt$Withdrawal$24.0</ID>
+    <ID>MagicNumber:Withdrawal.kt$Withdrawal$8</ID>
+    <ID>MemberNameEqualsClassName:WaterRoutes.kt$WaterRoutes.Water$private fun water(x: Int, z: Int): Boolean</ID>
+    <ID>MemberNameEqualsClassName:WaterRoutes.kt$WaterRoutes.Water$private val water = HashMap&lt;Long, Boolean&gt;()</ID>
     <ID>NestedBlockDepth:Assignments.kt$AssignmentLedger$fun revoke(ticket: AssignmentTicket, now: Long, reason: String): Boolean</ID>
     <ID>NestedBlockDepth:CellPlanner.kt$CellPlanner$fun search(medium: Medium, from: Vec3, goal: Vec3): Search?</ID>
     <ID>NestedBlockDepth:CellPlanner.kt$CellPlanner.Search$fun step(budget: Int): Boolean</ID>
     <ID>NestedBlockDepth:CellPlanner.kt$CellPlanner.Search$private fun visitCell(n: Long, cg: Double)</ID>
+    <ID>NestedBlockDepth:CoverSearch.kt$CoverSearch$fun find(entity: NpcEntity, level: ServerLevel, threat: Vec3, excluded: Set&lt;BlockPos&gt; = emptySet(), permitted: (Vec3) -&gt; Boolean = { true }): BlockPos?</ID>
+    <ID>NestedBlockDepth:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$private fun refreshTarget(entity: NpcEntity, level: ServerLevel, drone: Entity): Boolean</ID>
+    <ID>NestedBlockDepth:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$private fun strikeTarget(entity: NpcEntity): StrikeTarget?</ID>
     <ID>NestedBlockDepth:GroundMap.kt$GroundMap$private fun read(level: ServerLevel, cx: Int, cz: Int, now: Long): Chunk</ID>
+    <ID>NestedBlockDepth:GunAttackBehaviour.kt$GunAttackBehaviour$private fun clearBlockedFiringLane(entity: NpcEntity, target: LivingEntity, tacticalMovement: Boolean)</ID>
+    <ID>NestedBlockDepth:GunAttackBehaviour.kt$GunAttackBehaviour$private fun tickShooting(entity: NpcEntity, target: LivingEntity, gun: HandGun, canShootTarget: Boolean)</ID>
+    <ID>NestedBlockDepth:InvestigateBehaviour.kt$InvestigateBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>NestedBlockDepth:NativeTactics.kt$NativeTactics.World$fun refresh(reference: NpcEntity)</ID>
+    <ID>NestedBlockDepth:NativeTactics.kt$NativeTactics.World$fun tick(npc: NpcEntity)</ID>
+    <ID>NestedBlockDepth:NativeTactics.kt$NativeTactics.World$private fun observeArea(task: AreaControlTask, squads: List&lt;Squad&gt;, now: Long)</ID>
+    <ID>NestedBlockDepth:RaycastWorkBudgetTest.kt$RaycastWorkBudgetTest$@Test fun `independent path admission completes scored work without awaiting another ray turn`()</ID>
+    <ID>NestedBlockDepth:SquadChunkLoader.kt$SquadChunkLoader$fun tick(server: MinecraftServer)</ID>
+    <ID>NestedBlockDepth:SquadTargetSensor.kt$SquadTargetSensor$private fun computeDesired(mob: NpcEntity, level: ServerLevel, directTarget: LivingEntity?, reconsider: Boolean): LivingEntity?</ID>
+    <ID>NestedBlockDepth:TacticalPositions.kt$TacticalPositions$private fun findReachablePosition(context: SearchContext): Result</ID>
+    <ID>NestedBlockDepth:TacticalRoutes.kt$TacticalRoutes$fun leg(from: Vec3, task: TacticalTask): Vec3</ID>
+    <ID>NestedBlockDepth:TeamAwareness.kt$TeamAwareness$fun relayedContacts(faction: SquadFaction, tick: Long, window: Long = RECENT_WINDOW_TICKS): List&lt;UUID&gt;</ID>
+    <ID>NestedBlockDepth:TreeAvoidance.kt$TreeAvoidance$private fun hasTree(level: Level, box: AABB): Boolean</ID>
+    <ID>NestedBlockDepth:VehicleAwareNavigation.kt$VehicleAwareNavigation$private fun choosePath(pos: BlockPos, accuracy: Int): Path?</ID>
+    <ID>NestedBlockDepth:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun recoverIfStuck(entity: NpcEntity, vehicle: Entity, home: Vec3): Boolean</ID>
+    <ID>NestedBlockDepth:WaterMap.kt$WaterMap$private fun read(level: ServerLevel, y: Int, cx: Int, cz: Int, now: Long): Chunk</ID>
+    <ID>ThrowingExceptionsWithoutMessageOrCause:NpcEntity.kt$NpcEntity$Throwable()</ID>
+    <ID>ThrowingExceptionsWithoutMessageOrCause:VehicleAwareNavigation.kt$VehicleAwareNavigation$Throwable()</ID>
+    <ID>TooManyFunctions:AntiDroneBehaviour.kt$AntiDroneBehaviour : ExtendedBehaviour</ID>
+    <ID>TooManyFunctions:BarracksBlock.kt$BarracksBlock : BaseEntityBlock</ID>
     <ID>TooManyFunctions:CellPlanner.kt$CellPlanner$Search</ID>
+    <ID>TooManyFunctions:Diplomacy.kt$Diplomacy</ID>
+    <ID>TooManyFunctions:DroneOperatorBehaviour.kt$DroneOperatorBehaviour : ExtendedBehaviour</ID>
     <ID>TooManyFunctions:Drones.kt$Drones</ID>
     <ID>TooManyFunctions:Execution.kt$PlanRuntime</ID>
+    <ID>TooManyFunctions:ExperienceAwards.kt$ExperienceAwards</ID>
+    <ID>TooManyFunctions:GunAttackBehaviour.kt$GunAttackBehaviour : ExtendedBehaviour</ID>
     <ID>TooManyFunctions:Guns.kt$Guns</ID>
+    <ID>TooManyFunctions:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour : ExtendedBehaviour</ID>
+    <ID>TooManyFunctions:HelicopterRideBehaviour.kt$HelicopterRideBehaviour : ExtendedBehaviour</ID>
+    <ID>TooManyFunctions:InvestigateBehaviour.kt$InvestigateBehaviour : ExtendedBehaviour</ID>
+    <ID>TooManyFunctions:MedicHealBehaviour.kt$MedicHealBehaviour : ExtendedBehaviour</ID>
+    <ID>TooManyFunctions:MortarClaims.kt$MortarClaims</ID>
+    <ID>TooManyFunctions:MortarCrewBehaviour.kt$MortarCrewBehaviour : ExtendedBehaviour</ID>
     <ID>TooManyFunctions:Mortars.kt$Mortars</ID>
+    <ID>TooManyFunctions:NativePositionAction.kt$NativePositionAction : ActionExecution</ID>
+    <ID>TooManyFunctions:NativeTactics.kt$NativeTactics</ID>
+    <ID>TooManyFunctions:NativeTactics.kt$NativeTactics$World</ID>
+    <ID>TooManyFunctions:NpcEntity.kt$NpcEntity : PathfinderMobSmartBrainOwner</ID>
+    <ID>TooManyFunctions:OutOfAmmoBehaviour.kt$OutOfAmmoBehaviour : ExtendedBehaviour</ID>
+    <ID>TooManyFunctions:SeekCoverBehaviour.kt$SeekCoverBehaviour : ExtendedBehaviour</ID>
+    <ID>TooManyFunctions:SquadFormation.kt$SquadFormation</ID>
+    <ID>TooManyFunctions:SquadManager.kt$SquadManager : SavedData</ID>
+    <ID>TooManyFunctions:SquadMarch.kt$SquadMarch</ID>
+    <ID>TooManyFunctions:SquadOrderBehaviour.kt$SquadOrderBehaviour : ExtendedBehaviour</ID>
+    <ID>TooManyFunctions:SquadReports.kt$SquadReports</ID>
+    <ID>TooManyFunctions:SquadSelection.kt$SquadSelection</ID>
+    <ID>TooManyFunctions:SquadTactics.kt$SquadTactics</ID>
+    <ID>TooManyFunctions:SquadTargetSensor.kt$SquadTargetSensor : ExtendedSensor</ID>
+    <ID>TooManyFunctions:SquadTeams.kt$SquadTeams</ID>
+    <ID>TooManyFunctions:SupplyBlock.kt$SupplyBlock : BaseEntityBlock</ID>
+    <ID>TooManyFunctions:TacticalPositions.kt$TacticalPositions</ID>
+    <ID>TooManyFunctions:VehicleAwareNavigation.kt$VehicleAwareNavigation : GroundPathNavigation</ID>
+    <ID>TooManyFunctions:VehicleAwareNavigation.kt$VehicleAwareNodeEvaluator : WalkNodeEvaluator</ID>
+    <ID>TooManyFunctions:VehicleCombatSupportBehaviour.kt$VehicleCombatSupportBehaviour : ExtendedBehaviour</ID>
+    <ID>TooManyFunctions:VehicleTransportBehaviour.kt$VehicleTransportBehaviour : ExtendedBehaviour</ID>
+    <ID>TooManyFunctions:VehicleTransportClaims.kt$VehicleTransportClaims</ID>
     <ID>TooManyFunctions:Vehicles.kt$Vehicles</ID>
+    <ID>UnusedParameter:AntiDroneBehaviour.kt$AntiDroneBehaviour$level: ServerLevel</ID>
+    <ID>UnusedParameter:BarracksBlockEntity.kt$BarracksBlockEntity.Companion$pos: BlockPos</ID>
+    <ID>UnusedParameter:BarracksBlockEntity.kt$BarracksBlockEntity.Companion$state: BlockState</ID>
+    <ID>UnusedParameter:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$level: ServerLevel</ID>
+    <ID>UnusedParameter:NativeTactics.kt$NativeTactics.World$now: Long</ID>
+    <ID>UnusedParameter:SquadMerging.kt$SquadMerging$now: Long</ID>
+    <ID>UnusedParameter:SquadTactics.kt$SquadTactics$entity: NpcEntity</ID>
+    <ID>UnusedParameter:SupplyBlockEntity.kt$SupplyBlockEntity.Companion$pos: BlockPos</ID>
+    <ID>UnusedParameter:SupplyBlockEntity.kt$SupplyBlockEntity.Companion$state: BlockState</ID>
+    <ID>UnusedPrivateProperty:MortarCrewBehaviour.kt$MortarCrewBehaviour.Companion$private const val SELF_DEFENSE_RANGE_SQR = 6.0 * 6.0</ID>
   </CurrentIssues>
 </SmellBaseline>

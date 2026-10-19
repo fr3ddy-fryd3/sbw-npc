@@ -1,66 +1,82 @@
-# Реализация тактического ядра
+# Tactical core: what is implemented
 
-Код в `develop`: ядро в `common/src/main/kotlin/com/sbwnpc/squad/ai/`, адаптер `ai/integration` в `neoforge/`. Наземная тактика подключена к игровому исполнению через `NativeTactics`; прежний контроллер на шаблонах удалён. Этот документ отделяет реализованные контракты от фактически выполненных игровых проверок.
+Code in `develop`: the core is in `common/src/main/kotlin/com/sbwnpc/squad/ai/`, the adapter
+`ai/integration` beside it in `common/`. Ground tactics run in game through `NativeTactics`; the former
+template controller has been removed. This document describes the contracts that exist now. The
+target design they come from is [AI-ARCHITECTURE-DESIGN.md](AI-ARCHITECTURE-DESIGN.md); how they are
+tested is in [TACTICAL-TESTS.md](TACTICAL-TESTS.md).
 
-## Границы
+## Boundaries
 
-`ai/planning` не зависит от Minecraft, NPC, отрядного SavedData и прежних тактических состояний. Общее ядро работает с типизированными задачами, действиями, условиями, наблюдениями и ресурсами. Предметные методы HTN определяют способы выполнения приказа. Utility сравнивает разрешённые варианты; исполнение и отмена принадлежат runtime.
+`ai/planning` does not depend on Minecraft, NPCs, squad SavedData or the former tactical states. The
+core works with typed tasks, actions, conditions, observations and resources. The domain's HTN
+methods define the ways of carrying out an order. Utility compares the allowed options; execution
+and cancellation belong to the runtime.
 
-`ai/coordination` определяет совместную операцию и передачу подзадач. Оно также не двигает NPC и не обращается к миру. Приказы поступают от принципала, а право командовать проверяется отдельно от союзности. Commander AI, его ресурсы, армия и территориальное поведение относятся к будущей отдельной фиче.
+`ai/coordination` defines the joint operation and the hand-over of subtasks. It does not move NPCs
+or touch the world either. Orders come from a principal, and the right to command is checked
+separately from being allied. Commander AI, with its resources, army and territorial behaviour, is a
+separate future feature.
 
-## Реализованные контракты
+## Core contracts
 
-| Модуль | Ответственность |
+| Module | Responsibility |
 | --- | --- |
-| `FactSnapshot` | Наблюдения одного агента, источник, время получения и срок действия. Изменение времени подтверждения прежнего значения не отменяет зависимый план. |
-| `UtilityEvaluation` | Чистая оценка допустимых вариантов, объяснения факторов; запрет и отсутствие данных отделены от веса. |
-| `DecisionStability` | Политика владельца для удержания текущего допустимого решения при небольших колебаниях оценки. |
-| `HtnDomain` | Типизированные составные/примитивные задачи, альтернативные методы и зависимости последовательного либо параллельного исполнения. |
-| `HtnPlanningSession` | Сохраняемый между обновлениями поиск, откат к альтернативе, лимиты глубины/работы, зависимости от фактов. |
-| `PlanRuntime` | Владение экземплярами действий и ресурсами, проверка фактического завершения, остановка/возобновление, сохранение незатронутых действий при новом плане. |
-| `PlanningAgent` | Жизненный цикл поиска и исполнения. Новый приказ отзывает прежнюю работу; ремонт ищет замену, пока прежние допустимые действия продолжаются. Неуспешный поиск не повторяется каждый тик без изменения входа. |
-| `ActionRegistry` | Проверенная граница между типизированным действием и конкретным исполнителем. |
-| `AssignmentLedger` | Единственный родитель подзадачи, полномочия, поколение назначения, упорядоченные результаты и каскадный отзыв. |
-| `DelegationAction` | Исполняемый узел HTN, передающий намерение дочернему агенту и возвращающий его подтверждённый результат; остановка передаётся вниз. |
-| `OperationRegistry` | Одна операция на общий приказ, атомарная проверка выборки, отдельное ожидаемое подкрепление и проверка физического входа. |
+| `FactSnapshot` | One agent's observations, their source, when they were received and how long they hold. Re-confirming an unchanged value does not invalidate a plan that depends on it. |
+| `UtilityEvaluation` | Pure scoring of the allowed options with the factors explained; a ban and missing data are kept apart from a weight. |
+| `DecisionStability` | The owner's policy for keeping the current allowed decision through small swings of the score. |
+| `HtnDomain` | Typed compound and primitive tasks, alternative methods, and dependencies for sequential or parallel execution. |
+| `HtnPlanningSession` | A search kept between updates, backtracking to an alternative, depth and work limits, dependencies on facts. |
+| `PlanRuntime` | Ownership of action instances and resources, checking actual completion, stop and resume, keeping untouched actions under a new plan. |
+| `PlanningAgent` | Life cycle of search and execution. A new order withdraws the old work; repair looks for a replacement while the still-valid actions go on. A failed search is not retried every tick with unchanged input. |
+| `ActionRegistry` | The checked boundary between a typed action and its concrete executor. |
+| `AssignmentLedger` | A single parent per subtask, authority, assignment generation, ordered results and cascading withdrawal. |
+| `DelegationAction` | An executable HTN node that hands an intent to a child agent and returns its confirmed result; a stop is passed down. |
+| `OperationRegistry` | One operation per shared order, an atomic check of the selection, a separate pending reinforcement and a check of physical entry. |
 
-Проекция эффектов имеет отдельный тип и не принимается API исполнения вместо наблюдений. Независимые ветви не используют предполагаемые эффекты друг друга. При объединении ветвей конфликтующие предсказания отклоняются.
+Effect projection is its own type, and the execution API does not accept it in place of
+observations. Independent branches do not use each other's predicted effects; conflicting
+predictions are rejected when branches merge.
 
-Идентификатор исполнения содержит владельца, приказ, семантическую задачу, поколение и сессию runtime. Поздний ответ старому исполнителю не обновляет новый. Новое назначение одного ребёнка не отзывает соседнюю ветвь. Отмена операции проходит через владельцев назначений до NPC.
+An execution id holds the owner, the order, the semantic task, the generation and the runtime
+session. A late reply to an old executor does not update the new one. A new assignment for one child
+does not withdraw a sibling branch. Cancelling an operation goes through the owners of the
+assignments down to the NPCs.
 
-Параметры задач, действий и значения фактов должны быть неизменяемыми значениями предметной модели. Типизация проверяет классы и области владения; она не делает произвольный переданный mutable-объект неизменяемым.
+Task and action parameters and fact values must be immutable domain values. Typing checks classes
+and ownership; it does not make a mutable object passed in immutable.
 
-## Подключение к игре
+## In game
 
-Производственный `SquadTactics` делегирует наземную тактику `NativeTactics`. Старый `TacticalPlan` не выбирается и не исполняется параллельно. Его типы ещё используются прежними изолированными тестами и приватным курсором native-поиска; наличие этих классов не означает наличие второго управляющего контроллера.
+The production `SquadTactics` hands ground tactics to `NativeTactics`.
 
-| Слой | Игровая реализация |
+| Layer | In-game implementation |
 | --- | --- |
-| Вход приказа | `IssuedCommand` хранит неизменяемые UUID, принципала, исходный приказ и тип цели в NBT. Внутренние DEFEND/RETREAT не подменяют этот intent. HUD, карта и инструмент используют серверные методы выдачи приказов; общий приказ создаёт общую операцию. |
-| Наблюдения | `TacticalSnapshotCollector` собирает реальные контакты, боеприпасы, входящий огонь, ограничения ролей и положение загруженных NPC. Контакты операции объединяются отдельно от полномочий; ожидающее подкрепление не считается прикрытием. Отсутствующий загруженный NPC не считается подтверждённой потерей. |
-| Предметный домен | `TacticalDomain` содержит отдельные HTN-домены операции, отряда, подгруппы и NPC. `StrategyEvaluation` сравнивает продвижение, удержание, использование высоты и отход. Жёсткие условия не заменяются оценочными весами. |
-| Геометрия | `OperationFront` предлагает изогнутый фронт по известному расположению противника, огневую поддержку и охрану тыла. `TaskTeamAllocator` сохраняет подгруппы до шести бойцов при изменении состава. Геометрическая точка ещё не является достижимым или занятым постом. |
-| Исполнение | `NativePositionAction` владеет приватным курсором поиска, конкретным маршрутом и резервированием поста. Используются существующие native A*, коллизии, очереди бюджета, проверка стрельбы и ограничений роли. Поиск может вернуть ожидание бюджета или локальный отказ; они имеют разную семантику. |
-| Завершение области | Отдельное действие операции требует физического занятия, осмотра и 600 безопасных тиков. Пропуски наблюдения/загрузки приостанавливают отсчёт, новый контакт или входящий огонь сбрасывают его. SEARCH проходит промежуточные точки и завершает подход у своей цели. |
+| Order input | `IssuedCommand` keeps immutable UUIDs, the principal, the original order and the kind of goal in NBT. Internal DEFEND/RETREAT do not replace that intent. The HUD, map and tool use the server's order methods; a shared order creates a joint operation. |
+| Observations | `TacticalSnapshotCollector` collects real contacts, ammunition, incoming fire, role constraints and the positions of loaded NPCs. An operation's contacts are merged separately from authority; a pending reinforcement does not count as cover. A loaded NPC that is missing does not count as a confirmed loss. |
+| Domain | `TacticalDomain` holds separate HTN domains for the operation, squad, team and NPC. `StrategyEvaluation` compares advance, hold, gaining height and withdrawal. Hard conditions are not replaced by weights. |
+| Attack | `AttackPhase` (deploy, assault, clear) picks the operation's HTN method; `AttackProgress` keeps its history and the assault and clearing roles; `OperationTactics` maps a member's situation to his duty. `OperationLosses` turns the operation's losses into a standing (steady, review, withdraw). `ReinforcementMarch` decides when a reinforcement on its way stops to fight; `UnverifiedContacts` picks where scouts look. |
+| Geometry | `OperationFront` proposes a curved front from the known enemy positions, with fire support and a rear guard. `TaskTeamAllocator` keeps teams of up to six through changes of strength. A geometric point is not yet a reachable or occupied post. |
+| Execution | `NativePositionAction` owns the private search cursor, the concrete route and the post reservation. It uses the existing native A*, collisions, budget queues, firing checks and role constraints. A search can return a budget wait or a local failure; they mean different things. |
+| Area completion | A separate operation action requires physical occupation, inspection and 600 safe ticks (`AreaControlClock`). Gaps in observation or loading pause the count; a new contact or incoming fire resets it. SEARCH passes intermediate points and finishes its approach at its target. |
 
-Непрерывное назначение поста сохраняет родительское владение после фактического прибытия. Потеря поста вновь делает подзадачу активной. Ревизия намерения сохраняет подходящие дочерние исполнители; обратная связь старой ревизии отвергается. Асинхронный исполнитель по умолчанию получает новое поколение, а не синхронную ревизию.
+A continuous post assignment keeps the parent's ownership after actual arrival. Losing the post makes
+the subtask active again. Revising an intent keeps the suitable child executors; feedback from the
+old revision is rejected. An asynchronous executor gets a new generation by default, not a
+synchronous revision.
 
-Медицинские, гранатные, транспортные и снабженческие действия сохраняют свои ограничения и приоритеты. Вертолёты и экипажи используют существующие специализированные исполнители. Commander AI и изменение снабжения из техники не входят в эту ветку.
+Medical, grenade, vehicle and supply actions keep their own constraints and priorities. Helicopters
+and crews use the existing specialised executors.
 
-## Фактические проверки и границы
+## Limits
 
-- JUnit: 552 теста, 550 прошли, два штатных пропуска; ошибок и падений нет. Проверки стиля и компиляция GameTest проходят.
-- `htn-native-acceptance`: реальные сцены 64 (2×32) против 16 неподвижных целей прошли на компактном и широком расположении. Все 64 перемещались, реальные снаряды выпустили 40 и 47 NPC соответственно; оба отряда поддерживали огонь, попаданий по своим не было. На компактном фронте шесть из одиннадцати бойцов тыла физически смотрели в назначенный сектор. Эти результаты предшествуют последним изменениям малых подгрупп и сохранения ролей, поэтому выполняется повтор актуального кода.
-- `htn-area-waypoint`: занятие пустой области, физический осмотр, повторный входящий огонь и завершение после нового безопасного интервала прошли. Занятие на тике 102, угроза на 402, завершение на 1070; исходный приказ сохранился.
-- `htn-move-isolated`: обычный MOVE прошёл, физическое прибытие на тике 214.
-- Матрица `htn-matrix-27` (15 сцен) прошла полностью: совместный бой на компактном и широком фронте, вооружённые защитники, независимость недоступного пути, подкрепление, вход в удерживаемую оборону, боеприпасы, пистолет, MOVE, посадка вертолётов и движение 600 NPC.
-- Фазы атаки `AttackPhase` (развёртывание, штурм, зачистка) выбирают метод HTN операции. `htn-take`: 16 против 8 обороняющихся, точка взята и атака завершена на тике 1881, живы 13 атакующих. Четверо вошли в точку на тике 1111, когда защитников уже не осталось, поэтому штурм под огнём эта сцена не доказывает.
-- Отдельная сцена 600 NPC измеряет реально активных NPC в движении и стоимость серверного тика. Она не доказывает скорость боя 600 стрелков. Клиентские FPS для 150 видимых NPC требуют отдельного клиентского измерения.
+Having a general HTN does not mean the domain already holds every tactic. The strategy options are
+the ones listed above. Complex manoeuvres, separate plans against armour and a full assessment of
+every kind of terrain are not proven by the existing scenes. The 600-NPC scene measures NPCs actually
+moving and the server tick cost; it does not prove a fight of 600 shooters runs at speed, and client
+FPS with 150 NPCs in view needs its own client-side measurement.
 
-Наличие общего HTN не означает, что в предметном домене уже реализованы все возможные тактические приёмы. Текущие варианты стратегии перечислены выше; сложные обходы, отдельные планы против бронетехники и полноценная оценка всех типов местности не подтверждены перечисленными сценами. Сохранённый проблемный бой прежнего контроллера и прежние тесты, принудительно создающие `TacticalPlan`, требуют отдельной проверки/адаптации наблюдателей без ослабления физических критериев.
-
-## Проверки ядра
-
-Тесты покрывают TTL и задержки сведений, чужие контексты, откат HTN после отказа позднего шага, DAG и циклы, независимость предсказаний, устойчивость оценки, ресурсы, ожидание прикрытия, таймауты без времени паузы/бюджетного ожидания, устаревшие результаты и сохранение текущего действия при ремонте.
-
-`HierarchyExecutionTest` связывает операцию, два отряда, четыре подгруппы и восемь NPC с моделируемым перемещением. Он проверяет распространение подтверждённого результата, остановку одной ветви и каскадную отмену при новом приказе. Это проверка контракта иерархии, не native-сцена Minecraft и не доказательство качества построений.
+`HierarchyExecutionTest` links an operation, two squads, four teams and eight NPCs with simulated
+movement. It checks that a confirmed result propagates, that one branch can stop, and that a new
+order cancels in cascade. It tests the hierarchy contract; it is not a Minecraft scene and does not
+prove the quality of formations.

@@ -1,6 +1,6 @@
 package com.sbwnpc.squad.client
 
-import com.sbwnpc.squad.SquadMod
+import com.sbwnpc.squad.ModIdentity
 import com.sbwnpc.squad.domain.port.ClientPorts
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.client.model.HumanoidModel
@@ -35,7 +35,7 @@ class NpcModel(root: ModelPart) : HumanoidModel<NpcEntity>(root) {
     }
 
     companion object {
-        val LAYER = ModelLayerLocation(SquadMod.loc("npc"), "main")
+        val LAYER = ModelLayerLocation(ModIdentity.loc("npc"), "main")
 
         fun createBodyLayer(): LayerDefinition = LayerDefinition.create(createMesh(CubeDeformation.NONE, 0.0f), 64, 64)
     }

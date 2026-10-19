@@ -5,12 +5,15 @@ things go; the code's own KDoc covers the details. Build, workflow and coding ru
 [AGENTS.md](../AGENTS.md).
 
 Kotlin packages below are relative to `com/sbwnpc/squad/`. Shared sources live under
-`common/src/main/kotlin/`: routing and the HTN core (`ai/planning`, `ai/coordination`,
-`ai/tactics`), the server-side SBW port interfaces, NPC classes and other static game data,
-experience rules, packet schemas and the loader-neutral settings view, with their JUnit tests in
-`common/src/test/kotlin/`. NeoForge-owned sources live under `neoforge/src/main/kotlin/`,
-including the HTN adapter `ai/integration`, the SBW adapter, packet registration and delivery, the
-TOML config and all client code. Shared assets/data live in `common/src/main/resources/`.
+`common/src/main/kotlin/`: the gameplay itself (`NpcEntity` and its SmartBrainLib behaviours,
+squads and orders, combat, tactics and the HTN adapter `ai/integration`), routing and the HTN core
+(`ai/planning`, `ai/coordination`, `ai/tactics`), the server-side SBW port interfaces, NPC classes
+and other static game data, experience rules, packet schemas and the loader-neutral settings view,
+with their JUnit tests in `common/src/test/kotlin/`. NeoForge-owned sources live under
+`neoforge/src/main/kotlin/`: the entry point and registration, NeoForge event subscribers, the
+subclasses that carry NeoForge's own entity hooks (`NeoForgeNpcEntity`, `NeoForgeSupplyBlockEntity`),
+`platform/NeoForgeLoaderHooks`, the SBW adapter, packet registration and delivery, the TOML config
+and all client code. Shared assets/data live in `common/src/main/resources/`.
 NeoForge recompiles common sources; `:common:check` checks them against vanilla Minecraft and
 rejects loader, SBW and client imports.
 Build conventions live in `build-logic/`; root build commands delegate to these modules.
@@ -35,8 +38,8 @@ command and supply it. The pieces, roughly from the outside in:
 
 | Package | What lives there |
 |---|---|
-| (root) | `SquadMod` (mod entry point), `ServerTick` (server-wide per-tick drivers), `ServerLifecycle` (clears runtime state when a world stops); in common, `ModIdentity` (mod id and `loc()`) |
-| `init/` | Deferred registers: entities, items, blocks, block entities, SmartBrainLib sensors and memory types |
+| (root) | `SquadMod` (mod entry point), `ServerTick` (server-wide per-tick drivers), `ServerLifecycle` (clears runtime state when a world stops); in common, `ModIdentity` (mod id, logger and `loc()`) |
+| `init/` | Deferred registers: entities, items, blocks, block entities, SmartBrainLib sensors and memory types. Shared code reaches the entity and block entity types through the `ModEntities` and `ModBlockEntities` handles, which `NeoForgeEntities` and `NeoForgeBlockEntities` bind as they register |
 | `entity/` | `NpcEntity` itself, posture, stuck recovery, and live per-level indexes (`NpcRegistry`, `EntityIndex`, drone and grenade registries) |
 | `entity/ai/` | Brain behaviours (`*Behaviour.kt`), the target sensor, and the helpers they share: flight controllers, march and route progress trackers, claim registries for mortars and transport seats |
 | `squad/` | Squad model and persistence, orders, selection, deployment, routes (patrol routes and recording), radio reports, chunk loading for squads away from players |
@@ -50,13 +53,14 @@ command and supply it. The pieces, roughly from the outside in:
 | `network/` | In common: `Payloads.kt` (every `CustomPacketPayload`) and `sendToClient`, which goes through the loader's `ClientboundTransport`. In NeoForge: `ModNetwork` (registration and server handlers), `NeoForgeClientboundTransport`, snapshot builders the screens read |
 | `client/` | HUD, key bindings, tool input, client payload handlers, NPC model and renderers, map state, screens under `client/screen/` |
 | `map/` | `MapFeed`: what each player's map shows, pushed from the server once a second |
-| `domain/port/` | Interfaces for everything taken from SuperbWarfare. In common: `Guns`, `Vehicles`, `Mortars`, `Grenades`, `Drones`, `Gear`, `PlayerSupply` and the `Ports` object that holds their implementations. In NeoForge: the client-only `GunPoses` and `GunRendering`, held by `ClientPorts` |
+| `domain/port/` | Interfaces for everything taken from SuperbWarfare. In common: `Guns`, `Vehicles`, `Mortars`, `Grenades`, `Drones`, `Gear`, `PlayerSupply`, `LoaderHooks` (the few calls the mod loader adds to vanilla: mob griefing, persistent entity data, ladders; `platform/NeoForgeLoaderHooks` on NeoForge) and the `Ports` object that holds their implementations. In NeoForge: the client-only `GunPoses` and `GunRendering`, held by `ClientPorts` |
 | `integration/sbw/` | The SuperbWarfare adapter: implements the ports, plus SBW-specific extras (creative tab, aircraft snapshots, boarding); `integration/sbw/client/` holds the rendering side |
 | `integration/journeymap/` | Optional JourneyMap plugin that draws the map feed and takes orders from the map |
 | `config/` | In common: `SquadSettings`, the gameplay settings view, read through `Settings.current` (`DefaultSquadSettings` until the loader installs its own and in plain JVM tests). In NeoForge: `SquadConfig` (server config, `serverconfig/sbwnpc-server.toml`), which implements it, and `DebugConfig` (debug builds only) |
 | `util/` | Small shared helpers: timers, terrain queries, item stack data, the perf probe |
 
-Java mixins live in `neoforge/src/main/java/com/sbwnpc/squad/mixin/`, listed in
+Java mixins live in `neoforge/src/main/java/com/sbwnpc/squad/mixin/`, and the vanilla-only
+`PathNavigationAccessor` in `common/src/main/java/com/sbwnpc/squad/mixin/`. All are listed in
 `neoforge/src/main/resources/mixins.sbwnpc.json` (common and client sets). Most patch SuperbWarfare classes
 (vehicle boarding, shooting and gun data, aircraft rendering, auto-aim); the rest patch vanilla
 (entity alliance checks, tracking range, key mappings).
@@ -163,6 +167,24 @@ comments above the task lists in `NpcEntity`.
 - **Budgets**: `TickBudget` caps the expensive terrain raycasts per server tick, because a whole
   squad tends to search for cover or firing spots on the same tick.
 
+## Squad tactics (HTN)
+
+Ground squads in a fight are planned by an HTN controller, not by the behaviours alone:
+
+- `common/.../ai/planning` is the general core (HTN domains and planning sessions, the plan
+  runtime, utility scoring); `ai/coordination` holds joint operations and the hand-over of
+  subtasks; `ai/tactics` holds the domain: `TacticalDomain`, attack phases (`AttackPhase`,
+  `AttackProgress`), members' duties (`OperationTactics`), the front (`OperationFront`) and the
+  operation's losses (`OperationLosses`). All of it is pure and unit-tested.
+- `common/.../ai/integration/NativeTactics` gathers squad snapshots, runs the planning agents of
+  each operation, squad, team and NPC, and hands every NPC a `PositionIntent`;
+  `NativePositionAction` carries one out with the services in `combat/tactics`.
+- Behaviours read the assignment through `combat/tactics/SquadTactics`, so a man's own shooting,
+  cover and reactions keep working under the plan.
+
+Details: [AI-RUNTIME.md](AI-RUNTIME.md), [TACTICS-ARCHITECTURE.md](TACTICS-ARCHITECTURE.md); the
+target design: [AI-ARCHITECTURE-DESIGN.md](AI-ARCHITECTURE-DESIGN.md).
+
 ## Routing and vehicles
 
 - Short moves use vanilla pathfinding through `VehicleAwareNavigation` and `NpcMoveControl`.
@@ -229,7 +251,7 @@ work runs in the NPC's own brain.
 
 ## Tests
 
-JUnit 5 tests in `neoforge/src/test/kotlin/com/sbwnpc/squad/`, mirroring the main packages. They cover the
+JUnit 5 tests in `common/src/test/kotlin/com/sbwnpc/squad/`, and in `neoforge/src/test/kotlin/com/sbwnpc/squad/` for those that need the game bootstrapped (block registry) or check the NeoForge module, mirroring the main packages. They cover the
 pure logic that can run without a game: sightlines and vision, formations, fire decisions, flight
 controllers, route progress, the cell planner, static gun models. `SbwBoundaryTest` scans the sources
 for SBW imports outside the adapter, and `SbwMixinIntegrationTest` checks that the mixins still

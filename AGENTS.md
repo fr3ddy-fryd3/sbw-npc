@@ -181,7 +181,7 @@ KDoc (`/** ... */`) goes on every class, object and non-obvious public or `inter
 - Build: `./gradlew build`, the same as `buildProduction` (`DebugFlags` off).
 - For local testing with verbose trace logs and debug particle markers: `./gradlew buildDevelop`.
   The flag is baked into the jar at build time by the generated `BuildFlags` object (see
-  `generateBuildFlags` in `build.gradle.kts`). It cannot be passed at runtime.
+  `generateBuildFlags` in `common/build.gradle.kts`). It cannot be passed at runtime.
 - Tests only: `./gradlew test`.
 - Code smells: `./gradlew detekt`, which `check` and `build` also run for each module. It runs
   detekt's code-smell rules only (`config/detekt/detekt.yml`); formatting is ktlint's job

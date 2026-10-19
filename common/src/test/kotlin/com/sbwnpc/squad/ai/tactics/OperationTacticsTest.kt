@@ -27,6 +27,24 @@ class OperationTacticsTest {
         roles.assault.values.forEach { assertTrue(hypot(it.x - objective.x, it.z - objective.z) <= 12.0) }
     }
 
+    @Test fun `going onto a point a defender still stands at, no man comes nearer him than the standoff`() {
+        val movers = (1..12).map(::id)
+        val defender = Point3(103.0, 64.0, 98.0)
+        val roles = OperationTactics.roles(AttackPhase.ASSAULT, objective, movers, movers.indices.map { member(it + 1, 40.0) }, emptyList(), emptySet(), standoffFrom = listOf(defender))
+        assertEquals(movers.toSet(), roles.assault.keys)
+        roles.assault.values.forEach {
+            assertTrue(hypot(it.x - defender.x, it.z - defender.z) >= OperationTactics.ASSAULT_STANDOFF - 1.0E-6, "slot $it is beside the defender")
+            // Still near enough the point to count as occupying it.
+            assertTrue(hypot(it.x - objective.x, it.z - objective.z) <= 24.0, "slot $it is off the point")
+        }
+    }
+
+    @Test fun `a clearing man already within the closing distance holds where he is`() {
+        val target = Point3(118.0, 64.0, 100.0)
+        val near = Point3(100.0, 64.0, 100.0)
+        assertEquals(ClosingPost(near, target), OperationTactics.closingPost(near, listOf(target)))
+    }
+
     @Test fun `an assault on a held point closes in to fire instead of running onto it`() {
         // In-game 16.10: "an assault is not running right up, it is closing the range and pressing with fire".
         val defender = Point3(100.0, 64.0, 130.0)
@@ -34,12 +52,14 @@ class OperationTacticsTest {
         val members = listOf(AttackMember(id(1), Point3(100.0, 64.0, 30.0), true), AttackMember(id(2), Point3(100.0, 64.0, 120.0), true))
         val roles = OperationTactics.roles(AttackPhase.ASSAULT, objective, movers, members, listOf(defender), emptySet())
         assertTrue(roles.assault.isEmpty())
-        assertEquals(Point3(100.0, 64.0, 80.0), roles.closing[id(1)])
+        assertEquals(ClosingPost(Point3(100.0, 64.0, 80.0), defender), roles.closing[id(1)])
         // Already this close, a man holds where he is.
-        assertEquals(Point3(100.0, 64.0, 120.0), roles.closing[id(2)])
+        assertEquals(ClosingPost(Point3(100.0, 64.0, 120.0), defender), roles.closing[id(2)])
         val applied = OperationTactics.apply(SquadMission(AgentId(AgentLevel.SQUAD, id(100)), listOf(TeamMission(AgentId(AgentLevel.TEAM, id(101)), listOf(PositionIntent(AgentId(AgentLevel.NPC, id(1)), CombatDuty.MOVE, Point3(100.0, 64.0, 30.0), Point3(100.0, 64.0, 50.0), defender))))), roles).teams.single().members.single()
         assertEquals(CombatDuty.FIRE, applied.duty)
         assertEquals(Point3(100.0, 64.0, 80.0), applied.anchor)
+        // He fires at the defender his post was measured from.
+        assertEquals(defender, applied.focus)
         // Inside the role's clearance, or a rifleman never reaches a post 20-30 blocks out (#54).
         assertTrue(applied.assault)
     }
@@ -47,7 +67,7 @@ class OperationTacticsTest {
     @Test fun `the closing post is measured from where the assault began`() {
         val defender = Point3(100.0, 64.0, 130.0)
         val roles = OperationTactics.roles(AttackPhase.ASSAULT, objective, listOf(id(1)), listOf(AttackMember(id(1), Point3(100.0, 64.0, 70.0), true)), listOf(defender), emptySet(), mapOf(id(1) to Point3(100.0, 64.0, 30.0)))
-        assertEquals(Point3(100.0, 64.0, 80.0), roles.closing[id(1)])
+        assertEquals(ClosingPost(Point3(100.0, 64.0, 80.0), defender), roles.closing[id(1)])
     }
 
     @Test fun `with no defender left at the point the assault occupies it`() {
@@ -60,7 +80,7 @@ class OperationTacticsTest {
         val rear = PositionIntent(AgentId(AgentLevel.NPC, id(1)), CombatDuty.REAR_GUARD, Point3(40.0, 64.0, 100.0), Point3(20.0, 64.0, 100.0), objective)
         val mission = SquadMission(AgentId(AgentLevel.SQUAD, id(100)), listOf(TeamMission(AgentId(AgentLevel.TEAM, id(101)), listOf(rear))))
         val post = Point3(70.0, 64.0, 100.0)
-        val applied = OperationTactics.apply(mission, AttackRoles(closing = mapOf(id(1) to post))).teams.single().members.single()
+        val applied = OperationTactics.apply(mission, AttackRoles(closing = mapOf(id(1) to ClosingPost(post, objective)))).teams.single().members.single()
         assertEquals(CombatDuty.FIRE, applied.duty)
         assertEquals(post, applied.anchor)
     }
@@ -85,8 +105,11 @@ class OperationTacticsTest {
         assertEquals(CombatDuty.MOVE, applied[0].duty)
         assertEquals(slot, applied[0].anchor)
         assertTrue(applied[0].assault && !applied[0].requireShelter)
-        assertEquals(CombatDuty.SEARCH, applied[1].duty)
-        assertEquals(target, applied[1].inspection)
+        // A clearing man fires at the enemy from a post short of him, never from the enemy's spot.
+        assertEquals(CombatDuty.FIRE, applied[1].duty)
+        assertEquals(target, applied[1].focus)
+        assertTrue(kotlin.math.hypot(applied[1].anchor.x - target.x, applied[1].anchor.z - target.z) >= OperationTactics.CLOSE_DISTANCE)
+        assertTrue(applied[1].assault)
         assertEquals(intent(3), applied[2])
         assertSame(mission, OperationTactics.apply(mission, AttackRoles.NONE))
     }
@@ -100,6 +123,9 @@ class OperationTacticsTest {
         assertEquals(DutyChoice(CombatDuty.FOLLOW_ORDER, objective), duty(order = TacticalOrder.MOVE))
         assertEquals(DutyChoice(CombatDuty.FIRE, here), duty(order = TacticalOrder.DEFEND))
         assertEquals(DutyChoice(CombatDuty.OBSERVE, objective), duty(order = TacticalOrder.DEFEND, inContact = false, observer = true))
+        assertEquals(DutyChoice(CombatDuty.OBSERVE, objective), duty(order = TacticalOrder.DEFEND, observer = true))
+        assertEquals(DutyChoice(CombatDuty.FIRE, Point3(60.0, 64.0, 100.0)), duty(observer = true))
+        assertEquals(DutyChoice(CombatDuty.OBSERVE, objective), duty(order = TacticalOrder.PATROL, observer = true))
         assertEquals(CombatDuty.FOLLOW_ORDER, duty(elsewhere = true, scout = true).duty)
         assertEquals(DutyChoice(CombatDuty.SEARCH, Point3(90.0, 64.0, 100.0)), duty(scout = true))
     }
@@ -115,5 +141,18 @@ class OperationTacticsTest {
         assertEquals(DutyChoice(CombatDuty.MOVE, Point3(70.0, 64.0, 100.0)), duty(proposal = move))
         assertEquals(DutyChoice(CombatDuty.FIRE, here), duty(proposal = move, reachedMove = true))
         assertEquals(DutyChoice(CombatDuty.FIRE, here), duty(proposal = move, wasFiring = true))
+    }
+
+    @Test fun `a flanker keeps walking to his next waypoint even after he fired`() {
+        val waypoint = Point3(30.0, 64.0, 140.0)
+        val inputs = DutyInputs(TacticalOrder.ATTACK, here, FrontProposal(CombatDuty.MOVE, waypoint, null), objective, null, inContact = true, elsewhere = false, scout = false, observer = false, hasPatrolRoute = false, reachedMove = true, wasFiring = true, flanking = true)
+        assertEquals(DutyChoice(CombatDuty.MOVE, waypoint), OperationTactics.duty(inputs, fireReach = 40.0, approachOffset = 10.0))
+    }
+
+    @Test fun `a mover in his slot's area fires from where he is even without a post`() {
+        val near = FrontProposal(CombatDuty.MOVE, Point3(here.x + 6.0, here.y, here.z), null)
+        assertEquals(DutyChoice(CombatDuty.FIRE, here), duty(proposal = near))
+        val far = FrontProposal(CombatDuty.MOVE, Point3(here.x + 20.0, here.y, here.z), null)
+        assertEquals(CombatDuty.MOVE, duty(proposal = far).duty)
     }
 }

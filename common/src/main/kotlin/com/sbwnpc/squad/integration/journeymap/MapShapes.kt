@@ -1,0 +1,27 @@
+package com.sbwnpc.squad.integration.journeymap
+
+import com.sbwnpc.squad.ModIdentity
+import net.minecraft.resources.ResourceLocation
+
+/**
+ * The map's symbols: white shapes with a dark rim (`textures/map/`), tinted per faction by
+ * JourneyMap. Real texture files, as in JourneyMap's own examples: shapes registered only in code
+ * under a made-up location drew nothing at all.
+ */
+internal enum class MapShapes {
+    SQUARE,
+    CIRCLE,
+    TRIANGLE,
+    CROSS,
+
+    /** Hollow square drawn round a selected squad's symbol. */
+    FRAME,
+
+    ;
+
+    val location: ResourceLocation = ModIdentity.loc("textures/map/${name.lowercase()}.png")
+
+    companion object {
+        const val SIZE = 32
+    }
+}

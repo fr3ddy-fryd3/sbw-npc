@@ -13,6 +13,7 @@ import com.sbwnpc.squad.block.entity.SupplyPoints
 import com.sbwnpc.squad.config.SquadConfig
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.init.ModBlockEntities
 import com.sbwnpc.squad.init.ModBlocks
 import com.sbwnpc.squad.init.ModItems
 import com.sbwnpc.squad.item.SquadToolItem
@@ -499,7 +500,7 @@ object FactionLogisticsGameTests {
             val points = SupplyPoints.get(helper.level)
             helper.assertTrue(points.nearestServing(pos.center, SquadFaction.COW, 2.0) == pos && points.nearestServing(pos.center, SquadFaction.PIG, 2.0) == null, "Supply index retained the old faction")
             val saved = supply.saveWithoutMetadata(helper.level.registryAccess())
-            val reloaded = SupplyBlockEntity(pos, supply.blockState).apply { loadWithComponents(saved, helper.level.registryAccess()) }
+            val reloaded = ModBlockEntities.SUPPLY.get().create(pos, supply.blockState)!!.apply { loadWithComponents(saved, helper.level.registryAccess()) }
             helper.assertTrue(reloaded.faction == SquadFaction.COW && reloaded.serves(SquadFaction.COW) && !reloaded.serves(SquadFaction.PIG), "Supply ownership did not survive saving")
             helper.assertTrue(SupplyBlock.snapshot(player, helper.level, pos, supply).getBoolean("CanChangeFaction"), "Creative lost access to the foreign Supply screen")
         }

@@ -16,7 +16,7 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.blaze3d.vertex.PoseStack
-import com.sbwnpc.squad.SquadMod
+import com.sbwnpc.squad.ModIdentity
 import net.minecraft.client.Minecraft
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.packs.resources.ResourceManager
@@ -102,7 +102,7 @@ object AircraftLods {
             if (!source.has("minecraft:geometry")) return null
             listOf(0.35, 0.15).map { fraction -> bake(simplify(source, fraction)) }
         } catch (exception: Exception) {
-            SquadMod.LOGGER.warn("Cannot simplify aircraft model {}; keeping its native models", path, exception)
+            ModIdentity.LOGGER.warn("Cannot simplify aircraft model {}; keeping its native models", path, exception)
             null
         }
     }

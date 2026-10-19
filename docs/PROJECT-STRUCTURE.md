@@ -1,140 +1,159 @@
-# Карта проекта
+# Project map
 
-Справочник каталогов, модулей и точек входа. Архитектура тактики — [TACTICS-ARCHITECTURE.md](TACTICS-ARCHITECTURE.md), оформление кода — [CODE-STYLE.md](CODE-STYLE.md).
+A guide to directories, modules and entry points. How tactics work: [AI-RUNTIME.md](AI-RUNTIME.md)
+and [TACTICS-ARCHITECTURE.md](TACTICS-ARCHITECTURE.md); code style: [CODE-STYLE.md](CODE-STYLE.md).
 
-## Откуда начать
+## Where to start
 
-Код разделён на модули: общий `common/` (маршруты и HTN-ядро `ai/planning`, `ai/coordination`, `ai/tactics`) и `neoforge/` (всё остальное, включая адаптер `ai/integration`). Большая часть кода — Kotlin в `neoforge/src/main/kotlin/com/sbwnpc/squad/`. Java используется для mixin-вставок в Minecraft и SuperbWarfare.
+The code is split into two modules. `common/` holds loader-independent code: the NPC entity and
+its behaviours, squads, combat and tactics, the HTN core (`ai/planning`, `ai/coordination`,
+`ai/tactics`) and its `ai/integration` adapter, long routes, NPC descriptions (`npc/`), network
+payloads, the SuperbWarfare ports (`domain/port/`) and experience rules. `neoforge/` holds what is
+bound to NeoForge: the entry point and registration, event subscribers, the SBW adapter, the
+network transport, config and client code. Most of the code
+is Kotlin; Java is used for mixins into Minecraft and SuperbWarfare.
 
-| Путь от корня репозитория | Содержимое |
+| Path from the repository root | Contents |
 |---|---|
-| [src/main/kotlin/com/sbwnpc/squad/](../neoforge/src/main/kotlin/com/sbwnpc/squad/) | Основной код мода |
-| [src/main/java/com/sbwnpc/squad/mixin/](../neoforge/src/main/java/com/sbwnpc/squad/mixin/) | Вставки в классы Minecraft и SuperbWarfare |
-| [src/main/resources/](../neoforge/src/main/resources/) | Текстуры, модели, переводы, metadata и список mixin |
-| [neoforge/src/test/kotlin/com/sbwnpc/squad/](../neoforge/src/test/kotlin/com/sbwnpc/squad/) | Автоматические проверки, расположенные по тем же модулям |
-| [gradle.properties](../gradle.properties) | Версия мода, Minecraft и зависимостей |
-| [build.gradle.kts](../build.gradle.kts), [neoforge/build.gradle.kts](../neoforge/build.gradle.kts), [common/build.gradle.kts](../common/build.gradle.kts) | Корневые команды; сборка NeoForge, сцены, ktlint и `BuildFlags`; проверка общего модуля |
-| [settings.gradle.kts](../settings.gradle.kts) | Модули `common` и `neoforge`, `build-logic` и выбор входа SuperbWarfare |
-| `SuperbWarfare/` | Отдельный локальный репозиторий зависимости; не входит в git этого проекта |
-| `build/` | Результаты сборки, отчёты тестов и сгенерированные файлы |
-| [PLAN-1.0.0.md](../PLAN-1.0.0.md) | План версии; описание намерений, а не подтверждение реализации |
-| [AGENTS.md](../AGENTS.md) | Правила работы с репозиторием и технические особенности |
+| [neoforge/src/main/kotlin/com/sbwnpc/squad/](../neoforge/src/main/kotlin/com/sbwnpc/squad/) | NeoForge entry point, registration, events, SBW adapter, network, config and client |
+| [common/src/main/kotlin/com/sbwnpc/squad/](../common/src/main/kotlin/com/sbwnpc/squad/) | Loader-independent code, gameplay included |
+| [neoforge/src/main/java/com/sbwnpc/squad/mixin/](../neoforge/src/main/java/com/sbwnpc/squad/mixin/), [common/src/main/java/com/sbwnpc/squad/mixin/](../common/src/main/java/com/sbwnpc/squad/mixin/) | Mixins into Minecraft and SuperbWarfare classes; the loader-independent accessors in common |
+| [neoforge/src/main/resources/](../neoforge/src/main/resources/), [common/src/main/resources/](../common/src/main/resources/) | Textures, models, translations, metadata and the mixin list |
+| [neoforge/src/test/kotlin/com/sbwnpc/squad/](../neoforge/src/test/kotlin/com/sbwnpc/squad/), [common/src/test/kotlin/com/sbwnpc/squad/](../common/src/test/kotlin/com/sbwnpc/squad/) | Automatic tests, laid out like the main code |
+| [gradle.properties](../gradle.properties) | Versions of the mod, Minecraft and dependencies |
+| [build.gradle.kts](../build.gradle.kts), [neoforge/build.gradle.kts](../neoforge/build.gradle.kts), [common/build.gradle.kts](../common/build.gradle.kts) | Root tasks; the NeoForge build, scenes and ktlint; the common module's checks and `BuildFlags` |
+| [settings.gradle.kts](../settings.gradle.kts) | The `common` and `neoforge` modules, `build-logic` and the SuperbWarfare input |
+| `SuperbWarfare/` | A separate local checkout of the dependency; not part of this repository |
+| `build/` | Build output, test reports and generated files |
+| [PLAN-1.0.0.md](../PLAN-1.0.0.md) | The release plan; intentions, not proof of implementation |
+| [AGENTS.md](../AGENTS.md) | How to work on the repository, and technical notes |
 
-## Основные модули
+## Main modules
 
-| Модуль | За что отвечает | Точки входа |
+| Module | Responsible for | Entry points |
 |---|---|---|
-| Инициализация | Подключение портов, регистраций и конфигов | [SquadMod.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/SquadMod.kt), [init/](../neoforge/src/main/kotlin/com/sbwnpc/squad/init/) |
-| Серверные события | Общие обновления и очистка временных данных между мирами | [ServerTick.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/ServerTick.kt), [ServerLifecycle.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/ServerLifecycle.kt) |
-| NPC | Сущность, её Brain, состояние, поза, восстановление после застревания | [entity/NpcEntity.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/NpcEntity.kt), [entity/NpcStuckRecovery.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/NpcStuckRecovery.kt) |
-| Индивидуальный AI | Стрельба, укрытия, лечение, снабжение, движение, техника | [entity/ai/](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/) |
-| Бой | Общие расчёты видимости, угроз, огня, формаций и безопасных позиций | [combat/](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/) |
-| Тактика отряда | HTN-ядро: задачи, операции, роли штурма, обязанности бойцов | [common/.../ai/](../common/src/main/kotlin/com/sbwnpc/squad/ai/), адаптер [ai/integration/](../neoforge/src/main/kotlin/com/sbwnpc/squad/ai/integration/) |
-| Исполнение тактики | Снимок отряда, поиск позиций, маршруты, дистанции | [combat/tactics/](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/tactics/), см. [TACTICS-ARCHITECTURE.md](TACTICS-ARCHITECTURE.md) |
-| Отряды и приказы | Состав, владелец, приказы, выделение, развёртывание, сохранение | [squad/Squad.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/squad/Squad.kt), [squad/SquadManager.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/squad/SquadManager.kt) |
-| Опыт бойцов | Начисление, вклад в поражение цели, боевые раны, пороги рангов | [experience/](../neoforge/src/main/kotlin/com/sbwnpc/squad/experience/) |
-| Описания NPC | Классы, ранги, пресеты, фракции и модели техники | [npc/](../neoforge/src/main/kotlin/com/sbwnpc/squad/npc/) |
-| Фракции и дипломатия | Команды scoreboard, враждебность, союзы | [team/](../neoforge/src/main/kotlin/com/sbwnpc/squad/team/), [squad/PlayerFactionRegistry.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/squad/PlayerFactionRegistry.kt) |
-| Длинные маршруты | Планирование движения по местности и ограничения вычислений | [route/](../common/src/main/kotlin/com/sbwnpc/squad/route/) |
-| Техника | Вода, воздушное пространство, вертолёты, питание и принадлежность водителя | [vehicle/](../neoforge/src/main/kotlin/com/sbwnpc/squad/vehicle/) |
-| Казармы и Supply | Блоки, очередь пополнения, наборы снаряжения и респавн | [block/](../neoforge/src/main/kotlin/com/sbwnpc/squad/block/), [block/entity/](../neoforge/src/main/kotlin/com/sbwnpc/squad/block/entity/) |
-| Предмет управления | Использование инструмента, конфигурация и выдача игроку | [item/SquadToolItem.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/item/SquadToolItem.kt) |
-| Сеть | Сообщения клиент ↔ сервер и серверная обработка действий | [network/Payloads.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/network/Payloads.kt), [network/ModNetwork.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/network/ModNetwork.kt) |
-| Интерфейс | Экраны, HUD, клавиши, клиентские снимки состояния, рендер NPC | [client/](../neoforge/src/main/kotlin/com/sbwnpc/squad/client/), [client/screen/](../neoforge/src/main/kotlin/com/sbwnpc/squad/client/screen/) |
-| Карта | Серверная выдача данных, клиентское состояние, JourneyMap | [map/MapFeed.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/map/MapFeed.kt), [integration/journeymap/](../neoforge/src/main/kotlin/com/sbwnpc/squad/integration/journeymap/) |
-| Контракты с SBW | Интерфейсы оружия, транспорта, гранат, снаряжения и их подключения | [domain/port/](../neoforge/src/main/kotlin/com/sbwnpc/squad/domain/port/) |
-| Реализация интеграции | Вызовы конкретных классов и API SuperbWarfare | [integration/sbw/](../neoforge/src/main/kotlin/com/sbwnpc/squad/integration/sbw/) |
-| Настройки и диагностика | Конфиги, группы логов, измерение нагрузки | [config/](../neoforge/src/main/kotlin/com/sbwnpc/squad/config/), [combat/DebugFlags.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/DebugFlags.kt), [util/PerfProbe.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/util/PerfProbe.kt) |
+| Initialisation | Wiring ports, registrations and configs | [SquadMod.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/SquadMod.kt), [init/](../neoforge/src/main/kotlin/com/sbwnpc/squad/init/) |
+| Server events | Shared updates and clearing runtime data between worlds | [ServerTick.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/ServerTick.kt), [ServerLifecycle.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/ServerLifecycle.kt) |
+| NPC | The entity, its Brain, state, pose, recovery when stuck | [entity/NpcEntity.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/NpcEntity.kt), [entity/NpcStuckRecovery.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/NpcStuckRecovery.kt) |
+| Individual AI | Shooting, cover, healing, supply, movement, vehicles | [entity/ai/](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/) |
+| Combat | Shared computations of sight, threats, fire, formations and safe positions | [combat/](../common/src/main/kotlin/com/sbwnpc/squad/combat/); its NeoForge event subscribers in [combat/](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/) |
+| Squad tactics | The HTN core: tasks, operations, attack phases and roles, members' duties | [common/.../ai/](../common/src/main/kotlin/com/sbwnpc/squad/ai/), adapter [ai/integration/](../common/src/main/kotlin/com/sbwnpc/squad/ai/integration/) |
+| Tactics execution | Squad snapshot, position search, routes, distances | [combat/tactics/](../common/src/main/kotlin/com/sbwnpc/squad/combat/tactics/), see [TACTICS-ARCHITECTURE.md](TACTICS-ARCHITECTURE.md) |
+| Squads and orders | Members, owner, orders, selection, deployment, saving | [squad/Squad.kt](../common/src/main/kotlin/com/sbwnpc/squad/squad/Squad.kt), [squad/SquadManager.kt](../common/src/main/kotlin/com/sbwnpc/squad/squad/SquadManager.kt) |
+| Experience | Awards, contribution to a kill, combat wounds, rank thresholds | [experience/](../common/src/main/kotlin/com/sbwnpc/squad/experience/), with the NeoForge events in [experience/](../neoforge/src/main/kotlin/com/sbwnpc/squad/experience/) |
+| NPC descriptions | Classes, ranks, presets, factions and vehicle models | [common/.../npc/](../common/src/main/kotlin/com/sbwnpc/squad/npc/) |
+| Factions and diplomacy | Scoreboard teams, hostility, alliances | [team/](../common/src/main/kotlin/com/sbwnpc/squad/team/), [squad/PlayerFactionRegistry.kt](../common/src/main/kotlin/com/sbwnpc/squad/squad/PlayerFactionRegistry.kt) |
+| Long routes | Planning movement across terrain and its computation limits | [route/](../common/src/main/kotlin/com/sbwnpc/squad/route/) |
+| Vehicles | Water, airspace, helicopters, fuel and driver ownership | [vehicle/](../common/src/main/kotlin/com/sbwnpc/squad/vehicle/) |
+| Barracks and Supply | Blocks, the reinforcement queue, kits and respawn | [block/](../common/src/main/kotlin/com/sbwnpc/squad/block/), [block/entity/](../common/src/main/kotlin/com/sbwnpc/squad/block/entity/); respawn events and the NeoForge block entity in [block/](../neoforge/src/main/kotlin/com/sbwnpc/squad/block/) |
+| Squad tool | Using the tool, its configuration and handing it to the player | [item/SquadToolItem.kt](../common/src/main/kotlin/com/sbwnpc/squad/item/SquadToolItem.kt) |
+| Network | Client ↔ server messages and the server's handling of actions | [network/Payloads.kt](../common/src/main/kotlin/com/sbwnpc/squad/network/Payloads.kt), [network/ModNetwork.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/network/ModNetwork.kt) |
+| Interface | Screens, HUD, keys, client state snapshots, NPC rendering | [client/](../neoforge/src/main/kotlin/com/sbwnpc/squad/client/), [client/screen/](../neoforge/src/main/kotlin/com/sbwnpc/squad/client/screen/) |
+| Map | Server data feed, client state, JourneyMap | [map/MapFeed.kt](../common/src/main/kotlin/com/sbwnpc/squad/map/MapFeed.kt), [integration/journeymap/](../neoforge/src/main/kotlin/com/sbwnpc/squad/integration/journeymap/) |
+| SBW contracts | Interfaces for weapons, vehicles, grenades, gear and their wiring | [domain/port/](../common/src/main/kotlin/com/sbwnpc/squad/domain/port/) |
+| SBW integration | Calls into SuperbWarfare's concrete classes and API | [integration/sbw/](../neoforge/src/main/kotlin/com/sbwnpc/squad/integration/sbw/) |
+| Settings and diagnostics | Configs, log groups, load measurement | [config/](../neoforge/src/main/kotlin/com/sbwnpc/squad/config/), [combat/DebugFlags.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/DebugFlags.kt), [util/PerfProbe.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/util/PerfProbe.kt) |
 
-## Где менять конкретную механику
+## Where to change a mechanic
 
-### Поведение NPC и бой
+### NPC behaviour and combat
 
-В [NpcEntity.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/NpcEntity.kt) ищи `getSensors`, `getCoreTasks`, `getIdleTasks`, `getFightTasks`: здесь поведения подключаются к Brain. Реализации находятся в `entity/ai/`. Общие вычисления вынесены в `combat/`.
+In [NpcEntity.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/NpcEntity.kt) look for
+`getSensors`, `getCoreTasks`, `getIdleTasks`, `getFightTasks`: that is where behaviours are attached
+to the Brain. The implementations are in `entity/ai/`; shared computations are in `combat/`.
 
-| Что нужно изменить | Где смотреть |
+| What to change | Where to look |
 |---|---|
-| Выбор и обнаружение противника | [SquadTargetSensor.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/SquadTargetSensor.kt), [DetectionSightline.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/DetectionSightline.kt), [Vision.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/Vision.kt) |
-| Выбор доступной для стрельбы известной цели | [TacticalTargets.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalTargets.kt), [TacticalTargetSelection.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalTargetSelection.kt), [FiringOpportunity.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/FiringOpportunity.kt) |
-| Лучи для стрельбы и укрытий | [Sightline.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/Sightline.kt); сравни с отдельным `DetectionSightline` перед изменением |
-| Стрельба, дистанции, очереди, перезарядка | [GunAttackBehaviour.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/GunAttackBehaviour.kt), [AutomaticBurst.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/AutomaticBurst.kt), [OpeningFire.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/OpeningFire.kt), [npc/NpcClass.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/npc/NpcClass.kt) |
-| Вызовы оружейного API SBW | [integration/sbw/SbwGuns.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/integration/sbw/SbwGuns.kt), [domain/port/Guns.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/domain/port/Guns.kt) |
-| Уход в укрытие и выход для стрельбы | [SeekCoverBehaviour.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/SeekCoverBehaviour.kt), [CoverSearch.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/CoverSearch.kt), [CombatPosition.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/CombatPosition.kt) |
-| Потеря противника в траве, память точки и ограниченные очереди | [LastSeenFire.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/LastSeenFire.kt), исполнитель — [BlindReturnFireBehaviour.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/BlindReturnFireBehaviour.kt) |
-| Реакция на попадания и неизвестного стрелка | [IncomingFire.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/IncomingFire.kt), [BlindReturnFireBehaviour.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/BlindReturnFireBehaviour.kt), [SuppressionEvents.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/SuppressionEvents.kt) |
-| Направление оружия независимо от корпуса NPC | [ShotAim.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/ShotAim.kt), вызов в `GunAttackBehaviour.tickShooting`, адаптер `SbwGuns` |
-| Безопасность стрельбы рядом с союзниками | [FriendlyFireGuard.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/FriendlyFireGuard.kt), [FiringCone.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/FiringCone.kt), [SbwProjectileSafety.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/integration/sbw/SbwProjectileSafety.kt), [FireAllocation.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/FireAllocation.kt) |
-| Разведение стрелков по позициям | [FiringSpots.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/FiringSpots.kt), `TacticalPositions.kt`, `CoverSearch.kt` |
-| Цель поиска позиции и точное занятие огневого поста | [TacticalAim.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalAim.kt), [FiringPostArrival.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/FiringPostArrival.kt) |
-| Продолжение поиска заблокированного огневого поста | [TacticalFirePosts.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalFirePosts.kt), [TacticalTask.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalTask.kt), [NativePositionAction.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/ai/integration/NativePositionAction.kt) |
-| Очереди лучей и native A* | [TickBudget.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/TickBudget.kt), [TacticalBudget.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalBudget.kt), продолжение между очередями — `TacticalPositions.kt` / `TacticalTask.kt` |
-| Дистанция боевой позиции от известных врагов, безопасность маршрута | [CombatPositionSafety.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/CombatPositionSafety.kt), [TacticalClearance.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalClearance.kt) |
-| Приоритет укрытия перед открытой позицией | [TacticalPositionScore.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalPositionScore.kt), `TacticalPositions.kt`; индивидуальный поиск — `GunAttackBehaviour.bestFiringSpot` |
-| Лечение | [MedicHealBehaviour.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/MedicHealBehaviour.kt), [SelfTreatBehaviour.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/SelfTreatBehaviour.kt) |
-| Гранаты и уклонение | [GrenadeUseBehaviour.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/GrenadeUseBehaviour.kt), [GrenadeThrowBehaviour.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/GrenadeThrowBehaviour.kt), [GrenadeEvadeBehaviour.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/GrenadeEvadeBehaviour.kt) |
-| Тактика отряда | HTN-контроллер решает в [ai/integration/NativeTactics.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/ai/integration/NativeTactics.kt), операции и роли — в [ai/tactics/](../common/src/main/kotlin/com/sbwnpc/squad/ai/tactics/); исполнение одного назначения — [NativePositionAction.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/ai/integration/NativePositionAction.kt) |
-| Защищённая высота снайпера и пулемётчика | [DefensiveOverwatch.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/tactics/DefensiveOverwatch.kt), [TacticalPositions.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalPositions.kt) |
+| Choosing and detecting an enemy | [SquadTargetSensor.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/SquadTargetSensor.kt), [DetectionSightline.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/DetectionSightline.kt), [Vision.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/Vision.kt) |
+| Choosing a known target that can be shot | [TacticalTargets.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalTargets.kt), [TacticalTargetSelection.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalTargetSelection.kt), [FiringOpportunity.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/FiringOpportunity.kt) |
+| Rays for shooting and cover | [Sightline.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/Sightline.kt); compare with the separate `DetectionSightline` before changing it |
+| Shooting, ranges, bursts, reloading | [GunAttackBehaviour.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/GunAttackBehaviour.kt), [AutomaticBurst.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/AutomaticBurst.kt), [OpeningFire.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/OpeningFire.kt), [npc/NpcClass.kt](../common/src/main/kotlin/com/sbwnpc/squad/npc/NpcClass.kt) |
+| Calls into the SBW weapon API | [integration/sbw/SbwGuns.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/integration/sbw/SbwGuns.kt), [domain/port/Guns.kt](../common/src/main/kotlin/com/sbwnpc/squad/domain/port/Guns.kt) |
+| Taking cover and leaving it to shoot | [SeekCoverBehaviour.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/SeekCoverBehaviour.kt), [CoverSearch.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/CoverSearch.kt), [CombatPosition.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/CombatPosition.kt) |
+| Losing an enemy in grass, remembering the spot, limited bursts | [LastSeenFire.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/LastSeenFire.kt), carried out by [BlindReturnFireBehaviour.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/BlindReturnFireBehaviour.kt) |
+| Reacting to hits and an unknown shooter | [IncomingFire.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/IncomingFire.kt), [BlindReturnFireBehaviour.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/BlindReturnFireBehaviour.kt), [SuppressionEvents.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/SuppressionEvents.kt) |
+| Hearing noises and alarms to allies | [Hearing.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/Hearing.kt), [Alarm.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/Alarm.kt), [DeathSites.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/DeathSites.kt), `NpcEntity.hear` / `alert` |
+| Aiming the weapon independently of the body | [ShotAim.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/ShotAim.kt), called in `GunAttackBehaviour.tickShooting`, adapter `SbwGuns` |
+| Safe fire near allies | [FriendlyFireGuard.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/FriendlyFireGuard.kt), [FiringCone.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/FiringCone.kt), [SbwProjectileSafety.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/integration/sbw/SbwProjectileSafety.kt), [FireAllocation.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/FireAllocation.kt) |
+| Spreading shooters over posts | [FiringSpots.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/FiringSpots.kt), `TacticalPositions.kt`, `CoverSearch.kt` |
+| A position search's aim, and occupying a firing post exactly | [TacticalAim.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalAim.kt), [FiringPostArrival.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/FiringPostArrival.kt) |
+| Continuing the search for a blocked firing post | [TacticalFirePosts.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalFirePosts.kt), [TacticalTask.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalTask.kt), [NativePositionAction.kt](../common/src/main/kotlin/com/sbwnpc/squad/ai/integration/NativePositionAction.kt) |
+| Ray queues and native A* | [TickBudget.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/TickBudget.kt), [TacticalBudget.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalBudget.kt); carrying on between queues in `TacticalPositions.kt` / `TacticalTask.kt` |
+| A combat position's distance from known enemies, route safety | [CombatPositionSafety.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/CombatPositionSafety.kt), [TacticalClearance.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalClearance.kt) |
+| Preferring cover to an open position | [TacticalPositionScore.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalPositionScore.kt), `TacticalPositions.kt`; the individual search is `GunAttackBehaviour.bestFiringSpot` |
+| Healing | [MedicHealBehaviour.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/MedicHealBehaviour.kt), [SelfTreatBehaviour.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/SelfTreatBehaviour.kt) |
+| Grenades and dodging them | [GrenadeUseBehaviour.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/GrenadeUseBehaviour.kt), [GrenadeThrowBehaviour.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/GrenadeThrowBehaviour.kt), [GrenadeEvadeBehaviour.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/GrenadeEvadeBehaviour.kt) |
+| Squad tactics | The HTN controller decides in [ai/integration/NativeTactics.kt](../common/src/main/kotlin/com/sbwnpc/squad/ai/integration/NativeTactics.kt); operations, phases and roles are in [ai/tactics/](../common/src/main/kotlin/com/sbwnpc/squad/ai/tactics/); one assignment is carried out by [NativePositionAction.kt](../common/src/main/kotlin/com/sbwnpc/squad/ai/integration/NativePositionAction.kt) |
+| A sniper's or machine gunner's protected high post | [DefensiveOverwatch.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/tactics/DefensiveOverwatch.kt), [TacticalPositions.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/tactics/TacticalPositions.kt) |
 
-### Приказы, движение и техника
+### Orders, movement and vehicles
 
-В `GunAttackBehaviour.tick` виден порядок боевого обновления: смена приказа → наблюдение и прицеливание → движение → огневая линия → работа оружия и очередь. Реализация этапов находится в `updateAim`, `updateCombatMovement`, `updateFiringLane`, `clearBlockedFiringLane` и `tickShooting`. `holdOrderedPosition` отвечает за удержание позиции и возврат в зону обороны.
+`GunAttackBehaviour.tick` shows the order of a combat update: order change → observation and aim →
+movement → firing lane → weapon work and bursts. The steps are in `updateAim`,
+`updateCombatMovement`, `updateFiringLane`, `clearBlockedFiringLane` and `tickShooting`.
+`holdOrderedPosition` holds the position and returns the NPC to its defence area.
 
-В `VehicleTransportBehaviour.tickDriving` виден порядок управления поездкой. Проверка питания — `stopIfPowerExhausted`, прогресса — `updateProgressAndCheckStall`, застревания — `recoverIfStuck`, союзника перед техникой — `yieldToBlockingAlly`. `steerBoat` применяет водный маршрут; сухопутные точки выбирают `currentWaypoint` и `driveWaypoint`.
+`VehicleTransportBehaviour.tickDriving` shows the order of driving. Fuel is checked in
+`stopIfPowerExhausted`, progress in `updateProgressAndCheckStall`, getting stuck in
+`recoverIfStuck`, an ally in front of the vehicle in `yieldToBlockingAlly`. `steerBoat` follows a
+water route; land waypoints come from `currentWaypoint` and `driveWaypoint`.
 
-`route/` содержит планирование маршрутов по миру. `squad/RouteManager.kt` хранит **патрульные маршруты, записанные игроком**. Это разные задачи, несмотря на похожие названия.
+`route/` plans routes across the world. `squad/RouteManager.kt` keeps **patrol routes recorded by the
+player**. These are different things despite the similar names.
 
-| Что нужно изменить | Где смотреть |
+| What to change | Where to look |
 |---|---|
-| Доступные команды по классу отряда | [squad/SquadOrder.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/squad/SquadOrder.kt), метод `availableFor`; его потребители — экраны, HUD, JourneyMap, менеджер |
-| Выполнение приказа пехотой | [SquadOrderBehaviour.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/SquadOrderBehaviour.kt) |
-| Длинный марш, точки движения и прогресс | [SquadMarch.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/SquadMarch.kt), [MarchProgress.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/MarchProgress.kt), [GroundRouteProgress.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/GroundRouteProgress.kt), [route/Walking.kt](../common/src/main/kotlin/com/sbwnpc/squad/route/Walking.kt) |
-| Короткий путь и застревание NPC | [VehicleAwareNavigation.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/VehicleAwareNavigation.kt), [WalkingClearance.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/WalkingClearance.kt), [NpcStuckRecovery.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/NpcStuckRecovery.kt) |
-| Память физически непроходимых шагов и отложенная отмена прыжка | [FailedWalkingSteps.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/FailedWalkingSteps.kt), `VehicleAwareNavigation.rejectStuckStep` / `stopAfterLanding`, `TacticalRuntimeEvents` |
-| Посадка, высадка и поездка на машине | [VehicleTransportBehaviour.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/VehicleTransportBehaviour.kt), [VehicleRoutes.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/VehicleRoutes.kt), [GroundTravelProgress.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/GroundTravelProgress.kt) |
-| Проезд по суше и через воду | [route/Driving.kt](../common/src/main/kotlin/com/sbwnpc/squad/route/Driving.kt), [route/GroundMap.kt](../common/src/main/kotlin/com/sbwnpc/squad/route/GroundMap.kt), [vehicle/WaterRoutes.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/vehicle/WaterRoutes.kt), [BoatTrips.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/BoatTrips.kt) |
-| Танк и оружие экипажа | [VehicleCrewBehaviour.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/VehicleCrewBehaviour.kt), [TankWeaponSelection.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/TankWeaponSelection.kt) |
-| Вертолёт: приказы, полёт, атака по кругу | [HelicopterPilotBehaviour.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/HelicopterPilotBehaviour.kt), [HelicopterFlightController.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/HelicopterFlightController.kt), [BenchAttackOrbit.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/BenchAttackOrbit.kt), [BenchOrbitContact.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/BenchOrbitContact.kt) |
-| Стрелки и пассажиры вертолёта | [HelicopterGunnerBehaviour.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/HelicopterGunnerBehaviour.kt), [HelicopterRideBehaviour.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/HelicopterRideBehaviour.kt) |
-| Авиация: дальность показа и LOD | [integration/sbw/client/AircraftVisibility.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/integration/sbw/client/AircraftVisibility.kt), [AircraftLods.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/integration/sbw/client/AircraftLods.kt), [SbwAircraftRendering.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/integration/sbw/client/SbwAircraftRendering.kt), mixin `EntityTrackingRangeMixin.java` |
-| Дроны | [DroneOperatorBehaviour.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/DroneOperatorBehaviour.kt), [DroneFlightController.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/DroneFlightController.kt), [AntiDroneBehaviour.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/AntiDroneBehaviour.kt) |
-| Миномёт | [MortarCrewBehaviour.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/MortarCrewBehaviour.kt), [MortarClaims.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/MortarClaims.kt), [MortarCycle.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/MortarCycle.kt), [MortarDeployment.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/MortarDeployment.kt) |
+| Orders available per squad class | [squad/SquadOrder.kt](../common/src/main/kotlin/com/sbwnpc/squad/squad/SquadOrder.kt), `availableFor`; used by the screens, HUD, JourneyMap and the manager |
+| Infantry carrying out an order | [SquadOrderBehaviour.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/SquadOrderBehaviour.kt) |
+| Long march, waypoints and progress | [SquadMarch.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/SquadMarch.kt), [MarchProgress.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/MarchProgress.kt), [GroundRouteProgress.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/GroundRouteProgress.kt), [route/Walking.kt](../common/src/main/kotlin/com/sbwnpc/squad/route/Walking.kt) |
+| Short paths and an NPC getting stuck | [VehicleAwareNavigation.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/VehicleAwareNavigation.kt), [WalkingClearance.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/WalkingClearance.kt), [NpcStuckRecovery.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/NpcStuckRecovery.kt) |
+| Remembering steps that can't be walked, and a deferred jump cancel | [FailedWalkingSteps.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/FailedWalkingSteps.kt), `VehicleAwareNavigation.rejectStuckStep` / `stopAfterLanding` |
+| Boarding, leaving and riding a car | [VehicleTransportBehaviour.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/VehicleTransportBehaviour.kt), [VehicleRoutes.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/VehicleRoutes.kt), [GroundTravelProgress.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/GroundTravelProgress.kt) |
+| Driving over land and across water | [route/Driving.kt](../common/src/main/kotlin/com/sbwnpc/squad/route/Driving.kt), [route/GroundMap.kt](../common/src/main/kotlin/com/sbwnpc/squad/route/GroundMap.kt), [vehicle/WaterRoutes.kt](../common/src/main/kotlin/com/sbwnpc/squad/vehicle/WaterRoutes.kt), [BoatTrips.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/BoatTrips.kt) |
+| Tanks and crew weapons | [VehicleCrewBehaviour.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/VehicleCrewBehaviour.kt), [TankWeaponSelection.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/TankWeaponSelection.kt) |
+| Helicopters: orders, flight, attack orbit | [HelicopterPilotBehaviour.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/HelicopterPilotBehaviour.kt), [HelicopterFlightController.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/HelicopterFlightController.kt), [BenchAttackOrbit.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/BenchAttackOrbit.kt), [BenchOrbitContact.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/BenchOrbitContact.kt) |
+| Helicopter gunners and passengers | [HelicopterGunnerBehaviour.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/HelicopterGunnerBehaviour.kt), [HelicopterRideBehaviour.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/HelicopterRideBehaviour.kt) |
+| Aircraft view range and LOD | [integration/sbw/client/AircraftVisibility.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/integration/sbw/client/AircraftVisibility.kt), [AircraftLods.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/integration/sbw/client/AircraftLods.kt), [SbwAircraftRendering.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/integration/sbw/client/SbwAircraftRendering.kt), mixin `EntityTrackingRangeMixin.java` |
+| Drones | [DroneOperatorBehaviour.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/DroneOperatorBehaviour.kt), [DroneFlightController.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/DroneFlightController.kt), [AntiDroneBehaviour.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/AntiDroneBehaviour.kt) |
+| Mortars | [MortarCrewBehaviour.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/MortarCrewBehaviour.kt), [MortarClaims.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/MortarClaims.kt), [MortarCycle.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/MortarCycle.kt), [MortarDeployment.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/MortarDeployment.kt) |
 
-### Состав, снабжение и отображение
+### Members, supply and display
 
-| Что нужно изменить | Где смотреть |
+| What to change | Where to look |
 |---|---|
-| Оружие, характеристики и боевые дистанции класса | [npc/NpcClass.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/npc/NpcClass.kt), выдача снаряжения в `NpcEntity.applyRole` и `integration/sbw/SbwGear.kt` |
-| Имя, опыт и повышение NPC | [experience/ExperienceRules.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/experience/ExperienceRules.kt), `NpcEntity.gainExperience` / сохранение NBT; пороги в [SquadConfig.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/config/SquadConfig.kt) |
-| Начисление за урон, ассисты и лечение | [ExperienceAwards.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/experience/ExperienceAwards.kt), [ExperienceEvents.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/experience/ExperienceEvents.kt); mixin `VehicleExperienceMixin` и `ExperienceHealingMixin` |
-| Карточка и объединение отрядов | [SquadDetailsScreen.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/client/screen/SquadDetailsScreen.kt), [SquadDetailsSnapshot.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/network/SquadDetailsSnapshot.kt), [SquadMerging.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/squad/SquadMerging.kt), `SquadManager.merge` / `reconcileMembership` |
-| Ранг и наборы отрядов | [npc/NpcRank.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/npc/NpcRank.kt), [npc/SquadPreset.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/npc/SquadPreset.kt) |
-| Спавн и выбор безопасного места | [SquadDeployment.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/squad/SquadDeployment.kt), [SafeSpawn.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/squad/SafeSpawn.kt) |
-| Производительность казарм и очередь | [BarracksBlockEntity.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/block/entity/BarracksBlockEntity.kt), [BarracksRecruitmentQueue.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/squad/BarracksRecruitmentQueue.kt), [RecruitmentRoster.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/squad/RecruitmentRoster.kt) |
-| Supply и поиск снабжения NPC | [SupplyBlockEntity.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/block/entity/SupplyBlockEntity.kt), [SupplyPoints.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/block/entity/SupplyPoints.kt), [ResupplyBehaviour.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/ResupplyBehaviour.kt), [OutOfAmmoBehaviour.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/OutOfAmmoBehaviour.kt) |
-| Ограничение отхода с пустым боезапасом без Supply | [AmmoRetreat.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/entity/ai/AmmoRetreat.kt), вызовы в `OutOfAmmoBehaviour` |
-| Цвета и названия фракций | [npc/SquadFaction.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/npc/SquadFaction.kt) |
-| Враждебность и союзы | [SquadTeams.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/team/SquadTeams.kt), [Diplomacy.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/team/Diplomacy.kt), [AllianceRegistry.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/team/AllianceRegistry.kt) |
-| Выделение NPC в мире | [SelectionHighlight.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/squad/SelectionHighlight.kt), [SquadSelection.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/squad/SquadSelection.kt) |
-| Маркеры, прозрачность, меню и цели на карте | [SquadMapPlugin.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/integration/journeymap/SquadMapPlugin.kt), [MapShapes.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/integration/journeymap/MapShapes.kt); состав данных — `MapFeed.kt` и `client/MapState.kt` |
-| Главное меню отрядов, набор, Supply, дипломатия | [client/screen/](../neoforge/src/main/kotlin/com/sbwnpc/squad/client/screen/); имя экрана соответствует задаче |
-| Быстрые команды и клавиши | [HudClientEvents.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/client/HudClientEvents.kt), [HudOverlayState.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/client/HudOverlayState.kt), [HudKeys.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/client/HudKeys.kt) |
-| Текстуры и переводы | [assets/sbwnpc/](../common/src/main/resources/assets/sbwnpc/), [lang/en_us.json](../common/src/main/resources/assets/sbwnpc/lang/en_us.json); [описание скинов](skins/README.md) |
+| A class's weapon, stats and combat ranges | [npc/NpcClass.kt](../common/src/main/kotlin/com/sbwnpc/squad/npc/NpcClass.kt); gear is issued in `NpcEntity.applyRole` and `integration/sbw/SbwGear.kt` |
+| An NPC's name, experience and promotion | [experience/ExperienceRules.kt](../common/src/main/kotlin/com/sbwnpc/squad/experience/ExperienceRules.kt), `NpcEntity.gainExperience` / NBT saving; thresholds in [SquadConfig.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/config/SquadConfig.kt) |
+| Awards for damage, assists and healing | [ExperienceAwards.kt](../common/src/main/kotlin/com/sbwnpc/squad/experience/ExperienceAwards.kt), [ExperienceEvents.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/experience/ExperienceEvents.kt); mixins `VehicleExperienceMixin` and `ExperienceHealingMixin` |
+| The squad card and merging squads | [SquadDetailsScreen.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/client/screen/SquadDetailsScreen.kt), [SquadDetailsSnapshot.kt](../common/src/main/kotlin/com/sbwnpc/squad/network/SquadDetailsSnapshot.kt), [SquadMerging.kt](../common/src/main/kotlin/com/sbwnpc/squad/squad/SquadMerging.kt), `SquadManager.merge` / `reconcileMembership` |
+| Ranks and squad presets | [npc/NpcRank.kt](../common/src/main/kotlin/com/sbwnpc/squad/npc/NpcRank.kt), [npc/SquadPreset.kt](../common/src/main/kotlin/com/sbwnpc/squad/npc/SquadPreset.kt) |
+| Spawning and choosing a safe spot | [SquadDeployment.kt](../common/src/main/kotlin/com/sbwnpc/squad/squad/SquadDeployment.kt), [SafeSpawn.kt](../common/src/main/kotlin/com/sbwnpc/squad/squad/SafeSpawn.kt) |
+| Barracks production and queue | [BarracksBlockEntity.kt](../common/src/main/kotlin/com/sbwnpc/squad/block/entity/BarracksBlockEntity.kt), [BarracksRecruitmentQueue.kt](../common/src/main/kotlin/com/sbwnpc/squad/squad/BarracksRecruitmentQueue.kt), [RecruitmentRoster.kt](../common/src/main/kotlin/com/sbwnpc/squad/squad/RecruitmentRoster.kt) |
+| Supply and NPCs looking for it | [SupplyBlockEntity.kt](../common/src/main/kotlin/com/sbwnpc/squad/block/entity/SupplyBlockEntity.kt), [SupplyPoints.kt](../common/src/main/kotlin/com/sbwnpc/squad/block/entity/SupplyPoints.kt), [ResupplyBehaviour.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/ResupplyBehaviour.kt), [OutOfAmmoBehaviour.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/OutOfAmmoBehaviour.kt) |
+| Limiting a retreat without ammo when there is no Supply | [AmmoRetreat.kt](../common/src/main/kotlin/com/sbwnpc/squad/entity/ai/AmmoRetreat.kt), called from `OutOfAmmoBehaviour` |
+| Faction colours and names | [npc/SquadFaction.kt](../common/src/main/kotlin/com/sbwnpc/squad/npc/SquadFaction.kt) |
+| Hostility and alliances | [SquadTeams.kt](../common/src/main/kotlin/com/sbwnpc/squad/team/SquadTeams.kt), [Diplomacy.kt](../common/src/main/kotlin/com/sbwnpc/squad/team/Diplomacy.kt), [AllianceRegistry.kt](../common/src/main/kotlin/com/sbwnpc/squad/team/AllianceRegistry.kt) |
+| Highlighting selected NPCs in the world | [SelectionHighlight.kt](../common/src/main/kotlin/com/sbwnpc/squad/squad/SelectionHighlight.kt), [SquadSelection.kt](../common/src/main/kotlin/com/sbwnpc/squad/squad/SquadSelection.kt) |
+| Map markers, transparency, menus and targets | [SquadMapPlugin.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/integration/journeymap/SquadMapPlugin.kt), [MapShapes.kt](../common/src/main/kotlin/com/sbwnpc/squad/integration/journeymap/MapShapes.kt); the data in `MapFeed.kt` and `client/MapState.kt` |
+| The squad menu, recruitment, Supply, diplomacy | [client/screen/](../neoforge/src/main/kotlin/com/sbwnpc/squad/client/screen/); each screen is named after its task |
+| Quick commands and keys | [HudClientEvents.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/client/HudClientEvents.kt), [HudOverlayState.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/client/HudOverlayState.kt), [HudKeys.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/client/HudKeys.kt) |
+| Textures and translations | [assets/sbwnpc/](../common/src/main/resources/assets/sbwnpc/), [lang/en_us.json](../common/src/main/resources/assets/sbwnpc/lang/en_us.json); [skins](skins/README.md) |
 
-## Тесты, сборка и диагностика
+## Tests, build and diagnostics
 
-| Группа | Расположение |
+| Group | Location |
 |---|---|
-| Тесты тактики | [neoforge/src/test/kotlin/com/sbwnpc/squad/combat/tactics/](../neoforge/src/test/kotlin/com/sbwnpc/squad/combat/tactics/) |
-| Покрытие и ограничения тестов тактики | [TACTICAL-TESTS.md](TACTICAL-TESTS.md) |
-| Серверные сцены с настоящими NPC | [neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/); шаблоны — [src/gameTest/resources/data/sbwnpc/structure/](../neoforge/src/gameTest/resources/data/sbwnpc/structure/), запуск — [HEADLESS-TESTS.md](HEADLESS-TESTS.md) |
-| Тесты остальных модулей | [neoforge/src/test/kotlin/com/sbwnpc/squad/](../neoforge/src/test/kotlin/com/sbwnpc/squad/) — каталоги соответствуют основному коду |
-| Задачи сборки, форматирования и тестов | [build.gradle.kts](../build.gradle.kts) |
-| Настройки форматирования | [.editorconfig](../.editorconfig) |
-| JAR-файлы | `build/libs/` |
-| Отчёты тестов | `build/reports/tests/test/`, `build/test-results/test/` |
-| Нативные проверки общей атаки и подсчёт работы | `src/gameTest/kotlin/com/sbwnpc/squad/gametest/AttackOperationGameTests.kt`, `NativeCombatWork.kt` |
-| Воспроизведение сохранённого боя и причины простоя | `src/gameTest/kotlin/com/sbwnpc/squad/gametest/SavedBattleGameTests.kt`, `SavedBattleReplay.kt`, `CombatParticipationTrace.kt` |
-| Мир и отчёты headless GameTest | `build/gametest/server/`, `build/reports/gameTest/` |
-| Генерация BuildFlags | `build.gradle.kts`; результат — `build/generated/buildFlags/` |
-| Группы диагностических сообщений | [combat/LogGroup.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/LogGroup.kt) |
-| Настройки диагностики | [combat/DebugFlags.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/DebugFlags.kt); в игре — `config/sbwnpc-debug.toml` |
+| HTN core tests | [common/src/test/kotlin/com/sbwnpc/squad/ai/](../common/src/test/kotlin/com/sbwnpc/squad/ai/) |
+| Tactics execution tests | [neoforge/src/test/kotlin/com/sbwnpc/squad/combat/tactics/](../neoforge/src/test/kotlin/com/sbwnpc/squad/combat/tactics/) |
+| What the tactics tests cover, and their limits | [TACTICAL-TESTS.md](TACTICAL-TESTS.md) |
+| Server scenes with real NPCs | [neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/); templates in [neoforge/src/gameTest/resources/data/sbwnpc/structure/](../neoforge/src/gameTest/resources/data/sbwnpc/structure/); how to run: [HEADLESS-TESTS.md](HEADLESS-TESTS.md) |
+| Tests of the other modules | [neoforge/src/test/kotlin/com/sbwnpc/squad/](../neoforge/src/test/kotlin/com/sbwnpc/squad/), laid out like the main code |
+| Build, formatting and test tasks | [build.gradle.kts](../build.gradle.kts) |
+| Formatting settings | [.editorconfig](../.editorconfig) |
+| JAR files | `build/libs/` |
+| Test reports | `<module>/build/reports/tests/test/`, `<module>/build/test-results/test/` |
+| Attack scenes and work counting | `neoforge/src/gameTest/.../AttackDeploymentGameTests.kt`, `HtnTacticsGameTests.kt`, `NativeCombatWork.kt` |
+| Replaying a saved battle and the causes of idling | `neoforge/src/gameTest/.../SavedBattleGameTests.kt`, `SavedBattleReplay.kt`, `CombatParticipationTrace.kt` |
+| Headless GameTest world and reports | `neoforge/build/gametest/server/`, `neoforge/build/reports/gameTest/` |
+| BuildFlags generation | `common/build.gradle.kts`; output in `common/build/generated/buildFlags/` |
+| Diagnostic log groups | [combat/LogGroup.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/LogGroup.kt) |
+| Diagnostic settings | [combat/DebugFlags.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/DebugFlags.kt); in game, `config/sbwnpc-debug.toml` |
