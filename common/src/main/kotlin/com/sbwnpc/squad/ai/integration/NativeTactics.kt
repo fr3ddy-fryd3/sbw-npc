@@ -10,9 +10,11 @@ import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.*
 import com.sbwnpc.squad.team.Diplomacy
+import com.sbwnpc.squad.util.Terrain
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.phys.Vec3
+import net.minecraft.world.phys.shapes.CollisionContext
 import java.util.UUID
 import kotlin.math.hypot
 import kotlin.math.max
@@ -24,6 +26,10 @@ object NativeTactics {
 
     /** Seen enemies this close to an attacked area keep it from counting as held. */
     private const val AREA_THREAT_RADIUS = 128.0
+    private const val EYE_HEIGHT = 1.6
+
+    /** A slot that moved less than this since it was searched keeps its chosen post. */
+    private const val SLOT_REUSE_DISTANCE = 4.0
     private val worlds = HashMap<ServerLevel, World>()
     private fun world(npc: NpcEntity) = worlds.getOrPut(npc.level() as ServerLevel) { World(npc.level() as ServerLevel) }
     fun refresh(npc: NpcEntity) {
@@ -80,6 +86,9 @@ object NativeTactics {
     /** One group of an attack that takes an approach sector: a squad, or a lone squad's manoeuvre group. */
     private data class SectorGroup(val squad: UUID, val manoeuvre: Boolean)
 
+    /** The [post] [FireSlotSight] chose for a slot at [slot]; null when none sees the defence. */
+    private class SlotSight(val slot: Point3, val post: Point3?)
+
     private class World(val level: ServerLevel) {
         val pendingDeaths = HashMap<UUID, PendingDeath>()
         val agents = LinkedHashMap<AgentId, PlanningAgent>()
@@ -99,6 +108,9 @@ object NativeTactics {
         private val sectors = HashMap<UUID, ApproachSectors<SectorGroup>>()
         private val sectorTraces = HashMap<UUID, Map<SectorGroup, Double>>()
         private val flankTraces = HashMap<UUID, Int>()
+
+        // The sighted post chosen for each man's slot, see [withSight].
+        private val slotSights = HashMap<UUID, SlotSight>()
         private val sectorsHeld = HashMap<UUID, Boolean>()
 
         // Members on the arc to their sector at the last layout: their intent is not kept once the
@@ -655,6 +667,29 @@ object NativeTactics {
             return members.mapNotNull { (group, member) -> bearings[group]?.let { member.id to it } }.toMap()
         }
 
+        /**
+         * [proposal] with its post moved to a point that sees [defenders]. Chosen once per post and
+         * kept, so a man is not shuffled about by every re-layout; a post that moves is searched anew.
+         * A post with no sight anywhere near it is kept and traced (#93).
+         */
+        private fun withSight(operation: UUID, id: UUID, proposal: FrontProposal, defenders: List<Point3>, role: NpcClass): FrontProposal {
+            if (proposal.duty == CombatDuty.REAR_GUARD || defenders.isEmpty()) return proposal
+            val kept = slotSights[id]?.takeIf { hypot(it.slot.x - proposal.anchor.x, it.slot.z - proposal.anchor.z) <= SLOT_REUSE_DISTANCE }
+            val chosen = if (kept != null) {
+                kept.post
+            } else {
+                val post = FireSlotSight.choose(proposal.anchor, defenders, CombatPositionSafety.clearance(role)) { post, enemy ->
+                    Terrain.feetAt(level, Vec3(post.x, post.y, post.z))?.let { feet ->
+                        DetectionSightline.visible(level, feet.add(0.0, EYE_HEIGHT, 0.0), Vec3(enemy.x, enemy.y + 1.0, enemy.z), CollisionContext.empty())
+                    } == true
+                }
+                slotSights[id] = SlotSight(proposal.anchor, post)
+                if (post == null) DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=slot_no_sight member={} slot={}", operation, id, proposal.anchor)
+                post
+            }
+            return if (chosen == null) proposal else proposal.copy(anchor = chosen)
+        }
+
         /** Geometry proposes areas; actual arrival, useful fire and native reachability remain observations. */
         private fun layout(squads: List<Squad>, now: Long, holding: Boolean = false): List<SquadMission> {
             val seen = squads.flatMap { combatView(it.id)!!.contacts }.filter { now - it.seenAt <= 200 }.distinctBy { it.id }
@@ -710,7 +745,7 @@ object NativeTactics {
                 val defenders = enemies.filter { OperationTactics.atObjective(it, objective) }
                 actors.groupBy { bearings.getValue(it.id) }.flatMap { (bearing, sector) ->
                     OperationFront.propose(sector, defenders, objective, formationDuties, bearing).entries
-                }.associate { it.key to it.value }
+                }.associate { (id, proposal) -> id to withSight(operation, id, proposal, defenders, members.first { it.id == id }.role) }
             }
             proposals.forEach { (id, proposal) -> formationDuties[id] = proposal.duty }
             // A man far round the objective from his sector gets there along the arc, not across the
