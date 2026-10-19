@@ -1,7 +1,7 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
-import com.sbwnpc.squad.SquadMod
+import com.sbwnpc.squad.ModIdentity
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.domain.port.Ports
@@ -84,7 +84,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         // Faster than NpcClass.MEDIC's normal 1.3 — see setSprinting()'s own doc comment.
         private const val HEAL_SPRINT_SPEED_MULTIPLIER = 1.6
-        private val SPRINT_MODIFIER_ID = SquadMod.loc("medic_sprint")
+        private val SPRINT_MODIFIER_ID = ModIdentity.loc("medic_sprint")
 
         // Light red — player-facing heal indicator for a treat() call, see markHeal().
         private val HEAL_COLOR = org.joml.Vector3f(1.0f, 0.45f, 0.45f)

@@ -15,11 +15,11 @@ is Kotlin; Java is used for mixins into Minecraft and SuperbWarfare.
 |---|---|
 | [neoforge/src/main/kotlin/com/sbwnpc/squad/](../neoforge/src/main/kotlin/com/sbwnpc/squad/) | The mod's main code |
 | [common/src/main/kotlin/com/sbwnpc/squad/](../common/src/main/kotlin/com/sbwnpc/squad/) | Loader-independent code |
-| [neoforge/src/main/java/com/sbwnpc/squad/mixin/](../neoforge/src/main/java/com/sbwnpc/squad/mixin/) | Mixins into Minecraft and SuperbWarfare classes |
+| [neoforge/src/main/java/com/sbwnpc/squad/mixin/](../neoforge/src/main/java/com/sbwnpc/squad/mixin/), [common/src/main/java/com/sbwnpc/squad/mixin/](../common/src/main/java/com/sbwnpc/squad/mixin/) | Mixins into Minecraft and SuperbWarfare classes; the loader-independent accessors in common |
 | [neoforge/src/main/resources/](../neoforge/src/main/resources/), [common/src/main/resources/](../common/src/main/resources/) | Textures, models, translations, metadata and the mixin list |
 | [neoforge/src/test/kotlin/com/sbwnpc/squad/](../neoforge/src/test/kotlin/com/sbwnpc/squad/), [common/src/test/kotlin/com/sbwnpc/squad/](../common/src/test/kotlin/com/sbwnpc/squad/) | Automatic tests, laid out like the main code |
 | [gradle.properties](../gradle.properties) | Versions of the mod, Minecraft and dependencies |
-| [build.gradle.kts](../build.gradle.kts), [neoforge/build.gradle.kts](../neoforge/build.gradle.kts), [common/build.gradle.kts](../common/build.gradle.kts) | Root tasks; the NeoForge build, scenes, ktlint and `BuildFlags`; the common module's checks |
+| [build.gradle.kts](../build.gradle.kts), [neoforge/build.gradle.kts](../neoforge/build.gradle.kts), [common/build.gradle.kts](../common/build.gradle.kts) | Root tasks; the NeoForge build, scenes and ktlint; the common module's checks and `BuildFlags` |
 | [settings.gradle.kts](../settings.gradle.kts) | The `common` and `neoforge` modules, `build-logic` and the SuperbWarfare input |
 | `SuperbWarfare/` | A separate local checkout of the dependency; not part of this repository |
 | `build/` | Build output, test reports and generated files |
@@ -50,7 +50,7 @@ is Kotlin; Java is used for mixins into Minecraft and SuperbWarfare.
 | Map | Server data feed, client state, JourneyMap | [map/MapFeed.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/map/MapFeed.kt), [integration/journeymap/](../neoforge/src/main/kotlin/com/sbwnpc/squad/integration/journeymap/) |
 | SBW contracts | Interfaces for weapons, vehicles, grenades, gear and their wiring | [domain/port/](../common/src/main/kotlin/com/sbwnpc/squad/domain/port/) |
 | SBW integration | Calls into SuperbWarfare's concrete classes and API | [integration/sbw/](../neoforge/src/main/kotlin/com/sbwnpc/squad/integration/sbw/) |
-| Settings and diagnostics | Configs, log groups, load measurement | [config/](../neoforge/src/main/kotlin/com/sbwnpc/squad/config/), [combat/DebugFlags.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/DebugFlags.kt), [util/PerfProbe.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/util/PerfProbe.kt) |
+| Settings and diagnostics | Configs, log groups, load measurement | [config/](../neoforge/src/main/kotlin/com/sbwnpc/squad/config/), [combat/DebugFlags.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/DebugFlags.kt), [util/PerfProbe.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/util/PerfProbe.kt) |
 
 ## Where to change a mechanic
 
@@ -131,7 +131,7 @@ player**. These are different things despite the similar names.
 | Faction colours and names | [npc/SquadFaction.kt](../common/src/main/kotlin/com/sbwnpc/squad/npc/SquadFaction.kt) |
 | Hostility and alliances | [SquadTeams.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/team/SquadTeams.kt), [Diplomacy.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/team/Diplomacy.kt), [AllianceRegistry.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/team/AllianceRegistry.kt) |
 | Highlighting selected NPCs in the world | [SelectionHighlight.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/squad/SelectionHighlight.kt), [SquadSelection.kt](../common/src/main/kotlin/com/sbwnpc/squad/squad/SquadSelection.kt) |
-| Map markers, transparency, menus and targets | [SquadMapPlugin.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/integration/journeymap/SquadMapPlugin.kt), [MapShapes.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/integration/journeymap/MapShapes.kt); the data in `MapFeed.kt` and `client/MapState.kt` |
+| Map markers, transparency, menus and targets | [SquadMapPlugin.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/integration/journeymap/SquadMapPlugin.kt), [MapShapes.kt](../common/src/main/kotlin/com/sbwnpc/squad/integration/journeymap/MapShapes.kt); the data in `MapFeed.kt` and `client/MapState.kt` |
 | The squad menu, recruitment, Supply, diplomacy | [client/screen/](../neoforge/src/main/kotlin/com/sbwnpc/squad/client/screen/); each screen is named after its task |
 | Quick commands and keys | [HudClientEvents.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/client/HudClientEvents.kt), [HudOverlayState.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/client/HudOverlayState.kt), [HudKeys.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/client/HudKeys.kt) |
 | Textures and translations | [assets/sbwnpc/](../common/src/main/resources/assets/sbwnpc/), [lang/en_us.json](../common/src/main/resources/assets/sbwnpc/lang/en_us.json); [skins](skins/README.md) |
@@ -152,6 +152,6 @@ player**. These are different things despite the similar names.
 | Attack scenes and work counting | `neoforge/src/gameTest/.../AttackDeploymentGameTests.kt`, `HtnTacticsGameTests.kt`, `NativeCombatWork.kt` |
 | Replaying a saved battle and the causes of idling | `neoforge/src/gameTest/.../SavedBattleGameTests.kt`, `SavedBattleReplay.kt`, `CombatParticipationTrace.kt` |
 | Headless GameTest world and reports | `neoforge/build/gametest/server/`, `neoforge/build/reports/gameTest/` |
-| BuildFlags generation | `build.gradle.kts`; output in `build/generated/buildFlags/` |
+| BuildFlags generation | `common/build.gradle.kts`; output in `common/build/generated/buildFlags/` |
 | Diagnostic log groups | [combat/LogGroup.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/LogGroup.kt) |
-| Diagnostic settings | [combat/DebugFlags.kt](../neoforge/src/main/kotlin/com/sbwnpc/squad/combat/DebugFlags.kt); in game, `config/sbwnpc-debug.toml` |
+| Diagnostic settings | [combat/DebugFlags.kt](../common/src/main/kotlin/com/sbwnpc/squad/combat/DebugFlags.kt); in game, `config/sbwnpc-debug.toml` |

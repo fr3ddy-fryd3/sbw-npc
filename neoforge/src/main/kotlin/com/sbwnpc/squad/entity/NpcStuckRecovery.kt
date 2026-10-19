@@ -1,6 +1,6 @@
 package com.sbwnpc.squad.entity
 
-import com.sbwnpc.squad.SquadMod
+import com.sbwnpc.squad.ModIdentity
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
@@ -133,7 +133,7 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
         recoveryAttempts++
         if (recoveryAttempts >= 6 && tick - lastWarningTick >= 600) {
             lastWarningTick = tick
-            SquadMod.LOGGER.warn(
+            ModIdentity.LOGGER.warn(
                 "NPC {} ({}) still stuck at {} toward {} after {} recoveries; fall limit {}, colliders {}",
                 npc.uuid,
                 npc.npcClass,

@@ -1,6 +1,6 @@
 package com.sbwnpc.squad.init
 
-import com.sbwnpc.squad.SquadMod
+import com.sbwnpc.squad.ModIdentity
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.world.entity.EntityType
@@ -13,7 +13,7 @@ import net.neoforged.neoforge.registries.DeferredRegister
 
 @EventBusSubscriber
 object ModEntities {
-    val REGISTRY: DeferredRegister<EntityType<*>> = DeferredRegister.create(BuiltInRegistries.ENTITY_TYPE, SquadMod.MODID)
+    val REGISTRY: DeferredRegister<EntityType<*>> = DeferredRegister.create(BuiltInRegistries.ENTITY_TYPE, ModIdentity.MODID)
 
     @JvmField
     val NPC: DeferredHolder<EntityType<*>, EntityType<NpcEntity>> = REGISTRY.register("npc") { ->

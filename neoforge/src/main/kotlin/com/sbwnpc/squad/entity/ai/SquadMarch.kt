@@ -1,6 +1,6 @@
 package com.sbwnpc.squad.entity.ai
 
-import com.sbwnpc.squad.SquadMod
+import com.sbwnpc.squad.ModIdentity
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.entity.NpcEntity
@@ -444,7 +444,7 @@ object SquadMarch {
             route.size, reached, end, "%.1f".format((System.nanoTime() - started) / 1.0e6),
         )
         if (march.misses >= GIVE_UP) {
-            SquadMod.LOGGER.warn(
+            ModIdentity.LOGGER.warn(
                 "{}: NPC {} ({}) cannot continue walking from {} toward {} after {} failed legs",
                 squadName,
                 npc.uuid,

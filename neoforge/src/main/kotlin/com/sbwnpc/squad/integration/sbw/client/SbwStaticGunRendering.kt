@@ -2,7 +2,7 @@ package com.sbwnpc.squad.integration.sbw.client
 
 import com.atsuishio.superbwarfare.item.gun.GunItem
 import com.mojang.blaze3d.vertex.PoseStack
-import com.sbwnpc.squad.SquadMod
+import com.sbwnpc.squad.ModIdentity
 import com.sbwnpc.squad.domain.port.ClientPorts
 import com.sbwnpc.squad.domain.port.GunRendering
 import net.minecraft.client.Minecraft
@@ -50,7 +50,7 @@ object SbwStaticGunRendering : SimplePreparableReloadListener<Map<ResourceLocati
         gun.mesh.render(poseStack, buffer.getBuffer(RenderType.entityCutoutNoCull(gun.texture)), packedLight)
 
         if (reported.add(gun.geometry)) {
-            SquadMod.LOGGER.info("NPC gun renderer: {} ({} quads), static rendering without GeckoLib", gun.geometry, gun.mesh.quadCount)
+            ModIdentity.LOGGER.info("NPC gun renderer: {} ({} quads), static rendering without GeckoLib", gun.geometry, gun.mesh.quadCount)
         }
     }
 
@@ -60,7 +60,7 @@ object SbwStaticGunRendering : SimplePreparableReloadListener<Map<ResourceLocati
         guns = prepared
         reported.clear()
         val meshes = guns.values.map { it.mesh }.toSet()
-        SquadMod.LOGGER.info("NPC gun renderer: loaded {} guns, {} static LOD models ({} quads)", guns.size, meshes.size, meshes.sumOf { it.quadCount })
+        ModIdentity.LOGGER.info("NPC gun renderer: loaded {} guns, {} static LOD models ({} quads)", guns.size, meshes.size, meshes.sumOf { it.quadCount })
     }
 
     @SubscribeEvent

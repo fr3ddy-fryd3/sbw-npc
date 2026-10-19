@@ -35,7 +35,7 @@ command and supply it. The pieces, roughly from the outside in:
 
 | Package | What lives there |
 |---|---|
-| (root) | `SquadMod` (mod entry point), `ServerTick` (server-wide per-tick drivers), `ServerLifecycle` (clears runtime state when a world stops); in common, `ModIdentity` (mod id and `loc()`) |
+| (root) | `SquadMod` (mod entry point), `ServerTick` (server-wide per-tick drivers), `ServerLifecycle` (clears runtime state when a world stops); in common, `ModIdentity` (mod id, logger and `loc()`) |
 | `init/` | Deferred registers: entities, items, blocks, block entities, SmartBrainLib sensors and memory types |
 | `entity/` | `NpcEntity` itself, posture, stuck recovery, and live per-level indexes (`NpcRegistry`, `EntityIndex`, drone and grenade registries) |
 | `entity/ai/` | Brain behaviours (`*Behaviour.kt`), the target sensor, and the helpers they share: flight controllers, march and route progress trackers, claim registries for mortars and transport seats |
@@ -56,7 +56,8 @@ command and supply it. The pieces, roughly from the outside in:
 | `config/` | In common: `SquadSettings`, the gameplay settings view, read through `Settings.current` (`DefaultSquadSettings` until the loader installs its own and in plain JVM tests). In NeoForge: `SquadConfig` (server config, `serverconfig/sbwnpc-server.toml`), which implements it, and `DebugConfig` (debug builds only) |
 | `util/` | Small shared helpers: timers, terrain queries, item stack data, the perf probe |
 
-Java mixins live in `neoforge/src/main/java/com/sbwnpc/squad/mixin/`, listed in
+Java mixins live in `neoforge/src/main/java/com/sbwnpc/squad/mixin/`, and the vanilla-only
+`PathNavigationAccessor` in `common/src/main/java/com/sbwnpc/squad/mixin/`. All are listed in
 `neoforge/src/main/resources/mixins.sbwnpc.json` (common and client sets). Most patch SuperbWarfare classes
 (vehicle boarding, shooting and gun data, aircraft rendering, auto-aim); the rest patch vanilla
 (entity alliance checks, tracking range, key mappings).
