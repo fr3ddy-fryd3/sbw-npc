@@ -533,7 +533,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         rollRate: Float,
         clearance: Double,
     ) {
-        val desiredY = DroneFlightController.cruiseAltitude(
+        val desiredY = HelicopterFlightController.cruiseAltitude(
             terrainAhead(level, heli, station),
             clearance,
             heli.y,
@@ -661,6 +661,8 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         const val ON_STATION_RADIUS = 8.0
         const val OFF_STATION_RADIUS = 20.0
         const val DESCENT_RATE = 0.22
-        val LOOKAHEAD_DISTANCES = listOf(12.0, 24.0, 40.0, 60.0)
+
+        // Out to 90: coming back down between ridges, at cruise speed it needs that far to climb a tall one.
+        val LOOKAHEAD_DISTANCES = listOf(12.0, 24.0, 40.0, 60.0, 90.0)
     }
 }

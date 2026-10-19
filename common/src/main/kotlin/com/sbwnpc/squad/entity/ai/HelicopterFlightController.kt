@@ -74,6 +74,9 @@ object HelicopterFlightController {
     private const val SPEED_TO_PITCH = 45f
     private const val ALTITUDE_DEADBAND = 1.5
     private const val FAST_SINK_MARGIN = 8.0
+
+    /** How far [cruiseAltitude] lets the wanted height come down in one tick: wider than [ALTITUDE_DEADBAND], or the collective never sinks. */
+    private const val DESCENT_STEP = ALTITUDE_DEADBAND + 1.0
     private const val ROLL_DEADBAND = 1.5f
 
     /** `deltaRot` decays by 0.9 a tick, so the roll still owed by the current rate is about 10x it. */
@@ -138,6 +141,18 @@ object HelicopterFlightController {
             projected < -ROLL_DEADBAND -> false to true
             else -> false to false
         }
+    }
+
+    /**
+     * Height to fly a leg at: the highest terrain sampled along it plus [clearance], coming down
+     * from [currentY] at most [DESCENT_STEP] a tick so a valley is not dived into.
+     *
+     * Not [DroneFlightController.cruiseAltitude]: its 0.5 step stays inside [ALTITUDE_DEADBAND], so
+     * the collective held and a helicopter that climbed over a ridge never came back down (#119).
+     */
+    fun cruiseAltitude(terrainHeights: List<Int>, clearance: Double, currentY: Double): Double {
+        val highest = terrainHeights.maxOrNull() ?: return currentY
+        return maxOf(highest + clearance, currentY - DESCENT_STEP)
     }
 
     /** Collective for holding [desiredY], with a wider band before the fast sink so an aircraft

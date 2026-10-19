@@ -52,6 +52,16 @@ class HelicopterFlightControllerTest {
     }
 
     @Test
+    fun `cruise altitude comes back down after a ridge`() {
+        // Past a ridge, 130 above the ground it now flies over: the wanted height must step down by
+        // more than the deadband, or the collective holds the aircraft up there.
+        val wanted = HelicopterFlightController.cruiseAltitude(listOf(70, 72, 71), 24.0, 199.0)
+        assertEquals(Collective.SINK_SLOW, HelicopterFlightController.collectiveFor(199.0, wanted))
+        assertEquals(96.0, HelicopterFlightController.cruiseAltitude(listOf(70, 72, 71), 24.0, 97.0), 1e-9)
+        assertEquals(124.0, HelicopterFlightController.cruiseAltitude(listOf(100), 24.0, 80.0), 1e-9)
+    }
+
+    @Test
     fun `turns before accelerating instead of arcing off`() {
         val target = Vec3(0.0, 80.0, 200.0) // due south, yaw 0
         val facingAway = HelicopterFlightController.steer(
