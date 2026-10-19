@@ -65,6 +65,30 @@ value class NpcActivities(private val mask: Int = 0) {
         /** The activities behind [movingMortar]. */
         val MORTAR_MOVE_ACTIVITIES = setOf(NpcActivity.CARRYING_MORTAR, NpcActivity.MORTAR_ERRAND)
 
+        /**
+         * Pairs that should not be held together: a drone operator does not crew a mortar, and a man
+         * dug in is not riding a vehicle. Only reported so far (see [ActivityClaims.claim]); the
+         * trace shows whether any of them happens in play before a claim is refused.
+         */
+        private val EXCLUSIVE = listOf(
+            NpcActivity.DRONE to NpcActivity.MORTAR_CREW,
+            NpcActivity.DRONE to NpcActivity.VEHICLE,
+            NpcActivity.MORTAR_CREW to NpcActivity.VEHICLE,
+            NpcActivity.DUG_IN to NpcActivity.VEHICLE,
+        )
+
+        /** The activities that [activity] should not be held together with. */
+        fun excluding(activity: NpcActivity): Set<NpcActivity> =
+            EXCLUSIVE.mapNotNullTo(HashSet()) { (a, b) ->
+                if (a == activity) {
+                    b
+                } else if (b == activity) {
+                    a
+                } else {
+                    null
+                }
+            }
+
         private val ROLE = maskOf(ROLE_ACTIVITIES)
         private val MORTAR_MOVE = maskOf(MORTAR_MOVE_ACTIVITIES)
     }

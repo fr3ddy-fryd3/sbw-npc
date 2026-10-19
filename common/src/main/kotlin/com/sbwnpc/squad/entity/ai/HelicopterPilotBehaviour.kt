@@ -5,6 +5,7 @@ import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.SquadOrder
@@ -89,18 +90,18 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         // that has just been spawned does not reliably report onGround(), and believing it put the
         // aircraft into a cruise turn while it was still sitting on the dirt.
         phase = Phase.TAKEOFF
-        entity.vehicleTransport = true
+        entity.claim(NpcActivity.VEHICLE, this)
     }
 
     override fun stop(entity: NpcEntity) {
         entity.vehicle?.takeIf(Ports.vehicles::isVehicle)?.let(::cutControls)
-        entity.vehicleTransport = false
+        entity.release(NpcActivity.VEHICLE, this)
     }
 
     override fun tick(entity: NpcEntity) {
         val level = entity.level() as? ServerLevel ?: return
         val heli = flyable(entity) ?: return
-        entity.vehicleTransport = true
+        entity.claim(NpcActivity.VEHICLE, this)
         entity.navigation.stop()
 
         // Sampled once a tick, before anything acts on it.

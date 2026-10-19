@@ -6,6 +6,7 @@ import com.sbwnpc.squad.combat.DroneCombat
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.SquadOrder
@@ -66,7 +67,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun stop(entity: NpcEntity) {
         rideId = null
-        entity.vehicleTransport = false
+        entity.release(NpcActivity.VEHICLE, this)
         entity.navigation.stop()
     }
 
@@ -83,7 +84,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun ride(entity: NpcEntity, heli: Entity) {
-        entity.vehicleTransport = true
+        entity.claim(NpcActivity.VEHICLE, this)
         entity.navigation.stop()
         rideId = heli.uuid
         fireFromBench(entity, heli)
@@ -98,7 +99,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         if (!Ports.vehicles.isOperational(heli)) {
             entity.stopRiding()
-            entity.vehicleTransport = false
+            entity.release(NpcActivity.VEHICLE, this)
             return
         }
         // Attack launches even on the current pad: its gunners must stay aboard while waiting.
@@ -113,7 +114,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         // parked aircraft forever.
         if (arrived || entity.tickCount - groundedSince > STRANDED_TICKS) {
             entity.stopRiding()
-            entity.vehicleTransport = false
+            entity.release(NpcActivity.VEHICLE, this)
             rideId = null
             // Walk away properly before considering another lift. Without this, anyone put down
             // short of the objective would turn straight round and climb back into the aircraft
@@ -125,7 +126,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun board(entity: NpcEntity, level: ServerLevel) {
         val heli = lift(entity, level) ?: return
-        entity.vehicleTransport = true
+        entity.claim(NpcActivity.VEHICLE, this)
         val hull = heli.boundingBox
         if (hull.distanceToSqr(entity.position()) > BOARD_DISTANCE_SQR) {
             entity.navigateTo(

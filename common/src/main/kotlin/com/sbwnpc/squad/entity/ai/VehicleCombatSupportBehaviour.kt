@@ -6,6 +6,7 @@ import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.TankWeaponSelection
 import com.sbwnpc.squad.combat.VehicleTargeting
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.team.SquadTeams
@@ -69,7 +70,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         sawTargetTick = entity.tickCount
         engagedTick = entity.tickCount
         phase = Phase.APPROACHING
-        entity.vehicleTransport = true
+        entity.claim(NpcActivity.VEHICLE, this)
         DebugFlags.log(
             LogGroup.VEHICLE,
             "{} claimed combat support vehicle {} for target {}",
@@ -87,7 +88,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
             entity.stopRiding()
         }
         VehicleTransportClaims.release(entity.uuid)
-        entity.vehicleTransport = false
+        entity.release(NpcActivity.VEHICLE, this)
         entity.navigation.stop()
         vehicleId = null
         targetId = null
@@ -200,7 +201,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         VehicleTransportClaims.release(entity.uuid)
         vehicleId = null
         targetId = null
-        entity.vehicleTransport = false
+        entity.release(NpcActivity.VEHICLE, this)
         entity.navigation.stop()
     }
 
