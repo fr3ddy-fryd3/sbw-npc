@@ -206,8 +206,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      * With nothing to fight, it turns to face the sound; and if nothing holds it where it is, goes
      * to see. Holding means dug in, at a crew post, defending, barraging, on the move or falling
      * back to an objective, or off to a Supply — none of those drop what they're doing for a noise.
+     * Without [goLook] it only turns: others of its squad go to look instead.
      */
-    fun hear(at: Vec3, nearbyFootstep: Boolean = false) {
+    fun hear(at: Vec3, nearbyFootstep: Boolean = false, goLook: Boolean = true) {
         val currentTarget = target
         if (currentTarget != null) {
             if (!nearbyFootstep || com.sbwnpc.squad.combat.DetectionSightline.canSee(this, currentTarget)) {
@@ -223,8 +224,15 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         heardDuringCombat = false
         heardAt = at
         heardUntilTick = tickCount + HEARD_LOOK_TICKS
+        val holding = if (goLook) holdReason() else "others of the squad look"
+        if (holding == null) alert(at)
+        logHearing(at, if (holding == null) "turns and goes to look" else "turns, holds ($holding)")
+    }
+
+    /** What keeps this NPC where it is when it hears a noise, or null when it is free to go and look. */
+    internal fun holdReason(): String? {
         val order = currentSquad()?.order
-        val holding = when {
+        return when {
             diggedIn -> "dug in"
 
             busyWithRole() -> "busy with a role"
@@ -236,8 +244,6 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
             else -> null
         }
-        if (holding == null) alert(at)
-        logHearing(at, if (holding == null) "turns and goes to look" else "turns, holds ($holding)")
     }
 
     private var lastHearingLogTick = Int.MIN_VALUE / 2
