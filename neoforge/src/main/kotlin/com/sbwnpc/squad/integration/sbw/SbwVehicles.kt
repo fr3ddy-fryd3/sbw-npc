@@ -70,6 +70,9 @@ object SbwVehicles : Vehicles {
 
     override fun seating(vehicle: Entity): List<Entity?> = (vehicle as? VehicleEntity)?.getOrderedPassengers() ?: emptyList()
 
+    // SBW's own seat switch, the one players use: refuses a taken seat and syncs seating to clients.
+    override fun changeSeat(vehicle: Entity, passenger: Entity, seat: Int): Boolean = (vehicle as? VehicleEntity)?.changeSeat(passenger, seat) == true
+
     override fun hasWeaponAt(vehicle: Entity, passenger: Entity): Boolean = vehicle is VehicleEntity && vehicle.getGunData(passenger) != null
 
     // SBW's engines simply stop responding when the battery runs down — `VehicleEngineUtils`

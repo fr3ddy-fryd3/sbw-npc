@@ -211,6 +211,7 @@ object HelicopterOrbitGameTests {
         var negativeRounds = 0
         var left: NpcEntity? = null
         var right: NpcEntity? = null
+        var cockpit: NpcEntity? = null
         val listener = Consumer<EntityJoinLevelEvent> { event ->
             val round = event.entity as? Projectile ?: return@Consumer
             if (event.level !== helper.level || !Ports.guns.isRound(round)) return@Consumer
@@ -225,6 +226,7 @@ object HelicopterOrbitGameTests {
             if (left == null) {
                 left = Ports.vehicles.seating(scene.heli).getOrNull(2) as? NpcEntity
                 right = Ports.vehicles.seating(scene.heli).getOrNull(3) as? NpcEntity
+                cockpit = Ports.vehicles.seating(scene.heli).getOrNull(1) as? NpcEntity
             }
             val relative = scene.heli.position().subtract(enemy.position())
             val radius = relative.horizontalDistance()
@@ -236,6 +238,9 @@ object HelicopterOrbitGameTests {
             previousAngle = angle
             if (!switched && swept >= PI / 2 && positiveRounds >= 5) {
                 helper.assertTrue(left != null && right != null, "Natural boarding did not fill both firing benches")
+                // With the cockpit gunner gone too, nobody can move over to the empty bench, so the
+                // surviving one has to take the target.
+                cockpit?.hurt(helper.level.damageSources().explosion(scene.enemy, scene.enemy), 1000f)
                 // SBW forwards 70% of ordinary passenger damage to the airframe: /kill's
                 // Float.MAX_VALUE destroys both. Its explosion damage tag does not transfer
                 // damage, so this models a fatal bench casualty on an intact aircraft.
@@ -248,6 +253,44 @@ object HelicopterOrbitGameTests {
             }
             if (switched && helper.tick - afterSwitch >= 150 && swept <= -PI / 2 && negativeRounds >= 5) {
                 scene.result("positiveRounds=$positiveRounds negativeRounds=$negativeRounds oppositeSweep=$swept switchedAt=$afterSwitch")
+                helper.succeed()
+            }
+        }
+    }
+
+    /** A bench gunner dies in flight: the gunner riding in the cockpit moves to his bench and fires from it (#124). */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 2400, batch = "transport-bench-takeover")
+    fun cockpitGunnerTakesOverAnEmptyBench(helper: GameTestHelper) {
+        val scene = Scene(helper)
+        val orbit = OrbitSweep(scene)
+        var left: NpcEntity? = null
+        var cockpit: NpcEntity? = null
+        var killedAt: Long? = null
+        var roundsAtKill = 0
+        val cockpitRounds = roundsBy(helper, scene) { cockpit }
+        helper.onEachTick {
+            scene.tick()
+            val enemy = scene.enemy ?: return@onEachTick
+            if (left == null) {
+                left = Ports.vehicles.seating(scene.heli).getOrNull(2) as? NpcEntity
+                cockpit = Ports.vehicles.seating(scene.heli).getOrNull(1) as? NpcEntity
+            }
+            if (!orbit.update(enemy)) return@onEachTick
+            if (killedAt == null && orbit.swept >= PI / 2) {
+                helper.assertTrue(left != null && cockpit != null, "Natural boarding did not seat a cockpit gunner and a left bench gunner")
+                // As in the surviving-bench scene: a fatal casualty that leaves the airframe intact.
+                left!!.hurt(helper.level.damageSources().explosion(scene.enemy, scene.enemy), 1000f)
+                killedAt = helper.tick
+                roundsAtKill = cockpitRounds()
+                return@onEachTick
+            }
+            val since = killedAt?.let { helper.tick - it } ?: return@onEachTick
+            if (since == 60L) {
+                helper.assertTrue(Ports.vehicles.seating(scene.heli).getOrNull(2) === cockpit, "The cockpit gunner did not move to the empty bench")
+            }
+            if (since > 60L && cockpitRounds() - roundsAtKill >= 5) {
+                scene.result("killedAt=$killedAt cockpitRounds=${cockpitRounds() - roundsAtKill}")
                 helper.succeed()
             }
         }
@@ -332,6 +375,37 @@ object HelicopterOrbitGameTests {
         fun assertSteady() {
             val swing = heights.maxOrNull()?.minus(heights.min()) ?: 0.0
             helper.assertTrue(heights.size >= 100 && swing <= 6.0, "Cruise height swung ${swing.toInt()} blocks over flat ground in ${heights.size} ticks")
+        }
+    }
+
+    /** Counts the rounds fired from now on by whoever [shooter] names at the time. */
+    private fun roundsBy(helper: GameTestHelper, scene: Scene, shooter: () -> Entity?): () -> Int {
+        var rounds = 0
+        val listener = Consumer<EntityJoinLevelEvent> { event ->
+            val round = event.entity as? Projectile ?: return@Consumer
+            if (event.level === helper.level && Ports.guns.isRound(round) && round.owner === shooter()) rounds++
+        }
+        NeoForge.EVENT_BUS.addListener(listener)
+        scene.onClose = { NeoForge.EVENT_BUS.unregister(listener) }
+        return { rounds }
+    }
+
+    /** How far round the enemy the transport has circled since it first came within orbit range. */
+    private class OrbitSweep(private val scene: Scene) {
+        var swept = 0.0
+            private set
+        private var previous: Double? = null
+        private var entered = false
+
+        /** False until the transport is up and within orbit range of [enemy]. */
+        fun update(enemy: Entity): Boolean {
+            val relative = scene.heli.position().subtract(enemy.position())
+            if (scene.airborne && relative.horizontalDistance() <= 55.0) entered = true
+            if (!entered) return false
+            val angle = atan2(relative.z, relative.x)
+            previous?.let { swept += wrapped(angle - it) }
+            previous = angle
+            return true
         }
     }
 
