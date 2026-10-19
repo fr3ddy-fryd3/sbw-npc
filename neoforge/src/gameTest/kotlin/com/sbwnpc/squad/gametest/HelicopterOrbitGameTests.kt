@@ -7,6 +7,7 @@ import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.BenchAttackOrbit
+import com.sbwnpc.squad.entity.ai.HelicopterAttackCompletion
 import com.sbwnpc.squad.item.SquadToolItem
 import com.sbwnpc.squad.npc.HelicopterModel
 import com.sbwnpc.squad.npc.NpcClass
@@ -50,19 +51,37 @@ object HelicopterOrbitGameTests {
     @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 1800, batch = "gunship-empty-attack")
     fun gunshipCompletesEmptyAttackWithMoveAndLanding(helper: GameTestHelper) = emptyAttack(helper, HelicopterModel.MI_28)
 
-    private fun emptyAttack(helper: GameTestHelper, model: HelicopterModel) {
-        val scene = Scene(helper, model = model, spawnEnemy = false)
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 2400, batch = "transport-ridge-attack")
+    fun transportComesDownAfterARidgeBeforeAnEmptyAttackCompletes(helper: GameTestHelper) = emptyAttack(helper, HelicopterModel.AH_6, ridge = true)
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 2400, batch = "gunship-ridge-attack")
+    fun gunshipComesDownAfterARidgeBeforeAnEmptyAttackCompletes(helper: GameTestHelper) = emptyAttack(helper, HelicopterModel.MI_28, ridge = true)
+
+    /**
+     * An empty attack completes, and only once the aircraft could have seen the objective. With a
+     * [ridge] on the way it climbs over it, so it has to come back down before the quiet interval
+     * counts: it used to hold the ridge height all the way and complete from far above (#119).
+     */
+    private fun emptyAttack(helper: GameTestHelper, model: HelicopterModel, ridge: Boolean = false) {
+        val scene = Scene(helper, model = model, spawnEnemy = false, ridge = ridge)
         var moveAt: Long? = null
+        val cruise = CruiseHeight(helper, scene)
         helper.onEachTick {
             scene.tick()
+            if (!ridge && moveAt == null) cruise.sample()
             helper.assertTrue(scene.crew.all { it.isAlive }, "Empty attack or landing lost a crew member")
             helper.assertTrue(scene.squad.order != SquadOrder.DEFEND, "Empty helicopter attack became DEFEND")
             if (scene.squad.order == SquadOrder.MOVE && moveAt == null) {
                 moveAt = helper.tick
                 helper.assertTrue(helper.tick >= 200, "Empty attack completed before the quiet interval")
+                if (!ridge) cruise.assertSteady()
+                val range = scene.heli.position().distanceTo(Vec3.atCenterOf(scene.squad.objective!!))
+                helper.assertTrue(range <= HelicopterAttackCompletion.SURVEY_RANGE, "Empty attack completed ${range.toInt()} blocks from the objective")
             }
-            // The quiet interval starts once the aircraft is near the objective, not with the order.
-            if (helper.tick >= 800) helper.assertTrue(moveAt != null, "Empty attack never switched to MOVE")
+            // The quiet interval starts once the aircraft is near the objective and down over it, not with the order.
+            if (helper.tick >= (if (ridge) 1600 else 800)) helper.assertTrue(moveAt != null, "Empty attack never switched to MOVE")
             val pilot = scene.crew.first()
             val arrived = com.sbwnpc.squad.combat.SquadFormation.reachedPoint(pilot, pilot.homeCenter()!!, scene.crew.size)
             if (moveAt != null && Helicopters.isGrounded(helper.level, scene.heli) && arrived) {
@@ -192,6 +211,7 @@ object HelicopterOrbitGameTests {
         var negativeRounds = 0
         var left: NpcEntity? = null
         var right: NpcEntity? = null
+        var cockpit: NpcEntity? = null
         val listener = Consumer<EntityJoinLevelEvent> { event ->
             val round = event.entity as? Projectile ?: return@Consumer
             if (event.level !== helper.level || !Ports.guns.isRound(round)) return@Consumer
@@ -206,6 +226,7 @@ object HelicopterOrbitGameTests {
             if (left == null) {
                 left = Ports.vehicles.seating(scene.heli).getOrNull(2) as? NpcEntity
                 right = Ports.vehicles.seating(scene.heli).getOrNull(3) as? NpcEntity
+                cockpit = Ports.vehicles.seating(scene.heli).getOrNull(1) as? NpcEntity
             }
             val relative = scene.heli.position().subtract(enemy.position())
             val radius = relative.horizontalDistance()
@@ -217,6 +238,9 @@ object HelicopterOrbitGameTests {
             previousAngle = angle
             if (!switched && swept >= PI / 2 && positiveRounds >= 5) {
                 helper.assertTrue(left != null && right != null, "Natural boarding did not fill both firing benches")
+                // With the cockpit gunner gone too, nobody can move over to the empty bench, so the
+                // surviving one has to take the target.
+                cockpit?.hurt(helper.level.damageSources().explosion(scene.enemy, scene.enemy), 1000f)
                 // SBW forwards 70% of ordinary passenger damage to the airframe: /kill's
                 // Float.MAX_VALUE destroys both. Its explosion damage tag does not transfer
                 // damage, so this models a fatal bench casualty on an intact aircraft.
@@ -229,6 +253,79 @@ object HelicopterOrbitGameTests {
             }
             if (switched && helper.tick - afterSwitch >= 150 && swept <= -PI / 2 && negativeRounds >= 5) {
                 scene.result("positiveRounds=$positiveRounds negativeRounds=$negativeRounds oppositeSweep=$swept switchedAt=$afterSwitch")
+                helper.succeed()
+            }
+        }
+    }
+
+    /**
+     * The pilot dies in the air and nobody takes the controls: after 5 s the aircraft goes down
+     * instead of hanging there under a gunner SBW now counts as its pilot (#127).
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 2400, batch = "transport-pilotless")
+    fun pilotlessTransportComesDown(helper: GameTestHelper) {
+        val scene = Scene(helper, spawnEnemy = false)
+        var airborneSince: Long? = null
+        var killedAt: Long? = null
+        var heightAtKill = 0.0
+        helper.onEachTick {
+            val height = scene.heli.y - Helicopters.groundY(helper.level, scene.heli.x, scene.heli.z)
+            val since = killedAt?.let { helper.tick - it }
+            if (since == null) {
+                scene.tick()
+                if (scene.airborne && airborneSince == null) airborneSince = helper.tick
+                if (airborneSince?.let { helper.tick - it >= 100 } != true || height < 15.0) return@onEachTick
+                val pilot = Ports.vehicles.seating(scene.heli).getOrNull(0) as? NpcEntity
+                helper.assertTrue(pilot != null, "No pilot in seat 0")
+                pilot!!.hurt(helper.level.damageSources().explosion(null, null), 1000f)
+                killedAt = helper.tick
+                heightAtKill = height
+                return@onEachTick
+            }
+            // Within the 5 s a player could still take over: it must not drop yet.
+            if (since == 80L) helper.assertTrue(height >= heightAtKill - 8.0, "Fell before anyone had a chance to take the controls: ${heightAtKill.toInt()} -> ${height.toInt()}")
+            if (since > 100L && height < 1.5) {
+                scene.result("killedAt=$killedAt heightAtKill=$heightAtKill downAfter=$since")
+                helper.succeed()
+            }
+            if (since >= 700L) helper.fail("A pilotless transport still hangs ${height.toInt()} blocks up")
+        }
+    }
+
+    /** A bench gunner dies in flight: the gunner riding in the cockpit moves to his bench and fires from it (#124). */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 2400, batch = "transport-bench-takeover")
+    fun cockpitGunnerTakesOverAnEmptyBench(helper: GameTestHelper) {
+        val scene = Scene(helper)
+        val orbit = OrbitSweep(scene)
+        var left: NpcEntity? = null
+        var cockpit: NpcEntity? = null
+        var killedAt: Long? = null
+        var roundsAtKill = 0
+        val cockpitRounds = roundsBy(helper, scene) { cockpit }
+        helper.onEachTick {
+            scene.tick()
+            val enemy = scene.enemy ?: return@onEachTick
+            if (left == null) {
+                left = Ports.vehicles.seating(scene.heli).getOrNull(2) as? NpcEntity
+                cockpit = Ports.vehicles.seating(scene.heli).getOrNull(1) as? NpcEntity
+            }
+            if (!orbit.update(enemy)) return@onEachTick
+            if (killedAt == null && orbit.swept >= PI / 2) {
+                helper.assertTrue(left != null && cockpit != null, "Natural boarding did not seat a cockpit gunner and a left bench gunner")
+                // As in the surviving-bench scene: a fatal casualty that leaves the airframe intact.
+                left!!.hurt(helper.level.damageSources().explosion(scene.enemy, scene.enemy), 1000f)
+                killedAt = helper.tick
+                roundsAtKill = cockpitRounds()
+                return@onEachTick
+            }
+            val since = killedAt?.let { helper.tick - it } ?: return@onEachTick
+            if (since == 60L) {
+                helper.assertTrue(Ports.vehicles.seating(scene.heli).getOrNull(2) === cockpit, "The cockpit gunner did not move to the empty bench")
+            }
+            if (since > 60L && cockpitRounds() - roundsAtKill >= 5) {
+                scene.result("killedAt=$killedAt cockpitRounds=${cockpitRounds() - roundsAtKill}")
                 helper.succeed()
             }
         }
@@ -299,7 +396,55 @@ object HelicopterOrbitGameTests {
         }
     }
 
-    private class Scene(val helper: GameTestHelper, model: HelicopterModel = HelicopterModel.AH_6, private val attack: Boolean = true, private val spawnEnemy: Boolean = true) {
+    /** Over flat ground the height should hold once the aircraft is up, not ride up and down (#119). */
+    private class CruiseHeight(private val helper: GameTestHelper, private val scene: Scene) {
+        private var airborneAt: Long? = null
+        private val heights = mutableListOf<Double>()
+
+        fun sample() {
+            if (scene.airborne && airborneAt == null) airborneAt = helper.tick
+            if (airborneAt?.let { helper.tick - it >= 100 } != true) return
+            heights += scene.heli.y - Helicopters.groundY(helper.level, scene.heli.x, scene.heli.z)
+        }
+
+        fun assertSteady() {
+            val swing = heights.maxOrNull()?.minus(heights.min()) ?: 0.0
+            helper.assertTrue(heights.size >= 100 && swing <= 6.0, "Cruise height swung ${swing.toInt()} blocks over flat ground in ${heights.size} ticks")
+        }
+    }
+
+    /** Counts the rounds fired from now on by whoever [shooter] names at the time. */
+    private fun roundsBy(helper: GameTestHelper, scene: Scene, shooter: () -> Entity?): () -> Int {
+        var rounds = 0
+        val listener = Consumer<EntityJoinLevelEvent> { event ->
+            val round = event.entity as? Projectile ?: return@Consumer
+            if (event.level === helper.level && Ports.guns.isRound(round) && round.owner === shooter()) rounds++
+        }
+        NeoForge.EVENT_BUS.addListener(listener)
+        scene.onClose = { NeoForge.EVENT_BUS.unregister(listener) }
+        return { rounds }
+    }
+
+    /** How far round the enemy the transport has circled since it first came within orbit range. */
+    private class OrbitSweep(private val scene: Scene) {
+        var swept = 0.0
+            private set
+        private var previous: Double? = null
+        private var entered = false
+
+        /** False until the transport is up and within orbit range of [enemy]. */
+        fun update(enemy: Entity): Boolean {
+            val relative = scene.heli.position().subtract(enemy.position())
+            if (scene.airborne && relative.horizontalDistance() <= 55.0) entered = true
+            if (!entered) return false
+            val angle = atan2(relative.z, relative.x)
+            previous?.let { swept += wrapped(angle - it) }
+            previous = angle
+            return true
+        }
+    }
+
+    private class Scene(val helper: GameTestHelper, model: HelicopterModel = HelicopterModel.AH_6, private val attack: Boolean = true, private val spawnEnemy: Boolean = true, ridge: Boolean = false) {
         val pad = helper.absoluteVec(Vec3(28.5, 1.0, 100.5))
         val heli = Ports.vehicles.create(helper.level, model)!!
         val crew = mutableListOf<NpcEntity>()
@@ -315,6 +460,15 @@ object HelicopterOrbitGameTests {
             // Vanilla test barriers must not become heightmap terrain or a false ceiling for aircraft.
             StructureUtils.removeBarriers(helper.bounds, helper.level)
             for (x in 0..191) for (z in 0..191) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+            // A hill on the approach, peaking 30 high at x 80 and gone 25 blocks before the objective at
+            // x 140. Sloped and not wall to wall, so a low-flying gunship can climb it and the ground
+            // round it stays one walkable area.
+            if (ridge) {
+                for (x in 45..115) {
+                    val top = (30.0 * (1.0 - abs(x - 80) / 35.0)).toInt()
+                    for (z in 70..130) for (y in 1..top) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
+                }
+            }
             DebugFlags.enabledGroups = setOf(LogGroup.HELI, LogGroup.ORDER)
             heli.moveTo(pad.x, pad.y, pad.z, -90f, 0f)
             helper.level.addFreshEntity(heli)

@@ -55,8 +55,11 @@ class DroneFlightControllerTest {
     @Test
     fun `cruise altitude clears the highest terrain ahead and never dives`() {
         assertEquals(82.0, DroneFlightController.cruiseAltitude(listOf(60, 70, 65), 12.0, 64.0), 1e-9)
-        // Terrain drops away: hold height rather than following it down into the valley
-        assertEquals(89.5, DroneFlightController.cruiseAltitude(listOf(40, 42), 12.0, 90.0), 1e-9)
+        // Terrain drops away: come down gently rather than following it into the valley, but come
+        // down, by more than the deadband so steer actually presses down (#121)
+        val wanted = DroneFlightController.cruiseAltitude(listOf(40, 42), 12.0, 90.0)
+        assertEquals(88.5, wanted, 1e-9)
+        assertTrue(DroneFlightController.steer(Vec3(0.0, 90.0, 0.0), 0f, 0.0, Vec3(0.0, 90.0, 50.0), wanted, 0.9).down)
         assertEquals(90.0, DroneFlightController.cruiseAltitude(emptyList(), 12.0, 90.0), 1e-9)
     }
 }

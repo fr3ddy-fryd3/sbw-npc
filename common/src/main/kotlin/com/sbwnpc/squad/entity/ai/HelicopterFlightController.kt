@@ -74,6 +74,16 @@ object HelicopterFlightController {
     private const val SPEED_TO_PITCH = 45f
     private const val ALTITUDE_DEADBAND = 1.5
     private const val FAST_SINK_MARGIN = 8.0
+
+    /** How far [cruiseAltitude] lets the wanted height come down in one tick: wider than [ALTITUDE_DEADBAND], or the collective never sinks. */
+    private const val DESCENT_STEP = ALTITUDE_DEADBAND + 1.0
+
+    /**
+     * On the approach [cruiseAltitude] comes down to this far above the leg's height, then holds
+     * again. Wider than a climb overshoots it (an AH-6 climbing to 25 settles at about 40 and holds
+     * there), or every climb would be followed by a descent and the aircraft would ride up and down.
+     */
+    private const val APPROACH_MARGIN = 20.0
     private const val ROLL_DEADBAND = 1.5f
 
     /** `deltaRot` decays by 0.9 a tick, so the roll still owed by the current rate is about 10x it. */
@@ -138,6 +148,20 @@ object HelicopterFlightController {
             projected < -ROLL_DEADBAND -> false to true
             else -> false to false
         }
+    }
+
+    /**
+     * Height to fly a leg at: the highest terrain sampled along it plus [clearance], or the height
+     * already held if that is higher.
+     *
+     * Holding is what keeps the flight level, but a helicopter that climbed over a ridge then kept
+     * the ridge's height all the way to its objective, 130 blocks up, where its crew saw nobody
+     * (#119). So on the [approach] it steps down by more than [ALTITUDE_DEADBAND], which the
+     * collective acts on, until [APPROACH_MARGIN] above the leg's height, and holds from there.
+     */
+    fun cruiseAltitude(terrainHeights: List<Int>, clearance: Double, currentY: Double, approach: Boolean): Double {
+        val wanted = (terrainHeights.maxOrNull() ?: return currentY) + clearance
+        return if (approach && currentY > wanted + APPROACH_MARGIN) currentY - DESCENT_STEP else maxOf(wanted, currentY)
     }
 
     /** Collective for holding [desiredY], with a wider band before the fast sink so an aircraft
