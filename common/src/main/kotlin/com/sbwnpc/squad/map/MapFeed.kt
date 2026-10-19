@@ -120,7 +120,7 @@ object MapFeed {
             squad.objective?.let { t.putIntArray("Obj", intArrayOf(it.x, it.y, it.z)) }
             // The point the squad's operation was ordered to, not this squad's own spot in the
             // line: an order sent to exactly this point joins the operation instead of starting another.
-            val operation = com.sbwnpc.squad.ai.integration.NativeTactics.operationOf(level, squad.id)
+            val operation = com.sbwnpc.squad.combat.tactics.SquadTactics.operationOf(level, squad.id)
             val goal = (operation?.objective as? com.sbwnpc.squad.ai.coordination.ObjectiveKey.Area)
                 ?.takeIf { it.dimension == level.dimension().location().toString() }
                 ?.let { net.minecraft.core.BlockPos(it.x, it.y, it.z) } ?: squad.tacticalObjective ?: squad.objective

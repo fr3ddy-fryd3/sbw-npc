@@ -66,7 +66,7 @@ object GroupOrders {
         val dimension = level.dimension().location().toString()
         val owner = selected.first().owner
         return mgr.forOwner(owner)
-            .mapNotNull { com.sbwnpc.squad.ai.integration.NativeTactics.operationOf(level, it.id) }
+            .mapNotNull { com.sbwnpc.squad.combat.tactics.SquadTactics.operationOf(level, it.id) }
             .distinctBy { it.id }
             .filter { op ->
                 op.status == com.sbwnpc.squad.ai.coordination.OperationStatus.ACTIVE && op.principal == owner && op.order.name == order.name &&

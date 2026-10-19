@@ -757,7 +757,6 @@
     <ID>MagicNumber:VehicleAwareNavigation.kt$VehicleAwareNavigation$8</ID>
     <ID>MagicNumber:VehicleAwareNavigation.kt$VehicleAwareNavigation$8.0</ID>
     <ID>MagicNumber:VehicleAwareNavigation.kt$VehicleAwareNavigation$80.0</ID>
-    <ID>MagicNumber:VehicleAwareNavigation.kt$VehicleAwareNavigation.Companion$0.5</ID>
     <ID>MagicNumber:VehicleModels.kt$HelicopterModel.AH_6$3</ID>
     <ID>MagicNumber:VehicleRoutes.kt$VehicleRoutes$0.5</ID>
     <ID>MagicNumber:VehicleRoutes.kt$VehicleRoutes$15</ID>
@@ -860,7 +859,7 @@
     <ID>TooManyFunctions:SquadTeams.kt$SquadTeams</ID>
     <ID>TooManyFunctions:SupplyBlock.kt$SupplyBlock : BaseEntityBlock</ID>
     <ID>TooManyFunctions:TacticalPositions.kt$TacticalPositions</ID>
-    <ID>TooManyFunctions:VehicleAwareNavigation.kt$VehicleAwareNavigation : GroundPathNavigation</ID>
+    <ID>TooManyFunctions:VehicleAwareNavigation.kt$VehicleAwareNavigation : GroundPathNavigationPositionPaths</ID>
     <ID>TooManyFunctions:VehicleAwareNavigation.kt$VehicleAwareNodeEvaluator : WalkNodeEvaluator</ID>
     <ID>TooManyFunctions:VehicleCombatSupportBehaviour.kt$VehicleCombatSupportBehaviour : ExtendedBehaviour</ID>
     <ID>TooManyFunctions:VehicleTransportBehaviour.kt$VehicleTransportBehaviour : ExtendedBehaviour</ID>
