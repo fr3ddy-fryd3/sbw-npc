@@ -17,7 +17,7 @@ object MortarCycle {
         val now = mortar.level().gameTime
         val crew = MortarClaims.activeCrew(mortar)
         val interval = if (crew >= 2) FULL_CREW_TICKS else SOLO_TICKS
-        val data = mortar.persistentData
+        val data = Ports.loader.persistentData(mortar)
         if (data.contains(LAST_SHOT) && now - data.getLong(LAST_SHOT) < interval) return
         if (!Ports.mortars.fire(mortar, gunner)) return
         data.putLong(LAST_SHOT, now)
@@ -26,11 +26,11 @@ object MortarCycle {
 
     fun pack(mortar: Entity): CompoundTag =
         CompoundTag().apply {
-            if (mortar.persistentData.contains(LAST_SHOT)) putLong(LAST_SHOT, mortar.persistentData.getLong(LAST_SHOT))
+            if (Ports.loader.persistentData(mortar).contains(LAST_SHOT)) putLong(LAST_SHOT, Ports.loader.persistentData(mortar).getLong(LAST_SHOT))
             putBoolean("Loaded", Ports.mortars.hasShell(mortar))
         }
     fun restore(mortar: Entity, data: CompoundTag) {
-        if (data.contains(LAST_SHOT)) mortar.persistentData.putLong(LAST_SHOT, data.getLong(LAST_SHOT))
+        if (data.contains(LAST_SHOT)) Ports.loader.persistentData(mortar).putLong(LAST_SHOT, data.getLong(LAST_SHOT))
         if (data.getBoolean("Loaded")) Ports.mortars.loadShell(mortar)
     }
 }

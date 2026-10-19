@@ -3,6 +3,7 @@ package com.sbwnpc.squad.entity
 import com.sbwnpc.squad.ModIdentity
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import com.sbwnpc.squad.entity.ai.WalkingClearance
 import net.minecraft.core.BlockPos
@@ -95,7 +96,7 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
         val candidates = WalkingClearance.clearingCandidates(level, npc, npc.boundingBox, direction) +
             listOfNotNull(WalkingClearance.lowerCrownLayer(level, npc, npc.boundingBox))
         val supports = WalkingClearance.supports(level, npc, npc.boundingBox)
-        val pos = if (net.neoforged.neoforge.event.EventHooks.canEntityGrief(level, npc)) {
+        val pos = if (Ports.loader.canGrief(level, npc)) {
             candidates.firstOrNull { candidate ->
                 val state = level.getBlockState(candidate)
                 val hardness = state.getDestroySpeed(level, candidate)

@@ -5,6 +5,12 @@ plugins {
 
 repositories {
     mavenCentral()
+    maven {
+        // SmartBrainLib's own publishing target, as in the loader builds.
+        name = "SmartBrainLib (Cloudsmith)"
+        url = uri("https://dl.cloudsmith.io/public/tslat/sbl/maven/")
+        content { includeGroup("net.tslat.smartbrainlib") }
+    }
 }
 
 neoForge {
@@ -96,6 +102,10 @@ tasks.named("check") {
 dependencies {
     // Mixins shared by every loader; each loader brings its own Mixin at runtime.
     compileOnly("net.fabricmc:sponge-mixin:0.15.2+mixin.0.8.7")
+    // The behaviours are written against SmartBrainLib; its common artifact has no loader code.
+    val smartBrainLib = "net.tslat.smartbrainlib:SmartBrainLib-common-1.21.1:${project.property("smartbrainlib_version")}"
+    compileOnly(smartBrainLib)
+    testImplementation(smartBrainLib)
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }

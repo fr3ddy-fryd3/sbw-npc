@@ -293,7 +293,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         if (!com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.PATH) || mob.tickCount - lastLadderLogTick < WALK_LOG_TICKS) return
         val current = path?.takeUnless { it.isDone } ?: return
         val feet = mob.blockPosition()
-        if (!mob.onClimbable() && !level.getBlockState(feet.below()).isLadder(level, feet.below(), mob)) return
+        if (!mob.onClimbable() && !Ports.loader.isLadder(level.getBlockState(feet.below()), level, feet.below(), mob)) return
         lastLadderLogTick = mob.tickCount
         com.sbwnpc.squad.combat.DebugFlags.log(
             com.sbwnpc.squad.combat.LogGroup.PATH,
@@ -559,7 +559,7 @@ internal open class VehicleAwareNodeEvaluator(
         return accepted
     }
 
-    private fun climbable(pos: BlockPos): Boolean = currentContext.getBlockState(pos).isLadder(mob.level(), pos, mob)
+    private fun climbable(pos: BlockPos): Boolean = Ports.loader.isLadder(currentContext.getBlockState(pos), mob.level(), pos, mob)
 
     /** A platform can open onto the air cell immediately above the last ladder rung. */
     private fun ladderEdge(from: BlockPos, to: BlockPos): Boolean {
@@ -639,7 +639,7 @@ internal open class VehicleAwareNodeEvaluator(
     private fun calculatePathType(context: PathfindingContext, x: Int, y: Int, z: Int): PathType {
         val pos = BlockPos(x, y, z)
         val state = context.getBlockState(pos)
-        val ladder = if (mob != null) state.isLadder(mob.level(), pos, mob) else state.`is`(BlockTags.CLIMBABLE)
+        val ladder = if (mob != null) Ports.loader.isLadder(state, mob.level(), pos, mob) else state.`is`(BlockTags.CLIMBABLE)
         if (ladder) return PathType.WALKABLE
         if (bodyHigh(context, x, y, z)) return PathType.BLOCKED
         val type = super.getPathType(context, x, y, z)

@@ -2,7 +2,7 @@
 
 Tactical decisions are made by the HTN controller: operations, squads, teams and NPCs are described
 in [AI-RUNTIME.md](AI-RUNTIME.md) and [AI-ARCHITECTURE-DESIGN.md](AI-ARCHITECTURE-DESIGN.md). The
-`combat/tactics` package in `neoforge/` holds the services that carry those decisions out in the
+`combat/tactics` package in `common/` holds the services that carry those decisions out in the
 Minecraft world. It decides nothing itself: it does not choose to attack or go round, and keeps no
 plan.
 

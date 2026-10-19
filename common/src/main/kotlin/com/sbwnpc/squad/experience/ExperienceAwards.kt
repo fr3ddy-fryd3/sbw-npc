@@ -53,7 +53,7 @@ object ExperienceAwards {
         if (!SquadTeams.isHostile(victim, attacker)) return
         recordWound(victim, fraction, level.gameTime)
         val budget = targetBudget(victim)
-        val tag = victim.persistentData.getCompound(LEDGER)
+        val tag = Ports.loader.persistentData(victim).getCompound(LEDGER)
         val ledger = ExperienceLedger(tag)
         val npc = attacker as? NpcEntity
         val recipients = if (npc != null) contributors(npc, source.directEntity) else mapOf(attacker.uuid to 1.0)
@@ -76,16 +76,16 @@ object ExperienceAwards {
                 SquadManager.get(level).creditExperience(level.server, id, xp, "assist")
             }
         }
-        victim.persistentData.put(LEDGER, tag)
+        Ports.loader.persistentData(victim).put(LEDGER, tag)
     }
 
     private fun recordWound(victim: Entity, fraction: Double, now: Long) {
         if (victim !is LivingEntity) return
-        if (now - victim.persistentData.getLong("sbwnpcExperienceLastWound") > QUIET_TICKS) {
-            victim.persistentData.putDouble(MEDICAL, 0.0)
+        if (now - Ports.loader.persistentData(victim).getLong("sbwnpcExperienceLastWound") > QUIET_TICKS) {
+            Ports.loader.persistentData(victim).putDouble(MEDICAL, 0.0)
         }
-        victim.persistentData.putLong("sbwnpcExperienceLastWound", now)
-        victim.persistentData.putDouble(WOUNDS, wounds(victim) + fraction * victim.maxHealth)
+        Ports.loader.persistentData(victim).putLong("sbwnpcExperienceLastWound", now)
+        Ports.loader.persistentData(victim).putDouble(WOUNDS, wounds(victim) + fraction * victim.maxHealth)
         if (victim is NpcEntity) confirm(victim)
     }
 
@@ -97,7 +97,7 @@ object ExperienceAwards {
         }
 
     private fun contributors(npc: NpcEntity, projectile: Entity?): Map<UUID, Double> {
-        val captured = projectile?.persistentData?.getCompound("sbwnpcExperienceCrew")
+        val captured = projectile?.let { Ports.loader.persistentData(it) }?.getCompound("sbwnpcExperienceCrew")
         if (captured == null || captured.isEmpty) return shares(npc)
         return captured.allKeys.mapNotNull { key ->
             runCatching { UUID.fromString(key) }.getOrNull()?.let { it to captured.getDouble(key) }
@@ -110,28 +110,28 @@ object ExperienceAwards {
         damage(victim, source, (before - after).toDouble(), after <= 0f)
     }
 
-    fun wounds(patient: LivingEntity): Double = patient.persistentData.getDouble(WOUNDS)
+    fun wounds(patient: LivingEntity): Double = Ports.loader.persistentData(patient).getDouble(WOUNDS)
 
     fun healed(patient: LivingEntity, amount: Double) {
-        if (amount > 0) patient.persistentData.putDouble(WOUNDS, (wounds(patient) - amount).coerceAtLeast(0.0))
+        if (amount > 0) Ports.loader.persistentData(patient).putDouble(WOUNDS, (wounds(patient) - amount).coerceAtLeast(0.0))
     }
 
     fun treated(medic: NpcEntity, patient: LivingEntity, before: Float, injury: Double) {
         val healed = minOf((patient.health - before).toDouble(), injury).coerceAtLeast(0.0)
-        patient.persistentData.putDouble(WOUNDS, (injury - healed).coerceAtLeast(0.0))
-        val paid = patient.persistentData.getDouble(MEDICAL)
+        Ports.loader.persistentData(patient).putDouble(WOUNDS, (injury - healed).coerceAtLeast(0.0))
+        val paid = Ports.loader.persistentData(patient).getDouble(MEDICAL)
         val xp = minOf(healed * MEDICAL_XP_PER_HP, (MEDICAL_PATIENT_CAP - paid).coerceAtLeast(0.0))
         if (xp <= 0 || !SquadTeams.sameSide(medic, patient)) return
-        patient.persistentData.putDouble(MEDICAL, paid + xp)
+        Ports.loader.persistentData(patient).putDouble(MEDICAL, paid + xp)
         medic.gainExperience(xp, "medical")
         confirm(medic)
     }
 
     private fun markParticipant(npc: NpcEntity, now: Long) {
-        npc.persistentData.putLong(BATTLE, now)
-        npc.persistentData.putBoolean("sbwnpcExperienceConfirmed", true)
+        Ports.loader.persistentData(npc).putLong(BATTLE, now)
+        Ports.loader.persistentData(npc).putBoolean("sbwnpcExperienceConfirmed", true)
         npc.currentSquad()?.takeIf { it.order == SquadOrder.ATTACK }?.let {
-            npc.persistentData.putString("sbwnpcExperienceAttack", "${it.id}:${it.command?.id ?: it.orderStamp}")
+            Ports.loader.persistentData(npc).putString("sbwnpcExperienceAttack", "${it.id}:${it.command?.id ?: it.orderStamp}")
         }
     }
 
@@ -149,22 +149,22 @@ object ExperienceAwards {
     }
 
     fun tick(npc: NpcEntity) {
-        if (npc.tickCount % 20 != 0 || !npc.persistentData.getBoolean("sbwnpcExperienceConfirmed")) return
+        if (npc.tickCount % 20 != 0 || !Ports.loader.persistentData(npc).getBoolean("sbwnpcExperienceConfirmed")) return
         val fighting = npc.target?.let { it.isAlive && npc.isEnemy(it) } == true &&
             npc.lastShotTick >= 0 && npc.tickCount - npc.lastShotTick < 40
-        if (fighting) npc.persistentData.putLong(BATTLE, npc.level().gameTime)
-        if (npc.level().gameTime - npc.persistentData.getLong(BATTLE) < QUIET_TICKS) return
-        npc.persistentData.putBoolean("sbwnpcExperienceConfirmed", false)
+        if (fighting) Ports.loader.persistentData(npc).putLong(BATTLE, npc.level().gameTime)
+        if (npc.level().gameTime - Ports.loader.persistentData(npc).getLong(BATTLE) < QUIET_TICKS) return
+        Ports.loader.persistentData(npc).putBoolean("sbwnpcExperienceConfirmed", false)
         npc.gainExperience(PARTICIPATION_XP, "battle_participation")
     }
 
     fun objective(server: MinecraftServer, squad: Squad) {
         val receipt = "${squad.id}:${squad.command?.id ?: squad.orderStamp}"
         squad.members.mapNotNull { SquadManager.findEntity(server, it) as? NpcEntity }.forEach { npc ->
-            if (npc.persistentData.getString("sbwnpcExperienceAttack") != receipt) return@forEach
-            npc.persistentData.remove("sbwnpcExperienceAttack")
-            val participation = if (npc.persistentData.getBoolean("sbwnpcExperienceConfirmed")) PARTICIPATION_XP else 0.0
-            npc.persistentData.putBoolean("sbwnpcExperienceConfirmed", false)
+            if (Ports.loader.persistentData(npc).getString("sbwnpcExperienceAttack") != receipt) return@forEach
+            Ports.loader.persistentData(npc).remove("sbwnpcExperienceAttack")
+            val participation = if (Ports.loader.persistentData(npc).getBoolean("sbwnpcExperienceConfirmed")) PARTICIPATION_XP else 0.0
+            Ports.loader.persistentData(npc).putBoolean("sbwnpcExperienceConfirmed", false)
             npc.gainExperience(OBJECTIVE_XP + participation, "combat_objective")
         }
     }

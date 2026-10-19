@@ -21,7 +21,7 @@ import net.minecraft.world.level.block.state.BlockState
  * topped back up to what it was issued with ([com.sbwnpc.squad.entity.NpcEntity.resupply]). With no
  * faction — a block nobody placed, say by command — it serves anyone.
  */
-class SupplyBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlockEntities.SUPPLY.get(), pos, state) {
+open class SupplyBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlockEntities.SUPPLY.get(), pos, state) {
 
     /** The side of whoever put it down. */
     var faction: SquadFaction? = null
@@ -33,12 +33,6 @@ class SupplyBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlock
     private var ticksUntilIssue = ISSUE_INTERVAL_TICKS
 
     fun serves(other: SquadFaction?): Boolean = SupplyPoints.serves(faction, other)
-
-    override fun onLoad() {
-        super.onLoad()
-        val level = level as? ServerLevel ?: return
-        SupplyPoints.get(level).remember(blockPos, faction)
-    }
 
     private fun issue(level: ServerLevel) {
         NpcRegistry.forEachWithin(level, blockPos.center, RADIUS) { npc ->

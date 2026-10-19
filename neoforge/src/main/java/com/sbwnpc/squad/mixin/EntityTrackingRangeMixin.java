@@ -1,7 +1,7 @@
 package com.sbwnpc.squad.mixin;
 
 import com.sbwnpc.squad.config.SquadConfig;
-import com.sbwnpc.squad.init.ModEntities;
+import com.sbwnpc.squad.init.NeoForgeEntities;
 import net.minecraft.world.entity.EntityType;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -18,6 +18,6 @@ public abstract class EntityTrackingRangeMixin {
 
     @Inject(method = "clientTrackingRange", at = @At("HEAD"), cancellable = true)
     private void sbwnpc$npcViewDistance(CallbackInfoReturnable<Integer> cir) {
-        if (ModEntities.NPC.isBound() && (Object) this == ModEntities.NPC.get()) cir.setReturnValue(SquadConfig.npcTrackingChunks());
+        if (NeoForgeEntities.NPC.isBound() && (Object) this == NeoForgeEntities.NPC.get()) cir.setReturnValue(SquadConfig.npcTrackingChunks());
     }
 }
