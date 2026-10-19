@@ -52,13 +52,18 @@ class HelicopterFlightControllerTest {
     }
 
     @Test
-    fun `cruise altitude comes back down after a ridge`() {
-        // Past a ridge, 130 above the ground it now flies over: the wanted height must step down by
-        // more than the deadband, or the collective holds the aircraft up there.
-        val wanted = HelicopterFlightController.cruiseAltitude(listOf(70, 72, 71), 24.0, 199.0)
-        assertEquals(Collective.SINK_SLOW, HelicopterFlightController.collectiveFor(199.0, wanted))
-        assertEquals(96.0, HelicopterFlightController.cruiseAltitude(listOf(70, 72, 71), 24.0, 97.0), 1e-9)
-        assertEquals(124.0, HelicopterFlightController.cruiseAltitude(listOf(100), 24.0, 80.0), 1e-9)
+    fun `cruise altitude comes back down after a ridge only on the approach`() {
+        // Past a ridge, 130 above the ground it now flies over.
+        val approaching = HelicopterFlightController.cruiseAltitude(listOf(70, 72, 71), 24.0, 199.0, approach = true)
+        assertEquals(Collective.SINK_SLOW, HelicopterFlightController.collectiveFor(199.0, approaching))
+        // Away from the objective it holds its height, which keeps the flight level.
+        val cruising = HelicopterFlightController.cruiseAltitude(listOf(70, 72, 71), 24.0, 199.0, approach = false)
+        assertEquals(Collective.HOLD, HelicopterFlightController.collectiveFor(199.0, cruising))
+        // Within the margin above the leg's height, where a climb overshoots to, it holds too.
+        val near = HelicopterFlightController.cruiseAltitude(listOf(70, 72, 71), 24.0, 112.0, approach = true)
+        assertEquals(Collective.HOLD, HelicopterFlightController.collectiveFor(112.0, near))
+        // Terrain ahead still climbs it, approach or not.
+        assertEquals(124.0, HelicopterFlightController.cruiseAltitude(listOf(100), 24.0, 80.0, approach = true), 1e-9)
     }
 
     @Test

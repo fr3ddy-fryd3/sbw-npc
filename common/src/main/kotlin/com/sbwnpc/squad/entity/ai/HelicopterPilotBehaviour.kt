@@ -535,6 +535,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
             terrainAhead(level, heli, station),
             clearance,
             heli.y,
+            approach = HelicopterFlightController.horizontalDistance(heli.position(), station) <= APPROACH_DISTANCE,
         )
         val cmd = HelicopterFlightController.steer(
             heli.position(), heli.yRot, heli.xRot, Ports.vehicles.roll(heli), rollRate, heli.deltaMovement,
@@ -659,7 +660,9 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         const val OFF_STATION_RADIUS = 20.0
         const val DESCENT_RATE = 0.22
 
-        // Out to 90: coming back down between ridges, at cruise speed it needs that far to climb a tall one.
-        val LOOKAHEAD_DISTANCES = listOf(12.0, 24.0, 40.0, 60.0, 90.0)
+        val LOOKAHEAD_DISTANCES = listOf(12.0, 24.0, 40.0, 60.0)
+
+        /** Within this of its station a helicopter comes down from whatever height the trip left it at. */
+        const val APPROACH_DISTANCE = 150.0
     }
 }

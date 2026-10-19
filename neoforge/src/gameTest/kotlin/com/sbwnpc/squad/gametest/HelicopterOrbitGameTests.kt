@@ -67,13 +67,16 @@ object HelicopterOrbitGameTests {
     private fun emptyAttack(helper: GameTestHelper, model: HelicopterModel, ridge: Boolean = false) {
         val scene = Scene(helper, model = model, spawnEnemy = false, ridge = ridge)
         var moveAt: Long? = null
+        val cruise = CruiseHeight(helper, scene)
         helper.onEachTick {
             scene.tick()
+            if (!ridge && moveAt == null) cruise.sample()
             helper.assertTrue(scene.crew.all { it.isAlive }, "Empty attack or landing lost a crew member")
             helper.assertTrue(scene.squad.order != SquadOrder.DEFEND, "Empty helicopter attack became DEFEND")
             if (scene.squad.order == SquadOrder.MOVE && moveAt == null) {
                 moveAt = helper.tick
                 helper.assertTrue(helper.tick >= 200, "Empty attack completed before the quiet interval")
+                if (!ridge) cruise.assertSteady()
                 val range = scene.heli.position().distanceTo(Vec3.atCenterOf(scene.squad.objective!!))
                 helper.assertTrue(range <= HelicopterAttackCompletion.SURVEY_RANGE, "Empty attack completed ${range.toInt()} blocks from the objective")
             }
@@ -312,6 +315,23 @@ object HelicopterOrbitGameTests {
                 scene.result("landing=${helper.tick} destinationDistance=${scene.heli.position().subtract(destination).horizontalDistance()}")
                 helper.succeed()
             }
+        }
+    }
+
+    /** Over flat ground the height should hold once the aircraft is up, not ride up and down (#119). */
+    private class CruiseHeight(private val helper: GameTestHelper, private val scene: Scene) {
+        private var airborneAt: Long? = null
+        private val heights = mutableListOf<Double>()
+
+        fun sample() {
+            if (scene.airborne && airborneAt == null) airborneAt = helper.tick
+            if (airborneAt?.let { helper.tick - it >= 100 } != true) return
+            heights += scene.heli.y - Helicopters.groundY(helper.level, scene.heli.x, scene.heli.z)
+        }
+
+        fun assertSteady() {
+            val swing = heights.maxOrNull()?.minus(heights.min()) ?: 0.0
+            helper.assertTrue(heights.size >= 100 && swing <= 6.0, "Cruise height swung ${swing.toInt()} blocks over flat ground in ${heights.size} ticks")
         }
     }
 
