@@ -786,8 +786,8 @@ object NativeTactics {
                     val duty = choice.duty
                     val proposed = choice.anchor.native()
                     val before = oldIntents[member.id]
-                    val requireCover = duty == CombatDuty.MOVE && situation.incoming
-                    val requireShelter = situation.incoming && duty in setOf(CombatDuty.MOVE, CombatDuty.FIRE)
+                    val requireCover = PostRequirements.cover(duty, situation.incoming)
+                    val requireShelter = PostRequirements.shelter(duty, situation.incoming)
                     // A height post is chosen by height round its anchor, not by where the enemy is or by
                     // the squad's strategy, which reshapes a sentry's task only to withdraw. Rebuilt on
                     // either, a sentry's post was thrown away and searched again every few seconds (#73).
