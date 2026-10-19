@@ -8,7 +8,8 @@ require(profile.getProperty("loader") == loader) { "SBW profile loader mismatch"
 require(profile.getProperty("status") in setOf("enabled", "preview") && (loader == "neoforge" || profile.getProperty("status") == "preview")) {
     "SBW $loader profile is ${profile.getProperty("status")}; see #15/#16 and docs/SBW-COMPATIBILITY.md"
 }
-require(profile.getProperty("minecraft") == providers.gradleProperty("minecraft_version").get()) {
+// gradle.properties describes the NeoForge build; the other loaders carry their own versions.
+require(loader != "neoforge" || profile.getProperty("minecraft") == providers.gradleProperty("minecraft_version").get()) {
     "SBW profile Minecraft version mismatch"
 }
 require(loader != "neoforge" || profile.getProperty("version") == providers.gradleProperty("superbwarfare_version").get()) {
