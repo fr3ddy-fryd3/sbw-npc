@@ -111,7 +111,7 @@ verify() {
 }
 is_java21() {
     [[ -x $1/bin/java && -x $1/bin/javac ]] && \
-        "$1/bin/java" -version 2>&1 | head -n 1 | grep -Eq 'version "21([.\"]|$)'
+        "$1/bin/java" -version 2>&1 | grep -v "^Picked up" | head -n 1 | grep -Eq 'version "21([.\"]|$)'
 }
 java_dir=${JAVA_HOME:-}
 if ! is_java21 "$java_dir"; then
