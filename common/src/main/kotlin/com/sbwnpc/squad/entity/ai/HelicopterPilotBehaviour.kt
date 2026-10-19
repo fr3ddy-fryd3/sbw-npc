@@ -351,10 +351,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
             patrol = true,
         )
 
-    private fun nearObjective(heli: Entity, squad: Squad): Boolean =
-        squad.objective?.let {
-            HelicopterFlightController.horizontalDistance(heli.position(), Vec3.atCenterOf(it)) <= ATTACK_ARRIVAL_DISTANCE
-        } ?: true
+    private fun surveying(heli: Entity, squad: Squad): Boolean = squad.objective?.let { HelicopterAttackCompletion.surveys(heli.position(), Vec3.atCenterOf(it)) } ?: true
 
     private fun completeAttack(entity: NpcEntity, heli: Entity, level: ServerLevel) {
         val squad = entity.currentSquad() ?: return
@@ -366,10 +363,11 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
             level.gameTime - contact.seenAt <= 200 && level.getEntity(contact.id)?.isAlive != false
         }
         val focusAlive = squad.focusEntity?.let { level.getEntity(it)?.isAlive } == true
-        // Nothing is seen on the way to the objective, so the quiet interval would run out in
-        // flight and the MOVE order below would put the aircraft down on a fight it never reached.
-        // One that has met the enemy is already at the fight, which may be far from the objective.
-        val busy = crewEngaged || reported || focusAlive || (lastContactPos == null && !nearObjective(heli, squad))
+        // Nothing is seen on the way to the objective, nor from high above it, so the quiet interval
+        // would run out where the crew could not have seen anyone and the MOVE order below would put
+        // the aircraft down on a fight it never saw (#90, #119). One that has met the enemy is
+        // already at the fight, which may be far from the objective.
+        val busy = crewEngaged || reported || focusAlive || (lastContactPos == null && !surveying(heli, squad))
         if (!attackCompletion.observe(squad.orderStamp, level.gameTime, busy)) return
         val destination = squad.objective ?: net.minecraft.core.BlockPos.containing(lastContactPos ?: heli.position())
         val manager = com.sbwnpc.squad.squad.SquadManager.get(level)
@@ -533,10 +531,11 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         rollRate: Float,
         clearance: Double,
     ) {
-        val desiredY = DroneFlightController.cruiseAltitude(
+        val desiredY = HelicopterFlightController.cruiseAltitude(
             terrainAhead(level, heli, station),
             clearance,
             heli.y,
+            approach = HelicopterFlightController.horizontalDistance(heli.position(), station) <= APPROACH_DISTANCE,
         )
         val cmd = HelicopterFlightController.steer(
             heli.position(), heli.yRot, heli.xRot, Ports.vehicles.roll(heli), rollRate, heli.deltaMovement,
@@ -640,7 +639,6 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         /** Clear this far from the last fight before putting down. */
         const val RETIRE_DISTANCE = 80.0
-        const val ATTACK_ARRIVAL_DISTANCE = 96.0
 
         /** Keep treating the area as hot for this long after the last confirmed target. */
         const val COMBAT_HOLD_TICKS = 200
@@ -662,5 +660,8 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         const val OFF_STATION_RADIUS = 20.0
         const val DESCENT_RATE = 0.22
         val LOOKAHEAD_DISTANCES = listOf(12.0, 24.0, 40.0, 60.0)
+
+        /** Within this of its station a helicopter comes down from whatever height the trip left it at. */
+        const val APPROACH_DISTANCE = 150.0
     }
 }
