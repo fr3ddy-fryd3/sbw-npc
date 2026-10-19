@@ -152,7 +152,7 @@ object HelicopterFlightController {
 
     /**
      * Height to fly a leg at: the highest terrain sampled along it plus [clearance], or the height
-     * already held if that is higher, as [DroneFlightController.cruiseAltitude] does.
+     * already held if that is higher.
      *
      * Holding is what keeps the flight level, but a helicopter that climbed over a ridge then kept
      * the ridge's height all the way to its objective, 130 blocks up, where its crew saw nobody
@@ -160,9 +160,8 @@ object HelicopterFlightController {
      * collective acts on, until [APPROACH_MARGIN] above the leg's height, and holds from there.
      */
     fun cruiseAltitude(terrainHeights: List<Int>, clearance: Double, currentY: Double, approach: Boolean): Double {
-        val held = DroneFlightController.cruiseAltitude(terrainHeights, clearance, currentY)
         val wanted = (terrainHeights.maxOrNull() ?: return currentY) + clearance
-        return if (approach && currentY > wanted + APPROACH_MARGIN) currentY - DESCENT_STEP else held
+        return if (approach && currentY > wanted + APPROACH_MARGIN) currentY - DESCENT_STEP else maxOf(wanted, currentY)
     }
 
     /** Collective for holding [desiredY], with a wider band before the fast sink so an aircraft
