@@ -391,6 +391,53 @@ object HtnTacticsGameTests {
     }
 
     /**
+     * The attackers stand on a hill 14 blocks above the defenders' flat ground. A slot is planned at
+     * the objective's height, so the floor under it is out of reach of a search from there; every
+     * candidate counted as blind and the men were left on the blind post (#93, in-game 19.10).
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1200, batch = "htn-hill-slots")
+    fun htnSlotsOnAHillAboveTheDefenceSeeIt(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "htn-hill-slots")
+        val manager = SquadManager.get(helper.level)
+        val hill = (0..76).flatMap { x -> (0..190).flatMap { z -> (1..14).map { y -> BlockPos(x, y, z) } } }
+        val ground = hill.associateWith { helper.getBlockState(it) }
+        hill.forEach { helper.setBlock(it, net.minecraft.world.level.block.Blocks.STONE) }
+        val groups = (0..1).map { group -> (0 until 8).map { index -> scene.spawn(Vec3(20.5 + index / 4 * 4, 15.0, 72.5 + group * 32 + index % 4 * 4)) } }
+        val defenders = (0 until 8).map { index -> scene.spawn(Vec3(130.5 + index / 4 * 4, 1.0, 80.5 + index % 4 * 8), faction = com.sbwnpc.squad.npc.SquadFaction.COW) }
+        val squads = groups.map { group -> manager.create(helper.level, UUID(90, 9), requireNotNull(group.first().spawnFaction), group.map { it.uuid }) }
+        val defence = manager.create(helper.level, UUID(91, 9), requireNotNull(defenders.first().spawnFaction), defenders.map { it.uuid })
+        val attackerIds = groups.flatten().mapTo(HashSet()) { it.uuid }
+        val shooters = HashSet<UUID>()
+        val rounds = Consumer<EntityJoinLevelEvent> { event ->
+            val round = event.entity as? Projectile ?: return@Consumer
+            val owner = round.owner?.uuid ?: return@Consumer
+            if (event.level === helper.level && Ports.guns.isRound(round) && owner in attackerIds) shooters += owner
+        }
+        NeoForge.EVENT_BUS.addListener(rounds)
+        scene.onClose = {
+            NeoForge.EVENT_BUS.unregister(rounds)
+            (squads + defence).forEach { manager.deleteSquad(helper.level, it.id) }
+            ground.forEach { (pos, state) -> helper.setBlock(pos, state) }
+        }
+        // The count is kept per world, so scenes sharing one world are told apart by its change.
+        val blindBefore = NativeTactics.slotsWithoutSight(helper.level)
+        val target = helper.absolutePos(BlockPos(132, 1, 92))
+        manager.issueOrderAt(helper.level, defence.id, SquadOrder.DEFEND, target)
+        GroupOrders.apply(helper.level, manager, squads.map { it.id }, SquadOrder.ATTACK, target.x, target.z)
+        helper.onEachTick {
+            if (helper.tick % 100L != 0L) return@onEachTick
+            val blind = NativeTactics.slotsWithoutSight(helper.level) - blindBefore
+            scene.result("RUNNING", "tick=${helper.tick} attackerShooters=${shooters.size} slotsWithoutSight=$blind")
+            // Slots exist only once the defence is in contact, and the men fire from them.
+            if (shooters.size >= 4) {
+                helper.assertTrue(blind == 0, "$blind slots found no point that sees the defence from the hill")
+                helper.succeed()
+            }
+        }
+    }
+
+    /**
      * A pond lies between the attackers and a defended point: the firing line laid out at range
      * falls on the water and the straight way in crosses it. In-game 16.10 the same, with a lake,
      * left an attack of 23 against 7 standing on the shore; here the posts move to the bank and

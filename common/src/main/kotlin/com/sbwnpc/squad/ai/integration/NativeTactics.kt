@@ -41,6 +41,10 @@ object NativeTactics {
         refresh(npc)
         return world(npc).actions[npc.uuid]?.takeIf { it.intent.duty != CombatDuty.FOLLOW_ORDER }?.assignment
     }
+
+    /** Slots whose post [FireSlotSight] could not move to a point that sees the defence; GameTests read it. */
+    internal fun slotsWithoutSight(level: ServerLevel): Int = worlds[level]?.slotsWithoutSight ?: 0
+
     fun ownsLook(npc: NpcEntity): Boolean = worlds[npc.level()]?.actions?.get(npc.uuid)?.ownsLook == true
     fun ownsMovement(npc: NpcEntity): Boolean {
         tick(npc)
@@ -111,6 +115,8 @@ object NativeTactics {
 
         // The sighted post chosen for each man's slot, see [withSight].
         private val slotSights = HashMap<UUID, SlotSight>()
+        var slotsWithoutSight = 0
+            private set
         private val sectorsHeld = HashMap<UUID, Boolean>()
 
         // Members on the arc to their sector at the last layout: their intent is not kept once the
@@ -679,15 +685,28 @@ object NativeTactics {
                 kept.post
             } else {
                 val post = FireSlotSight.choose(proposal.anchor, defenders, CombatPositionSafety.clearance(role)) { post, enemy ->
-                    Terrain.feetAt(level, Vec3(post.x, post.y, post.z))?.let { feet ->
+                    groundAt(post)?.let { feet ->
                         DetectionSightline.visible(level, feet.add(0.0, EYE_HEIGHT, 0.0), Vec3(enemy.x, enemy.y + 1.0, enemy.z), CollisionContext.empty())
                     } == true
-                }
+                }?.let { post -> groundAt(post)?.let { Point3(post.x, it.y, post.z) } ?: post }
                 slotSights[id] = SlotSight(proposal.anchor, post)
-                if (post == null) DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=slot_no_sight member={} slot={}", operation, id, proposal.anchor)
+                if (post == null) {
+                    slotsWithoutSight++
+                    DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=slot_no_sight member={} slot={}", operation, id, proposal.anchor)
+                }
                 post
             }
             return if (chosen == null) proposal else proposal.copy(anchor = chosen)
+        }
+
+        /**
+         * The standable floor under [point]'s column. A slot is planned at the objective's height,
+         * so on a rise or in a hollow the floor is far from it: searching from there found none and
+         * every candidate counted as blind, or buried the eye in a hill (#93).
+         */
+        private fun groundAt(point: Point3): Vec3? {
+            val surface = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, net.minecraft.util.Mth.floor(point.x), net.minecraft.util.Mth.floor(point.z))
+            return Terrain.feetAt(level, Vec3(point.x, surface.toDouble(), point.z))
         }
 
         /** Geometry proposes areas; actual arrival, useful fire and native reachability remain observations. */
