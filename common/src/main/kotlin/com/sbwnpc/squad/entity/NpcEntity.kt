@@ -303,7 +303,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     }
 
     /** Whether an active role, vehicle, medical or tactics controller owns the look direction. */
-    fun lookOwnedElsewhere(): Boolean = busyWithRole() || vehicle != null || combatLockedByMedic() || com.sbwnpc.squad.ai.integration.NativeTactics.ownsLook(this)
+    fun lookOwnedElsewhere(): Boolean = busyWithRole() || vehicle != null || combatLockedByMedic() || com.sbwnpc.squad.combat.tactics.SquadTactics.ownsLook(this)
 
     /** Called by [com.sbwnpc.squad.entity.ai.InvestigateBehaviour] once it reaches the alert
      *  position (or gives up navigating to it) — ends the investigation instead of waiting out the

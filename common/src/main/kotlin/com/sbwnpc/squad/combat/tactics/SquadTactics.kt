@@ -64,9 +64,30 @@ object SquadTactics {
     fun move(entity: NpcEntity): Boolean = com.sbwnpc.squad.ai.integration.NativeTactics.ownsMovement(entity)
     fun repositionForFire(entity: NpcEntity) = com.sbwnpc.squad.ai.integration.NativeTactics.reposition(entity)
 
+    /** Runs the HTN planning this NPC takes part in, once per tick for its squad and above. */
+    fun tick(entity: NpcEntity) = com.sbwnpc.squad.ai.integration.NativeTactics.tick(entity)
+
+    /** Whether the NPC's current post action aims its head, so idle looking must not. */
+    fun ownsLook(entity: NpcEntity): Boolean = com.sbwnpc.squad.ai.integration.NativeTactics.ownsLook(entity)
+
+    /** The squad's shared combat picture: its members, contacts and incoming fire. */
+    fun snapshot(entity: NpcEntity): TacticalSnapshot? = com.sbwnpc.squad.ai.integration.NativeTactics.snapshot(entity)
+
+    /** Whether the NPC's squad fights in an operation together with other squads. */
+    fun coordinated(entity: NpcEntity): Boolean = com.sbwnpc.squad.ai.integration.NativeTactics.coordinated(entity)
+
+    /** The operation [squad] takes part in, if any. */
+    fun operationOf(level: ServerLevel, squad: java.util.UUID): com.sbwnpc.squad.ai.coordination.OperationView? = com.sbwnpc.squad.ai.integration.NativeTactics.operationOf(level, squad)
+
+    /** Notes the death of a possible objective target; [cancelled] is read later, see [com.sbwnpc.squad.ai.integration.NativeTactics.targetDeath]. */
+    fun targetDeath(entity: LivingEntity, cancelled: () -> Boolean) = com.sbwnpc.squad.ai.integration.NativeTactics.targetDeath(entity, cancelled)
+
+    /** Drops every world's tactical state when the server stops. */
+    fun clearAll() = com.sbwnpc.squad.ai.integration.NativeTactics.clearAll()
+
     fun preferredTarget(entity: NpcEntity, level: ServerLevel, probeCursor: Int = 0, reconsiderCurrent: Boolean = false): LivingEntity? {
         val task = task(entity)
-        val view = com.sbwnpc.squad.ai.integration.NativeTactics.snapshot(entity) ?: return null
+        val view = snapshot(entity) ?: return null
         val known = TacticalTargets.candidates(view, null, task?.focus ?: entity.position(), AntiArmourKit.loaded(entity)).asSequence()
             .mapNotNull { level.getEntity(it.id) as? LivingEntity }
             .filter { it.isAlive && entity.isEnemy(it) }
@@ -84,7 +105,7 @@ object SquadTactics {
     }
 
     fun permitsFire(entity: NpcEntity, target: LivingEntity): Boolean {
-        val view = com.sbwnpc.squad.ai.integration.NativeTactics.snapshot(entity) ?: return true
+        val view = snapshot(entity) ?: return true
         return view.visible.none { it.id == target.uuid && it.armoured } || AntiArmourKit.loaded(entity)
     }
 
@@ -92,7 +113,7 @@ object SquadTactics {
 
     /** Candidate posts use their own eye origin, with the same safety lane as actual shots. */
     fun firingLaneEnd(entity: NpcEntity, targetEye: Vec3, from: Vec3 = entity.eyePosition): Vec3 {
-        val extension = if (com.sbwnpc.squad.ai.integration.NativeTactics.coordinated(entity)) 256.0 else 0.0
+        val extension = if (coordinated(entity)) 256.0 else 0.0
         return targetEye.add(targetEye.subtract(from).normalize().scale(extension))
     }
 
