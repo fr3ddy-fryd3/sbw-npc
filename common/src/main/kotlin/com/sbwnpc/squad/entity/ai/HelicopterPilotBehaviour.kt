@@ -659,7 +659,6 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         const val ON_STATION_RADIUS = 8.0
         const val OFF_STATION_RADIUS = 20.0
         const val DESCENT_RATE = 0.22
-
         val LOOKAHEAD_DISTANCES = listOf(12.0, 24.0, 40.0, 60.0)
 
         /** Within this of its station a helicopter comes down from whatever height the trip left it at. */
