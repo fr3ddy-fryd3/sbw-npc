@@ -33,17 +33,18 @@ class UnverifiedContactsTest {
         val anchor = Point3(0.0, 64.0, 0.0)
         val remembered = listOf(Point3(10.0, 64.0, 0.0))
         val attack = Point3(50.0, 64.0, 0.0)
-        assertNull(UnverifiedContacts.inspectTarget(inContact = true, marching = false, anchor, remembered, attack))
-        assertNull(UnverifiedContacts.inspectTarget(inContact = false, marching = true, anchor, remembered, attack))
-        assertEquals(remembered.first(), UnverifiedContacts.inspectTarget(inContact = false, marching = false, anchor, remembered, attack))
+        val unasked = { error("the anchor is not needed in a fight or on the march") }
+        assertNull(UnverifiedContacts.inspectTarget(inContact = true, marching = false, unasked, remembered, attack))
+        assertNull(UnverifiedContacts.inspectTarget(inContact = false, marching = true, unasked, remembered, attack))
+        assertEquals(remembered.first(), UnverifiedContacts.inspectTarget(inContact = false, marching = false, { anchor }, remembered, attack))
     }
 
     @Test fun `with no remembered position in reach the scouts check the attacked objective`() {
         val anchor = Point3(0.0, 64.0, 0.0)
         val far = listOf(Point3(100.0, 64.0, 0.0))
         val attack = Point3(50.0, 64.0, 0.0)
-        assertEquals(attack, UnverifiedContacts.inspectTarget(inContact = false, marching = false, anchor, far, attack))
-        assertNull(UnverifiedContacts.inspectTarget(inContact = false, marching = false, anchor, far, null))
+        assertEquals(attack, UnverifiedContacts.inspectTarget(inContact = false, marching = false, { anchor }, far, attack))
+        assertNull(UnverifiedContacts.inspectTarget(inContact = false, marching = false, { anchor }, far, null))
     }
 
     @Test fun `remembered positions are measured from the area, then the order's objective, then the men`() {
