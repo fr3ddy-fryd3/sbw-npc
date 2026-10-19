@@ -92,7 +92,7 @@ enum class NpcClass(
     fun startingRounds(weapon: ResourceLocation): Int =
         when (this) {
             RIFLEMAN -> 210
-            MACHINE_GUNNER -> if (weapon.path == "m_60") 400 else 320
+            MACHINE_GUNNER -> MACHINE_GUN_ROUNDS[weapon.path] ?: 320
             SNIPER -> if (weapon.path == "awm") 50 else 60
             GRENADIER -> 20
             MEDIC, MORTAR, MORTAR_OPERATOR, MORTAR_LOADER -> 180
@@ -102,6 +102,9 @@ enum class NpcClass(
         }
 
     companion object {
+        /** Belts other than the RPK's 320 rounds: the M60's, and the AH-6 heavy gunner's M2HB. */
+        private val MACHINE_GUN_ROUNDS = mapOf("m_60" to 400, "m_2_hb" to 300)
+
         val DEFAULT = RIFLEMAN
 
         // Crew IDs remain valid for saved NPCs and full crew presets, but are not standalone recruits.

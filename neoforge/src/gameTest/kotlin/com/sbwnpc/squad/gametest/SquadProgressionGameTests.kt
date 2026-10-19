@@ -5,6 +5,7 @@ import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModEntities
 import com.sbwnpc.squad.item.SquadToolItem
 import com.sbwnpc.squad.network.buildSquadDetailsSnapshot
+import com.sbwnpc.squad.npc.HelicopterModel
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
@@ -160,6 +161,46 @@ object SquadProgressionGameTests {
             helper.assertTrue(recruit.npcRank == NpcRank.RECRUIT && recruit.experience == 0.0 && recruit.customName != null, "Barracks copied selectable legacy rank instead of recruiting a new soldier")
             deployed = SquadDeployment.deploy(helper.level, helper.absolutePos(BlockPos(5, 1, 6)), 0f, config, owner)
             helper.assertTrue(deployed?.members?.single()?.npcRank == NpcRank.RECRUIT && deployed!!.members.single().experience == 0.0, "Tool deployment still lets an old config spawn elites")
+            helper.succeed()
+        }
+    }
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 50, batch = "progression-recruit")
+    fun barracksReplacementTakesUpTheAh6HeavyGun(helper: GameTestHelper) {
+        floor(helper)
+        val manager = SquadManager.get(helper.level)
+        val model = HelicopterModel.AH_6
+        val gun = model.heavyGun!!
+        val config = SquadToolItem.Config(NpcClass.RIFLEMAN, NpcRank.RECRUIT, SquadFaction.PIG, SquadPreset.HELI_CREW, heliModel = model)
+        val barracks = BarracksRef(helper.level.dimension(), helper.absolutePos(BlockPos(16, 0, 6)))
+        val group = manager.createAtBarracks(helper.level, barracks, UUID.randomUUID(), config)
+        val recruits = mutableListOf<NpcEntity>()
+        cleanup(helper) {
+            manager.deleteSquad(helper.level, group.id)
+            recruits.forEach { it.discard() }
+        }
+        fun recruit(slot: RecruitmentRoster.Slot): NpcEntity {
+            helper.assertTrue(manager.recruitAtBarracks(helper.level, barracks, BarracksRecruitmentQueue.Request(group.id, slot.id, false)) == null, "Barracks recruitment failed")
+            return (helper.level.getEntity(slot.occupant!!) as NpcEntity).also { recruits += it }
+        }
+        fun heavyGunners() = group.members.mapNotNull { helper.level.getEntity(it) as? NpcEntity }.filter { it.carriesPrimary(gun) }
+        helper.runAtTickTime(5) {
+            group.recruitmentRoster!!.slots.toList().forEach(::recruit)
+            val first = heavyGunners().singleOrNull() ?: throw AssertionError("A full AH-6 crew has ${heavyGunners().size} heavy gunners")
+            fun replace(member: NpcEntity): NpcEntity {
+                val slot = group.recruitmentRoster!!.slots.first { it.occupant == member.uuid }
+                manager.removeMemberEverywhere(member.uuid)
+                member.discard()
+                return recruit(slot)
+            }
+            // Out of belts, the heavy gunner fights with his pistol; his M2HB still counts.
+            first.sidearmPrimaryWeapon = first.mainHandItem
+            first.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, first.sidearmWeapon)
+            replace(recruits.first { it !== first && it.npcClass == NpcClass.MACHINE_GUNNER })
+            helper.assertTrue(heavyGunners() == listOf(first), "A replacement got a second heavy gun while the heavy gunner was on his pistol")
+            val replacement = replace(first)
+            helper.assertTrue(heavyGunners() == listOf(replacement), "The replacement did not take up the heavy gun")
             helper.succeed()
         }
     }

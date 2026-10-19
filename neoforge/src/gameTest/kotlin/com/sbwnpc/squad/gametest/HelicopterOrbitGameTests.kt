@@ -126,6 +126,8 @@ object HelicopterOrbitGameTests {
                 ?: throw AssertionError("Failed to deploy $model")
             helper.assertTrue(!result.vehicleBlocked, "No aircraft deployed for $model")
             helper.assertTrue(result.members.map { it.npcClass } == model.crew, "Incorrect crew for $model")
+            val heavy = model.heavyGun?.let { gun -> result.members.count { it.carriesPrimary(gun) } } ?: 0
+            helper.assertTrue(heavy == (if (model.heavyGun != null) 1 else 0), "$model has $heavy heavy gunners")
             val pilot = result.members.first { it.npcClass == NpcClass.HELICOPTER_PILOT }
             val aircraft = pilot.vehicle ?: throw AssertionError("Pilot did not board $model")
             vehicles += aircraft
@@ -323,6 +325,7 @@ object HelicopterOrbitGameTests {
                     if (role in setOf(NpcClass.HELICOPTER_PILOT, NpcClass.HELICOPTER_GUNNER)) it.assignedVehicleId = heli.uuid
                 }
             }
+            SquadDeployment.armHeavyGunner(model, crew)
             if (model == HelicopterModel.MI_28) {
                 // Match SquadDeployment.spawnHelicopter: pilot first, then the permanent gunner.
                 // Only the transport infantry boards asynchronously in the deployed preset.

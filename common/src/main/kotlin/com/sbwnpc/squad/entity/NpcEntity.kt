@@ -1201,9 +1201,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
         // One of 2 weapons per weapon category, picked once and kept for this NPC's whole life —
         // pure visual variety across NPCs of the same class, per user request ("разношерстные").
-        val weaponId = npcClass.weaponPool[random.nextInt(npcClass.weaponPool.size)]
-        val gun = Ports.guns.issue(weaponId, this, npcClass.startingRounds(weaponId))
-        if (!gun.isEmpty) setItemInHand(InteractionHand.MAIN_HAND, gun)
+        arm(npcClass.weaponPool[random.nextInt(npcClass.weaponPool.size)])
         sidearmPrimaryWeapon = ItemStack.EMPTY
         sidearmWeapon = SidearmKit.issue(this)
 
@@ -1233,6 +1231,20 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             antiArmourWeapon = com.sbwnpc.squad.combat.AntiArmourKit.issue(this)
         }
     }
+
+    /**
+     * Puts a new [weaponId] in this NPC's hands with its class's full ammunition for it.
+     *
+     * Only for a freshly spawned NPC, whose hands still hold its primary: later the hands may hold
+     * the launcher or the pistol, and this would overwrite that instead.
+     */
+    fun arm(weaponId: net.minecraft.resources.ResourceLocation) {
+        val gun = Ports.guns.issue(weaponId, this, npcClass.startingRounds(weaponId))
+        if (!gun.isEmpty) setItemInHand(InteractionHand.MAIN_HAND, gun)
+    }
+
+    /** Whether [weaponId] is this NPC's primary, wherever [primaryGun] finds it. */
+    fun carriesPrimary(weaponId: net.minecraft.resources.ResourceLocation): Boolean = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(primaryGun().item) == weaponId
 
     override fun addAdditionalSaveData(compound: CompoundTag) {
         SidearmKit.sync(this)
