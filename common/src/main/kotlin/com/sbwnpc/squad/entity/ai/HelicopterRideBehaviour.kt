@@ -12,6 +12,7 @@ import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
 import com.sbwnpc.squad.vehicle.Helicopters
+import com.sbwnpc.squad.vehicle.PilotlessDrop
 import net.minecraft.commands.arguments.EntityAnchorArgument
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
@@ -87,12 +88,14 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.claim(NpcActivity.VEHICLE, this)
         entity.navigation.stop()
         rideId = heli.uuid
+        takeEmptyBench(entity, heli)
         fireFromBench(entity, heli)
 
         // Never in the air, whatever else is true — including a wrecked airframe. SBW crashes the
         // passengers of a destroyed aircraft itself (DestroyInfo.CrashPassengers); stepping out at
         // altitude first only adds a fall to it.
         val level = entity.level() as? ServerLevel ?: return
+        pilotless.tick(level, heli)
         if (!Helicopters.isGrounded(level, heli)) {
             groundedSince = Int.MIN_VALUE / 2
             return
@@ -162,6 +165,21 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private var lastBenchLogTick = Int.MIN_VALUE / 2
+    private val pilotless = PilotlessDrop()
+
+    /**
+     * A gunner riding in the cockpit, where he cannot fire, moves to a bench that has gone empty,
+     * so a bench gunner's death does not leave that side silent for the rest of the flight. Not
+     * on a gunship: its seat 1 is the turret, and not the pilot, who sits in seat 0.
+     */
+    private fun takeEmptyBench(entity: NpcEntity, heli: Entity) {
+        if (Helicopters.hasTurret(heli) || Ports.vehicles.seatOf(heli, entity) != COCKPIT_PASSENGER_SEAT) return
+        val seats = Ports.vehicles.seating(heli)
+        val bench = (FIRST_BENCH_SEAT until seats.size).firstOrNull { seats[it] == null } ?: return
+        if (Ports.vehicles.changeSeat(heli, entity, bench)) {
+            DebugFlags.log(LogGroup.HELI, "{} moved from the cockpit to empty bench seat {}", entity.uuid, bench)
+        }
+    }
 
     /** Fires if it can; otherwise says why not (null once a shot is away or it's just cycling). */
     private fun benchHoldReason(entity: NpcEntity, heli: Entity): String? {
@@ -305,6 +323,9 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         /** Seats 0 and 1 are the cockpit; the side benches start here. */
         const val FIRST_BENCH_SEAT = 2
+
+        /** The AH-6's second cockpit seat, beside the pilot: no gun of its own. */
+        const val COCKPIT_PASSENGER_SEAT = 1
         const val BENCH_LOG_TICKS = 40
 
         /** As far as aircrew spot the ground (VehicleTargeting): 48 was less than the height a

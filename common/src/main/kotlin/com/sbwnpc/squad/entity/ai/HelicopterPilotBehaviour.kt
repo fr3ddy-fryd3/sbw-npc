@@ -654,7 +654,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         const val MAX_SCOUT_SIGHT_CHECKS = 6
 
         /** How long a transport holds on the pad for its squad before going without them. */
-        const val BOARDING_TIMEOUT_TICKS = 400
+        const val BOARDING_TIMEOUT_TICKS = 800
         const val BOARDING_WAIT_RANGE = 40.0
         const val ON_STATION_RADIUS = 8.0
         const val OFF_STATION_RADIUS = 20.0

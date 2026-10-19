@@ -49,6 +49,9 @@ interface Vehicles {
     /** Seat by seat, null where a seat is empty. */
     fun seating(vehicle: Entity): List<Entity?>
 
+    /** Moves [passenger], already aboard, into the empty [seat]; false when it is taken or not a seat. */
+    fun changeSeat(vehicle: Entity, passenger: Entity, seat: Int): Boolean
+
     /** Whether [passenger]'s seat has a weapon of its own. */
     fun hasWeaponAt(vehicle: Entity, passenger: Entity): Boolean
 
