@@ -17,10 +17,10 @@ Default: install missing tools, prepare dependencies, run three smoke GameTests.
   -h, --help          Show this help
 
 Requires Linux x86_64/aarch64 with glibc. Uses JAVA_HOME/installed Java 21,
-otherwise installs Temurin 21 locally. Gradle 8.14.2 is installed locally.
+otherwise installs Temurin 21 locally. Gradle 9.5.0 is installed locally.
 Downloads and logs: build/headless/; test reports: neoforge/build/reports/gameTest/.
 Optional: GRADLE_USER_HOME for a persistent cache; HEADLESS_GRADLE_HEAP=4G;
-HEADLESS_GRADLE_BIN=/absolute/path/to/gradle (must be 8.14.2).
+HEADLESS_GRADLE_BIN=/absolute/path/to/gradle (must be 9.5.0).
 Existing SuperbWarfare sources are retained. A missing directory is restored
 from the pinned upstream 0.8.9.1 commit. No Minecraft client is launched.
 HELP
@@ -160,16 +160,16 @@ fi
     die 'Existing SuperbWarfare directory is incomplete; it was left untouched'
 printf 'SBW: %s\n' "$(cat SuperbWarfare/.headless-upstream-commit 2>/dev/null || printf 'existing local sources (retained)')"
 
-gradle_bin=${HEADLESS_GRADLE_BIN:-"$work/tools/gradle-8.14.2/bin/gradle"}
+gradle_bin=${HEADLESS_GRADLE_BIN:-"$work/tools/gradle-9.5.0/bin/gradle"}
 if [[ -z ${HEADLESS_GRADLE_BIN:-} && ! -x $gradle_bin ]]; then
-    archive="$work/downloads/gradle-8.14.2-bin.zip"
-    download https://services.gradle.org/distributions/gradle-8.14.2-bin.zip "$archive"
-    verify 7197a12f450794931532469d4ff21a59ea2c1cd59a3ec3f89c035c3c420a6999 "$archive"
+    archive="$work/downloads/gradle-9.5.0-bin.zip"
+    download https://services.gradle.org/distributions/gradle-9.5.0-bin.zip "$archive"
+    verify 553c78f50dafcd54d65b9a444649057857469edf836431389695608536d6b746 "$archive"
     unzip -q -o "$archive" -d "$work/tools"
 fi
 [[ -x $gradle_bin ]] || die "Gradle executable missing: $gradle_bin"
 "$gradle_bin" --version > "$work/gradle-version.txt"
-grep -qx 'Gradle 8.14.2' "$work/gradle-version.txt" || die 'Use Gradle 8.14.2 to match this project'
+grep -qx 'Gradle 9.5.0' "$work/gradle-version.txt" || die 'Use Gradle 9.5.0 to match this project'
 heap=${HEADLESS_GRADLE_HEAP:-4G}
 [[ $heap =~ ^[1-9][0-9]*[MG]$ ]] || die 'HEADLESS_GRADLE_HEAP must be a size such as 4G'
 args=(--no-daemon --console=plain --max-workers=2 --no-parallel
