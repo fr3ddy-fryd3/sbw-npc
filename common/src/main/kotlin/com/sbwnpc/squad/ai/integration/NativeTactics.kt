@@ -681,15 +681,12 @@ object NativeTactics {
                 remembered[it.id] = it.position
                 rememberedSeen[it.id] = now
             }
-            val inspect = if (focus == null && !marching) {
-                val anchor = currentAreaTask(operation)?.objective?.native() ?: squads.first().objective?.let { Vec3.atBottomCenterOf(it) } ?: center
-                UnverifiedContacts.scoutTarget(anchor.point(), remembered.values.map { it.point() })?.native()
-                    ?: squads.firstOrNull { it.order == SquadOrder.ATTACK && it.commandOutcome == CommandOutcome.ACTIVE }?.objective?.let { Vec3.atBottomCenterOf(it) }
-            } else {
-                null
-            }
+            val inspectAnchor = UnverifiedContacts.inspectAnchor(currentAreaTask(operation)?.objective, squads.first().objective?.let { Vec3.atBottomCenterOf(it).point() }, center.point())
+            val activeAttack = squads.firstOrNull { it.order == SquadOrder.ATTACK && it.commandOutcome == CommandOutcome.ACTIVE }?.objective?.let { Vec3.atBottomCenterOf(it).point() }
+            val inspect = UnverifiedContacts.inspectTarget(focus != null, marching, inspectAnchor, remembered.values.map { it.point() }, activeAttack)?.native()
             val existingScouts = squads.flatMap { missions[it.id]?.teams.orEmpty() }.flatMap { it.members }.filter { it.duty == CombatDuty.SEARCH }.mapTo(HashSet()) { it.actor.id }
-            val scouts = if (inspect != null) squads.flatMap { snapshots.getValue(it.id).members }.filter { it.ready }.sortedWith(compareBy<TacticalMember> { it.id !in existingScouts }.thenBy { it.position.distanceTo(inspect) }).take(2).mapTo(HashSet()) { it.id } else emptySet()
+            val candidates = squads.flatMap { snapshots.getValue(it.id).members }.filter { it.ready }.map { it.id to it.position.point() }
+            val scouts = UnverifiedContacts.scouts(candidates, existingScouts, inspect?.point())
             val actors = squads.flatMap { saved ->
                 snapshots.getValue(saved.id).members.map { member ->
                     val previous = missions[saved.id]?.teams?.flatMap { it.members }?.firstOrNull { it.actor.id == member.id }
