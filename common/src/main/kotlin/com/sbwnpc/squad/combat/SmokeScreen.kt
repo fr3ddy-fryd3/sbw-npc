@@ -4,6 +4,7 @@ import com.sbwnpc.squad.domain.port.GrenadeKind
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.util.Mth
 import net.minecraft.world.phys.Vec3
 
 /**
@@ -11,7 +12,7 @@ import net.minecraft.world.phys.Vec3
  *
  * A quarter of the squad throws, rounded down, from the half that is holding while the other
  * bounds, so the runners are screened by men who stay to cover them. The grenades go down side by
- * side across the line to the enemy: thrown by the nearest men, all landed in one spot and made
+ * side across the line to the enemy, in front of the holding man nearest it: thrown by the nearest men, all landed in one spot and made
  * one small cloud (#115, in-game 20.10). A man whose throw is not possible (a wall, a squadmate in
  * the way) leaves his point to the next one.
  */
@@ -49,19 +50,34 @@ object SmokeScreen {
     }
 
     /**
+     * [point] moved onto the ground of its column. Laid at the throwers' height, on a hillside the
+     * point was inside the slope or over a drop, and no arc reached it (in-game 20.10).
+     */
+    private fun onGround(level: ServerLevel, point: Vec3): Vec3 {
+        val surface = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, Mth.floor(point.x), Mth.floor(point.z))
+        return Vec3(point.x, surface.toDouble(), point.z)
+    }
+
+    /**
      * Throws up to [count] grenades of the screen from [holding] towards [enemy], each point by the
      * nearest man who can make it; how many went.
      */
     fun throwFrom(level: ServerLevel, holding: List<NpcEntity>, enemy: Vec3, count: Int): Int {
         val free = throwers(holding).toMutableList()
         if (free.isEmpty()) return 0
-        val centre = Vec3(free.sumOf { it.x } / free.size, free.sumOf { it.y } / free.size, free.sumOf { it.z } / free.size)
+        // In front of the man nearest the enemy: from the middle of a squad strung out over fifty
+        // blocks the screen fell where nobody could throw that far (in-game 20.10).
+        val centre = free.minBy { it.position().distanceToSqr(enemy) }.position()
         var thrown = 0
-        for (point in screenPoints(centre, enemy, count)) {
+        for (point in screenPoints(centre, enemy, count).map { onGround(level, it) }) {
             // A smoke grenade flies like the hand grenades, so their arc check judges it.
             val thrower = free.sortedBy { it.position().distanceToSqr(point) }.firstOrNull {
                 GrenadeThrower.inRange(it.position(), point) && Ports.grenades.arcClear(it, level, point, Vec3.ZERO, GrenadeKind.DEFENSIVE, NEAR_POINT)
-            } ?: continue
+            }
+            if (thrower == null) {
+                DebugFlags.log(LogGroup.RETREAT, "no throw for smoke at {}: {} men free, nearest {} blocks off", point, free.size, free.minOfOrNull { it.position().distanceTo(point) }?.toInt())
+                continue
+            }
             Ports.grenades.throwSmoke(thrower, level, point)
             thrower.smokeLeft--
             free -= thrower
