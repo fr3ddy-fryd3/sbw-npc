@@ -437,37 +437,51 @@ object HtnTacticsGameTests {
 
     /**
      * Spotting takes time (#114): by day a regular rifleman notices an enemy 70 blocks off after
-     * a moment, not on the first scan; at night he never notices one beyond his range of 60, and
-     * takes several seconds for one inside it.
+     * a moment, not on the first scan; at night one inside his range only after several seconds,
+     * and one at its edge after longer still. The dark reaches 72 blocks, the same as
+     * [com.sbwnpc.squad.entity.NpcEntity.DETECTION_RANGE], so darkness no longer stops a regular
+     * short of it (owner's call, 20.10); the unit tests check the cut-offs.
      */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 500, batch = "spot-day")
-    fun enemyAtSeventyBlocksIsNoticedByDayAfterAMoment(helper: GameTestHelper) = spotting(helper, "spot-day", night = false, distance = 70.0, expectNoticed = 8L..200L)
+    fun enemyAtSeventyBlocksIsNoticedByDayAfterAMoment(helper: GameTestHelper) = spotting(helper, "spot-day", Lighting.DAY, distance = 70.0, expectNoticed = 8L..200L)
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 500, batch = "spot-night-far")
-    fun enemyBeyondTheDarkRangeIsNeverNoticedAtNight(helper: GameTestHelper) = spotting(helper, "spot-night-far", night = true, distance = 70.0, expectNoticed = null)
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 700, batch = "spot-night-far")
+    fun enemyAtTheEdgeOfRangeIsNoticedLongAfterAtNight(helper: GameTestHelper) = spotting(helper, "spot-night-far", Lighting.NIGHT, distance = 71.0, expectNoticed = 120L..600L)
+
+    /** A lantern by the enemy at night lights him as by day (in-game 20.10 they were seen only point-blank). */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 500, batch = "spot-night-lantern")
+    fun enemyByALanternIsNoticedAtNightAsByDay(helper: GameTestHelper) = spotting(helper, "spot-night-lantern", Lighting.LANTERN, distance = 70.0, expectNoticed = 8L..200L)
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 700, batch = "spot-night-near")
-    fun enemyInsideTheDarkRangeTakesSecondsToNoticeAtNight(helper: GameTestHelper) = spotting(helper, "spot-night-near", night = true, distance = 40.0, expectNoticed = 60L..500L)
+    fun enemyInsideTheDarkRangeTakesSecondsToNoticeAtNight(helper: GameTestHelper) = spotting(helper, "spot-night-near", Lighting.NIGHT, distance = 40.0, expectNoticed = 60L..500L)
 
-    private fun spotting(helper: GameTestHelper, name: String, night: Boolean, distance: Double, expectNoticed: LongRange?) {
+    /** The light the spotting scenes are played in: a lantern by the enemy at night in the last. */
+    private enum class Lighting(val time: Long, val lantern: Boolean) { DAY(DAY_TIME, false), NIGHT(NIGHT_TIME, false), LANTERN(NIGHT_TIME, true) }
+
+    private fun spotting(helper: GameTestHelper, name: String, lighting: Lighting, distance: Double, expectNoticed: LongRange?) {
+        val lantern = lighting.lantern
         val scene = CombatIdleGameTests.Scene(helper, name)
         val manager = SquadManager.get(helper.level)
         val oldTime = helper.level.dayTime
-        helper.level.setDayTime(if (night) NIGHT_TIME else DAY_TIME)
+        helper.level.setDayTime(lighting.time)
         val shooter = scene.spawn(Vec3(20.5, 1.0, 60.5))
         shooter.moveTo(shooter.x, shooter.y, shooter.z, -90f, 0f)
         shooter.yHeadRot = -90f
         shooter.yBodyRot = -90f
         val enemy = scene.enemy(Vec3(20.5 + distance, 1.0, 60.5))
+        val lamp = BlockPos(20 + distance.toInt(), 1, 62)
+        if (lantern) helper.setBlock(lamp, net.minecraft.world.level.block.Blocks.LANTERN)
         val squad = manager.create(helper.level, UUID(90, 12), requireNotNull(shooter.spawnFaction), listOf(shooter.uuid))
         manager.setOrder(squad.id, SquadOrder.DEFEND)
         manager.setObjective(helper.level, squad.id, shooter.blockPosition())
         scene.onClose = {
             manager.deleteSquad(helper.level, squad.id)
             helper.level.setDayTime(oldTime)
+            if (lantern) helper.setBlock(lamp, net.minecraft.world.level.block.Blocks.AIR)
         }
         var noticedAt: Long? = null
         helper.onEachTick {

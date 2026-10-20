@@ -315,18 +315,18 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             spotting.fill(candidate.uuid, now)
             return true
         }
-        val required = SpottingTime.seconds(
-            SpottingTime.Observer.of(mob.npcRank, mob.npcClass),
-            SpottingTime.Target(
-                mob.distanceTo(candidate).toDouble(),
-                level.getMaxLocalRawBrightness(candidate.blockPosition()),
-                Vision.offAxis(mob.position(), mob.yHeadRot, candidate.position()),
-                candidate.isCrouching,
-                candidate.isSprinting,
-                grassBlocks,
-            ),
+        val target = SpottingTime.Target(
+            mob.distanceTo(candidate).toDouble(),
+            level.getMaxLocalRawBrightness(candidate.blockPosition()),
+            Vision.offAxis(mob.position(), mob.yHeadRot, candidate.position()),
+            candidate.isCrouching,
+            candidate.isSprinting,
+            grassBlocks,
         )
-        return spotting.advance(candidate.uuid, now, required)
+        val required = SpottingTime.seconds(SpottingTime.Observer.of(mob.npcRank, mob.npcClass), target)
+        return spotting.advance(candidate.uuid, now, required).also { seen ->
+            if (seen) DebugFlags.log(LogGroup.SPOTTING, "{} noticed {} at {} blocks, light {}, after {}s needed", mob.uuid, candidate.uuid, target.distance.toInt(), target.light, required?.let { "%.1f".format(it) })
+        }
     }
 
     companion object {
