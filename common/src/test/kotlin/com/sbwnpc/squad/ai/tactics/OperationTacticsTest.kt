@@ -117,11 +117,11 @@ class OperationTacticsTest {
     private val here = Point3(40.0, 64.0, 100.0)
     private fun duty(order: TacticalOrder = TacticalOrder.ATTACK, proposal: FrontProposal = FrontProposal(CombatDuty.FIRE, Point3(60.0, 64.0, 100.0), null), inContact: Boolean = true, scout: Boolean = false, heightRole: Boolean = false, primaryAmmo: Boolean = true, reachedMove: Boolean = false, wasFiring: Boolean = false, elsewhere: Boolean = false) = OperationTactics.duty(DutyInputs(order, here, proposal, objective, Point3(90.0, 64.0, 100.0), inContact, elsewhere, scout, heightRole, primaryAmmo, hasPatrolRoute = false, reachedMove = reachedMove, wasFiring = wasFiring), fireReach = 40.0, approachOffset = 10.0)
 
-    @Test fun `round an objective that moves a gunner takes no height post`() {
+    @Test fun `a gunner following his player takes no height post`() {
         val sentry = DutyInputs(TacticalOrder.DEFEND, here, FrontProposal(CombatDuty.FIRE, here, null), objective, null, inContact = false, elsewhere = false, scout = false, heightRole = true, primaryAmmo = true, hasPatrolRoute = false, reachedMove = false, wasFiring = false)
         assertEquals(CombatDuty.OBSERVE, OperationTactics.duty(sentry, fireReach = 40.0, approachOffset = 10.0).duty)
-        assertEquals(CombatDuty.FOLLOW_ORDER, OperationTactics.duty(sentry.copy(fixedObjective = false), fireReach = 40.0, approachOffset = 10.0).duty)
-        assertEquals(CombatDuty.FIRE, OperationTactics.duty(sentry.copy(fixedObjective = false, inContact = true), fireReach = 40.0, approachOffset = 10.0).duty)
+        assertEquals(CombatDuty.FOLLOW_ORDER, OperationTactics.duty(sentry.copy(following = true), fireReach = 40.0, approachOffset = 10.0).duty)
+        assertEquals(CombatDuty.FIRE, OperationTactics.duty(sentry.copy(following = true, inContact = true), fireReach = 40.0, approachOffset = 10.0).duty)
     }
 
     @Test fun `the front proposal applies only in a fight on attack`() {

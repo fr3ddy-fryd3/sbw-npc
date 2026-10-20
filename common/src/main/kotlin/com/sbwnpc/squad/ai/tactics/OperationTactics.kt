@@ -58,8 +58,8 @@ data class DutyInputs(
     val reachedMove: Boolean,
     val wasFiring: Boolean,
     val flanking: Boolean = false,
-    /** The objective stays where it is; false when it is an entity that moves, such as a followed player. */
-    val fixedObjective: Boolean = true,
+    /** On a FOLLOW order: the objective is a player who walks away from any post round it. */
+    val following: Boolean = false,
 )
 
 data class DutyChoice(val duty: CombatDuty, val anchor: Point3)
@@ -201,7 +201,7 @@ object OperationTactics {
                 // hid (#73). Out of ammunition for his main weapon he is no sentry, and a height is no
                 // post round an objective that walks away from it: gunners following their player held
                 // a roof while he left (#116, in-game 20.10).
-                (order == TacticalOrder.DEFEND || (order == TacticalOrder.PATROL && !hasPatrolRoute)) && heightRole && primaryAmmo && fixedObjective -> CombatDuty.OBSERVE
+                (order == TacticalOrder.DEFEND || (order == TacticalOrder.PATROL && !hasPatrolRoute)) && heightRole && primaryAmmo && !following -> CombatDuty.OBSERVE
 
                 !inContact || order in setOf(TacticalOrder.RETREAT, TacticalOrder.MOVE, TacticalOrder.BARRAGE) -> CombatDuty.FOLLOW_ORDER
 
