@@ -6,6 +6,7 @@ import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.entity.DroneRegistry
 import com.sbwnpc.squad.entity.GrenadeRegistry
 import com.sbwnpc.squad.entity.NpcRegistry
+import com.sbwnpc.squad.entity.SmokeCloudRegistry
 import com.sbwnpc.squad.entity.ai.DroneLinks
 import com.sbwnpc.squad.entity.ai.MortarClaims
 import com.sbwnpc.squad.entity.ai.VehicleTransportClaims
@@ -78,6 +79,7 @@ object ServerLifecycle {
         FiringSpots.clearAll()
         DroneRegistry.clearAll()
         GrenadeRegistry.clearAll()
+        SmokeCloudRegistry.clearAll()
         com.sbwnpc.squad.combat.StrayRounds.clearAll()
         SquadTeams.clearCache()
     }

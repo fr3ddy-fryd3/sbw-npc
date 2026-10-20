@@ -15,6 +15,7 @@ object EntityIndexEvents {
     @SubscribeEvent
     fun onJoin(event: EntityJoinLevelEvent) {
         GrenadeRegistry.join(event.entity, event.level)
+        SmokeCloudRegistry.join(event.entity, event.level)
         DroneRegistry.join(event.entity, event.level)
         StrayRounds.join(event.entity, event.level)
     }
@@ -22,6 +23,7 @@ object EntityIndexEvents {
     @SubscribeEvent
     fun onLeave(event: EntityLeaveLevelEvent) {
         GrenadeRegistry.leave(event.entity, event.level)
+        SmokeCloudRegistry.leave(event.entity, event.level)
         DroneRegistry.leave(event.entity, event.level)
         StrayRounds.leave(event.entity, event.level)
     }

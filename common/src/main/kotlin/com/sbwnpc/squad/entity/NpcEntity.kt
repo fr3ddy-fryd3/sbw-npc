@@ -394,6 +394,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     val hasGrenade: Boolean get() = rgnLeft > 0 || rgoLeft > 0
 
+    /** Smoke grenades carried, thrown to cover a withdrawal, see [com.sbwnpc.squad.combat.SmokeScreen]. */
+    var smokeLeft = 0
+
     /** Which grenade to throw now, or null with none left: the RGO while defending or falling
      *  back, the RGN otherwise — and whichever is left when that one has run out. */
     fun grenadeToThrow(): com.sbwnpc.squad.domain.port.GrenadeKind? {
@@ -436,6 +439,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         if (carriesGrenades() && (rgnLeft < GRENADES_OF_EACH || rgoLeft < GRENADES_OF_EACH)) {
             rgnLeft = maxOf(rgnLeft, GRENADES_OF_EACH)
             rgoLeft = maxOf(rgoLeft, GRENADES_OF_EACH)
+            topped = true
+        }
+        if (carriesGrenades() && smokeLeft < SMOKE_GRENADES) {
+            smokeLeft = SMOKE_GRENADES
             topped = true
         }
         if (npcClass == NpcClass.MORTAR && mortarShellsLeft < MORTAR_SHELLS) {
@@ -1221,6 +1228,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         // post-dig throw, all from these same counts.
         rgnLeft = if (carriesGrenades()) GRENADES_OF_EACH else 0
         rgoLeft = rgnLeft
+        smokeLeft = if (carriesGrenades()) SMOKE_GRENADES else 0
         medkitsLeft = MEDKITS
         mortarShellsLeft = if (npcClass == NpcClass.MORTAR) MORTAR_SHELLS else 0
         if (npcClass == NpcClass.DRONE_OPERATOR) dronesLeft = com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES
@@ -1257,6 +1265,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         assignedVehicleId?.let { compound.putUUID("AssignedVehicle", it) }
         compound.putInt("Rgn", rgnLeft)
         compound.putInt("Rgo", rgoLeft)
+        compound.putInt("Smoke", smokeLeft)
         compound.putInt("Medkits", medkitsLeft)
         compound.putInt("MortarShells", mortarShellsLeft)
         if (carryingMortar) compound.putBoolean("CarryingMortar", true)
@@ -1295,6 +1304,14 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             compound.getInt("Rgo")
         } else if (carriesGrenades()) {
             GRENADES_OF_EACH
+        } else {
+            0
+        }
+        // Saved before NPCs carried smoke: issued now.
+        smokeLeft = if (compound.contains("Smoke")) {
+            compound.getInt("Smoke")
+        } else if (carriesGrenades()) {
+            SMOKE_GRENADES
         } else {
             0
         }
@@ -1485,6 +1502,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         private const val GRENADE_DROP_CHANCE = 0.0125f
         private val LOOTABLE_SLOTS = listOf(EquipmentSlot.MAINHAND, EquipmentSlot.HEAD, EquipmentSlot.CHEST)
         private const val GRENADES_OF_EACH = 2
+
+        /** Smoke grenades each fighter carries; one is thrown per withdrawal. */
+        private const val SMOKE_GRENADES = 1
         const val MEDKITS = 1
         private const val HEARD_LOOK_TICKS = 100
 

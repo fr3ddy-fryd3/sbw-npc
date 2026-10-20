@@ -391,6 +391,34 @@ object HtnTacticsGameTests {
     }
 
     /**
+     * A squad that starts falling back under fire throws one smoke grenade towards the enemy, from
+     * the half that holds, and the cloud hides the enemy from it (#115).
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 900, batch = "withdrawal-smoke")
+    fun fallingBackSquadThrowsOneSmokeScreenThatHidesTheEnemy(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "withdrawal-smoke")
+        val manager = SquadManager.get(helper.level)
+        val men = (0 until 6).map { scene.spawn(Vec3(40.5 + it % 2 * 3, 1.0, 60.5 + it / 2 * 4)) }
+        val enemy = scene.enemy(Vec3(95.5, 1.0, 64.5))
+        val squad = manager.create(helper.level, UUID(90, 11), requireNotNull(men.first().spawnFaction), men.map { it.uuid })
+        scene.onClose = { manager.deleteSquad(helper.level, squad.id) }
+        manager.issueOrderAt(helper.level, squad.id, SquadOrder.RETREAT, helper.absolutePos(BlockPos(10, 1, 64)))
+        var hidden = false
+        helper.onEachTick {
+            val clouds = com.sbwnpc.squad.entity.SmokeCloudRegistry.all(helper.level).count { Ports.grenades.smokeIsOut(it) }
+            if (clouds > 0 && men.any { com.sbwnpc.squad.combat.SmokeClouds.blocks(helper.level, it.eyePosition, enemy.eyePosition) && !com.sbwnpc.squad.combat.DetectionSightline.canSee(it, enemy) }) hidden = true
+            if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} smokeLeft=${men.map { it.smokeLeft }} cloudsOut=$clouds hidden=$hidden")
+            val thrown = men.count { it.smokeLeft == 0 }
+            helper.assertTrue(thrown <= 1, "More than one smoke grenade was thrown: $thrown")
+            if (hidden && thrown == 1) {
+                scene.result("PASS", "tick=${helper.tick} cloudsOut=$clouds")
+                helper.succeed()
+            }
+        }
+    }
+
+    /**
      * A pond lies between the attackers and a defended point: the firing line laid out at range
      * falls on the water and the straight way in crosses it. In-game 16.10 the same, with a lake,
      * left an attack of 23 against 7 standing on the shore; here the posts move to the bank and

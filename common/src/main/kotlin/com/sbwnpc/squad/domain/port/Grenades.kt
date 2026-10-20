@@ -29,6 +29,15 @@ interface Grenades {
     /** One [kind] hand grenade as the item a player throws. */
     fun item(kind: GrenadeKind): net.minecraft.world.item.ItemStack
 
+    /** Throws a smoke grenade to land on [target]; it screens the spot after a few seconds. */
+    fun throwSmoke(thrower: LivingEntity, level: ServerLevel, target: Vec3)
+
+    /** Whether [entity] is a piece of a smoke grenade's cloud, out yet or not. */
+    fun isSmokeCloud(entity: Entity): Boolean
+
+    /** Whether a smoke piece ([isSmokeCloud]) is out now, hiding what stands behind it. */
+    fun smokeIsOut(entity: Entity): Boolean
+
     /** A grenade on a timed fuse — one that lies there long enough to run from. Contact-fuzed
      *  rounds don't count. */
     fun isTimedGrenade(entity: Entity): Boolean

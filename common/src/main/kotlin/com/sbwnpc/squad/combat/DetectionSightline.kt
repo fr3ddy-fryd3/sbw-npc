@@ -41,6 +41,7 @@ object DetectionSightline {
     internal fun visible(level: BlockGetter, from: Vec3, to: Vec3, collision: CollisionContext): Boolean = trace(level, from, to, collision) == Visibility.VISIBLE
 
     internal fun trace(level: BlockGetter, from: Vec3, to: Vec3, collision: CollisionContext): Visibility {
+        if (level is net.minecraft.world.level.Level && SmokeClouds.blocks(level, from, to)) return Visibility.OBSTACLE
         if (level is ServerLevel) TickBudget.chargeRaycast(level)
         val hit = level.clip(DetectionContext(from, to, collision))
         return when {

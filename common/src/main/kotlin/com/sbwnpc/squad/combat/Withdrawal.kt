@@ -45,6 +45,10 @@ object Withdrawal {
     private const val CONTACT_RANGE = 64.0
     private const val STATUS_LOG_TICKS = 40L
 
+    /** Attempts at the smoke screen per withdrawal, a second apart. */
+    private const val SMOKE_TRIES = 5
+    private const val SMOKE_RETRY_TICKS = 20L
+
     private class State(val point: Vec3) {
         /** Which half (slot parity) is running. */
         var moving = 0
@@ -59,6 +63,11 @@ object Withdrawal {
         var inContact = false
         var members: List<NpcEntity> = emptyList()
         var lastStatusTick = Long.MIN_VALUE / 2
+
+        /** The screen for this withdrawal has gone up, see [SmokeScreen]. */
+        var smokeThrown = false
+        var smokeTries = 0
+        var nextSmokeTick = 0L
     }
 
     private val bySquad = HashMap<UUID, State>()
@@ -129,6 +138,7 @@ object Withdrawal {
             state.targets.clear()
             return
         }
+        if (!state.smokeThrown) coverWithSmoke(level, squad, state, members)
         val runners = members.filter { half(it, squad) == state.moving }
         val boundDone = state.targets.isNotEmpty() && runners.all { m ->
             // Pinned down in cover or dug in: it isn't coming this bound, so don't wait on it.
@@ -145,6 +155,18 @@ object Withdrawal {
             if (state.targets.isNotEmpty()) state.moving = 1 - state.moving
             startBound(level, squad, state, members)
         }
+    }
+
+    /**
+     * The first time the squad is under fire as it falls back, someone who is holding throws smoke
+     * towards the enemy (#115). A throw that cannot be made is tried again shortly, a few times.
+     */
+    private fun coverWithSmoke(level: ServerLevel, squad: Squad, state: State, members: List<NpcEntity>) {
+        if (state.smokeTries >= SMOKE_TRIES || level.gameTime < state.nextSmokeTick) return
+        val enemy = members.mapNotNull { it.target }.filter { it.isAlive }.minByOrNull { target -> members.minOf { it.distanceToSqr(target) } } ?: return
+        state.smokeTries++
+        state.nextSmokeTick = level.gameTime + SMOKE_RETRY_TICKS
+        state.smokeThrown = SmokeScreen.throwFrom(level, members.filter { half(it, squad) != state.moving }, enemy.position())
     }
 
     private fun startBound(level: ServerLevel, squad: Squad, state: State, members: List<NpcEntity>) {
