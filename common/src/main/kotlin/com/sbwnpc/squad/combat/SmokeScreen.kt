@@ -5,6 +5,7 @@ import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.util.Mth
+import net.minecraft.world.level.levelgen.Heightmap
 import net.minecraft.world.phys.Vec3
 
 /**
@@ -12,8 +13,8 @@ import net.minecraft.world.phys.Vec3
  *
  * A quarter of the squad throws, rounded down, from the half that is holding while the other
  * bounds, so the runners are screened by men who stay to cover them. The grenades go down side by
- * side across the line to the enemy, in front of the holding man nearest it: thrown by the nearest men, all landed in one spot and made
- * one small cloud (#115, in-game 20.10). A man whose throw is not possible (a wall, a squadmate in
+ * side across the line to the enemy, in front of the holding man nearest it, so they make one wide
+ * screen and not one small cloud (#115). A man whose throw is not possible (a wall, a squadmate in
  * the way) leaves his point to the next one.
  */
 object SmokeScreen {
@@ -50,11 +51,12 @@ object SmokeScreen {
     }
 
     /**
-     * [point] moved onto the ground of its column. Laid at the throwers' height, on a hillside the
-     * point was inside the slope or over a drop, and no arc reached it (in-game 20.10).
+     * [point] moved onto the ground of its column: laid at the throwers' height, on a hillside the
+     * point was inside the slope or over a drop, and no arc reached it. Under a roof this is the
+     * roof, which no arc reaches either; that throw is left out and traced.
      */
     private fun onGround(level: ServerLevel, point: Vec3): Vec3 {
-        val surface = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, Mth.floor(point.x), Mth.floor(point.z))
+        val surface = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, Mth.floor(point.x), Mth.floor(point.z))
         return Vec3(point.x, surface.toDouble(), point.z)
     }
 
@@ -66,7 +68,7 @@ object SmokeScreen {
         val free = throwers(holding).toMutableList()
         if (free.isEmpty()) return 0
         // In front of the man nearest the enemy: from the middle of a squad strung out over fifty
-        // blocks the screen fell where nobody could throw that far (in-game 20.10).
+        // blocks the screen fell where nobody could throw that far.
         val centre = free.minBy { it.position().distanceToSqr(enemy) }.position()
         var thrown = 0
         for (point in screenPoints(centre, enemy, count).map { onGround(level, it) }) {

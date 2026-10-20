@@ -38,6 +38,9 @@ interface Grenades {
     /** Whether a smoke piece ([isSmokeCloud]) is out now, hiding what stands behind it. */
     fun smokeIsOut(entity: Entity): Boolean
 
+    /** Whether a smoke piece ([isSmokeCloud]) has begun to give out smoke, alive or just gone. */
+    fun smokeStarted(entity: Entity): Boolean
+
     /** A grenade on a timed fuse — one that lies there long enough to run from. Contact-fuzed
      *  rounds don't count. */
     fun isTimedGrenade(entity: Entity): Boolean

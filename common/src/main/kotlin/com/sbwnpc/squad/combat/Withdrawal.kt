@@ -87,7 +87,7 @@ object Withdrawal {
     fun positionFor(member: NpcEntity, squad: Squad, point: Vec3): Vec3? {
         val level = member.level() as? ServerLevel ?: return point
         // Per order, not per point: a second withdrawal to the same point found the first one's
-        // screen already thrown and threw none (in-game 20.10).
+        // screen already thrown and threw none.
         val state = bySquad[squad.id]?.takeIf { it.point == point && it.stamp == squad.orderStamp } ?: State(point, squad.orderStamp).also { bySquad[squad.id] = it }
         if (state.updatedTick != level.gameTime) {
             state.updatedTick = level.gameTime
@@ -178,7 +178,7 @@ object Withdrawal {
         state.targets.clear()
         // A man in a vehicle is not running with his half. Counted in, one at a gun sixty blocks
         // forward pulled the half's middle onto the others, and their every bound ended a block
-        // from where they stood (in-game 20.10).
+        // from where they stood.
         val unsorted = members.filter { half(it, squad) == state.moving && it.vehicle == null }.ifEmpty { members }
         val from = Vec3(
             unsorted.sumOf { it.x } / unsorted.size,
