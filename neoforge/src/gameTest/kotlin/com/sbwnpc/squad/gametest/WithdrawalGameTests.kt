@@ -96,4 +96,30 @@ object WithdrawalGameTests {
             }
         }
     }
+
+    /**
+     * Smoke still hides a man after SBW has discarded the grenade (200 ticks) for as long as its
+     * particles last, and stops once they are gone (in-game 20.10 they were seen through it).
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1200, batch = "smoke-linger")
+    fun smokeHidesAManUntilItsParticlesAreGone(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "smoke-linger")
+        val watcher = scene.spawn(Vec3(40.5, 1.0, 64.5))
+        val enemy = scene.enemy(Vec3(60.5, 1.0, 64.5))
+        watcher.isNoAi = true
+        Ports.grenades.throwSmoke(watcher, helper.level, helper.absoluteVec(Vec3(50.5, 1.0, 64.5)))
+        helper.onEachTick {
+            val hidden = !com.sbwnpc.squad.combat.DetectionSightline.canSee(watcher, enemy)
+            if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} hidden=$hidden grenades=${com.sbwnpc.squad.entity.SmokeCloudRegistry.all(helper.level).size}")
+            when (helper.tick) {
+                320L -> helper.assertTrue(hidden && com.sbwnpc.squad.entity.SmokeCloudRegistry.all(helper.level).isEmpty(), "Smoke stopped hiding him once the grenade was gone: hidden=$hidden")
+
+                1000L -> {
+                    helper.assertTrue(!hidden, "Smoke still hid him after its particles were gone")
+                    helper.succeed()
+                }
+            }
+        }
+    }
 }
