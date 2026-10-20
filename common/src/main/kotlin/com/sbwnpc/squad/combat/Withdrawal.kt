@@ -64,8 +64,8 @@ object Withdrawal {
         var members: List<NpcEntity> = emptyList()
         var lastStatusTick = Long.MIN_VALUE / 2
 
-        /** The screen for this withdrawal has gone up, see [SmokeScreen]. */
-        var smokeThrown = false
+        /** Grenades of this withdrawal's screen already thrown, see [SmokeScreen]. */
+        var smokeThrown = 0
         var smokeTries = 0
         var nextSmokeTick = 0L
     }
@@ -138,7 +138,7 @@ object Withdrawal {
             state.targets.clear()
             return
         }
-        if (!state.smokeThrown) coverWithSmoke(level, squad, state, members)
+        coverWithSmoke(level, squad, state, members)
         val runners = members.filter { half(it, squad) == state.moving }
         val boundDone = state.targets.isNotEmpty() && runners.all { m ->
             // Pinned down in cover or dug in: it isn't coming this bound, so don't wait on it.
@@ -158,15 +158,16 @@ object Withdrawal {
     }
 
     /**
-     * The first time the squad is under fire as it falls back, someone who is holding throws smoke
-     * towards the enemy (#115). A throw that cannot be made is tried again shortly, a few times.
+     * The first time the squad is under fire as it falls back, men who are holding throw smoke
+     * towards the enemy (#115). Throws that cannot be made are tried again shortly, a few times.
      */
     private fun coverWithSmoke(level: ServerLevel, squad: Squad, state: State, members: List<NpcEntity>) {
-        if (state.smokeTries >= SMOKE_TRIES || level.gameTime < state.nextSmokeTick) return
+        val wanted = SmokeScreen.grenadesFor(members.size)
+        if (state.smokeThrown >= wanted || state.smokeTries >= SMOKE_TRIES || level.gameTime < state.nextSmokeTick) return
         val enemy = members.mapNotNull { it.target }.filter { it.isAlive }.minByOrNull { target -> members.minOf { it.distanceToSqr(target) } } ?: return
         state.smokeTries++
         state.nextSmokeTick = level.gameTime + SMOKE_RETRY_TICKS
-        state.smokeThrown = SmokeScreen.throwFrom(level, members.filter { half(it, squad) != state.moving }, enemy.position())
+        state.smokeThrown += SmokeScreen.throwFrom(level, members.filter { half(it, squad) != state.moving }, enemy.position(), wanted - state.smokeThrown)
     }
 
     private fun startBound(level: ServerLevel, squad: Squad, state: State, members: List<NpcEntity>) {
