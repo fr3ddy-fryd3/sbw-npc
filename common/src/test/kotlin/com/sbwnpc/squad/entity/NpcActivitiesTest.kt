@@ -88,6 +88,14 @@ class ActivityClaimsTest {
         assertEquals(emptySet<NpcActivity>(), claims.claim(NpcActivity.RESUPPLYING, first, held))
     }
 
+    @Test fun `only another owner's hold counts as held by others`() {
+        val claims = ActivityClaims()
+        assertFalse(claims.heldByOthers(NpcActivity.VEHICLE, first))
+        claims.claim(NpcActivity.VEHICLE, first, NpcActivities())
+        assertFalse(claims.heldByOthers(NpcActivity.VEHICLE, first))
+        assertTrue(claims.heldByOthers(NpcActivity.VEHICLE, second))
+    }
+
     @Test fun `exclusion is symmetric`() {
         NpcActivity.entries.forEach { a ->
             NpcActivities.excluding(a).forEach { b -> assertTrue(a in NpcActivities.excluding(b), "$a and $b") }

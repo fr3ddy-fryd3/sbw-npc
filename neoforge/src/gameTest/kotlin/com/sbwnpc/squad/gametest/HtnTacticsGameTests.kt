@@ -442,6 +442,83 @@ object HtnTacticsGameTests {
     }
 
     /**
+     * Puts [player] in [vehicle]. NeoForge's FakePlayer refuses every startRiding, so this does
+     * what Entity.startRiding does once it has said yes.
+     */
+    private fun seat(player: net.minecraft.world.entity.player.Player, vehicle: net.minecraft.world.entity.Entity) {
+        net.minecraft.world.entity.Entity::class.java.getDeclaredField("vehicle").apply { isAccessible = true }.set(player, vehicle)
+        net.minecraft.world.entity.Entity::class.java.getDeclaredMethod("addPassenger", net.minecraft.world.entity.Entity::class.java).apply { isAccessible = true }.invoke(vehicle, player)
+    }
+
+    /**
+     * FOLLOW (#116, in-game 20.10): the map shows the squad following, not defending; the owner's
+     * own shots do not send his men to look; and the men get into the vehicle he sits in and out
+     * again after him.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1200, batch = "follow-ride")
+    fun followersShowOnTheMapIgnoreTheirOwnersShotsAndRideWithHim(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "follow-ride")
+        val manager = SquadManager.get(helper.level)
+        val owner = net.neoforged.neoforge.common.util.FakePlayerFactory.get(helper.level, com.mojang.authlib.GameProfile(UUID.randomUUID(), "follow-ride"))
+        val start = helper.absoluteVec(Vec3(30.5, 1.0, 80.5))
+        owner.moveTo(start.x, start.y, start.z, 0f, 0f)
+        helper.level.addNewPlayer(owner)
+        val followers = (0 until 4).map { index -> scene.spawn(Vec3(24.5 + index * 2, 1.0, 74.5)) }
+        val squad = manager.create(helper.level, owner.uuid, requireNotNull(followers.first().spawnFaction), followers.map { it.uuid })
+        val vehicle = requireNotNull(Ports.vehicles.create(helper.level, com.sbwnpc.squad.npc.TransportVehicle.LAV_150))
+        val parked = helper.absoluteVec(Vec3(36.5, 1.0, 80.5))
+        vehicle.moveTo(parked.x, parked.y, parked.z, 0f, 0f)
+        helper.level.addFreshEntity(vehicle)
+        Ports.vehicles.fuelAndArm(vehicle, com.sbwnpc.squad.npc.TransportVehicle.LAV_150)
+        scene.onClose = {
+            owner.stopRiding()
+            manager.deleteSquad(helper.level, squad.id)
+            vehicle.discard()
+            helper.level.removePlayerImmediately(owner, net.minecraft.world.entity.Entity.RemovalReason.DISCARDED)
+        }
+        helper.assertTrue(manager.issueFollow(helper.level, squad.id, owner), "The squad could not follow")
+        var boardedAt: Long? = null
+        var leftAt: Long? = null
+        helper.onEachTick {
+            val riding = followers.count { it.vehicle === vehicle }
+            if (helper.tick % 50L == 0L) scene.result("RUNNING", "tick=${helper.tick} order=${squad.order} riding=$riding ownerIn=${owner.vehicle === vehicle} listening=${followers.count { it.listening() }} aboard=${vehicle.passengers.size}")
+            when {
+                helper.tick == 100L -> {
+                    val feed = com.sbwnpc.squad.map.MapFeed.build(helper.level.server, helper.level, squad.owner, squad.faction)
+                    val entry = feed.getList("Squads", net.minecraft.nbt.Tag.TAG_COMPOUND.toInt()).map { it as net.minecraft.nbt.CompoundTag }.single { it.getUUID("Id") == squad.id }
+                    scene.result("MAP", "order=${entry.getString("Order")} goalOrder=${entry.getString("GoalOrder")}")
+                    helper.assertTrue(entry.getString("Order") == "FOLLOW" && entry.getString("GoalOrder") in setOf("", "FOLLOW"), "Map shows ${entry.getString("Order")}/${entry.getString("GoalOrder")} for a following squad")
+                    com.sbwnpc.squad.combat.Hearing.gunshot(helper.level, owner, 64.0)
+                }
+
+                helper.tick == 102L -> helper.assertTrue(followers.none { it.listening() }, "The owner's own shot sent his men to look")
+
+                helper.tick == 150L -> {
+                    seat(owner, vehicle)
+                    helper.assertTrue(owner.vehicle === vehicle, "The owner could not get in")
+                }
+
+                boardedAt == null && helper.tick > 150L -> {
+                    // A LAV-150 seats the owner and as many of his men as are left seats for.
+                    val seats = Ports.vehicles.seatCount(vehicle) - 1
+                    if (riding >= minOf(seats, followers.size)) {
+                        boardedAt = helper.tick
+                        owner.stopRiding()
+                    }
+                }
+
+                boardedAt != null && leftAt == null && riding == 0 -> {
+                    leftAt = helper.tick
+                    helper.assertTrue(squad.order == SquadOrder.FOLLOW, "Following ended on the way: ${squad.order}")
+                    scene.result("PASS", "tick=${helper.tick} boardedAt=$boardedAt leftAt=$leftAt")
+                    helper.succeed()
+                }
+            }
+        }
+    }
+
+    /**
      * A pond lies between the attackers and a defended point: the firing line laid out at range
      * falls on the water and the straight way in crosses it. In-game 16.10 the same, with a lake,
      * left an attack of 23 against 7 standing on the shore; here the posts move to the bank and
