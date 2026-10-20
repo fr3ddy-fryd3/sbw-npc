@@ -36,10 +36,8 @@ enum class NpcActivity {
      * Getting into a vehicle, keeping a seat in one or getting out: held by one behaviour at a time,
      * see [NpcEntity.claimSeat].
      *
-     * [VEHICLE] cannot say whose a mounted man is: the pilot, the gunner and the crew's driver hold
-     * it beside whoever seated him. Each boarding behaviour took any man who sat in a vehicle for
-     * its own, so a FOLLOW rider was put out again by the squad transport and the helicopter ride
-     * (#136).
+     * Not [VEHICLE], which cannot say whose a mounted man is: the pilot, the gunner and a crew's
+     * driver hold it beside whoever seated him.
      */
     SEAT,
 }

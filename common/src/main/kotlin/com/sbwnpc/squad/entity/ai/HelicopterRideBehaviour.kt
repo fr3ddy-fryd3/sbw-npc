@@ -133,6 +133,8 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun board(entity: NpcEntity, level: ServerLevel) {
         val heli = lift(entity, level) ?: return
+        // Again after a wrecked aircraft put him out: the next lift is boarded under the same hold.
+        if (!entity.claimSeat(this)) return
         entity.claim(NpcActivity.VEHICLE, this)
         val hull = heli.boundingBox
         if (hull.distanceToSqr(entity.position()) > BOARD_DISTANCE_SQR) {
