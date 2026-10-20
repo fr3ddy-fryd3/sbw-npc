@@ -173,7 +173,10 @@ object Withdrawal {
     private fun startBound(level: ServerLevel, squad: Squad, state: State, members: List<NpcEntity>) {
         state.boundStart = level.gameTime
         state.targets.clear()
-        val unsorted = members.filter { half(it, squad) == state.moving }.ifEmpty { members }
+        // A man in a vehicle is not running with his half. Counted in, one at a gun sixty blocks
+        // forward pulled the half's middle onto the others, and their every bound ended a block
+        // from where they stood (in-game 20.10).
+        val unsorted = members.filter { half(it, squad) == state.moving && it.vehicle == null }.ifEmpty { members }
         val from = Vec3(
             unsorted.sumOf { it.x } / unsorted.size,
             unsorted.sumOf { it.y } / unsorted.size,
