@@ -44,7 +44,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var nextBoardTick = 0
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
-        entity.tickCount >= nextBoardTick && eligible(entity) &&
+        entity.tickCount >= nextBoardTick && entity.seatFreeFor(this) && eligible(entity) &&
             threat(entity)?.let { entity.sensing.hasLineOfSight(it) } == true &&
             findSupportVehicle(entity, level) != null
 
@@ -64,7 +64,11 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         val level = entity.level() as? ServerLevel ?: return
         val target = threat(entity) ?: return
         val vehicle = findSupportVehicle(entity, level) ?: return
-        if (!VehicleTransportClaims.claimPassenger(vehicle.uuid, entity.uuid, Ports.vehicles.seatCount(vehicle))) return
+        if (!entity.claimSeat(this)) return
+        if (!VehicleTransportClaims.claimPassenger(vehicle.uuid, entity.uuid, Ports.vehicles.seatCount(vehicle))) {
+            entity.release(NpcActivity.SEAT, this)
+            return
+        }
         vehicleId = vehicle.uuid
         targetId = target.uuid
         sawTargetTick = entity.tickCount
@@ -88,6 +92,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
             entity.stopRiding()
         }
         VehicleTransportClaims.release(entity.uuid)
+        entity.release(NpcActivity.SEAT, this)
         entity.release(NpcActivity.VEHICLE, this)
         entity.navigation.stop()
         vehicleId = null
@@ -201,6 +206,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         VehicleTransportClaims.release(entity.uuid)
         vehicleId = null
         targetId = null
+        entity.release(NpcActivity.SEAT, this)
         entity.release(NpcActivity.VEHICLE, this)
         entity.navigation.stop()
     }
