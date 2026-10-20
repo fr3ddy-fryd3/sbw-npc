@@ -26,6 +26,9 @@ import java.util.function.Consumer
 /** Public commands, production HTN, real navigation and SBW projectiles; no forced tactical plans. */
 @PrefixGameTestTemplate(false)
 object HtnTacticsGameTests {
+    private const val DAY_TIME = 6000L
+    private const val NIGHT_TIME = 18000L
+
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1600, batch = "htn-compact")
     fun htnJointAttack64OnCompactFront(helper: GameTestHelper) = jointAttack(helper, wide = false)
@@ -414,6 +417,57 @@ object HtnTacticsGameTests {
             if (hidden && thrown == 1) {
                 scene.result("PASS", "tick=${helper.tick} cloudsOut=$clouds")
                 helper.succeed()
+            }
+        }
+    }
+
+    /**
+     * Spotting takes time (#114): by day a regular rifleman notices an enemy 70 blocks off after
+     * a moment, not on the first scan; at night he never notices one beyond his range of 60, and
+     * takes several seconds for one inside it.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 500, batch = "spot-day")
+    fun enemyAtSeventyBlocksIsNoticedByDayAfterAMoment(helper: GameTestHelper) = spotting(helper, "spot-day", night = false, distance = 70.0, expectNoticed = 8L..200L)
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 500, batch = "spot-night-far")
+    fun enemyBeyondTheDarkRangeIsNeverNoticedAtNight(helper: GameTestHelper) = spotting(helper, "spot-night-far", night = true, distance = 70.0, expectNoticed = null)
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 700, batch = "spot-night-near")
+    fun enemyInsideTheDarkRangeTakesSecondsToNoticeAtNight(helper: GameTestHelper) = spotting(helper, "spot-night-near", night = true, distance = 40.0, expectNoticed = 60L..500L)
+
+    private fun spotting(helper: GameTestHelper, name: String, night: Boolean, distance: Double, expectNoticed: LongRange?) {
+        val scene = CombatIdleGameTests.Scene(helper, name)
+        val manager = SquadManager.get(helper.level)
+        val oldTime = helper.level.dayTime
+        helper.level.setDayTime(if (night) NIGHT_TIME else DAY_TIME)
+        val shooter = scene.spawn(Vec3(20.5, 1.0, 60.5))
+        shooter.moveTo(shooter.x, shooter.y, shooter.z, -90f, 0f)
+        shooter.yHeadRot = -90f
+        shooter.yBodyRot = -90f
+        val enemy = scene.enemy(Vec3(20.5 + distance, 1.0, 60.5))
+        val squad = manager.create(helper.level, UUID(90, 12), requireNotNull(shooter.spawnFaction), listOf(shooter.uuid))
+        manager.setOrder(squad.id, SquadOrder.DEFEND)
+        manager.setObjective(helper.level, squad.id, shooter.blockPosition())
+        scene.onClose = {
+            manager.deleteSquad(helper.level, squad.id)
+            helper.level.setDayTime(oldTime)
+        }
+        var noticedAt: Long? = null
+        helper.onEachTick {
+            shooter.yHeadRot = -90f
+            if (noticedAt == null && shooter.target?.uuid == enemy.uuid) noticedAt = helper.tick
+            if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} light=${helper.level.getMaxLocalRawBrightness(enemy.blockPosition())} noticedAt=$noticedAt")
+            if (expectNoticed == null) {
+                helper.assertTrue(noticedAt == null, "Noticed an enemy beyond the dark range at tick $noticedAt")
+                if (helper.tick >= 400) helper.succeed()
+            } else {
+                noticedAt?.let {
+                    helper.assertTrue(it in expectNoticed, "Noticed at tick $it, expected within $expectNoticed")
+                    helper.succeed()
+                }
             }
         }
     }
