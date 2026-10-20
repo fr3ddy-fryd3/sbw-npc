@@ -63,15 +63,17 @@ class VehicleCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun isT90(vehicle: Entity): Boolean = Ports.vehicles.modelOf(vehicle) == TankModel.T_90A
 
     private val startCheck = StartCheckThrottle(START_CHECK_INTERVAL_TICKS)
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = startCheck.check(entity) { assignedVehicle(entity) != null }
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = startCheck.check(entity) { assignedVehicle(entity) != null && entity.seatFreeFor(this) }
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = assignedVehicle(entity) != null
 
     override fun start(entity: NpcEntity) {
+        entity.claimSeat(this)
         entity.claim(NpcActivity.VEHICLE, this)
     }
 
     override fun stop(entity: NpcEntity) {
         startCheck.reset()
+        entity.release(NpcActivity.SEAT, this)
         entity.release(NpcActivity.VEHICLE, this)
         entity.navigation.stop()
     }

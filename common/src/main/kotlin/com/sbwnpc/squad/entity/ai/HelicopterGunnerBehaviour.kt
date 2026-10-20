@@ -47,22 +47,26 @@ class HelicopterGunnerBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
+    // Works the gun from the seat his crew contract holds (VehicleCrewBehaviour); holds the seat
+    // itself only while walking to a vacant turret, until the assignment hands it over.
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
         entity.npcClass == NpcClass.HELICOPTER_GUNNER &&
-            (turret(entity) != null || openTurretSeat(entity, level) != null)
+            (turret(entity) != null || (entity.seatFreeFor(this) && openTurretSeat(entity, level) != null))
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean {
         if (entity.npcClass != NpcClass.HELICOPTER_GUNNER) return false
         val level = entity.level() as? ServerLevel ?: return false
-        return turret(entity) != null || openTurretSeat(entity, level) != null
+        return turret(entity) != null || (entity.seatFreeFor(this) && openTurretSeat(entity, level) != null)
     }
 
     override fun start(entity: NpcEntity) {
+        if (turret(entity) == null) entity.claimSeat(this)
         entity.claim(NpcActivity.VEHICLE, this)
     }
 
     override fun stop(entity: NpcEntity) {
         entity.vehicle?.let { Ports.vehicles.aimAt(it, entity, null) }
+        entity.release(NpcActivity.SEAT, this)
         entity.release(NpcActivity.VEHICLE, this)
     }
 
@@ -125,6 +129,8 @@ class HelicopterGunnerBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.navigation.stop()
         if (entity.startRiding(gunship, false)) {
             entity.assignedVehicleId = gunship.uuid
+            // His crew contract keeps him in the seat from here; the VEHICLE claim stays with the gun.
+            entity.release(NpcActivity.SEAT, this)
             seatTarget = null
             DebugFlags.log(LogGroup.HELI, "{} took over the turret on {}", entity.uuid, gunship.uuid)
         }
