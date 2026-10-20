@@ -74,4 +74,13 @@ class SquadFormationTest {
     fun `rifleman lead still advances to the assault point`() {
         assertEquals(0.0, SquadFormation.attackOffset(NpcClass.RIFLEMAN, 0, 32).lengthSqr())
     }
+
+    @Test
+    fun `a ring shared by several squads keeps neighbours apart`() {
+        val total = 35
+        val spots = (0 until total).map { SquadFormation.ringOffset(it, total) }
+        for (a in spots.indices) for (b in a + 1 until spots.size) {
+            assertTrue(spots[a].distanceTo(spots[b]) >= 1.9, "slots $a and $b are closer than 1.9 blocks")
+        }
+    }
 }

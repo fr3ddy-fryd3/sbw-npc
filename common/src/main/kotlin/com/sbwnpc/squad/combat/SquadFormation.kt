@@ -2,6 +2,8 @@ package com.sbwnpc.squad.combat
 
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
+import com.sbwnpc.squad.squad.Squad
+import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.phys.Vec3
@@ -38,6 +40,7 @@ object SquadFormation {
     /** A centered firing line: every slot has a unique lateral position and the same depth. */
     fun lineOffset(slotIndex: Int, squadSize: Int, spacing: Double = COMBAT_SPACING): Vec3 = Vec3((slotIndex - (squadSize.coerceAtLeast(1) - 1) / 2.0) * spacing, 0.0, 0.0)
     private const val RING_RADIUS = 4.0
+    private const val RING_SPACING = 2.0
     private const val MIN_HEADING_LENGTH = 2.0
 
     // A mortar crew at its tube or a squad that has just fallen back stands about loosely rather
@@ -111,14 +114,51 @@ object SquadFormation {
         }
     }
 
+    /** The [slotIndex]-th of [count] places evenly round a ring; it widens past [RING_RADIUS] so
+     *  neighbours stay at least [RING_SPACING] apart. */
+    internal fun ringRadius(count: Int): Double = maxOf(RING_RADIUS, count * RING_SPACING / (2.0 * Math.PI))
+
+    /** How near the point an attacker counts as there: past the ring it will stand on, or a member
+     *  on its slot would read as "not arrived" and walk back in (see [ARRIVAL_RADIUS]). */
+    fun attackArrivalRadius(mob: NpcEntity): Double {
+        val squad = mob.currentSquad() ?: return ARRIVAL_RADIUS
+        return ringRadius(sharedRing(mob, squad, 0).second) + (ARRIVAL_RADIUS - RING_RADIUS)
+    }
+
+    internal fun ringOffset(slotIndex: Int, count: Int): Vec3 {
+        val n = count.coerceAtLeast(1)
+        val angle = 2.0 * Math.PI * slotIndex / n
+        val radius = ringRadius(n)
+        return Vec3(kotlin.math.sin(angle) * radius, 0.0, kotlin.math.cos(angle) * radius)
+    }
+
+    /** [squad]'s place on a ring it shares with every other squad sent to the same objective with
+     *  the same order. Each squad numbered its own men from zero, so separately ordered squads put
+     *  man N of each on the same spot of the same ring (#128). Returns slot and ring size. */
+    private fun sharedRing(mob: NpcEntity, squad: Squad, index: Int): Pair<Int, Int> {
+        val objective = squad.objective ?: return index to squad.members.size
+        val level = mob.level() as? ServerLevel ?: return index to squad.members.size
+        var before = 0
+        var total = 0
+        SquadManager.get(level).all().asSequence()
+            .filter { it.id == squad.id || (it.order == squad.order && it.objective == objective && it.objectiveDimension == squad.objectiveDimension) }
+            .sortedBy { it.id }
+            .forEach {
+                if (it.id.compareTo(squad.id) < 0) before += it.members.size
+                total += it.members.size
+            }
+        return before + index to total
+    }
+
     /** Local (unrotated, +Z = forward/toward anchor) offset for the [slotIndex]-th member out of
      *  [squadSize]. WEDGE, LINE, and COLUMN use a point/leader slot at the anchor. GRID, RING, and
      *  SCATTER give every member its own point. */
     private fun localOffset(shape: Shape, slotIndex: Int, squadSize: Int, spacing: Double = SLOT_SPACING): Vec3 {
-        if (shape == Shape.RING || shape == Shape.PERIMETER) {
+        if (shape == Shape.RING) return ringOffset(slotIndex, squadSize)
+        if (shape == Shape.PERIMETER) {
             val count = squadSize.coerceAtLeast(1)
             val angle = 2.0 * Math.PI * slotIndex / count
-            val radius = if (shape == Shape.PERIMETER) perimeterRadius(squadSize) else RING_RADIUS
+            val radius = perimeterRadius(squadSize)
             return Vec3(kotlin.math.sin(angle) * radius, 0.0, kotlin.math.cos(angle) * radius)
         }
         if (shape == Shape.SCATTER) {
@@ -194,7 +234,9 @@ object SquadFormation {
         if (index < 0) return anchor
         val shape = shapeFor(squad.order, arrived)
         val rearSupport = combat && mob.npcClass.attackStandoffDistance > 0.0
-        val local = formationOffset(squad.order, arrived, mob.npcClass, index, squad.members.size, spacing, combat)
+        val ring = shape == Shape.RING && !rearSupport
+        val (slot, size) = if (ring) sharedRing(mob, squad, index) else index to squad.members.size
+        val local = formationOffset(squad.order, arrived, mob.npcClass, slot, size, spacing, combat)
         if (local == Vec3.ZERO) return anchor
 
         // Not rotated: RING/PERIMETER/SCATTER already assign each

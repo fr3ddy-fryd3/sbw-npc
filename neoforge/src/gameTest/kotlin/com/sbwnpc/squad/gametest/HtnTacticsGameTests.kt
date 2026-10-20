@@ -26,6 +26,9 @@ import java.util.function.Consumer
 /** Public commands, production HTN, real navigation and SBW projectiles; no forced tactical plans. */
 @PrefixGameTestTemplate(false)
 object HtnTacticsGameTests {
+    private const val STACK_DISTANCE = 0.7
+    private const val MAX_STACKED = 2
+
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1600, batch = "htn-compact")
     fun htnJointAttack64OnCompactFront(helper: GameTestHelper) = jointAttack(helper, wide = false)
@@ -385,6 +388,43 @@ object HtnTacticsGameTests {
             if (squads.all { it.order == SquadOrder.DEFEND }) {
                 helper.assertTrue(squads.all { it.commandReason == "occupied_and_inspected_area" }, "Attack ended without taking the objective: ${squads.map { it.commandReason }}")
                 scene.result("PASS", "tick=${helper.tick} attackers=${attackers.size} defenders=${defenders.count { it.isAlive }} enteredAt=$enteredAt defendersAtEntry=$defendersAtEntry")
+                helper.succeed()
+            }
+        }
+    }
+
+    /**
+     * Several squads of mixed classes sent to one defended objective share the ground: no two men
+     * stand in the same spot once they have arrived (#128).
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1400, batch = "stacked-squads")
+    fun severalSquadsAtOneObjectiveDoNotStackOnOneSpot(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "stacked-squads")
+        val manager = SquadManager.get(helper.level)
+        val groups = (0 until 5).map { group -> scene.deployFixed(com.sbwnpc.squad.npc.SquadPreset.SEVEN, Vec3(20.5, 1.0, 20.5 + group * 22), group) }
+        val squads = groups.map { group -> manager.create(helper.level, UUID(90, 13), requireNotNull(group.first().spawnFaction), group.map { it.uuid }) }
+        scene.onClose = { squads.forEach { manager.deleteSquad(helper.level, it.id) } }
+        val objective = helper.absolutePos(BlockPos(140, 1, 64))
+        // One squad attacks; the others are sent to the same point a little later and join as reinforcements.
+        GroupOrders.apply(helper.level, manager, listOf(squads[0].id), SquadOrder.ATTACK, objective.x, objective.z)
+        squads.drop(1).forEachIndexed { index, squad ->
+            helper.runAtTickTime(40L + index * 20L) { GroupOrders.apply(helper.level, manager, listOf(squad.id), SquadOrder.ATTACK, objective.x, objective.z) }
+        }
+        val men = groups.flatten()
+        var worst = 0
+        val trace = StringBuilder()
+        helper.onEachTick {
+            if (helper.tick % 20L != 0L) return@onEachTick
+            // Only men still attacking: once a point is taken the squads turn to DEFEND and spread over their own areas.
+            val attacking = men.filter { it.isAlive && it.currentSquad()?.order == SquadOrder.ATTACK }
+            val stacked = attacking.count { a -> attacking.any { b -> b !== a && a.position().subtract(b.position()).horizontalDistance() < STACK_DISTANCE } }
+            worst = maxOf(worst, stacked)
+            if (helper.tick == 920L) trace.append("DETAIL " + attacking.filter { a -> attacking.any { b -> b !== a && a.position().subtract(b.position()).horizontalDistance() < STACK_DISTANCE } }.joinToString("\n") { "${it.npcClass} idx=${it.currentSquad()?.let { q -> it.slotIndex(q) }} task=${NativeTactics.assignment(it)?.let { t -> "${t.job}" }} tgt=${it.target != null} nav=${it.navigation.isDone} pos=${helper.relativeVec(it.position())} home=${it.homeCenter()?.let { h -> helper.relativeVec(h) }} slot=${it.homeCenter()?.let { h -> helper.relativeVec(com.sbwnpc.squad.combat.SquadFormation.slotTarget(it, h, h.subtract(it.position()), true)) }}" })
+            if (stacked > 0) trace.append("[t=${helper.tick} a=${attacking.size} s=$stacked d=${attacking.map { it.position().distanceTo(objective.center).toInt() }.sorted().let { d -> d.first() to d.last() }}] ")
+            if (helper.tick >= 1200) {
+                scene.result("PASS", "worst=$worst attacking=${attacking.size} $trace")
+                helper.assertTrue(worst <= MAX_STACKED, "$worst attackers stood within $STACK_DISTANCE blocks of another")
                 helper.succeed()
             }
         }

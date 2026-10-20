@@ -123,7 +123,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         when (order) {
             SquadOrder.ATTACK -> {
-                val arrived = dist <= SquadFormation.ARRIVAL_RADIUS
+                val arrived = dist <= SquadFormation.attackArrivalRadius(entity)
                 // With no enemy contact every class reaches the ordered point. Combat range
                 // and rear support posts are decided only by GunAttackBehaviour.
                 approachSlot(entity, home, arrived, RUN_SPEED_MODIFIER)
