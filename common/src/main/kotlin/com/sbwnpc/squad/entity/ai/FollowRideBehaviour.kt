@@ -20,6 +20,7 @@ import java.util.UUID
  *
  * [VehicleTransportBehaviour] only rides towards a far objective, and a FOLLOW squad's objective
  * is always next to the player, so it never boarded. While aboard the man holds
+ * [NpcActivity.SEAT], so the squad transport and the helicopter ride leave him in his seat, and
  * [NpcActivity.VEHICLE], which keeps the squad's movement and shooting off him, as for any rider.
  */
 class FollowRideBehaviour : ExtendedBehaviour<NpcEntity>() {
@@ -35,13 +36,17 @@ class FollowRideBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
-        entity.vehicle == null && !entity.vehicleTransport && !entity.operatingDrone && !entity.antiDroneEngaged && !entity.diggedIn &&
+        entity.vehicle == null && entity.seatFreeFor(this) && !entity.vehicleTransport && !entity.operatingDrone && !entity.antiDroneEngaged && !entity.diggedIn &&
             ownerVehicle(level, entity)?.let { boardable(entity, it) } == true
 
     override fun start(entity: NpcEntity) {
         val level = entity.level() as? ServerLevel ?: return
         val vehicle = ownerVehicle(level, entity) ?: return
-        if (!VehicleTransportClaims.claimPassenger(vehicle.uuid, entity.uuid, Ports.vehicles.seatCount(vehicle), vehicle.passengers.map { it.uuid })) return
+        if (!entity.claimSeat(this)) return
+        if (!VehicleTransportClaims.claimPassenger(vehicle.uuid, entity.uuid, Ports.vehicles.seatCount(vehicle), vehicle.passengers.map { it.uuid })) {
+            entity.release(NpcActivity.SEAT, this)
+            return
+        }
         vehicleId = vehicle.uuid
         ownerOutTick = -1
         entity.claim(NpcActivity.VEHICLE, this)
@@ -91,6 +96,7 @@ class FollowRideBehaviour : ExtendedBehaviour<NpcEntity>() {
             DebugFlags.log(LogGroup.VEHICLE, "{} gets out of {} after its owner", entity.uuid, vehicle.uuid)
         }
         VehicleTransportClaims.release(entity.uuid)
+        entity.release(NpcActivity.SEAT, this)
         entity.release(NpcActivity.VEHICLE, this)
         entity.navigation.stop()
         vehicleId = null

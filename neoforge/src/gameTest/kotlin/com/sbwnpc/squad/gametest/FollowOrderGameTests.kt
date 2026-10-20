@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.gametest
 
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.gametest.framework.GameTest
@@ -64,6 +65,44 @@ object FollowOrderGameTests {
     }
 
     /**
+     * The owner gets into each of [rides] in turn and, once his men have filled its free seats,
+     * out again; the next ride starts when they are all out.
+     */
+    private class RideStages(val owner: net.minecraft.world.entity.player.Player, val followers: List<com.sbwnpc.squad.entity.NpcEntity>, val rides: List<net.minecraft.world.entity.Entity>) {
+        private var ride = 0
+        private var boarded = false
+        val vehicle get() = rides.getOrNull(ride)
+        private fun riding(vehicle: net.minecraft.world.entity.Entity) = followers.count { it.vehicle === vehicle }
+
+        fun trace() = "ride=$ride boarded=$boarded riding=${vehicle?.let(::riding)} ownerIn=${owner.vehicle?.type?.descriptionId}"
+
+        fun step() {
+            val vehicle = vehicle ?: return
+            when {
+                !boarded && owner.vehicle == null -> seat(owner, vehicle)
+
+                // The owner and as many of his men as there are seats left for.
+                !boarded && riding(vehicle) >= minOf(Ports.vehicles.seatCount(vehicle) - 1, followers.size) -> {
+                    boarded = true
+                    owner.stopRiding()
+                }
+
+                boarded && riding(vehicle) == 0 -> {
+                    ride++
+                    boarded = false
+                }
+            }
+        }
+    }
+
+    private fun assertMapShowsFollow(helper: GameTestHelper, scene: CombatIdleGameTests.Scene, squad: com.sbwnpc.squad.squad.Squad) {
+        val feed = com.sbwnpc.squad.map.MapFeed.build(helper.level.server, helper.level, squad.owner, squad.faction)
+        val entry = feed.getList("Squads", net.minecraft.nbt.Tag.TAG_COMPOUND.toInt()).map { it as net.minecraft.nbt.CompoundTag }.single { it.getUUID("Id") == squad.id }
+        scene.result("MAP", "order=${entry.getString("Order")} goalOrder=${entry.getString("GoalOrder")}")
+        helper.assertTrue(entry.getString("Order") == "FOLLOW" && entry.getString("GoalOrder") in setOf("", "FOLLOW"), "Map shows ${entry.getString("Order")}/${entry.getString("GoalOrder")} for a following squad")
+    }
+
+    /**
      * Puts [player] in [vehicle]. NeoForge's FakePlayer refuses every startRiding, so this does
      * what Entity.startRiding does once it has said yes.
      */
@@ -78,7 +117,7 @@ object FollowOrderGameTests {
      * again after him.
      */
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1200, batch = "follow-ride")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1600, batch = "follow-ride")
     fun followersShowOnTheMapIgnoreTheirOwnersShotsAndRideWithHim(helper: GameTestHelper) {
         val scene = CombatIdleGameTests.Scene(helper, "follow-ride")
         val manager = SquadManager.get(helper.level)
@@ -86,56 +125,47 @@ object FollowOrderGameTests {
         val start = helper.absoluteVec(Vec3(30.5, 1.0, 80.5))
         owner.moveTo(start.x, start.y, start.z, 0f, 0f)
         helper.level.addNewPlayer(owner)
-        val followers = (0 until 4).map { index -> scene.spawn(Vec3(24.5 + index * 2, 1.0, 74.5)) }
+        // Gunners and a sniper too: on DEFEND they take height posts, and in game they held a roof
+        // instead of following (in-game 20.10).
+        val roles = listOf(NpcClass.RIFLEMAN, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.MACHINE_GUNNER)
+        val followers = roles.mapIndexed { index, role -> scene.spawn(Vec3(24.5 + index * 2, 1.0, 74.5), role) }
         val squad = manager.create(helper.level, owner.uuid, requireNotNull(followers.first().spawnFaction), followers.map { it.uuid })
-        val vehicle = requireNotNull(Ports.vehicles.create(helper.level, com.sbwnpc.squad.npc.TransportVehicle.LAV_150))
-        val parked = helper.absoluteVec(Vec3(36.5, 1.0, 80.5))
-        vehicle.moveTo(parked.x, parked.y, parked.z, 0f, 0f)
-        helper.level.addFreshEntity(vehicle)
-        Ports.vehicles.fuelAndArm(vehicle, com.sbwnpc.squad.npc.TransportVehicle.LAV_150)
+        fun park(model: com.sbwnpc.squad.domain.port.VehicleModel, at: Vec3) =
+            requireNotNull(Ports.vehicles.create(helper.level, model)).also {
+                val point = helper.absoluteVec(at)
+                it.moveTo(point.x, point.y, point.z, 0f, 0f)
+                helper.level.addFreshEntity(it)
+                Ports.vehicles.fuelAndArm(it, model)
+            }
+        val rides = listOf(park(com.sbwnpc.squad.npc.TransportVehicle.LAV_150, Vec3(36.5, 1.0, 80.5)), park(com.sbwnpc.squad.npc.HelicopterModel.AH_6, Vec3(36.5, 1.0, 96.5)))
         scene.onClose = {
             owner.stopRiding()
             manager.deleteSquad(helper.level, squad.id)
-            vehicle.discard()
+            rides.forEach { it.discard() }
             helper.level.removePlayerImmediately(owner, net.minecraft.world.entity.Entity.RemovalReason.DISCARDED)
         }
         helper.assertTrue(manager.issueFollow(helper.level, squad.id, owner), "The squad could not follow")
-        var boardedAt: Long? = null
-        var leftAt: Long? = null
+        val stages = RideStages(owner, followers, rides)
         helper.onEachTick {
-            val riding = followers.count { it.vehicle === vehicle }
-            if (helper.tick % 50L == 0L) scene.result("RUNNING", "tick=${helper.tick} order=${squad.order} riding=$riding ownerIn=${owner.vehicle === vehicle} listening=${followers.count { it.listening() }} aboard=${vehicle.passengers.size}")
+            val vehicle = stages.vehicle
+            if (helper.tick % 50L == 0L) scene.result("RUNNING", "tick=${helper.tick} ${stages.trace()} order=${squad.order} listening=${followers.count { it.listening() }} roles=${followers.map { "${it.npcClass}@${helper.relativeVec(it.position())}" }}")
             when {
                 helper.tick == 100L -> {
-                    val feed = com.sbwnpc.squad.map.MapFeed.build(helper.level.server, helper.level, squad.owner, squad.faction)
-                    val entry = feed.getList("Squads", net.minecraft.nbt.Tag.TAG_COMPOUND.toInt()).map { it as net.minecraft.nbt.CompoundTag }.single { it.getUUID("Id") == squad.id }
-                    scene.result("MAP", "order=${entry.getString("Order")} goalOrder=${entry.getString("GoalOrder")}")
-                    helper.assertTrue(entry.getString("Order") == "FOLLOW" && entry.getString("GoalOrder") in setOf("", "FOLLOW"), "Map shows ${entry.getString("Order")}/${entry.getString("GoalOrder")} for a following squad")
+                    assertMapShowsFollow(helper, scene, squad)
                     com.sbwnpc.squad.combat.Hearing.gunshot(helper.level, owner, 64.0)
                 }
 
                 helper.tick == 102L -> helper.assertTrue(followers.none { it.listening() }, "The owner's own shot sent his men to look")
 
-                helper.tick == 150L -> {
-                    seat(owner, vehicle)
-                    helper.assertTrue(owner.vehicle === vehicle, "The owner could not get in")
-                }
+                helper.tick < 150L -> Unit
 
-                boardedAt == null && helper.tick > 150L -> {
-                    // A LAV-150 seats the owner and as many of his men as are left seats for.
-                    val seats = Ports.vehicles.seatCount(vehicle) - 1
-                    if (riding >= minOf(seats, followers.size)) {
-                        boardedAt = helper.tick
-                        owner.stopRiding()
-                    }
-                }
-
-                boardedAt != null && leftAt == null && riding == 0 -> {
-                    leftAt = helper.tick
+                vehicle == null -> {
                     helper.assertTrue(squad.order == SquadOrder.FOLLOW, "Following ended on the way: ${squad.order}")
-                    scene.result("PASS", "tick=${helper.tick} boardedAt=$boardedAt leftAt=$leftAt")
+                    scene.result("PASS", "tick=${helper.tick}")
                     helper.succeed()
                 }
+
+                else -> stages.step()
             }
         }
     }
