@@ -287,7 +287,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private val startCheck = StartCheckThrottle(START_CHECK_INTERVAL_TICKS)
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = startCheck.check(entity) { eligible(entity, checkGiveup = false) }
 
-    override fun shouldKeepRunning(entity: NpcEntity): Boolean = if (entity.vehicle != null) true else eligible(entity, checkGiveup = true)
+    // Mounted, the trip goes on whatever else is true, as long as the seat is this trip's: the start
+    // check is throttled, so another behaviour can have seated him since it last said yes.
+    override fun shouldKeepRunning(entity: NpcEntity): Boolean = if (entity.vehicle != null) entity.assignedVehicleId != null || entity.seatFreeFor(this) else eligible(entity, checkGiveup = true)
 
     override fun start(entity: NpcEntity) {
         // A permanent crew's seat is VehicleCrewBehaviour's; this only drives it.
