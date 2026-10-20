@@ -25,6 +25,19 @@ class ActivityClaims {
         return NpcActivities.excluding(activity).filterTo(HashSet()) { held.has(it) }
     }
 
+    /**
+     * Records [owner]'s hold on [activity] only if nobody else holds it, for an activity that has
+     * one owner at a time. False when another owner has it; nothing is recorded then.
+     */
+    fun claimAlone(activity: NpcActivity, owner: Any): Boolean {
+        if (!freeFor(activity, owner)) return false
+        owners.getOrPut(activity) { Collections.newSetFromMap(IdentityHashMap()) } += owner
+        return true
+    }
+
+    /** True when nobody but [owner] holds [activity]. */
+    fun freeFor(activity: NpcActivity, owner: Any): Boolean = owners[activity].orEmpty().all { it === owner }
+
     /** Drops [owner]'s hold on [activity]; true when nobody else holds it, so the activity is over. */
     fun release(activity: NpcActivity, owner: Any): Boolean {
         val holders = owners[activity] ?: return true
@@ -33,7 +46,4 @@ class ActivityClaims {
     }
 
     fun holders(activity: NpcActivity): Int = owners[activity]?.size ?: 0
-
-    /** Whether anyone but [owner] holds [activity]. */
-    fun heldByOthers(activity: NpcActivity, owner: Any): Boolean = owners[activity]?.any { it !== owner } == true
 }

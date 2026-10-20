@@ -257,6 +257,8 @@ object DefensiveOverwatchGameTests {
                 if (stableSince == null) stableSince = helper.tick
                 if (helper.tick - stableSince!! >= 100) {
                     helper.assertTrue(!ladder || (reservedBeforeAscent && climbedLadder), "Tower occupation did not exercise reservation and ladder ascent")
+                    // With nothing to watch the gaze used to climb until the head's pitch limit (#120).
+                    helper.assertTrue(posts.all { (npc, _) -> kotlin.math.abs(npc.xRot) <= 12f }, "Settled observers look up with nothing to watch: ${posts.map { it.first.xRot }}")
                     val occupied = posts.map { it.second }
                     for (a in occupied.indices) for (b in 0 until a) helper.assertTrue(occupied[a].distanceTo(occupied[b]) >= FiringSpots.MIN_SPACING, "Support posts overlap")
                     if (fall) {

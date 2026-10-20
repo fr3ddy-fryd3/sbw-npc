@@ -559,13 +559,23 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         activities = activities.with(activity, true)
     }
 
-    /** Whether a behaviour other than [owner] holds [activity], see [ActivityClaims.heldByOthers]. */
-    fun heldByOthers(activity: NpcActivity, owner: Any): Boolean = claims?.heldByOthers(activity, owner) == true
-
     /** [owner] puts [activity] down; it ends here only if nobody else holds it. */
     fun release(activity: NpcActivity, owner: Any) {
         if (claims?.release(activity, owner) != false) activities = activities.with(activity, false)
     }
+
+    /**
+     * [owner] becomes the one behaviour that gets this NPC into a vehicle, keeps him there and gets
+     * him out ([NpcActivity.SEAT]). False while another behaviour has him; released with [release].
+     */
+    fun claimSeat(owner: Any): Boolean {
+        if (!(claims ?: ActivityClaims().also { claims = it }).claimAlone(NpcActivity.SEAT, owner)) return false
+        activities = activities.with(NpcActivity.SEAT, true)
+        return true
+    }
+
+    /** True when no behaviour but [owner] has this NPC's seat; asked before starting, see [claimSeat]. */
+    fun seatFreeFor(owner: Any): Boolean = claims?.freeFor(NpcActivity.SEAT, owner) != false
 
     // Set/cleared only by DroneOperatorBehaviour while a DRONE_OPERATOR has a drone in the air —
     // same "hands off this mob" contract as vehicleTransport (no shooting, no squad movement, no

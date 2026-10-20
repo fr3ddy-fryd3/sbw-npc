@@ -8,6 +8,7 @@ import com.sbwnpc.squad.combat.tactics.*
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import com.sbwnpc.squad.npc.NpcClass
+import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.phys.Vec3
 
@@ -54,6 +55,7 @@ internal class NativePositionAction(
         override fun route(view: TacticalSnapshot, point: Vec3) = intent.minimumHeight?.let { point.y >= it } != false
     }
     private var ownedLook: net.minecraft.world.entity.ai.behavior.PositionTracker? = null
+    private var idleDirection: Pair<Double, Double>? = null
     val ownsLook get() = ownedLook != null && npc.target == null && NativeTactics.movable(npc)
     private var deferredAt: Long? = null
     private var lastProgress = 0L
@@ -111,8 +113,8 @@ internal class NativePositionAction(
         if (reached()) {
             releasePath()
             if (npc.target == null && intent.duty in setOf(CombatDuty.REAR_GUARD, CombatDuty.OBSERVE, CombatDuty.SEARCH)) {
-                val watching = watchPoint()
-                npc.lookControl.setLookAt(watching.x, watching.y, watching.z)
+                val direction = intent.focus?.native() ?: intent.anchor.native().add(npc.lookAngle.scale(8.0))
+                npc.lookControl.setLookAt(direction.x, direction.y + 1.5, direction.z)
             }
             DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=post_action_completed duty={} position={}", npc.uuid, intent.duty, task.position)
             return ActionUpdate.Completed(listOf(ActionEvidence("physical_post_arrival", now, "${npc.uuid}:${task.position}")))
@@ -180,7 +182,7 @@ internal class NativePositionAction(
         }
         if (intent.duty !in setOf(CombatDuty.REAR_GUARD, CombatDuty.OBSERVE, CombatDuty.SEARCH) || !reached()) return
         val sweep = kotlin.math.sin(npc.tickCount / 30.0) * 3.0
-        val watching = watchPoint().add(sweep, 0.0, -sweep)
+        val watching = intent.focus?.native()?.add(sweep, 1.5, -sweep) ?: idleGaze(sweep)
         val tracker = net.minecraft.world.entity.ai.behavior.BlockPosTracker(net.minecraft.core.BlockPos.containing(watching))
         ownedLook = tracker
         net.tslat.smartbrainlib.util.BrainUtils.setMemory(npc, net.minecraft.world.entity.ai.memory.MemoryModuleType.LOOK_TARGET, tracker)
@@ -188,19 +190,29 @@ internal class NativePositionAction(
         npc.lookControl.setLookAt(watching.x, watching.y, watching.z)
     }
 
-    /** The way an observer with no focus keeps watching, fixed when it first looks out from its post. */
-    private var watchDirection: Vec3? = null
-
     /**
-     * Where an observer at its post looks: at the focus if it has one, otherwise level, at eye
-     * height, the way it faced on arrival. Taking the point from its current gaze and raising it
-     * every tick had observers with no focus keep looking higher, until they all stared 40
-     * degrees up, the head's limit (#120).
+     * Eye-level point to watch with no focus: towards the squad's front, swept sideways. Built from
+     * his own gaze and raised, it made him look further up every tick (#120). The last resort is
+     * the way he faced when he first needed one, kept.
      */
-    private fun watchPoint(): Vec3 {
-        intent.focus?.native()?.let { return it.add(0.0, 1.5, 0.0) }
-        val direction = watchDirection ?: Vec3.directionFromRotation(0f, npc.yRot).also { watchDirection = it }
-        return npc.eyePosition.add(direction.scale(8.0))
+    private fun idleGaze(sweep: Double): Vec3 {
+        val (dx, dz) = squadFront() ?: idleDirection ?: facing().also { idleDirection = it }
+        val eye = npc.eyePosition
+        return Vec3(eye.x + dx * IDLE_GAZE_DISTANCE - dz * sweep, eye.y, eye.z + dz * IDLE_GAZE_DISTANCE + dx * sweep)
+    }
+
+    private fun squadFront(): Pair<Double, Double>? {
+        val view = snapshot() ?: return null
+        val nearest = view.contacts.minByOrNull { it.position.distanceToSqr(npc.position()) }
+        return ObserverGaze.direction(
+            npc.position().point(),
+            ObserverGaze.Cues(nearest?.position?.point(), view.threatOrigin?.point(), view.home?.point(), view.order == SquadOrder.ATTACK, view.center.point()),
+        )
+    }
+
+    private fun facing(): Pair<Double, Double> {
+        val yaw = Math.toRadians(npc.yHeadRot.toDouble())
+        return Pair(-kotlin.math.sin(yaw), kotlin.math.cos(yaw))
     }
 
     private fun releaseLook() {
@@ -299,6 +311,9 @@ internal class NativePositionAction(
     }
 
     internal companion object {
+        /** How far ahead an observer with no focus watches. */
+        private const val IDLE_GAZE_DISTANCE = 8.0
+
         /** A candidate this near the route leg is on the way, even while it leads away from the anchor. */
         private const val ROUTE_LEG_REACH = 6.0
 
