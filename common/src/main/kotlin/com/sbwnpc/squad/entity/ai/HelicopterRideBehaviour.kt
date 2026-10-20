@@ -53,10 +53,10 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = canRide(entity) && (aboard(entity) != null || lift(entity, level) != null)
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = canRide(entity) && (ownRide(entity) != null || lift(entity, level) != null)
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean {
-        if (aboard(entity) != null) return true
+        if (aboard(entity) != null) return ownRide(entity) != null
         val level = entity.level() as? ServerLevel ?: return false
         return canRide(entity) && lift(entity, level) != null
     }
@@ -220,6 +220,9 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun aboard(entity: NpcEntity): Entity? = entity.vehicle?.takeIf { Helicopters.isHelicopter(it) && Ports.vehicles.seatOf(it, entity) != PILOT_SEAT }
+
+    /** The helicopter [entity] sits in, unless he rides along with a player in it, see [NpcActivity.RIDING_ALONG]. */
+    private fun ownRide(entity: NpcEntity): Entity? = aboard(entity)?.takeUnless { entity.ridingAlong }
 
     /** Ordinary infantry only: every other class has a post of its own to man. */
     private fun canRide(entity: NpcEntity): Boolean =

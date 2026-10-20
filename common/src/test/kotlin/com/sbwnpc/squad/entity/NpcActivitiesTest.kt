@@ -39,6 +39,8 @@ class NpcActivitiesTest {
             NpcActivity.ANTI_DRONE to (true to false),
             NpcActivity.RESUPPLYING to (false to false),
             NpcActivity.DUG_IN to (false to false),
+            // Held together with VEHICLE, which already answers for his hands and feet.
+            NpcActivity.RIDING_ALONG to (false to false),
         )
         assertEquals(NpcActivity.entries.toSet(), placed.keys)
         placed.forEach { (activity, answers) ->
@@ -86,14 +88,6 @@ class ActivityClaimsTest {
         val held = NpcActivities().with(NpcActivity.DUG_IN, true).with(NpcActivity.RESUPPLYING, true)
         assertEquals(setOf(NpcActivity.DUG_IN), claims.claim(NpcActivity.VEHICLE, first, held))
         assertEquals(emptySet<NpcActivity>(), claims.claim(NpcActivity.RESUPPLYING, first, held))
-    }
-
-    @Test fun `only another owner's hold counts as held by others`() {
-        val claims = ActivityClaims()
-        assertFalse(claims.heldByOthers(NpcActivity.VEHICLE, first))
-        claims.claim(NpcActivity.VEHICLE, first, NpcActivities())
-        assertFalse(claims.heldByOthers(NpcActivity.VEHICLE, first))
-        assertTrue(claims.heldByOthers(NpcActivity.VEHICLE, second))
     }
 
     @Test fun `exclusion is symmetric`() {

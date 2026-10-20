@@ -220,9 +220,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // A permanent crew member is driven by this behaviour only while in its own vehicle;
         // VehicleCrewBehaviour handles getting it back aboard if it is ever ejected.
         entity.assignedVehicleId?.let { assigned -> return entity.vehicle?.uuid == assigned }
-        // Aboard for another behaviour, such as riding with the player he follows: taken as a ride
-        // of its own, he was put out again at once as having no vehicle for the order (#116).
-        if (entity.vehicle != null && entity.heldByOthers(NpcActivity.VEHICLE, this)) return false
+        if (entity.vehicle != null && entity.ridingAlong) return false
         if (entity.vehicle != null) return true // already mounted: DRIVING/RIDING keep going regardless
         if (com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) return false
 

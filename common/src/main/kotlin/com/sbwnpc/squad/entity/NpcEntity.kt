@@ -542,6 +542,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     val vehicleTransport: Boolean
         get() = activities.has(NpcActivity.VEHICLE)
 
+    /** Riding along in a player's vehicle, see [NpcActivity.RIDING_ALONG]. */
+    val ridingAlong: Boolean
+        get() = activities.has(NpcActivity.RIDING_ALONG)
+
     // Not created with the other fields: the vanilla constructor reads [activities] before this
     // class's initializers run.
     private var claims: ActivityClaims? = null
@@ -558,9 +562,6 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         }
         activities = activities.with(activity, true)
     }
-
-    /** Whether a behaviour other than [owner] holds [activity], see [ActivityClaims.heldByOthers]. */
-    fun heldByOthers(activity: NpcActivity, owner: Any): Boolean = claims?.heldByOthers(activity, owner) == true
 
     /** [owner] puts [activity] down; it ends here only if nobody else holds it. */
     fun release(activity: NpcActivity, owner: Any) {

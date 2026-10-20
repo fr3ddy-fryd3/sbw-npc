@@ -31,6 +31,13 @@ enum class NpcActivity {
 
     /** Holding a foxhole it dug: [com.sbwnpc.squad.entity.ai.SeekCoverBehaviour]. */
     DUG_IN,
+
+    /**
+     * In or making for the vehicle a player sits in, to ride along with him:
+     * [com.sbwnpc.squad.entity.ai.FollowRideBehaviour]. The transport behaviours leave such a man
+     * be; taken as a ride of their own, they put him out again at once (#116).
+     */
+    RIDING_ALONG,
 }
 
 /**

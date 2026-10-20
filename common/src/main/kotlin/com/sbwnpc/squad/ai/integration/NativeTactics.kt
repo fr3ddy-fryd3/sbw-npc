@@ -776,6 +776,7 @@ object NativeTactics {
                             reachedMove = actions[member.id]?.let { it.intent.duty == CombatDuty.MOVE && it.reached() } == true,
                             wasFiring = oldIntents[member.id]?.duty == CombatDuty.FIRE,
                             flanking = waypoint != null,
+                            fixedObjective = saved.command?.goal !is ObjectiveKey.Entity,
                         ),
                         FIRE_POST_REACH,
                         CombatPosition.LOCAL_MOVE_RADIUS,

@@ -34,9 +34,19 @@ class FollowRideBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
-        entity.vehicle == null && !entity.vehicleTransport && !entity.operatingDrone && !entity.antiDroneEngaged && !entity.diggedIn &&
-            ownerVehicle(level, entity)?.let { boardable(entity, it) } == true
+    /** The tick a refusal to board was last traced, so a man waiting by the vehicle logs once a second. */
+    private var refusalTracedTick = Int.MIN_VALUE / 2
+
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean {
+        if (entity.vehicle != null) return false
+        val vehicle = ownerVehicle(level, entity) ?: return false
+        val refusal = refusal(entity, vehicle) ?: return true
+        if (entity.tickCount - refusalTracedTick >= REFUSAL_TRACE_TICKS) {
+            refusalTracedTick = entity.tickCount
+            DebugFlags.log(LogGroup.VEHICLE, "{} stays out of its owner's {}: {}", entity.uuid, vehicle.uuid, refusal)
+        }
+        return false
+    }
 
     override fun start(entity: NpcEntity) {
         val level = entity.level() as? ServerLevel ?: return
@@ -45,6 +55,7 @@ class FollowRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         vehicleId = vehicle.uuid
         ownerOutTick = -1
         entity.claim(NpcActivity.VEHICLE, this)
+        entity.claim(NpcActivity.RIDING_ALONG, this)
         DebugFlags.log(LogGroup.VEHICLE, "{} follows its owner into {}", entity.uuid, vehicle.uuid)
     }
 
@@ -92,6 +103,7 @@ class FollowRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         VehicleTransportClaims.release(entity.uuid)
         entity.release(NpcActivity.VEHICLE, this)
+        entity.release(NpcActivity.RIDING_ALONG, this)
         entity.navigation.stop()
         vehicleId = null
         ownerOutTick = -1
@@ -106,9 +118,18 @@ class FollowRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         return owner.vehicle?.takeIf(Ports.vehicles::isVehicle)
     }
 
-    private fun boardable(entity: NpcEntity, vehicle: Entity): Boolean =
-        entity.distanceTo(vehicle) <= BOARD_RANGE && Ports.vehicles.isOperational(vehicle) && !Ports.vehicles.isLocked(vehicle) &&
-            VehicleTransportClaims.occupiedOrClaimedSeats(vehicle.uuid, vehicle.passengers.map { it.uuid }) < Ports.vehicles.seatCount(vehicle)
+    /** Why [entity] does not get into [vehicle] now, or null when he does. */
+    private fun refusal(entity: NpcEntity, vehicle: Entity): String? =
+        when {
+            entity.vehicleTransport -> "busy with another vehicle"
+            entity.operatingDrone || entity.antiDroneEngaged -> "busy with a drone"
+            entity.diggedIn -> "dug in"
+            entity.distanceTo(vehicle) > BOARD_RANGE -> "${entity.distanceTo(vehicle).toInt()} blocks away"
+            !Ports.vehicles.isOperational(vehicle) -> "vehicle not operational"
+            Ports.vehicles.isLocked(vehicle) -> "vehicle locked"
+            VehicleTransportClaims.occupiedOrClaimedSeats(vehicle.uuid, vehicle.passengers.map { it.uuid }) >= Ports.vehicles.seatCount(vehicle) -> "no free seat"
+            else -> null
+        }
 
     private companion object {
         /** How far from the owner's vehicle a man still tries to get in. */
@@ -119,6 +140,8 @@ class FollowRideBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         const val BOARD_DISTANCE_SQR = 2.5 * 2.5
         const val BOARD_SPEED = 1.3
+
+        const val REFUSAL_TRACE_TICKS = 20
 
         /** The owner out of the vehicle this long: his men get out too. A seat swap is not getting out. */
         const val DISMOUNT_DELAY_TICKS = 10

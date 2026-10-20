@@ -33,7 +33,4 @@ class ActivityClaims {
     }
 
     fun holders(activity: NpcActivity): Int = owners[activity]?.size ?: 0
-
-    /** Whether anyone but [owner] holds [activity]. */
-    fun heldByOthers(activity: NpcActivity, owner: Any): Boolean = owners[activity]?.any { it !== owner } == true
 }
