@@ -111,8 +111,8 @@ internal class NativePositionAction(
         if (reached()) {
             releasePath()
             if (npc.target == null && intent.duty in setOf(CombatDuty.REAR_GUARD, CombatDuty.OBSERVE, CombatDuty.SEARCH)) {
-                val direction = intent.focus?.native() ?: intent.anchor.native().add(npc.lookAngle.scale(8.0))
-                npc.lookControl.setLookAt(direction.x, direction.y + 1.5, direction.z)
+                val watching = watchPoint()
+                npc.lookControl.setLookAt(watching.x, watching.y, watching.z)
             }
             DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=post_action_completed duty={} position={}", npc.uuid, intent.duty, task.position)
             return ActionUpdate.Completed(listOf(ActionEvidence("physical_post_arrival", now, "${npc.uuid}:${task.position}")))
@@ -179,15 +179,30 @@ internal class NativePositionAction(
             return
         }
         if (intent.duty !in setOf(CombatDuty.REAR_GUARD, CombatDuty.OBSERVE, CombatDuty.SEARCH) || !reached()) return
-        val point = intent.focus?.native() ?: npc.eyePosition.add(npc.lookAngle.scale(8.0))
         val sweep = kotlin.math.sin(npc.tickCount / 30.0) * 3.0
-        val watching = point.add(sweep, 1.5, -sweep)
+        val watching = watchPoint().add(sweep, 0.0, -sweep)
         val tracker = net.minecraft.world.entity.ai.behavior.BlockPosTracker(net.minecraft.core.BlockPos.containing(watching))
         ownedLook = tracker
         net.tslat.smartbrainlib.util.BrainUtils.setMemory(npc, net.minecraft.world.entity.ai.memory.MemoryModuleType.LOOK_TARGET, tracker)
         npc.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES, watching)
         npc.lookControl.setLookAt(watching.x, watching.y, watching.z)
     }
+
+    /** The way an observer with no focus keeps watching, fixed when it first looks out from its post. */
+    private var watchDirection: Vec3? = null
+
+    /**
+     * Where an observer at its post looks: at the focus if it has one, otherwise level, at eye
+     * height, the way it faced on arrival. Taking the point from its current gaze and raising it
+     * every tick had observers with no focus keep looking higher, until they all stared 40
+     * degrees up, the head's limit (#120).
+     */
+    private fun watchPoint(): Vec3 {
+        intent.focus?.native()?.let { return it.add(0.0, 1.5, 0.0) }
+        val direction = watchDirection ?: Vec3.directionFromRotation(0f, npc.yRot).also { watchDirection = it }
+        return npc.eyePosition.add(direction.scale(8.0))
+    }
+
     private fun releaseLook() {
         if (ownedLook != null && npc.brain.getMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.LOOK_TARGET).orElse(null) === ownedLook) {
             npc.brain.eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.LOOK_TARGET)

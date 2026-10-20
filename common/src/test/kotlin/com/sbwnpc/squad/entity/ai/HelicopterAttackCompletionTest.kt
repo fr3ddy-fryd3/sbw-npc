@@ -24,4 +24,12 @@ class HelicopterAttackCompletionTest {
         assertTrue(completion.observe(1, 2399, false))
         assertFalse(completion.observe(2, 3000, false), "Previous attack contact cannot complete a new command")
     }
+
+    @Test fun `only an aircraft that could see the objective surveys it`() {
+        val objective = net.minecraft.world.phys.Vec3(0.0, 64.0, 0.0)
+        assertTrue(HelicopterAttackCompletion.surveys(objective.add(40.0, 36.0, 0.0), objective), "AH-6 orbit in the top altitude band")
+        assertTrue(HelicopterAttackCompletion.surveys(objective.add(70.0, 14.0, 0.0), objective), "Mi-28 loitering round it")
+        assertTrue(HelicopterAttackCompletion.surveys(objective.add(40.0, 60.0, 0.0), objective), "Orbit over a valley rim 24 above the objective")
+        assertFalse(HelicopterAttackCompletion.surveys(objective.add(0.0, 130.0, 0.0), objective), "Held at ridge height over the objective (#119)")
+    }
 }

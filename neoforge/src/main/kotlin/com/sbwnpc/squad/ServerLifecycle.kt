@@ -39,7 +39,7 @@ object ServerLifecycle {
 
     @SubscribeEvent
     fun onTacticalTargetDeath(event: net.neoforged.neoforge.event.entity.living.LivingDeathEvent) {
-        if (event.entity.level() is net.minecraft.server.level.ServerLevel) com.sbwnpc.squad.ai.integration.NativeTactics.targetDeath(event.entity) { event.isCanceled }
+        if (event.entity.level() is net.minecraft.server.level.ServerLevel) com.sbwnpc.squad.combat.tactics.SquadTactics.targetDeath(event.entity) { event.isCanceled }
     }
 
     @SubscribeEvent
@@ -62,7 +62,7 @@ object ServerLifecycle {
         com.sbwnpc.squad.squad.SquadChunkLoader.clearAll()
         TeamAwareness.clearAll()
         com.sbwnpc.squad.combat.SquadAreas.clearAll()
-        com.sbwnpc.squad.ai.integration.NativeTactics.clearAll()
+        com.sbwnpc.squad.combat.tactics.SquadTactics.clearAll()
         com.sbwnpc.squad.squad.SquadReports.clearAll()
         com.sbwnpc.squad.combat.Hearing.clearAll()
         DeathSites.clearAll()

@@ -25,7 +25,7 @@ class SquadTacticalBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity) = eligible(entity)
     override fun shouldKeepRunning(entity: NpcEntity) = eligible(entity)
     override fun tick(entity: NpcEntity) {
-        com.sbwnpc.squad.ai.integration.NativeTactics.tick(entity)
+        SquadTactics.tick(entity)
         SquadTactics.equip(entity)
     }
 }

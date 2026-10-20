@@ -6,11 +6,13 @@ import com.sbwnpc.squad.combat.DroneCombat
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
 import com.sbwnpc.squad.vehicle.Helicopters
+import com.sbwnpc.squad.vehicle.PilotlessDrop
 import net.minecraft.commands.arguments.EntityAnchorArgument
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
@@ -66,7 +68,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun stop(entity: NpcEntity) {
         rideId = null
-        entity.vehicleTransport = false
+        entity.release(NpcActivity.VEHICLE, this)
         entity.navigation.stop()
     }
 
@@ -83,22 +85,24 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun ride(entity: NpcEntity, heli: Entity) {
-        entity.vehicleTransport = true
+        entity.claim(NpcActivity.VEHICLE, this)
         entity.navigation.stop()
         rideId = heli.uuid
+        takeEmptyBench(entity, heli)
         fireFromBench(entity, heli)
 
         // Never in the air, whatever else is true — including a wrecked airframe. SBW crashes the
         // passengers of a destroyed aircraft itself (DestroyInfo.CrashPassengers); stepping out at
         // altitude first only adds a fall to it.
         val level = entity.level() as? ServerLevel ?: return
+        pilotless.tick(level, heli)
         if (!Helicopters.isGrounded(level, heli)) {
             groundedSince = Int.MIN_VALUE / 2
             return
         }
         if (!Ports.vehicles.isOperational(heli)) {
             entity.stopRiding()
-            entity.vehicleTransport = false
+            entity.release(NpcActivity.VEHICLE, this)
             return
         }
         // Attack launches even on the current pad: its gunners must stay aboard while waiting.
@@ -113,7 +117,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         // parked aircraft forever.
         if (arrived || entity.tickCount - groundedSince > STRANDED_TICKS) {
             entity.stopRiding()
-            entity.vehicleTransport = false
+            entity.release(NpcActivity.VEHICLE, this)
             rideId = null
             // Walk away properly before considering another lift. Without this, anyone put down
             // short of the objective would turn straight round and climb back into the aircraft
@@ -125,7 +129,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun board(entity: NpcEntity, level: ServerLevel) {
         val heli = lift(entity, level) ?: return
-        entity.vehicleTransport = true
+        entity.claim(NpcActivity.VEHICLE, this)
         val hull = heli.boundingBox
         if (hull.distanceToSqr(entity.position()) > BOARD_DISTANCE_SQR) {
             entity.navigateTo(
@@ -161,14 +165,31 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private var lastBenchLogTick = Int.MIN_VALUE / 2
+    private val pilotless = PilotlessDrop()
+
+    /**
+     * A gunner riding in the cockpit, where he cannot fire, moves to a bench that has gone empty,
+     * so a bench gunner's death does not leave that side silent for the rest of the flight. Not
+     * on a gunship: its seat 1 is the turret, and not the pilot, who sits in seat 0.
+     */
+    private fun takeEmptyBench(entity: NpcEntity, heli: Entity) {
+        if (Helicopters.hasTurret(heli) || Ports.vehicles.seatOf(heli, entity) != COCKPIT_PASSENGER_SEAT) return
+        val seats = Ports.vehicles.seating(heli)
+        val bench = (FIRST_BENCH_SEAT until seats.size).firstOrNull { seats[it] == null } ?: return
+        if (Ports.vehicles.changeSeat(heli, entity, bench)) {
+            DebugFlags.log(LogGroup.HELI, "{} moved from the cockpit to empty bench seat {}", entity.uuid, bench)
+        }
+    }
 
     /** Fires if it can; otherwise says why not (null once a shot is away or it's just cycling). */
     private fun benchHoldReason(entity: NpcEntity, heli: Entity): String? {
         val seat = Ports.vehicles.seatOf(heli, entity)
         if (seat < FIRST_BENCH_SEAT) return "seat $seat is not a bench seat"
-        val target = entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) } ?: return "no target"
         val gun = Ports.guns.inHand(entity) ?: return "no gun in hand"
+        // Before the target check: SBW cools a barrel and starts a reload only in this tick, and an
+        // M2HB that overheated on the last target would otherwise stay locked until the next one.
         gun.operate()
+        val target = entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) } ?: return "no target"
 
         val aim = target.position().add(0.0, target.bbHeight * 0.5, 0.0)
         if (!Helicopters.hasTurret(heli) && !BenchAttackOrbit.canAim(seat, heli.yRot, entity.eyePosition, aim)) return "target outside the seat's firing arc"
@@ -302,6 +323,9 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         /** Seats 0 and 1 are the cockpit; the side benches start here. */
         const val FIRST_BENCH_SEAT = 2
+
+        /** The AH-6's second cockpit seat, beside the pilot: no gun of its own. */
+        const val COCKPIT_PASSENGER_SEAT = 1
         const val BENCH_LOG_TICKS = 40
 
         /** As far as aircrew spot the ground (VehicleTargeting): 48 was less than the height a
