@@ -97,7 +97,7 @@ object GroupOrders {
             val bz = Math.floor(pz).toInt()
             val by = groundY(level, bx, bz)
             val goal = com.sbwnpc.squad.ai.coordination.ObjectiveKey.Area(level.dimension().location().toString(), x, groundY(level, x, z), z)
-            val issued = com.sbwnpc.squad.ai.tactics.IssuedCommand(operation, squad.owner, com.sbwnpc.squad.ai.coordination.TacticalOrder.valueOf(order.name), goal)
+            val issued = com.sbwnpc.squad.ai.tactics.IssuedCommand(operation, squad.owner, order.tactical(), goal)
             mgr.issueOrderAt(level, squad.id, given, BlockPos(bx, by, bz), issued)
             mgr.setFocus(squad.id, null)
             squad.tacticalOperation = operation
@@ -179,6 +179,9 @@ object GroupOrders {
 
             // Not offered on the map; anything else keeps its current order.
             SquadOrder.PATROL -> if (kind == Kind.INFANTRY) SquadOrder.PATROL to Placement.LINE else null
+
+            // Follows its owner, not a point on the map; see SquadManager.issueFollow.
+            SquadOrder.FOLLOW -> null
         }
 
     /** Each squad's spot on a line through the click, across the way they are heading. */

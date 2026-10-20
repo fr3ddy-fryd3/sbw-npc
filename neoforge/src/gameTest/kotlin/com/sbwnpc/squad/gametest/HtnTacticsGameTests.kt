@@ -391,6 +391,57 @@ object HtnTacticsGameTests {
     }
 
     /**
+     * FOLLOW (#116): a squad keeps up with its owner, spread out, one squad per player, and holds
+     * where it stands once he is gone.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1500, batch = "follow-owner")
+    fun squadFollowsItsOwnerAndHoldsWhenHeIsGone(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "follow-owner")
+        val manager = SquadManager.get(helper.level)
+        val owner = net.neoforged.neoforge.common.util.FakePlayerFactory.get(helper.level, com.mojang.authlib.GameProfile(UUID.randomUUID(), "follow-owner"))
+        val start = helper.absoluteVec(Vec3(30.5, 1.0, 80.5))
+        owner.moveTo(start.x, start.y, start.z, 0f, 0f)
+        helper.level.addNewPlayer(owner)
+        val groups = (0..1).map { group -> (0 until 4).map { index -> scene.spawn(Vec3(24.5 + index * 2, 1.0, 70.5 + group * 20)) } }
+        val squads = groups.map { group -> manager.create(helper.level, owner.uuid, requireNotNull(group.first().spawnFaction), group.map { it.uuid }) }
+        scene.onClose = {
+            squads.forEach { manager.deleteSquad(helper.level, it.id) }
+            helper.level.removePlayerImmediately(owner, net.minecraft.world.entity.Entity.RemovalReason.DISCARDED)
+        }
+        helper.assertTrue(manager.issueFollow(helper.level, squads[0].id, owner), "The first squad could not follow")
+        helper.assertTrue(manager.issueFollow(helper.level, squads[1].id, owner), "The second squad could not follow")
+        helper.assertTrue(squads[0].order == SquadOrder.DEFEND && squads[1].order == SquadOrder.FOLLOW, "One squad per player: ${squads.map { it.order }}")
+        val followers = groups[1]
+        var walkStart: Long? = null
+        var gone: Long? = null
+        helper.onEachTick {
+            val near = followers.count { it.position().distanceTo(owner.position()) <= 20 }
+            if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} near=$near order=${squads[1].order} owner=${helper.relativeVec(owner.position())}")
+            if (gone == null) {
+                if (walkStart == null && helper.tick >= 300) {
+                    helper.assertTrue(near == followers.size, "The squad did not gather round its owner: $near of ${followers.size}")
+                    helper.assertTrue(followers.map { it.position() }.let { points -> points.indices.all { a -> (0 until a).all { b -> points[a].distanceTo(points[b]) >= 1.0 } } }, "The men stand on top of each other")
+                    walkStart = helper.tick
+                }
+                walkStart?.let { since ->
+                    // 0.25 blocks a tick east, about a walking player.
+                    owner.moveTo(owner.x + 0.25, owner.y, owner.z, 0f, 0f)
+                    if (helper.tick - since >= 400) {
+                        helper.assertTrue(near >= followers.size - 1, "The squad fell behind a walking owner: $near of ${followers.size}")
+                        helper.assertTrue(squads[1].order == SquadOrder.FOLLOW, "Following ended while he was still here")
+                        helper.level.removePlayerImmediately(owner, net.minecraft.world.entity.Entity.RemovalReason.DISCARDED)
+                        gone = helper.tick
+                    }
+                }
+            } else if (helper.tick - gone!! >= 40) {
+                helper.assertTrue(squads[1].order == SquadOrder.DEFEND && squads[1].focusEntity == null, "The squad kept following a player who is gone: ${squads[1].order}")
+                helper.succeed()
+            }
+        }
+    }
+
+    /**
      * A pond lies between the attackers and a defended point: the firing line laid out at range
      * falls on the water and the straight way in crosses it. In-game 16.10 the same, with a lake,
      * left an attack of 23 against 7 standing on the shore; here the posts move to the bank and
