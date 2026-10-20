@@ -107,6 +107,54 @@ object HtnTacticsGameTests {
         }
     }
 
+    /**
+     * 300 attackers against 300 defenders with real rifles, for #11: what the server pays when 600 NPCs
+     * fight, as `operation-work.txt` beside the movement scene's numbers. It records, it does not hold a limit.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 2200, batch = "htn-600-combat")
+    fun htnSixHundredNpcCombatLoad(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "htn-600-combat", recordTrace = false)
+        val manager = SquadManager.get(helper.level)
+        fun block(column: Int, row: Int, faction: com.sbwnpc.squad.npc.SquadFaction) =
+            (0 until 30).map { index -> scene.spawn(Vec3(10.5 + column * 40 + index % 6 * 4, 1.0, 10.5 + row * 40 + index / 6 * 4), faction = faction) }
+        val attackers = (0 until 10).map { block(it % 2, it / 2, com.sbwnpc.squad.npc.SquadFaction.PIG) }
+        val defenders = (0 until 10).map { block(3 + it % 2, it / 2, com.sbwnpc.squad.npc.SquadFaction.COW) }
+        val all = (attackers + defenders).flatten()
+        val attackSquads = attackers.map { manager.create(helper.level, UUID(90, 601), requireNotNull(it.first().spawnFaction), it.map { npc -> npc.uuid }) }
+        val defendSquads = defenders.map { manager.create(helper.level, UUID(91, 601), requireNotNull(it.first().spawnFaction), it.map { npc -> npc.uuid }) }
+        val work = NativeCombatWork(helper, all)
+        val shooters = HashSet<UUID>()
+        val rounds = Consumer<EntityJoinLevelEvent> { event ->
+            val round = event.entity as? Projectile ?: return@Consumer
+            val owner = round.owner?.uuid ?: return@Consumer
+            if (event.level === helper.level && Ports.guns.isRound(round)) shooters += owner
+        }
+        NeoForge.EVENT_BUS.addListener(rounds)
+        scene.onClose = {
+            work.close()
+            NeoForge.EVENT_BUS.unregister(rounds)
+            (attackSquads + defendSquads).forEach { manager.deleteSquad(helper.level, it.id) }
+        }
+        defendSquads.forEachIndexed { index, squad ->
+            val group = defenders[index]
+            manager.issueOrderAt(helper.level, squad.id, SquadOrder.DEFEND, BlockPos.containing(group.map { it.x }.average(), group.first().y, group.map { it.z }.average()))
+        }
+        attackSquads.forEachIndexed { index, squad ->
+            val group = defenders[index]
+            manager.issueOrderAt(helper.level, squad.id, SquadOrder.ATTACK, BlockPos.containing(group.map { it.x }.average(), group.first().y, group.map { it.z }.average()))
+        }
+        helper.onEachTick {
+            if (helper.tick % 200L == 0L) scene.result("RUNNING", "tick=${helper.tick} shooters=${shooters.size} alive=${all.count { it.isAlive }}")
+        }
+        helper.runAtTickTime(1900) {
+            work.report(enforce = false)
+            helper.assertTrue(shooters.size >= 100, "Too few men fired for a fight to measure: ${shooters.size}/600")
+            scene.result("PASS", "tick=${helper.tick} shooters=${shooters.size} alive=${all.count { it.isAlive }}/600; see operation-work.txt for server tick times")
+            helper.succeed()
+        }
+    }
+
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1300, batch = "htn-armed")
     fun htnJointAttackAgainstArmedDefenders(helper: GameTestHelper) {
