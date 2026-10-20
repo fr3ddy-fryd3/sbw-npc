@@ -4,6 +4,7 @@ import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.combat.TickBudget
 import com.sbwnpc.squad.combat.tactics.*
+import com.sbwnpc.squad.combat.tactics.PositionPaths
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import com.sbwnpc.squad.gametest.CombatIdleGameTests.Scene
@@ -170,7 +171,7 @@ object TacticalSearchGameTests {
         val scene = Scene(helper, "post-exact-arrival")
         val npc = scene.spawn(Vec3(20.5, 1.0, 100.5)).apply { isNoAi = true }
         val nav = npc.navigation as VehicleAwareNavigation
-        val goal = VehicleAwareNavigation.walkingNode(helper.absoluteVec(Vec3(45.5, 1.0, 100.5)))
+        val goal = PositionPaths.walkingNode(helper.absoluteVec(Vec3(45.5, 1.0, 100.5)))
         helper.runAtTickTime(20) {
             npc.setOnGround(true)
             val coarse = nav.createPath(goal, 3)!!
@@ -264,10 +265,10 @@ object TacticalSearchGameTests {
         val rejected = helper.absoluteVec(Vec3(40.5, 1.0, 124.5))
         helper.runAtTickTime(20) {
             npc.setOnGround(true)
-            val active = nav.createPositionPath(VehicleAwareNavigation.walkingNode(first))!!
+            val active = nav.createPositionPath(PositionPaths.walkingNode(first))!!
             helper.assertTrue(nav.moveTo(active, 1.0), "Initial route was not started")
-            val probe = nav.createPositionPath(VehicleAwareNavigation.walkingNode(second))!!
-            helper.assertTrue(probe.target == VehicleAwareNavigation.walkingNode(second), "First probe did not reach its own target")
+            val probe = nav.createPositionPath(PositionPaths.walkingNode(second))!!
+            helper.assertTrue(probe.target == PositionPaths.walkingNode(second), "First probe did not reach its own target")
             helper.assertTrue(nav.path === active, "Unaccepted probe replaced the active path")
             // Native createPath normally remembers the unaccepted probe's target. A repeated
             // request then returns the still-active first route as a cached route to second.
@@ -280,19 +281,19 @@ object TacticalSearchGameTests {
             val view = TacticalSnapshot(helper.level.gameTime, SquadOrder.ATTACK, 1, npc.position(), second, listOf(TacticalMember(npc.uuid, npc.position())), emptyList())
             val result = TacticalPositions.find(npc, task, view)
             helper.assertTrue(result.outcome == TacticalPositions.Outcome.FOUND && result.position == second, "Search accepted a stale route or lost a reachable post")
-            helper.assertTrue(nav.path?.target == VehicleAwareNavigation.walkingNode(second), "New post did not own its route")
-            nav.createPositionPath(VehicleAwareNavigation.walkingNode(rejected))
+            helper.assertTrue(nav.path?.target == PositionPaths.walkingNode(second), "New post did not own its route")
+            nav.createPositionPath(PositionPaths.walkingNode(rejected))
             helper.assertTrue(nav.targetPos == nav.path?.target, "Rejected post redirected the active navigation target")
             repeat(2) {
-                val ordinaryProbe = nav.createPath(VehicleAwareNavigation.walkingNode(rejected), 1)!!
-                helper.assertTrue(ordinaryProbe.target == VehicleAwareNavigation.walkingNode(rejected), "March cache returned an unrelated tactical route")
+                val ordinaryProbe = nav.createPath(PositionPaths.walkingNode(rejected), 1)!!
+                helper.assertTrue(ordinaryProbe.target == PositionPaths.walkingNode(rejected), "March cache returned an unrelated tactical route")
                 helper.assertTrue(nav.targetPos == nav.path?.target, "Ordinary probe redirected the active post")
             }
         }
         helper.runAtTickTime(45) {
             npc.setOnGround(true)
             nav.recomputePath()
-            helper.assertTrue(nav.path?.target == VehicleAwareNavigation.walkingNode(second), "Terrain recomputation followed an unaccepted post")
+            helper.assertTrue(nav.path?.target == PositionPaths.walkingNode(second), "Terrain recomputation followed an unaccepted post")
             scene.result("PASS", "repeatedProbeTargetsOwnPost=true rejectedProbeKeepsActiveGoal=true recomputeKeepsCommittedPost=true")
             helper.succeed()
         }

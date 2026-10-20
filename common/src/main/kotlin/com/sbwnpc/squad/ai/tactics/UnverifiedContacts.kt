@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.ai.tactics
 
 import com.sbwnpc.squad.ai.coordination.Point3
+import java.util.UUID
 
 /**
  * How long a remembered enemy position keeps an area from counting as checked once nobody sees
@@ -26,4 +27,27 @@ object UnverifiedContacts {
      * no route led and they stood for six minutes.
      */
     fun scoutTarget(anchor: Point3, remembered: Collection<Point3>): Point3? = remembered.map { it to Math.sqrt(it.horizontalDistanceSquared(anchor)) }.filter { it.second <= SCOUT_RADIUS }.minByOrNull { it.second }?.first
+
+    /** Men sent to check a position at a time. */
+    const val SCOUTS = 2
+
+    /**
+     * Where an operation's scouts look round [anchor], see [inspectAnchor]: off contact, the
+     * remembered position from [scoutTarget], else the objective of an attack still under way.
+     * Nothing is checked in a fight or by a reinforcement still marching past one; [anchor] is
+     * only asked for otherwise, since the men's centre it may fall back on needs men to exist.
+     */
+    fun inspectTarget(inContact: Boolean, marching: Boolean, anchor: () -> Point3, remembered: Collection<Point3>, activeAttackObjective: Point3?): Point3? = if (inContact || marching) null else scoutTarget(anchor(), remembered) ?: activeAttackObjective
+
+    /** What the remembered positions are measured from: the area being taken, else the order's objective, else the men. */
+    fun inspectAnchor(areaObjective: Point3?, orderObjective: Point3?, centre: Point3): Point3 = areaObjective ?: orderObjective ?: centre
+
+    /**
+     * The [SCOUTS] ready men sent to [inspect], or none without one. Men already scouting keep it,
+     * so the pair is not swapped each layout; the rest go nearest first. Ties keep [candidates]' order.
+     */
+    fun scouts(candidates: List<Pair<UUID, Point3>>, current: Set<UUID>, inspect: Point3?): Set<UUID> {
+        if (inspect == null) return emptySet()
+        return candidates.sortedWith(compareBy<Pair<UUID, Point3>> { it.first !in current }.thenBy { it.second.distanceTo(inspect) }).take(SCOUTS).mapTo(HashSet()) { it.first }
+    }
 }

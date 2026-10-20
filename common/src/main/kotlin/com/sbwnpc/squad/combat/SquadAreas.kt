@@ -1,9 +1,9 @@
 package com.sbwnpc.squad.combat
 
+import com.sbwnpc.squad.combat.tactics.PositionPaths
 import com.sbwnpc.squad.combat.tactics.TacticalBudget
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
-import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.Squad
 import com.sbwnpc.squad.squad.SquadManager
@@ -117,7 +117,7 @@ object SquadAreas {
         val area = pending[Math.floorMod(world.cursor++, pending.size)]
         val actor = world.members[area.request.squad].orEmpty().mapNotNull { level.getEntity(it) as? NpcEntity }.filter { !it.busyWithRole() && !it.resupplying && !it.movementLockedByCover() && !it.combatLockedByMedic() }
             .minByOrNull { it.position().distanceToSqr(area.center) } ?: return
-        val navigation = actor.navigation as? VehicleAwareNavigation ?: return
+        val navigation = actor.navigation as? PositionPaths ?: return
         if (!navigation.canPlan || !TacticalBudget.path(actor)) return
         world.validateAt = level.gameTime + 20 // At most one added native search per world per second.
         world.checking = true
@@ -132,7 +132,7 @@ object SquadAreas {
             } else {
                 checkpoint
             }
-            val path = goal?.let { TacticalBudget.measure(actor) { navigation.createPositionPath(VehicleAwareNavigation.walkingNode(it)) } }
+            val path = goal?.let { TacticalBudget.measure(actor) { navigation.createPositionPath(setOf(PositionPaths.walkingNode(it))) } }
             if (path?.canReach() == true) {
                 if (partial) {
                     DebugFlags.log(LogGroup.ORDER, "[area] squad={} event=approach_reachable center={} checkpoint={} remaining={}", area.request.squad, area.center, goal, delta.length())

@@ -208,6 +208,20 @@ object SquadDeployment {
     }
 
     /**
+     * Hands [model]'s heavy gun to a machine gunner among [fresh], unless someone in [crew] already
+     * carries it. Called for a new crew and again for each Barracks replacement, so a crew that lost
+     * its heavy gunner gets the gun back on the next machine gunner it recruits. Only [fresh] NPCs
+     * are armed: see [NpcEntity.arm].
+     */
+    fun armHeavyGunner(model: HelicopterModel, crew: List<NpcEntity>, fresh: List<NpcEntity> = crew) {
+        val gun = model.heavyGun ?: return
+        if (crew.any { it.carriesPrimary(gun) }) return
+        val gunner = fresh.firstOrNull { it.npcClass == NpcClass.MACHINE_GUNNER } ?: return
+        gunner.arm(gun)
+        com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.HELI, "{} armed with {} as the {} heavy gunner", gunner.uuid, gun, model.label)
+    }
+
+    /**
      * Helicopter plus its crew. Unlike every other vehicle here it is seated immediately and
      * deliberately: an SBW helicopter with no first passenger has its controls zeroed and its rotor
      * bled off every tick, so an unmanned one would just settle back onto the ground.
@@ -220,6 +234,7 @@ object SquadDeployment {
         crew: List<NpcEntity>,
         model: HelicopterModel,
     ): Boolean {
+        armHeavyGunner(model, crew)
         val heli = Ports.vehicles.create(level, model) ?: return false
         // Well off the deploy point, and high enough that the rotor isn't inside the canopy the
         // player happened to be standing under.

@@ -226,7 +226,7 @@
     <ID>LongParameterList:HtnPlanner.kt$HtnPlanningSession$( private val domain: HtnDomain, private val owner: PlanOwner, root: TaskCall&lt;*&gt;, private val facts: FactSnapshot, private val maxExpansions: Int = 4096, private val maxDepth: Int = 64, private val event: (PlanningEvent) -&gt; Unit = {}, )</ID>
     <ID>LongParameterList:NpcClass.kt$NpcClass$( val weaponPool: List&lt;ResourceLocation&gt;, val shootDistanceMultiplier: Double = 1.0, val accuracyMultiplier: Double = 1.0, val speedMultiplier: Double = 1.4, // "everyone else" default per user request — was the one global value before /** Rear offset from a contacted enemy; ordinary order movement still reaches its objective. */ val attackStandoffDistance: Double = 0.0, /** Movement clearance; short-range assault weapons need to approach closer than rifles. */ val combatClearance: Double = 48.0, /** Most primaries can fire at shared contacts beyond detection range. */ val maxFireDistance: Double = Double.POSITIVE_INFINITY, )</ID>
     <ID>LongParameterList:OperationTactics.kt$OperationTactics$(phase: AttackPhase, objective: Point3, movers: List&lt;UUID&gt;, members: List&lt;AttackMember&gt;, threats: List&lt;Point3&gt;, previousClearing: Set&lt;UUID&gt;, origins: Map&lt;UUID, Point3&gt; = emptyMap(), standoffFrom: List&lt;Point3&gt; = threats)</ID>
-    <ID>LongParameterList:OperationTacticsTest.kt$OperationTacticsTest$(order: TacticalOrder = TacticalOrder.ATTACK, proposal: FrontProposal = FrontProposal(CombatDuty.FIRE, Point3(60.0, 64.0, 100.0), null), inContact: Boolean = true, scout: Boolean = false, observer: Boolean = false, reachedMove: Boolean = false, wasFiring: Boolean = false, elsewhere: Boolean = false)</ID>
+    <ID>LongParameterList:OperationTacticsTest.kt$OperationTacticsTest$(order: TacticalOrder = TacticalOrder.ATTACK, proposal: FrontProposal = FrontProposal(CombatDuty.FIRE, Point3(60.0, 64.0, 100.0), null), inContact: Boolean = true, scout: Boolean = false, heightRole: Boolean = false, primaryAmmo: Boolean = true, reachedMove: Boolean = false, wasFiring: Boolean = false, elsewhere: Boolean = false)</ID>
     <ID>LongParameterList:Payloads.kt$ConfigureToolPayload$( val cls: Int, val rank: Int, val faction: Int, val preset: Int, val vehicle: Boolean, val vehicleModel: Int, val tankModel: Int, val heliModel: Int, )</ID>
     <ID>LongParameterList:SafeSpawn.kt$SafeSpawn$( level: ServerLevel, preferredX: Double, preferredZ: Double, aroundY: Int, dimensions: EntityDimensions, radius: Double = DEFAULT_CLEAR_RADIUS, requireSolidFloor: Boolean = false, acceptsPosition: (Vec3) -&gt; Boolean = { true }, )</ID>
     <ID>LongParameterList:SafeSpawn.kt$SafeSpawn$( level: ServerLevel, x: Double, y: Double, z: Double, dimensions: EntityDimensions, requireSolidFloor: Boolean, )</ID>
@@ -757,7 +757,6 @@
     <ID>MagicNumber:VehicleAwareNavigation.kt$VehicleAwareNavigation$8</ID>
     <ID>MagicNumber:VehicleAwareNavigation.kt$VehicleAwareNavigation$8.0</ID>
     <ID>MagicNumber:VehicleAwareNavigation.kt$VehicleAwareNavigation$80.0</ID>
-    <ID>MagicNumber:VehicleAwareNavigation.kt$VehicleAwareNavigation.Companion$0.5</ID>
     <ID>MagicNumber:VehicleModels.kt$HelicopterModel.AH_6$3</ID>
     <ID>MagicNumber:VehicleRoutes.kt$VehicleRoutes$0.5</ID>
     <ID>MagicNumber:VehicleRoutes.kt$VehicleRoutes$15</ID>
@@ -860,7 +859,7 @@
     <ID>TooManyFunctions:SquadTeams.kt$SquadTeams</ID>
     <ID>TooManyFunctions:SupplyBlock.kt$SupplyBlock : BaseEntityBlock</ID>
     <ID>TooManyFunctions:TacticalPositions.kt$TacticalPositions</ID>
-    <ID>TooManyFunctions:VehicleAwareNavigation.kt$VehicleAwareNavigation : GroundPathNavigation</ID>
+    <ID>TooManyFunctions:VehicleAwareNavigation.kt$VehicleAwareNavigation : GroundPathNavigationPositionPaths</ID>
     <ID>TooManyFunctions:VehicleAwareNavigation.kt$VehicleAwareNodeEvaluator : WalkNodeEvaluator</ID>
     <ID>TooManyFunctions:VehicleCombatSupportBehaviour.kt$VehicleCombatSupportBehaviour : ExtendedBehaviour</ID>
     <ID>TooManyFunctions:VehicleTransportBehaviour.kt$VehicleTransportBehaviour : ExtendedBehaviour</ID>
