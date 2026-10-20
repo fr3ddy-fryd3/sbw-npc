@@ -406,9 +406,23 @@ object HtnTacticsGameTests {
         val enemy = scene.enemy(Vec3(95.5, 1.0, 64.5))
         val squad = manager.create(helper.level, UUID(90, 11), requireNotNull(men.first().spawnFaction), men.map { it.uuid })
         scene.onClose = { manager.deleteSquad(helper.level, squad.id) }
-        manager.issueOrderAt(helper.level, squad.id, SquadOrder.RETREAT, helper.absolutePos(BlockPos(10, 1, 64)))
+        // In contact first: a squad that has not noticed the enemy has nothing to cover against (#114).
+        manager.issueOrderAt(helper.level, squad.id, SquadOrder.DEFEND, helper.absolutePos(BlockPos(40, 1, 64)))
+        men.forEach {
+            it.yHeadRot = -90f
+            it.yBodyRot = -90f
+        }
+        var retreating = false
         var hidden = false
         helper.onEachTick {
+            if (!retreating) {
+                men.forEach { it.yHeadRot = -90f }
+                if (men.any { it.target?.uuid == enemy.uuid }) {
+                    retreating = true
+                    manager.issueOrderAt(helper.level, squad.id, SquadOrder.RETREAT, helper.absolutePos(BlockPos(10, 1, 64)))
+                }
+                return@onEachTick
+            }
             val clouds = com.sbwnpc.squad.entity.SmokeCloudRegistry.all(helper.level).count { Ports.grenades.smokeIsOut(it) }
             if (clouds > 0 && men.any { com.sbwnpc.squad.combat.SmokeClouds.blocks(helper.level, it.eyePosition, enemy.eyePosition) && !com.sbwnpc.squad.combat.DetectionSightline.canSee(it, enemy) }) hidden = true
             if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} smokeLeft=${men.map { it.smokeLeft }} cloudsOut=$clouds hidden=$hidden")
