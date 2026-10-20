@@ -3,7 +3,6 @@ package com.sbwnpc.squad.combat.tactics
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.entity.NpcEntity
-import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import net.minecraft.world.level.pathfinder.Path
 import net.minecraft.world.phys.Vec3
 
@@ -41,10 +40,10 @@ object TacticalRoutes {
 
     private fun plan(entity: NpcEntity, task: TacticalTask): List<Vec3>? {
         val now = entity.level().gameTime
-        val navigation = entity.navigation as? VehicleAwareNavigation ?: return null
+        val navigation = entity.navigation as? PositionPaths ?: return null
         if (now < task.nextRoutePlan || !TacticalBudget.path(entity)) return null
         task.nextRoutePlan = now + ROUTE_RETRY_TICKS
-        val path = TacticalBudget.measure(entity) { navigation.createPositionPath(setOf(VehicleAwareNavigation.walkingNode(task.anchor)), allowDetour = true) } ?: return null
+        val path = TacticalBudget.measure(entity) { navigation.createPositionPath(setOf(PositionPaths.walkingNode(task.anchor)), allowDetour = true) } ?: return null
         val route = route(path, entity.position(), task.anchor)
         if (route == null) {
             DebugFlags.log(LogGroup.PATH, "[tactics] {} plan={} event=route_leg_rejected reaches={} nodes={} end={} anchor={}", entity.uuid, task.plan, path.canReach(), path.nodeCount, path.endNode?.asBlockPos(), task.anchor)

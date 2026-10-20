@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.npc
 
 import com.sbwnpc.squad.domain.port.VehicleModel
+import net.minecraft.resources.ResourceLocation
 
 /** Support vehicle spawned alongside a [SquadPreset.FIVE]/[SquadPreset.SEVEN] squad when the
  *  "spawn with vehicle" toggle is on — unmanned, faction-assigned, left for the squad's own
@@ -45,11 +46,22 @@ enum class TankModel(val label: String) : VehicleModel {
  *  - Mi-28 is a gunship with a real auto-aimable turret in seat 1, so it carries a gunner and goes
  *    hunting.
  *  - AH-6 has no turret — its guns are bolted to the airframe — but has a cockpit passenger and
- *    two side benches. It carries machine gunners, with the side seats firing their own weapons.
+ *    two side benches. It carries machine gunners, with the side seats firing their own weapons,
+ *    and one of them carries [heavyGun] in place of his rolled machine gun.
  */
-enum class HelicopterModel(val label: String, val crew: List<NpcClass>) : VehicleModel {
+enum class HelicopterModel(
+    val label: String,
+    val crew: List<NpcClass>,
+    /** The gun one machine gunner of the crew carries instead of his own, see
+     *  [com.sbwnpc.squad.squad.SquadDeployment.armHeavyGunner]; null for none. */
+    val heavyGun: ResourceLocation? = null,
+) : VehicleModel {
     MI_28("Mi-28", listOf(NpcClass.HELICOPTER_PILOT, NpcClass.HELICOPTER_GUNNER)),
-    AH_6("AH-6", listOf(NpcClass.HELICOPTER_PILOT) + List(3) { NpcClass.MACHINE_GUNNER }),
+    AH_6(
+        "AH-6",
+        listOf(NpcClass.HELICOPTER_PILOT) + List(3) { NpcClass.MACHINE_GUNNER },
+        heavyGun = ResourceLocation.fromNamespaceAndPath("superbwarfare", "m_2_hb"),
+    ),
     ;
 
     fun next(): HelicopterModel = entries[(ordinal + 1) % entries.size]

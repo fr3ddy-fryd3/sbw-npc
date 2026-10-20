@@ -2,6 +2,7 @@ package com.sbwnpc.squad.ai.coordination
 
 import java.util.UUID
 import kotlin.math.abs
+import kotlin.math.sqrt
 
 enum class TacticalOrder { ATTACK, DEFEND, MOVE, RETREAT, PATROL, BARRAGE }
 data class Point3(val x: Double, val y: Double, val z: Double) {
@@ -9,6 +10,7 @@ data class Point3(val x: Double, val y: Double, val z: Double) {
         require(x.isFinite() && y.isFinite() && z.isFinite())
     }
     fun horizontalDistanceSquared(other: Point3): Double = (x - other.x) * (x - other.x) + (z - other.z) * (z - other.z)
+    fun distanceTo(other: Point3): Double = sqrt((x - other.x) * (x - other.x) + (y - other.y) * (y - other.y) + (z - other.z) * (z - other.z))
 }
 sealed interface ObjectiveKey {
     val dimension: String

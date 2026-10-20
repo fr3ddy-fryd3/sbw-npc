@@ -5,10 +5,12 @@ import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.VehicleCannonAmmo
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.team.SquadTeams
 import com.sbwnpc.squad.vehicle.Helicopters
+import com.sbwnpc.squad.vehicle.PilotlessDrop
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
@@ -26,6 +28,8 @@ import java.util.UUID
  * hover facing the target, which is what puts the target inside the turret's declared traverse.
  */
 class HelicopterGunnerBehaviour : ExtendedBehaviour<NpcEntity>() {
+    private val pilotless = PilotlessDrop()
+
     private var nextSearchTick = 0
     private var seatTarget: UUID? = null
 
@@ -54,12 +58,12 @@ class HelicopterGunnerBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun start(entity: NpcEntity) {
-        entity.vehicleTransport = true
+        entity.claim(NpcActivity.VEHICLE, this)
     }
 
     override fun stop(entity: NpcEntity) {
         entity.vehicle?.let { Ports.vehicles.aimAt(it, entity, null) }
-        entity.vehicleTransport = false
+        entity.release(NpcActivity.VEHICLE, this)
     }
 
     override fun tick(entity: NpcEntity) {
@@ -67,8 +71,9 @@ class HelicopterGunnerBehaviour : ExtendedBehaviour<NpcEntity>() {
             boardVacantTurret(entity)
             return
         }
-        entity.vehicleTransport = true
+        entity.claim(NpcActivity.VEHICLE, this)
         entity.navigation.stop()
+        (entity.level() as? ServerLevel)?.let { pilotless.tick(it, gunship) }
         val target = entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) }
         if (target == null) {
             Ports.vehicles.aimAt(gunship, entity, null)

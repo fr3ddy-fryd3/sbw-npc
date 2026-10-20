@@ -40,6 +40,9 @@ object DroneFlightController {
     private const val THRUST_HEADING_TOLERANCE = 30f
     private const val ALTITUDE_DEADBAND = 1.0
 
+    /** How far [cruiseAltitude] lets the wanted height come down in one tick. */
+    private const val DESCENT_STEP = ALTITUDE_DEADBAND + 0.5
+
     /** Degrees, vanilla convention, from [from] toward [to] (horizontal only). */
     fun yawToward(from: Vec3, to: Vec3): Float {
         val dx = to.x - from.x
@@ -77,12 +80,17 @@ object DroneFlightController {
         return Command(forward, back, up, down, newYaw)
     }
 
-    /** Cruise altitude for a flight leg: the highest terrain sampled along the leg plus the clearance,
-     *  never below the drone's current height minus a gentle descent so it doesn't dive into a
-     *  valley only to climb straight back out. */
+    /**
+     * Cruise altitude for a flight leg: the highest terrain sampled along the leg plus the clearance,
+     * never below the drone's current height minus [DESCENT_STEP], so it comes down gently rather
+     * than diving into a valley only to climb straight back out.
+     *
+     * The step is wider than [ALTITUDE_DEADBAND]: at 0.5 the wanted height stayed inside it, [steer]
+     * never pressed down, and a drone that climbed over a hill held that height to its target (#121).
+     */
     fun cruiseAltitude(terrainHeights: List<Int>, clearance: Double, currentY: Double): Double {
         val highest = terrainHeights.maxOrNull() ?: return currentY
         val wanted = highest + clearance
-        return maxOf(wanted, currentY - 0.5)
+        return maxOf(wanted, currentY - DESCENT_STEP)
     }
 }

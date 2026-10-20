@@ -5,8 +5,10 @@ import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
+import com.sbwnpc.squad.squad.Squad
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
 import com.sbwnpc.squad.vehicle.Airspace
@@ -89,18 +91,18 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         // that has just been spawned does not reliably report onGround(), and believing it put the
         // aircraft into a cruise turn while it was still sitting on the dirt.
         phase = Phase.TAKEOFF
-        entity.vehicleTransport = true
+        entity.claim(NpcActivity.VEHICLE, this)
     }
 
     override fun stop(entity: NpcEntity) {
         entity.vehicle?.takeIf(Ports.vehicles::isVehicle)?.let(::cutControls)
-        entity.vehicleTransport = false
+        entity.release(NpcActivity.VEHICLE, this)
     }
 
     override fun tick(entity: NpcEntity) {
         val level = entity.level() as? ServerLevel ?: return
         val heli = flyable(entity) ?: return
-        entity.vehicleTransport = true
+        entity.claim(NpcActivity.VEHICLE, this)
         entity.navigation.stop()
 
         // Sampled once a tick, before anything acts on it.
@@ -323,23 +325,33 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
             return Mission(standoffPoint(heli, contact), contact, false, HOLD_SPEED)
         }
         return when (entity.currentSquad()?.order) {
-            SquadOrder.DEFEND, SquadOrder.PATROL -> Mission(
-                loiterPoint(home),
-                null,
-                false,
-                LOITER_SPEED,
-                anchor = home,
-                clearance = PATROL_CLEARANCE,
-                patrol = true,
-            )
+            SquadOrder.DEFEND, SquadOrder.PATROL -> loiterMission(home)
 
             // A gunship retires once contact clears. AH-6 holds its commanded orbit above.
-            SquadOrder.ATTACK ->
-                if (gunship) landingMission(level, retirePoint(home)) else landingMission(level, home)
+            // One that has not met the enemy yet is still on its way to the objective, and
+            // [retirePoint] would be the objective itself: it circles there until the attack completes.
+            SquadOrder.ATTACK -> when {
+                gunship && lastContactPos == null -> loiterMission(home)
+                gunship -> landingMission(level, retirePoint(home))
+                else -> landingMission(level, home)
+            }
 
             else -> landingMission(level, home)
         }
     }
+
+    private fun loiterMission(home: Vec3): Mission =
+        Mission(
+            loiterPoint(home),
+            null,
+            false,
+            LOITER_SPEED,
+            anchor = home,
+            clearance = PATROL_CLEARANCE,
+            patrol = true,
+        )
+
+    private fun surveying(heli: Entity, squad: Squad): Boolean = squad.objective?.let { HelicopterAttackCompletion.surveys(heli.position(), Vec3.atCenterOf(it)) } ?: true
 
     private fun completeAttack(entity: NpcEntity, heli: Entity, level: ServerLevel) {
         val squad = entity.currentSquad() ?: return
@@ -351,7 +363,12 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
             level.gameTime - contact.seenAt <= 200 && level.getEntity(contact.id)?.isAlive != false
         }
         val focusAlive = squad.focusEntity?.let { level.getEntity(it)?.isAlive } == true
-        if (!attackCompletion.observe(squad.orderStamp, level.gameTime, crewEngaged || reported || focusAlive)) return
+        // Nothing is seen on the way to the objective, nor from high above it, so the quiet interval
+        // would run out where the crew could not have seen anyone and the MOVE order below would put
+        // the aircraft down on a fight it never saw (#90, #119). One that has met the enemy is
+        // already at the fight, which may be far from the objective.
+        val busy = crewEngaged || reported || focusAlive || (lastContactPos == null && !surveying(heli, squad))
+        if (!attackCompletion.observe(squad.orderStamp, level.gameTime, busy)) return
         val destination = squad.objective ?: net.minecraft.core.BlockPos.containing(lastContactPos ?: heli.position())
         val manager = com.sbwnpc.squad.squad.SquadManager.get(level)
         com.sbwnpc.squad.experience.ExperienceAwards.objective(level.server, squad)
@@ -514,10 +531,11 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         rollRate: Float,
         clearance: Double,
     ) {
-        val desiredY = DroneFlightController.cruiseAltitude(
+        val desiredY = HelicopterFlightController.cruiseAltitude(
             terrainAhead(level, heli, station),
             clearance,
             heli.y,
+            approach = HelicopterFlightController.horizontalDistance(heli.position(), station) <= APPROACH_DISTANCE,
         )
         val cmd = HelicopterFlightController.steer(
             heli.position(), heli.yRot, heli.xRot, Ports.vehicles.roll(heli), rollRate, heli.deltaMovement,
@@ -636,11 +654,14 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         const val MAX_SCOUT_SIGHT_CHECKS = 6
 
         /** How long a transport holds on the pad for its squad before going without them. */
-        const val BOARDING_TIMEOUT_TICKS = 400
+        const val BOARDING_TIMEOUT_TICKS = 800
         const val BOARDING_WAIT_RANGE = 40.0
         const val ON_STATION_RADIUS = 8.0
         const val OFF_STATION_RADIUS = 20.0
         const val DESCENT_RATE = 0.22
         val LOOKAHEAD_DISTANCES = listOf(12.0, 24.0, 40.0, 60.0)
+
+        /** Within this of its station a helicopter comes down from whatever height the trip left it at. */
+        const val APPROACH_DISTANCE = 150.0
     }
 }

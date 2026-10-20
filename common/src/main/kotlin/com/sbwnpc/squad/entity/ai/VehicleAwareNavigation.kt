@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.entity.ai
 
+import com.sbwnpc.squad.combat.tactics.PositionPaths
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.mixin.PathNavigationAccessor
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap
@@ -36,7 +37,9 @@ import java.util.WeakHashMap
  * There is no vanilla hook for "this entity is solid to pathfinding", so the node evaluator has to
  * be told directly.
  */
-class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob, level) {
+class VehicleAwareNavigation(mob: Mob, level: Level) :
+    GroundPathNavigation(mob, level),
+    PositionPaths {
     /** Collision intent belongs to the active route, never to combat posture or a stale order. */
     val descendingScaffolding: Boolean
         get() {
@@ -59,7 +62,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
         val next = path?.takeUnless { it.isDone }?.nextNodePos ?: return
         // WalkNodeEvaluator.getStart rounds a grounded mob's feet, unlike Entity.blockPosition.
         // On farmland the two differ by one block; rejecting the latter never bans the real edge.
-        val from = walkingNode(mob.position())
+        val from = PositionPaths.walkingNode(mob.position())
         if (mob.onClimbable() || !mob.onGround() || !mob.horizontalCollision || next.y <= from.y) return
         failedSteps.reject(from, next, level.gameTime)
         com.sbwnpc.squad.combat.DebugFlags.log(
@@ -125,7 +128,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
     fun createPositionPath(pos: BlockPos): Path? = createPositionPath(setOf(pos))
 
     /** Vanilla searches one terrain graph for a small set of equally suitable destinations. */
-    fun createPositionPath(positions: Set<BlockPos>, allowDetour: Boolean = false): Path? {
+    override fun createPositionPath(positions: Set<BlockPos>, allowDetour: Boolean): Path? {
         if (!canPlan || positions.isEmpty()) return null
         val observer = positionPathObserver
         val started = if (observer != null) System.nanoTime() else 0L
@@ -227,7 +230,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
     private var branch = "?"
 
     /** Whether a path can be planned now — not mid-jump or falling (vanilla's own condition). */
-    val canPlan: Boolean get() = canUpdatePath()
+    override val canPlan: Boolean get() = canUpdatePath()
 
     /**
      * Vanilla re-plans the path being walked when a block next to it changes — which in a fight
@@ -479,9 +482,6 @@ class VehicleAwareNavigation(mob: Mob, level: Level) : GroundPathNavigation(mob,
     }
 
     companion object {
-        /** Same grounded-node height as vanilla WalkNodeEvaluator.getStart, including partial floors. */
-        internal fun walkingNode(feet: Vec3): BlockPos = BlockPos.containing(feet.x, feet.y + 0.5, feet.z)
-
         /** Closer than this, a path ending where it stands is just being there. */
         private const val NOWHERE_MIN_DISTANCE = 3.0
 
