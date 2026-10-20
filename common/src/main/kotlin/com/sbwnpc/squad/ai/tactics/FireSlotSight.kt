@@ -21,24 +21,30 @@ object FireSlotSight {
     /** How far inside the clearance circle the nearest depth stays, so the man does not stand on its edge. */
     private const val CLEARANCE_MARGIN = 2.0
 
+    /** Defenders, nearest first, any of whom a candidate may see to count as sighted. */
+    private const val SIGHTED_DEFENDERS = 3
+
     /**
-     * The first of a few candidates round [slot] from which [sees] holds towards the nearest of
-     * [defenders], or null if none does. The candidates lie between [clearance] and the slot's own
-     * distance from that defender, the band where firing is allowed, and sideways along the line.
-     * The slot itself is tried first, so a slot that already sees the defence does not move.
+     * The first of a few candidates round [slot] from which [sees] holds towards one of the
+     * nearest [defenders], or null if none does. The candidates lie between [clearance] and the
+     * slot's own distance from the nearest defender, the band where firing is allowed, and sideways
+     * along the line. The slot itself is tried first, so a slot that already sees the defence does
+     * not move. A candidate that sees any of the nearest few men sees the defence: one tree or wall
+     * in front of the nearest alone does not make it blind.
      */
     fun choose(slot: Point3, defenders: List<Point3>, clearance: Double, sees: (post: Point3, enemy: Point3) -> Boolean): Point3? {
-        val enemy = defenders.minByOrNull { hypot(it.x - slot.x, it.z - slot.z) } ?: return slot
+        val nearest = defenders.sortedBy { hypot(it.x - slot.x, it.z - slot.z) }.take(SIGHTED_DEFENDERS)
+        val enemy = nearest.firstOrNull() ?: return slot
         val distance = hypot(slot.x - enemy.x, slot.z - enemy.z)
         if (distance < MIN_DISTANCE) return slot
         val ux = (slot.x - enemy.x) / distance
         val uz = (slot.z - enemy.z) / distance
-        val nearest = clearance + CLEARANCE_MARGIN
-        val depths = if (distance <= nearest) listOf(distance) else listOf(distance, (distance + nearest) / 2.0, nearest)
+        val closest = clearance + CLEARANCE_MARGIN
+        val depths = if (distance <= closest) listOf(distance) else listOf(distance, (distance + closest) / 2.0, closest)
         for (depth in depths) {
             for (lateral in LATERALS) {
                 val candidate = Point3(enemy.x + ux * depth - uz * lateral, slot.y, enemy.z + uz * depth + ux * lateral)
-                if (sees(candidate, enemy)) return candidate
+                if (nearest.any { sees(candidate, it) }) return candidate
             }
         }
         return null

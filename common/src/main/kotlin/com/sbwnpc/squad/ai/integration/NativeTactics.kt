@@ -30,6 +30,9 @@ object NativeTactics {
 
     /** A slot that moved less than this since it was searched keeps its chosen post. */
     private const val SLOT_REUSE_DISTANCE = 4.0
+
+    /** A slot that found no sighted post is searched again after this, as the defence and the men move. */
+    private const val SLOT_RETRY_TICKS = 40L
     private val worlds = HashMap<ServerLevel, World>()
     private fun world(npc: NpcEntity) = worlds.getOrPut(npc.level() as ServerLevel) { World(npc.level() as ServerLevel) }
     fun refresh(npc: NpcEntity) {
@@ -42,8 +45,8 @@ object NativeTactics {
         return world(npc).actions[npc.uuid]?.takeIf { it.intent.duty != CombatDuty.FOLLOW_ORDER }?.assignment
     }
 
-    /** Slots whose post [FireSlotSight] could not move to a point that sees the defence; GameTests read it. */
-    internal fun slotsWithoutSight(level: ServerLevel): Int = worlds[level]?.slotsWithoutSight ?: 0
+    /** How many of [members] hold a slot [FireSlotSight] found no point for that sees the defence; GameTests read it. */
+    internal fun slotsWithoutSight(level: ServerLevel, members: Collection<UUID>): Int = worlds[level]?.slotsWithoutSight(members) ?: 0
 
     fun ownsLook(npc: NpcEntity): Boolean = worlds[npc.level()]?.actions?.get(npc.uuid)?.ownsLook == true
     fun ownsMovement(npc: NpcEntity): Boolean {
@@ -90,8 +93,8 @@ object NativeTactics {
     /** One group of an attack that takes an approach sector: a squad, or a lone squad's manoeuvre group. */
     private data class SectorGroup(val squad: UUID, val manoeuvre: Boolean)
 
-    /** The [post] [FireSlotSight] chose for a slot at [slot]; null when none sees the defence. */
-    private class SlotSight(val slot: Point3, val post: Point3?)
+    /** The [post] [FireSlotSight] chose at [searchedAt] for a slot at [slot]; null when none sees the defence. */
+    private class SlotSight(val slot: Point3, val post: Point3?, val searchedAt: Long)
 
     private class World(val level: ServerLevel) {
         val pendingDeaths = HashMap<UUID, PendingDeath>()
@@ -115,8 +118,7 @@ object NativeTactics {
 
         // The sighted post chosen for each man's slot, see [withSight].
         private val slotSights = HashMap<UUID, SlotSight>()
-        var slotsWithoutSight = 0
-            private set
+        fun slotsWithoutSight(members: Collection<UUID>) = members.count { id -> slotSights[id]?.let { it.post == null } == true }
         private val sectorsHeld = HashMap<UUID, Boolean>()
 
         // Members on the arc to their sector at the last layout: their intent is not kept once the
@@ -676,11 +678,16 @@ object NativeTactics {
         /**
          * [proposal] with its post moved to a point that sees [defenders]. Chosen once per post and
          * kept, so a man is not shuffled about by every re-layout; a post that moves is searched anew.
-         * A post with no sight anywhere near it is kept and traced (#93).
+         * A post with no sight anywhere near it is kept and traced, and searched again shortly (#93).
          */
         private fun withSight(operation: UUID, id: UUID, proposal: FrontProposal, defenders: List<Point3>, role: NpcClass): FrontProposal {
             if (proposal.duty == CombatDuty.REAR_GUARD || defenders.isEmpty()) return proposal
-            val kept = slotSights[id]?.takeIf { hypot(it.slot.x - proposal.anchor.x, it.slot.z - proposal.anchor.z) <= SLOT_REUSE_DISTANCE }
+            val now = level.gameTime
+            // A miss is not kept like a find: kept, it left the man on the blind post until the
+            // whole line moved (#93, in-game 20.10).
+            val kept = slotSights[id]?.takeIf {
+                hypot(it.slot.x - proposal.anchor.x, it.slot.z - proposal.anchor.z) <= SLOT_REUSE_DISTANCE && (it.post != null || now - it.searchedAt < SLOT_RETRY_TICKS)
+            }
             val chosen = if (kept != null) {
                 kept.post
             } else {
@@ -689,10 +696,9 @@ object NativeTactics {
                         DetectionSightline.visible(level, feet.add(0.0, EYE_HEIGHT, 0.0), Vec3(enemy.x, enemy.y + 1.0, enemy.z), CollisionContext.empty())
                     } == true
                 }?.let { post -> groundAt(post)?.let { Point3(post.x, it.y, post.z) } ?: post }
-                slotSights[id] = SlotSight(proposal.anchor, post)
+                slotSights[id] = SlotSight(proposal.anchor, post, now)
                 if (post == null) {
-                    slotsWithoutSight++
-                    DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=slot_no_sight member={} slot={}", operation, id, proposal.anchor)
+                    DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=slot_no_sight member={} slot={} ground={} clearance={} nearestDefender={}", operation, id, proposal.anchor, groundAt(proposal.anchor), CombatPositionSafety.clearance(role), defenders.minByOrNull { hypot(it.x - proposal.anchor.x, it.z - proposal.anchor.z) })
                 }
                 post
             }

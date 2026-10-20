@@ -39,6 +39,11 @@ class FireSlotSightTest {
         assertTrue(tried.isNotEmpty() && tried.all { distance(it) >= 50.0 - 1e-9 })
     }
 
+    @Test fun `a slot that sees a defender beside the nearest one stays where it is`() {
+        val beside = Point3(8.0, 0.0, 0.0)
+        assertEquals(slot, FireSlotSight.choose(slot, listOf(enemy, beside), 48.0) { _, target -> target == beside })
+    }
+
     @Test fun `the nearest defender is the one looked at`() {
         val near = Point3(0.0, 0.0, 20.0)
         FireSlotSight.choose(Point3(0.0, 0.0, 76.0), listOf(enemy, near), 48.0) { _, target ->
