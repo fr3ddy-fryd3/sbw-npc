@@ -13,22 +13,25 @@ import org.junit.jupiter.api.Test
 class SpottingTimeTest {
     private val regular = Observer()
 
+    /** Every band is 20% quicker than the table's base seconds, and the night bands reach 20% further. */
+    private val day = 1.0 / 1.2
+
     private fun seconds(distance: Double, light: Int, observer: Observer = regular) = SpottingTime.seconds(observer, Target(distance, light))
 
     @Test fun `by day the table's seconds hold at 25, 50 and 100 blocks`() {
-        assertEquals(0.275, seconds(25.0, 15)!!, 1e-9)
-        assertEquals(0.5, seconds(50.0, 15)!!, 1e-9)
-        assertEquals(1.4, seconds(100.0, 15)!!, 1e-9)
+        assertEquals(0.275 * day, seconds(25.0, 15)!!, 1e-9)
+        assertEquals(0.5 * day, seconds(50.0, 15)!!, 1e-9)
+        assertEquals(1.4 * day, seconds(100.0, 15)!!, 1e-9)
     }
 
     @Test fun `each darker band takes longer and sees less far`() {
-        assertEquals(0.5 * 2.5, seconds(50.0, 10)!!, 1e-9)
-        assertEquals(0.5 * 5.0, seconds(50.0, 7)!!, 1e-9)
-        assertEquals(0.5 * 12.0, seconds(50.0, 4)!!, 1e-9)
+        assertEquals(0.5 * 2.5 * day, seconds(50.0, 10)!!, 1e-9)
+        assertEquals(0.5 * 5.0 * day, seconds(50.0, 7)!!, 1e-9)
+        assertEquals(0.5 * 12.0 * day, seconds(50.0, 4)!!, 1e-9)
         assertNull(seconds(50.0, 1))
-        assertNull(seconds(61.0, 4))
-        assertNotNull(seconds(60.0, 4))
-        assertNull(seconds(31.0, 0))
+        assertNull(seconds(73.0, 4))
+        assertNotNull(seconds(72.0, 4))
+        assertNull(seconds(37.0, 0))
     }
 
     @Test fun `light is clamped to the 0 to 15 scale`() {
@@ -39,20 +42,20 @@ class SpottingTimeTest {
     @Test fun `rank shortens the time and lengthens the cut-off`() {
         val recruit = Observer.of(NpcRank.RECRUIT, NpcClass.RIFLEMAN)
         val elite = Observer.of(NpcRank.ELITE, NpcClass.RIFLEMAN)
-        assertEquals(1.4 * 1.5, seconds(100.0, 15, recruit)!!, 1e-9)
-        assertEquals(1.4 * 0.55, seconds(100.0, 15, elite)!!, 1e-9)
-        // Dark cut-off: 60 for a regular, 48 for a recruit, 75 for an elite.
-        assertNull(seconds(50.0, 4, recruit))
-        assertNotNull(seconds(50.0, 4, regular))
-        assertNotNull(seconds(75.0, 4, elite))
-        assertNull(seconds(76.0, 4, elite))
+        assertEquals(1.4 * day * 1.5, seconds(100.0, 15, recruit)!!, 1e-9)
+        assertEquals(1.4 * day * 0.55, seconds(100.0, 15, elite)!!, 1e-9)
+        // Dark cut-off: 72 for a regular, 57.6 for a recruit, 90 for an elite.
+        assertNull(seconds(58.0, 4, recruit))
+        assertNotNull(seconds(57.0, 4, recruit))
+        assertNotNull(seconds(90.0, 4, elite))
+        assertNull(seconds(91.0, 4, elite))
     }
 
     @Test fun `a sniper is quicker and sees further than the same rank of rifleman`() {
         val sniper = Observer.of(NpcRank.ELITE, NpcClass.SNIPER)
-        assertEquals(1.4 * 0.55 * 0.7, seconds(100.0, 15, sniper)!!, 1e-9)
-        assertNotNull(seconds(90.0, 4, sniper))
-        assertNull(seconds(91.0, 4, sniper))
+        assertEquals(1.4 * day * 0.55 * 0.7, seconds(100.0, 15, sniper)!!, 1e-9)
+        assertNotNull(seconds(108.0, 4, sniper))
+        assertNull(seconds(109.0, 4, sniper))
     }
 
     @Test fun `the cone's edge, a crouching target and a sprinting one scale the time`() {
@@ -69,9 +72,9 @@ class SpottingTimeTest {
         assertEquals(base * 2.25, SpottingTime.seconds(regular, Target(50.0, 15, grassBlocks = 2))!!, 1e-9)
     }
 
-    @Test fun `a recruit in the dark needs seven seconds for a man 40 blocks away and cannot see one at 50`() {
+    @Test fun `a recruit in the dark needs six seconds for a man 40 blocks away and cannot see one at 58`() {
         val recruit = Observer.of(NpcRank.RECRUIT, NpcClass.RIFLEMAN)
-        assertEquals((0.2 + 0.3 * 0.8 * 0.8) * 12.0 * 1.5, seconds(40.0, 4, recruit)!!, 1e-9)
-        assertTrue(seconds(50.0, 4, recruit) == null)
+        assertEquals((0.2 + 0.3 * 0.8 * 0.8) * 12.0 * day * 1.5, seconds(40.0, 4, recruit)!!, 1e-9)
+        assertTrue(seconds(58.0, 4, recruit) == null)
     }
 }

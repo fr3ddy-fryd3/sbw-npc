@@ -14,17 +14,22 @@ import com.sbwnpc.squad.npc.NpcRank
 object SpottingTime {
     /** A band of light at the target (0 to 15, [Light]) and what it costs. */
     enum class Light(val from: Int, val timeFactor: Double, val cutoff: Double) {
-        BRIGHT(from = 12, timeFactor = 1.0, cutoff = 256.0),
-        DIM(from = 9, timeFactor = 2.5, cutoff = 180.0),
-        LOW(from = 6, timeFactor = 5.0, cutoff = 120.0),
-        DARK(from = 3, timeFactor = 12.0, cutoff = 60.0),
-        BLACK(from = 0, timeFactor = 25.0, cutoff = 30.0),
+        // By the owner's call after playtesting (20.10): every band 20% quicker than first tuned,
+        // and the night bands reach 20% further.
+        BRIGHT(from = 12, timeFactor = 1.0 / SPEEDUP, cutoff = 256.0),
+        DIM(from = 9, timeFactor = 2.5 / SPEEDUP, cutoff = 180.0),
+        LOW(from = 6, timeFactor = 5.0 / SPEEDUP, cutoff = 120.0 * NIGHT_REACH),
+        DARK(from = 3, timeFactor = 12.0 / SPEEDUP, cutoff = 60.0 * NIGHT_REACH),
+        BLACK(from = 0, timeFactor = 25.0 / SPEEDUP, cutoff = 30.0 * NIGHT_REACH),
         ;
 
         companion object {
             fun of(level: Int): Light = entries.first { level >= it.from }
         }
     }
+
+    private const val SPEEDUP = 1.2
+    private const val NIGHT_REACH = 1.2
 
     private const val BASE_SECONDS = 0.2
     private const val DISTANCE_SECONDS = 0.3
