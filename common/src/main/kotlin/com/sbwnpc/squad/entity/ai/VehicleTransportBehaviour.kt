@@ -220,6 +220,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // A permanent crew member is driven by this behaviour only while in its own vehicle;
         // VehicleCrewBehaviour handles getting it back aboard if it is ever ejected.
         entity.assignedVehicleId?.let { assigned -> return entity.vehicle?.uuid == assigned }
+        // Seated, or on his way to a seat, by another behaviour: his ride is not this squad trip.
+        // Taking any mounted man for its own, this put a FOLLOW rider straight back out (#136).
+        if (!entity.seatFreeFor(this)) return logEligibility(entity, false) { "another behaviour has his seat" }
         if (entity.vehicle != null) return true // already mounted: DRIVING/RIDING keep going regardless
         if (com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) return false
 
@@ -287,6 +290,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = if (entity.vehicle != null) true else eligible(entity, checkGiveup = true)
 
     override fun start(entity: NpcEntity) {
+        // A permanent crew's seat is VehicleCrewBehaviour's; this only drives it.
+        if (entity.assignedVehicleId == null) entity.claimSeat(this)
         val mounted = entity.vehicle?.takeIf(Ports.vehicles::isVehicle)
         if (mounted != null) {
             startMounted(entity, mounted)
@@ -358,6 +363,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun stop(entity: NpcEntity) {
         startCheck.reset()
         VehicleTransportClaims.release(entity.uuid)
+        entity.release(NpcActivity.SEAT, this)
         entity.release(NpcActivity.VEHICLE, this)
         phase = Phase.SEEKING
         targetVehicleId = null
