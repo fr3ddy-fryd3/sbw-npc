@@ -44,4 +44,56 @@ object WithdrawalGameTests {
             }
         }
     }
+
+    /**
+     * Strung out over a hillside (in-game 20.10), a squad of twelve throws three grenades as it
+     * falls back, and again when it is sent back a second time to the same point.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1600, batch = "withdrawal-smoke-hill")
+    fun squadOnAHillsideThrowsSmokeOnEachWithdrawal(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "withdrawal-smoke-hill")
+        val manager = SquadManager.get(helper.level)
+        // Steps rising towards the enemy: a block every four, up to five.
+        val steps = (30..60).flatMap { x -> (30..110).flatMap { z -> (1..minOf(5, (x - 30) / 4)).map { y -> BlockPos(x, y, z) } } }
+        val ground = steps.associateWith { helper.getBlockState(it) }
+        steps.forEach { helper.setBlock(it, net.minecraft.world.level.block.Blocks.STONE) }
+        val men = (0 until 12).map { index ->
+            val x = 32 + index % 3 * 12
+            scene.spawn(Vec3(x + 0.5, 1.0 + minOf(5, (x - 30) / 4), 40.5 + index / 3 * 14))
+        }
+        val enemy = scene.enemy(Vec3(100.5, 1.0, 64.5))
+        val squad = manager.create(helper.level, UUID(90, 13), requireNotNull(men.first().spawnFaction), men.map { it.uuid })
+        scene.onClose = {
+            manager.deleteSquad(helper.level, squad.id)
+            ground.forEach { (pos, state) -> helper.setBlock(pos, state) }
+        }
+        val rally = helper.absolutePos(BlockPos(10, 1, 64))
+        val wanted = 3
+        var withdrawals = 0
+        var issuedAt = 0L
+        helper.onEachTick {
+            val thrown = men.count { it.smokeLeft == 0 }
+            if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} withdrawals=$withdrawals thrown=$thrown order=${squad.order}")
+            when {
+                withdrawals == 0 && men.any { it.target?.uuid == enemy.uuid } -> {
+                    manager.issueOrderAt(helper.level, squad.id, SquadOrder.RETREAT, rally)
+                    withdrawals = 1
+                    issuedAt = helper.tick
+                }
+
+                // Called off and sent back again: the second order must screen again.
+                withdrawals == 1 && thrown >= wanted && helper.tick - issuedAt >= 40 -> {
+                    manager.issueOrderAt(helper.level, squad.id, SquadOrder.DEFEND, helper.absolutePos(BlockPos(44, 1, 64)))
+                    manager.issueOrderAt(helper.level, squad.id, SquadOrder.RETREAT, rally)
+                    withdrawals = 2
+                }
+
+                withdrawals == 2 && thrown >= wanted * 2 -> {
+                    scene.result("PASS", "tick=${helper.tick} thrown=$thrown")
+                    helper.succeed()
+                }
+            }
+        }
+    }
 }
