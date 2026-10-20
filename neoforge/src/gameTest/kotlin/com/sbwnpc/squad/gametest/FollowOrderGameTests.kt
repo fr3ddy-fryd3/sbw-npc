@@ -65,12 +65,13 @@ object FollowOrderGameTests {
     }
 
     /**
-     * The owner gets into each of [rides] in turn and, once his men have filled its free seats,
-     * out again; the next ride starts when they are all out.
+     * The owner gets into each of [rides] in turn and, once his men have filled its free seats and
+     * sat in them for [HOLD_TICKS], out again; the next ride starts when they are all out.
      */
-    private class RideStages(val owner: net.minecraft.world.entity.player.Player, val followers: List<com.sbwnpc.squad.entity.NpcEntity>, val rides: List<net.minecraft.world.entity.Entity>) {
+    private class RideStages(val helper: GameTestHelper, val owner: net.minecraft.world.entity.player.Player, val followers: List<com.sbwnpc.squad.entity.NpcEntity>, val rides: List<net.minecraft.world.entity.Entity>) {
         private var ride = 0
         private var boarded = false
+        private var fullFor = 0
         val vehicle get() = rides.getOrNull(ride)
         private fun riding(vehicle: net.minecraft.world.entity.Entity) = followers.count { it.vehicle === vehicle }
 
@@ -81,17 +82,26 @@ object FollowOrderGameTests {
             when {
                 !boarded && owner.vehicle == null -> seat(owner, vehicle)
 
-                // The owner and as many of his men as there are seats left for.
+                // The owner and as many of his men as there are seats left for, and they stay in while
+                // he does: another ride's behaviour took them for its own and put them straight out.
                 !boarded && riding(vehicle) >= minOf(Ports.vehicles.seatCount(vehicle) - 1, followers.size) -> {
+                    if (++fullFor < HOLD_TICKS) return
                     boarded = true
+                    fullFor = 0
                     owner.stopRiding()
                 }
+
+                !boarded && fullFor > 0 -> helper.fail("A man got out of the ${vehicle.type.descriptionId} while his owner sat in it")
 
                 boarded && riding(vehicle) == 0 -> {
                     ride++
                     boarded = false
                 }
             }
+        }
+
+        private companion object {
+            const val HOLD_TICKS = 60
         }
     }
 
@@ -145,7 +155,7 @@ object FollowOrderGameTests {
             helper.level.removePlayerImmediately(owner, net.minecraft.world.entity.Entity.RemovalReason.DISCARDED)
         }
         helper.assertTrue(manager.issueFollow(helper.level, squad.id, owner), "The squad could not follow")
-        val stages = RideStages(owner, followers, rides)
+        val stages = RideStages(helper, owner, followers, rides)
         helper.onEachTick {
             val vehicle = stages.vehicle
             if (helper.tick % 50L == 0L) scene.result("RUNNING", "tick=${helper.tick} ${stages.trace()} order=${squad.order} listening=${followers.count { it.listening() }} roles=${followers.map { "${it.npcClass}@${helper.relativeVec(it.position())}" }}")
