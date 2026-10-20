@@ -49,7 +49,8 @@ object Withdrawal {
     private const val SMOKE_TRIES = 5
     private const val SMOKE_RETRY_TICKS = 20L
 
-    private class State(val point: Vec3) {
+    /** One withdrawal: an order, see [Squad.orderStamp], to fall back to [point]. */
+    private class State(val point: Vec3, val stamp: Int) {
         /** Which half (slot parity) is running. */
         var moving = 0
         var boundStart = 0L
@@ -85,7 +86,9 @@ object Withdrawal {
      */
     fun positionFor(member: NpcEntity, squad: Squad, point: Vec3): Vec3? {
         val level = member.level() as? ServerLevel ?: return point
-        val state = bySquad[squad.id]?.takeIf { it.point == point } ?: State(point).also { bySquad[squad.id] = it }
+        // Per order, not per point: a second withdrawal to the same point found the first one's
+        // screen already thrown and threw none (in-game 20.10).
+        val state = bySquad[squad.id]?.takeIf { it.point == point && it.stamp == squad.orderStamp } ?: State(point, squad.orderStamp).also { bySquad[squad.id] = it }
         if (state.updatedTick != level.gameTime) {
             state.updatedTick = level.gameTime
             update(level, squad, state)
