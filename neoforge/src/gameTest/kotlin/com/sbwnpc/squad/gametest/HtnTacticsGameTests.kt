@@ -29,6 +29,10 @@ object HtnTacticsGameTests {
     private const val DAY_TIME = 6000L
     private const val NIGHT_TIME = 18000L
 
+    /** The light a lantern two blocks off gives the spot it lights: the BRIGHT band. */
+    private const val LANTERN_LIGHT = 12
+    private const val LIGHT_SETTLE_TICKS = 5L
+
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1600, batch = "htn-compact")
     fun htnJointAttack64OnCompactFront(helper: GameTestHelper) = jointAttack(helper, wide = false)
@@ -450,10 +454,13 @@ object HtnTacticsGameTests {
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 700, batch = "spot-night-far")
     fun enemyAtTheEdgeOfRangeIsNoticedLongAfterAtNight(helper: GameTestHelper) = spotting(helper, "spot-night-far", Lighting.NIGHT, distance = 71.0, expectNoticed = 120L..600L)
 
-    /** A lantern by the enemy at night lights him as by day (in-game 20.10 they were seen only point-blank). */
+    /**
+     * A lantern by the enemy at night lights him as by day. The window is too short for the dark,
+     * which takes about eight seconds at this distance, so without its light the scene fails.
+     */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 500, batch = "spot-night-lantern")
-    fun enemyByALanternIsNoticedAtNightAsByDay(helper: GameTestHelper) = spotting(helper, "spot-night-lantern", Lighting.LANTERN, distance = 70.0, expectNoticed = 8L..200L)
+    fun enemyByALanternIsNoticedAtNightAsByDay(helper: GameTestHelper) = spotting(helper, "spot-night-lantern", Lighting.LANTERN, distance = 70.0, expectNoticed = 8L..80L)
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 700, batch = "spot-night-near")
@@ -486,6 +493,11 @@ object HtnTacticsGameTests {
         var noticedAt: Long? = null
         helper.onEachTick {
             shooter.yHeadRot = -90f
+            // Light spreads a few ticks after the block is set.
+            if (lantern && helper.tick == LIGHT_SETTLE_TICKS) {
+                val light = helper.level.getMaxLocalRawBrightness(enemy.blockPosition())
+                helper.assertTrue(light >= LANTERN_LIGHT, "The lantern lights the enemy only to $light")
+            }
             if (noticedAt == null && shooter.target?.uuid == enemy.uuid) noticedAt = helper.tick
             if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} light=${helper.level.getMaxLocalRawBrightness(enemy.blockPosition())} noticedAt=$noticedAt")
             if (expectNoticed == null) {

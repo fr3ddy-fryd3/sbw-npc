@@ -324,8 +324,14 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             grassBlocks,
         )
         val required = SpottingTime.seconds(SpottingTime.Observer.of(mob.npcRank, mob.npcClass), target)
+        val before = spotting.seconds(candidate.uuid)
         return spotting.advance(candidate.uuid, now, required).also { seen ->
-            if (seen) DebugFlags.log(LogGroup.SPOTTING, "{} noticed {} at {} blocks, light {}, after {}s needed", mob.uuid, candidate.uuid, target.distance.toInt(), target.light, required?.let { "%.1f".format(it) })
+            // Once each: when he is first noticed, and when he first comes into view too far off for this light.
+            if (seen && required != null && before < required) {
+                DebugFlags.log(LogGroup.SPOTTING, "{} noticed {} at {} blocks, light {}, after {}s of {}s needed", mob.uuid, candidate.uuid, target.distance.toInt(), target.light, "%.1f".format(spotting.seconds(candidate.uuid)), "%.1f".format(required))
+            } else if (required == null && before == 0.0) {
+                DebugFlags.log(LogGroup.SPOTTING, "{} cannot notice {} at {} blocks, light {}: past the cut-off for this light", mob.uuid, candidate.uuid, target.distance.toInt(), target.light)
+            }
         }
     }
 
