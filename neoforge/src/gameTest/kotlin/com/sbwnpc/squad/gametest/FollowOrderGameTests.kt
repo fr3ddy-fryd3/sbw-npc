@@ -179,4 +179,49 @@ object FollowOrderGameTests {
             }
         }
     }
+
+    /**
+     * In a fight a following squad keeps up with its player by bounds (#116, owner's call 21.10):
+     * one half runs to its places by him while the other covers, turn about. Before, the contact
+     * froze every man where it found him and the player walked off alone.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 2000, batch = "follow-bounds")
+    fun followingSquadBoundsAfterItsPlayerInAFight(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "follow-bounds")
+        val manager = SquadManager.get(helper.level)
+        val owner = net.neoforged.neoforge.common.util.FakePlayerFactory.get(helper.level, com.mojang.authlib.GameProfile(UUID.randomUUID(), "follow-bounds"))
+        val start = helper.absoluteVec(Vec3(60.5, 1.0, 60.5))
+        owner.moveTo(start.x, start.y, start.z, 0f, 0f)
+        helper.level.addNewPlayer(owner)
+        val men = (0 until 6).map { scene.spawn(Vec3(56.5 + it * 2, 1.0, 56.5)) }
+        val enemy = scene.enemy(Vec3(60.5, 1.0, 105.5))
+        val squad = manager.create(helper.level, owner.uuid, requireNotNull(men.first().spawnFaction), men.map { it.uuid })
+        scene.onClose = {
+            manager.deleteSquad(helper.level, squad.id)
+            helper.level.removePlayerImmediately(owner, net.minecraft.world.entity.Entity.RemovalReason.DISCARDED)
+        }
+        helper.assertTrue(manager.issueFollow(helper.level, squad.id, owner), "The squad could not follow")
+        // Who ran on which bound: both halves must, on different bounds.
+        val ranOn = HashMap<UUID, MutableSet<Long>>()
+        var walkFrom: Long? = null
+        helper.onEachTick {
+            if (walkFrom == null && men.count { it.target?.uuid == enemy.uuid } >= 2) walkFrom = helper.tick
+            val since = walkFrom ?: return@onEachTick
+            // Off to the west at about a walking pace for 40 blocks, then he stops.
+            if (helper.tick - since < 160) owner.moveTo(owner.x - 0.25, owner.y, owner.z, 0f, 0f)
+            val beat = helper.level.gameTime / com.sbwnpc.squad.ai.tactics.OperationTactics.BOUND_TICKS
+            men.filter { it.isAlive && com.sbwnpc.squad.combat.tactics.SquadTactics.task(it)?.job == com.sbwnpc.squad.combat.tactics.TacticalJob.ADVANCE }
+                .forEach { ranOn.getOrPut(it.uuid) { HashSet() } += beat }
+            val near = men.count { it.isAlive && it.position().distanceTo(owner.position()) <= 16.0 }
+            if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} near=$near ran=${ranOn.mapValues { it.value.size }.values} enemyAlive=${enemy.isAlive}")
+            if (helper.tick - since >= 600) {
+                val beats = ranOn.values.flatten().toSet()
+                helper.assertTrue(ranOn.size >= 3 && beats.size >= 2, "No bounding: runners ${ranOn.size} on ${beats.size} bounds")
+                helper.assertTrue(near >= 4, "The squad did not keep up with its player: $near of ${men.size} within 16")
+                scene.result("PASS", "near=$near runners=${ranOn.size} bounds=${beats.size}")
+                helper.succeed()
+            }
+        }
+    }
 }

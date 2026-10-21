@@ -117,6 +117,30 @@ class OperationTacticsTest {
     private val here = Point3(40.0, 64.0, 100.0)
     private fun duty(order: TacticalOrder = TacticalOrder.ATTACK, proposal: FrontProposal = FrontProposal(CombatDuty.FIRE, Point3(60.0, 64.0, 100.0), null), inContact: Boolean = true, scout: Boolean = false, heightRole: Boolean = false, primaryAmmo: Boolean = true, reachedMove: Boolean = false, wasFiring: Boolean = false, elsewhere: Boolean = false) = OperationTactics.duty(DutyInputs(order, here, proposal, objective, Point3(90.0, 64.0, 100.0), inContact, elsewhere, scout, heightRole, primaryAmmo, hasPatrolRoute = false, reachedMove = reachedMove, wasFiring = wasFiring), fireReach = 40.0, approachOffset = 10.0)
 
+    @Test fun `a following squad in a fight runs to its places by bounds while the other half fires`() {
+        val follower = DutyInputs(TacticalOrder.DEFEND, here, FrontProposal(CombatDuty.FIRE, here, null), objective, null, inContact = true, elsewhere = false, scout = false, heightRole = false, primaryAmmo = true, hasPatrolRoute = false, reachedMove = false, wasFiring = false, following = true)
+        val slot = Point3(objective!!.x + 3.0, objective.y, objective.z)
+        val running = OperationTactics.duty(follower.copy(followBound = true, followSlot = slot), fireReach = 40.0, approachOffset = 10.0)
+        assertEquals(CombatDuty.MOVE, running.duty)
+        assertEquals(slot, running.anchor)
+        val covering = OperationTactics.duty(follower.copy(followBound = false, followSlot = slot), fireReach = 40.0, approachOffset = 10.0)
+        assertEquals(CombatDuty.FIRE, covering.duty)
+        assertEquals(here, covering.anchor)
+        // Not following: a bound means nothing.
+        assertEquals(CombatDuty.FIRE, OperationTactics.duty(follower.copy(following = false, followBound = true, followSlot = slot), fireReach = 40.0, approachOffset = 10.0).duty)
+        // A player in a vehicle is followed by the ride.
+        assertEquals(CombatDuty.FOLLOW_ORDER, OperationTactics.duty(follower.copy(followBound = true, followSlot = slot, followRide = true), fireReach = 40.0, approachOffset = 10.0).duty)
+    }
+
+    @Test fun `halves take turns between 12 and 32 blocks, nobody runs nearer and everybody further`() {
+        assertTrue(OperationTactics.followBound(half = 0, now = 0, toLeader = 20.0))
+        assertFalse(OperationTactics.followBound(half = 1, now = 0, toLeader = 20.0))
+        assertFalse(OperationTactics.followBound(half = 0, now = 100, toLeader = 20.0))
+        assertTrue(OperationTactics.followBound(half = 1, now = 100, toLeader = 20.0))
+        assertFalse(OperationTactics.followBound(half = 0, now = 0, toLeader = 10.0))
+        assertTrue(OperationTactics.followBound(half = 1, now = 0, toLeader = 40.0))
+    }
+
     @Test fun `a gunner following his player takes no height post`() {
         val sentry = DutyInputs(TacticalOrder.DEFEND, here, FrontProposal(CombatDuty.FIRE, here, null), objective, null, inContact = false, elsewhere = false, scout = false, heightRole = true, primaryAmmo = true, hasPatrolRoute = false, reachedMove = false, wasFiring = false)
         assertEquals(CombatDuty.OBSERVE, OperationTactics.duty(sentry, fireReach = 40.0, approachOffset = 10.0).duty)

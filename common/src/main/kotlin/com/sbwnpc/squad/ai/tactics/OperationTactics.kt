@@ -60,6 +60,12 @@ data class DutyInputs(
     val flanking: Boolean = false,
     /** On a FOLLOW order: the objective is a player who walks away from any post round it. */
     val following: Boolean = false,
+    /** Following in a fight: this man's half runs this beat, see [OperationTactics.followBound]. */
+    val followBound: Boolean = false,
+    /** Following: the man's own loose place by the player, see [com.sbwnpc.squad.combat.FollowFormation]. */
+    val followSlot: Point3? = null,
+    /** Following a player who rides a vehicle, or this man holds a vehicle: the ride sees to it. */
+    val followRide: Boolean = false,
 )
 
 data class DutyChoice(val duty: CombatDuty, val anchor: Point3)
@@ -205,6 +211,14 @@ object OperationTactics {
 
                 !inContact || order in setOf(TacticalOrder.RETREAT, TacticalOrder.MOVE, TacticalOrder.BARRAGE) -> CombatDuty.FOLLOW_ORDER
 
+                // Following in a fight: the squad keeps up with its player by bounds, one half running
+                // to its places by him while the other fires, then the other way round (owner, 21.10).
+                // Left to the rule below, the whole squad stood and fought where the contact found
+                // it and let the player walk away (#116). A player in a vehicle is followed by the ride.
+                following && followRide -> CombatDuty.FOLLOW_ORDER
+
+                following && followBound && followSlot != null -> CombatDuty.MOVE
+
                 order != TacticalOrder.ATTACK -> CombatDuty.FIRE
 
                 // Firing on the way would stop him short of his sector.
@@ -223,6 +237,7 @@ object OperationTactics {
             val anchor = when {
                 duty == CombatDuty.SEARCH -> requireNotNull(inspect) { "a scout needs a point to inspect" }
                 duty in setOf(CombatDuty.FOLLOW_ORDER, CombatDuty.OBSERVE) -> objective ?: position
+                following && duty == CombatDuty.MOVE -> followSlot ?: position
                 order != TacticalOrder.ATTACK -> position
                 duty == CombatDuty.FIRE && proposal.duty == CombatDuty.MOVE -> position
                 approach -> short(proposal.anchor, position, approachOffset)
@@ -230,6 +245,28 @@ object OperationTactics {
             }
             DutyChoice(duty, anchor)
         }
+
+    /**
+     * Whether a following man in a fight runs to his place this beat. Halves of the squad
+     * ([half] 0 and 1) take turns every [BOUND_TICKS]. Within [FOLLOW_KEEP] of the player nobody
+     * runs; beyond [FOLLOW_CATCH_UP] everyone does, since taking turns would only fall further
+     * behind a player who keeps walking.
+     */
+    fun followBound(half: Int, now: Long, toLeader: Double): Boolean =
+        when {
+            toLeader > FOLLOW_CATCH_UP -> true
+            toLeader <= FOLLOW_KEEP -> false
+            else -> (now / BOUND_TICKS) % 2 == (half % 2).toLong()
+        }
+
+    /** A following man this near his player fights from where he is. */
+    const val FOLLOW_KEEP = 12.0
+
+    /** Twice [com.sbwnpc.squad.combat.FollowFormation.NEAR_DISTANCE]: beyond it the whole squad runs. */
+    const val FOLLOW_CATCH_UP = 32.0
+
+    /** How long each half of a following squad runs or covers, 5 s. */
+    const val BOUND_TICKS = 100L
 
     /** Half as far from the nearest of [defenders] as [from], but no nearer than [CLOSE_DISTANCE]. */
     fun closingPost(from: Point3, defenders: List<Point3>): ClosingPost {

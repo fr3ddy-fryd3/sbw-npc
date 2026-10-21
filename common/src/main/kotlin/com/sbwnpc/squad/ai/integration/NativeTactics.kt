@@ -128,6 +128,9 @@ object NativeTactics {
         private val knownOrders = HashMap<UUID, Int>()
         private val missions = HashMap<UUID, SquadMission>()
         private val strategies = HashMap<UUID, Pair<CombatStrategy, Long>>()
+
+        /** The last bound logged for each following squad in a fight. */
+        private val followBeats = HashMap<UUID, Long>()
         private val stability = DecisionStability()
         private val allocationOrigins = HashMap<UUID, Point3>()
         private val formationDuties = HashMap<UUID, CombatDuty>()
@@ -757,7 +760,13 @@ object NativeTactics {
                 // Marching on, an attack's reinforcement makes for the operation's entry itself: left to
                 // the order's own march, each man's sighted target still drew him off after it.
                 val entry = if (marching && saved.order == SquadOrder.ATTACK) operations.pending(saved.id)?.let { operations.operation(it.operation) }?.entry?.center else null
-                val intents = view.members.map { member ->
+                val following = saved.order == com.sbwnpc.squad.squad.SquadOrder.FOLLOW
+                val leader = if (following) level.getPlayerByUUID(saved.owner) else null
+                val heading = saved.followHeading.takeIf { it != net.minecraft.world.phys.Vec3.ZERO }?.let { it.x to it.z }
+                val intents = view.members.mapIndexed { index, member ->
+                    val man = if (following) level.getEntity(member.id) as? NpcEntity else null
+                    val leaderAt = leader?.position()?.point()
+                    val toLeader = leaderAt?.let { kotlin.math.hypot(member.position.x - it.x, member.position.z - it.z) } ?: 0.0
                     val waypoint = waypoints[member.id]
                     val proposal = waypoint?.let { FrontProposal(CombatDuty.MOVE, it, null) } ?: proposals.getValue(member.id)
                     val choice = entry?.let { DutyChoice(CombatDuty.MOVE, it) } ?: OperationTactics.duty(
@@ -776,7 +785,12 @@ object NativeTactics {
                             reachedMove = actions[member.id]?.let { it.intent.duty == CombatDuty.MOVE && it.reached() } == true,
                             wasFiring = oldIntents[member.id]?.duty == CombatDuty.FIRE,
                             flanking = waypoint != null,
-                            following = saved.order == com.sbwnpc.squad.squad.SquadOrder.FOLLOW,
+                            following = following,
+                            // Halves by place among the men here now, not by saved slot: after losses
+                            // a slot parity can leave one half empty, so nobody covers or nobody runs.
+                            followBound = following && OperationTactics.followBound(index, now, toLeader),
+                            followSlot = leaderAt?.let { com.sbwnpc.squad.combat.FollowFormation.slot(it, heading, saved.members.indexOf(member.id), heading != null) },
+                            followRide = leader?.vehicle != null || man?.activities?.has(com.sbwnpc.squad.entity.NpcActivity.VEHICLE) == true,
                         ),
                         FIRE_POST_REACH,
                         CombatPosition.LOCAL_MOVE_RADIUS,
@@ -790,9 +804,12 @@ object NativeTactics {
                     // the squad's strategy, which reshapes a sentry's task only to withdraw. Rebuilt on
                     // either, a sentry's post was thrown away and searched again every few seconds (#73).
                     val heightPost = duty == CombatDuty.OBSERVE && before?.anchor == proposed.point()
+                    // A bound's place moves with the player: kept for the whole beat, it was where he
+                    // stood five seconds before.
+                    val bounding = following && duty == CombatDuty.MOVE
                     val samePost = heightPost || (
                         oldStrategy?.first == selected && (focus?.distanceTo(plannedContact[member.id] ?: focus) ?: 0.0) < 8 &&
-                            ((waypoint == null && member.id !in wasArcing) || before?.anchor?.native()?.distanceTo(proposed)?.let { it < 4 } == true)
+                            ((waypoint == null && member.id !in wasArcing && !bounding) || before?.anchor?.native()?.distanceTo(proposed)?.let { it < 4 } == true)
                         )
                     val retained = before?.takeIf { it.duty == duty && it.requireCover == requireCover && it.requireShelter == requireShelter && samePost }
                     if (retained != null) {
@@ -820,6 +837,9 @@ object NativeTactics {
                             standoff = CombatPositionSafety.clearance(member.role),
                         )
                     }
+                }
+                if (following && focus != null && followBeats.put(saved.id, now / OperationTactics.BOUND_TICKS) != now / OperationTactics.BOUND_TICKS) {
+                    DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=follow_bound running={} of={}", saved.id, intents.count { it.duty == CombatDuty.MOVE }, intents.size)
                 }
                 val teams = teamAllocators.getOrPut(saved.id, ::TaskTeamAllocator).assign(saved.id, intents)
                 SquadMission(AgentId(AgentLevel.SQUAD, saved.id), teams).also { missions[saved.id] = it }
