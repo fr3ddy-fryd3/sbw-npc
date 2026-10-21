@@ -34,6 +34,31 @@ object HtnTacticsGameTests {
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1600, batch = "htn-wide")
     fun htnJointAttack64OnWideFront(helper: GameTestHelper) = jointAttack(helper, wide = true)
 
+    /** In-game 21.10: one ATTACK for 28 squads froze the server choosing their approach sectors (#140). */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 900, batch = "htn-many-squads")
+    fun htnTwentyEightSquadsAttackTogether(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "htn-many-squads")
+        val manager = SquadManager.get(helper.level)
+        val groups = (0 until 28).map { squad ->
+            (0 until 4).map { index -> scene.spawn(Vec3(10.5 + squad % 7 * 6 + index, 1.0, 40.5 + squad / 7 * 10)) }
+        }
+        val members = groups.flatten()
+        val origins = members.associate { it.uuid to it.position() }
+        for (index in 0 until 8) scene.enemy(Vec3(145.5 + index / 4 * 2, 1.0, 100.5 + index % 4 * 4))
+        val squads = groups.map { group -> manager.create(helper.level, UUID(90, 28), requireNotNull(group.first().spawnFaction), group.map { it.uuid }) }
+        scene.onClose = { squads.forEach { manager.deleteSquad(helper.level, it.id) } }
+        val objective = helper.absolutePos(BlockPos(148, 1, 106))
+        GroupOrders.apply(helper.level, manager, squads.map { it.id }, SquadOrder.ATTACK, objective.x, objective.z)
+        helper.onEachTick {
+            if (helper.tick < 600) return@onEachTick
+            val moved = members.count { it.position().distanceTo(origins.getValue(it.uuid)) >= 12.0 }
+            helper.assertTrue(moved >= 56, "Only $moved of ${members.size} attackers moved")
+            scene.result("PASS", "tick=${helper.tick} moved=$moved")
+            helper.succeed()
+        }
+    }
+
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1800, batch = "htn-area")
     fun htnEmptyAreaRequiresOccupationAndQuietInterval(helper: GameTestHelper) {
