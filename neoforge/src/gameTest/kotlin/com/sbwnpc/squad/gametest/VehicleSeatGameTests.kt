@@ -2,6 +2,7 @@ package com.sbwnpc.squad.gametest
 
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.domain.port.VehicleModel
+import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.npc.TransportVehicle
 import com.sbwnpc.squad.squad.SquadManager
@@ -91,6 +92,52 @@ object VehicleSeatGameTests {
             if (man.vehicle == null) {
                 helper.assertTrue(helper.tick - gone >= 40, "He left the gun at once instead of watching for the next target")
                 scene.result("PASS", "tick=${helper.tick} seatedAt=$seatedAt")
+                helper.succeed()
+            }
+        }
+    }
+
+    /**
+     * A turret gunner takes his time to notice an enemy by his rank, as a man on foot does (#146):
+     * an elite at an APC's gun gets an enemy 60 blocks off by day sooner than a recruit at the next.
+     * The enemy is unarmed, so no shot of his gives him away and makes it instant.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 600, batch = "turret-rank")
+    fun eliteTurretGunnerNoticesSoonerThanARecruit(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "turret-rank")
+        val manager = SquadManager.get(helper.level)
+        val guns = listOf(park(helper, TransportVehicle.LAV_150, Vec3(70.5, 1.0, 20.5)), park(helper, TransportVehicle.LAV_150, Vec3(80.5, 1.0, 20.5)))
+        val gunners = listOf(NpcRank.ELITE, NpcRank.RECRUIT).mapIndexed { index, rank ->
+            scene.spawn(Vec3(70.5 + index * 10, 1.0, 17.5)).also { man ->
+                man.npcRank = rank
+                helper.assertTrue(man.startRiding(guns[index], true), "The $rank could not get in")
+                val seats = Ports.vehicles.seating(guns[index]).indices
+                // Whichever seat lays the turret: try each until he is in it.
+                seats.firstOrNull { Ports.vehicles.isTurretGunner(guns[index], man) || (Ports.vehicles.changeSeat(guns[index], man, it) && Ports.vehicles.isTurretGunner(guns[index], man)) }
+                helper.assertTrue(Ports.vehicles.isTurretGunner(guns[index], man), "The $rank is not at the turret")
+            }
+        }
+        val squads = gunners.map { manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(it.uuid)) }
+        squads.zip(gunners).forEach { (squad, man) -> manager.issueOrderAt(helper.level, squad.id, SquadOrder.DEFEND, man.blockPosition()) }
+        var enemy: com.sbwnpc.squad.entity.NpcEntity? = null
+        val noticedAt = arrayOfNulls<Long>(2)
+        scene.onClose = {
+            squads.forEach { manager.deleteSquad(helper.level, it.id) }
+            guns.forEach { it.discard() }
+        }
+        helper.onEachTick {
+            if (enemy == null && helper.tick >= 40) {
+                enemy = scene.enemy(Vec3(75.5, 1.0, 80.5)).also { it.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, net.minecraft.world.item.ItemStack.EMPTY) }
+            }
+            val foe = enemy ?: return@onEachTick
+            gunners.forEachIndexed { index, man -> if (noticedAt[index] == null && man.target?.uuid == foe.uuid) noticedAt[index] = helper.tick }
+            if (helper.tick % 50L == 0L) scene.result("RUNNING", "tick=${helper.tick} elite=${noticedAt[0]} recruit=${noticedAt[1]}")
+            val elite = noticedAt[0]
+            val recruit = noticedAt[1]
+            if (elite != null && recruit != null) {
+                helper.assertTrue(recruit > elite, "The recruit noticed at $recruit, no later than the elite at $elite")
+                scene.result("PASS", "elite=$elite recruit=$recruit")
                 helper.succeed()
             }
         }

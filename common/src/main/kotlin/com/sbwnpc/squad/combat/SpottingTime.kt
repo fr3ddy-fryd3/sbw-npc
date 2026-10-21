@@ -112,10 +112,13 @@ object SpottingTime {
         val size: Size = Size.PERSON,
     )
 
-    /** Seconds the target takes to be noticed, or null when it is too far away for this light to ever be. */
-    fun seconds(observer: Observer, target: Target): Double? {
+    /**
+     * Seconds the target takes to be noticed, or null when it is too far away for this light to ever
+     * be. With [cutOff] false there is no such distance, only a longer time.
+     */
+    fun seconds(observer: Observer, target: Target, cutOff: Boolean = true): Double? {
         val light = Light.of(target.light.coerceIn(0, MAX_LIGHT))
-        if (target.distance > light.cutoff * observer.cutoffFactor * target.weather.reachFactor * target.size.reachFactor) return null
+        if (cutOff && target.distance > light.cutoff * observer.cutoffFactor * target.weather.reachFactor * target.size.reachFactor) return null
         val base = BASE_SECONDS + DISTANCE_SECONDS * (target.distance / REFERENCE_DISTANCE).let { it * it }
         var factor = light.timeFactor * observer.timeFactor * target.weather.timeFactor * target.size.timeFactor *
             (1.0 + (CONE_EDGE_FACTOR - 1.0) * target.offAxis.coerceIn(0.0, 1.0))

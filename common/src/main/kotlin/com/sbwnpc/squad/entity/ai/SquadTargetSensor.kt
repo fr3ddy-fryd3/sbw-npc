@@ -51,6 +51,9 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
 
     /** How far this NPC has got at noticing each enemy in view. */
     private val noticing = Noticing("sight")
+
+    /** A turret gunner's own: what the ground scan drains is not what he has been watching. */
+    private val gunnerNoticing = Noticing("turret gunner", LogGroup.VEHICLE, cutOff = false)
     private var nextReallocationTick = Long.MIN_VALUE
 
     // ExtendedSensor's default is a flat 20 ticks with NO initial offset (nextTickTime starts at 0
@@ -78,7 +81,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         val directTarget = nearestDirectTarget(entity, level)
         val reconsider = level.gameTime >= nextReallocationTick
         if (reconsider) nextReallocationTick = level.gameTime + REALLOCATION_MIN + entity.random.nextInt(REALLOCATION_JITTER)
-        val target = computeDesired(entity, level, directTarget, reconsider)
+        val target = gunnerNotices(entity, level, computeDesired(entity, level, directTarget, reconsider), previous)
         // Capture sight loss before target selection can discard the personally observed enemy.
         if (previous != null && entity.lastSeenFire.observed(previous.uuid)) {
             entity.noticeHidden(previous, DetectionSightline.trace(entity, previous))
@@ -98,6 +101,27 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             SquadTactics.observe(entity, target)
         }
         if (target != null) TankWeaponSelection.update(entity, target)
+    }
+
+    /**
+     * At an APC's or a helicopter's turret a new target counts only once the gunner has noticed it
+     * himself, by his rank and the light, with no cut-off (#146). Every source of a target goes
+     * through here: his crewmates' instant sight handed him new contacts at once, and SBW lays the
+     * turret on a perfect lead the moment it has one. Whatever shot at the vehicle, and the target he
+     * already has, stay instant. Until he notices it he keeps the one he had.
+     */
+    private fun gunnerNotices(mob: NpcEntity, level: ServerLevel, desired: LivingEntity?, previous: LivingEntity?): LivingEntity? {
+        val vehicle = mob.vehicle ?: return desired
+        if (!Ports.vehicles.isTurretGunner(vehicle, mob)) return desired
+        val kept = previous?.takeIf { it.isAlive && SquadTeams.isHostile(mob, it) }
+        val chosen = when {
+            desired == null || desired === previous || desired === mob.vehicleAttacker() -> desired
+            !DetectionSightline.canSee(mob, desired) -> kept
+            gunnerNoticing.noticed(mob, level, desired, GUNNER_OFF_AXIS) -> desired
+            else -> kept
+        }
+        gunnerNoticing.endScan(level.gameTime)
+        return chosen
     }
 
     /** Priority is explicit here: later queries run only when earlier sources have no target. */
@@ -303,6 +327,9 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     }
 
     companion object {
+        /** A mount turns all round; its gunner looks as if half-way to the edge of a cone. */
+        private const val GUNNER_OFF_AXIS = 0.5
+
         private const val SCAN_RATE_MIN = 15
         private const val SCAN_RATE_JITTER = 11 // 15..25 ticks, mean 20 — same average as before
         private const val REALLOCATION_MIN = 80L

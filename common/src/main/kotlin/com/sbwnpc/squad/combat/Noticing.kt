@@ -16,7 +16,13 @@ import net.minecraft.world.level.biome.Biome
  * different intervals, and one scan's [endScan] would drain what another was filling. [by] names
  * the scan in the [group] log; [size] is what it looks for.
  */
-class Noticing(private val by: String, private val group: LogGroup = LogGroup.SPOTTING, private val size: SpottingTime.Size = SpottingTime.Size.PERSON) {
+class Noticing(
+    private val by: String,
+    private val group: LogGroup = LogGroup.SPOTTING,
+    private val size: SpottingTime.Size = SpottingTime.Size.PERSON,
+    /** False for a mounted gunner: his optics have no cut-off, only the time, see [SpottingTime.seconds]. */
+    private val cutOff: Boolean = true,
+) {
     private val progress = SpottingProgress()
 
     /**
@@ -42,7 +48,7 @@ class Noticing(private val by: String, private val group: LogGroup = LogGroup.SP
             weatherAt(level, candidate.blockPosition()),
             size,
         )
-        val required = SpottingTime.seconds(SpottingTime.Observer.of(observer.npcRank, observer.npcClass), target)
+        val required = SpottingTime.seconds(SpottingTime.Observer.of(observer.npcRank, observer.npcClass), target, cutOff)
         val before = progress.seconds(candidate.uuid)
         return progress.advance(candidate.uuid, now, required).also { seen ->
             // Once each: when he is first noticed, and when he first comes into view too far off for this light.

@@ -7,6 +7,7 @@ import com.atsuishio.superbwarfare.tools.EntityFindUtil
 import com.sbwnpc.squad.combat.AutonomousShotTarget
 import com.sbwnpc.squad.combat.DroneAccuracy
 import com.sbwnpc.squad.combat.DroneCombat
+import com.sbwnpc.squad.combat.TurretGunnerAccuracy
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.phys.Vec3
@@ -40,7 +41,10 @@ object VehicleDroneAccuracy {
         val shooter = parameters.shooter
         if (shooter !is NpcEntity || shooter.vehicle !== vehicle) return parameters
         val target = npcTarget(vehicle, shooter, parameters)
-        val spread = DroneCombat.spreadForTarget(parameters.spread, target)
+        // The rank's scatter first: SBW lays a turret on a perfect lead, so the weapon's own spread is
+        // all the error a gunner has (#146). A drone is then harder still, as for anyone.
+        val ranked = if (SbwVehicles.isTurretGunner(vehicle, shooter)) TurretGunnerAccuracy.spread(parameters.spread, shooter.npcRank) else parameters.spread
+        val spread = DroneCombat.spreadForTarget(ranked, target)
         return if (spread == parameters.spread) parameters else parameters.copy(spread = spread)
     }
 

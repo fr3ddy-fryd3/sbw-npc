@@ -55,6 +55,12 @@ interface Vehicles {
     /** Whether [passenger]'s seat has a weapon of its own. */
     fun hasWeaponAt(vehicle: Entity, passenger: Entity): Boolean
 
+    /**
+     * Whether [passenger] lays a turret or a weapon station that the vehicle aims for him: an
+     * APC's or a helicopter's gun, not a tank's main gun nor a pilot's own fixed weapons.
+     */
+    fun isTurretGunner(vehicle: Entity, passenger: Entity): Boolean
+
     /** Enough stored power for roughly [ticks] of driving. Always true for anything that doesn't
      *  run on power. */
     fun hasPowerFor(vehicle: Entity, ticks: Double): Boolean
