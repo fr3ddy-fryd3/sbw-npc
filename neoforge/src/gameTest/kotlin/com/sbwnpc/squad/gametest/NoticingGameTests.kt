@@ -87,6 +87,9 @@ object NoticingGameTests {
             manager.deleteSquad(helper.level, squad.id)
             helper.level.setDayTime(oldTime)
             helper.level.setWeatherParameters(6000, 0, false, false)
+            // Rain fades out over a few seconds otherwise, into whichever batch runs next.
+            helper.level.setRainLevel(0f)
+            helper.level.setThunderLevel(0f)
         }
         helper.onEachTick {
             shooter.yHeadRot = -90f
