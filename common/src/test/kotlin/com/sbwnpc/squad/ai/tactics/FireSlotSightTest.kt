@@ -51,4 +51,11 @@ class FireSlotSightTest {
             true
         }
     }
+
+    @Test fun `a found post is kept until the slot moves, a miss is searched again soon`() {
+        assertTrue(FireSlotSight.stillAnswers(moved = 3.0, found = true, age = 10_000))
+        assertFalse(FireSlotSight.stillAnswers(moved = 5.0, found = true, age = 0))
+        assertTrue(FireSlotSight.stillAnswers(moved = 0.0, found = false, age = 39))
+        assertFalse(FireSlotSight.stillAnswers(moved = 0.0, found = false, age = 40))
+    }
 }

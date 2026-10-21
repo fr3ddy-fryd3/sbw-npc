@@ -31,11 +31,6 @@ object NativeTactics {
     private val HEIGHT_ROLES = setOf(NpcClass.MACHINE_GUNNER, NpcClass.SNIPER)
     private const val EYE_HEIGHT = 1.6
 
-    /** A slot that moved less than this since it was searched keeps its chosen post. */
-    private const val SLOT_REUSE_DISTANCE = 4.0
-
-    /** A slot that found no sighted post is searched again after this, as the defence and the men move. */
-    private const val SLOT_RETRY_TICKS = 40L
     private val worlds = HashMap<ServerLevel, World>()
     private fun world(npc: NpcEntity) = worlds.getOrPut(npc.level() as ServerLevel) { World(npc.level() as ServerLevel) }
     fun refresh(npc: NpcEntity) {
@@ -97,7 +92,9 @@ object NativeTactics {
     private data class SectorGroup(val squad: UUID, val manoeuvre: Boolean)
 
     /** The [post] [FireSlotSight] chose at [searchedAt] for a slot at [slot]; null when none sees the defence. */
-    private class SlotSight(val slot: Point3, val post: Point3?, val searchedAt: Long)
+    private class SlotSight(val slot: Point3, val post: Point3?, val searchedAt: Long) {
+        fun answers(anchor: Point3, now: Long) = FireSlotSight.stillAnswers(hypot(slot.x - anchor.x, slot.z - anchor.z), post != null, now - searchedAt)
+    }
 
     private class World(val level: ServerLevel) {
         val pendingDeaths = HashMap<UUID, PendingDeath>()
@@ -340,6 +337,7 @@ object NativeTactics {
                             allocationOrigins.remove(it)
                             formationDuties.remove(it)
                             plannedContact.remove(it)
+                            slotSights.remove(it)
                         }
                     }
                 }
@@ -686,11 +684,7 @@ object NativeTactics {
         private fun withSight(operation: UUID, id: UUID, proposal: FrontProposal, defenders: List<Point3>, role: NpcClass): FrontProposal {
             if (proposal.duty == CombatDuty.REAR_GUARD || defenders.isEmpty()) return proposal
             val now = level.gameTime
-            // A miss is not kept like a find: kept, it left the man on the blind post until the
-            // whole line moved (#93, in-game 20.10).
-            val kept = slotSights[id]?.takeIf {
-                hypot(it.slot.x - proposal.anchor.x, it.slot.z - proposal.anchor.z) <= SLOT_REUSE_DISTANCE && (it.post != null || now - it.searchedAt < SLOT_RETRY_TICKS)
-            }
+            val kept = slotSights[id]?.takeIf { it.answers(proposal.anchor, now) }
             val chosen = if (kept != null) {
                 kept.post
             } else {
@@ -700,8 +694,17 @@ object NativeTactics {
                     } == true
                 }?.let { post -> groundAt(post)?.let { Point3(post.x, it.y, post.z) } ?: post }
                 slotSights[id] = SlotSight(proposal.anchor, post, now)
-                if (post == null) {
-                    DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=slot_no_sight member={} slot={} ground={} clearance={} nearestDefender={}", operation, id, proposal.anchor, groundAt(proposal.anchor), CombatPositionSafety.clearance(role), defenders.minByOrNull { hypot(it.x - proposal.anchor.x, it.z - proposal.anchor.z) })
+                if (post == null && DebugFlags.on(LogGroup.ORDER)) {
+                    DebugFlags.log(
+                        LogGroup.ORDER,
+                        "[htn] operation={} event=slot_no_sight member={} slot={} ground={} clearance={} nearestDefender={}",
+                        operation,
+                        id,
+                        proposal.anchor,
+                        groundAt(proposal.anchor),
+                        CombatPositionSafety.clearance(role),
+                        defenders.minByOrNull { hypot(it.x - proposal.anchor.x, it.z - proposal.anchor.z) },
+                    )
                 }
                 post
             }

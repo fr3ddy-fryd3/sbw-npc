@@ -24,6 +24,20 @@ object FireSlotSight {
     /** Defenders, nearest first, any of whom a candidate may see to count as sighted. */
     private const val SIGHTED_DEFENDERS = 3
 
+    /** A slot that moved less than this since it was searched keeps its chosen post. */
+    private const val REUSE_DISTANCE = 4.0
+
+    /** A slot that found no sighted post is searched again after this, as the defence and the men move. */
+    private const val RETRY_TICKS = 40L
+
+    /**
+     * Whether a search made [age] ticks ago for a slot that has since moved [moved] blocks still
+     * answers for it. A post it [found] is kept, so a man is not shuffled about by every re-layout;
+     * a miss is searched again shortly instead, or the man stays on a blind post until the whole
+     * line moves.
+     */
+    fun stillAnswers(moved: Double, found: Boolean, age: Long): Boolean = moved <= REUSE_DISTANCE && (found || age < RETRY_TICKS)
+
     /**
      * The first of a few candidates round [slot] from which [sees] holds towards one of the
      * nearest [defenders], or null if none does. The candidates lie between [clearance] and the

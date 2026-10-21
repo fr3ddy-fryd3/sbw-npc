@@ -20,11 +20,12 @@ import java.util.function.Consumer
 @PrefixGameTestTemplate(false)
 object FiringLineGameTests {
     /**
-     * The attackers stand on a hill 14 blocks above the defenders' flat ground. A slot is planned at
-     * the objective's height, so the floor under it is out of reach of a search from there; every
-     * candidate counted as blind and the men were left on the blind post (#93, in-game 19.10).
-     * The defence stands far enough back that the hill's crest is outside a rifleman's clearance
-     * even after it moves up a little: nearer, nothing outside the clearance can see down the cliff.
+     * The attackers stand on a hill 14 blocks above the defenders' flat ground, and their slots end
+     * up on posts that see the defence. A slot is planned at the objective's height, so the search
+     * looks for the floor under it rather than from that height, where every candidate was blind
+     * (#93). The defence stands far enough back that the hill's crest is outside a rifleman's
+     * clearance even after it moves up a little: nearer, nothing outside the clearance can see down
+     * the cliff. Whether a blind slot is searched again soon is a unit test of [com.sbwnpc.squad.ai.tactics.FireSlotSight.stillAnswers].
      */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1200, batch = "htn-hill-slots")
@@ -57,9 +58,8 @@ object FiringLineGameTests {
         var firingSince: Long? = null
         var mostBlind = 0
         helper.onEachTick {
-            // Who holds a blind post now, not every search that missed: a miss is searched again,
-            // and counting misses failed the scene for a man already on a post that sees.
-            val blind = NativeTactics.slotsWithoutSight(helper.level, attackerIds)
+            // Who holds a blind post now: a miss is searched again, so a man can be blind for a moment.
+            val blind = NativeTactics.slotsWithoutSight(helper.level, groups.flatten().filter { it.isAlive }.map { it.uuid })
             mostBlind = maxOf(mostBlind, blind)
             if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} attackerShooters=${shooters.size} blindNow=$blind mostBlind=$mostBlind")
             // Slots exist only once the defence is in contact, and the men fire from them.
