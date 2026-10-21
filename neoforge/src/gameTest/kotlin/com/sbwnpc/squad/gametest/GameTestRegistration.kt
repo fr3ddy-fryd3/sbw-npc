@@ -44,7 +44,7 @@ object GameTestRegistration {
         )
         // Saved-world replays require an explicit local fixture; ordinary suites stay portable.
         val replayClasses = if (System.getProperty("sbwnpc.gameTestReplay", "").isNotBlank()) listOf(SavedBattleGameTests::class.java) else emptyList()
-        val battleClasses = if (System.getProperty("sbwnpc.gameTestBattleSaves", "").isNotBlank()) listOf(RealTerrainBattleGameTests::class.java) else emptyList()
+        val battleClasses = if (System.getProperty("sbwnpc.gameTestBattleSaves", "").isNotBlank()) listOf(RealTerrainBattleGameTests::class.java, RealTerrainTowerGameTests::class.java) else emptyList()
         val methods = (classes + replayClasses + battleClasses).flatMap { it.declaredMethods.toList() }.filter { it.isAnnotationPresent(GameTest::class.java) || it.isAnnotationPresent(GameTestGenerator::class.java) }
         val selected = System.getProperty("sbwnpc.gameTestFilter", "").split(',').filter { it.isNotBlank() }.toSet()
         require(selected.all { name -> methods.any { it.name == name } }) { "Unknown GameTest: $selected; available: ${methods.map { it.name }}" }

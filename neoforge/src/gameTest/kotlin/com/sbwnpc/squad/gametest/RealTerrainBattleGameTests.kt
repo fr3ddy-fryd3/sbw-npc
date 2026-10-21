@@ -293,7 +293,7 @@ object RealTerrainBattleGameTests {
     }
 
     /** Copies the region files covering [radius] round [center] so the save itself is never opened for writing. */
-    private fun copyRegions(save: Path, fixture: Path, center: BlockPos, radius: Int): Path {
+    internal fun copyRegions(save: Path, fixture: Path, center: BlockPos, radius: Int): Path {
         val target = fixture.resolve("region")
         Files.createDirectories(target)
         val regions = ((center.x - radius) shr 9)..((center.x + radius) shr 9)
