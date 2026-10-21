@@ -23,10 +23,18 @@ object DebugConfig {
         )
         .defineListAllowEmpty("logGroups", { emptyList<String>() }, { "" }, { it is String })
 
+    val MAP_SHOWS_ALL: ModConfigSpec.BooleanValue = builder
+        .comment(
+            "Show every faction's squads, orders and objectives on the map, not only the player's side.",
+            "For testing alone with several factions; leave off in multiplayer.",
+        )
+        .define("mapShowsAll", false)
+
     val SPEC: ModConfigSpec = builder.build()
 
     fun onConfig(event: ModConfigEvent) {
         if (event.config.spec !== SPEC || event is ModConfigEvent.Unloading) return
+        DebugFlags.mapShowsAll = MAP_SHOWS_ALL.get()
         val names = LOG_GROUPS.get()
         DebugFlags.enabledGroups = if ("all" in names) {
             LogGroup.entries.toSet()
