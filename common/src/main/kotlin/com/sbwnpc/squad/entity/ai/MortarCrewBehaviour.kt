@@ -2,15 +2,19 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.Hostiles
 import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.combat.Noticing
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.npc.NpcClass
+import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.Squad
 import com.sbwnpc.squad.squad.SquadOrder
+import com.sbwnpc.squad.squad.SquadReports
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
@@ -40,6 +44,9 @@ class MortarCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var nextBarrageShiftTick = 0
     private var barrageAim: BlockPos? = null
     private var lastScanResult: BlockPos? = null
+
+    /** How far the crew has got at noticing each enemy its own scan looks at. */
+    private val noticing = Noticing("mortar", LogGroup.FIRE_SUPPORT)
 
     /** Consecutive ticks the fire mission has been out of reach — see [outOfReach]. */
     private var unreachableTicks = 0
@@ -368,6 +375,27 @@ class MortarCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
         return squad.objective
     }
 
+    /**
+     * The nearest of [candidates] this crew notices itself, reporting each one it notices to
+     * [faction]. Noticed, not just in view (#114). All round, as through binoculars: serving the
+     * tube turns his head onto it, so his cone points nowhere in particular, and the whole sweep is
+     * as slow as the edge of a cone.
+     */
+    private fun ownSighting(entity: NpcEntity, level: ServerLevel, candidates: List<LivingEntity>, faction: SquadFaction?): LivingEntity? {
+        val tick = level.gameTime
+        var selfSpotted: LivingEntity? = null
+        var losChecks = 0
+        for (c in candidates) {
+            if (losChecks++ >= MAX_LOS_CHECKS) break
+            if (DetectionSightline.sight(entity, c).visibility != DetectionSightline.Visibility.VISIBLE) continue
+            if (!noticing.noticed(entity, level, c, offAxis = 1.0)) continue
+            if (faction != null) TeamAwareness.report(faction, c.uuid, c.position(), tick, "mortar ${entity.uuid.toString().take(8)}")
+            if (selfSpotted == null) selfSpotted = c
+        }
+        noticing.endScan(tick)
+        return selfSpotted
+    }
+
     /** No more blind radius scanning: a target is only usable if THIS mortar's own operator can
      *  personally see it right now (also reports it — he's a spotter too, with binoculars, not
      *  just a passive report recipient), OR the rest of the faction has relayed a fresh sighting
@@ -385,16 +413,10 @@ class MortarCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
         // engaging them already does.
         val candidates = Hostiles.within(level, entity, radius)
 
-        var selfSpotted: LivingEntity? = null
-        var losChecks = 0
-        for (c in candidates) {
-            if (losChecks++ >= MAX_LOS_CHECKS) break
-            if (!com.sbwnpc.squad.combat.DetectionSightline.canSee(entity, c)) continue
-            if (faction != null) TeamAwareness.report(faction, c.uuid, c.position(), tick, "mortar ${entity.uuid.toString().take(8)}")
-            if (selfSpotted == null) selfSpotted = c
-        }
+        val selfSpotted = ownSighting(entity, level, candidates, faction)
         if (selfSpotted != null) {
             lastScanResult = BlockPos.containing(selfSpotted.position())
+            SquadReports.contact(entity, selfSpotted)
             DebugFlags.log(LogGroup.FIRE_SUPPORT, "mortar {} -> {} seen by itself at {}", entity.uuid, selfSpotted.uuid, lastScanResult)
             return lastScanResult
         }

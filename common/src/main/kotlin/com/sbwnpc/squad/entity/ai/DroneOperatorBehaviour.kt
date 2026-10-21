@@ -2,16 +2,20 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.Hostiles
 import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.combat.Noticing
 import com.sbwnpc.squad.combat.TeamAwareness
+import com.sbwnpc.squad.combat.Vision
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.squad.SquadOrder
+import com.sbwnpc.squad.squad.SquadReports
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.InteractionHand
@@ -96,6 +100,10 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private var nextScanTick = 0
     private var lastScanResult: StrikeTarget? = null
+
+    /** How far the operator has got at noticing each enemy his own scan looks at. */
+    private val noticing = Noticing("drone operator", LogGroup.FIRE_SUPPORT)
+
     private val startCheck = StartCheckThrottle(START_CHECK_INTERVAL_TICKS)
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
@@ -187,13 +195,20 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             // Range first: candidates are sorted nearest-first, and everything inside MIN_RANGE
             // used to spend the raycast budget before a single launchable target got looked at.
             if (!inLaunchRange(entity, c.position())) continue
+            // Own eyes are a man's eyes (#114): where he looks, and only once he has noticed it. A
+            // bare line-of-sight check launched on an enemy 150 blocks off the moment it was in view.
+            if (!Vision.inCone(entity.position(), entity.yHeadRot, c.position())) continue
             if (losChecks++ >= MAX_LOS_CHECKS) break
-            if (!com.sbwnpc.squad.combat.DetectionSightline.canSee(entity, c)) continue
+            if (DetectionSightline.sight(entity, c).visibility != DetectionSightline.Visibility.VISIBLE) continue
+            if (!noticing.noticed(entity, level, c, Vision.offAxis(entity.position(), entity.yHeadRot, c.position()))) continue
             if (faction != null) TeamAwareness.report(faction, c.uuid, c.position(), tick, "drone operator ${entity.uuid.toString().take(8)}")
             if (spotted == null) spotted = c
         }
+        noticing.endScan(tick)
         if (spotted != null) {
             lastScanResult = StrikeTarget(spotted.uuid, spotted.position())
+            // Called in the way a rifleman calls it, so the player hears of the fight before the drone is up.
+            SquadReports.contact(entity, spotted)
             DebugFlags.log(LogGroup.FIRE_SUPPORT, "drone {} -> {} seen by itself at {}", entity.uuid, spotted.uuid, spotted.position())
             return lastScanResult
         }
