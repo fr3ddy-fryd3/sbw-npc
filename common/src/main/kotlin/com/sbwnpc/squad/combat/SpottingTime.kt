@@ -14,13 +14,15 @@ import com.sbwnpc.squad.npc.NpcRank
 object SpottingTime {
     /** A band of light at the target (0 to 15, [Light]) and what it costs. */
     enum class Light(val from: Int, val timeFactor: Double, val cutoff: Double) {
-        // By the owner's call after playtesting (20.10): every band 20% quicker than first tuned,
-        // and the night bands reach 20% further.
-        BRIGHT(from = 12, timeFactor = 1.0 / SPEEDUP, cutoff = 256.0),
-        DIM(from = 9, timeFactor = 2.5 / SPEEDUP, cutoff = 180.0),
-        LOW(from = 6, timeFactor = 5.0 / SPEEDUP, cutoff = 120.0 * NIGHT_REACH),
-        DARK(from = 3, timeFactor = 12.0 / SPEEDUP, cutoff = 60.0 * NIGHT_REACH),
-        BLACK(from = 0, timeFactor = 25.0 / SPEEDUP, cutoff = 30.0 * NIGHT_REACH),
+        // The owner's table (21.10): an elite sees 128 blocks in the brightest light and 32 in the
+        // dark, each band about 1.4 times shorter than the one above. The times are a third to a
+        // quarter of 20.10's in the dark bands, where 12x and 25x left a moonlit man 70 blocks off
+        // unseen for eight seconds and a drone overhead for longer than its dive.
+        BRIGHT(from = 12, timeFactor = 1.0 / SPEEDUP, cutoff = 128.0),
+        DIM(from = 9, timeFactor = 1.6 / SPEEDUP, cutoff = 90.0),
+        LOW(from = 6, timeFactor = 2.4 / SPEEDUP, cutoff = 64.0),
+        DARK(from = 3, timeFactor = 4.0 / SPEEDUP, cutoff = 45.0),
+        BLACK(from = 0, timeFactor = 6.0 / SPEEDUP, cutoff = 32.0),
         ;
 
         companion object {
@@ -38,19 +40,18 @@ object SpottingTime {
      */
     enum class Weather(val timeFactor: Double, val reachFactor: Double) {
         CLEAR(timeFactor = 1.0, reachFactor = 1.0),
-        RAIN(timeFactor = 1.5, reachFactor = 0.7),
-        SNOW(timeFactor = 1.8, reachFactor = 0.6),
-        STORM(timeFactor = 1.5, reachFactor = 0.7),
+        RAIN(timeFactor = 1.25, reachFactor = 0.8),
+        SNOW(timeFactor = 1.4, reachFactor = 0.7),
+        STORM(timeFactor = 1.25, reachFactor = 0.8),
     }
 
     /** What is being looked for: a drone is much smaller than a man, and is noticed later and nearer. */
     enum class Size(val timeFactor: Double, val reachFactor: Double) {
         PERSON(timeFactor = 1.0, reachFactor = 1.0),
-        DRONE(timeFactor = 3.0, reachFactor = 0.5),
+        DRONE(timeFactor = 2.0, reachFactor = 0.6),
     }
 
     private const val SPEEDUP = 1.2
-    private const val NIGHT_REACH = 1.2
 
     private const val BASE_SECONDS = 0.2
     private const val DISTANCE_SECONDS = 0.3
@@ -71,15 +72,27 @@ object SpottingTime {
                 val sniper = npcClass == NpcClass.SNIPER
                 return Observer(
                     rankTime(rank) * (if (sniper) SNIPER_TIME else 1.0),
-                    rankCutoff(rank) * (if (sniper) SNIPER_CUTOFF else 1.0),
+                    rankCutoff(rank) * classCutoff(npcClass),
                 )
             }
 
             private const val SNIPER_TIME = 0.7
             private const val SNIPER_CUTOFF = 1.2
+            private const val MORTAR_CUTOFF = 1.5
+            private const val DRONE_OPERATOR_CUTOFF = 1.25
 
-            private val RANK_TIME = mapOf(NpcRank.RECRUIT to 1.5, NpcRank.REGULAR to 1.0, NpcRank.VETERAN to 0.75, NpcRank.ELITE to 0.55)
-            private val RANK_CUTOFF = mapOf(NpcRank.RECRUIT to 0.8, NpcRank.REGULAR to 1.0, NpcRank.VETERAN to 1.1, NpcRank.ELITE to 1.25)
+            /** Spotters with optics see further (owner's call, 21.10, for the mortar and the drone operator). */
+            private fun classCutoff(npcClass: NpcClass): Double =
+                when (npcClass) {
+                    NpcClass.SNIPER -> SNIPER_CUTOFF
+                    NpcClass.MORTAR, NpcClass.MORTAR_OPERATOR, NpcClass.MORTAR_LOADER -> MORTAR_CUTOFF
+                    NpcClass.DRONE_OPERATOR -> DRONE_OPERATOR_CUTOFF
+                    else -> 1.0
+                }
+
+            // The tables are an elite's; every rank below takes longer and sees less far (21.10).
+            private val RANK_TIME = mapOf(NpcRank.RECRUIT to 2.0, NpcRank.REGULAR to 1.5, NpcRank.VETERAN to 1.25, NpcRank.ELITE to 1.0)
+            private val RANK_CUTOFF = mapOf(NpcRank.RECRUIT to 0.7, NpcRank.REGULAR to 0.8, NpcRank.VETERAN to 0.9, NpcRank.ELITE to 1.0)
 
             private fun rankTime(rank: NpcRank) = RANK_TIME.getValue(rank)
 

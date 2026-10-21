@@ -20,12 +20,12 @@ object NoticingGameTests {
     private const val DAY_TIME = 6000L
     private const val NIGHT_TIME = 18000L
 
-    /** A veteran operator reaches 126 blocks: an enemy 100 off by day is noticed in about a second, and the drone goes up. */
+    /** A veteran operator launches out to 133 blocks and sees 144 by day: an enemy 100 off is noticed in about a second and a half, and the drone goes up. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 500, batch = "notice-operator-day")
     fun droneOperatorLaunchesAtAnEnemyHeNoticesByDay(helper: GameTestHelper) = operator(helper, "notice-operator-day", DAY_TIME, expectLaunch = true)
 
-    /** At night the dark reaches 79 blocks for him: the same enemy is never noticed, and no drone goes up on him. */
+    /** At night the dark reaches 51 blocks for him: the same enemy is never noticed, and no drone goes up on him. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 600, batch = "notice-operator-night")
     fun droneOperatorDoesNotLaunchAtAnEnemyTooFarForTheDark(helper: GameTestHelper) = operator(helper, "notice-operator-night", NIGHT_TIME, expectLaunch = false)
@@ -67,19 +67,20 @@ object NoticingGameTests {
     }
 
     /**
-     * Rain shortens the dark's reach to 72 × 0.7 = 50 blocks (snow, if the biome snows, to 43): a man
-     * 60 blocks off at night, noticed in clear weather after a few seconds, is never noticed in it.
+     * Rain shortens a regular's reach in the dark from 36 blocks to 28.8 (snow, if the biome snows,
+     * to 25): a man 32 blocks off at night, noticed in clear weather in under two seconds, is never
+     * noticed in it.
      */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 600, batch = "notice-rain-night")
-    fun enemyAtSixtyBlocksIsNotNoticedInRainAtNight(helper: GameTestHelper) {
+    fun enemyJustInsideTheDarkRangeIsNotNoticedInRainAtNight(helper: GameTestHelper) {
         val scene = CombatIdleGameTests.Scene(helper, "notice-rain-night")
         val manager = SquadManager.get(helper.level)
         val oldTime = helper.level.dayTime
         helper.level.setDayTime(NIGHT_TIME)
         helper.level.setWeatherParameters(0, 6000, true, false)
         val shooter = scene.spawn(Vec3(20.5, 1.0, 60.5))
-        val enemy = scene.enemy(Vec3(80.5, 1.0, 60.5))
+        val enemy = scene.enemy(Vec3(52.5, 1.0, 60.5))
         val squad = manager.create(helper.level, UUID(90, 31), requireNotNull(shooter.spawnFaction), listOf(shooter.uuid))
         manager.setOrder(squad.id, SquadOrder.DEFEND)
         manager.setObjective(helper.level, squad.id, shooter.blockPosition())
@@ -95,7 +96,7 @@ object NoticingGameTests {
             shooter.yHeadRot = -90f
             val weather = com.sbwnpc.squad.combat.Noticing.weatherAt(helper.level, enemy.blockPosition())
             if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} weather=$weather target=${shooter.target?.uuid}")
-            helper.assertFalse(shooter.target?.uuid == enemy.uuid, "Noticed an enemy 60 blocks off at night in $weather at tick ${helper.tick}")
+            helper.assertFalse(shooter.target?.uuid == enemy.uuid, "Noticed an enemy 32 blocks off at night in $weather at tick ${helper.tick}")
             if (helper.tick >= 500) {
                 helper.assertTrue(weather != com.sbwnpc.squad.combat.SpottingTime.Weather.CLEAR, "The scene never had rain")
                 scene.result("PASS", "weather=$weather")

@@ -71,7 +71,9 @@ class MortarCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
         /** How long one aim point inside that area is held before walking the fire elsewhere. */
         private const val BARRAGE_SHIFT_TICKS = 100
         private const val MIN_DETECTION = 80.0
-        private const val MAX_DETECTION = 160.0
+
+        // An elite mortarman's sight in the brightest light: 128 x 1.5 (SpottingTime, 21.10).
+        private const val MAX_DETECTION = 192.0
         private const val MIN_SCATTER = 5.0
         private const val MAX_SCATTER = 10.0
 

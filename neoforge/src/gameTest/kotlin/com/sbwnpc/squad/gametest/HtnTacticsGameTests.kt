@@ -424,10 +424,9 @@ object HtnTacticsGameTests {
 
     /**
      * Spotting takes time (#114): by day a regular rifleman notices an enemy 70 blocks off after
-     * a moment, not on the first scan; at night one inside his range only after several seconds,
-     * and one at its edge after longer still. The dark reaches 72 blocks, the same as
-     * [com.sbwnpc.squad.entity.NpcEntity.DETECTION_RANGE], so darkness no longer stops a regular
-     * short of it (owner's call, 20.10); the unit tests check the cut-offs.
+     * about a second, not on the first scan; at night one 20 blocks off after a little longer, and
+     * one at the edge of his 36-block reach in the dark (owner's table, 21.10) after longer still.
+     * The unit tests check the cut-offs.
      */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 500, batch = "spot-day")
@@ -435,11 +434,11 @@ object HtnTacticsGameTests {
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 700, batch = "spot-night-far")
-    fun enemyAtTheEdgeOfRangeIsNoticedLongAfterAtNight(helper: GameTestHelper) = spotting(helper, "spot-night-far", Lighting.NIGHT, distance = 71.0, expectNoticed = 120L..600L)
+    fun enemyAtTheEdgeOfRangeIsNoticedLongAfterAtNight(helper: GameTestHelper) = spotting(helper, "spot-night-far", Lighting.NIGHT, distance = 35.0, expectNoticed = 30L..300L)
 
     /**
-     * A lantern by the enemy at night lights him as by day. The window is too short for the dark,
-     * which takes about eight seconds at this distance, so without its light the scene fails.
+     * A lantern by the enemy at night lights him as by day. 70 blocks is twice a regular's reach in
+     * the dark, so without its light the scene fails.
      */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 500, batch = "spot-night-lantern")
@@ -447,7 +446,7 @@ object HtnTacticsGameTests {
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 700, batch = "spot-night-near")
-    fun enemyInsideTheDarkRangeTakesSecondsToNoticeAtNight(helper: GameTestHelper) = spotting(helper, "spot-night-near", Lighting.NIGHT, distance = 40.0, expectNoticed = 60L..500L)
+    fun enemyInsideTheDarkRangeTakesSecondsToNoticeAtNight(helper: GameTestHelper) = spotting(helper, "spot-night-near", Lighting.NIGHT, distance = 20.0, expectNoticed = 15L..250L)
 
     /** The light the spotting scenes are played in: a lantern by the enemy at night in the last. */
     private enum class Lighting(val time: Long, val lantern: Boolean) { DAY(DAY_TIME, false), NIGHT(NIGHT_TIME, false), LANTERN(NIGHT_TIME, true) }

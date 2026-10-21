@@ -30,7 +30,7 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 import java.util.UUID
 
 /**
- * DRONE_OPERATOR's whole job: spot a target 80-150 blocks out (by rank — same autonomous scan +
+ * DRONE_OPERATOR's whole job: spot a target 80-160 blocks out (by rank — same autonomous scan +
  * faction relay as [MortarCrewBehaviour], plus the squad's ATTACK focus/objective), launch an
  * SBW kamikaze drone at it and fly it there from the server, no Monitor/player needed. Core task
  * like the mortar crew — it must keep flying regardless of Fight/Idle activity.
@@ -633,11 +633,11 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     companion object {
         const val MAX_DRONES = 10
 
-        // Launch envelope: 80 blocks for a RECRUIT up to 150 for ELITE (per user request), never
+        // Launch envelope: 80 blocks for a RECRUIT up to 160 for ELITE (per user request, 160 since 21.10), never
         // closer than MIN_RANGE — at that distance the SMG is the answer, not a 6-second flight.
         private const val MIN_RANGE = 20.0
         private const val MIN_MAX_RANGE = 80.0
-        private const val MAX_MAX_RANGE = 150.0
+        private const val MAX_MAX_RANGE = 160.0
         private const val SELF_DEFENSE_RANGE_SQR = 6.0 * 6.0
         private const val MAX_LOS_CHECKS = 8
         private const val SCAN_INTERVAL_TICKS = 20
