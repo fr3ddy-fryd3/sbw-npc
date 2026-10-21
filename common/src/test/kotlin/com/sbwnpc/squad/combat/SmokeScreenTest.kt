@@ -6,8 +6,8 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class SmokeScreenTest {
-    @Test fun `a quarter of the squad throws, rounded down`() {
-        assertEquals(listOf(0, 0, 1, 1, 2, 2, 3), listOf(3, 1, 4, 7, 8, 10, 12).map(SmokeScreen::grenadesFor))
+    @Test fun `a quarter of the squad throws, rounded down, and at least one man`() {
+        assertEquals(listOf(0, 1, 1, 1, 1, 2, 2, 3), listOf(0, 3, 1, 4, 7, 8, 10, 12).map(SmokeScreen::grenadesFor))
     }
 
     @Test fun `one grenade is aimed straight at the enemy on the level`() {

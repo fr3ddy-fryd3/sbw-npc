@@ -117,6 +117,32 @@ object WithdrawalGameTests {
         }
     }
 
+    /**
+     * The last man of a squad, under fire from an enemy he cannot see, still throws one grenade
+     * towards the fire as he falls back. In game 21.10 squads worn down to one or two men threw
+     * nothing: a quarter of them rounded down to none, and nobody had the enemy in contact.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "withdrawal-smoke-alone")
+    fun lastManUnderFireThrowsSmokeTowardsIt(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "withdrawal-smoke-alone")
+        val manager = SquadManager.get(helper.level)
+        val man = scene.spawn(Vec3(40.5, 1.0, 64.5))
+        val squad = manager.create(helper.level, UUID(90, 14), requireNotNull(man.spawnFaction), listOf(man.uuid))
+        scene.onClose = { manager.deleteSquad(helper.level, squad.id) }
+        val start = man.position()
+        helper.onEachTick {
+            // Rounds keep coming in from the east, from nobody in sight.
+            if (helper.tick % 20L == 0L) man.incomingFire.record(man.eyePosition, Vec3(-1.0, 0.0, 0.0), null, helper.level.gameTime)
+            if (helper.tick == 5L) manager.issueOrderAt(helper.level, squad.id, SquadOrder.RETREAT, helper.absolutePos(BlockPos(10, 1, 64)))
+            helper.assertTrue(man.target == null, "The man saw an enemy; the scene is meant to have none")
+            val grenade = SmokeCloudRegistry.all(helper.level).firstOrNull { Ports.grenades.smokeIsOut(it) } ?: return@onEachTick
+            helper.assertTrue(grenade.x > start.x, "Smoke went away from the fire: grenade x=${"%.1f".format(grenade.x)}, man started at ${"%.1f".format(start.x)}")
+            scene.result("PASS", "tick=${helper.tick} grenade=${grenade.position()}")
+            helper.succeed()
+        }
+    }
+
     /** Each grenade by the withdrawal it was thrown in, and where it came down once smoking. */
     private class Screens(private val helper: GameTestHelper) {
         private val thrownIn = HashMap<UUID, Int>()

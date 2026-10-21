@@ -11,10 +11,11 @@ import net.minecraft.world.phys.Vec3
 /**
  * The smoke a squad throws between itself and the enemy as it starts to fall back.
  *
- * A quarter of the squad throws, rounded down, from the half that is holding while the other
- * bounds, so the runners are screened by men who stay to cover them. The grenades go down side by
- * side across the line to the enemy, in front of the holding man nearest it, so they make one wide
- * screen and not one small cloud (#115). A man whose throw is not possible (a wall, a squadmate in
+ * A quarter of the squad throws, rounded down but at least one man. The throwers are given by
+ * [Withdrawal]: the half that is holding while the other bounds, so the runners are screened by
+ * men who stay to cover them, or anyone left when nobody holds. The grenades go down side by side
+ * across the line to the enemy, in front of the thrower nearest it, so they make one wide screen
+ * and not one small cloud (#115). A man whose throw is not possible (a wall, a squadmate in
  * the way) leaves his point to the next one.
  */
 object SmokeScreen {
@@ -34,8 +35,11 @@ object SmokeScreen {
     /** An arc that comes down this close to the point is a good throw. */
     private const val NEAR_POINT = 2.5
 
-    /** How many grenades a squad of [members] men throws for one withdrawal. */
-    internal fun grenadesFor(members: Int): Int = members / MEN_PER_GRENADE
+    /**
+     * How many grenades a squad of [members] men throws for one withdrawal. At least one: rounded
+     * down, the twos and threes left by a fight threw none (in-game 21.10).
+     */
+    internal fun grenadesFor(members: Int): Int = if (members <= 0) 0 else maxOf(1, members / MEN_PER_GRENADE)
 
     /** The men who could throw. */
     internal fun throwers(holding: List<NpcEntity>): List<NpcEntity> = holding.filter { it.isAlive && it.smokeLeft > 0 && it.vehicle == null && !it.busyWithRole() }
