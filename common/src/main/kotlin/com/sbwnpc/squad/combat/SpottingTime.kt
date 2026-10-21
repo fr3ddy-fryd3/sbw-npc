@@ -28,6 +28,27 @@ object SpottingTime {
         }
     }
 
+    /**
+     * What the weather at the target costs on top of its light: a factor on the time and one on the
+     * cut-off distance.
+     *
+     * Vanilla already darkens the sky in rain and more in a thunderstorm (raw light about 12 and 10
+     * at noon), so a storm by day already falls into [Light.DIM]; [STORM] adds only what the light
+     * does not. At night the darkening has nothing left to take, and these factors are all there is.
+     */
+    enum class Weather(val timeFactor: Double, val reachFactor: Double) {
+        CLEAR(timeFactor = 1.0, reachFactor = 1.0),
+        RAIN(timeFactor = 1.5, reachFactor = 0.7),
+        SNOW(timeFactor = 1.8, reachFactor = 0.6),
+        STORM(timeFactor = 1.5, reachFactor = 0.7),
+    }
+
+    /** What is being looked for: a drone is much smaller than a man, and is noticed later and nearer. */
+    enum class Size(val timeFactor: Double, val reachFactor: Double) {
+        PERSON(timeFactor = 1.0, reachFactor = 1.0),
+        DRONE(timeFactor = 3.0, reachFactor = 0.5),
+    }
+
     private const val SPEEDUP = 1.2
     private const val NIGHT_REACH = 1.2
 
@@ -67,14 +88,24 @@ object SpottingTime {
     }
 
     /** What the observer can tell about one target. [offAxis] is 0 straight ahead to 1 at the cone's edge, see [Vision.offAxis]. */
-    data class Target(val distance: Double, val light: Int, val offAxis: Double = 0.0, val crouching: Boolean = false, val sprinting: Boolean = false, val grassBlocks: Int = 0)
+    data class Target(
+        val distance: Double,
+        val light: Int,
+        val offAxis: Double = 0.0,
+        val crouching: Boolean = false,
+        val sprinting: Boolean = false,
+        val grassBlocks: Int = 0,
+        val weather: Weather = Weather.CLEAR,
+        val size: Size = Size.PERSON,
+    )
 
     /** Seconds the target takes to be noticed, or null when it is too far away for this light to ever be. */
     fun seconds(observer: Observer, target: Target): Double? {
         val light = Light.of(target.light.coerceIn(0, MAX_LIGHT))
-        if (target.distance > light.cutoff * observer.cutoffFactor) return null
+        if (target.distance > light.cutoff * observer.cutoffFactor * target.weather.reachFactor * target.size.reachFactor) return null
         val base = BASE_SECONDS + DISTANCE_SECONDS * (target.distance / REFERENCE_DISTANCE).let { it * it }
-        var factor = light.timeFactor * observer.timeFactor * (1.0 + (CONE_EDGE_FACTOR - 1.0) * target.offAxis.coerceIn(0.0, 1.0))
+        var factor = light.timeFactor * observer.timeFactor * target.weather.timeFactor * target.size.timeFactor *
+            (1.0 + (CONE_EDGE_FACTOR - 1.0) * target.offAxis.coerceIn(0.0, 1.0))
         if (target.crouching) factor *= CROUCHING_FACTOR
         if (target.sprinting) factor *= SPRINTING_FACTOR
         repeat(target.grassBlocks.coerceAtLeast(0)) { factor *= GRASS_FACTOR }

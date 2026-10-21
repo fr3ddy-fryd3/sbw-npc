@@ -77,4 +77,22 @@ class SpottingTimeTest {
         assertEquals((0.2 + 0.3 * 0.8 * 0.8) * 12.0 * day * 1.5, seconds(40.0, 4, recruit)!!, 1e-9)
         assertTrue(seconds(58.0, 4, recruit) == null)
     }
+    @Test fun `rain, snow and a storm each take longer and see less far than clear weather`() {
+        val clear = seconds(50.0, 15)!!
+        for (weather in listOf(SpottingTime.Weather.RAIN, SpottingTime.Weather.SNOW, SpottingTime.Weather.STORM)) {
+            assertEquals(clear * weather.timeFactor, SpottingTime.seconds(regular, Target(50.0, 15, weather = weather))!!, 1e-9, weather.name)
+        }
+        // Dark band: 60 * 1.2 = 72 blocks in clear weather, 72 * 0.7 = 50.4 in rain and 43.2 in snow.
+        assertNotNull(SpottingTime.seconds(regular, Target(50.0, 4, weather = SpottingTime.Weather.RAIN)))
+        assertNull(SpottingTime.seconds(regular, Target(51.0, 4, weather = SpottingTime.Weather.RAIN)))
+        assertNull(SpottingTime.seconds(regular, Target(44.0, 4, weather = SpottingTime.Weather.SNOW)))
+    }
+
+    @Test fun `a drone takes three times as long as a man and is seen half as far`() {
+        val man = seconds(30.0, 15)!!
+        assertEquals(man * 3.0, SpottingTime.seconds(regular, Target(30.0, 15, size = SpottingTime.Size.DRONE))!!, 1e-9)
+        // Dark band at night: a man at 72 blocks, a drone only to 36.
+        assertNotNull(SpottingTime.seconds(regular, Target(36.0, 4, size = SpottingTime.Size.DRONE)))
+        assertNull(SpottingTime.seconds(regular, Target(37.0, 4, size = SpottingTime.Size.DRONE)))
+    }
 }

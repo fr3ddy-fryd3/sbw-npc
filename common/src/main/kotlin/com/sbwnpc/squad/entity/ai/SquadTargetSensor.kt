@@ -6,8 +6,8 @@ import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.FireAllocation
 import com.sbwnpc.squad.combat.FiringOpportunity
 import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.combat.Noticing
 import com.sbwnpc.squad.combat.SpottingProgress
-import com.sbwnpc.squad.combat.SpottingTime
 import com.sbwnpc.squad.combat.TankWeaponSelection
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.combat.VehicleTargeting
@@ -50,7 +50,7 @@ import net.tslat.smartbrainlib.util.BrainUtils
 class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     private var tacticalProbeCursor = 0
 
-    /** How far this NPC has got at noticing each enemy in view, see [noticed]. */
+    /** How far this NPC has got at noticing each enemy in view, see [Noticing]. */
     private val spotting = SpottingProgress()
     private var nextReallocationTick = Long.MIN_VALUE
 
@@ -293,7 +293,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             // yaw: an NPC scanning around while it walks is looking where its head points.
             if (!allRound && !Vision.inCone(mob.position(), mob.yHeadRot, candidate.position())) continue
             val sighting = DetectionSightline.sight(mob, candidate)
-            if (sighting.visibility == DetectionSightline.Visibility.VISIBLE && (!onFoot || noticed(mob, level, candidate, sighting.grassBlocks))) {
+            if (sighting.visibility == DetectionSightline.Visibility.VISIBLE && (!onFoot || Noticing.noticed(mob, level, candidate, spotting, Vision.offAxis(mob.position(), mob.yHeadRot, candidate.position()), sighting.grassBlocks))) {
                 SquadTactics.observe(mob, candidate)
                 visible += candidate
                 if (visible.size >= MAX_SPREAD_CANDIDATES || mob.currentSquad() == null) break
@@ -303,42 +303,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         return FireAllocation.pick(mob, level, visible)
     }
 
-    /**
-     * Whether [mob] has noticed [candidate], which it has a clear line to: it takes time, by
-     * distance, light, how well the target is hidden and how experienced [mob] is (#114). No wait for
-     * an enemy it already has as its target, when it is being shot at, or when the enemy has just fired.
-     */
-    private fun noticed(mob: NpcEntity, level: ServerLevel, candidate: LivingEntity, grassBlocks: Int): Boolean {
-        val now = level.gameTime
-        val gaveAway = candidate is NpcEntity && candidate.firedRecently(GIVEAWAY_TICKS)
-        if (candidate === mob.target || gaveAway || mob.incomingFire.pending(now)) {
-            spotting.fill(candidate.uuid, now)
-            return true
-        }
-        val target = SpottingTime.Target(
-            mob.distanceTo(candidate).toDouble(),
-            level.getMaxLocalRawBrightness(candidate.blockPosition()),
-            Vision.offAxis(mob.position(), mob.yHeadRot, candidate.position()),
-            candidate.isCrouching,
-            candidate.isSprinting,
-            grassBlocks,
-        )
-        val required = SpottingTime.seconds(SpottingTime.Observer.of(mob.npcRank, mob.npcClass), target)
-        val before = spotting.seconds(candidate.uuid)
-        return spotting.advance(candidate.uuid, now, required).also { seen ->
-            // Once each: when he is first noticed, and when he first comes into view too far off for this light.
-            if (seen && required != null && before < required) {
-                DebugFlags.log(LogGroup.SPOTTING, "{} noticed {} at {} blocks, light {}, after {}s of {}s needed", mob.uuid, candidate.uuid, target.distance.toInt(), target.light, "%.1f".format(spotting.seconds(candidate.uuid)), "%.1f".format(required))
-            } else if (required == null && before == 0.0) {
-                DebugFlags.log(LogGroup.SPOTTING, "{} cannot notice {} at {} blocks, light {}: past the cut-off for this light", mob.uuid, candidate.uuid, target.distance.toInt(), target.light)
-            }
-        }
-    }
-
     companion object {
-        /** An enemy that fired this recently has given his position away. */
-        private const val GIVEAWAY_TICKS = 40
-
         private const val SCAN_RATE_MIN = 15
         private const val SCAN_RATE_JITTER = 11 // 15..25 ticks, mean 20 — same average as before
         private const val REALLOCATION_MIN = 80L
