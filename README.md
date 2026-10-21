@@ -136,7 +136,7 @@ One row per squad, scrollable, with the footer buttons under the list:
 - **Merge** joins the squad into a selected infantry squad with the same owner and faction;
   neither may be assigned to barracks. The destination keeps its identity, order and objective.
   Soldiers keep their UUIDs, names, experience, rank and kit, including across chunk unloads.
-- **R** renames · **X** disbands (the NPCs stay, the squad doesn't) · **DEL** deletes the squad
+- **R** renames · **D** disbands (the NPCs stay, the squad doesn't) · **DEL** deletes the squad
   and everything in it, vehicles included.
 - **Routes** opens patrol routes: add one, right-click blocks to drop waypoints, finish, then
   assign it to a squad. A squad with a route walks it under Patrol.
