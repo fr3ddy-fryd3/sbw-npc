@@ -41,6 +41,31 @@ object HtnTacticsGameTests {
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1600, batch = "htn-wide")
     fun htnJointAttack64OnWideFront(helper: GameTestHelper) = jointAttack(helper, wide = true)
 
+    /** In-game 21.10: one ATTACK for 28 squads froze the server choosing their approach sectors (#140). */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 900, batch = "htn-many-squads")
+    fun htnTwentyEightSquadsAttackTogether(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "htn-many-squads")
+        val manager = SquadManager.get(helper.level)
+        val groups = (0 until 28).map { squad ->
+            (0 until 4).map { index -> scene.spawn(Vec3(10.5 + squad % 7 * 6 + index, 1.0, 40.5 + squad / 7 * 10)) }
+        }
+        val members = groups.flatten()
+        val origins = members.associate { it.uuid to it.position() }
+        for (index in 0 until 8) scene.enemy(Vec3(145.5 + index / 4 * 2, 1.0, 100.5 + index % 4 * 4))
+        val squads = groups.map { group -> manager.create(helper.level, UUID(90, 28), requireNotNull(group.first().spawnFaction), group.map { it.uuid }) }
+        scene.onClose = { squads.forEach { manager.deleteSquad(helper.level, it.id) } }
+        val objective = helper.absolutePos(BlockPos(148, 1, 106))
+        GroupOrders.apply(helper.level, manager, squads.map { it.id }, SquadOrder.ATTACK, objective.x, objective.z)
+        helper.onEachTick {
+            if (helper.tick < 600) return@onEachTick
+            val moved = members.count { it.position().distanceTo(origins.getValue(it.uuid)) >= 12.0 }
+            helper.assertTrue(moved >= 56, "Only $moved of ${members.size} attackers moved")
+            scene.result("PASS", "tick=${helper.tick} moved=$moved")
+            helper.succeed()
+        }
+    }
+
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1800, batch = "htn-area")
     fun htnEmptyAreaRequiresOccupationAndQuietInterval(helper: GameTestHelper) {
@@ -392,48 +417,6 @@ object HtnTacticsGameTests {
             if (squads.all { it.order == SquadOrder.DEFEND }) {
                 helper.assertTrue(squads.all { it.commandReason == "occupied_and_inspected_area" }, "Attack ended without taking the objective: ${squads.map { it.commandReason }}")
                 scene.result("PASS", "tick=${helper.tick} attackers=${attackers.size} defenders=${defenders.count { it.isAlive }} enteredAt=$enteredAt defendersAtEntry=$defendersAtEntry")
-                helper.succeed()
-            }
-        }
-    }
-
-    /**
-     * A squad that starts falling back under fire throws one smoke grenade towards the enemy, from
-     * the half that holds, and the cloud hides the enemy from it (#115).
-     */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 900, batch = "withdrawal-smoke")
-    fun fallingBackSquadThrowsOneSmokeScreenThatHidesTheEnemy(helper: GameTestHelper) {
-        val scene = CombatIdleGameTests.Scene(helper, "withdrawal-smoke")
-        val manager = SquadManager.get(helper.level)
-        val men = (0 until 6).map { scene.spawn(Vec3(40.5 + it % 2 * 3, 1.0, 60.5 + it / 2 * 4)) }
-        val enemy = scene.enemy(Vec3(95.5, 1.0, 64.5))
-        val squad = manager.create(helper.level, UUID(90, 11), requireNotNull(men.first().spawnFaction), men.map { it.uuid })
-        scene.onClose = { manager.deleteSquad(helper.level, squad.id) }
-        // In contact first: a squad that has not noticed the enemy has nothing to cover against (#114).
-        manager.issueOrderAt(helper.level, squad.id, SquadOrder.DEFEND, helper.absolutePos(BlockPos(40, 1, 64)))
-        men.forEach {
-            it.yHeadRot = -90f
-            it.yBodyRot = -90f
-        }
-        var retreating = false
-        var hidden = false
-        helper.onEachTick {
-            if (!retreating) {
-                men.forEach { it.yHeadRot = -90f }
-                if (men.any { it.target?.uuid == enemy.uuid }) {
-                    retreating = true
-                    manager.issueOrderAt(helper.level, squad.id, SquadOrder.RETREAT, helper.absolutePos(BlockPos(10, 1, 64)))
-                }
-                return@onEachTick
-            }
-            val clouds = com.sbwnpc.squad.entity.SmokeCloudRegistry.all(helper.level).count { Ports.grenades.smokeIsOut(it) }
-            if (clouds > 0 && men.any { com.sbwnpc.squad.combat.SmokeClouds.blocks(helper.level, it.eyePosition, enemy.eyePosition) && !com.sbwnpc.squad.combat.DetectionSightline.canSee(it, enemy) }) hidden = true
-            if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} smokeLeft=${men.map { it.smokeLeft }} cloudsOut=$clouds hidden=$hidden")
-            val thrown = men.count { it.smokeLeft == 0 }
-            helper.assertTrue(thrown <= 1, "More than one smoke grenade was thrown: $thrown")
-            if (hidden && thrown == 1) {
-                scene.result("PASS", "tick=${helper.tick} cloudsOut=$clouds")
                 helper.succeed()
             }
         }

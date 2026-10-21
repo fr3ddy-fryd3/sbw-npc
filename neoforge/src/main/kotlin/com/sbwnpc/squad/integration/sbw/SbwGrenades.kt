@@ -92,7 +92,9 @@ object SbwGrenades : Grenades {
     // also lays are decoys for locked-on weapons and show no smoke.
     override fun isSmokeCloud(entity: Entity): Boolean = entity is M18SmokeGrenadeEntity
 
-    override fun smokeIsOut(entity: Entity): Boolean = entity is M18SmokeGrenadeEntity && entity.isAlive && entity.tickCount >= SMOKE_FUSE_TICKS
+    override fun smokeIsOut(entity: Entity): Boolean = entity.isAlive && smokeStarted(entity)
+
+    override fun smokeStarted(entity: Entity): Boolean = entity is M18SmokeGrenadeEntity && entity.tickCount >= SMOKE_FUSE_TICKS
 
     override fun item(kind: GrenadeKind): net.minecraft.world.item.ItemStack =
         when (kind) {

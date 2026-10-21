@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.entity
 
+import com.sbwnpc.squad.combat.SmokeClouds
 import com.sbwnpc.squad.combat.StrayRounds
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
@@ -24,6 +25,7 @@ object EntityIndexEvents {
     fun onLeave(event: EntityLeaveLevelEvent) {
         GrenadeRegistry.leave(event.entity, event.level)
         SmokeCloudRegistry.leave(event.entity, event.level)
+        SmokeClouds.leave(event.entity, event.level)
         DroneRegistry.leave(event.entity, event.level)
         StrayRounds.leave(event.entity, event.level)
     }
