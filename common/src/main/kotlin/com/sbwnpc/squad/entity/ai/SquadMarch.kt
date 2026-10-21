@@ -78,6 +78,9 @@ object SquadMarch {
     /** A man this near a route's nodes is on it — the width of a squad's formation round it. */
     private const val JOIN = 24.0
 
+    /** A man's own place this near his squad's destination walks the squad's route there. */
+    private const val SHARED_GOAL_RANGE = 48.0
+
     /** Routes a squad may have at once — parties bound elsewhere, stragglers finding their way. */
     private const val MAX_MARCHES = 8
 
@@ -132,9 +135,15 @@ object SquadMarch {
     private val found = ArrayList<Found>()
     private var lastPlanTick = Long.MIN_VALUE
 
+    /** Long-route searches started, by squad (or NPC for a resupply trip) — read by the scenes. */
+    private val searchesStarted = HashMap<UUID, Int>()
+
+    internal fun searchesStarted(group: UUID): Int = searchesStarted[group] ?: 0
+
     fun clearAll() {
         byGroup.clear()
         found.clear()
+        searchesStarted.clear()
         lastPlanTick = Long.MIN_VALUE
     }
 
@@ -151,11 +160,15 @@ object SquadMarch {
      * Where [npc] should walk next on its squad's way to [goal], or null when there is no squad
      * route to follow (not planned yet — the caller falls back to its own leg). With formation
      * disabled, a lone NPC can use the same planner for a long resupply trip.
+     *
+     * [shared]: the man is far from his own place, which lies by his squad's destination, so he
+     * walks the squad's one route there and finds his own place from its end — see [routeGoal].
      */
-    fun waypointFor(npc: NpcEntity, goal: BlockPos, followFormation: Boolean = true): Waypoint? {
+    fun waypointFor(npc: NpcEntity, ownGoal: BlockPos, followFormation: Boolean = true, shared: Boolean = false): Waypoint? {
         val level = npc.level() as? ServerLevel ?: return null
         val squad = npc.currentSquad()
         if (squad == null && followFormation) return null
+        val goal = if (shared && followFormation && squad != null) routeGoal(level, npc, squad, ownGoal) else ownGoal
         val stamp = squad?.orderStamp ?: 0
         val name = squad?.name ?: npc.uuid.toString().take(8)
         val marches = byGroup.getOrPut(squad?.id ?: npc.uuid) { ArrayList() }
@@ -171,10 +184,19 @@ object SquadMarch {
         val march = bound.firstOrNull { it.progress.contains(npc.uuid) && distanceTo(it, npc) <= JOIN * 2 }
             ?: bound
                 .map { it to distanceTo(it, npc) }
-                .filter { it.first.route.isNotEmpty() && it.second <= JOIN }
+                .filter { it.first.route.isNotEmpty() && it.second <= if (shared) JOIN * 2 else JOIN }
                 .minByOrNull { it.second }?.first
             ?: bound.firstOrNull { it.route.isEmpty() }
-            ?: (if (marches.size < MAX_MARCHES) March(goal, stamp, npc.blockPosition()).also { marches += it } else return null)
+            ?: (
+                if (marches.size < MAX_MARCHES) {
+                    March(goal, stamp, npc.blockPosition()).also {
+                        marches += it
+                        DebugFlags.log(LogGroup.MARCH, "{} new march {} of {} for {} to {} (his own place {})", name, marches.size, MAX_MARCHES, npc.uuid.toString().take(8), goal, ownGoal)
+                    }
+                } else {
+                    return null
+                }
+                )
         march.lastUsed = level.gameTime
         val route = march.route
         val here = march.progress.index(npc.uuid, npc.position())
@@ -208,6 +230,26 @@ object SquadMarch {
             route[(here + LOOKAHEAD).coerceAtMost(route.size - 1)],
             if (followFormation) formationSpot(level, npc, march, here) else null,
         )
+    }
+
+    /**
+     * Where [npc]'s march is bound: his squad's destination, not [ownGoal], his own place by it.
+     * Keyed by each man's place, a squad of 32 whose places spread round the objective ran six to
+     * eight full long-route searches to the same spot, and stood waiting 30 s for them (#145).
+     * Only for a man with no fight and no tactical task on: a bound post or a flank waypoint is
+     * somewhere of its own, and routing it through the objective is the frontal approach the flank
+     * arcs exist to avoid.
+     */
+    private fun routeGoal(level: ServerLevel, npc: NpcEntity, squad: com.sbwnpc.squad.squad.Squad, ownGoal: BlockPos): BlockPos {
+        if (npc.target != null || com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(npc)) return ownGoal
+        val objective = squad.objective ?: return ownGoal
+        val requested = Vec3(objective.x + 0.5, objective.y.toDouble(), objective.z + 0.5)
+        // The same point for every man: the squad's own area beside a shared objective where it
+        // was given one, which [NpcEntity.homeCenter] hands only to some classes.
+        val area = com.sbwnpc.squad.combat.SquadAreas.assigned(level, squad.id)
+            ?.takeIf { it.request.point == requested && it.request.faction == squad.faction }
+        val destination = BlockPos.containing(area?.center ?: requested)
+        return if (destination.closerThan(ownGoal, SHARED_GOAL_RANGE)) destination else ownGoal
     }
 
     /**
@@ -344,6 +386,8 @@ object SquadMarch {
             ?.also {
                 march.search = it
                 march.searchStarted = level.gameTime
+                val group = npc.currentSquad()?.id ?: npc.uuid
+                searchesStarted[group] = searchesStarted(group) + 1
             }
         if (search == null) {
             march.legsOnly = needsLocalContinuation(march, npc)
