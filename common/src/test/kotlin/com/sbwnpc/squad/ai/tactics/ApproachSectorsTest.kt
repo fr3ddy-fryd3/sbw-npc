@@ -84,6 +84,70 @@ class ApproachSectorsTest {
         assertEquals(null, ApproachSectors.arcWaypoint(objective, Point3(86.0, 64.0, -50.0), sector, 100.0))
     }
 
+    @Test fun `twenty eight squads ordered together get their sectors at once`() {
+        // In-game 21.10: one ATTACK for 28 squads froze the server in the sector search (#140).
+        val squads = (0 until 28).associate { "s$it" to Point3(60.0 + it, 64.0, (it - 14) * 9.0) }
+        val started = System.nanoTime()
+        val bearings = degrees(ApproachSectors<String>().bearings(objective, squads, contact = true))
+        assertTrue(System.nanoTime() - started < 1_000_000_000L, "sector assignment took too long")
+        val counts = bearings.values.groupingBy { it }.eachCount()
+        assertEquals(setOf(10, 9), counts.values.toSet(), "sectors not as even as possible: $counts")
+    }
+
+    @Test fun `sectors cost no more than the best of every combination`() {
+        // Equal costs may be split either way: the full search broke such ties on rounding.
+        val random = java.util.Random(140)
+        repeat(300) {
+            val squads = (0 until 2 + random.nextInt(7)).associate { "s$it" to Point3(random.nextDouble() * 200 - 100, 64.0, random.nextDouble() * 200 - 100) }
+            val (first, head, stands) = layout(squads)
+            val bearings = ApproachSectors<String>().bearings(objective, squads, contact = true)
+            val chosen = stands.keys.associateWith { normalize(bearings.getValue(it) - head) }
+            val best = fullSearch(stands)
+            val cost = cost(chosen, stands)
+            assertEquals(0.0, normalize(bearings.getValue(first) - head), 1e-9)
+            assertEquals(best.first, cost.first, "squads $squads")
+            assertEquals(best.second, cost.second, 1e-9, "squads $squads")
+        }
+    }
+
+    private val sectorAngles = listOf(0.0, ApproachSectors.FLANK_ANGLE, -ApproachSectors.FLANK_ANGLE)
+
+    private fun normalize(angle: Double): Double {
+        var result = angle % (2 * PI)
+        if (result > PI) result -= 2 * PI
+        if (result < -PI) result += 2 * PI
+        return result
+    }
+
+    /** The pinning squad, the head-on bearing, and where each other squad stands off it. */
+    private fun layout(squads: Map<String, Point3>): Triple<String, Double, Map<String, Double>> {
+        fun bearing(to: Point3) = kotlin.math.atan2(to.z - objective.z, to.x - objective.x)
+        val first = squads.minBy { kotlin.math.hypot(it.value.x - objective.x, it.value.z - objective.z) }.key
+        val head = bearing(squads.getValue(first))
+        return Triple(first, head, squads.filterKeys { it != first }.mapValues { normalize(bearing(it.value) - head) })
+    }
+
+    /** The fullest sector, counting the pinning squad head-on, and the walking round the objective. */
+    private fun cost(chosen: Map<String, Double>, stands: Map<String, Double>): Pair<Int, Double> =
+        sectorAngles.maxOf { sector -> (if (sector == 0.0) 1 else 0) + chosen.values.count { abs(it - sector) < 1e-9 } } to
+            chosen.entries.sumOf { (key, sector) -> abs(normalize(sector - stands.getValue(key))) }
+
+    /** The least cost of every combination, as [ApproachSectors] searched before #140. */
+    private fun fullSearch(stands: Map<String, Double>): Pair<Int, Double> {
+        val joining = stands.keys.toList()
+        var best = Int.MAX_VALUE to Double.MAX_VALUE
+        fun search(index: Int, chosen: Map<String, Double>) {
+            if (index == joining.size) {
+                val cost = cost(chosen, stands)
+                if (compareValuesBy(cost, best, { it.first }, { it.second }) < 0) best = cost
+                return
+            }
+            sectorAngles.forEach { search(index + 1, chosen + (joining[index] to it)) }
+        }
+        search(0, emptyMap())
+        return best
+    }
+
     @Test fun `flanks go to the side each squad already stands on`() {
         // Headless battle on the owner's terrain, 17.10: the second squad, standing next to the
         // pinning one, took the side the third stood on and the third walked round the point.

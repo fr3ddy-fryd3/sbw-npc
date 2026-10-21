@@ -29,8 +29,11 @@ object DebugFlags {
     var enabledGroups: Set<LogGroup> = emptySet()
 
     /** The map feed shows every faction's squads, NPCs and vehicles, not just the player's side
-     *  and the enemies it has spotted — for testing, where one player fields every side. */
-    var mapShowsAll = BuildFlags.DEBUG_ENABLED
+     *  and the enemies it has spotted — for testing, where one player fields every side.
+     *  Off unless `mapShowsAll` is set in the debug config: a debug jar is also what multiplayer
+     *  playtests run, and there it showed players the enemy's orders and objectives (#91). */
+    @Volatile
+    var mapShowsAll = false
 
     fun on(group: LogGroup): Boolean = BuildFlags.DEBUG_ENABLED && group in enabledGroups
 

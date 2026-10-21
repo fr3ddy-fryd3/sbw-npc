@@ -35,6 +35,7 @@ object GameTestRegistration {
             TacticalSearchGameTests::class.java,
             HtnTacticsGameTests::class.java,
             FollowOrderGameTests::class.java,
+            WithdrawalGameTests::class.java,
             FireSupportGameTests::class.java,
             TargetMemoryGameTests::class.java,
             SquadAreaGameTests::class.java,
