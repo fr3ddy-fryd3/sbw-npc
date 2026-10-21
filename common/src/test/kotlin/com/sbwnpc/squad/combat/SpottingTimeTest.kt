@@ -77,6 +77,7 @@ class SpottingTimeTest {
         assertEquals((0.2 + 0.3 * 0.8 * 0.8) * 12.0 * day * 1.5, seconds(40.0, 4, recruit)!!, 1e-9)
         assertTrue(seconds(58.0, 4, recruit) == null)
     }
+
     @Test fun `rain, snow and a storm each take longer and see less far than clear weather`() {
         val clear = seconds(50.0, 15)!!
         for (weather in listOf(SpottingTime.Weather.RAIN, SpottingTime.Weather.SNOW, SpottingTime.Weather.STORM)) {

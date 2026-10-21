@@ -12,30 +12,20 @@ import net.minecraft.world.level.biome.Biome
  * scan goes through, so the sensor, the drone operator, the mortar and anti-drone fire cannot drift
  * apart on what "seen" means.
  *
- * Each caller keeps its own [SpottingProgress]: they look at different ranges on different
- * intervals, and one scan's [SpottingProgress.endScan] would drain what another was filling.
+ * One per scan, each with its own [SpottingProgress]: the scans look at different ranges on
+ * different intervals, and one scan's [endScan] would drain what another was filling. [by] names
+ * the scan in the [group] log; [size] is what it looks for.
  */
-object Noticing {
-    /** An enemy that fired this recently has given his position away. */
-    private const val GIVEAWAY_TICKS = 40
+class Noticing(private val by: String, private val group: LogGroup = LogGroup.SPOTTING, private val size: SpottingTime.Size = SpottingTime.Size.PERSON) {
+    private val progress = SpottingProgress()
 
     /**
      * Whether [observer] has noticed [candidate]. Instant for its current target, for an enemy that
      * has just fired, and while [observer] is under fire; otherwise it takes [SpottingTime.seconds]
-     * by distance, light and weather at [candidate], [offAxis], posture, [grassBlocks], [size] and
-     * the observer's experience. [by] names the scan in the [group] log.
+     * by distance, light and weather at [candidate], [offAxis], posture, [grassBlocks], size and
+     * the observer's experience.
      */
-    fun noticed(
-        observer: NpcEntity,
-        level: ServerLevel,
-        candidate: Entity,
-        progress: SpottingProgress,
-        offAxis: Double,
-        grassBlocks: Int = 0,
-        size: SpottingTime.Size = SpottingTime.Size.PERSON,
-        group: LogGroup = LogGroup.SPOTTING,
-        by: String = "sight",
-    ): Boolean {
+    fun noticed(observer: NpcEntity, level: ServerLevel, candidate: Entity, offAxis: Double, grassBlocks: Int = 0): Boolean {
         val now = level.gameTime
         val gaveAway = candidate is NpcEntity && candidate.firedRecently(GIVEAWAY_TICKS)
         if (candidate === observer.target || gaveAway || observer.incomingFire.pending(now)) {
@@ -64,16 +54,24 @@ object Noticing {
         }
     }
 
-    /**
-     * The weather where [pos] is. Not [Level.isRainingAt]: that needs open sky and rain, so it says
-     * "clear" for a man under a roof or a tree and for every snowy biome.
-     */
-    fun weatherAt(level: Level, pos: BlockPos): SpottingTime.Weather {
-        if (!level.isRaining) return SpottingTime.Weather.CLEAR
-        return when (level.getBiome(pos).value().getPrecipitationAt(pos)) {
-            Biome.Precipitation.NONE -> SpottingTime.Weather.CLEAR
-            Biome.Precipitation.SNOW -> SpottingTime.Weather.SNOW
-            Biome.Precipitation.RAIN -> if (level.isThundering) SpottingTime.Weather.STORM else SpottingTime.Weather.RAIN
+    /** After a scan: whatever it did not look at drains, see [SpottingProgress.endScan]. */
+    fun endScan(now: Long) = progress.endScan(now)
+
+    companion object {
+        /** An enemy that fired this recently has given his position away. */
+        private const val GIVEAWAY_TICKS = 40
+
+        /**
+         * The weather where [pos] is. Not [Level.isRainingAt]: that needs open sky and rain, so it says
+         * "clear" for a man under a roof or a tree and for every snowy biome.
+         */
+        fun weatherAt(level: Level, pos: BlockPos): SpottingTime.Weather {
+            if (!level.isRaining) return SpottingTime.Weather.CLEAR
+            return when (level.getBiome(pos).value().getPrecipitationAt(pos)) {
+                Biome.Precipitation.NONE -> SpottingTime.Weather.CLEAR
+                Biome.Precipitation.SNOW -> SpottingTime.Weather.SNOW
+                Biome.Precipitation.RAIN -> if (level.isThundering) SpottingTime.Weather.STORM else SpottingTime.Weather.RAIN
+            }
         }
     }
 }

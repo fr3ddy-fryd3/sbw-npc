@@ -7,7 +7,6 @@ import com.sbwnpc.squad.combat.FireAllocation
 import com.sbwnpc.squad.combat.FiringOpportunity
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.Noticing
-import com.sbwnpc.squad.combat.SpottingProgress
 import com.sbwnpc.squad.combat.TankWeaponSelection
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.combat.VehicleTargeting
@@ -50,8 +49,8 @@ import net.tslat.smartbrainlib.util.BrainUtils
 class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     private var tacticalProbeCursor = 0
 
-    /** How far this NPC has got at noticing each enemy in view, see [Noticing]. */
-    private val spotting = SpottingProgress()
+    /** How far this NPC has got at noticing each enemy in view. */
+    private val noticing = Noticing("sight")
     private var nextReallocationTick = Long.MIN_VALUE
 
     // ExtendedSensor's default is a flat 20 ticks with NO initial offset (nextTickTime starts at 0
@@ -279,7 +278,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         // Only a man on his own feet takes time to spot; a vehicle's crew and aircrew keep their sight.
         val onFoot = !airborne && !allRound && mob.vehicle == null
         if (hostiles.isEmpty()) {
-            spotting.endScan(level.gameTime)
+            noticing.endScan(level.gameTime)
             return null
         }
         val rangeSqr = range * range
@@ -293,13 +292,13 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             // yaw: an NPC scanning around while it walks is looking where its head points.
             if (!allRound && !Vision.inCone(mob.position(), mob.yHeadRot, candidate.position())) continue
             val sighting = DetectionSightline.sight(mob, candidate)
-            if (sighting.visibility == DetectionSightline.Visibility.VISIBLE && (!onFoot || Noticing.noticed(mob, level, candidate, spotting, Vision.offAxis(mob.position(), mob.yHeadRot, candidate.position()), sighting.grassBlocks))) {
+            if (sighting.visibility == DetectionSightline.Visibility.VISIBLE && (!onFoot || noticing.noticed(mob, level, candidate, Vision.offAxis(mob.position(), mob.yHeadRot, candidate.position()), sighting.grassBlocks))) {
                 SquadTactics.observe(mob, candidate)
                 visible += candidate
                 if (visible.size >= MAX_SPREAD_CANDIDATES || mob.currentSquad() == null) break
             }
         }
-        spotting.endScan(level.gameTime)
+        noticing.endScan(level.gameTime)
         return FireAllocation.pick(mob, level, visible)
     }
 
