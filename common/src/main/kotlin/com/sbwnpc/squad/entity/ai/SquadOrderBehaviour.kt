@@ -126,7 +126,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
                 val arrived = dist <= SquadFormation.ARRIVAL_RADIUS
                 // With no enemy contact every class reaches the ordered point. Combat range
                 // and rear support posts are decided only by GunAttackBehaviour.
-                approachSlot(entity, home, arrived, RUN_SPEED_MODIFIER)
+                approachSlot(entity, home, arrived, com.sbwnpc.squad.combat.WaryApproach.pace(entity, RUN_SPEED_MODIFIER))
             }
 
             // Own arrival threshold, SquadFormation.defendArrivalRadius — DEFEND holds a perimeter

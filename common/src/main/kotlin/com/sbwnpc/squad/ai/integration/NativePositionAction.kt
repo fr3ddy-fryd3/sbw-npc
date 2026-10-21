@@ -159,7 +159,9 @@ internal class NativePositionAction(
             exhausted(intent, mapOf("movement_stalled" to 1), task.anchor)
             return ActionUpdate.Failed("local_movement_stalled")
         }
-        if (FiringPostArrival.steer(npc, destination, 1.3)) return ActionUpdate.Running
+        // Scouts and a marching reinforcement go in at a walk on a wary approach (#148), as the squad does.
+        val speed = if (intent.duty in setOf(CombatDuty.SEARCH, CombatDuty.MOVE)) com.sbwnpc.squad.combat.WaryApproach.pace(npc, COMBAT_SPEED) else COMBAT_SPEED
+        if (FiringPostArrival.steer(npc, destination, speed)) return ActionUpdate.Running
         if (npc.navigation.isDone) {
             if (!TacticalBudget.path(npc)) return deferred(now, "native_path_budget")
             val route = TacticalPositions.pathToPosition(npc, destination)
@@ -167,7 +169,7 @@ internal class NativePositionAction(
                 invalidate(now, "route_unreachable")
                 return ActionUpdate.Running
             }
-            if (npc.navigation.moveTo(route, 1.3)) task.navigationPath = route
+            if (npc.navigation.moveTo(route, speed)) task.navigationPath = route
         }
         return ActionUpdate.Running
     }
@@ -313,6 +315,9 @@ internal class NativePositionAction(
     internal companion object {
         /** How far ahead an observer with no focus watches. */
         private const val IDLE_GAZE_DISTANCE = 8.0
+
+        /** The pace a man moves to a tactical position at. */
+        private const val COMBAT_SPEED = 1.3
 
         /** A candidate this near the route leg is on the way, even while it leads away from the anchor. */
         private const val ROUTE_LEG_REACH = 6.0

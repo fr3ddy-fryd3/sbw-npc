@@ -290,6 +290,16 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         }
     }
 
+    /**
+     * Keeps the NPC wary toward [toward] for at least [ticks] more, without the turn to a heard
+     * noise that [becomeWary] adds: refreshed over and over, that kept it staring at one point and
+     * held off the sector sweep ([WaryScanGoal] waits while it is [listening]).
+     */
+    fun watchToward(toward: Vec3, ticks: Int) {
+        waryAt = toward
+        waryUntilTick = maxOf(waryUntilTick, tickCount + ticks)
+    }
+
     /** Turned toward what it last heard for a few seconds, over the idle look-around. */
     fun listening(): Boolean = heardAt != null && tickCount < heardUntilTick
 
