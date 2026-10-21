@@ -203,6 +203,14 @@ object ModNetwork {
             fun ownedSid(): UUID? {
                 val id = runCatching { UUID.fromString(p.squad) }.getOrNull() ?: return null
                 if (!mgr.ownedBy(id, player.uuid)) {
+                    com.sbwnpc.squad.combat.DebugFlags.log(
+                        com.sbwnpc.squad.combat.LogGroup.ORDER,
+                        "[squad] event=refused action={} squad={} player={} owner={}",
+                        p.action,
+                        id,
+                        player.gameProfile.name,
+                        mgr.get(id)?.owner,
+                    )
                     bar("Not your squad")
                     return null
                 }
@@ -245,6 +253,7 @@ object ModNetwork {
                 }
 
                 SquadCmdPayload.DISBAND -> ownedSid()?.let {
+                    com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER, "[squad] event=disband_request squad={} player={}", it, player.gameProfile.name)
                     mgr.disband(level, it)
                     reopen = true
                 }
@@ -289,6 +298,7 @@ object ModNetwork {
                 }
 
                 SquadCmdPayload.DELETE_SQUAD -> ownedSid()?.let { id ->
+                    com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER, "[squad] event=delete_request squad={} player={}", id, player.gameProfile.name)
                     mgr.deleteSquad(level, id)
                     SquadSelection.clear(player.uuid)
                     bar("Squad deleted")

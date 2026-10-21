@@ -120,8 +120,18 @@ class SquadManager : SavedData() {
      * two cannot drift apart on what "delete" means.
      */
     fun deleteSquad(level: ServerLevel, id: UUID) {
+        val name = get(id)?.name
         val members = beginDeletion(id)
-        members.forEach { member -> findEntity(level.server, member)?.let(::discardDeletedEntity) }
+        val removed = members.count { member -> findEntity(level.server, member)?.let(::discardDeletedEntity) == true }
+        com.sbwnpc.squad.combat.DebugFlags.log(
+            com.sbwnpc.squad.combat.LogGroup.ORDER,
+            "[squad] event=delete squad={} name={} members={} removed={} pending={}",
+            id,
+            name,
+            members.size,
+            removed,
+            members.count { it in pendingDeletes },
+        )
     }
 
     internal fun beginDeletion(id: UUID): List<UUID> {
@@ -151,8 +161,17 @@ class SquadManager : SavedData() {
 
     fun disband(level: ServerLevel, id: UUID) {
         val squad = squads.remove(id) ?: return
-        squad.members.forEach { m -> (findEntity(level.server, m) as? NpcEntity)?.squadId = null }
+        val loaded = squad.members.mapNotNull { m -> findEntity(level.server, m) as? NpcEntity }
+        loaded.forEach { it.squadId = null }
         setDirty()
+        com.sbwnpc.squad.combat.DebugFlags.log(
+            com.sbwnpc.squad.combat.LogGroup.ORDER,
+            "[squad] event=disband squad={} name={} members={} loaded={}",
+            id,
+            squad.name,
+            squad.members.size,
+            loaded.size,
+        )
     }
 
     fun mergeProblem(source: UUID, destination: UUID, owner: UUID): String? = SquadMerging.problem(get(source), get(destination), owner)
