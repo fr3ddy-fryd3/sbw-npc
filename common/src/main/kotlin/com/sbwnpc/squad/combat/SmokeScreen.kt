@@ -18,7 +18,11 @@ import net.minecraft.world.phys.Vec3
  * the way) leaves his point to the next one.
  */
 object SmokeScreen {
-    /** How far in front of the throwers the screen is laid: inside [GrenadeThrower]'s reach, and far enough that the cloud is not on them. */
+    /**
+     * How far in front of the throwers the screen is laid: inside [GrenadeThrower]'s reach, and far
+     * enough that the cloud is not on them. A point no arc reaches is tried at half this, at the edge of
+     * the thrower's own smoke, which still screens the men behind him.
+     */
     private const val SCREEN_DISTANCE = 10.0
 
     /** Gap between neighbouring grenades across the screen, about one cloud's width. */
@@ -37,16 +41,16 @@ object SmokeScreen {
     internal fun throwers(holding: List<NpcEntity>): List<NpcEntity> = holding.filter { it.isAlive && it.smokeLeft > 0 && it.vehicle == null && !it.busyWithRole() }
 
     /**
-     * Where [count] grenades go: on a line across the way to [enemy], [SCREEN_DISTANCE] in front of
+     * Where [count] grenades go: on a line across the way to [enemy], [distance] in front of
      * [centre] on its level, [SCREEN_SPACING] apart and centred on that way. Empty when the enemy
      * gives no direction.
      */
-    internal fun screenPoints(centre: Vec3, enemy: Vec3, count: Int): List<Vec3> {
+    internal fun screenPoints(centre: Vec3, enemy: Vec3, count: Int, distance: Double = SCREEN_DISTANCE): List<Vec3> {
         val flat = Vec3(enemy.x - centre.x, 0.0, enemy.z - centre.z)
         if (flat.lengthSqr() < 1.0 || count <= 0) return emptyList()
         val ahead = flat.normalize()
         val across = Vec3(-ahead.z, 0.0, ahead.x)
-        val middle = centre.add(ahead.scale(SCREEN_DISTANCE))
+        val middle = centre.add(ahead.scale(distance))
         return (0 until count).map { middle.add(across.scale((it - (count - 1) / 2.0) * SCREEN_SPACING)) }
     }
 
@@ -71,15 +75,17 @@ object SmokeScreen {
         // blocks the screen fell where nobody could throw that far.
         val centre = free.minBy { it.position().distanceToSqr(enemy) }.position()
         var thrown = 0
-        for (point in screenPoints(centre, enemy, count).map { onGround(level, it) }) {
-            // A smoke grenade flies like the hand grenades, so their arc check judges it.
-            val thrower = free.sortedBy { it.position().distanceToSqr(point) }.firstOrNull {
-                GrenadeThrower.inRange(it.position(), point) && Ports.grenades.arcClear(it, level, point, Vec3.ZERO, GrenadeKind.DEFENSIVE, NEAR_POINT)
-            }
-            if (thrower == null) {
-                DebugFlags.log(LogGroup.RETREAT, "no throw for smoke at {}: {} men free, nearest {} blocks off", point, free.size, free.minOfOrNull { it.position().distanceTo(point) }?.toInt())
+        // Each grenade's own place on the screen, and the same place nearer in: on a hillside the
+        // far one was often below a drop that no arc from up the slope came down on.
+        val far = screenPoints(centre, enemy, count).map { onGround(level, it) }
+        val near = screenPoints(centre, enemy, count, SCREEN_DISTANCE / 2).map { onGround(level, it) }
+        for ((farPoint, nearPoint) in far.zip(near)) {
+            val choice = listOf(farPoint, nearPoint).firstNotNullOfOrNull { point -> throwerFor(level, free, point)?.let { point to it } }
+            if (choice == null) {
+                DebugFlags.log(LogGroup.RETREAT, "no throw for smoke at {}: {} men free, nearest {} blocks off", farPoint, free.size, free.minOfOrNull { it.position().distanceTo(farPoint) }?.toInt())
                 continue
             }
+            val (point, thrower) = choice
             Ports.grenades.throwSmoke(thrower, level, point)
             thrower.smokeLeft--
             free -= thrower
@@ -88,4 +94,10 @@ object SmokeScreen {
         }
         return thrown
     }
+
+    /** The nearest of [free] who can land a grenade on [point]; a smoke grenade flies like the hand grenades, so their arc check judges it. */
+    private fun throwerFor(level: ServerLevel, free: List<NpcEntity>, point: Vec3): NpcEntity? =
+        free.sortedBy { it.position().distanceToSqr(point) }.firstOrNull {
+            GrenadeThrower.inRange(it.position(), point) && Ports.grenades.arcClear(it, level, point, Vec3.ZERO, GrenadeKind.DEFENSIVE, NEAR_POINT)
+        }
 }
