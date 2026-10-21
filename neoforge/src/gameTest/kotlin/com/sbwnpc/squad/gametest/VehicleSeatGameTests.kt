@@ -22,6 +22,12 @@ import java.util.UUID
  */
 @PrefixGameTestTemplate(false)
 object VehicleSeatGameTests {
+    /** Puts [man] in [vehicle] at whichever seat lays its turret, trying each in turn. */
+    private fun seatAtTurret(vehicle: Entity, man: com.sbwnpc.squad.entity.NpcEntity): Boolean {
+        if (!man.startRiding(vehicle, true)) return false
+        return Ports.vehicles.seating(vehicle).indices.any { Ports.vehicles.isTurretGunner(vehicle, man) || (Ports.vehicles.changeSeat(vehicle, man, it) && Ports.vehicles.isTurretGunner(vehicle, man)) }
+    }
+
     private fun park(helper: GameTestHelper, model: VehicleModel, at: Vec3): Entity =
         requireNotNull(Ports.vehicles.create(helper.level, model)).also {
             val point = helper.absoluteVec(at)
@@ -111,11 +117,7 @@ object VehicleSeatGameTests {
         val gunners = listOf(NpcRank.ELITE, NpcRank.RECRUIT).mapIndexed { index, rank ->
             scene.spawn(Vec3(70.5 + index * 10, 1.0, 17.5)).also { man ->
                 man.npcRank = rank
-                helper.assertTrue(man.startRiding(guns[index], true), "The $rank could not get in")
-                val seats = Ports.vehicles.seating(guns[index]).indices
-                // Whichever seat lays the turret: try each until he is in it.
-                seats.firstOrNull { Ports.vehicles.isTurretGunner(guns[index], man) || (Ports.vehicles.changeSeat(guns[index], man, it) && Ports.vehicles.isTurretGunner(guns[index], man)) }
-                helper.assertTrue(Ports.vehicles.isTurretGunner(guns[index], man), "The $rank is not at the turret")
+                helper.assertTrue(seatAtTurret(guns[index], man), "The $rank is not at the turret")
             }
         }
         val squads = gunners.map { manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(it.uuid)) }
