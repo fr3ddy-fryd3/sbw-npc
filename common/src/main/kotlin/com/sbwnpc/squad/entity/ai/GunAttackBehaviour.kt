@@ -34,6 +34,7 @@ import com.sbwnpc.squad.domain.port.HandGun
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.domain.port.TriggerMode
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.NpcPosture
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.Squad
 import com.sbwnpc.squad.squad.SquadOrder
@@ -1003,7 +1004,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             nextFriendlyFireCheckTick = entity.tickCount + FRIENDLY_FIRE_CHECK_INTERVAL
             val explosionRadius = gun.explosionRadius
             val dark = DarkAim.spreadFactor(entity.level(), target)
-            shotSpread = DroneCombat.spreadForTarget(entity.spread * dark, target)
+            shotSpread = DroneCombat.spreadForTarget(entity.spread * dark * NpcPosture.spreadFactor(entity), target)
             if (dark > 1.0 && entity.random.nextInt(DARK_SPREAD_SAMPLE) == 0) {
                 DebugFlags.log(LogGroup.FIRE, "{} aims at {} in the dark: spread x{} -> {}", entity.uuid, target.uuid, "%.2f".format(dark), "%.2f".format(shotSpread))
             }
