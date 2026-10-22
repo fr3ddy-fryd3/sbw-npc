@@ -5,21 +5,29 @@ import net.minecraft.server.level.ServerLevel
 
 /**
  * Runs the long-route searches — boats, marches, vehicles — from the server tick, a few thousand
- * units of work a tick shared out among all of them in turn.
+ * units of work a tick, oldest search first.
  *
  * They used to run only when whoever wanted one asked after it, and a man asks for his path once a
  * second: a search worth a tick and a half took twenty seconds, the first to ask each tick took the
  * whole share, and the squad stood waiting for its route while the rest of the server was idle.
+ *
+ * Oldest first, not an even share: twenty searches for six squads ordered off together, shared out
+ * evenly, all came back together after 25 s, and every squad stood until then (#145). In turn, the
+ * first squad is off within a second or two and only the last waits as long as the work takes.
  */
 object PlanBudget {
     /** Units of [CellPlanner.Search] work per server tick, all searches together — a few milliseconds. */
     private const val PER_TICK = 2_500
 
-    /** No search gets less than this in a tick it is run, or a crowd of them would each crawl. */
-    private const val MIN_SHARE = 250
-
     /** A search nobody has asked after in this long is dropped. */
     private const val ABANDON_TICKS = 200
+
+    /**
+     * A search nobody has asked after in this long waits behind the rest: whoever wanted it may have
+     * been given another order, and at the head of the queue it would take every tick's work until
+     * dropped. Over the second a man waits between asking.
+     */
+    private const val STALE_TICKS = 40
 
     private val running = LinkedHashMap<CellPlanner.Search, Int>()
 
@@ -40,16 +48,14 @@ object PlanBudget {
         val now = server.tickCount
         running.entries.removeIf { it.key.finished || now - it.value > ABANDON_TICKS }
         if (running.isEmpty()) return
-        val share = maxOf(MIN_SHARE, PER_TICK / running.size)
         var left = PER_TICK
-        // Whoever ran first last tick goes to the back, so a crowd of searches all get their turn.
-        val order = running.keys.toList()
-        for (search in order) {
+        // Insertion order is the order they were started in; asking again doesn't move a search.
+        val (asked, stale) = running.entries.partition { now - it.value <= STALE_TICKS }
+        for (search in (asked + stale).map { it.key }) {
             if (left <= 0) break
             val before = search.expanded
-            search.step(minOf(share, left))
+            search.step(left)
             left -= (search.expanded - before).coerceAtLeast(1)
-            running.remove(search)?.let { running[search] = it }
         }
     }
 }

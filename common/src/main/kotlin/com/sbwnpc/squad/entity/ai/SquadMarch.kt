@@ -63,6 +63,14 @@ object SquadMarch {
 
     /** A requested goal this near the route's own is the same march (formation slots differ). */
     private const val SAME_GOAL = 40.0
+
+    /**
+     * Further off, goals this share of the way apart are the same march too: places spread 100
+     * blocks along an attack front 600 blocks away started a long-route search each, three or four
+     * a squad, that all ran the same way to the same frontier (#145). Closer in the share shrinks
+     * below [SAME_GOAL] and each man's own place gets a route of its own.
+     */
+    private const val SAME_GOAL_SHARE = 0.15
     private const val MIN_REPLAN_TICKS = 40L
 
     /** A leg ending nearer than this to where it started made no headway. */
@@ -187,7 +195,8 @@ object SquadMarch {
         // searches of its own, and each of them stood still until its own came back.
         // The squad's route and a man's own are kept apart: a man near his place whose short search
         // failed wants a way round to that place, not the squad's way to its destination.
-        val bound = marches.filter { it.shared == onShared && it.goal.closerThan(goal, SAME_GOAL) }
+        val sameGoal = sameGoalRange(Math.sqrt(goal.distToCenterSqr(npc.position())))
+        val bound = marches.filter { it.shared == onShared && it.goal.closerThan(goal, sameGoal) }
         val march = bound.firstOrNull { it.progress.contains(npc.uuid) && distanceTo(it, npc) <= JOIN * 2 }
             ?: bound
                 .map { it to distanceTo(it, npc) }
@@ -209,7 +218,8 @@ object SquadMarch {
         val here = march.progress.index(npc.uuid, npc.position())
         val atEnd = route.isEmpty() || here >= route.size - if (march.long && !march.legsOnly) LONG_END_NODES else END_NODES
         if (atEnd && !march.complete && !march.legsOnly) {
-            planLong(level, npc, march, goal, name)
+            // The march's goal, not this man's: whoever asks next is bound for somewhere near it.
+            planLong(level, npc, march, march.goal, name)
             val planned = march.route
             if (planned.isEmpty()) return if (march.search != null) Waypoint(npc.blockPosition(), null) else null
             val at = march.progress.index(npc.uuid, npc.position())
@@ -302,6 +312,9 @@ object SquadMarch {
         if (!formationAdvances(route, here, ground)) return null
         return BlockPos.containing(ground)
     }
+
+    /** How far apart two goals [distance] away may be and still share one march. */
+    internal fun sameGoalRange(distance: Double): Double = maxOf(SAME_GOAL, SAME_GOAL_SHARE * distance)
 
     /** Keep the formation's rear looking ahead of its own progress, even when the lead stops. */
     internal fun formationAnchorIndex(route: List<BlockPos>, leadAt: Int, here: Int, depth: Double): Int {

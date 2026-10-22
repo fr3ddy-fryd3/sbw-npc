@@ -16,6 +16,14 @@ class SquadMarchTest {
     private val longRoute = (0..1500).map { BlockPos(it, 64, 0) }
 
     @Test
+    fun `places along a far attack front share one march and split up close in`() {
+        // Alpha's places on the 21:30 attack (22.10): 87 blocks apart, 600 blocks off.
+        assertTrue(SquadMarch.sameGoalRange(600.0) >= 87.0)
+        assertEquals(40.0, SquadMarch.sameGoalRange(100.0))
+        assertTrue(SquadMarch.sameGoalRange(300.0) < 87.0)
+    }
+
+    @Test
     fun `every slot of a 32 member squad keeps advancing even with a stationary lead`() {
         for (order in listOf(SquadOrder.ATTACK, SquadOrder.MOVE, SquadOrder.PATROL)) {
             for (slot in 0 until 32) {
