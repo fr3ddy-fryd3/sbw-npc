@@ -126,7 +126,8 @@ object MapFeed {
                 ?.let { net.minecraft.core.BlockPos(it.x, it.y, it.z) } ?: squad.tacticalObjective ?: squad.objective
             goal?.let {
                 t.putIntArray("Goal", intArrayOf(it.x, it.y, it.z))
-                t.putString("GoalOrder", operation?.order?.name ?: squad.order.name)
+                // FOLLOW is planned as a defence of the player, so its operation's order reads DEFEND.
+                t.putString("GoalOrder", operation?.order?.takeIf { it != squad.order.tactical() }?.name ?: squad.order.name)
             }
             if (squad.owner == viewer && com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.MAP)) {
                 val source = when {

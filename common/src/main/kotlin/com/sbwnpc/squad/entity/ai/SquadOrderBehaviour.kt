@@ -1,7 +1,9 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
+import com.sbwnpc.squad.ai.integration.point
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.FollowFormation
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.entity.NpcEntity
@@ -178,6 +180,8 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
             SquadOrder.MOVE -> tickMove(entity, home)
 
+            SquadOrder.FOLLOW -> tickFollow(entity, squad, home)
+
             // Nobody in sight: just get there at a run. Under fire GunAttackBehaviour takes over
             // and makes it a fighting withdrawal.
             SquadOrder.RETREAT -> {
@@ -189,6 +193,27 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
                     moveToSlot(entity, bound, RUN_SPEED_MODIFIER)
                 }
             }
+        }
+    }
+
+    /**
+     * Far from the player the squad paths to him as for an attack; close to him each man holds his
+     * own loose slot ahead of him, see [FollowFormation]. Only a man with nothing to shoot at gets
+     * here, so after a fight the squad comes back to the player by itself.
+     */
+    private fun tickFollow(entity: NpcEntity, squad: Squad, player: Vec3) {
+        if (!FollowFormation.near(entity.position().point(), player.point())) {
+            approachSlot(entity, player, false, RUN_SPEED_MODIFIER)
+            return
+        }
+        val heading = squad.followHeading
+        val moving = heading != Vec3.ZERO
+        val slot = FollowFormation.slot(player.point(), if (moving) heading.x to heading.z else null, entity.slotIndex(squad), moving)
+        val target = Vec3(slot.x, slot.y, slot.z)
+        if (entity.position().distanceTo(target) > FOLLOW_SLOT_TOLERANCE) {
+            moveToSlot(entity, target, if (moving) RUN_SPEED_MODIFIER else WALK_SPEED_MODIFIER)
+        } else {
+            entity.navigation.stop()
         }
     }
 
@@ -438,6 +463,9 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val ROUTE_DWELL_JITTER = 40
         private const val MOVE_SLOT_RADIUS = 2.0
         private const val SLOT_SETTLE_DISTANCE = 3.0
+
+        /** A following man within this of his slot stands still rather than shuffling to the exact spot. */
+        private const val FOLLOW_SLOT_TOLERANCE = 2.5
 
         /** How far around its perimeter slot a defender looks for a better spot. */
         private const val DEFEND_POST_SEARCH = 3.0

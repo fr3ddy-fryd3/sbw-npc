@@ -60,6 +60,12 @@ class NpcPosture(private val npc: NpcEntity) {
     private fun canStandUp(): Boolean = npc.level().noCollision(npc, npc.getDimensions(Pose.STANDING).makeBoundingBox(npc.position()).deflate(1.0e-7))
 
     companion object {
+        /** A crouched man holds his weapon steadier (#156): about 1.5 times the hits, see [com.sbwnpc.squad.combat.DarkAim]. */
+        private const val CROUCHED_SPREAD = 0.8
+
+        /** What [npc]'s posture does to the spread of the shot he fires now. */
+        fun spreadFactor(npc: NpcEntity): Double = if (npc.isCrouching) CROUCHED_SPREAD else 1.0
+
         /** A player's crouch, scaled to the NPC's height; the eyes clear a one-block wall. */
         val CROUCHING_DIMENSIONS: EntityDimensions = EntityDimensions.scalable(0.6f, 1.55f).withEyeHeight(1.35f)
         private const val STILL_SPEED_SQR = 0.0025
