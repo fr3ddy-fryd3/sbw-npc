@@ -1137,6 +1137,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             com.sbwnpc.squad.entity.ai.HelicopterGunnerBehaviour(),
             com.sbwnpc.squad.entity.ai.HelicopterRideBehaviour(),
             VehicleCombatSupportBehaviour(),
+            com.sbwnpc.squad.entity.ai.FollowRideBehaviour(),
             MedicHealBehaviour(),
             com.sbwnpc.squad.entity.ai.SelfTreatBehaviour(),
             // Last: it has to override whatever the behaviours above did with the navigation.

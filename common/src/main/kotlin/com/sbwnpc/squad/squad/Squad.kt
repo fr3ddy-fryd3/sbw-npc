@@ -60,6 +60,10 @@ class Squad(
     var tacticalOperation: UUID? = null
     var tacticalObjective: BlockPos? = null
 
+    /** Which way the followed player is going and where he was last seen, for FOLLOW. Not saved. */
+    var followHeading: net.minecraft.world.phys.Vec3 = net.minecraft.world.phys.Vec3.ZERO
+    var followLast: net.minecraft.world.phys.Vec3? = null
+
     /** Game time the current MOVE rally started — see `SquadOrderBehaviour.tickMove`. Not saved. */
     var moveRallySince: Long = 0L
 

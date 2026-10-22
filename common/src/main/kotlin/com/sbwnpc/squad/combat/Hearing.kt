@@ -139,10 +139,16 @@ object Hearing {
         val listeners = ArrayList<NpcEntity>()
         NpcRegistry.forEachWithin(level, at, radius, exclude = source) { npc ->
             inRange++
-            if (npc.isAlive && (allSides || source == null || SquadTeams.isHostile(npc, source))) listeners += npc
+            if (npc.isAlive && hears(npc, source, allSides)) listeners += npc
         }
         return Heard(listeners, inRange)
     }
+
+    /**
+     * Whether [npc] reacts to a noise [source] made. A player's shots are heard by every side, but
+     * not by the player's own men: they ran over to look at every shot (#116).
+     */
+    private fun hears(npc: NpcEntity, source: Entity?, allSides: Boolean): Boolean = (allSides || source == null || SquadTeams.isHostile(npc, source)) && npc.currentSquad()?.owner != source?.uuid
 
     private fun log(kind: String, source: Entity?, at: Vec3, radius: Double, heard: Heard) {
         // A player's noise is logged even unheard, to tell "nobody near" from "nobody hostile".
