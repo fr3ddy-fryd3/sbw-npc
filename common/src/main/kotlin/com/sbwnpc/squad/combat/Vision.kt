@@ -25,6 +25,20 @@ object Vision {
         viewerPos.distanceToSqr(targetPos) <= 36.0 &&
             (viewerPos.distanceToSqr(targetPos) <= 6.25 || inCone(viewerPos, yaw, targetPos))
 
+    /**
+     * How far off the line of sight [targetPos] lies: 0 straight ahead, 1 at the edge of the cone
+     * (and beyond). Spotting is slower towards the edge, see [SpottingTime].
+     */
+    fun offAxis(viewerPos: Vec3, viewYawDegrees: Float, targetPos: Vec3, coneDegrees: Double = CONE_DEGREES): Double {
+        val dx = targetPos.x - viewerPos.x
+        val dz = targetPos.z - viewerPos.z
+        val distSqr = dx * dx + dz * dz
+        if (distSqr < 1.0e-6) return 0.0
+        val yaw = Math.toRadians(viewYawDegrees.toDouble())
+        val cos = ((-Math.sin(yaw) * dx + Math.cos(yaw) * dz) / Math.sqrt(distSqr)).coerceIn(-1.0, 1.0)
+        return (Math.toDegrees(Math.acos(cos)) / (coneDegrees / 2.0)).coerceIn(0.0, 1.0)
+    }
+
     fun inCone(
         viewerPos: Vec3,
         viewYawDegrees: Float,

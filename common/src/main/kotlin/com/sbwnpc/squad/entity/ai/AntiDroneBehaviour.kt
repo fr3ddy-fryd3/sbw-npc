@@ -1,13 +1,19 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
+import com.sbwnpc.squad.combat.DarkAim
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.DroneAccuracy
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.combat.Noticing
+import com.sbwnpc.squad.combat.SpottingTime
+import com.sbwnpc.squad.combat.Vision
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.DroneRegistry
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.NpcPosture
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.npc.NpcClass
@@ -27,11 +33,15 @@ import kotlin.math.roundToInt
  * a player's, or another squad's operator's). Core task: it must preempt an ongoing firefight,
  * since an FPV drone that gets close ends the firefight for everyone in a 12-block radius.
  *
- * Detection ([detect], every [DETECT_INTERVAL] ticks): a hostile drone within [SIGHT_RANGE] with
- * line of sight, or within [HEARING_RANGE] with its motor running (they are loud) — line of sight
- * not required. Whoever notices shouts: every ally within [ALERT_RADIUS] gets the drone's id as a
- * [ModMemories.DRONE_THREAT] TTL memory, so a squad reacts together rather than one by one as
- * each spots it.
+ * Detection ([detect], every [DETECT_INTERVAL] ticks) tells hearing from seeing (#114):
+ *  - Heard, within [HEARING_RANGE] with its motor running (they are loud), no line of sight needed:
+ *    only an alarm and a direction, [ModMemories.DRONE_HEARD]. Nobody shoots at a sound.
+ *  - Seen, within [SIGHT_RANGE], in his cone and in view, and noticed through [Noticing] as a small
+ *    target: [ModMemories.DRONE_THREAT], the only drone a shooter fires at.
+ * Either way he shouts, and every ally within [ALERT_RADIUS] gets the alarm. Cover-seekers react to
+ * the alarm as to a sighting. A shooter turns to the sound and searches for up to [SEARCH_TICKS],
+ * then goes back to his fight for [SEARCH_PAUSE_TICKS]: he shoots only at a drone he has noticed
+ * himself, so a drone circling unseen at night cannot freeze him.
  *
  * Reaction by class (per user decision):
  *  - RIFLEMAN / MACHINE_GUNNER / SNIPER / TANK_CREW (on foot) / DRONE_OPERATOR (not flying): plant
@@ -54,20 +64,35 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private var nextDetectTick = 0
+    private var searchUntilTick = 0
+    private var searchAgainTick = 0
     private var nextShotTick = 0
     private var evadeUntilTick = 0
     private var evadeTarget: Vec3? = null
     private val startCheck = StartCheckThrottle(START_CHECK_INTERVAL_TICKS)
 
+    /** How far he has got at noticing each drone in his cone. */
+    private val noticing = Noticing("anti-drone", LogGroup.DRONE, SpottingTime.Size.DRONE)
+
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
     private fun eligible(entity: NpcEntity): Boolean = !entity.vehicleTransport && !entity.operatingDrone
 
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = startCheck.check(entity) { eligible(entity) && threat(entity, level) != null }
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
+        startCheck.check(entity) {
+            eligible(entity) && alarm(entity, level)?.let { it.seen || !isShooter(entity) || entity.tickCount >= searchAgainTick } == true
+        }
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean {
         val level = entity.level() as? ServerLevel ?: return false
-        return eligible(entity) && threat(entity, level) != null
+        val alarm = alarm(entity, level) ?: return false
+        if (!alarm.seen && isShooter(entity) && entity.tickCount >= searchUntilTick) {
+            // He searched for a drone he only heard and never found it: back to his fight for a
+            // while, rather than staring at the sky for as long as it buzzes about.
+            searchAgainTick = entity.tickCount + SEARCH_PAUSE_TICKS
+            return false
+        }
+        return eligible(entity)
     }
 
     override fun start(entity: NpcEntity) {
@@ -75,6 +100,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.navigation.stop()
         evadeUntilTick = 0
         evadeTarget = null
+        searchUntilTick = entity.tickCount + SEARCH_TICKS
     }
 
     override fun stop(entity: NpcEntity) {
@@ -97,21 +123,37 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
             -> false
         }
 
-    /** The drone this mob should be dealing with right now: the remembered one if still a live,
-     *  hostile, in-range threat; otherwise a fresh detection (rate limited). */
-    private fun threat(entity: NpcEntity, level: ServerLevel): Entity? {
-        BrainUtils.getMemory(entity, ModMemories.DRONE_THREAT.get())?.let { id ->
-            val drone = level.getEntity(id)?.takeIf(Ports.drones::isPiloted)
-            if (drone != null && isLiveThreat(entity, drone, TRACK_RANGE)) return drone
+    /** A drone this mob knows of, and whether he has seen it or only heard of it. */
+    private class Alarm(val drone: Entity, val seen: Boolean)
+
+    /**
+     * The drone this mob should be dealing with right now: the one he has seen if it is still a
+     * live, hostile, in-range threat, else a fresh detection (rate limited), else the one he heard
+     * or was told of.
+     */
+    private fun alarm(entity: NpcEntity, level: ServerLevel): Alarm? {
+        remembered(entity, level, ModMemories.DRONE_THREAT.get())?.let { return Alarm(it, true) }
+        if (entity.tickCount >= nextDetectTick) {
+            nextDetectTick = entity.tickCount + DETECT_INTERVAL
+            val found = detect(entity, level)
+            found.seen?.let { drone ->
+                BrainUtils.setForgettableMemory(entity, ModMemories.DRONE_THREAT.get(), drone.uuid, THREAT_TTL_TICKS)
+                shout(entity, level, drone)
+                DebugFlags.log(LogGroup.DRONE, "{} spotted hostile drone {}", entity.uuid, drone.uuid)
+                return Alarm(drone, true)
+            }
+            found.heard?.let { drone ->
+                if (!BrainUtils.hasMemory(entity, ModMemories.DRONE_HEARD.get())) {
+                    DebugFlags.log(LogGroup.DRONE, "{} heard hostile drone {} at {} blocks, not seen", entity.uuid, drone.uuid, entity.distanceTo(drone).toInt())
+                }
+                hear(entity, drone)
+                shout(entity, level, drone)
+            }
         }
-        if (entity.tickCount < nextDetectTick) return null
-        nextDetectTick = entity.tickCount + DETECT_INTERVAL
-        val found = detect(entity, level) ?: return null
-        remember(entity, found)
-        shout(entity, level, found)
-        DebugFlags.log(LogGroup.DRONE, "{} spotted hostile drone {}", entity.uuid, found.uuid)
-        return found
+        return remembered(entity, level, ModMemories.DRONE_HEARD.get())?.let { Alarm(it, false) }
     }
+
+    private fun remembered(entity: NpcEntity, level: ServerLevel, memory: MemoryModuleType<java.util.UUID>): Entity? = BrainUtils.getMemory(entity, memory)?.let(level::getEntity)?.takeIf { Ports.drones.isPiloted(it) && isLiveThreat(entity, it, TRACK_RANGE) }
 
     /** Whose drone it is decides, not the drone's own team: a player's drone has none — players
      *  are never put on one — so going by the team alone, NPCs let every player drone through. */
@@ -119,32 +161,44 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
         Ports.vehicles.isOperational(drone) && com.sbwnpc.squad.combat.DroneCombat.isHostileDrone(entity, drone) &&
             entity.distanceToSqr(drone) <= range * range
 
-    private fun detect(entity: NpcEntity, level: ServerLevel): Entity? {
-        var best: Entity? = null
-        var bestD2 = Double.MAX_VALUE
+    /** The nearest drone [detect] noticed, and the nearest it only heard. */
+    private class Detection(val seen: Entity?, val heard: Entity?)
+
+    private fun detect(entity: NpcEntity, level: ServerLevel): Detection {
+        var seen: Entity? = null
+        var heard: Entity? = null
         for (drone in DroneRegistry.all(level)) {
-            if (!isLiveThreat(entity, drone, SIGHT_RANGE)) continue
+            if (!isLiveThreat(entity, drone, maxOf(SIGHT_RANGE, HEARING_RANGE))) continue
             val d2 = entity.distanceToSqr(drone)
-            if (d2 >= bestD2) continue
-            val heard = d2 <= HEARING_RANGE * HEARING_RANGE && Ports.vehicles.engineRunning(drone)
-            if (heard || com.sbwnpc.squad.combat.DetectionSightline.canSee(entity, drone)) {
-                best = drone
-                bestD2 = d2
+            if (d2 <= SIGHT_RANGE * SIGHT_RANGE && looksAt(entity, level, drone)) {
+                if (seen == null || d2 < entity.distanceToSqr(seen)) seen = drone
+            } else if (d2 <= HEARING_RANGE * HEARING_RANGE && Ports.vehicles.engineRunning(drone)) {
+                if (heard == null || d2 < entity.distanceToSqr(heard)) heard = drone
             }
         }
-        return best
+        // After the looks, so what was looked at in this scan does not drain.
+        noticing.endScan(level.gameTime)
+        return Detection(seen, heard)
     }
 
-    private fun remember(npc: NpcEntity, drone: Entity) {
-        BrainUtils.setForgettableMemory(npc, ModMemories.DRONE_THREAT.get(), drone.uuid, THREAT_TTL_TICKS)
+    /** In his cone, in view, and noticed: a drone is small, so it takes longer and nearer than a man. */
+    private fun looksAt(entity: NpcEntity, level: ServerLevel, drone: Entity): Boolean {
+        if (!Vision.inCone(entity.position(), entity.yHeadRot, drone.position())) return false
+        if (!DetectionSightline.canSee(entity, drone)) return false
+        val offAxis = Vision.offAxis(entity.position(), entity.yHeadRot, drone.position())
+        return noticing.noticed(entity, level, drone, offAxis)
     }
 
-    /** "Drone!" — hand the sighting to every ally in earshot. They get it as a memory, so their
-     *  own AntiDroneBehaviour starts on its next tick without needing to see it themselves. */
+    private fun hear(npc: NpcEntity, drone: Entity) {
+        BrainUtils.setForgettableMemory(npc, ModMemories.DRONE_HEARD.get(), drone.uuid, THREAT_TTL_TICKS)
+    }
+
+    /** "Drone!" — every ally in earshot gets the alarm and the direction, not the drone to shoot at:
+     *  each turns to it and must see it himself before he fires. */
     private fun shout(entity: NpcEntity, level: ServerLevel, drone: Entity) {
         NpcRegistry.forEachWithin(level, entity.position(), ALERT_RADIUS, exclude = entity) { ally ->
-            if (!SquadTeams.isHostile(entity, ally) && !BrainUtils.hasMemory(ally, ModMemories.DRONE_THREAT.get())) {
-                remember(ally, drone)
+            if (!SquadTeams.isHostile(entity, ally) && !BrainUtils.hasMemory(ally, ModMemories.DRONE_HEARD.get()) && !BrainUtils.hasMemory(ally, ModMemories.DRONE_THREAT.get())) {
+                hear(ally, drone)
             }
         }
     }
@@ -153,26 +207,32 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun tick(entity: NpcEntity) {
         val level = entity.level() as? ServerLevel ?: return
-        val drone = threat(entity, level) ?: return
+        val alarm = alarm(entity, level) ?: return
+        val drone = alarm.drone
         val dist = entity.distanceTo(drone).toDouble()
         val closing = drone.deltaMovement.dot(entity.position().subtract(drone.position())) > 0.0
+        val shooter = isShooter(entity)
 
-        if (isShooter(entity)) {
-            if (dist <= SHOOTER_PANIC_RANGE && closing) {
-                evade(entity, drone)
-                return
+        val panicRange = if (shooter) SHOOTER_PANIC_RANGE else HIDER_PANIC_RANGE
+        val canRun = shooter || !entity.combatLockedByCover()
+        if (dist <= panicRange && closing && canRun) {
+            evade(entity, drone)
+            return
+        }
+        if (tickEvade(entity)) return
+        when {
+            shooter && alarm.seen -> shoot(entity, level, drone, dist)
+
+            // Heard, not seen: nothing to shoot at yet. He turns to the sound and looks for it,
+            // every tick: vanilla's look control lets go after two ticks and swings back to the body.
+            shooter -> {
+                entity.navigation.stop()
+                entity.lookControl.setLookAt(drone.x, drone.y, drone.z)
             }
-            if (tickEvade(entity)) return
-            shoot(entity, level, drone, dist)
-        } else {
+
             // Cover-seekers: hand the drone to SeekCoverBehaviour as a suppression threat (it
             // finds a spot the threat position can't see — for a drone, that means a roof).
-            if (dist <= HIDER_PANIC_RANGE && closing && !entity.combatLockedByCover()) {
-                evade(entity, drone)
-                return
-            }
-            if (tickEvade(entity)) return
-            entity.suppress(drone.position())
+            else -> entity.suppress(drone.position())
         }
     }
 
@@ -217,7 +277,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.tickCount < nextShotTick || !gun.canShoot()) return
         // A drone is a small, fast, evasive target — the same aim a rifleman holds on a person
         // shouldn't land on it as reliably.
-        val spread = DroneAccuracy.adjustSpread(entity.spread, true)
+        val spread = DroneAccuracy.adjustSpread(entity.spread * DarkAim.spreadFactor(entity.level(), drone) * NpcPosture.spreadFactor(entity), true)
         if (!FriendlyFireGuard.hasClearLineOfFire(entity, aim, spread)) return
 
         gun.shootAt(spread, aim)
@@ -234,12 +294,18 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val START_CHECK_INTERVAL_TICKS = 5
         private const val DETECT_INTERVAL = 10
         private const val SIGHT_RANGE = 48.0
-        private const val HEARING_RANGE = 25.0
+
+        /** A drone is loud: heard further off than it can be seen, see [SIGHT_RANGE]. */
+        private const val HEARING_RANGE = 50.0
 
         /** A remembered drone stays a threat a bit past sight range so it isn't re-detected every scan. */
         private const val TRACK_RANGE = 64.0
         private const val ALERT_RADIUS = 30.0
         private const val THREAT_TTL_TICKS = 60
+
+        /** How long a shooter looks for a drone he only heard, and how long he then leaves it be. */
+        private const val SEARCH_TICKS = 100
+        private const val SEARCH_PAUSE_TICKS = 200
 
         private const val SHOOT_RANGE = 40.0
         private const val SHOOTER_PANIC_RANGE = 6.0

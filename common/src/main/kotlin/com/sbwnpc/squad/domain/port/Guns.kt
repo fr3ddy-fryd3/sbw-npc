@@ -29,6 +29,9 @@ interface HandGun {
 
     /** How far off a shot from it is heard, suppressor included. */
     val hearingRadius: Double
+
+    /** A suppressor on it: quieter, and no muzzle flash to give the shooter away in the dark. */
+    val suppressed: Boolean
     val pellets: Int
 
     /** Per pellet. */

@@ -104,4 +104,18 @@ class TacticalDomainTest {
         assertNull(retreat.minimumHeight)
         assertEquals(0.0, retreat.elevationWeight)
     }
+
+    @Test fun `holding in contact keeps a bound that is the order's own movement`() {
+        val squadId = AgentId(AgentLevel.SQUAD, UUID(0, 9))
+        val bound = intent.copy(duty = CombatDuty.MOVE)
+        fun shaped(member: PositionIntent): PositionIntent {
+            val mission = SquadMission(squadId, listOf(TeamMission(AgentId(AgentLevel.TEAM, UUID(0, 8)), listOf(member))))
+            val input = FactSnapshot(squadId, 0).observe(TacticalFacts.STRATEGY, CombatStrategy.HOLD)
+            val result = HtnPlanningSession(TacticalDomain.squad, PlanOwner(squadId, UUID(1, 1)), TacticalDomain.SQUAD.call(mission), input).advance(20) as PlanningResult.Ready
+            val delegation = result.plan.tasks.single().spec.action.parameters as com.sbwnpc.squad.ai.coordination.DelegationTask
+            return (delegation.task.parameters as TeamMission).members.single()
+        }
+        assertEquals(CombatDuty.FIRE, shaped(bound).duty)
+        assertEquals(CombatDuty.MOVE, shaped(bound.copy(ordered = true)).duty)
+    }
 }

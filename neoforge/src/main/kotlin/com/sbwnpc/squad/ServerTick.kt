@@ -16,6 +16,7 @@ object ServerTick {
         com.sbwnpc.squad.map.MapFeed.tick(event.server)
         com.sbwnpc.squad.squad.SquadChunkLoader.tick(event.server)
         com.sbwnpc.squad.squad.OrderArrival.tick(event.server)
+        com.sbwnpc.squad.squad.FollowOrders.tick(event.server)
         com.sbwnpc.squad.squad.SquadReports.tick(event.server)
         com.sbwnpc.squad.route.PlanBudget.tick(event.server)
         com.sbwnpc.squad.combat.StrayRounds.tick(event.server)

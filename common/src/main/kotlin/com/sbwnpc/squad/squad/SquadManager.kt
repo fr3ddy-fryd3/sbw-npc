@@ -207,7 +207,7 @@ class SquadManager : SavedData() {
         val dimension = squad.objectiveDimension?.location()?.toString() ?: squad.lastSeenDim?.location()?.toString() ?: "minecraft:overworld"
         val goal = squad.focusEntity?.let { com.sbwnpc.squad.ai.coordination.ObjectiveKey.Entity(dimension, it) }
             ?: squad.objective?.let { com.sbwnpc.squad.ai.coordination.ObjectiveKey.Area(dimension, it.x, it.y, it.z) }
-        squad.command = com.sbwnpc.squad.ai.tactics.IssuedCommand(UUID.randomUUID(), squad.owner, com.sbwnpc.squad.ai.coordination.TacticalOrder.valueOf(order.name), goal)
+        squad.command = com.sbwnpc.squad.ai.tactics.IssuedCommand(UUID.randomUUID(), squad.owner, order.tactical(), goal)
         squad.commandOutcome = com.sbwnpc.squad.ai.tactics.CommandOutcome.ACTIVE
         squad.commandReason = null
         squad.pendingCommandStamp = squad.orderStamp
@@ -280,13 +280,45 @@ class SquadManager : SavedData() {
         issueOrderAt(level, id, squad.order, pos, previous?.copy(id = UUID.randomUUID(), goal = com.sbwnpc.squad.ai.coordination.ObjectiveKey.Area(level.dimension().location().toString(), pos.x, pos.y, pos.z)))
     }
 
+    /**
+     * Sends squad [id] to follow its owner [player]; false when the squad is not his or cannot
+     * follow. A player has one squad following him: any other squad of his that does is put on
+     * DEFEND where it stands.
+     */
+    fun issueFollow(level: ServerLevel, id: UUID, player: net.minecraft.world.entity.player.Player): Boolean {
+        val squad = squads[id] ?: return false
+        if (squad.owner != player.uuid || SquadOrder.FOLLOW !in availableOrders(squad)) return false
+        squads.values.filter { it.id != id && it.order == SquadOrder.FOLLOW && it.focusEntity == player.uuid }.forEach { stopFollowing(level, it) }
+        val issued = com.sbwnpc.squad.ai.tactics.IssuedCommand(
+            UUID.randomUUID(),
+            squad.owner,
+            SquadOrder.FOLLOW.tactical(),
+            com.sbwnpc.squad.ai.coordination.ObjectiveKey.Entity(level.dimension().location().toString(), player.uuid),
+        )
+        issueOrderAt(level, id, SquadOrder.FOLLOW, player.blockPosition(), issued)
+        setFocus(id, player.uuid)
+        squad.followLast = null
+        squad.followHeading = Vec3.ZERO
+        return true
+    }
+
+    /** Ends [squad]'s following: it defends the spot where its men stand. */
+    fun stopFollowing(level: ServerLevel, squad: Squad) {
+        val here = moveAssemblyPoint(level, squad) ?: squad.objective
+        setFocus(squad.id, null)
+        issueOrder(squad.id, SquadOrder.DEFEND)
+        if (here != null) setObjective(level, squad.id, here)
+    }
+
+    private fun availableOrders(squad: Squad) = SquadOrder.availableFor(isTankSquad(squad), isMortarSquad(squad), isGunshipSquad(squad), isTransportSquad(squad))
+
     fun issueFocus(level: ServerLevel, id: UUID, target: UUID) {
         val squad = squads[id] ?: return
         val entity = level.getEntity(target) ?: return
         val issued = com.sbwnpc.squad.ai.tactics.IssuedCommand(
             UUID.randomUUID(),
             squad.owner,
-            com.sbwnpc.squad.ai.coordination.TacticalOrder.valueOf(squad.order.name),
+            squad.order.tactical(),
             com.sbwnpc.squad.ai.coordination.ObjectiveKey.Entity(level.dimension().location().toString(), target),
         )
         issueOrderAt(level, id, squad.order, entity.blockPosition(), issued)
