@@ -5,8 +5,10 @@ import com.atsuishio.superbwarfare.entity.vehicle.base.AutoAimableEntity
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.atsuishio.superbwarfare.tools.EntityFindUtil
 import com.sbwnpc.squad.combat.AutonomousShotTarget
+import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.DroneAccuracy
 import com.sbwnpc.squad.combat.DroneCombat
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.TurretGunnerAccuracy
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.world.entity.Entity
@@ -19,6 +21,8 @@ import net.minecraft.world.phys.Vec3
  * .rayShoot` is a guaranteed-hit hitscan laser with no spread/miss concept of its own to penalize.
  */
 object VehicleDroneAccuracy {
+    private const val SPREAD_SAMPLE = 20
+
     /** Called only at autoAim's vehicleShoot invocation, before SBW queues the delayed shot. */
     @JvmStatic
     fun markAutonomousShot(tower: AutoAimableEntity, position: Vec3?): Vec3? {
@@ -45,6 +49,10 @@ object VehicleDroneAccuracy {
         // all the error a gunner has (#146). A drone is then harder still, as for anyone.
         val ranked = if (SbwVehicles.isTurretGunner(vehicle, shooter)) TurretGunnerAccuracy.spread(parameters.spread, shooter.npcRank) else parameters.spread
         val spread = DroneCombat.spreadForTarget(ranked, target)
+        // One shot in SPREAD_SAMPLE: a turret fires several times a second.
+        if (ranked != parameters.spread && shooter.random.nextInt(SPREAD_SAMPLE) == 0) {
+            DebugFlags.log(LogGroup.FIRE, "turret gunner {} rank={} spread {} -> {} target={}", shooter.uuid, shooter.npcRank, parameters.spread, spread, target?.uuid)
+        }
         return if (spread == parameters.spread) parameters else parameters.copy(spread = spread)
     }
 
