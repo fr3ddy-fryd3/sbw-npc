@@ -195,7 +195,8 @@ object FollowOrderGameTests {
         owner.moveTo(start.x, start.y, start.z, 0f, 0f)
         helper.level.addNewPlayer(owner)
         val men = (0 until 6).map { scene.spawn(Vec3(56.5 + it * 2, 1.0, 56.5)) }
-        val enemy = scene.enemy(Vec3(60.5, 1.0, 105.5))
+        // Kept alive for the whole scene: the contact must last while the player walks off.
+        val enemy = scene.enemy(Vec3(60.5, 1.0, 105.5)).also { it.isInvulnerable = true }
         val squad = manager.create(helper.level, owner.uuid, requireNotNull(men.first().spawnFaction), men.map { it.uuid })
         scene.onClose = {
             manager.deleteSquad(helper.level, squad.id)

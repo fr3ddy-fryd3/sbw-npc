@@ -798,15 +798,16 @@ object NativeTactics {
                     val duty = choice.duty
                     val proposed = choice.anchor.native()
                     val before = oldIntents[member.id]
-                    val requireCover = PostRequirements.cover(duty, situation.incoming)
+                    // A bound's place moves with the player: kept for the whole beat, it was where he
+                    // stood five seconds before. Nor does it wait for cover: when the whole squad runs to
+                    // catch up there is nobody left to give it, and the run was planned over and over.
+                    val bounding = following && duty == CombatDuty.MOVE
+                    val requireCover = PostRequirements.cover(duty, situation.incoming) && !bounding
                     val requireShelter = PostRequirements.shelter(duty, situation.incoming)
                     // A height post is chosen by height round its anchor, not by where the enemy is or by
                     // the squad's strategy, which reshapes a sentry's task only to withdraw. Rebuilt on
                     // either, a sentry's post was thrown away and searched again every few seconds (#73).
                     val heightPost = duty == CombatDuty.OBSERVE && before?.anchor == proposed.point()
-                    // A bound's place moves with the player: kept for the whole beat, it was where he
-                    // stood five seconds before.
-                    val bounding = following && duty == CombatDuty.MOVE
                     val samePost = heightPost || (
                         oldStrategy?.first == selected && (focus?.distanceTo(plannedContact[member.id] ?: focus) ?: 0.0) < 8 &&
                             ((waypoint == null && member.id !in wasArcing && !bounding) || before?.anchor?.native()?.distanceTo(proposed)?.let { it < 4 } == true)
@@ -835,6 +836,7 @@ object NativeTactics {
                             minimumHeight = if (duty == CombatDuty.OBSERVE) member.position.y - 2 else null,
                             inspection = if (duty == CombatDuty.SEARCH) inspect?.point() else null,
                             standoff = CombatPositionSafety.clearance(member.role),
+                            ordered = bounding,
                         )
                     }
                 }

@@ -7,7 +7,7 @@ import com.sbwnpc.squad.ai.planning.*
 import kotlin.math.max
 
 enum class CombatDuty { FIRE, MOVE, REAR_GUARD, OBSERVE, SEARCH, FOLLOW_ORDER }
-data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null, val elevationWeight: Double = 0.0, val assault: Boolean = false, val standoff: Double = 0.0) {
+data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null, val elevationWeight: Double = 0.0, val assault: Boolean = false, val standoff: Double = 0.0, val ordered: Boolean = false) {
     init {
         require(actor.level == AgentLevel.NPC && exposureWeight.isFinite() && exposureWeight >= 0 && elevationWeight.isFinite() && elevationWeight >= 0)
     }
@@ -89,8 +89,10 @@ object TacticalDomain {
                         decompose = { mission, _ ->
                             val tasks = mission.teams.map { team ->
                                 val selected = team.copy(
-                                    // A member assaulting for the operation keeps its role whatever the squad's own strategy.
-                                    members = team.members.map { intent -> if (intent.assault) intent else strategy.rules.shape(intent) },
+                                    // A member assaulting for the operation keeps its role whatever the squad's own strategy,
+                                    // and so does one moving for his order itself: HOLD turned a following squad's bounds
+                                    // back into fire from where it stood (#116).
+                                    members = team.members.map { intent -> if (intent.assault || intent.ordered) intent else strategy.rules.shape(intent) },
                                 )
                                 DelegationTask(team.agent, TEAM.call(selected))
                             }
