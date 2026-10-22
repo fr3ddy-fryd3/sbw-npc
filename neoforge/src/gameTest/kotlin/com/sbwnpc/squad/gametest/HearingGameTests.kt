@@ -42,7 +42,7 @@ object HearingGameTests {
             Hearing.footstep(helper.level, player, landing = true)
             helper.assertTrue(!ally.listening() && hostile.listening(), "Allied footsteps became a threat or hostile footsteps stopped working")
             hostile.clearAlert()
-            Hearing.gunshot(helper.level, player, 20.0)
+            Hearing.gunshot(helper.level, player, 20.0, suppressed = false)
             helper.assertTrue(listOf(ally, hostile).all { it.listening() && it.isAlert() && it.target == null }, "Player shot did not interest both sides without granting targets")
             helper.assertTrue(BrainUtils.getMemory(ally, ModMemories.ALERT_POSITION.get()) == player.eyePosition, "Allied investigation did not use the player's shot location")
             helper.succeed()
@@ -68,7 +68,7 @@ object HearingGameTests {
         cleanup(helper) { actors.forEach { it.discard() } }
         helper.runAtTickTime(1) {
             // AK-12: formerly 36 blocks; the 45-block listener must now hear, the 60-block one must not.
-            Hearing.gunshot(helper.level, shooter, Ports.guns.inHand(shooter)!!.hearingRadius)
+            Ports.guns.inHand(shooter)!!.let { Hearing.gunshot(helper.level, shooter, it.hearingRadius, it.suppressed) }
             helper.assertTrue(extended.listening() && extended.isAlert(), "Hostile listener outside the old gunshot radius did not hear")
             helper.assertTrue(extended.target == null, "Hearing granted an unseen firing target")
             helper.assertTrue(!outside.listening(), "Gunshot leaked outside the new radius")
@@ -85,7 +85,7 @@ object HearingGameTests {
             val radius = Ports.guns.inHand(shooter)!!.hearingRadius
             val quietNear = actor(10.5 + radius * 0.8, SquadFaction.COW)
             val quietFar = actor(10.5 + radius * 1.2, SquadFaction.COW)
-            Hearing.gunshot(helper.level, shooter, radius)
+            Hearing.gunshot(helper.level, shooter, radius, suppressed = false)
             helper.assertTrue(quietNear.listening(), "Suppressed shot was entirely inaudible")
             helper.assertTrue(!quietFar.listening(), "Suppressor failed to limit the hearing radius")
             helper.succeed()

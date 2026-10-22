@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
+import com.sbwnpc.squad.combat.DarkAim
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.DroneAccuracy
@@ -12,6 +13,7 @@ import com.sbwnpc.squad.combat.Vision
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.DroneRegistry
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.NpcPosture
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.npc.NpcClass
@@ -275,7 +277,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.tickCount < nextShotTick || !gun.canShoot()) return
         // A drone is a small, fast, evasive target — the same aim a rifleman holds on a person
         // shouldn't land on it as reliably.
-        val spread = DroneAccuracy.adjustSpread(entity.spread, true)
+        val spread = DroneAccuracy.adjustSpread(entity.spread * DarkAim.spreadFactor(entity.level(), drone) * NpcPosture.spreadFactor(entity), true)
         if (!FriendlyFireGuard.hasClearLineOfFire(entity, aim, spread)) return
 
         gun.shootAt(spread, aim)
