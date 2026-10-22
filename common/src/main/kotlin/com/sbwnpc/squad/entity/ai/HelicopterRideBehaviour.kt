@@ -210,7 +210,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (com.sbwnpc.squad.combat.Sightline.blocked(level, entity.eyePosition, aim, entity)) return "no sightline"
         if (entity.tickCount < nextShotTick || !gun.canShoot()) return null
 
-        val spread = DroneCombat.spreadForTarget(entity.spread, target)
+        val spread = DroneCombat.spreadForTarget(entity.spread * com.sbwnpc.squad.combat.DarkAim.spreadFactor(level, target), target)
         val safety = FriendlyFireGuard.assess(entity, aim, spread, target.position(), gun.explosionRadius)
         if (!safety.lineClear) return "friendly in the line of fire"
         if (!safety.blastClear) return "friendly in the blast radius"

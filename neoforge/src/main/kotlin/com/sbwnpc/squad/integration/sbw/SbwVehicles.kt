@@ -75,6 +75,10 @@ object SbwVehicles : Vehicles {
 
     override fun hasWeaponAt(vehicle: Entity, passenger: Entity): Boolean = vehicle is VehicleEntity && vehicle.getGunData(passenger) != null
 
+    override fun isTurretGunner(vehicle: Entity, passenger: Entity): Boolean =
+        vehicle is VehicleEntity && modelOf(vehicle) !is TankModel &&
+            (passenger === vehicle.getNthEntity(vehicle.turretControllerIndex) || passenger === vehicle.getNthEntity(vehicle.passengerWeaponStationControllerIndex))
+
     // SBW's engines simply stop responding when the battery runs down — `VehicleEngineUtils`
     // zeroes every input once `energy <= energyCost` — with no outward sign beyond the vehicle not
     // moving. Measured in ticks of driving because the vehicles differ by a factor of two in what

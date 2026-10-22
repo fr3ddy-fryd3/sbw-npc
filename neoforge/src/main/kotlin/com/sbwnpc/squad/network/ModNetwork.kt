@@ -249,7 +249,7 @@ object ModNetwork {
                     reopen = true
                 }
 
-                SquadCmdPayload.SET_ORDER -> ownedSid()?.let { mgr.issueOrder(it, SquadOrder.byOrdinal(p.value)) }
+                SquadCmdPayload.SET_ORDER -> ownedSid()?.let { issuePlayerOrder(mgr, level, player, it, SquadOrder.byOrdinal(p.value)) }
 
                 SquadCmdPayload.TOGGLE_REPORTS -> {
                     val on = com.sbwnpc.squad.squad.ReportMutes.get(player.server).toggle(player.uuid)
@@ -328,6 +328,11 @@ object ModNetwork {
         }
     }
 
+    /** FOLLOW takes the player himself as its objective; every other order is a plain order. */
+    private fun issuePlayerOrder(mgr: SquadManager, level: ServerLevel, player: ServerPlayer, squad: UUID, order: SquadOrder) {
+        if (order == SquadOrder.FOLLOW) mgr.issueFollow(level, squad, player) else mgr.issueOrder(squad, order)
+    }
+
     /** Sets the order AND (in the same action) the objective, raycast from wherever the player is
      *  currently looking — the HUD's whole point is a single keypress instead of a separate arm
      *  + aim + click round trip. */
@@ -338,6 +343,11 @@ object ModNetwork {
             val mgr = SquadManager.get(level)
             val id = runCatching { UUID.fromString(p.squad) }.getOrNull() ?: return@enqueueWork
             if (!mgr.ownedBy(id, player.uuid)) return@enqueueWork
+            if (SquadOrder.byOrdinal(p.order) == SquadOrder.FOLLOW) {
+                // The player himself, not the point he looks at.
+                mgr.issueFollow(level, id, player)
+                return@enqueueWork
+            }
             val pos = Terrain.lookedAtPos(player, level, OBJECTIVE_RAYCAST_RANGE)
             mgr.issueOrderAt(level, id, SquadOrder.byOrdinal(p.order), pos)
             com.sbwnpc.squad.combat.DebugFlags.log(
@@ -361,6 +371,8 @@ object ModNetwork {
             val level = player.level() as? ServerLevel ?: return@enqueueWork
             val mgr = SquadManager.get(level)
             val order = SquadOrder.byOrdinal(p.order)
+            // One squad follows a player, so "everyone" cannot.
+            if (order == SquadOrder.FOLLOW) return@enqueueWork
             val pos = Terrain.lookedAtPos(player, level, OBJECTIVE_RAYCAST_RANGE)
             val defaultFaction = PlayerFactionRegistry.get(level).get(player.uuid)
             val selected = mgr.forOwner(player.uuid).filter { defaultFaction == null || it.faction == defaultFaction }

@@ -21,8 +21,12 @@ class HelicopterAttackCompletion {
         /** Over the crew's detection range: a gunship loitering 70 out and 14 up is about 71.4 from the objective. */
         private const val SURVEY_SLACK = 8.0
 
-        /** Within this of the objective, in three dimensions, the crew could have seen anyone there. */
-        const val SURVEY_RANGE = NpcEntity.DETECTION_RANGE + SURVEY_SLACK
+        /**
+         * Within this of the objective, in three dimensions, the crew could have seen anyone there.
+         * The 72-block sight it was set from (#119), not today's [NpcEntity.DETECTION_RANGE]: that
+         * grew to 128 as the bright-light reach, and a crew held 130 up would count as looking.
+         */
+        const val SURVEY_RANGE = 72.0 + SURVEY_SLACK
 
         /**
          * Whether an aircraft at [aircraft] is close enough to [objective] for a quiet interval to

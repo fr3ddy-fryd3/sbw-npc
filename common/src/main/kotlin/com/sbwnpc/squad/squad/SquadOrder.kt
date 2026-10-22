@@ -21,9 +21,19 @@ enum class SquadOrder {
      *  arrival). Appended last for the same reason as [BARRAGE]. */
     RETREAT,
 
+    /** Follow the owner, spread out and free to fight on the way. The owner is the squad's focus
+     *  entity, see [SquadManager.issueFollow]. Appended last for the same reason as [BARRAGE]. */
+    FOLLOW,
+
     ;
 
     fun next(): SquadOrder = entries[(ordinal + 1) % entries.size]
+
+    /**
+     * The order the HTN plans for. FOLLOW fights as a defence of its moving objective, the player;
+     * every other order is planned as itself.
+     */
+    fun tactical(): com.sbwnpc.squad.ai.coordination.TacticalOrder = if (this == FOLLOW) com.sbwnpc.squad.ai.coordination.TacticalOrder.DEFEND else com.sbwnpc.squad.ai.coordination.TacticalOrder.valueOf(name)
 
     /** [next], but only through the orders this squad can actually be given. */
     fun next(available: List<SquadOrder>): SquadOrder {

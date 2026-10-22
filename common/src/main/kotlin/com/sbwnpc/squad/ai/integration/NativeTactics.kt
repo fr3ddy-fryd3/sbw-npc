@@ -128,6 +128,9 @@ object NativeTactics {
         private val knownOrders = HashMap<UUID, Int>()
         private val missions = HashMap<UUID, SquadMission>()
         private val strategies = HashMap<UUID, Pair<CombatStrategy, Long>>()
+
+        /** The last bound logged for each following squad in a fight. */
+        private val followBeats = HashMap<UUID, Long>()
         private val stability = DecisionStability()
         private val allocationOrigins = HashMap<UUID, Point3>()
         private val formationDuties = HashMap<UUID, CombatDuty>()
@@ -310,8 +313,8 @@ object NativeTactics {
                     val entry = if (first.order == SquadOrder.ATTACK) objective.center.subtract(direction.scale(48.0)) else objective.center
                     val participants = selected.map { (saved, _) -> SquadParticipant(saved.id, saved.owner, saved.faction.name, level.dimension().location().toString(), saved.orderStamp.toLong()) }
                     val commandId = UUID.nameUUIDFromBytes("$group:${selected.joinToString { "${it.first.id}:${it.first.orderStamp}" }}".toByteArray())
-                    val key = first.command?.goal?.takeIf { first.commandOutcome == CommandOutcome.ACTIVE && first.command?.order?.name == first.order.name } ?: ObjectiveKey.Area(first.objectiveDimension?.location()?.toString() ?: level.dimension().location().toString(), objective.x, objective.y, objective.z)
-                    val accepted = operations.command(CommandBatch(commandId, first.owner, TacticalOrder.valueOf(first.order.name), key, participants, now, EntryArea(entry.point(), 32.0, 16.0)))
+                    val key = first.command?.goal?.takeIf { first.commandOutcome == CommandOutcome.ACTIVE && first.command?.order == first.order.tactical() } ?: ObjectiveKey.Area(first.objectiveDimension?.location()?.toString() ?: level.dimension().location().toString(), objective.x, objective.y, objective.z)
+                    val accepted = operations.command(CommandBatch(commandId, first.owner, first.order.tactical(), key, participants, now, EntryArea(entry.point(), 32.0, 16.0)))
                     DebugFlags.log(LogGroup.ORDER, "[htn] event=operation_command principal={} squads={} order={} objective={} result={}", first.owner, participants.map { it.id }, first.order, key, accepted)
                     selected.forEach { (saved, _) ->
                         knownOrders[saved.id] = saved.orderStamp
@@ -757,12 +760,18 @@ object NativeTactics {
                 // Marching on, an attack's reinforcement makes for the operation's entry itself: left to
                 // the order's own march, each man's sighted target still drew him off after it.
                 val entry = if (marching && saved.order == SquadOrder.ATTACK) operations.pending(saved.id)?.let { operations.operation(it.operation) }?.entry?.center else null
-                val intents = view.members.map { member ->
+                val following = saved.order == com.sbwnpc.squad.squad.SquadOrder.FOLLOW
+                val leader = if (following) level.getPlayerByUUID(saved.owner) else null
+                val heading = saved.followHeading.takeIf { it != net.minecraft.world.phys.Vec3.ZERO }?.let { it.x to it.z }
+                val intents = view.members.mapIndexed { index, member ->
+                    val man = if (following) level.getEntity(member.id) as? NpcEntity else null
+                    val leaderAt = leader?.position()?.point()
+                    val toLeader = leaderAt?.let { kotlin.math.hypot(member.position.x - it.x, member.position.z - it.z) } ?: 0.0
                     val waypoint = waypoints[member.id]
                     val proposal = waypoint?.let { FrontProposal(CombatDuty.MOVE, it, null) } ?: proposals.getValue(member.id)
                     val choice = entry?.let { DutyChoice(CombatDuty.MOVE, it) } ?: OperationTactics.duty(
                         DutyInputs(
-                            order = TacticalOrder.valueOf(saved.order.name),
+                            order = saved.order.tactical(),
                             position = member.position.point(),
                             proposal = proposal,
                             objective = saved.objective?.center?.point(),
@@ -776,6 +785,12 @@ object NativeTactics {
                             reachedMove = actions[member.id]?.let { it.intent.duty == CombatDuty.MOVE && it.reached() } == true,
                             wasFiring = oldIntents[member.id]?.duty == CombatDuty.FIRE,
                             flanking = waypoint != null,
+                            following = following,
+                            // Halves by place among the men here now, not by saved slot: after losses
+                            // a slot parity can leave one half empty, so nobody covers or nobody runs.
+                            followBound = following && OperationTactics.followBound(index, now, toLeader),
+                            followSlot = leaderAt?.let { com.sbwnpc.squad.combat.FollowFormation.slot(it, heading, saved.members.indexOf(member.id), heading != null) },
+                            followRide = leader?.vehicle != null || man?.activities?.has(com.sbwnpc.squad.entity.NpcActivity.VEHICLE) == true,
                         ),
                         FIRE_POST_REACH,
                         CombatPosition.LOCAL_MOVE_RADIUS,
@@ -783,7 +798,11 @@ object NativeTactics {
                     val duty = choice.duty
                     val proposed = choice.anchor.native()
                     val before = oldIntents[member.id]
-                    val requireCover = PostRequirements.cover(duty, situation.incoming)
+                    // A bound's place moves with the player: kept for the whole beat, it was where he
+                    // stood five seconds before. Nor does it wait for cover: when the whole squad runs to
+                    // catch up there is nobody left to give it, and the run was planned over and over.
+                    val bounding = following && duty == CombatDuty.MOVE
+                    val requireCover = PostRequirements.cover(duty, situation.incoming) && !bounding
                     val requireShelter = PostRequirements.shelter(duty, situation.incoming)
                     // A height post is chosen by height round its anchor, not by where the enemy is or by
                     // the squad's strategy, which reshapes a sentry's task only to withdraw. Rebuilt on
@@ -791,7 +810,7 @@ object NativeTactics {
                     val heightPost = duty == CombatDuty.OBSERVE && before?.anchor == proposed.point()
                     val samePost = heightPost || (
                         oldStrategy?.first == selected && (focus?.distanceTo(plannedContact[member.id] ?: focus) ?: 0.0) < 8 &&
-                            ((waypoint == null && member.id !in wasArcing) || before?.anchor?.native()?.distanceTo(proposed)?.let { it < 4 } == true)
+                            ((waypoint == null && member.id !in wasArcing && !bounding) || before?.anchor?.native()?.distanceTo(proposed)?.let { it < 4 } == true)
                         )
                     val retained = before?.takeIf { it.duty == duty && it.requireCover == requireCover && it.requireShelter == requireShelter && samePost }
                     if (retained != null) {
@@ -817,8 +836,12 @@ object NativeTactics {
                             minimumHeight = if (duty == CombatDuty.OBSERVE) member.position.y - 2 else null,
                             inspection = if (duty == CombatDuty.SEARCH) inspect?.point() else null,
                             standoff = CombatPositionSafety.clearance(member.role),
+                            ordered = bounding,
                         )
                     }
+                }
+                if (following && focus != null && followBeats.put(saved.id, now / OperationTactics.BOUND_TICKS) != now / OperationTactics.BOUND_TICKS) {
+                    DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=follow_bound running={} of={}", saved.id, intents.count { it.duty == CombatDuty.MOVE }, intents.size)
                 }
                 val teams = teamAllocators.getOrPut(saved.id, ::TaskTeamAllocator).assign(saved.id, intents)
                 SquadMission(AgentId(AgentLevel.SQUAD, saved.id), teams).also { missions[saved.id] = it }

@@ -2,16 +2,20 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.Hostiles
 import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.combat.Noticing
 import com.sbwnpc.squad.combat.TeamAwareness
+import com.sbwnpc.squad.combat.Vision
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.squad.SquadOrder
+import com.sbwnpc.squad.squad.SquadReports
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.util.Mth
@@ -28,7 +32,7 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 import java.util.UUID
 
 /**
- * DRONE_OPERATOR's whole job: spot a target 80-150 blocks out (by rank — same autonomous scan +
+ * DRONE_OPERATOR's whole job: spot a target 80-160 blocks out (by rank — same autonomous scan +
  * faction relay as [MortarCrewBehaviour], plus the squad's ATTACK focus/objective), launch an
  * SBW kamikaze drone at it and fly it there from the server, no Monitor/player needed. Core task
  * like the mortar crew — it must keep flying regardless of Fight/Idle activity.
@@ -101,6 +105,10 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private var nextScanTick = 0
     private var lastScanResult: StrikeTarget? = null
+
+    /** How far the operator has got at noticing each enemy his own scan looks at. */
+    private val noticing = Noticing("drone operator", LogGroup.FIRE_SUPPORT)
+
     private val startCheck = StartCheckThrottle(START_CHECK_INTERVAL_TICKS)
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
@@ -224,13 +232,20 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             // Range first: candidates are sorted nearest-first, and everything inside MIN_RANGE
             // used to spend the raycast budget before a single launchable target got looked at.
             if (!inLaunchRange(entity, c.position())) continue
+            // Own eyes are a man's eyes (#114): where he looks, and only once he has noticed it. A
+            // bare line-of-sight check launched on an enemy 150 blocks off the moment it was in view.
+            if (!Vision.inCone(entity.position(), entity.yHeadRot, c.position())) continue
             if (losChecks++ >= MAX_LOS_CHECKS) break
-            if (!com.sbwnpc.squad.combat.DetectionSightline.canSee(entity, c)) continue
+            if (DetectionSightline.sight(entity, c).visibility != DetectionSightline.Visibility.VISIBLE) continue
+            if (!noticing.noticed(entity, level, c, Vision.offAxis(entity.position(), entity.yHeadRot, c.position()))) continue
             if (faction != null) TeamAwareness.report(faction, c.uuid, c.position(), tick, "drone operator ${entity.uuid.toString().take(8)}")
             if (spotted == null) spotted = c
         }
+        noticing.endScan(tick)
         if (spotted != null) {
             lastScanResult = StrikeTarget(spotted.uuid, spotted.position())
+            // Called in the way a rifleman calls it, so the player hears of the fight before the drone is up.
+            SquadReports.contact(entity, spotted)
             DebugFlags.log(LogGroup.FIRE_SUPPORT, "drone {} -> {} seen by itself at {}", entity.uuid, spotted.uuid, spotted.position())
             return lastScanResult
         }
@@ -655,11 +670,11 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     companion object {
         const val MAX_DRONES = 10
 
-        // Launch envelope: 80 blocks for a RECRUIT up to 150 for ELITE (per user request), never
+        // Launch envelope: 80 blocks for a RECRUIT up to 160 for ELITE (per user request, 160 since 21.10), never
         // closer than MIN_RANGE — at that distance the SMG is the answer, not a 6-second flight.
         private const val MIN_RANGE = 20.0
         private const val MIN_MAX_RANGE = 80.0
-        private const val MAX_MAX_RANGE = 150.0
+        private const val MAX_MAX_RANGE = 160.0
         private const val SELF_DEFENSE_RANGE_SQR = 6.0 * 6.0
         private const val MAX_LOS_CHECKS = 8
         private const val SCAN_INTERVAL_TICKS = 20

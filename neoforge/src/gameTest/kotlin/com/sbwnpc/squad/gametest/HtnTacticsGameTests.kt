@@ -26,6 +26,13 @@ import java.util.function.Consumer
 /** Public commands, production HTN, real navigation and SBW projectiles; no forced tactical plans. */
 @PrefixGameTestTemplate(false)
 object HtnTacticsGameTests {
+    private const val DAY_TIME = 6000L
+    private const val NIGHT_TIME = 18000L
+
+    /** The light a lantern two blocks off gives the spot it lights: the BRIGHT band. */
+    private const val LANTERN_LIGHT = 12
+    private const val LIGHT_SETTLE_TICKS = 5L
+
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1600, batch = "htn-compact")
     fun htnJointAttack64OnCompactFront(helper: GameTestHelper) = jointAttack(helper, wide = false)
@@ -411,6 +418,78 @@ object HtnTacticsGameTests {
                 helper.assertTrue(squads.all { it.commandReason == "occupied_and_inspected_area" }, "Attack ended without taking the objective: ${squads.map { it.commandReason }}")
                 scene.result("PASS", "tick=${helper.tick} attackers=${attackers.size} defenders=${defenders.count { it.isAlive }} enteredAt=$enteredAt defendersAtEntry=$defendersAtEntry")
                 helper.succeed()
+            }
+        }
+    }
+
+    /**
+     * Spotting takes time (#114): by day a regular rifleman notices an enemy 70 blocks off after
+     * about a second, not on the first scan; at night one 20 blocks off after a little longer, and
+     * one at the edge of his 36-block reach in the dark (owner's table, 21.10) after longer still.
+     * The unit tests check the cut-offs.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 500, batch = "spot-day")
+    fun enemyAtSeventyBlocksIsNoticedByDayAfterAMoment(helper: GameTestHelper) = spotting(helper, "spot-day", Lighting.DAY, distance = 70.0, expectNoticed = 8L..200L)
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 700, batch = "spot-night-far")
+    fun enemyAtTheEdgeOfRangeIsNoticedLongAfterAtNight(helper: GameTestHelper) = spotting(helper, "spot-night-far", Lighting.NIGHT, distance = 35.0, expectNoticed = 30L..300L)
+
+    /**
+     * A lantern by the enemy at night lights him as by day. 70 blocks is twice a regular's reach in
+     * the dark, so without its light the scene fails.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 500, batch = "spot-night-lantern")
+    fun enemyByALanternIsNoticedAtNightAsByDay(helper: GameTestHelper) = spotting(helper, "spot-night-lantern", Lighting.LANTERN, distance = 70.0, expectNoticed = 8L..80L)
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 700, batch = "spot-night-near")
+    fun enemyInsideTheDarkRangeTakesSecondsToNoticeAtNight(helper: GameTestHelper) = spotting(helper, "spot-night-near", Lighting.NIGHT, distance = 20.0, expectNoticed = 15L..250L)
+
+    /** The light the spotting scenes are played in: a lantern by the enemy at night in the last. */
+    private enum class Lighting(val time: Long, val lantern: Boolean) { DAY(DAY_TIME, false), NIGHT(NIGHT_TIME, false), LANTERN(NIGHT_TIME, true) }
+
+    private fun spotting(helper: GameTestHelper, name: String, lighting: Lighting, distance: Double, expectNoticed: LongRange?) {
+        val lantern = lighting.lantern
+        val scene = CombatIdleGameTests.Scene(helper, name)
+        val manager = SquadManager.get(helper.level)
+        val oldTime = helper.level.dayTime
+        helper.level.setDayTime(lighting.time)
+        val shooter = scene.spawn(Vec3(20.5, 1.0, 60.5))
+        shooter.moveTo(shooter.x, shooter.y, shooter.z, -90f, 0f)
+        shooter.yHeadRot = -90f
+        shooter.yBodyRot = -90f
+        val enemy = scene.enemy(Vec3(20.5 + distance, 1.0, 60.5))
+        val lamp = BlockPos(20 + distance.toInt(), 1, 62)
+        if (lantern) helper.setBlock(lamp, net.minecraft.world.level.block.Blocks.LANTERN)
+        val squad = manager.create(helper.level, UUID(90, 12), requireNotNull(shooter.spawnFaction), listOf(shooter.uuid))
+        manager.setOrder(squad.id, SquadOrder.DEFEND)
+        manager.setObjective(helper.level, squad.id, shooter.blockPosition())
+        scene.onClose = {
+            manager.deleteSquad(helper.level, squad.id)
+            helper.level.setDayTime(oldTime)
+            if (lantern) helper.setBlock(lamp, net.minecraft.world.level.block.Blocks.AIR)
+        }
+        var noticedAt: Long? = null
+        helper.onEachTick {
+            shooter.yHeadRot = -90f
+            // Light spreads a few ticks after the block is set.
+            if (lantern && helper.tick == LIGHT_SETTLE_TICKS) {
+                val light = helper.level.getMaxLocalRawBrightness(enemy.blockPosition())
+                helper.assertTrue(light >= LANTERN_LIGHT, "The lantern lights the enemy only to $light")
+            }
+            if (noticedAt == null && shooter.target?.uuid == enemy.uuid) noticedAt = helper.tick
+            if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} light=${helper.level.getMaxLocalRawBrightness(enemy.blockPosition())} noticedAt=$noticedAt")
+            if (expectNoticed == null) {
+                helper.assertTrue(noticedAt == null, "Noticed an enemy beyond the dark range at tick $noticedAt")
+                if (helper.tick >= 400) helper.succeed()
+            } else {
+                noticedAt?.let {
+                    helper.assertTrue(it in expectNoticed, "Noticed at tick $it, expected within $expectNoticed")
+                    helper.succeed()
+                }
             }
         }
     }

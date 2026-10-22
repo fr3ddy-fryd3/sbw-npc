@@ -91,7 +91,7 @@ class BlindReturnFireBehaviour : ExtendedBehaviour<NpcEntity>() {
         val interval = entity.fireIntervalMillis(gun, normalInterval) / 50
         gun.shootAt(spread, aim)
         // SBW's hearing hook excludes NPCs; every NPC firing mode must publish its own noise.
-        Hearing.gunshot(level, entity, gun.hearingRadius)
+        Hearing.gunshot(level, entity, gun.hearingRadius, gun.suppressed)
         entity.lastShotTick = entity.tickCount
         if (incoming) {
             entity.incomingFire.shot(now, interval)
