@@ -119,7 +119,7 @@ object Helicopters {
     }
 
     /** Ground level under a point, as the flight code measures it. */
-    fun groundY(level: ServerLevel, x: Double, z: Double): Int = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, x.toInt(), z.toInt())
+    fun groundY(level: ServerLevel, x: Double, z: Double): Int = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, net.minecraft.util.Mth.floor(x), net.minecraft.util.Mth.floor(z))
 
     private const val ROTOR_CLEARANCE = 6
     private const val RETREAT_HEALTH_FRACTION = 0.35f
