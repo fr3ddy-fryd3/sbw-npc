@@ -3,12 +3,14 @@ package com.sbwnpc.squad.combat.tactics
 import com.sbwnpc.squad.combat.*
 import com.sbwnpc.squad.combat.WeaponReach
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.NpcPosture
 import com.sbwnpc.squad.util.Terrain
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.pathfinder.Path
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
+import net.minecraft.world.phys.shapes.CollisionContext
 
 /** Local positions are validated through the existing navigation and collider raycasts. */
 object TacticalPositions {
@@ -223,7 +225,7 @@ object TacticalPositions {
             return
         }
         val firing = aim?.let {
-            !Sightline.blockedBy(level, eye, it.eye, entity, context.hulls)
+            !Sightline.blockedBy(level, eye, it.eye, entity, context.hulls) && clearOfGrass(level, entity, candidate, it.eye)
         } ?: true
         if (mustShoot && !firing) {
             search.reject("blocked_shot")
@@ -239,6 +241,24 @@ object TacticalPositions {
             return
         }
         search.scored[candidate] = score(context, candidate, exposure, firing, mustShoot, nearbyCover)
+    }
+
+    /**
+     * Whether a man kneeling at [candidate] sees out of the grass round him toward [aim].
+     *
+     * [Sightline] goes by collision and looks straight through grass; spotting
+     * ([DetectionSightline]) is hidden by three blocks of it. Posts in a meadow passed the firing
+     * check, and the men knelt in them seeing nobody (#159). Only the first [GRASS_REACH] blocks
+     * are read: grass by the target hides him from every post alike and is no reason to pass this
+     * one over. Kneeling, since [NpcPosture] puts him down once he is settled there.
+     */
+    private fun clearOfGrass(level: ServerLevel, entity: NpcEntity, candidate: Vec3, aim: Vec3): Boolean {
+        val eye = candidate.add(0.0, NpcPosture.CROUCHING_DIMENSIONS.eyeHeight().toDouble(), 0.0)
+        val toward = aim.subtract(eye)
+        val reach = toward.length()
+        if (reach < 1.0e-3) return true
+        val end = eye.add(toward.scale(minOf(1.0, GRASS_REACH / reach)))
+        return DetectionSightline.trace(level, eye, end, CollisionContext.of(entity)) != DetectionSightline.Visibility.FOLIAGE
     }
 
     private fun score(context: SearchContext, candidate: Vec3, exposure: Int, firing: Boolean, mustShoot: Boolean, nearbyCover: Boolean): TacticalPositionScore {
@@ -496,6 +516,7 @@ object TacticalPositions {
         val level = entity.level() as ServerLevel
         val hulls = Sightline.vehicleHulls(level, AABB(eye, aim.eye).inflate(2.0), entity, entity.target)
         return !Sightline.blockedBy(level, eye, aim.eye, entity, hulls, entity.spread) &&
+            clearOfGrass(level, entity, point, aim.eye) &&
             friendlyLane(entity, eye, aim.eye)
     }
 
@@ -503,6 +524,9 @@ object TacticalPositions {
     const val SEARCH_REACH = 48.0
     private const val MAX_PROBES_PER_TICK = 24
     private const val DENSE_CANDIDATE_BATCH = 16
+
+    /** How far out from a post the grass round it is looked at, see [clearOfGrass]. */
+    private const val GRASS_REACH = 8.0
     private val SHOOTING_JOBS = TacticalJob.FIRING_POSITIONS
     private val RUNNING_JOBS = TacticalJob.RUNNING
     private val OFFSETS = listOf(
