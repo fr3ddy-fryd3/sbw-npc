@@ -191,8 +191,8 @@ target design: [AI-ARCHITECTURE-DESIGN.md](AI-ARCHITECTURE-DESIGN.md).
 - Long trips use `route/CellPlanner`, a best-first search over coarse cells. `Walking` and
   `Driving` describe what a man on foot or a given vehicle can cross; `Ground` is the terrain they
   read, backed in game by `GroundMap`, which remembers terrain after chunks unload.
-- `PlanBudget` runs all long-route searches from the server tick with a shared work budget, so a
-  big order doesn't freeze the server.
+- `PlanBudget` runs all long-route searches from the server tick on a fixed work budget, oldest
+  search first, so a big order doesn't freeze the server and the first squad sets off at once.
 - `SquadMarch` plans one route for a whole squad on a long march; boats use `vehicle/WaterRoutes`
   and `WaterMap` the same way.
 - Helicopters have their own flight controllers in `entity/ai/` and `vehicle/Airspace` keeps them
