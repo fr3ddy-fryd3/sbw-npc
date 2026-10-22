@@ -6,6 +6,7 @@ import com.sbwnpc.squad.npc.NpcClass
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
+import net.minecraft.world.entity.Mob
 import net.minecraft.world.level.BlockGetter
 import net.minecraft.world.phys.Vec3
 
@@ -38,6 +39,16 @@ object Helicopters {
 
     /** How far a man looks for his own squad's transport — the one his squad's pilot sits in. */
     const val OWN_TRANSPORT_RANGE = 160.0
+
+    /**
+     * A man whose enemy is nearer than this fights on foot; further off, he still boards and the
+     * lift goes up with him aboard (owner, 22.10). Turned away by any contact at all, a squad that
+     * saw the enemy across a valley walked into him while its transport stood on the pad.
+     */
+    const val BOARD_UNDER_FIRE_RANGE = 40.0
+
+    /** [npc] has an enemy too close to walk off to a seat, see [BOARD_UNDER_FIRE_RANGE]. */
+    fun fightingClose(npc: Mob): Boolean = npc.target?.takeIf { it.isAlive }?.let { npc.distanceTo(it) < BOARD_UNDER_FIRE_RANGE } == true
 
     /** Ordinary infantry: every other class has a post of its own to man, and stays off the benches. */
     val RIDER_CLASSES = setOf(NpcClass.RIFLEMAN, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.SHOTGUNNER)

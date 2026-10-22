@@ -433,7 +433,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
             if (id == entity.uuid) return@any false
             val member = level.getEntity(id) as? NpcEntity ?: return@any false
             member.isAlive && member.vehicle == null && member.npcClass in Helicopters.RIDER_CLASSES &&
-                member.distanceTo(heli) <= Helicopters.OWN_TRANSPORT_RANGE
+                member.distanceTo(heli) <= Helicopters.OWN_TRANSPORT_RANGE && !Helicopters.fightingClose(member)
         }
     }
 

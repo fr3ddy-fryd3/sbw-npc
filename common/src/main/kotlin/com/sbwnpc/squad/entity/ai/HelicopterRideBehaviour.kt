@@ -262,7 +262,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun wantsLift(entity: NpcEntity): Boolean {
         if (entity.tickCount < noLiftUntilTick) return false
         if (entity.vehicle != null || entity.diggedIn || entity.operatingDrone || entity.antiDroneEngaged) return false
-        if (entity.target != null || entity.isSuppressed()) return false
+        if (Helicopters.fightingClose(entity)) return false
         if (deliveredStamp != null && deliveredStamp == entity.currentSquad()?.orderStamp) return false
         val home = entity.homeCenter() ?: return false
         return entity.currentSquad()?.order == SquadOrder.ATTACK ||

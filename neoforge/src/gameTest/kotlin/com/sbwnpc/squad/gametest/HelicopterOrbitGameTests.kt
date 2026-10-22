@@ -33,6 +33,7 @@ import net.neoforged.neoforge.common.util.FakePlayerFactory
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent
 import net.neoforged.neoforge.event.tick.ServerTickEvent
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
+import net.tslat.smartbrainlib.util.BrainUtils
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.UUID
@@ -150,6 +151,34 @@ object HelicopterOrbitGameTests {
         }
     }
 
+    /**
+     * Riders who see the enemy 70 blocks off still board, and the transport goes up with them. Any
+     * contact at all used to turn them away, and the squad walked into the fight (22.10).
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 900, batch = "transport-far-contact")
+    fun ridersBoardWithTheEnemyFarOff(helper: GameTestHelper) {
+        val scene = Scene(helper, spawnEnemy = false)
+        val enemy = AttackDeploymentGameTests.spawn(helper, Vec3(100.5, 1.0, 100.5), SquadFaction.COW).apply {
+            isNoAi = true
+            isInvulnerable = true
+        }
+        scene.onClose = { enemy.discard() }
+        var sawEnemy = false
+        helper.onEachTick {
+            scene.tick()
+            // Seen at once, rather than whenever spotting gets round to it, so nobody boards first.
+            if (helper.tick == 1L) scene.crew.forEach { BrainUtils.setTargetOfEntity(it, enemy) }
+            sawEnemy = sawEnemy || scene.crew.any { it.target === enemy && it.vehicle == null }
+            if (scene.airborne) {
+                val riders = Ports.vehicles.seating(scene.heli).drop(1).count { it != null }
+                scene.result("airborneAt=${helper.tick} riders=$riders sawEnemy=$sawEnemy")
+                helper.assertTrue(riders >= scene.crew.count { it.npcClass in Helicopters.RIDER_CLASSES }, "Lifted off with $riders aboard, leaving riders on the ground")
+                helper.succeed()
+            }
+        }
+    }
+
     /** A pilot with no gunner aboard stays on the pad: alone, he is a target and not a weapon (#139). */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 700, batch = "transport-no-gunner")
@@ -179,7 +208,11 @@ object HelicopterOrbitGameTests {
             val enemy = scene.enemy ?: return@onEachTick
             if (lostAt == null) {
                 if (scene.airborne && helper.tick >= 250 && scene.crew.any { it.target === enemy }) {
-                    scene.crew.drop(1).forEach { it.kill() }
+                    // Off the seat first: SBW passes a seated man's damage on to the aircraft.
+                    scene.crew.drop(1).forEach {
+                        it.stopRiding()
+                        it.kill()
+                    }
                     lostAt = helper.tick
                 }
                 return@onEachTick
