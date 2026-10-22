@@ -34,18 +34,21 @@ object PlanBudget {
     fun clearAll() = running.clear()
 
     /** Hands [search] on to be run from the server tick; true once it's over. */
-    fun advance(level: ServerLevel, search: CellPlanner.Search): Boolean {
+    fun advance(level: ServerLevel, search: CellPlanner.Search): Boolean = advance(search, level.server.tickCount)
+
+    internal fun advance(search: CellPlanner.Search, now: Int): Boolean {
         if (search.finished) {
             running.remove(search)
             return true
         }
-        running[search] = level.server.tickCount
+        running[search] = now
         return false
     }
 
-    fun tick(server: MinecraftServer) {
+    fun tick(server: MinecraftServer) = tick(server.tickCount)
+
+    internal fun tick(now: Int) {
         if (running.isEmpty()) return
-        val now = server.tickCount
         running.entries.removeIf { it.key.finished || now - it.value > ABANDON_TICKS }
         if (running.isEmpty()) return
         var left = PER_TICK

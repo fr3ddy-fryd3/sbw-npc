@@ -21,6 +21,9 @@ class SquadMarchTest {
         assertTrue(SquadMarch.sameGoalRange(600.0) >= 87.0)
         assertEquals(40.0, SquadMarch.sameGoalRange(100.0))
         assertTrue(SquadMarch.sameGoalRange(300.0) < 87.0)
+        // A man already on it stays on past halfway in.
+        assertTrue(SquadMarch.stayRange(300.0) >= 87.0)
+        assertTrue(SquadMarch.stayRange(200.0) < 87.0)
     }
 
     @Test

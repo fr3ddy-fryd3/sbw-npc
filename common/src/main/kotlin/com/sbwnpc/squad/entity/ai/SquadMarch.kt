@@ -71,6 +71,10 @@ object SquadMarch {
      * below [SAME_GOAL] and each man's own place gets a route of its own.
      */
     private const val SAME_GOAL_SHARE = 0.15
+
+    /** A man on the march leaves it for his own route only this near his place: past halfway in
+     *  for a place 87 off the route's goal, 600 away. */
+    private const val STAY_SHARE = 0.35
     private const val MIN_REPLAN_TICKS = 40L
 
     /** A leg ending nearer than this to where it started made no headway. */
@@ -195,8 +199,13 @@ object SquadMarch {
         // searches of its own, and each of them stood still until its own came back.
         // The squad's route and a man's own are kept apart: a man near his place whose short search
         // failed wants a way round to that place, not the squad's way to its destination.
-        val sameGoal = sameGoalRange(Math.sqrt(goal.distToCenterSqr(npc.position())))
-        val bound = marches.filter { it.shared == onShared && it.goal.closerThan(goal, sameGoal) }
+        val distance = Math.sqrt(goal.distToCenterSqr(npc.position()))
+        // A man already on a march stays on it further in than a newcomer may join it: held to
+        // the joining share, he fell off it twenty blocks into the walk and stood for a search.
+        val bound = marches.filter {
+            it.shared == onShared &&
+                (it.goal.closerThan(goal, sameGoalRange(distance)) || it.progress.contains(npc.uuid) && it.goal.closerThan(goal, stayRange(distance)))
+        }
         val march = bound.firstOrNull { it.progress.contains(npc.uuid) && distanceTo(it, npc) <= JOIN * 2 }
             ?: bound
                 .map { it to distanceTo(it, npc) }
@@ -221,7 +230,18 @@ object SquadMarch {
             // The march's goal, not this man's: whoever asks next is bound for somewhere near it.
             planLong(level, npc, march, march.goal, name)
             val planned = march.route
-            if (planned.isEmpty()) return if (march.search != null) Waypoint(npc.blockPosition(), null) else null
+            if (planned.isEmpty()) {
+                if (march.search == null) return null
+                // Off the squad's route toward his own place: he keeps walking the old one while
+                // his own is searched for, rather than stand.
+                val walked = marches.firstOrNull { it !== march && it.route.isNotEmpty() && it.progress.contains(npc.uuid) && distanceTo(it, npc) <= JOIN * 2 }
+                    ?: return Waypoint(npc.blockPosition(), null)
+                val at = walked.progress.index(npc.uuid, npc.position())
+                return Waypoint(
+                    walked.route[(at + LOOKAHEAD).coerceAtMost(walked.route.size - 1)],
+                    if (followFormation) formationSpot(level, npc, walked, at) else null,
+                )
+            }
             val at = march.progress.index(npc.uuid, npc.position())
             // A surface route can end short of the goal. Walk its useful stretch first, then
             // let a local 3D search find the way on; don't discard that stretch on the first call.
@@ -315,6 +335,9 @@ object SquadMarch {
 
     /** How far apart two goals [distance] away may be and still share one march. */
     internal fun sameGoalRange(distance: Double): Double = maxOf(SAME_GOAL, SAME_GOAL_SHARE * distance)
+
+    /** The same for a man already walking the march, see [STAY_SHARE]. */
+    internal fun stayRange(distance: Double): Double = maxOf(SAME_GOAL, STAY_SHARE * distance)
 
     /** Keep the formation's rear looking ahead of its own progress, even when the lead stops. */
     internal fun formationAnchorIndex(route: List<BlockPos>, leadAt: Int, here: Int, depth: Double): Int {
