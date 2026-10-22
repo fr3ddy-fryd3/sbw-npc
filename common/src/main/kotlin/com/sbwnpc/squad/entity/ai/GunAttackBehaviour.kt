@@ -5,6 +5,7 @@ import com.sbwnpc.squad.combat.Alarm
 import com.sbwnpc.squad.combat.AntiArmourKit
 import com.sbwnpc.squad.combat.CombatPosition
 import com.sbwnpc.squad.combat.CombatPositionSafety
+import com.sbwnpc.squad.combat.DarkAim
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.DroneCombat
@@ -148,6 +149,9 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         // of fire + blast radius). Now one combined pass every few ticks — an ally can't cross a
         // firing lane in under a fifth of a second, and the cached answer is what gates the shot.
         private const val FRIENDLY_FIRE_CHECK_INTERVAL = 4
+
+        /** One lane check in this many logs the dark spread: they run every [FRIENDLY_FIRE_CHECK_INTERVAL] ticks. */
+        private const val DARK_SPREAD_SAMPLE = 10
 
         // Alarm.raise used to fire on EVERY shot (an MG at 600 RPM = 10 ally scans per second per
         // shooter). The alert it raises lasts 200 ticks and re-raising only extends the timer, so
@@ -998,7 +1002,11 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (force || entity.tickCount >= nextFriendlyFireCheckTick) {
             nextFriendlyFireCheckTick = entity.tickCount + FRIENDLY_FIRE_CHECK_INTERVAL
             val explosionRadius = gun.explosionRadius
-            shotSpread = DroneCombat.spreadForTarget(entity.spread, target)
+            val dark = DarkAim.spreadFactor(entity.level(), target)
+            shotSpread = DroneCombat.spreadForTarget(entity.spread * dark, target)
+            if (dark > 1.0 && entity.random.nextInt(DARK_SPREAD_SAMPLE) == 0) {
+                DebugFlags.log(LogGroup.FIRE, "{} aims at {} in the dark: spread x{} -> {}", entity.uuid, target.uuid, "%.2f".format(dark), "%.2f".format(shotSpread))
+            }
             val assessment = FriendlyFireGuard.assess(
                 entity,
                 aimPoint,
@@ -1171,7 +1179,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                     Alarm.raise(entity, entity.position(), target.position(), Hearing.ALLIED_GUNSHOT_RADIUS)
                     // The other side hears it too — here rather than off SBW's shot event, which a
                     // shot nobody watches (OffscreenFire) never raises.
-                    (entity.level() as? ServerLevel)?.let { com.sbwnpc.squad.combat.Hearing.gunshot(it, entity, gun.hearingRadius) }
+                    (entity.level() as? ServerLevel)?.let { com.sbwnpc.squad.combat.Hearing.gunshot(it, entity, gun.hearingRadius, gun.suppressed) }
                 }
             }
         } else {

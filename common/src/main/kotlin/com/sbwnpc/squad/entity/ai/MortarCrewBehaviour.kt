@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
+import com.sbwnpc.squad.combat.DarkAim
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.Hostiles
@@ -239,12 +240,12 @@ class MortarCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
         // this tick if it can't actually hit the point.
         if (!canHitTarget(m, target)) return
         if (entity.currentSquad() != null && friendlyNearCached(level, entity, target)) {
-            DebugFlags.log(LogGroup.FIRE_SUPPORT, "mortar {} holds fire: friendlies within {} of {}", entity.uuid, dangerRadius(entity), target.toShortString())
+            DebugFlags.log(LogGroup.FIRE_SUPPORT, "mortar {} holds fire: friendlies within {} of {}", entity.uuid, dangerRadius(entity, target), target.toShortString())
             return
         }
 
         if (entity.tickCount >= nextAimTick) {
-            Ports.mortars.lay(m, target, scatterRadius(entity), entity)
+            Ports.mortars.lay(m, target, scatterRadius(entity, target), entity)
             nextAimTick = entity.tickCount + 20
         }
         MortarCycle.fireIfReady(m, entity)
@@ -449,12 +450,12 @@ class MortarCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /** Impact-point scatter radius (blocks), fed straight into SBW's own `ArtilleryEntity`
      *  dispersion (`targetPos.center.randomPos(radius)`). Recruits scatter widest, elites
-     *  land almost dead-on. */
-    private fun dangerRadius(entity: NpcEntity): Double = scatterRadius(entity) + SHELL_BLAST_RADIUS + IN_FLIGHT_MARGIN
+     *  land almost dead-on. A point in the dark widens it (#155), see [DarkAim]. */
+    private fun dangerRadius(entity: NpcEntity, target: BlockPos): Double = scatterRadius(entity, target) + SHELL_BLAST_RADIUS + IN_FLIGHT_MARGIN
 
-    private fun scatterRadius(entity: NpcEntity): Int {
+    private fun scatterRadius(entity: NpcEntity, target: BlockPos): Int {
         val t = entity.npcRank.ordinal / (com.sbwnpc.squad.npc.NpcRank.entries.size - 1).toDouble()
-        return Math.round(MAX_SCATTER - t * (MAX_SCATTER - MIN_SCATTER)).toInt()
+        return Math.round((MAX_SCATTER - t * (MAX_SCATTER - MIN_SCATTER)) * DarkAim.spreadFactor(entity.level(), target)).toInt()
     }
 
     private fun friendlyNearCached(level: ServerLevel, entity: NpcEntity, target: BlockPos): Boolean {
@@ -475,7 +476,7 @@ class MortarCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
     // up to 18 blocks from the aim.
     private fun friendlyNear(level: ServerLevel, entity: NpcEntity, target: BlockPos): Boolean {
         val center = target.center
-        val danger = dangerRadius(entity)
+        val danger = dangerRadius(entity, target)
         NpcRegistry.forEachWithin(level, center, danger, exclude = entity) { other ->
             if (other.squadId != null && !SquadTeams.isHostile(entity, other)) return true
         }

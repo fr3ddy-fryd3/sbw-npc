@@ -12,17 +12,20 @@ import com.sbwnpc.squad.npc.NpcRank
  * checks first: this only decides how long a candidate that passed them takes to be noticed.
  */
 object SpottingTime {
-    /** A band of light at the target (0 to 15, [Light]) and what it costs. */
-    enum class Light(val from: Int, val timeFactor: Double, val cutoff: Double) {
+    /**
+     * A band of light at the target (0 to 15, [Light]) and what it costs: to notice him, and to hit
+     * him, [hitFactor] the share of hits left in this light (#155, see [DarkAim]).
+     */
+    enum class Light(val from: Int, val timeFactor: Double, val cutoff: Double, val hitFactor: Double) {
         // The owner's table (21.10): an elite sees 128 blocks in the brightest light and 32 in the
         // dark, each band about 1.4 times shorter than the one above. The times are a third to a
         // quarter of 20.10's in the dark bands, where 12x and 25x left a moonlit man 70 blocks off
         // unseen for eight seconds and a drone overhead for longer than its dive.
-        BRIGHT(from = 12, timeFactor = 1.0 / SPEEDUP, cutoff = 128.0),
-        DIM(from = 9, timeFactor = 1.6 / SPEEDUP, cutoff = 90.0),
-        LOW(from = 6, timeFactor = 2.4 / SPEEDUP, cutoff = 64.0),
-        DARK(from = 3, timeFactor = 4.0 / SPEEDUP, cutoff = 45.0),
-        BLACK(from = 0, timeFactor = 6.0 / SPEEDUP, cutoff = 32.0),
+        BRIGHT(from = 12, timeFactor = 1.0 / SPEEDUP, cutoff = 128.0, hitFactor = 1.0),
+        DIM(from = 9, timeFactor = 1.6 / SPEEDUP, cutoff = 90.0, hitFactor = 0.9),
+        LOW(from = 6, timeFactor = 2.4 / SPEEDUP, cutoff = 64.0, hitFactor = 0.8),
+        DARK(from = 3, timeFactor = 4.0 / SPEEDUP, cutoff = 45.0, hitFactor = 0.7),
+        BLACK(from = 0, timeFactor = 6.0 / SPEEDUP, cutoff = 32.0, hitFactor = 0.6),
         ;
 
         companion object {
