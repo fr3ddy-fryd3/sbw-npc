@@ -255,9 +255,7 @@ object TacticalPositions {
     private fun clearOfGrass(level: ServerLevel, entity: NpcEntity, candidate: Vec3, aim: Vec3): Boolean {
         val eye = candidate.add(0.0, NpcPosture.CROUCHING_DIMENSIONS.eyeHeight().toDouble(), 0.0)
         val toward = aim.subtract(eye)
-        val reach = toward.length()
-        if (reach < 1.0e-3) return true
-        val end = eye.add(toward.scale(minOf(1.0, GRASS_REACH / reach)))
+        val end = eye.add(toward.scale(minOf(1.0, GRASS_REACH / toward.length())))
         return DetectionSightline.trace(level, eye, end, CollisionContext.of(entity)) != DetectionSightline.Visibility.FOLIAGE
     }
 
