@@ -199,13 +199,7 @@ object SquadMarch {
         // searches of its own, and each of them stood still until its own came back.
         // The squad's route and a man's own are kept apart: a man near his place whose short search
         // failed wants a way round to that place, not the squad's way to its destination.
-        val distance = Math.sqrt(goal.distToCenterSqr(npc.position()))
-        // A man already on a march stays on it further in than a newcomer may join it: held to
-        // the joining share, he fell off it twenty blocks into the walk and stood for a search.
-        val bound = marches.filter {
-            it.shared == onShared &&
-                (it.goal.closerThan(goal, sameGoalRange(distance)) || it.progress.contains(npc.uuid) && it.goal.closerThan(goal, stayRange(distance)))
-        }
+        val bound = boundFor(marches, npc, goal, onShared)
         val march = bound.firstOrNull { it.progress.contains(npc.uuid) && distanceTo(it, npc) <= JOIN * 2 }
             ?: bound
                 .map { it to distanceTo(it, npc) }
@@ -230,18 +224,7 @@ object SquadMarch {
             // The march's goal, not this man's: whoever asks next is bound for somewhere near it.
             planLong(level, npc, march, march.goal, name)
             val planned = march.route
-            if (planned.isEmpty()) {
-                if (march.search == null) return null
-                // Off the squad's route toward his own place: he keeps walking the old one while
-                // his own is searched for, rather than stand.
-                val walked = marches.firstOrNull { it !== march && it.route.isNotEmpty() && it.progress.contains(npc.uuid) && distanceTo(it, npc) <= JOIN * 2 }
-                    ?: return Waypoint(npc.blockPosition(), null)
-                val at = walked.progress.index(npc.uuid, npc.position())
-                return Waypoint(
-                    walked.route[(at + LOOKAHEAD).coerceAtMost(walked.route.size - 1)],
-                    if (followFormation) formationSpot(level, npc, walked, at) else null,
-                )
-            }
+            if (planned.isEmpty()) return if (march.search != null) whileSearching(level, npc, march, marches, followFormation) else null
             val at = march.progress.index(npc.uuid, npc.position())
             // A surface route can end short of the goal. Walk its useful stretch first, then
             // let a local 3D search find the way on; don't discard that stretch on the first call.
@@ -266,6 +249,33 @@ object SquadMarch {
         return Waypoint(
             route[(here + LOOKAHEAD).coerceAtMost(route.size - 1)],
             if (followFormation) formationSpot(level, npc, march, here) else null,
+        )
+    }
+
+    /**
+     * The marches bound near enough [goal] for [npc] to walk. A man already on one stays on it
+     * further in than a newcomer may join it: held to the joining share, he fell off it twenty
+     * blocks into the walk and stood for a search.
+     */
+    private fun boundFor(marches: List<March>, npc: NpcEntity, goal: BlockPos, onShared: Boolean): List<March> {
+        val distance = Math.sqrt(goal.distToCenterSqr(npc.position()))
+        return marches.filter {
+            it.shared == onShared &&
+                (it.goal.closerThan(goal, sameGoalRange(distance)) || (it.progress.contains(npc.uuid) && it.goal.closerThan(goal, stayRange(distance))))
+        }
+    }
+
+    /**
+     * Where [npc] walks while [march]'s first stretch is searched for. Off the squad's route toward
+     * his own place, he keeps to the route he was on rather than stand; with none, he waits.
+     */
+    private fun whileSearching(level: ServerLevel, npc: NpcEntity, march: March, marches: List<March>, followFormation: Boolean): Waypoint {
+        val walked = marches.firstOrNull { it !== march && it.route.isNotEmpty() && it.progress.contains(npc.uuid) && distanceTo(it, npc) <= JOIN * 2 }
+            ?: return Waypoint(npc.blockPosition(), null)
+        val at = walked.progress.index(npc.uuid, npc.position())
+        return Waypoint(
+            walked.route[(at + LOOKAHEAD).coerceAtMost(walked.route.size - 1)],
+            if (followFormation) formationSpot(level, npc, walked, at) else null,
         )
     }
 
