@@ -66,7 +66,8 @@ object HelicopterOrbitGameTests {
      * counts: it used to hold the ridge height all the way and complete from far above (#119).
      */
     private fun emptyAttack(helper: GameTestHelper, model: HelicopterModel, ridge: Boolean = false) {
-        val scene = Scene(helper, model = model, spawnEnemy = false, ridge = ridge)
+        val scene = Scene(helper, model = model, spawnEnemy = false)
+        if (ridge) scene.raiseRidge()
         var moveAt: Long? = null
         val cruise = CruiseHeight(helper, scene)
         helper.onEachTick {
@@ -543,8 +544,7 @@ object HelicopterOrbitGameTests {
         val helper: GameTestHelper,
         model: HelicopterModel = HelicopterModel.AH_6,
         private val attack: Boolean = true,
-        private val spawnEnemy: Boolean = true,
-        ridge: Boolean = false,
+        spawnEnemy: Boolean = true,
         roles: List<NpcClass> = model.crew,
         objective: BlockPos = BlockPos(140, 1, 100),
     ) {
@@ -563,15 +563,6 @@ object HelicopterOrbitGameTests {
             // Vanilla test barriers must not become heightmap terrain or a false ceiling for aircraft.
             StructureUtils.removeBarriers(helper.bounds, helper.level)
             for (x in 0..191) for (z in 0..191) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
-            // A hill on the approach, peaking 30 high at x 80 and gone 25 blocks before the objective at
-            // x 140. Sloped and not wall to wall, so a low-flying gunship can climb it and the ground
-            // round it stays one walkable area.
-            if (ridge) {
-                for (x in 45..115) {
-                    val top = (30.0 * (1.0 - abs(x - 80) / 35.0)).toInt()
-                    for (z in 70..130) for (y in 1..top) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
-                }
-            }
             DebugFlags.enabledGroups = setOf(LogGroup.HELI, LogGroup.ORDER)
             heli.moveTo(pad.x, pad.y, pad.z, -90f, 0f)
             helper.level.addFreshEntity(heli)
@@ -604,8 +595,23 @@ object HelicopterOrbitGameTests {
                 override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) = close()
             })
         }
+
+        /**
+         * A hill on the approach, peaking 30 high at x 80 and gone 25 blocks before the objective at
+         * x 140. Sloped and not wall to wall, so a low-flying gunship can climb it and the ground
+         * round it stays one walkable area.
+         */
+        fun raiseRidge() {
+            for (x in 45..115) {
+                val top = (30.0 * (1.0 - abs(x - 80) / 35.0)).toInt()
+                for (z in 70..130) for (y in 1..top) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
+            }
+        }
+
+        private val enemyDue = attack && spawnEnemy
+
         fun tick() {
-            if (attack && spawnEnemy && enemy == null && Ports.vehicles.seating(heli).count { it != null } == crew.size) {
+            if (enemyDue && enemy == null && Ports.vehicles.seating(heli).count { it != null } == crew.size) {
                 enemy = AttackDeploymentGameTests.spawn(helper, Vec3(104.5, 1.0, 100.5), SquadFaction.COW).apply {
                     isNoAi = true
                     getAttribute(Attributes.MAX_HEALTH)!!.baseValue = 100000.0
