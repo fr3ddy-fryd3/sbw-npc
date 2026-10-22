@@ -39,6 +39,12 @@ object Hearing {
     private const val SHOOTER_INTERVAL_TICKS = 20L
 
     private val lastShot = HashMap<UUID, Long>()
+
+    /** Every unsuppressed shot, unthrottled: what [flashedWithin] reads. */
+    private val lastFlash = HashMap<UUID, Long>()
+
+    /** Flashes older than this are dropped once the map grows; longer than any [flashedWithin] asks. */
+    private const val FLASH_KEPT_TICKS = 200L
     private val lastStep = HashMap<UUID, Long>()
 
     private const val WALK_RADIUS = 4.0
@@ -49,9 +55,16 @@ object Hearing {
     /** Blocks a tick over which an NPC is taken to be running rather than walking. */
     private const val NPC_RUN_SPEED = 0.2
 
-    /** [shooter] fired a gun heard [radius] blocks around it. */
-    fun gunshot(level: ServerLevel, shooter: Entity, radius: Double) {
+    /** Whether [shooter]'s muzzle flash lit him within the last [ticks] by [now] (#155). */
+    fun flashedWithin(shooter: Entity, now: Long, ticks: Long): Boolean = lastFlash[shooter.uuid]?.let { now - it <= ticks } == true
+
+    /** [shooter] fired a gun heard [radius] blocks around it, with a muzzle flash unless [suppressed]. */
+    fun gunshot(level: ServerLevel, shooter: Entity, radius: Double, suppressed: Boolean) {
         val now = level.gameTime
+        if (!suppressed) {
+            lastFlash[shooter.uuid] = now
+            if (lastFlash.size > 512) lastFlash.entries.removeIf { now - it.value > FLASH_KEPT_TICKS }
+        }
         val last = lastShot[shooter.uuid]
         if (last != null && now - last < SHOOTER_INTERVAL_TICKS) return
         lastShot[shooter.uuid] = now
@@ -161,6 +174,7 @@ object Hearing {
 
     fun clearAll() {
         lastShot.clear()
+        lastFlash.clear()
         lastStep.clear()
     }
 }
