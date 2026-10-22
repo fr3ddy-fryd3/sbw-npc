@@ -162,7 +162,7 @@ object FollowOrderGameTests {
             when {
                 helper.tick == 100L -> {
                     assertMapShowsFollow(helper, scene, squad)
-                    com.sbwnpc.squad.combat.Hearing.gunshot(helper.level, owner, 64.0)
+                    com.sbwnpc.squad.combat.Hearing.gunshot(helper.level, owner, 64.0, suppressed = false)
                 }
 
                 helper.tick == 102L -> helper.assertTrue(followers.none { it.listening() }, "The owner's own shot sent his men to look")
