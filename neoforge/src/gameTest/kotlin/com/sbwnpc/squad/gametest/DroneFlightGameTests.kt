@@ -66,4 +66,37 @@ object DroneFlightGameTests {
             }
         }
     }
+
+    /**
+     * An operator behind a wall, under a roof, launches his drone into open sky and lives (#158).
+     * Put down a block and a half in front of him, it went into the wall and blew him up.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 900, batch = "drone-cover-launch")
+    fun operatorInCoverLaunchesIntoOpenSky(helper: GameTestHelper) {
+        StructureUtils.removeBarriers(helper.bounds, helper.level)
+        DebugFlags.enabledGroups = setOf(LogGroup.DRONE)
+        for (x in 0..191) for (z in 0..191) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        // A wall two high right in front of him toward the target, and a roof over his head.
+        for (z in 90..110) for (y in 1..2) helper.setBlock(BlockPos(22, y, z), Blocks.STONE)
+        for (x in 19..21) for (z in 99..101) helper.setBlock(BlockPos(x, 4, z), Blocks.STONE)
+        val operator = AttackDeploymentGameTests.spawn(helper, Vec3(20.5, 1.0, 100.5), SquadFaction.PIG, role = NpcClass.DRONE_OPERATOR)
+        operator.npcRank = NpcRank.ELITE
+        val manager = SquadManager.get(helper.level)
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(operator.uuid))
+        manager.setOrder(squad.id, SquadOrder.ATTACK)
+        manager.setObjective(helper.level, squad.id, helper.absolutePos(BlockPos(120, 1, 100)))
+        var launchedAt: Vec3? = null
+        helper.onEachTick {
+            helper.assertTrue(operator.isAlive, "The operator died by tick ${helper.tick}, drone launched at $launchedAt")
+            val drone = helper.level.getEntities(operator, operator.boundingBox.inflate(200.0)) { Ports.drones.isDrone(it) }.firstOrNull()
+                ?: return@onEachTick
+            val at = helper.relativeVec(drone.position())
+            if (launchedAt == null) launchedAt = at
+            if (at.y >= 12.0) {
+                helper.assertTrue(abs(launchedAt!!.y - 3.0) <= 0.5, "The drone went up from $launchedAt, not 2 over the operator's feet")
+                helper.succeed()
+            }
+        }
+    }
 }

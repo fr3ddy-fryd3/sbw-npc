@@ -14,6 +14,7 @@ import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.util.Mth
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
@@ -21,6 +22,7 @@ import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.levelgen.Heightmap
+import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 import java.util.UUID
@@ -83,6 +85,10 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var sawTargetTick = 0
     private var nextSightCheckTick = 0
     private var clearance = CRUISE_CLEARANCE_MIN
+
+    /** The open spot [canLaunch] found to launch from, see [launchPoint]. */
+    private var launchPoint: Vec3? = null
+    private var skyClosed = false
     private var detonated = false
     private var usesAddonBlast = false
 
@@ -111,7 +117,39 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         // Someone right on top of the operator: shoot back (GunAttackBehaviour), don't launch.
         val personalThreat = entity.target?.takeIf { it.isAlive && entity.distanceToSqr(it) <= SELF_DEFENSE_RANGE_SQR }
         if (personalThreat != null) return false
-        return strikeTarget(entity) != null
+        if (strikeTarget(entity) == null) return false
+        launchPoint = (entity.level() as? ServerLevel)?.let { launchPoint(it, entity) }
+        if ((launchPoint == null) != skyClosed) {
+            skyClosed = launchPoint == null
+            DebugFlags.log(LogGroup.DRONE, "{} {}", entity.uuid, if (skyClosed) "holds the drone: no open sky to launch into" else "has open sky to launch into")
+        }
+        return launchPoint != null
+    }
+
+    /**
+     * Where the drone can go up from: [LAUNCH_HEIGHT] over the operator's feet, right above him or a
+     * step to one side, with the air clear straight up to past cruise height.
+     *
+     * Put down a block and a half in front of him, an operator in cover put it into the wall he hid
+     * behind, and it crashed on the spot and killed him (#158). The climb ([tickLaunch]) goes
+     * straight up before turning, so a clear column is the whole way out.
+     */
+    private fun launchPoint(level: ServerLevel, entity: NpcEntity): Vec3? {
+        val base = entity.position().add(0.0, LAUNCH_HEIGHT, 0.0)
+        val candidates = sequenceOf(base) + (0 until LAUNCH_SIDE_POINTS).asSequence().map {
+            val angle = it * 2.0 * Math.PI / LAUNCH_SIDE_POINTS
+            base.add(Math.cos(angle) * LAUNCH_SIDE_STEP, 0.0, Math.sin(angle) * LAUNCH_SIDE_STEP)
+        }
+        return candidates.firstOrNull { openSky(level, entity, it) }
+    }
+
+    private fun openSky(level: ServerLevel, entity: NpcEntity, at: Vec3): Boolean {
+        // A roof higher than the climb checked below still stops it: the climb aims over the
+        // tallest thing in this column. Floored, not [groundY]'s toInt, which reads the column
+        // next door at negative coordinates.
+        if (level.getHeight(Heightmap.Types.MOTION_BLOCKING, Mth.floor(at.x), Mth.floor(at.z)) > at.y) return false
+        val box = AABB(at.x - LAUNCH_HALF_WIDTH, at.y, at.z - LAUNCH_HALF_WIDTH, at.x + LAUNCH_HALF_WIDTH, at.y + LAUNCH_BOX_HEIGHT, at.z + LAUNCH_HALF_WIDTH)
+        return level.noCollision(entity, box.expandTowards(0.0, CRUISE_CLEARANCE_MAX, 0.0))
     }
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = startCheck.check(entity) { baseEligible(entity) && canLaunch(entity) }
@@ -224,10 +262,9 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun launch(entity: NpcEntity, level: ServerLevel, target: StrikeTarget) {
         // Which drone, and whose explosion — see the Drones adapter.
+        val spawn = launchPoint ?: return
         val drone = Ports.drones.createKamikaze(level)
         usesAddonBlast = Ports.drones.blowsUpOnCrash(drone)
-        val forward = Vec3.directionFromRotation(0f, entity.yRot)
-        val spawn = entity.position().add(forward.scale(1.5)).add(0.0, 0.5, 0.0)
         drone.moveTo(spawn.x, spawn.y, spawn.z, entity.yRot, 0f)
         // Same scoreboard team as the operator: SBW turrets / hostile vehicles treat it as an enemy
         // vehicle, allies leave it alone.
@@ -636,6 +673,17 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         // drones from one squad don't fly the same line.
         private const val CRUISE_CLEARANCE_MIN = 12.0
         private const val CRUISE_CLEARANCE_MAX = 18.0
+
+        /** The drone goes up from this far over the operator's feet, clear of his head. */
+        private const val LAUNCH_HEIGHT = 2.0
+
+        /** Spots round the operator tried when the sky right above him is closed, this far out. */
+        private const val LAUNCH_SIDE_POINTS = 8
+        private const val LAUNCH_SIDE_STEP = 2.0
+
+        /** A box a little larger than SBW's drone, so a clear one leaves it room. */
+        private const val LAUNCH_HALF_WIDTH = 0.5
+        private const val LAUNCH_BOX_HEIGHT = 0.7
         private val LOOKAHEAD_DISTANCES = doubleArrayOf(4.0, 8.0, 12.0, 16.0)
 
         // Blocks per tick. SBW's drone can exceed 2/tick flat out; these keep it steerable.
