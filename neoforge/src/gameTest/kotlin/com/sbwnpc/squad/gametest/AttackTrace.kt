@@ -1,9 +1,11 @@
 package com.sbwnpc.squad.gametest
 
+import com.sbwnpc.squad.combat.DarkAim
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.tactics.SquadTactics
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.NpcPosture
 import com.sbwnpc.squad.squad.Squad
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.gametest.framework.GameTestHelper
@@ -64,8 +66,11 @@ class AttackTrace(private val helper: GameTestHelper, private val squad: Squad, 
     fun round(shooter: NpcEntity, projectile: Projectile) {
         rounds[shooter.uuid] = (rounds[shooter.uuid] ?: 0) + 1
         val target = shooter.target
+        // The spread the shot was fired with, not his standing one: crouched, his cone is tighter
+        // (#156), and an ally just outside it is safe; in the dark it is wider (#155).
         val freshGuard = target?.let {
-            FriendlyFireGuard.assess(shooter, SquadTactics.firingLaneEnd(shooter, it), shooter.spread, it.position(), 0.0).lineClear
+            val spread = shooter.spread * NpcPosture.spreadFactor(shooter) * DarkAim.spreadFactor(shooter.level(), it)
+            FriendlyFireGuard.assess(shooter, SquadTactics.firingLaneEnd(shooter, it), spread, it.position(), 0.0).lineClear
         }
         val p = helper.relativeVec(projectile.position())
         val v = projectile.deltaMovement

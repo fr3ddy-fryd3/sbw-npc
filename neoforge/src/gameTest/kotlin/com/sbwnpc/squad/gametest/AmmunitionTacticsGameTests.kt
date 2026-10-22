@@ -194,6 +194,8 @@ object AmmunitionTacticsGameTests {
             report("pistol-cover-$order.txt", "cover=$tookCover\ncontact=$sawTarget\nrounds=$rounds\ndisplacement=${npc.position().distanceTo(origin)}\n")
         }
         helper.onEachTick {
+            // Noticing takes time (#114); this scene is about cover, so he keeps looking at the enemy.
+            if (helper.tick <= 250L) npc.yHeadRot = -90f
             if (npc.target === enemy) sawTarget = true
             if (DefensiveOverwatch.nearbyCover(npc.position(), enemy.eyePosition) { from, to -> com.sbwnpc.squad.combat.Sightline.blocked(helper.level, from, to, npc) }) tookCover = true
             helper.assertTrue(npc.position().subtract(origin).horizontalDistance() <= 12.0, "Pistol user advanced toward a distant enemy instead of holding local shelter")
