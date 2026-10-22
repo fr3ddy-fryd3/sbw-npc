@@ -166,9 +166,9 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
         var seen: Entity? = null
         var heard: Entity? = null
         for (drone in DroneRegistry.all(level)) {
-            if (!isLiveThreat(entity, drone, SIGHT_RANGE)) continue
+            if (!isLiveThreat(entity, drone, maxOf(SIGHT_RANGE, HEARING_RANGE))) continue
             val d2 = entity.distanceToSqr(drone)
-            if (looksAt(entity, level, drone)) {
+            if (d2 <= SIGHT_RANGE * SIGHT_RANGE && looksAt(entity, level, drone)) {
                 if (seen == null || d2 < entity.distanceToSqr(seen)) seen = drone
             } else if (d2 <= HEARING_RANGE * HEARING_RANGE && Ports.vehicles.engineRunning(drone)) {
                 if (heard == null || d2 < entity.distanceToSqr(heard)) heard = drone
@@ -292,7 +292,9 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val START_CHECK_INTERVAL_TICKS = 5
         private const val DETECT_INTERVAL = 10
         private const val SIGHT_RANGE = 48.0
-        private const val HEARING_RANGE = 25.0
+
+        /** A drone is loud: heard further off than it can be seen, see [SIGHT_RANGE]. */
+        private const val HEARING_RANGE = 50.0
 
         /** A remembered drone stays a threat a bit past sight range so it isn't re-detected every scan. */
         private const val TRACK_RANGE = 64.0
