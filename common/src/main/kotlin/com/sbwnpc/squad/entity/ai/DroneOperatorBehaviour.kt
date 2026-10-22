@@ -86,8 +86,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var nextSightCheckTick = 0
     private var clearance = CRUISE_CLEARANCE_MIN
 
-    /** The open spot [canLaunch] found to launch from, see [launchPoint]. */
-    private var launchPoint: Vec3? = null
+    /** No open sky to launch into at the last look, see [launchPoint]; for the log. */
     private var skyClosed = false
     private var detonated = false
     private var usesAddonBlast = false
@@ -118,7 +117,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         val personalThreat = entity.target?.takeIf { it.isAlive && entity.distanceToSqr(it) <= SELF_DEFENSE_RANGE_SQR }
         if (personalThreat != null) return false
         if (strikeTarget(entity) == null) return false
-        launchPoint = (entity.level() as? ServerLevel)?.let { launchPoint(it, entity) }
+        val launchPoint = (entity.level() as? ServerLevel)?.let { launchPoint(it, entity) }
         if ((launchPoint == null) != skyClosed) {
             skyClosed = launchPoint == null
             DebugFlags.log(LogGroup.DRONE, "{} {}", entity.uuid, if (skyClosed) "holds the drone: no open sky to launch into" else "has open sky to launch into")
@@ -262,7 +261,8 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun launch(entity: NpcEntity, level: ServerLevel, target: StrikeTarget) {
         // Which drone, and whose explosion — see the Drones adapter.
-        val spawn = launchPoint ?: return
+        // Looked for again: the start check that found one may be a few ticks old.
+        val spawn = launchPoint(level, entity) ?: return
         val drone = Ports.drones.createKamikaze(level)
         usesAddonBlast = Ports.drones.blowsUpOnCrash(drone)
         drone.moveTo(spawn.x, spawn.y, spawn.z, entity.yRot, 0f)
