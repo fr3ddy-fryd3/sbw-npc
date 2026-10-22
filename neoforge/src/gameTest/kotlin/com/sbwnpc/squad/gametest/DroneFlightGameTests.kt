@@ -40,7 +40,7 @@ object DroneFlightGameTests {
             for (z in 70..130) for (y in 1..top) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
         }
         val operator = AttackDeploymentGameTests.spawn(helper, Vec3(20.5, 1.0, 100.5), SquadFaction.PIG, role = NpcClass.DRONE_OPERATOR)
-        // An elite operator reaches 150, so the objective 130 away can be struck.
+        // An elite operator reaches 160, so the objective 130 away can be struck.
         operator.npcRank = NpcRank.ELITE
         val manager = SquadManager.get(helper.level)
         val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(operator.uuid))

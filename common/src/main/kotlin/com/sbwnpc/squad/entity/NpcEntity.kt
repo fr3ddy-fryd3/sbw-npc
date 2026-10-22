@@ -1551,7 +1551,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
         // How far an NPC can spot / act on relayed contacts — see the FOLLOW_RANGE note in
         // createAttributes() for why this is a constant of its own rather than that attribute.
-        const val DETECTION_RANGE = 72.0
+        // 128, the owner's call (21.10): the brightest light's cut-off in SpottingTime, so the
+        // light and the rank decide how far a man sees, not the search box.
+        const val DETECTION_RANGE = 128.0
 
         // AI level-of-detail — see refreshAiLod(). Player distances at which the brain drops to
         // every-2nd / every-4th tick when not in combat.
