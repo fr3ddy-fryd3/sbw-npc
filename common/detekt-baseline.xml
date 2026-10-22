@@ -91,7 +91,7 @@
     <ID>CyclomaticComplexMethod:GunAttackBehaviour.kt$GunAttackBehaviour$private fun updateCombatMovement( entity: NpcEntity, target: LivingEntity, squad: Squad?, holding: Boolean, gun: HandGun, clearShot: Boolean, ): CombatMovement</ID>
     <ID>CyclomaticComplexMethod:HelicopterFlightControllerTest.kt$HelicopterFlightControllerTest.Heli$fun step(cmd: HelicopterFlightController.Command)</ID>
     <ID>CyclomaticComplexMethod:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$override fun tick(entity: NpcEntity)</ID>
-    <ID>CyclomaticComplexMethod:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$private fun decideMission( entity: NpcEntity, heli: Entity, target: LivingEntity?, home: Vec3, airworthy: Boolean, ): Mission</ID>
+    <ID>CyclomaticComplexMethod:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$private fun decideMission( entity: NpcEntity, heli: Entity, target: LivingEntity?, home: Vec3, fit: Boolean, ): Mission</ID>
     <ID>CyclomaticComplexMethod:HelicopterRideBehaviour.kt$HelicopterRideBehaviour$private fun benchHoldReason(entity: NpcEntity, heli: Entity): String?</ID>
     <ID>CyclomaticComplexMethod:HtnPlanner.kt$HtnPlanningSession$fun advance(work: Int): PlanningResult</ID>
     <ID>CyclomaticComplexMethod:InvestigateBehaviour.kt$InvestigateBehaviour$override fun tick(entity: NpcEntity)</ID>

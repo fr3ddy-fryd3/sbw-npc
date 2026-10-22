@@ -45,6 +45,10 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var nextSearchTick = 0
     private var groundedSince = Int.MIN_VALUE / 2
     private var noLiftUntilTick = 0
+
+    /** The order this man was flown for and set down on: one lift an order, or a landing 21 to 32
+     *  blocks from the objective would have him board again for the same hop. */
+    private var deliveredStamp: Int? = null
     private var nextShotTick = 0
 
     init {
@@ -127,6 +131,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
             // short of the objective would turn straight round and climb back into the aircraft
             // that had just given up on the trip.
             noLiftUntilTick = entity.tickCount + REBOARD_COOLDOWN_TICKS
+            if (arrived) deliveredStamp = entity.currentSquad()?.orderStamp
             DebugFlags.log(LogGroup.HELI, "{} dismounted at {}", entity.uuid, entity.position())
         }
     }
@@ -228,14 +233,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun aboard(entity: NpcEntity): Entity? = entity.vehicle?.takeIf { Helicopters.isHelicopter(it) && Ports.vehicles.seatOf(it, entity) != PILOT_SEAT }
 
     /** Ordinary infantry only: every other class has a post of its own to man. */
-    private fun canRide(entity: NpcEntity): Boolean =
-        when (entity.npcClass) {
-            NpcClass.RIFLEMAN, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.SHOTGUNNER -> true
-
-            NpcClass.MORTAR, NpcClass.MORTAR_OPERATOR, NpcClass.MORTAR_LOADER, NpcClass.TANK_CREW,
-            NpcClass.HELICOPTER_PILOT, NpcClass.HELICOPTER_GUNNER, NpcClass.DRONE_OPERATOR,
-            -> false
-        }
+    private fun canRide(entity: NpcEntity): Boolean = entity.npcClass in Helicopters.RIDER_CLASSES
 
     private fun boardable(heli: Entity, entity: NpcEntity): Boolean = reject(heli, entity) == null
 
@@ -243,7 +241,9 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  bare boolean so a transport that nobody boards can say so in the log. */
     private fun reject(heli: Entity, entity: NpcEntity): String? {
         val level = entity.level() as? ServerLevel ?: return "no level"
-        if (!Helicopters.isHelicopter(heli) || !Ports.vehicles.isOperational(heli)) return "not a live helicopter"
+        if (!Helicopters.isHelicopter(heli)) return "not a helicopter"
+        if (!heli.isAlive) return "destroyed"
+        if (Ports.vehicles.isWreck(heli)) return "a wreck"
         if (Ports.vehicles.isLocked(heli)) return "locked"
         // Transports only. The gunship's one spare seat is its turret, and a rifleman sitting in it
         // is a rifleman keeping the gunner out of it.
@@ -263,6 +263,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.tickCount < noLiftUntilTick) return false
         if (entity.vehicle != null || entity.diggedIn || entity.operatingDrone || entity.antiDroneEngaged) return false
         if (entity.target != null || entity.isSuppressed()) return false
+        if (deliveredStamp != null && deliveredStamp == entity.currentSquad()?.orderStamp) return false
         val home = entity.homeCenter() ?: return false
         return entity.currentSquad()?.order == SquadOrder.ATTACK ||
             entity.position().distanceTo(home) >= Helicopters.AIR_TRANSPORT_DISTANCE
@@ -295,10 +296,18 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.tickCount < nextSearchTick) return null
         nextSearchTick = entity.tickCount + SEARCH_INTERVAL_TICKS
 
+        // His own squad's transport first, wherever it stands within reach: in the 21.10 game a squad
+        // stood beyond the nearby search, saw only the wrecks of earlier aircraft, and its fresh
+        // helicopter left without it.
+        ownTransport(entity, level)?.let { own ->
+            rideId = own.uuid
+            DebugFlags.log(LogGroup.HELI, "{} heading for his squad's transport {} {} blocks off", entity.uuid, own.uuid, entity.distanceTo(own).toInt())
+            return own
+        }
         val box = AABB.ofSize(entity.position(), SEARCH_RANGE * 2, SEARCH_RANGE * 2, SEARCH_RANGE * 2)
         val nearby = Ports.vehicles.within(level, box) { Helicopters.isHelicopter(it) }
             .sortedBy { entity.distanceToSqr(it) }
-        val chosen = nearby.firstOrNull { boardable(it, entity) }
+        val chosen = nearby.firstOrNull { boardable(it, entity) && worthWalking(entity, it) }
         if (chosen == null) {
             if (nearby.isNotEmpty()) {
                 DebugFlags.log(
@@ -313,6 +322,21 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         rideId = chosen.uuid
         DebugFlags.log(LogGroup.HELI, "{} heading for transport {}", entity.uuid, chosen.uuid)
         return chosen
+    }
+
+    /** The boardable helicopter his squad's own pilot sits in, if one is within [Helicopters.OWN_TRANSPORT_RANGE]. */
+    private fun ownTransport(entity: NpcEntity, level: ServerLevel): Entity? {
+        val squad = entity.currentSquad() ?: return null
+        return squad.members.asSequence()
+            .mapNotNull { (level.getEntity(it) as? NpcEntity)?.takeIf { pilot -> pilot.npcClass == NpcClass.HELICOPTER_PILOT }?.vehicle }
+            .filter { Helicopters.isHelicopter(it) && entity.distanceTo(it) <= Helicopters.OWN_TRANSPORT_RANGE && boardable(it, entity) && worthWalking(entity, it) }
+            .minByOrNull { entity.distanceToSqr(it) }
+    }
+
+    /** Not a longer walk to the aircraft than to the objective itself. */
+    private fun worthWalking(entity: NpcEntity, heli: Entity): Boolean {
+        val home = entity.homeCenter() ?: return false
+        return entity.position().distanceTo(heli.position()) < entity.position().distanceTo(home)
     }
 
     private companion object {

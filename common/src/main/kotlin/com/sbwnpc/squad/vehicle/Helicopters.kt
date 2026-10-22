@@ -2,6 +2,7 @@ package com.sbwnpc.squad.vehicle
 
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.npc.HelicopterModel
+import com.sbwnpc.squad.npc.NpcClass
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
@@ -31,7 +32,15 @@ object Helicopters {
      * same number, or there is a band of distances where the aircraft leaves for a trip its
      * passengers never considered getting on.
      */
-    const val AIR_TRANSPORT_DISTANCE = 80.0
+    // 20 by the owner's call (21.10): a helicopter flies over its target and sees far, so sitting on
+    // the pad for anything under 80 wasted it.
+    const val AIR_TRANSPORT_DISTANCE = 20.0
+
+    /** How far a man looks for his own squad's transport — the one his squad's pilot sits in. */
+    const val OWN_TRANSPORT_RANGE = 160.0
+
+    /** Ordinary infantry: every other class has a post of its own to man, and stays off the benches. */
+    val RIDER_CLASSES = setOf(NpcClass.RIFLEMAN, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.SHOTGUNNER)
 
     fun isHelicopter(vehicle: Entity): Boolean = Ports.vehicles.modelOf(vehicle) is HelicopterModel
 
