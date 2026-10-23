@@ -183,7 +183,8 @@ Ground squads in a fight are planned by an HTN controller, not by the behaviours
   cover and reactions keep working under the plan.
 
 Details: [AI-RUNTIME.md](AI-RUNTIME.md), [TACTICS-ARCHITECTURE.md](TACTICS-ARCHITECTURE.md); the
-target design: [AI-ARCHITECTURE-DESIGN.md](AI-ARCHITECTURE-DESIGN.md).
+domain as diagrams: [HTN-DIAGRAMS.md](HTN-DIAGRAMS.md); the target design:
+[AI-ARCHITECTURE-DESIGN.md](AI-ARCHITECTURE-DESIGN.md).
 
 ## Routing and vehicles
 
