@@ -2,7 +2,9 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.combat.TankWeaponSelection
 import com.sbwnpc.squad.combat.VehicleTargeting
 import com.sbwnpc.squad.domain.port.Ports
@@ -35,6 +37,11 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** Last tick the gunner had anything to shoot at — see [lingering]. */
     private var engagedTick = 0
 
+    // The keep-running check and firing tick ask about the same line; raycast it once per tick.
+    private var sightTick = Int.MIN_VALUE
+    private var sightTarget: UUID? = null
+    private var sightClear = false
+
     init {
         noTimeout()
     }
@@ -46,7 +53,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
         entity.tickCount >= nextBoardTick && entity.seatFreeFor(this) && eligible(entity) &&
-            threat(entity)?.let { entity.sensing.hasLineOfSight(it) } == true &&
+            threat(entity)?.let { hasFiringSightline(entity, it) } == true &&
             findSupportVehicle(entity, level) != null
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean {
@@ -172,7 +179,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
                     BrainUtils.setTargetOfEntity(entity, target)
                 }
                 TankWeaponSelection.update(entity, target)
-                Ports.vehicles.aimAt(vehicle, entity, target)
+                Ports.vehicles.aimAt(vehicle, entity, target.takeIf { hasFiringSightline(entity, it) })
                 Ports.vehicles.release(vehicle)
                 Ports.vehicles.cutPower(vehicle)
                 entity.navigation.stop()
@@ -258,7 +265,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         targetId?.let { id ->
             val target = level.getEntity(id) as? LivingEntity
             if (target != null && target.isAlive && SquadTeams.isHostile(entity, target)) {
-                if (entity.sensing.hasLineOfSight(target)) sawTargetTick = entity.tickCount
+                if (hasFiringSightline(entity, target)) sawTargetTick = entity.tickCount
                 if (entity.tickCount - sawTargetTick < LOST_SIGHT_TICKS) {
                     engagedTick = entity.tickCount
                     return target
@@ -266,7 +273,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
             targetId = null
         }
-        return threat(entity)?.takeIf { entity.sensing.hasLineOfSight(it) }?.also {
+        return threat(entity)?.takeIf { hasFiringSightline(entity, it) }?.also {
             DebugFlags.log(
                 LogGroup.VEHICLE,
                 "{} at the gun takes a new target {} ({} ticks after the last)",
@@ -278,6 +285,20 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
             sawTargetTick = entity.tickCount
             engagedTick = entity.tickCount
         }
+    }
+
+    /** A head peeking above cover cannot keep a gun aimed at the hidden body indefinitely. */
+    private fun hasFiringSightline(entity: NpcEntity, target: LivingEntity): Boolean {
+        if (sightTick == entity.tickCount && sightTarget == target.uuid) return sightClear
+        val level = entity.level() as ServerLevel
+        // SBW shoots the hull when its occupant is the target, not the hidden crewman's body.
+        val body = target.vehicle?.takeIf(Ports.vehicles::isVehicle) ?: target
+        val aim = body.boundingBox.center
+        sightTick = entity.tickCount
+        sightTarget = target.uuid
+        sightClear = DetectionSightline.visible(level, entity.eyePosition, aim, entity) &&
+            !Sightline.blocked(level, entity.eyePosition, aim, entity)
+        return sightClear
     }
 
     private fun findSupportVehicle(entity: NpcEntity, level: ServerLevel): Entity? {

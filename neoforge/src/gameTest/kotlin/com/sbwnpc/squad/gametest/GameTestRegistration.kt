@@ -45,6 +45,7 @@ object GameTestRegistration {
             ObserverLookGameTests::class.java,
             VehicleSeatGameTests::class.java,
             VehicleSupportOrderGameTests::class.java,
+            VehicleSupportSightlineGameTests::class.java,
             MarchRouteGameTests::class.java,
             NoticingGameTests::class.java,
         )

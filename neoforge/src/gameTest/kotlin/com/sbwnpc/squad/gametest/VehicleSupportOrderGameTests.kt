@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.gametest
 
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.VehicleTransportClaims
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.npc.TransportVehicle
@@ -25,6 +26,13 @@ object VehicleSupportOrderGameTests {
             Ports.vehicles.fuelAndArm(it, TransportVehicle.LAV_150)
         }
 
+    private fun assertSupportReleased(helper: GameTestHelper, gun: Entity, man: NpcEntity) {
+        // The transport executor may legitimately claim the now-free wheel to carry him away.
+        val driving = VehicleTransportClaims.driverOf(gun.uuid) == man.uuid
+        helper.assertTrue(man.vehicle !== gun || driving, "The gunner kept the free vehicle for combat support")
+        helper.assertTrue(VehicleTransportClaims.vehicleOf(man.uuid) != gun.uuid || driving, "Combat support kept its seat claim")
+    }
+
     private fun supportYieldsToOrder(helper: GameTestHelper, order: SquadOrder, withdrawal: Boolean = false) {
         val scene = CombatIdleGameTests.Scene(helper, "support-${if (withdrawal) "withdrawal" else order.name.lowercase()}")
         val manager = SquadManager.get(helper.level)
@@ -44,6 +52,7 @@ object VehicleSupportOrderGameTests {
         helper.onEachTick {
             if (orderedAt == null && man.vehicle === gun) {
                 helper.assertTrue(Ports.vehicles.hasWeaponAt(gun, man), "The man boarded an unarmed seat")
+                gun.deltaMovement = Vec3(0.4, 0.0, 0.0)
                 val destination = helper.absolutePos(BlockPos(140, 1, 20))
                 if (withdrawal) {
                     manager.setObjective(helper.level, squad.id, destination)
@@ -54,9 +63,11 @@ object VehicleSupportOrderGameTests {
                 orderedAt = helper.tick
             }
             val since = orderedAt?.let { helper.tick - it } ?: return@onEachTick
+            if (since > 0 && man.vehicle !== gun) {
+                helper.assertTrue(gun.deltaMovement.horizontalDistanceSqr() <= 0.0004, "The gunner dismounted before the support vehicle stopped")
+            }
             if (since > 20) {
-                helper.assertTrue(man.vehicle !== gun, "The gunner kept the free vehicle after $order")
-                helper.assertTrue(VehicleTransportClaims.vehicleOf(man.uuid) != gun.uuid, "Combat support kept its seat claim after $order")
+                assertSupportReleased(helper, gun, man)
             }
             // Longer than the ordinary reboarding cooldown: the order itself must keep him out.
             if (since >= 260) {
@@ -70,7 +81,7 @@ object VehicleSupportOrderGameTests {
     /** A direct retreat order frees the gun even while the armoured target remains alive. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1200, batch = "support-retreat")
-    fun freeVehicleGunnerLeavesForRetreatAndDoesNotReboard(helper: GameTestHelper) = supportYieldsToOrder(helper, SquadOrder.RETREAT)
+    fun freeVehicleGunnerYieldsToRetreatWithoutResumingSupport(helper: GameTestHelper) = supportYieldsToOrder(helper, SquadOrder.RETREAT)
 
     /** Loss-driven withdrawal uses the same order contract as an explicit retreat. */
     @JvmStatic
@@ -80,5 +91,5 @@ object VehicleSupportOrderGameTests {
     /** An explicit MOVE takes the man away from his temporary weapon station. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1200, batch = "support-move")
-    fun freeVehicleGunnerLeavesForMoveAndDoesNotReboard(helper: GameTestHelper) = supportYieldsToOrder(helper, SquadOrder.MOVE)
+    fun freeVehicleGunnerYieldsToMoveWithoutResumingSupport(helper: GameTestHelper) = supportYieldsToOrder(helper, SquadOrder.MOVE)
 }
