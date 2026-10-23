@@ -6,10 +6,11 @@ plugins {
     id("sbwnpc.jvm-conventions")
 }
 
-version = rootProject.version
+// Named for the Minecraft it runs on (1.20.1), not the NeoForge line: sbwnpc-<version>-mc1.20.1-forge.jar.
 group = "com.sbwnpc.squad"
 
 val forgeVersions = Properties().apply { rootProject.file("gradle/forge.properties").inputStream().use { load(it) } }
+version = "${project.property("mod_version")}-mc${forgeVersions.getProperty("forge_minecraft_version")}"
 
 @Suppress("UNCHECKED_CAST")
 val sbwInput = rootProject.extensions.extraProperties["sbwInput"] as Map<String, String>
@@ -101,4 +102,5 @@ val modJar by configurations.creating {
     isCanBeResolved = false
     isCanBeConsumed = true
 }
+tasks.named<Jar>("jar") { archiveClassifier.set("forge") }
 artifacts.add(modJar.name, tasks.named("jar"))
