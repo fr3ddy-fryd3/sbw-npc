@@ -75,3 +75,17 @@ Not started: the seams above, entry point and registration, the SBW adapter agai
 for 1.20.1 (NBT instead of data components, capabilities instead of attachments), the mixins, the
 client, JourneyMap on Forge 47.x. Forge is larger than Fabric by roughly the errors above plus a
 second SBW adapter.
+
+## Local test pack and release
+
+- `python3 scripts/localpack.py <fabric|forge|neoforge> [--mrpack]` builds a mods folder (and with `--mrpack` a
+  file Prism Launcher or the Modrinth app imports) from Modrinth: the SuperbWarfare pinned in `gradle/sbw/`, the
+  addon's dependencies and quality-of-life mods, plus the built addon jar. The lists are in `scripts/localpack/`.
+  Mods the build pins to a version that an unpinned newest release would not load with (Fabric Language Kotlin on
+  Fabric loader 0.17.2, Kotlin for Forge 4.11) are listed under `pinned`.
+- Jars are named `sbwnpc-<version>-mc<minecraft>-<loader>.jar` on every loader.
+- Found and fixed while auditing the Fabric module: `fabric.mod.json` shipped the literal `${version}`;
+  `verify-release-artifact.py` rejected a `preview` profile; the Fabric jar had no loader classifier.
+  CI builds the Fabric jar. Releases still publish only the enabled NeoForge jar.
+- Known and not fixed: the Forge module does not compile (above), so its jar, reobfuscation and the mixin config
+  added for it (`sbwnpc.forge.mixins.json`, needs a refmap check) are untested.
