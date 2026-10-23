@@ -69,9 +69,17 @@ data class DutyInputs(
     /** Following a player who rides a vehicle, or this man holds a vehicle: the ride sees to it. */
     val followRide: Boolean = false,
 ) {
-    /** Whether a sentry is near enough his objective, or has none, to take his height post. */
+    /**
+     * Whether a sentry takes his height post: near enough his objective, or none, or already on duty for it.
+     *
+     * Only taking the duty is bounded. Once observing for this objective he keeps it wherever the post
+     * search sends him: that search measures from dry ground beside the objective, which may stand up to
+     * [com.sbwnpc.squad.combat.tactics.DryGround.REACH] away, and his route to the post may swing wider still. Bounded
+     * on the way out too, a sentry on a post at the search's edge marched back to the squad, took the duty
+     * again inside the entry margin and climbed to the same post, over and over (#166, in-game 23.10).
+     */
     val inSentryReach: Boolean
-        get() = objective?.let { hypot(position.x - it.x, position.z - it.z) <= OperationTactics.SENTRY_REACH - if (wasObserving) 0.0 else OperationTactics.SENTRY_ENTRY_MARGIN } != false
+        get() = wasObserving || objective?.let { hypot(position.x - it.x, position.z - it.z) <= OperationTactics.SENTRY_REACH - OperationTactics.SENTRY_ENTRY_MARGIN } != false
 }
 
 data class DutyChoice(val duty: CombatDuty, val anchor: Point3)
@@ -90,11 +98,7 @@ object OperationTactics {
     /** Farthest from the objective a sentry's height post may stand, and so the reach of its search. */
     const val SENTRY_REACH = 32.0
 
-    /**
-     * How far inside [SENTRY_REACH] a marching sentry comes before he turns to his height post. Once
-     * observing he keeps the duty out to the reach: a post on the search's edge, or the path to it,
-     * would otherwise flip him between marching and observing.
-     */
+    /** How far inside [SENTRY_REACH] a marching sentry comes before he turns to his height post. */
     const val SENTRY_ENTRY_MARGIN = 8.0
 
     /** Closing in, a mover halves its distance to the point's nearest defender, down to this. */

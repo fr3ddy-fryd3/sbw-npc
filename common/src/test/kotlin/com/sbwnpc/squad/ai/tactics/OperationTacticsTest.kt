@@ -154,8 +154,13 @@ class OperationTacticsTest {
         val edge = Point3(objective!!.x - 28.0, objective.y, objective.z)
         assertEquals(CombatDuty.FOLLOW_ORDER, sentry(TacticalOrder.DEFEND, edge, inContact = false).duty)
         assertEquals(CombatDuty.OBSERVE, sentry(TacticalOrder.DEFEND, edge, inContact = false, observing = true).duty)
-        val outside = Point3(objective.x - 33.0, objective.y, objective.z)
-        assertEquals(CombatDuty.FOLLOW_ORDER, sentry(TacticalOrder.DEFEND, outside, inContact = false, observing = true).duty)
+        // Standing on a post found at the very edge of the search, a little past its block centre.
+        val onEdgePost = Point3(objective.x - OperationTactics.SENTRY_REACH - 0.2, objective.y, objective.z)
+        assertEquals(CombatDuty.OBSERVE, sentry(TacticalOrder.DEFEND, onEdgePost, inContact = false, observing = true).duty)
+        // A post searched round dry ground beside an objective in water stands farther still.
+        val besideWater = Point3(objective.x - 60.0, objective.y, objective.z)
+        assertEquals(CombatDuty.OBSERVE, sentry(TacticalOrder.DEFEND, besideWater, inContact = false, observing = true).duty)
+        assertEquals(CombatDuty.FOLLOW_ORDER, sentry(TacticalOrder.DEFEND, besideWater, inContact = false).duty)
     }
 
     @Test fun `a gunner following his player takes no height post`() {
