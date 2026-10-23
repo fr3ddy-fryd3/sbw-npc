@@ -63,6 +63,7 @@ internal class NativePositionAction(
         // A sentry that left to resupply comes back to his own platform. Without it the fresh
         // search started again from the ground and settled on another post (#86).
         if (task.job == TacticalJob.OVERWATCH && heldPost != null && stillServes(heldPost)) task.position = heldPost.post
+        if (intent.hold) task.position = npc.position()
     }
 
     /** Only for the same anchor: a new order's post must come from a new search. */
@@ -71,7 +72,7 @@ internal class NativePositionAction(
             FiringSpots.nearby(held.post, 1.0, npc.uuid).isEmpty()
 
     /** The height post this action holds or heads for, kept by [NativeTactics] for the next OVERWATCH action. */
-    val overwatchPost get() = task.position?.takeIf { task.job == TacticalJob.OVERWATCH }?.let { HeldPost(task.anchor, it) }
+    val overwatchPost get() = task.position?.takeIf { task.job == TacticalJob.OVERWATCH && !intent.hold }?.let { HeldPost(task.anchor, it) }
     private var ownedLook: net.minecraft.world.entity.ai.behavior.PositionTracker? = null
     private var idleDirection: Pair<Double, Double>? = null
     private var glanceOffset = 0.0
@@ -84,13 +85,13 @@ internal class NativePositionAction(
     private var released = false
     val assignment get() = NativeAssignment(task.job, task.anchor, task.focus, task.position, task.localFirePost, task.localFireRecovery)
     fun reached(): Boolean =
-        task.position?.let { FiringPostArrival.reached(npc.position(), it) } == true &&
+        task.position?.let { FiringPostArrival.reached(npc.position(), it) } == true && !intent.hold &&
             (!intent.duty.advancing || task.position!!.distanceTo(task.anchor) <= 4) &&
             (intent.inspection?.let { DetectionSightline.visible(npc.level() as ServerLevel, npc.eyePosition, it.native().add(0.0, 1.5, 0.0), npc) } != false)
 
     override fun start(now: Long): ActionUpdate {
         lastProgress = now
-        DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=post_action_started duty={} job={} anchor={} focus={}", npc.uuid, intent.duty, task.job, task.anchor, task.focus)
+        DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=post_action_started duty={} job={} anchor={} focus={} hold={}", npc.uuid, intent.duty, task.job, task.anchor, task.focus, intent.hold)
         return update(now)
     }
     override fun tick(now: Long) = update(now)
@@ -139,6 +140,8 @@ internal class NativePositionAction(
             DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=post_action_completed duty={} position={}", npc.uuid, intent.duty, task.position)
             return ActionUpdate.Completed(listOf(ActionEvidence("physical_post_arrival", now, "${npc.uuid}:${task.position}")))
         }
+        // Holding, he keeps the spot he stands on, taken again if a hazard or a push cleared it.
+        if (intent.hold && task.position == null) task.position = npc.position()
         if (task.position == null || task.search != null) {
             val result = TacticalPositions.find(npc, task, view, TacticalPositions.Query(policy, claimOwner))
             when (result.outcome) {
@@ -168,7 +171,7 @@ internal class NativePositionAction(
                 invalidate(now, "intermediate_reached")
                 return ActionUpdate.Running
             }
-            if (intent.duty == CombatDuty.FIRE && !TacticalPositions.firingReady(npc, task, npc.position())) {
+            if (intent.duty == CombatDuty.FIRE && !intent.hold && !TacticalPositions.firingReady(npc, task, npc.position())) {
                 task.localFirePost = npc.position()
                 invalidate(now, "no_firing_lane")
                 return deferred(now, "firing_lane_recovery")
@@ -292,7 +295,7 @@ internal class NativePositionAction(
 
             next.actor != intent.actor || next.duty != intent.duty -> "duty_changed"
 
-            next.inspection != intent.inspection -> "post_kind_changed"
+            next.inspection != intent.inspection || next.hold != intent.hold -> "post_kind_changed"
 
             // GAIN_HEIGHT sets the floor from where the man stands now, so it moved with every
             // step up or down a slope and threw away a post that was still high enough.

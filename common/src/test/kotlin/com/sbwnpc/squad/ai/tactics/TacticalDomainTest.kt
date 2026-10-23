@@ -28,13 +28,28 @@ class TacticalDomainTest {
         assertEquals(selected.actor, recovered.owner.agent)
     }
 
-    @Test fun `exhausted local alternatives wait for owner or expired evidence without declaring global impossibility`() {
+    @Test fun `exhausted local alternatives hold where he stands until the evidence expires`() {
         val failure = LocalPositionFailure(intent.anchor, 1, 5, mapOf("unreachable_route" to 5))
         val input = facts(1).observe(TacticalFacts.POST_FAILURE, failure, expiresAt = 201)
-        val result = plan(input) as PlanningResult.Failed
-        assertTrue("local_alternatives_exhausted" in result.reasons)
-        assertFalse(result.limitReached)
-        assertTrue(plan(input.at(201)) is PlanningResult.Ready)
+        val held = (plan(input) as PlanningResult.Ready).plan.tasks.single().spec.action.parameters as PositionIntent
+        assertTrue(held.hold)
+        assertFalse(held.requireCover)
+        assertEquals(intent.anchor, held.anchor)
+        val again = (plan(input.at(201)) as PlanningResult.Ready).plan.tasks.single().spec.action.parameters as PositionIntent
+        assertEquals(intent, again)
+    }
+
+    @Test fun `no post method but the hold applies once every search failed, and the hold applies before that`() {
+        val methods = { failure: LocalPositionFailure? ->
+            val input = failure?.let { facts(1).observe(TacticalFacts.POST_FAILURE, it, expiresAt = 201) } ?: facts(1)
+            val events = ArrayList<PlanningEvent>()
+            HtnPlanningSession(TacticalDomain.npc, owner, TacticalDomain.NPC.call(intent), input, event = events::add).advance(20)
+            events.filter { it.node == "root" && it.verdict == Verdict.Allowed }.map { it.method }
+        }
+        assertEquals(listOf("preferred_post"), methods(null))
+        assertEquals(listOf("neighbor_post"), methods(LocalPositionFailure(intent.anchor, 1, 4, mapOf("unreachable_route" to 5))))
+        assertEquals(listOf("closer_post"), methods(LocalPositionFailure(intent.anchor, 1, 5, mapOf("blocked_shot" to 93))))
+        assertEquals(listOf("hold_as_ordered"), methods(LocalPositionFailure(intent.anchor, 1, 5, mapOf("unreachable_route" to 5))))
     }
 
     @Test fun `a blind neighbourhood moves the search closer to the enemy`() {
@@ -52,7 +67,7 @@ class TacticalDomainTest {
         anchors.forEach { assertTrue(kotlin.math.hypot(it.x - 100.0, it.z) >= 40.0) }
         assertTrue(TacticalDomain.closerAnchors(intent.copy(duty = CombatDuty.REAR_GUARD)).isEmpty())
         val used = LocalPositionFailure(intent.anchor, 1, 5 + TacticalDomain.closerAnchors(intent).size, mapOf("blocked_shot" to 93))
-        assertTrue("closer_alternatives_exhausted" in (plan(facts(1).observe(TacticalFacts.POST_FAILURE, used, expiresAt = 201)) as PlanningResult.Failed).reasons)
+        assertTrue(((plan(facts(1).observe(TacticalFacts.POST_FAILURE, used, expiresAt = 201)) as PlanningResult.Ready).plan.tasks.single().spec.action.parameters as PositionIntent).hold)
     }
 
     @Test fun `foreign actor intent cannot reserve another NPC motion`() {

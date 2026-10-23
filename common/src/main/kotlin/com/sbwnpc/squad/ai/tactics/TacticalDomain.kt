@@ -34,7 +34,13 @@ enum class CombatDuty(
     SEARCH(advancing = true, watching = true),
     FOLLOW_ORDER(commandsMovement = false),
 }
-data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null, val elevationWeight: Double = 0.0, val assault: Boolean = false, val standoff: Double = 0.0, val ordered: Boolean = false) {
+/**
+ * Where and how one member carries out his [duty].
+ *
+ * @property hold he holds where he stands instead of searching for a post round [anchor]: the
+ *   last resort once every post search round it has failed.
+ */
+data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null, val elevationWeight: Double = 0.0, val assault: Boolean = false, val standoff: Double = 0.0, val ordered: Boolean = false, val hold: Boolean = false) {
     init {
         require(actor.level == AgentLevel.NPC && exposureWeight.isFinite() && exposureWeight >= 0 && elevationWeight.isFinite() && elevationWeight >= 0)
     }
@@ -175,18 +181,25 @@ object TacticalDomain {
                     Method("closer_post", eligible = { intent ->
                         Condition { facts ->
                             val failure = facts.value(TacticalFacts.POST_FAILURE)
-                            val step = (failure?.attempts ?: 0) - NEIGHBOR_ATTEMPTS - 1
-                            when {
-                                failure?.anchor != intent.anchor || step < 0 -> Verdict.Rejected("neighbors_not_exhausted")
-                                !blind(failure) -> Verdict.Rejected("not_blind")
-                                step >= closerAnchors(intent).size -> Verdict.Rejected("closer_alternatives_exhausted")
-                                else -> Verdict.Allowed
-                            }
+                            if (failure?.anchor != intent.anchor || failure.attempts <= NEIGHBOR_ATTEMPTS) Verdict.Rejected("neighbors_not_exhausted") else closer(intent, failure)
                         }
                     }, decompose = { intent, facts ->
                         val step = facts.value(TacticalFacts.POST_FAILURE)!!.attempts - NEIGHBOR_ATTEMPTS - 1
                         TaskNetwork.sequence(POST.call(intent.copy(anchor = closerAnchors(intent)[step])))
                     }),
+                    // Every search round the anchor failed: he holds where he stands until the
+                    // failure is forgotten and the search starts again. Without it the man had no
+                    // plan at all and stood with his last failed search for a task.
+                    Method("hold_as_ordered", eligible = { intent ->
+                        Condition { facts ->
+                            val failure = facts.value(TacticalFacts.POST_FAILURE)
+                            when {
+                                failure?.anchor != intent.anchor || failure.attempts <= NEIGHBOR_ATTEMPTS -> Verdict.Rejected("posts_not_exhausted")
+                                closer(intent, failure) == Verdict.Allowed -> Verdict.Rejected("closer_post_left")
+                                else -> Verdict.Allowed
+                            }
+                        }
+                    }, decompose = { intent, _ -> TaskNetwork.sequence(POST.call(intent.copy(hold = true, requireCover = false, requireShelter = false))) }),
                 ),
             ),
             PrimitiveTask(POST) { intent ->
@@ -212,6 +225,16 @@ object TacticalDomain {
 
     /** Steps, forward towards the enemy and sideways along the front, tried once the neighbours fail. */
     private val CLOSER_STEPS = listOf(12.0 to 0.0, 24.0 to 0.0, 12.0 to 16.0, 12.0 to -16.0, 24.0 to 16.0, 24.0 to -16.0, 36.0 to 0.0)
+
+    /** Whether [closerAnchors] still has a step to try after [failure], the neighbours being exhausted. */
+    private fun closer(intent: PositionIntent, failure: LocalPositionFailure): Verdict {
+        val step = failure.attempts - NEIGHBOR_ATTEMPTS - 1
+        return when {
+            !blind(failure) -> Verdict.Rejected("not_blind")
+            step >= closerAnchors(intent).size -> Verdict.Rejected("closer_alternatives_exhausted")
+            else -> Verdict.Allowed
+        }
+    }
 
     /** Most of the last query's candidates had no line of fire to the enemy. */
     private fun blind(failure: LocalPositionFailure) = (failure.rejections["blocked_shot"] ?: 0) * 2 >= max(1, failure.rejections.values.sum())

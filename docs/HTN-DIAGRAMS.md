@@ -84,7 +84,7 @@ flowchart LR
     T4 --> N1["first try: at his anchor"]:::case
     T4 --> N2["failed there: 12 blocks aside,<br/>forward or back, up to 4 times"]:::case
     T4 --> N3["still failing and his shots blocked:<br/>closer to the enemy, never inside his standoff"]:::case
-    T4 --> N4["nothing left"]:::case --> D_STAY["stays where he is until the next plan"]:::duty
+    T4 --> N4["nothing left"]:::case --> D_STAY["holds where he stands<br/>until the failures are forgotten"]:::duty
     N1 & N2 & N3 --> POS["go to the post and hold it"]:::action
 ```
 
