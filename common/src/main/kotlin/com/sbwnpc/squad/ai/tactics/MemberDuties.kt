@@ -7,6 +7,9 @@ import kotlin.math.hypot
 /** A member's duty chosen by [rule], the id of the [MemberDuties] case that applied. */
 data class RuledDuty(val rule: String, val choice: DutyChoice)
 
+/** The post a member's new duty asks for, to compare with the intent he holds; see [MemberDuties.keeps]. */
+data class WantedPost(val duty: CombatDuty, val anchor: Point3, val requireCover: Boolean, val requireShelter: Boolean, val legs: Boolean)
+
 /**
  * The cases that decide what one member does and where, in order: the first that applies wins.
  *
@@ -27,8 +30,7 @@ object MemberDuties {
 
     private class Rule(val id: String, val choose: (Situation) -> DutyChoice?)
 
-    private fun rule(id: String, applies: (Situation) -> Boolean, duty: (Situation) -> CombatDuty, anchor: (Situation) -> Point3) =
-        Rule(id) { s -> if (applies(s)) DutyChoice(duty(s), anchor(s)) else null }
+    private fun rule(id: String, applies: (Situation) -> Boolean, duty: (Situation) -> CombatDuty, anchor: (Situation) -> Point3) = Rule(id) { s -> if (applies(s)) DutyChoice(duty(s), anchor(s)) else null }
 
     private val RULES = listOf(
         rule("elsewhere", { it.inputs.elsewhere }, { CombatDuty.FOLLOW_ORDER }, { it.objectiveOrHere }),
@@ -83,7 +85,7 @@ object MemberDuties {
     val ruleIds: List<String> get() = RULES.map { it.id }
 
     /**
-     * Whether a member keeps his [previous] intent instead of a new one for [duty] at [proposed].
+     * Whether a member keeps his [previous] intent instead of a new one for the [wanted] post.
      *
      * A height post is chosen by height round its anchor, not by where the enemy is or by the
      * squad's strategy, which reshapes a sentry's task only to withdraw. Rebuilt on either, a
@@ -92,20 +94,23 @@ object MemberDuties {
      * neither on a flank's arc nor bounding after his player, or while the new anchor is within 4
      * blocks of the old one.
      */
-    fun keeps(previous: PositionIntent?, duty: CombatDuty, proposed: Point3, requireCover: Boolean, requireShelter: Boolean, settled: Boolean, moving: Boolean): Boolean {
+    fun keeps(previous: PositionIntent?, wanted: WantedPost, settled: Boolean, moving: Boolean): Boolean {
         previous ?: return false
-        val heightPost = duty.heightPost && previous.anchor == proposed
-        val samePost = heightPost || (settled && (!moving || previous.anchor.distanceTo(proposed) < SAME_ANCHOR))
-        return previous.duty == duty && previous.requireCover == requireCover && previous.requireShelter == requireShelter && samePost
+        val heightPost = wanted.duty.heightPost && previous.anchor == wanted.anchor
+        val samePost = heightPost || (settled && (!moving || previous.anchor.distanceTo(wanted.anchor) < SAME_ANCHOR))
+        return previous.duty == wanted.duty && previous.requireCover == wanted.requireCover && previous.requireShelter == wanted.requireShelter && previous.legs == wanted.legs && samePost
     }
 
     private const val SAME_ANCHOR = 4.0
+
+    /** Below this he stands on the post, with no direction to step back along. */
+    private const val MIN_LENGTH = 1.0E-4
 
     private fun short(post: Point3, from: Point3, offset: Double): Point3 {
         val dx = from.x - post.x
         val dz = from.z - post.z
         val length = hypot(dx, dz)
-        if (length < 1.0E-4) return post
+        if (length < MIN_LENGTH) return post
         return Point3(post.x + dx / length * offset, post.y, post.z + dz / length * offset)
     }
 

@@ -303,6 +303,7 @@ object NativeTactics {
                     DebugFlags.log(LogGroup.ORDER, "[htn] level={} actor={} event=plan_result result={}", id.level, id.id, feedback.result.javaClass.simpleName)
                 }
             }
+
         /**
          * He fires from the post his leg ended on: done once he has fired, at once when he has
          * nothing to fire at, or after [FIRE_PAUSE_TICKS]. Aim and fire stay with his gun
@@ -355,34 +356,48 @@ object NativeTactics {
             DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=strategy from={} to={} scores={} situation={}", squad, old, strategy, scores, situations[squad])
         }
         private fun facts(id: AgentId, now: Long): FactSnapshot {
-            var result = FactSnapshot(id, now)
-            if (id.level == AgentLevel.OPERATION) {
-                val observed = areaObservedAt[id.id]
-                if (observed != null) result = result.observe(TacticalFacts.AREA_SECURED, areaClocks[id.id]?.completed == true, observedAt = observed, expiresAt = observed + 11)
+            val empty = FactSnapshot(id, now)
+            return when (id.level) {
+                AgentLevel.OPERATION -> operationFacts(empty)
+                AgentLevel.SQUAD -> squadFacts(empty)
+                AgentLevel.TEAM -> empty
+                AgentLevel.NPC -> npcFacts(empty)
             }
-            if (id.level == AgentLevel.OPERATION) attacks[id.id]?.let { result = result.observe(TacticalFacts.ATTACK_PHASE, it.phase) }
-            if (id.level == AgentLevel.SQUAD) {
-                situations[id.id]?.let { result = result.observe(TacticalFacts.SITUATION, it) }
-                boundTurns[id.id]?.let { result = result.observe(TacticalFacts.BOUND_TURN, it.turn) }
-                rallies[id.id]?.let { result = result.observe(TacticalFacts.RALLY, it) }
-                result = result.observe(TacticalFacts.FLANK_OPEN, flankOpen(id.id, now))
-                approaches[id.id]?.let { result = result.observe(TacticalFacts.APPROACH, it) }
-                strategies[id.id]?.let { (strategy, since) ->
-                    result = result.observe(TacticalFacts.MANNER, strategy)
-                    if (now < since + SquadManners.MINIMUM_TICKS) result = result.observe(TacticalFacts.MANNER_LOCK, true, observedAt = since, expiresAt = since + SquadManners.MINIMUM_TICKS)
-                }
+        }
+        private fun operationFacts(empty: FactSnapshot): FactSnapshot {
+            var result = empty
+            val id = empty.owner.id
+            val observed = areaObservedAt[id]
+            if (observed != null) result = result.observe(TacticalFacts.AREA_SECURED, areaClocks[id]?.completed == true, observedAt = observed, expiresAt = observed + 11)
+            attacks[id]?.let { result = result.observe(TacticalFacts.ATTACK_PHASE, it.phase) }
+            return result
+        }
+        private fun squadFacts(empty: FactSnapshot): FactSnapshot {
+            val id = empty.owner.id
+            val now = empty.now
+            var result = empty.observe(TacticalFacts.FLANK_OPEN, flankOpen(id, now))
+            situations[id]?.let { result = result.observe(TacticalFacts.SITUATION, it) }
+            boundTurns[id]?.let { result = result.observe(TacticalFacts.BOUND_TURN, it.turn) }
+            rallies[id]?.let { result = result.observe(TacticalFacts.RALLY, it) }
+            approaches[id]?.let { result = result.observe(TacticalFacts.APPROACH, it) }
+            strategies[id]?.let { (strategy, since) ->
+                result = result.observe(TacticalFacts.MANNER, strategy)
+                if (now < since + SquadManners.MINIMUM_TICKS) result = result.observe(TacticalFacts.MANNER_LOCK, true, observedAt = since, expiresAt = since + SquadManners.MINIMUM_TICKS)
             }
-            if (id.level == AgentLevel.NPC) {
-                val npc = level.getEntity(id.id) as? NpcEntity
-                val action = actions[id.id]
-                result = result.observe(TacticalFacts.MOVABLE, npc != null && movable(npc))
-                    .observe(TacticalFacts.COVER, goals[id]?.let(::covering) ?: false, expiresAt = now + 11)
-                    .observe(TacticalFacts.ARRIVED, action?.reached() ?: false)
-                    .observe(TacticalFacts.AT_POST, action?.atPost() ?: false)
-                    .observe(TacticalFacts.LEGS_DONE, legs[id.id] ?: 0)
-                    .observe(TacticalFacts.SUPPORT_FIRING, supportFiring(id, now), expiresAt = now + 11)
-                failures[id.id]?.let { failure -> result = result.observe(TacticalFacts.POST_FAILURE, failure, observedAt = failure.failedAt, expiresAt = failure.failedAt + FAILURE_MEMORY_TICKS) }
-            }
+            return result
+        }
+        private fun npcFacts(empty: FactSnapshot): FactSnapshot {
+            val id = empty.owner
+            val now = empty.now
+            val npc = level.getEntity(id.id) as? NpcEntity
+            val action = actions[id.id]
+            var result = empty.observe(TacticalFacts.MOVABLE, npc != null && movable(npc))
+                .observe(TacticalFacts.COVER, goals[id]?.let(::covering) ?: false, expiresAt = now + 11)
+                .observe(TacticalFacts.ARRIVED, action?.reached() ?: false)
+                .observe(TacticalFacts.AT_POST, action?.atPost() ?: false)
+                .observe(TacticalFacts.LEGS_DONE, legs[id.id] ?: 0)
+                .observe(TacticalFacts.SUPPORT_FIRING, supportFiring(id, now), expiresAt = now + 11)
+            failures[id.id]?.let { failure -> result = result.observe(TacticalFacts.POST_FAILURE, failure, observedAt = failure.failedAt, expiresAt = failure.failedAt + FAILURE_MEMORY_TICKS) }
             return result
         }
         fun combatView(squad: UUID): TacticalSnapshot? {
@@ -793,34 +808,16 @@ object NativeTactics {
          */
         private fun approachBearings(operation: UUID, squads: List<Squad>, contact: Boolean): Map<UUID, Double> {
             val objective = attackObjective(operation, squads)
-            if (objective == null) {
-                squads.forEach {
-                    manoeuvres.remove(it.id)
-                    flankable.remove(it.id)
-                }
-                return emptyMap()
-            }
             val single = squads.singleOrNull()
             // Joined by another squad, a squad no longer splits; its old split must not bound on.
-            if (single == null) {
+            if (objective == null || single == null) {
                 squads.forEach {
                     manoeuvres.remove(it.id)
                     flankable.remove(it.id)
                 }
             }
-            val manoeuvre = single?.let { saved ->
-                // Counted over every man, not only the ready ones: a man dodging a grenade or with
-                // the medic for a moment would be swapped for one of the fire group, who would run
-                // off to the flank, or would end the split for the whole squad.
-                val squad = snapshots.getValue(saved.id).members
-                val riflemen = squad.filter { it.role == NpcClass.RIFLEMAN }.map { it.id }
-                val assault = squad.filter { it.role == NpcClass.GRENADIER || it.role == NpcClass.SHOTGUNNER }.map { it.id }
-                val group = ApproachSectors.manoeuvreGroup(riflemen, assault, manoeuvres[saved.id].orEmpty(), squad.size)
-                if (group.isEmpty()) flankable -= saved.id else flankable += saved.id
-                // Coming on frontally, or with its flank blocked, the squad keeps together; until its plan
-                // chose, it flanks as it always did.
-                (if (approaches[saved.id] == SquadApproach.FRONTAL || !flankOpen(saved.id, level.gameTime)) emptySet() else group).also { manoeuvres[saved.id] = it }
-            }.orEmpty()
+            if (objective == null) return emptyMap()
+            val manoeuvre = single?.let(::manoeuvreGroup).orEmpty()
             if (single != null && manoeuvre.isEmpty()) return emptyMap()
             val members = squads.flatMap { saved -> snapshots.getValue(saved.id).members.map { SectorGroup(saved.id, it.id in manoeuvre) to it } }
             val centres = members.groupBy({ it.first }, { it.second.position }).mapValues { (_, at) -> Point3(at.map { it.x }.average(), at.map { it.y }.average(), at.map { it.z }.average()) }
@@ -829,6 +826,23 @@ object NativeTactics {
                 DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=approach_sectors objective={} bearings={}", operation, objective, bearings.entries.associate { (group, bearing) -> group.toString() to Math.toDegrees(bearing).toInt() })
             }
             return members.mapNotNull { (group, member) -> bearings[group]?.let { member.id to it } }.toMap()
+        }
+
+        /**
+         * The men of [squad], attacking alone, who go round to a flank, if it splits; empty while
+         * it comes on frontally or its flank is blocked. Until its plan chose, it flanks as it always did.
+         */
+        private fun manoeuvreGroup(squad: Squad): Set<UUID> {
+            // Counted over every man, not only the ready ones: a man dodging a grenade or with
+            // the medic for a moment would be swapped for one of the fire group, who would run
+            // off to the flank, or would end the split for the whole squad.
+            val members = snapshots.getValue(squad.id).members
+            val riflemen = members.filter { it.role == NpcClass.RIFLEMAN }.map { it.id }
+            val assault = members.filter { it.role == NpcClass.GRENADIER || it.role == NpcClass.SHOTGUNNER }.map { it.id }
+            val group = ApproachSectors.manoeuvreGroup(riflemen, assault, manoeuvres[squad.id].orEmpty(), members.size)
+            if (group.isEmpty()) flankable -= squad.id else flankable += squad.id
+            val split = approaches[squad.id] != SquadApproach.FRONTAL && flankOpen(squad.id, level.gameTime)
+            return (if (split) group else emptySet()).also { manoeuvres[squad.id] = it }
         }
 
         /** Geometry proposes areas; actual arrival, useful fire and native reachability remain observations. */
@@ -982,7 +996,7 @@ object NativeTactics {
                     val settled = strategyKept && (focus?.distanceTo(plannedContact[member.id] ?: focus) ?: 0.0) < 8
                     val moving = waypoint != null || member.id in wasArcing || bounding
                     val byLegs = ruled.rule in LEG_RULES
-                    val retained = before?.takeIf { it.legs == byLegs && MemberDuties.keeps(it, duty, proposed.point(), requireCover, requireShelter, settled, moving) }
+                    val retained = before?.takeIf { MemberDuties.keeps(it, WantedPost(duty, proposed.point(), requireCover, requireShelter, byLegs), settled, moving) }
                     if (retained != null) {
                         retained
                     } else {
@@ -1017,7 +1031,9 @@ object NativeTactics {
                 val movers = intents.filter { it.legs && it.duty == CombatDuty.MOVE && !it.assault && !it.ordered }
                 // Only an attack bounds or regroups. Measured for every squad, the spread of one
                 // walking behind its player changed its situation, and replanned it, nearly every time.
-                situations[saved.id] = if (!situation.offensive) situation else {
+                situations[saved.id] = if (!situation.offensive) {
+                    situation
+                } else {
                     val radius = com.sbwnpc.squad.combat.SquadFormation.perimeterRadius(view.members.size)
                     // Sentries, rear guards and scouts stand off from the squad on purpose: counted, they
                     // were called down to the rally and sent back again.
@@ -1031,20 +1047,21 @@ object NativeTactics {
                         regrouping = strategy == CombatStrategy.REGROUP,
                     )
                 }
-                updateBoundTurn(saved.id, strategy, movers, view, focus, now)
+                updateBoundTurn(saved.id, movers, view, focus, now)
                 updateRally(saved.id, strategy, view.center, focus)
                 val teams = teamAllocators.getOrPut(saved.id, ::TaskTeamAllocator).assign(saved.id, intents)
                 SquadMission(AgentId(AgentLevel.SQUAD, saved.id), teams).also { missions[saved.id] = it }
             }
         }
+
         /**
          * Starts or swaps the turn of a squad bounding by halves. A turn ends once every mover of
          * its moving half still moving has finished a leg more than when it began, or after
          * [BOUND_TURN_TICKS]; the other movers then move. The first halves alternate along the
          * front, so each half covers all of it.
          */
-        private fun updateBoundTurn(squad: UUID, strategy: CombatStrategy?, movers: List<PositionIntent>, view: TacticalSnapshot, focus: Vec3?, now: Long) {
-            if (strategy != CombatStrategy.BOUND_OVERWATCH) {
+        private fun updateBoundTurn(squad: UUID, movers: List<PositionIntent>, view: TacticalSnapshot, focus: Vec3?, now: Long) {
+            if (strategies[squad]?.first != CombatStrategy.BOUND_OVERWATCH) {
                 boundTurns.remove(squad)
                 return
             }
@@ -1090,7 +1107,7 @@ object NativeTactics {
                 return
             }
             if (squad in rallies) return
-            val away = focus?.let { Vec3(center.x - it.x, 0.0, center.z - it.z) }?.takeIf { it.lengthSqr() > 1.0E-4 }?.normalize()
+            val away = focus?.let { Vec3(center.x - it.x, 0.0, center.z - it.z) }?.takeIf { it.length() >= 1.0 }?.normalize()
             val rally = away?.let { center.add(it.scale(REGROUP_PULLBACK)) } ?: center
             rallies[squad] = rally.point()
             DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=regroup rally={}", squad, net.minecraft.core.BlockPos.containing(rally).toShortString())

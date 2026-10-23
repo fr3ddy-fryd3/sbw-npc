@@ -36,6 +36,7 @@ enum class CombatDuty(
     SEARCH(advancing = true, watching = true),
     FOLLOW_ORDER(commandsMovement = false),
 }
+
 /**
  * Where and how one member carries out his [duty].
  *
@@ -51,6 +52,7 @@ data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: 
         require(actor.level == AgentLevel.NPC && exposureWeight.isFinite() && exposureWeight >= 0 && elevationWeight.isFinite() && elevationWeight >= 0)
     }
 }
+
 /** The [number]th leg of a mover's advance by legs ([PositionIntent.legs]): a rush to the next post, then fire from it. */
 data class MemberLeg(val intent: PositionIntent, val number: Int)
 
@@ -429,6 +431,7 @@ object TacticalDomain {
  * @property regrouping it holds [CombatStrategy.REGROUP].
  */
 data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean, val reinforced: Boolean = false, val movers: Int = 0, val flanking: Boolean = false, val scattered: Boolean = false, val gathered: Boolean = false, val regrouping: Boolean = false)
+
 /**
  * How a squad's strategy methods choose between the [CombatStrategy] entries.
  *
@@ -494,10 +497,11 @@ object SquadApproaches {
     fun of(id: String) = SquadApproach.entries.firstOrNull { methodId(it) == id }
 
     /** Whether [approach]'s method applies: a flank only while [TacticalFacts.FLANK_OPEN]. */
-    fun eligible(approach: SquadApproach) = when (approach) {
-        SquadApproach.FLANK -> Condition.test(TacticalFacts.FLANK_OPEN, "flank_closed") { it }
-        SquadApproach.FRONTAL -> Condition.ALWAYS
-    }
+    fun eligible(approach: SquadApproach) =
+        when (approach) {
+            SquadApproach.FLANK -> Condition.test(TacticalFacts.FLANK_OPEN, "flank_closed") { it }
+            SquadApproach.FRONTAL -> Condition.ALWAYS
+        }
 
     /** [approach]'s score in the observed situation, with the advantage when the squad holds it. */
     fun score(approach: SquadApproach, facts: FactView): UtilityScore {
@@ -550,6 +554,7 @@ object TeamRushes {
     fun score(rush: TeamRush, mission: TeamMission): UtilityScore =
         when (rush) {
             TeamRush.TOGETHER -> UtilityScore(TOGETHER, reason = "together")
+
             TeamRush.PAIRS -> {
                 val movers = movers(mission)
                 // Cover is required of a mover exactly when his squad is under fire, see PostRequirements.

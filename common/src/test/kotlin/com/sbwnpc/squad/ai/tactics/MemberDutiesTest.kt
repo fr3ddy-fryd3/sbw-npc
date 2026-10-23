@@ -8,6 +8,8 @@ import kotlin.math.hypot
 
 class MemberDutiesTest {
     /** The duty chain as it stood before [MemberDuties], kept to prove the rule list chooses the same. */
+    // A verbatim copy of the old chain: its complexity is what the rule list replaced.
+    @Suppress("CyclomaticComplexMethod")
     private object LegacyDuty {
         fun duty(inputs: DutyInputs, fireReach: Double, approachOffset: Double): DutyChoice =
             with(inputs) {
@@ -77,7 +79,10 @@ class MemberDutiesTest {
         private fun distance(a: Point3, b: Point3) = hypot(a.x - b.x, a.z - b.z)
     }
 
-    @Test fun `the rule list chooses exactly what the old duty chain chose`() {
+    // One loop per input of the grid it walks.
+    @Suppress("NestedBlockDepth")
+    @Test
+    fun `the rule list chooses exactly what the old duty chain chose`() {
         val here = Point3(50.0, 64.0, 100.0)
         val proposals = listOf(CombatDuty.MOVE, CombatDuty.FIRE, CombatDuty.REAR_GUARD).flatMap { duty ->
             // Near (within move arrival and fire reach), mid (beyond arrival) and far (beyond fire reach).
@@ -85,33 +90,43 @@ class MemberDutiesTest {
         }
         val objectives = listOf(null, Point3(60.0, 64.0, 100.0), Point3(150.0, 64.0, 100.0))
         var checked = 0
-        for (order in TacticalOrder.entries) for (proposal in proposals) for (objective in objectives) for (flags in 0 until (1 shl 14)) {
-            fun flag(bit: Int) = flags shr bit and 1 == 1
-            val inputs = DutyInputs(
-                order = order,
-                position = here,
-                proposal = proposal,
-                objective = objective,
-                inspect = Point3(90.0, 64.0, 100.0),
-                inContact = flag(0),
-                elsewhere = flag(1),
-                scout = flag(2),
-                heightRole = flag(3),
-                primaryAmmo = flag(4),
-                hasPatrolRoute = flag(5),
-                reachedMove = flag(6),
-                wasFiring = flag(7),
-                arrival = 22.0,
-                flanking = flag(8),
-                wasObserving = flag(9),
-                following = flag(10),
-                followBound = flag(11),
-                followSlot = if (flag(12)) Point3(52.0, 64.0, 104.0) else null,
-                followRide = flag(13),
-            )
-            assertEquals(LegacyDuty.duty(inputs, 40.0, 10.0), MemberDuties.choose(inputs, 40.0, 10.0).choice, "$inputs")
-            checked++
+        for (order in TacticalOrder.entries) {
+            for (proposal in proposals) {
+                for (objective in objectives) {
+                    for (flags in 0 until (1 shl 14)) {
+                        fun flag(bit: Int) = flags shr bit and 1 == 1
+                        // A squad following its player fights under DEFEND (SquadOrder.tactical); the old
+                        // chain anchored a following mover oddly under orders a follower never has.
+                        if (flag(10) && order != TacticalOrder.DEFEND) continue
+                        val inputs = DutyInputs(
+                            order = order,
+                            position = here,
+                            proposal = proposal,
+                            objective = objective,
+                            inspect = Point3(90.0, 64.0, 100.0),
+                            inContact = flag(0),
+                            elsewhere = flag(1),
+                            scout = flag(2),
+                            heightRole = flag(3),
+                            primaryAmmo = flag(4),
+                            hasPatrolRoute = flag(5),
+                            reachedMove = flag(6),
+                            wasFiring = flag(7),
+                            arrival = 22.0,
+                            flanking = flag(8),
+                            wasObserving = flag(9),
+                            following = flag(10),
+                            followBound = flag(11),
+                            followSlot = if (flag(12)) Point3(52.0, 64.0, 104.0) else null,
+                            followRide = flag(13),
+                        )
+                        assertEquals(LegacyDuty.duty(inputs, 40.0, 10.0), MemberDuties.choose(inputs, 40.0, 10.0).choice, "$inputs")
+                        checked++
+                    }
+                }
+            }
         }
-        assertEquals(TacticalOrder.entries.size * proposals.size * objectives.size * (1 shl 14), checked)
+        // Half of the flag combinations follow a player, and of those only DEFEND's are checked.
+        assertEquals((TacticalOrder.entries.size + 1) * proposals.size * objectives.size * (1 shl 13), checked)
     }
 }
