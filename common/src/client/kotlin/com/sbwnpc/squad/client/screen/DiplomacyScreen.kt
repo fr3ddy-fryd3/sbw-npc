@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.client.screen
 
+import com.sbwnpc.squad.client.WidgetCompat
 import com.sbwnpc.squad.network.DiplomacyCmdPayload
 import com.sbwnpc.squad.network.sendToServer
 import com.sbwnpc.squad.npc.SquadFaction
@@ -68,7 +69,7 @@ class DiplomacyScreen(snapshot: CompoundTag) : Screen(Component.literal("Diploma
                 }.tooltip(Tooltip.create(Component.literal("Offer ${row.faction.label} an alliance"))).build()
             }
             button?.let {
-                it.setRectangle(BUTTON_WIDTH, 20, left + WIDTH - BUTTON_WIDTH, y)
+                WidgetCompat.place(it, left + WIDTH - BUTTON_WIDTH, y, BUTTON_WIDTH)
                 addRenderableWidget(it)
             }
             y += ROW_HEIGHT

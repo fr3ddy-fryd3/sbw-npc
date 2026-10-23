@@ -7,6 +7,21 @@
     "defaultRequire": 1
   },
   "mixins": [
-    "PathNavigationAccessor"
+    "PathNavigationAccessor",
+    "ExplosionAccessor",
+    "VehicleBoardingMixin",
+    "VehicleGunDataMixin",
+    "VehicleShootingMixin",
+    "AutoAimableEntityMixin",
+    "EntityAllianceMixin",
+    "EntityTrackingRangeMixin",
+    "AircraftSnapshotMixin",
+    "VehicleExperienceMixin",
+    "ExperienceHealingMixin",
+    "BulletImpactMixin"
+  ],
+  "refmap": "sbwnpc.forge.refmap.json",
+  "client": [
+    "KeyMappingMixin"
   ]
 }

@@ -1,10 +1,10 @@
 package com.sbwnpc.squad.client.screen
 
+import com.sbwnpc.squad.client.ScrollScreen
 import com.sbwnpc.squad.network.RequestBarracksQueuePayload
 import com.sbwnpc.squad.network.sendToServer
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.Button
-import net.minecraft.client.gui.screens.Screen
 import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.Tag
@@ -15,7 +15,7 @@ class BarracksQueueScreen(
     private val parent: RecruitScreen,
     private val pos: BlockPos,
     private var snapshot: CompoundTag,
-) : Screen(Component.literal("Barracks recruitment queue")) {
+) : ScrollScreen(Component.literal("Barracks recruitment queue")) {
     private var refreshTicks = 20
     private var scroll = 0
 
@@ -67,8 +67,8 @@ class BarracksQueueScreen(
         }
     }
 
-    override fun mouseScrolled(mouseX: Double, mouseY: Double, horizontal: Double, vertical: Double): Boolean {
-        scroll = maxOf(0, scroll - vertical.toInt())
+    override fun onScroll(mouseX: Double, mouseY: Double, amount: Double): Boolean? {
+        scroll = maxOf(0, scroll - amount.toInt())
         return true
     }
 
