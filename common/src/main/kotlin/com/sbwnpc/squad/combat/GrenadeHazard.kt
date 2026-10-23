@@ -26,7 +26,7 @@ object GrenadeHazard {
         return grenades.any { it.isAlive && it.position().distanceToSqr(pos) <= r2 }
     }
 
-    fun threatens(level: ServerLevel, pos: BlockPos): Boolean = threatens(level, pos.bottomCenter)
+    fun threatens(level: ServerLevel, pos: BlockPos): Boolean = threatens(level, Vec3.atBottomCenterOf(pos))
 
     private const val SAFETY_MARGIN = 2.0
 }

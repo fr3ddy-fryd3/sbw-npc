@@ -9,14 +9,22 @@ import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.TooltipFlag
+import net.minecraft.world.entity.Entity
+import net.minecraft.world.level.ClipContext
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.BaseEntityBlock
+import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.level.material.Fluid
 import net.minecraft.world.level.saveddata.SavedData
+import net.minecraft.world.phys.shapes.VoxelShape
 import net.minecraft.world.level.storage.DimensionDataStorage
+import net.minecraft.world.level.BlockGetter
 import net.minecraft.world.phys.BlockHitResult
+import net.minecraft.world.phys.Vec3
+import net.minecraft.world.phys.shapes.CollisionContext
 
 /*
  * Base classes whose overridable methods differ between Minecraft versions. The shared classes
@@ -70,4 +78,13 @@ abstract class VersionedItem(properties: Properties) : Item(properties) {
     final override fun appendHoverText(stack: ItemStack, level: Level?, tooltip: MutableList<Component>, flag: TooltipFlag) {
         addTooltip(stack, tooltip)
     }
+}
+
+/**
+ * A [ClipContext] that hits collision shapes (no fluids) as seen by [collision]. 1.20.1's context
+ * takes an entity rather than a collision context, so the shape is looked up here.
+ */
+open class VersionedClipContext(from: Vec3, to: Vec3, private val collision: CollisionContext) :
+    ClipContext(from, to, Block.COLLIDER, Fluid.NONE, null as Entity?) {
+    override fun getBlockShape(state: BlockState, level: BlockGetter, pos: BlockPos): VoxelShape = Block.COLLIDER.get(state, level, pos, collision)
 }

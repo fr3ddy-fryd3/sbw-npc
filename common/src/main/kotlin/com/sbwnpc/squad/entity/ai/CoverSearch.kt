@@ -76,22 +76,22 @@ object CoverSearch {
         val taken = FiringSpots.nearbyWithBodies(level, entity, MAX_RADIUS)
         return candidates.asSequence()
             .mapNotNull {
-                Terrain.feetAt(level, it.bottomCenter) { feet ->
+                Terrain.feetAt(level, Vec3.atBottomCenterOf(it)) { feet ->
                     level.noCollision(entity, entity.getDimensions(entity.pose).makeBoundingBox(feet))
                 }?.let { feet -> BlockPos.containing(feet.x, kotlin.math.ceil(feet.y), feet.z) }
             }
             .distinct()
             .filterNot { it in excluded }
-            .filter { permitted(it.bottomCenter) }
+            .filter { permitted(Vec3.atBottomCenterOf(it)) }
             .filterNot { GrenadeHazard.threatens(level, it) }
-            .filterNot { FiringSpots.crowded(it.bottomCenter, taken) }
+            .filterNot { FiringSpots.crowded(Vec3.atBottomCenterOf(it), taken) }
             .sortedBy { it.distSqr(origin) }
             .firstOrNull { isHiddenFrom(level, entity, threats, it, hulls) }
     }
 
     /** Revalidate a queued cover proposal when native path admission becomes available. */
     fun usable(entity: NpcEntity, level: ServerLevel, threat: Vec3, candidate: BlockPos): Boolean {
-        val point = candidate.bottomCenter
+        val point = Vec3.atBottomCenterOf(candidate)
         if (!level.noCollision(entity, entity.getDimensions(entity.pose).makeBoundingBox(point)) ||
             GrenadeHazard.threatens(level, candidate) || FiringSpots.crowded(point, FiringSpots.nearbyWithBodies(level, entity, MAX_RADIUS))
         ) {
