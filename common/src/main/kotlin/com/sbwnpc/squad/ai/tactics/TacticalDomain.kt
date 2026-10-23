@@ -39,12 +39,16 @@ enum class CombatDuty(
  *
  * @property hold he holds where he stands instead of searching for a post round [anchor]: the
  *   last resort once every post search round it has failed.
+ * @property legs a mover in a fight gets there by legs, from one post on the way to the next,
+ *   firing from each before the next rush; see [MemberLeg].
  */
-data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null, val elevationWeight: Double = 0.0, val assault: Boolean = false, val standoff: Double = 0.0, val ordered: Boolean = false, val hold: Boolean = false) {
+data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null, val elevationWeight: Double = 0.0, val assault: Boolean = false, val standoff: Double = 0.0, val ordered: Boolean = false, val hold: Boolean = false, val legs: Boolean = false) {
     init {
         require(actor.level == AgentLevel.NPC && exposureWeight.isFinite() && exposureWeight >= 0 && elevationWeight.isFinite() && elevationWeight >= 0)
     }
 }
+/** The [number]th leg of a mover's advance by legs ([PositionIntent.legs]): a rush to the next post, then fire from it. */
+data class MemberLeg(val intent: PositionIntent, val number: Int)
 data class TeamMission(val agent: AgentId, val members: List<PositionIntent>)
 data class SquadMission(val agent: AgentId, val teams: List<TeamMission>)
 data class AreaControlTask(val operation: java.util.UUID, val objective: Point3, val commands: Map<java.util.UUID, java.util.UUID>)
@@ -59,6 +63,12 @@ object TacticalFacts {
     val MOVABLE = FactKey("actor.movable", Boolean::class.javaObjectType)
     val COVER = FactKey("sector.actual_cover", Boolean::class.javaObjectType)
     val ARRIVED = FactKey("post.actual_arrival", Boolean::class.javaObjectType)
+
+    /** He stands on the post his position action found, the anchor's or one on the way to it. */
+    val AT_POST = FactKey("post.at_found_post", Boolean::class.javaObjectType)
+
+    /** How many legs of an advance by legs he has finished, fire included. */
+    val LEGS_DONE = FactKey("actor.legs_done", Int::class.javaObjectType)
     val STRATEGY = FactKey("squad.strategy", CombatStrategy::class.java)
     val ATTACK_PHASE = FactKey("operation.attack_phase", AttackPhase::class.java)
 }
@@ -71,6 +81,9 @@ object TacticalDomain {
     val SECURE = ActionKey("operation.secure_area", AreaControlTask::class.java)
     private val SECURE_TASK = TaskKey("operation.hold_and_inspect", AreaControlTask::class.java)
     val POSITION = ActionKey("npc.position", PositionIntent::class.java)
+
+    /** Fire from the post a leg ended on, until he has fired or found nothing to fire at. */
+    val FIRE_PAUSE = ActionKey("npc.fire_pause", MemberLeg::class.java)
     private val DELEGATE = TaskKey("delegate.task", DelegationTask::class.java)
 
     private fun delegate() =
@@ -145,16 +158,37 @@ object TacticalDomain {
         ),
     )
     private val POST = TaskKey("npc.post", PositionIntent::class.java)
+    private val LEG = TaskKey("npc.leg", MemberLeg::class.java)
+    private val PAUSE = TaskKey("npc.fire_pause", MemberLeg::class.java)
     val npc = HtnDomain(
         AgentLevel.NPC,
         listOf(
             CompoundTask(
                 NPC,
                 listOf(
+                    // A mover in a fight rushes from cover to cover and fires from each, rather than
+                    // running the whole way to his slot under fire.
+                    Method("fire_and_bound", eligible = { intent ->
+                        Condition { facts ->
+                            val failure = facts.value(TacticalFacts.POST_FAILURE)
+                            when {
+                                !boundsByLegs(intent) -> Verdict.Rejected("not_advancing_by_legs")
+                                failure?.anchor == intent.anchor -> Verdict.Rejected("preferred_query_exhausted")
+                                else -> Verdict.Allowed
+                            }
+                        }
+                    }, decompose = { intent, facts ->
+                        val leg = MemberLeg(intent, facts.value(TacticalFacts.LEGS_DONE) ?: 0)
+                        TaskNetwork.sequence(LEG.call(leg), PAUSE.call(leg))
+                    }),
                     Method("preferred_post", eligible = { intent ->
                         Condition { facts ->
                             val failure = facts.value(TacticalFacts.POST_FAILURE)
-                            if (failure?.anchor == intent.anchor) Verdict.Rejected("preferred_query_exhausted") else Verdict.Allowed
+                            when {
+                                boundsByLegs(intent) -> Verdict.Rejected("advances_by_legs")
+                                failure?.anchor == intent.anchor -> Verdict.Rejected("preferred_query_exhausted")
+                                else -> Verdict.Allowed
+                            }
                         }
                     }, decompose = { intent, _ -> TaskNetwork.sequence(POST.call(intent)) }),
                     Method("neighbor_post", eligible = { intent ->
@@ -173,7 +207,7 @@ object TacticalDomain {
                             intent.anchor.y,
                             intent.anchor.z + dx / length * offset.first + dz / length * offset.second,
                         )
-                        TaskNetwork.sequence(POST.call(intent.copy(anchor = anchor)))
+                        TaskNetwork.sequence(POST.call(intent.copy(anchor = anchor, legs = false)))
                     }),
                     // Terrain hides the enemy from the whole neighbourhood of the anchor: look for a
                     // line of fire closer to the enemy or along the front instead of retrying the
@@ -185,7 +219,7 @@ object TacticalDomain {
                         }
                     }, decompose = { intent, facts ->
                         val step = facts.value(TacticalFacts.POST_FAILURE)!!.attempts - NEIGHBOR_ATTEMPTS - 1
-                        TaskNetwork.sequence(POST.call(intent.copy(anchor = closerAnchors(intent)[step])))
+                        TaskNetwork.sequence(POST.call(intent.copy(anchor = closerAnchors(intent)[step], legs = false)))
                     }),
                     // Every search round the anchor failed: he holds where he stands until the
                     // failure is forgotten and the search starts again. Without it the man had no
@@ -199,29 +233,50 @@ object TacticalDomain {
                                 else -> Verdict.Allowed
                             }
                         }
-                    }, decompose = { intent, _ -> TaskNetwork.sequence(POST.call(intent.copy(hold = true, requireCover = false, requireShelter = false))) }),
+                    }, decompose = { intent, _ -> TaskNetwork.sequence(POST.call(intent.copy(hold = true, requireCover = false, requireShelter = false, legs = false))) }),
                 ),
             ),
-            PrimitiveTask(POST) { intent ->
-                val maintain = Condition.all(
-                    Condition.test(TacticalFacts.MOVABLE, "higher_priority_action") { it },
-                    if (intent.requireCover) Condition.test(TacticalFacts.COVER, "cover_lost") { it } else Condition.ALWAYS,
-                )
+            PrimitiveTask(POST) { intent -> position("position", intent, Condition.test(TacticalFacts.ARRIVED, "post_not_reached") { it }) },
+            // Each leg has its own identity: a leg ended on its post is done, and the next one is a
+            // new search from there, not the same execution carried on.
+            PrimitiveTask(LEG) { leg -> position("leg:${leg.number}", leg.intent, Condition.test(TacticalFacts.AT_POST, "leg_post_not_reached") { it }) },
+            PrimitiveTask(PAUSE) { leg ->
                 PrimitiveSpec(
-                    "position",
-                    ActionSpec(
-                        POSITION,
-                        intent,
-                        if (intent.duty.commandsMovement) setOf(ResourceKey(intent.actor, "motion")) else emptySet(),
-                        timeoutTicks = if (intent.duty.commandsMovement) 1200 else Long.MAX_VALUE,
-                    ),
-                    TaskContract(maintain = maintain, completed = Condition.test(TacticalFacts.ARRIVED, "post_not_reached") { it }),
-                    planning = Condition { facts -> if (facts.owner == intent.actor) Verdict.Allowed else Verdict.Rejected("foreign_actor_intent") },
+                    "fire:${leg.number}",
+                    ActionSpec(FIRE_PAUSE, leg, setOf(ResourceKey(leg.intent.actor, "motion")), timeoutTicks = FIRE_PAUSE_TIMEOUT),
+                    TaskContract(maintain = Condition.test(TacticalFacts.MOVABLE, "higher_priority_action") { it }),
+                    planning = ownActor(leg.intent),
                 )
             },
         ),
     )
     private const val NEIGHBOR_ATTEMPTS = 4
+
+    /** A fire pause that neither fired nor ended by itself within 10 s is given up. */
+    private const val FIRE_PAUSE_TIMEOUT = 200L
+
+    private fun position(identity: String, intent: PositionIntent, completed: Condition): PrimitiveSpec {
+        val maintain = Condition.all(
+            Condition.test(TacticalFacts.MOVABLE, "higher_priority_action") { it },
+            if (intent.requireCover) Condition.test(TacticalFacts.COVER, "cover_lost") { it } else Condition.ALWAYS,
+        )
+        return PrimitiveSpec(
+            identity,
+            ActionSpec(
+                POSITION,
+                intent,
+                if (intent.duty.commandsMovement) setOf(ResourceKey(intent.actor, "motion")) else emptySet(),
+                timeoutTicks = if (intent.duty.commandsMovement) 1200 else Long.MAX_VALUE,
+            ),
+            TaskContract(maintain = maintain, completed = completed),
+            planning = ownActor(intent),
+        )
+    }
+
+    private fun ownActor(intent: PositionIntent) = Condition { facts -> if (facts.owner == intent.actor) Verdict.Allowed else Verdict.Rejected("foreign_actor_intent") }
+
+    /** An assault keeps running onto its ring or post: its men fire from there, not on the way. */
+    private fun boundsByLegs(intent: PositionIntent) = intent.legs && intent.duty == CombatDuty.MOVE && !intent.assault && intent.focus != null
 
     /** Steps, forward towards the enemy and sideways along the front, tried once the neighbours fail. */
     private val CLOSER_STEPS = listOf(12.0 to 0.0, 24.0 to 0.0, 12.0 to 16.0, 12.0 to -16.0, 24.0 to 16.0, 24.0 to -16.0, 36.0 to 0.0)

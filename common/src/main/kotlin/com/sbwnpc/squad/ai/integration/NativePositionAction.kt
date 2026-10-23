@@ -89,6 +89,9 @@ internal class NativePositionAction(
             (!intent.duty.advancing || task.position!!.distanceTo(task.anchor) <= 4) &&
             (intent.inspection?.let { DetectionSightline.visible(npc.level() as ServerLevel, npc.eyePosition, it.native().add(0.0, 1.5, 0.0), npc) } != false)
 
+    /** He stands on the post this action found, the anchor's or one on the way to it. */
+    fun atPost(): Boolean = task.position?.let { FiringPostArrival.reached(npc.position(), it) } == true
+
     override fun start(now: Long): ActionUpdate {
         lastProgress = now
         DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=post_action_started duty={} job={} anchor={} focus={} hold={}", npc.uuid, intent.duty, task.job, task.anchor, task.focus, intent.hold)
@@ -168,6 +171,12 @@ internal class NativePositionAction(
         }
         if (FiringPostArrival.reached(npc.position(), destination)) {
             if (intent.duty.advancing && destination.distanceTo(task.anchor) > 4) {
+                // A leg of an advance by legs ends here: he fires from this post before the next rush.
+                if (intent.legs) {
+                    releasePath()
+                    DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=leg_post_reached position={} toAnchor={}", npc.uuid, destination, "%.0f".format(destination.distanceTo(task.anchor)))
+                    return ActionUpdate.Completed(listOf(ActionEvidence("leg_post_arrival", now, "${npc.uuid}:$destination")))
+                }
                 invalidate(now, "intermediate_reached")
                 return ActionUpdate.Running
             }
@@ -295,7 +304,7 @@ internal class NativePositionAction(
 
             next.actor != intent.actor || next.duty != intent.duty -> "duty_changed"
 
-            next.inspection != intent.inspection || next.hold != intent.hold -> "post_kind_changed"
+            next.inspection != intent.inspection || next.hold != intent.hold || next.legs != intent.legs -> "post_kind_changed"
 
             // GAIN_HEIGHT sets the floor from where the man stands now, so it moved with every
             // step up or down a slope and threw away a post that was still high enough.

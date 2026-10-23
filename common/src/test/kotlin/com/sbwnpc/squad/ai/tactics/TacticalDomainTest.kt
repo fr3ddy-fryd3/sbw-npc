@@ -61,6 +61,31 @@ class TacticalDomainTest {
         assertEquals(Point3(74.0, 1.0, 0.0), second.anchor)
     }
 
+    @Test fun `a mover advancing by legs rushes to the next post and fires from it, leg after leg`() {
+        val mover = intent.copy(legs = true)
+        fun plan(done: Int?) = (HtnPlanningSession(TacticalDomain.npc, owner, TacticalDomain.NPC.call(mover), (done?.let { facts(1).observe(TacticalFacts.LEGS_DONE, it) } ?: facts(1))).advance(20) as PlanningResult.Ready).plan
+        val first = plan(0)
+        assertEquals(listOf("leg:0", "fire:0"), first.tasks.map { it.spec.identity })
+        assertEquals(setOf(first.tasks[0].node), first.tasks[1].after)
+        assertEquals(mover, first.tasks[0].spec.action.parameters)
+        assertEquals(listOf("leg:2", "fire:2"), plan(2).tasks.map { it.spec.identity })
+        assertFalse(first.inputUnchanged(facts(1).observe(TacticalFacts.LEGS_DONE, 1)))
+        // An assault, a man without a contact and a man firing keep the single post search.
+        for (other in listOf(mover.copy(assault = true), mover.copy(focus = null), mover.copy(duty = CombatDuty.FIRE))) {
+            val single = (HtnPlanningSession(TacticalDomain.npc, owner, TacticalDomain.NPC.call(other), facts(1)).advance(20) as PlanningResult.Ready).plan
+            assertEquals(listOf("position"), single.tasks.map { it.spec.identity })
+        }
+    }
+
+    @Test fun `a failed leg search falls back to the neighbouring posts without legs`() {
+        val mover = intent.copy(legs = true)
+        val failure = LocalPositionFailure(mover.anchor, 1, 1, mapOf("unreachable_route" to 5))
+        val plan = (HtnPlanningSession(TacticalDomain.npc, owner, TacticalDomain.NPC.call(mover), facts(1).observe(TacticalFacts.POST_FAILURE, failure, expiresAt = 201)).advance(20) as PlanningResult.Ready).plan
+        val selected = plan.tasks.single().spec.action.parameters as PositionIntent
+        assertFalse(selected.legs)
+        assertNotEquals(mover.anchor, selected.anchor)
+    }
+
     @Test fun `closer anchors keep the role standoff and stop when used up`() {
         val anchors = TacticalDomain.closerAnchors(intent.copy(standoff = 40.0))
         assertTrue(anchors.isNotEmpty())

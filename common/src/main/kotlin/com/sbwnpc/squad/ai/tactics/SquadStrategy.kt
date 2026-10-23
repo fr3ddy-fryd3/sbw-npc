@@ -101,6 +101,8 @@ private object Withdraw : SquadStrategy {
             exposureWeight = EXPOSURE_WEIGHT,
             // A sentry withdraws from his height too: kept, the floor refused every post below it.
             minimumHeight = null,
+            // Falling back is one run, not a fight from post to post.
+            legs = false,
             elevationWeight = 0.0,
         )
     }

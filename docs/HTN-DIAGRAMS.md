@@ -81,6 +81,7 @@ flowchart LR
     T3 --> S_K["assault men, men moving for their order,<br/>men following the order"]:::case --> D_SK["keep their task"]:::duty
 
     %% 4. Position (TacticalDomain.npc, NativePositionAction)
+    T4 --> N0["a mover in a fight, not in an assault"]:::case --> LEG["rush to the next post on the way,<br/>fire from it, then the next leg"]:::action
     T4 --> N1["first try: at his anchor"]:::case
     T4 --> N2["failed there: 12 blocks aside,<br/>forward or back, up to 4 times"]:::case
     T4 --> N3["still failing and his shots blocked:<br/>closer to the enemy, never inside his standoff"]:::case
@@ -114,7 +115,7 @@ what the position search looks for:
 | Task | Search |
 |---|---|
 | fire | anti-armour post when he has a loaded launcher and armour is in sight, otherwise cover |
-| move | advance |
+| move | advance; a mover in a fight ends each leg on the next post on the way and fires from it (until he has fired, at most 3 s) before the next rush |
 | search | search |
 | rear guard | reserve |
 | observe | height post when he has a height floor, otherwise observe |

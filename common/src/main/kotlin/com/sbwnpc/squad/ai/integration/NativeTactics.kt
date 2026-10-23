@@ -27,6 +27,15 @@ object NativeTactics {
 
     /** Roles whose long-range weapons fight from a height post, see [MemberDuties]. */
     private val HEIGHT_ROLES = setOf(NpcClass.MACHINE_GUNNER, NpcClass.SNIPER)
+
+    /** The longest a mover fires from a leg's post before the next rush, 3 s. */
+    private const val FIRE_PAUSE_TICKS = 60L
+
+    /** With nothing to fire at, he rushes on after half a second. */
+    private const val NO_TARGET_PAUSE_TICKS = 10L
+
+    /** Duty rules whose movers advance by legs in a fight, see [PositionIntent.legs]. */
+    private val LEG_RULES = setOf("mover", "fire_approach")
     private val worlds = HashMap<ServerLevel, World>()
 
     /** Test hook: called with the level of every agent whose plan search finished, to measure how often each level replans. */
@@ -145,6 +154,9 @@ object NativeTactics {
         // The MemberDuties case each member's duty last came from, to log only when it changes.
         private val dutyRules = HashMap<UUID, String>()
         private val failures = HashMap<UUID, LocalPositionFailure>()
+
+        // Legs each mover has finished of an advance by legs, see [TacticalFacts.LEGS_DONE].
+        private val legs = HashMap<UUID, Int>()
         private var nextObservation = Long.MIN_VALUE
         private var parentTick = Long.MIN_VALUE
         private var refreshing = false
@@ -162,6 +174,7 @@ object NativeTactics {
                         retiredAssignments += view.ticket
                         if (view.ticket.child.level == AgentLevel.NPC) {
                             actions.remove(view.ticket.child.id)?.overwatchPost?.let { heldPosts[view.ticket.child.id] = it }
+                            legs.remove(view.ticket.child.id)
                             goals.remove(view.ticket.child)
                         }
                     }
@@ -200,6 +213,10 @@ object NativeTactics {
                             }
                         },
                         ActionBinding(DelegationAction.KEY) { ticket, task -> DelegationAction(ticket, task, ledger) },
+                        ActionBinding(TacticalDomain.FIRE_PAUSE) { ticket, leg ->
+                            require(ticket.owner.agent == leg.intent.actor)
+                            firePause(leg, requireNotNull(level.getEntity(leg.intent.actor.id) as? NpcEntity))
+                        },
                         ActionBinding(TacticalDomain.POSITION) { ticket, intent ->
                             require(ticket.owner.agent == intent.actor)
                             val original = goals[intent.actor] ?: intent
@@ -229,6 +246,35 @@ object NativeTactics {
                     DebugFlags.log(LogGroup.ORDER, "[htn] level={} actor={} event=plan_result result={}", id.level, id.id, feedback.result.javaClass.simpleName)
                 }
             }
+        /**
+         * He fires from the post his leg ended on: done once he has fired, at once when he has
+         * nothing to fire at, or after [FIRE_PAUSE_TICKS]. Aim and fire stay with his gun
+         * behaviour; this only holds him at the post meanwhile.
+         */
+        private fun firePause(leg: MemberLeg, npc: NpcEntity) =
+            object : ActionExecution {
+                private var startedAt = 0L
+                private fun update(now: Long): ActionUpdate {
+                    val waited = now - startedAt
+                    val reason = when {
+                        waited > 0 && npc.firedRecently(waited.toInt()) -> "fired"
+                        npc.target == null && waited >= NO_TARGET_PAUSE_TICKS -> "no_target"
+                        waited >= FIRE_PAUSE_TICKS -> "timeout"
+                        else -> return ActionUpdate.Running
+                    }
+                    legs.merge(npc.uuid, 1, Int::plus)
+                    DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=fire_pause_done leg={} reason={} waited={}", npc.uuid, leg.number, reason, waited)
+                    return ActionUpdate.Completed(listOf(ActionEvidence("fire_pause_$reason", now)))
+                }
+                override fun start(now: Long): ActionUpdate {
+                    startedAt = now
+                    return update(now)
+                }
+                override fun tick(now: Long) = update(now)
+                override fun suspend(now: Long, reason: String) = Unit
+                override fun resume(now: Long) = Unit
+                override fun cancel(now: Long, reason: String) = Unit
+            }
         private fun facts(id: AgentId, now: Long): FactSnapshot {
             var result = FactSnapshot(id, now)
             if (id.level == AgentLevel.OPERATION) {
@@ -243,6 +289,8 @@ object NativeTactics {
                 result = result.observe(TacticalFacts.MOVABLE, npc != null && movable(npc))
                     .observe(TacticalFacts.COVER, goals[id]?.let(::covering) ?: false, expiresAt = now + 11)
                     .observe(TacticalFacts.ARRIVED, action?.reached() ?: false)
+                    .observe(TacticalFacts.AT_POST, action?.atPost() ?: false)
+                    .observe(TacticalFacts.LEGS_DONE, legs[id.id] ?: 0)
                 failures[id.id]?.let { failure -> result = result.observe(TacticalFacts.POST_FAILURE, failure, observedAt = failure.failedAt, expiresAt = failure.failedAt + 200) }
             }
             return result
@@ -824,7 +872,8 @@ object NativeTactics {
                     val requireShelter = PostRequirements.shelter(duty, situation.incoming)
                     val settled = oldStrategy?.first == selected && (focus?.distanceTo(plannedContact[member.id] ?: focus) ?: 0.0) < 8
                     val moving = waypoint != null || member.id in wasArcing || bounding
-                    val retained = before?.takeIf { MemberDuties.keeps(it, duty, proposed.point(), requireCover, requireShelter, settled, moving) }
+                    val byLegs = ruled.rule in LEG_RULES
+                    val retained = before?.takeIf { it.legs == byLegs && MemberDuties.keeps(it, duty, proposed.point(), requireCover, requireShelter, settled, moving) }
                     if (retained != null) {
                         retained
                     } else {
@@ -849,6 +898,7 @@ object NativeTactics {
                             inspection = if (duty == CombatDuty.SEARCH) inspect?.point() else null,
                             standoff = CombatPositionSafety.clearance(member.role),
                             ordered = bounding,
+                            legs = byLegs,
                         )
                     }
                 }
@@ -931,6 +981,7 @@ object NativeTactics {
             agents.clear()
             actions.clear()
             heldPosts.clear()
+            legs.clear()
         }
     }
 }
