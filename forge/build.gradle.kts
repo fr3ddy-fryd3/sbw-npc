@@ -1,5 +1,6 @@
 import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
 
 plugins {
     id("net.neoforged.moddev.legacyforge")
@@ -47,6 +48,9 @@ base {
 kotlin.compilerOptions {
     jvmTarget.set(JvmTarget.JVM_17)
     freeCompilerArgs.add("-Xjdk-release=17")
+    // Kotlin for Forge 4.11 ships the Kotlin 2.0 runtime, which the mod runs on: keep to its language and library.
+    languageVersion.set(KotlinVersion.KOTLIN_2_0)
+    apiVersion.set(KotlinVersion.KOTLIN_2_0)
 }
 tasks.withType<JavaCompile> {
     options.encoding = "UTF-8"
@@ -61,6 +65,11 @@ legacyForge {
             sourceSet(sourceSets.main.get())
         }
     }
+}
+
+// The shared data uses 1.21 folder names (loot_table); 1.20.1 reads loot_tables, from this module's own copy.
+tasks.processResources {
+    exclude("data/sbwnpc/loot_table/**")
 }
 
 // The mixins are written on Mojang names; the processor records their SRG equivalents in a refmap.

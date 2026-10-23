@@ -1,0 +1,46 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:AlliedVehicleBoarding.kt$AlliedVehicleBoarding$(item is NameTagItem &amp;&amp; stack.hasCustomHoverName()) || stack.`is`(ModItems.C4_BOMB.get()) || stack.`is`(ModItems.DETONATOR.get())</ID>
+    <ID>ComplexCondition:AlliedVehicleBoarding.kt$AlliedVehicleBoarding$player.vehicle != null || player.isShiftKeyDown || player.isSpectator || player is FakePlayer</ID>
+    <ID>ComplexCondition:SbwVehicles.kt$SbwVehicles$vehicle !is VehicleEntity || !isOperational(vehicle) || gun.item !is GunItem || rounds &lt;= 0</ID>
+    <ID>ComplexCondition:VehicleAwareNodeEvaluator.kt$VehicleAwareNodeEvaluator$origin != null &amp;&amp; origin.x == x &amp;&amp; origin.z == z &amp;&amp; kotlin.math.abs(origin.y - y) &lt;= 1</ID>
+    <ID>CyclomaticComplexMethod:AlliedVehicleBoarding.kt$AlliedVehicleBoarding$@JvmStatic fun interact(vehicle: VehicleEntity, player: Player, hand: InteractionHand): InteractionResult?</ID>
+    <ID>CyclomaticComplexMethod:SbwPlayerSupply.kt$SbwPlayerSupply$override fun issueKit(player: ServerPlayer, kit: Int, option: Int, faction: SquadFaction?): Boolean</ID>
+    <ID>CyclomaticComplexMethod:SbwVehicles.kt$SbwVehicles$override fun takeSmallArmsAmmo(vehicle: Entity, gun: ItemStack, rounds: Int): Int</ID>
+    <ID>CyclomaticComplexMethod:VehicleAwareNodeEvaluator.kt$VehicleAwareNodeEvaluator$override fun getNeighbors(output: Array&lt;Node&gt;, node: Node): Int</ID>
+    <ID>CyclomaticComplexMethod:VehicleAwareNodeEvaluator.kt$VehicleAwareNodeEvaluator$private fun vehicleAwareType(getter: BlockGetter, x: Int, y: Int, z: Int, mob: Mob): BlockPathTypes</ID>
+    <ID>LongParameterList:PayloadCompat.kt$Codecs$( a: PayloadCodec&lt;A&gt;, getA: (T) -&gt; A, b: PayloadCodec&lt;B&gt;, getB: (T) -&gt; B, c: PayloadCodec&lt;C&gt;, getC: (T) -&gt; C, build: (A, B, C) -&gt; T, )</ID>
+    <ID>LongParameterList:ScreenCompat.kt$WidgetCompat$(font: Font, x: Int, y: Int, label: Component, selected: Boolean, onChange: (Boolean) -&gt; Unit)</ID>
+    <ID>MagicNumber:ForgeSupplySpawns.kt$ForgeSupplySpawns$3</ID>
+    <ID>MagicNumber:SbwGrenades.kt$SbwGrenades$0.01</ID>
+    <ID>MagicNumber:SbwGrenades.kt$SbwGrenades$0.1</ID>
+    <ID>MagicNumber:SbwGrenades.kt$SbwGrenades$0.3</ID>
+    <ID>MagicNumber:SbwPlayerSupply.kt$SbwPlayerSupply$10</ID>
+    <ID>MagicNumber:SbwPlayerSupply.kt$SbwPlayerSupply.Spec$8</ID>
+    <ID>MagicNumber:SbwVehicles.kt$SbwVehicles$128</ID>
+    <ID>MagicNumber:SbwVehicles.kt$SbwVehicles$16</ID>
+    <ID>MagicNumber:SbwVehicles.kt$SbwVehicles$4</ID>
+    <ID>MagicNumber:SbwVehicles.kt$SbwVehicles$64</ID>
+    <ID>MagicNumber:SquadConfig.kt$SquadConfig$0.01</ID>
+    <ID>MagicNumber:SquadConfig.kt$SquadConfig$10.0</ID>
+    <ID>MagicNumber:SquadConfig.kt$SquadConfig$1000000</ID>
+    <ID>MagicNumber:SquadConfig.kt$SquadConfig$15</ID>
+    <ID>MagicNumber:SquadConfig.kt$SquadConfig$16</ID>
+    <ID>MagicNumber:SquadConfig.kt$SquadConfig$20</ID>
+    <ID>MagicNumber:SquadConfig.kt$SquadConfig$3</ID>
+    <ID>MagicNumber:SquadConfig.kt$SquadConfig$3600</ID>
+    <ID>MagicNumber:SquadConfig.kt$SquadConfig$512</ID>
+    <ID>MagicNumber:SquadConfig.kt$SquadConfig$64</ID>
+    <ID>TooManyFunctions:NpcEntityBase.kt$NpcEntityBase : PathfinderMob</ID>
+    <ID>TooManyFunctions:SbwDrones.kt$SbwDrones : Drones</ID>
+    <ID>TooManyFunctions:SbwGuns.kt$SbwGuns : Guns</ID>
+    <ID>TooManyFunctions:SbwMortars.kt$SbwMortars : Mortars</ID>
+    <ID>TooManyFunctions:SbwPlayerSupply.kt$SbwPlayerSupply : PlayerSupply</ID>
+    <ID>TooManyFunctions:SbwVehicles.kt$SbwVehicles : Vehicles</ID>
+    <ID>TooManyFunctions:VehicleAwareNodeEvaluator.kt$VehicleAwareNodeEvaluator : WalkNodeEvaluator</ID>
+    <ID>TooManyFunctions:VersionCompat.kt$VersionCompat</ID>
+    <ID>UnusedParameter:ScreenCompat.kt$WidgetCompat$font: Font</ID>
+  </CurrentIssues>
+</SmellBaseline>
