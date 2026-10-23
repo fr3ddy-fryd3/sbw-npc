@@ -64,35 +64,32 @@ a Fabric GameTest or server scene run in CI; the `enabled` profile and release a
 
 ## Forge, Minecraft 1.20.1 (#16)
 
-**Toolchain.** `net.neoforged.moddev.legacyforge` 2.0.80, the ModDevGradle version the repo
-already uses, builds against Forge 1.20.1-47.4.0 on Gradle 9.5 (ForgeGradle is not needed). The
-`forge` module (`-Ploader=forge`) applies it with Java 17 output, KotlinForForge 4.11.0 and
-SmartBrainLib 1.15; versions are in `gradle/forge.properties`. SBW's own Kotlin is 2.0.0 and
-KotlinForForge 4.11.0 ships that runtime, against this repo's 2.1.20 compiler: the runtime
-version still has to be chosen together with the compiler (open).
+`./gradlew -Ploader=forge :forge:build` builds `forge/build/libs/sbwnpc-<version>-mc1.20.1-forge.jar`:
+the shared sources compiled for 1.20.1, the Forge entry points (`SquadForgeMod`, `SquadForgeClient`), the SuperbWarfare
+adapter (a copy of the NeoForge one against SBW 0.8.9.2 for 1.20.1), the mixins with a refmap, and a Forge channel for
+the packets. Java 17 output; Kotlin language and library 2.0, because Kotlin for Forge 4.11 ships the 2.0 runtime.
 
-**`common` against 1.20.1.** `./gradlew -Ploader=forge :forge:compileKotlin` is the to-do list: 429
-errors in 29 of about 229 files, and no JDK 21-only API is used.
+Checked on a dedicated Forge 1.20.1-47.4.0 server (SBW 0.8.9.2, Kotlin for Forge 4.11.0, SmartBrainLib 1.15): it starts,
+the mixins apply, `/summon sbwnpc:npc` gives an NPC with an SBW rifle and sidearm, and the NPC is still there with its
+guns after a restart. Not checked: a client (screens, HUD, rendering, key bindings), players, deploying and commanding
+squads, combat, vehicles. Not tested in game.
 
-- `network/Payloads.kt`: 222. It is built on `CustomPacketPayload`, `StreamCodec` and
-  `RegistryFriendlyByteBuf`, which 1.20.1 does not have. This one file is rewritten for 1.20.1
-  (a `FriendlyByteBuf` codec per packet).
-- `entity/ai/VehicleAwareNavigation.kt` 53 and `VehicleRoutes.kt` 13 (`PathType`,
-  `PathfindingContext`), `entity/NpcEntity.kt` 28 (save/load signatures, pathing), `squad/*`
-  about 37 (`SavedData` factory and `HolderLookup.Provider`), `block/*` about 30 (block codecs,
-  `useWithoutItem`, `DimensionTransition`), the rest 1-9 each
-  (`ResourceLocation.fromNamespaceAndPath`, `registryAccess`, `bottomCenter`).
+How the 1.21 and 1.20.1 differences are kept out of the shared code: classes whose overridable methods differ
+(`NpcEntityBase`, `VersionedSavedData`, `VersionedEntityBlock`, `VersionedBlockEntity`, `VersionedItem`, `ScrollScreen`),
+the packet vocabulary (`PacketPayload`, `PayloadCodec`, `Codecs`), the node evaluator (`VehicleAwareNodeEvaluator`),
+`StackData` and a handful of small calls (`VersionCompat`) have one file per version with the same names: the 1.21
+ones in `common/src/mc121` (NeoForge and Fabric), the 1.20.1 ones in the `forge` module.
 
-**Approach.** Move each differing call behind a small interface in `common`, with the 1.21
-version as the shared implementation and the 1.20.1 version in the Forge module. Entity and
-`SavedData` overrides whose signatures differ (`saveAdditional`, `save`) cannot be bridged by an
-interface; they delegate to a shared function from a thin per-version override.
+Differences and gaps:
 
-Further Forge work, none started: the `forge` module (ForgeGradle, reobfuscation, KotlinForForge
-and Kotlin version agreed with SBW's, JourneyMap on Forge 47.x), the SBW adapter against SBW
-0.8.9.2 for 1.20.1 (NBT instead of data components, capabilities instead of attachments), the
-mixins, and the client. Forge is larger than Fabric by roughly the 441 errors above plus a second
-SBW adapter.
+- Data in the shared `data/` folder uses 1.21 folder names; the Forge module carries its own `loot_tables`.
+- NPCs hold an SBW gun in the default arm pose and the ordinary item renderer draws it (`SbwClientPorts`), as on Fabric.
+- The aircraft rendering mixins and `PerfProbe` are not ported.
+- SmartBrainLib 1.15 has no door behaviour; a vanilla goal opens doors instead.
+- Worlds are not portable between 1.20.1 and 1.21: block positions and item data are saved in each version's format.
+
+Still to do for Forge: in-game testing on a client; SBW's gun pose and static gun model; aircraft rendering; JourneyMap on
+Forge 47.x; the `enabled` profile and release artifact validation.
 
 ## Local test pack and release
 
@@ -105,5 +102,3 @@ SBW adapter.
 - Found and fixed while auditing the Fabric module: `fabric.mod.json` shipped the literal `${version}`;
   `verify-release-artifact.py` rejected a `preview` profile; the Fabric jar had no loader classifier.
   CI builds the Fabric jar. Releases still publish only the enabled NeoForge jar.
-- Known and not fixed: the Forge module does not compile (above), so its jar, reobfuscation and the mixin config
-  added for it (`sbwnpc.forge.mixins.json`, needs a refmap check) are untested.
