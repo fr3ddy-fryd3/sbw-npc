@@ -24,6 +24,7 @@ object GameTestRegistration {
             MortarCrewGameTests::class.java,
             HelicopterOrbitGameTests::class.java,
             DefensiveOverwatchGameTests::class.java,
+            FarDefenceGameTests::class.java,
             RoofedOverwatchGameTests::class.java,
             AttackDeploymentGameTests::class.java,
             TerrainAttackGameTests::class.java,
