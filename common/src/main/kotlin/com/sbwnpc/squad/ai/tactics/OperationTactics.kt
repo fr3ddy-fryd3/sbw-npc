@@ -81,6 +81,9 @@ object OperationTactics {
     /** A mover this near (horizontally) his front slot has arrived and fires from where he is. */
     const val MOVE_ARRIVAL = 8.0
 
+    /** Farthest from the objective a sentry takes his height post from: the reach of its search, [com.sbwnpc.squad.combat.tactics.DefensiveOverwatch.RADIUS]. */
+    const val SENTRY_REACH = 32.0
+
     /** Closing in, a mover halves its distance to the point's nearest defender, down to this. */
     const val CLOSE_DISTANCE = 20.0
 
@@ -207,7 +210,11 @@ object OperationTactics {
                 // hid (#73). Out of ammunition for his main weapon he is no sentry, and a height is no
                 // post round an objective that walks away from it: gunners following their player held
                 // a roof while he left (#116, in-game 20.10).
-                (order == TacticalOrder.DEFEND || (order == TacticalOrder.PATROL && !hasPatrolRoute)) && heightRole && primaryAmmo && !following -> CombatDuty.OBSERVE
+                // A height post is searched round the objective, so far from it he first marches there
+                // with the squad: searched from a tower 44-155 blocks off, no post qualified and he never
+                // left the tower (#166).
+                (order == TacticalOrder.DEFEND || (order == TacticalOrder.PATROL && !hasPatrolRoute)) && heightRole && primaryAmmo && !following &&
+                    objective?.let { distance(position, it) <= SENTRY_REACH } != false -> CombatDuty.OBSERVE
 
                 !inContact || order in setOf(TacticalOrder.RETREAT, TacticalOrder.MOVE, TacticalOrder.BARRAGE) -> CombatDuty.FOLLOW_ORDER
 

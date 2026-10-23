@@ -115,6 +115,10 @@ class OperationTacticsTest {
     }
 
     private val here = Point3(40.0, 64.0, 100.0)
+    private val nearObjective = Point3(80.0, 64.0, 100.0)
+
+    /** A sentry's duty under [order] where he stands [at]. */
+    private fun sentry(order: TacticalOrder, at: Point3, inContact: Boolean) = OperationTactics.duty(DutyInputs(order, at, FrontProposal(CombatDuty.FIRE, at, null), objective, null, inContact, elsewhere = false, scout = false, heightRole = true, primaryAmmo = true, hasPatrolRoute = false, reachedMove = false, wasFiring = false), fireReach = 40.0, approachOffset = 10.0)
     private fun duty(order: TacticalOrder = TacticalOrder.ATTACK, proposal: FrontProposal = FrontProposal(CombatDuty.FIRE, Point3(60.0, 64.0, 100.0), null), inContact: Boolean = true, scout: Boolean = false, heightRole: Boolean = false, primaryAmmo: Boolean = true, reachedMove: Boolean = false, wasFiring: Boolean = false, elsewhere: Boolean = false) = OperationTactics.duty(DutyInputs(order, here, proposal, objective, Point3(90.0, 64.0, 100.0), inContact, elsewhere, scout, heightRole, primaryAmmo, hasPatrolRoute = false, reachedMove = reachedMove, wasFiring = wasFiring), fireReach = 40.0, approachOffset = 10.0)
 
     @Test fun `a following squad in a fight runs to its places by bounds while the other half fires`() {
@@ -141,8 +145,13 @@ class OperationTacticsTest {
         assertTrue(OperationTactics.followBound(half = 1, now = 0, toLeader = 40.0))
     }
 
+    @Test fun `a sentry far from his objective marches there before he takes a height post`() {
+        assertEquals(DutyChoice(CombatDuty.FOLLOW_ORDER, objective), sentry(TacticalOrder.DEFEND, here, inContact = false))
+        assertEquals(DutyChoice(CombatDuty.FOLLOW_ORDER, objective), sentry(TacticalOrder.PATROL, here, inContact = false))
+    }
+
     @Test fun `a gunner following his player takes no height post`() {
-        val sentry = DutyInputs(TacticalOrder.DEFEND, here, FrontProposal(CombatDuty.FIRE, here, null), objective, null, inContact = false, elsewhere = false, scout = false, heightRole = true, primaryAmmo = true, hasPatrolRoute = false, reachedMove = false, wasFiring = false)
+        val sentry = DutyInputs(TacticalOrder.DEFEND, nearObjective, FrontProposal(CombatDuty.FIRE, nearObjective, null), objective, null, inContact = false, elsewhere = false, scout = false, heightRole = true, primaryAmmo = true, hasPatrolRoute = false, reachedMove = false, wasFiring = false)
         assertEquals(CombatDuty.OBSERVE, OperationTactics.duty(sentry, fireReach = 40.0, approachOffset = 10.0).duty)
         assertEquals(CombatDuty.FOLLOW_ORDER, OperationTactics.duty(sentry.copy(following = true), fireReach = 40.0, approachOffset = 10.0).duty)
         assertEquals(CombatDuty.FIRE, OperationTactics.duty(sentry.copy(following = true, inContact = true), fireReach = 40.0, approachOffset = 10.0).duty)
@@ -153,10 +162,10 @@ class OperationTacticsTest {
         assertEquals(DutyChoice(CombatDuty.FOLLOW_ORDER, objective), duty(inContact = false))
         assertEquals(DutyChoice(CombatDuty.FOLLOW_ORDER, objective), duty(order = TacticalOrder.MOVE))
         assertEquals(DutyChoice(CombatDuty.FIRE, here), duty(order = TacticalOrder.DEFEND))
-        assertEquals(DutyChoice(CombatDuty.OBSERVE, objective), duty(order = TacticalOrder.DEFEND, inContact = false, heightRole = true))
-        assertEquals(DutyChoice(CombatDuty.OBSERVE, objective), duty(order = TacticalOrder.DEFEND, heightRole = true))
+        assertEquals(DutyChoice(CombatDuty.OBSERVE, objective), sentry(TacticalOrder.DEFEND, nearObjective, inContact = false))
+        assertEquals(DutyChoice(CombatDuty.OBSERVE, objective), sentry(TacticalOrder.DEFEND, nearObjective, inContact = true))
         assertEquals(DutyChoice(CombatDuty.FIRE, Point3(60.0, 64.0, 100.0)), duty(heightRole = true))
-        assertEquals(DutyChoice(CombatDuty.OBSERVE, objective), duty(order = TacticalOrder.PATROL, heightRole = true))
+        assertEquals(DutyChoice(CombatDuty.OBSERVE, objective), sentry(TacticalOrder.PATROL, nearObjective, inContact = true))
         assertEquals(DutyChoice(CombatDuty.FIRE, here), duty(order = TacticalOrder.DEFEND, heightRole = true, primaryAmmo = false))
         assertEquals(CombatDuty.FOLLOW_ORDER, duty(elsewhere = true, scout = true).duty)
         assertEquals(DutyChoice(CombatDuty.SEARCH, Point3(90.0, 64.0, 100.0)), duty(scout = true))
