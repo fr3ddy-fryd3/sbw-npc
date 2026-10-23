@@ -9,6 +9,7 @@ import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
+import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
@@ -52,6 +53,9 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         val vehicle = vehicleId?.let { (entity.level() as? ServerLevel)?.getEntity(it)?.takeIf(Ports.vehicles::isVehicle) }
             ?: return false
         if (!Ports.vehicles.isOperational(vehicle)) return false
+        if (!orderAllowsSupport(entity)) {
+            return entity.vehicle === vehicle && vehicle.deltaMovement.horizontalDistanceSqr() > DISMOUNT_SPEED_SQR
+        }
         if (engagementTarget(entity) == null) return lingering(entity, vehicle)
         // A vehicle's hull is the gunner's cover. Once claimed, reach and keep it despite sensor
         // line-of-sight gaps or suppression; these are not reasons to abandon an armoured seat.
@@ -107,6 +111,13 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 abort(entity, "vehicle gone")
                 return
             }
+        if (!orderAllowsSupport(entity)) {
+            Ports.vehicles.aimAt(vehicle, entity, null)
+            Ports.vehicles.release(vehicle)
+            Ports.vehicles.cutPower(vehicle)
+            entity.navigation.stop()
+            return
+        }
         val target = engagementTarget(entity)
         if (target == null) {
             if (lingering(entity, vehicle)) {
@@ -170,9 +181,15 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun eligible(entity: NpcEntity): Boolean =
-        !entity.vehicleTransport && !entity.operatingDrone && !entity.antiDroneEngaged && !entity.diggedIn && !entity.isSuppressed() &&
+        orderAllowsSupport(entity) && !entity.vehicleTransport && !entity.operatingDrone && !entity.antiDroneEngaged && !entity.diggedIn && !entity.isSuppressed() &&
             entity.npcClass != NpcClass.MORTAR &&
             threat(entity) != null
+
+    /** A temporary weapon station cannot hold up an explicit march or the squad's withdrawal. */
+    private fun orderAllowsSupport(entity: NpcEntity): Boolean {
+        val order = entity.currentSquad()?.order
+        return order != SquadOrder.MOVE && order != SquadOrder.RETREAT
+    }
 
     // The hostile-vehicle scan (an entity query + raycasts) used to run from this behaviour's
     // start check EVERY tick for EVERY non-mortar NPC on the map, whether or not anything armoured
@@ -299,5 +316,8 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         /** How long a gunner stays at the gun after its last target, looking for the next. */
         const val LINGER_TICKS = 100
+
+        /** Wait for a moving support vehicle to stop before relinquishing its seat. */
+        const val DISMOUNT_SPEED_SQR = 0.0004
     }
 }

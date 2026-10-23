@@ -44,6 +44,7 @@ object GameTestRegistration {
             DroneFlightGameTests::class.java,
             ObserverLookGameTests::class.java,
             VehicleSeatGameTests::class.java,
+            VehicleSupportOrderGameTests::class.java,
             MarchRouteGameTests::class.java,
             NoticingGameTests::class.java,
         )
