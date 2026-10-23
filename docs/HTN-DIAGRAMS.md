@@ -47,7 +47,7 @@ flowchart LR
     A_C --> A_RG["front says rear guard"]:::case --> D_RG["rear guard"]:::duty
 
     T1 --> O_DEF(["DEFEND, or PATROL without a route"]):::task
-    O_DEF --> F_SEN["machine gunner or sniper<br/>with ammo, not following a player"]:::case --> D_OB["observe from a height post<br/>round the objective"]:::duty
+    O_DEF --> F_SEN["machine gunner or sniper<br/>with ammo, not following a player,<br/>arrived at the objective or already on its post"]:::case --> D_OB["observe from a height post<br/>round the objective"]:::duty
     O_DEF --> F_NC["anyone else, no contact"]:::case --> D_FO3["follow the order:<br/>go to and hold the objective"]:::duty
     O_DEF --> F_C["anyone else, in contact"]:::case --> D_FI3["fire where he stands"]:::duty
 

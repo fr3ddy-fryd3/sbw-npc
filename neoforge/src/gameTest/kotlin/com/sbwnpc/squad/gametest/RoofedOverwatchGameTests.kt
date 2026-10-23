@@ -184,7 +184,10 @@ object RoofedOverwatchGameTests {
         val report = Path.of(System.getProperty("sbwnpc.gameTestReports"))
         val name = "${if (scaffolding) "scaffold" else "roofed"}-exit-$order-$mode-${onlySupport ?: "mixed"}"
         val trace = StringBuilder("tick,x,y,z,ladder,ground,collision,dy,nextX,nextY,nextZ,done,health,ammo,resupplying\n")
-        val destination = BlockPos(43, 2, 69)
+        // A retreat ends in DEFEND at its point, and a tower within the post search's reach of that
+        // point is a fair post for it (#166). So the retreat goes past that reach, where the sentry
+        // has to leave the tower for good.
+        val destination = if (mode == Departure.RETREAT) BlockPos(43, 2, 78) else BlockPos(43, 2, 69)
         var sentry: NpcEntity? = null
         var previousPost: Vec3? = null
         var departureTick = 0L
