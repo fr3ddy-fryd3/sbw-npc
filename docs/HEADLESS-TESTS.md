@@ -13,7 +13,7 @@ From the root of a clone:
 bash setup-minecraft-headless.sh
 ```
 
-[setup-minecraft-headless.sh](../setup-minecraft-headless.sh) prepares Java 21, Gradle 8.14.2,
+[setup-minecraft-headless.sh](../setup-minecraft-headless.sh) prepares Java 21, Gradle 9.5.0,
 SuperbWarfare and the NeoForge dependencies, then runs three server smoke scenes: a march over flat
 ground, climbing and descending a ladder, and machine gunners and snipers taking a small watchtower.
 It exits non-zero if a download, the build or a required scene fails. This checks the environment;
@@ -63,7 +63,7 @@ bash setup-minecraft-headless.sh --offline --report repeat
 `--unit --offline`, run `--unit` once with the network. To keep the Gradle cache between cloud
 sessions, set `GRADLE_USER_HOME` before running. Local tools and archives live in `build/headless/`.
 `HEADLESS_GRADLE_HEAP=4G` sets Gradle's memory, `HEADLESS_GRADLE_BIN=/path/gradle` uses an existing
-Gradle 8.14.2. The script limits the build to two workers and no parallel tasks.
+Gradle 9.5.0. The script limits the build to two workers and no parallel tasks.
 
 For manual commands, `source build/headless/env.sh`, then for example
 `"$HEADLESS_GRADLE_BIN" runGameTestServer -PgameTestFilter=moveAcrossFlatGround -PgameTestReportName=move`.

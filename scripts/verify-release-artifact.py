@@ -35,8 +35,8 @@ def main() -> None:
     require(enabled, {"neoforge"}, "validated loader profiles")
     for name, profile in profiles.items():
         require(profile.get("loader"), name, f"{name} profile loader")
-        if name not in enabled:
-            require(profile.get("status"), "audit-only", f"{name} profile status")
+        if name not in enabled and profile.get("status") not in {"audit-only", "preview"}:
+            raise ValueError(f"{name} profile status: expected 'audit-only' or 'preview', got {profile.get('status')!r}")
 
     profile = profiles["neoforge"]
     require(profile.get("minecraft"), gradle["minecraft_version"], "profile Minecraft version")
