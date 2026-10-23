@@ -92,6 +92,9 @@ internal class NativePositionAction(
     /** He stands on the post this action found, the anchor's or one on the way to it. */
     fun atPost(): Boolean = task.position?.let { FiringPostArrival.reached(npc.position(), it) } == true
 
+    // Where this action found him, from which a leg is measured.
+    private val legStart = npc.position()
+
     override fun start(now: Long): ActionUpdate {
         lastProgress = now
         DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=post_action_started duty={} job={} anchor={} focus={} hold={}", npc.uuid, intent.duty, task.job, task.anchor, task.focus, intent.hold)
@@ -143,8 +146,12 @@ internal class NativePositionAction(
             DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=post_action_completed duty={} position={}", npc.uuid, intent.duty, task.position)
             return ActionUpdate.Completed(listOf(ActionEvidence("physical_post_arrival", now, "${npc.uuid}:${task.position}")))
         }
-        // Holding, he keeps the spot he stands on, taken again if a hazard or a push cleared it.
-        if (intent.hold && task.position == null) task.position = npc.position()
+        // Holding, he keeps the spot he stands on, taken again once a push cleared it. Never a spot
+        // a grenade threatens: put straight back, the hazard check could never move him off it.
+        if (intent.hold && task.position == null) {
+            if (GrenadeHazard.threatens(npc.level() as ServerLevel, npc.position())) return deferred(now, "hold_spot_threatened")
+            task.position = npc.position()
+        }
         if (task.position == null || task.search != null) {
             val result = TacticalPositions.find(npc, task, view, TacticalPositions.Query(policy, claimOwner))
             when (result.outcome) {
@@ -170,9 +177,10 @@ internal class NativePositionAction(
             lastProgress = now
         }
         if (FiringPostArrival.reached(npc.position(), destination)) {
-            if (intent.duty.advancing && destination.distanceTo(task.anchor) > 4) {
+            if (intent.duty.advancing && !intent.hold && destination.distanceTo(task.anchor) > 4) {
                 // A leg of an advance by legs ends here: he fires from this post before the next rush.
-                if (intent.legs) {
+                // A post a few steps on is passed: a pause every two blocks crawled the attack.
+                if (intent.legs && destination.distanceTo(legStart) >= MIN_LEG) {
                     releasePath()
                     DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=leg_post_reached position={} toAnchor={}", npc.uuid, destination, "%.0f".format(destination.distanceTo(task.anchor)))
                     return ActionUpdate.Completed(listOf(ActionEvidence("leg_post_arrival", now, "${npc.uuid}:$destination")))
@@ -368,6 +376,9 @@ internal class NativePositionAction(
     }
 
     internal companion object {
+        /** The shortest leg of an advance by legs; a nearer post on the way is passed without a pause. */
+        private const val MIN_LEG = 8.0
+
         /** How far ahead an observer with no focus watches. */
         private const val IDLE_GAZE_DISTANCE = 8.0
 

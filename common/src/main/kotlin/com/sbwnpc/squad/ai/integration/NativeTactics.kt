@@ -213,9 +213,9 @@ object NativeTactics {
                             }
                         },
                         ActionBinding(DelegationAction.KEY) { ticket, task -> DelegationAction(ticket, task, ledger) },
-                        ActionBinding(TacticalDomain.FIRE_PAUSE) { ticket, leg ->
-                            require(ticket.owner.agent == leg.intent.actor)
-                            firePause(leg, requireNotNull(level.getEntity(leg.intent.actor.id) as? NpcEntity))
+                        ActionBinding(TacticalDomain.FIRE_PAUSE) { ticket, pause ->
+                            require(ticket.owner.agent == pause.actor)
+                            firePause(pause, requireNotNull(level.getEntity(pause.actor.id) as? NpcEntity))
                         },
                         ActionBinding(TacticalDomain.POSITION) { ticket, intent ->
                             require(ticket.owner.agent == intent.actor)
@@ -251,7 +251,7 @@ object NativeTactics {
          * nothing to fire at, or after [FIRE_PAUSE_TICKS]. Aim and fire stay with his gun
          * behaviour; this only holds him at the post meanwhile.
          */
-        private fun firePause(leg: MemberLeg, npc: NpcEntity) =
+        private fun firePause(pause: FirePause, npc: NpcEntity) =
             object : ActionExecution {
                 private var startedAt = 0L
                 private fun update(now: Long): ActionUpdate {
@@ -263,7 +263,7 @@ object NativeTactics {
                         else -> return ActionUpdate.Running
                     }
                     legs.merge(npc.uuid, 1, Int::plus)
-                    DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=fire_pause_done leg={} reason={} waited={}", npc.uuid, leg.number, reason, waited)
+                    DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=fire_pause_done leg={} reason={} waited={}", npc.uuid, pause.leg, reason, waited)
                     return ActionUpdate.Completed(listOf(ActionEvidence("fire_pause_$reason", now)))
                 }
                 override fun start(now: Long): ActionUpdate {
@@ -927,7 +927,9 @@ object NativeTactics {
             val id = AgentId(AgentLevel.NPC, npc.uuid)
             val agent = agents[id] ?: return
             val observation = facts(id, now)
-            if (agent.runtime.completed && actions[npc.uuid]?.reached() == false) agent.repair(observation)
+            // Not while a search runs: restarted every tick, a plan of more steps than one tick's
+            // planning work would never finish.
+            if (agent.runtime.completed && agent.status != PlanningStatus.PLANNING && actions[npc.uuid]?.reached() == false) agent.repair(observation)
             agent.tick(observation, planningWork = 4)
             actions[npc.uuid]?.maintainLook()
             report(agent, now)

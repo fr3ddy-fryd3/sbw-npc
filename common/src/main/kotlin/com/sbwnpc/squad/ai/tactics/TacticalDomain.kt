@@ -49,6 +49,13 @@ data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: 
 }
 /** The [number]th leg of a mover's advance by legs ([PositionIntent.legs]): a rush to the next post, then fire from it. */
 data class MemberLeg(val intent: PositionIntent, val number: Int)
+
+/**
+ * The fire from the post [leg] ended on. Only the actor and the leg's number: a squad revising his
+ * intent during the pause (a new focus, cover now required) must not cancel the pause and run the
+ * leg again.
+ */
+data class FirePause(val actor: AgentId, val leg: Int)
 data class TeamMission(val agent: AgentId, val members: List<PositionIntent>)
 data class SquadMission(val agent: AgentId, val teams: List<TeamMission>)
 data class AreaControlTask(val operation: java.util.UUID, val objective: Point3, val commands: Map<java.util.UUID, java.util.UUID>)
@@ -83,7 +90,7 @@ object TacticalDomain {
     val POSITION = ActionKey("npc.position", PositionIntent::class.java)
 
     /** Fire from the post a leg ended on, until he has fired or found nothing to fire at. */
-    val FIRE_PAUSE = ActionKey("npc.fire_pause", MemberLeg::class.java)
+    val FIRE_PAUSE = ActionKey("npc.fire_pause", FirePause::class.java)
     private val DELEGATE = TaskKey("delegate.task", DelegationTask::class.java)
 
     private fun delegate() =
@@ -159,7 +166,7 @@ object TacticalDomain {
     )
     private val POST = TaskKey("npc.post", PositionIntent::class.java)
     private val LEG = TaskKey("npc.leg", MemberLeg::class.java)
-    private val PAUSE = TaskKey("npc.fire_pause", MemberLeg::class.java)
+    private val PAUSE = TaskKey("npc.fire_pause", FirePause::class.java)
     val npc = HtnDomain(
         AgentLevel.NPC,
         listOf(
@@ -179,7 +186,7 @@ object TacticalDomain {
                         }
                     }, decompose = { intent, facts ->
                         val leg = MemberLeg(intent, facts.value(TacticalFacts.LEGS_DONE) ?: 0)
-                        TaskNetwork.sequence(LEG.call(leg), PAUSE.call(leg))
+                        TaskNetwork.sequence(LEG.call(leg), PAUSE.call(FirePause(intent.actor, leg.number)))
                     }),
                     Method("preferred_post", eligible = { intent ->
                         Condition { facts ->
@@ -240,12 +247,12 @@ object TacticalDomain {
             // Each leg has its own identity: a leg ended on its post is done, and the next one is a
             // new search from there, not the same execution carried on.
             PrimitiveTask(LEG) { leg -> position("leg:${leg.number}", leg.intent, Condition.test(TacticalFacts.AT_POST, "leg_post_not_reached") { it }) },
-            PrimitiveTask(PAUSE) { leg ->
+            PrimitiveTask(PAUSE) { pause ->
                 PrimitiveSpec(
-                    "fire:${leg.number}",
-                    ActionSpec(FIRE_PAUSE, leg, setOf(ResourceKey(leg.intent.actor, "motion")), timeoutTicks = FIRE_PAUSE_TIMEOUT),
+                    "fire:${pause.leg}",
+                    ActionSpec(FIRE_PAUSE, pause, setOf(ResourceKey(pause.actor, "motion")), timeoutTicks = FIRE_PAUSE_TIMEOUT),
                     TaskContract(maintain = Condition.test(TacticalFacts.MOVABLE, "higher_priority_action") { it }),
-                    planning = ownActor(leg.intent),
+                    planning = ownActor(pause.actor),
                 )
             },
         ),
@@ -269,11 +276,11 @@ object TacticalDomain {
                 timeoutTicks = if (intent.duty.commandsMovement) 1200 else Long.MAX_VALUE,
             ),
             TaskContract(maintain = maintain, completed = completed),
-            planning = ownActor(intent),
+            planning = ownActor(intent.actor),
         )
     }
 
-    private fun ownActor(intent: PositionIntent) = Condition { facts -> if (facts.owner == intent.actor) Verdict.Allowed else Verdict.Rejected("foreign_actor_intent") }
+    private fun ownActor(actor: AgentId) = Condition { facts -> if (facts.owner == actor) Verdict.Allowed else Verdict.Rejected("foreign_actor_intent") }
 
     /** An assault keeps running onto its ring or post: its men fire from there, not on the way. */
     private fun boundsByLegs(intent: PositionIntent) = intent.legs && intent.duty == CombatDuty.MOVE && !intent.assault && intent.focus != null
