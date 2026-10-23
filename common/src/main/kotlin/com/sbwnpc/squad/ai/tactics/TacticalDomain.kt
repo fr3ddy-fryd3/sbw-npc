@@ -67,6 +67,15 @@ data class FirePause(val actor: AgentId, val leg: Int)
  * Fixed for the whole turn, so the firing half's tasks stay the same while it stands.
  */
 data class BoundTurn(val number: Int, val moving: Set<java.util.UUID>, val posts: Map<java.util.UUID, Point3>)
+
+/**
+ * What a squad keeps for its strategy to shape the members' tasks with, fixed while the strategy
+ * holds so the tasks stay the same.
+ *
+ * @property turn the bounding turn under [CombatStrategy.BOUND_OVERWATCH].
+ * @property rally where the squad gathers under [CombatStrategy.REGROUP].
+ */
+data class SquadShaping(val turn: BoundTurn? = null, val rally: Point3? = null)
 data class TeamMission(val agent: AgentId, val members: List<PositionIntent>)
 data class SquadMission(val agent: AgentId, val teams: List<TeamMission>)
 
@@ -117,6 +126,9 @@ object TacticalFacts {
 
     /** The squad's current turn while it advances by [CombatStrategy.BOUND_OVERWATCH]. */
     val BOUND_TURN = FactKey("squad.bound_turn", BoundTurn::class.java)
+
+    /** Where the squad gathers while it regroups under [CombatStrategy.REGROUP]. */
+    val RALLY = FactKey("squad.rally", Point3::class.java)
 
     /** The half covering his rush is firing, or has had long enough to start; see [PositionIntent.awaitSupport]. */
     val SUPPORT_FIRING = FactKey("actor.support_firing", Boolean::class.javaObjectType)
@@ -198,14 +210,15 @@ object TacticalDomain {
                         eligible = { SquadApproaches.eligible(approach) },
                         score = { _, facts -> SquadApproaches.score(approach, facts) },
                         decompose = { (mission, strategy), facts ->
-                            // Only a bounding squad has a turn; for any other the fact is absent and never changes.
-                            val turn = facts.value(TacticalFacts.BOUND_TURN)
+                            // Only a bounding squad has a turn and only a regrouping one a rally; otherwise the facts are
+                            // absent and never change.
+                            val shaping = SquadShaping(facts.value(TacticalFacts.BOUND_TURN), facts.value(TacticalFacts.RALLY))
                             val tasks = mission.teams.map { team ->
                                 val selected = team.copy(
                                     // A member assaulting for the operation keeps its role whatever the squad's own strategy,
                                     // and so does one moving for his order itself: HOLD turned a following squad's bounds
                                     // back into fire from where it stood (#116).
-                                    members = team.members.map { intent -> if (intent.assault || intent.ordered) intent else strategy.rules.shape(intent, turn) },
+                                    members = team.members.map { intent -> if (intent.assault || intent.ordered) intent else strategy.rules.shape(intent, shaping) },
                                 )
                                 DelegationTask(team.agent, TEAM.call(selected))
                             }
@@ -398,8 +411,12 @@ object TacticalDomain {
  *   make it withdraw (#57).
  * @property movers how many of its men advance by legs ([PositionIntent.legs]) before any
  *   strategy reshapes their tasks.
+ * @property flanking some of its men are on the arc round a flank.
+ * @property scattered a third of its men, scouts and flankers aside, are farther from it than
+ *   twice its perimeter radius.
+ * @property gathered all those men are within its perimeter radius.
  */
-data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean, val reinforced: Boolean = false, val movers: Int = 0)
+data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean, val reinforced: Boolean = false, val movers: Int = 0, val flanking: Boolean = false, val scattered: Boolean = false, val gathered: Boolean = false)
 /**
  * How a squad's strategy methods choose between the [CombatStrategy] entries.
  *

@@ -43,6 +43,12 @@ object NativeTactics {
     /** A rush waits this long at most for the firing half to fire, 5 s. */
     private const val SUPPORT_FALLBACK_TICKS = 100L
 
+    /** A squad smaller than this is never counted as scattered. */
+    private const val REGROUP_MIN_MEN = 3
+
+    /** How far behind its centre, away from the enemy, a regrouping squad gathers. */
+    private const val REGROUP_PULLBACK = 12.0
+
     /** A flank found blocked is not tried again for this long, 30 s. */
     private const val FLANK_BLOCK_TICKS = 600L
 
@@ -175,6 +181,9 @@ object NativeTactics {
         // Each bounding squad's turn, when it began, and the legs its movers had finished by then.
         private class BoundState(val turn: BoundTurn, val startedAt: Long, val legsAtStart: Map<UUID, Int>)
         private val boundTurns = HashMap<UUID, BoundState>()
+
+        // Where each regrouping squad gathers, fixed when it began to regroup.
+        private val rallies = HashMap<UUID, Point3>()
 
         /** The last bound logged for each following squad in a fight. */
         private val followBeats = HashMap<UUID, Long>()
@@ -339,6 +348,7 @@ object NativeTactics {
             if (id.level == AgentLevel.SQUAD) {
                 situations[id.id]?.let { result = result.observe(TacticalFacts.SITUATION, it) }
                 boundTurns[id.id]?.let { result = result.observe(TacticalFacts.BOUND_TURN, it.turn) }
+                rallies[id.id]?.let { result = result.observe(TacticalFacts.RALLY, it) }
                 result = result.observe(TacticalFacts.FLANK_OPEN, flankOpen(id.id, now))
                 approaches[id.id]?.let { result = result.observe(TacticalFacts.APPROACH, it) }
                 strategies[id.id]?.let { (strategy, since) ->
@@ -409,6 +419,7 @@ object NativeTactics {
                     missions.remove(id)
                     situations.remove(id)
                     boundTurns.remove(id)
+                    rallies.remove(id)
                     approaches.remove(id)
                     flankable.remove(id)
                     flankBlockedAt.remove(id)
@@ -988,8 +999,17 @@ object NativeTactics {
                     DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=follow_bound running={} of={}", saved.id, intents.count { it.duty == CombatDuty.MOVE }, intents.size)
                 }
                 val movers = intents.filter { it.legs && it.duty == CombatDuty.MOVE && !it.assault && !it.ordered }
-                situations[saved.id] = situation.copy(movers = movers.size)
+                val radius = com.sbwnpc.squad.combat.SquadFormation.perimeterRadius(view.members.size)
+                val distances = intents.filter { it.duty != CombatDuty.SEARCH && it.duty != CombatDuty.FOLLOW_ORDER && it.actor.id !in waypoints }
+                    .mapNotNull { intent -> view.members.firstOrNull { it.id == intent.actor.id }?.position?.let { hypot(it.x - view.center.x, it.z - view.center.z) } }
+                situations[saved.id] = situation.copy(
+                    movers = movers.size,
+                    flanking = view.members.any { it.id in waypoints },
+                    scattered = distances.size >= REGROUP_MIN_MEN && distances.count { it > 2 * radius } * 3 >= distances.size,
+                    gathered = distances.all { it <= radius },
+                )
                 updateBoundTurn(saved.id, strategy, movers, view, focus, now)
+                updateRally(saved.id, strategy, view.center, focus)
                 val teams = teamAllocators.getOrPut(saved.id, ::TaskTeamAllocator).assign(saved.id, intents)
                 SquadMission(AgentId(AgentLevel.SQUAD, saved.id), teams).also { missions[saved.id] = it }
             }
@@ -1038,6 +1058,19 @@ object NativeTactics {
             if (stuck * 2 < group.size || flankBlockedAt[squad]?.let { now - it < FLANK_BLOCK_TICKS } == true) return
             flankBlockedAt[squad] = now
             DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=flank_blocked stuck={} of={}", squad, stuck, group.size)
+        }
+
+        /** Fixes where [squad] gathers once it regroups: [REGROUP_PULLBACK] behind its centre, away from [focus]. */
+        private fun updateRally(squad: UUID, strategy: CombatStrategy?, center: Vec3, focus: Vec3?) {
+            if (strategy != CombatStrategy.REGROUP) {
+                rallies.remove(squad)
+                return
+            }
+            if (squad in rallies) return
+            val away = focus?.let { Vec3(center.x - it.x, 0.0, center.z - it.z) }?.takeIf { it.lengthSqr() > 1.0E-4 }?.normalize()
+            val rally = away?.let { center.add(it.scale(REGROUP_PULLBACK)) } ?: center
+            rallies[squad] = rally.point()
+            DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=regroup rally={}", squad, net.minecraft.core.BlockPos.containing(rally).toShortString())
         }
 
         /** The movers' ids in order along the front, across the line from [center] to [focus]. */

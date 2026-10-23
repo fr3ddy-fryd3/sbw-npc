@@ -21,10 +21,10 @@ interface SquadStrategy {
     fun score(situation: CombatSituation): Double
 
     /**
-     * A member's [intent] as this strategy has it carried out, in the squad's bounding [turn] if it
-     * has one. A member assaulting for the operation is never passed in.
+     * A member's [intent] as this strategy has it carried out, with what the squad keeps for it in
+     * [shaping]. A member assaulting for the operation is never passed in.
      */
-    fun shape(intent: PositionIntent, turn: BoundTurn?): PositionIntent
+    fun shape(intent: PositionIntent, shaping: SquadShaping): PositionIntent
 }
 
 /** The squad strategies, by name; each carries its [rules]. */
@@ -34,6 +34,7 @@ enum class CombatStrategy(val rules: SquadStrategy) {
     GAIN_HEIGHT(GainHeight),
     WITHDRAW(Withdraw),
     BOUND_OVERWATCH(BoundingOverwatch),
+    REGROUP(Regroup),
 }
 
 /** Go on with the tasks the team planned, while the attack can be carried on or nobody is in contact. */
@@ -44,7 +45,7 @@ private object Advance : SquadStrategy {
 
     override fun score(situation: CombatSituation) = BASE + situation.readyFraction * READINESS
 
-    override fun shape(intent: PositionIntent, turn: BoundTurn?) = intent
+    override fun shape(intent: PositionIntent, shaping: SquadShaping) = intent
 
     private const val BASE = 0.55
 
@@ -60,7 +61,7 @@ private object Hold : SquadStrategy {
 
     override fun score(situation: CombatSituation) = if (!situation.offensive && situation.contact) DEFENDING else OTHERWISE
 
-    override fun shape(intent: PositionIntent, turn: BoundTurn?) = if (intent.duty == CombatDuty.MOVE) intent.copy(duty = CombatDuty.FIRE, anchor = intent.origin, requireCover = false) else intent
+    override fun shape(intent: PositionIntent, shaping: SquadShaping) = if (intent.duty == CombatDuty.MOVE) intent.copy(duty = CombatDuty.FIRE, anchor = intent.origin, requireCover = false) else intent
 
     private const val DEFENDING = 0.9
     private const val OTHERWISE = 0.4
@@ -74,7 +75,7 @@ private object GainHeight : SquadStrategy {
 
     override fun score(situation: CombatSituation) = SCORE
 
-    override fun shape(intent: PositionIntent, turn: BoundTurn?) = intent.copy(minimumHeight = intent.origin.y - DROP, elevationWeight = ELEVATION_WEIGHT)
+    override fun shape(intent: PositionIntent, shaping: SquadShaping) = intent.copy(minimumHeight = intent.origin.y - DROP, elevationWeight = ELEVATION_WEIGHT)
 
     private const val SCORE = 0.93
 
@@ -92,7 +93,7 @@ private object Withdraw : SquadStrategy {
 
     override fun score(situation: CombatSituation) = SCORE
 
-    override fun shape(intent: PositionIntent, turn: BoundTurn?): PositionIntent {
+    override fun shape(intent: PositionIntent, shaping: SquadShaping): PositionIntent {
         if (intent.duty == CombatDuty.FOLLOW_ORDER) return intent
         val dx = intent.origin.x - (intent.focus?.x ?: intent.anchor.x)
         val dz = intent.origin.z - (intent.focus?.z ?: intent.anchor.z + 1)
@@ -142,7 +143,8 @@ private object BoundingOverwatch : SquadStrategy {
 
     override fun score(situation: CombatSituation) = (if (situation.incoming) UNDER_FIRE else UNTOUCHED) + situation.readyFraction * READINESS
 
-    override fun shape(intent: PositionIntent, turn: BoundTurn?): PositionIntent {
+    override fun shape(intent: PositionIntent, shaping: SquadShaping): PositionIntent {
+        val turn = shaping.turn
         if (turn == null || !intent.legs || intent.duty != CombatDuty.MOVE) return intent
         if (intent.actor.id in turn.moving) return intent.copy(requireCover = false, awaitSupport = true)
         val post = turn.posts[intent.actor.id] ?: intent.origin
@@ -157,4 +159,29 @@ private object BoundingOverwatch : SquadStrategy {
     private const val UNDER_FIRE = 0.62
     private const val UNTOUCHED = 0.3
     private const val READINESS = 0.3
+}
+
+/**
+ * A scattered attack gathers at a rally point behind it ([SquadShaping.rally]) before it goes on.
+ *
+ * Only while it does not flank: a manoeuvre group round the flank is far from the rest on purpose.
+ * It ends once every man is back near the squad ([CombatSituation.gathered]), then the squad
+ * chooses again.
+ */
+private object Regroup : SquadStrategy {
+    override val reason = "scattered"
+
+    override fun allowed(situation: CombatSituation) = situation.offensive && situation.scattered && !situation.gathered && !situation.flanking
+
+    override fun score(situation: CombatSituation) = SCORE
+
+    override fun shape(intent: PositionIntent, shaping: SquadShaping): PositionIntent {
+        val rally = shaping.rally
+        if (rally == null || intent.duty == CombatDuty.FOLLOW_ORDER || intent.duty == CombatDuty.SEARCH) return intent
+        return intent.copy(duty = CombatDuty.MOVE, anchor = rally, legs = false, minimumHeight = null, elevationWeight = 0.0)
+    }
+
+    // Above an advance held by a squad most of which is not fighting (0.67 + 0.2 per readiness),
+    // below one held by a squad fighting as one: men who fire well where they are stay there.
+    private const val SCORE = 0.8
 }
