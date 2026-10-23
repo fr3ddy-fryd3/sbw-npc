@@ -76,7 +76,9 @@ internal class NativeCombatWork(private val helper: GameTestHelper, members: Lis
         NeoForge.EVENT_BUS.addListener(pre)
         NeoForge.EVENT_BUS.addListener(post)
     }
-    fun report() {
+
+    /** [enforce] false only records the numbers: a fight is measured, not held to the movement scene's search limits. */
+    fun report(enforce: Boolean = true) {
         val directory = Path.of(System.getProperty("sbwnpc.gameTestReports"))
         val duration = helper.tick.coerceAtLeast(1).toDouble()
         fun maximumSecond(row: ActorWork): Int =
@@ -108,6 +110,7 @@ internal class NativeCombatWork(private val helper: GameTestHelper, members: Lis
             Debug trace disabled. Timing includes instrumentation and headless server machinery; not client FPS or a before/after benchmark.
             """.trimIndent() + "\n",
         )
+        if (!enforce) return
         helper.assertTrue(actors.values.none { it.duplicateSameTick > 0 }, "Identical native route was rebuilt repeatedly within a tick; see operation-work.csv")
         helper.assertTrue(actors.values.all { it.maximumTickSearches <= 2 }, "NPC repeatedly launched native searches within one tick; see operation-work.csv")
         helper.assertTrue(actors.values.all { maximumSecond(it) <= 20 }, "NPC rebuilt more than 20 native paths in one simulated second; see operation-work.csv")
