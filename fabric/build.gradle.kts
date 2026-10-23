@@ -19,7 +19,10 @@ repositories {
     maven {
         name = "Pinned SBW (ReFabricated)"
         url = uri("https://api.modrinth.com/maven")
-        content { includeModule("maven.modrinth", "XU8zWdjt") }
+        content {
+            // ReFabricated, and the mods its own API exposes in signatures.
+            listOf("XU8zWdjt", "8BmcQJ2H", "ohNO6lps", "5aaWibi9", "K01OU20C", "9s6osm5g").forEach { includeModule("maven.modrinth", it) }
+        }
     }
     maven {
         name = "SmartBrainLib (Cloudsmith)"
@@ -84,6 +87,10 @@ dependencies {
 
     // Immutable release input; the adapter in this module compiles against it.
     modCompileOnly(sbwCoordinate)
+    // Types in ReFabricated's signatures: GeckoLib (drones), the config port (explosion settings and
+    // our own config), Trinkets and Cardinal Components (player data), Cloth Config. Versions as in the local pack.
+    listOf("8BmcQJ2H:tmxM7U4W", "ohNO6lps:N5qzq0XV", "5aaWibi9:JagCscwi", "K01OU20C:nLsCe2VD", "9s6osm5g:HpMb5wGb")
+        .forEach { modCompileOnly("maven.modrinth:$it") }
 }
 
 tasks.withType<JavaCompile> { options.encoding = "UTF-8" }
