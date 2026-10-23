@@ -76,6 +76,7 @@ internal class NativeCombatWork(private val helper: GameTestHelper, members: Lis
         NeoForge.EVENT_BUS.addListener(pre)
         NeoForge.EVENT_BUS.addListener(post)
     }
+
     /** [enforce] false only records the numbers: a fight is measured, not held to the movement scene's search limits. */
     fun report(enforce: Boolean = true) {
         val directory = Path.of(System.getProperty("sbwnpc.gameTestReports"))

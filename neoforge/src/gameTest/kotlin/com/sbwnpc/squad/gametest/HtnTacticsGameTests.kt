@@ -116,8 +116,7 @@ object HtnTacticsGameTests {
     fun htnSixHundredNpcCombatLoad(helper: GameTestHelper) {
         val scene = CombatIdleGameTests.Scene(helper, "htn-600-combat", recordTrace = false)
         val manager = SquadManager.get(helper.level)
-        fun block(column: Int, row: Int, faction: com.sbwnpc.squad.npc.SquadFaction) =
-            (0 until 30).map { index -> scene.spawn(Vec3(10.5 + column * 40 + index % 6 * 4, 1.0, 10.5 + row * 40 + index / 6 * 4), faction = faction) }
+        fun block(column: Int, row: Int, faction: com.sbwnpc.squad.npc.SquadFaction) = (0 until 30).map { index -> scene.spawn(Vec3(10.5 + column * 40 + index % 6 * 4, 1.0, 10.5 + row * 40 + index / 6 * 4), faction = faction) }
         val attackers = (0 until 10).map { block(it % 2, it / 2, com.sbwnpc.squad.npc.SquadFaction.PIG) }
         val defenders = (0 until 10).map { block(3 + it % 2, it / 2, com.sbwnpc.squad.npc.SquadFaction.COW) }
         val all = (attackers + defenders).flatten()
