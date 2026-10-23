@@ -1,8 +1,8 @@
 package com.sbwnpc.squad.block
 
-import com.mojang.serialization.MapCodec
 import com.sbwnpc.squad.block.entity.SupplyBlockEntity
 import com.sbwnpc.squad.block.entity.SupplyPoints
+import com.sbwnpc.squad.compat.VersionedEntityBlock
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.init.ModBlockEntities
 import com.sbwnpc.squad.network.OpenSupplyScreenPayload
@@ -46,14 +46,12 @@ import net.minecraft.world.phys.BlockHitResult
  * Blocks placed before it did anything have no block entity and stay inert until put down again.
  */
 class SupplyBlock :
-    BaseEntityBlock(
+    VersionedEntityBlock(
         Properties.of().mapColor(MapColor.COLOR_GRAY).strength(4.0f, 8.0f).sound(SoundType.METAL),
     ) {
     init {
         registerDefaultState(stateDefinition.any().setValue(FACING, Direction.NORTH))
     }
-
-    override fun codec(): MapCodec<SupplyBlock> = CODEC
 
     override fun getRenderShape(state: BlockState) = RenderShape.MODEL
 
@@ -92,7 +90,7 @@ class SupplyBlock :
 
     override fun mirror(state: BlockState, mirror: Mirror): BlockState = state.rotate(mirror.getRotation(state.getValue(FACING)))
 
-    override fun useWithoutItem(
+    override fun onUse(
         state: BlockState,
         level: Level,
         pos: BlockPos,
@@ -158,6 +156,5 @@ class SupplyBlock :
             tag.put("Kits", kits)
             return tag
         }
-        val CODEC: MapCodec<SupplyBlock> = simpleCodec { SupplyBlock() }
     }
 }

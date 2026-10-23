@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.block.entity
 
+import com.sbwnpc.squad.compat.VersionedBlockEntity
 import com.sbwnpc.squad.config.Settings
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModBlockEntities
@@ -14,7 +15,6 @@ import com.sbwnpc.squad.squad.SquadDeployment
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.core.BlockPos
-import net.minecraft.core.HolderLookup
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
 import net.minecraft.server.level.ServerLevel
@@ -24,7 +24,7 @@ import net.minecraft.world.level.block.state.BlockState
 import java.util.UUID
 
 /** Deploy releases new places together; only replacements use the saved production clock. */
-class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlockEntities.BARRACKS.get(), pos, state) {
+class BarracksBlockEntity(pos: BlockPos, state: BlockState) : VersionedBlockEntity(ModBlockEntities.BARRACKS.get(), pos, state) {
     var owner: UUID? = null
     var config: CompoundTag? = null
         private set
@@ -171,8 +171,7 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
         }
     }
 
-    override fun saveAdditional(tag: CompoundTag, registries: HolderLookup.Provider) {
-        super.saveAdditional(tag, registries)
+    override fun writeData(tag: CompoundTag) {
         owner?.let { tag.putUUID("Owner", it) }
         config?.let { tag.put("Config", it) }
         garrison?.let { tag.putUUID("Garrison", it) }
@@ -181,8 +180,7 @@ class BarracksBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlo
         tag.putBoolean("ReconfigurePending", reconfigurePending)
     }
 
-    override fun loadAdditional(tag: CompoundTag, registries: HolderLookup.Provider) {
-        super.loadAdditional(tag, registries)
+    override fun readData(tag: CompoundTag) {
         owner = if (tag.hasUUID("Owner")) tag.getUUID("Owner") else null
         config = if (tag.contains("Config")) tag.getCompound("Config") else null
         garrison = if (tag.hasUUID("Garrison")) tag.getUUID("Garrison") else null

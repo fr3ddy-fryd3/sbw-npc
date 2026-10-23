@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.item
 
+import com.sbwnpc.squad.compat.VersionedItem
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.network.OpenCommandScreenPayload
 import com.sbwnpc.squad.network.OpenFinishRoutePayload
@@ -35,9 +36,7 @@ import net.minecraft.world.InteractionResultHolder
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.Item
-import net.minecraft.world.item.Item.TooltipContext
 import net.minecraft.world.item.ItemStack
-import net.minecraft.world.item.TooltipFlag
 import net.minecraft.world.item.context.UseOnContext
 import net.minecraft.world.level.Level
 
@@ -56,7 +55,7 @@ import net.minecraft.world.level.Level
  * BlockItem and its own bare-hand right-click interaction — it doesn't go through this tool at all
  * (per explicit user call: no multitool should be required to place or use it).
  */
-class SquadToolItem : Item(Properties().stacksTo(1)) {
+class SquadToolItem : VersionedItem(Properties().stacksTo(1)) {
 
     override fun use(level: Level, player: Player, hand: InteractionHand): InteractionResultHolder<ItemStack> {
         val stack = player.getItemInHand(hand)
@@ -223,7 +222,7 @@ class SquadToolItem : Item(Properties().stacksTo(1)) {
 
     private fun actionbar(player: Player, msg: String, style: Style) = player.displayClientMessage(Component.literal(msg).withStyle(style), true)
 
-    override fun appendHoverText(stack: ItemStack, context: TooltipContext, tooltip: MutableList<Component>, flag: TooltipFlag) {
+    override fun addTooltip(stack: ItemStack, tooltip: MutableList<Component>) {
         val m = when (mode(stack)) {
             MODE_COMMAND -> "COMMAND"
             else -> "RECRUIT"
