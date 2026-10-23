@@ -1,13 +1,12 @@
 package com.sbwnpc.squad.combat.tactics
 
-import com.sbwnpc.squad.ai.tactics.OperationTactics
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.world.phys.Vec3
 
 /** Protected support posts around a fixed defensive assignment, never around each new stop. */
 object DefensiveOverwatch {
-    const val RADIUS = OperationTactics.SENTRY_REACH
+    const val RADIUS = 32.0
     fun holdsArea(view: TacticalSnapshot): Boolean = view.order == SquadOrder.DEFEND || (view.order == SquadOrder.PATROL && !view.hasPatrolRoute)
 
     fun within(anchor: Vec3, point: Vec3): Boolean =

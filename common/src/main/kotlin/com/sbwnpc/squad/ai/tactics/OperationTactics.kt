@@ -41,6 +41,8 @@ data class AttackMember(val id: UUID, val position: Point3, val ready: Boolean)
  * @property reachedMove the member's current MOVE post is reached.
  * @property wasFiring the member's previous intent was FIRE.
  * @property wasObserving the member's previous intent was OBSERVE at this [objective].
+ * @property arrival on DEFEND or route-less PATROL, how near the [objective] he counts as there, see
+ *   [com.sbwnpc.squad.combat.SquadFormation.defendArrivalRadius].
  * @property flanking the member is on his way round the objective to his sector, see
  *   [ApproachSectors.arcWaypoint]; [proposal] holds the next waypoint.
  */
@@ -58,6 +60,7 @@ data class DutyInputs(
     val hasPatrolRoute: Boolean,
     val reachedMove: Boolean,
     val wasFiring: Boolean,
+    val arrival: Double,
     val flanking: Boolean = false,
     val wasObserving: Boolean = false,
     /** On a FOLLOW order: the objective is a player who walks away from any post round it. */
@@ -70,16 +73,15 @@ data class DutyInputs(
     val followRide: Boolean = false,
 ) {
     /**
-     * Whether a sentry takes his height post: near enough his objective, or none, or already on duty for it.
+     * Whether a sentry takes his height post: at his objective, or with none, or already on duty for it.
      *
-     * Only taking the duty is bounded. Once observing for this objective he keeps it wherever the post
-     * search sends him: that search measures from dry ground beside the objective, which may stand up to
-     * [com.sbwnpc.squad.combat.tactics.DryGround.REACH] away, and his route to the post may swing wider still. Bounded
-     * on the way out too, a sentry on a post at the search's edge marched back to the squad, took the duty
-     * again inside the entry margin and climbed to the same post, over and over (#166, in-game 23.10).
+     * He takes it once he has arrived, as a defender takes his place on the ring, and keeps it for the
+     * same objective wherever the post search sends him. Distance bands in between flipped him: a post
+     * on the search's edge stood a fraction of a block past the band, and he climbed down to the squad
+     * and up to the same post again, over and over (#166, in-game 23.10).
      */
-    val inSentryReach: Boolean
-        get() = wasObserving || objective?.let { hypot(position.x - it.x, position.z - it.z) <= OperationTactics.SENTRY_REACH - OperationTactics.SENTRY_ENTRY_MARGIN } != false
+    val takesSentryPost: Boolean
+        get() = wasObserving || objective?.let { hypot(position.x - it.x, position.z - it.z) <= arrival } != false
 }
 
 data class DutyChoice(val duty: CombatDuty, val anchor: Point3)
@@ -94,12 +96,6 @@ object OperationTactics {
 
     /** A mover this near (horizontally) his front slot has arrived and fires from where he is. */
     const val MOVE_ARRIVAL = 8.0
-
-    /** Farthest from the objective a sentry's height post may stand, and so the reach of its search. */
-    const val SENTRY_REACH = 32.0
-
-    /** How far inside [SENTRY_REACH] a marching sentry comes before he turns to his height post. */
-    const val SENTRY_ENTRY_MARGIN = 8.0
 
     /** Closing in, a mover halves its distance to the point's nearest defender, down to this. */
     const val CLOSE_DISTANCE = 20.0
@@ -227,11 +223,11 @@ object OperationTactics {
                 // hid (#73). Out of ammunition for his main weapon he is no sentry, and a height is no
                 // post round an objective that walks away from it: gunners following their player held
                 // a roof while he left (#116, in-game 20.10).
-                // A height post is searched round the objective, so far from it he first marches there
-                // with the squad: searched from a tower 44-155 blocks off, no post qualified and he never
-                // left the tower (#166).
+                // A height post is searched round the objective, so he first marches there with the
+                // squad: searched from a tower 44-155 blocks off, no post qualified and he never left
+                // the tower (#166).
                 (order == TacticalOrder.DEFEND || (order == TacticalOrder.PATROL && !hasPatrolRoute)) && heightRole && primaryAmmo && !following &&
-                    inSentryReach -> CombatDuty.OBSERVE
+                    takesSentryPost -> CombatDuty.OBSERVE
 
                 !inContact || order in setOf(TacticalOrder.RETREAT, TacticalOrder.MOVE, TacticalOrder.BARRAGE) -> CombatDuty.FOLLOW_ORDER
 

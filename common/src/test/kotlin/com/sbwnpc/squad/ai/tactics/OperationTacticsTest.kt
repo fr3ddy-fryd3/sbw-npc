@@ -117,12 +117,15 @@ class OperationTacticsTest {
     private val here = Point3(40.0, 64.0, 100.0)
     private val nearObjective = Point3(80.0, 64.0, 100.0)
 
+    /** How near the objective a sentry counts as arrived in these tests. */
+    private val arrival = 22.0
+
     /** A sentry's duty under [order] where he stands [at], [observing] already or not. */
-    private fun sentry(order: TacticalOrder, at: Point3, inContact: Boolean, observing: Boolean = false) = OperationTactics.duty(DutyInputs(order, at, FrontProposal(CombatDuty.FIRE, at, null), objective, null, inContact, elsewhere = false, scout = false, heightRole = true, primaryAmmo = true, hasPatrolRoute = false, reachedMove = false, wasFiring = false, wasObserving = observing), fireReach = 40.0, approachOffset = 10.0)
-    private fun duty(order: TacticalOrder = TacticalOrder.ATTACK, proposal: FrontProposal = FrontProposal(CombatDuty.FIRE, Point3(60.0, 64.0, 100.0), null), inContact: Boolean = true, scout: Boolean = false, heightRole: Boolean = false, primaryAmmo: Boolean = true, reachedMove: Boolean = false, wasFiring: Boolean = false, elsewhere: Boolean = false) = OperationTactics.duty(DutyInputs(order, here, proposal, objective, Point3(90.0, 64.0, 100.0), inContact, elsewhere, scout, heightRole, primaryAmmo, hasPatrolRoute = false, reachedMove = reachedMove, wasFiring = wasFiring), fireReach = 40.0, approachOffset = 10.0)
+    private fun sentry(order: TacticalOrder, at: Point3, inContact: Boolean, observing: Boolean = false) = OperationTactics.duty(DutyInputs(order, at, FrontProposal(CombatDuty.FIRE, at, null), objective, null, inContact, elsewhere = false, scout = false, heightRole = true, primaryAmmo = true, hasPatrolRoute = false, reachedMove = false, wasFiring = false, arrival = arrival, wasObserving = observing), fireReach = 40.0, approachOffset = 10.0)
+    private fun duty(order: TacticalOrder = TacticalOrder.ATTACK, proposal: FrontProposal = FrontProposal(CombatDuty.FIRE, Point3(60.0, 64.0, 100.0), null), inContact: Boolean = true, scout: Boolean = false, heightRole: Boolean = false, primaryAmmo: Boolean = true, reachedMove: Boolean = false, wasFiring: Boolean = false, elsewhere: Boolean = false) = OperationTactics.duty(DutyInputs(order, here, proposal, objective, Point3(90.0, 64.0, 100.0), inContact, elsewhere, scout, heightRole, primaryAmmo, hasPatrolRoute = false, reachedMove = reachedMove, wasFiring = wasFiring, arrival = arrival), fireReach = 40.0, approachOffset = 10.0)
 
     @Test fun `a following squad in a fight runs to its places by bounds while the other half fires`() {
-        val follower = DutyInputs(TacticalOrder.DEFEND, here, FrontProposal(CombatDuty.FIRE, here, null), objective, null, inContact = true, elsewhere = false, scout = false, heightRole = false, primaryAmmo = true, hasPatrolRoute = false, reachedMove = false, wasFiring = false, following = true)
+        val follower = DutyInputs(TacticalOrder.DEFEND, here, FrontProposal(CombatDuty.FIRE, here, null), objective, null, inContact = true, elsewhere = false, scout = false, heightRole = false, primaryAmmo = true, hasPatrolRoute = false, reachedMove = false, wasFiring = false, arrival = arrival, following = true)
         val slot = Point3(objective!!.x + 3.0, objective.y, objective.z)
         val running = OperationTactics.duty(follower.copy(followBound = true, followSlot = slot), fireReach = 40.0, approachOffset = 10.0)
         assertEquals(CombatDuty.MOVE, running.duty)
@@ -150,21 +153,19 @@ class OperationTacticsTest {
         assertEquals(DutyChoice(CombatDuty.FOLLOW_ORDER, objective), sentry(TacticalOrder.PATROL, here, inContact = false))
     }
 
-    @Test fun `a sentry on the edge of his post search does not flip back to marching`() {
-        val edge = Point3(objective!!.x - 28.0, objective.y, objective.z)
-        assertEquals(CombatDuty.FOLLOW_ORDER, sentry(TacticalOrder.DEFEND, edge, inContact = false).duty)
-        assertEquals(CombatDuty.OBSERVE, sentry(TacticalOrder.DEFEND, edge, inContact = false, observing = true).duty)
-        // Standing on a post found at the very edge of the search, a little past its block centre.
-        val onEdgePost = Point3(objective.x - OperationTactics.SENTRY_REACH - 0.2, objective.y, objective.z)
-        assertEquals(CombatDuty.OBSERVE, sentry(TacticalOrder.DEFEND, onEdgePost, inContact = false, observing = true).duty)
-        // A post searched round dry ground beside an objective in water stands farther still.
-        val besideWater = Point3(objective.x - 60.0, objective.y, objective.z)
-        assertEquals(CombatDuty.OBSERVE, sentry(TacticalOrder.DEFEND, besideWater, inContact = false, observing = true).duty)
-        assertEquals(CombatDuty.FOLLOW_ORDER, sentry(TacticalOrder.DEFEND, besideWater, inContact = false).duty)
+    @Test fun `a sentry takes his height post once arrived and keeps it wherever the post is`() {
+        val onTheWay = Point3(objective!!.x - arrival - 1.0, objective.y, objective.z)
+        assertEquals(CombatDuty.FOLLOW_ORDER, sentry(TacticalOrder.DEFEND, onTheWay, inContact = false).duty)
+        val arrived = Point3(objective.x - arrival + 1.0, objective.y, objective.z)
+        assertEquals(CombatDuty.OBSERVE, sentry(TacticalOrder.DEFEND, arrived, inContact = false).duty)
+        // On a post at the search's edge, a little past its block centre, or round dry ground beside water.
+        for (post in listOf(32.2, 60.0)) {
+            assertEquals(CombatDuty.OBSERVE, sentry(TacticalOrder.DEFEND, Point3(objective.x - post, objective.y, objective.z), inContact = false, observing = true).duty)
+        }
     }
 
     @Test fun `a gunner following his player takes no height post`() {
-        val sentry = DutyInputs(TacticalOrder.DEFEND, nearObjective, FrontProposal(CombatDuty.FIRE, nearObjective, null), objective, null, inContact = false, elsewhere = false, scout = false, heightRole = true, primaryAmmo = true, hasPatrolRoute = false, reachedMove = false, wasFiring = false)
+        val sentry = DutyInputs(TacticalOrder.DEFEND, nearObjective, FrontProposal(CombatDuty.FIRE, nearObjective, null), objective, null, inContact = false, elsewhere = false, scout = false, heightRole = true, primaryAmmo = true, hasPatrolRoute = false, reachedMove = false, wasFiring = false, arrival = arrival)
         assertEquals(CombatDuty.OBSERVE, OperationTactics.duty(sentry, fireReach = 40.0, approachOffset = 10.0).duty)
         assertEquals(CombatDuty.FOLLOW_ORDER, OperationTactics.duty(sentry.copy(following = true), fireReach = 40.0, approachOffset = 10.0).duty)
         assertEquals(CombatDuty.FIRE, OperationTactics.duty(sentry.copy(following = true, inContact = true), fireReach = 40.0, approachOffset = 10.0).duty)
@@ -199,7 +200,7 @@ class OperationTacticsTest {
 
     @Test fun `a flanker keeps walking to his next waypoint even after he fired`() {
         val waypoint = Point3(30.0, 64.0, 140.0)
-        val inputs = DutyInputs(TacticalOrder.ATTACK, here, FrontProposal(CombatDuty.MOVE, waypoint, null), objective, null, inContact = true, elsewhere = false, scout = false, heightRole = false, primaryAmmo = true, hasPatrolRoute = false, reachedMove = true, wasFiring = true, flanking = true)
+        val inputs = DutyInputs(TacticalOrder.ATTACK, here, FrontProposal(CombatDuty.MOVE, waypoint, null), objective, null, inContact = true, elsewhere = false, scout = false, heightRole = false, primaryAmmo = true, hasPatrolRoute = false, reachedMove = true, wasFiring = true, arrival = arrival, flanking = true)
         assertEquals(DutyChoice(CombatDuty.MOVE, waypoint), OperationTactics.duty(inputs, fireReach = 40.0, approachOffset = 10.0))
     }
 
