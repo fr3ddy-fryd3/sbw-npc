@@ -4,8 +4,10 @@ Status:
 
 - **Implemented:** the general utility evaluation (`UtilityEvaluation` in
   `common/src/main/kotlin/com/sbwnpc/squad/ai/planning/Utility.kt`) and utility-scored HTN
-  methods. Their one current use is the squad's strategy: one squad method per strategy
-  (advance, hold, gain height, withdraw), scored and kept stable by `SquadManners`.
+  methods, used at the squad and team levels: one squad method per strategy (advance, hold, gain
+  height, withdraw, bound by halves, regroup) scored and kept stable by `SquadManners`, the squad's
+  approach (flank or frontal, `SquadApproaches`) and a team's rush (together or in pairs,
+  `TeamRushes`). NPCs choose by preconditions and method order, not by utility.
 - **Proposed, not implemented:** utility at the operation and Commander levels, the scoped contexts
   (`CommanderContext`, `OperationContext`, `SquadContext`) and the examples below. They are design
   for later work, not a description of the code.
