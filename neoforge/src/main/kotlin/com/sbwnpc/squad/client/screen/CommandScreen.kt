@@ -102,9 +102,11 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
             )
 
             // Disband/Delete keep the screen up — the server re-sends the list (see class doc).
+            // Disband is "D" in orange, not a red "X": next to DEL an X read as "delete", and players
+            // disbanded squads they meant to remove, leaving the NPCs standing (#144).
             val garrisonNote = if (row.barracks != null) "\nIts Barracks stops deploying." else ""
             addRenderableWidget(
-                Button.builder(Component.literal("X").withStyle(ChatFormatting.RED)) {
+                Button.builder(Component.literal("D").withStyle(ChatFormatting.GOLD)) {
                     send(SquadCmdPayload.DISBAND, row.id)
                 }.bounds(x + 314, y, 14, 20)
                     .tooltip(Tooltip.create(Component.literal("Disband — the NPCs stay$garrisonNote"))).build(),
