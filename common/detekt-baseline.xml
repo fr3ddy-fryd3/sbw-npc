@@ -130,7 +130,7 @@
     <ID>CyclomaticComplexMethod:SquadFormation.kt$SquadFormation$private fun localOffset(shape: Shape, slotIndex: Int, squadSize: Int, spacing: Double = SLOT_SPACING): Vec3</ID>
     <ID>CyclomaticComplexMethod:SquadManager.kt$SquadManager$fun deployInitialAtBarracks( level: ServerLevel, barracks: BarracksRef, squadId: UUID, cfg: com.sbwnpc.squad.item.SquadToolItem.Config, yaw: Float, ): String?</ID>
     <ID>CyclomaticComplexMethod:SquadMarch.kt$SquadMarch$fun crossingAhead(npc: NpcEntity): Crossing?</ID>
-    <ID>CyclomaticComplexMethod:SquadMarch.kt$SquadMarch$fun waypointFor(npc: NpcEntity, goal: BlockPos, followFormation: Boolean = true): Waypoint?</ID>
+    <ID>CyclomaticComplexMethod:SquadMarch.kt$SquadMarch$fun waypointFor(npc: NpcEntity, ownGoal: BlockPos, followFormation: Boolean = true, shared: Boolean = false): Waypoint?</ID>
     <ID>CyclomaticComplexMethod:SquadMarch.kt$SquadMarch$private fun planLong(level: ServerLevel, npc: NpcEntity, march: March, goal: BlockPos, squadName: String)</ID>
     <ID>CyclomaticComplexMethod:SquadMerging.kt$SquadMerging$fun problem(source: Squad?, destination: Squad?, owner: UUID): String?</ID>
     <ID>CyclomaticComplexMethod:SquadOrderBehaviour.kt$SquadOrderBehaviour$override fun tick(entity: NpcEntity)</ID>
