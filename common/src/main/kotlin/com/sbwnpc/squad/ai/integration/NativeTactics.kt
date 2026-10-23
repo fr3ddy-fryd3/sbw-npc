@@ -28,6 +28,9 @@ object NativeTactics {
     /** Roles whose long-range weapons fight from a height post, see [OperationTactics.duty]. */
     private val HEIGHT_ROLES = setOf(NpcClass.MACHINE_GUNNER, NpcClass.SNIPER)
     private val worlds = HashMap<ServerLevel, World>()
+
+    /** Test hook: called with the level of every agent whose plan search finished, to measure how often each level replans. */
+    internal var planResultObserver: ((AgentLevel) -> Unit)? = null
     private fun world(npc: NpcEntity) = worlds.getOrPut(npc.level() as ServerLevel) { World(npc.level() as ServerLevel) }
     fun refresh(npc: NpcEntity) {
         if (npc.vehicle == null && npc.npcClass in GROUND && npc.currentSquad() != null) world(npc).refresh(npc)
@@ -219,6 +222,7 @@ object NativeTactics {
                         if (event.report.status == ExecutionStatus.FAILED) DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=action_failed reason={}", id.id, event.report.reason)
                     },
                 ) { feedback ->
+                    planResultObserver?.invoke(id.level)
                     DebugFlags.log(LogGroup.ORDER, "[htn] level={} actor={} event=plan_result result={}", id.level, id.id, feedback.result.javaClass.simpleName)
                 }
             }
