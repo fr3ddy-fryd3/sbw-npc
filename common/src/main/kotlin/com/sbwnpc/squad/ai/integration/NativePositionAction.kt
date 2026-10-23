@@ -20,12 +20,16 @@ data class NativeAssignment(val job: TacticalJob, val anchor: Vec3, val focus: V
     fun permitsFront(point: Vec3) = point.distanceTo(anchor) <= 32.0 || localFirePost?.let { TacticalFirePosts.withinPost(it, point, recovery = true) } == true
 }
 
+/** A sentry's height [post] and the [anchor] it was searched for. */
+internal data class HeldPost(val anchor: Vec3, val post: Vec3)
+
 /** The existing collision/shot/native-A* query is used with explicit constraints and a private cursor. */
 internal class NativePositionAction(
     intent: PositionIntent,
     private val npc: NpcEntity,
     private val snapshot: () -> TacticalSnapshot?,
     private val exhausted: (PositionIntent, Map<String, Int>, Vec3) -> Unit,
+    heldPost: HeldPost? = null,
 ) : ActionExecution {
     var intent = intent
         private set
@@ -54,6 +58,20 @@ internal class NativePositionAction(
         }
         override fun route(view: TacticalSnapshot, point: Vec3) = intent.minimumHeight?.let { point.y >= it } != false
     }
+
+    init {
+        // A sentry that left to resupply comes back to his own platform. Without it the fresh
+        // search started again from the ground and settled on another post (#86).
+        if (task.job == TacticalJob.OVERWATCH && heldPost != null && stillServes(heldPost)) task.position = heldPost.post
+    }
+
+    /** Only for the same anchor: a new order's post must come from a new search. */
+    private fun stillServes(held: HeldPost) =
+        held.anchor.distanceTo(task.anchor) <= 1.0 && intent.minimumHeight?.let { held.post.y >= it } != false &&
+            FiringSpots.nearby(held.post, 1.0, npc.uuid).isEmpty()
+
+    /** The height post this action holds or heads for, kept by [NativeTactics] for the next OVERWATCH action. */
+    val overwatchPost get() = task.position?.takeIf { task.job == TacticalJob.OVERWATCH }?.let { HeldPost(task.anchor, it) }
     private var ownedLook: net.minecraft.world.entity.ai.behavior.PositionTracker? = null
     private var idleDirection: Pair<Double, Double>? = null
     private var glanceOffset = 0.0

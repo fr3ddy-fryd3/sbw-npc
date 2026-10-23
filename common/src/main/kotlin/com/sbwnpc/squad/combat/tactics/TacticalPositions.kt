@@ -7,6 +7,8 @@ import com.sbwnpc.squad.entity.NpcPosture
 import com.sbwnpc.squad.util.Terrain
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.level.Level
+import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.pathfinder.Path
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
@@ -206,6 +208,10 @@ object TacticalPositions {
             return
         }
         if (!context.overwatch && (kotlin.math.abs(candidate.y - entity.y) > 12.0 || candidate.distanceTo(entity.position()) > SEARCH_REACH)) return
+        if (onClimbingShaft(level, candidate)) {
+            search.reject("climbing_shaft")
+            return
+        }
         val body = entity.getDimensions(entity.pose).makeBoundingBox(candidate)
         if (!safeBody(entity, candidate, body, context.hulls, context.taken)) {
             search.reject("occupied_or_hazard")
@@ -496,6 +502,19 @@ object TacticalPositions {
         task.search = null
         return Result(Outcome.FOUND, point)
     }
+
+    /**
+     * Whether [point] stands on the top of a scaffolding column, the shaft a tower is climbed through.
+     *
+     * Unlike a ladder, the top scaffold has a solid deck, so [Terrain.feetAt] accepts it as floor.
+     * A post there blocks the shaft for the rest of the squad, and the climber keeps bobbing inside
+     * the top scaffold instead of stepping onto it, so the post is never reached.
+     */
+    private fun onClimbingShaft(level: Level, point: Vec3): Boolean {
+        val deck = BlockPos.containing(point).below()
+        return level.getBlockState(deck).`is`(Blocks.SCAFFOLDING) && level.getBlockState(deck.below()).`is`(Blocks.SCAFFOLDING)
+    }
+
     private fun safeBody(entity: NpcEntity, point: Vec3, body: AABB, hulls: List<AABB>, taken: List<Vec3>): Boolean =
         entity.level().getFluidState(BlockPos.containing(point)).isEmpty && entity.level().noCollision(entity, body) &&
             hulls.none { it.intersects(body) } && !GrenadeHazard.threatens(entity.level() as ServerLevel, point) && !FiringSpots.crowded(point, taken)

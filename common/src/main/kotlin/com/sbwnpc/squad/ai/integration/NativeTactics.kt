@@ -87,6 +87,9 @@ object NativeTactics {
         val pendingDeaths = HashMap<UUID, PendingDeath>()
         val agents = LinkedHashMap<AgentId, PlanningAgent>()
         val actions = HashMap<UUID, NativePositionAction>()
+
+        // Each sentry's last height post, offered back when an OVERWATCH duty returns to him.
+        private val heldPosts = HashMap<UUID, HeldPost>()
         val operations = OperationRegistry({ a, b -> Diplomacy.allied(SquadFaction.valueOf(a), SquadFaction.valueOf(b)) }, { _, _ -> true })
         private val snapshots = HashMap<UUID, TacticalSnapshot>()
         private val sharedViews = HashMap<UUID, TacticalSnapshot>()
@@ -152,7 +155,7 @@ object NativeTactics {
                         sequences.remove(view.ticket)
                         retiredAssignments += view.ticket
                         if (view.ticket.child.level == AgentLevel.NPC) {
-                            actions.remove(view.ticket.child.id)
+                            actions.remove(view.ticket.child.id)?.overwatchPost?.let { heldPosts[view.ticket.child.id] = it }
                             goals.remove(view.ticket.child)
                         }
                     }
@@ -195,7 +198,8 @@ object NativeTactics {
                             require(ticket.owner.agent == intent.actor)
                             val original = goals[intent.actor] ?: intent
                             val npc = requireNotNull(level.getEntity(intent.actor.id) as? NpcEntity)
-                            NativePositionAction(intent, npc, { npc.squadId?.let(::combatView) }, { failed, rejections, searched ->
+                            actions[intent.actor.id]?.overwatchPost?.let { heldPosts[intent.actor.id] = it }
+                            NativePositionAction(intent, npc, { npc.squadId?.let(::combatView) }, heldPost = heldPosts[intent.actor.id], exhausted = { failed, rejections, searched ->
                                 failures[failed.actor.id] = LocalPositionFailure(original.anchor, level.gameTime, (failures[failed.actor.id]?.takeIf { it.anchor == original.anchor }?.attempts ?: 0) + 1, rejections.toMap())
                                 // Heights tell a front anchor off the ground (a slope, a ridge) from a crowded area (#55).
                                 // The planned anchor is put on the ground before the search; searched is where it looked.
@@ -918,6 +922,7 @@ object NativeTactics {
             agents.values.filter { it.agent.level == AgentLevel.OPERATION }.toList().forEach { it.cancel(level.gameTime, "server_stopped") }
             agents.clear()
             actions.clear()
+            heldPosts.clear()
         }
     }
 }
