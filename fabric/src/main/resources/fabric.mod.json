@@ -4,12 +4,27 @@
   "version": "${version}",
   "name": "[SBW] NPC Squads",
   "description": "NPC squads addon for SuperbWarfare",
-  "authors": ["fr3ddy"],
+  "authors": [
+    "fr3ddy"
+  ],
   "license": "GPL-3.0",
   "environment": "*",
-  "mixins": ["sbwnpc.fabric.mixins.json"],
+  "mixins": [
+    "sbwnpc.fabric.mixins.json"
+  ],
   "entrypoints": {
-    "main": [{ "adapter": "kotlin", "value": "com.sbwnpc.squad.fabric.SquadFabricMod" }]
+    "main": [
+      {
+        "adapter": "kotlin",
+        "value": "com.sbwnpc.squad.fabric.SquadFabricMod"
+      }
+    ],
+    "client": [
+      {
+        "adapter": "kotlin",
+        "value": "com.sbwnpc.squad.client.SquadFabricClient"
+      }
+    ]
   },
   "depends": {
     "fabricloader": ">=0.17.2",

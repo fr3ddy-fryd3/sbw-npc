@@ -19,7 +19,10 @@ repositories {
     maven {
         name = "Pinned SBW (ReFabricated)"
         url = uri("https://api.modrinth.com/maven")
-        content { includeModule("maven.modrinth", "XU8zWdjt") }
+        content {
+            // ReFabricated, and the mods its own API exposes in signatures.
+            listOf("XU8zWdjt", "8BmcQJ2H", "ohNO6lps", "5aaWibi9", "K01OU20C", "9s6osm5g").forEach { includeModule("maven.modrinth", it) }
+        }
     }
     maven {
         name = "SmartBrainLib (Cloudsmith)"
@@ -46,6 +49,10 @@ val commonKotlin by configurations.creating {
     isCanBeConsumed = false
     isTransitive = false
 }
+val commonClientKotlin by configurations.creating {
+    isCanBeConsumed = false
+    isTransitive = false
+}
 val commonResources by configurations.creating {
     isCanBeConsumed = false
     isTransitive = false
@@ -63,12 +70,14 @@ sourceSets.main.get().resources.srcDir(commonResources)
 kotlin {
     sourceSets.main {
         kotlin.srcDir(commonKotlin)
+        kotlin.srcDir(commonClientKotlin)
         kotlin.srcDir(commonGeneratedKotlin)
     }
 }
 
 dependencies {
     add(commonKotlin.name, project(mapOf("path" to ":common", "configuration" to "commonKotlin")))
+    add(commonClientKotlin.name, project(mapOf("path" to ":common", "configuration" to "commonClientKotlin")))
     add(commonResources.name, project(mapOf("path" to ":common", "configuration" to "commonResources")))
     add(commonGeneratedKotlin.name, project(mapOf("path" to ":common", "configuration" to "commonGeneratedKotlin")))
     add(commonJava.name, project(mapOf("path" to ":common", "configuration" to "commonJava")))
@@ -84,6 +93,10 @@ dependencies {
 
     // Immutable release input; the adapter in this module compiles against it.
     modCompileOnly(sbwCoordinate)
+    // Types in ReFabricated's signatures: GeckoLib (drones), the config port (explosion settings and
+    // our own config), Trinkets and Cardinal Components (player data), Cloth Config. Versions as in the local pack.
+    listOf("8BmcQJ2H:tmxM7U4W", "ohNO6lps:N5qzq0XV", "5aaWibi9:JagCscwi", "K01OU20C:nLsCe2VD", "9s6osm5g:HpMb5wGb")
+        .forEach { modCompileOnly("maven.modrinth:$it") }
 }
 
 tasks.withType<JavaCompile> { options.encoding = "UTF-8" }
