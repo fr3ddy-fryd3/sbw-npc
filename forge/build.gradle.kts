@@ -21,7 +21,11 @@ repositories {
     maven {
         name = "Pinned SBW (Forge 1.20.1)"
         url = uri("https://api.modrinth.com/maven")
-        content { includeModule("maven.modrinth", "Cd3DYqzn") }
+        content {
+            // SuperbWarfare, and GeckoLib, whose types are in its signatures.
+            includeModule("maven.modrinth", "Cd3DYqzn")
+            includeModule("maven.modrinth", "8BmcQJ2H")
+        }
     }
     maven {
         name = "Kotlin for Forge"
@@ -59,9 +63,19 @@ legacyForge {
     }
 }
 
+// The mixins are written on Mojang names; the processor records their SRG equivalents in a refmap.
+mixin {
+    add(sourceSets.main.get(), "sbwnpc.forge.refmap.json")
+    config("sbwnpc.forge.mixins.json")
+}
+
 // The shared sources are recompiled here, as the other loader modules do. They do not compile
 // against 1.20.1 yet: see docs/LOADER-PORTS.md for the 441 errors this module starts from.
 val commonKotlin by configurations.creating {
+    isCanBeConsumed = false
+    isTransitive = false
+}
+val commonClientKotlin by configurations.creating {
     isCanBeConsumed = false
     isTransitive = false
 }
@@ -82,12 +96,16 @@ sourceSets.main.get().resources.srcDir(commonResources)
 kotlin {
     sourceSets.main {
         kotlin.srcDir(commonKotlin)
+        kotlin.srcDir(commonClientKotlin)
         kotlin.srcDir(commonGeneratedKotlin)
     }
 }
 
 dependencies {
+    annotationProcessor("org.spongepowered:mixin:0.8.5:processor")
+    compileOnly("org.spongepowered:mixin:0.8.5")
     add(commonKotlin.name, project(mapOf("path" to ":common", "configuration" to "commonKotlin")))
+    add(commonClientKotlin.name, project(mapOf("path" to ":common", "configuration" to "commonClientKotlin")))
     add(commonResources.name, project(mapOf("path" to ":common", "configuration" to "commonResources")))
     add(commonGeneratedKotlin.name, project(mapOf("path" to ":common", "configuration" to "commonGeneratedKotlin")))
     add(commonJava.name, project(mapOf("path" to ":common", "configuration" to "commonJava")))
@@ -96,6 +114,8 @@ dependencies {
     modImplementation("net.tslat.smartbrainlib:SmartBrainLib-forge-1.20.1:${forgeVersions.getProperty("forge_smartbrainlib_version")}")
     // Immutable release input; the adapter in this module compiles against it.
     modCompileOnly(sbwCoordinate)
+    // The GeckoLib SBW bundles (4.4.6): its types are in the drone signatures.
+    modCompileOnly("maven.modrinth:8BmcQJ2H:iS7jylhp")
 }
 
 val modJar by configurations.creating {
