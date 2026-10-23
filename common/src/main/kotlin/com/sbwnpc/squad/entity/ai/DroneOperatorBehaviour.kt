@@ -18,6 +18,7 @@ import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.squad.SquadReports
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.util.Mth
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
@@ -456,7 +457,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         drone.yRot = cmd.yaw
     }
 
-    private fun groundY(level: ServerLevel, x: Double, z: Double): Int = level.getHeight(Heightmap.Types.MOTION_BLOCKING, x.toInt(), z.toInt())
+    private fun groundY(level: ServerLevel, x: Double, z: Double): Int = level.getHeight(Heightmap.Types.MOTION_BLOCKING, Mth.floor(x), Mth.floor(z))
 
     /** Heightmap samples under the drone and along the next [LOOKAHEAD_DISTANCES] blocks toward
      *  [toward] — cheap (no block reads), and MOTION_BLOCKING includes trees/roofs. */

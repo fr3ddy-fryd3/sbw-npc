@@ -14,6 +14,7 @@ import com.sbwnpc.squad.team.SquadTeams
 import com.sbwnpc.squad.vehicle.Airspace
 import com.sbwnpc.squad.vehicle.Helicopters
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.util.Mth
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
@@ -607,7 +608,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         )
     }
 
-    private fun groundY(level: ServerLevel, x: Double, z: Double): Int = level.getHeight(Heightmap.Types.MOTION_BLOCKING, x.toInt(), z.toInt())
+    private fun groundY(level: ServerLevel, x: Double, z: Double): Int = level.getHeight(Heightmap.Types.MOTION_BLOCKING, Mth.floor(x), Mth.floor(z))
 
     private fun terrainAhead(level: ServerLevel, heli: Entity, toward: Vec3): List<Int> {
         val pos = heli.position()
