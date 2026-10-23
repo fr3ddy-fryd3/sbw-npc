@@ -153,7 +153,7 @@ private object BoundingOverwatch : SquadStrategy {
 
     const val MIN_MOVERS = 4
 
-    // Under fire it outscores an [Advance] held (0.67 + 0.2 per readiness) once more than half the
+    // Under fire it outscores an Advance held (0.67 + 0.2 per readiness) once more than half the
     // squad is ready to fire. Without incoming fire it never does, even held: bounds would only
     // slow the advance down.
     private const val UNDER_FIRE = 0.62
@@ -165,13 +165,14 @@ private object BoundingOverwatch : SquadStrategy {
  * A scattered attack gathers at a rally point behind it ([SquadShaping.rally]) before it goes on.
  *
  * Only while it does not flank: a manoeuvre group round the flank is far from the rest on purpose.
- * It ends once every man is back near the squad ([CombatSituation.gathered]), then the squad
- * chooses again.
+ * Once begun it goes on until every man is back near the squad ([CombatSituation.gathered]), then
+ * the squad chooses again. Ended as soon as it was no longer scattered, the squad spread out
+ * again and regrouped over and over.
  */
 private object Regroup : SquadStrategy {
     override val reason = "scattered"
 
-    override fun allowed(situation: CombatSituation) = situation.offensive && situation.scattered && !situation.gathered && !situation.flanking
+    override fun allowed(situation: CombatSituation) = situation.offensive && !situation.flanking && !situation.gathered && (situation.scattered || situation.regrouping)
 
     override fun score(situation: CombatSituation) = SCORE
 

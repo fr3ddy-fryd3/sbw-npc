@@ -61,8 +61,8 @@ data class MemberLeg(val intent: PositionIntent, val number: Int)
 data class FirePause(val actor: AgentId, val leg: Int)
 
 /**
- * One turn of a squad's bounding overwatch: the movers in [moving] advance while the others fire
- * from the [posts] they stood on when the turn began, then the halves swap.
+ * One turn of a squad's bounding overwatch: the movers in [moving] advance while the rest of the
+ * squad covers them from the [posts] it stood on when the turn began, then the halves swap.
  *
  * Fixed for the whole turn, so the firing half's tasks stay the same while it stands.
  */
@@ -287,7 +287,7 @@ object TacticalDomain {
                             intent.anchor.y,
                             intent.anchor.z + dx / length * offset.first + dz / length * offset.second,
                         )
-                        TaskNetwork.sequence(POST.call(intent.copy(anchor = anchor, legs = false)))
+                        TaskNetwork.sequence(POST.call(intent.copy(anchor = anchor, legs = false, awaitSupport = false)))
                     }),
                     // Terrain hides the enemy from the whole neighbourhood of the anchor: look for a
                     // line of fire closer to the enemy or along the front instead of retrying the
@@ -299,7 +299,7 @@ object TacticalDomain {
                         }
                     }, decompose = { intent, facts ->
                         val step = facts.value(TacticalFacts.POST_FAILURE)!!.attempts - NEIGHBOR_ATTEMPTS - 1
-                        TaskNetwork.sequence(POST.call(intent.copy(anchor = closerAnchors(intent)[step], legs = false)))
+                        TaskNetwork.sequence(POST.call(intent.copy(anchor = closerAnchors(intent)[step], legs = false, awaitSupport = false)))
                     }),
                     // Every search round the anchor failed: he holds where he stands until the
                     // failure is forgotten and the search starts again. Without it the man had no
@@ -313,7 +313,7 @@ object TacticalDomain {
                                 else -> Verdict.Allowed
                             }
                         }
-                    }, decompose = { intent, _ -> TaskNetwork.sequence(POST.call(intent.copy(hold = true, requireCover = false, requireShelter = false, legs = false))) }),
+                    }, decompose = { intent, _ -> TaskNetwork.sequence(POST.call(intent.copy(hold = true, requireCover = false, requireShelter = false, legs = false, awaitSupport = false))) }),
                 ),
             ),
             PrimitiveTask(POST) { intent -> position("position", intent, Condition.test(TacticalFacts.ARRIVED, "post_not_reached") { it }) },
@@ -412,11 +412,12 @@ object TacticalDomain {
  * @property movers how many of its men advance by legs ([PositionIntent.legs]) before any
  *   strategy reshapes their tasks.
  * @property flanking some of its men are on the arc round a flank.
- * @property scattered a third of its men, scouts and flankers aside, are farther from it than
- *   twice its perimeter radius.
+ * @property scattered a third of its men, aside from flankers and men who watch or search away
+ *   from it on purpose, are farther from it than twice its perimeter radius.
  * @property gathered all those men are within its perimeter radius.
+ * @property regrouping it holds [CombatStrategy.REGROUP].
  */
-data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean, val reinforced: Boolean = false, val movers: Int = 0, val flanking: Boolean = false, val scattered: Boolean = false, val gathered: Boolean = false)
+data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean, val reinforced: Boolean = false, val movers: Int = 0, val flanking: Boolean = false, val scattered: Boolean = false, val gathered: Boolean = false, val regrouping: Boolean = false)
 /**
  * How a squad's strategy methods choose between the [CombatStrategy] entries.
  *
@@ -481,6 +482,7 @@ object SquadApproaches {
     /** The approach whose method is [id], or null for any other method. */
     fun of(id: String) = SquadApproach.entries.firstOrNull { methodId(it) == id }
 
+    /** Whether [approach]'s method applies: a flank only while [TacticalFacts.FLANK_OPEN]. */
     fun eligible(approach: SquadApproach) = when (approach) {
         SquadApproach.FLANK -> Condition.test(TacticalFacts.FLANK_OPEN, "flank_closed") { it }
         SquadApproach.FRONTAL -> Condition.ALWAYS
@@ -490,7 +492,7 @@ object SquadApproaches {
     fun score(approach: SquadApproach, facts: FactView): UtilityScore {
         val situation = facts.value(TacticalFacts.SITUATION)
         val base = when (approach) {
-            SquadApproach.FLANK -> (FLANK_BASE + (situation?.readyFraction ?: 0.0) * FLANK_READINESS - (situation?.lossFraction ?: 0.0) * FLANK_LOSSES).coerceIn(0.0, 1.0)
+            SquadApproach.FLANK -> (FLANK_BASE + (situation?.readyFraction ?: 0.0) * FLANK_READINESS - ((situation?.lossFraction ?: 0.0) - FLANK_LOSS_ALLOWANCE).coerceAtLeast(0.0) * FLANK_LOSSES).coerceIn(0.0, 1.0)
             SquadApproach.FRONTAL -> FRONTAL
         }
         val held = facts.value(TacticalFacts.APPROACH) == approach
@@ -500,7 +502,9 @@ object SquadApproaches {
     private const val FLANK_BASE = 0.5
     private const val FLANK_READINESS = 0.3
 
-    // A squad that has lost over a third of its men stops splitting while few of them are ready to fire.
-    private const val FLANK_LOSSES = 0.5
+    // The approach is mostly chosen before contact, with nobody ready yet: losses up to 30% leave
+    // the flank as it was, a third or more makes the squad come on frontally.
+    private const val FLANK_LOSS_ALLOWANCE = 0.3
+    private const val FLANK_LOSSES = 2.0
     private const val FRONTAL = 0.45
 }

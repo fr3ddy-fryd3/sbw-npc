@@ -189,7 +189,7 @@ class TacticalDomainTest {
         assertEquals(SquadApproach.FLANK, approachOf(squadPlan(flanking)))
     }
 
-    @Test fun `a scattered attack regroups at its rally point unless it flanks`() {
+    @Test fun `a scattered attack regroups at its rally point until gathered, unless it flanks`() {
         val scattered = CombatSituation(false, true, false, false, 0.0, 0.0, false, scattered = true)
         val rally = Point3(-12.0, 1.0, 0.0)
         val scout = intent.copy(actor = AgentId(AgentLevel.NPC, UUID(0, 2)), duty = CombatDuty.SEARCH)
@@ -203,7 +203,9 @@ class TacticalDomainTest {
         assertNull(members[0].minimumHeight)
         assertEquals(scout, members[1])
         assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(scattered.copy(flanking = true), CombatStrategy.ADVANCE))))
-        assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(scattered.copy(gathered = true), CombatStrategy.REGROUP))))
+        val returning = scattered.copy(scattered = false, regrouping = true)
+        assertEquals(CombatStrategy.REGROUP, strategyOf(squadPlan(squadFacts(returning, CombatStrategy.REGROUP))))
+        assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(returning.copy(gathered = true), CombatStrategy.REGROUP))))
     }
 
     @Test fun `withdrawal changes execution goal away from known threat without requiring cover fire`() {

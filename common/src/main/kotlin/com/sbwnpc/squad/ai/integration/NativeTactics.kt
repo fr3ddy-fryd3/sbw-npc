@@ -43,6 +43,9 @@ object NativeTactics {
     /** A rush waits this long at most for the firing half to fire, 5 s. */
     private const val SUPPORT_FALLBACK_TICKS = 100L
 
+    /** How long a failed post search is remembered, 10 s. */
+    private const val FAILURE_MEMORY_TICKS = 200L
+
     /** A squad smaller than this is never counted as scattered. */
     private const val REGROUP_MIN_MEN = 3
 
@@ -365,7 +368,7 @@ object NativeTactics {
                     .observe(TacticalFacts.AT_POST, action?.atPost() ?: false)
                     .observe(TacticalFacts.LEGS_DONE, legs[id.id] ?: 0)
                     .observe(TacticalFacts.SUPPORT_FIRING, npc?.squadId?.let { supportFiring(it, id.id, now) } ?: true, expiresAt = now + 11)
-                failures[id.id]?.let { failure -> result = result.observe(TacticalFacts.POST_FAILURE, failure, observedAt = failure.failedAt, expiresAt = failure.failedAt + 200) }
+                failures[id.id]?.let { failure -> result = result.observe(TacticalFacts.POST_FAILURE, failure, observedAt = failure.failedAt, expiresAt = failure.failedAt + FAILURE_MEMORY_TICKS) }
             }
             return result
         }
@@ -999,15 +1002,22 @@ object NativeTactics {
                     DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=follow_bound running={} of={}", saved.id, intents.count { it.duty == CombatDuty.MOVE }, intents.size)
                 }
                 val movers = intents.filter { it.legs && it.duty == CombatDuty.MOVE && !it.assault && !it.ordered }
-                val radius = com.sbwnpc.squad.combat.SquadFormation.perimeterRadius(view.members.size)
-                val distances = intents.filter { it.duty != CombatDuty.SEARCH && it.duty != CombatDuty.FOLLOW_ORDER && it.actor.id !in waypoints }
-                    .mapNotNull { intent -> view.members.firstOrNull { it.id == intent.actor.id }?.position?.let { hypot(it.x - view.center.x, it.z - view.center.z) } }
-                situations[saved.id] = situation.copy(
-                    movers = movers.size,
-                    flanking = view.members.any { it.id in waypoints },
-                    scattered = distances.size >= REGROUP_MIN_MEN && distances.count { it > 2 * radius } * 3 >= distances.size,
-                    gathered = distances.all { it <= radius },
-                )
+                // Only an attack bounds or regroups. Measured for every squad, the spread of one
+                // walking behind its player changed its situation, and replanned it, nearly every time.
+                situations[saved.id] = if (!situation.offensive) situation else {
+                    val radius = com.sbwnpc.squad.combat.SquadFormation.perimeterRadius(view.members.size)
+                    // Sentries, rear guards and scouts stand off from the squad on purpose: counted, they
+                    // were called down to the rally and sent back again.
+                    val distances = intents.filter { !it.duty.watching && it.duty.commandsMovement && it.actor.id !in waypoints }
+                        .mapNotNull { intent -> view.members.firstOrNull { it.id == intent.actor.id }?.position?.let { hypot(it.x - view.center.x, it.z - view.center.z) } }
+                    situation.copy(
+                        movers = movers.size,
+                        flanking = view.members.any { it.id in waypoints },
+                        scattered = distances.size >= REGROUP_MIN_MEN && distances.count { it > 2 * radius } * 3 >= distances.size,
+                        gathered = distances.all { it <= radius },
+                        regrouping = strategy == CombatStrategy.REGROUP,
+                    )
+                }
                 updateBoundTurn(saved.id, strategy, movers, view, focus, now)
                 updateRally(saved.id, strategy, view.center, focus)
                 val teams = teamAllocators.getOrPut(saved.id, ::TaskTeamAllocator).assign(saved.id, intents)
@@ -1054,7 +1064,7 @@ object NativeTactics {
         private fun noteBlockedFlank(squad: UUID, flanking: Set<UUID>, now: Long) {
             val group = manoeuvres[squad].orEmpty().filter { it in flanking }
             if (group.isEmpty()) return
-            val stuck = group.count { id -> failures[id]?.let { now < it.failedAt + 200 && it.attempts >= FLANK_BLOCK_FAILURES } == true }
+            val stuck = group.count { id -> failures[id]?.let { now < it.failedAt + FAILURE_MEMORY_TICKS && it.attempts >= FLANK_BLOCK_FAILURES } == true }
             if (stuck * 2 < group.size || flankBlockedAt[squad]?.let { now - it < FLANK_BLOCK_TICKS } == true) return
             flankBlockedAt[squad] = now
             DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=flank_blocked stuck={} of={}", squad, stuck, group.size)
