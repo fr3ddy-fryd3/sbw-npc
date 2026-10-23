@@ -10,3 +10,10 @@ object NeoForgeClientboundTransport : ClientboundTransport {
         PacketDistributor.sendToPlayer(player, payload)
     }
 }
+
+/** NeoForge delivery of packets to the server. */
+object NeoForgeServerboundTransport : ServerboundTransport {
+    override fun send(payload: CustomPacketPayload) {
+        PacketDistributor.sendToServer(payload)
+    }
+}
