@@ -174,7 +174,7 @@ object TacticalPositions {
         val candidate = Terrain.feetAt(level, raw, if (context.overwatch) 9 else 12) {
             if (!level.noCollision(entity, entity.getDimensions(entity.pose).makeBoundingBox(it))) {
                 false
-            } else if (context.overwatch && !protected(entity, task, it, context.hulls)) {
+            } else if (context.overwatch && !search.floorProtection.getOrPut(it) { protected(entity, task, it, context.hulls) }) {
                 // An exposed roof must not hide a sheltered, walkable floor below it.
                 if (it.y > task.anchor.y + 2.0) search.refineOverwatch(task.anchor, it)
                 search.reject("unprotected_overwatch_floor")
@@ -489,14 +489,15 @@ object TacticalPositions {
             DefensiveOverwatch.protected(point, entity.eyeHeight.toDouble(), null) { from, to -> Sightline.blocked(level, from, to, entity) }
     }
 
-    private fun protected(entity: NpcEntity, task: TacticalTask, point: Vec3, hulls: List<AABB>): Boolean =
-        DefensiveOverwatch.protected(point, entity.eyeHeight.toDouble(), null) { from, to ->
-            Sightline.blockedBy(entity.level() as ServerLevel, from, to, entity, hulls)
-        } || (
-            DefensiveOverwatch.protected(point, entity.eyeHeight.toDouble(), TacticalAim.resolve(entity, task)?.position) { from, to ->
-                Sightline.blockedBy(entity.level() as ServerLevel, from, to, entity, hulls)
-            } && friendlyLane(entity, point.add(0.0, entity.eyeHeight.toDouble(), 0.0), TacticalAim.resolve(entity, task)?.eye)
-            )
+    private fun protected(entity: NpcEntity, task: TacticalTask, point: Vec3, hulls: List<AABB>): Boolean {
+        val blocked = { from: Vec3, to: Vec3 -> Sightline.blockedBy(entity.level() as ServerLevel, from, to, entity, hulls) }
+        if (DefensiveOverwatch.protected(point, entity.eyeHeight.toDouble(), null, blocked)) return true
+        // Without an aim the second check would cast the same rays again and fail again; on an
+        // open-ground scan that doubled the cost of every rejected floor.
+        val aim = TacticalAim.resolve(entity, task) ?: return false
+        return DefensiveOverwatch.protected(point, entity.eyeHeight.toDouble(), aim.position, blocked) &&
+            friendlyLane(entity, point.add(0.0, entity.eyeHeight.toDouble(), 0.0), aim.eye)
+    }
 
     private fun finish(task: TacticalTask, point: Vec3): Result {
         task.search = null
