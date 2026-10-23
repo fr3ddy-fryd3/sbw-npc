@@ -1,0 +1,19 @@
+{
+  "minecraft": "1.21.1",
+  "required": [
+    "fabric-api",
+    "smartbrainlib"
+  ],
+  "qol": [
+    "sodium",
+    "lithium",
+    "ferrite-core",
+    "modmenu",
+    "jei",
+    "mouse-tweaks",
+    "journeymap"
+  ],
+  "pinned": {
+    "fabric-language-kotlin": "1.13.2+kotlin.2.1.20"
+  }
+}
