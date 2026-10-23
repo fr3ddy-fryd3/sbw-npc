@@ -69,6 +69,18 @@ data class FirePause(val actor: AgentId, val leg: Int)
 data class BoundTurn(val number: Int, val moving: Set<java.util.UUID>, val posts: Map<java.util.UUID, Point3>)
 data class TeamMission(val agent: AgentId, val members: List<PositionIntent>)
 data class SquadMission(val agent: AgentId, val teams: List<TeamMission>)
+
+/** A squad's [mission] under the [strategy] its method chose, for the choice of its [SquadApproach]. */
+data class StrategyMission(val mission: SquadMission, val strategy: CombatStrategy)
+
+/** How a squad attacking alone comes at its objective. */
+enum class SquadApproach {
+    /** A manoeuvre group goes round to a flank along the arc while the rest fixes the enemy with fire. */
+    FLANK,
+
+    /** The whole squad comes on from where it is. */
+    FRONTAL,
+}
 data class AreaControlTask(val operation: java.util.UUID, val objective: Point3, val commands: Map<java.util.UUID, java.util.UUID>)
 data class OperationMission(val squads: List<SquadMission>, val secure: AreaControlTask? = null, val attack: AttackRoles = AttackRoles.NONE)
 
@@ -97,6 +109,12 @@ object TacticalFacts {
     /** Present while the [MANNER] is too young to give up for a better one, see [SquadManners]. */
     val MANNER_LOCK = FactKey("squad.manner_lock", Boolean::class.javaObjectType)
 
+    /** The squad attacks alone, can split off a manoeuvre group, and has not lately found the flank blocked. */
+    val FLANK_OPEN = FactKey("squad.flank_open", Boolean::class.javaObjectType)
+
+    /** The approach of the squad's installed plan, absent before its first. */
+    val APPROACH = FactKey("squad.approach", SquadApproach::class.java)
+
     /** The squad's current turn while it advances by [CombatStrategy.BOUND_OVERWATCH]. */
     val BOUND_TURN = FactKey("squad.bound_turn", BoundTurn::class.java)
 
@@ -117,6 +135,7 @@ object TacticalDomain {
     /** Fire from the post a leg ended on, until he has fired or found nothing to fire at. */
     val FIRE_PAUSE = ActionKey("npc.fire_pause", FirePause::class.java)
     private val DELEGATE = TaskKey("delegate.task", DelegationTask::class.java)
+    private val APPROACH = TaskKey("squad.approach", StrategyMission::class.java)
 
     private fun delegate() =
         PrimitiveTask(DELEGATE) { task ->
@@ -165,7 +184,20 @@ object TacticalDomain {
                         SquadManners.methodId(strategy),
                         eligible = { SquadManners.eligible(strategy) },
                         score = { _, facts -> SquadManners.score(strategy, facts) },
-                        decompose = { mission, facts ->
+                        decompose = { mission, _ -> TaskNetwork.sequence(APPROACH.call(StrategyMission(mission, strategy))) },
+                    )
+                },
+            ),
+            // The approach only shows in the next layout, which splits off a manoeuvre group for a
+            // flank or not; both methods hand the teams the same tasks.
+            CompoundTask(
+                APPROACH,
+                SquadApproach.entries.map { approach ->
+                    Method(
+                        SquadApproaches.methodId(approach),
+                        eligible = { SquadApproaches.eligible(approach) },
+                        score = { _, facts -> SquadApproaches.score(approach, facts) },
+                        decompose = { (mission, strategy), facts ->
                             // Only a bounding squad has a turn; for any other the fact is absent and never changes.
                             val turn = facts.value(TacticalFacts.BOUND_TURN)
                             val tasks = mission.teams.map { team ->
@@ -415,4 +447,43 @@ object SquadManners {
         val held = facts.value(TacticalFacts.MANNER) == strategy
         return UtilityScore(min(1.0, base + if (held) ADVANTAGE else 0.0), reason = strategy.rules.reason)
     }
+}
+
+/**
+ * How a squad's approach methods choose between [SquadApproach.FLANK] and [SquadApproach.FRONTAL].
+ *
+ * A flank needs [TacticalFacts.FLANK_OPEN]. It is worth more the more of the squad is ready to fire
+ * and less the more it has lost; the frontal approach is worth a little less than a flank by a
+ * squad that is neither ready nor hurt, so a squad that can flank does, as before this choice. The
+ * approach held is worth [SquadManners.ADVANTAGE] more.
+ */
+object SquadApproaches {
+    /** The approach method that takes [approach]. */
+    fun methodId(approach: SquadApproach) = approach.name.lowercase()
+
+    /** The approach whose method is [id], or null for any other method. */
+    fun of(id: String) = SquadApproach.entries.firstOrNull { methodId(it) == id }
+
+    fun eligible(approach: SquadApproach) = when (approach) {
+        SquadApproach.FLANK -> Condition.test(TacticalFacts.FLANK_OPEN, "flank_closed") { it }
+        SquadApproach.FRONTAL -> Condition.ALWAYS
+    }
+
+    /** [approach]'s score in the observed situation, with the advantage when the squad holds it. */
+    fun score(approach: SquadApproach, facts: FactView): UtilityScore {
+        val situation = facts.value(TacticalFacts.SITUATION)
+        val base = when (approach) {
+            SquadApproach.FLANK -> (FLANK_BASE + (situation?.readyFraction ?: 0.0) * FLANK_READINESS - (situation?.lossFraction ?: 0.0) * FLANK_LOSSES).coerceIn(0.0, 1.0)
+            SquadApproach.FRONTAL -> FRONTAL
+        }
+        val held = facts.value(TacticalFacts.APPROACH) == approach
+        return UtilityScore(min(1.0, base + if (held) SquadManners.ADVANTAGE else 0.0), reason = approach.name.lowercase())
+    }
+
+    private const val FLANK_BASE = 0.5
+    private const val FLANK_READINESS = 0.3
+
+    // A squad that has lost over a third of its men stops splitting while few of them are ready to fire.
+    private const val FLANK_LOSSES = 0.5
+    private const val FRONTAL = 0.45
 }

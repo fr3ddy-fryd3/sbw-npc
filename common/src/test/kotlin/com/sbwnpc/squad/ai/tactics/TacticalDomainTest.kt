@@ -178,6 +178,17 @@ class TacticalDomainTest {
         assertEquals(Verdict.Allowed, leg.contract.maintain.evaluate(facts(0).observe(TacticalFacts.SUPPORT_FIRING, false)))
     }
 
+    @Test fun `a squad that can flank does unless hurt and unready, and comes on frontally when the flank is closed`() {
+        fun approachOf(plan: HtnPlan) = SquadApproaches.of(plan.tasks.single().node.split('/')[3])
+        val fresh = CombatSituation(false, true, false, false, 0.0, 0.0, false)
+        assertEquals(SquadApproach.FLANK, approachOf(squadPlan(squadFacts(fresh).observe(TacticalFacts.FLANK_OPEN, true))))
+        assertEquals(SquadApproach.FRONTAL, approachOf(squadPlan(squadFacts(fresh).observe(TacticalFacts.FLANK_OPEN, false))))
+        val hurt = fresh.copy(lossFraction = 0.4)
+        assertEquals(SquadApproach.FRONTAL, approachOf(squadPlan(squadFacts(hurt).observe(TacticalFacts.FLANK_OPEN, true))))
+        val flanking = squadFacts(fresh.copy(lossFraction = 0.2)).observe(TacticalFacts.FLANK_OPEN, true).observe(TacticalFacts.APPROACH, SquadApproach.FLANK)
+        assertEquals(SquadApproach.FLANK, approachOf(squadPlan(flanking)))
+    }
+
     @Test fun `withdrawal changes execution goal away from known threat without requiring cover fire`() {
         val retreat = shapedMember(squadPlan(squadFacts(beaten)))
         assertTrue(retreat.anchor.x < intent.origin.x)
