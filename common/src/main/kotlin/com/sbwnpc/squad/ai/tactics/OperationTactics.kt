@@ -40,6 +40,7 @@ data class AttackMember(val id: UUID, val position: Point3, val ready: Boolean)
  * @property primaryAmmo the member still has ammunition for his main weapon.
  * @property reachedMove the member's current MOVE post is reached.
  * @property wasFiring the member's previous intent was FIRE.
+ * @property wasObserving the member's previous intent was OBSERVE at this [objective].
  * @property flanking the member is on his way round the objective to his sector, see
  *   [ApproachSectors.arcWaypoint]; [proposal] holds the next waypoint.
  */
@@ -58,6 +59,7 @@ data class DutyInputs(
     val reachedMove: Boolean,
     val wasFiring: Boolean,
     val flanking: Boolean = false,
+    val wasObserving: Boolean = false,
     /** On a FOLLOW order: the objective is a player who walks away from any post round it. */
     val following: Boolean = false,
     /** Following in a fight: this man's half runs this beat, see [OperationTactics.followBound]. */
@@ -66,7 +68,11 @@ data class DutyInputs(
     val followSlot: Point3? = null,
     /** Following a player who rides a vehicle, or this man holds a vehicle: the ride sees to it. */
     val followRide: Boolean = false,
-)
+) {
+    /** Whether a sentry is near enough his objective, or has none, to take his height post. */
+    val inSentryReach: Boolean
+        get() = objective?.let { hypot(position.x - it.x, position.z - it.z) <= OperationTactics.SENTRY_REACH - if (wasObserving) 0.0 else OperationTactics.SENTRY_ENTRY_MARGIN } != false
+}
 
 data class DutyChoice(val duty: CombatDuty, val anchor: Point3)
 
@@ -81,8 +87,15 @@ object OperationTactics {
     /** A mover this near (horizontally) his front slot has arrived and fires from where he is. */
     const val MOVE_ARRIVAL = 8.0
 
-    /** Farthest from the objective a sentry takes his height post from: the reach of its search, [com.sbwnpc.squad.combat.tactics.DefensiveOverwatch.RADIUS]. */
+    /** Farthest from the objective a sentry's height post may stand, and so the reach of its search. */
     const val SENTRY_REACH = 32.0
+
+    /**
+     * How far inside [SENTRY_REACH] a marching sentry comes before he turns to his height post. Once
+     * observing he keeps the duty out to the reach: a post on the search's edge, or the path to it,
+     * would otherwise flip him between marching and observing.
+     */
+    const val SENTRY_ENTRY_MARGIN = 8.0
 
     /** Closing in, a mover halves its distance to the point's nearest defender, down to this. */
     const val CLOSE_DISTANCE = 20.0
@@ -214,7 +227,7 @@ object OperationTactics {
                 // with the squad: searched from a tower 44-155 blocks off, no post qualified and he never
                 // left the tower (#166).
                 (order == TacticalOrder.DEFEND || (order == TacticalOrder.PATROL && !hasPatrolRoute)) && heightRole && primaryAmmo && !following &&
-                    objective?.let { distance(position, it) <= SENTRY_REACH } != false -> CombatDuty.OBSERVE
+                    inSentryReach -> CombatDuty.OBSERVE
 
                 !inContact || order in setOf(TacticalOrder.RETREAT, TacticalOrder.MOVE, TacticalOrder.BARRAGE) -> CombatDuty.FOLLOW_ORDER
 
