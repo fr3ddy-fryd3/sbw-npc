@@ -71,6 +71,8 @@ data class DutyInputs(
     val followSlot: Point3? = null,
     /** Following a player who rides a vehicle, or this man holds a vehicle: the ride sees to it. */
     val followRide: Boolean = false,
+    /** Squad-wide distant transit: the ordinary order and vehicle behaviours own movement. */
+    val transit: Boolean = false,
 ) {
     /**
      * Whether a sentry takes his height post: at his objective, or with none, or already on duty for it.
@@ -214,7 +216,7 @@ object OperationTactics {
             val proposal = proposal
             val approach = proposal.duty == CombatDuty.FIRE && position.distanceTo(proposal.anchor) > fireReach
             val duty = when {
-                elsewhere -> CombatDuty.FOLLOW_ORDER
+                elsewhere || transit -> CombatDuty.FOLLOW_ORDER
 
                 scout && order == TacticalOrder.ATTACK -> CombatDuty.SEARCH
 

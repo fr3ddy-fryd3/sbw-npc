@@ -224,7 +224,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // Taking any mounted man for its own, this put a FOLLOW rider straight back out (#136).
         if (!entity.seatFreeFor(this)) return logEligibility(entity, false) { "another behaviour has his seat" }
         if (entity.vehicle != null) return true // already mounted: DRIVING/RIDING keep going regardless
-        if (com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) return false
+        if (com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) return logEligibility(entity, false) { "tactical position duty takes priority" }
 
         if (combatInterrupted(entity)) {
             return logEligibility(entity, false) {
@@ -264,8 +264,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // the trip off and freed his seat over and over.
         boatTrips = trips.ifEmpty { boatTrips.takeIf { checkGiveup && targetVehicleId != null }.orEmpty() }
         val dist = entity.position().distanceTo(home)
-        if (dist <= TRANSPORT_DISTANCE_THRESHOLD && boatTrips.isEmpty()) {
-            return logEligibility(entity, false) { "home is only $dist blocks away (threshold $TRANSPORT_DISTANCE_THRESHOLD)" }
+        if (!SquadTransit.distant(squad, entity.level() as ServerLevel) && boatTrips.isEmpty()) {
+            return logEligibility(entity, false) { "squad is within ${SquadTransit.TRANSPORT_DISTANCE} blocks of its objective (this man is $dist blocks away)" }
         }
         if (checkGiveup && phase == Phase.SEEKING && entity.tickCount - seekingStartTick > SEEK_GIVEUP_TICKS) {
             giveupCooldownUntilTick = entity.tickCount + GIVEUP_COOLDOWN_TICKS
@@ -1599,7 +1599,6 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
          *  shared, as everyone aboard asks about the same boat. */
         private val bankCache = HashMap<java.util.UUID, kotlin.Pair<Long, Boolean>>()
 
-        private const val TRANSPORT_DISTANCE_THRESHOLD = 100.0
         private const val SEARCH_RADIUS = 60.0
         private const val BOARD_DISTANCE = 3.0
         private const val ARRIVAL_RADIUS = 20.0
