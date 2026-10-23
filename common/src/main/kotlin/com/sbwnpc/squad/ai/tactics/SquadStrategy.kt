@@ -138,15 +138,18 @@ private object Withdraw : SquadStrategy {
 private object BoundingOverwatch : SquadStrategy {
     override val reason = "bound_under_fire"
 
-    // An enemy above is GAIN_HEIGHT's: held, bounding could outscore it there.
-    override fun allowed(situation: CombatSituation) = situation.contact && situation.offensive && situation.continuation && !situation.higherEnemy && situation.movers >= MIN_MOVERS
+    // An enemy above is GAIN_HEIGHT's: held, bounding could outscore it there. A scattered squad
+    // has no halves to cover each other, and held, bounding kept it from regrouping.
+    override fun allowed(situation: CombatSituation) = situation.contact && situation.offensive && situation.continuation && !situation.higherEnemy && !situation.scattered && situation.movers >= MIN_MOVERS
 
-    override fun score(situation: CombatSituation) = (if (situation.incoming) UNDER_FIRE else UNTOUCHED) + situation.readyFraction * READINESS
+    override fun score(situation: CombatSituation) = (if (situation.underFire) UNDER_FIRE else UNTOUCHED) + situation.readyFraction * READINESS
 
     override fun shape(intent: PositionIntent, shaping: SquadShaping): PositionIntent {
         val turn = shaping.turn
         if (turn == null || !intent.legs || intent.duty != CombatDuty.MOVE) return intent
-        if (intent.actor.id in turn.moving) return intent.copy(requireCover = false, coveredBy = turn.posts.keys)
+        // The other half's fire is his cover: kept, the need for shelter at the end of each leg
+        // refused every post on open ground, and the half never moved.
+        if (intent.actor.id in turn.moving) return intent.copy(requireCover = false, requireShelter = false, coveredBy = turn.posts.keys)
         val post = turn.posts[intent.actor.id] ?: intent.origin
         return intent.copy(duty = CombatDuty.FIRE, anchor = post, requireCover = false, legs = false)
     }
@@ -154,7 +157,7 @@ private object BoundingOverwatch : SquadStrategy {
     const val MIN_MOVERS = 4
 
     // Under fire it outscores an Advance held (0.67 + 0.2 per readiness) once more than half the
-    // squad is ready to fire. Without incoming fire it never does, even held: bounds would only
+    // squad is ready to fire. With nobody hit for 10 s it never does, even held: bounds would only
     // slow the advance down.
     private const val UNDER_FIRE = 0.62
     private const val UNTOUCHED = 0.3
@@ -182,7 +185,7 @@ private object Regroup : SquadStrategy {
         return intent.copy(duty = CombatDuty.MOVE, anchor = rally, legs = false, minimumHeight = null, elevationWeight = 0.0)
     }
 
-    // Above an advance held by a squad most of which is not fighting (0.67 + 0.2 per readiness),
-    // below one held by a squad fighting as one: men who fire well where they are stay there.
-    private const val SCORE = 0.8
+    // Above an advance held by a squad ready to fight to the last man (0.67 + 0.2): at 0.8, below
+    // it, a squad that could fight never regrouped.
+    private const val SCORE = 0.9
 }

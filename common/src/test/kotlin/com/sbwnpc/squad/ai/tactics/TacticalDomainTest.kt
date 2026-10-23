@@ -149,7 +149,10 @@ class TacticalDomainTest {
         val underFire = CombatSituation(true, true, false, true, 0.75, 0.0, true, movers = 4)
         assertEquals(CombatStrategy.BOUND_OVERWATCH, strategyOf(squadPlan(squadFacts(underFire, CombatStrategy.ADVANCE))))
         assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(underFire.copy(readyFraction = 0.25), CombatStrategy.ADVANCE))))
-        assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(underFire.copy(incoming = false), CombatStrategy.BOUND_OVERWATCH))))
+        assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(underFire.copy(incoming = false, underFire = false), CombatStrategy.BOUND_OVERWATCH))))
+        // A few seconds without a hit keep it bounding while it was hit within the last 10 s.
+        assertEquals(CombatStrategy.BOUND_OVERWATCH, strategyOf(squadPlan(squadFacts(underFire.copy(incoming = false), CombatStrategy.BOUND_OVERWATCH))))
+        assertTrue(SquadManners.eligible(CombatStrategy.BOUND_OVERWATCH).evaluate(squadFacts(underFire.copy(scattered = true))) is Verdict.Rejected)
         assertEquals(CombatStrategy.GAIN_HEIGHT, strategyOf(squadPlan(squadFacts(underFire.copy(higherEnemy = true), CombatStrategy.BOUND_OVERWATCH))))
         assertTrue(SquadManners.eligible(CombatStrategy.BOUND_OVERWATCH).evaluate(squadFacts(underFire.copy(movers = 3))) is Verdict.Rejected)
     }
@@ -203,6 +206,8 @@ class TacticalDomainTest {
         assertNull(members[0].minimumHeight)
         assertEquals(scout, members[1])
         assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(scattered.copy(flanking = true), CombatStrategy.ADVANCE))))
+        // A squad ready to fight to the last man regroups too, over the advance it holds.
+        assertEquals(CombatStrategy.REGROUP, strategyOf(squadPlan(squadFacts(scattered.copy(readyFraction = 1.0), CombatStrategy.ADVANCE))))
         val returning = scattered.copy(scattered = false, regrouping = true)
         assertEquals(CombatStrategy.REGROUP, strategyOf(squadPlan(squadFacts(returning, CombatStrategy.REGROUP))))
         assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(returning.copy(gathered = true), CombatStrategy.REGROUP))))

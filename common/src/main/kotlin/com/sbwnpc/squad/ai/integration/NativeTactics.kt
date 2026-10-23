@@ -47,7 +47,13 @@ object NativeTactics {
     private const val FAILURE_MEMORY_TICKS = 200L
 
     /** A squad smaller than this is never counted as scattered. */
-    private const val REGROUP_MIN_MEN = 3
+    private const val REGROUP_MIN_MEN = 4
+
+    /** Fewer men than this far from the squad never count it as scattered. */
+    private const val REGROUP_MIN_SCATTERED = 2
+
+    /** How long after a hit a squad still counts as under fire, see [CombatSituation.underFire]. */
+    private const val UNDER_FIRE_TICKS = 200L
 
     /** How far behind its centre, away from the enemy, a regrouping squad gathers. */
     private const val REGROUP_PULLBACK = 12.0
@@ -72,7 +78,7 @@ object NativeTactics {
     fun assignment(npc: NpcEntity): NativeAssignment? {
         if (npc.vehicle != null || npc.npcClass !in GROUND || npc.currentSquad() == null) return null
         refresh(npc)
-        return world(npc).actions[npc.uuid]?.takeIf { it.intent.duty.commandsMovement }?.assignment
+        return world(npc).actions[npc.uuid]?.takeIf { it.intent.commandsMovement }?.assignment
     }
     fun ownsLook(npc: NpcEntity): Boolean = worlds[npc.level()]?.actions?.get(npc.uuid)?.ownsLook == true
     fun ownsMovement(npc: NpcEntity): Boolean {
@@ -118,6 +124,9 @@ object NativeTactics {
     }
     fun snapshot(npc: NpcEntity): TacticalSnapshot? = npc.squadId?.let { world(npc).combatView(it) }
     fun reports(npc: NpcEntity) = world(npc).agents[AgentId(AgentLevel.NPC, npc.uuid)]?.runtime?.reports.orEmpty()
+
+    /** How many post searches in a row [npc] failed round his task's anchor, while remembered. */
+    fun postFailures(npc: NpcEntity): Int = world(npc).postFailuresOf(npc.uuid)
     fun movable(npc: NpcEntity) =
         npc.isAlive && npc.vehicle == null && !npc.busyWithRole() && !npc.resupplying && !npc.diggedIn &&
             !npc.evadingGrenade() && !npc.movementLockedByCover() && !npc.combatLockedByMedic() && npc.retreatPoint() == null
@@ -199,6 +208,9 @@ object NativeTactics {
 
         // Where each regrouping squad gathers, fixed when it began to regroup.
         private val rallies = HashMap<UUID, Point3>()
+
+        // When a man of each squad was last hit, see CombatSituation.underFire.
+        private val lastHits = HashMap<UUID, Long>()
 
         /** The last bound logged for each following squad in a fight. */
         private val followBeats = HashMap<UUID, Long>()
@@ -306,7 +318,7 @@ object NativeTactics {
 
         /**
          * He fires from the post his leg ended on: done once he has fired, at once when he has
-         * nothing to fire at, or after [FIRE_PAUSE_TICKS]. Aim and fire stay with his gun
+         * no target in sight, or after [FIRE_PAUSE_TICKS]. Aim and fire stay with his gun
          * behaviour; this only holds him at the post meanwhile.
          */
         private fun firePause(pause: FirePause, npc: NpcEntity) =
@@ -316,8 +328,13 @@ object NativeTactics {
                     val waited = now - startedAt
                     val reason = when {
                         waited > 0 && npc.firedRecently(waited.toInt()) -> "fired"
-                        npc.target == null && waited >= NO_TARGET_PAUSE_TICKS -> "no_target"
+
+                        // A target he remembers but cannot see is nothing to fire at either: he
+                        // stood out every pause blind behind a ridge instead of going on.
+                        npc.target?.let { npc.sensing.hasLineOfSight(it) } != true && waited >= NO_TARGET_PAUSE_TICKS -> "no_target"
+
                         waited >= FIRE_PAUSE_TICKS -> "timeout"
+
                         else -> return ActionUpdate.Running
                     }
                     legs.merge(npc.uuid, 1, Int::plus)
@@ -451,6 +468,7 @@ object NativeTactics {
                     situations.remove(id)
                     boundTurns.remove(id)
                     rallies.remove(id)
+                    lastHits.remove(id)
                     approaches.remove(id)
                     flankable.remove(id)
                     flankBlockedAt.remove(id)
@@ -924,6 +942,7 @@ object NativeTactics {
             }
             return squads.map { saved ->
                 val view = snapshots.getValue(saved.id)
+                if (view.incoming.isNotEmpty()) lastHits[saved.id] = now
                 val situation = CombatSituation(
                     focus != null,
                     // An operation reviewing its losses holds the line it has instead of pushing on;
@@ -935,6 +954,7 @@ object NativeTactics {
                     1.0 - saved.members.size.toDouble() / max(1, max(view.peakStrength, saved.members.size)),
                     view.fighting.isNotEmpty(),
                     reinforced = saved.barracks != null,
+                    underFire = lastHits[saved.id]?.let { now - it <= UNDER_FIRE_TICKS } == true,
                 )
                 val strategy = strategies[saved.id]?.first
                 val strategyKept = strategy == null || seenStrategies.put(saved.id, strategy) == strategy
@@ -1042,7 +1062,7 @@ object NativeTactics {
                     situation.copy(
                         movers = movers.size,
                         flanking = view.members.any { it.id in waypoints },
-                        scattered = distances.size >= REGROUP_MIN_MEN && distances.count { it > 2 * radius } * 3 >= distances.size,
+                        scattered = distances.size >= REGROUP_MIN_MEN && distances.count { it > 2 * radius }.let { it >= REGROUP_MIN_SCATTERED && it * 3 >= distances.size },
                         gathered = distances.all { it <= radius },
                         regrouping = strategy == CombatStrategy.REGROUP,
                     )
@@ -1085,7 +1105,11 @@ object NativeTactics {
          * Whether [squad] may choose to flank: it can split off a manoeuvre group, and its flank was
          * not found blocked within [FLANK_BLOCK_TICKS].
          */
-        private fun flankOpen(squad: UUID, now: Long) = squad in flankable && flankBlockedAt[squad]?.let { now - it < FLANK_BLOCK_TICKS } != true
+        // A scattered squad gathers before a group splits off it again: split, its flankers kept
+        // it from regrouping, as Regroup waits for them.
+        private fun flankOpen(squad: UUID, now: Long) =
+            squad in flankable && flankBlockedAt[squad]?.let { now - it < FLANK_BLOCK_TICKS } != true &&
+                situations[squad]?.let { it.scattered || it.regrouping } != true
 
         /**
          * Notes the flank of [squad] blocked when at least half of its manoeuvre group still on the
@@ -1163,6 +1187,7 @@ object NativeTactics {
         fun strategyOf(squad: UUID) = strategies[squad]?.first
         fun approachOf(squad: UUID) = approaches[squad]
         fun boundTurnOf(squad: UUID) = boundTurns[squad]?.turn?.number
+        fun postFailuresOf(actor: UUID) = failures[actor]?.takeIf { level.gameTime < it.failedAt + FAILURE_MEMORY_TICKS }?.attempts ?: 0
         fun attackPhase(operation: UUID): AttackPhase? = attacks[operation]?.phase
         private fun currentAreaTask(operation: UUID): AreaControlTask? = areaTasks[operation]
         private fun finishAreas() {

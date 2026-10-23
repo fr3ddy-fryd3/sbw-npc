@@ -40,8 +40,10 @@ enum class CombatDuty(
 /**
  * Where and how one member carries out his [duty].
  *
- * @property hold he holds where he stands instead of searching for a post round [anchor]: the
- *   last resort once every post search round it has failed.
+ * @property hold the last resort once every post search round [anchor] has failed: no post is
+ *   searched for, and his order and his gun move him as when no task commands his movement.
+ *   Pinned to where he stood instead, a man whose line of fire a friend blocked never stepped
+ *   out of it and never fired.
  * @property legs a mover in a fight gets there by legs, from one post on the way to the next,
  *   firing from each before the next rush; see [MemberLeg].
  * @property coveredBy the men whose fire covers his rushes: each rush waits to start until one
@@ -51,6 +53,9 @@ data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: 
     init {
         require(actor.level == AgentLevel.NPC && exposureWeight.isFinite() && exposureWeight >= 0 && elevationWeight.isFinite() && elevationWeight >= 0)
     }
+
+    /** Whether this task takes over his movement, see [CombatDuty.commandsMovement] and [hold]. */
+    val commandsMovement get() = duty.commandsMovement && !hold
 }
 
 /** The [number]th leg of a mover's advance by legs ([PositionIntent.legs]): a rush to the next post, then fire from it. */
@@ -121,7 +126,7 @@ object TacticalFacts {
     /** Present while the [MANNER] is too young to give up for a better one, see [SquadManners]. */
     val MANNER_LOCK = FactKey("squad.manner_lock", Boolean::class.javaObjectType)
 
-    /** The squad attacks alone, can split off a manoeuvre group, and has not lately found the flank blocked. */
+    /** The squad attacks alone, can split off a manoeuvre group, is not scattered or regrouping, and has not lately found the flank blocked. */
     val FLANK_OPEN = FactKey("squad.flank_open", Boolean::class.javaObjectType)
 
     /** The approach of the squad's installed plan, absent before its first. */
@@ -314,7 +319,7 @@ object TacticalDomain {
                         val step = facts.value(TacticalFacts.POST_FAILURE)!!.attempts - NEIGHBOR_ATTEMPTS - 1
                         TaskNetwork.sequence(POST.call(intent.copy(anchor = closerAnchors(intent)[step], legs = false, coveredBy = emptySet())))
                     }),
-                    // Every search round the anchor failed: he holds where he stands until the
+                    // Every search round the anchor failed: his order and gun move him until the
                     // failure is forgotten and the search starts again. Without it the man had no
                     // plan at all and stood with his last failed search for a task.
                     Method("hold_as_ordered", eligible = { intent ->
@@ -358,8 +363,8 @@ object TacticalDomain {
             ActionSpec(
                 POSITION,
                 intent,
-                if (intent.duty.commandsMovement) setOf(ResourceKey(intent.actor, "motion")) else emptySet(),
-                timeoutTicks = if (intent.duty.commandsMovement) 1200 else Long.MAX_VALUE,
+                if (intent.commandsMovement) setOf(ResourceKey(intent.actor, "motion")) else emptySet(),
+                timeoutTicks = if (intent.commandsMovement) 1200 else Long.MAX_VALUE,
             ),
             // In the start, not the maintain: covering fire that lapses mid-rush must not stop him in the open.
             TaskContract(start = if (intent.coveredBy.isNotEmpty()) Condition.test(TacticalFacts.SUPPORT_FIRING, "awaiting_support") { it } else Condition.ALWAYS, maintain = maintain, completed = completed),
@@ -425,12 +430,15 @@ object TacticalDomain {
  * @property movers how many of its men advance by legs ([PositionIntent.legs]) before any
  *   strategy reshapes their tasks.
  * @property flanking some of its men are on the arc round a flank.
- * @property scattered a third of its men, aside from flankers and men who watch or search away
- *   from it on purpose, are farther from it than twice its perimeter radius.
+ * @property scattered a third of its men and at least two, aside from flankers and men who watch
+ *   or search away from it on purpose, are farther from it than twice its perimeter radius.
  * @property gathered all those men are within its perimeter radius.
  * @property regrouping it holds [CombatStrategy.REGROUP].
+ * @property underFire one of its men was hit within the last 10 s. [incoming] lasts 3 s after a
+ *   hit: a few distant riflemen hit too seldom to keep it, and a strategy weighed by it was taken
+ *   up and dropped every few seconds.
  */
-data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean, val reinforced: Boolean = false, val movers: Int = 0, val flanking: Boolean = false, val scattered: Boolean = false, val gathered: Boolean = false, val regrouping: Boolean = false)
+data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean, val reinforced: Boolean = false, val movers: Int = 0, val flanking: Boolean = false, val scattered: Boolean = false, val gathered: Boolean = false, val regrouping: Boolean = false, val underFire: Boolean = incoming)
 
 /**
  * How a squad's strategy methods choose between the [CombatStrategy] entries.

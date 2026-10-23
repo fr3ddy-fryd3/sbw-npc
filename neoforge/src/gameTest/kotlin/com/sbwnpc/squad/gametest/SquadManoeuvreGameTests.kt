@@ -50,18 +50,21 @@ object SquadManoeuvreGameTests {
     }
 
     /**
-     * Nine riflemen ordered to attack while strung out in three groups 60 blocks apart regroup at
-     * a rally point first, gather within the squad's perimeter and then go on.
+     * Nine riflemen ordered to attack an enemy in sight while strung out in three groups 60 blocks
+     * apart regroup at a rally point first, gather within the squad's perimeter and then go on.
+     *
+     * Out of contact each man marches by the order, and the squad gathers on the march by itself.
      */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1600, batch = "manoeuvre-regroup")
     fun scatteredAttackRegroupsFirst(helper: GameTestHelper) {
         val scene = CombatIdleGameTests.Scene(helper, "manoeuvre-regroup")
         val manager = SquadManager.get(helper.level)
-        val men = (0 until 9).map { scene.spawn(Vec3(20.5 + it % 3 * 3, 1.0, 14.5 + it / 3 * 60)) }
+        val men = (0 until 9).map { scene.spawn(Vec3(20.5 + it % 3 * 3, 1.0, 14.5 + it / 3 * 60)).also(::sturdy) }
+        repeat(3) { scene.spawn(Vec3(110.5, 1.0, 64.5 + it * 5), faction = SquadFaction.COW).also(::sturdy) }
         val squad = manager.create(helper.level, UUID(91, 2), SquadFaction.PIG, men.map { it.uuid })
         scene.onClose = { manager.deleteSquad(helper.level, squad.id) }
-        manager.issueOrderAt(helper.level, squad.id, SquadOrder.ATTACK, helper.absolutePos(BlockPos(150, 1, 74)))
+        manager.issueOrderAt(helper.level, squad.id, SquadOrder.ATTACK, helper.absolutePos(BlockPos(110, 1, 69)))
         var regrouped = false
         helper.onEachTick {
             val strategy = NativeTactics.strategy(helper.level, squad.id)

@@ -63,7 +63,6 @@ internal class NativePositionAction(
         // A sentry that left to resupply comes back to his own platform. Without it the fresh
         // search started again from the ground and settled on another post (#86).
         if (task.job == TacticalJob.OVERWATCH && heldPost != null && stillServes(heldPost)) task.position = heldPost.post
-        if (intent.hold) task.position = npc.position()
     }
 
     /** Only for the same anchor: a new order's post must come from a new search. */
@@ -114,7 +113,7 @@ internal class NativePositionAction(
     private fun update(now: Long): ActionUpdate {
         deferredAt?.let { lastProgress += now - it }
         deferredAt = null
-        if (!intent.duty.commandsMovement) return ActionUpdate.Running
+        if (!intent.commandsMovement) return ActionUpdate.Running
         // Gone with its squad (disbanded, deleted) while the plan still ran: fail, never throw (#64).
         val view = snapshot() ?: return ActionUpdate.Failed("no_squad_view")
         if (pendingStart) {
@@ -146,12 +145,6 @@ internal class NativePositionAction(
             DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=post_action_completed duty={} position={}", npc.uuid, intent.duty, task.position)
             return ActionUpdate.Completed(listOf(ActionEvidence("physical_post_arrival", now, "${npc.uuid}:${task.position}")))
         }
-        // Holding, he keeps the spot he stands on, taken again once a push cleared it. Never a spot
-        // a grenade threatens: put straight back, the hazard check could never move him off it.
-        if (intent.hold && task.position == null) {
-            if (GrenadeHazard.threatens(npc.level() as ServerLevel, npc.position())) return deferred(now, "hold_spot_threatened")
-            task.position = npc.position()
-        }
         if (task.position == null || task.search != null) {
             val result = TacticalPositions.find(npc, task, view, TacticalPositions.Query(policy, claimOwner))
             when (result.outcome) {
@@ -177,7 +170,7 @@ internal class NativePositionAction(
             lastProgress = now
         }
         if (FiringPostArrival.reached(npc.position(), destination)) {
-            if (intent.duty.advancing && !intent.hold && destination.distanceTo(task.anchor) > 4) {
+            if (intent.duty.advancing && destination.distanceTo(task.anchor) > 4) {
                 // A leg of an advance by legs ends here: he fires from this post before the next rush.
                 // A post a few steps on is passed: a pause every two blocks crawled the attack.
                 if (intent.legs && destination.distanceTo(legStart) >= MIN_LEG) {
@@ -188,7 +181,7 @@ internal class NativePositionAction(
                 invalidate(now, "intermediate_reached")
                 return ActionUpdate.Running
             }
-            if (intent.duty == CombatDuty.FIRE && !intent.hold && !TacticalPositions.firingReady(npc, task, npc.position())) {
+            if (intent.duty == CombatDuty.FIRE && !TacticalPositions.firingReady(npc, task, npc.position())) {
                 task.localFirePost = npc.position()
                 invalidate(now, "no_firing_lane")
                 return deferred(now, "firing_lane_recovery")
