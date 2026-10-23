@@ -184,7 +184,7 @@ internal class NativePositionAction(
         }
         if (intent.duty !in setOf(CombatDuty.REAR_GUARD, CombatDuty.OBSERVE, CombatDuty.SEARCH) || !reached()) return
         val sweep = glance()
-        val watching = intent.focus?.native()?.add(sweep, 1.5, -sweep) ?: idleGaze(sweep)
+        val watching = intent.focus?.native()?.let { focusGaze(it, sweep) } ?: idleGaze(sweep)
         val tracker = net.minecraft.world.entity.ai.behavior.BlockPosTracker(net.minecraft.core.BlockPos.containing(watching))
         ownedLook = tracker
         net.tslat.smartbrainlib.util.BrainUtils.setMemory(npc, net.minecraft.world.entity.ai.memory.MemoryModuleType.LOOK_TARGET, tracker)
@@ -204,6 +204,17 @@ internal class NativePositionAction(
             nextGlanceAt = npc.tickCount + GLANCE_MIN_TICKS + npc.random.nextInt(GLANCE_EXTRA_TICKS)
         }
         return glanceOffset
+    }
+
+    /**
+     * A point beside [focus], across his line of sight to it. Offset along a world diagonal, the
+     * glance ran along that line for a man facing it and barely turned his head.
+     */
+    private fun focusGaze(focus: Vec3, sweep: Double): Vec3 {
+        val dx = focus.x - npc.eyePosition.x
+        val dz = focus.z - npc.eyePosition.z
+        val length = kotlin.math.hypot(dx, dz).coerceAtLeast(MIN_GAZE_LENGTH)
+        return focus.add(-dz / length * sweep, FOCUS_GAZE_RISE, dx / length * sweep)
     }
 
     /**
@@ -329,6 +340,12 @@ internal class NativePositionAction(
     internal companion object {
         /** How far ahead an observer with no focus watches. */
         private const val IDLE_GAZE_DISTANCE = 8.0
+
+        /** How far above a watched focus point he looks, roughly a standing man's chest. */
+        private const val FOCUS_GAZE_RISE = 1.5
+
+        /** Keeps a focus right above him from dividing by zero. */
+        private const val MIN_GAZE_LENGTH = 0.01
 
         /** Farthest sideways, in blocks, of what he watches that a glance goes. */
         private const val GLANCE_SPREAD = 4.0
