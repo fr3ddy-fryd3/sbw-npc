@@ -71,4 +71,19 @@ object VersionCompat {
     fun addDoorGoal(mob: Mob) {
         mob.goalSelector.addGoal(1, OpenDoorGoal(mob, true))
     }
+
+    fun getWaterMalus(mob: Mob): Float = mob.getPathfindingMalus(BlockPathTypes.WATER)
+
+    fun getWaterBorderMalus(mob: Mob): Float = mob.getPathfindingMalus(BlockPathTypes.WATER_BORDER)
+
+    fun setWaterMalus(mob: Mob, malus: Float) = mob.setPathfindingMalus(BlockPathTypes.WATER, malus)
+
+    fun setWaterBorderMalus(mob: Mob, malus: Float) = mob.setPathfindingMalus(BlockPathTypes.WATER_BORDER, malus)
+
+    /** How high [mob] steps up without jumping. */
+    fun stepHeight(mob: Mob): Float = mob.maxUpStep()
+
+    fun setStepHeight(mob: Mob, height: Float) {
+        mob.setMaxUpStep(height)
+    }
 }
