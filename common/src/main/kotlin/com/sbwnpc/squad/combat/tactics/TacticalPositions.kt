@@ -3,12 +3,16 @@ package com.sbwnpc.squad.combat.tactics
 import com.sbwnpc.squad.combat.*
 import com.sbwnpc.squad.combat.WeaponReach
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.NpcPosture
 import com.sbwnpc.squad.util.Terrain
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.level.Level
+import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.pathfinder.Path
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
+import net.minecraft.world.phys.shapes.CollisionContext
 
 /** Local positions are validated through the existing navigation and collider raycasts. */
 object TacticalPositions {
@@ -170,7 +174,7 @@ object TacticalPositions {
         val candidate = Terrain.feetAt(level, raw, if (context.overwatch) 9 else 12) {
             if (!level.noCollision(entity, entity.getDimensions(entity.pose).makeBoundingBox(it))) {
                 false
-            } else if (context.overwatch && !protected(entity, task, it, context.hulls)) {
+            } else if (context.overwatch && !search.floorProtection.getOrPut(it) { protected(entity, task, it, context.hulls) }) {
                 // An exposed roof must not hide a sheltered, walkable floor below it.
                 if (it.y > task.anchor.y + 2.0) search.refineOverwatch(task.anchor, it)
                 search.reject("unprotected_overwatch_floor")
@@ -204,6 +208,10 @@ object TacticalPositions {
             return
         }
         if (!context.overwatch && (kotlin.math.abs(candidate.y - entity.y) > 12.0 || candidate.distanceTo(entity.position()) > SEARCH_REACH)) return
+        if (onClimbingShaft(level, candidate)) {
+            search.reject("climbing_shaft")
+            return
+        }
         val body = entity.getDimensions(entity.pose).makeBoundingBox(candidate)
         if (!safeBody(entity, candidate, body, context.hulls, context.taken)) {
             search.reject("occupied_or_hazard")
@@ -223,7 +231,7 @@ object TacticalPositions {
             return
         }
         val firing = aim?.let {
-            !Sightline.blockedBy(level, eye, it.eye, entity, context.hulls)
+            !Sightline.blockedBy(level, eye, it.eye, entity, context.hulls) && clearOfGrass(level, entity, candidate, it.eye)
         } ?: true
         if (mustShoot && !firing) {
             search.reject("blocked_shot")
@@ -239,6 +247,22 @@ object TacticalPositions {
             return
         }
         search.scored[candidate] = score(context, candidate, exposure, firing, mustShoot, nearbyCover)
+    }
+
+    /**
+     * Whether a man kneeling at [candidate] sees out of the grass round him toward [aim].
+     *
+     * [Sightline] goes by collision and looks straight through grass; spotting
+     * ([DetectionSightline]) is hidden by three blocks of it. Posts in a meadow passed the firing
+     * check, and the men knelt in them seeing nobody (#159). Only the first [GRASS_REACH] blocks
+     * are read: grass by the target hides him from every post alike and is no reason to pass this
+     * one over. Kneeling, since [NpcPosture] puts him down once he is settled there.
+     */
+    private fun clearOfGrass(level: ServerLevel, entity: NpcEntity, candidate: Vec3, aim: Vec3): Boolean {
+        val eye = candidate.add(0.0, NpcPosture.CROUCHING_DIMENSIONS.eyeHeight().toDouble(), 0.0)
+        val toward = aim.subtract(eye)
+        val end = eye.add(toward.scale(minOf(1.0, GRASS_REACH / toward.length())))
+        return DetectionSightline.trace(level, eye, end, CollisionContext.of(entity)) != DetectionSightline.Visibility.FOLIAGE
     }
 
     private fun score(context: SearchContext, candidate: Vec3, exposure: Int, firing: Boolean, mustShoot: Boolean, nearbyCover: Boolean): TacticalPositionScore {
@@ -465,19 +489,33 @@ object TacticalPositions {
             DefensiveOverwatch.protected(point, entity.eyeHeight.toDouble(), null) { from, to -> Sightline.blocked(level, from, to, entity) }
     }
 
-    private fun protected(entity: NpcEntity, task: TacticalTask, point: Vec3, hulls: List<AABB>): Boolean =
-        DefensiveOverwatch.protected(point, entity.eyeHeight.toDouble(), null) { from, to ->
-            Sightline.blockedBy(entity.level() as ServerLevel, from, to, entity, hulls)
-        } || (
-            DefensiveOverwatch.protected(point, entity.eyeHeight.toDouble(), TacticalAim.resolve(entity, task)?.position) { from, to ->
-                Sightline.blockedBy(entity.level() as ServerLevel, from, to, entity, hulls)
-            } && friendlyLane(entity, point.add(0.0, entity.eyeHeight.toDouble(), 0.0), TacticalAim.resolve(entity, task)?.eye)
-            )
+    private fun protected(entity: NpcEntity, task: TacticalTask, point: Vec3, hulls: List<AABB>): Boolean {
+        val blocked = { from: Vec3, to: Vec3 -> Sightline.blockedBy(entity.level() as ServerLevel, from, to, entity, hulls) }
+        if (DefensiveOverwatch.protected(point, entity.eyeHeight.toDouble(), null, blocked)) return true
+        // Without an aim the second check would cast the same rays again and fail again; on an
+        // open-ground scan that doubled the cost of every rejected floor.
+        val aim = TacticalAim.resolve(entity, task) ?: return false
+        return DefensiveOverwatch.protected(point, entity.eyeHeight.toDouble(), aim.position, blocked) &&
+            friendlyLane(entity, point.add(0.0, entity.eyeHeight.toDouble(), 0.0), aim.eye)
+    }
 
     private fun finish(task: TacticalTask, point: Vec3): Result {
         task.search = null
         return Result(Outcome.FOUND, point)
     }
+
+    /**
+     * Whether [point] stands on the top of a scaffolding column, the shaft a tower is climbed through.
+     *
+     * Unlike a ladder, the top scaffold has a solid deck, so [Terrain.feetAt] accepts it as floor.
+     * A post there blocks the shaft for the rest of the squad, and the climber keeps bobbing inside
+     * the top scaffold instead of stepping onto it, so the post is never reached.
+     */
+    private fun onClimbingShaft(level: Level, point: Vec3): Boolean {
+        val deck = BlockPos.containing(point).below()
+        return level.getBlockState(deck).`is`(Blocks.SCAFFOLDING) && level.getBlockState(deck.below()).`is`(Blocks.SCAFFOLDING)
+    }
+
     private fun safeBody(entity: NpcEntity, point: Vec3, body: AABB, hulls: List<AABB>, taken: List<Vec3>): Boolean =
         entity.level().getFluidState(BlockPos.containing(point)).isEmpty && entity.level().noCollision(entity, body) &&
             hulls.none { it.intersects(body) } && !GrenadeHazard.threatens(entity.level() as ServerLevel, point) && !FiringSpots.crowded(point, taken)
@@ -496,6 +534,7 @@ object TacticalPositions {
         val level = entity.level() as ServerLevel
         val hulls = Sightline.vehicleHulls(level, AABB(eye, aim.eye).inflate(2.0), entity, entity.target)
         return !Sightline.blockedBy(level, eye, aim.eye, entity, hulls, entity.spread) &&
+            clearOfGrass(level, entity, point, aim.eye) &&
             friendlyLane(entity, eye, aim.eye)
     }
 
@@ -503,6 +542,9 @@ object TacticalPositions {
     const val SEARCH_REACH = 48.0
     private const val MAX_PROBES_PER_TICK = 24
     private const val DENSE_CANDIDATE_BATCH = 16
+
+    /** How far out from a post the grass round it is looked at, see [clearOfGrass]. */
+    private const val GRASS_REACH = 8.0
     private val SHOOTING_JOBS = TacticalJob.FIRING_POSITIONS
     private val RUNNING_JOBS = TacticalJob.RUNNING
     private val OFFSETS = listOf(

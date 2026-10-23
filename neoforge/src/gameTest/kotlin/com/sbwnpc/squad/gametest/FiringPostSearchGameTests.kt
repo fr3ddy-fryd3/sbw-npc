@@ -20,6 +20,8 @@ import net.minecraft.gametest.framework.GameTestInfo
 import net.minecraft.gametest.framework.GameTestListener
 import net.minecraft.gametest.framework.GameTestRunner
 import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.level.block.DoublePlantBlock
+import net.minecraft.world.level.block.state.properties.DoubleBlockHalf
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
@@ -76,6 +78,60 @@ object FiringPostSearchGameTests {
             helper.assertTrue(search.scored.size == 2, "Fixture did not admit both posts: ${search.rejections}")
             helper.assertTrue(search.scored[open]?.open == true, "Exposed $job post received synthetic shelter: ${search.scored}")
             helper.assertTrue(result.position == sheltered, "$job selected an exposed post despite reachable shelter: $result")
+            helper.succeed()
+        }
+    }
+
+    /**
+     * Of two posts with a clear shot by collision, the one in the middle of tall grass is turned
+     * down: kneeling there, the man sees nobody to shoot (#159).
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 120, batch = "grass-post")
+    fun coverSearchPassesOverAPostInTallGrass(helper: GameTestHelper) {
+        Files.createDirectories(Path.of(System.getProperty("sbwnpc.gameTestReports")))
+        for (x in 0..175) for (z in 0..223) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        for (x in 45..52) {
+            for (z in 98..103) {
+                // Grass doesn't stand on stone.
+                helper.setBlock(BlockPos(x, 0, z), Blocks.GRASS_BLOCK)
+                helper.setBlock(BlockPos(x, 1, z), Blocks.TALL_GRASS.defaultBlockState().setValue(DoublePlantBlock.HALF, DoubleBlockHalf.LOWER))
+                helper.setBlock(BlockPos(x, 2, z), Blocks.TALL_GRASS.defaultBlockState().setValue(DoublePlantBlock.HALF, DoubleBlockHalf.UPPER))
+            }
+        }
+        val npc = AttackDeploymentGameTests.spawn(helper, Vec3(30.5, 1.0, 105.5), SquadFaction.PIG).apply { isNoAi = true }
+        // Within rifle range, so the post must have a shot to be taken at all.
+        val enemy = AttackDeploymentGameTests.spawn(helper, Vec3(100.5, 1.0, 100.5), SquadFaction.COW).apply { isNoAi = true }
+        val grassy = helper.absoluteVec(Vec3(47.5, 1.0, 100.5))
+        val open = helper.absoluteVec(Vec3(47.5, 1.0, 110.5))
+        val task = TacticalTask(TacticalJob.COVER, grassy, enemy.position(), 1).apply { localFirePost = grassy }
+        helper.testInfo.addListener(object : GameTestListener {
+            override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
+            override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
+            override fun testFailed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
+            override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) = cleanup()
+            private fun cleanup() {
+                FiringSpots.release(npc.uuid)
+                npc.discard()
+                enemy.discard()
+            }
+        })
+        helper.runAtTickTime(20) {
+            npc.setOnGround(true)
+            BrainUtils.setTargetOfEntity(npc, enemy)
+            task.search = TacticalPositionSearch(npc.position(), listOf(grassy, open), TacticalAim.resolve(npc, task))
+        }
+        helper.onEachTick {
+            if (helper.tick <= 20) return@onEachTick
+            npc.setOnGround(true)
+            val view = TacticalSnapshot(helper.level.gameTime, SquadOrder.ATTACK, 1, npc.position(), enemy.position(), listOf(TacticalMember(npc.uuid, npc.position())), listOf(TacticalContact(enemy.uuid, enemy.position(), helper.level.gameTime)))
+            val search = task.search!!
+            val result = TacticalPositions.find(npc, task, view)
+            if (result.outcome == TacticalPositions.Outcome.DEFERRED) return@onEachTick
+            Files.writeString(Path.of(System.getProperty("sbwnpc.gameTestReports")).resolve("grass-post.txt"), "result=$result\nscores=${search.scored}\nrejections=${search.rejections}\n")
+            helper.assertTrue(result.position == open, "The search chose $result over the open post: ${search.rejections}")
+            helper.assertTrue(search.rejections["blocked_shot"] == 1, "The grassy post was not turned down for its shot: ${search.rejections}")
+            helper.assertFalse(TacticalPositions.firingReady(npc, task, grassy), "A post in tall grass counts as ready to fire from")
             helper.succeed()
         }
     }

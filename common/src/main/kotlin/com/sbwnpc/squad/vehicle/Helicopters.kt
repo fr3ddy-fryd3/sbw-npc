@@ -2,9 +2,11 @@ package com.sbwnpc.squad.vehicle
 
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.npc.HelicopterModel
+import com.sbwnpc.squad.npc.NpcClass
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
+import net.minecraft.world.entity.Mob
 import net.minecraft.world.level.BlockGetter
 import net.minecraft.world.phys.Vec3
 
@@ -31,7 +33,25 @@ object Helicopters {
      * same number, or there is a band of distances where the aircraft leaves for a trip its
      * passengers never considered getting on.
      */
-    const val AIR_TRANSPORT_DISTANCE = 80.0
+    // 20 by the owner's call (21.10): a helicopter flies over its target and sees far, so sitting on
+    // the pad for anything under 80 wasted it.
+    const val AIR_TRANSPORT_DISTANCE = 20.0
+
+    /** How far a man looks for his own squad's transport — the one his squad's pilot sits in. */
+    const val OWN_TRANSPORT_RANGE = 160.0
+
+    /**
+     * A man whose enemy is nearer than this fights on foot; further off, he still boards and the
+     * lift goes up with him aboard (owner, 22.10). Turned away by any contact at all, a squad that
+     * saw the enemy across a valley walked into him while its transport stood on the pad.
+     */
+    const val BOARD_UNDER_FIRE_RANGE = 40.0
+
+    /** [npc] has an enemy too close to walk off to a seat, see [BOARD_UNDER_FIRE_RANGE]. */
+    fun fightingClose(npc: Mob): Boolean = npc.target?.takeIf { it.isAlive }?.let { npc.distanceTo(it) < BOARD_UNDER_FIRE_RANGE } == true
+
+    /** Ordinary infantry: every other class has a post of its own to man, and stays off the benches. */
+    val RIDER_CLASSES = setOf(NpcClass.RIFLEMAN, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.SHOTGUNNER)
 
     fun isHelicopter(vehicle: Entity): Boolean = Ports.vehicles.modelOf(vehicle) is HelicopterModel
 
@@ -119,7 +139,7 @@ object Helicopters {
     }
 
     /** Ground level under a point, as the flight code measures it. */
-    fun groundY(level: ServerLevel, x: Double, z: Double): Int = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, x.toInt(), z.toInt())
+    fun groundY(level: ServerLevel, x: Double, z: Double): Int = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, net.minecraft.util.Mth.floor(x), net.minecraft.util.Mth.floor(z))
 
     private const val ROTOR_CLEARANCE = 6
     private const val RETREAT_HEALTH_FRACTION = 0.35f

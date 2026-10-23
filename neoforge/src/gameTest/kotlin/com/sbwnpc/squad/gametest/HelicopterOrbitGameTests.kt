@@ -33,6 +33,7 @@ import net.neoforged.neoforge.common.util.FakePlayerFactory
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent
 import net.neoforged.neoforge.event.tick.ServerTickEvent
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
+import net.tslat.smartbrainlib.util.BrainUtils
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.UUID
@@ -65,7 +66,8 @@ object HelicopterOrbitGameTests {
      * counts: it used to hold the ridge height all the way and complete from far above (#119).
      */
     private fun emptyAttack(helper: GameTestHelper, model: HelicopterModel, ridge: Boolean = false) {
-        val scene = Scene(helper, model = model, spawnEnemy = false, ridge = ridge)
+        val scene = Scene(helper, model = model, spawnEnemy = false)
+        if (ridge) scene.raiseRidge()
         var moveAt: Long? = null
         val cruise = CruiseHeight(helper, scene)
         helper.onEachTick {
@@ -133,6 +135,100 @@ object HelicopterOrbitGameTests {
             }
         }
     }
+
+    /** An attack 30 blocks off is flown, not walked: anything past 20 blocks is worth the aircraft (#139). */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 900, batch = "transport-short-hop")
+    fun transportFliesAShortHop(helper: GameTestHelper) {
+        val scene = Scene(helper, spawnEnemy = false, objective = BlockPos(58, 1, 100))
+        helper.onEachTick {
+            scene.tick()
+            if (scene.airborne) {
+                val riders = Ports.vehicles.seating(scene.heli).drop(1).count { it != null }
+                helper.assertTrue(riders > 0, "Lifted off for a short hop with nobody on the benches")
+                scene.result("airborneAt=${helper.tick} riders=$riders")
+                helper.succeed()
+            }
+        }
+    }
+
+    /**
+     * Riders who see the enemy 70 blocks off still board, and the transport goes up with them. Any
+     * contact at all used to turn them away, and the squad walked into the fight (22.10).
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 900, batch = "transport-far-contact")
+    fun ridersBoardWithTheEnemyFarOff(helper: GameTestHelper) {
+        val scene = Scene(helper, spawnEnemy = false)
+        val enemy = AttackDeploymentGameTests.spawn(helper, Vec3(100.5, 1.0, 100.5), SquadFaction.COW).apply {
+            isNoAi = true
+            isInvulnerable = true
+        }
+        scene.onClose = { enemy.discard() }
+        var sawEnemy = false
+        helper.onEachTick {
+            scene.tick()
+            // Seen at once, rather than whenever spotting gets round to it, so nobody boards first.
+            if (helper.tick == 1L) scene.crew.forEach { BrainUtils.setTargetOfEntity(it, enemy) }
+            sawEnemy = sawEnemy || scene.crew.any { it.target === enemy && it.vehicle == null }
+            if (scene.airborne) {
+                val riders = Ports.vehicles.seating(scene.heli).drop(1).count { it != null }
+                scene.result("airborneAt=${helper.tick} riders=$riders sawEnemy=$sawEnemy")
+                helper.assertTrue(riders >= scene.crew.count { it.npcClass in Helicopters.RIDER_CLASSES }, "Lifted off with $riders aboard, leaving riders on the ground")
+                helper.succeed()
+            }
+        }
+    }
+
+    /** A pilot with no gunner aboard stays on the pad: alone, he is a target and not a weapon (#139). */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 700, batch = "transport-no-gunner")
+    fun pilotAloneDoesNotLiftOff(helper: GameTestHelper) {
+        val scene = Scene(helper, spawnEnemy = false, roles = listOf(NpcClass.HELICOPTER_PILOT))
+        helper.onEachTick {
+            scene.tick()
+            helper.assertFalse(scene.airborne, "A pilot alone lifted off")
+            if (helper.tick >= 600) {
+                scene.result("grounded through tick ${helper.tick}")
+                helper.succeed()
+            }
+        }
+    }
+
+    /**
+     * Once every gunner aboard is dead, a transport leaves the fight and lands away from it rather
+     * than hovering over the enemy with empty benches (#139).
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 2400, batch = "transport-gunners-lost")
+    fun transportWithdrawsWhenItsGunnersAreLost(helper: GameTestHelper) {
+        val scene = Scene(helper)
+        var lostAt: Long? = null
+        helper.onEachTick {
+            scene.tick()
+            val enemy = scene.enemy ?: return@onEachTick
+            if (lostAt == null) {
+                if (scene.airborne && helper.tick >= 250 && scene.crew.any { it.target === enemy }) {
+                    // Off the seat first: SBW passes a seated man's damage on to the aircraft.
+                    scene.crew.drop(1).forEach {
+                        it.stopRiding()
+                        it.kill()
+                    }
+                    lostAt = helper.tick
+                }
+                return@onEachTick
+            }
+            val away = scene.heli.position().subtract(enemy.position()).horizontalDistance()
+            if (Helicopters.isGrounded(helper.level, scene.heli)) {
+                helper.assertTrue(away >= RETIRED_DISTANCE, "Landed ${away.toInt()} blocks from the enemy after losing its gunners")
+                scene.result("lostAt=$lostAt landedAt=${helper.tick} away=${away.toInt()}")
+                helper.succeed()
+            }
+        }
+    }
+
+    /** Short of the pilot's 80-block retirement, for the turn and the descent. */
+    private const val RETIRED_DISTANCE = 60.0
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 40, batch = "helicopter-deployment")
@@ -444,7 +540,14 @@ object HelicopterOrbitGameTests {
         }
     }
 
-    private class Scene(val helper: GameTestHelper, model: HelicopterModel = HelicopterModel.AH_6, private val attack: Boolean = true, private val spawnEnemy: Boolean = true, ridge: Boolean = false) {
+    private class Scene(
+        val helper: GameTestHelper,
+        model: HelicopterModel = HelicopterModel.AH_6,
+        private val attack: Boolean = true,
+        spawnEnemy: Boolean = true,
+        roles: List<NpcClass> = model.crew,
+        objective: BlockPos = BlockPos(140, 1, 100),
+    ) {
         val pad = helper.absoluteVec(Vec3(28.5, 1.0, 100.5))
         val heli = Ports.vehicles.create(helper.level, model)!!
         val crew = mutableListOf<NpcEntity>()
@@ -460,21 +563,12 @@ object HelicopterOrbitGameTests {
             // Vanilla test barriers must not become heightmap terrain or a false ceiling for aircraft.
             StructureUtils.removeBarriers(helper.bounds, helper.level)
             for (x in 0..191) for (z in 0..191) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
-            // A hill on the approach, peaking 30 high at x 80 and gone 25 blocks before the objective at
-            // x 140. Sloped and not wall to wall, so a low-flying gunship can climb it and the ground
-            // round it stays one walkable area.
-            if (ridge) {
-                for (x in 45..115) {
-                    val top = (30.0 * (1.0 - abs(x - 80) / 35.0)).toInt()
-                    for (z in 70..130) for (y in 1..top) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
-                }
-            }
             DebugFlags.enabledGroups = setOf(LogGroup.HELI, LogGroup.ORDER)
             heli.moveTo(pad.x, pad.y, pad.z, -90f, 0f)
             helper.level.addFreshEntity(heli)
             Ports.vehicles.fuelAndArm(heli, model)
             SquadTeams.assign(heli, SquadFaction.PIG)
-            for ((index, role) in model.crew.withIndex()) {
+            for ((index, role) in roles.withIndex()) {
                 crew += AttackDeploymentGameTests.spawn(helper, Vec3(28.5 + index * 0.8, 1.0, 102.5), SquadFaction.PIG, role = role).also {
                     if (role in setOf(NpcClass.HELICOPTER_PILOT, NpcClass.HELICOPTER_GUNNER)) it.assignedVehicleId = heli.uuid
                 }
@@ -487,7 +581,7 @@ object HelicopterOrbitGameTests {
             }
             squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, crew.map { it.uuid })
             manager.setOrder(squad.id, if (attack) SquadOrder.ATTACK else SquadOrder.RETREAT)
-            manager.setObjective(helper.level, squad.id, helper.absolutePos(BlockPos(140, 1, 100)))
+            manager.setObjective(helper.level, squad.id, helper.absolutePos(objective))
             witness.gameMode.changeGameModeForPlayer(GameType.CREATIVE)
             val point = helper.absoluteVec(Vec3(5.5, 5.0, 5.5))
             witness.moveTo(point.x, point.y, point.z, 0f, 0f)
@@ -501,8 +595,23 @@ object HelicopterOrbitGameTests {
                 override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) = close()
             })
         }
+
+        /**
+         * A hill on the approach, peaking 30 high at x 80 and gone 25 blocks before the objective at
+         * x 140. Sloped and not wall to wall, so a low-flying gunship can climb it and the ground
+         * round it stays one walkable area.
+         */
+        fun raiseRidge() {
+            for (x in 45..115) {
+                val top = (30.0 * (1.0 - abs(x - 80) / 35.0)).toInt()
+                for (z in 70..130) for (y in 1..top) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
+            }
+        }
+
+        private val enemyDue = attack && spawnEnemy
+
         fun tick() {
-            if (attack && spawnEnemy && enemy == null && Ports.vehicles.seating(heli).count { it != null } == 4) {
+            if (enemyDue && enemy == null && Ports.vehicles.seating(heli).count { it != null } == crew.size) {
                 enemy = AttackDeploymentGameTests.spawn(helper, Vec3(104.5, 1.0, 100.5), SquadFaction.COW).apply {
                     isNoAi = true
                     getAttribute(Attributes.MAX_HEALTH)!!.baseValue = 100000.0

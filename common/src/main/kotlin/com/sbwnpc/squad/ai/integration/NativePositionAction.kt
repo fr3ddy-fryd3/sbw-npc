@@ -20,12 +20,16 @@ data class NativeAssignment(val job: TacticalJob, val anchor: Vec3, val focus: V
     fun permitsFront(point: Vec3) = point.distanceTo(anchor) <= 32.0 || localFirePost?.let { TacticalFirePosts.withinPost(it, point, recovery = true) } == true
 }
 
+/** A sentry's height [post] and the [anchor] it was searched for. */
+internal data class HeldPost(val anchor: Vec3, val post: Vec3)
+
 /** The existing collision/shot/native-A* query is used with explicit constraints and a private cursor. */
 internal class NativePositionAction(
     intent: PositionIntent,
     private val npc: NpcEntity,
     private val snapshot: () -> TacticalSnapshot?,
     private val exhausted: (PositionIntent, Map<String, Int>, Vec3) -> Unit,
+    heldPost: HeldPost? = null,
 ) : ActionExecution {
     var intent = intent
         private set
@@ -54,8 +58,24 @@ internal class NativePositionAction(
         }
         override fun route(view: TacticalSnapshot, point: Vec3) = intent.minimumHeight?.let { point.y >= it } != false
     }
+
+    init {
+        // A sentry that left to resupply comes back to his own platform. Without it the fresh
+        // search started again from the ground and settled on another post (#86).
+        if (task.job == TacticalJob.OVERWATCH && heldPost != null && stillServes(heldPost)) task.position = heldPost.post
+    }
+
+    /** Only for the same anchor: a new order's post must come from a new search. */
+    private fun stillServes(held: HeldPost) =
+        held.anchor.distanceTo(task.anchor) <= 1.0 && intent.minimumHeight?.let { held.post.y >= it } != false &&
+            FiringSpots.nearby(held.post, 1.0, npc.uuid).isEmpty()
+
+    /** The height post this action holds or heads for, kept by [NativeTactics] for the next OVERWATCH action. */
+    val overwatchPost get() = task.position?.takeIf { task.job == TacticalJob.OVERWATCH }?.let { HeldPost(task.anchor, it) }
     private var ownedLook: net.minecraft.world.entity.ai.behavior.PositionTracker? = null
     private var idleDirection: Pair<Double, Double>? = null
+    private var glanceOffset = 0.0
+    private var nextGlanceAt = 0
     val ownsLook get() = ownedLook != null && npc.target == null && NativeTactics.movable(npc)
     private var deferredAt: Long? = null
     private var lastProgress = 0L
@@ -181,13 +201,38 @@ internal class NativePositionAction(
             return
         }
         if (intent.duty !in setOf(CombatDuty.REAR_GUARD, CombatDuty.OBSERVE, CombatDuty.SEARCH) || !reached()) return
-        val sweep = kotlin.math.sin(npc.tickCount / 30.0) * 3.0
-        val watching = intent.focus?.native()?.add(sweep, 1.5, -sweep) ?: idleGaze(sweep)
+        val sweep = glance()
+        val watching = intent.focus?.native()?.let { focusGaze(it, sweep) } ?: idleGaze(sweep)
         val tracker = net.minecraft.world.entity.ai.behavior.BlockPosTracker(net.minecraft.core.BlockPos.containing(watching))
         ownedLook = tracker
         net.tslat.smartbrainlib.util.BrainUtils.setMemory(npc, net.minecraft.world.entity.ai.memory.MemoryModuleType.LOOK_TARGET, tracker)
         npc.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES, watching)
         npc.lookControl.setLookAt(watching.x, watching.y, watching.z)
+    }
+
+    /**
+     * The sideways offset of a man's current glance from what he watches, kept for a few random seconds.
+     *
+     * A sine of [NpcEntity.tickCount] turned the heads of men deployed together in step, all
+     * towards the same squad front, like a dance troupe (#167).
+     */
+    private fun glance(): Double {
+        if (npc.tickCount >= nextGlanceAt) {
+            glanceOffset = (npc.random.nextDouble() * 2.0 - 1.0) * GLANCE_SPREAD
+            nextGlanceAt = npc.tickCount + GLANCE_MIN_TICKS + npc.random.nextInt(GLANCE_EXTRA_TICKS)
+        }
+        return glanceOffset
+    }
+
+    /**
+     * A point beside [focus], across his line of sight to it. Offset along a world diagonal, the
+     * glance ran along that line for a man facing it and barely turned his head.
+     */
+    private fun focusGaze(focus: Vec3, sweep: Double): Vec3 {
+        val dx = focus.x - npc.eyePosition.x
+        val dz = focus.z - npc.eyePosition.z
+        val length = kotlin.math.hypot(dx, dz).coerceAtLeast(MIN_GAZE_LENGTH)
+        return focus.add(-dz / length * sweep, FOCUS_GAZE_RISE, dx / length * sweep)
     }
 
     /**
@@ -313,6 +358,21 @@ internal class NativePositionAction(
     internal companion object {
         /** How far ahead an observer with no focus watches. */
         private const val IDLE_GAZE_DISTANCE = 8.0
+
+        /** How far above a watched focus point he looks, roughly a standing man's chest. */
+        private const val FOCUS_GAZE_RISE = 1.5
+
+        /** Keeps a focus right above him from dividing by zero. */
+        private const val MIN_GAZE_LENGTH = 0.01
+
+        /** Farthest sideways, in blocks, of what he watches that a glance goes. */
+        private const val GLANCE_SPREAD = 4.0
+
+        /** The least a glance lasts. */
+        private const val GLANCE_MIN_TICKS = 40
+
+        /** The most a glance lasts beyond [GLANCE_MIN_TICKS]. */
+        private const val GLANCE_EXTRA_TICKS = 60
 
         /** A candidate this near the route leg is on the way, even while it leads away from the anchor. */
         private const val ROUTE_LEG_REACH = 6.0

@@ -45,6 +45,7 @@ object GameTestRegistration {
             DroneFlightGameTests::class.java,
             ObserverLookGameTests::class.java,
             VehicleSeatGameTests::class.java,
+            MarchRouteGameTests::class.java,
             NoticingGameTests::class.java,
         )
         // Saved-world replays require an explicit local fixture; ordinary suites stay portable.
