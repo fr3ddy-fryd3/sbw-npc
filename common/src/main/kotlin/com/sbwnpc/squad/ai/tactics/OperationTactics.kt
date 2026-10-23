@@ -40,6 +40,9 @@ data class AttackMember(val id: UUID, val position: Point3, val ready: Boolean)
  * @property primaryAmmo the member still has ammunition for his main weapon.
  * @property reachedMove the member's current MOVE post is reached.
  * @property wasFiring the member's previous intent was FIRE.
+ * @property wasObserving the member's previous intent was OBSERVE at this [objective].
+ * @property arrival on DEFEND or route-less PATROL, how near the [objective] he counts as there, see
+ *   [com.sbwnpc.squad.combat.SquadFormation.defendArrivalRadius].
  * @property flanking the member is on his way round the objective to his sector, see
  *   [ApproachSectors.arcWaypoint]; [proposal] holds the next waypoint.
  */
@@ -57,7 +60,9 @@ data class DutyInputs(
     val hasPatrolRoute: Boolean,
     val reachedMove: Boolean,
     val wasFiring: Boolean,
+    val arrival: Double,
     val flanking: Boolean = false,
+    val wasObserving: Boolean = false,
     /** On a FOLLOW order: the objective is a player who walks away from any post round it. */
     val following: Boolean = false,
     /** Following in a fight: this man's half runs this beat, see [OperationTactics.followBound]. */
@@ -66,7 +71,18 @@ data class DutyInputs(
     val followSlot: Point3? = null,
     /** Following a player who rides a vehicle, or this man holds a vehicle: the ride sees to it. */
     val followRide: Boolean = false,
-)
+) {
+    /**
+     * Whether a sentry takes his height post: at his objective, or with none, or already on duty for it.
+     *
+     * He takes it once he has arrived, as a defender takes his place on the ring, and keeps it for the
+     * same objective wherever the post search sends him. Distance bands in between flipped him: a post
+     * on the search's edge stood a fraction of a block past the band, and he climbed down to the squad
+     * and up to the same post again, over and over (#166, in-game 23.10).
+     */
+    val takesSentryPost: Boolean
+        get() = wasObserving || objective?.let { hypot(position.x - it.x, position.z - it.z) <= arrival } != false
+}
 
 data class DutyChoice(val duty: CombatDuty, val anchor: Point3)
 
@@ -207,7 +223,11 @@ object OperationTactics {
                 // hid (#73). Out of ammunition for his main weapon he is no sentry, and a height is no
                 // post round an objective that walks away from it: gunners following their player held
                 // a roof while he left (#116, in-game 20.10).
-                (order == TacticalOrder.DEFEND || (order == TacticalOrder.PATROL && !hasPatrolRoute)) && heightRole && primaryAmmo && !following -> CombatDuty.OBSERVE
+                // A height post is searched round the objective, so he first marches there with the
+                // squad: searched from a tower 44-155 blocks off, no post qualified and he never left
+                // the tower (#166).
+                (order == TacticalOrder.DEFEND || (order == TacticalOrder.PATROL && !hasPatrolRoute)) && heightRole && primaryAmmo && !following &&
+                    takesSentryPost -> CombatDuty.OBSERVE
 
                 !inContact || order in setOf(TacticalOrder.RETREAT, TacticalOrder.MOVE, TacticalOrder.BARRAGE) -> CombatDuty.FOLLOW_ORDER
 

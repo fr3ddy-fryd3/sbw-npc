@@ -788,6 +788,8 @@ object NativeTactics {
                             hasPatrolRoute = view.hasPatrolRoute,
                             reachedMove = actions[member.id]?.let { it.intent.duty == CombatDuty.MOVE && it.reached() } == true,
                             wasFiring = oldIntents[member.id]?.duty == CombatDuty.FIRE,
+                            arrival = com.sbwnpc.squad.combat.SquadFormation.defendArrivalRadius(saved.members.size),
+                            wasObserving = oldIntents[member.id]?.let { it.duty == CombatDuty.OBSERVE && it.anchor == saved.objective?.center?.point() } == true,
                             flanking = waypoint != null,
                             following = following,
                             // Halves by place among the men here now, not by saved slot: after losses
