@@ -237,6 +237,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /** Still able to fight — or, with ammo left, still on its way somewhere. */
     override fun shouldKeepRunning(entity: NpcEntity): Boolean {
+        if (entity.busyWithRole()) return false
         if (canEngage(entity)) return true
         // Cover, a medic's treatment or AntiDroneBehaviour (which owns the gun and the feet while
         // a hostile drone is inbound) take the mob over; nothing to finish walking to then.
@@ -962,7 +963,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             holdFiringPosition(entity, target)
             return CombatMovement.LOCAL
         }
-        if (SquadTactics.move(entity)) {
+        if (SquadTransit.marching(entity) || SquadTactics.move(entity)) {
             bounding = true
             boundPhaseStarted = false
             firingPos = null

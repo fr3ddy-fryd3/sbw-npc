@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.entity.ai
 
+import com.sbwnpc.squad.combat.CombatPositionSafety
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.squad.Squad
 import net.minecraft.server.level.ServerLevel
@@ -9,6 +10,18 @@ import net.minecraft.world.phys.Vec3
 object SquadTransit {
     /** Beyond this distance a squad may take nearby transport instead of walking. */
     const val TRANSPORT_DISTANCE = 100.0
+
+    /** A remembered enemy beyond the normal engagement distance must not stop the journey. */
+    fun marching(npc: NpcEntity): Boolean {
+        // Cover and treatment still own movement through the executors' existing role guards.
+        // Incoming fire forbids boarding, but does not turn a remote contact into a local post.
+        if (npc.lowAmmoFallback() != null) return false
+        val target = npc.target
+        val engage = maxOf(npc.npcClass.assaultDistance, CombatPositionSafety.clearance(npc.npcClass) + CombatPositionSafety.APPROACH_MARGIN)
+        if (target != null && npc.distanceToSqr(target) <= engage * engage) return false
+        val squad = npc.currentSquad() ?: return false
+        return distant(squad, npc.level() as ServerLevel)
+    }
 
     /** Whether the loaded living squad is still far from its ordered objective in this dimension. */
     fun distant(squad: Squad, level: ServerLevel): Boolean {

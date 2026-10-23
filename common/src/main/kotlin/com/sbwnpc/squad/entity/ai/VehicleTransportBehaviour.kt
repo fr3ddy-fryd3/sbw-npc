@@ -191,7 +191,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
-    private fun combatInterrupted(entity: NpcEntity) = entity.target != null || entity.isAlert() || entity.isSuppressed()
+    private fun combatInterrupted(entity: NpcEntity) =
+        (entity.target != null && !SquadTransit.marching(entity)) || entity.isAlert() || entity.isSuppressed() ||
+            entity.incomingFire.recentPoint(entity.level().gameTime) != null
 
     /** [checkGiveup] must be false when called from [checkExtraStartConditions] (deciding whether to
      *  START a brand new episode) and true from [shouldKeepRunning] (deciding whether an ALREADY
@@ -232,6 +234,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
         }
         if (entity.diggedIn) return logEligibility(entity, false) { "dug in" }
+        if (entity.movementLockedByCover() || entity.combatLockedByMedic()) return logEligibility(entity, false) { "cover or medic owns movement" }
         // Off to a Supply: the order waits till he's topped up, the ride to it too. Both ran at
         // once, and each took the other off him in turn.
         if (entity.resupplying) return logEligibility(entity, false) { "resupplying" }
@@ -643,7 +646,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         val allAccountedFor = squad == null || squad.members.all { id ->
             if (id == entity.uuid) return@all true
             val member = level.getEntity(id) as? NpcEntity ?: return@all true // dead/unloaded: don't block on it
-            !member.isAlive || member.vehicle != null || member.target != null || member.isAlert() ||
+            !member.isAlive || member.vehicle != null || member.distanceToSqr(vehicle) > SEARCH_RADIUS * SEARCH_RADIUS || combatInterrupted(member) ||
                 // A boat seats few: whoever isn't coming along is swimming, not late.
                 (boat && !member.vehicleTransport)
         }
