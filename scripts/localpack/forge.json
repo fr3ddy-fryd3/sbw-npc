@@ -1,0 +1,5 @@
+{
+  "minecraft": "1.20.1",
+  "required": ["kotlin-for-forge", "smartbrainlib"],
+  "qol": ["embeddium", "ferrite-core", "modernfix", "jei", "mouse-tweaks", "journeymap"]
+}

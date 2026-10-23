@@ -1,0 +1,5 @@
+{
+  "minecraft": "1.21.1",
+  "required": ["fabric-api", "fabric-language-kotlin", "smartbrainlib"],
+  "qol": ["sodium", "lithium", "ferrite-core", "modmenu", "jei", "mouse-tweaks", "journeymap"]
+}
