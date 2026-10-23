@@ -89,6 +89,15 @@ object NativeTactics {
     /** The attack phase of [npc]'s operation, or null when it is not attacking. */
     fun attackPhase(npc: NpcEntity): AttackPhase? = operation(npc)?.let { world(npc).attackPhase(it.id) }
 
+    /** The strategy [squad]'s plan chose, or null before its first plan. */
+    fun strategy(level: ServerLevel, squad: UUID): CombatStrategy? = worlds[level]?.strategyOf(squad)
+
+    /** The approach [squad]'s plan chose while it could flank, or null. */
+    fun approach(level: ServerLevel, squad: UUID): SquadApproach? = worlds[level]?.approachOf(squad)
+
+    /** The number of [squad]'s current bounding turn, or null while it does not bound. */
+    fun boundTurn(level: ServerLevel, squad: UUID): Int? = worlds[level]?.boundTurnOf(squad)
+
     /** Whether [squad] currently counts towards some operation's area completion. */
     fun holdsArea(squad: UUID) = worlds.values.any { it.holdsArea(squad) }
 
@@ -1134,6 +1143,9 @@ object NativeTactics {
         }
         private val areaTasks = HashMap<UUID, AreaControlTask>()
         fun holdsArea(squad: UUID) = areaTasks.values.any { squad in it.commands.keys }
+        fun strategyOf(squad: UUID) = strategies[squad]?.first
+        fun approachOf(squad: UUID) = approaches[squad]
+        fun boundTurnOf(squad: UUID) = boundTurns[squad]?.turn?.number
         fun attackPhase(operation: UUID): AttackPhase? = attacks[operation]?.phase
         private fun currentAreaTask(operation: UUID): AreaControlTask? = areaTasks[operation]
         private fun finishAreas() {
