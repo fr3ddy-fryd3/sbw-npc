@@ -179,9 +179,9 @@ KDoc (`/** ... */`) goes on every class, object and non-obvious public or `inter
   reports its actual revision/dirty state, and is separate from the pinned addon dependency.
   `scripts/setup.sh --help` lists the overrides. On Windows, run it from Git Bash or WSL.
 - Build: `./gradlew build`, the same as `buildProduction` (`DebugFlags` off).
-- Fabric (preview, #15) and Forge (preview, #16, does not compile yet): `./gradlew -Ploader=fabric :fabric:build`,
-  `./gradlew -Ploader=forge :forge:compileKotlin`. Only the loader chosen with
-  `-Ploader` is configured (default `neoforge`). Status and decisions: `docs/LOADER-PORTS.md`.
+- Fabric (preview, #15) and Forge (preview, #16): `./gradlew -Ploader=fabric :fabric:build`,
+  `./gradlew -Ploader=forge :forge:build`. Only the loader chosen with `-Ploader` is configured
+  (default `neoforge`). Status and decisions: `docs/LOADER-PORTS.md`.
 - For local testing with verbose trace logs and debug particle markers: `./gradlew buildDevelop`.
   The flag is baked into the jar at build time by the generated `BuildFlags` object (see
   `generateBuildFlags` in `common/build.gradle.kts`). It cannot be passed at runtime.
