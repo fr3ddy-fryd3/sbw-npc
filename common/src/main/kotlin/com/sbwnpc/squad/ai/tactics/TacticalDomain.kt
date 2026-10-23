@@ -42,8 +42,10 @@ enum class CombatDuty(
  *   last resort once every post search round it has failed.
  * @property legs a mover in a fight gets there by legs, from one post on the way to the next,
  *   firing from each before the next rush; see [MemberLeg].
+ * @property awaitSupport each rush waits to start until the squad's other half covers it with
+ *   fire ([TacticalFacts.SUPPORT_FIRING]); see [BoundTurn].
  */
-data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null, val elevationWeight: Double = 0.0, val assault: Boolean = false, val standoff: Double = 0.0, val ordered: Boolean = false, val hold: Boolean = false, val legs: Boolean = false) {
+data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null, val elevationWeight: Double = 0.0, val assault: Boolean = false, val standoff: Double = 0.0, val ordered: Boolean = false, val hold: Boolean = false, val legs: Boolean = false, val awaitSupport: Boolean = false) {
     init {
         require(actor.level == AgentLevel.NPC && exposureWeight.isFinite() && exposureWeight >= 0 && elevationWeight.isFinite() && elevationWeight >= 0)
     }
@@ -57,6 +59,14 @@ data class MemberLeg(val intent: PositionIntent, val number: Int)
  * leg again.
  */
 data class FirePause(val actor: AgentId, val leg: Int)
+
+/**
+ * One turn of a squad's bounding overwatch: the movers in [moving] advance while the others fire
+ * from the [posts] they stood on when the turn began, then the halves swap.
+ *
+ * Fixed for the whole turn, so the firing half's tasks stay the same while it stands.
+ */
+data class BoundTurn(val number: Int, val moving: Set<java.util.UUID>, val posts: Map<java.util.UUID, Point3>)
 data class TeamMission(val agent: AgentId, val members: List<PositionIntent>)
 data class SquadMission(val agent: AgentId, val teams: List<TeamMission>)
 data class AreaControlTask(val operation: java.util.UUID, val objective: Point3, val commands: Map<java.util.UUID, java.util.UUID>)
@@ -86,6 +96,12 @@ object TacticalFacts {
 
     /** Present while the [MANNER] is too young to give up for a better one, see [SquadManners]. */
     val MANNER_LOCK = FactKey("squad.manner_lock", Boolean::class.javaObjectType)
+
+    /** The squad's current turn while it advances by [CombatStrategy.BOUND_OVERWATCH]. */
+    val BOUND_TURN = FactKey("squad.bound_turn", BoundTurn::class.java)
+
+    /** The half covering his rush is firing, or has had long enough to start; see [PositionIntent.awaitSupport]. */
+    val SUPPORT_FIRING = FactKey("actor.support_firing", Boolean::class.javaObjectType)
     val ATTACK_PHASE = FactKey("operation.attack_phase", AttackPhase::class.java)
 }
 
@@ -149,13 +165,15 @@ object TacticalDomain {
                         SquadManners.methodId(strategy),
                         eligible = { SquadManners.eligible(strategy) },
                         score = { _, facts -> SquadManners.score(strategy, facts) },
-                        decompose = { mission, _ ->
+                        decompose = { mission, facts ->
+                            // Only a bounding squad has a turn; for any other the fact is absent and never changes.
+                            val turn = facts.value(TacticalFacts.BOUND_TURN)
                             val tasks = mission.teams.map { team ->
                                 val selected = team.copy(
                                     // A member assaulting for the operation keeps its role whatever the squad's own strategy,
                                     // and so does one moving for his order itself: HOLD turned a following squad's bounds
                                     // back into fire from where it stood (#116).
-                                    members = team.members.map { intent -> if (intent.assault || intent.ordered) intent else strategy.rules.shape(intent) },
+                                    members = team.members.map { intent -> if (intent.assault || intent.ordered) intent else strategy.rules.shape(intent, turn) },
                                 )
                                 DelegationTask(team.agent, TEAM.call(selected))
                             }
@@ -285,7 +303,8 @@ object TacticalDomain {
                 if (intent.duty.commandsMovement) setOf(ResourceKey(intent.actor, "motion")) else emptySet(),
                 timeoutTicks = if (intent.duty.commandsMovement) 1200 else Long.MAX_VALUE,
             ),
-            TaskContract(maintain = maintain, completed = completed),
+            // In the start, not the maintain: covering fire that lapses mid-rush must not stop him in the open.
+            TaskContract(start = if (intent.awaitSupport) Condition.test(TacticalFacts.SUPPORT_FIRING, "awaiting_support") { it } else Condition.ALWAYS, maintain = maintain, completed = completed),
             planning = ownActor(intent.actor),
         )
     }
@@ -345,8 +364,10 @@ object TacticalDomain {
  *
  * @property reinforced the squad has a barracks that replaces its fallen, so its losses never
  *   make it withdraw (#57).
+ * @property movers how many of its men advance by legs ([PositionIntent.legs]) before any
+ *   strategy reshapes their tasks.
  */
-data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean, val reinforced: Boolean = false)
+data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean, val reinforced: Boolean = false, val movers: Int = 0)
 /**
  * How a squad's strategy methods choose between the [CombatStrategy] entries.
  *

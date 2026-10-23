@@ -145,6 +145,39 @@ class TacticalDomainTest {
         assertEquals(CombatStrategy.HOLD, strategyOf(squadPlan(squadFacts(blocked, CombatStrategy.ADVANCE, locked = true))))
     }
 
+    @Test fun `an attack under fire bounds by halves once enough of it is ready, and never without fire or under an enemy above`() {
+        val underFire = CombatSituation(true, true, false, true, 0.75, 0.0, true, movers = 4)
+        assertEquals(CombatStrategy.BOUND_OVERWATCH, strategyOf(squadPlan(squadFacts(underFire, CombatStrategy.ADVANCE))))
+        assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(underFire.copy(readyFraction = 0.25), CombatStrategy.ADVANCE))))
+        assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(underFire.copy(incoming = false), CombatStrategy.BOUND_OVERWATCH))))
+        assertEquals(CombatStrategy.GAIN_HEIGHT, strategyOf(squadPlan(squadFacts(underFire.copy(higherEnemy = true), CombatStrategy.BOUND_OVERWATCH))))
+        assertTrue(SquadManners.eligible(CombatStrategy.BOUND_OVERWATCH).evaluate(squadFacts(underFire.copy(movers = 3))) is Verdict.Rejected)
+    }
+
+    @Test fun `in a bounding turn one half rushes when covered and the other fires from its post`() {
+        val runner = intent.copy(legs = true)
+        val gunner = intent.copy(actor = AgentId(AgentLevel.NPC, UUID(0, 2)), legs = true)
+        val sentry = intent.copy(actor = AgentId(AgentLevel.NPC, UUID(0, 3)), duty = CombatDuty.OBSERVE)
+        val post = Point3(3.0, 1.0, 4.0)
+        val turn = BoundTurn(0, setOf(runner.actor.id), mapOf(gunner.actor.id to post, sentry.actor.id to post))
+        val facts = squadFacts(CombatSituation(true, true, false, true, 1.0, 0.0, true, movers = 4), CombatStrategy.BOUND_OVERWATCH).observe(TacticalFacts.BOUND_TURN, turn)
+        val shaped = ((squadPlan(facts, runner, gunner, sentry).tasks.single().spec.action.parameters as com.sbwnpc.squad.ai.coordination.DelegationTask).task.parameters as TeamMission).members
+        assertEquals(runner.copy(requireCover = false, awaitSupport = true), shaped[0])
+        assertEquals(CombatDuty.FIRE, shaped[1].duty)
+        assertEquals(post, shaped[1].anchor)
+        assertFalse(shaped[1].legs)
+        assertEquals(sentry, shaped[2])
+    }
+
+    @Test fun `a rush awaiting support is planned at once and starts only once covered`() {
+        val waiting = intent.copy(legs = true, requireCover = false, awaitSupport = true)
+        val leg = (HtnPlanningSession(TacticalDomain.npc, owner, TacticalDomain.NPC.call(waiting), facts(0)).advance(20) as PlanningResult.Ready).plan.tasks.first().spec
+        assertEquals(Verdict.Unknown(setOf(TacticalFacts.SUPPORT_FIRING.name)), leg.contract.start.evaluate(facts(0)))
+        assertTrue(leg.contract.start.evaluate(facts(0).observe(TacticalFacts.SUPPORT_FIRING, false)) is Verdict.Rejected)
+        assertEquals(Verdict.Allowed, leg.contract.start.evaluate(facts(0).observe(TacticalFacts.SUPPORT_FIRING, true)))
+        assertEquals(Verdict.Allowed, leg.contract.maintain.evaluate(facts(0).observe(TacticalFacts.SUPPORT_FIRING, false)))
+    }
+
     @Test fun `withdrawal changes execution goal away from known threat without requiring cover fire`() {
         val retreat = shapedMember(squadPlan(squadFacts(beaten)))
         assertTrue(retreat.anchor.x < intent.origin.x)

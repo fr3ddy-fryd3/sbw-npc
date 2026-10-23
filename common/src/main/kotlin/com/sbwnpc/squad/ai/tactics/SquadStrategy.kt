@@ -20,8 +20,11 @@ interface SquadStrategy {
     /** Its utility in [situation], from 0 to 1. */
     fun score(situation: CombatSituation): Double
 
-    /** A member's [intent] as this strategy has it carried out. A member assaulting for the operation is never passed in. */
-    fun shape(intent: PositionIntent): PositionIntent
+    /**
+     * A member's [intent] as this strategy has it carried out, in the squad's bounding [turn] if it
+     * has one. A member assaulting for the operation is never passed in.
+     */
+    fun shape(intent: PositionIntent, turn: BoundTurn?): PositionIntent
 }
 
 /** The squad strategies, by name; each carries its [rules]. */
@@ -30,6 +33,7 @@ enum class CombatStrategy(val rules: SquadStrategy) {
     HOLD(Hold),
     GAIN_HEIGHT(GainHeight),
     WITHDRAW(Withdraw),
+    BOUND_OVERWATCH(BoundingOverwatch),
 }
 
 /** Go on with the tasks the team planned, while the attack can be carried on or nobody is in contact. */
@@ -40,7 +44,7 @@ private object Advance : SquadStrategy {
 
     override fun score(situation: CombatSituation) = BASE + situation.readyFraction * READINESS
 
-    override fun shape(intent: PositionIntent) = intent
+    override fun shape(intent: PositionIntent, turn: BoundTurn?) = intent
 
     private const val BASE = 0.55
 
@@ -56,7 +60,7 @@ private object Hold : SquadStrategy {
 
     override fun score(situation: CombatSituation) = if (!situation.offensive && situation.contact) DEFENDING else OTHERWISE
 
-    override fun shape(intent: PositionIntent) = if (intent.duty == CombatDuty.MOVE) intent.copy(duty = CombatDuty.FIRE, anchor = intent.origin, requireCover = false) else intent
+    override fun shape(intent: PositionIntent, turn: BoundTurn?) = if (intent.duty == CombatDuty.MOVE) intent.copy(duty = CombatDuty.FIRE, anchor = intent.origin, requireCover = false) else intent
 
     private const val DEFENDING = 0.9
     private const val OTHERWISE = 0.4
@@ -70,7 +74,7 @@ private object GainHeight : SquadStrategy {
 
     override fun score(situation: CombatSituation) = SCORE
 
-    override fun shape(intent: PositionIntent) = intent.copy(minimumHeight = intent.origin.y - DROP, elevationWeight = ELEVATION_WEIGHT)
+    override fun shape(intent: PositionIntent, turn: BoundTurn?) = intent.copy(minimumHeight = intent.origin.y - DROP, elevationWeight = ELEVATION_WEIGHT)
 
     private const val SCORE = 0.93
 
@@ -88,7 +92,7 @@ private object Withdraw : SquadStrategy {
 
     override fun score(situation: CombatSituation) = SCORE
 
-    override fun shape(intent: PositionIntent): PositionIntent {
+    override fun shape(intent: PositionIntent, turn: BoundTurn?): PositionIntent {
         if (intent.duty == CombatDuty.FOLLOW_ORDER) return intent
         val dx = intent.origin.x - (intent.focus?.x ?: intent.anchor.x)
         val dz = intent.origin.z - (intent.focus?.z ?: intent.anchor.z + 1)
@@ -119,4 +123,38 @@ private object Withdraw : SquadStrategy {
 
     /** Out of sight counts for much more than distance on the way back. */
     private const val EXPOSURE_WEIGHT = 10.0
+}
+
+/**
+ * An attack under fire advances by halves: one half rushes from post to post while the other fires
+ * from where it stands, then they swap ([BoundTurn]).
+ *
+ * Only the movers that advance by legs take part; the squad needs at least [MIN_MOVERS] of them so
+ * that each half has two. Each rush of the moving half waits for the firing half's fire
+ * ([PositionIntent.awaitSupport]) instead of needing covering fire for the whole way, as
+ * [PositionIntent.requireCover] would: fire that lapsed mid-rush would stop him in the open.
+ */
+private object BoundingOverwatch : SquadStrategy {
+    override val reason = "bound_under_fire"
+
+    // An enemy above is GAIN_HEIGHT's: held, bounding could outscore it there.
+    override fun allowed(situation: CombatSituation) = situation.contact && situation.offensive && situation.continuation && !situation.higherEnemy && situation.movers >= MIN_MOVERS
+
+    override fun score(situation: CombatSituation) = (if (situation.incoming) UNDER_FIRE else UNTOUCHED) + situation.readyFraction * READINESS
+
+    override fun shape(intent: PositionIntent, turn: BoundTurn?): PositionIntent {
+        if (turn == null || !intent.legs || intent.duty != CombatDuty.MOVE) return intent
+        if (intent.actor.id in turn.moving) return intent.copy(requireCover = false, awaitSupport = true)
+        val post = turn.posts[intent.actor.id] ?: intent.origin
+        return intent.copy(duty = CombatDuty.FIRE, anchor = post, requireCover = false, legs = false)
+    }
+
+    const val MIN_MOVERS = 4
+
+    // Under fire it outscores an [Advance] held (0.67 + 0.2 per readiness) once more than half the
+    // squad is ready to fire. Without incoming fire it never does, even held: bounds would only
+    // slow the advance down.
+    private const val UNDER_FIRE = 0.62
+    private const val UNTOUCHED = 0.3
+    private const val READINESS = 0.3
 }

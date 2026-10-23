@@ -36,6 +36,15 @@ object NativeTactics {
 
     /** Duty rules whose movers advance by legs in a fight, see [PositionIntent.legs]. */
     private val LEG_RULES = setOf("mover", "fire_approach")
+
+    /** A bounding half that has not finished a leg each by then hands over anyway, 15 s. */
+    private const val BOUND_TURN_TICKS = 300L
+
+    /** A rush waits this long at most for the firing half to fire, 5 s. */
+    private const val SUPPORT_FALLBACK_TICKS = 100L
+
+    /** Fire this recent from the firing half covers a rush, 2 s. */
+    private const val SUPPORT_FIRE_TICKS = 40
     private val worlds = HashMap<ServerLevel, World>()
 
     /** Test hook: called with the level of every agent whose plan search finished, to measure how often each level replans. */
@@ -149,6 +158,10 @@ object NativeTactics {
         // The strategy each squad's layout last saw, to tell whether it changed since.
         private val seenStrategies = HashMap<UUID, CombatStrategy>()
         private val situations = HashMap<UUID, CombatSituation>()
+
+        // Each bounding squad's turn, when it began, and the legs its movers had finished by then.
+        private class BoundState(val turn: BoundTurn, val startedAt: Long, val legsAtStart: Map<UUID, Int>)
+        private val boundTurns = HashMap<UUID, BoundState>()
 
         /** The last bound logged for each following squad in a fight. */
         private val followBeats = HashMap<UUID, Long>()
@@ -303,6 +316,7 @@ object NativeTactics {
             if (id.level == AgentLevel.OPERATION) attacks[id.id]?.let { result = result.observe(TacticalFacts.ATTACK_PHASE, it.phase) }
             if (id.level == AgentLevel.SQUAD) {
                 situations[id.id]?.let { result = result.observe(TacticalFacts.SITUATION, it) }
+                boundTurns[id.id]?.let { result = result.observe(TacticalFacts.BOUND_TURN, it.turn) }
                 strategies[id.id]?.let { (strategy, since) ->
                     result = result.observe(TacticalFacts.MANNER, strategy)
                     if (now < since + SquadManners.MINIMUM_TICKS) result = result.observe(TacticalFacts.MANNER_LOCK, true, observedAt = since, expiresAt = since + SquadManners.MINIMUM_TICKS)
@@ -316,6 +330,7 @@ object NativeTactics {
                     .observe(TacticalFacts.ARRIVED, action?.reached() ?: false)
                     .observe(TacticalFacts.AT_POST, action?.atPost() ?: false)
                     .observe(TacticalFacts.LEGS_DONE, legs[id.id] ?: 0)
+                    .observe(TacticalFacts.SUPPORT_FIRING, npc?.squadId?.let { supportFiring(it, id.id, now) } ?: true, expiresAt = now + 11)
                 failures[id.id]?.let { failure -> result = result.observe(TacticalFacts.POST_FAILURE, failure, observedAt = failure.failedAt, expiresAt = failure.failedAt + 200) }
             }
             return result
@@ -369,6 +384,7 @@ object NativeTactics {
                     snapshots.remove(id)
                     missions.remove(id)
                     situations.remove(id)
+                    boundTurns.remove(id)
                     strategies.remove(id)
                     seenStrategies.remove(id)
                     if (manager.get(id) == null) {
@@ -621,7 +637,7 @@ object NativeTactics {
             if (progress.phase != before) DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=attack_phase from={} to={} inputs={}", operation, before, progress.phase, inputs)
             val occupying = progress.occupying
             val bounders = squads.singleOrNull()
-                ?.takeIf { !holding && strategies[it.id]?.first in setOf(CombatStrategy.ADVANCE, CombatStrategy.GAIN_HEIGHT) }
+                ?.takeIf { !holding && strategies[it.id]?.first in setOf(CombatStrategy.ADVANCE, CombatStrategy.GAIN_HEIGHT, CombatStrategy.BOUND_OVERWATCH) }
                 ?.let { squad -> manoeuvres[squad.id].orEmpty() - arcing }
                 .orEmpty()
             val attackers = members.map { AttackMember(it.id, it.position.point(), it.ready) }
@@ -839,7 +855,6 @@ object NativeTactics {
                     view.fighting.isNotEmpty(),
                     reinforced = saved.barracks != null,
                 )
-                situations[saved.id] = situation
                 val strategy = strategies[saved.id]?.first
                 val strategyKept = strategy == null || seenStrategies.put(saved.id, strategy) == strategy
                 val old = missions[saved.id]
@@ -932,9 +947,54 @@ object NativeTactics {
                 if (following && focus != null && followBeats.put(saved.id, now / OperationTactics.BOUND_TICKS) != now / OperationTactics.BOUND_TICKS) {
                     DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=follow_bound running={} of={}", saved.id, intents.count { it.duty == CombatDuty.MOVE }, intents.size)
                 }
+                val movers = intents.filter { it.legs && it.duty == CombatDuty.MOVE && !it.assault && !it.ordered }
+                situations[saved.id] = situation.copy(movers = movers.size)
+                updateBoundTurn(saved.id, strategy, movers, view, focus, now)
                 val teams = teamAllocators.getOrPut(saved.id, ::TaskTeamAllocator).assign(saved.id, intents)
                 SquadMission(AgentId(AgentLevel.SQUAD, saved.id), teams).also { missions[saved.id] = it }
             }
+        }
+        /**
+         * Starts or swaps the turn of a squad bounding by halves. A turn ends once every mover of
+         * its moving half still moving has finished a leg more than when it began, or after
+         * [BOUND_TURN_TICKS]; the other movers then move. The first halves alternate along the
+         * front, so each half covers all of it.
+         */
+        private fun updateBoundTurn(squad: UUID, strategy: CombatStrategy?, movers: List<PositionIntent>, view: TacticalSnapshot, focus: Vec3?, now: Long) {
+            if (strategy != CombatStrategy.BOUND_OVERWATCH) {
+                boundTurns.remove(squad)
+                return
+            }
+            val ids = movers.map { it.actor.id }
+            val current = boundTurns[squad]
+            val reason = when {
+                current == null -> "start"
+                now - current.startedAt >= BOUND_TURN_TICKS -> "timeout"
+                current.turn.moving.filter { it in ids }.all { (legs[it] ?: 0) > (current.legsAtStart[it] ?: 0) } -> "legs_done"
+                else -> return
+            }
+            val waiting = ids.filter { current != null && it !in current.turn.moving }
+            val moving = waiting.ifEmpty { alongFront(movers, view.center, focus).filterIndexed { index, _ -> index % 2 == 0 } }.toSet()
+            val posts = view.members.filter { it.id !in moving }.associate { it.id to it.position.point() }
+            val turn = BoundTurn((current?.turn?.number ?: -1) + 1, moving, posts)
+            boundTurns[squad] = BoundState(turn, now, moving.associateWith { legs[it] ?: 0 })
+            DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=bound_turn number={} reason={} moving={} firing={}", squad, turn.number, reason, moving.size, ids.size - moving.size)
+        }
+
+        /** The movers' ids in order along the front, across the line from [center] to [focus]. */
+        private fun alongFront(movers: List<PositionIntent>, center: Vec3, focus: Vec3?): List<UUID> {
+            val dx = (focus?.x ?: center.x) - center.x
+            val dz = (focus?.z ?: (center.z + 1)) - center.z
+            return movers.sortedBy { (it.origin.x - center.x) * dz - (it.origin.z - center.z) * dx }.map { it.actor.id }
+        }
+
+        /**
+         * Whether [actor]'s rush is covered: true unless he moves in his bounding squad's turn and
+         * nobody of the firing half has fired lately, for at most [SUPPORT_FALLBACK_TICKS].
+         */
+        private fun supportFiring(squad: UUID, actor: UUID, now: Long): Boolean {
+            val state = boundTurns[squad]?.takeIf { actor in it.turn.moving } ?: return true
+            return now - state.startedAt >= SUPPORT_FALLBACK_TICKS || state.turn.posts.keys.any { (level.getEntity(it) as? NpcEntity)?.firedRecently(SUPPORT_FIRE_TICKS) == true }
         }
         fun tick(npc: NpcEntity) {
             refresh(npc)
