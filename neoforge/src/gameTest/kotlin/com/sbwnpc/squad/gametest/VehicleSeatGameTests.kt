@@ -2,6 +2,9 @@ package com.sbwnpc.squad.gametest
 
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.domain.port.VehicleModel
+import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.ai.VehicleTransportBehaviour
+import com.sbwnpc.squad.entity.ai.VehicleTransportClaims
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.npc.TransportVehicle
@@ -13,6 +16,7 @@ import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
+import net.tslat.smartbrainlib.util.BrainUtils
 import java.util.UUID
 
 /**
@@ -35,6 +39,35 @@ object VehicleSeatGameTests {
             helper.level.addFreshEntity(it)
             Ports.vehicles.fuelAndArm(it, model)
         }
+
+    private fun arrivalSeatsCleared(helper: GameTestHelper, lav: Entity, men: List<NpcEntity>, lostSightAt: Int): Boolean {
+        val gunner = men.first()
+        when {
+            helper.tick < 2 -> helper.assertTrue(men.all { it.vehicle === lav }, "ATTACK stopped to fight before arrival")
+
+            helper.tick < 60 -> {
+                helper.assertTrue(men.drop(1).all { it.vehicle == null }, "The passengers did not dismount on arrival")
+                helper.assertTrue(gunner.vehicle === lav, "The gunner abandoned the turret on arrival with contact")
+                helper.assertTrue(VehicleTransportClaims.combatGunnerOf(lav.uuid) == gunner.uuid, "The arriving gunner lost his seat claim")
+            }
+
+            gunner.tickCount - lostSightAt < 199 -> helper.assertTrue(gunner.vehicle === lav, "The gunner left before ten seconds without contact")
+
+            gunner.vehicle == null -> return true
+        }
+        return false
+    }
+
+    private fun boardArrivalCrew(helper: GameTestHelper, scene: CombatIdleGameTests.Scene, lav: Entity): List<NpcEntity> {
+        val men = (0 until 3).map { scene.spawn(Vec3(20.5 + it * 2, 1.0, 20.5)).also { it.isNoAi = true } }
+        val gunner = men.first()
+        // LAV-25 combines the wheel and turret in seat zero.
+        helper.assertTrue(gunner.startRiding(lav, true) && Ports.vehicles.hasWeaponAt(lav, gunner), "The gunner could not take the armed driving seat")
+        men.drop(1).forEach {
+            helper.assertTrue(it.startRiding(lav, true) && !Ports.vehicles.hasWeaponAt(lav, it), "The passenger needs an unarmed seat")
+        }
+        return men
+    }
 
     /** A squad sent more than 100 blocks off takes the vehicle parked by it, and gets out at the far end. */
     @JvmStatic
@@ -59,6 +92,52 @@ object VehicleSeatGameTests {
             if (aboard == men.size) boarded = true
             if (boarded && near == men.size) {
                 scene.result("PASS", "tick=${helper.tick}")
+                helper.succeed()
+            }
+        }
+    }
+
+    /** Arrival under ATTACK keeps the turret covered while the other riders get out. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "vehicle-arrival")
+    fun attackArrivalKeepsGunnerUntilTenSecondsWithoutContact(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "vehicle-arrival")
+        val manager = SquadManager.get(helper.level)
+        val lav = park(helper, TransportVehicle.LAV_25, Vec3(24.5, 1.0, 20.5))
+        val men = boardArrivalCrew(helper, scene, lav)
+        val gunner = men.first()
+        val enemy = scene.enemy(Vec3(160.5, 1.0, 20.5))
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, men.map { it.uuid })
+        manager.issueOrderAt(helper.level, squad.id, SquadOrder.ATTACK, enemy.blockPosition())
+        // Run only the transport executor: the scene checks the real seats and arrival transition,
+        // without navigation or target selection changing the trip before it reaches the endpoint.
+        val (start, tick, stop) = listOf("start", "tick", "stop").map { name ->
+            VehicleTransportBehaviour::class.java.getDeclaredMethod(name, NpcEntity::class.java).apply { isAccessible = true }
+        }
+        val trips = men.map { VehicleTransportBehaviour().also { trip -> start.invoke(trip, it) } }
+        scene.onClose = {
+            trips.zip(men).forEach { (trip, man) -> stop.invoke(trip, man) }
+            manager.deleteSquad(helper.level, squad.id)
+            lav.discard()
+        }
+        var lostSightAt = 0
+        helper.onEachTick {
+            if (helper.tick == 2L) {
+                val at = helper.absoluteVec(Vec3(145.5, 1.0, 20.5))
+                lav.moveTo(at.x, at.y, at.z, 0f, 0f)
+            }
+            if (helper.tick < 60) men.forEach { BrainUtils.setTargetOfEntity(it, enemy) }
+            if (helper.tick == 60L) {
+                lostSightAt = gunner.tickCount
+                enemy.discard()
+                men.forEach { BrainUtils.setTargetOfEntity(it, null) }
+            }
+            lav.deltaMovement = Vec3.ZERO
+            Ports.vehicles.cutPower(lav)
+            men.forEach { it.sensing.tick() }
+            trips.zip(men).forEach { (trip, man) -> if (man.vehicle === lav) tick.invoke(trip, man) }
+            if (arrivalSeatsCleared(helper, lav, men, lostSightAt)) {
+                scene.result("PASS", "tick=${helper.tick} lostSightAt=$lostSightAt dismountedAt=${gunner.tickCount}")
                 helper.succeed()
             }
         }
