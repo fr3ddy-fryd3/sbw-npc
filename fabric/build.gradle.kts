@@ -88,6 +88,13 @@ dependencies {
 
 tasks.withType<JavaCompile> { options.encoding = "UTF-8" }
 
+// fabric.mod.json holds ${version}; left as is, Loader reads that literal as the mod's version.
+tasks.processResources {
+    val modVersion = project.property("mod_version") as String
+    inputs.property("modVersion", modVersion)
+    filesMatching("fabric.mod.json") { expand("version" to modVersion) }
+}
+
 val modJar by configurations.creating {
     isCanBeResolved = false
     isCanBeConsumed = true
