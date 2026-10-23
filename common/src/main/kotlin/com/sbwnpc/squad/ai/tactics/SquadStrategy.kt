@@ -132,7 +132,7 @@ private object Withdraw : SquadStrategy {
  *
  * Only the movers that advance by legs take part; the squad needs at least [MIN_MOVERS] of them so
  * that each half has two. Each rush of the moving half waits for the firing half's fire
- * ([PositionIntent.awaitSupport]) instead of needing covering fire for the whole way, as
+ * ([PositionIntent.coveredBy]) instead of needing covering fire for the whole way, as
  * [PositionIntent.requireCover] would: fire that lapsed mid-rush would stop him in the open.
  */
 private object BoundingOverwatch : SquadStrategy {
@@ -146,7 +146,7 @@ private object BoundingOverwatch : SquadStrategy {
     override fun shape(intent: PositionIntent, shaping: SquadShaping): PositionIntent {
         val turn = shaping.turn
         if (turn == null || !intent.legs || intent.duty != CombatDuty.MOVE) return intent
-        if (intent.actor.id in turn.moving) return intent.copy(requireCover = false, awaitSupport = true)
+        if (intent.actor.id in turn.moving) return intent.copy(requireCover = false, coveredBy = turn.posts.keys)
         val post = turn.posts[intent.actor.id] ?: intent.origin
         return intent.copy(duty = CombatDuty.FIRE, anchor = post, requireCover = false, legs = false)
     }

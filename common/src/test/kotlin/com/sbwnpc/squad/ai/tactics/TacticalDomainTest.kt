@@ -162,7 +162,7 @@ class TacticalDomainTest {
         val turn = BoundTurn(0, setOf(runner.actor.id), mapOf(gunner.actor.id to post, sentry.actor.id to post))
         val facts = squadFacts(CombatSituation(true, true, false, true, 1.0, 0.0, true, movers = 4), CombatStrategy.BOUND_OVERWATCH).observe(TacticalFacts.BOUND_TURN, turn)
         val shaped = ((squadPlan(facts, runner, gunner, sentry).tasks.single().spec.action.parameters as com.sbwnpc.squad.ai.coordination.DelegationTask).task.parameters as TeamMission).members
-        assertEquals(runner.copy(requireCover = false, awaitSupport = true), shaped[0])
+        assertEquals(runner.copy(requireCover = false, coveredBy = turn.posts.keys), shaped[0])
         assertEquals(CombatDuty.FIRE, shaped[1].duty)
         assertEquals(post, shaped[1].anchor)
         assertFalse(shaped[1].legs)
@@ -170,7 +170,7 @@ class TacticalDomainTest {
     }
 
     @Test fun `a rush awaiting support is planned at once and starts only once covered`() {
-        val waiting = intent.copy(legs = true, requireCover = false, awaitSupport = true)
+        val waiting = intent.copy(legs = true, requireCover = false, coveredBy = setOf(UUID(0, 2)))
         val leg = (HtnPlanningSession(TacticalDomain.npc, owner, TacticalDomain.NPC.call(waiting), facts(0)).advance(20) as PlanningResult.Ready).plan.tasks.first().spec
         assertEquals(Verdict.Unknown(setOf(TacticalFacts.SUPPORT_FIRING.name)), leg.contract.start.evaluate(facts(0)))
         assertTrue(leg.contract.start.evaluate(facts(0).observe(TacticalFacts.SUPPORT_FIRING, false)) is Verdict.Rejected)
@@ -206,6 +206,22 @@ class TacticalDomainTest {
         val returning = scattered.copy(scattered = false, regrouping = true)
         assertEquals(CombatStrategy.REGROUP, strategyOf(squadPlan(squadFacts(returning, CombatStrategy.REGROUP))))
         assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(returning.copy(gathered = true), CombatStrategy.REGROUP))))
+    }
+
+    @Test fun `a team under fire with far to go rushes in pairs that cover each other`() {
+        val teamId = AgentId(AgentLevel.TEAM, UUID(0, 8))
+        fun rushed(vararg members: PositionIntent): Pair<String, List<PositionIntent>> {
+            val plan = (HtnPlanningSession(TacticalDomain.team, PlanOwner(teamId, UUID(1, 1)), TacticalDomain.TEAM.call(TeamMission(teamId, members.toList())), FactSnapshot(teamId, 0)).advance(20) as PlanningResult.Ready).plan
+            return plan.tasks.first().node.split('/')[1] to plan.tasks.map { (it.spec.action.parameters as com.sbwnpc.squad.ai.coordination.DelegationTask).task.parameters as PositionIntent }
+        }
+        val men = (1L..3L).map { intent.copy(actor = AgentId(AgentLevel.NPC, UUID(0, it)), legs = true) }
+        val (method, shaped) = rushed(*men.toTypedArray())
+        assertEquals("pairs", method)
+        assertEquals(setOf(men[1].actor.id, men[2].actor.id), shaped[0].coveredBy)
+        assertTrue(shaped.all { !it.requireCover && it.coveredBy.size == 2 })
+        assertEquals("together", rushed(*men.map { it.copy(requireCover = false) }.toTypedArray()).first)
+        assertEquals("together", rushed(*men.map { it.copy(anchor = Point3(8.0, 1.0, 0.0)) }.toTypedArray()).first)
+        assertEquals("together", rushed(men[0]).first)
     }
 
     @Test fun `withdrawal changes execution goal away from known threat without requiring cover fire`() {

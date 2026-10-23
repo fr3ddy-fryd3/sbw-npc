@@ -4,6 +4,7 @@ import com.sbwnpc.squad.ai.coordination.DelegationAction
 import com.sbwnpc.squad.ai.coordination.DelegationTask
 import com.sbwnpc.squad.ai.coordination.Point3
 import com.sbwnpc.squad.ai.planning.*
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 
@@ -42,10 +43,10 @@ enum class CombatDuty(
  *   last resort once every post search round it has failed.
  * @property legs a mover in a fight gets there by legs, from one post on the way to the next,
  *   firing from each before the next rush; see [MemberLeg].
- * @property awaitSupport each rush waits to start until the squad's other half covers it with
- *   fire ([TacticalFacts.SUPPORT_FIRING]); see [BoundTurn].
+ * @property coveredBy the men whose fire covers his rushes: each rush waits to start until one
+ *   of them fires ([TacticalFacts.SUPPORT_FIRING]). Empty, he rushes when ready.
  */
-data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null, val elevationWeight: Double = 0.0, val assault: Boolean = false, val standoff: Double = 0.0, val ordered: Boolean = false, val hold: Boolean = false, val legs: Boolean = false, val awaitSupport: Boolean = false) {
+data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null, val elevationWeight: Double = 0.0, val assault: Boolean = false, val standoff: Double = 0.0, val ordered: Boolean = false, val hold: Boolean = false, val legs: Boolean = false, val coveredBy: Set<java.util.UUID> = emptySet()) {
     init {
         require(actor.level == AgentLevel.NPC && exposureWeight.isFinite() && exposureWeight >= 0 && elevationWeight.isFinite() && elevationWeight >= 0)
     }
@@ -130,7 +131,7 @@ object TacticalFacts {
     /** Where the squad gathers while it regroups under [CombatStrategy.REGROUP]. */
     val RALLY = FactKey("squad.rally", Point3::class.java)
 
-    /** The half covering his rush is firing, or has had long enough to start; see [PositionIntent.awaitSupport]. */
+    /** The half covering his rush is firing, or has had long enough to start; see [PositionIntent.coveredBy]. */
     val SUPPORT_FIRING = FactKey("actor.support_firing", Boolean::class.javaObjectType)
     val ATTACK_PHASE = FactKey("operation.attack_phase", AttackPhase::class.java)
 }
@@ -233,7 +234,17 @@ object TacticalDomain {
     val team = HtnDomain(
         AgentLevel.TEAM,
         listOf(
-            CompoundTask(TEAM, listOf(Method("distribute", decompose = { mission, _ -> children(mission.members.map { DelegationTask(it.actor, NPC.call(it)) }) }))),
+            CompoundTask(
+                TEAM,
+                TeamRush.entries.map { rush ->
+                    Method(
+                        rush.name.lowercase(),
+                        eligible = { mission -> TeamRushes.eligible(rush, mission) },
+                        score = { mission, _ -> TeamRushes.score(rush, mission) },
+                        decompose = { mission, _ -> children(TeamRushes.shape(rush, mission).members.map { DelegationTask(it.actor, NPC.call(it)) }) },
+                    )
+                },
+            ),
             delegate(),
         ),
     )
@@ -287,7 +298,7 @@ object TacticalDomain {
                             intent.anchor.y,
                             intent.anchor.z + dx / length * offset.first + dz / length * offset.second,
                         )
-                        TaskNetwork.sequence(POST.call(intent.copy(anchor = anchor, legs = false, awaitSupport = false)))
+                        TaskNetwork.sequence(POST.call(intent.copy(anchor = anchor, legs = false, coveredBy = emptySet())))
                     }),
                     // Terrain hides the enemy from the whole neighbourhood of the anchor: look for a
                     // line of fire closer to the enemy or along the front instead of retrying the
@@ -299,7 +310,7 @@ object TacticalDomain {
                         }
                     }, decompose = { intent, facts ->
                         val step = facts.value(TacticalFacts.POST_FAILURE)!!.attempts - NEIGHBOR_ATTEMPTS - 1
-                        TaskNetwork.sequence(POST.call(intent.copy(anchor = closerAnchors(intent)[step], legs = false, awaitSupport = false)))
+                        TaskNetwork.sequence(POST.call(intent.copy(anchor = closerAnchors(intent)[step], legs = false, coveredBy = emptySet())))
                     }),
                     // Every search round the anchor failed: he holds where he stands until the
                     // failure is forgotten and the search starts again. Without it the man had no
@@ -313,7 +324,7 @@ object TacticalDomain {
                                 else -> Verdict.Allowed
                             }
                         }
-                    }, decompose = { intent, _ -> TaskNetwork.sequence(POST.call(intent.copy(hold = true, requireCover = false, requireShelter = false, legs = false, awaitSupport = false))) }),
+                    }, decompose = { intent, _ -> TaskNetwork.sequence(POST.call(intent.copy(hold = true, requireCover = false, requireShelter = false, legs = false, coveredBy = emptySet()))) }),
                 ),
             ),
             PrimitiveTask(POST) { intent -> position("position", intent, Condition.test(TacticalFacts.ARRIVED, "post_not_reached") { it }) },
@@ -349,7 +360,7 @@ object TacticalDomain {
                 timeoutTicks = if (intent.duty.commandsMovement) 1200 else Long.MAX_VALUE,
             ),
             // In the start, not the maintain: covering fire that lapses mid-rush must not stop him in the open.
-            TaskContract(start = if (intent.awaitSupport) Condition.test(TacticalFacts.SUPPORT_FIRING, "awaiting_support") { it } else Condition.ALWAYS, maintain = maintain, completed = completed),
+            TaskContract(start = if (intent.coveredBy.isNotEmpty()) Condition.test(TacticalFacts.SUPPORT_FIRING, "awaiting_support") { it } else Condition.ALWAYS, maintain = maintain, completed = completed),
             planning = ownActor(intent.actor),
         )
     }
@@ -507,4 +518,70 @@ object SquadApproaches {
     private const val FLANK_LOSS_ALLOWANCE = 0.3
     private const val FLANK_LOSSES = 2.0
     private const val FRONTAL = 0.45
+}
+
+/** How a team's men rush when they advance by legs ([PositionIntent.legs]). */
+enum class TeamRush {
+    /** Each man rushes when his own leg and fire are done. */
+    TOGETHER,
+
+    /** The men pair off, and each rush waits for the partner's fire ([PositionIntent.coveredBy]). */
+    PAIRS,
+}
+
+/**
+ * How a team's methods choose between [TeamRush.TOGETHER] and [TeamRush.PAIRS], from the team's own
+ * mission alone.
+ *
+ * Pairs cost time, so they are worth it under fire and over long legs. Movers someone else covers
+ * already, the halves of a squad bounding by [CombatStrategy.BOUND_OVERWATCH], are left as they are.
+ */
+object TeamRushes {
+    private fun movers(mission: TeamMission) = mission.members.filter { it.legs && it.duty == CombatDuty.MOVE && !it.assault && !it.ordered && it.coveredBy.isEmpty() }
+
+    /** Whether [rush]'s method applies: pairs need two movers nobody covers yet. */
+    fun eligible(rush: TeamRush, mission: TeamMission) =
+        when (rush) {
+            TeamRush.TOGETHER -> Condition.ALWAYS
+            TeamRush.PAIRS -> if (movers(mission).size >= 2) Condition.ALWAYS else Condition { Verdict.Rejected("no_pair") }
+        }
+
+    /** [rush]'s score: pairs by whether the movers are under fire and by how far they have to go. */
+    fun score(rush: TeamRush, mission: TeamMission): UtilityScore =
+        when (rush) {
+            TeamRush.TOGETHER -> UtilityScore(TOGETHER, reason = "together")
+            TeamRush.PAIRS -> {
+                val movers = movers(mission)
+                // Cover is required of a mover exactly when his squad is under fire, see PostRequirements.
+                val underFire = movers.count { it.requireCover }.toDouble() / max(1, movers.size)
+                val leg = movers.map { hypot(it.anchor.x - it.origin.x, it.anchor.z - it.origin.z) }.average()
+                UtilityScore.weighted(
+                    listOf(UtilityFactor("base", PAIRS_BASE), UtilityFactor("under_fire", underFire, UNDER_FIRE_WEIGHT), UtilityFactor("distance", min(1.0, leg / LONG_LEG), LEG_WEIGHT)),
+                    "pairs",
+                )
+            }
+        }
+
+    /**
+     * [mission] carried out by [rush]. In pairs, the movers in order along their ids pair off and
+     * each covers the other; an odd one out goes with the last pair, covered by both of them.
+     * Neither needs covering fire for the whole rush any more ([PositionIntent.requireCover]).
+     */
+    fun shape(rush: TeamRush, mission: TeamMission): TeamMission {
+        if (rush == TeamRush.TOGETHER) return mission
+        val movers = movers(mission).map { it.actor.id }.sortedBy { it.toString() }
+        val pairs = movers.chunked(2).let { chunks -> if (chunks.last().size == 1 && chunks.size > 1) chunks.dropLast(2) + listOf(chunks[chunks.size - 2] + chunks.last()) else chunks }
+        val partners = pairs.flatMap { pair -> pair.map { man -> man to (pair.toSet() - man) } }.toMap()
+        return mission.copy(members = mission.members.map { intent -> partners[intent.actor.id]?.let { intent.copy(requireCover = false, coveredBy = it) } ?: intent })
+    }
+
+    // Under fire pairs win once the movers have 12 blocks or more to go (0.2 + 1 + 0.5 per
+    // 32 blocks, weighed over 2.5); never without fire.
+    private const val TOGETHER = 0.55
+    private const val PAIRS_BASE = 0.2
+    private const val UNDER_FIRE_WEIGHT = 1.0
+    private const val LEG_WEIGHT = 0.5
+
+    /** A leg this long or longer counts as long. */
+    private const val LONG_LEG = 32.0
 }

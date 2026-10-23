@@ -40,8 +40,8 @@ object NativeTactics {
     /** A bounding half that has not finished a leg each by then hands over anyway, 15 s. */
     private const val BOUND_TURN_TICKS = 300L
 
-    /** A rush waits this long at most for the firing half to fire, 5 s. */
-    private const val SUPPORT_FALLBACK_TICKS = 100L
+    /** A rush waits this long at most, after the leg before it, for the men covering it to fire, 3 s. */
+    private const val SUPPORT_FALLBACK_TICKS = 60L
 
     /** How long a failed post search is remembered, 10 s. */
     private const val FAILURE_MEMORY_TICKS = 200L
@@ -185,6 +185,9 @@ object NativeTactics {
         private class BoundState(val turn: BoundTurn, val startedAt: Long, val legsAtStart: Map<UUID, Int>)
         private val boundTurns = HashMap<UUID, BoundState>()
 
+        // The leg each covered mover waits to start, and since when; see supportFiring.
+        private val supportWaits = HashMap<UUID, Pair<Int, Long>>()
+
         // Where each regrouping squad gathers, fixed when it began to regroup.
         private val rallies = HashMap<UUID, Point3>()
 
@@ -218,6 +221,7 @@ object NativeTactics {
                         if (view.ticket.child.level == AgentLevel.NPC) {
                             actions.remove(view.ticket.child.id)?.overwatchPost?.let { heldPosts[view.ticket.child.id] = it }
                             legs.remove(view.ticket.child.id)
+                            supportWaits.remove(view.ticket.child.id)
                             goals.remove(view.ticket.child)
                         }
                     }
@@ -367,7 +371,7 @@ object NativeTactics {
                     .observe(TacticalFacts.ARRIVED, action?.reached() ?: false)
                     .observe(TacticalFacts.AT_POST, action?.atPost() ?: false)
                     .observe(TacticalFacts.LEGS_DONE, legs[id.id] ?: 0)
-                    .observe(TacticalFacts.SUPPORT_FIRING, npc?.squadId?.let { supportFiring(it, id.id, now) } ?: true, expiresAt = now + 11)
+                    .observe(TacticalFacts.SUPPORT_FIRING, supportFiring(id, now), expiresAt = now + 11)
                 failures[id.id]?.let { failure -> result = result.observe(TacticalFacts.POST_FAILURE, failure, observedAt = failure.failedAt, expiresAt = failure.failedAt + FAILURE_MEMORY_TICKS) }
             }
             return result
@@ -1091,12 +1095,17 @@ object NativeTactics {
         }
 
         /**
-         * Whether [actor]'s rush is covered: true unless he moves in his bounding squad's turn and
-         * nobody of the firing half has fired lately, for at most [SUPPORT_FALLBACK_TICKS].
+         * Whether [actor]'s next rush is covered ([PositionIntent.coveredBy]): one of the men covering
+         * it fired lately, none of them has anything to fire at, or he has waited
+         * [SUPPORT_FALLBACK_TICKS] since his last leg.
          */
-        private fun supportFiring(squad: UUID, actor: UUID, now: Long): Boolean {
-            val state = boundTurns[squad]?.takeIf { actor in it.turn.moving } ?: return true
-            return now - state.startedAt >= SUPPORT_FALLBACK_TICKS || state.turn.posts.keys.any { (level.getEntity(it) as? NpcEntity)?.firedRecently(SUPPORT_FIRE_TICKS) == true }
+        private fun supportFiring(actor: AgentId, now: Long): Boolean {
+            val cover = goals[actor]?.coveredBy?.takeIf { it.isNotEmpty() } ?: return true
+            val leg = legs[actor.id] ?: 0
+            val since = supportWaits[actor.id]?.takeIf { it.first == leg }?.second ?: now.also { supportWaits[actor.id] = leg to it }
+            if (now - since >= SUPPORT_FALLBACK_TICKS) return true
+            val men = cover.mapNotNull { level.getEntity(it) as? NpcEntity }.filter { it.isAlive }
+            return men.none { it.target != null } || men.any { it.firedRecently(SUPPORT_FIRE_TICKS) }
         }
         fun tick(npc: NpcEntity) {
             refresh(npc)
@@ -1173,6 +1182,7 @@ object NativeTactics {
             actions.clear()
             heldPosts.clear()
             legs.clear()
+            supportWaits.clear()
         }
     }
 }
