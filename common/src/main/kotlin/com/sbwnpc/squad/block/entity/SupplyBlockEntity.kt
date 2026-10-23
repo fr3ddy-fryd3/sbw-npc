@@ -2,12 +2,12 @@ package com.sbwnpc.squad.block.entity
 
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.compat.VersionedBlockEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.init.ModBlockEntities
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.core.BlockPos
-import net.minecraft.core.HolderLookup
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
@@ -21,7 +21,7 @@ import net.minecraft.world.level.block.state.BlockState
  * topped back up to what it was issued with ([com.sbwnpc.squad.entity.NpcEntity.resupply]). With no
  * faction — a block nobody placed, say by command — it serves anyone.
  */
-open class SupplyBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(ModBlockEntities.SUPPLY.get(), pos, state) {
+open class SupplyBlockEntity(pos: BlockPos, state: BlockState) : VersionedBlockEntity(ModBlockEntities.SUPPLY.get(), pos, state) {
 
     /** The side of whoever put it down. */
     var faction: SquadFaction? = null
@@ -42,13 +42,11 @@ open class SupplyBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(Mod
         }
     }
 
-    override fun saveAdditional(tag: CompoundTag, registries: HolderLookup.Provider) {
-        super.saveAdditional(tag, registries)
+    override fun writeData(tag: CompoundTag) {
         faction?.let { tag.putString("Faction", it.name) }
     }
 
-    override fun loadAdditional(tag: CompoundTag, registries: HolderLookup.Provider) {
-        super.loadAdditional(tag, registries)
+    override fun readData(tag: CompoundTag) {
         faction = if (tag.contains("Faction")) runCatching { SquadFaction.valueOf(tag.getString("Faction")) }.getOrNull() else null
     }
 

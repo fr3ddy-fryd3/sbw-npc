@@ -1,11 +1,12 @@
 package com.sbwnpc.squad.block
 
 import com.sbwnpc.squad.block.entity.SupplyBlockEntity
+import com.sbwnpc.squad.compat.SavedDataAccess
+import com.sbwnpc.squad.compat.VersionedSavedData
 import com.sbwnpc.squad.squad.PlayerFactionRegistry
 import net.minecraft.ChatFormatting
 import net.minecraft.core.BlockPos
 import net.minecraft.core.GlobalPos
-import net.minecraft.core.HolderLookup
 import net.minecraft.core.registries.Registries
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.chat.Component
@@ -18,7 +19,6 @@ import net.minecraft.world.entity.EntityType
 import net.minecraft.world.entity.vehicle.DismountHelper
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.portal.DimensionTransition
-import net.minecraft.world.level.saveddata.SavedData
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
@@ -32,7 +32,7 @@ import java.util.UUID
  * side, and a safe position above or nearby; otherwise the player comes back at the world spawn, the vanilla respawn
  * point having been cleared when this one was set.
  */
-class SupplySpawns : SavedData() {
+class SupplySpawns : VersionedSavedData() {
 
     private val spawns = HashMap<UUID, GlobalPos>()
 
@@ -55,7 +55,7 @@ class SupplySpawns : SavedData() {
         if (spawns.remove(player) != null) setDirty()
     }
 
-    override fun save(tag: CompoundTag, registries: HolderLookup.Provider): CompoundTag {
+    override fun write(tag: CompoundTag): CompoundTag {
         spawns.forEach { (uuid, at) ->
             tag.put(
                 uuid.toString(),
@@ -72,7 +72,7 @@ class SupplySpawns : SavedData() {
         private const val FILE = "sbwnpc_supply_spawns"
         internal var clearingVanilla = false
 
-        private fun load(tag: CompoundTag, registries: HolderLookup.Provider): SupplySpawns {
+        private fun load(tag: CompoundTag): SupplySpawns {
             val data = SupplySpawns()
             for (key in tag.allKeys) {
                 val uuid = runCatching { UUID.fromString(key) }.getOrNull() ?: continue
@@ -83,6 +83,6 @@ class SupplySpawns : SavedData() {
             return data
         }
 
-        fun get(server: MinecraftServer): SupplySpawns = server.overworld().dataStorage.computeIfAbsent(SavedData.Factory({ SupplySpawns() }, ::load, null), FILE)
+        fun get(server: MinecraftServer): SupplySpawns = SavedDataAccess.fetch(server.overworld().dataStorage, FILE, ::SupplySpawns, ::load)
     }
 }

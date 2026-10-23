@@ -1,7 +1,7 @@
 package com.sbwnpc.squad.block
 
-import com.mojang.serialization.MapCodec
 import com.sbwnpc.squad.block.entity.BarracksBlockEntity
+import com.sbwnpc.squad.compat.VersionedEntityBlock
 import com.sbwnpc.squad.init.ModBlockEntities
 import com.sbwnpc.squad.item.SquadToolItem
 import com.sbwnpc.squad.network.OpenBarracksScreenPayload
@@ -44,7 +44,7 @@ import net.minecraft.world.phys.BlockHitResult
  * or an explosion — gunfire doesn't hurt it.
  */
 class BarracksBlock :
-    BaseEntityBlock(
+    VersionedEntityBlock(
         Properties.of().mapColor(MapColor.COLOR_GRAY).strength(6.0f, 12.0f).sound(SoundType.WOOD).noOcclusion(),
     ) {
     init {
@@ -52,8 +52,6 @@ class BarracksBlock :
         // the block has to remember which way it was put down.
         registerDefaultState(stateDefinition.any().setValue(FACING, Direction.NORTH))
     }
-
-    override fun codec(): MapCodec<BarracksBlock> = CODEC
 
     override fun getRenderShape(state: BlockState) = RenderShape.MODEL
 
@@ -97,7 +95,7 @@ class BarracksBlock :
     /** Opens the same deployment config the squad tool uses — the Barracks garrisons and reinforces
      *  whatever is set there. No squad selection and no tool required, which is the whole point of
      *  the change: a placed Barracks is usable on its own. */
-    override fun useWithoutItem(state: BlockState, level: Level, pos: BlockPos, player: Player, hitResult: BlockHitResult): InteractionResult {
+    override fun onUse(state: BlockState, level: Level, pos: BlockPos, player: Player, hitResult: BlockHitResult): InteractionResult {
         if (level.isClientSide) return InteractionResult.SUCCESS
         val be = level.getBlockEntity(pos) as? BarracksBlockEntity ?: return InteractionResult.PASS
         if (be.owner != player.uuid) {
@@ -120,6 +118,5 @@ class BarracksBlock :
 
     companion object {
         val FACING = BlockStateProperties.HORIZONTAL_FACING
-        val CODEC: MapCodec<BarracksBlock> = simpleCodec { BarracksBlock() }
     }
 }

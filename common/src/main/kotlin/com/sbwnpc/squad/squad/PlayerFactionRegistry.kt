@@ -1,16 +1,16 @@
 package com.sbwnpc.squad.squad
 
+import com.sbwnpc.squad.compat.SavedDataAccess
+import com.sbwnpc.squad.compat.VersionedSavedData
 import com.sbwnpc.squad.network.OpenFactionPickPayload
 import com.sbwnpc.squad.network.PlayerFactionPayload
 import com.sbwnpc.squad.network.sendToClient
 import com.sbwnpc.squad.npc.SquadFaction
-import net.minecraft.core.HolderLookup
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.Tag
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
-import net.minecraft.world.level.saveddata.SavedData
 import java.util.UUID
 
 /**
@@ -21,7 +21,7 @@ import java.util.UUID
  * Survival recruitment uses this identity; creative players may deploy another faction.
  * Supply placement always uses the player's own faction, including in creative mode.
  */
-class PlayerFactionRegistry : SavedData() {
+class PlayerFactionRegistry : VersionedSavedData() {
 
     private val factions = HashMap<UUID, SquadFaction>()
 
@@ -51,7 +51,7 @@ class PlayerFactionRegistry : SavedData() {
         return if (player.isCreative) requested else own
     }
 
-    override fun save(tag: CompoundTag, registries: HolderLookup.Provider): CompoundTag {
+    override fun write(tag: CompoundTag): CompoundTag {
         factions.forEach { (uuid, faction) -> tag.putString(uuid.toString(), faction.name) }
         return tag
     }
@@ -59,7 +59,7 @@ class PlayerFactionRegistry : SavedData() {
     companion object {
         private const val FILE = "sbwnpc_player_factions"
 
-        private fun load(tag: CompoundTag, registries: HolderLookup.Provider): PlayerFactionRegistry {
+        private fun load(tag: CompoundTag): PlayerFactionRegistry {
             val reg = PlayerFactionRegistry()
             for (key in tag.allKeys) {
                 val uuid = runCatching { UUID.fromString(key) }.getOrNull() ?: continue
@@ -75,11 +75,7 @@ class PlayerFactionRegistry : SavedData() {
                 else -> null
             }
 
-        fun get(server: MinecraftServer): PlayerFactionRegistry =
-            server.overworld().dataStorage.computeIfAbsent(
-                SavedData.Factory({ PlayerFactionRegistry() }, ::load, null),
-                FILE,
-            )
+        fun get(server: MinecraftServer): PlayerFactionRegistry = SavedDataAccess.fetch(server.overworld().dataStorage, FILE, ::PlayerFactionRegistry, ::load)
 
         fun get(level: ServerLevel): PlayerFactionRegistry = get(level.server)
     }

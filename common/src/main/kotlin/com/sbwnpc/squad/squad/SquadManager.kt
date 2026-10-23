@@ -1,5 +1,7 @@
 package com.sbwnpc.squad.squad
 
+import com.sbwnpc.squad.compat.SavedDataAccess
+import com.sbwnpc.squad.compat.VersionedSavedData
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModEntities
 import com.sbwnpc.squad.item.SquadToolItem
@@ -9,7 +11,6 @@ import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.core.BlockPos
-import net.minecraft.core.HolderLookup
 import net.minecraft.core.particles.DustParticleOptions
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
@@ -20,7 +21,6 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.MobSpawnType
 import net.minecraft.world.entity.Pose
-import net.minecraft.world.level.saveddata.SavedData
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
@@ -29,7 +29,7 @@ import java.util.UUID
  * that's the scoreboard team ([SquadTeams]) — but forming a squad puts every member on the
  * squad's faction team.
  */
-class SquadManager : SavedData() {
+class SquadManager : VersionedSavedData() {
 
     private val squads = LinkedHashMap<UUID, Squad>()
 
@@ -640,7 +640,7 @@ class SquadManager : SavedData() {
 
     private fun nextName(owner: UUID, prefix: String = ""): String = firstFreeName(forOwner(owner).map { it.name }.toSet(), prefix)
 
-    override fun save(tag: CompoundTag, registries: HolderLookup.Provider): CompoundTag = saveState(tag)
+    override fun write(tag: CompoundTag): CompoundTag = saveState(tag)
 
     internal fun saveState(tag: CompoundTag): CompoundTag {
         val list = ListTag()
@@ -710,10 +710,7 @@ class SquadManager : SavedData() {
 
         fun get(server: MinecraftServer): SquadManager {
             cached?.let { if (cachedServer === server) return it }
-            val mgr = server.overworld().dataStorage.computeIfAbsent(
-                SavedData.Factory({ SquadManager() }, { tag, _ -> load(tag) }, null),
-                FILE,
-            )
+            val mgr = SavedDataAccess.fetch(server.overworld().dataStorage, FILE, ::SquadManager, ::load)
             cached = mgr
             cachedServer = server
             return mgr

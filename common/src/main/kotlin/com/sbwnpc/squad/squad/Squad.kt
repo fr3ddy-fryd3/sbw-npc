@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.squad
 
+import com.sbwnpc.squad.compat.VersionCompat
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
@@ -121,7 +122,7 @@ class Squad(
             tag.getList("Members", Tag.TAG_INT_ARRAY.toInt()).forEach { members.add(NbtUtils.loadUUID(it)) }
             val faction = runCatching { SquadFaction.valueOf(tag.getString("Faction")) }.getOrNull() ?: SquadFaction.DEFAULT
             val barracks = if (tag.contains("BarracksPos")) {
-                NbtUtils.readBlockPos(tag, "BarracksPos").orElse(null)?.let { pos ->
+                VersionCompat.readBlockPos(tag, "BarracksPos")?.let { pos ->
                     val dimension = if (tag.contains("BarracksDim", Tag.TAG_STRING.toInt())) {
                         ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(tag.getString("BarracksDim")))
                     } else {
@@ -138,14 +139,14 @@ class Squad(
                 faction = faction,
                 order = loadOrder(tag),
                 members = members,
-                objective = if (tag.contains("Objective")) NbtUtils.readBlockPos(tag, "Objective").orElse(null) else null,
+                objective = if (tag.contains("Objective")) VersionCompat.readBlockPos(tag, "Objective") else null,
                 focusEntity = if (tag.hasUUID("Focus")) tag.getUUID("Focus") else null,
                 owner = tag.getUUID("Owner"),
                 barracks = barracks,
                 originalComposition = loadComposition(tag),
                 rank = runCatching { NpcRank.valueOf(tag.getString("Rank")) }.getOrDefault(NpcRank.DEFAULT),
                 routeId = if (tag.hasUUID("RouteId")) tag.getUUID("RouteId") else null,
-                moveAssembly = if (tag.contains("MoveAssembly")) NbtUtils.readBlockPos(tag, "MoveAssembly").orElse(null) else null,
+                moveAssembly = if (tag.contains("MoveAssembly")) VersionCompat.readBlockPos(tag, "MoveAssembly") else null,
                 moveFormationReady = tag.getBoolean("MoveFormationReady"),
             )
             if (tag.contains("IssuedCommand")) squad.command = com.sbwnpc.squad.ai.integration.IssuedCommandCodec.load(tag.getCompound("IssuedCommand"))?.takeIf { it.principal == squad.owner }
@@ -153,8 +154,8 @@ class Squad(
             squad.commandReason = tag.getString("CommandReason").takeIf { it.isNotBlank() }
             if (tag.contains("ObjectiveDimension")) squad.objectiveDimension = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(tag.getString("ObjectiveDimension")))
             if (tag.hasUUID("TacticalOperation")) squad.tacticalOperation = tag.getUUID("TacticalOperation")
-            if (tag.contains("TacticalObjective")) squad.tacticalObjective = NbtUtils.readBlockPos(tag, "TacticalObjective").orElse(null)
-            if (tag.contains("LastSeen")) squad.lastSeen = NbtUtils.readBlockPos(tag, "LastSeen").orElse(null)
+            if (tag.contains("TacticalObjective")) squad.tacticalObjective = VersionCompat.readBlockPos(tag, "TacticalObjective")
+            if (tag.contains("LastSeen")) squad.lastSeen = VersionCompat.readBlockPos(tag, "LastSeen")
             if (tag.contains("LastSeenDim", Tag.TAG_STRING.toInt())) {
                 squad.lastSeenDim = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(tag.getString("LastSeenDim")))
             }

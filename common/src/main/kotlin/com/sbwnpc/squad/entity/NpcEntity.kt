@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.entity
 
 import com.sbwnpc.squad.combat.SidearmKit
+import com.sbwnpc.squad.compat.VersionCompat
 import com.sbwnpc.squad.config.Settings
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.ai.GrenadeThrowBehaviour
@@ -1281,10 +1282,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         assignedMortarId?.let { compound.putUUID("AssignedMortar", it) }
         if (!packedMortarState.isEmpty) compound.put("PackedMortar", packedMortarState.copy())
         compound.putInt("DronesLeft", dronesLeft)
-        if (!stowedWeapon.isEmpty) compound.put("StowedWeapon", stowedWeapon.save(registryAccess()))
-        if (!antiArmourWeapon.isEmpty) compound.put("AntiArmourWeapon", antiArmourWeapon.save(registryAccess()))
-        if (!sidearmWeapon.isEmpty) compound.put("Sidearm", sidearmWeapon.save(registryAccess()))
-        if (!sidearmPrimaryWeapon.isEmpty) compound.put("SidearmPrimary", sidearmPrimaryWeapon.save(registryAccess()))
+        if (!stowedWeapon.isEmpty) compound.put("StowedWeapon", VersionCompat.saveStack(this, stowedWeapon))
+        if (!antiArmourWeapon.isEmpty) compound.put("AntiArmourWeapon", VersionCompat.saveStack(this, antiArmourWeapon))
+        if (!sidearmWeapon.isEmpty) compound.put("Sidearm", VersionCompat.saveStack(this, sidearmWeapon))
+        if (!sidearmPrimaryWeapon.isEmpty) compound.put("SidearmPrimary", VersionCompat.saveStack(this, sidearmPrimaryWeapon))
     }
 
     override fun readAdditionalSaveData(compound: CompoundTag) {
@@ -1347,12 +1348,12 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             0
         }
         stowedWeapon = if (compound.contains("StowedWeapon")) {
-            ItemStack.parseOptional(registryAccess(), compound.getCompound("StowedWeapon"))
+            VersionCompat.loadStack(this, compound.getCompound("StowedWeapon"))
         } else {
             ItemStack.EMPTY
         }
         antiArmourWeapon = if (compound.contains("AntiArmourWeapon")) {
-            ItemStack.parseOptional(registryAccess(), compound.getCompound("AntiArmourWeapon"))
+            VersionCompat.loadStack(this, compound.getCompound("AntiArmourWeapon"))
         } else {
             ItemStack.EMPTY
         }
@@ -1362,8 +1363,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             setItemInHand(InteractionHand.MAIN_HAND, stowedWeapon)
             stowedWeapon = ItemStack.EMPTY
         }
-        sidearmWeapon = if (compound.contains("Sidearm")) ItemStack.parseOptional(registryAccess(), compound.getCompound("Sidearm")) else SidearmKit.issue(this)
-        sidearmPrimaryWeapon = if (compound.contains("SidearmPrimary")) ItemStack.parseOptional(registryAccess(), compound.getCompound("SidearmPrimary")) else ItemStack.EMPTY
+        sidearmWeapon = if (compound.contains("Sidearm")) VersionCompat.loadStack(this, compound.getCompound("Sidearm")) else SidearmKit.issue(this)
+        sidearmPrimaryWeapon = if (compound.contains("SidearmPrimary")) VersionCompat.loadStack(this, compound.getCompound("SidearmPrimary")) else ItemStack.EMPTY
         if (usingSidearm) setItemInHand(InteractionHand.MAIN_HAND, sidearmWeapon)
     }
 
