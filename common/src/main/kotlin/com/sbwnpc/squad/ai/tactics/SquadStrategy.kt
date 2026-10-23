@@ -157,7 +157,7 @@ private object BoundingOverwatch : SquadStrategy {
     const val MIN_MOVERS = 4
 
     // Under fire it outscores an Advance held (0.67 + 0.2 per readiness) once more than half the
-    // squad is ready to fire. With nobody hit for 10 s it never does, even held: bounds would only
+    // squad is ready to fire. With nobody hit for 13 s it never does, even held: bounds would only
     // slow the advance down.
     private const val UNDER_FIRE = 0.62
     private const val UNTOUCHED = 0.3
@@ -185,7 +185,7 @@ private object Regroup : SquadStrategy {
         return intent.copy(duty = CombatDuty.MOVE, anchor = rally, legs = false, minimumHeight = null, elevationWeight = 0.0)
     }
 
-    // Above an advance held by a squad ready to fight to the last man (0.67 + 0.2): at 0.8, below
-    // it, a squad that could fight never regrouped.
+    // Above an advance held by a squad all of whose men can fight (0.67 + 0.2 at readiness 1): at
+    // 0.8, below it, a squad that could fight never regrouped.
     private const val SCORE = 0.9
 }

@@ -20,7 +20,10 @@ import kotlin.math.hypot
 object SquadManoeuvreGameTests {
     /**
      * Twelve riflemen attacking across open ground under fire from four riflemen take up bounding
-     * by halves, swap halves at least twice and close in on the enemy while doing it.
+     * by halves, swap halves once the moving one has done its legs and close in on the enemy.
+     *
+     * Only one swap is asked for: movers who reach their slot on the front fire from there, and
+     * once fewer than four are left moving the squad advances without halves.
      */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1600, batch = "manoeuvre-bound")
@@ -42,7 +45,7 @@ object SquadManoeuvreGameTests {
             if (strategy == CombatStrategy.BOUND_OVERWATCH) bounded = true
             NativeTactics.boundTurn(helper.level, squad.id)?.let { turns = maxOf(turns, it) }
             if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} strategy=$strategy turn=$turns distance=${"%.1f".format(distance())} start=${"%.1f".format(start)} enemiesFired=${enemies.count { it.lastShotTick >= 0 }}")
-            if (bounded && turns >= 2 && start - distance() >= 12.0) {
+            if (bounded && turns >= 1 && start - distance() >= 12.0) {
                 scene.result("PASS", "tick=${helper.tick} turns=$turns closed=${"%.1f".format(start - distance())}")
                 helper.succeed()
             }

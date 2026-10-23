@@ -283,7 +283,8 @@ object HtnTacticsGameTests {
         }
     }
 
-    private fun failedPostSearch(npc: NpcEntity) = NativeTactics.reports(npc).values.any { it.reason?.startsWith("local_") == true } || NativeTactics.postFailures(npc) > 0
+    // Past the four neighbouring anchors, only the closer posts and the last-resort hold are left.
+    private fun failedPostSearch(npc: NpcEntity) = NativeTactics.reports(npc).values.any { it.reason?.startsWith("local_") == true } || NativeTactics.postFailures(npc) > 4
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1600, batch = "htn-reinforcement")

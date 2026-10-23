@@ -364,7 +364,8 @@ object TacticalDomain {
                 POSITION,
                 intent,
                 if (intent.commandsMovement) setOf(ResourceKey(intent.actor, "motion")) else emptySet(),
-                timeoutTicks = if (intent.commandsMovement) 1200 else Long.MAX_VALUE,
+                // A hold gives up like a search: should its failure never be forgotten, it ends anyway.
+                timeoutTicks = if (intent.duty.commandsMovement) 1200 else Long.MAX_VALUE,
             ),
             // In the start, not the maintain: covering fire that lapses mid-rush must not stop him in the open.
             TaskContract(start = if (intent.coveredBy.isNotEmpty()) Condition.test(TacticalFacts.SUPPORT_FIRING, "awaiting_support") { it } else Condition.ALWAYS, maintain = maintain, completed = completed),
@@ -434,9 +435,9 @@ object TacticalDomain {
  *   or search away from it on purpose, are farther from it than twice its perimeter radius.
  * @property gathered all those men are within its perimeter radius.
  * @property regrouping it holds [CombatStrategy.REGROUP].
- * @property underFire one of its men was hit within the last 10 s. [incoming] lasts 3 s after a
- *   hit: a few distant riflemen hit too seldom to keep it, and a strategy weighed by it was taken
- *   up and dropped every few seconds.
+ * @property underFire one of its men was hit within the last 13 s or so: [incoming] lasts 3 s
+ *   after a hit and this 10 s more. A few distant riflemen hit too seldom to keep [incoming], and a
+ *   strategy weighed by it was taken up and dropped every few seconds.
  */
 data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean, val reinforced: Boolean = false, val movers: Int = 0, val flanking: Boolean = false, val scattered: Boolean = false, val gathered: Boolean = false, val regrouping: Boolean = false, val underFire: Boolean = incoming)
 

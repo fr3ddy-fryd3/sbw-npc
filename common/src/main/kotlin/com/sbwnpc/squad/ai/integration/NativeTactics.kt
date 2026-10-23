@@ -52,8 +52,14 @@ object NativeTactics {
     /** Fewer men than this far from the squad never count it as scattered. */
     private const val REGROUP_MIN_SCATTERED = 2
 
-    /** How long after a hit a squad still counts as under fire, see [CombatSituation.underFire]. */
+    /** How long after its incoming fire lapsed a squad still counts as under fire, see [CombatSituation.underFire]. */
     private const val UNDER_FIRE_TICKS = 200L
+
+    /**
+     * A regroup goes on this long at most once nothing scatters the squad any more, 20 s. A man
+     * who found no post round the rally, left to his order, kept it from gathering for good.
+     */
+    private const val REGROUP_MAX_TICKS = 400L
 
     /** How far behind its centre, away from the enemy, a regrouping squad gathers. */
     private const val REGROUP_PULLBACK = 12.0
@@ -1064,7 +1070,7 @@ object NativeTactics {
                         flanking = view.members.any { it.id in waypoints },
                         scattered = distances.size >= REGROUP_MIN_MEN && distances.count { it > 2 * radius }.let { it >= REGROUP_MIN_SCATTERED && it * 3 >= distances.size },
                         gathered = distances.all { it <= radius },
-                        regrouping = strategy == CombatStrategy.REGROUP,
+                        regrouping = strategy == CombatStrategy.REGROUP && strategies[saved.id]!!.second + REGROUP_MAX_TICKS > now,
                     )
                 }
                 updateBoundTurn(saved.id, movers, view, focus, now)

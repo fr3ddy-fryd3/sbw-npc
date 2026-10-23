@@ -62,7 +62,9 @@ internal class NativePositionAction(
     init {
         // A sentry that left to resupply comes back to his own platform. Without it the fresh
         // search started again from the ground and settled on another post (#86).
-        if (task.job == TacticalJob.OVERWATCH && heldPost != null && stillServes(heldPost)) task.position = heldPost.post
+        // A hold searches no post, his height post included.
+        val returning = task.job == TacticalJob.OVERWATCH && !intent.hold
+        if (returning && heldPost != null && stillServes(heldPost)) task.position = heldPost.post
     }
 
     /** Only for the same anchor: a new order's post must come from a new search. */
@@ -71,7 +73,7 @@ internal class NativePositionAction(
             FiringSpots.nearby(held.post, 1.0, npc.uuid).isEmpty()
 
     /** The height post this action holds or heads for, kept by [NativeTactics] for the next OVERWATCH action. */
-    val overwatchPost get() = task.position?.takeIf { task.job == TacticalJob.OVERWATCH && !intent.hold }?.let { HeldPost(task.anchor, it) }
+    val overwatchPost get() = task.position?.takeIf { task.job == TacticalJob.OVERWATCH }?.let { HeldPost(task.anchor, it) }
     private var ownedLook: net.minecraft.world.entity.ai.behavior.PositionTracker? = null
     private var idleDirection: Pair<Double, Double>? = null
     private var glanceOffset = 0.0
@@ -84,7 +86,7 @@ internal class NativePositionAction(
     private var released = false
     val assignment get() = NativeAssignment(task.job, task.anchor, task.focus, task.position, task.localFirePost, task.localFireRecovery)
     fun reached(): Boolean =
-        task.position?.let { FiringPostArrival.reached(npc.position(), it) } == true && !intent.hold &&
+        task.position?.let { FiringPostArrival.reached(npc.position(), it) } == true &&
             (!intent.duty.advancing || task.position!!.distanceTo(task.anchor) <= 4) &&
             (intent.inspection?.let { DetectionSightline.visible(npc.level() as ServerLevel, npc.eyePosition, it.native().add(0.0, 1.5, 0.0), npc) } != false)
 

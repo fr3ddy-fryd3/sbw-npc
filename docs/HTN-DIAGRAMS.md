@@ -80,11 +80,11 @@ flowchart LR
     T3 --> S_H["hold: defending under contact"]:::case --> D_SH["a move becomes fire where he stands"]:::duty
     T3 --> S_G["gain height: attacking an enemy above"]:::case --> D_SG["posts no lower than 2 below him,<br/>higher preferred"]:::duty
     T3 --> S_W["withdraw: incoming fire, 40% lost,<br/>no way to go on, no barracks"]:::case --> D_SW["fall back 48 blocks from the threat"]:::duty
-    T3 --> S_B["bound by halves: attacking under fire,<br/>able to go on, no enemy above, 4+ movers"]:::case --> D_SB["one half of the movers rushes by legs,<br/>covered; the other fires from its posts;<br/>swap when each runner did a leg"]:::duty
-    T3 --> S_R["regroup: attacking, not flanking,<br/>a third of the men scattered"]:::case --> D_SR["move to a rally point 12 blocks behind<br/>until all are back near the squad"]:::duty
+    T3 --> S_B["bound by halves: attacking, able to go on,<br/>no enemy above, not scattered, 4+ movers"]:::case --> D_SB["one half of the movers rushes by legs,<br/>covered by the other's fire, not by shelter;<br/>the other fires from its posts;<br/>swap when each runner did a leg"]:::duty
+    T3 --> S_R["regroup: attacking, not flanking, 4+ men,<br/>a third of them and 2+ scattered"]:::case --> D_SR["move to a rally point 12 blocks behind<br/>until all are back near the squad, 20 s at most"]:::duty
     T3 --> S_K["assault men, men moving for their order,<br/>men following the order"]:::case --> D_SK["keep their task"]:::duty
     T3 --> S_AP(["then its approach,<br/>for a squad attacking alone"]):::task
-    S_AP --> S_AF["flank: a manoeuvre group can split off,<br/>the flank not found blocked lately"]:::case --> D_AF["next layout splits off the<br/>manoeuvre group round the arc"]:::duty
+    S_AP --> S_AF["flank: a manoeuvre group can split off,<br/>the squad not scattered or regrouping,<br/>the flank not found blocked lately"]:::case --> D_AF["next layout splits off the<br/>manoeuvre group round the arc"]:::duty
     S_AP --> S_AR["frontal"]:::case --> D_AR["the whole squad comes on together"]:::duty
 
     %% 4. Team (TacticalDomain.team, TeamRushes)
@@ -96,7 +96,7 @@ flowchart LR
     T5 --> N1["first try: at his anchor"]:::case
     T5 --> N2["failed there: 12 blocks aside,<br/>forward or back, up to 4 times"]:::case
     T5 --> N3["still failing and his shots blocked:<br/>closer to the enemy, never inside his standoff"]:::case
-    T5 --> N4["nothing left"]:::case --> D_STAY["holds where he stands<br/>until the failures are forgotten"]:::duty
+    T5 --> N4["nothing left"]:::case --> D_STAY["his order and gun move him<br/>until the failures are forgotten"]:::duty
     N1 & N2 & N3 --> POS["go to the post and hold it"]:::action
 ```
 
@@ -116,8 +116,8 @@ is the only one allowed for 40 ticks after it was chosen.
 | withdraw | 0.95 |
 | gain height | 0.93 |
 | hold | 0.9 defending under contact, otherwise 0.4 |
-| regroup | 0.8 |
-| bound by halves | 0.62 + 0.3 × share of ready shooters under fire, otherwise 0.3 + 0.3 × that share |
+| regroup | 0.9 |
+| bound by halves | 0.62 + 0.3 × share of ready shooters when a man was hit in the last 13 s, otherwise 0.3 + 0.3 × that share |
 | advance | 0.55 + 0.2 × share of ready shooters |
 
 **Approach** (`SquadApproaches`). A flank scores 0.5 + 0.3 × share of ready shooters, less 2 × the
@@ -127,12 +127,14 @@ losses beyond 30%; frontal scores 0.45. The approach held scores 0.12 more. A fl
 **Team rush** (`TeamRushes`). Together scores 0.55; pairs score the weighted mean of 0.2, the
 share of movers under fire (weight 1) and their distance to go over 32 blocks (weight 0.5). A
 covered rush starts once one of the men covering it fired in the last 2 s, none of them has a
-target, or 3 s after his last leg.
+target, or 3 s after his last leg. The fire from a leg's post ends once he has fired, his target is
+out of his sight, or after 3 s.
 
 **Position** (`npc.post`). It runs while the man may move and, when cover is required, while he
 has it; it ends when he arrives. A failed search is remembered for 200 ticks, and that is what moves
 him on to the next try. Following the order never times out and leaves his movement to the order
-itself; every other task takes over his movement and gives up after 1200 ticks. The task decides
+itself; the last-resort hold leaves it to his order and gun too; every other task takes over his
+movement. Every task but following the order gives up after 1200 ticks. The task decides
 what the position search looks for:
 
 | Task | Search |
