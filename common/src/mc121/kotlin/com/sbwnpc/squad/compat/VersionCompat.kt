@@ -10,6 +10,7 @@ import net.minecraft.world.entity.EntityDimensions
 import net.minecraft.world.entity.ai.attributes.AttributeInstance
 import net.minecraft.world.entity.ai.attributes.AttributeModifier
 import net.minecraft.world.entity.Mob
+import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.pathfinder.PathType
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
@@ -59,4 +60,19 @@ object VersionCompat {
 
     /** Door goals for the vanilla goal selector; 1.21 uses [doorBehaviours] in the brain instead. */
     fun addDoorGoal(mob: Mob) = Unit
+
+    fun getWaterMalus(mob: Mob): Float = mob.getPathfindingMalus(PathType.WATER)
+
+    fun getWaterBorderMalus(mob: Mob): Float = mob.getPathfindingMalus(PathType.WATER_BORDER)
+
+    fun setWaterMalus(mob: Mob, malus: Float) = mob.setPathfindingMalus(PathType.WATER, malus)
+
+    fun setWaterBorderMalus(mob: Mob, malus: Float) = mob.setPathfindingMalus(PathType.WATER_BORDER, malus)
+
+    /** How high [mob] steps up without jumping. */
+    fun stepHeight(mob: Mob): Float = mob.maxUpStep()
+
+    fun setStepHeight(mob: Mob, height: Float) {
+        mob.getAttribute(Attributes.STEP_HEIGHT)?.baseValue = height.toDouble()
+    }
 }
