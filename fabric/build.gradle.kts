@@ -92,4 +92,6 @@ val modJar by configurations.creating {
     isCanBeResolved = false
     isCanBeConsumed = true
 }
+// Named by loader like the NeoForge jar (sbwnpc-<version>-mc<mc>-fabric.jar), so jars of different loaders never share a name.
+tasks.named<net.fabricmc.loom.task.RemapJarTask>("remapJar") { archiveClassifier.set("fabric") }
 artifacts.add(modJar.name, tasks.named("remapJar"))
