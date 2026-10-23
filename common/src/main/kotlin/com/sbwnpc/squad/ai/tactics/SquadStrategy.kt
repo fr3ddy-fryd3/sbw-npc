@@ -7,9 +7,9 @@ import kotlin.math.hypot
  * How a squad fights for a while: when the [CombatSituation] permits it, what it is worth there,
  * and how it reshapes the members' tasks.
  *
- * [StrategyEvaluation] ranks the strategies by [allowed] and [score]; the squad HTN domain builds
- * one method per strategy that applies [shape]. Neither branches on which strategy it holds, so a
- * new strategy is one more implementation and one more [CombatStrategy] entry.
+ * The squad HTN domain builds one method per strategy, eligible by [allowed], ranked by [score]
+ * ([SquadManners]) and applying [shape]. It never branches on which strategy it holds, so a new
+ * strategy is one more implementation and one more [CombatStrategy] entry.
  */
 interface SquadStrategy {
     /** Why the strategy is chosen, or ruled out when not [allowed], as the evaluation reports it. */

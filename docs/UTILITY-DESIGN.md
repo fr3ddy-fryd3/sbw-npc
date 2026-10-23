@@ -3,9 +3,9 @@
 Status:
 
 - **Implemented:** the general utility evaluation (`UtilityEvaluation` in
-  `common/src/main/kotlin/com/sbwnpc/squad/ai/planning/Utility.kt`), the stability policy
-  (`DecisionStability`), and its one current use, the squad's strategy (`StrategyEvaluation`:
-  advance, hold, gain height, withdraw).
+  `common/src/main/kotlin/com/sbwnpc/squad/ai/planning/Utility.kt`) and utility-scored HTN
+  methods. Their one current use is the squad's strategy: one squad method per strategy
+  (advance, hold, gain height, withdraw), scored and kept stable by `SquadManners`.
 - **Proposed, not implemented:** utility at the operation and Commander levels, the scoped contexts
   (`CommanderContext`, `OperationContext`, `SquadContext`) and the examples below. They are design
   for later work, not a description of the code.
@@ -94,7 +94,9 @@ algorithms to save work does not mean one shared instance of state for everyone.
 
 A small change in a score should not keep switching the flank, the goal and the assigned members. A
 separate decision policy is used: a clear advantage for the new option, a cost of switching,
-conditions to carry on, and a suitable point to hand over resources (`DecisionStability`).
+conditions to carry on, and a suitable point to hand over resources. For the squad's strategy,
+`SquadManners` gives the strategy the squad holds a bonus in its score and, for a short time after
+it was chosen, rules the others out (the `squad.manner_lock` fact, whose expiry replans).
 
 If the current option has become forbidden or infeasible, or there is immediate danger, ordinary
 stability does not block the needed reaction. Emergency interruption belongs to the safety rules and

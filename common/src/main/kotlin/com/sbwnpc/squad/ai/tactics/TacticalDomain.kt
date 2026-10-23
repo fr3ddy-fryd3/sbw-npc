@@ -5,6 +5,7 @@ import com.sbwnpc.squad.ai.coordination.DelegationTask
 import com.sbwnpc.squad.ai.coordination.Point3
 import com.sbwnpc.squad.ai.planning.*
 import kotlin.math.max
+import kotlin.math.min
 
 /**
  * What a member does, and what that means for how his post is searched and held.
@@ -76,7 +77,15 @@ object TacticalFacts {
 
     /** How many legs of an advance by legs he has finished, fire included. */
     val LEGS_DONE = FactKey("actor.legs_done", Int::class.javaObjectType)
-    val STRATEGY = FactKey("squad.strategy", CombatStrategy::class.java)
+
+    /** The squad's fight as its strategy methods weigh it. */
+    val SITUATION = FactKey("squad.situation", CombatSituation::class.java)
+
+    /** The strategy of the squad's installed plan, absent before its first. */
+    val MANNER = FactKey("squad.manner", CombatStrategy::class.java)
+
+    /** Present while the [MANNER] is too young to give up for a better one, see [SquadManners]. */
+    val MANNER_LOCK = FactKey("squad.manner_lock", Boolean::class.javaObjectType)
     val ATTACK_PHASE = FactKey("operation.attack_phase", AttackPhase::class.java)
 }
 
@@ -137,8 +146,9 @@ object TacticalDomain {
                 SQUAD,
                 CombatStrategy.entries.map { strategy ->
                     Method(
-                        strategy.name.lowercase(),
-                        eligible = { Condition.test(TacticalFacts.STRATEGY, "other_strategy") { it == strategy } },
+                        SquadManners.methodId(strategy),
+                        eligible = { SquadManners.eligible(strategy) },
+                        score = { _, facts -> SquadManners.score(strategy, facts) },
                         decompose = { mission, _ ->
                             val tasks = mission.teams.map { team ->
                                 val selected = team.copy(
@@ -331,23 +341,57 @@ object TacticalDomain {
 }
 
 /**
- * One squad's fight as [StrategyEvaluation] sees it.
+ * One squad's fight as [SquadManners] weighs it.
  *
  * @property reinforced the squad has a barracks that replaces its fallen, so its losses never
  *   make it withdraw (#57).
  */
 data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean, val reinforced: Boolean = false)
-object StrategyEvaluation {
-    fun evaluate(facts: FactSnapshot, situation: CombatSituation): DecisionEvaluation<CombatStrategy> {
-        val candidates = CombatStrategy.entries.map { strategy ->
-            val rules = strategy.rules
-            DecisionCandidate(
-                strategy.name,
-                strategy,
-                Condition { if (rules.allowed(situation)) Verdict.Allowed else Verdict.Rejected(rules.reason) },
-                { UtilityScore(rules.score(situation), reason = rules.reason) },
-            )
+/**
+ * How a squad's strategy methods choose between the [CombatStrategy] entries.
+ *
+ * A strategy applies when its rules allow the [TacticalFacts.SITUATION] and scores what its rules
+ * say. The strategy the squad holds ([TacticalFacts.MANNER]) is worth [ADVANTAGE] more, and while
+ * it is locked ([TacticalFacts.MANNER_LOCK], [MINIMUM_TICKS] after it was chosen) and still
+ * allowed nothing else applies. Without that a squad whose scores hovered round a tie swapped
+ * strategy, and every member's task with it, on every refresh.
+ */
+object SquadManners {
+    /** How long a newly chosen strategy is kept while still allowed. */
+    const val MINIMUM_TICKS = 40L
+
+    /**
+     * How much more the strategy held is worth. A held score is clamped to 1, so a strategy able
+     * to score 1 would start losing exact ties by method id.
+     */
+    const val ADVANTAGE = 0.12
+
+    /** The squad method that carries out [strategy]. */
+    fun methodId(strategy: CombatStrategy) = strategy.name.lowercase()
+
+    /** The strategy whose method is [id], or null for any other method. */
+    fun of(id: String) = CombatStrategy.entries.firstOrNull { methodId(it) == id }
+
+    /**
+     * Whether [strategy]'s method applies: its rules allow the situation, and no other strategy is
+     * held under lock while still allowed (rejected as `incumbent_minimum`).
+     */
+    fun eligible(strategy: CombatStrategy) =
+        Condition { facts ->
+            val situation = facts.value(TacticalFacts.SITUATION) ?: return@Condition Verdict.Unknown(setOf(TacticalFacts.SITUATION.name))
+            val held = facts.value(TacticalFacts.MANNER)
+            when {
+                !strategy.rules.allowed(situation) -> Verdict.Rejected(strategy.rules.reason)
+                held == null || held == strategy || facts.value(TacticalFacts.MANNER_LOCK) != true || !held.rules.allowed(situation) -> Verdict.Allowed
+                else -> Verdict.Rejected("incumbent_minimum")
+            }
         }
-        return UtilityEvaluation.rank(facts, candidates)
+
+    /** [strategy]'s score in the observed situation, with [ADVANTAGE] when the squad holds it. */
+    fun score(strategy: CombatStrategy, facts: FactView): UtilityScore {
+        val situation = facts.value(TacticalFacts.SITUATION) ?: return UtilityScore.NEUTRAL
+        val base = strategy.rules.score(situation)
+        val held = facts.value(TacticalFacts.MANNER) == strategy
+        return UtilityScore(min(1.0, base + if (held) ADVANTAGE else 0.0), reason = strategy.rules.reason)
     }
 }

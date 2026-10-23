@@ -101,30 +101,52 @@ class TacticalDomainTest {
         assertTrue("foreign_actor_intent" in result.reasons)
     }
 
+    private val squadId = AgentId(AgentLevel.SQUAD, UUID(0, 9))
+    private val blocked = CombatSituation(true, true, false, false, 0.0, 0.0, false)
+    private val beaten = CombatSituation(true, true, false, true, 0.5, 0.5, false)
+
+    private fun squadFacts(situation: CombatSituation, held: CombatStrategy? = null, locked: Boolean = false): FactSnapshot {
+        var facts = FactSnapshot(squadId, 0).observe(TacticalFacts.SITUATION, situation)
+        if (held != null) facts = facts.observe(TacticalFacts.MANNER, held)
+        if (locked) facts = facts.observe(TacticalFacts.MANNER_LOCK, true)
+        return facts
+    }
+
+    private fun squadPlan(facts: FactSnapshot, vararg members: PositionIntent = arrayOf(intent)): HtnPlan {
+        val mission = SquadMission(squadId, listOf(TeamMission(AgentId(AgentLevel.TEAM, UUID(0, 8)), members.toList())))
+        return (HtnPlanningSession(TacticalDomain.squad, PlanOwner(squadId, UUID(1, 1)), TacticalDomain.SQUAD.call(mission), facts).advance(20) as PlanningResult.Ready).plan
+    }
+
+    private fun strategyOf(plan: HtnPlan) = SquadManners.of(plan.tasks.single().node.split('/')[1])
+
+    private fun shapedMember(plan: HtnPlan) = ((plan.tasks.single().spec.action.parameters as com.sbwnpc.squad.ai.coordination.DelegationTask).task.parameters as TeamMission).members.single()
+
     @Test fun `utility rejects advance without capability and chooses valid height strategy`() {
-        val squadFacts = FactSnapshot(AgentId(AgentLevel.SQUAD, UUID(3, 3)), 0)
-        val blocked = StrategyEvaluation.evaluate(squadFacts, CombatSituation(true, true, false, false, 0.0, 0.0, false))
-        assertTrue(blocked.excluded.any { it.id == CombatStrategy.ADVANCE.name })
-        assertEquals(CombatStrategy.HOLD, blocked.ranked.first().value)
-        val height = StrategyEvaluation.evaluate(squadFacts, CombatSituation(true, true, true, false, 1.0, 0.0, true))
-        assertEquals(CombatStrategy.GAIN_HEIGHT, height.ranked.first().value)
+        assertEquals(CombatStrategy.HOLD, strategyOf(squadPlan(squadFacts(blocked))))
+        assertTrue(SquadManners.eligible(CombatStrategy.ADVANCE).evaluate(squadFacts(blocked)) is Verdict.Rejected)
+        assertEquals(CombatStrategy.GAIN_HEIGHT, strategyOf(squadPlan(squadFacts(CombatSituation(true, true, true, false, 1.0, 0.0, true)))))
     }
 
     @Test fun `a squad with a barracks does not withdraw on its losses`() {
-        val squadFacts = FactSnapshot(AgentId(AgentLevel.SQUAD, UUID(3, 3)), 0)
-        val beaten = CombatSituation(true, true, false, true, 0.5, 0.5, false)
-        assertEquals(CombatStrategy.WITHDRAW, StrategyEvaluation.evaluate(squadFacts, beaten).ranked.first().value)
-        val reinforced = StrategyEvaluation.evaluate(squadFacts, beaten.copy(reinforced = true))
-        assertTrue(reinforced.excluded.any { it.id == CombatStrategy.WITHDRAW.name })
+        assertEquals(CombatStrategy.WITHDRAW, strategyOf(squadPlan(squadFacts(beaten))))
+        assertTrue(SquadManners.eligible(CombatStrategy.WITHDRAW).evaluate(squadFacts(beaten.copy(reinforced = true))) is Verdict.Rejected)
+    }
+
+    @Test fun `a squad keeps its strategy while locked or nearly as good and drops it once ruled out`() {
+        // Out of contact ADVANCE scores 0.75 here and HOLD 0.4, or 0.52 when held.
+        val calm = CombatSituation(false, true, false, false, 1.0, 0.0, false)
+        assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(calm))))
+        assertEquals(CombatStrategy.HOLD, strategyOf(squadPlan(squadFacts(calm, CombatStrategy.HOLD, locked = true))))
+        assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(calm, CombatStrategy.HOLD))))
+        // WITHDRAW (0.95) beats GAIN_HEIGHT (0.93), but not by the advantage the strategy held has.
+        val close = CombatSituation(true, true, true, true, 0.5, 0.5, false)
+        assertEquals(CombatStrategy.WITHDRAW, strategyOf(squadPlan(squadFacts(close))))
+        assertEquals(CombatStrategy.GAIN_HEIGHT, strategyOf(squadPlan(squadFacts(close, CombatStrategy.GAIN_HEIGHT))))
+        assertEquals(CombatStrategy.HOLD, strategyOf(squadPlan(squadFacts(blocked, CombatStrategy.ADVANCE, locked = true))))
     }
 
     @Test fun `withdrawal changes execution goal away from known threat without requiring cover fire`() {
-        val squadId = AgentId(AgentLevel.SQUAD, UUID(0, 9))
-        val mission = SquadMission(squadId, listOf(TeamMission(AgentId(AgentLevel.TEAM, UUID(0, 8)), listOf(intent))))
-        val input = FactSnapshot(squadId, 0).observe(TacticalFacts.STRATEGY, CombatStrategy.WITHDRAW)
-        val result = HtnPlanningSession(TacticalDomain.squad, PlanOwner(squadId, UUID(1, 1)), TacticalDomain.SQUAD.call(mission), input).advance(20) as PlanningResult.Ready
-        val delegation = result.plan.tasks.single().spec.action.parameters as com.sbwnpc.squad.ai.coordination.DelegationTask
-        val retreat = (delegation.task.parameters as TeamMission).members.single()
+        val retreat = shapedMember(squadPlan(squadFacts(beaten)))
         assertTrue(retreat.anchor.x < intent.origin.x)
         assertFalse(retreat.requireCover)
         assertFalse(retreat.requireShelter)
@@ -133,28 +155,16 @@ class TacticalDomainTest {
     }
 
     @Test fun `a sentry withdrawing from his height may come down`() {
-        val squadId = AgentId(AgentLevel.SQUAD, UUID(0, 9))
         val sentry = intent.copy(duty = CombatDuty.OBSERVE, minimumHeight = intent.origin.y - 2, elevationWeight = 3.0)
-        val mission = SquadMission(squadId, listOf(TeamMission(AgentId(AgentLevel.TEAM, UUID(0, 8)), listOf(sentry))))
-        val input = FactSnapshot(squadId, 0).observe(TacticalFacts.STRATEGY, CombatStrategy.WITHDRAW)
-        val result = HtnPlanningSession(TacticalDomain.squad, PlanOwner(squadId, UUID(1, 1)), TacticalDomain.SQUAD.call(mission), input).advance(20) as PlanningResult.Ready
-        val delegation = result.plan.tasks.single().spec.action.parameters as com.sbwnpc.squad.ai.coordination.DelegationTask
-        val retreat = (delegation.task.parameters as TeamMission).members.single()
+        val retreat = shapedMember(squadPlan(squadFacts(beaten), sentry))
         assertEquals(CombatDuty.MOVE, retreat.duty)
         assertNull(retreat.minimumHeight)
         assertEquals(0.0, retreat.elevationWeight)
     }
 
     @Test fun `holding in contact keeps a bound that is the order's own movement`() {
-        val squadId = AgentId(AgentLevel.SQUAD, UUID(0, 9))
         val bound = intent.copy(duty = CombatDuty.MOVE)
-        fun shaped(member: PositionIntent): PositionIntent {
-            val mission = SquadMission(squadId, listOf(TeamMission(AgentId(AgentLevel.TEAM, UUID(0, 8)), listOf(member))))
-            val input = FactSnapshot(squadId, 0).observe(TacticalFacts.STRATEGY, CombatStrategy.HOLD)
-            val result = HtnPlanningSession(TacticalDomain.squad, PlanOwner(squadId, UUID(1, 1)), TacticalDomain.SQUAD.call(mission), input).advance(20) as PlanningResult.Ready
-            val delegation = result.plan.tasks.single().spec.action.parameters as com.sbwnpc.squad.ai.coordination.DelegationTask
-            return (delegation.task.parameters as TeamMission).members.single()
-        }
+        fun shaped(member: PositionIntent) = shapedMember(squadPlan(squadFacts(blocked), member))
         assertEquals(CombatDuty.FIRE, shaped(bound).duty)
         assertEquals(CombatDuty.MOVE, shaped(bound.copy(ordered = true)).duty)
     }

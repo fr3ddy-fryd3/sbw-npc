@@ -142,11 +142,16 @@ object NativeTactics {
         private val leases = ResourceLeases()
         private val knownOrders = HashMap<UUID, Int>()
         private val missions = HashMap<UUID, SquadMission>()
+
+        // Each squad's strategy as its installed plan chose it, and since when; see SquadManners.
         private val strategies = HashMap<UUID, Pair<CombatStrategy, Long>>()
+
+        // The strategy each squad's layout last saw, to tell whether it changed since.
+        private val seenStrategies = HashMap<UUID, CombatStrategy>()
+        private val situations = HashMap<UUID, CombatSituation>()
 
         /** The last bound logged for each following squad in a fight. */
         private val followBeats = HashMap<UUID, Long>()
-        private val stability = DecisionStability()
         private val allocationOrigins = HashMap<UUID, Point3>()
         private val formationDuties = HashMap<UUID, CombatDuty>()
         private val plannedContact = HashMap<UUID, Vec3?>()
@@ -243,6 +248,7 @@ object NativeTactics {
                     },
                 ) { feedback ->
                     planResultObserver?.invoke(id.level)
+                    if (id.level == AgentLevel.SQUAD) (feedback.result as? PlanningResult.Ready)?.let { recordStrategy(id.id, it.plan, level.gameTime) }
                     DebugFlags.log(LogGroup.ORDER, "[htn] level={} actor={} event=plan_result result={}", id.level, id.id, feedback.result.javaClass.simpleName)
                 }
             }
@@ -275,6 +281,19 @@ object NativeTactics {
                 override fun resume(now: Long) = Unit
                 override fun cancel(now: Long, reason: String) = Unit
             }
+
+        /**
+         * Records the strategy whose method the squad's new [plan] took. The method is the second
+         * part of every task's node, `root/<method>/...`; a plan without tasks keeps the old one.
+         */
+        private fun recordStrategy(squad: UUID, plan: HtnPlan, now: Long) {
+            val strategy = plan.tasks.firstOrNull()?.node?.split('/')?.getOrNull(1)?.let(SquadManners::of) ?: return
+            val old = strategies[squad]?.first
+            if (old == strategy) return
+            strategies[squad] = strategy to now
+            val scores = situations[squad]?.let { situation -> CombatStrategy.entries.filter { it.rules.allowed(situation) }.associate { it.name to "%.2f".format(it.rules.score(situation)) } }
+            DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=strategy from={} to={} scores={} situation={}", squad, old, strategy, scores, situations[squad])
+        }
         private fun facts(id: AgentId, now: Long): FactSnapshot {
             var result = FactSnapshot(id, now)
             if (id.level == AgentLevel.OPERATION) {
@@ -282,7 +301,13 @@ object NativeTactics {
                 if (observed != null) result = result.observe(TacticalFacts.AREA_SECURED, areaClocks[id.id]?.completed == true, observedAt = observed, expiresAt = observed + 11)
             }
             if (id.level == AgentLevel.OPERATION) attacks[id.id]?.let { result = result.observe(TacticalFacts.ATTACK_PHASE, it.phase) }
-            if (id.level == AgentLevel.SQUAD) result = result.observe(TacticalFacts.STRATEGY, strategies[id.id]?.first ?: CombatStrategy.ADVANCE)
+            if (id.level == AgentLevel.SQUAD) {
+                situations[id.id]?.let { result = result.observe(TacticalFacts.SITUATION, it) }
+                strategies[id.id]?.let { (strategy, since) ->
+                    result = result.observe(TacticalFacts.MANNER, strategy)
+                    if (now < since + SquadManners.MINIMUM_TICKS) result = result.observe(TacticalFacts.MANNER_LOCK, true, observedAt = since, expiresAt = since + SquadManners.MINIMUM_TICKS)
+                }
+            }
             if (id.level == AgentLevel.NPC) {
                 val npc = level.getEntity(id.id) as? NpcEntity
                 val action = actions[id.id]
@@ -343,6 +368,9 @@ object NativeTactics {
                 snapshots.keys.filter { it !in activeIds }.toList().forEach { id ->
                     snapshots.remove(id)
                     missions.remove(id)
+                    situations.remove(id)
+                    strategies.remove(id)
+                    seenStrategies.remove(id)
                     if (manager.get(id) == null) {
                         knownOrders.remove(id)
                         operations.detach(id)
@@ -811,10 +839,9 @@ object NativeTactics {
                     view.fighting.isNotEmpty(),
                     reinforced = saved.barracks != null,
                 )
-                val evaluation = StrategyEvaluation.evaluate(facts(AgentId(AgentLevel.SQUAD, saved.id), now), situation)
-                val oldStrategy = strategies[saved.id]
-                val selected = stability.choose(evaluation, oldStrategy?.first?.name, oldStrategy?.second ?: now, now)!!.value
-                if (oldStrategy?.first != selected) strategies[saved.id] = selected to now
+                situations[saved.id] = situation
+                val strategy = strategies[saved.id]?.first
+                val strategyKept = strategy == null || seenStrategies.put(saved.id, strategy) == strategy
                 val old = missions[saved.id]
                 val oldIntents = old?.teams?.flatMap { it.members }?.associateBy { it.actor.id }.orEmpty()
                 // Marching on, an attack's reinforcement makes for the operation's entry itself: left to
@@ -870,7 +897,7 @@ object NativeTactics {
                     val bounding = following && duty == CombatDuty.MOVE
                     val requireCover = PostRequirements.cover(duty, situation.incoming) && !bounding
                     val requireShelter = PostRequirements.shelter(duty, situation.incoming)
-                    val settled = oldStrategy?.first == selected && (focus?.distanceTo(plannedContact[member.id] ?: focus) ?: 0.0) < 8
+                    val settled = strategyKept && (focus?.distanceTo(plannedContact[member.id] ?: focus) ?: 0.0) < 8
                     val moving = waypoint != null || member.id in wasArcing || bounding
                     val byLegs = ruled.rule in LEG_RULES
                     val retained = before?.takeIf { it.legs == byLegs && MemberDuties.keeps(it, duty, proposed.point(), requireCover, requireShelter, settled, moving) }

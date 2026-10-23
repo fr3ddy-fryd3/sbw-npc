@@ -24,7 +24,6 @@ separate future feature.
 | --- | --- |
 | `FactSnapshot` | One agent's observations, their source, when they were received and how long they hold. Re-confirming an unchanged value does not invalidate a plan that depends on it. |
 | `UtilityEvaluation` | Pure scoring of the allowed options with the factors explained; a ban and missing data are kept apart from a weight. |
-| `DecisionStability` | The owner's policy for keeping the current allowed decision through small swings of the score. |
 | `HtnDomain` | Typed compound and primitive tasks, alternative methods, and dependencies for sequential or parallel execution. |
 | `HtnPlanningSession` | A search kept between updates, backtracking to an alternative, depth and work limits, dependencies on facts. |
 | `PlanRuntime` | Ownership of action instances and resources, checking actual completion, stop and resume, keeping untouched actions under a new plan. |
@@ -54,7 +53,7 @@ The production `SquadTactics` hands ground tactics to `NativeTactics`.
 | --- | --- |
 | Order input | `IssuedCommand` keeps immutable UUIDs, the principal, the original order and the kind of goal in NBT. Internal DEFEND/RETREAT do not replace that intent. The HUD, map and tool use the server's order methods; a shared order creates a joint operation. |
 | Observations | `TacticalSnapshotCollector` collects real contacts, ammunition, incoming fire, role constraints and the positions of loaded NPCs. An operation's contacts are merged separately from authority; a pending reinforcement does not count as cover. A loaded NPC that is missing does not count as a confirmed loss. |
-| Domain | `TacticalDomain` holds separate HTN domains for the operation, squad, team and NPC. `StrategyEvaluation` compares advance, hold, gaining height and withdrawal. Hard conditions are not replaced by weights. |
+| Domain | `TacticalDomain` holds separate HTN domains for the operation, squad, team and NPC. The squad's methods are its strategies (advance, hold, gaining height, withdrawal), scored by `SquadManners`. Hard conditions are not replaced by weights. |
 | Attack | `AttackPhase` (deploy, assault, clear) picks the operation's HTN method; `AttackProgress` keeps its history and the assault and clearing roles; `OperationTactics` maps a member's situation to his duty. `OperationLosses` turns the operation's losses into a standing (steady, review, withdraw). `ReinforcementMarch` decides when a reinforcement on its way stops to fight; `UnverifiedContacts` picks where scouts look. |
 | Geometry | `OperationFront` proposes a curved front from the known enemy positions, with fire support and a rear guard. `TaskTeamAllocator` keeps teams of up to six through changes of strength. A geometric point is not yet a reachable or occupied post. |
 | Execution | `NativePositionAction` owns the private search cursor, the concrete route and the post reservation. It uses the existing native A*, collisions, budget queues, firing checks and role constraints. A search can return a budget wait or a local failure; they mean different things. |
