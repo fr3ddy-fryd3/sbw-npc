@@ -614,7 +614,7 @@ class SquadManager : VersionedSavedData() {
         npc.npcRank = NpcRank.RECRUIT
         npc.spawnFaction = squad.faction
         npc.squadId = squad.id
-        npc.finalizeSpawn(level, level.getCurrentDifficultyAt(npc.blockPosition()), MobSpawnType.SPAWN_EGG, null)
+        npc.spawnNpc(level, level.getCurrentDifficultyAt(npc.blockPosition()))
         if (!level.addFreshEntity(npc)) return false
         slot.occupant = npc.uuid
         slot.recruited = true

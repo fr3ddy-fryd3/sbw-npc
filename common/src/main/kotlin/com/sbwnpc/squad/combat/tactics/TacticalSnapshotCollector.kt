@@ -6,6 +6,7 @@ import com.sbwnpc.squad.combat.GrenadeHazard
 import com.sbwnpc.squad.combat.SidearmKit
 import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.combat.WeaponReach
+import com.sbwnpc.squad.compat.VersionCompat
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
@@ -79,7 +80,7 @@ internal object TacticalSnapshotCollector {
             recentFire = npc.firedRecently(RECENT_FIRE_TICKS),
             recentFireAt = npc.lastFireAt,
             moving = !npc.navigation.isDone || npc.deltaMovement.horizontalDistanceSqr() > 0.0025,
-            grounded = npc.onGround() || npc.isInLiquid,
+            grounded = npc.onGround() || VersionCompat.isInLiquid(npc),
             primaryAmmo = SidearmKit.hasPrimaryAmmo(npc),
             sidearmOnly = npc.usingSidearm,
         )

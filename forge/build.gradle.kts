@@ -93,7 +93,7 @@ dependencies {
     add(commonJava.name, project(mapOf("path" to ":common", "configuration" to "commonJava")))
 
     implementation("thedarkcolour:kotlinforforge:${forgeVersions.getProperty("forge_kotlin_version")}")
-    implementation("net.tslat.smartbrainlib:SmartBrainLib-forge-1.20.1:${forgeVersions.getProperty("forge_smartbrainlib_version")}")
+    modImplementation("net.tslat.smartbrainlib:SmartBrainLib-forge-1.20.1:${forgeVersions.getProperty("forge_smartbrainlib_version")}")
     // Immutable release input; the adapter in this module compiles against it.
     modCompileOnly(sbwCoordinate)
 }
