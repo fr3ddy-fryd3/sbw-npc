@@ -55,12 +55,8 @@
     <ID>CyclomaticComplexMethod:HtnTacticsGameTests.kt$HtnTacticsGameTests$@JvmStatic @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1600, batch = "htn-reinforcement") fun htnReinforcementJoinsOnArrivalAndCanLeaveIndependently(helper: GameTestHelper)</ID>
     <ID>CyclomaticComplexMethod:HtnTacticsGameTests.kt$HtnTacticsGameTests$@JvmStatic @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1800, batch = "htn-area") fun htnEmptyAreaRequiresOccupationAndQuietInterval(helper: GameTestHelper)</ID>
     <ID>CyclomaticComplexMethod:HtnTacticsGameTests.kt$HtnTacticsGameTests$private fun jointAttack(helper: GameTestHelper, wide: Boolean)</ID>
-    <ID>CyclomaticComplexMethod:InfantryMovementGameTests.kt$InfantryMovementGameTests$private fun march( helper: GameTestHelper, scenario: String, destination: BlockPos, needsClimb: Boolean, blockHeadroom: Boolean = false, partialFloor: Boolean = false, opposedAim: Boolean = false, avoidPowderSnow: Boolean = false, preservePowderSnow: Boolean = false, start: Vec3 = Vec3(3.5, 1.0, 6.5), stillTicks: Long = 150, )</ID>
+    <ID>CyclomaticComplexMethod:InfantryMovementGameTests.kt$InfantryMovementGameTests$private fun march( helper: GameTestHelper, scenario: String, destination: BlockPos, needsClimb: Boolean, blockHeadroom: Boolean = false, partialFloor: Boolean = false, opposedAim: Boolean = false, avoidPowderSnow: Boolean = false, preservePowderSnow: Boolean = false, start: Vec3 = Vec3(3.5, 1.0, 6.5), )</ID>
     <ID>CyclomaticComplexMethod:LadderNavigationGameTests.kt$LadderNavigationGameTests$@JvmStatic @GameTest(templateNamespace = "sbwnpc", template = "scaffolding_arena", timeoutTicks = 500, batch = "ladder") fun marchClimbsAndDescendsLadder(helper: GameTestHelper)</ID>
-    <ID>CyclomaticComplexMethod:ModNetwork.kt$ModNetwork$@SubscribeEvent fun register(event: RegisterPayloadHandlersEvent)</ID>
-    <ID>CyclomaticComplexMethod:ModNetwork.kt$ModNetwork$private fun onRouteCmd(p: RouteCmdPayload, ctx: IPayloadContext)</ID>
-    <ID>CyclomaticComplexMethod:ModNetwork.kt$ModNetwork$private fun onSquadCmd(p: SquadCmdPayload, ctx: IPayloadContext)</ID>
-    <ID>CyclomaticComplexMethod:ModNetwork.kt$ModNetwork$private fun onSupplyCmd(p: SupplyCmdPayload, ctx: IPayloadContext)</ID>
     <ID>CyclomaticComplexMethod:MortarCrewGameTests.kt$MortarCrewGameTests$@JvmStatic @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 1500, batch = "mortar-relocation") fun mortarRelocatesWithoutLosingLoadedShellAndSaveState(helper: GameTestHelper)</ID>
     <ID>CyclomaticComplexMethod:MortarCrewGameTests.kt$MortarCrewGameTests$@JvmStatic @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 1500, batch = "mortar-shell-supply") fun mortarCrewReturnsFromSupplyToItsAssignedTube(helper: GameTestHelper)</ID>
     <ID>CyclomaticComplexMethod:RoofedOverwatchGameTests.kt$RoofedOverwatchGameTests$private fun departure(helper: GameTestHelper, order: SquadOrder, mode: Departure, onlySupport: NpcClass? = null, scaffolding: Boolean = false)</ID>
@@ -89,7 +85,6 @@
     <ID>LongMethod:AmmunitionTacticsGameTests.kt$AmmunitionTacticsGameTests$private fun withdrawal(helper: GameTestHelper, retry: Boolean)</ID>
     <ID>LongMethod:AttackDeploymentGameTests.kt$AttackDeploymentGameTests$@JvmStatic @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 900) fun attackDeploysAndFiresOnOpenGround(helper: GameTestHelper)</ID>
     <ID>LongMethod:CombatParticipationTrace.kt$CombatParticipationTrace$fun sample(tick: Long, npc: NpcEntity)</ID>
-    <ID>LongMethod:CommandScreen.kt$CommandScreen$override fun init()</ID>
     <ID>LongMethod:DefensiveOverwatchGameTests.kt$DefensiveOverwatchGameTests$private fun occupy(helper: GameTestHelper, order: SquadOrder, contact: Boolean = false, ladder: Boolean = true, fall: Boolean = false)</ID>
     <ID>LongMethod:FactionLogisticsGameTests.kt$FactionLogisticsGameTests$@JvmStatic @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 1400, batch = "barracks-casualties") fun barracksDeploysWholeGarrisonAndOnlyQueuesCasualties(helper: GameTestHelper)</ID>
     <ID>LongMethod:FactionLogisticsGameTests.kt$FactionLogisticsGameTests$@JvmStatic @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 70, batch = "faction-supply") fun creativeSupplyChangesOwnerAndResuppliesOnlyServingFactions(helper: GameTestHelper)</ID>
@@ -97,10 +92,7 @@
     <ID>LongMethod:FoliageCombatGameTests.kt$FoliageCombatGameTests$@JvmStatic @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 400, batch = "foliage") fun foliageKeepsPhysicalPostAndAllowsOnlyTwoSafeBursts(helper: GameTestHelper)</ID>
     <ID>LongMethod:HtnTacticsGameTests.kt$HtnTacticsGameTests$@JvmStatic @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1600, batch = "htn-reinforcement") fun htnReinforcementJoinsOnArrivalAndCanLeaveIndependently(helper: GameTestHelper)</ID>
     <ID>LongMethod:HtnTacticsGameTests.kt$HtnTacticsGameTests$private fun jointAttack(helper: GameTestHelper, wide: Boolean)</ID>
-    <ID>LongMethod:InfantryMovementGameTests.kt$InfantryMovementGameTests$private fun march( helper: GameTestHelper, scenario: String, destination: BlockPos, needsClimb: Boolean, blockHeadroom: Boolean = false, partialFloor: Boolean = false, opposedAim: Boolean = false, avoidPowderSnow: Boolean = false, preservePowderSnow: Boolean = false, start: Vec3 = Vec3(3.5, 1.0, 6.5), stillTicks: Long = 150, )</ID>
-    <ID>LongMethod:ModNetwork.kt$ModNetwork$@SubscribeEvent fun register(event: RegisterPayloadHandlersEvent)</ID>
-    <ID>LongMethod:ModNetwork.kt$ModNetwork$private fun onSquadCmd(p: SquadCmdPayload, ctx: IPayloadContext)</ID>
-    <ID>LongMethod:RecruitScreen.kt$RecruitScreen$override fun init()</ID>
+    <ID>LongMethod:InfantryMovementGameTests.kt$InfantryMovementGameTests$private fun march( helper: GameTestHelper, scenario: String, destination: BlockPos, needsClimb: Boolean, blockHeadroom: Boolean = false, partialFloor: Boolean = false, opposedAim: Boolean = false, avoidPowderSnow: Boolean = false, preservePowderSnow: Boolean = false, start: Vec3 = Vec3(3.5, 1.0, 6.5), )</ID>
     <ID>LongMethod:RoofedOverwatchGameTests.kt$RoofedOverwatchGameTests$private fun departure(helper: GameTestHelper, order: SquadOrder, mode: Departure, onlySupport: NpcClass? = null, scaffolding: Boolean = false)</ID>
     <ID>LongMethod:RoofedOverwatchGameTests.kt$RoofedOverwatchGameTests$private fun occupy(helper: GameTestHelper, order: SquadOrder, fall: Boolean = false, onlySupport: NpcClass? = null, scaffolding: Boolean = false, supportIndex: Int = 5, emptyPrimary: Boolean = false, changingContacts: List&lt;NpcEntity&gt; = emptyList(), onOccupied: ((NpcEntity, Vec3) -&gt; Unit)? = null)</ID>
     <ID>LongMethod:SavedBattleGameTests.kt$SavedBattleGameTests$private fun replay(helper: GameTestHelper, attackersOnly: Boolean)</ID>
@@ -116,8 +108,7 @@
     <ID>LongMethod:TerrainAttackGameTests.kt$TerrainAttackGameTests$private fun ridge(helper: GameTestHelper, returnFire: Boolean, brokenPosts: Boolean = false, villageCover: Boolean = false, sustained: Boolean = false)</ID>
     <ID>LongMethod:VehicleSupplyGameTests.kt$VehicleSupplyGameTests$@JvmStatic @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 40, batch = "vehicle-cargo") fun vehicleCargoIsAccessibleFiniteAndFactionBound(helper: GameTestHelper)</ID>
     <ID>LongParameterList:AttackDeploymentGameTests.kt$AttackDeploymentGameTests$(helper: GameTestHelper, at: Vec3, faction: SquadFaction, identity: UUID? = null, randomSeed: Long? = null, role: NpcClass = NpcClass.RIFLEMAN)</ID>
-    <ID>LongParameterList:GunRendering.kt$GunRendering$( holder: LivingEntity, stack: ItemStack, displayContext: ItemDisplayContext, poseStack: PoseStack, buffer: MultiBufferSource, packedLight: Int, )</ID>
-    <ID>LongParameterList:InfantryMovementGameTests.kt$InfantryMovementGameTests$( helper: GameTestHelper, scenario: String, destination: BlockPos, needsClimb: Boolean, blockHeadroom: Boolean = false, partialFloor: Boolean = false, opposedAim: Boolean = false, avoidPowderSnow: Boolean = false, preservePowderSnow: Boolean = false, start: Vec3 = Vec3(3.5, 1.0, 6.5), stillTicks: Long = 150, )</ID>
+    <ID>LongParameterList:InfantryMovementGameTests.kt$InfantryMovementGameTests$( helper: GameTestHelper, scenario: String, destination: BlockPos, needsClimb: Boolean, blockHeadroom: Boolean = false, partialFloor: Boolean = false, opposedAim: Boolean = false, avoidPowderSnow: Boolean = false, preservePowderSnow: Boolean = false, start: Vec3 = Vec3(3.5, 1.0, 6.5), )</ID>
     <ID>LongParameterList:RoofedOverwatchGameTests.kt$RoofedOverwatchGameTests$(helper: GameTestHelper, order: SquadOrder, fall: Boolean = false, onlySupport: NpcClass? = null, scaffolding: Boolean = false, supportIndex: Int = 5, emptyPrimary: Boolean = false, changingContacts: List&lt;NpcEntity&gt; = emptyList(), onOccupied: ((NpcEntity, Vec3) -&gt; Unit)? = null)</ID>
     <ID>LongParameterList:SquadMapPlugin.kt$SquadMapPlugin$( dim: ResourceKey&lt;Level&gt;, at: BlockPos, shape: MapShapes, color: Int, size: Double, opacity: Float, )</ID>
     <ID>MagicNumber:AircraftLods.kt$AircraftLods$0.15</ID>
@@ -129,149 +120,11 @@
     <ID>MagicNumber:AircraftLods.kt$AircraftLods$96</ID>
     <ID>MagicNumber:AircraftVisibility.kt$AircraftVisibility$0.01</ID>
     <ID>MagicNumber:AircraftVisibility.kt$AircraftVisibility$512f</ID>
-    <ID>MagicNumber:AssignRouteScreen.kt$AssignRouteScreen$0xAAAAAA</ID>
-    <ID>MagicNumber:AssignRouteScreen.kt$AssignRouteScreen$0xFFFFFF</ID>
-    <ID>MagicNumber:AssignRouteScreen.kt$AssignRouteScreen$100</ID>
-    <ID>MagicNumber:AssignRouteScreen.kt$AssignRouteScreen$12</ID>
-    <ID>MagicNumber:AssignRouteScreen.kt$AssignRouteScreen$20</ID>
-    <ID>MagicNumber:AssignRouteScreen.kt$AssignRouteScreen$200</ID>
-    <ID>MagicNumber:AssignRouteScreen.kt$AssignRouteScreen$24</ID>
-    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$0x999999</ID>
-    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$0xAAAAAA</ID>
-    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$0xFFAA55</ID>
-    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$0xFFFFFF</ID>
-    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$10</ID>
-    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$100</ID>
-    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$11</ID>
-    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$12</ID>
-    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$150</ID>
-    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$19</ID>
-    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$20</ID>
-    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$22</ID>
-    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$24</ID>
-    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$28</ID>
-    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$30</ID>
-    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$4</ID>
-    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$42</ID>
-    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$46</ID>
-    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$75</ID>
-    <ID>MagicNumber:ChooseFactionScreen.kt$ChooseFactionScreen$0xAAAAAA</ID>
-    <ID>MagicNumber:ChooseFactionScreen.kt$ChooseFactionScreen$0xFFFFFF</ID>
-    <ID>MagicNumber:ChooseFactionScreen.kt$ChooseFactionScreen$20</ID>
-    <ID>MagicNumber:ChooseFactionScreen.kt$ChooseFactionScreen$30</ID>
-    <ID>MagicNumber:ChooseFactionScreen.kt$ChooseFactionScreen$4</ID>
-    <ID>MagicNumber:ChooseFactionScreen.kt$ChooseFactionScreen$48</ID>
-    <ID>MagicNumber:ChooseFactionScreen.kt$ChooseFactionScreen$60</ID>
-    <ID>MagicNumber:ChooseFactionScreen.kt$ChooseFactionScreen$8</ID>
-    <ID>MagicNumber:ChooseFactionScreen.kt$ChooseFactionScreen$84</ID>
-    <ID>MagicNumber:CommandScreen.kt$CommandScreen$0xAAAAAA</ID>
-    <ID>MagicNumber:CommandScreen.kt$CommandScreen$0xBBBBBB</ID>
-    <ID>MagicNumber:CommandScreen.kt$CommandScreen$0xFFFFFF</ID>
-    <ID>MagicNumber:CommandScreen.kt$CommandScreen$12</ID>
-    <ID>MagicNumber:CommandScreen.kt$CommandScreen$14</ID>
-    <ID>MagicNumber:CommandScreen.kt$CommandScreen$182</ID>
-    <ID>MagicNumber:CommandScreen.kt$CommandScreen$184</ID>
-    <ID>MagicNumber:CommandScreen.kt$CommandScreen$20</ID>
-    <ID>MagicNumber:CommandScreen.kt$CommandScreen$208</ID>
-    <ID>MagicNumber:CommandScreen.kt$CommandScreen$214</ID>
-    <ID>MagicNumber:CommandScreen.kt$CommandScreen$22</ID>
-    <ID>MagicNumber:CommandScreen.kt$CommandScreen$276</ID>
-    <ID>MagicNumber:CommandScreen.kt$CommandScreen$296</ID>
-    <ID>MagicNumber:CommandScreen.kt$CommandScreen$314</ID>
-    <ID>MagicNumber:CommandScreen.kt$CommandScreen$32</ID>
-    <ID>MagicNumber:CommandScreen.kt$CommandScreen$332</ID>
-    <ID>MagicNumber:CommandScreen.kt$CommandScreen$364</ID>
-    <ID>MagicNumber:CommandScreen.kt$CommandScreen$6</ID>
-    <ID>MagicNumber:CommandScreen.kt$CommandScreen$8</ID>
-    <ID>MagicNumber:CommandScreen.kt$CommandScreen$88</ID>
-    <ID>MagicNumber:CommandScreen.kt$CommandScreen$92</ID>
-    <ID>MagicNumber:DiplomacyScreen.kt$DiplomacyScreen$0xFFFFFF</ID>
-    <ID>MagicNumber:DiplomacyScreen.kt$DiplomacyScreen$20</ID>
-    <ID>MagicNumber:DiplomacyScreen.kt$DiplomacyScreen$24</ID>
-    <ID>MagicNumber:DiplomacyScreen.kt$DiplomacyScreen$6</ID>
-    <ID>MagicNumber:DiplomacyScreen.kt$DiplomacyScreen$60</ID>
-    <ID>MagicNumber:DiplomacyScreen.kt$DiplomacyScreen$8</ID>
-    <ID>MagicNumber:DiplomacyScreen.kt$DiplomacyScreen$90</ID>
-    <ID>MagicNumber:FactionBanner.kt$FactionBanner$0xAAAAAA</ID>
-    <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$0xAAAAAA</ID>
-    <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$0xFFFFFF</ID>
-    <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$10</ID>
-    <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$100</ID>
-    <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$20</ID>
-    <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$200</ID>
-    <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$22</ID>
-    <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$24</ID>
-    <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$34</ID>
-    <ID>MagicNumber:HudClientEvents.kt$HudClientEvents$0xAAAAAA</ID>
-    <ID>MagicNumber:HudClientEvents.kt$HudClientEvents$0xFFFFFF</ID>
-    <ID>MagicNumber:HudClientEvents.kt$HudClientEvents$8</ID>
-    <ID>MagicNumber:HudKeys.kt$HudKeys$9</ID>
-    <ID>MagicNumber:NameRouteScreen.kt$NameRouteScreen$0xFFFFFF</ID>
-    <ID>MagicNumber:NameRouteScreen.kt$NameRouteScreen$10</ID>
-    <ID>MagicNumber:NameRouteScreen.kt$NameRouteScreen$100</ID>
-    <ID>MagicNumber:NameRouteScreen.kt$NameRouteScreen$16</ID>
-    <ID>MagicNumber:NameRouteScreen.kt$NameRouteScreen$20</ID>
-    <ID>MagicNumber:NameRouteScreen.kt$NameRouteScreen$200</ID>
-    <ID>MagicNumber:NameRouteScreen.kt$NameRouteScreen$24</ID>
-    <ID>MagicNumber:NameRouteScreen.kt$NameRouteScreen$257</ID>
-    <ID>MagicNumber:NameRouteScreen.kt$NameRouteScreen$335</ID>
-    <ID>MagicNumber:NameRouteScreen.kt$NameRouteScreen$36</ID>
-    <ID>MagicNumber:NameRouteScreen.kt$NameRouteScreen$4</ID>
-    <ID>MagicNumber:NameRouteScreen.kt$NameRouteScreen$96</ID>
     <ID>MagicNumber:NeoForgeEntities.kt$NeoForgeEntities$0.6f</ID>
     <ID>MagicNumber:NeoForgeEntities.kt$NeoForgeEntities$1.74f</ID>
     <ID>MagicNumber:NeoForgeEntities.kt$NeoForgeEntities$1.95f</ID>
     <ID>MagicNumber:NeoForgeEntities.kt$NeoForgeEntities$16</ID>
     <ID>MagicNumber:NeoForgeEntities.kt$NeoForgeEntities$3</ID>
-    <ID>MagicNumber:NpcItemInHandLayer.kt$NpcItemInHandLayer$0.125f</ID>
-    <ID>MagicNumber:NpcItemInHandLayer.kt$NpcItemInHandLayer$0.625f</ID>
-    <ID>MagicNumber:NpcItemInHandLayer.kt$NpcItemInHandLayer$16</ID>
-    <ID>MagicNumber:NpcItemInHandLayer.kt$NpcItemInHandLayer$180.0f</ID>
-    <ID>MagicNumber:NpcItemInHandLayer.kt$NpcItemInHandLayer$90.0f</ID>
-    <ID>MagicNumber:NpcModel.kt$NpcModel.Companion$64</ID>
-    <ID>MagicNumber:NpcRenderer.kt$NpcRenderer$0.125</ID>
-    <ID>MagicNumber:NpcRenderer.kt$NpcRenderer$0.5f</ID>
-    <ID>MagicNumber:PerfProbe.kt$PerfProbe$1_000_000.0</ID>
-    <ID>MagicNumber:PerfProbe.kt$PerfProbe$40</ID>
-    <ID>MagicNumber:PerfProbe.kt$PerfProbe.Client$1000.0</ID>
-    <ID>MagicNumber:RecruitScreen.kt$RecruitScreen$0xFFFFFF</ID>
-    <ID>MagicNumber:RecruitScreen.kt$RecruitScreen$100</ID>
-    <ID>MagicNumber:RecruitScreen.kt$RecruitScreen$126</ID>
-    <ID>MagicNumber:RecruitScreen.kt$RecruitScreen$20</ID>
-    <ID>MagicNumber:RecruitScreen.kt$RecruitScreen$200</ID>
-    <ID>MagicNumber:RecruitScreen.kt$RecruitScreen$24</ID>
-    <ID>MagicNumber:RecruitScreen.kt$RecruitScreen$30</ID>
-    <ID>MagicNumber:RecruitScreen.kt$RecruitScreen$34</ID>
-    <ID>MagicNumber:RecruitScreen.kt$RecruitScreen$6</ID>
-    <ID>MagicNumber:RecruitScreen.kt$RecruitScreen$62</ID>
-    <ID>MagicNumber:RecruitScreen.kt$RecruitScreen$70</ID>
-    <ID>MagicNumber:RecruitScreen.kt$RecruitScreen$82</ID>
-    <ID>MagicNumber:RenameScreen.kt$RenameScreen$0xFFFFFF</ID>
-    <ID>MagicNumber:RenameScreen.kt$RenameScreen$10</ID>
-    <ID>MagicNumber:RenameScreen.kt$RenameScreen$100</ID>
-    <ID>MagicNumber:RenameScreen.kt$RenameScreen$16</ID>
-    <ID>MagicNumber:RenameScreen.kt$RenameScreen$20</ID>
-    <ID>MagicNumber:RenameScreen.kt$RenameScreen$200</ID>
-    <ID>MagicNumber:RenameScreen.kt$RenameScreen$24</ID>
-    <ID>MagicNumber:RenameScreen.kt$RenameScreen$257</ID>
-    <ID>MagicNumber:RenameScreen.kt$RenameScreen$335</ID>
-    <ID>MagicNumber:RenameScreen.kt$RenameScreen$36</ID>
-    <ID>MagicNumber:RenameScreen.kt$RenameScreen$4</ID>
-    <ID>MagicNumber:RenameScreen.kt$RenameScreen$96</ID>
-    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$0xAAAAAA</ID>
-    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$0xFFFFFF</ID>
-    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$108</ID>
-    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$12</ID>
-    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$150</ID>
-    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$20</ID>
-    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$210</ID>
-    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$24</ID>
-    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$26</ID>
-    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$276</ID>
-    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$300</ID>
-    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$6</ID>
-    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$60</ID>
-    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$90</ID>
     <ID>MagicNumber:SbwAircraftRendering.kt$SbwAircraftRendering$0.75f</ID>
     <ID>MagicNumber:SbwAircraftRendering.kt$SbwAircraftRendering$15</ID>
     <ID>MagicNumber:SbwAircraftRendering.kt$SbwAircraftRendering$3.0</ID>
@@ -296,34 +149,6 @@
     <ID>MagicNumber:SquadConfig.kt$SquadConfig$3600</ID>
     <ID>MagicNumber:SquadConfig.kt$SquadConfig$512</ID>
     <ID>MagicNumber:SquadConfig.kt$SquadConfig$64</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$0.24</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$0.43</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$0.59</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$0.76</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$0.87</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$0x777777</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$0x99DDFF</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$0xAAAAAA</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$0xBBBBBB</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$0xFFAA88</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$0xFFFFFF</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$10</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$13</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$132</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$16</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$196</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$20</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$24</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$26</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$3</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$4</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$40</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$5</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$50</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$600</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$65</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$66</ID>
-    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$8</ID>
     <ID>MagicNumber:SquadMapPlugin.kt$SquadMapPlugin$0.8f</ID>
     <ID>MagicNumber:SquadMapPlugin.kt$SquadMapPlugin$0.9f</ID>
     <ID>MagicNumber:SquadMapPlugin.kt$SquadMapPlugin$10</ID>
@@ -331,18 +156,6 @@
     <ID>MagicNumber:SquadMapPlugin.kt$SquadMapPlugin$4</ID>
     <ID>MagicNumber:SquadMapPlugin.kt$SquadMapPlugin$4.0</ID>
     <ID>MagicNumber:StaticGunMesh.kt$StaticGunMesh$3</ID>
-    <ID>MagicNumber:SupplyScreen.kt$SupplyScreen$0xFFFFFF</ID>
-    <ID>MagicNumber:SupplyScreen.kt$SupplyScreen$14</ID>
-    <ID>MagicNumber:SupplyScreen.kt$SupplyScreen$20</ID>
-    <ID>MagicNumber:SupplyScreen.kt$SupplyScreen$24</ID>
-    <ID>MagicNumber:SupplyScreen.kt$SupplyScreen$26</ID>
-    <ID>MagicNumber:SupplyScreen.kt$SupplyScreen$28</ID>
-    <ID>MagicNumber:SupplyScreen.kt$SupplyScreen$36</ID>
-    <ID>MagicNumber:SupplyScreen.kt$SupplyScreen$4</ID>
-    <ID>MagicNumber:SupplyScreen.kt$SupplyScreen$42</ID>
-    <ID>MagicNumber:SupplyScreen.kt$SupplyScreen$56</ID>
-    <ID>MagicNumber:SupplyScreen.kt$SupplyScreen$62</ID>
-    <ID>MagicNumber:SupplyScreen.kt$SupplyScreen$80</ID>
     <ID>MagicNumber:SupplySpawnEvents.kt$SupplySpawnEvents$3</ID>
     <ID>MemberNameEqualsClassName:SavedWorldRoutesTest.kt$SavedWorldRoutesTest.Seen$private fun seen(x: Int, z: Int)</ID>
     <ID>NestedBlockDepth:AircraftLodsTest.kt$AircraftLodsTest$@Test fun `all built in aircraft bake cheaper distant geometry without changing their skeleton`()</ID>
@@ -353,13 +166,10 @@
     <ID>NestedBlockDepth:TerrainAttackGameTests.kt$TerrainAttackGameTests$private fun ridge(helper: GameTestHelper, returnFire: Boolean, brokenPosts: Boolean = false, villageCover: Boolean = false, sustained: Boolean = false)</ID>
     <ID>TooGenericExceptionCaught:AircraftLods.kt$AircraftLods$exception: Exception</ID>
     <ID>TooGenericExceptionCaught:StaticGunModels.kt$StaticGunModels$e: Exception</ID>
-    <ID>TooManyFunctions:ClientPayloadHandlers.kt$ClientPayloadHandlers</ID>
     <ID>TooManyFunctions:ExperienceGameTests.kt$ExperienceGameTests</ID>
     <ID>TooManyFunctions:FactionLogisticsGameTests.kt$FactionLogisticsGameTests</ID>
     <ID>TooManyFunctions:HelicopterOrbitGameTests.kt$HelicopterOrbitGameTests</ID>
     <ID>TooManyFunctions:HtnTacticsGameTests.kt$HtnTacticsGameTests</ID>
-    <ID>TooManyFunctions:ModNetwork.kt$ModNetwork</ID>
-    <ID>TooManyFunctions:RecruitScreen.kt$RecruitScreen : Screen</ID>
     <ID>TooManyFunctions:RoofedOverwatchGameTests.kt$RoofedOverwatchGameTests</ID>
     <ID>TooManyFunctions:SbwDrones.kt$SbwDrones : Drones</ID>
     <ID>TooManyFunctions:SbwGuns.kt$SbwGuns : Guns</ID>
@@ -368,7 +178,6 @@
     <ID>TooManyFunctions:SbwVehicles.kt$SbwVehicles : Vehicles</ID>
     <ID>TooManyFunctions:SidearmGameTests.kt$SidearmGameTests</ID>
     <ID>TooManyFunctions:SquadAreaGameTests.kt$SquadAreaGameTests</ID>
-    <ID>TooManyFunctions:SquadDetailsScreen.kt$SquadDetailsScreen : Screen</ID>
     <ID>TooManyFunctions:SquadMapPlugin.kt$SquadMapPlugin : IClientPlugin</ID>
     <ID>UnusedPrivateMember:DefensiveOverwatchTest.kt$DefensiveOverwatchTest$private fun view(order: SquadOrder = SquadOrder.DEFEND)</ID>
   </CurrentIssues>

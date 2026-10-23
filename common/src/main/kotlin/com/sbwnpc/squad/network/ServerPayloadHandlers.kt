@@ -16,9 +16,9 @@ import com.sbwnpc.squad.util.Terrain
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.entity.EquipmentSlot
+import net.minecraft.world.entity.player.Player
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
-import net.minecraft.world.entity.player.Player
 
 /** What a loader's networking layer gives a server-bound packet handler. */
 interface PayloadContext {
@@ -33,7 +33,6 @@ interface PayloadContext {
  */
 object ServerPayloadHandlers {
 
-
     private const val OBJECTIVE_RAYCAST_RANGE = 1024.0
 
     /** Generous, but bounded — a config packet has to come from someone standing at the block. */
@@ -44,7 +43,6 @@ object ServerPayloadHandlers {
 
     /** Each point of a map-drawn route loads its chunk to find the ground; this keeps that bounded. */
     private const val MAX_MAP_ROUTE_POINTS = 32
-
 
     fun onRequestBarracksQueue(p: RequestBarracksQueuePayload, ctx: PayloadContext) {
         ctx.enqueueWork {

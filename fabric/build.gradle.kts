@@ -49,6 +49,10 @@ val commonKotlin by configurations.creating {
     isCanBeConsumed = false
     isTransitive = false
 }
+val commonClientKotlin by configurations.creating {
+    isCanBeConsumed = false
+    isTransitive = false
+}
 val commonResources by configurations.creating {
     isCanBeConsumed = false
     isTransitive = false
@@ -66,12 +70,14 @@ sourceSets.main.get().resources.srcDir(commonResources)
 kotlin {
     sourceSets.main {
         kotlin.srcDir(commonKotlin)
+        kotlin.srcDir(commonClientKotlin)
         kotlin.srcDir(commonGeneratedKotlin)
     }
 }
 
 dependencies {
     add(commonKotlin.name, project(mapOf("path" to ":common", "configuration" to "commonKotlin")))
+    add(commonClientKotlin.name, project(mapOf("path" to ":common", "configuration" to "commonClientKotlin")))
     add(commonResources.name, project(mapOf("path" to ":common", "configuration" to "commonResources")))
     add(commonGeneratedKotlin.name, project(mapOf("path" to ":common", "configuration" to "commonGeneratedKotlin")))
     add(commonJava.name, project(mapOf("path" to ":common", "configuration" to "commonJava")))

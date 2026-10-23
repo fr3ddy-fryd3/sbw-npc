@@ -16,3 +16,17 @@ object ClientboundPackets {
 fun sendToClient(player: ServerPlayer, payload: CustomPacketPayload) {
     ClientboundPackets.transport.send(player, payload)
 }
+
+/** Sends gameplay packets to the server through the active loader. */
+fun interface ServerboundTransport {
+    fun send(payload: CustomPacketPayload)
+}
+
+/** Installed by the loader's client before the player can open a screen. */
+object ServerboundPackets {
+    lateinit var transport: ServerboundTransport
+}
+
+fun sendToServer(payload: CustomPacketPayload) {
+    ServerboundPackets.transport.send(payload)
+}

@@ -1,83 +1,27 @@
 package com.sbwnpc.squad.client
 
-import net.minecraft.client.Minecraft
 import net.neoforged.api.distmarker.Dist
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.neoforge.client.event.ClientTickEvent
+import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent
 import net.neoforged.neoforge.client.event.RenderGuiEvent
+import net.neoforged.neoforge.client.settings.KeyConflictContext
 
-/** Input polling + rendering for the quick-command HUD ([HudOverlayState]/[HudKeys]). Deliberately
- *  not a [net.minecraft.client.gui.screens.Screen] — the whole point is that it never grabs
- *  keyboard/mouse focus, so movement and aiming keep working while it's open. */
+/** NeoForge's client events for the quick-command HUD ([HudClient], [HudKeys]). */
 @EventBusSubscriber(Dist.CLIENT)
 object HudClientEvents {
+    @SubscribeEvent
+    fun onClientTick(event: ClientTickEvent.Post) = HudClient.onClientTick()
 
     @SubscribeEvent
-    fun onClientTick(event: ClientTickEvent.Post) {
-        while (HudKeys.TOGGLE.consumeClick()) HudOverlayState.toggle()
-
-        if (!HudOverlayState.isOpen) {
-            // Drain so a click made while closed can't carry over as a phantom slot-pick the
-            // instant the overlay opens.
-            HudKeys.SLOTS.forEach { it.consumeClick() }
-            HudKeys.SELECT_ALL.consumeClick()
-            return
-        }
-        HudKeys.SLOTS.forEachIndexed { i, key -> if (key.consumeClick()) HudOverlayState.pickSlot(i) }
-        if (HudKeys.SELECT_ALL.consumeClick()) HudOverlayState.selectAll()
-        HudOverlayState.refreshIfDue()
-    }
-
-    private const val PANEL_WIDTH = 150
-    private const val PADDING = 5
+    fun onRenderGui(event: RenderGuiEvent.Post) = HudClient.onRenderGui(event.guiGraphics)
 
     @SubscribeEvent
-    fun onRenderGui(event: RenderGuiEvent.Post) {
-        if (!HudOverlayState.isOpen) return
-        val mc = Minecraft.getInstance()
-        val font = mc.font
-        val g = event.guiGraphics
-        val lineHeight = font.lineHeight + 2
-
-        val header: String
-        val lines: List<Pair<String, Int>>
-        when (HudOverlayState.mode) {
-            HudOverlayState.Mode.SQUAD_LIST -> {
-                if (HudOverlayState.rows.isEmpty()) return
-                header = "Squads"
-                // Only the first nine have a key to press. The rest are still listed — a player
-                // with a dozen squads needs to see the ones the HUD can't reach exist at all —
-                // but unnumbered, and commanded from the squad screen instead.
-                val keyed = HudOverlayState.rows.take(HudOverlayState.SLOT_COUNT)
-                val rest = HudOverlayState.rows.drop(HudOverlayState.SLOT_COUNT)
-                lines = keyed.mapIndexed { i, row -> "${i + 1}. ${label(row)}" to argb(row.faction.rgb) } +
-                    rest.map { row -> "   ${label(row)}" to argb(row.faction.rgb) } +
-                    listOf("[0] Order ALL" to 0xAAAAAA)
-            }
-
-            HudOverlayState.Mode.ORDERS -> {
-                header = if (HudOverlayState.selectedAll) {
-                    "ALL SQUADS (${HudOverlayState.allTargetRows.size})"
-                } else {
-                    HudOverlayState.selected?.name ?: return
-                }
-                lines = HudOverlayState.availableOrders().mapIndexed { i, order -> "${i + 1}. ${order.name}" to 0xFFFFFF }
-            }
-        }
-
-        val height = (lines.size + 1) * lineHeight + PADDING * 2
-        val x = 8
-        val y = (mc.window.guiScaledHeight - height) / 2
-
-        g.fill(x, y, x + PANEL_WIDTH, y + height, 0xAA000000.toInt())
-        g.drawString(font, header, x + PADDING, y + PADDING, 0xFFFFFF)
-        lines.forEachIndexed { i, (text, color) ->
-            g.drawString(font, text, x + PADDING, y + PADDING + (i + 1) * lineHeight, color)
+    fun registerKeyMappings(event: RegisterKeyMappingsEvent) {
+        HudKeys.KEYS.forEach {
+            it.keyConflictContext = KeyConflictContext.IN_GAME
+            event.register(it)
         }
     }
-
-    private fun label(row: HudOverlayState.Row) = "${row.name} (${row.members}) [${row.faction.label}]"
-
-    private fun argb(color: Int): Int = 0xFF000000.toInt() or color
 }

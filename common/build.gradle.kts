@@ -27,6 +27,13 @@ val commonKotlin by configurations.creating {
     isCanBeConsumed = true
 }
 artifacts.add(commonKotlin.name, file("src/main/kotlin"))
+// Screens, renderers and the HUD: shared by the loaders like the rest, but kept out of src/main so
+// the shared gameplay code cannot grow a dependency on the client (see verifyCommonBoundary).
+val commonClientKotlin by configurations.creating {
+    isCanBeResolved = false
+    isCanBeConsumed = true
+}
+artifacts.add(commonClientKotlin.name, file("src/client/kotlin"))
 val commonResources by configurations.creating {
     isCanBeResolved = false
     isCanBeConsumed = true

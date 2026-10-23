@@ -7,6 +7,23 @@
     "defaultRequire": 1
   },
   "mixins": [
-    "PathNavigationAccessor"
+    "PathNavigationAccessor",
+    "VehicleBoardingMixin",
+    "VehicleGunDataMixin",
+    "VehicleShootingMixin",
+    "AutoAimableEntityMixin",
+    "EntityAllianceMixin",
+    "EntityTrackingRangeMixin",
+    "AircraftSnapshotMixin",
+    "VehicleExperienceMixin",
+    "ExperienceHealingMixin",
+    "BulletImpactMixin",
+    "GameEventMixin",
+    "ExplosionMixin",
+    "RespawnPositionMixin"
+  ],
+  "client": [
+    "KeyMappingMixin",
+    "UseItemMixin"
   ]
 }

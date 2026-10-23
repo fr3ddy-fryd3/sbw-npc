@@ -25,8 +25,6 @@
     <ID>ComplexCondition:MedicHealBehaviour.kt$MedicHealBehaviour$cached == null || (cached.isAlive &amp;&amp; needsHealing(entity, cached) &amp;&amp; available(entity, cached))</ID>
     <ID>ComplexCondition:MortarCrewBehaviour.kt$MortarCrewBehaviour$current != null &amp;&amp; Ports.vehicles.isOperational(current) &amp;&amp; !SquadTeams.isHostile(entity, current) &amp;&amp; MortarClaims.assign(current, entity) != null</ID>
     <ID>ComplexCondition:NativePositionAction.kt$NativePositionAction$path != null &amp;&amp; path === task.navigationPath &amp;&amp; !path.isDone &amp;&amp; !TacticalClearance.permitsPath(policy.clearance(npc.npcClass), npc.position(), path, view)</ID>
-    <ID>ComplexCondition:NativePositionAction.kt$NativePositionAction$task.position != null &amp;&amp; ((!intent.assault &amp;&amp; !TacticalClearance.permitsPosition(npc.npcClass, npc.position(), task.position!!, view)) || GrenadeHazard.threatens(npc.level() as ServerLevel, task.position!!))</ID>
-    <ID>ComplexCondition:NpcEntity.kt$NpcEntity$busyWithRole() || vehicle != null || combatLockedByMedic() || com.sbwnpc.squad.ai.integration.NativeTactics.ownsLook(this)</ID>
     <ID>ComplexCondition:NpcEntity.kt$NpcEntity$level().isClientSide || !amount.isFinite() || amount &lt;= 0 || !isAlive</ID>
     <ID>ComplexCondition:NpcMoveControl.kt$NpcMoveControl$!moving || operation != Operation.WAIT || !mob.onGround() || mob.isInWater || !mob.horizontalCollision</ID>
     <ID>ComplexCondition:NpcPosture.kt$NpcPosture$!moving &amp;&amp; npc.onGround() &amp;&amp; !npc.isPassenger &amp;&amp; !npc.isInWater &amp;&amp; position</ID>
@@ -104,7 +102,6 @@
     <ID>CyclomaticComplexMethod:NativeTactics.kt$NativeTactics.World$fun refresh(reference: NpcEntity)</ID>
     <ID>CyclomaticComplexMethod:NativeTactics.kt$NativeTactics.World$private fun layout(squads: List&lt;Squad&gt;, now: Long, holding: Boolean = false): List&lt;SquadMission&gt;</ID>
     <ID>CyclomaticComplexMethod:NativeTactics.kt$NativeTactics.World$private fun observeArea(task: AreaControlTask, squads: List&lt;Squad&gt;, now: Long)</ID>
-    <ID>CyclomaticComplexMethod:NpcEntity.kt$NpcEntity$fun hear(at: Vec3, nearbyFootstep: Boolean = false)</ID>
     <ID>CyclomaticComplexMethod:NpcEntity.kt$NpcEntity$fun resupply(): Boolean</ID>
     <ID>CyclomaticComplexMethod:NpcEntity.kt$NpcEntity$internal fun orderCenter(): Vec3?</ID>
     <ID>CyclomaticComplexMethod:NpcEntity.kt$NpcEntity$override fun dropCustomDeathLoot(level: ServerLevel, damageSource: DamageSource, recentlyHit: Boolean)</ID>
@@ -121,6 +118,9 @@
     <ID>CyclomaticComplexMethod:SeekCoverBehaviour.kt$SeekCoverBehaviour$private fun tickInCover(entity: NpcEntity, level: ServerLevel)</ID>
     <ID>CyclomaticComplexMethod:SeekCoverBehaviour.kt$SeekCoverBehaviour$private fun tickMovingToCover(entity: NpcEntity, level: ServerLevel, threat: Vec3)</ID>
     <ID>CyclomaticComplexMethod:SeekCoverBehaviour.kt$SeekCoverBehaviour$private fun tickPeeking(entity: NpcEntity)</ID>
+    <ID>CyclomaticComplexMethod:ServerPayloadHandlers.kt$ServerPayloadHandlers$fun onRouteCmd(p: RouteCmdPayload, ctx: PayloadContext)</ID>
+    <ID>CyclomaticComplexMethod:ServerPayloadHandlers.kt$ServerPayloadHandlers$fun onSquadCmd(p: SquadCmdPayload, ctx: PayloadContext)</ID>
+    <ID>CyclomaticComplexMethod:ServerPayloadHandlers.kt$ServerPayloadHandlers$fun onSupplyCmd(p: SupplyCmdPayload, ctx: PayloadContext)</ID>
     <ID>CyclomaticComplexMethod:Squad.kt$Squad$fun save(): CompoundTag</ID>
     <ID>CyclomaticComplexMethod:Squad.kt$Squad.Companion$fun load(tag: CompoundTag): Squad</ID>
     <ID>CyclomaticComplexMethod:SquadAreas.kt$SquadAreas$private fun refresh(level: ServerLevel, world: World)</ID>
@@ -139,7 +139,6 @@
     <ID>CyclomaticComplexMethod:SquadTargetSensor.kt$SquadTargetSensor$private fun nearestGroundTarget(mob: NpcEntity, level: ServerLevel): LivingEntity?</ID>
     <ID>CyclomaticComplexMethod:SquadToolItem.kt$SquadToolItem$override fun interactLivingEntity(stack: ItemStack, player: Player, target: LivingEntity, hand: InteractionHand): InteractionResult</ID>
     <ID>CyclomaticComplexMethod:SquadToolItem.kt$SquadToolItem$override fun useOn(context: UseOnContext): InteractionResult</ID>
-    <ID>CyclomaticComplexMethod:TacticalPositions.kt$TacticalPositions$private fun existingCoverPosition(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, level: ServerLevel, homeRadius: Double, clearance: Double): Vec3?</ID>
     <ID>CyclomaticComplexMethod:TacticalPositions.kt$TacticalPositions$private fun findReachablePosition(context: SearchContext): Result</ID>
     <ID>CyclomaticComplexMethod:TacticalPositions.kt$TacticalPositions$private fun prepareSearch(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, level: ServerLevel, homeRadius: Double, overwatch: Boolean, query: Query): SearchContext</ID>
     <ID>CyclomaticComplexMethod:TacticalPositions.kt$TacticalPositions$private fun routeBatch(context: SearchContext, first: Vec3, destinations: List&lt;Vec3&gt;): List&lt;Vec3&gt;</ID>
@@ -174,6 +173,7 @@
     <ID>LongMethod:BlindReturnFireBehaviour.kt$BlindReturnFireBehaviour$override fun tick(entity: NpcEntity)</ID>
     <ID>LongMethod:CellPlanner.kt$CellPlanner.Search$fun step(budget: Int): Boolean</ID>
     <ID>LongMethod:CellPlanner.kt$CellPlanner.Search$private fun visitCell(n: Long, cg: Double)</ID>
+    <ID>LongMethod:CommandScreen.kt$CommandScreen$override fun init()</ID>
     <ID>LongMethod:GunAttackBehaviour.kt$GunAttackBehaviour$private fun tickShooting(entity: NpcEntity, target: LivingEntity, gun: HandGun, canShootTarget: Boolean)</ID>
     <ID>LongMethod:GunAttackBehaviour.kt$GunAttackBehaviour$private fun updateCombatMovement( entity: NpcEntity, target: LivingEntity, squad: Squad?, holding: Boolean, gun: HandGun, clearShot: Boolean, ): CombatMovement</ID>
     <ID>LongMethod:HelicopterFlightControllerTest.kt$HelicopterFlightControllerTest.Heli$fun step(cmd: HelicopterFlightController.Command)</ID>
@@ -188,12 +188,13 @@
     <ID>LongMethod:NpcStuckRecovery.kt$NpcStuckRecovery$fun tick()</ID>
     <ID>LongMethod:OperationFront.kt$OperationFront$fun propose(actors: List&lt;FormationActor&gt;, enemies: List&lt;Point3&gt;, focus: Point3?, priorDuties: Map&lt;UUID, CombatDuty&gt; = emptyMap(), approach: Double? = null): Map&lt;UUID, FrontProposal&gt;</ID>
     <ID>LongMethod:OutOfAmmoBehaviour.kt$OutOfAmmoBehaviour$override fun tick(entity: NpcEntity)</ID>
+    <ID>LongMethod:RecruitScreen.kt$RecruitScreen$override fun init()</ID>
     <ID>LongMethod:SeekCoverBehaviour.kt$SeekCoverBehaviour$private fun tickMovingToCover(entity: NpcEntity, level: ServerLevel, threat: Vec3)</ID>
+    <ID>LongMethod:ServerPayloadHandlers.kt$ServerPayloadHandlers$fun onSquadCmd(p: SquadCmdPayload, ctx: PayloadContext)</ID>
     <ID>LongMethod:SquadDetailsSnapshot.kt$fun buildSquadDetailsSnapshot(manager: SquadManager, server: MinecraftServer, owner: UUID, id: UUID, refresh: Boolean = false): CompoundTag?</ID>
     <ID>LongMethod:SquadMarch.kt$SquadMarch$private fun planLong(level: ServerLevel, npc: NpcEntity, march: March, goal: BlockPos, squadName: String)</ID>
     <ID>LongMethod:SquadOrderBehaviour.kt$SquadOrderBehaviour$override fun tick(entity: NpcEntity)</ID>
     <ID>LongMethod:TacticalPositions.kt$TacticalPositions$private fun findReachablePosition(context: SearchContext): Result</ID>
-    <ID>LongMethod:TacticalPositions.kt$TacticalPositions$private fun prepareSearch(entity: NpcEntity, task: TacticalTask, view: TacticalSnapshot, level: ServerLevel, homeRadius: Double, overwatch: Boolean, query: Query): SearchContext</ID>
     <ID>LongMethod:TacticalPositions.kt$TacticalPositions$private fun scoreCandidate(context: SearchContext, raw: Vec3)</ID>
     <ID>LongMethod:VehicleAwareNavigation.kt$VehicleAwareNavigation$private fun choosePath(pos: BlockPos, accuracy: Int): Path?</ID>
     <ID>LongMethod:VehicleCombatSupportBehaviour.kt$VehicleCombatSupportBehaviour$override fun tick(entity: NpcEntity)</ID>
@@ -218,6 +219,7 @@
     <ID>LongParameterList:GunAttackBehaviour.kt$GunAttackBehaviour$( level: ServerLevel, entity: NpcEntity, target: LivingEntity, origin: Vec3, eyeHeight: Double, hulls: List&lt;AABB&gt;, taken: List&lt;Vec3&gt;, radius: Double, step: Int, startingScore: Double, )</ID>
     <ID>LongParameterList:GunAttackBehaviour.kt$GunAttackBehaviour$( level: ServerLevel, entity: NpcEntity, target: LivingEntity, pos: Vec3, eyeHeight: Double, vehicleHulls: List&lt;AABB&gt;, )</ID>
     <ID>LongParameterList:GunAttackBehaviour.kt$GunAttackBehaviour$( search: FiringSearch, level: ServerLevel, entity: NpcEntity, target: LivingEntity, eyeHeight: Double, hulls: List&lt;AABB&gt;, taken: List&lt;Vec3&gt;, startingScore: Double, )</ID>
+    <ID>LongParameterList:GunRendering.kt$GunRendering$( holder: LivingEntity, stack: ItemStack, displayContext: ItemDisplayContext, poseStack: PoseStack, buffer: MultiBufferSource, packedLight: Int, )</ID>
     <ID>LongParameterList:Hearing.kt$Hearing$(level: ServerLevel, at: Vec3, radius: Double, source: Entity?, kind: String, footstep: Boolean = false, allSides: Boolean = false)</ID>
     <ID>LongParameterList:HelicopterFlightController.kt$HelicopterFlightController$( pos: Vec3, yaw: Float, pitch: Float, roll: Float, rollRate: Float, velocity: Vec3, target: Vec3, desiredY: Double, cruiseSpeed: Double, tuning: Tuning, facing: Vec3? = null, )</ID>
     <ID>LongParameterList:HelicopterFlightControllerTest.kt$HelicopterFlightControllerTest.Heli$( var pos: Vec3, var yaw: Float, private val increment: Float = 0.8f, private val decrement: Float = 0.8f, private val liftSpeed: Float = 1f, private val yawSpeed: Float = 0.85f, private val pitchSpeed: Float = 0.75f, private val rollSpeed: Float = 0.6f, )</ID>
@@ -256,6 +258,13 @@
     <ID>MagicNumber:AntiDroneBehaviour.kt$AntiDroneBehaviour$1200.0</ID>
     <ID>MagicNumber:AntiDroneBehaviour.kt$AntiDroneBehaviour$50</ID>
     <ID>MagicNumber:AntiDroneBehaviour.kt$AntiDroneBehaviour$50L</ID>
+    <ID>MagicNumber:AssignRouteScreen.kt$AssignRouteScreen$0xAAAAAA</ID>
+    <ID>MagicNumber:AssignRouteScreen.kt$AssignRouteScreen$0xFFFFFF</ID>
+    <ID>MagicNumber:AssignRouteScreen.kt$AssignRouteScreen$100</ID>
+    <ID>MagicNumber:AssignRouteScreen.kt$AssignRouteScreen$12</ID>
+    <ID>MagicNumber:AssignRouteScreen.kt$AssignRouteScreen$20</ID>
+    <ID>MagicNumber:AssignRouteScreen.kt$AssignRouteScreen$200</ID>
+    <ID>MagicNumber:AssignRouteScreen.kt$AssignRouteScreen$24</ID>
     <ID>MagicNumber:AttackAmmoWithdrawal.kt$AttackAmmoWithdrawal$0.01</ID>
     <ID>MagicNumber:AttackAmmoWithdrawal.kt$AttackAmmoWithdrawal$12.0</ID>
     <ID>MagicNumber:AttackAmmoWithdrawal.kt$AttackAmmoWithdrawal$32</ID>
@@ -272,6 +281,25 @@
     <ID>MagicNumber:BarracksBlock.kt$BarracksBlock$6.0f</ID>
     <ID>MagicNumber:BarracksBlockEntity.kt$BarracksBlockEntity.Companion$20</ID>
     <ID>MagicNumber:BarracksBlockEntity.kt$BarracksBlockEntity.Companion$20L</ID>
+    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$0x999999</ID>
+    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$0xAAAAAA</ID>
+    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$0xFFAA55</ID>
+    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$0xFFFFFF</ID>
+    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$10</ID>
+    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$100</ID>
+    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$11</ID>
+    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$12</ID>
+    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$150</ID>
+    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$19</ID>
+    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$20</ID>
+    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$22</ID>
+    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$24</ID>
+    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$28</ID>
+    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$30</ID>
+    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$4</ID>
+    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$42</ID>
+    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$46</ID>
+    <ID>MagicNumber:BarracksQueueScreen.kt$BarracksQueueScreen$75</ID>
     <ID>MagicNumber:BenchAttackOrbit.kt$BenchAttackOrbit$3</ID>
     <ID>MagicNumber:BenchAttackOrbit.kt$BenchAttackOrbit$80f</ID>
     <ID>MagicNumber:BenchAttackOrbit.kt$BenchAttackOrbit$90f</ID>
@@ -288,12 +316,42 @@
     <ID>MagicNumber:CellPlanner.kt$CellPlanner$3</ID>
     <ID>MagicNumber:CellPlanner.kt$CellPlanner.Search$0.5</ID>
     <ID>MagicNumber:CellPlanner.kt$CellPlanner.Search$1e-9</ID>
+    <ID>MagicNumber:ChooseFactionScreen.kt$ChooseFactionScreen$0xAAAAAA</ID>
+    <ID>MagicNumber:ChooseFactionScreen.kt$ChooseFactionScreen$0xFFFFFF</ID>
+    <ID>MagicNumber:ChooseFactionScreen.kt$ChooseFactionScreen$20</ID>
+    <ID>MagicNumber:ChooseFactionScreen.kt$ChooseFactionScreen$30</ID>
+    <ID>MagicNumber:ChooseFactionScreen.kt$ChooseFactionScreen$4</ID>
+    <ID>MagicNumber:ChooseFactionScreen.kt$ChooseFactionScreen$48</ID>
+    <ID>MagicNumber:ChooseFactionScreen.kt$ChooseFactionScreen$60</ID>
+    <ID>MagicNumber:ChooseFactionScreen.kt$ChooseFactionScreen$8</ID>
+    <ID>MagicNumber:ChooseFactionScreen.kt$ChooseFactionScreen$84</ID>
     <ID>MagicNumber:CombatPathRetry.kt$CombatPathRetry$0.01</ID>
     <ID>MagicNumber:CombatPathRetry.kt$CombatPathRetry$0.25</ID>
     <ID>MagicNumber:CombatPathRetry.kt$CombatPathRetry$10</ID>
     <ID>MagicNumber:CombatPositionSafety.kt$CombatPositionSafety$0.5</ID>
     <ID>MagicNumber:CombatPositionSafety.kt$CombatPositionSafety$1.0e-9</ID>
     <ID>MagicNumber:CombatPositionSafety.kt$CombatPositionSafety$20</ID>
+    <ID>MagicNumber:CommandScreen.kt$CommandScreen$0xAAAAAA</ID>
+    <ID>MagicNumber:CommandScreen.kt$CommandScreen$0xBBBBBB</ID>
+    <ID>MagicNumber:CommandScreen.kt$CommandScreen$0xFFFFFF</ID>
+    <ID>MagicNumber:CommandScreen.kt$CommandScreen$12</ID>
+    <ID>MagicNumber:CommandScreen.kt$CommandScreen$14</ID>
+    <ID>MagicNumber:CommandScreen.kt$CommandScreen$182</ID>
+    <ID>MagicNumber:CommandScreen.kt$CommandScreen$184</ID>
+    <ID>MagicNumber:CommandScreen.kt$CommandScreen$20</ID>
+    <ID>MagicNumber:CommandScreen.kt$CommandScreen$208</ID>
+    <ID>MagicNumber:CommandScreen.kt$CommandScreen$214</ID>
+    <ID>MagicNumber:CommandScreen.kt$CommandScreen$22</ID>
+    <ID>MagicNumber:CommandScreen.kt$CommandScreen$276</ID>
+    <ID>MagicNumber:CommandScreen.kt$CommandScreen$296</ID>
+    <ID>MagicNumber:CommandScreen.kt$CommandScreen$314</ID>
+    <ID>MagicNumber:CommandScreen.kt$CommandScreen$32</ID>
+    <ID>MagicNumber:CommandScreen.kt$CommandScreen$332</ID>
+    <ID>MagicNumber:CommandScreen.kt$CommandScreen$364</ID>
+    <ID>MagicNumber:CommandScreen.kt$CommandScreen$6</ID>
+    <ID>MagicNumber:CommandScreen.kt$CommandScreen$8</ID>
+    <ID>MagicNumber:CommandScreen.kt$CommandScreen$88</ID>
+    <ID>MagicNumber:CommandScreen.kt$CommandScreen$92</ID>
     <ID>MagicNumber:CoverPeekSearch.kt$CoverPeekSearch$0.5</ID>
     <ID>MagicNumber:CoverPeekSearch.kt$CoverPeekSearch$1.5</ID>
     <ID>MagicNumber:CoverPeekSearch.kt$CoverPeekSearch$16.0</ID>
@@ -324,6 +382,13 @@
     <ID>MagicNumber:DefensiveOverwatch.kt$DefensiveOverwatch$8.0</ID>
     <ID>MagicNumber:Diplomacy.kt$Diplomacy$20</ID>
     <ID>MagicNumber:Diplomacy.kt$Diplomacy$60</ID>
+    <ID>MagicNumber:DiplomacyScreen.kt$DiplomacyScreen$0xFFFFFF</ID>
+    <ID>MagicNumber:DiplomacyScreen.kt$DiplomacyScreen$20</ID>
+    <ID>MagicNumber:DiplomacyScreen.kt$DiplomacyScreen$24</ID>
+    <ID>MagicNumber:DiplomacyScreen.kt$DiplomacyScreen$6</ID>
+    <ID>MagicNumber:DiplomacyScreen.kt$DiplomacyScreen$60</ID>
+    <ID>MagicNumber:DiplomacyScreen.kt$DiplomacyScreen$8</ID>
+    <ID>MagicNumber:DiplomacyScreen.kt$DiplomacyScreen$90</ID>
     <ID>MagicNumber:Driving.kt$Driving$0.5</ID>
     <ID>MagicNumber:DroneFlightController.kt$DroneFlightController$0.5</ID>
     <ID>MagicNumber:DroneFlightController.kt$DroneFlightController$1.4</ID>
@@ -346,8 +411,18 @@
     <ID>MagicNumber:ExperienceAwards.kt$ExperienceAwards$40</ID>
     <ID>MagicNumber:ExperienceAwards.kt$ExperienceAwards$60</ID>
     <ID>MagicNumber:ExperienceLedger.kt$ExperienceLedger$0.7</ID>
+    <ID>MagicNumber:FactionBanner.kt$FactionBanner$0xAAAAAA</ID>
     <ID>MagicNumber:FailedWalkingSteps.kt$FailedWalkingSteps$200</ID>
     <ID>MagicNumber:FailedWalkingSteps.kt$FailedWalkingSteps$32</ID>
+    <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$0xAAAAAA</ID>
+    <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$0xFFFFFF</ID>
+    <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$10</ID>
+    <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$100</ID>
+    <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$20</ID>
+    <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$200</ID>
+    <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$22</ID>
+    <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$24</ID>
+    <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$34</ID>
     <ID>MagicNumber:FiringCone.kt$FiringCone$0.0172275</ID>
     <ID>MagicNumber:FiringCone.kt$FiringCone$0.5</ID>
     <ID>MagicNumber:FiringCone.kt$FiringCone$1.0e-6</ID>
@@ -415,6 +490,10 @@
     <ID>MagicNumber:HelicopterRideBehaviour.kt$HelicopterRideBehaviour$50L</ID>
     <ID>MagicNumber:HtnPlanner.kt$HtnPlanningSession$31</ID>
     <ID>MagicNumber:HtnPlanner.kt$HtnPlanningSession$32</ID>
+    <ID>MagicNumber:HudClient.kt$HudClient$0xAAAAAA</ID>
+    <ID>MagicNumber:HudClient.kt$HudClient$0xFFFFFF</ID>
+    <ID>MagicNumber:HudClient.kt$HudClient$8</ID>
+    <ID>MagicNumber:HudKeys.kt$HudKeys$9</ID>
     <ID>MagicNumber:IncomingFire.kt$IncomingFire$0.12</ID>
     <ID>MagicNumber:IncomingFire.kt$IncomingFire$0.15</ID>
     <ID>MagicNumber:IncomingFire.kt$IncomingFire$0.7</ID>
@@ -445,6 +524,18 @@
     <ID>MagicNumber:MortarCrewBehaviour.kt$MortarCrewBehaviour$3.0</ID>
     <ID>MagicNumber:MortarCrewBehaviour.kt$MortarCrewBehaviour$8</ID>
     <ID>MagicNumber:MortarDeployment.kt$MortarDeployment$90.0</ID>
+    <ID>MagicNumber:NameRouteScreen.kt$NameRouteScreen$0xFFFFFF</ID>
+    <ID>MagicNumber:NameRouteScreen.kt$NameRouteScreen$10</ID>
+    <ID>MagicNumber:NameRouteScreen.kt$NameRouteScreen$100</ID>
+    <ID>MagicNumber:NameRouteScreen.kt$NameRouteScreen$16</ID>
+    <ID>MagicNumber:NameRouteScreen.kt$NameRouteScreen$20</ID>
+    <ID>MagicNumber:NameRouteScreen.kt$NameRouteScreen$200</ID>
+    <ID>MagicNumber:NameRouteScreen.kt$NameRouteScreen$24</ID>
+    <ID>MagicNumber:NameRouteScreen.kt$NameRouteScreen$257</ID>
+    <ID>MagicNumber:NameRouteScreen.kt$NameRouteScreen$335</ID>
+    <ID>MagicNumber:NameRouteScreen.kt$NameRouteScreen$36</ID>
+    <ID>MagicNumber:NameRouteScreen.kt$NameRouteScreen$4</ID>
+    <ID>MagicNumber:NameRouteScreen.kt$NameRouteScreen$96</ID>
     <ID>MagicNumber:NativePositionAction.kt$NativeAssignment$32.0</ID>
     <ID>MagicNumber:NativePositionAction.kt$NativePositionAction$0.5</ID>
     <ID>MagicNumber:NativePositionAction.kt$NativePositionAction$1.3</ID>
@@ -458,7 +549,6 @@
     <ID>MagicNumber:NativePositionAction.kt$NativePositionAction.&lt;no name provided&gt;$1.5</ID>
     <ID>MagicNumber:NativePositionAction.kt$NativePositionAction.&lt;no name provided&gt;$2.0</ID>
     <ID>MagicNumber:NativePositionAction.kt$NativePositionAction.&lt;no name provided&gt;$24</ID>
-    <ID>MagicNumber:NativePositionAction.kt$NativePositionAction.&lt;no name provided&gt;$4</ID>
     <ID>MagicNumber:NativePositionAction.kt$NativePositionAction.&lt;no name provided&gt;$8.0</ID>
     <ID>MagicNumber:NativeTactics.kt$NativeTactics.World$0.5</ID>
     <ID>MagicNumber:NativeTactics.kt$NativeTactics.World$1.5</ID>
@@ -483,7 +573,6 @@
     <ID>MagicNumber:NpcClass.kt$NpcClass$210</ID>
     <ID>MagicNumber:NpcClass.kt$NpcClass$24.0</ID>
     <ID>MagicNumber:NpcClass.kt$NpcClass$320</ID>
-    <ID>MagicNumber:NpcClass.kt$NpcClass$400</ID>
     <ID>MagicNumber:NpcClass.kt$NpcClass$50</ID>
     <ID>MagicNumber:NpcClass.kt$NpcClass$60</ID>
     <ID>MagicNumber:NpcClass.kt$NpcClass$64</ID>
@@ -500,6 +589,12 @@
     <ID>MagicNumber:NpcEntity.kt$NpcEntity$6</ID>
     <ID>MagicNumber:NpcEntity.kt$NpcEntity$7</ID>
     <ID>MagicNumber:NpcEntity.kt$NpcEntity$8</ID>
+    <ID>MagicNumber:NpcItemInHandLayer.kt$NpcItemInHandLayer$0.125f</ID>
+    <ID>MagicNumber:NpcItemInHandLayer.kt$NpcItemInHandLayer$0.625f</ID>
+    <ID>MagicNumber:NpcItemInHandLayer.kt$NpcItemInHandLayer$16</ID>
+    <ID>MagicNumber:NpcItemInHandLayer.kt$NpcItemInHandLayer$180.0f</ID>
+    <ID>MagicNumber:NpcItemInHandLayer.kt$NpcItemInHandLayer$90.0f</ID>
+    <ID>MagicNumber:NpcModel.kt$NpcModel.Companion$64</ID>
     <ID>MagicNumber:NpcMoveControl.kt$NpcMoveControl$0.04</ID>
     <ID>MagicNumber:NpcMoveControl.kt$NpcMoveControl$0.05</ID>
     <ID>MagicNumber:NpcMoveControl.kt$NpcMoveControl$180.0</ID>
@@ -522,6 +617,8 @@
     <ID>MagicNumber:NpcRank.kt$NpcRank.VETERAN$16</ID>
     <ID>MagicNumber:NpcRank.kt$NpcRank.VETERAN$4.0</ID>
     <ID>MagicNumber:NpcRank.kt$NpcRank.VETERAN$550</ID>
+    <ID>MagicNumber:NpcRenderer.kt$NpcRenderer$0.125</ID>
+    <ID>MagicNumber:NpcRenderer.kt$NpcRenderer$0.5f</ID>
     <ID>MagicNumber:NpcStuckRecovery.kt$NpcStuckRecovery$0.5</ID>
     <ID>MagicNumber:NpcStuckRecovery.kt$NpcStuckRecovery$1.0e-3</ID>
     <ID>MagicNumber:NpcStuckRecovery.kt$NpcStuckRecovery$4</ID>
@@ -550,7 +647,48 @@
     <ID>MagicNumber:OrderArrival.kt$OrderArrival$4</ID>
     <ID>MagicNumber:OrderArrival.kt$OrderArrival$6.0</ID>
     <ID>MagicNumber:OutOfAmmoBehaviour.kt$OutOfAmmoBehaviour$6</ID>
+    <ID>MagicNumber:PerfProbe.kt$PerfProbe$1_000_000.0</ID>
+    <ID>MagicNumber:PerfProbe.kt$PerfProbe$40</ID>
+    <ID>MagicNumber:PerfProbe.kt$PerfProbe.Client$1000.0</ID>
+    <ID>MagicNumber:RecruitScreen.kt$RecruitScreen$0xFFFFFF</ID>
+    <ID>MagicNumber:RecruitScreen.kt$RecruitScreen$100</ID>
+    <ID>MagicNumber:RecruitScreen.kt$RecruitScreen$126</ID>
+    <ID>MagicNumber:RecruitScreen.kt$RecruitScreen$20</ID>
+    <ID>MagicNumber:RecruitScreen.kt$RecruitScreen$200</ID>
+    <ID>MagicNumber:RecruitScreen.kt$RecruitScreen$24</ID>
+    <ID>MagicNumber:RecruitScreen.kt$RecruitScreen$30</ID>
+    <ID>MagicNumber:RecruitScreen.kt$RecruitScreen$34</ID>
+    <ID>MagicNumber:RecruitScreen.kt$RecruitScreen$6</ID>
+    <ID>MagicNumber:RecruitScreen.kt$RecruitScreen$62</ID>
+    <ID>MagicNumber:RecruitScreen.kt$RecruitScreen$70</ID>
+    <ID>MagicNumber:RecruitScreen.kt$RecruitScreen$82</ID>
+    <ID>MagicNumber:RenameScreen.kt$RenameScreen$0xFFFFFF</ID>
+    <ID>MagicNumber:RenameScreen.kt$RenameScreen$10</ID>
+    <ID>MagicNumber:RenameScreen.kt$RenameScreen$100</ID>
+    <ID>MagicNumber:RenameScreen.kt$RenameScreen$16</ID>
+    <ID>MagicNumber:RenameScreen.kt$RenameScreen$20</ID>
+    <ID>MagicNumber:RenameScreen.kt$RenameScreen$200</ID>
+    <ID>MagicNumber:RenameScreen.kt$RenameScreen$24</ID>
+    <ID>MagicNumber:RenameScreen.kt$RenameScreen$257</ID>
+    <ID>MagicNumber:RenameScreen.kt$RenameScreen$335</ID>
+    <ID>MagicNumber:RenameScreen.kt$RenameScreen$36</ID>
+    <ID>MagicNumber:RenameScreen.kt$RenameScreen$4</ID>
+    <ID>MagicNumber:RenameScreen.kt$RenameScreen$96</ID>
     <ID>MagicNumber:RouteManager.kt$RouteManager$24</ID>
+    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$0xAAAAAA</ID>
+    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$0xFFFFFF</ID>
+    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$108</ID>
+    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$12</ID>
+    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$150</ID>
+    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$20</ID>
+    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$210</ID>
+    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$24</ID>
+    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$26</ID>
+    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$276</ID>
+    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$300</ID>
+    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$6</ID>
+    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$60</ID>
+    <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$90</ID>
     <ID>MagicNumber:SafeSpawn.kt$SafeSpawn$0.1</ID>
     <ID>MagicNumber:SafeSpawn.kt$SafeSpawn$8</ID>
     <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$0.3</ID>
@@ -598,6 +736,34 @@
     <ID>MagicNumber:SquadDeployment.kt$SquadDeployment$12.0</ID>
     <ID>MagicNumber:SquadDeployment.kt$SquadDeployment$180f</ID>
     <ID>MagicNumber:SquadDeployment.kt$SquadDeployment$8.0</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$0.24</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$0.43</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$0.59</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$0.76</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$0.87</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$0x777777</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$0x99DDFF</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$0xAAAAAA</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$0xBBBBBB</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$0xFFAA88</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$0xFFFFFF</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$10</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$13</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$132</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$16</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$196</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$20</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$24</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$26</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$3</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$4</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$40</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$5</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$50</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$600</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$65</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$66</ID>
+    <ID>MagicNumber:SquadDetailsScreen.kt$SquadDetailsScreen$8</ID>
     <ID>MagicNumber:SquadFaction.kt$SquadFaction$0xFFFFFF</ID>
     <ID>MagicNumber:SquadFaction.kt$SquadFaction.COW$0x80A0FF</ID>
     <ID>MagicNumber:SquadFormation.kt$SquadFormation$0.4</ID>
@@ -668,6 +834,18 @@
     <ID>MagicNumber:SupplyBlock.kt$SupplyBlock$4.0f</ID>
     <ID>MagicNumber:SupplyBlock.kt$SupplyBlock$8.0f</ID>
     <ID>MagicNumber:SupplyPoints.kt$SupplyPoints$4</ID>
+    <ID>MagicNumber:SupplyScreen.kt$SupplyScreen$0xFFFFFF</ID>
+    <ID>MagicNumber:SupplyScreen.kt$SupplyScreen$14</ID>
+    <ID>MagicNumber:SupplyScreen.kt$SupplyScreen$20</ID>
+    <ID>MagicNumber:SupplyScreen.kt$SupplyScreen$24</ID>
+    <ID>MagicNumber:SupplyScreen.kt$SupplyScreen$26</ID>
+    <ID>MagicNumber:SupplyScreen.kt$SupplyScreen$28</ID>
+    <ID>MagicNumber:SupplyScreen.kt$SupplyScreen$36</ID>
+    <ID>MagicNumber:SupplyScreen.kt$SupplyScreen$4</ID>
+    <ID>MagicNumber:SupplyScreen.kt$SupplyScreen$42</ID>
+    <ID>MagicNumber:SupplyScreen.kt$SupplyScreen$56</ID>
+    <ID>MagicNumber:SupplyScreen.kt$SupplyScreen$62</ID>
+    <ID>MagicNumber:SupplyScreen.kt$SupplyScreen$80</ID>
     <ID>MagicNumber:TacticalAim.kt$TacticalAim.Companion$1.5</ID>
     <ID>MagicNumber:TacticalBudget.kt$TacticalBudget$20</ID>
     <ID>MagicNumber:TacticalBudget.kt$TacticalPathBudget$4</ID>
@@ -678,7 +856,6 @@
     <ID>MagicNumber:TacticalDomain.kt$TacticalDomain$16.0</ID>
     <ID>MagicNumber:TacticalDomain.kt$TacticalDomain$24.0</ID>
     <ID>MagicNumber:TacticalDomain.kt$TacticalDomain$36.0</ID>
-    <ID>MagicNumber:TacticalDomain.kt$TacticalDomain$48</ID>
     <ID>MagicNumber:TacticalEvidence.kt$TacticalEvidence$18.0</ID>
     <ID>MagicNumber:TacticalEvidence.kt$TacticalEvidence$2.5</ID>
     <ID>MagicNumber:TacticalFirePosts.kt$TacticalFirePosts$0.01</ID>
@@ -692,9 +869,7 @@
     <ID>MagicNumber:TacticalModel.kt$TacticalSnapshot$0.3</ID>
     <ID>MagicNumber:TacticalModel.kt$TacticalSnapshot$40</ID>
     <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$0.01</ID>
-    <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$0.1</ID>
     <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$0.5</ID>
-    <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$0.6</ID>
     <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$0.8</ID>
     <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$0.9</ID>
     <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$1.3</ID>
@@ -702,31 +877,22 @@
     <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$10.0</ID>
     <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$12</ID>
     <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$12.0</ID>
-    <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$14.0</ID>
     <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$16</ID>
     <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$2.5</ID>
     <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$200</ID>
     <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$3</ID>
     <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$4</ID>
     <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$4.0</ID>
-    <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$48.0</ID>
     <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$64.0</ID>
     <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$8.0</ID>
     <ID>MagicNumber:TacticalPositions.kt$TacticalPositions$9</ID>
     <ID>MagicNumber:TacticalRouteValidation.kt$TacticalRouteValidation$20</ID>
     <ID>MagicNumber:TacticalRoutes.kt$TacticalRoutes$0.5</ID>
-    <ID>MagicNumber:TacticalRoutes.kt$TacticalRoutes$1.0e-6</ID>
-    <ID>MagicNumber:TacticalRoutes.kt$TacticalRoutes$16.0</ID>
     <ID>MagicNumber:TacticalRoutes.kt$TacticalRoutes$24.0</ID>
-    <ID>MagicNumber:TacticalRoutes.kt$TacticalRoutes$3.0</ID>
-    <ID>MagicNumber:TacticalRoutes.kt$TacticalRoutes$4.0</ID>
-    <ID>MagicNumber:TacticalRoutes.kt$TacticalRoutes$64.0</ID>
-    <ID>MagicNumber:TacticalRoutes.kt$TacticalRoutes$8.0</ID>
     <ID>MagicNumber:TacticalSnapshotCollector.kt$TacticalSnapshotCollector$128.0</ID>
     <ID>MagicNumber:TacticalTargets.kt$TacticalTargets$12.0</ID>
     <ID>MagicNumber:TacticalTargets.kt$TacticalTargets$200</ID>
     <ID>MagicNumber:TacticalTask.kt$TacticalPositionSearch$4.0</ID>
-    <ID>MagicNumber:TacticalTask.kt$TacticalTask$4.0</ID>
     <ID>MagicNumber:TacticalTerrain.kt$TacticalTerrain$0.01</ID>
     <ID>MagicNumber:TacticalTerrain.kt$TacticalTerrain$1.5</ID>
     <ID>MagicNumber:TacticalTerrain.kt$TacticalTerrain$3</ID>
@@ -816,8 +982,6 @@
     <ID>NestedBlockDepth:RaycastWorkBudgetTest.kt$RaycastWorkBudgetTest$@Test fun `independent path admission completes scored work without awaiting another ray turn`()</ID>
     <ID>NestedBlockDepth:SquadChunkLoader.kt$SquadChunkLoader$fun tick(server: MinecraftServer)</ID>
     <ID>NestedBlockDepth:SquadTargetSensor.kt$SquadTargetSensor$private fun computeDesired(mob: NpcEntity, level: ServerLevel, directTarget: LivingEntity?, reconsider: Boolean): LivingEntity?</ID>
-    <ID>NestedBlockDepth:TacticalPositions.kt$TacticalPositions$private fun findReachablePosition(context: SearchContext): Result</ID>
-    <ID>NestedBlockDepth:TacticalRoutes.kt$TacticalRoutes$fun leg(from: Vec3, task: TacticalTask): Vec3</ID>
     <ID>NestedBlockDepth:TeamAwareness.kt$TeamAwareness$fun relayedContacts(faction: SquadFaction, tick: Long, window: Long = RECENT_WINDOW_TICKS): List&lt;UUID&gt;</ID>
     <ID>NestedBlockDepth:TreeAvoidance.kt$TreeAvoidance$private fun hasTree(level: Level, box: AABB): Boolean</ID>
     <ID>NestedBlockDepth:VehicleAwareNavigation.kt$VehicleAwareNavigation$private fun choosePath(pos: BlockPos, accuracy: Int): Path?</ID>
@@ -828,6 +992,7 @@
     <ID>TooManyFunctions:AntiDroneBehaviour.kt$AntiDroneBehaviour : ExtendedBehaviour</ID>
     <ID>TooManyFunctions:BarracksBlock.kt$BarracksBlock : BaseEntityBlock</ID>
     <ID>TooManyFunctions:CellPlanner.kt$CellPlanner$Search</ID>
+    <ID>TooManyFunctions:ClientPayloadHandlers.kt$ClientPayloadHandlers</ID>
     <ID>TooManyFunctions:Diplomacy.kt$Diplomacy</ID>
     <ID>TooManyFunctions:DroneOperatorBehaviour.kt$DroneOperatorBehaviour : ExtendedBehaviour</ID>
     <ID>TooManyFunctions:Drones.kt$Drones</ID>
@@ -847,7 +1012,10 @@
     <ID>TooManyFunctions:NativeTactics.kt$NativeTactics$World</ID>
     <ID>TooManyFunctions:NpcEntity.kt$NpcEntity : PathfinderMobSmartBrainOwner</ID>
     <ID>TooManyFunctions:OutOfAmmoBehaviour.kt$OutOfAmmoBehaviour : ExtendedBehaviour</ID>
+    <ID>TooManyFunctions:RecruitScreen.kt$RecruitScreen : Screen</ID>
     <ID>TooManyFunctions:SeekCoverBehaviour.kt$SeekCoverBehaviour : ExtendedBehaviour</ID>
+    <ID>TooManyFunctions:ServerPayloadHandlers.kt$ServerPayloadHandlers</ID>
+    <ID>TooManyFunctions:SquadDetailsScreen.kt$SquadDetailsScreen : Screen</ID>
     <ID>TooManyFunctions:SquadFormation.kt$SquadFormation</ID>
     <ID>TooManyFunctions:SquadManager.kt$SquadManager : SavedData</ID>
     <ID>TooManyFunctions:SquadMarch.kt$SquadMarch</ID>

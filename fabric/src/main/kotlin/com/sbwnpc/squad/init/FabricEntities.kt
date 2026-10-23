@@ -12,15 +12,21 @@ import java.util.function.Supplier
 
 /** Registers the mod's entity types and binds the shared [ModEntities] handles. */
 object FabricEntities {
+    private const val WIDTH = 0.6f
+    private const val HEIGHT = 1.95f
+    private const val EYE_HEIGHT = 1.74f
+    private const val TRACKING_CHUNKS = 16
+    private const val UPDATE_INTERVAL = 3
+
     val NPC: EntityType<NpcEntity> = Registry.register(
         BuiltInRegistries.ENTITY_TYPE,
         ModIdentity.loc("npc"),
         EntityType.Builder.of<NpcEntity>({ type, level -> FabricNpcEntity(type, level) }, MobCategory.CREATURE)
-            .sized(0.6f, 1.95f)
-            .eyeHeight(1.74f)
+            .sized(WIDTH, HEIGHT)
+            .eyeHeight(EYE_HEIGHT)
             // In chunks. Only the fallback: the range actually used is the server config's npcViewDistance.
-            .clientTrackingRange(16)
-            .updateInterval(3)
+            .clientTrackingRange(TRACKING_CHUNKS)
+            .updateInterval(UPDATE_INTERVAL)
             .build("npc"),
     )
 
