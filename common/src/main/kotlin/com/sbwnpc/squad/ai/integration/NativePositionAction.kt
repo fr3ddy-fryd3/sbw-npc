@@ -54,7 +54,7 @@ internal class NativePositionAction(
         override fun candidate(view: TacticalSnapshot, task: TacticalTask, point: Vec3, localAnchor: Vec3): Boolean {
             if (intent.minimumHeight?.let { point.y < it } == true) return false
             if (intent.inspection != null && point.distanceTo(intent.inspection.native()) <= 24 && !DetectionSightline.visible(npc.level() as ServerLevel, point.add(0.0, npc.eyeHeight.toDouble(), 0.0), intent.inspection.native().add(0.0, 1.5, 0.0), npc)) return false
-            return intent.duty !in setOf(CombatDuty.MOVE, CombatDuty.SEARCH) || advances(npc.position(), task.anchor, localAnchor, point)
+            return !intent.duty.advancing || advances(npc.position(), task.anchor, localAnchor, point)
         }
         override fun route(view: TacticalSnapshot, point: Vec3) = intent.minimumHeight?.let { point.y >= it } != false
     }
@@ -85,7 +85,7 @@ internal class NativePositionAction(
     val assignment get() = NativeAssignment(task.job, task.anchor, task.focus, task.position, task.localFirePost, task.localFireRecovery)
     fun reached(): Boolean =
         task.position?.let { FiringPostArrival.reached(npc.position(), it) } == true &&
-            (intent.duty !in setOf(CombatDuty.MOVE, CombatDuty.SEARCH) || task.position!!.distanceTo(task.anchor) <= 4) &&
+            (!intent.duty.advancing || task.position!!.distanceTo(task.anchor) <= 4) &&
             (intent.inspection?.let { DetectionSightline.visible(npc.level() as ServerLevel, npc.eyePosition, it.native().add(0.0, 1.5, 0.0), npc) } != false)
 
     override fun start(now: Long): ActionUpdate {
@@ -107,7 +107,7 @@ internal class NativePositionAction(
     private fun update(now: Long): ActionUpdate {
         deferredAt?.let { lastProgress += now - it }
         deferredAt = null
-        if (intent.duty == CombatDuty.FOLLOW_ORDER) return ActionUpdate.Running
+        if (!intent.duty.commandsMovement) return ActionUpdate.Running
         // Gone with its squad (disbanded, deleted) while the plan still ran: fail, never throw (#64).
         val view = snapshot() ?: return ActionUpdate.Failed("no_squad_view")
         if (pendingStart) {
@@ -132,7 +132,7 @@ internal class NativePositionAction(
         if (path != null && path === task.navigationPath && !path.isDone && !TacticalClearance.permitsPath(policy.clearance(npc.npcClass), npc.position(), path, view)) invalidate(now, "path_not_permitted")
         if (reached()) {
             releasePath()
-            if (npc.target == null && intent.duty in setOf(CombatDuty.REAR_GUARD, CombatDuty.OBSERVE, CombatDuty.SEARCH)) {
+            if (npc.target == null && intent.duty.watching) {
                 val direction = intent.focus?.native() ?: intent.anchor.native().add(npc.lookAngle.scale(8.0))
                 npc.lookControl.setLookAt(direction.x, direction.y + 1.5, direction.z)
             }
@@ -164,7 +164,7 @@ internal class NativePositionAction(
             lastProgress = now
         }
         if (FiringPostArrival.reached(npc.position(), destination)) {
-            if (intent.duty in setOf(CombatDuty.MOVE, CombatDuty.SEARCH) && destination.distanceTo(task.anchor) > 4) {
+            if (intent.duty.advancing && destination.distanceTo(task.anchor) > 4) {
                 invalidate(now, "intermediate_reached")
                 return ActionUpdate.Running
             }
@@ -200,7 +200,7 @@ internal class NativePositionAction(
             releaseLook()
             return
         }
-        if (intent.duty !in setOf(CombatDuty.REAR_GUARD, CombatDuty.OBSERVE, CombatDuty.SEARCH) || !reached()) return
+        if (!intent.duty.watching || !reached()) return
         val sweep = glance()
         val watching = intent.focus?.native()?.let { focusGaze(it, sweep) } ?: idleGaze(sweep)
         val tracker = net.minecraft.world.entity.ai.behavior.BlockPosTracker(net.minecraft.core.BlockPos.containing(watching))
@@ -327,7 +327,7 @@ internal class NativePositionAction(
 
     private fun servedBy(next: PositionIntent): Boolean {
         val anchor = dry(next.anchor)
-        if (next.duty in setOf(CombatDuty.MOVE, CombatDuty.SEARCH)) return anchor.distanceTo(task.anchor) <= 4.0
+        if (next.duty.advancing) return anchor.distanceTo(task.anchor) <= 4.0
         return task.position?.let { TacticalFirePosts.withinPost(anchor, it, recovery = true) } ?: (anchor.distanceTo(task.anchor) <= CombatPosition.LOCAL_MOVE_RADIUS)
     }
 

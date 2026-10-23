@@ -25,7 +25,7 @@ object NativeTactics {
     /** Seen enemies this close to an attacked area keep it from counting as held. */
     private const val AREA_THREAT_RADIUS = 128.0
 
-    /** Roles whose long-range weapons fight from a height post, see [OperationTactics.duty]. */
+    /** Roles whose long-range weapons fight from a height post, see [MemberDuties]. */
     private val HEIGHT_ROLES = setOf(NpcClass.MACHINE_GUNNER, NpcClass.SNIPER)
     private val worlds = HashMap<ServerLevel, World>()
 
@@ -39,7 +39,7 @@ object NativeTactics {
     fun assignment(npc: NpcEntity): NativeAssignment? {
         if (npc.vehicle != null || npc.npcClass !in GROUND || npc.currentSquad() == null) return null
         refresh(npc)
-        return world(npc).actions[npc.uuid]?.takeIf { it.intent.duty != CombatDuty.FOLLOW_ORDER }?.assignment
+        return world(npc).actions[npc.uuid]?.takeIf { it.intent.duty.commandsMovement }?.assignment
     }
     fun ownsLook(npc: NpcEntity): Boolean = worlds[npc.level()]?.actions?.get(npc.uuid)?.ownsLook == true
     fun ownsMovement(npc: NpcEntity): Boolean {
@@ -141,6 +141,9 @@ object NativeTactics {
         private val allocationOrigins = HashMap<UUID, Point3>()
         private val formationDuties = HashMap<UUID, CombatDuty>()
         private val plannedContact = HashMap<UUID, Vec3?>()
+
+        // The MemberDuties case each member's duty last came from, to log only when it changes.
+        private val dutyRules = HashMap<UUID, String>()
         private val failures = HashMap<UUID, LocalPositionFailure>()
         private var nextObservation = Long.MIN_VALUE
         private var parentTick = Long.MIN_VALUE
@@ -331,6 +334,7 @@ object NativeTactics {
                             allocationOrigins.remove(it)
                             formationDuties.remove(it)
                             plannedContact.remove(it)
+                            dutyRules.remove(it)
                         }
                     }
                 }
@@ -777,7 +781,7 @@ object NativeTactics {
                     val toLeader = leaderAt?.let { kotlin.math.hypot(member.position.x - it.x, member.position.z - it.z) } ?: 0.0
                     val waypoint = waypoints[member.id]
                     val proposal = waypoint?.let { FrontProposal(CombatDuty.MOVE, it, null) } ?: proposals.getValue(member.id)
-                    val choice = entry?.let { DutyChoice(CombatDuty.MOVE, it) } ?: OperationTactics.duty(
+                    val ruled = entry?.let { RuledDuty("reinforcement_entry", DutyChoice(CombatDuty.MOVE, it)) } ?: MemberDuties.choose(
                         DutyInputs(
                             order = saved.order.tactical(),
                             position = member.position.point(),
@@ -805,6 +809,10 @@ object NativeTactics {
                         FIRE_POST_REACH,
                         CombatPosition.LOCAL_MOVE_RADIUS,
                     )
+                    if (dutyRules.put(member.id, ruled.rule) != ruled.rule) {
+                        DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=duty_rule rule={} duty={}", member.id, ruled.rule, ruled.choice.duty)
+                    }
+                    val choice = ruled.choice
                     val duty = choice.duty
                     val proposed = choice.anchor.native()
                     val before = oldIntents[member.id]
@@ -814,15 +822,9 @@ object NativeTactics {
                     val bounding = following && duty == CombatDuty.MOVE
                     val requireCover = PostRequirements.cover(duty, situation.incoming) && !bounding
                     val requireShelter = PostRequirements.shelter(duty, situation.incoming)
-                    // A height post is chosen by height round its anchor, not by where the enemy is or by
-                    // the squad's strategy, which reshapes a sentry's task only to withdraw. Rebuilt on
-                    // either, a sentry's post was thrown away and searched again every few seconds (#73).
-                    val heightPost = duty == CombatDuty.OBSERVE && before?.anchor == proposed.point()
-                    val samePost = heightPost || (
-                        oldStrategy?.first == selected && (focus?.distanceTo(plannedContact[member.id] ?: focus) ?: 0.0) < 8 &&
-                            ((waypoint == null && member.id !in wasArcing && !bounding) || before?.anchor?.native()?.distanceTo(proposed)?.let { it < 4 } == true)
-                        )
-                    val retained = before?.takeIf { it.duty == duty && it.requireCover == requireCover && it.requireShelter == requireShelter && samePost }
+                    val settled = oldStrategy?.first == selected && (focus?.distanceTo(plannedContact[member.id] ?: focus) ?: 0.0) < 8
+                    val moving = waypoint != null || member.id in wasArcing || bounding
+                    val retained = before?.takeIf { MemberDuties.keeps(it, duty, proposed.point(), requireCover, requireShelter, settled, moving) }
                     if (retained != null) {
                         retained
                     } else {
@@ -843,7 +845,7 @@ object NativeTactics {
                             watch?.point(),
                             requireCover = requireCover,
                             requireShelter = requireShelter,
-                            minimumHeight = if (duty == CombatDuty.OBSERVE) member.position.y - 2 else null,
+                            minimumHeight = if (duty.heightPost) member.position.y - MemberDuties.HEIGHT_POST_DROP else null,
                             inspection = if (duty == CombatDuty.SEARCH) inspect?.point() else null,
                             standoff = CombatPositionSafety.clearance(member.role),
                             ordered = bounding,

@@ -6,7 +6,34 @@ import com.sbwnpc.squad.ai.coordination.Point3
 import com.sbwnpc.squad.ai.planning.*
 import kotlin.math.max
 
-enum class CombatDuty { FIRE, MOVE, REAR_GUARD, OBSERVE, SEARCH, FOLLOW_ORDER }
+/**
+ * What a member does, and what that means for how his post is searched and held.
+ *
+ * @property advancing his post must take him on towards its anchor, and counts as reached only
+ *   within 4 blocks of it.
+ * @property watching once there with no target, he keeps watch over his sector.
+ * @property commandsMovement the duty takes over his movement; without it the order's own
+ *   behaviour moves him.
+ * @property coverUnderFire under incoming fire his post must give cover, see [PostRequirements].
+ * @property shelterUnderFire under incoming fire his post must give shelter from its bearing.
+ * @property heightPost he fights from a height post round his anchor, with a floor below which
+ *   no post counts ([MemberDuties.HEIGHT_POST_DROP]).
+ */
+enum class CombatDuty(
+    val advancing: Boolean = false,
+    val watching: Boolean = false,
+    val commandsMovement: Boolean = true,
+    val coverUnderFire: Boolean = false,
+    val shelterUnderFire: Boolean = false,
+    val heightPost: Boolean = false,
+) {
+    FIRE(shelterUnderFire = true),
+    MOVE(advancing = true, coverUnderFire = true, shelterUnderFire = true),
+    REAR_GUARD(watching = true),
+    OBSERVE(watching = true, heightPost = true),
+    SEARCH(advancing = true, watching = true),
+    FOLLOW_ORDER(commandsMovement = false),
+}
 data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null, val elevationWeight: Double = 0.0, val assault: Boolean = false, val standoff: Double = 0.0, val ordered: Boolean = false) {
     init {
         require(actor.level == AgentLevel.NPC && exposureWeight.isFinite() && exposureWeight >= 0 && elevationWeight.isFinite() && elevationWeight >= 0)
@@ -172,8 +199,8 @@ object TacticalDomain {
                     ActionSpec(
                         POSITION,
                         intent,
-                        if (intent.duty == CombatDuty.FOLLOW_ORDER) emptySet() else setOf(ResourceKey(intent.actor, "motion")),
-                        timeoutTicks = if (intent.duty == CombatDuty.FOLLOW_ORDER) Long.MAX_VALUE else 1200,
+                        if (intent.duty.commandsMovement) setOf(ResourceKey(intent.actor, "motion")) else emptySet(),
+                        timeoutTicks = if (intent.duty.commandsMovement) 1200 else Long.MAX_VALUE,
                     ),
                     TaskContract(maintain = maintain, completed = Condition.test(TacticalFacts.ARRIVED, "post_not_reached") { it }),
                     planning = Condition { facts -> if (facts.owner == intent.actor) Verdict.Allowed else Verdict.Rejected("foreign_actor_intent") },
