@@ -78,6 +78,19 @@ def newest_version(project: str, loader: str, minecraft: str) -> dict:
     return versions[0]
 
 
+def version_named(project: str, loader: str, minecraft: str, number: str) -> dict:
+    """The version of [project] with this exact number, for a mod the build pins (see the lists' `pinned`)."""
+    versions = api(
+        f"/project/{project}/version",
+        loaders=json.dumps([MODRINTH_LOADERS[loader]]),
+        game_versions=json.dumps([minecraft]),
+    )
+    for version in versions:
+        if version["version_number"] == number:
+            return version
+    sys.exit(f"{project}: no version {number} for {loader} on Minecraft {minecraft}")
+
+
 def primary_file(version: dict) -> dict:
     return next((f for f in version["files"] if f.get("primary")), version["files"][0])
 
@@ -190,11 +203,17 @@ def main() -> None:
     out = (args.out or ROOT / "build" / "localpack" / args.loader).resolve()
     mods = out / "mods"
 
+    # Mods that a newer release of would not load on the loader version the addon is built against.
+    for slug, number in config.get("pinned", {}).items():
+        pack.add(version_named(slug, args.loader, config["minecraft"], number), "pinned")
+
     sbw = properties(ROOT / "gradle" / "sbw" / f"{args.loader}.properties")
     _, project_id, version_id = sbw["coordinate"].split(":")
     print(f"SuperbWarfare {sbw['version']} (pinned)")
     pack.add(api(f"/version/{version_id}"), "superbwarfare", expected_sha512=sbw["sha512"])
     for slug in config["required"]:
+        if any(e["slug"] == slug for e in pack.entries.values()):
+            continue
         pack.add(newest_version(slug, args.loader, config["minecraft"]), "required")
     if not args.no_qol:
         for slug in config["qol"]:

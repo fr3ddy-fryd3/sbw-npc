@@ -88,8 +88,17 @@ dependencies {
 
 tasks.withType<JavaCompile> { options.encoding = "UTF-8" }
 
+// fabric.mod.json holds ${version}; left as is, Loader reads that literal as the mod's version.
+tasks.processResources {
+    val modVersion = project.property("mod_version") as String
+    inputs.property("modVersion", modVersion)
+    filesMatching("fabric.mod.json") { expand("version" to modVersion) }
+}
+
 val modJar by configurations.creating {
     isCanBeResolved = false
     isCanBeConsumed = true
 }
+// Named by loader like the NeoForge jar (sbwnpc-<version>-mc<mc>-fabric.jar), so jars of different loaders never share a name.
+tasks.named<net.fabricmc.loom.task.RemapJarTask>("remapJar") { archiveClassifier.set("fabric") }
 artifacts.add(modJar.name, tasks.named("remapJar"))
