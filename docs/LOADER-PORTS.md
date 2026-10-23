@@ -18,9 +18,30 @@ the first builds showed. Measured 2026-10-19 on `develop` (a02de96) plus the `fa
 
 ## Fabric (#15)
 
-`./gradlew -Ploader=fabric :fabric:build` builds `fabric/build/libs/sbwnpc-<version>-mc1.21.1.jar`:
-all 719 classes of `common`, remapped to intermediary, with a no-op entry point. The shared mixin
-(`PathNavigationAccessor`) is remapped statically (no refmap).
+`./gradlew -Ploader=fabric :fabric:build` builds `fabric/build/libs/sbwnpc-<version>-mc1.21.1-fabric.jar`:
+the shared sources, the Fabric entry points (`SquadFabricMod`, `SquadFabricClient`), the SuperbWarfare adapter
+(`integration/sbw`, a copy of the NeoForge one with ReFabricated's registries and player data) and the mixins.
+
+Checked on a dedicated Fabric server (Fabric Loader 0.17.2, ReFabricated 0.8.9.2, the local pack's mods): it starts,
+SBW and the addon initialise, and `/summon sbwnpc:npc` gives an NPC with an SBW rifle and sidearm that stays alive.
+Not checked: a client (screens, HUD, rendering, key bindings), players, deploying and commanding squads, combat,
+vehicles, saving and reloading. `./gradlew runServer` cannot be used for this: ReFabricated reflects on
+intermediary class names and fails in a development environment, so test with the built jar.
+
+What the Fabric side does instead of NeoForge's bus events: Fabric API events for ticks, lifecycle, entity load,
+damage, death, joins and respawns; mixins (`GameEventMixin`, `ExplosionMixin`, `RespawnPositionMixin`,
+`UseItemMixin`) where Fabric has no event; Fabric attachments for an entity's persistent data; ForgeConfigAPIPort
+for the same `ModConfigSpec` config files; Fabric networking over `ServerPayloadHandlers` in common. Screens, the HUD
+and the NPC renderer are shared with NeoForge from `common/src/client`.
+
+Differences and gaps:
+
+- NPCs wade at the vanilla pace: there is no swim speed attribute on Fabric.
+- NPCs hold an SBW gun in the default arm pose and the ordinary item renderer draws it (`SbwClientPorts`): SBW's own
+  pose and static gun model, and the aircraft level-of-detail rendering mixins, are not ported.
+- `PerfProbe` (a debug aid) is not wired on Fabric.
+- A deleted squad's entity is removed when it loads, instead of its join being cancelled.
+- Fabric API has no event to cancel an entity joining or a death, so those two NeoForge behaviours differ slightly.
 
 Build prerequisites found on the way:
 
@@ -28,22 +49,15 @@ Build prerequisites found on the way:
   by a newer Loom than its own, and 1.17 needs Gradle 9.5. The wrapper and the headless script
   moved from 8.14.2 to 9.5.0. The NeoForge build, `detekt`, ktlint, unit tests and GameTests pass on
   it. The headless script's checksum was computed from the copy served by the wrapper's mirror;
-  compare it with Gradle's published value for 9.5.0.
+  compare it with Gradle's published value for 9.5.0. The foojay toolchain resolver is 1.0.0 because 0.8 fails to
+  load on Gradle 9 when a JDK has to be downloaded.
 - **Parchment is not used on Fabric.** `maven.parchmentmc.org` redirects to `ldtteam.jfrog.io`,
   which the cloud network policy does not allow. Parchment only adds parameter names, so the
   bytecode is the same; add the host and `loom.layered { parchment(...) }` to get them.
 - **Maven Central rate limits (HTTP 429)** the shared cloud proxy; retrying later works.
 
-Not done, in this order:
-
-1. **Entry point and registration**: entities, items, blocks, block entities, sensors and
-   memories (`init/` is NeoForge `DeferredRegister`), the `Ports` wiring, `Settings.current`.
-2. **Loader seams**: `LoaderHooks` (grief rule, persistent entity data, ladders), the clientbound
-   packet transport, lifecycle and tick events, config.
-3. **SBW adapter** (`integration/sbw`, about 2,900 lines) against ReFabricated; player supply moves
-   from NeoForge attachments to Cardinal Components. Mixins that target SBW.
-4. **Client**: screens, HUD, key mappings, NPC rendering, aircraft world-render bridge, JourneyMap.
-5. **CI and release**: a Fabric job, `enabled` profile, artifact validation.
+Still to do for Fabric: in-game testing on a client; SBW's gun pose and static gun model; aircraft rendering;
+a Fabric GameTest or server scene run in CI; the `enabled` profile and release artifact validation.
 
 ## Forge, Minecraft 1.20.1 (#16)
 
