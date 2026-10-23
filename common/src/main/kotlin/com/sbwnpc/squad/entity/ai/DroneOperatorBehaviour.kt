@@ -61,7 +61,9 @@ import java.util.UUID
  * -> blast where it is. Operator killed -> [onOperatorDied]: same, "signal lost".
  *
  * One drone per operator, [MAX_DRONES] carried, refilled at a barracks
- * (SquadManager.resupplyAtBarracks). While flying the operator stands still holding the Monitor
+ * (SquadManager.resupplyAtBarracks). Under broad cover he first walks to a reachable launch column
+ * nearby and returns to his original post after launch. Preparation owns his movement too.
+ * While flying the operator stands still holding the Monitor
  * (its gun is stowed in `NpcEntity.stowedWeapon`) and every other movement/combat behaviour stands
  * down via `NpcEntity.operatingDrone`; suppression doesn't interrupt the flight (the operator is
  * stationary either way, SeekCoverBehaviour may shuffle it into cover meanwhile).
@@ -77,6 +79,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     private class StrikeTarget(val entityId: UUID?, val pos: Vec3)
 
     private var droneId: UUID? = null
+    private var launchWalk: DroneLaunchWalk? = null
     private var phase = Phase.LAUNCH
     private var targetEntityId: UUID? = null
     private var targetPos: Vec3 = Vec3.ZERO
@@ -117,10 +120,10 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun baseEligible(entity: NpcEntity): Boolean = entity.npcClass == NpcClass.DRONE_OPERATOR && !entity.diggedIn && !entity.vehicleTransport
 
-    private fun canLaunch(entity: NpcEntity): Boolean {
+    private fun canPrepareLaunch(entity: NpcEntity): Boolean {
         if (entity.dronesLeft <= 0) return false
         if (entity.tickCount < nextLaunchTick) return false
-        if (entity.combatLockedByCover() || entity.combatLockedByMedic()) return false
+        if (entity.movementLockedByCover() || entity.combatLockedByMedic()) return false
         // Someone right on top of the operator: shoot back (GunAttackBehaviour), don't launch.
         val personalThreat = entity.target?.takeIf { it.isAlive && entity.distanceToSqr(it) <= SELF_DEFENSE_RANGE_SQR }
         if (personalThreat != null) return false
@@ -130,7 +133,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             skyClosed = launchPoint == null
             DebugFlags.log(LogGroup.DRONE, "{} {}", entity.uuid, if (skyClosed) "holds the drone: no open sky to launch into" else "has open sky to launch into")
         }
-        return launchPoint != null
+        return true
     }
 
     /**
@@ -141,8 +144,8 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
      * behind, and it crashed on the spot and killed him (#158). The climb ([tickLaunch]) goes
      * straight up before turning, so a clear column is the whole way out.
      */
-    private fun launchPoint(level: ServerLevel, entity: NpcEntity): Vec3? {
-        val base = entity.position().add(0.0, LAUNCH_HEIGHT, 0.0)
+    private fun launchPoint(level: ServerLevel, entity: NpcEntity, feet: Vec3 = entity.position()): Vec3? {
+        val base = feet.add(0.0, LAUNCH_HEIGHT, 0.0)
         val candidates = sequenceOf(base) + (0 until LAUNCH_SIDE_POINTS).asSequence().map {
             val angle = it * 2.0 * Math.PI / LAUNCH_SIDE_POINTS
             base.add(Math.cos(angle) * LAUNCH_SIDE_STEP, 0.0, Math.sin(angle) * LAUNCH_SIDE_STEP)
@@ -159,16 +162,22 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         return level.noCollision(entity, box.expandTowards(0.0, CRUISE_CLEARANCE_MAX, 0.0))
     }
 
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = startCheck.check(entity) { baseEligible(entity) && canLaunch(entity) }
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = startCheck.check(entity) { baseEligible(entity) && canPrepareLaunch(entity) }
 
-    override fun shouldKeepRunning(entity: NpcEntity): Boolean = baseEligible(entity) && droneId != null
+    override fun shouldKeepRunning(entity: NpcEntity): Boolean = baseEligible(entity) && (droneId != null || launchWalk != null)
 
     override fun start(entity: NpcEntity) {
         droneId = null
         detonated = false
         val level = entity.level() as? ServerLevel ?: return
         val target = strikeTarget(entity) ?: return
-        launch(entity, level, target)
+        if (launchPoint(level, entity) != null) {
+            launch(entity, level, target)
+        } else {
+            launchWalk = DroneLaunchWalk(entity)
+            entity.operatingDrone = true
+            entity.navigation.stop()
+        }
     }
 
     override fun stop(entity: NpcEntity) {
@@ -323,6 +332,8 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun cleanup(entity: NpcEntity) {
+        launchWalk?.cancel(entity)
+        launchWalk = null
         if (droneId != null) {
             DroneLinks.unlink(entity.uuid)
             // Cooldown only after an actual flight — a start() that found nothing to launch at
@@ -349,7 +360,11 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun tick(entity: NpcEntity) {
         val level = entity.level() as? ServerLevel ?: return
-        val id = droneId ?: return
+        val id = droneId
+        if (id == null) {
+            tickPreparation(entity, level)
+            return
+        }
         val drone = level.getEntity(id)?.takeIf(Ports.drones::isPiloted)
         if (drone == null || !Ports.vehicles.isOperational(drone) || Ports.vehicles.healthFraction(drone) <= 0f) {
             // Shot down. Addon drone: its destroy() already blew up. Bare SBW drone: SBW's own
@@ -360,7 +375,13 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         lastDronePos = drone.position()
 
-        entity.navigation.stop()
+        val walk = launchWalk
+        if (walk == null) {
+            // Cover may have replaced the return path and ended the walk on an earlier tick.
+            if (!entity.movementLockedByCover() && !entity.combatLockedByMedic()) entity.navigation.stop()
+        } else if (walk.returnHome(entity)) {
+            launchWalk = null
+        }
         entity.lookControl.setLookAt(drone.x, drone.y, drone.z)
 
         if (entity.tickCount - launchTick > MAX_FLIGHT_TICKS) {
@@ -389,6 +410,34 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             Phase.ATTACK -> tickAttack(entity, level, drone)
             Phase.RETURN -> tickReturn(entity, level, drone)
         }
+    }
+
+    private fun tickPreparation(entity: NpcEntity, level: ServerLevel) {
+        val walk = launchWalk ?: return
+        if (!canPrepareLaunch(entity)) {
+            abandonPreparation(entity)
+            return
+        }
+        when (walk.approach(entity, level) { launchPoint(level, entity, it) != null }) {
+            DroneLaunchWalk.Result.WAITING -> Unit
+
+            DroneLaunchWalk.Result.FAILED -> abandonPreparation(entity)
+
+            DroneLaunchWalk.Result.READY -> {
+                val target = strikeTarget(entity)
+                if (target == null) {
+                    abandonPreparation(entity)
+                    return
+                }
+                launch(entity, level, target)
+                if (droneId != null) walk.beginReturn(entity)
+            }
+        }
+    }
+
+    private fun abandonPreparation(entity: NpcEntity) {
+        cleanup(entity)
+        nextLaunchTick = entity.tickCount + LAUNCH_SEARCH_RETRY_TICKS
     }
 
     /**
@@ -682,6 +731,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         private const val LAUNCH_COOLDOWN_TICKS = 200
         private const val LAUNCH_COOLDOWN_JITTER = 100
+        private const val LAUNCH_SEARCH_RETRY_TICKS = 100
         private const val MAX_FLIGHT_TICKS = 1500 // 75 s — "battery out", blast wherever it is
 
         // Height over the highest terrain/tree/roof along the leg — jittered per flight so two
