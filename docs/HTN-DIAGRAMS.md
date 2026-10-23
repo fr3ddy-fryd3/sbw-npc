@@ -38,17 +38,21 @@ flowchart TD
     R --> R1["clearing man: FIRE from a post short of his target"]
     R --> R2["assault slot: MOVE to the slot"]
     R --> R3["closing post: FIRE from the post"]
-    R --> R4["OBSERVE, SEARCH, FOLLOW_ORDER: unchanged"]
+    R --> R4["OBSERVE, SEARCH, FOLLOW_ORDER: unchanged<br/>REAR_GUARD joins the roles like MOVE and FIRE"]
 ```
 
-`AttackPhase.next` moves between the phases:
+`AttackPhase.next` moves between the phases. Its first check runs in every phase: with the
+objective occupied and the attack not losing, the phase is CLEAR while threats are nearby and
+ASSAULT otherwise. Losing means a contact in the last 200 ticks and fewer than 1.5 ready shooters
+per enemy at the objective.
 
 ```mermaid
 stateDiagram-v2
     [*] --> DEPLOY
     DEPLOY --> ASSAULT: quiet 200 ticks, or assaultable
-    ASSAULT --> DEPLOY: losing, ready shooters fewer than 1.5 per enemy at the objective
+    ASSAULT --> DEPLOY: losing
     CLEAR --> DEPLOY: losing
+    CLEAR --> CLEAR: threats nearby
     CLEAR --> ASSAULT: no threats nearby
     ASSAULT --> CLEAR: objective occupied, threats nearby
     DEPLOY --> CLEAR: objective occupied, threats nearby
@@ -57,16 +61,18 @@ stateDiagram-v2
 
 ## Squad
 
-One method per `CombatStrategy`, chosen by the `STRATEGY` fact that `StrategyEvaluation` scores.
-The strategy reshapes each member's intent, except an assaulting or ordered one.
+One method per `CombatStrategy`, chosen by the `STRATEGY` fact. `StrategyEvaluation` scores the
+allowed strategies and `DecisionStability` keeps the current one for at least 40 ticks, and after
+that until another scores 0.12 higher. The strategy reshapes each member's intent, except an
+assaulting or ordered one.
 
 ```mermaid
 flowchart TD
     S["squad.execute"] --> ST{"STRATEGY?"}
-    ST --> ADV["advance<br/>allowed: offensive and can go on, or no contact<br/>intent unchanged"]
-    ST --> HOLD["hold<br/>always allowed, scored high in defence under contact<br/>MOVE becomes FIRE where he stands"]
-    ST --> GH["gain_height<br/>allowed: contact, enemy above, offensive<br/>posts no lower than 2 below him"]
-    ST --> WD["withdraw<br/>allowed: incoming fire, heavy losses, no continuation, no barracks<br/>MOVE away from the threat, no height floor"]
+    ST --> ADV["advance, 0.55 + 0.2 x ready share<br/>allowed: offensive and can go on, or no contact<br/>intent unchanged"]
+    ST --> HOLD["hold, 0.9 in defence under contact, else 0.4<br/>always allowed<br/>MOVE becomes FIRE where he stands, no cover required"]
+    ST --> GH["gain_height, 0.93<br/>allowed: contact, enemy above, offensive<br/>posts no lower than 2 below him, higher preferred"]
+    ST --> WD["withdraw, 0.95<br/>allowed: incoming fire, 40% lost, no continuation, no barracks<br/>MOVE 48 blocks away from the threat, no height floor<br/>FOLLOW_ORDER unchanged"]
 ```
 
 ## Member duty
@@ -83,7 +89,7 @@ flowchart TD
     C -->|no| D{"no contact, or RETREAT / MOVE / BARRAGE?"}
     D -->|yes| FO2["FOLLOW_ORDER"]
     D -->|no| F{"following a player"}
-    F -->|"player in a vehicle"| FO3["FOLLOW_ORDER"]
+    F -->|"player in a vehicle, or he holds one"| FO3["FOLLOW_ORDER"]
     F -->|"bounding half with a slot"| MV1["MOVE to the slot"]
     F -->|no| G{"order is not ATTACK?"}
     G -->|yes| FI1["FIRE where he stands"]
@@ -113,8 +119,8 @@ flowchart TD
 ```
 
 `npc.post` runs the `npc.position` action. It holds while the man may move (`MOVABLE`) and, when
-cover is required, while he has it (`COVER`); it is done on `ARRIVED`. FOLLOW_ORDER never times
-out, every other duty after 1200 ticks. `NativePositionAction` turns the duty into the job the
+cover is required, while he has it (`COVER`); it is done on `ARRIVED`. FOLLOW_ORDER takes no `motion`
+resource and never times out; every other duty holds `motion` and times out after 1200 ticks. `NativePositionAction` turns the duty into the job the
 position search in `combat/tactics` runs:
 
 | Duty | Job |
