@@ -164,12 +164,15 @@ object SquadMarch {
     }
 
     /**
-     * Forgets the routes [npc]'s squad walks and the ways found from near him, once he has cleared
-     * a step out of where he was stuck: planned before, they knew no way out and kept leading him
-     * back to the spot he stood on, the cleared step unused.
+     * Takes [npc] off the routes he walks, once he has cleared a step out of where he was stuck:
+     * planned before, they knew no way out and kept leading him back to the spot he stood on, the
+     * cleared step unused. A route he walked alone goes, with the ways found from near him; the
+     * rest of his squad keeps theirs.
      */
     fun forgetAfterClearing(npc: NpcEntity) {
-        byGroup.remove(npc.currentSquad()?.id ?: npc.uuid)
+        val marches = byGroup[npc.currentSquad()?.id ?: npc.uuid] ?: return
+        marches.removeAll { it.progress.onlyWalker(npc.uuid) }
+        marches.forEach { it.progress.forget(npc.uuid) }
         found.removeIf { it.from.closerThan(npc.blockPosition(), JOIN) }
     }
 
