@@ -22,7 +22,7 @@ class FireSlotSightTest {
 
     @Test fun `a slot in a hollow moves sideways when only the flank sees`() {
         val moved = FireSlotSight.choose(slot, listOf(enemy), 48.0) { post, _ -> post.x >= 6.0 }!!.post
-        assertEquals(6.0, moved.x, 1e-9)
+        assertEquals(9.0, moved.x, 1e-9)
         assertTrue(distance(moved) >= 50.0, "Still outside the clearance")
     }
 
@@ -46,7 +46,7 @@ class FireSlotSightTest {
             false
         }
         val firstOutside = tried.indexOfFirst { distance(it) > 56.0 + 1e-9 || distance(it) < 50.0 - 1e-9 }
-        assertTrue(firstOutside > 0 && tried.take(firstOutside).all { kotlin.math.abs(it.x) <= 12.0 + 1e-9 })
+        assertTrue(firstOutside > 0 && tried.take(firstOutside).all { kotlin.math.abs(it.x) <= 18.0 + 1e-9 })
     }
 
     @Test fun `a slot in a hollow moves back before it comes nearer`() {

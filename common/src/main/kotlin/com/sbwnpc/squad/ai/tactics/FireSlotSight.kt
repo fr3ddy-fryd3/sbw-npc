@@ -10,7 +10,7 @@ import kotlin.math.hypot
  * man standing there, too close to leave and unable to fire (#93).
  */
 object FireSlotSight {
-    private const val SIDE_STEP = 6.0
+    private const val SIDE_STEP = 9.0
 
     /** Sideways steps tried at each depth, nearest to the slot first. */
     private val LATERALS = doubleArrayOf(0.0, SIDE_STEP, -SIDE_STEP, SIDE_STEP + SIDE_STEP, -SIDE_STEP - SIDE_STEP)
