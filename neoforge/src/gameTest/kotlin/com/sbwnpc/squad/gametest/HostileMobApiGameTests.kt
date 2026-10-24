@@ -146,4 +146,19 @@ object HostileMobApiGameTests {
         probe.scene.result("PASS", "neutralMarkers=true ownerPet=true modAlliance=true")
         helper.succeed()
     }
+
+    /** An unprovoked monster is a squad's enemy only within the engage range, not its whole detection range. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 100, batch = "mob-api-range")
+    fun unprovokedMonsterCountsOnlyWithinEngageRange(helper: GameTestHelper) {
+        val probe = ApiScene(helper, "mob-api-range")
+        val near = probe.mob(EntityType.ZOMBIE, Vec3(60.5, 1.0, 40.5))
+        val far = probe.mob(EntityType.ZOMBIE, Vec3(100.5, 1.0, 40.5))
+        helper.assertTrue(SquadTeams.isHostile(probe.npc, near), "A zombie 20 blocks off was not an enemy")
+        helper.assertTrue(!SquadTeams.isHostile(probe.npc, far), "A zombie 60 blocks off, after nobody, was an enemy")
+        far.target = probe.npc
+        helper.assertTrue(SquadTeams.isHostile(probe.npc, far), "A far zombie going for the man himself was not an enemy")
+        probe.scene.result("PASS", "near=true far=false farOnHim=true")
+        helper.succeed()
+    }
 }

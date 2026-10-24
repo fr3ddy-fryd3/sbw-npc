@@ -30,6 +30,9 @@ interface PlayerHuntingGoal {
 object HostileMobs {
     private val huntsPlayers = ConcurrentHashMap<Class<*>, Boolean>()
 
+    /** Blocks within which a mob that is not attacking a man himself is still his enemy. */
+    private const val ENGAGE_RANGE = 32.0
+
     /** The nearest squad NPC in [area] that [mob] may target under [conditions], as for a player. */
     fun nearestNpc(mob: Mob, conditions: TargetingConditions, area: AABB): LivingEntity? = mob.level().getNearestEntity(mob.level().getEntitiesOfClass(NpcEntity::class.java, area) { it.currentSquad() != null }, conditions, mob, mob.x, mob.eyeY, mob.z)
 
@@ -39,7 +42,11 @@ object HostileMobs {
         // Most mobs in a sensor's box are animals: out before the alliance lookups.
         if (target == null && mob !is Enemy) return false
         if (mob is NpcEntity || !mob.isAlive || allied(mob, side)) return false
-        if (target != null && (target === side || SquadTeams.sameSide(target, side))) return true
+        if (target === side) return true
+        // Squads drew on zombies across their whole 128-block detection range (in-game 24.10): a mob
+        // that is not on this man himself only counts within about a zombie's own follow range.
+        if (mob.distanceToSqr(side) > ENGAGE_RANGE * ENGAGE_RANGE) return false
+        if (target != null && SquadTeams.sameSide(target, side)) return true
         if (mob is NeutralMob || (mob is OwnableEntity && mob.ownerUUID != null)) return false
         return mob is Enemy && huntsPlayers.computeIfAbsent(mob.javaClass) { (mob as MobGoalsAccessor).sbwnpcTargetSelector().availableGoals.any { (it.goal as? PlayerHuntingGoal)?.sbwnpcHuntsPlayers() == true } }
     }
