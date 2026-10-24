@@ -584,7 +584,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     /** True when no behaviour but [owner] has this NPC's seat; asked before starting, see [claimSeat]. */
     fun seatFreeFor(owner: Any): Boolean = claims?.freeFor(NpcActivity.SEAT, owner) != false
 
-    // Set/cleared only by DroneOperatorBehaviour while a DRONE_OPERATOR has a drone in the air —
+    // Set/cleared only by DroneOperatorBehaviour while preparing a launch or flying a drone —
     // same "hands off this mob" contract as vehicleTransport (no shooting, no squad movement, no
     // investigating), plus it keeps the AI LOD at full rate: the drone is flown from this mob's
     // brain tick, so throttling the operator would throttle the drone.

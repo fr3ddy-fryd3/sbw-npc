@@ -164,11 +164,19 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
                     patrolHome = home
                     roaming = false
                     repathCooldown = 0
-                    repathWhenDue(entity, home, WALK_SPEED_MODIFIER)
-                } else if (!roaming && entity.position().subtract(home).horizontalDistance() > SquadFormation.patrolRadius(squad.members.size) + 3.0) {
+                    // Sent to the new point itself, every man crossed its centre each time it
+                    // moved (#176): one already in the area drifts on from where he is.
+                    val outside = outsidePatrolArea(entity, home, squad)
+                    DebugFlags.log(LogGroup.ORDER, "[patrol] {} event=new_point point={} outside={}", entity.uuid, home, outside)
+                    if (outside) repathWhenDue(entity, home, WALK_SPEED_MODIFIER) else roamAround(entity, home)
+                } else if (!roaming && outsidePatrolArea(entity, home, squad)) {
                     // A distant patrol area is a fixed transit goal. A short march leg is not
                     // arrival at a roaming spot; do not pause and pick a different destination.
                     repathWhenDue(entity, home, WALK_SPEED_MODIFIER)
+                } else if (!roaming && !entity.navigation.isDone && repathCooldown == 0) {
+                    // In the area on his way to its point: drift about it from here on.
+                    DebugFlags.log(LogGroup.ORDER, "[patrol] {} event=entered_area point={}", entity.uuid, home)
+                    roamAround(entity, home)
                 } else if (entity.navigation.isDone && roaming) {
                     // Got there: stand about for a while before the next spot.
                     roaming = false
@@ -423,6 +431,8 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.navigation.moveTo(to.x, to.y, to.z, pace)
         repathCooldown = REPATH_COOLDOWN_TICKS
     }
+
+    private fun outsidePatrolArea(entity: NpcEntity, home: Vec3, squad: Squad) = entity.position().subtract(home).horizontalDistance() > SquadFormation.patrolRadius(squad.members.size) + 3.0
 
     /**
      * A patrol with no route: every member drifts about the area on its own — a spot somewhere in

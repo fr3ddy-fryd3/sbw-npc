@@ -3,7 +3,7 @@ package com.sbwnpc.squad.combat
 import com.sbwnpc.squad.npc.NpcRank
 
 /**
- * How much wider than the weapon's own spread an NPC turret gunner's shots scatter, by rank (#146).
+ * How much wider than the weapon's own spread an NPC vehicle gunner's shots scatter, by rank.
  *
  * SBW lays a turret on a perfect lead every tick, so the shot's spread is the only error a gunner
  * has. The weapons' own spreads are small (0.25 for a helicopter cannon, 0.5 to 1.0 for an APC's)
