@@ -175,7 +175,7 @@ internal class NativePositionAction(
             if (intent.duty.advancing && destination.distanceTo(task.anchor) > 4) {
                 // A leg of an advance by legs ends here: he fires from this post before the next rush.
                 // A post a few steps on is passed: a pause every two blocks crawled the attack.
-                if (intent.legs && destination.distanceTo(legStart) >= MIN_LEG) {
+                if (intent.boundsByLegs && destination.distanceTo(legStart) >= MIN_LEG) {
                     releasePath()
                     DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=leg_post_reached position={} toAnchor={}", npc.uuid, destination, "%.0f".format(destination.distanceTo(task.anchor)))
                     return ActionUpdate.Completed(listOf(ActionEvidence("leg_post_arrival", now, "${npc.uuid}:$destination")))

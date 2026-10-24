@@ -56,6 +56,16 @@ data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: 
 
     /** Whether this task takes over his movement, see [CombatDuty.commandsMovement] and [hold]. */
     val commandsMovement get() = duty.commandsMovement && !hold
+
+    /**
+     * Whether he really goes by [legs]: a mover with an enemy to fire at. An assault keeps running
+     * onto its ring or post: its men fire from there, not on the way.
+     *
+     * The plan and the position action both go by this. The action once ended an assault's run on
+     * a post on the way, which the plan, waiting for the assault post, never took as done: the man
+     * stood there, "arriving" every tick, until his task changed (in-game 24.10).
+     */
+    val boundsByLegs get() = legs && duty == CombatDuty.MOVE && !assault && focus != null
 }
 
 /** The [number]th leg of a mover's advance by legs ([PositionIntent.legs]): a rush to the next post, then fire from it. */
@@ -270,7 +280,7 @@ object TacticalDomain {
                         Condition { facts ->
                             val failure = facts.value(TacticalFacts.POST_FAILURE)
                             when {
-                                !boundsByLegs(intent) -> Verdict.Rejected("not_advancing_by_legs")
+                                !intent.boundsByLegs -> Verdict.Rejected("not_advancing_by_legs")
                                 failure?.anchor == intent.anchor -> Verdict.Rejected("preferred_query_exhausted")
                                 else -> Verdict.Allowed
                             }
@@ -283,7 +293,7 @@ object TacticalDomain {
                         Condition { facts ->
                             val failure = facts.value(TacticalFacts.POST_FAILURE)
                             when {
-                                boundsByLegs(intent) -> Verdict.Rejected("advances_by_legs")
+                                intent.boundsByLegs -> Verdict.Rejected("advances_by_legs")
                                 failure?.anchor == intent.anchor -> Verdict.Rejected("preferred_query_exhausted")
                                 else -> Verdict.Allowed
                             }
@@ -374,9 +384,6 @@ object TacticalDomain {
     }
 
     private fun ownActor(actor: AgentId) = Condition { facts -> if (facts.owner == actor) Verdict.Allowed else Verdict.Rejected("foreign_actor_intent") }
-
-    /** An assault keeps running onto its ring or post: its men fire from there, not on the way. */
-    private fun boundsByLegs(intent: PositionIntent) = intent.legs && intent.duty == CombatDuty.MOVE && !intent.assault && intent.focus != null
 
     /** Steps, forward towards the enemy and sideways along the front, tried once the neighbours fail. */
     private val CLOSER_STEPS = listOf(12.0 to 0.0, 24.0 to 0.0, 12.0 to 16.0, 12.0 to -16.0, 24.0 to 16.0, 24.0 to -16.0, 36.0 to 0.0)
