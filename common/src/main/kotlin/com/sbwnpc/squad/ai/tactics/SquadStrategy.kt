@@ -183,7 +183,9 @@ private object Regroup : SquadStrategy {
     override fun shape(intent: PositionIntent, shaping: SquadShaping): PositionIntent {
         val rally = shaping.rally
         if (rally == null || intent.duty == CombatDuty.FOLLOW_ORDER || intent.duty == CombatDuty.SEARCH) return intent
-        return intent.copy(duty = CombatDuty.MOVE, anchor = rally, legs = false, minimumHeight = null, elevationWeight = 0.0)
+        // No shelter asked of the rally: on open ground under fire every post round it was refused
+        // for want of one, and the men stayed scattered for the whole regroup.
+        return intent.copy(duty = CombatDuty.MOVE, anchor = rally, legs = false, minimumHeight = null, elevationWeight = 0.0, requireShelter = false)
     }
 
     // Above an advance held by a squad all of whose men can fight (0.67 + 0.2 at readiness 1): at

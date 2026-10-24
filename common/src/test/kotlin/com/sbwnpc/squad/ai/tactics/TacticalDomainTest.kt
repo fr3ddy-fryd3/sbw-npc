@@ -197,13 +197,14 @@ class TacticalDomainTest {
         val rally = Point3(-12.0, 1.0, 0.0)
         val scout = intent.copy(actor = AgentId(AgentLevel.NPC, UUID(0, 2)), duty = CombatDuty.SEARCH)
         val facts = squadFacts(scattered, CombatStrategy.ADVANCE).observe(TacticalFacts.RALLY, rally)
-        val plan = squadPlan(facts, intent.copy(legs = true, minimumHeight = 0.0), scout)
+        val plan = squadPlan(facts, intent.copy(legs = true, minimumHeight = 0.0, requireShelter = true), scout)
         assertEquals(CombatStrategy.REGROUP, strategyOf(plan))
         val members = ((plan.tasks.single().spec.action.parameters as com.sbwnpc.squad.ai.coordination.DelegationTask).task.parameters as TeamMission).members
         assertEquals(CombatDuty.MOVE, members[0].duty)
         assertEquals(rally, members[0].anchor)
         assertFalse(members[0].legs)
         assertNull(members[0].minimumHeight)
+        assertFalse(members[0].requireShelter)
         assertEquals(scout, members[1])
         assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(scattered.copy(flanking = true), CombatStrategy.ADVANCE))))
         // A squad ready to fight to the last man regroups too, over the advance it holds.
