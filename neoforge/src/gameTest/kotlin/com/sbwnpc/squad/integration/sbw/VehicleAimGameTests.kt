@@ -191,4 +191,39 @@ object VehicleAimGameTests {
             }
         }
     }
+
+    /**
+     * A target that ducks behind cover stays the gunner's: its gun can still be laid that way. In-game
+     * 24.10 the muzzle-sightline check dropped every enemy the moment it was hidden, and any the squad
+     * passed on, so turrets fired only at what they saw themselves.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 100, batch = "vehicle-aim-hidden")
+    fun gunnerKeepsATargetThatDucksBehindCover(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "vehicle-aim-hidden")
+        val (gun, man) = station(helper, scene, TransportVehicle.LAV_25, height = 1.0)
+        val enemy = scene.enemy(Vec3(24.5, 1.0, 60.5)).also { it.isNoAi = true }
+        for (x in 12..36) for (y in 1..8) helper.setBlock(BlockPos(x, y, 40), Blocks.BEDROCK)
+        val manager = SquadManager.get(helper.level)
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(man.uuid))
+        manager.issueOrderAt(helper.level, squad.id, SquadOrder.ATTACK, enemy.blockPosition())
+        manager.setFocus(squad.id, enemy.uuid)
+        BrainUtils.setTargetOfEntity(man, enemy)
+        val sensor = SquadTargetSensor()
+        val scan = SquadTargetSensor::class.java.getDeclaredMethod("doTick", ServerLevel::class.java, NpcEntity::class.java).apply { isAccessible = true }
+        scene.onClose = {
+            manager.deleteSquad(helper.level, squad.id)
+            gun.discard()
+        }
+        helper.onEachTick {
+            man.sensing.tick()
+            scan.invoke(sensor, helper.level, man)
+            helper.assertTrue(!DetectionSightline.canSee(man, enemy), "The wall did not hide the enemy")
+            helper.assertTrue(man.target === enemy, "The gunner dropped a hidden target at tick ${helper.tick}: ${man.target}")
+            if (helper.tick >= 60L) {
+                scene.result("PASS", "kept=${helper.tick}")
+                helper.succeed()
+            }
+        }
+    }
 }

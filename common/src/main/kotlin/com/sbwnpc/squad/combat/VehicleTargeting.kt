@@ -13,8 +13,17 @@ import net.minecraft.world.phys.AABB
 
 /** A vehicle is targeted through a hostile occupant because SBW's gunner API accepts LivingEntity targets. */
 object VehicleTargeting {
-    /** Mounted gunners select reachable body shots; other observers keep their normal target choices. */
-    fun weaponPermits(entity: NpcEntity, target: LivingEntity): Boolean = entity.vehicle?.takeIf { Ports.vehicles.hasWeaponAt(it, entity) }?.let { Ports.vehicles.canAimAt(it, entity, target) } ?: true
+    /**
+     * Mounted gunners select reachable body shots; other observers keep their normal target choices.
+     *
+     * A target the gunner cannot see is judged by the gun's limits only: an enemy heard, or passed on
+     * by the squad, has no muzzle sightline by definition, and requiring one left the turret blind to
+     * everything but what it saw itself (in-game 24.10). The fire gate still needs a clear muzzle.
+     */
+    fun weaponPermits(entity: NpcEntity, target: LivingEntity): Boolean {
+        val vehicle = entity.vehicle?.takeIf { Ports.vehicles.hasWeaponAt(it, entity) } ?: return true
+        return if (DetectionSightline.canSee(entity, target)) Ports.vehicles.canAimAt(vehicle, entity, target) else Ports.vehicles.canReach(vehicle, entity, target)
+    }
 
     // Vehicles drive on the ground like everyone else — a box `range` tall in every direction
     // (144 blocks at detection range) walked ~10x the chunk sections it needed to.

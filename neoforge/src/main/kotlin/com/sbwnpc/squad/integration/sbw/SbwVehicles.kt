@@ -388,6 +388,8 @@ object SbwVehicles : Vehicles {
 
     override fun canAimAt(vehicle: Entity, gunner: Entity, target: LivingEntity, seat: Int): Boolean = vehicle is VehicleEntity && VehicleAim.canEngage(vehicle, gunner, seat, target)
 
+    override fun canReach(vehicle: Entity, gunner: Entity, target: LivingEntity, seat: Int): Boolean = vehicle is VehicleEntity && VehicleAim.canReach(vehicle, gunner, seat, target)
+
     override fun seatReady(vehicle: Entity, seat: Int): Boolean = vehicle is VehicleEntity && vehicle.getGunData(seat)?.canShoot(vehicle.ammoSupplier) == true
 
     // `canShoot` is false while SBW reloads or cools a weapon; only an empty weapon counts here.

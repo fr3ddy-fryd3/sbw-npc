@@ -130,6 +130,9 @@ interface Vehicles {
     /** A body shot from the muzzle within the weapon's native limits; [seat] also previews boarding. */
     fun canAimAt(vehicle: Entity, gunner: Entity, target: LivingEntity, seat: Int = seatOf(vehicle, gunner)): Boolean
 
+    /** Whether [gunner]'s weapon could be laid on [target] within its native limits, ignoring what blocks the muzzle. */
+    fun canReach(vehicle: Entity, gunner: Entity, target: LivingEntity, seat: Int = seatOf(vehicle, gunner)): Boolean
+
     /** Points the turret or weapon station [gunner] controls at [target]; null stands it down. */
     fun aimAt(vehicle: Entity, gunner: Entity, target: LivingEntity?)
 

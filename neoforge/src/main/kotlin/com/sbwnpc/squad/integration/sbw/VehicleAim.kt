@@ -33,15 +33,34 @@ object VehicleAim {
     /** Previews an empty [seat] as well as checking an already mounted [gunner], without moving the gun. */
     @JvmStatic
     fun canEngage(vehicle: VehicleEntity, gunner: Entity, seat: Int, target: LivingEntity): Boolean {
-        if (seat < 0) return false
-        val data = vehicle.getGunData(seat) ?: return false
-        val weapon = vehicle.gunDataMap.entries.firstOrNull { it.value === data }?.key ?: return false
+        val muzzle = muzzle(vehicle, seat) ?: return false
         val level = vehicle.level() as? ServerLevel ?: return false
         val body = target.vehicle ?: target
         val aim = body.boundingBox.center
-        // The seat-index overload goes through its occupant and falls back to the hull when empty.
-        val muzzle = vehicle.getShootPos(weapon, 1f)
         if (!DetectionSightline.visible(level, muzzle, aim, gunner) || Sightline.blocked(level, muzzle, aim, gunner)) return false
+        return withinLimits(vehicle, gunner, seat, body, muzzle)
+    }
+
+    /**
+     * Whether the gun at [seat] could be laid on [target] at all, whatever stands between: the
+     * station limits and a ballistic solution, without the muzzle sightline [canEngage] adds.
+     */
+    @JvmStatic
+    fun canReach(vehicle: VehicleEntity, gunner: Entity, seat: Int, target: LivingEntity): Boolean {
+        val muzzle = muzzle(vehicle, seat) ?: return false
+        return withinLimits(vehicle, gunner, seat, target.vehicle ?: target, muzzle)
+    }
+
+    // The seat-index overload goes through its occupant and falls back to the hull when empty.
+    private fun muzzle(vehicle: VehicleEntity, seat: Int): Vec3? {
+        if (seat < 0) return null
+        val data = vehicle.getGunData(seat) ?: return null
+        val weapon = vehicle.gunDataMap.entries.firstOrNull { it.value === data }?.key ?: return null
+        return vehicle.getShootPos(weapon, 1f)
+    }
+
+    private fun withinLimits(vehicle: VehicleEntity, gunner: Entity, seat: Int, body: Entity, muzzle: Vec3): Boolean {
+        val aim = body.boundingBox.center
         // Fixed pilot weapons are aimed with the airframe, not these turret limits.
         val station = station(vehicle, seat) ?: return true
         val velocity = targetVelocity(body)
