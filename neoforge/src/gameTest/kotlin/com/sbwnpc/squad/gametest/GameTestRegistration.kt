@@ -50,6 +50,7 @@ object GameTestRegistration {
             MarchRouteGameTests::class.java,
             NoticingGameTests::class.java,
             SquadManoeuvreGameTests::class.java,
+            TreePlatformGameTests::class.java,
         )
         // Saved-world replays require an explicit local fixture; ordinary suites stay portable.
         val replayClasses = if (System.getProperty("sbwnpc.gameTestReplay", "").isNotBlank()) listOf(SavedBattleGameTests::class.java) else emptyList()
