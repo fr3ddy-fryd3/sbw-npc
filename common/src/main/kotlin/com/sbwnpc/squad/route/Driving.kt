@@ -21,22 +21,22 @@ class Driving(
     climb: Double,
     height: Double,
     private val canCrossWater: Boolean = false,
+    avoidedColumns: Set<Long> = emptySet(),
 ) : CellPlanner.Medium {
-    constructor(level: ServerLevel, halfWidth: Double, climb: Double, height: Double, canCrossWater: Boolean = false) :
-        this(Ground.of(level), halfWidth, climb, height, canCrossWater)
+    constructor(level: ServerLevel, halfWidth: Double, climb: Double, height: Double, canCrossWater: Boolean = false, avoidedColumns: Set<Long> = emptySet()) :
+        this(Ground.of(level), halfWidth, climb, height, canCrossWater, avoidedColumns)
 
     private val clearance = Math.max(0, Math.ceil(halfWidth - 0.5).toInt())
     private val climb = Math.max(1, Math.floor(climb).toInt())
     private val headroom = Math.min(GroundMap.MAX_ROOM, Math.max(2, Math.ceil(height).toInt()))
     private val fits = HashMap<Long, Boolean>()
     private val costs = Long2DoubleOpenHashMap()
-    private var avoided: Set<Long> = emptySet()
-
-    /** Excludes columns learned from collisions during this trip, without changing the world map. */
-    fun avoiding(columns: Set<Long>): Driving = apply {
-        avoided = columns.toSet()
-        fits.clear()
-        costs.clear()
+    private val avoided = avoidedColumns.toSet()
+    private val clearanceRings = (1..CLEARANCE_MARGIN).map { margin ->
+        val radius = clearance + margin
+        (-radius..radius).flatMap { dx ->
+            (-radius..radius).filter { dz -> Math.abs(dx) == radius || Math.abs(dz) == radius }.map { dz -> dx to dz }
+        }
     }
 
     override val pace = 1.0 / DRIVE_PACE
@@ -84,16 +84,12 @@ class Driving(
 
     private fun clearanceCost(x: Int, z: Int): Double {
         for (margin in 1..CLEARANCE_MARGIN) {
-            val radius = clearance + margin
-            for (dx in -radius..radius) {
-                for (dz in -radius..radius) {
-                    if (Math.abs(dx) != radius && Math.abs(dz) != radius) continue
-                    val px = x + dx
-                    val pz = z + dz
-                    if (!ground.known(px, pz)) continue
-                    val step = Math.abs(ground.height(px, pz) - ground.height(px - dx.compareTo(0), pz - dz.compareTo(0)))
-                    if (!ground(px, pz) || step > climb) return CLEARANCE_COST / (margin * margin)
-                }
+            for ((dx, dz) in clearanceRings[margin - 1]) {
+                val px = x + dx
+                val pz = z + dz
+                if (!ground.known(px, pz)) continue
+                val step = Math.abs(ground.height(px, pz) - ground.height(px - dx.compareTo(0), pz - dz.compareTo(0)))
+                if (!ground(px, pz) || step > climb) return CLEARANCE_COST / (margin * margin)
             }
         }
         return 0.0

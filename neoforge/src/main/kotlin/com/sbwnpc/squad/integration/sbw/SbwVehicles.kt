@@ -235,12 +235,12 @@ object SbwVehicles : Vehicles {
      * Targets [VehicleEntity.rudderRot] directly — SBW's own "steering wheel" state
      * (VehicleEngineUtils.wheelEngine) — rather than reacting to raw heading error with
      * hysteresis/timers: rightInputDown drives rudderRot negative, leftInputDown drives it positive,
-     * and it decays 25%/tick UNCONDITIONALLY (even while held), so [MAX_RUDDER_MAGNITUDE] targets well
-     * under the hard ±0.8 clamp rather than up against it (see its own comment). yRot's rate of change
+     * and it decays 25%/tick UNCONDITIONALLY (even while held), so the wheel target is capped at
+     * [WHEEL_RUDDER_LIMIT], the post-decay limit of the native ±0.8 clamp. yRot's rate of change
      * per tick is `-12 * speed * rudderRot * sign(power)`.
      *
-     * `targetRudder = clamp(-diff / RUDDER_FULL_LOCK_DEGREES, -1, 1) * MAX_RUDDER_MAGNITUDE` (negative
-     * because turning right — wanted when diff > 0 — drives rudderRot negative). Hold whichever input
+     * Wheels follow the curvature through the route point; tracks use the heading error. A positive
+     * heading error requires a negative rudder. Hold whichever input
      * direction closes the gap between actual rudderRot and that target; release within
      * [RUDDER_DEADBAND] of it. Holding one direction at speed both rotates and translates the vehicle,
      * so a fixed hold duration risks a stable circular orbit; targeting a shrinking rudderRot avoids
@@ -275,7 +275,14 @@ object SbwVehicles : Vehicles {
             return Steering(right, left, "ship pos=${vehicle.position()} yRot=${vehicle.yRot} desiredYaw=$desiredYaw diff=$diff speed=${vehicle.deltaMovement.horizontalDistance()}")
         }
 
-        val targetRudder = Mth.clamp((-diff / RUDDER_FULL_LOCK_DEGREES).toFloat(), -1f, 1f) * MAX_RUDDER_MAGNITUDE
+        // wheelEngine turns 12 degrees per block per rudder unit. Match the curvature of
+        // the circle through the nearby route point; heading alone understeers short bends.
+        val curvature = 2.0 * Math.sin(Math.toRadians(diff)) / toTarget.horizontalDistance().coerceAtLeast(1.0)
+        val targetRudder = if (vehicle.computed().engineType == EngineType.WHEEL) {
+            (-Math.toDegrees(curvature) / WHEEL_YAW_PER_BLOCK).toFloat().coerceIn(-WHEEL_RUDDER_LIMIT, WHEEL_RUDDER_LIMIT)
+        } else {
+            Mth.clamp((-diff / RUDDER_FULL_LOCK_DEGREES).toFloat(), -1f, 1f) * MAX_RUDDER_MAGNITUDE
+        }
         val rudderError = vehicle.rudderRot - targetRudder
         var right = rudderError > RUDDER_DEADBAND
         var left = rudderError < -RUDDER_DEADBAND
@@ -509,6 +516,8 @@ object SbwVehicles : Vehicles {
     // error); 45° means anything from a moderate correction to a near-reversal all command close to
     // full lock, while small corrections near the target heading get proportionally gentle steering.
     private const val RUDDER_FULL_LOCK_DEGREES = 45.0
+    private const val WHEEL_YAW_PER_BLOCK = 12.0
+    private const val WHEEL_RUDDER_LIMIT = 0.6f
 
     // Below the vehicle's hard rudderRot clamp (±0.8 in VehicleEngineUtils.wheelEngine) on purpose:
     // rudderRot's *0.75 decay applies every tick even while an input is held, so continuous

@@ -53,7 +53,7 @@ class DrivingTest {
     @Test
     fun `learned collision columns reroute this trip without changing later trips`() {
         val column = BlockPos.asLong(12, 0, 0)
-        val medium = Driving(Plain(), 1.4, 1.0, 2.1).avoiding(setOf(column))
+        val medium = Driving(Plain(), 1.4, 1.0, 2.1, avoidedColumns = setOf(column))
         assertFalse(medium.open(12, 0))
         assertFalse(medium.open(11, 0), "the hull edge cannot overlap the avoided column")
         val search = CellPlanner.search(medium, at(0.5), at(40.5))!!
