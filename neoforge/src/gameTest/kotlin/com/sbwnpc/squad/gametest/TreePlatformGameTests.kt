@@ -103,7 +103,8 @@ object TreePlatformGameTests {
             set(x, 10, z, Blocks.SPRUCE_STAIRS.defaultBlockState().setValue(StairBlock.HALF, Half.TOP).setValue(StairBlock.FACING, facing))
         }
         square(4, edgeOnly = true) { x, z -> set(x, 10, z, leaves) }
-        square(3, edgeOnly = true) { x, z -> set(x, 11, z, leaves) }
+        // Only the corners at eye height: the owner's tower left the sentries a view over the parapet.
+        square(3, edgeOnly = true) { x, z -> if (abs(x) + abs(z) >= 5) set(x, 11, z, leaves) }
         for (y in 12..14) square(3) { x, z -> if (abs(x) + abs(z) <= 28 - 2 * y) set(x, y, z, leaves) }
         for (y in 1..9) {
             set(0, y, 2, Blocks.SCAFFOLDING.defaultBlockState().setValue(ScaffoldingBlock.DISTANCE, 0).setValue(ScaffoldingBlock.BOTTOM, y == 1))
