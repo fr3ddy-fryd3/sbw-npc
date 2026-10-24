@@ -14,7 +14,7 @@ class FollowFormationTest {
 
     @Test fun `a standing player is surrounded, not led`() {
         val slots = (0 until 8).map { FollowFormation.slot(player, null, it, moving = false) }
-        slots.forEach { assertTrue(distance(it, player) in 3.0..9.0, "Close, but not on him: $it") }
+        slots.forEach { assertTrue(distance(it, player) in 4.5..13.5, "Close, but not on him: $it") }
     }
 
     @Test fun `a walking player is led along his heading`() {

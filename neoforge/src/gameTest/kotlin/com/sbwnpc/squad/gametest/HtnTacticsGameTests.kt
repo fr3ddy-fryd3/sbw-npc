@@ -263,7 +263,9 @@ object HtnTacticsGameTests {
         var observedFailure = false
         helper.onEachTick {
             if (helper.tick % 20L != 0L) return@onEachTick
-            observedFailure = observedFailure || blocked.any { NativeTactics.reports(it).values.any { report -> report.reason?.startsWith("local_") == true } }
+            // The failure itself shows only for a moment: the next method tries elsewhere, and the
+            // last one leaves the man to his order and gun while the failures are remembered.
+            observedFailure = observedFailure || blocked.any(::failedPostSearch)
             val firing = free.count { it.firedRecently(100) }
             val moved = free.count { it.position().distanceTo(origins.getValue(it.uuid)) >= 12 }
             if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} localFailure=$observedFailure freeFiring=$firing freeMoved=$moved")
@@ -280,6 +282,9 @@ object HtnTacticsGameTests {
             }
         }
     }
+
+    // Past the four neighbouring anchors, only the closer posts and the last-resort hold are left.
+    private fun failedPostSearch(npc: NpcEntity) = NativeTactics.reports(npc).values.any { it.reason?.startsWith("local_") == true } || NativeTactics.postFailures(npc) > 4
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1600, batch = "htn-reinforcement")

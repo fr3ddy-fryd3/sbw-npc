@@ -12,6 +12,13 @@ internal class MarchProgress(private val maxNodes: Int) {
 
     fun contains(walker: UUID): Boolean = walker in cursors
 
+    /** Whether [walker] is the only one walking it. */
+    fun onlyWalker(walker: UUID): Boolean = cursors.keys.singleOrNull() == walker
+
+    fun forget(walker: UUID) {
+        cursors.remove(walker)
+    }
+
     fun index(walker: UUID, position: Vec3, remember: Boolean = true): Int {
         if (route.isEmpty()) return 0
         val previous = cursors[walker]
