@@ -229,23 +229,16 @@ object SbwVehicles : Vehicles {
     }
 
     /**
-     * Throttle forward, turn left/right to close the heading gap — a sharp turn taken slowly, a
-     * tank turning on the spot, a wheeled vehicle turning back on itself backing round.
+     * Drives toward a route point through SBW's native wheel, track or boat controls.
      *
-     * Targets [VehicleEntity.rudderRot] directly — SBW's own "steering wheel" state
-     * (VehicleEngineUtils.wheelEngine) — rather than reacting to raw heading error with
-     * hysteresis/timers: rightInputDown drives rudderRot negative, leftInputDown drives it positive,
-     * and it decays 25%/tick UNCONDITIONALLY (even while held), so the wheel target is capped at
-     * [WHEEL_RUDDER_LIMIT], the post-decay limit of the native ±0.8 clamp. yRot's rate of change
-     * per tick is `-12 * speed * rudderRot * sign(power)`.
+     * A short bend needs its requested wheel angle immediately: the human key-press ramp builds
+     * steering only after the nose has already reached the obstruction. Wheels therefore match
+     * the circle through the point using [VehicleEntity.rudderRot], compensating wheelEngine's
+     * unconditional 25% decay. Its native post-decay limit is [WHEEL_RUDDER_LIMIT], and the yaw rate
+     * is `-12 * speed * rudderRot * sign(power)` degrees per tick.
      *
-     * Wheels follow the curvature through the route point; tracks use the heading error. A positive
-     * heading error requires a negative rudder. Hold whichever input
-     * direction closes the gap between actual rudderRot and that target; release within
-     * [RUDDER_DEADBAND] of it. Holding one direction at speed both rotates and translates the vehicle,
-     * so a fixed hold duration risks a stable circular orbit; targeting a shrinking rudderRot avoids
-     * that structurally, since the commanded turn backs off as the vehicle actually straightens out
-     * rather than staying locked in until a timer expires.
+     * Tracks and backing turns retain their heading-based input controls, releasing within
+     * [RUDDER_DEADBAND] of the requested rudder. Boats steer by heading and their own helm swing.
      */
     override fun driveToward(vehicle: Entity, point: Vec3, throttle: Boolean): Steering {
         if (vehicle !is VehicleEntity) return Steering(right = false, left = false, detail = "not a vehicle")
@@ -275,14 +268,7 @@ object SbwVehicles : Vehicles {
             return Steering(right, left, "ship pos=${vehicle.position()} yRot=${vehicle.yRot} desiredYaw=$desiredYaw diff=$diff speed=${vehicle.deltaMovement.horizontalDistance()}")
         }
 
-        // wheelEngine turns 12 degrees per block per rudder unit. Match the curvature of
-        // the circle through the nearby route point; heading alone understeers short bends.
-        val curvature = 2.0 * Math.sin(Math.toRadians(diff)) / toTarget.horizontalDistance().coerceAtLeast(1.0)
-        val targetRudder = if (vehicle.computed().engineType == EngineType.WHEEL) {
-            (-Math.toDegrees(curvature) / WHEEL_YAW_PER_BLOCK).toFloat().coerceIn(-WHEEL_RUDDER_LIMIT, WHEEL_RUDDER_LIMIT)
-        } else {
-            Mth.clamp((-diff / RUDDER_FULL_LOCK_DEGREES).toFloat(), -1f, 1f) * MAX_RUDDER_MAGNITUDE
-        }
+        val targetRudder = steeringTarget(vehicle, diff, toTarget.horizontalDistance())
         val rudderError = vehicle.rudderRot - targetRudder
         var right = rudderError > RUDDER_DEADBAND
         var left = rudderError < -RUDDER_DEADBAND
@@ -313,11 +299,29 @@ object SbwVehicles : Vehicles {
             vehicle.leftInputDown = left
             return Steering(right, left, "$detail backing round")
         }
+        if (vehicle.computed().engineType == EngineType.WHEEL) {
+            // The short route follower commands a wheel angle, not a human's gradual key press.
+            // Compensate the native engine's unconditional decay before it applies that angle.
+            vehicle.rudderRot = targetRudder / WHEEL_RUDDER_DECAY
+            vehicle.deltaRot = 0f
+            right = false
+            left = false
+        }
         vehicle.forwardInputDown = throttle && (!sharp || speed < CREEP_SPEED)
         vehicle.backInputDown = sharp && speed > TURN_SPEED
         vehicle.rightInputDown = right
         vehicle.leftInputDown = left
         return Steering(right, left, if (sharp) "$detail creeping round" else detail)
+    }
+
+    private fun steeringTarget(vehicle: VehicleEntity, diff: Double, distance: Double): Float {
+        if (vehicle.computed().engineType != EngineType.WHEEL) {
+            return Mth.clamp((-diff / RUDDER_FULL_LOCK_DEGREES).toFloat(), -1f, 1f) * MAX_RUDDER_MAGNITUDE
+        }
+        // wheelEngine turns 12 degrees per block per rudder unit. Match the circle through
+        // the route point; heading alone understeers a short bend before the hull hits it.
+        val curvature = 2.0 * Math.sin(Math.toRadians(diff)) / distance.coerceAtLeast(1.0)
+        return (-Math.toDegrees(curvature) / WHEEL_YAW_PER_BLOCK).toFloat().coerceIn(-WHEEL_RUDDER_LIMIT, WHEEL_RUDDER_LIMIT)
     }
 
     /** Ground to back onto behind the hull: nothing more than a step up or a drop it could climb back. */
@@ -518,6 +522,7 @@ object SbwVehicles : Vehicles {
     private const val RUDDER_FULL_LOCK_DEGREES = 45.0
     private const val WHEEL_YAW_PER_BLOCK = 12.0
     private const val WHEEL_RUDDER_LIMIT = 0.6f
+    private const val WHEEL_RUDDER_DECAY = 0.75f
 
     // Below the vehicle's hard rudderRot clamp (±0.8 in VehicleEngineUtils.wheelEngine) on purpose:
     // rudderRot's *0.75 decay applies every tick even while an input is held, so continuous
