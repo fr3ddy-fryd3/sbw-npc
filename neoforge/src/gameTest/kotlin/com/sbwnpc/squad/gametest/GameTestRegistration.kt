@@ -50,6 +50,7 @@ object GameTestRegistration {
             MarchRouteGameTests::class.java,
             NoticingGameTests::class.java,
             HostileMobApiGameTests::class.java,
+            HostileMobCombatGameTests::class.java,
             SquadManoeuvreGameTests::class.java,
             TreePlatformGameTests::class.java,
         )
