@@ -56,6 +56,16 @@ object NativeTactics {
     private const val UNDER_FIRE_TICKS = 200L
 
     /**
+     * How long after the focus was last seen well above the squad it still counts as above, see
+     * [CombatSituation.higherEnemy].
+     *
+     * In-game 24.10 the focus crossed the height line every second or so as the men moved and the
+     * target changed, and the squad flipped between bounding and gaining height with every cross:
+     * neither manner lasted long enough for a single swap of halves.
+     */
+    private const val ENEMY_ABOVE_TICKS = 200L
+
+    /**
      * A regroup goes on this long at most, 20 s. A man who found no post round the rally, left to
      * his order, kept it from gathering for good, and a squad still scattered regrouped to the end
      * of the fight.
@@ -225,6 +235,9 @@ object NativeTactics {
 
         // When a man of each squad was last hit, see CombatSituation.underFire.
         private val lastHits = HashMap<UUID, Long>()
+
+        // When each squad's focus was last well above it, see ENEMY_ABOVE_TICKS.
+        private val lastAbove = HashMap<UUID, Long>()
 
         // When each squad last stopped regrouping, see [CombatSituation.regroupSpent].
         private val regroupEnds = HashMap<UUID, Long>()
@@ -487,6 +500,7 @@ object NativeTactics {
                     boundTurns.remove(id)
                     rallies.remove(id)
                     lastHits.remove(id)
+                    lastAbove.remove(id)
                     regroupEnds.remove(id)
                     approaches.remove(id)
                     flankable.remove(id)
@@ -965,12 +979,17 @@ object NativeTactics {
             return squads.map { saved ->
                 val view = snapshots.getValue(saved.id)
                 if (view.incoming.isNotEmpty()) lastHits[saved.id] = now
+                if (focus == null) {
+                    lastAbove.remove(saved.id)
+                } else if (focus.y > view.center.y + 4) {
+                    lastAbove[saved.id] = now
+                }
                 val situation = CombatSituation(
                     focus != null,
                     // An operation reviewing its losses holds the line it has instead of pushing on;
                     // a squad with a barracks presses on (#57).
                     saved.order == SquadOrder.ATTACK && (!holding || saved.barracks != null),
-                    focus?.y?.let { it > view.center.y + 4 } == true,
+                    focus != null && lastAbove[saved.id]?.let { now - it <= ENEMY_ABOVE_TICKS } == true,
                     view.incoming.isNotEmpty(),
                     view.fighting.size.toDouble() / max(1, view.members.size),
                     1.0 - saved.members.size.toDouble() / max(1, max(view.peakStrength, saved.members.size)),

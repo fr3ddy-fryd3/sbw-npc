@@ -433,6 +433,7 @@ object TacticalDomain {
 /**
  * One squad's fight as [SquadManners] weighs it.
  *
+ * @property higherEnemy the focus stood more than 4 blocks above the squad within the last 10 s.
  * @property reinforced the squad has a barracks that replaces its fallen, so its losses never
  *   make it withdraw (#57).
  * @property movers how many of its men advance by legs ([PositionIntent.legs]) before any
