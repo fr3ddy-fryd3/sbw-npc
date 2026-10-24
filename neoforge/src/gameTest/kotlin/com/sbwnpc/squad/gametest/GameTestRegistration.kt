@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.gametest
 
+import com.sbwnpc.squad.integration.sbw.VehicleRankGameTests
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestGenerator
 import net.neoforged.bus.api.SubscribeEvent
@@ -45,6 +46,7 @@ object GameTestRegistration {
             DroneFlightGameTests::class.java,
             ObserverLookGameTests::class.java,
             VehicleSeatGameTests::class.java,
+            VehicleRankGameTests::class.java,
             MarchRouteGameTests::class.java,
             NoticingGameTests::class.java,
         )
