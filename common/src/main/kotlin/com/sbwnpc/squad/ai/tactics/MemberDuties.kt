@@ -33,7 +33,7 @@ object MemberDuties {
     private fun rule(id: String, applies: (Situation) -> Boolean, duty: (Situation) -> CombatDuty, anchor: (Situation) -> Point3) = Rule(id) { s -> if (applies(s)) DutyChoice(duty(s), anchor(s)) else null }
 
     private val RULES = listOf(
-        rule("elsewhere", { it.inputs.elsewhere }, { CombatDuty.FOLLOW_ORDER }, { it.objectiveOrHere }),
+        rule("elsewhere", { it.inputs.elsewhere || it.inputs.transit }, { CombatDuty.FOLLOW_ORDER }, { it.objectiveOrHere }),
         rule("scout", { it.inputs.scout && it.inputs.order == TacticalOrder.ATTACK }, { CombatDuty.SEARCH }, { requireNotNull(it.inputs.inspect) { "a scout needs a point to inspect" } }),
         // A sentry fights from his height, in defence and in a fight too. Sent to fire from where he
         // stood, a gunner stayed below the tower, and a sentry left it whenever a reported target

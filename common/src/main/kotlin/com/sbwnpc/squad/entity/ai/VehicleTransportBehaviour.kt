@@ -191,7 +191,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
-    private fun combatInterrupted(entity: NpcEntity) = entity.target != null || entity.isAlert() || entity.isSuppressed()
+    private fun combatInterrupted(entity: NpcEntity) =
+        (entity.target != null && !SquadTransit.marching(entity)) || entity.isAlert() || entity.isSuppressed() ||
+            entity.incomingFire.recentPoint(entity.level().gameTime) != null
 
     /** [checkGiveup] must be false when called from [checkExtraStartConditions] (deciding whether to
      *  START a brand new episode) and true from [shouldKeepRunning] (deciding whether an ALREADY
@@ -224,7 +226,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // Taking any mounted man for its own, this put a FOLLOW rider straight back out (#136).
         if (!entity.seatFreeFor(this)) return logEligibility(entity, false) { "another behaviour has his seat" }
         if (entity.vehicle != null) return true // already mounted: DRIVING/RIDING keep going regardless
-        if (com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) return false
+        if (com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) return logEligibility(entity, false) { "tactical position duty takes priority" }
 
         if (combatInterrupted(entity)) {
             return logEligibility(entity, false) {
@@ -232,6 +234,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
         }
         if (entity.diggedIn) return logEligibility(entity, false) { "dug in" }
+        if (entity.movementLockedByCover() || entity.combatLockedByMedic()) return logEligibility(entity, false) { "cover or medic owns movement" }
         // Off to a Supply: the order waits till he's topped up, the ride to it too. Both ran at
         // once, and each took the other off him in turn.
         if (entity.resupplying) return logEligibility(entity, false) { "resupplying" }
@@ -264,8 +267,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // the trip off and freed his seat over and over.
         boatTrips = trips.ifEmpty { boatTrips.takeIf { checkGiveup && targetVehicleId != null }.orEmpty() }
         val dist = entity.position().distanceTo(home)
-        if (dist <= TRANSPORT_DISTANCE_THRESHOLD && boatTrips.isEmpty()) {
-            return logEligibility(entity, false) { "home is only $dist blocks away (threshold $TRANSPORT_DISTANCE_THRESHOLD)" }
+        if (!SquadTransit.distant(squad, entity.level() as ServerLevel) && boatTrips.isEmpty()) {
+            return logEligibility(entity, false) { "squad is within ${SquadTransit.TRANSPORT_DISTANCE} blocks of its objective (this man is $dist blocks away)" }
         }
         if (checkGiveup && phase == Phase.SEEKING && entity.tickCount - seekingStartTick > SEEK_GIVEUP_TICKS) {
             giveupCooldownUntilTick = entity.tickCount + GIVEUP_COOLDOWN_TICKS
@@ -643,7 +646,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         val allAccountedFor = squad == null || squad.members.all { id ->
             if (id == entity.uuid) return@all true
             val member = level.getEntity(id) as? NpcEntity ?: return@all true // dead/unloaded: don't block on it
-            !member.isAlive || member.vehicle != null || member.target != null || member.isAlert() ||
+            !member.isAlive || member.vehicle != null || member.distanceToSqr(vehicle) > SEARCH_RADIUS * SEARCH_RADIUS || combatInterrupted(member) ||
                 // A boat seats few: whoever isn't coming along is swimming, not late.
                 (boat && !member.vehicleTransport)
         }
@@ -1599,7 +1602,6 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
          *  shared, as everyone aboard asks about the same boat. */
         private val bankCache = HashMap<java.util.UUID, kotlin.Pair<Long, Boolean>>()
 
-        private const val TRANSPORT_DISTANCE_THRESHOLD = 100.0
         private const val SEARCH_RADIUS = 60.0
         private const val BOARD_DISTANCE = 3.0
         private const val ARRIVAL_RADIUS = 20.0

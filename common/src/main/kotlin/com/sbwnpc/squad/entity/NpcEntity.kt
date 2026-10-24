@@ -1140,25 +1140,20 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             com.sbwnpc.squad.entity.ai.FollowRideBehaviour(),
             MedicHealBehaviour(),
             com.sbwnpc.squad.entity.ai.SelfTreatBehaviour(),
+            // Keep one journey executor through Idle/Fight changes: a remembered remote contact
+            // must not prevent the squad from boarding or marching to its distant objective.
+            com.sbwnpc.squad.entity.ai.ResupplyBehaviour(),
+            com.sbwnpc.squad.entity.ai.VehicleTransportBehaviour(),
+            SquadOrderBehaviour(),
             // Last: it has to override whatever the behaviours above did with the navigation.
             com.sbwnpc.squad.entity.ai.GrenadeEvadeBehaviour(),
         )
 
-    // Idle: only relevant while there's no ATTACK_TARGET (Fight always outranks Idle). Order here
-    // doesn't change behaviour — InvestigateBehaviour's and SquadOrderBehaviour's own eligibility
-    // checks already exclude each other's cases (see each class's doc comment), reproducing the
-    // old goal-priority order (Investigate=4 beat SquadOrder=5) by hand since Idle behaviours have
-    // no automatic per-Flag exclusivity like GoalSelector did.
-    // VehicleTransportBehaviour sits between them: eligible under the same base conditions as
-    // SquadOrderBehaviour (no target, not alert, has a squad+home) plus "home is far enough to
-    // drive instead of walk" — so it wins over SquadOrderBehaviour whenever both would otherwise
-    // apply, and steps aside for SquadOrderBehaviour once close enough / after arrival.
+    // Investigating remains idle-only. Supply, transport and ordinary orders retain their own
+    // guards in Core, in that priority order, so remembered remote contacts do not cancel a trip.
     override fun getIdleTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
         net.tslat.smartbrainlib.api.core.BrainActivityGroup.idleTasks(
-            com.sbwnpc.squad.entity.ai.ResupplyBehaviour(),
             InvestigateBehaviour(),
-            com.sbwnpc.squad.entity.ai.VehicleTransportBehaviour(),
-            SquadOrderBehaviour(),
         )
 
     // Fight: only while ATTACK_TARGET is set, all running side by side. AnimatableMeleeAttack is
