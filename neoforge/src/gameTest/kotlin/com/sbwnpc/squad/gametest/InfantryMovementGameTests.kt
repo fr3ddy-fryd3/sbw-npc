@@ -74,6 +74,31 @@ object InfantryMovementGameTests {
         march(helper, "farmland-headroom", BlockPos(20, 2, 6), needsClimb = true, blockHeadroom = true, partialFloor = true)
     }
 
+    /**
+     * A man at the bottom of a pit two blocks deep in dirt, with no way out on foot, clears the
+     * wall at eye height into a step and climbs out, never the blocks at his feet.
+     *
+     * In-game 24.10 a stuck medic cleared the block at his feet and then the one at his head, again
+     * and again, and dug a level tunnel into a cave.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 600)
+    fun stuckInADirtPitClimbsOutByAStep(helper: GameTestHelper) {
+        floor(helper)
+        for (x in 0..23) for (z in 0..11) for (y in 1..2) helper.setBlock(BlockPos(x, y, z), Blocks.DIRT)
+        helper.setBlock(PIT, Blocks.AIR)
+        helper.setBlock(PIT.above(), Blocks.AIR)
+        helper.onEachTick {
+            for (side in listOf(PIT.east(), PIT.west(), PIT.north(), PIT.south())) {
+                helper.assertTrue(helper.getBlockState(side).`is`(Blocks.DIRT), "The wall at his feet was dug out at $side")
+            }
+        }
+        // Boxed in, he waits a few seconds of asking for a way before he clears one.
+        march(helper, "dirt-pit", BlockPos(20, 3, 6), needsClimb = true, start = Vec3(PIT.x + 0.5, 1.0, PIT.z + 0.5), stillTicks = 300)
+    }
+
+    private val PIT = BlockPos(3, 1, 6)
+
     private fun floor(helper: GameTestHelper) {
         for (x in 0..23) {
             for (z in 0..11) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
@@ -118,6 +143,7 @@ object InfantryMovementGameTests {
         avoidPowderSnow: Boolean = false,
         preservePowderSnow: Boolean = false,
         start: Vec3 = Vec3(3.5, 1.0, 6.5),
+        stillTicks: Long = 150,
     ) {
         val level = helper.level
         val npc = helper.spawn(ModEntities.NPC.get(), start)
@@ -182,7 +208,7 @@ object InfantryMovementGameTests {
                 progressPosition = npc.position()
                 lastProgress = helper.tick
             }
-            helper.assertTrue(helper.tick - lastProgress < 150 || npc.position().distanceTo(goal) <= 1.5, "MOVE stood still for 150 ticks; see $scenario.csv")
+            helper.assertTrue(helper.tick - lastProgress < stillTicks || npc.position().distanceTo(goal) <= 1.5, "MOVE stood still for $stillTicks ticks; see $scenario.csv")
             if (npc.y >= helper.absolutePos(BlockPos(0, 2, 0)).y && npc.onGround()) climbed = true
             helper.assertTrue(npc.isAlive, "NPC died on a movement-only route")
             if (avoidPowderSnow) helper.assertTrue(!npc.isInPowderSnow, "MOVE entered a powder snow patch despite a dry detour")
