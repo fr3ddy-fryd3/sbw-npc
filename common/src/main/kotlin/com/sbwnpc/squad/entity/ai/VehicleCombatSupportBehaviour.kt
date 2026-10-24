@@ -214,7 +214,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         threatScanTick = entity.tickCount
         val level = entity.level() as? ServerLevel
-        threatCache = level?.let { VehicleTargeting.closestVisibleHostileVehicleOccupant(entity, it, TARGET_SEARCH_RADIUS) }
+        threatCache = level?.let { VehicleTargeting.closestVisibleHostileVehicleOccupant(entity, it, TARGET_SEARCH_RADIUS) { target -> VehicleTargeting.weaponPermits(entity, target) } }
         return threatCache ?: fallbackThreat(entity)
     }
 
@@ -296,8 +296,8 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         val aim = body.boundingBox.center
         sightTick = entity.tickCount
         sightTarget = target.uuid
-        sightClear = DetectionSightline.visible(level, entity.eyePosition, aim, entity) &&
-            !Sightline.blocked(level, entity.eyePosition, aim, entity)
+        sightClear = entity.vehicle?.takeIf(Ports.vehicles::isVehicle)?.let { Ports.vehicles.canAimAt(it, entity, target) }
+            ?: (DetectionSightline.visible(level, entity.eyePosition, aim, entity) && !Sightline.blocked(level, entity.eyePosition, aim, entity))
         return sightClear
     }
 
@@ -305,11 +305,13 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // Only reached with a live threat; while there's simply no free armed vehicle around, don't
         // re-run the box query every tick — a "none" answer is good for a second.
         if (entity.tickCount < nextVehicleSearchTick) return null
+        val target = threat(entity) ?: return null
         val box = AABB.ofSize(entity.position(), SEARCH_RADIUS * 2, SEARCH_RADIUS * 2, SEARCH_RADIUS * 2)
         val found = Ports.vehicles.within(level, box)
             .asSequence()
             .filter { entity.distanceToSqr(it) <= SEARCH_RADIUS_SQR }
             .filter(::isSupportVehicle)
+            .filter { vehicle -> Ports.vehicles.canAimAt(vehicle, entity, target, Ports.vehicles.seating(vehicle).indexOfFirst { it == null }) }
             .minByOrNull { entity.distanceToSqr(it) }
         if (found == null) nextVehicleSearchTick = entity.tickCount + VEHICLE_SEARCH_INTERVAL_TICKS
         return found

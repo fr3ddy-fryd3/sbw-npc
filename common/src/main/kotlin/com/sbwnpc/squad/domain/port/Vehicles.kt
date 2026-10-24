@@ -127,6 +127,9 @@ interface Vehicles {
      *  counts as having ammo. */
     fun seatHasAmmo(vehicle: Entity, passenger: Entity): Boolean
 
+    /** A body shot from the muzzle within the weapon's native limits; [seat] also previews boarding. */
+    fun canAimAt(vehicle: Entity, gunner: Entity, target: LivingEntity, seat: Int = seatOf(vehicle, gunner)): Boolean
+
     /** Points the turret or weapon station [gunner] controls at [target]; null stands it down. */
     fun aimAt(vehicle: Entity, gunner: Entity, target: LivingEntity?)
 

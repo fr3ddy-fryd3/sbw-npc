@@ -81,7 +81,9 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         val directTarget = nearestDirectTarget(entity, level)
         val reconsider = level.gameTime >= nextReallocationTick
         if (reconsider) nextReallocationTick = level.gameTime + REALLOCATION_MIN + entity.random.nextInt(REALLOCATION_JITTER)
-        val target = gunnerNotices(entity, level, computeDesired(entity, level, directTarget, reconsider), previous)
+        val desired = computeDesired(entity, level, directTarget, reconsider)
+        val feasible = if (desired != null && !VehicleTargeting.weaponPermits(entity, desired)) directTarget else desired
+        val target = gunnerNotices(entity, level, feasible, previous)
         // Capture sight loss before target selection can discard the personally observed enemy.
         if (previous != null && entity.lastSeenFire.observed(previous.uuid)) {
             entity.noticeHidden(previous, DetectionSightline.trace(entity, previous))
@@ -113,7 +115,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     private fun gunnerNotices(mob: NpcEntity, level: ServerLevel, desired: LivingEntity?, previous: LivingEntity?): LivingEntity? {
         val vehicle = mob.vehicle ?: return desired
         if (!Ports.vehicles.hasWeaponAt(vehicle, mob)) return desired
-        val kept = previous?.takeIf { it.isAlive && SquadTeams.isHostile(mob, it) }
+        val kept = previous?.takeIf { it.isAlive && SquadTeams.isHostile(mob, it) && VehicleTargeting.weaponPermits(mob, it) }
         val chosen = when {
             desired == null || desired === previous || desired === mob.vehicleAttacker() -> desired
             !DetectionSightline.canSee(mob, desired) -> kept
@@ -182,8 +184,8 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         val armedSeat = mob.vehicle?.let { Ports.vehicles.hasWeaponAt(it, mob) } == true
         if (!armedSeat) return null
         // SBW aims at the vehicle when its passenger is the gunner's target.
-        return VehicleTargeting.closestVisibleHostileVehicleOccupant(mob, level, NpcEntity.DETECTION_RANGE)
-            ?: VehicleTargeting.closestVisibleHostileAircrew(mob, level, NpcEntity.DETECTION_RANGE)
+        return VehicleTargeting.closestVisibleHostileVehicleOccupant(mob, level, NpcEntity.DETECTION_RANGE) { VehicleTargeting.weaponPermits(mob, it) }
+            ?: VehicleTargeting.closestVisibleHostileAircrew(mob, level, NpcEntity.DETECTION_RANGE) { VehicleTargeting.weaponPermits(mob, it) }
     }
 
     private fun retainedDefensiveTarget(mob: NpcEntity): LivingEntity? {
@@ -278,8 +280,13 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     //    raycasts instead of one per hostile in range (dozens, in a big fight, per NPC per scan).
     private fun nearestDirectTarget(mob: NpcEntity, level: ServerLevel): LivingEntity? {
         val ground = nearestGroundTarget(mob, level)
-        val air = VehicleTargeting.closestVisibleHostileAircrew(mob, level, NpcEntity.DETECTION_RANGE)
-        if (air != null) SquadTactics.observe(mob, air)
+        val seenAir = VehicleTargeting.closestVisibleHostileAircrew(mob, level, NpcEntity.DETECTION_RANGE)
+        if (seenAir != null) SquadTactics.observe(mob, seenAir)
+        val air = if (seenAir != null && !VehicleTargeting.weaponPermits(mob, seenAir)) {
+            VehicleTargeting.closestVisibleHostileAircrew(mob, level, NpcEntity.DETECTION_RANGE) { VehicleTargeting.weaponPermits(mob, it) }
+        } else {
+            seenAir
+        }
         if (ground == null || air == null) return ground ?: air
         return if (mob.distanceToSqr(air.vehicle ?: air) < mob.distanceToSqr(ground)) air else ground
     }
@@ -318,6 +325,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             val sighting = DetectionSightline.sight(mob, candidate)
             if (sighting.visibility == DetectionSightline.Visibility.VISIBLE && (!onFoot || noticing.noticed(mob, level, candidate, Vision.offAxis(mob.position(), mob.yHeadRot, candidate.position()), sighting.grassBlocks))) {
                 SquadTactics.observe(mob, candidate)
+                if (!VehicleTargeting.weaponPermits(mob, candidate)) continue
                 visible += candidate
                 if (visible.size >= MAX_SPREAD_CANDIDATES || mob.currentSquad() == null) break
             }

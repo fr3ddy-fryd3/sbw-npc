@@ -13,6 +13,9 @@ import net.minecraft.world.phys.AABB
 
 /** A vehicle is targeted through a hostile occupant because SBW's gunner API accepts LivingEntity targets. */
 object VehicleTargeting {
+    /** Mounted gunners select reachable body shots; other observers keep their normal target choices. */
+    fun weaponPermits(entity: NpcEntity, target: LivingEntity): Boolean = entity.vehicle?.takeIf { Ports.vehicles.hasWeaponAt(it, entity) }?.let { Ports.vehicles.canAimAt(it, entity, target) } ?: true
+
     // Vehicles drive on the ground like everyone else — a box `range` tall in every direction
     // (144 blocks at detection range) walked ~10x the chunk sections it needed to.
     private const val SEARCH_HEIGHT = 24.0
@@ -21,6 +24,7 @@ object VehicleTargeting {
         entity: NpcEntity,
         level: ServerLevel,
         range: Double,
+        accept: (LivingEntity) -> Boolean = { true },
     ): LivingEntity? {
         // From a helicopter the ground is a long way down: search as far as the ground can see it.
         val airborne = isAircrew(entity)
@@ -33,6 +37,20 @@ object VehicleTargeting {
         // thing within 144 blocks: every NPC ran that one every half second, with a handful of
         // vehicles on the map at most. Cheapest filters first; the raycast is done last and only
         // until the first (nearest) visible one — not for every candidate.
+        val occupants = hostileOccupants(entity, level, height, rangeSqr)
+        if (occupants.isEmpty()) return null
+        occupants.sortBy { entity.distanceToSqr(it) }
+        for (occupant in occupants) {
+            if (entity.distanceToSqr(occupant) > rangeSqr) break
+            // Same arc the naked eye gets in SquadTargetSensor — a tank behind you is no more
+            // visible than a rifleman behind you.
+            if (!Vision.inCone(entity.position(), entity.yHeadRot, occupant.position())) continue
+            if (DetectionSightline.canSee(entity, occupant.vehicle!!) && accept(occupant)) return occupant
+        }
+        return null
+    }
+
+    private fun hostileOccupants(entity: NpcEntity, level: ServerLevel, height: Double, rangeSqr: Double): ArrayList<LivingEntity> {
         val occupants = ArrayList<LivingEntity>()
         for (vehicle in vehicles(level)) {
             if (!vehicle.isAlive || vehicle === entity.vehicle) continue
@@ -41,16 +59,7 @@ object VehicleTargeting {
                 if (rider is LivingEntity && rider.isAlive && SquadTeams.isHostile(entity, rider)) occupants += rider
             }
         }
-        if (occupants.isEmpty()) return null
-        occupants.sortBy { entity.distanceToSqr(it) }
-        for (occupant in occupants) {
-            if (entity.distanceToSqr(occupant) > rangeSqr) break
-            // Same arc the naked eye gets in SquadTargetSensor — a tank behind you is no more
-            // visible than a rifleman behind you.
-            if (!Vision.inCone(entity.position(), entity.yHeadRot, occupant.position())) continue
-            if (DetectionSightline.canSee(entity, occupant.vehicle!!)) return occupant
-        }
-        return null
+        return occupants
     }
 
     /**
@@ -62,27 +71,30 @@ object VehicleTargeting {
      * A box that size would walk a lot of chunk sections for every NPC's scan, so each scan just
      * looks through the level's short list of vehicles ([vehicles]).
      */
-    fun closestVisibleHostileAircrew(entity: NpcEntity, level: ServerLevel, groundRange: Double): LivingEntity? {
+    fun closestVisibleHostileAircrew(entity: NpcEntity, level: ServerLevel, groundRange: Double, accept: (LivingEntity) -> Boolean = { true }): LivingEntity? {
         val range = groundRange * AIR_RANGE_FACTOR
         val rangeSqr = range * range
         var best: LivingEntity? = null
         var bestSqr = Double.MAX_VALUE
         for (heli in vehicles(level)) {
-            if (!Helicopters.isHelicopter(heli)) continue
-            if (!heli.isAlive || heli === entity.vehicle) continue
-            if (Math.abs(heli.y - entity.y) > AIR_SEARCH_HEIGHT) continue
             val distSqr = entity.distanceToSqr(heli)
-            if (distSqr > rangeSqr || distSqr >= bestSqr) continue
-            val occupant = heli.passengers.firstOrNull {
-                it is LivingEntity && it.isAlive && SquadTeams.isHostile(entity, it)
-            } as? LivingEntity ?: continue
-            if (!Vision.inCone(entity.position(), entity.yHeadRot, heli.position())) continue
-            // Not hasLineOfSight: vanilla gives up past 128 blocks, well inside this range.
-            if (!DetectionSightline.visible(level, entity.eyePosition, heli.boundingBox.center, entity)) continue
+            if (distSqr >= bestSqr) continue
+            val occupant = visibleAircrew(entity, heli, level, rangeSqr) ?: continue
+            if (!accept(occupant)) continue
             best = occupant
             bestSqr = distSqr
         }
         return best
+    }
+
+    private fun visibleAircrew(entity: NpcEntity, heli: Entity, level: ServerLevel, rangeSqr: Double): LivingEntity? {
+        if (!Helicopters.isHelicopter(heli)) return null
+        if (!heli.isAlive || heli === entity.vehicle) return null
+        if (Math.abs(heli.y - entity.y) > AIR_SEARCH_HEIGHT || entity.distanceToSqr(heli) > rangeSqr) return null
+        val occupant = heli.passengers.firstOrNull { it is LivingEntity && it.isAlive && SquadTeams.isHostile(entity, it) } as? LivingEntity ?: return null
+        if (!Vision.inCone(entity.position(), entity.yHeadRot, heli.position())) return null
+        // Not hasLineOfSight: vanilla gives up past 128 blocks, well inside this range.
+        return occupant.takeIf { DetectionSightline.visible(level, entity.eyePosition, heli.boundingBox.center, entity) }
     }
 
     /** Whether [target] is flying one, for callers that range-check a target they were handed. */
