@@ -171,15 +171,15 @@ class DrivingTest {
     @Test
     fun `a wide hull climbs a slope whose total rise exceeds its step height`() {
         val slope = object : Plain() {
-            override fun height(x: Int, z: Int) = 64 + x.coerceIn(0, 40) * 2
+            override fun height(x: Int, z: Int) = 64 + x.coerceIn(0, 40)
         }
-        val found = plan(slope, Vec3(100.5, 144.0, 0.5), true, at(-10.5))
+        val found = plan(slope, Vec3(100.5, 104.0, 0.5), true, at(-10.5))
         assertTrue(found.complete)
         assertTrue(
-            found.landing.distanceTo(Vec3(100.5, 144.0, 0.5)) <= 20.0,
+            found.landing.distanceTo(Vec3(100.5, 104.0, 0.5)) <= 20.0,
             "a climbable slope became a premature dismount: ${found.landing}",
         )
-        assertTrue(found.trail.any { it.y in 66.0..140.0 })
+        assertTrue(found.trail.any { it.y in 66.0..100.0 })
     }
 
     @Test
@@ -190,5 +190,20 @@ class DrivingTest {
         val medium = Driving(edge, 1.8, 2.25, 2.1, true)
         assertFalse(medium.step(7, 0, 8, 0), "the hull edge would hit a 16 block wall")
         assertTrue(medium.step(7, -3, 8, -3), "the clear road around the cliff remains usable")
+    }
+
+    @Test
+    fun `no more than one step height over two moves, along an axis or a diagonal`() {
+        // Each diagonal move rises two: within the step height, but about 1.4 in 1 sustained.
+        val hill = object : Plain() {
+            override fun height(x: Int, z: Int) = 64 + x + z
+        }
+        val medium = Driving(hill, 1.8, 2.25, 2.1)
+        assertTrue(medium.step(0, 0, 1, 0), "1 in 1 along an axis is a slope the LAV climbs")
+        assertFalse(medium.step(0, 0, 1, 1), "two-block rises one diagonal move after another stalled a LAV in game")
+        val ledge = object : Plain() {
+            override fun height(x: Int, z: Int) = if (x >= 1) 66 else 64
+        }
+        assertTrue(Driving(ledge, 1.8, 2.25, 2.1).step(0, 0, 1, 0), "a single step up after flat ground stays open")
     }
 }

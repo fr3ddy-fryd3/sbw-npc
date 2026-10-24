@@ -68,9 +68,17 @@ class Driving(
         // Step height limits a change while the hull moves, not the total rise across its width.
         // A five-block footprint on a climbable slope can span four blocks of height. Comparing
         // every corner with its middle incorrectly cut that slope into isolated flat patches.
+        // Nor more than one step height over two moves: a step at a time, a hillside of two-block
+        // rises one diagonal move after another (about 1.4 in 1) passed, and a LAV stalled on it in
+        // game; it climbs 1 in 1, which this still lets through along an axis.
+        val px = ax - (bx - ax)
+        val pz = az - (bz - az)
+        val behind = ground.known(px, pz)
         for (dx in -clearance..clearance) {
             for (dz in -clearance..clearance) {
-                if (Math.abs(ground.height(bx + dx, bz + dz) - ground.height(ax + dx, az + dz)) > climb) return false
+                val rise = ground.height(bx + dx, bz + dz)
+                if (Math.abs(rise - ground.height(ax + dx, az + dz)) > climb) return false
+                if (behind && Math.abs(rise - ground.height(px + dx, pz + dz)) > climb) return false
             }
         }
         return true
