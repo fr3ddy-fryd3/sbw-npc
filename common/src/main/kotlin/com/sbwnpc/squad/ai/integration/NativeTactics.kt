@@ -165,9 +165,9 @@ object NativeTactics {
     /** One group of an attack that takes an approach sector: a squad, or a lone squad's manoeuvre group. */
     private data class SectorGroup(val squad: UUID, val manoeuvre: Boolean)
 
-    /** The [post] [FireSlotSight] chose at [searchedAt] for a slot at [slot]; null when none sees the defence. */
-    private class SlotSight(val slot: Point3, val post: Point3?, val searchedAt: Long) {
-        fun answers(anchor: Point3, now: Long) = FireSlotSight.stillAnswers(hypot(slot.x - anchor.x, slot.z - anchor.z), post != null, now - searchedAt)
+    /** The [sighted] post [FireSlotSight] chose at [searchedAt] for a slot at [slot]; null when none sees the defence. */
+    private class SlotSight(val slot: Point3, val sighted: FireSlotSight.Sighted?, val searchedAt: Long) {
+        fun answers(anchor: Point3, now: Long) = FireSlotSight.stillAnswers(hypot(slot.x - anchor.x, slot.z - anchor.z), sighted != null, now - searchedAt)
     }
 
     private class World(val level: ServerLevel) {
@@ -195,7 +195,7 @@ object NativeTactics {
 
         // The sighted post chosen for each man's slot, see [withSight].
         private val slotSights = HashMap<UUID, SlotSight>()
-        fun slotsWithoutSight(members: Collection<UUID>) = members.count { id -> slotSights[id]?.let { it.post == null } == true }
+        fun slotsWithoutSight(members: Collection<UUID>) = members.count { id -> slotSights[id]?.let { it.sighted == null } == true }
         private val sectorsHeld = HashMap<UUID, Boolean>()
 
         // Members on the arc to their sector at the last layout: their intent is not kept once the
@@ -925,15 +925,15 @@ object NativeTactics {
             val now = level.gameTime
             val kept = slotSights[id]?.takeIf { it.answers(proposal.anchor, now) }
             val chosen = if (kept != null) {
-                kept.post
+                kept.sighted
             } else {
-                val post = FireSlotSight.choose(proposal.anchor, defenders, CombatPositionSafety.clearance(role)) { post, enemy ->
+                val sighted = FireSlotSight.choose(proposal.anchor, defenders, CombatPositionSafety.clearance(role)) { post, enemy ->
                     groundAt(post)?.let { feet ->
                         DetectionSightline.visible(level, feet.add(0.0, EYE_HEIGHT, 0.0), Vec3(enemy.x, enemy.y + 1.0, enemy.z), CollisionContext.empty())
                     } == true
-                }?.let { post -> groundAt(post)?.let { Point3(post.x, it.y, post.z) } ?: post }
-                slotSights[id] = SlotSight(proposal.anchor, post, now)
-                if (post == null && DebugFlags.on(LogGroup.ORDER)) {
+                }?.let { found -> found.copy(post = groundAt(found.post)?.let { Point3(found.post.x, it.y, found.post.z) } ?: found.post) }
+                slotSights[id] = SlotSight(proposal.anchor, sighted, now)
+                if (sighted == null && DebugFlags.on(LogGroup.ORDER)) {
                     DebugFlags.log(
                         LogGroup.ORDER,
                         "[htn] operation={} event=slot_no_sight member={} slot={} ground={} clearance={} nearestDefender={}",
@@ -945,9 +945,9 @@ object NativeTactics {
                         defenders.minByOrNull { hypot(it.x - proposal.anchor.x, it.z - proposal.anchor.z) },
                     )
                 }
-                post
+                sighted
             }
-            return if (chosen == null) proposal else proposal.copy(anchor = chosen)
+            return if (chosen == null) proposal else proposal.copy(anchor = chosen.post)
         }
 
         /**
@@ -1120,6 +1120,8 @@ object NativeTactics {
                     val settled = strategyKept && (focus?.distanceTo(plannedContact[member.id] ?: focus) ?: 0.0) < 8
                     val moving = waypoint != null || member.id in wasArcing || bounding
                     val byLegs = ruled.rule in LEG_RULES
+                    // A blind slot brought nearer than the role's clearance lets its man come that near (#93).
+                    val sightClearance = slotSights[member.id]?.sighted?.takeIf { waypoint == null && it.post == proposal.anchor }?.clearance
                     val retained = before?.takeIf { MemberDuties.keeps(it, WantedPost(duty, proposed.point(), requireCover, requireShelter, byLegs), settled, moving) }
                     if (retained != null) {
                         retained
@@ -1143,7 +1145,8 @@ object NativeTactics {
                             requireShelter = requireShelter,
                             minimumHeight = if (duty.heightPost) member.position.y - MemberDuties.HEIGHT_POST_DROP else null,
                             inspection = if (duty == CombatDuty.SEARCH) inspect?.point() else null,
-                            standoff = CombatPositionSafety.clearance(member.role),
+                            standoff = sightClearance?.let { minOf(it, CombatPositionSafety.clearance(member.role)) } ?: CombatPositionSafety.clearance(member.role),
+                            sightClearance = sightClearance,
                             ordered = bounding,
                             legs = byLegs,
                         )

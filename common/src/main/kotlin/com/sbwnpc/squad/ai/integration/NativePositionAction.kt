@@ -50,7 +50,7 @@ internal class NativePositionAction(
     private val policy = object : TacticalPositionPolicy {
         override fun score(view: TacticalSnapshot, task: TacticalTask, point: Vec3, exposure: Int) = exposure * intent.exposureWeight - (point.y - intent.origin.y).coerceIn(-2.0, 8.0) * intent.elevationWeight
         override fun requiresShelter(view: TacticalSnapshot, task: TacticalTask) = intent.requireShelter
-        override fun clearance(role: NpcClass) = CombatPositionSafety.clearance(role, intent.assault)
+        override fun clearance(role: NpcClass) = CombatPositionSafety.clearance(role, intent.assault).let { own -> intent.sightClearance?.let { minOf(it, own) } ?: own }
         override fun candidate(view: TacticalSnapshot, task: TacticalTask, point: Vec3, localAnchor: Vec3): Boolean {
             if (intent.minimumHeight?.let { point.y < it } == true) return false
             if (intent.inspection != null && point.distanceTo(intent.inspection.native()) <= 24 && !DetectionSightline.visible(npc.level() as ServerLevel, point.add(0.0, npc.eyeHeight.toDouble(), 0.0), intent.inspection.native().add(0.0, 1.5, 0.0), npc)) return false

@@ -46,10 +46,12 @@ enum class CombatDuty(
  *   out of it and never fired.
  * @property legs a mover in a fight gets there by legs, from one post on the way to the next,
  *   firing from each before the next rush; see [MemberLeg].
+ * @property sightClearance how near the defence his post may lie when it is nearer than his role's
+ *   clearance: a blind firing-line slot found sight only there (#93). Null keeps the role's own.
  * @property coveredBy the men whose fire covers his rushes: each rush waits to start until one
  *   of them fires ([TacticalFacts.SUPPORT_FIRING]). Empty, he rushes when ready.
  */
-data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null, val elevationWeight: Double = 0.0, val assault: Boolean = false, val standoff: Double = 0.0, val ordered: Boolean = false, val hold: Boolean = false, val legs: Boolean = false, val coveredBy: Set<java.util.UUID> = emptySet()) {
+data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null, val elevationWeight: Double = 0.0, val assault: Boolean = false, val standoff: Double = 0.0, val sightClearance: Double? = null, val ordered: Boolean = false, val hold: Boolean = false, val legs: Boolean = false, val coveredBy: Set<java.util.UUID> = emptySet()) {
     init {
         require(actor.level == AgentLevel.NPC && exposureWeight.isFinite() && exposureWeight >= 0 && elevationWeight.isFinite() && elevationWeight >= 0)
     }
