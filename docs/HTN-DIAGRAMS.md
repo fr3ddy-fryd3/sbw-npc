@@ -81,7 +81,7 @@ flowchart LR
     T3 --> S_G["gain height: attacking an enemy above"]:::case --> D_SG["posts no lower than 2 below him,<br/>higher preferred"]:::duty
     T3 --> S_W["withdraw: incoming fire, 40% lost,<br/>no way to go on, no barracks"]:::case --> D_SW["fall back 48 blocks from the threat"]:::duty
     T3 --> S_B["bound by halves: attacking, able to go on,<br/>no enemy above, not scattered, 4+ movers"]:::case --> D_SB["one half of the movers rushes by legs,<br/>covered by the other's fire, not by shelter;<br/>the other fires from its posts;<br/>swap when each runner did a leg"]:::duty
-    T3 --> S_R["regroup: attacking, not flanking, 4+ men,<br/>a third of them and 2+ scattered"]:::case --> D_SR["move to a rally point 12 blocks behind<br/>until all are back near the squad, 20 s at most"]:::duty
+    T3 --> S_R["regroup: attacking, not flanking, 4+ men,<br/>a third of them and 2+ scattered"]:::case --> D_SR["move to a rally point 12 blocks behind<br/>until all are back near the squad, 20 s at most;<br/>not again for 30 s"]:::duty
     T3 --> S_K["assault men, men moving for their order,<br/>men following the order"]:::case --> D_SK["keep their task"]:::duty
     T3 --> S_AP(["then its approach,<br/>for a squad attacking alone"]):::task
     S_AP --> S_AF["flank: a manoeuvre group can split off,<br/>the squad not scattered or regrouping,<br/>the flank not found blocked lately"]:::case --> D_AF["next layout splits off the<br/>manoeuvre group round the arc"]:::duty

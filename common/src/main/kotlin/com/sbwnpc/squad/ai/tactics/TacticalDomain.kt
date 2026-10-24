@@ -441,12 +441,14 @@ object TacticalDomain {
  * @property scattered a third of its men and at least two, aside from flankers and men who watch
  *   or search away from it on purpose, are farther from it than twice its perimeter radius.
  * @property gathered all those men are within its perimeter radius.
- * @property regrouping it holds [CombatStrategy.REGROUP].
+ * @property regrouping it holds [CombatStrategy.REGROUP], and has for less than 20 s.
+ * @property regroupSpent it has regrouped for 20 s, or stopped regrouping less than 30 s ago:
+ *   it does not regroup now, scattered or not.
  * @property underFire one of its men was hit within the last 13 s or so: [incoming] lasts 3 s
  *   after a hit and this 10 s more. A few distant riflemen hit too seldom to keep [incoming], and a
  *   strategy weighed by it was taken up and dropped every few seconds.
  */
-data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean, val reinforced: Boolean = false, val movers: Int = 0, val flanking: Boolean = false, val scattered: Boolean = false, val gathered: Boolean = false, val regrouping: Boolean = false, val underFire: Boolean = incoming)
+data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean, val reinforced: Boolean = false, val movers: Int = 0, val flanking: Boolean = false, val scattered: Boolean = false, val gathered: Boolean = false, val regrouping: Boolean = false, val regroupSpent: Boolean = false, val underFire: Boolean = incoming)
 
 /**
  * How a squad's strategy methods choose between the [CombatStrategy] entries.

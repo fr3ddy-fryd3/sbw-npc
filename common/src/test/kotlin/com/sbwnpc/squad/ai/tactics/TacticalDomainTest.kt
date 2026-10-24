@@ -211,6 +211,9 @@ class TacticalDomainTest {
         val returning = scattered.copy(scattered = false, regrouping = true)
         assertEquals(CombatStrategy.REGROUP, strategyOf(squadPlan(squadFacts(returning, CombatStrategy.REGROUP))))
         assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(returning.copy(gathered = true), CombatStrategy.REGROUP))))
+        // A regroup that has run its time, or ended lately, gives way however scattered the squad is.
+        assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(scattered.copy(regroupSpent = true), CombatStrategy.REGROUP))))
+        assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(scattered.copy(regroupSpent = true), CombatStrategy.ADVANCE))))
     }
 
     @Test fun `a team under fire with far to go rushes in pairs that cover each other`() {

@@ -170,12 +170,13 @@ private object BoundingOverwatch : SquadStrategy {
  * Only while it does not flank: a manoeuvre group round the flank is far from the rest on purpose.
  * Once begun it goes on until every man is back near the squad ([CombatSituation.gathered]), then
  * the squad chooses again. Ended as soon as it was no longer scattered, the squad spread out
- * again and regrouped over and over.
+ * again and regrouped over and over. It ends after 20 s anyway and does not come back for 30 s
+ * ([CombatSituation.regroupSpent]): a squad that could not gather regrouped until the fight ended.
  */
 private object Regroup : SquadStrategy {
     override val reason = "scattered"
 
-    override fun allowed(situation: CombatSituation) = situation.offensive && !situation.flanking && !situation.gathered && (situation.scattered || situation.regrouping)
+    override fun allowed(situation: CombatSituation) = situation.offensive && !situation.flanking && !situation.gathered && !situation.regroupSpent && (situation.scattered || situation.regrouping)
 
     override fun score(situation: CombatSituation) = SCORE
 

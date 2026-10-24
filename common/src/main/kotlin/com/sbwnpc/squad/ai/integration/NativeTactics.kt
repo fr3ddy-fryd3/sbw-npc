@@ -56,10 +56,14 @@ object NativeTactics {
     private const val UNDER_FIRE_TICKS = 200L
 
     /**
-     * A regroup goes on this long at most once nothing scatters the squad any more, 20 s. A man
-     * who found no post round the rally, left to his order, kept it from gathering for good.
+     * A regroup goes on this long at most, 20 s. A man who found no post round the rally, left to
+     * his order, kept it from gathering for good, and a squad still scattered regrouped to the end
+     * of the fight.
      */
     private const val REGROUP_MAX_TICKS = 400L
+
+    /** How long after a regroup ended the squad does not regroup again, 30 s. */
+    private const val REGROUP_COOLDOWN_TICKS = 600L
 
     /** How far behind its centre, away from the enemy, a regrouping squad gathers. */
     private const val REGROUP_PULLBACK = 12.0
@@ -222,6 +226,9 @@ object NativeTactics {
         // When a man of each squad was last hit, see CombatSituation.underFire.
         private val lastHits = HashMap<UUID, Long>()
 
+        // When each squad last stopped regrouping, see [CombatSituation.regroupSpent].
+        private val regroupEnds = HashMap<UUID, Long>()
+
         /** The last bound logged for each following squad in a fight. */
         private val followBeats = HashMap<UUID, Long>()
         private val allocationOrigins = HashMap<UUID, Point3>()
@@ -378,6 +385,7 @@ object NativeTactics {
             val strategy = parts.getOrNull(1)?.let(SquadManners::of) ?: return
             val old = strategies[squad]?.first
             if (old == strategy) return
+            if (old == CombatStrategy.REGROUP) regroupEnds[squad] = now
             strategies[squad] = strategy to now
             val scores = situations[squad]?.let { situation -> CombatStrategy.entries.filter { it.rules.allowed(situation) }.associate { it.name to "%.2f".format(it.rules.score(situation)) } }
             DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=strategy from={} to={} scores={} situation={}", squad, old, strategy, scores, situations[squad])
@@ -479,6 +487,7 @@ object NativeTactics {
                     boundTurns.remove(id)
                     rallies.remove(id)
                     lastHits.remove(id)
+                    regroupEnds.remove(id)
                     approaches.remove(id)
                     flankable.remove(id)
                     flankBlockedAt.remove(id)
@@ -1078,6 +1087,8 @@ object NativeTactics {
                         scattered = distances.size >= REGROUP_MIN_MEN && distances.count { it > 2 * radius }.let { it >= REGROUP_MIN_SCATTERED && it * 3 >= distances.size },
                         gathered = distances.all { it <= radius },
                         regrouping = strategy == CombatStrategy.REGROUP && strategies[saved.id]!!.second + REGROUP_MAX_TICKS > now,
+                        regroupSpent = (strategy == CombatStrategy.REGROUP && strategies[saved.id]!!.second + REGROUP_MAX_TICKS <= now) ||
+                            regroupEnds[saved.id]?.let { now - it < REGROUP_COOLDOWN_TICKS } == true,
                     )
                 }
                 updateBoundTurn(saved.id, movers, view, focus, now)
