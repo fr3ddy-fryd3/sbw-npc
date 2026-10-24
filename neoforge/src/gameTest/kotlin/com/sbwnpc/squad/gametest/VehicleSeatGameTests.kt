@@ -5,6 +5,8 @@ import com.sbwnpc.squad.domain.port.VehicleModel
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.VehicleTransportBehaviour
 import com.sbwnpc.squad.entity.ai.VehicleTransportClaims
+import com.sbwnpc.squad.integration.sbw.emptyVehicleCargo
+import com.sbwnpc.squad.integration.sbw.overheatVehicleGun
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.npc.TransportVehicle
@@ -97,6 +99,45 @@ object VehicleSeatGameTests {
         }
     }
 
+    /** A permanent driver keeps a MOVE order instead of repeatedly entering infantry dismount. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 180, batch = "vehicle-crew-contact")
+    fun permanentDriverContinuesMoveUnderContact(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "vehicle-crew-contact")
+        val manager = SquadManager.get(helper.level)
+        val lav = park(helper, TransportVehicle.LAV_150, Vec3(22.5, 1.0, 20.5))
+        emptyVehicleCargo(lav)
+        val driver = scene.spawn(Vec3(20.5, 1.0, 20.5)).also { it.isNoAi = true }
+        driver.assignedVehicleId = lav.uuid
+        helper.assertTrue(driver.startRiding(lav, true), "The permanent driver could not board")
+        helper.assertTrue(!Ports.vehicles.seatHasAmmo(lav, driver), "This regression needs a driver whose gun cannot engage")
+        val enemy = scene.enemy(Vec3(40.5, 1.0, 65.5)).also { it.isNoAi = true }
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(driver.uuid))
+        manager.issueOrderAt(helper.level, squad.id, SquadOrder.MOVE, helper.absolutePos(BlockPos(22, 1, 200)))
+        val (start, tick, stop) = listOf("start", "tick", "stop").map { name ->
+            VehicleTransportBehaviour::class.java.getDeclaredMethod(name, NpcEntity::class.java).apply { isAccessible = true }
+        }
+        val trip = VehicleTransportBehaviour()
+        start.invoke(trip, driver)
+        scene.onClose = {
+            stop.invoke(trip, driver)
+            manager.deleteSquad(helper.level, squad.id)
+            lav.discard()
+        }
+        helper.onEachTick {
+            BrainUtils.setTargetOfEntity(driver, enemy)
+            driver.sensing.tick()
+            tick.invoke(trip, driver)
+            if (helper.tick >= 120) {
+                val here = helper.relativeVec(lav.position())
+                helper.assertTrue(driver.vehicle === lav, "The permanent driver abandoned its vehicle")
+                helper.assertTrue(here.z > 35, "Contact kept stopping the permanent crew before its MOVE objective: $here")
+                scene.result("PASS", "tick=${helper.tick} position=$here")
+                helper.succeed()
+            }
+        }
+    }
+
     /** Arrival under ATTACK keeps the turret covered while the other riders get out. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "vehicle-arrival")
@@ -125,6 +166,8 @@ object VehicleSeatGameTests {
             if (helper.tick == 2L) {
                 val at = helper.absoluteVec(Vec3(145.5, 1.0, 20.5))
                 lav.moveTo(at.x, at.y, at.z, 0f, 0f)
+                overheatVehicleGun(lav, gunner)
+                helper.assertTrue(Ports.vehicles.seatHasAmmo(lav, gunner) && !Ports.vehicles.canFire(lav, gunner), "The arriving gun must be cooling with ammunition left")
             }
             if (helper.tick < 60) men.forEach { BrainUtils.setTargetOfEntity(it, enemy) }
             if (helper.tick == 60L) {

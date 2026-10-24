@@ -1411,6 +1411,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun engageVehicleThreat(entity: NpcEntity, vehicle: Entity, threat: LivingEntity): Boolean {
+        // Spawned crews keep their seats. Infantry dismount would send them straight to HOLDING
+        // and back to DRIVING, stopping the same trip again every few ticks while contact lasts.
+        if (isPermanentCrew(entity, vehicle)) return false
         // ATTACK drives through contact until arrival, when the gun covers the men getting out.
         // Falling back keeps going: stopping to fight is the opposite of getting away.
         val order = entity.currentSquad()?.order
@@ -1444,7 +1447,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         val gunner = vehicle.passengers.asSequence()
             .filterIsInstance<NpcEntity>()
-            .firstOrNull { Ports.vehicles.canFire(vehicle, it) }
+            .firstOrNull { Ports.vehicles.seatHasAmmo(vehicle, it) }
             ?: return null
         return gunner.takeIf { VehicleTransportClaims.claimCombatGunner(vehicle.uuid, it.uuid) }
     }
