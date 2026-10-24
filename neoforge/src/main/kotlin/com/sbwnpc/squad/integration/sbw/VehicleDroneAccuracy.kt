@@ -47,8 +47,8 @@ object VehicleDroneAccuracy {
         if (shooter !is NpcEntity || shooter.vehicle !== vehicle) return parameters
         val target = npcTarget(vehicle, shooter, parameters)
         // The rank's scatter first: SBW lays a turret on a perfect lead, so the weapon's own spread is
-        // all the error a gunner has (#146). A drone is then harder still, as for anyone.
-        val ranked = if (SbwVehicles.isTurretGunner(vehicle, shooter)) TurretGunnerAccuracy.spread(parameters.spread, shooter.npcRank) else parameters.spread
+        // all the error a gunner has. Tank and passenger weapons use this same shot path (#174).
+        val ranked = TurretGunnerAccuracy.spread(parameters.spread, shooter.npcRank)
         val spread = DroneCombat.spreadForTarget(ranked * DarkAim.spreadFactor(vehicle.level(), target), target)
         // One shot in SPREAD_SAMPLE: a turret fires several times a second.
         if (ranked != parameters.spread && shooter.random.nextInt(SPREAD_SAMPLE) == 0) {

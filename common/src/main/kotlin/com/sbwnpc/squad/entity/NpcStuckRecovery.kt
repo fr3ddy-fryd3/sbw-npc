@@ -4,6 +4,7 @@ import com.sbwnpc.squad.ModIdentity
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.ai.SquadMarch
 import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import com.sbwnpc.squad.entity.ai.WalkingClearance
 import net.minecraft.core.BlockPos
@@ -88,7 +89,8 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
         val navigation = npc.navigation as? VehicleAwareNavigation
         // Recovery must keep a jump's momentum and must continue to the original goal, not its blocked step.
         if (navigation?.canPlan == false) return
-        val destination = path?.target ?: nowhereToward ?: BlockPos.containing(toward)
+        // Boxed in, the finished path's target is where he stands; the way out leads to the goal.
+        val destination = nowhereToward.takeIf { !walkingInPlace } ?: path?.target ?: nowhereToward ?: BlockPos.containing(toward)
         val dx = toward.x - npc.x
         val dz = toward.z - npc.z
         val len = kotlin.math.sqrt(dx * dx + dz * dz)
@@ -96,27 +98,33 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
         val candidates = WalkingClearance.clearingCandidates(level, npc, npc.boundingBox, direction) +
             listOfNotNull(WalkingClearance.lowerCrownLayer(level, npc, npc.boundingBox))
         val supports = WalkingClearance.supports(level, npc, npc.boundingBox)
-        val pos = if (Ports.loader.canGrief(level, npc)) {
-            candidates.firstOrNull { candidate ->
-                val state = level.getBlockState(candidate)
-                val hardness = state.getDestroySpeed(level, candidate)
-                (candidate !in supports || candidate == WalkingClearance.lowerCrownLayer(level, npc, npc.boundingBox)) &&
-                    state.fluidState.isEmpty && level.getBlockEntity(candidate) == null &&
-                    hardness >= 0f && hardness <= SOFT_BLOCK_HARDNESS && !state.requiresCorrectToolForDrops()
-            }
-        } else {
-            null
+        val crown = WalkingClearance.lowerCrownLayer(level, npc, npc.boundingBox)
+        // Only what stands at eye height and above in front of him is cleared: a wall two blocks
+        // high becomes a step he climbs, and a way dug like that can only rise towards the
+        // surface. Clearing the block at his feet as well dug a level tunnel instead: a medic broke
+        // into a cave that way and on through it towards his patient 150 blocks away (in-game
+        // 24.10). A step whose upper blocks are not all clearable is left whole: half cleared it
+        // is no way out either.
+        val raised = candidates.filter { it.y > npc.blockPosition().y && it !in supports }
+        val cleared = when {
+            !Ports.loader.canGrief(level, npc) -> emptyList()
+            raised.isNotEmpty() -> if (raised.all { clearable(level, it) }) raised else emptyList()
+            crown != null && clearable(level, crown) -> listOf(crown)
+            else -> emptyList()
         }
         // A new search must not reuse the path that has just failed to move him.
         stuckSinceTick = -1
         nowhereSinceTick = -1
-        if (pos != null) {
-            val state = level.getBlockState(pos)
+        if (cleared.isNotEmpty()) {
             npc.swing(InteractionHand.MAIN_HAND)
+            SquadMarch.forgetAfterClearing(npc)
+        }
+        cleared.forEach { pos ->
+            val state = level.getBlockState(pos)
             level.destroyBlock(pos, true, npc)
             DebugFlags.log(LogGroup.STUCK, "{} broke {} at {} to get unstuck", npc.uuid, state.block.descriptionId, pos)
         }
-        if (pos == null) navigation?.rejectStuckStep()
+        if (cleared.isEmpty()) navigation?.rejectStuckStep()
         // Relax descent only to get off a crown. A blocked upward step is no reason to drop
         // several blocks below the route, and clearing dirt underfoot excavated deeper traps.
         if (supports.any { WalkingClearance.leaves(level.getBlockState(it)) }) npc.allowRecoveryDescent()
@@ -145,6 +153,13 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
                 candidates.take(4).map { "${BuiltInRegistries.BLOCK.getKey(level.getBlockState(it).block)} at $it" },
             )
         }
+    }
+
+    private fun clearable(level: ServerLevel, pos: BlockPos): Boolean {
+        val state = level.getBlockState(pos)
+        val hardness = state.getDestroySpeed(level, pos)
+        return state.fluidState.isEmpty && level.getBlockEntity(pos) == null &&
+            hardness >= 0f && hardness <= SOFT_BLOCK_HARDNESS && !state.requiresCorrectToolForDrops()
     }
 
     private companion object {

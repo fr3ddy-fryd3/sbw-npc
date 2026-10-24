@@ -18,9 +18,9 @@ object FollowFormation {
     /** How far ahead of a walking player the squad's middle is. */
     const val LEAD = 5.0
 
-    /** Nearest and widening rings the men stand on. */
-    private const val INNER_RADIUS = 3.5
-    private const val RING_STEP = 2.5
+    /** Nearest and widening rings the men stand on: half as wide again after the owner's check (24.10). */
+    private const val INNER_RADIUS = 5.25
+    private const val RING_STEP = 3.75
     private const val RINGS = 3
 
     /** Successive men are this far round apart, so neighbours land on different sides. */
@@ -37,5 +37,6 @@ object FollowFormation {
     /** Whether [from] is close enough to the player for the men to hold slots instead of walking to him. */
     fun near(from: Point3, player: Point3): Boolean = hypot(from.x - player.x, from.z - player.z) <= NEAR_DISTANCE
 
-    const val NEAR_DISTANCE = 16.0
+    /** A little past the outer ring and the lead, so a man in his slot counts as near. */
+    const val NEAR_DISTANCE = 20.0
 }

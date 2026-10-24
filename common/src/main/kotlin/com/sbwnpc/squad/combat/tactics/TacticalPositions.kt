@@ -7,8 +7,10 @@ import com.sbwnpc.squad.entity.NpcPosture
 import com.sbwnpc.squad.util.Terrain
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.tags.BlockTags
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.level.block.LeavesBlock
 import net.minecraft.world.level.pathfinder.Path
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
@@ -173,6 +175,13 @@ object TacticalPositions {
         }
         val candidate = Terrain.feetAt(level, raw, if (context.overwatch) 9 else 12) {
             if (!level.noCollision(entity, entity.getDimensions(entity.pose).makeBoundingBox(it))) {
+                false
+            } else if (context.overwatch && onLeaves(level, it)) {
+                // A canopy is no post, and through it the column finds the floor below. Counted,
+                // every treetop of a forest was an exposed raised floor whose neighbourhood was
+                // refined for a parapet: 9800 probes, 20 s before a sentry took a built platform
+                // (in-game 24.10), and his first routes went to the unreachable crowns.
+                search.reject("leaves")
                 false
             } else if (context.overwatch && !search.floorProtection.getOrPut(it) { protected(entity, task, it, context.hulls) }) {
                 // An exposed roof must not hide a sheltered, walkable floor below it.
@@ -429,6 +438,11 @@ object TacticalPositions {
         return result
     }
 
+    private fun onLeaves(level: Level, feet: Vec3): Boolean {
+        val state = level.getBlockState(BlockPos.containing(feet.x, feet.y - FLOOR_DEPTH, feet.z))
+        return state.block is LeavesBlock || state.`is`(BlockTags.LEAVES)
+    }
+
     fun pathToCandidates(entity: NpcEntity, points: List<Vec3>, allowDetour: Boolean = false): Path? =
         TacticalBudget.measure(entity) {
             val targets = points.mapTo(LinkedHashSet()) { PositionPaths.walkingNode(it) }
@@ -541,6 +555,9 @@ object TacticalPositions {
     /** Candidates farther from the searching NPC are skipped; a distant post needs an approach first. */
     const val SEARCH_REACH = 48.0
     private const val MAX_PROBES_PER_TICK = 24
+
+    /** Just under the feet, inside whatever block they stand on, full or partial. */
+    private const val FLOOR_DEPTH = 0.01
     private const val DENSE_CANDIDATE_BATCH = 16
 
     /** How far out from a post the grass round it is looked at, see [clearOfGrass]. */

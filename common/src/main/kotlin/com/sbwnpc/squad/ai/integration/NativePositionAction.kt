@@ -54,7 +54,7 @@ internal class NativePositionAction(
         override fun candidate(view: TacticalSnapshot, task: TacticalTask, point: Vec3, localAnchor: Vec3): Boolean {
             if (intent.minimumHeight?.let { point.y < it } == true) return false
             if (intent.inspection != null && point.distanceTo(intent.inspection.native()) <= 24 && !DetectionSightline.visible(npc.level() as ServerLevel, point.add(0.0, npc.eyeHeight.toDouble(), 0.0), intent.inspection.native().add(0.0, 1.5, 0.0), npc)) return false
-            return intent.duty !in setOf(CombatDuty.MOVE, CombatDuty.SEARCH) || advances(npc.position(), task.anchor, localAnchor, point)
+            return !intent.duty.advancing || advances(npc.position(), task.anchor, localAnchor, point)
         }
         override fun route(view: TacticalSnapshot, point: Vec3) = intent.minimumHeight?.let { point.y >= it } != false
     }
@@ -62,7 +62,9 @@ internal class NativePositionAction(
     init {
         // A sentry that left to resupply comes back to his own platform. Without it the fresh
         // search started again from the ground and settled on another post (#86).
-        if (task.job == TacticalJob.OVERWATCH && heldPost != null && stillServes(heldPost)) task.position = heldPost.post
+        // A hold searches no post, his height post included.
+        val returning = task.job == TacticalJob.OVERWATCH && !intent.hold
+        if (returning && heldPost != null && stillServes(heldPost)) task.position = heldPost.post
     }
 
     /** Only for the same anchor: a new order's post must come from a new search. */
@@ -85,12 +87,18 @@ internal class NativePositionAction(
     val assignment get() = NativeAssignment(task.job, task.anchor, task.focus, task.position, task.localFirePost, task.localFireRecovery)
     fun reached(): Boolean =
         task.position?.let { FiringPostArrival.reached(npc.position(), it) } == true &&
-            (intent.duty !in setOf(CombatDuty.MOVE, CombatDuty.SEARCH) || task.position!!.distanceTo(task.anchor) <= 4) &&
+            (!intent.duty.advancing || task.position!!.distanceTo(task.anchor) <= 4) &&
             (intent.inspection?.let { DetectionSightline.visible(npc.level() as ServerLevel, npc.eyePosition, it.native().add(0.0, 1.5, 0.0), npc) } != false)
+
+    /** He stands on the post this action found, the anchor's or one on the way to it. */
+    fun atPost(): Boolean = task.position?.let { FiringPostArrival.reached(npc.position(), it) } == true
+
+    // Where this action found him, from which a leg is measured.
+    private val legStart = npc.position()
 
     override fun start(now: Long): ActionUpdate {
         lastProgress = now
-        DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=post_action_started duty={} job={} anchor={} focus={}", npc.uuid, intent.duty, task.job, task.anchor, task.focus)
+        DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=post_action_started duty={} job={} anchor={} focus={} hold={}", npc.uuid, intent.duty, task.job, task.anchor, task.focus, intent.hold)
         return update(now)
     }
     override fun tick(now: Long) = update(now)
@@ -107,7 +115,7 @@ internal class NativePositionAction(
     private fun update(now: Long): ActionUpdate {
         deferredAt?.let { lastProgress += now - it }
         deferredAt = null
-        if (intent.duty == CombatDuty.FOLLOW_ORDER) return ActionUpdate.Running
+        if (!intent.commandsMovement) return ActionUpdate.Running
         // Gone with its squad (disbanded, deleted) while the plan still ran: fail, never throw (#64).
         val view = snapshot() ?: return ActionUpdate.Failed("no_squad_view")
         if (pendingStart) {
@@ -132,7 +140,7 @@ internal class NativePositionAction(
         if (path != null && path === task.navigationPath && !path.isDone && !TacticalClearance.permitsPath(policy.clearance(npc.npcClass), npc.position(), path, view)) invalidate(now, "path_not_permitted")
         if (reached()) {
             releasePath()
-            if (npc.target == null && intent.duty in setOf(CombatDuty.REAR_GUARD, CombatDuty.OBSERVE, CombatDuty.SEARCH)) {
+            if (npc.target == null && intent.duty.watching) {
                 val direction = intent.focus?.native() ?: intent.anchor.native().add(npc.lookAngle.scale(8.0))
                 npc.lookControl.setLookAt(direction.x, direction.y + 1.5, direction.z)
             }
@@ -164,7 +172,14 @@ internal class NativePositionAction(
             lastProgress = now
         }
         if (FiringPostArrival.reached(npc.position(), destination)) {
-            if (intent.duty in setOf(CombatDuty.MOVE, CombatDuty.SEARCH) && destination.distanceTo(task.anchor) > 4) {
+            if (intent.duty.advancing && destination.distanceTo(task.anchor) > 4) {
+                // A leg of an advance by legs ends here: he fires from this post before the next rush.
+                // A post a few steps on is passed: a pause every two blocks crawled the attack.
+                if (intent.boundsByLegs && destination.distanceTo(legStart) >= MIN_LEG) {
+                    releasePath()
+                    DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=leg_post_reached position={} toAnchor={}", npc.uuid, destination, "%.0f".format(destination.distanceTo(task.anchor)))
+                    return ActionUpdate.Completed(listOf(ActionEvidence("leg_post_arrival", now, "${npc.uuid}:$destination")))
+                }
                 invalidate(now, "intermediate_reached")
                 return ActionUpdate.Running
             }
@@ -200,7 +215,7 @@ internal class NativePositionAction(
             releaseLook()
             return
         }
-        if (intent.duty !in setOf(CombatDuty.REAR_GUARD, CombatDuty.OBSERVE, CombatDuty.SEARCH) || !reached()) return
+        if (!intent.duty.watching || !reached()) return
         val sweep = glance()
         val watching = intent.focus?.native()?.let { focusGaze(it, sweep) } ?: idleGaze(sweep)
         val tracker = net.minecraft.world.entity.ai.behavior.BlockPosTracker(net.minecraft.core.BlockPos.containing(watching))
@@ -292,7 +307,7 @@ internal class NativePositionAction(
 
             next.actor != intent.actor || next.duty != intent.duty -> "duty_changed"
 
-            next.inspection != intent.inspection -> "post_kind_changed"
+            next.inspection != intent.inspection || next.hold != intent.hold || next.legs != intent.legs -> "post_kind_changed"
 
             // GAIN_HEIGHT sets the floor from where the man stands now, so it moved with every
             // step up or down a slope and threw away a post that was still high enough.
@@ -327,7 +342,7 @@ internal class NativePositionAction(
 
     private fun servedBy(next: PositionIntent): Boolean {
         val anchor = dry(next.anchor)
-        if (next.duty in setOf(CombatDuty.MOVE, CombatDuty.SEARCH)) return anchor.distanceTo(task.anchor) <= 4.0
+        if (next.duty.advancing) return anchor.distanceTo(task.anchor) <= 4.0
         return task.position?.let { TacticalFirePosts.withinPost(anchor, it, recovery = true) } ?: (anchor.distanceTo(task.anchor) <= CombatPosition.LOCAL_MOVE_RADIUS)
     }
 
@@ -356,6 +371,9 @@ internal class NativePositionAction(
     }
 
     internal companion object {
+        /** The shortest leg of an advance by legs; a nearer post on the way is passed without a pause. */
+        private const val MIN_LEG = 8.0
+
         /** How far ahead an observer with no focus watches. */
         private const val IDLE_GAZE_DISTANCE = 8.0
 

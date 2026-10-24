@@ -84,6 +84,17 @@ class ApproachSectorsTest {
         assertEquals(null, ApproachSectors.arcWaypoint(objective, Point3(86.0, 64.0, -50.0), sector, 100.0))
     }
 
+    @Test fun `a man already off the arc goes back onto it only well off his sector`() {
+        val sector = 0.0
+        // 45 degrees off: a man still measuring takes the arc, one already making for his post does not.
+        val at = Point3(kotlin.math.cos(Math.toRadians(45.0)) * 150.0, 64.0, kotlin.math.sin(Math.toRadians(45.0)) * 150.0)
+        assertTrue(ApproachSectors.arcWaypoint(objective, at, sector, 100.0) != null)
+        assertEquals(null, ApproachSectors.arcWaypoint(objective, at, sector, 100.0, ApproachSectors.ARC_RESUME_SLACK))
+        // 60 degrees off, he goes back onto it.
+        val far = Point3(75.0, 64.0, kotlin.math.sqrt(3.0) * 75.0)
+        assertTrue(ApproachSectors.arcWaypoint(objective, far, sector, 100.0, ApproachSectors.ARC_RESUME_SLACK) != null)
+    }
+
     @Test fun `twenty eight squads ordered together get their sectors at once`() {
         // In-game 21.10: one ATTACK for 28 squads froze the server in the sector search (#140).
         val squads = (0 until 28).associate { "s$it" to Point3(60.0 + it, 64.0, (it - 14) * 9.0) }

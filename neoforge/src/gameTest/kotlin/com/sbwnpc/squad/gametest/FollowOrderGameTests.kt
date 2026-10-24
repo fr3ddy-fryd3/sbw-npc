@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.gametest
 
+import com.sbwnpc.squad.combat.FollowFormation
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.SquadManager
@@ -214,12 +215,12 @@ object FollowOrderGameTests {
             val beat = helper.level.gameTime / com.sbwnpc.squad.ai.tactics.OperationTactics.BOUND_TICKS
             men.filter { it.isAlive && com.sbwnpc.squad.combat.tactics.SquadTactics.task(it)?.job == com.sbwnpc.squad.combat.tactics.TacticalJob.ADVANCE }
                 .forEach { ranOn.getOrPut(it.uuid) { HashSet() } += beat }
-            val near = men.count { it.isAlive && it.position().distanceTo(owner.position()) <= 16.0 }
+            val near = men.count { it.isAlive && it.position().distanceTo(owner.position()) <= FollowFormation.NEAR_DISTANCE }
             if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} near=$near ran=${ranOn.mapValues { it.value.size }.values} enemyAlive=${enemy.isAlive}")
             if (helper.tick - since >= 600) {
                 val beats = ranOn.values.flatten().toSet()
                 helper.assertTrue(ranOn.size >= 3 && beats.size >= 2, "No bounding: runners ${ranOn.size} on ${beats.size} bounds")
-                helper.assertTrue(near >= 4, "The squad did not keep up with its player: $near of ${men.size} within 16")
+                helper.assertTrue(near >= 4, "The squad did not keep up with its player: $near of ${men.size} within ${FollowFormation.NEAR_DISTANCE}")
                 scene.result("PASS", "near=$near runners=${ranOn.size} bounds=${beats.size}")
                 helper.succeed()
             }
