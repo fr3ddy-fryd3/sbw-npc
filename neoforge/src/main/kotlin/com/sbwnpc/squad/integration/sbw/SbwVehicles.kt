@@ -291,12 +291,7 @@ object SbwVehicles : Vehicles {
             vehicle.leftInputDown = left
             return Steering(right, left, "$detail pivot")
         }
-        // Once backing, it backs on until the way is well inside a sharp turn. Switched to forward
-        // steering at a fixed angle while still rolling backwards, the forward wheel angle turned
-        // it back past that angle again: it chattered between the two and reversed some 50 blocks
-        // without turning (in-game 23.10).
-        val backing = forwardSpeed < -REVERSING_SPEED && Math.abs(diff) > BACKING_EXIT_TURN
-        if ((Math.abs(diff) > REVERSE_TURN || backing) && roomBehind(vehicle)) {
+        if (backsRound(vehicle, diff, forwardSpeed)) {
             // Turning back on itself: backing round, the wheels over the other way, then on forward.
             right = diff < 0
             left = diff > 0
@@ -330,9 +325,20 @@ object SbwVehicles : Vehicles {
         // the route point; heading alone understeers a short bend before the hull hits it.
         // Past a right angle the circle no longer reaches the point ahead: sin falls back towards
         // zero, and a hull with the point straight behind and no room to back drove straight on.
-        val bend = if (Math.abs(diff) >= 90.0) Math.signum(diff) else Math.sin(Math.toRadians(diff))
+        val bend = if (Math.abs(diff) >= RIGHT_ANGLE) Math.signum(diff) else Math.sin(Math.toRadians(diff))
         val curvature = 2.0 * bend / distance.coerceAtLeast(1.0)
         return (-Math.toDegrees(curvature) / WHEEL_YAW_PER_BLOCK).toFloat().coerceIn(-WHEEL_RUDDER_LIMIT, WHEEL_RUDDER_LIMIT)
+    }
+
+    /**
+     * Whether a wheeled vehicle [diff] degrees off its way backs round. Once backing, it backs on
+     * until the way is well inside a sharp turn: switched to forward steering at a fixed angle
+     * while still rolling backwards, the forward wheel angle turned it back past that angle again,
+     * and it chattered between the two and reversed some 50 blocks without turning (in-game 23.10).
+     */
+    private fun backsRound(vehicle: VehicleEntity, diff: Double, forwardSpeed: Double): Boolean {
+        val backing = forwardSpeed < -REVERSING_SPEED && Math.abs(diff) > BACKING_EXIT_TURN
+        return (Math.abs(diff) > REVERSE_TURN || backing) && roomBehind(vehicle)
     }
 
     /** Ground to back onto behind the hull: nothing more than a step up or a drop it could climb back. */
@@ -566,6 +572,9 @@ object SbwVehicles : Vehicles {
     // and brakes above TURN_SPEED.
     private const val CREEP_SPEED = 0.12
     private const val TURN_SPEED = 0.25
+
+    // Past this heading error (degrees) the route point is behind the wheels' circle: full lock.
+    private const val RIGHT_ANGLE = 90.0
 
     // Backing round, a wheeled vehicle backs on until its heading error (degrees) is below this.
     private const val BACKING_EXIT_TURN = 30.0
