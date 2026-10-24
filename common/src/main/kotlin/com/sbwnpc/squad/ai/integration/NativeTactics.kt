@@ -171,6 +171,10 @@ object NativeTactics {
         // arc ends, or they would stay on its last waypoint.
         private val arcing = HashSet<UUID>()
 
+        // Members of an attack measured for the arc and not on it: they need
+        // [ApproachSectors.ARC_RESUME_SLACK] more to be sent onto it.
+        private val offArc = HashSet<UUID>()
+
         // Per squad attacking alone: the members it sends round a flank, see [approachBearings].
         private val manoeuvres = HashMap<UUID, Set<UUID>>()
         private val boundTraces = HashMap<UUID, Map<UUID, ClosingPost>>()
@@ -620,6 +624,7 @@ object NativeTactics {
                 formationDuties.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 plannedContact.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 arcing.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
+                offArc.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 teamAllocators.keys.removeIf { manager.get(it) == null }
                 manoeuvres.keys.removeIf { manager.get(it) == null }
                 retiredAssignments.forEach(ledger::forget)
@@ -934,11 +939,13 @@ object NativeTactics {
                 val bounders = attacks[operation]?.bounders.orEmpty()
                 members.filter { it.id !in bounders }.mapNotNull { member ->
                     val post = proposals.getValue(member.id).anchor
-                    ApproachSectors.arcWaypoint(objective, member.position.point(), bearings.getValue(member.id), hypot(post.x - objective.x, post.z - objective.z))?.let { member.id to it }
+                    val slack = if (member.id in offArc) ApproachSectors.ARC_RESUME_SLACK else 0.0
+                    ApproachSectors.arcWaypoint(objective, member.position.point(), bearings.getValue(member.id), hypot(post.x - objective.x, post.z - objective.z), slack)?.let { member.id to it }
                 }.toMap()
             }
             val wasArcing = members.filter { it.id in arcing }.mapTo(HashSet()) { it.id }
             members.forEach { if (it.id in waypoints) arcing += it.id else arcing -= it.id }
+            members.forEach { if (it.id in waypoints || it.id !in bearings) offArc -= it.id else offArc += it.id }
             // A sector is held once at most half its ready men are still on the arc.
             val held = members.filter { it.ready }.groupBy { bearings[it.id] }.values.all { group -> group.count { it.id in waypoints } * 2 <= group.size }
             sectorsHeld[operation] = held

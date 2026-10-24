@@ -98,16 +98,24 @@ class ApproachSectors<K : Any> {
         private const val ARC_TOLERANCE = PI / 18
 
         /**
+         * How much further off his sector (15°) a man already making for his post must stray before
+         * he is sent back onto the arc. Without it a man on the arc's edge, whose route to his post
+         * bent away round water, was sent to the arc and back every refresh (in-game 24.10).
+         */
+        const val ARC_RESUME_SLACK = PI / 12
+
+        /**
          * The next point on the arc round the [objective] for a man at [from] on his way to his
          * sector's [bearing], or null once he is near enough the sector to make for his post.
          *
          * The arc keeps him [ARC_MARGIN] beyond [radius] (his line's distance) from the objective,
          * out of the defenders' reach and behind the other groups' lines: walking straight to a sector on the far flank crosses the point. The
-         * waypoints are fixed steps back from the sector, so they do not move as he walks.
+         * waypoints are fixed steps back from the sector, so they do not move as he walks. A man
+         * already off the arc passes [ARC_RESUME_SLACK] as [slack].
          */
-        fun arcWaypoint(objective: Point3, from: Point3, bearing: Double, radius: Double): Point3? {
+        fun arcWaypoint(objective: Point3, from: Point3, bearing: Double, radius: Double, slack: Double = 0.0): Point3? {
             val delta = normalize(bearing - bearing(objective, from))
-            val steps = ceil((abs(delta) - ARC_TOLERANCE) / ARC_STEP).toInt() - 1
+            val steps = ceil((abs(delta) - ARC_TOLERANCE - slack) / ARC_STEP).toInt() - 1
             if (steps <= 0) return null
             val at = bearing - sign(delta) * steps * ARC_STEP
             val range = max(radius + ARC_MARGIN, distance(objective, from))
