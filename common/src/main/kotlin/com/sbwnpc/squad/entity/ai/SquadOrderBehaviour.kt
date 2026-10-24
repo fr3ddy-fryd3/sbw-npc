@@ -73,9 +73,11 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.target != null && !SquadTransit.marching(entity)) return false
         // On its way to a Supply — ResupplyBehaviour hands it back once topped up.
         if (entity.resupplying || entity.movementLockedByCover() || entity.combatLockedByMedic()) return false
-        // An alarm sends a mob to look — except while falling back, when looking is the one thing
-        // it must not do.
-        if (entity.isAlert() && entity.retreatPoint() == null && !com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) return false
+        // During a distant FOLLOW_ORDER, GunAttack already yields movement to this executor.
+        // A heard battle must not disable it too and strand the squad at its first path's end.
+        if (entity.isAlert() && !SquadTransit.marching(entity)) {
+            if (entity.retreatPoint() == null && !com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) return false
+        }
         // A dug-in mob clears COVER_HOLD for its whole holding duration (see
         // SeekCoverBehaviour.enterDugInHolding) so GunAttackBehaviour can still fire from the hole —
         // this behaviour never checked combatLockedByCover() in the first place (only target/alert/
