@@ -163,6 +163,16 @@ object SquadMarch {
         lastPlanTick = Long.MIN_VALUE
     }
 
+    /**
+     * Forgets the routes [npc]'s squad walks and the ways found from near him, once he has cleared
+     * a step out of where he was stuck: planned before, they knew no way out and kept leading him
+     * back to the spot he stood on, the cleared step unused.
+     */
+    fun forgetAfterClearing(npc: NpcEntity) {
+        byGroup.remove(npc.currentSquad()?.id ?: npc.uuid)
+        found.removeIf { it.from.closerThan(npc.blockPosition(), JOIN) }
+    }
+
     /** Individual routes need no saved group to own them; discard them when the NPC leaves. */
     fun forgetIndividual(npc: UUID) {
         byGroup.remove(npc)

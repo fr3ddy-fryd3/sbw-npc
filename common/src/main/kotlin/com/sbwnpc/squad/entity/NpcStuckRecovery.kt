@@ -4,6 +4,7 @@ import com.sbwnpc.squad.ModIdentity
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.ai.SquadMarch
 import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import com.sbwnpc.squad.entity.ai.WalkingClearance
 import net.minecraft.core.BlockPos
@@ -88,7 +89,8 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
         val navigation = npc.navigation as? VehicleAwareNavigation
         // Recovery must keep a jump's momentum and must continue to the original goal, not its blocked step.
         if (navigation?.canPlan == false) return
-        val destination = path?.target ?: nowhereToward ?: BlockPos.containing(toward)
+        // Boxed in, the finished path's target is where he stands; the way out leads to the goal.
+        val destination = nowhereToward.takeIf { !walkingInPlace } ?: path?.target ?: nowhereToward ?: BlockPos.containing(toward)
         val dx = toward.x - npc.x
         val dz = toward.z - npc.z
         val len = kotlin.math.sqrt(dx * dx + dz * dz)
@@ -96,20 +98,27 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
         val candidates = WalkingClearance.clearingCandidates(level, npc, npc.boundingBox, direction) +
             listOfNotNull(WalkingClearance.lowerCrownLayer(level, npc, npc.boundingBox))
         val supports = WalkingClearance.supports(level, npc, npc.boundingBox)
-        // Only a step at arm's length is cleared. Breaking towards a goal or a path node far off
-        // dug a tunnel block by block: a medic broke into a cave that way and dug on through it
-        // towards his patient 150 blocks away, and the next medic followed him in (in-game 24.10).
-        val stepAhead = len <= MAX_BREAK_REACH
         val crown = WalkingClearance.lowerCrownLayer(level, npc, npc.boundingBox)
-        val blocking = candidates.filter { it !in supports || it == crown }
-        // The whole way through is cleared at once or not at all. One block a try left a hole at
-        // his feet with the block at head height still in it once the replanned path turned away
-        // (in-game 24.10), and a hard block anywhere in the way makes the rest useless to break.
-        val cleared = if (stepAhead && Ports.loader.canGrief(level, npc) && blocking.all { clearable(level, it) }) blocking else emptyList()
+        // Only what stands at eye height and above in front of him is cleared: a wall two blocks
+        // high becomes a step he climbs, and a way dug like that can only rise towards the
+        // surface. Clearing the block at his feet as well dug a level tunnel instead: a medic broke
+        // into a cave that way and on through it towards his patient 150 blocks away (in-game
+        // 24.10). A step whose upper blocks are not all clearable is left whole: half cleared it
+        // is no way out either.
+        val raised = candidates.filter { it.y > npc.blockPosition().y && it !in supports }
+        val cleared = when {
+            !Ports.loader.canGrief(level, npc) -> emptyList()
+            raised.isNotEmpty() -> if (raised.all { clearable(level, it) }) raised else emptyList()
+            crown != null && clearable(level, crown) -> listOf(crown)
+            else -> emptyList()
+        }
         // A new search must not reuse the path that has just failed to move him.
         stuckSinceTick = -1
         nowhereSinceTick = -1
-        if (cleared.isNotEmpty()) npc.swing(InteractionHand.MAIN_HAND)
+        if (cleared.isNotEmpty()) {
+            npc.swing(InteractionHand.MAIN_HAND)
+            SquadMarch.forgetAfterClearing(npc)
+        }
         cleared.forEach { pos ->
             val state = level.getBlockState(pos)
             level.destroyBlock(pos, true, npc)
@@ -166,8 +175,5 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
         /** Anything a hand clears quickly: leaves 0.2, glass 0.3, sand and dirt 0.5, gravel and grass
          *  0.6. Stone (1.5) and planks (2) stay. */
         const val SOFT_BLOCK_HARDNESS = 0.6f
-
-        /** How far off (blocks) the blocked step may be for the way to it to be cleared. */
-        const val MAX_BREAK_REACH = 2.0
     }
 }
