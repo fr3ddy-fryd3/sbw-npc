@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.route
 
+import it.unimi.dsi.fastutil.longs.Long2DoubleOpenHashMap
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.phys.Vec3
@@ -28,6 +29,15 @@ class Driving(
     private val climb = Math.max(1, Math.floor(climb).toInt())
     private val headroom = Math.min(GroundMap.MAX_ROOM, Math.max(2, Math.ceil(height).toInt()))
     private val fits = HashMap<Long, Boolean>()
+    private val costs = Long2DoubleOpenHashMap()
+    private var avoided: Set<Long> = emptySet()
+
+    /** Excludes columns learned from collisions during this trip, without changing the world map. */
+    fun avoiding(columns: Set<Long>): Driving = apply {
+        avoided = columns.toSet()
+        fits.clear()
+        costs.clear()
+    }
 
     override val pace = 1.0 / DRIVE_PACE
 
@@ -46,6 +56,7 @@ class Driving(
         }
 
     private fun ground(x: Int, z: Int): Boolean {
+        if (BlockPos.asLong(x, 0, z) in avoided) return false
         val kind = ground.kind(x, z)
         return (
             kind == GroundMap.Kind.GROUND || kind == GroundMap.Kind.NO_ROOM ||
@@ -65,7 +76,28 @@ class Driving(
         return true
     }
 
-    override fun extraCost(x: Int, z: Int) = 0.0
+    override fun extraCost(x: Int, z: Int): Double {
+        val key = BlockPos.asLong(x, 0, z)
+        if (costs.containsKey(key)) return costs.get(key)
+        return clearanceCost(x, z).also { costs.put(key, it) }
+    }
+
+    private fun clearanceCost(x: Int, z: Int): Double {
+        for (margin in 1..CLEARANCE_MARGIN) {
+            val radius = clearance + margin
+            for (dx in -radius..radius) {
+                for (dz in -radius..radius) {
+                    if (Math.abs(dx) != radius && Math.abs(dz) != radius) continue
+                    val px = x + dx
+                    val pz = z + dz
+                    if (!ground.known(px, pz)) continue
+                    val step = Math.abs(ground.height(px, pz) - ground.height(px - dx.compareTo(0), pz - dz.compareTo(0)))
+                    if (!ground(px, pz) || step > climb) return CLEARANCE_COST / (margin * margin)
+                }
+            }
+        }
+        return 0.0
+    }
 
     override fun exitAt(x: Int, z: Int, goal: Vec3): Vec3? = if (ground.kind(x, z) == GroundMap.Kind.WATER) null else Vec3(x + 0.5, pointY(x, z), z + 0.5)
 
@@ -82,5 +114,7 @@ class Driving(
         /** A vehicle covers ground this many times faster than a man walking. */
         const val DRIVE_PACE = 2.0
         private const val GOAL_RADIUS = 20.0
+        private const val CLEARANCE_MARGIN = 2
+        private const val CLEARANCE_COST = 4.0
     }
 }

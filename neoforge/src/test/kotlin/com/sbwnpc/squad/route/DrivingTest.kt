@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.route
 
+import net.minecraft.core.BlockPos
 import net.minecraft.world.phys.Vec3
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
@@ -16,6 +17,51 @@ class DrivingTest {
 
     private val river = object : Plain() {
         override fun kind(x: Int, z: Int) = if (x in 40..99) GroundMap.Kind.WATER else GroundMap.Kind.GROUND
+    }
+
+    @Test
+    fun `a hull prefers clearance without closing a narrow passage`() {
+        val wall = object : Plain() {
+            override fun room(x: Int, z: Int) = if (z < 0) 0 else 4
+        }
+        val medium = Driving(wall, 1.4, 1.0, 2.1)
+        assertTrue(medium.open(0, 1), "the hull still fits beside the wall")
+        assertTrue(medium.extraCost(0, 1) > medium.extraCost(0, 4), "the route must prefer the middle of open ground")
+        val passage = object : Plain() {
+            override fun room(x: Int, z: Int) = if (z in -1..1) 4 else 0
+        }
+        assertTrue(Driving(passage, 1.4, 1.0, 2.1).open(0, 0), "clearance preference must not close a usable narrow passage")
+    }
+
+    @Test
+    fun `smoothing keeps the drive clear of a wall instead of erasing its margin`() {
+        val wall = object : Plain() {
+            override fun room(x: Int, z: Int) = if (z < 0) 0 else 4
+        }
+        val search = CellPlanner.search(Driving(wall, 1.4, 1.0, 2.1), at(0.5, 1.5), at(100.5, 1.5))!!
+        var steps = 0
+        while (!search.step(2500)) assertTrue(++steps < 100, "wall-clearance search did not finish")
+        val route = requireNotNull(search.result()).route
+        val samples = route.zipWithNext().flatMap { (a, b) ->
+            val count = Math.ceil(a.distanceTo(b)).toInt().coerceAtLeast(1)
+            (0..count).map { a.lerp(b, it.toDouble() / count) }
+        }.filter { it.x in 20.0..70.0 }
+        assertTrue(samples.isNotEmpty())
+        assertTrue(samples.all { it.z >= 3.5 }, "shortcut erased the chosen wall clearance: $route")
+    }
+
+    @Test
+    fun `learned collision columns reroute this trip without changing later trips`() {
+        val column = BlockPos.asLong(12, 0, 0)
+        val medium = Driving(Plain(), 1.4, 1.0, 2.1).avoiding(setOf(column))
+        assertFalse(medium.open(12, 0))
+        assertFalse(medium.open(11, 0), "the hull edge cannot overlap the avoided column")
+        val search = CellPlanner.search(medium, at(0.5), at(40.5))!!
+        var steps = 0
+        while (!search.step(2500)) assertTrue(++steps < 100, "collision detour did not finish")
+        val trail = requireNotNull(search.result()).trail
+        assertTrue(trail.any { kotlin.math.abs(it.z) >= 2.5 }, "the next route still crosses the stalled front")
+        assertTrue(Driving(Plain(), 1.4, 1.0, 2.1).open(12, 0), "collision memory leaked into another trip")
     }
 
     private fun plan(ground: Ground, goal: Vec3, amphibious: Boolean, from: Vec3 = at(0.5)): CellPlanner.Route {
