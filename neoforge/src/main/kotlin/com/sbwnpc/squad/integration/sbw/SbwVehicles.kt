@@ -291,16 +291,7 @@ object SbwVehicles : Vehicles {
             vehicle.leftInputDown = left
             return Steering(right, left, "$detail pivot")
         }
-        if (backsRound(vehicle, diff, forwardSpeed)) {
-            // Turning back on itself: backing round, the wheels over the other way, then on forward.
-            right = diff < 0
-            left = diff > 0
-            vehicle.forwardInputDown = false
-            vehicle.backInputDown = true
-            vehicle.rightInputDown = right
-            vehicle.leftInputDown = left
-            return Steering(right, left, "$detail backing round")
-        }
+        backing(vehicle, diff, forwardSpeed, throttle, detail)?.let { return it }
         if (vehicle.computed().engineType == EngineType.WHEEL) {
             // The short route follower commands a wheel angle, not a human's gradual key press.
             // Compensate the native engine's unconditional decay before it applies that angle.
@@ -328,6 +319,34 @@ object SbwVehicles : Vehicles {
         val bend = if (Math.abs(diff) >= RIGHT_ANGLE) Math.signum(diff) else Math.sin(Math.toRadians(diff))
         val curvature = 2.0 * bend / distance.coerceAtLeast(1.0)
         return (-Math.toDegrees(curvature) / WHEEL_YAW_PER_BLOCK).toFloat().coerceIn(-WHEEL_RUDDER_LIMIT, WHEEL_RUDDER_LIMIT)
+    }
+
+    /** Inputs for a wheeled vehicle backing round or still rolling back from it; null to drive on as usual. */
+    private fun backing(vehicle: VehicleEntity, diff: Double, forwardSpeed: Double, throttle: Boolean, detail: String): Steering? {
+        if (backsRound(vehicle, diff, forwardSpeed)) {
+            // Turning back on itself: backing round, the wheels over the other way, then on forward.
+            val right = diff < 0
+            val left = diff > 0
+            vehicle.forwardInputDown = false
+            vehicle.backInputDown = true
+            vehicle.rightInputDown = right
+            vehicle.leftInputDown = left
+            return Steering(right, left, "$detail backing round")
+        }
+        if (forwardSpeed >= -REVERSING_SPEED) return null
+        // Done backing but still rolling backwards: wheels straight and the throttle as a brake.
+        // The native yaw follows the sign of the power, not of the motion, so a forward wheel angle
+        // here turned the hull back past the exit angle; it chattered on that edge and kept rolling
+        // down a slope (headless 24.10).
+        if (vehicle.computed().engineType == EngineType.WHEEL) {
+            vehicle.rudderRot = 0f
+            vehicle.deltaRot = 0f
+        }
+        vehicle.forwardInputDown = throttle
+        vehicle.backInputDown = false
+        vehicle.rightInputDown = false
+        vehicle.leftInputDown = false
+        return Steering(false, false, "$detail stopping")
     }
 
     /**

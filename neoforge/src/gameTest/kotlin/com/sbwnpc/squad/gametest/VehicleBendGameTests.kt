@@ -19,6 +19,9 @@ import kotlin.math.abs
 /** A real LAV follows an L-shaped corridor past an inside-corner obstruction, and turns back on itself. */
 @PrefixGameTestTemplate(false)
 object VehicleBendGameTests {
+    // Blocks the LAV may back while turning round: its arc there is about 25, the reported fault 50.
+    private const val MAX_BACKED = 35.0
+
     private fun corridor(helper: GameTestHelper) {
         val walls = (10..104).map { BlockPos(26, 1, it) } +
             (10..96).map { BlockPos(34, 1, it) } +
@@ -106,19 +109,21 @@ object VehicleBendGameTests {
             manager.deleteSquad(helper.level, squad.id)
             lav.discard()
         }
-        var turnedAt: Vec3? = null
+        // Ground covered backwards: the turn needs about 25 blocks of it on the LAV's circle, the
+        // reported fault ran 50, and a chatter at the backing exit keeps rolling back too.
+        var backed = 0.0
+        var last = lav.position()
         helper.onEachTick {
             val here = helper.relativeVec(lav.position())
-            // Facing -z within a sharp turn: yRot near 180.
-            val facingDown = abs(net.minecraft.util.Mth.wrapDegrees(lav.yRot - 180f)) <= 60f
-            if (turnedAt == null && facingDown) turnedAt = here
-            if (turnedAt == null) {
-                helper.assertTrue(here.distanceTo(start) <= 20.0, "The LAV went ${here.distanceTo(start)} blocks without turning round: $here yRot=${lav.yRot}")
-            }
-            if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} position=$here yRot=${lav.yRot} turnedAt=$turnedAt")
+            val step = lav.position().subtract(last)
+            last = lav.position()
+            val facing = lav.getViewVector(1f)
+            if (step.x * facing.x + step.z * facing.z < 0.0) backed += step.horizontalDistance()
+            helper.assertTrue(backed <= MAX_BACKED, "The LAV backed $backed blocks without turning round: $here yRot=${lav.yRot}")
+            if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} position=$here yRot=${lav.yRot} backed=$backed")
             if (here.z <= 15.0) {
                 helper.assertTrue(man.isAlive && man.vehicle === lav, "The driver abandoned the trip")
-                scene.result("PASS", "tick=${helper.tick} position=$here turnedAt=$turnedAt")
+                scene.result("PASS", "tick=${helper.tick} position=$here backed=$backed")
                 helper.succeed()
             }
         }
