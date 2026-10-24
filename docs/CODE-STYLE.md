@@ -56,7 +56,7 @@ some calls. Leaving a step shows plainly whether the tick goes on.
 | Change | Place |
 |---|---|
 | A way of carrying out an order at the operation, squad, team or NPC level | HTN methods in `TacticalDomain` (`common/.../ai/tactics`) |
-| A squad's strategy (advance, hold, gain height, withdraw) | `StrategyEvaluation`, scored with `UtilityEvaluation` |
+| A squad's strategy (advance, hold, gain height, withdraw) | A squad HTN method per strategy, scored by `SquadManners` |
 | Attack phases and their transitions | `AttackPhase`; the history and roles of a running attack in `AttackProgress` |
 | A member's duty and post in an operation | `OperationTactics`, `OperationFront` |
 | An operation's losses and when it withdraws | `OperationLosses` |

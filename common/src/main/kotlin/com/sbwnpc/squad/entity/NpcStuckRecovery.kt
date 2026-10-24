@@ -96,7 +96,11 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
         val candidates = WalkingClearance.clearingCandidates(level, npc, npc.boundingBox, direction) +
             listOfNotNull(WalkingClearance.lowerCrownLayer(level, npc, npc.boundingBox))
         val supports = WalkingClearance.supports(level, npc, npc.boundingBox)
-        val pos = if (Ports.loader.canGrief(level, npc)) {
+        // Only a step at arm's length is cleared. Breaking towards a goal or a path node far off
+        // dug a tunnel block by block: a medic broke into a cave that way and dug on through it
+        // towards his patient 150 blocks away, and the next medic followed him in (in-game 24.10).
+        val stepAhead = len <= MAX_BREAK_REACH
+        val pos = if (stepAhead && Ports.loader.canGrief(level, npc)) {
             candidates.firstOrNull { candidate ->
                 val state = level.getBlockState(candidate)
                 val hardness = state.getDestroySpeed(level, candidate)
@@ -160,5 +164,8 @@ class NpcStuckRecovery(private val npc: NpcEntity) {
         /** Anything a hand clears quickly: leaves 0.2, glass 0.3, sand and dirt 0.5, gravel and grass
          *  0.6. Stone (1.5) and planks (2) stay. */
         const val SOFT_BLOCK_HARDNESS = 0.6f
+
+        /** How far off (blocks) the blocked step may be for the way to it to be cleared. */
+        const val MAX_BREAK_REACH = 2.0
     }
 }
