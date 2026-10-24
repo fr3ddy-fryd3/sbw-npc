@@ -273,6 +273,9 @@ object SbwVehicles : Vehicles {
         var right = rudderError > RUDDER_DEADBAND
         var left = rudderError < -RUDDER_DEADBAND
         val speed = vehicle.deltaMovement.horizontalDistance()
+        // Signed along the bow: the speed alone cannot tell a brake from a reverse.
+        val facing = vehicle.getViewVector(1f)
+        val forwardSpeed = vehicle.deltaMovement.x * facing.x + vehicle.deltaMovement.z * facing.z
         val sharp = Math.abs(diff) > SHARP_TURN
         val detail = "pos=${vehicle.position()} yRot=${vehicle.yRot} desiredYaw=$desiredYaw diff=$diff " +
             "rudderRot=${vehicle.rudderRot} targetRudder=$targetRudder speed=$speed"
@@ -288,9 +291,13 @@ object SbwVehicles : Vehicles {
             vehicle.leftInputDown = left
             return Steering(right, left, "$detail pivot")
         }
-        if (Math.abs(diff) > REVERSE_TURN && roomBehind(vehicle)) {
-            // Turning back on itself: backing round, the wheels over the other way, until the way
-            // is no more than a sharp turn off the bow — then on forward.
+        // Once backing, it backs on until the way is well inside a sharp turn. Switched to forward
+        // steering at a fixed angle while still rolling backwards, the forward wheel angle turned
+        // it back past that angle again: it chattered between the two and reversed some 50 blocks
+        // without turning (in-game 23.10).
+        val backing = forwardSpeed < -REVERSING_SPEED && Math.abs(diff) > BACKING_EXIT_TURN
+        if ((Math.abs(diff) > REVERSE_TURN || backing) && roomBehind(vehicle)) {
+            // Turning back on itself: backing round, the wheels over the other way, then on forward.
             right = diff < 0
             left = diff > 0
             vehicle.forwardInputDown = false
@@ -308,7 +315,8 @@ object SbwVehicles : Vehicles {
             left = false
         }
         vehicle.forwardInputDown = throttle && (!sharp || speed < CREEP_SPEED)
-        vehicle.backInputDown = sharp && speed > TURN_SPEED
+        // Braking: the back key only slows a hull that rolls forwards; one rolling backwards it speeds up.
+        vehicle.backInputDown = sharp && forwardSpeed > TURN_SPEED
         vehicle.rightInputDown = right
         vehicle.leftInputDown = left
         return Steering(right, left, if (sharp) "$detail creeping round" else detail)
@@ -320,7 +328,10 @@ object SbwVehicles : Vehicles {
         }
         // wheelEngine turns 12 degrees per block per rudder unit. Match the circle through
         // the route point; heading alone understeers a short bend before the hull hits it.
-        val curvature = 2.0 * Math.sin(Math.toRadians(diff)) / distance.coerceAtLeast(1.0)
+        // Past a right angle the circle no longer reaches the point ahead: sin falls back towards
+        // zero, and a hull with the point straight behind and no room to back drove straight on.
+        val bend = if (Math.abs(diff) >= 90.0) Math.signum(diff) else Math.sin(Math.toRadians(diff))
+        val curvature = 2.0 * bend / distance.coerceAtLeast(1.0)
         return (-Math.toDegrees(curvature) / WHEEL_YAW_PER_BLOCK).toFloat().coerceIn(-WHEEL_RUDDER_LIMIT, WHEEL_RUDDER_LIMIT)
     }
 
@@ -555,6 +566,12 @@ object SbwVehicles : Vehicles {
     // and brakes above TURN_SPEED.
     private const val CREEP_SPEED = 0.12
     private const val TURN_SPEED = 0.25
+
+    // Backing round, a wheeled vehicle backs on until its heading error (degrees) is below this.
+    private const val BACKING_EXIT_TURN = 30.0
+
+    // Rolling backwards faster than this (blocks a tick), a hull counts as backing round.
+    private const val REVERSING_SPEED = 0.02
 
     // Blocks behind the hull that must be ground it can back onto.
     private const val BACK_ROOM = 4.0

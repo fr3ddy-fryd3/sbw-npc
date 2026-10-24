@@ -16,7 +16,7 @@ import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import java.util.UUID
 import kotlin.math.abs
 
-/** A real LAV follows an L-shaped corridor past an inside-corner obstruction. */
+/** A real LAV follows an L-shaped corridor past an inside-corner obstruction, and turns back on itself. */
 @PrefixGameTestTemplate(false)
 object VehicleBendGameTests {
     private fun corridor(helper: GameTestHelper) {
@@ -65,6 +65,60 @@ object VehicleBendGameTests {
             if (here.x >= 128 && abs(here.z - 100.5) < 8) {
                 helper.assertTrue(man.isAlive && man.vehicle === lav, "The driver abandoned the trip")
                 scene.result("PASS", "tick=${helper.tick} position=$here")
+                helper.succeed()
+            }
+        }
+    }
+
+    /** A slope rising one block every eight towards +z: a hull backing down it gathers speed, and still has room to back. */
+    private fun slope(helper: GameTestHelper): (Double) -> Int {
+        val height = { z: Double -> ((z - 20.0) / 8.0).toInt().coerceAtLeast(0) }
+        for (x in 30..130) for (z in 20..125) for (y in 1..height(z.toDouble())) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
+        return height
+    }
+
+    /**
+     * Sent to a point down a slope straight behind it, the LAV turns round and drives there. In-game
+     * 23.10 one backing round downhill gathered speed, chattered between backing and creeping forward
+     * at the reverse-turn angle, and reversed about 50 blocks without turning: the brake key sped up
+     * a hull already rolling backwards.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1000, batch = "vehicle-bend")
+    fun lavTurnsRoundDownhillInsteadOfReversingThere(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "vehicle-turn-round")
+        DebugFlags.enabledGroups += LogGroup.VEHICLE
+        val height = slope(helper)
+        val manager = SquadManager.get(helper.level)
+        val start = Vec3(80.5, height(110.0) + 1.0, 110.5)
+        val man = scene.spawn(start)
+        val lav = requireNotNull(Ports.vehicles.create(helper.level, TransportVehicle.LAV_25))
+        val at = helper.absoluteVec(start)
+        // yRot 0 faces +z, up the slope; the objective lies down it, at -z.
+        lav.moveTo(at.x, at.y, at.z, 0f, 0f)
+        helper.level.addFreshEntity(lav)
+        Ports.vehicles.fuelAndArm(lav, TransportVehicle.LAV_25)
+        man.assignedVehicleId = lav.uuid
+        helper.assertTrue(man.startRiding(lav, true), "The driver could not board the LAV")
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(man.uuid))
+        manager.issueOrderAt(helper.level, squad.id, SquadOrder.MOVE, helper.absolutePos(BlockPos(80, 1, 5)))
+        scene.onClose = {
+            manager.deleteSquad(helper.level, squad.id)
+            lav.discard()
+        }
+        var turnedAt: Vec3? = null
+        helper.onEachTick {
+            val here = helper.relativeVec(lav.position())
+            // Facing -z within a sharp turn: yRot near 180.
+            val facingDown = abs(net.minecraft.util.Mth.wrapDegrees(lav.yRot - 180f)) <= 60f
+            if (turnedAt == null && facingDown) turnedAt = here
+            if (turnedAt == null) {
+                helper.assertTrue(here.distanceTo(start) <= 20.0, "The LAV went ${here.distanceTo(start)} blocks without turning round: $here yRot=${lav.yRot}")
+            }
+            if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} position=$here yRot=${lav.yRot} turnedAt=$turnedAt")
+            if (here.z <= 15.0) {
+                helper.assertTrue(man.isAlive && man.vehicle === lav, "The driver abandoned the trip")
+                scene.result("PASS", "tick=${helper.tick} position=$here turnedAt=$turnedAt")
                 helper.succeed()
             }
         }
