@@ -373,6 +373,9 @@ object SbwVehicles : Vehicles {
             val z = Mth.floor(vehicle.z + back.z * d)
             val h = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z)
             if (Math.abs(h - from) > climb) return false
+            // The heightmap counts fluids: water level with the bank passed as ground, and a LAV
+            // backing round on a shore reversed into a lake (in-game 24.10).
+            if (!level.getFluidState(net.minecraft.core.BlockPos(x, h - 1, z)).isEmpty) return false
         }
         return true
     }

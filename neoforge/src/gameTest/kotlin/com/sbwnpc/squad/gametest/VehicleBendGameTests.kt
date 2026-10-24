@@ -128,4 +128,50 @@ object VehicleBendGameTests {
             }
         }
     }
+
+    /**
+     * Sent to a point behind it with a pond right behind the hull, the LAV turns round on the bank
+     * and takes to the water, if at all, bow first, instead of backing into it: in-game 24.10 one backed round into a lake, the heightmap
+     * having counted the water level with the bank as ground.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1400, batch = "vehicle-bend")
+    fun lavTurnsRoundOnTheBankInsteadOfBackingIntoWater(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "vehicle-bank")
+        DebugFlags.enabledGroups += LogGroup.VEHICLE
+        for (x in 66..94) for (z in 76..104) helper.setBlock(BlockPos(x, 0, z), Blocks.WATER)
+        val manager = SquadManager.get(helper.level)
+        val start = Vec3(80.5, 1.0, 110.5)
+        val man = scene.spawn(start)
+        val lav = requireNotNull(Ports.vehicles.create(helper.level, TransportVehicle.LAV_25))
+        val at = helper.absoluteVec(start)
+        // yRot 0 faces +z, away from the pond; the objective lies beyond it, at -z.
+        lav.moveTo(at.x, at.y, at.z, 0f, 0f)
+        helper.level.addFreshEntity(lav)
+        Ports.vehicles.fuelAndArm(lav, TransportVehicle.LAV_25)
+        man.assignedVehicleId = lav.uuid
+        helper.assertTrue(man.startRiding(lav, true), "The driver could not board the LAV")
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(man.uuid))
+        manager.issueOrderAt(helper.level, squad.id, SquadOrder.MOVE, helper.absolutePos(BlockPos(80, 1, 5)))
+        scene.onClose = {
+            manager.deleteSquad(helper.level, squad.id)
+            lav.discard()
+        }
+        // The LAV swims, so its route may well cross the pond bow first; backing into it is the fault.
+        var last = lav.position()
+        helper.onEachTick {
+            val here = helper.relativeVec(lav.position())
+            val step = lav.position().subtract(last)
+            last = lav.position()
+            val facing = lav.getViewVector(1f)
+            val backing = step.x * facing.x + step.z * facing.z < 0.0
+            helper.assertTrue(!(lav.isInWater && backing), "The LAV backed into the pond: $here yRot=${lav.yRot}")
+            if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} position=$here yRot=${lav.yRot}")
+            if (here.z <= 15.0) {
+                helper.assertTrue(man.isAlive && man.vehicle === lav, "The driver abandoned the trip")
+                scene.result("PASS", "tick=${helper.tick} position=$here")
+                helper.succeed()
+            }
+        }
+    }
 }
