@@ -91,7 +91,7 @@
     <ID>CyclomaticComplexMethod:GunAttackBehaviour.kt$GunAttackBehaviour$private fun updateCombatMovement( entity: NpcEntity, target: LivingEntity, squad: Squad?, holding: Boolean, gun: HandGun, clearShot: Boolean, ): CombatMovement</ID>
     <ID>CyclomaticComplexMethod:HelicopterFlightControllerTest.kt$HelicopterFlightControllerTest.Heli$fun step(cmd: HelicopterFlightController.Command)</ID>
     <ID>CyclomaticComplexMethod:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$override fun tick(entity: NpcEntity)</ID>
-    <ID>CyclomaticComplexMethod:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$private fun decideMission( entity: NpcEntity, heli: Entity, target: LivingEntity?, home: Vec3, airworthy: Boolean, ): Mission</ID>
+    <ID>CyclomaticComplexMethod:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$private fun decideMission( entity: NpcEntity, heli: Entity, target: LivingEntity?, home: Vec3, fit: Boolean, ): Mission</ID>
     <ID>CyclomaticComplexMethod:HelicopterRideBehaviour.kt$HelicopterRideBehaviour$private fun benchHoldReason(entity: NpcEntity, heli: Entity): String?</ID>
     <ID>CyclomaticComplexMethod:HtnPlanner.kt$HtnPlanningSession$fun advance(work: Int): PlanningResult</ID>
     <ID>CyclomaticComplexMethod:InvestigateBehaviour.kt$InvestigateBehaviour$override fun tick(entity: NpcEntity)</ID>
@@ -130,7 +130,7 @@
     <ID>CyclomaticComplexMethod:SquadFormation.kt$SquadFormation$private fun localOffset(shape: Shape, slotIndex: Int, squadSize: Int, spacing: Double = SLOT_SPACING): Vec3</ID>
     <ID>CyclomaticComplexMethod:SquadManager.kt$SquadManager$fun deployInitialAtBarracks( level: ServerLevel, barracks: BarracksRef, squadId: UUID, cfg: com.sbwnpc.squad.item.SquadToolItem.Config, yaw: Float, ): String?</ID>
     <ID>CyclomaticComplexMethod:SquadMarch.kt$SquadMarch$fun crossingAhead(npc: NpcEntity): Crossing?</ID>
-    <ID>CyclomaticComplexMethod:SquadMarch.kt$SquadMarch$fun waypointFor(npc: NpcEntity, goal: BlockPos, followFormation: Boolean = true): Waypoint?</ID>
+    <ID>CyclomaticComplexMethod:SquadMarch.kt$SquadMarch$fun waypointFor(npc: NpcEntity, ownGoal: BlockPos, followFormation: Boolean = true, shared: Boolean = false): Waypoint?</ID>
     <ID>CyclomaticComplexMethod:SquadMarch.kt$SquadMarch$private fun planLong(level: ServerLevel, npc: NpcEntity, march: March, goal: BlockPos, squadName: String)</ID>
     <ID>CyclomaticComplexMethod:SquadMerging.kt$SquadMerging$fun problem(source: Squad?, destination: Squad?, owner: UUID): String?</ID>
     <ID>CyclomaticComplexMethod:SquadOrderBehaviour.kt$SquadOrderBehaviour$override fun tick(entity: NpcEntity)</ID>

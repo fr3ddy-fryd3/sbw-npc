@@ -24,6 +24,7 @@ enum class LogGroup(val key: String) {
     PATH("path"),
     PERF("perf"),
     RETREAT("retreat"),
+    SPOTTING("spotting"),
     STUCK("stuck"),
     SUPPLY("supply"),
     VEHICLE("vehicle"),

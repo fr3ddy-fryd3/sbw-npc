@@ -105,9 +105,15 @@ object SquadFormation {
         }
         return when (order) {
             SquadOrder.ATTACK -> Shape.LINE
+
             SquadOrder.DEFEND, SquadOrder.BARRAGE, SquadOrder.RETREAT -> Shape.LINE
+
             SquadOrder.PATROL -> Shape.COLUMN
+
             SquadOrder.MOVE -> Shape.GRID
+
+            // Placed by FollowFormation, not by these shapes.
+            SquadOrder.FOLLOW -> Shape.RING
         }
     }
 

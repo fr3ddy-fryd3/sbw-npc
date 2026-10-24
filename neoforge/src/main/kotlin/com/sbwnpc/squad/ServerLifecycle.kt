@@ -6,6 +6,7 @@ import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.entity.DroneRegistry
 import com.sbwnpc.squad.entity.GrenadeRegistry
 import com.sbwnpc.squad.entity.NpcRegistry
+import com.sbwnpc.squad.entity.SmokeCloudRegistry
 import com.sbwnpc.squad.entity.ai.DroneLinks
 import com.sbwnpc.squad.entity.ai.MortarClaims
 import com.sbwnpc.squad.entity.ai.VehicleTransportClaims
@@ -52,6 +53,7 @@ object ServerLifecycle {
         com.sbwnpc.squad.team.Diplomacy.detach()
         com.sbwnpc.squad.map.MapFeed.clearAll()
         com.sbwnpc.squad.combat.Withdrawal.clearAll()
+        com.sbwnpc.squad.combat.SmokeClouds.clearAll()
         com.sbwnpc.squad.squad.FireSupport.clearAll()
         com.sbwnpc.squad.entity.ai.GrenadeUseBehaviour.clearAll()
         com.sbwnpc.squad.entity.ai.SquadMarch.clearAll()
@@ -78,6 +80,7 @@ object ServerLifecycle {
         FiringSpots.clearAll()
         DroneRegistry.clearAll()
         GrenadeRegistry.clearAll()
+        SmokeCloudRegistry.clearAll()
         com.sbwnpc.squad.combat.StrayRounds.clearAll()
         SquadTeams.clearCache()
     }

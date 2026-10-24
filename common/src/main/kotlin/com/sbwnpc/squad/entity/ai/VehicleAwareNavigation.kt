@@ -393,7 +393,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) :
         }
         // In a squad: its shared route, walked with the ordinary short search.
         npc?.let {
-            SquadMarch.waypointFor(it, pos, formation)?.let { waypoint ->
+            SquadMarch.waypointFor(it, pos, formation, shared = true)?.let { waypoint ->
                 farGoal = null
                 // His place in the formation if he can get there; the route itself otherwise.
                 waypoint.formation?.let { spot ->

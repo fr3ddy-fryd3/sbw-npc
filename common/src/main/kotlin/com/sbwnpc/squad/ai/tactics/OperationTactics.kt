@@ -40,6 +40,9 @@ data class AttackMember(val id: UUID, val position: Point3, val ready: Boolean)
  * @property primaryAmmo the member still has ammunition for his main weapon.
  * @property reachedMove the member's current MOVE post is reached.
  * @property wasFiring the member's previous intent was FIRE.
+ * @property wasObserving the member's previous intent was OBSERVE at this [objective].
+ * @property arrival on DEFEND or route-less PATROL, how near the [objective] he counts as there, see
+ *   [com.sbwnpc.squad.combat.SquadFormation.defendArrivalRadius].
  * @property flanking the member is on his way round the objective to his sector, see
  *   [ApproachSectors.arcWaypoint]; [proposal] holds the next waypoint.
  */
@@ -57,8 +60,29 @@ data class DutyInputs(
     val hasPatrolRoute: Boolean,
     val reachedMove: Boolean,
     val wasFiring: Boolean,
+    val arrival: Double,
     val flanking: Boolean = false,
-)
+    val wasObserving: Boolean = false,
+    /** On a FOLLOW order: the objective is a player who walks away from any post round it. */
+    val following: Boolean = false,
+    /** Following in a fight: this man's half runs this beat, see [OperationTactics.followBound]. */
+    val followBound: Boolean = false,
+    /** Following: the man's own loose place by the player, see [com.sbwnpc.squad.combat.FollowFormation]. */
+    val followSlot: Point3? = null,
+    /** Following a player who rides a vehicle, or this man holds a vehicle: the ride sees to it. */
+    val followRide: Boolean = false,
+) {
+    /**
+     * Whether a sentry takes his height post: at his objective, or with none, or already on duty for it.
+     *
+     * He takes it once he has arrived, as a defender takes his place on the ring, and keeps it for the
+     * same objective wherever the post search sends him. Distance bands in between flipped him: a post
+     * on the search's edge stood a fraction of a block past the band, and he climbed down to the squad
+     * and up to the same post again, over and over (#166, in-game 23.10).
+     */
+    val takesSentryPost: Boolean
+        get() = wasObserving || objective?.let { hypot(position.x - it.x, position.z - it.z) <= arrival } != false
+}
 
 data class DutyChoice(val duty: CombatDuty, val anchor: Point3)
 
@@ -180,52 +204,33 @@ object OperationTactics {
     }
 
     /**
-     * What one member does under [order] and where: the front's [DutyInputs.proposal] applies only
-     * in a fight on ATTACK; otherwise the member follows the order, observes or fires from where it
-     * is. A fire post farther than [fireReach] is first approached as movement to [approachOffset]
-     * short of it, because a local fire-post query cannot see a post beyond its reach.
+     * What one member does under his order and where, by the first of [MemberDuties]' cases that
+     * applies. A fire post farther than [fireReach] is first approached as movement to
+     * [approachOffset] short of it, because a local fire-post query cannot see a post beyond its reach.
      */
-    fun duty(inputs: DutyInputs, fireReach: Double, approachOffset: Double): DutyChoice =
-        with(inputs) {
-            val proposal = proposal
-            val approach = proposal.duty == CombatDuty.FIRE && position.distanceTo(proposal.anchor) > fireReach
-            val duty = when {
-                elsewhere -> CombatDuty.FOLLOW_ORDER
+    fun duty(inputs: DutyInputs, fireReach: Double, approachOffset: Double): DutyChoice = MemberDuties.choose(inputs, fireReach, approachOffset).choice
 
-                scout && order == TacticalOrder.ATTACK -> CombatDuty.SEARCH
-
-                // A sentry fights from his height, in defence and in a fight too. Sent to fire from where he
-                // stood, a gunner stayed below the tower, and a sentry left it whenever a reported target
-                // hid (#73). Out of ammunition for his main weapon he is no sentry.
-                (order == TacticalOrder.DEFEND || (order == TacticalOrder.PATROL && !hasPatrolRoute)) && heightRole && primaryAmmo -> CombatDuty.OBSERVE
-
-                !inContact || order in setOf(TacticalOrder.RETREAT, TacticalOrder.MOVE, TacticalOrder.BARRAGE) -> CombatDuty.FOLLOW_ORDER
-
-                order != TacticalOrder.ATTACK -> CombatDuty.FIRE
-
-                // Firing on the way would stop him short of his sector.
-                flanking -> CombatDuty.MOVE
-
-                // A mover that reached its post, or already fired, keeps firing instead of moving on.
-                // So does one that stands in his slot's area without a post: where no post has a
-                // firing lane, in-game 17.10 a flank's movers ran between search posts 10-15 blocks
-                // apart round their slot for minutes (#58).
-                proposal.duty == CombatDuty.MOVE -> if (reachedMove || wasFiring || distance(position, proposal.anchor) <= MOVE_ARRIVAL) CombatDuty.FIRE else CombatDuty.MOVE
-
-                approach -> CombatDuty.MOVE
-
-                else -> proposal.duty
-            }
-            val anchor = when {
-                duty == CombatDuty.SEARCH -> requireNotNull(inspect) { "a scout needs a point to inspect" }
-                duty in setOf(CombatDuty.FOLLOW_ORDER, CombatDuty.OBSERVE) -> objective ?: position
-                order != TacticalOrder.ATTACK -> position
-                duty == CombatDuty.FIRE && proposal.duty == CombatDuty.MOVE -> position
-                approach -> short(proposal.anchor, position, approachOffset)
-                else -> proposal.anchor
-            }
-            DutyChoice(duty, anchor)
+    /**
+     * Whether a following man in a fight runs to his place this beat. Halves of the squad
+     * ([half] 0 and 1) take turns every [BOUND_TICKS]. Within [FOLLOW_KEEP] of the player nobody
+     * runs; beyond [FOLLOW_CATCH_UP] everyone does, since taking turns would only fall further
+     * behind a player who keeps walking.
+     */
+    fun followBound(half: Int, now: Long, toLeader: Double): Boolean =
+        when {
+            toLeader > FOLLOW_CATCH_UP -> true
+            toLeader <= FOLLOW_KEEP -> false
+            else -> (now / BOUND_TICKS) % 2 == (half % 2).toLong()
         }
+
+    /** A following man this near his player fights from where he is: out to his outer slots. */
+    const val FOLLOW_KEEP = 18.0
+
+    /** Well past [com.sbwnpc.squad.combat.FollowFormation.NEAR_DISTANCE]: beyond it the whole squad runs. */
+    const val FOLLOW_CATCH_UP = 32.0
+
+    /** How long each half of a following squad runs or covers, 5 s. */
+    const val BOUND_TICKS = 100L
 
     /** Half as far from the nearest of [defenders] as [from], but no nearer than [CLOSE_DISTANCE]. */
     fun closingPost(from: Point3, defenders: List<Point3>): ClosingPost {

@@ -49,5 +49,10 @@ object ModMemories {
     val DRONE_THREAT: Supplier<MemoryModuleType<java.util.UUID>> =
         SBLConstants.SBL_LOADER.registerMemoryType("drone_threat")
 
+    /** UUID of a hostile drone this NPC (or an ally who shouted) can hear but has not seen: an
+     *  alarm and a direction, not a target to shoot at (#114) — see AntiDroneBehaviour. TTL memory. */
+    val DRONE_HEARD: Supplier<MemoryModuleType<java.util.UUID>> =
+        SBLConstants.SBL_LOADER.registerMemoryType("drone_heard")
+
     fun init() {}
 }

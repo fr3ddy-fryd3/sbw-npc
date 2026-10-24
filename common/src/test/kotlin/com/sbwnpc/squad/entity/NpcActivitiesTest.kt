@@ -39,6 +39,7 @@ class NpcActivitiesTest {
             NpcActivity.ANTI_DRONE to (true to false),
             NpcActivity.RESUPPLYING to (false to false),
             NpcActivity.DUG_IN to (false to false),
+            NpcActivity.SEAT to (false to false),
         )
         assertEquals(NpcActivity.entries.toSet(), placed.keys)
         placed.forEach { (activity, answers) ->
@@ -86,6 +87,17 @@ class ActivityClaimsTest {
         val held = NpcActivities().with(NpcActivity.DUG_IN, true).with(NpcActivity.RESUPPLYING, true)
         assertEquals(setOf(NpcActivity.DUG_IN), claims.claim(NpcActivity.VEHICLE, first, held))
         assertEquals(emptySet<NpcActivity>(), claims.claim(NpcActivity.RESUPPLYING, first, held))
+    }
+
+    @Test fun `a seat has one owner at a time`() {
+        val claims = ActivityClaims()
+        assertTrue(claims.claimAlone(NpcActivity.SEAT, first))
+        assertTrue(claims.claimAlone(NpcActivity.SEAT, first), "Its owner claims it again")
+        assertFalse(claims.freeFor(NpcActivity.SEAT, second))
+        assertFalse(claims.claimAlone(NpcActivity.SEAT, second), "A second owner is refused")
+        assertEquals(1, claims.holders(NpcActivity.SEAT))
+        assertTrue(claims.release(NpcActivity.SEAT, first))
+        assertTrue(claims.claimAlone(NpcActivity.SEAT, second), "Free again once released")
     }
 
     @Test fun `exclusion is symmetric`() {

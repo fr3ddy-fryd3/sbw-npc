@@ -14,6 +14,7 @@ import com.sbwnpc.squad.team.SquadTeams
 import com.sbwnpc.squad.vehicle.Airspace
 import com.sbwnpc.squad.vehicle.Helicopters
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.util.Mth
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
@@ -115,7 +116,8 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         completeAttack(entity, heli, level)
         val home = entity.homeCenter() ?: heli.position()
         val airworthy = Helicopters.canFly(heli)
-        val mission = decideMission(entity, heli, target, home, airworthy)
+        val armed = hasGunner(entity, heli)
+        val mission = decideMission(entity, heli, target, home, fit = airworthy && armed)
         // Two aircraft on the same job compute the same station, so hold it apart from whoever
         // else is up here and fly it in its own altitude band.
         refreshTraffic(entity, heli, level)
@@ -148,9 +150,11 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         // the pad, only a real reason gets it off the ground.
         // A transport holds to the same threshold its passengers use to decide to board, so it
         // never sets off on a hop they were never going to get on.
-        val launchDistance =
-            if (Helicopters.hasTurret(heli)) RELOCATE_DISTANCE else Helicopters.AIR_TRANSPORT_DISTANCE
-        val relocating = HelicopterFlightController.horizontalDistance(heli.position(), mission.anchor) > launchDistance || mission.attackOrbit
+        // One threshold for both airframes, and for the passengers too (owner, 21.10). A landing is
+        // measured from the spot it puts down on, which can be up to 24 blocks from the objective:
+        // measured from the objective, an aircraft that had landed 22 off took off again at once.
+        val reference = if (mission.landOnArrival) mission.station else mission.anchor
+        val relocating = HelicopterFlightController.horizontalDistance(heli.position(), reference) > Helicopters.AIR_TRANSPORT_DISTANCE || mission.attackOrbit
         // Don't leave the squad on the pad: a transport holds until its passengers are aboard, or
         // until it's clear they aren't coming.
         //
@@ -161,7 +165,8 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         // trip was on.
         if (airborne || !relocating) boardingSince = Int.MIN_VALUE / 2
         val boarding = !airborne && relocating && waitingForPassengers(entity, heli)
-        val wantsToFly = airworthy && !boarding && (relocating || (airborne && !mission.landOnArrival))
+        // Never up without a gunner aboard (owner, 21.10): a pilot alone is a target, not a weapon.
+        val wantsToFly = airworthy && !boarding && (airborne || armed) && (relocating || (airborne && !mission.landOnArrival))
 
         if (mission.patrol && airborne) scoutForFaction(entity, level)
 
@@ -276,13 +281,15 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         heli: Entity,
         target: LivingEntity?,
         home: Vec3,
-        airworthy: Boolean,
+        fit: Boolean,
     ): Mission {
         val level = entity.level() as? ServerLevel
         // Mi-28 lays its turret on a target; AH-6 positions the aircraft for its bench gunners.
         val gunship = Helicopters.hasTurret(heli)
 
-        if (!airworthy) return landingMission(level, retirePoint(home))
+        // Unflyable, or its gunners dead or gone: it has nothing to fight with, so it clears off from
+        // the fight and lands, rather than hovering over it or orbiting with empty benches.
+        if (!fit) return landingMission(level, retirePoint(home))
         if (entity.currentSquad()?.order == SquadOrder.MOVE) return landingMission(level, home)
 
         // Falling back: fly to the point and put down there, whatever is shooting.
@@ -378,6 +385,18 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         DebugFlags.log(LogGroup.HELI, "{} event=attack_completed squad={} order=MOVE destination={}", entity.uuid, squad.id, destination)
     }
 
+    /**
+     * Whether anyone aboard can fight: the gunship's turret gunner, or on a transport anyone on the
+     * benches with a gun in hand. A player counts, as he can shoot.
+     */
+    private fun hasGunner(pilot: NpcEntity, heli: Entity): Boolean {
+        val seats = Ports.vehicles.seating(heli)
+        if (Helicopters.hasTurret(heli)) return seats.getOrNull(Helicopters.GUNNER_SEAT)?.let { it.isAlive && it !== pilot } == true
+        return seats.drop(1).any { rider ->
+            rider != null && rider !== pilot && rider.isAlive && (rider is net.minecraft.world.entity.player.Player || (rider is NpcEntity && Ports.guns.inHand(rider) != null))
+        }
+    }
+
     /** Personally visible crew targets, clustered around one contact instead of across the map. */
     private fun confirmedBenchContact(pilot: NpcEntity, heli: Entity, preferred: LivingEntity?): Vec3? {
         val candidates = (listOfNotNull(preferred) + Ports.vehicles.seating(heli).filterIsInstance<NpcEntity>().mapNotNull { it.target })
@@ -409,11 +428,13 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         val level = entity.level() as? ServerLevel ?: return false
         val squad = entity.currentSquad() ?: return false
+        // Anyone of his who would ride and is on his way, as far off as a rider looks for his own
+        // squad's transport. Held to 40 blocks, it left the moment its squad stood further off (21.10).
         return squad.members.any { id ->
             if (id == entity.uuid) return@any false
             val member = level.getEntity(id) as? NpcEntity ?: return@any false
-            member.isAlive && member.vehicle == null &&
-                member.distanceToSqr(heli) <= BOARDING_WAIT_RANGE * BOARDING_WAIT_RANGE
+            member.isAlive && member.vehicle == null && member.npcClass in Helicopters.RIDER_CLASSES &&
+                member.distanceTo(heli) <= Helicopters.OWN_TRANSPORT_RANGE && !Helicopters.fightingClose(member)
         }
     }
 
@@ -607,7 +628,7 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         )
     }
 
-    private fun groundY(level: ServerLevel, x: Double, z: Double): Int = level.getHeight(Heightmap.Types.MOTION_BLOCKING, x.toInt(), z.toInt())
+    private fun groundY(level: ServerLevel, x: Double, z: Double): Int = level.getHeight(Heightmap.Types.MOTION_BLOCKING, Mth.floor(x), Mth.floor(z))
 
     private fun terrainAhead(level: ServerLevel, heli: Entity, toward: Vec3): List<Int> {
         val pos = heli.position()
@@ -634,9 +655,6 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
         /** Close enough for the turret to do real work, far enough not to be parked overhead. */
         const val STANDOFF_RANGE = 20.0
 
-        /** How far the squad's objective has to be before flying there beats sitting on the pad. */
-        const val RELOCATE_DISTANCE = 24.0
-
         /** Clear this far from the last fight before putting down. */
         const val RETIRE_DISTANCE = 80.0
 
@@ -655,7 +673,6 @@ class HelicopterPilotBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         /** How long a transport holds on the pad for its squad before going without them. */
         const val BOARDING_TIMEOUT_TICKS = 800
-        const val BOARDING_WAIT_RANGE = 40.0
         const val ON_STATION_RADIUS = 8.0
         const val OFF_STATION_RADIUS = 20.0
         const val DESCENT_RATE = 0.22

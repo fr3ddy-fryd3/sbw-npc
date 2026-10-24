@@ -11,7 +11,7 @@ enum class NpcActivity {
     /** Seeking, boarding, driving or riding a vehicle: the vehicle and helicopter behaviours. */
     VEHICLE,
 
-    /** Flying a drone: [com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour]. */
+    /** Preparing or flying a drone: [com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour]. */
     DRONE,
 
     /** At a mortar as its operator or loader: [com.sbwnpc.squad.entity.ai.MortarCrewBehaviour]. */
@@ -31,6 +31,15 @@ enum class NpcActivity {
 
     /** Holding a foxhole it dug: [com.sbwnpc.squad.entity.ai.SeekCoverBehaviour]. */
     DUG_IN,
+
+    /**
+     * Getting into a vehicle, keeping a seat in one or getting out: held by one behaviour at a time,
+     * see [NpcEntity.claimSeat].
+     *
+     * Not [VEHICLE], which cannot say whose a mounted man is: the pilot, the gunner and a crew's
+     * driver hold it beside whoever seated him.
+     */
+    SEAT,
 }
 
 /**

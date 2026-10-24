@@ -41,16 +41,3 @@ object UtilityEvaluation {
         return DecisionEvaluation(ranked.sortedWith(compareByDescending<RankedDecision<T>> { it.score.value }.thenBy { it.id }), excluded, view.dependencies.values.toList())
     }
 }
-
-/** The owner applies this policy. Ranking itself has no plan or cancellation side effects. */
-class DecisionStability(private val minimumTicks: Long = 40, private val advantage: Double = 0.12) {
-    init {
-        require(minimumTicks >= 0 && advantage in 0.0..1.0)
-    }
-    fun <T : Any> choose(evaluation: DecisionEvaluation<T>, current: String?, selectedAt: Long, now: Long): RankedDecision<T>? {
-        val best = evaluation.ranked.firstOrNull() ?: return null
-        val incumbent = evaluation.ranked.firstOrNull { it.id == current } ?: return best
-        if (incumbent.id == best.id || now - selectedAt < minimumTicks || best.score.value < incumbent.score.value + advantage) return incumbent
-        return best
-    }
-}

@@ -394,6 +394,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     val hasGrenade: Boolean get() = rgnLeft > 0 || rgoLeft > 0
 
+    /** Smoke grenades carried, thrown to cover a withdrawal, see [com.sbwnpc.squad.combat.SmokeScreen]. */
+    var smokeLeft = 0
+
     /** Which grenade to throw now, or null with none left: the RGO while defending or falling
      *  back, the RGN otherwise — and whichever is left when that one has run out. */
     fun grenadeToThrow(): com.sbwnpc.squad.domain.port.GrenadeKind? {
@@ -436,6 +439,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         if (carriesGrenades() && (rgnLeft < GRENADES_OF_EACH || rgoLeft < GRENADES_OF_EACH)) {
             rgnLeft = maxOf(rgnLeft, GRENADES_OF_EACH)
             rgoLeft = maxOf(rgoLeft, GRENADES_OF_EACH)
+            topped = true
+        }
+        if (carriesGrenades() && smokeLeft < SMOKE_GRENADES) {
+            smokeLeft = SMOKE_GRENADES
             topped = true
         }
         if (npcClass == NpcClass.MORTAR && mortarShellsLeft < MORTAR_SHELLS) {
@@ -564,7 +571,20 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         if (claims?.release(activity, owner) != false) activities = activities.with(activity, false)
     }
 
-    // Set/cleared only by DroneOperatorBehaviour while a DRONE_OPERATOR has a drone in the air —
+    /**
+     * [owner] becomes the one behaviour that gets this NPC into a vehicle, keeps him there and gets
+     * him out ([NpcActivity.SEAT]). False while another behaviour has him; released with [release].
+     */
+    fun claimSeat(owner: Any): Boolean {
+        if (!(claims ?: ActivityClaims().also { claims = it }).claimAlone(NpcActivity.SEAT, owner)) return false
+        activities = activities.with(NpcActivity.SEAT, true)
+        return true
+    }
+
+    /** True when no behaviour but [owner] has this NPC's seat; asked before starting, see [claimSeat]. */
+    fun seatFreeFor(owner: Any): Boolean = claims?.freeFor(NpcActivity.SEAT, owner) != false
+
+    // Set/cleared only by DroneOperatorBehaviour while preparing a launch or flying a drone —
     // same "hands off this mob" contract as vehicleTransport (no shooting, no squad movement, no
     // investigating), plus it keeps the AI LOD at full rate: the drone is flown from this mob's
     // brain tick, so throttling the operator would throttle the drone.
@@ -1117,6 +1137,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             com.sbwnpc.squad.entity.ai.HelicopterGunnerBehaviour(),
             com.sbwnpc.squad.entity.ai.HelicopterRideBehaviour(),
             VehicleCombatSupportBehaviour(),
+            com.sbwnpc.squad.entity.ai.FollowRideBehaviour(),
             MedicHealBehaviour(),
             com.sbwnpc.squad.entity.ai.SelfTreatBehaviour(),
             // Last: it has to override whatever the behaviours above did with the navigation.
@@ -1221,6 +1242,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         // post-dig throw, all from these same counts.
         rgnLeft = if (carriesGrenades()) GRENADES_OF_EACH else 0
         rgoLeft = rgnLeft
+        smokeLeft = if (carriesGrenades()) SMOKE_GRENADES else 0
         medkitsLeft = MEDKITS
         mortarShellsLeft = if (npcClass == NpcClass.MORTAR) MORTAR_SHELLS else 0
         if (npcClass == NpcClass.DRONE_OPERATOR) dronesLeft = com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES
@@ -1257,6 +1279,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         assignedVehicleId?.let { compound.putUUID("AssignedVehicle", it) }
         compound.putInt("Rgn", rgnLeft)
         compound.putInt("Rgo", rgoLeft)
+        compound.putInt("Smoke", smokeLeft)
         compound.putInt("Medkits", medkitsLeft)
         compound.putInt("MortarShells", mortarShellsLeft)
         if (carryingMortar) compound.putBoolean("CarryingMortar", true)
@@ -1295,6 +1318,14 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             compound.getInt("Rgo")
         } else if (carriesGrenades()) {
             GRENADES_OF_EACH
+        } else {
+            0
+        }
+        // Saved before NPCs carried smoke: issued now.
+        smokeLeft = if (compound.contains("Smoke")) {
+            compound.getInt("Smoke")
+        } else if (carriesGrenades()) {
+            SMOKE_GRENADES
         } else {
             0
         }
@@ -1485,6 +1516,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         private const val GRENADE_DROP_CHANCE = 0.0125f
         private val LOOTABLE_SLOTS = listOf(EquipmentSlot.MAINHAND, EquipmentSlot.HEAD, EquipmentSlot.CHEST)
         private const val GRENADES_OF_EACH = 2
+
+        /** Smoke grenades each fighter carries; one is thrown per withdrawal. */
+        private const val SMOKE_GRENADES = 1
         const val MEDKITS = 1
         private const val HEARD_LOOK_TICKS = 100
 
@@ -1517,7 +1551,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
         // How far an NPC can spot / act on relayed contacts — see the FOLLOW_RANGE note in
         // createAttributes() for why this is a constant of its own rather than that attribute.
-        const val DETECTION_RANGE = 72.0
+        // 128, the owner's call (21.10): the brightest light's cut-off in SpottingTime, so the
+        // light and the rank decide how far a man sees, not the search box.
+        const val DETECTION_RANGE = 128.0
 
         // AI level-of-detail — see refreshAiLod(). Player distances at which the brain drops to
         // every-2nd / every-4th tick when not in combat.

@@ -40,18 +40,31 @@ object DetectionSightline {
 
     internal fun visible(level: BlockGetter, from: Vec3, to: Vec3, collision: CollisionContext): Boolean = trace(level, from, to, collision) == Visibility.VISIBLE
 
-    internal fun trace(level: BlockGetter, from: Vec3, to: Vec3, collision: CollisionContext): Visibility {
+    internal fun trace(level: BlockGetter, from: Vec3, to: Vec3, collision: CollisionContext): Visibility = sight(level, from, to, collision).visibility
+
+    /** What [visibility] the line gives and how many blocks of grass it passes through on the way. */
+    data class Sighting(val visibility: Visibility, val grassBlocks: Int)
+
+    fun sight(observer: Entity, target: Entity): Sighting = if (observer.level() === target.level()) sight(observer.level(), observer.eyePosition, target.eyePosition, CollisionContext.of(observer)) else Sighting(Visibility.OBSTACLE, 0)
+
+    internal fun sight(level: BlockGetter, from: Vec3, to: Vec3, collision: CollisionContext): Sighting {
+        if (level is net.minecraft.world.level.Level && SmokeClouds.blocks(level, from, to)) return Sighting(Visibility.OBSTACLE, 0)
         if (level is ServerLevel) TickBudget.chargeRaycast(level)
-        val hit = level.clip(DetectionContext(from, to, collision))
-        return when {
+        val context = DetectionContext(from, to, collision)
+        val hit = level.clip(context)
+        val visibility = when {
             hit.type == HitResult.Type.MISS -> Visibility.VISIBLE
             isGrass(level.getBlockState(hit.blockPos)) -> Visibility.FOLIAGE
             else -> Visibility.OBSTACLE
         }
+        return Sighting(visibility, context.grassBlocks)
     }
 
     private class DetectionContext(from: Vec3, to: Vec3, collision: CollisionContext) : ClipContext(from, to, Block.COLLIDER, Fluid.NONE, collision) {
         private var foliage = 0
+
+        /** Grass cells the ray passed through, counted up to the number that hides the target. */
+        val grassBlocks get() = foliage
 
         override fun getBlockShape(state: BlockState, level: BlockGetter, pos: BlockPos): VoxelShape {
             if (isGrass(state)) {

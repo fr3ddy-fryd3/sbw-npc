@@ -1,7 +1,9 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
+import com.sbwnpc.squad.ai.integration.point
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.FollowFormation
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.entity.NpcEntity
@@ -162,11 +164,19 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
                     patrolHome = home
                     roaming = false
                     repathCooldown = 0
-                    repathWhenDue(entity, home, WALK_SPEED_MODIFIER)
-                } else if (!roaming && entity.position().subtract(home).horizontalDistance() > SquadFormation.patrolRadius(squad.members.size) + 3.0) {
+                    // Sent to the new point itself, every man crossed its centre each time it
+                    // moved (#176): one already in the area drifts on from where he is.
+                    val outside = outsidePatrolArea(entity, home, squad)
+                    DebugFlags.log(LogGroup.ORDER, "[patrol] {} event=new_point point={} outside={}", entity.uuid, home, outside)
+                    if (outside) repathWhenDue(entity, home, WALK_SPEED_MODIFIER) else roamAround(entity, home)
+                } else if (!roaming && outsidePatrolArea(entity, home, squad)) {
                     // A distant patrol area is a fixed transit goal. A short march leg is not
                     // arrival at a roaming spot; do not pause and pick a different destination.
                     repathWhenDue(entity, home, WALK_SPEED_MODIFIER)
+                } else if (!roaming && !entity.navigation.isDone && repathCooldown == 0) {
+                    // In the area on his way to its point: drift about it from here on.
+                    DebugFlags.log(LogGroup.ORDER, "[patrol] {} event=entered_area point={}", entity.uuid, home)
+                    roamAround(entity, home)
                 } else if (entity.navigation.isDone && roaming) {
                     // Got there: stand about for a while before the next spot.
                     roaming = false
@@ -177,6 +187,8 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
 
             SquadOrder.MOVE -> tickMove(entity, home)
+
+            SquadOrder.FOLLOW -> tickFollow(entity, squad, home)
 
             // Nobody in sight: just get there at a run. Under fire GunAttackBehaviour takes over
             // and makes it a fighting withdrawal.
@@ -189,6 +201,27 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
                     moveToSlot(entity, bound, RUN_SPEED_MODIFIER)
                 }
             }
+        }
+    }
+
+    /**
+     * Far from the player the squad paths to him as for an attack; close to him each man holds his
+     * own loose slot ahead of him, see [FollowFormation]. Only a man with nothing to shoot at gets
+     * here, so after a fight the squad comes back to the player by itself.
+     */
+    private fun tickFollow(entity: NpcEntity, squad: Squad, player: Vec3) {
+        if (!FollowFormation.near(entity.position().point(), player.point())) {
+            approachSlot(entity, player, false, RUN_SPEED_MODIFIER)
+            return
+        }
+        val heading = squad.followHeading
+        val moving = heading != Vec3.ZERO
+        val slot = FollowFormation.slot(player.point(), if (moving) heading.x to heading.z else null, entity.slotIndex(squad), moving)
+        val target = Vec3(slot.x, slot.y, slot.z)
+        if (entity.position().distanceTo(target) > FOLLOW_SLOT_TOLERANCE) {
+            moveToSlot(entity, target, if (moving) RUN_SPEED_MODIFIER else WALK_SPEED_MODIFIER)
+        } else {
+            entity.navigation.stop()
         }
     }
 
@@ -399,6 +432,8 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         repathCooldown = REPATH_COOLDOWN_TICKS
     }
 
+    private fun outsidePatrolArea(entity: NpcEntity, home: Vec3, squad: Squad) = entity.position().subtract(home).horizontalDistance() > SquadFormation.patrolRadius(squad.members.size) + 3.0
+
     /**
      * A patrol with no route: every member drifts about the area on its own — a spot somewhere in
      * the squad's patrol area, a walk there, a pause to look around, and the next. Picking each
@@ -438,6 +473,9 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val ROUTE_DWELL_JITTER = 40
         private const val MOVE_SLOT_RADIUS = 2.0
         private const val SLOT_SETTLE_DISTANCE = 3.0
+
+        /** A following man within this of his slot stands still rather than shuffling to the exact spot. */
+        private const val FOLLOW_SLOT_TOLERANCE = 2.5
 
         /** How far around its perimeter slot a defender looks for a better spot. */
         private const val DEFEND_POST_SEARCH = 3.0

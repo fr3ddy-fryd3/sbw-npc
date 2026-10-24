@@ -2,18 +2,23 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.Hostiles
 import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.combat.Noticing
 import com.sbwnpc.squad.combat.TeamAwareness
+import com.sbwnpc.squad.combat.Vision
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.squad.SquadOrder
+import com.sbwnpc.squad.squad.SquadReports
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.util.Mth
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
@@ -21,12 +26,13 @@ import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.levelgen.Heightmap
+import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 import java.util.UUID
 
 /**
- * DRONE_OPERATOR's whole job: spot a target 80-150 blocks out (by rank — same autonomous scan +
+ * DRONE_OPERATOR's whole job: spot a target 80-160 blocks out (by rank — same autonomous scan +
  * faction relay as [MortarCrewBehaviour], plus the squad's ATTACK focus/objective), launch an
  * SBW kamikaze drone at it and fly it there from the server, no Monitor/player needed. Core task
  * like the mortar crew — it must keep flying regardless of Fight/Idle activity.
@@ -55,7 +61,9 @@ import java.util.UUID
  * -> blast where it is. Operator killed -> [onOperatorDied]: same, "signal lost".
  *
  * One drone per operator, [MAX_DRONES] carried, refilled at a barracks
- * (SquadManager.resupplyAtBarracks). While flying the operator stands still holding the Monitor
+ * (SquadManager.resupplyAtBarracks). Under broad cover he first walks to a reachable launch column
+ * nearby and returns to his original post after launch. Preparation owns his movement too.
+ * While flying the operator stands still holding the Monitor
  * (its gun is stowed in `NpcEntity.stowedWeapon`) and every other movement/combat behaviour stands
  * down via `NpcEntity.operatingDrone`; suppression doesn't interrupt the flight (the operator is
  * stationary either way, SeekCoverBehaviour may shuffle it into cover meanwhile).
@@ -71,6 +79,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     private class StrikeTarget(val entityId: UUID?, val pos: Vec3)
 
     private var droneId: UUID? = null
+    private var launchWalk: DroneLaunchWalk? = null
     private var phase = Phase.LAUNCH
     private var targetEntityId: UUID? = null
     private var targetPos: Vec3 = Vec3.ZERO
@@ -83,6 +92,9 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var sawTargetTick = 0
     private var nextSightCheckTick = 0
     private var clearance = CRUISE_CLEARANCE_MIN
+
+    /** No open sky to launch into at the last look, see [launchPoint]; for the log. */
+    private var skyClosed = false
     private var detonated = false
     private var usesAddonBlast = false
 
@@ -96,6 +108,10 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private var nextScanTick = 0
     private var lastScanResult: StrikeTarget? = null
+
+    /** How far the operator has got at noticing each enemy his own scan looks at. */
+    private val noticing = Noticing("drone operator", LogGroup.FIRE_SUPPORT)
+
     private val startCheck = StartCheckThrottle(START_CHECK_INTERVAL_TICKS)
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
@@ -104,26 +120,64 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun baseEligible(entity: NpcEntity): Boolean = entity.npcClass == NpcClass.DRONE_OPERATOR && !entity.diggedIn && !entity.vehicleTransport
 
-    private fun canLaunch(entity: NpcEntity): Boolean {
+    private fun canPrepareLaunch(entity: NpcEntity): Boolean {
         if (entity.dronesLeft <= 0) return false
         if (entity.tickCount < nextLaunchTick) return false
-        if (entity.combatLockedByCover() || entity.combatLockedByMedic()) return false
+        if (entity.movementLockedByCover() || entity.combatLockedByMedic()) return false
         // Someone right on top of the operator: shoot back (GunAttackBehaviour), don't launch.
         val personalThreat = entity.target?.takeIf { it.isAlive && entity.distanceToSqr(it) <= SELF_DEFENSE_RANGE_SQR }
         if (personalThreat != null) return false
-        return strikeTarget(entity) != null
+        if (strikeTarget(entity) == null) return false
+        val launchPoint = (entity.level() as? ServerLevel)?.let { launchPoint(it, entity) }
+        if ((launchPoint == null) != skyClosed) {
+            skyClosed = launchPoint == null
+            DebugFlags.log(LogGroup.DRONE, "{} {}", entity.uuid, if (skyClosed) "holds the drone: no open sky to launch into" else "has open sky to launch into")
+        }
+        return true
     }
 
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = startCheck.check(entity) { baseEligible(entity) && canLaunch(entity) }
+    /**
+     * Where the drone can go up from: [LAUNCH_HEIGHT] over the operator's feet, right above him or a
+     * step to one side, with the air clear straight up to past cruise height.
+     *
+     * Put down a block and a half in front of him, an operator in cover put it into the wall he hid
+     * behind, and it crashed on the spot and killed him (#158). The climb ([tickLaunch]) goes
+     * straight up before turning, so a clear column is the whole way out.
+     */
+    private fun launchPoint(level: ServerLevel, entity: NpcEntity, feet: Vec3 = entity.position()): Vec3? {
+        val base = feet.add(0.0, LAUNCH_HEIGHT, 0.0)
+        val candidates = sequenceOf(base) + (0 until LAUNCH_SIDE_POINTS).asSequence().map {
+            val angle = it * 2.0 * Math.PI / LAUNCH_SIDE_POINTS
+            base.add(Math.cos(angle) * LAUNCH_SIDE_STEP, 0.0, Math.sin(angle) * LAUNCH_SIDE_STEP)
+        }
+        return candidates.firstOrNull { openSky(level, entity, it) }
+    }
 
-    override fun shouldKeepRunning(entity: NpcEntity): Boolean = baseEligible(entity) && droneId != null
+    private fun openSky(level: ServerLevel, entity: NpcEntity, at: Vec3): Boolean {
+        // A roof higher than the climb checked below still stops it: the climb aims over the
+        // tallest thing in this column. Floored, not [groundY]'s toInt, which reads the column
+        // next door at negative coordinates.
+        if (level.getHeight(Heightmap.Types.MOTION_BLOCKING, Mth.floor(at.x), Mth.floor(at.z)) > at.y) return false
+        val box = AABB(at.x - LAUNCH_HALF_WIDTH, at.y, at.z - LAUNCH_HALF_WIDTH, at.x + LAUNCH_HALF_WIDTH, at.y + LAUNCH_BOX_HEIGHT, at.z + LAUNCH_HALF_WIDTH)
+        return level.noCollision(entity, box.expandTowards(0.0, CRUISE_CLEARANCE_MAX, 0.0))
+    }
+
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = startCheck.check(entity) { baseEligible(entity) && canPrepareLaunch(entity) }
+
+    override fun shouldKeepRunning(entity: NpcEntity): Boolean = baseEligible(entity) && (droneId != null || launchWalk != null)
 
     override fun start(entity: NpcEntity) {
         droneId = null
         detonated = false
         val level = entity.level() as? ServerLevel ?: return
         val target = strikeTarget(entity) ?: return
-        launch(entity, level, target)
+        if (launchPoint(level, entity) != null) {
+            launch(entity, level, target)
+        } else {
+            launchWalk = DroneLaunchWalk(entity)
+            entity.operatingDrone = true
+            entity.navigation.stop()
+        }
     }
 
     override fun stop(entity: NpcEntity) {
@@ -187,13 +241,20 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             // Range first: candidates are sorted nearest-first, and everything inside MIN_RANGE
             // used to spend the raycast budget before a single launchable target got looked at.
             if (!inLaunchRange(entity, c.position())) continue
+            // Own eyes are a man's eyes (#114): where he looks, and only once he has noticed it. A
+            // bare line-of-sight check launched on an enemy 150 blocks off the moment it was in view.
+            if (!Vision.inCone(entity.position(), entity.yHeadRot, c.position())) continue
             if (losChecks++ >= MAX_LOS_CHECKS) break
-            if (!com.sbwnpc.squad.combat.DetectionSightline.canSee(entity, c)) continue
+            if (DetectionSightline.sight(entity, c).visibility != DetectionSightline.Visibility.VISIBLE) continue
+            if (!noticing.noticed(entity, level, c, Vision.offAxis(entity.position(), entity.yHeadRot, c.position()))) continue
             if (faction != null) TeamAwareness.report(faction, c.uuid, c.position(), tick, "drone operator ${entity.uuid.toString().take(8)}")
             if (spotted == null) spotted = c
         }
+        noticing.endScan(tick)
         if (spotted != null) {
             lastScanResult = StrikeTarget(spotted.uuid, spotted.position())
+            // Called in the way a rifleman calls it, so the player hears of the fight before the drone is up.
+            SquadReports.contact(entity, spotted)
             DebugFlags.log(LogGroup.FIRE_SUPPORT, "drone {} -> {} seen by itself at {}", entity.uuid, spotted.uuid, spotted.position())
             return lastScanResult
         }
@@ -224,10 +285,10 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun launch(entity: NpcEntity, level: ServerLevel, target: StrikeTarget) {
         // Which drone, and whose explosion — see the Drones adapter.
+        // Looked for again: the start check that found one may be a few ticks old.
+        val spawn = launchPoint(level, entity) ?: return
         val drone = Ports.drones.createKamikaze(level)
         usesAddonBlast = Ports.drones.blowsUpOnCrash(drone)
-        val forward = Vec3.directionFromRotation(0f, entity.yRot)
-        val spawn = entity.position().add(forward.scale(1.5)).add(0.0, 0.5, 0.0)
         drone.moveTo(spawn.x, spawn.y, spawn.z, entity.yRot, 0f)
         // Same scoreboard team as the operator: SBW turrets / hostile vehicles treat it as an enemy
         // vehicle, allies leave it alone.
@@ -271,6 +332,8 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun cleanup(entity: NpcEntity) {
+        launchWalk?.cancel(entity)
+        launchWalk = null
         if (droneId != null) {
             DroneLinks.unlink(entity.uuid)
             // Cooldown only after an actual flight — a start() that found nothing to launch at
@@ -297,7 +360,11 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun tick(entity: NpcEntity) {
         val level = entity.level() as? ServerLevel ?: return
-        val id = droneId ?: return
+        val id = droneId
+        if (id == null) {
+            tickPreparation(entity, level)
+            return
+        }
         val drone = level.getEntity(id)?.takeIf(Ports.drones::isPiloted)
         if (drone == null || !Ports.vehicles.isOperational(drone) || Ports.vehicles.healthFraction(drone) <= 0f) {
             // Shot down. Addon drone: its destroy() already blew up. Bare SBW drone: SBW's own
@@ -308,7 +375,13 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         lastDronePos = drone.position()
 
-        entity.navigation.stop()
+        val walk = launchWalk
+        if (walk == null) {
+            // Cover may have replaced the return path and ended the walk on an earlier tick.
+            if (!entity.movementLockedByCover() && !entity.combatLockedByMedic()) entity.navigation.stop()
+        } else if (walk.returnHome(entity)) {
+            launchWalk = null
+        }
         entity.lookControl.setLookAt(drone.x, drone.y, drone.z)
 
         if (entity.tickCount - launchTick > MAX_FLIGHT_TICKS) {
@@ -337,6 +410,34 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             Phase.ATTACK -> tickAttack(entity, level, drone)
             Phase.RETURN -> tickReturn(entity, level, drone)
         }
+    }
+
+    private fun tickPreparation(entity: NpcEntity, level: ServerLevel) {
+        val walk = launchWalk ?: return
+        if (!canPrepareLaunch(entity)) {
+            abandonPreparation(entity)
+            return
+        }
+        when (walk.approach(entity, level) { launchPoint(level, entity, it) != null }) {
+            DroneLaunchWalk.Result.WAITING -> Unit
+
+            DroneLaunchWalk.Result.FAILED -> abandonPreparation(entity)
+
+            DroneLaunchWalk.Result.READY -> {
+                val target = strikeTarget(entity)
+                if (target == null) {
+                    abandonPreparation(entity)
+                    return
+                }
+                launch(entity, level, target)
+                if (droneId != null) walk.beginReturn(entity)
+            }
+        }
+    }
+
+    private fun abandonPreparation(entity: NpcEntity) {
+        cleanup(entity)
+        nextLaunchTick = entity.tickCount + LAUNCH_SEARCH_RETRY_TICKS
     }
 
     /**
@@ -441,7 +542,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         drone.yRot = cmd.yaw
     }
 
-    private fun groundY(level: ServerLevel, x: Double, z: Double): Int = level.getHeight(Heightmap.Types.MOTION_BLOCKING, x.toInt(), z.toInt())
+    private fun groundY(level: ServerLevel, x: Double, z: Double): Int = level.getHeight(Heightmap.Types.MOTION_BLOCKING, Mth.floor(x), Mth.floor(z))
 
     /** Heightmap samples under the drone and along the next [LOOKAHEAD_DISTANCES] blocks toward
      *  [toward] — cheap (no block reads), and MOTION_BLOCKING includes trees/roofs. */
@@ -618,11 +719,11 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     companion object {
         const val MAX_DRONES = 10
 
-        // Launch envelope: 80 blocks for a RECRUIT up to 150 for ELITE (per user request), never
+        // Launch envelope: 80 blocks for a RECRUIT up to 160 for ELITE (per user request, 160 since 21.10), never
         // closer than MIN_RANGE — at that distance the SMG is the answer, not a 6-second flight.
         private const val MIN_RANGE = 20.0
         private const val MIN_MAX_RANGE = 80.0
-        private const val MAX_MAX_RANGE = 150.0
+        private const val MAX_MAX_RANGE = 160.0
         private const val SELF_DEFENSE_RANGE_SQR = 6.0 * 6.0
         private const val MAX_LOS_CHECKS = 8
         private const val SCAN_INTERVAL_TICKS = 20
@@ -630,12 +731,24 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         private const val LAUNCH_COOLDOWN_TICKS = 200
         private const val LAUNCH_COOLDOWN_JITTER = 100
+        private const val LAUNCH_SEARCH_RETRY_TICKS = 100
         private const val MAX_FLIGHT_TICKS = 1500 // 75 s — "battery out", blast wherever it is
 
         // Height over the highest terrain/tree/roof along the leg — jittered per flight so two
         // drones from one squad don't fly the same line.
         private const val CRUISE_CLEARANCE_MIN = 12.0
         private const val CRUISE_CLEARANCE_MAX = 18.0
+
+        /** The drone goes up from this far over the operator's feet, clear of his head. */
+        private const val LAUNCH_HEIGHT = 2.0
+
+        /** Spots round the operator tried when the sky right above him is closed, this far out. */
+        private const val LAUNCH_SIDE_POINTS = 8
+        private const val LAUNCH_SIDE_STEP = 2.0
+
+        /** A box a little larger than SBW's drone, so a clear one leaves it room. */
+        private const val LAUNCH_HALF_WIDTH = 0.5
+        private const val LAUNCH_BOX_HEIGHT = 0.7
         private val LOOKAHEAD_DISTANCES = doubleArrayOf(4.0, 8.0, 12.0, 16.0)
 
         // Blocks per tick. SBW's drone can exceed 2/tick flat out; these keep it steerable.
