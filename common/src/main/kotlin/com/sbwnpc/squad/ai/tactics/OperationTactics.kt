@@ -223,10 +223,10 @@ object OperationTactics {
             else -> (now / BOUND_TICKS) % 2 == (half % 2).toLong()
         }
 
-    /** A following man this near his player fights from where he is. */
-    const val FOLLOW_KEEP = 12.0
+    /** A following man this near his player fights from where he is: out to his outer slots. */
+    const val FOLLOW_KEEP = 18.0
 
-    /** Twice [com.sbwnpc.squad.combat.FollowFormation.NEAR_DISTANCE]: beyond it the whole squad runs. */
+    /** Well past [com.sbwnpc.squad.combat.FollowFormation.NEAR_DISTANCE]: beyond it the whole squad runs. */
     const val FOLLOW_CATCH_UP = 32.0
 
     /** How long each half of a following squad runs or covers, 5 s. */
