@@ -11,7 +11,7 @@ enum class NpcActivity {
     /** Seeking, boarding, driving or riding a vehicle: the vehicle and helicopter behaviours. */
     VEHICLE,
 
-    /** Flying a drone: [com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour]. */
+    /** Preparing or flying a drone: [com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour]. */
     DRONE,
 
     /** At a mortar as its operator or loader: [com.sbwnpc.squad.entity.ai.MortarCrewBehaviour]. */

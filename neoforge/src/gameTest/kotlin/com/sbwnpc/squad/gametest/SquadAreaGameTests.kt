@@ -190,6 +190,32 @@ object SquadAreaGameTests {
     @GameTest(templateNamespace = "sbwnpc", template = "operation_arena", skyAccess = true, timeoutTicks = 1200, batch = "area-patrol")
     fun nearbyFreePatrolOrdersRoamSeparateAreas(helper: GameTestHelper) = holding(helper, SquadOrder.PATROL)
 
+    /** A free patrol's point moves within its area: the men drift on, not all through the new point (#176). */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "operation_arena", skyAccess = true, timeoutTicks = 1400, batch = "area-patrol-shift")
+    fun freePatrolDriftsOnWhenItsPointMoves(helper: GameTestHelper) {
+        val fixture = Fixture(helper, "area-patrol-shift")
+        val (squad, members) = fixture.group(8, SquadOrder.PATROL, Vec3(200.5, 1.0, 200.5))
+        var shiftedAt = 0L
+        val crossed = HashSet<UUID>()
+        helper.onEachTick {
+            if (shiftedAt == 0L) {
+                val first = members.first().homeCenter() ?: return@onEachTick
+                if (helper.tick < 300 || members.any { it.position().subtract(first).horizontalDistance() > SquadFormation.patrolRadius(members.size) }) return@onEachTick
+                SquadManager.get(helper.level).setObjective(helper.level, squad.id, BlockPos.containing(first.add(16.0, 0.0, 0.0)))
+                shiftedAt = helper.tick
+                return@onEachTick
+            }
+            val point = requireNotNull(members.first().homeCenter())
+            members.filter { it.position().subtract(point).horizontalDistance() <= 3.0 }.forEach { crossed += it.uuid }
+            if (helper.tick - shiftedAt >= 400) {
+                helper.assertTrue(crossed.size <= 2, "${crossed.size} of ${members.size} men walked through the moved patrol point")
+                fixture.scene.result("PASS", "shiftedAt=$shiftedAt point=${helper.relativeVec(point)} crossed=${crossed.size}")
+                helper.succeed()
+            }
+        }
+    }
+
     private fun holding(helper: GameTestHelper, order: SquadOrder) {
         val fixture = Fixture(helper, "area-${order.name.lowercase()}")
         val groups = listOf(fixture.group(16, order, Vec3(176.5, 1.0, 192.5)), fixture.group(16, order, Vec3(188.5, 1.0, 192.5)))

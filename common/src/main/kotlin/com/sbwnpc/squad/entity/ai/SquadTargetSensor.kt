@@ -104,7 +104,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     }
 
     /**
-     * At an APC's or a helicopter's turret a new target counts only once the gunner has noticed it
+     * At any vehicle weapon a new target counts only once the gunner has noticed it
      * himself, by his rank and the light, with no cut-off (#146). Every source of a target goes
      * through here: his crewmates' instant sight handed him new contacts at once, and SBW lays the
      * turret on a perfect lead the moment it has one. Whatever shot at the vehicle, and the target he
@@ -112,7 +112,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
      */
     private fun gunnerNotices(mob: NpcEntity, level: ServerLevel, desired: LivingEntity?, previous: LivingEntity?): LivingEntity? {
         val vehicle = mob.vehicle ?: return desired
-        if (!Ports.vehicles.isTurretGunner(vehicle, mob)) return desired
+        if (!Ports.vehicles.hasWeaponAt(vehicle, mob)) return desired
         val kept = previous?.takeIf { it.isAlive && SquadTeams.isHostile(mob, it) }
         val chosen = when {
             desired == null || desired === previous || desired === mob.vehicleAttacker() -> desired
