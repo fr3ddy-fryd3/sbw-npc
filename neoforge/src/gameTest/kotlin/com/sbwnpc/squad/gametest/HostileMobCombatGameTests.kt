@@ -1,7 +1,10 @@
 package com.sbwnpc.squad.gametest
 
+import com.sbwnpc.squad.combat.DetectionSightline
+import com.sbwnpc.squad.combat.FiringOpportunity
 import com.sbwnpc.squad.combat.GrenadeThrower
 import com.sbwnpc.squad.combat.Sightline
+import com.sbwnpc.squad.combat.tactics.TacticalTargetSelection
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.TransportVehicle
@@ -169,6 +172,47 @@ object HostileMobCombatGameTests {
             lav.discard()
             helper.assertTrue(GrenadeThrower.pick(man, helper.level, enemy.boundingBox.center) != null, "No grenade was thrown with the way clear")
             scene.result("PASS", "hull=blocked")
+            helper.succeed()
+        }
+    }
+
+    /**
+     * A zombie standing just in front of the squad's empty LAV is no target: the rounds that miss go
+     * into the LAV. Clear of it, the zombie is. In-game 25.10 the hull check stopped at the target,
+     * and a squad shooting in the dark put its misses into its own vehicle.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 100, batch = "mob-combat-backstop")
+    fun zombieInFrontOfTheSquadsVehicleIsNotShotAt(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "mob-combat-backstop")
+        val man = scene.spawn(Vec3(36.5, 1.0, 41.5)).also {
+            it.isNoAi = true
+            it.yRot = -90f
+            it.yHeadRot = -90f
+        }
+        val zombie = requireNotNull(EntityType.ZOMBIE.create(helper.level)).also {
+            val at = helper.absoluteVec(Vec3(42.5, 1.0, 41.5))
+            it.moveTo(at.x, at.y, at.z, 90f, 0f)
+            it.isNoAi = true
+            helper.level.addFreshEntity(it)
+        }
+        val lav = requireNotNull(Ports.vehicles.create(helper.level, TransportVehicle.LAV_25))
+        val at = helper.absoluteVec(Vec3(47.5, 1.0, 41.5))
+        lav.moveTo(at.x, at.y, at.z, 0f, 0f)
+        helper.level.addFreshEntity(lav)
+        scene.onClose = {
+            zombie.discard()
+            lav.discard()
+        }
+        helper.runAfterDelay(2) {
+            man.sensing.tick()
+            helper.assertTrue(DetectionSightline.canSee(man, zombie), "The man does not see the zombie")
+            val withHull = FiringOpportunity.assess(man, zombie)
+            helper.assertTrue(withHull != TacticalTargetSelection.Opportunity.SHOOTABLE, "The zombie in front of the LAV was shootable")
+            lav.discard()
+            val clear = FiringOpportunity.assess(man, zombie)
+            helper.assertTrue(clear == TacticalTargetSelection.Opportunity.SHOOTABLE, "The zombie was not shootable with the LAV gone: $clear")
+            scene.result("PASS", "withHull=$withHull clear=$clear")
             helper.succeed()
         }
     }

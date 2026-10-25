@@ -26,6 +26,12 @@ object Sightline {
     /** A hull has to start ahead of the muzzle by at least this to count as being in the way. */
     private const val AHEAD_EPSILON = 1.0e-4
 
+    /** See [ownHullInLane]: how far past the target a missed round still finds a hull. */
+    private const val BACKSTOP = 4.0
+
+    /** See [ownHullInLane]: the cone allowance for the shooter's own side's hulls. */
+    private const val MAX_OWN_CONE_ALLOWANCE = 3.0
+
     fun blocked(level: ServerLevel, from: Vec3, to: Vec3, passer: Entity): Boolean {
         TickBudget.chargeRaycast(level)
         val hit = level.clip(ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, passer))
@@ -76,6 +82,28 @@ object Sightline {
                 vehicle !== ridden && vehicle !== targetRide && vehicle !== target &&
                 (targetBody == null || !vehicle.boundingBox.intersects(targetBody) || keepsHull(vehicle, shooter, target))
         }.map { it.boundingBox }
+    }
+
+    /**
+     * Whether a shot from [from] at [aim] can put rounds into a vehicle of [shooter]'s side, or an
+     * empty one, which near a squad is almost always its own: in front of the target, or within
+     * [BACKSTOP] behind it, where the misses go. [crosses] stops at the target and caps its cone at
+     * [MAX_CONE_ALLOWANCE], and in the dark a squad emptied its rifles past a zombie into its own
+     * LAV (in-game 25.10). The spread is SBW's, as in [FiringCone].
+     */
+    fun ownHullInLane(shooter: Entity, from: Vec3, aim: Vec3, spread: Double, target: Entity?): Boolean {
+        val level = shooter.level() as? ServerLevel ?: return false
+        val end = aim.add(aim.subtract(from).normalize().scale(BACKSTOP))
+        val fan = Math.tan(FiringCone.angleOf(spread).coerceAtMost(Math.PI / 2 - AHEAD_EPSILON))
+        val ridden = shooter.vehicle
+        val targetRide = target?.vehicle
+        return Ports.vehicles.within(level, AABB(from, end).inflate(MAX_OWN_CONE_ALLOWANCE)) { vehicle ->
+            Ports.vehicles.isOperational(vehicle) && vehicle !== ridden && vehicle !== targetRide && vehicle !== target &&
+                (vehicle.passengers.isEmpty() || vehicle.passengers.any { SquadTeams.sameSide(it, shooter) })
+        }.any { vehicle ->
+            val hull = vehicle.boundingBox
+            entersAhead(hull.inflate(Math.min(from.distanceTo(hull.center) * fan, MAX_OWN_CONE_ALLOWANCE)), from, end)
+        }
     }
 
     private fun keepsHull(vehicle: Entity, shooter: Entity, target: Entity?) = (target != null && SquadTeams.sideOf(target) == null) || vehicle.passengers.any { SquadTeams.sameSide(it, shooter) }

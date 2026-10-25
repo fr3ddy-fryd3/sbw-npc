@@ -548,6 +548,7 @@ object TacticalPositions {
         val level = entity.level() as ServerLevel
         val hulls = Sightline.vehicleHulls(level, AABB(eye, aim.eye).inflate(2.0), entity, entity.target)
         return !Sightline.blockedBy(level, eye, aim.eye, entity, hulls, entity.spread) &&
+            !Sightline.ownHullInLane(entity, eye, aim.eye, entity.spread, entity.target) &&
             clearOfGrass(level, entity, point, aim.eye) &&
             friendlyLane(entity, eye, aim.eye)
     }
