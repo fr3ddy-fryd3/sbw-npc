@@ -4,6 +4,7 @@ import com.atsuishio.superbwarfare.config.server.ExplosionConfig
 import com.atsuishio.superbwarfare.entity.projectile.HandGrenadeEntity
 import com.atsuishio.superbwarfare.entity.projectile.M18SmokeGrenadeEntity
 import com.atsuishio.superbwarfare.entity.projectile.RgoGrenadeEntity
+import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.atsuishio.superbwarfare.tools.RangeTool
 import com.sbwnpc.squad.domain.port.GrenadeKind
 import com.sbwnpc.squad.domain.port.Grenades
@@ -58,6 +59,12 @@ object SbwGrenades : Grenades {
             val next = pos.add(velocity)
             val hit = level.clip(net.minecraft.world.level.ClipContext(pos, next, net.minecraft.world.level.ClipContext.Block.COLLIDER, net.minecraft.world.level.ClipContext.Fluid.NONE, thrower))
             if (hit.type != net.minecraft.world.phys.HitResult.Type.MISS) return hit.location.distanceToSqr(predictedTarget) <= nearSqr
+            // A hull stops a grenade like a wall; it used to fly on through, and one meant for a
+            // zombie past a squad's LAV could drop at the thrower's feet (in-game 25.10).
+            val hull = level.getEntitiesOfClass(VehicleEntity::class.java, net.minecraft.world.phys.AABB(pos, next).inflate(1.0)) { it !== thrower.rootVehicle }
+                .mapNotNull { it.boundingBox.clip(pos, next).orElse(null) }
+                .minByOrNull { it.distanceToSqr(pos) }
+            if (hull != null) return hull.distanceToSqr(predictedTarget) <= nearSqr
             val bystander = level.getEntities(thrower, net.minecraft.world.phys.AABB(pos, next).inflate(0.3)) {
                 it is LivingEntity && it.isAlive && !it.isSpectator && it.vehicle !== thrower &&
                     it.boundingBox.inflate(0.3).clip(pos, next).isPresent && !com.sbwnpc.squad.team.SquadTeams.isHostile(thrower, it)

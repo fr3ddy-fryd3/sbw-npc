@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.gametest
 
+import com.sbwnpc.squad.combat.GrenadeThrower
 import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
@@ -116,6 +117,58 @@ object HostileMobCombatGameTests {
             val hulls = Sightline.vehicleHulls(helper.level, man.boundingBox.minmax(zombie.boundingBox).inflate(8.0), man, zombie)
             helper.assertTrue(hulls.any { it == lav.boundingBox }, "The LAV the zombie leans on is out of the fire check")
             scene.result("PASS", "hulls=${hulls.size}")
+            helper.succeed()
+        }
+    }
+
+    /**
+     * No grenade is thrown where its own blast reaches the thrower, and one is in the open further
+     * off. In-game 25.10 a man threw an M67 (6-block blast) at a zombie five blocks away and killed
+     * himself and a medic.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 100, batch = "mob-combat-grenade")
+    fun grenadeIsNotThrownWithinItsOwnBlast(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "mob-combat-grenade")
+        val man = scene.spawn(Vec3(36.5, 1.0, 41.5)).also {
+            it.isNoAi = true
+            it.rgnLeft = 2
+            it.rgoLeft = 0
+        }
+        val near = scene.enemy(Vec3(42.0, 1.0, 41.5))
+        val far = scene.enemy(Vec3(48.5, 1.0, 41.5))
+        helper.runAfterDelay(1) {
+            helper.assertTrue(GrenadeThrower.pick(man, helper.level, near.boundingBox.center) == null, "A grenade was thrown within its own blast")
+            helper.assertTrue(GrenadeThrower.pick(man, helper.level, far.boundingBox.center) != null, "No grenade was thrown in the open")
+            scene.result("PASS", "near=null")
+            helper.succeed()
+        }
+    }
+
+    /**
+     * A grenade is not thrown where a vehicle's hull stands across its flight, and is with the hull
+     * gone. In-game 25.10 one meant for a zombie past a squad's LAV flew on through the hull.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 100, batch = "mob-combat-grenade-hull")
+    fun grenadeIsNotThrownIntoAHull(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "mob-combat-grenade-hull")
+        val man = scene.spawn(Vec3(36.5, 1.0, 41.5)).also {
+            it.isNoAi = true
+            it.rgnLeft = 2
+            it.rgoLeft = 2
+        }
+        val enemy = scene.enemy(Vec3(48.5, 1.0, 41.5))
+        val lav = requireNotNull(Ports.vehicles.create(helper.level, TransportVehicle.LAV_25))
+        val at = helper.absoluteVec(Vec3(43.5, 1.0, 41.5))
+        lav.moveTo(at.x, at.y, at.z, 90f, 0f)
+        helper.level.addFreshEntity(lav)
+        scene.onClose = { lav.discard() }
+        helper.runAfterDelay(1) {
+            helper.assertTrue(GrenadeThrower.pick(man, helper.level, enemy.boundingBox.center) == null, "A grenade was thrown into the hull")
+            lav.discard()
+            helper.assertTrue(GrenadeThrower.pick(man, helper.level, enemy.boundingBox.center) != null, "No grenade was thrown with the way clear")
+            scene.result("PASS", "hull=blocked")
             helper.succeed()
         }
     }
