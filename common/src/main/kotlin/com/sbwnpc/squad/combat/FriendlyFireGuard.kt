@@ -5,6 +5,7 @@ import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.phys.AABB
@@ -67,17 +68,33 @@ object FriendlyFireGuard {
         blastRadius: Double,
         from: Vec3 = shooter.eyePosition,
     ): Assessment {
-        val cone = FiringCone(from, aimPoint, spread)
         val speed = Ports.guns.inHand(shooter)?.muzzleVelocity?.coerceAtLeast(1.0) ?: 20.0
-        val flightTicks = kotlin.math.ceil(from.distanceTo(aimPoint) / speed) + 1.0
-        val checkBlast = blastRadius > 0.0
+        return check(shooter, Shot(FiringCone(from, aimPoint, spread), kotlin.math.ceil(from.distanceTo(aimPoint) / speed) + 1.0, impactPoint, blastRadius, aboard = null))
+    }
 
+    /** A shot from a vehicle's gun, aimed at the middle of its target's body. */
+    class VehicleShot(val vehicle: Entity, val muzzle: Vec3, val aim: Vec3, val spread: Double, val blastRadius: Double, val muzzleVelocity: Double)
+
+    /** [assess] for a vehicle gun. Men aboard its vehicle don't count: the cone starts inside its crew. */
+    fun assess(gunner: NpcEntity, shot: VehicleShot): Assessment {
+        val flight = kotlin.math.ceil(shot.muzzle.distanceTo(shot.aim) / shot.muzzleVelocity.coerceAtLeast(1.0)) + 1.0
+        return check(gunner, Shot(FiringCone(shot.muzzle, shot.aim, shot.spread), flight, shot.aim, shot.blastRadius, shot.vehicle))
+    }
+
+    /** One shot to check; allies riding [aboard] are left out. */
+    private class Shot(val cone: FiringCone, val flightTicks: Double, val impactPoint: Vec3, val blastRadius: Double, val aboard: Entity?)
+
+    private fun check(shooter: NpcEntity, shot: Shot): Assessment {
+        val cone = shot.cone
+        val impactPoint = shot.impactPoint
+        val blastRadius = shot.blastRadius
+        val checkBlast = blastRadius > 0.0
         var lineClear = true
         var blastClear = true
         val blastBox = AABB(impactPoint, impactPoint).inflate(blastRadius)
         forEachAlly(shooter, { ally ->
-            val bounds = Ports.guns.firingSafetyBounds(ally, flightTicks)
-            bounds.takeIf { cone.bounds.intersects(it) || (checkBlast && blastBox.contains(ally.position())) }
+            val bounds = Ports.guns.firingSafetyBounds(ally, shot.flightTicks)
+            bounds.takeIf { ally.rootVehicle !== shot.aboard && (cone.bounds.intersects(it) || (checkBlast && blastBox.contains(ally.position()))) }
         }) { ally, bounds ->
             if (lineClear && Ports.guns.canHitEntity(shooter, ally) && cone.intersects(bounds)) {
                 lineClear = false

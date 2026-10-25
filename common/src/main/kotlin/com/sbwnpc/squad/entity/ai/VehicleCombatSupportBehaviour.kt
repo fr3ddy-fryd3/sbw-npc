@@ -2,13 +2,16 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.combat.TankWeaponSelection
 import com.sbwnpc.squad.combat.VehicleTargeting
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
+import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
@@ -34,6 +37,11 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** Last tick the gunner had anything to shoot at — see [lingering]. */
     private var engagedTick = 0
 
+    // The keep-running check and firing tick ask about the same line; raycast it once per tick.
+    private var sightTick = Int.MIN_VALUE
+    private var sightTarget: UUID? = null
+    private var sightClear = false
+
     init {
         noTimeout()
     }
@@ -45,13 +53,16 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
         entity.tickCount >= nextBoardTick && entity.seatFreeFor(this) && eligible(entity) &&
-            threat(entity)?.let { entity.sensing.hasLineOfSight(it) } == true &&
+            threat(entity)?.let { hasFiringSightline(entity, it) } == true &&
             findSupportVehicle(entity, level) != null
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean {
         val vehicle = vehicleId?.let { (entity.level() as? ServerLevel)?.getEntity(it)?.takeIf(Ports.vehicles::isVehicle) }
             ?: return false
         if (!Ports.vehicles.isOperational(vehicle)) return false
+        if (!orderAllowsSupport(entity)) {
+            return entity.vehicle === vehicle && vehicle.deltaMovement.horizontalDistanceSqr() > DISMOUNT_SPEED_SQR
+        }
         if (engagementTarget(entity) == null) return lingering(entity, vehicle)
         // A vehicle's hull is the gunner's cover. Once claimed, reach and keep it despite sensor
         // line-of-sight gaps or suppression; these are not reasons to abandon an armoured seat.
@@ -107,6 +118,13 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 abort(entity, "vehicle gone")
                 return
             }
+        if (!orderAllowsSupport(entity)) {
+            Ports.vehicles.aimAt(vehicle, entity, null)
+            Ports.vehicles.release(vehicle)
+            Ports.vehicles.cutPower(vehicle)
+            entity.navigation.stop()
+            return
+        }
         val target = engagementTarget(entity)
         if (target == null) {
             if (lingering(entity, vehicle)) {
@@ -161,7 +179,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
                     BrainUtils.setTargetOfEntity(entity, target)
                 }
                 TankWeaponSelection.update(entity, target)
-                Ports.vehicles.aimAt(vehicle, entity, target)
+                Ports.vehicles.aimAt(vehicle, entity, target.takeIf { hasFiringSightline(entity, it) })
                 Ports.vehicles.release(vehicle)
                 Ports.vehicles.cutPower(vehicle)
                 entity.navigation.stop()
@@ -170,9 +188,15 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun eligible(entity: NpcEntity): Boolean =
-        !entity.vehicleTransport && !entity.operatingDrone && !entity.antiDroneEngaged && !entity.diggedIn && !entity.isSuppressed() &&
+        orderAllowsSupport(entity) && !entity.vehicleTransport && !entity.operatingDrone && !entity.antiDroneEngaged && !entity.diggedIn && !entity.isSuppressed() &&
             entity.npcClass != NpcClass.MORTAR &&
             threat(entity) != null
+
+    /** A temporary weapon station cannot hold up an explicit march or the squad's withdrawal. */
+    private fun orderAllowsSupport(entity: NpcEntity): Boolean {
+        val order = entity.currentSquad()?.order
+        return order != SquadOrder.MOVE && order != SquadOrder.RETREAT
+    }
 
     // The hostile-vehicle scan (an entity query + raycasts) used to run from this behaviour's
     // start check EVERY tick for EVERY non-mortar NPC on the map, whether or not anything armoured
@@ -190,7 +214,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         threatScanTick = entity.tickCount
         val level = entity.level() as? ServerLevel
-        threatCache = level?.let { VehicleTargeting.closestVisibleHostileVehicleOccupant(entity, it, TARGET_SEARCH_RADIUS) }
+        threatCache = level?.let { VehicleTargeting.closestVisibleHostileVehicleOccupant(entity, it, TARGET_SEARCH_RADIUS) { target -> VehicleTargeting.weaponPermits(entity, target) } }
         return threatCache ?: fallbackThreat(entity)
     }
 
@@ -238,40 +262,66 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  gets out, rather than sitting alone in the vehicle for as long as that enemy lives. */
     private fun engagementTarget(entity: NpcEntity): LivingEntity? {
         val level = entity.level() as? ServerLevel ?: return threat(entity)
-        targetId?.let { id ->
-            val target = level.getEntity(id) as? LivingEntity
-            if (target != null && target.isAlive && SquadTeams.isHostile(entity, target)) {
-                if (entity.sensing.hasLineOfSight(target)) sawTargetTick = entity.tickCount
-                if (entity.tickCount - sawTargetTick < LOST_SIGHT_TICKS) {
-                    engagedTick = entity.tickCount
-                    return target
-                }
+        val held = targetId?.let { level.getEntity(it) as? LivingEntity }?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) }
+        if (held != null) {
+            val inSight = hasFiringSightline(entity, held)
+            if (inSight) sawTargetTick = entity.tickCount
+            val shootable = if (inSight) null else shootableSensorPick(entity, held)
+            if (shootable != null) return takeTarget(entity, shootable)
+            if (entity.tickCount - sawTargetTick < LOST_SIGHT_TICKS) {
+                engagedTick = entity.tickCount
+                return held
             }
-            targetId = null
         }
-        return threat(entity)?.takeIf { entity.sensing.hasLineOfSight(it) }?.also {
-            DebugFlags.log(
-                LogGroup.VEHICLE,
-                "{} at the gun takes a new target {} ({} ticks after the last)",
-                entity.uuid,
-                it.uuid,
-                entity.tickCount - engagedTick,
-            )
-            targetId = it.uuid
-            sawTargetTick = entity.tickCount
-            engagedTick = entity.tickCount
-        }
+        targetId = null
+        return threat(entity)?.takeIf { hasFiringSightline(entity, it) }?.let { takeTarget(entity, it) }
+    }
+
+    /**
+     * The sensor's target while [held] is out of sight, when the gun can hit it. The hidden one used to
+     * be put back every tick, and the gun sat silent until the gunner climbed out (in-game 24.10).
+     */
+    private fun shootableSensorPick(entity: NpcEntity, held: LivingEntity): LivingEntity? = entity.target?.takeIf { it !== held && it.isAlive && SquadTeams.isHostile(entity, it) && hasFiringSightline(entity, it) }
+
+    private fun takeTarget(entity: NpcEntity, target: LivingEntity): LivingEntity {
+        DebugFlags.log(
+            LogGroup.VEHICLE,
+            "{} at the gun takes a new target {} ({} ticks after the last)",
+            entity.uuid,
+            target.uuid,
+            entity.tickCount - engagedTick,
+        )
+        targetId = target.uuid
+        sawTargetTick = entity.tickCount
+        engagedTick = entity.tickCount
+        return target
+    }
+
+    /** A head peeking above cover cannot keep a gun aimed at the hidden body indefinitely. */
+    private fun hasFiringSightline(entity: NpcEntity, target: LivingEntity): Boolean {
+        if (sightTick == entity.tickCount && sightTarget == target.uuid) return sightClear
+        val level = entity.level() as ServerLevel
+        // SBW shoots the hull when its occupant is the target, not the hidden crewman's body.
+        val body = target.vehicle?.takeIf(Ports.vehicles::isVehicle) ?: target
+        val aim = body.boundingBox.center
+        sightTick = entity.tickCount
+        sightTarget = target.uuid
+        sightClear = entity.vehicle?.takeIf(Ports.vehicles::isVehicle)?.let { Ports.vehicles.canAimAt(it, entity, target) }
+            ?: (DetectionSightline.visible(level, entity.eyePosition, aim, entity) && !Sightline.blocked(level, entity.eyePosition, aim, entity))
+        return sightClear
     }
 
     private fun findSupportVehicle(entity: NpcEntity, level: ServerLevel): Entity? {
         // Only reached with a live threat; while there's simply no free armed vehicle around, don't
         // re-run the box query every tick — a "none" answer is good for a second.
         if (entity.tickCount < nextVehicleSearchTick) return null
+        val target = threat(entity) ?: return null
         val box = AABB.ofSize(entity.position(), SEARCH_RADIUS * 2, SEARCH_RADIUS * 2, SEARCH_RADIUS * 2)
         val found = Ports.vehicles.within(level, box)
             .asSequence()
             .filter { entity.distanceToSqr(it) <= SEARCH_RADIUS_SQR }
             .filter(::isSupportVehicle)
+            .filter { vehicle -> Ports.vehicles.canAimAt(vehicle, entity, target, Ports.vehicles.seating(vehicle).indexOfFirst { it == null }) }
             .minByOrNull { entity.distanceToSqr(it) }
         if (found == null) nextVehicleSearchTick = entity.tickCount + VEHICLE_SEARCH_INTERVAL_TICKS
         return found
@@ -299,5 +349,8 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         /** How long a gunner stays at the gun after its last target, looking for the next. */
         const val LINGER_TICKS = 100
+
+        /** Wait for a moving support vehicle to stop before relinquishing its seat. */
+        const val DISMOUNT_SPEED_SQR = 0.0004
     }
 }
