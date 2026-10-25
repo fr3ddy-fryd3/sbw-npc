@@ -52,6 +52,7 @@ object GameTestRegistration {
             VehicleSupportSightlineGameTests::class.java,
             VehicleAimGameTests::class.java,
             SquadTransportGameTests::class.java,
+            AttackTransportGameTests::class.java,
             SquadTransitPriorityGameTests::class.java,
             VehicleRankGameTests::class.java,
             VehicleBendGameTests::class.java,

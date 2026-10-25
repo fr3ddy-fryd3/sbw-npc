@@ -29,7 +29,14 @@ import net.tslat.smartbrainlib.util.BrainUtils
 /**
  * Squad-transit-by-vehicle: when a squad's objective is far enough away that walking is silly, NPCs
  * seek out nearby vehicles instead of hoofing it. NPCs never fight while mounted; hostile fire only
- * interrupts non-ATTACK transport after a controlled stop.
+ * interrupts non-ATTACK transport after a controlled stop. An ATTACK stops only for fire on the
+ * vehicle itself from within [ATTACK_STOP_RANGE]; what it merely sees, it drives through.
+ *
+ * An ATTACK's ride ends [SquadTransit.TRANSPORT_DISTANCE] short of the objective, and the squad
+ * walks the rest: unloaded on the point itself, it got out among the defenders (playtest 25.10).
+ * The driver of an armed vehicle stays at its gun there instead of leaving it empty for the
+ * enemy to take. TODO: this standoff is a stopgap until the squad level of the tactical HTN
+ * decides the transport (#198).
  *
  * Squad-level coordination is fully decentralized: each member independently consults
  * [VehicleTransportClaims], which is why this scales to several vehicles per squad without any
@@ -51,8 +58,8 @@ import net.tslat.smartbrainlib.util.BrainUtils
  *    falls back on short routes from the driver's own pathfinder.
  *  - RIDING (passenger only): just waiting for the vehicle to arrive; dismounts itself once close
  *    enough, independently of the driver.
- *  - COMBAT_DISMOUNT: stops after hostile fire under a non-ATTACK order; the assigned gunner stays
- *    in an armed seat until the threat clears.
+ *  - COMBAT_DISMOUNT: stops after hostile fire (under ATTACK only from close by, see above); the
+ *    assigned gunner stays in an armed seat until the threat clears.
  *
  * Boats: [BoatTrips] weighs the boats near a squad against walking — down a river, across a lake,
  * over the water on the squad's route — and when one is worth it the squad takes it instead of a
@@ -1438,8 +1445,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         BrainUtils.setTargetOfEntity(entity, attacker)
         if (isPermanentCrew(entity, vehicle)) return false
         val order = entity.currentSquad()?.order
-        if (order == SquadOrder.ATTACK || order == SquadOrder.RETREAT) return false
-        return engageVehicleThreat(entity, vehicle, attacker)
+        if (order == SquadOrder.RETREAT) return false
+        // A sniper or a stray round from afar would unload the attack far short of its objective.
+        if (order == SquadOrder.ATTACK && attacker.distanceTo(vehicle) > ATTACK_STOP_RANGE) return false
+        return stopForCombat(entity, vehicle, attacker)
     }
 
     private fun isPermanentCrew(entity: NpcEntity, vehicle: Entity): Boolean = entity.assignedVehicleId == vehicle.uuid
@@ -1454,6 +1463,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // getting away. The gunner still shoots on the move.
         val order = entity.currentSquad()?.order
         if (order == SquadOrder.ATTACK || order == SquadOrder.RETREAT) return false
+        return stopForCombat(entity, vehicle, threat)
+    }
+
+    private fun stopForCombat(entity: NpcEntity, vehicle: Entity, threat: LivingEntity): Boolean {
         // Stopping on the water only leaves everyone to swim under fire: keep going to the bank.
         if (isBoat(vehicle)) return false
 
@@ -1528,13 +1541,15 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  washed up on land — a vehicle on the road stops well short and lets everyone walk in. */
     private fun arrived(entity: NpcEntity, vehicle: Entity, home: Vec3): Boolean {
         if (!isBoat(vehicle)) {
+            val afloat = vehicle.isInWater && Ports.vehicles.canCrossWater(vehicle)
+            if (!afloat && attackStandoff(entity, vehicle)) return true
             // Everyone uses the driver's arrival radius. Falling through to home (the landing
             // for passengers) made them get off 20 blocks early and obstruct their own driver.
             VehicleTransportClaims.landingOf(vehicle.uuid)?.let {
                 return horizontalDistance(vehicle.position(), it) <= GROUND_EXIT_RADIUS
             }
             // An amphibious trip ends on its chosen bank, not 20 blocks short while still afloat.
-            if (vehicle.isInWater && Ports.vehicles.canCrossWater(vehicle)) return false
+            if (afloat) return false
             return vehicle.position().distanceTo(home) <= ARRIVAL_RADIUS
         }
         // Under way to the next stretch of water, not to a bank: nobody gets off.
@@ -1544,6 +1559,14 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             // Washed up by its landing. Anywhere else it ran aground on the way: that's stuck, not there.
             (!vehicle.isInWater && entity.tickCount - boardTick > BOAT_LAUNCH_GRACE_TICKS && dist <= BOAT_BANK_RADIUS) ||
             (dist <= BOAT_BANK_RADIUS && restingAtBank(vehicle))
+    }
+
+    /** An ATTACK's carried squad is within walking distance of its objective, see the class KDoc.
+     *  A permanent crew drives on: the vehicle is its weapon, not its ride. */
+    private fun attackStandoff(entity: NpcEntity, vehicle: Entity): Boolean {
+        if (isPermanentCrew(entity, vehicle) || entity.currentSquad()?.order != SquadOrder.ATTACK) return false
+        val objective = entity.homeCenter() ?: return false
+        return horizontalDistance(vehicle.position(), objective) <= SquadTransit.TRANSPORT_DISTANCE
     }
 
     private fun isUsableGroundVehicle(vehicle: Entity, entity: NpcEntity): Boolean =
@@ -1744,6 +1767,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         private const val STALLED_FRONT_MARGIN = 0.5
         private const val GUNNER_LOST_SIGHT_TICKS = 200
+
+        /** How close a hostile must be, hitting the vehicle, to stop an attack's ride. */
+        private const val ATTACK_STOP_RANGE = 64.0
         private const val AVOIDANCE_INTERVAL_TICKS = 5
 
         /** Clears the temporary squad team after the final NPC leaves or dies in the vehicle. */
