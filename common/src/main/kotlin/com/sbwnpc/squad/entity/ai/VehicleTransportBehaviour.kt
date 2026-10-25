@@ -156,6 +156,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var driveExitToCheck: Vec3? = null
     private var driveSearch: com.sbwnpc.squad.route.CellPlanner.Search? = null
     private var driveSearchStarted = 0
+    private val driveObstacles = mutableSetOf<Long>()
 
     /** Not before this tick is the next stretch of a vehicle's way into unseen ground looked for again. */
     private var driveLookAheadTick = 0
@@ -742,7 +743,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 )
         if (!isBoat(vehicle)) {
             groundTravelProgress.observe(entity.tickCount, vehicle.position())
-            if (waitingForRoute) {
+            // Invalidating a stalled route must not cancel the reverse that makes room for it.
+            if (waitingForRoute && entity.tickCount >= recoveryUntilTick) {
                 groundTravelProgress.pause(entity.tickCount)
                 lastStuckCheckTick = entity.tickCount
                 lastStuckCheckPos = null
@@ -780,6 +782,15 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                     if (entity.tickCount - boatStuckTick < BOAT_RESTUCK_TICKS) nextRouteTick = entity.tickCount
                     boatStuckTick = entity.tickCount
                 } else {
+                    rememberStalledFront(vehicle)
+                    // A stalled engine can still hold full forward power. Spend the bounded
+                    // recovery backing away, rather than using it all to unwind that throttle.
+                    Ports.vehicles.cutPower(vehicle)
+                    driveSearch = null
+                    driveRoute = emptyList()
+                    route = emptyList()
+                    groundRouteProgress.reset(emptyList(), vehicle.position())
+                    driveLegsOnly = false
                     driveContinueFromEnd = false
                     nextRouteTick = entity.tickCount // force a fresh route once recovery ends
                 }
@@ -789,6 +800,17 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
         }
         return false
+    }
+
+    /** A fresh search must go round the hull front it just failed to move through. */
+    private fun rememberStalledFront(vehicle: Entity) {
+        val forward = forwardDirection(vehicle)
+        // Mark the failed centre-line continuation, rather than columns beyond the physical
+        // nose: those can already be behind a known wall and do not change the next route.
+        val front = vehicle.position().add(forward.scale(vehicle.bbWidth / 2.0 + STALLED_FRONT_MARGIN))
+        // Driving expands each excluded column by the hull width already. Expanding here too
+        // seals the full cross-section of a passage that still has room for a wider approach.
+        driveObstacles += BlockPos.asLong(Mth.floor(front.x), 0, Mth.floor(front.z))
     }
 
     private fun yieldToBlockingAlly(entity: NpcEntity, vehicle: Entity): Boolean {
@@ -1037,6 +1059,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun resetDriveRoute() {
+        driveObstacles.clear()
         driveRoute = emptyList()
         driveRouteComplete = true
         driveExitToCheck = null
@@ -1062,6 +1085,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 vehicle.maxUpStep().toDouble(),
                 vehicle.bbHeight.toDouble(),
                 Ports.vehicles.canCrossWater(vehicle),
+                driveObstacles,
             )
             // A continuation starts at the point where the current leg ends, which the vehicle
             // will reach while the search runs. Searching from 48 blocks behind that point
@@ -1138,7 +1162,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 return null
             }
         }
-        val target = groundRouteProgress.waypoint(vehicle.position(), WAYPOINT_RADIUS)
+        val target = groundRouteProgress.drivingWaypoint(vehicle.position(), vehicle.deltaMovement.horizontalDistance())
         driveExitToCheck?.let { stop ->
             if (groundRouteProgress.finished(vehicle.position(), GROUND_EXIT_RADIUS)) {
                 // A heightmap cannot establish that the hull is trapped. Before publishing this
@@ -1146,10 +1170,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 val checked = VehicleRoutes.tryPlan(entity, vehicle, home) ?: return null
                 val path = checked.path
                 val end = path?.endNode?.asBlockPos()?.let { VehicleRoutes.centreOf(it, vehicle) }
+                val proposed = path?.let { (0 until it.nodeCount).map { i -> it.getNodePos(i) } } ?: emptyList()
                 driveExitToCheck = null
-                if (VehicleRoutes.leadsOn(vehicle.position(), end, home, path?.canReach() == true)) {
+                if (avoidsStalledFront(vehicle, proposed) && VehicleRoutes.leadsOn(vehicle.position(), end, home, path?.canReach() == true)) {
                     driveLegsOnly = true
-                    route = (0 until path!!.nodeCount).map { path.getNodePos(it) }
+                    route = proposed
                     groundRouteProgress.reset(route.map { VehicleRoutes.centreOf(it, vehicle) }, vehicle.position())
                     lastRouteSearchTick = entity.tickCount
                     nextRouteTick = entity.tickCount + ROUTE_RECOMPUTE_TICKS
@@ -1162,7 +1187,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                         stop,
                         end,
                     )
-                    return groundRouteProgress.waypoint(vehicle.position(), WAYPOINT_RADIUS)
+                    return groundRouteProgress.drivingWaypoint(vehicle.position(), vehicle.deltaMovement.horizontalDistance())
                 }
                 VehicleTransportClaims.setLanding(vehicle.uuid, vehicle.position())
                 DebugFlags.log(
@@ -1202,7 +1227,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             val checked = VehicleRoutes.tryPlan(entity, vehicle, home)
             if (checked != null) {
                 val path = checked.path
-                val proposed = path?.let { (0 until it.nodeCount).map { i -> it.getNodePos(i) } } ?: emptyList()
+                val proposed = path?.let { (0 until it.nodeCount).map { i -> it.getNodePos(i) } }
+                    ?.takeIf { avoidsStalledFront(vehicle, it) } ?: emptyList()
                 val accepted = groundRouteProgress.replaceIfAdvancing(proposed.map { VehicleRoutes.centreOf(it, vehicle) }, vehicle.position(), GROUND_EXIT_RADIUS)
                 lastRouteSearchTick = entity.tickCount
                 nextRouteTick = entity.tickCount + if (accepted) ROUTE_RECOMPUTE_TICKS else ROUTE_RETRY_TICKS
@@ -1217,7 +1243,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         if (route.isEmpty() || vehicle == null) return null
 
-        val target = groundRouteProgress.waypoint(vehicle.position(), WAYPOINT_RADIUS)
+        val target = groundRouteProgress.drivingWaypoint(vehicle.position(), vehicle.deltaMovement.horizontalDistance())
 
         // Vanilla pathfinding caps how far it will search at the mob's own FOLLOW_RANGE attribute
         // (confirmed in PathNavigation.createPath: search region sized to followRange+8, followRange
@@ -1240,6 +1266,16 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             return
         }
         Ports.vehicles.reverse(vehicle, recoveryTurnLeft)
+    }
+
+    private fun avoidsStalledFront(vehicle: Entity, nodes: List<BlockPos>): Boolean {
+        if (driveObstacles.isEmpty()) return true
+        val clearance = Math.ceil((vehicle.bbWidth - 1.0) / 2.0).toInt().coerceAtLeast(0)
+        return nodes.none { node ->
+            (-clearance..clearance).any { dx ->
+                (-clearance..clearance).any { dz -> BlockPos.asLong(node.x + dx, 0, node.z + dz) in driveObstacles }
+            }
+        }
     }
 
     /** Passenger only: no driving of its own — just watches for the vehicle actually getting close
@@ -1706,13 +1742,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val ROUTE_RECOMPUTE_TICKS = 100 // 5s between route refreshes
         private const val ROUTE_RETRY_TICKS = 20 // failed refreshes retry once a second
 
-        // Deliberately much larger than SquadOrderBehaviour's walking-mob waypoint radius (3 blocks) —
-        // a walking mob can turn on the spot, a vehicle cannot. A waypoint inside the vehicle's own
-        // minimum turning radius is physically unpointable at: the vehicle just orbits that spot,
-        // unable to close the heading gap no matter how hard it turns. Advancing to the next waypoint
-        // well before getting that close avoids ever asking the vehicle to hit a target tighter than it
-        // can physically steer around.
-        private const val WAYPOINT_RADIUS = 15.0
+        private const val STALLED_FRONT_MARGIN = 0.5
         private const val GUNNER_LOST_SIGHT_TICKS = 200
         private const val AVOIDANCE_INTERVAL_TICKS = 5
 

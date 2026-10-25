@@ -49,6 +49,7 @@ object GameTestRegistration {
             SquadTransportGameTests::class.java,
             SquadTransitPriorityGameTests::class.java,
             VehicleRankGameTests::class.java,
+            VehicleBendGameTests::class.java,
             MarchRouteGameTests::class.java,
             NoticingGameTests::class.java,
             HostileMobApiGameTests::class.java,

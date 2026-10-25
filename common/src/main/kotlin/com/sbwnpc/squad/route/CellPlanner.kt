@@ -53,6 +53,7 @@ object CellPlanner {
 
     /** Straight stretches of the route are kept as one leg up to this many columns. */
     private const val MAX_LEG = 24
+    private const val SMOOTHING_COST_EPSILON = 1e-6
     private val DIAGONAL = Math.sqrt(2.0)
     private val SIDES = listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1)
 
@@ -557,20 +558,26 @@ object CellPlanner {
          *  straight — up to [MAX_LEG] at a time, so a leg never runs far past a bend. */
         private fun simplify(columns: List<Long>): List<Long> {
             if (columns.size <= 2) return columns
+            val costs = DoubleArray(columns.size)
+            for (i in 1 until columns.size) {
+                val a = columns[i - 1]
+                val b = columns[i]
+                costs[i] = costs[i - 1] + Math.hypot((kx(b) - kx(a)).toDouble(), (kz(b) - kz(a)).toDouble()) + medium.extraCost(kx(b), kz(b))
+            }
             val out = ArrayList<Long>()
             var i = 0
             out += columns[0]
             while (i < columns.size - 1) {
                 var j = minOf(columns.size - 1, i + MAX_LEG)
-                while (j > i + 1 && !straight(columns[i], columns[j])) j--
+                while (j > i + 1 && !straight(columns[i], columns[j], costs[j] - costs[i])) j--
                 out += columns[j]
                 i = j
             }
             return out
         }
 
-        /** A straight run between two columns is open, and steppable, all the way. */
-        private fun straight(a: Long, b: Long): Boolean {
+        /** A shortcut stays open and cannot erase the clearance or terrain preference of the trail. */
+        private fun straight(a: Long, b: Long, maxCost: Double): Boolean {
             val ax = kx(a) + 0.5
             val az = kz(a) + 0.5
             val bx = kx(b) + 0.5
@@ -578,12 +585,15 @@ object CellPlanner {
             val steps = Math.ceil(Math.hypot(bx - ax, bz - az) * 2).toInt().coerceAtLeast(1)
             var px = kx(a)
             var pz = kz(a)
+            var cost = 0.0
             for (s in 1..steps) {
                 val t = s.toDouble() / steps
                 val x = Math.floor(ax + (bx - ax) * t).toInt()
                 val z = Math.floor(az + (bz - az) * t).toInt()
                 if (x == px && z == pz) continue
                 if (!medium.open(x, z) || !medium.step(px, pz, x, z)) return false
+                cost += Math.hypot((x - px).toDouble(), (z - pz).toDouble()) + medium.extraCost(x, z)
+                if (cost > maxCost + SMOOTHING_COST_EPSILON) return false
                 px = x
                 pz = z
             }

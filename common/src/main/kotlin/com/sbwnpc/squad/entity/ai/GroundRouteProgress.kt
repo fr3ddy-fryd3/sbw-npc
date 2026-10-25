@@ -34,10 +34,13 @@ internal class GroundRouteProgress {
         return true
     }
 
+    /** At low speed follow nearby ground; at speed retain enough lead for the steering to settle. */
+    fun drivingWaypoint(position: Vec3, speed: Double): Vec3? = waypoint(position, (MIN_LOOK_AHEAD + speed * SPEED_LOOK_AHEAD).coerceAtMost(MAX_LOOK_AHEAD))
+
     fun waypoint(position: Vec3, lookAhead: Double): Vec3? {
         if (route.isEmpty()) return null
         project(position, minOf(route.size - 1, leg + 4))
-        val target = along + lookAhead
+        val target = along + beforeBend(lookAhead)
         for (i in leg until route.size - 1) {
             if (distances[i + 1] < target) continue
             val length = distances[i + 1] - distances[i]
@@ -45,6 +48,24 @@ internal class GroundRouteProgress {
             return route[i].lerp(route[i + 1], t)
         }
         return route.last()
+    }
+
+    private fun beforeBend(lookAhead: Double): Double {
+        val bend = nextBend(lookAhead) ?: return lookAhead
+        return minOf(lookAhead, bend + TURN_LEAD)
+    }
+
+    private fun nextBend(reach: Double): Double? {
+        for (i in leg + 1 until route.lastIndex) {
+            val ahead = distances[i] - along
+            if (ahead > reach) break
+            if (ahead <= TURN_REACHED_RADIUS) continue
+            val incoming = route[i].subtract(route[i - 1])
+            val outgoing = route[i + 1].subtract(route[i])
+            val length = incoming.horizontalDistance() * outgoing.horizontalDistance()
+            if (length > 0 && (incoming.x * outgoing.x + incoming.z * outgoing.z) / length < TURN_COSINE) return ahead
+        }
+        return null
     }
 
     fun finished(position: Vec3, radius: Double): Boolean {
@@ -84,4 +105,13 @@ internal class GroundRouteProgress {
     }
 
     private fun distance(a: Vec3, b: Vec3): Double = hypot(a.x - b.x, a.z - b.z)
+
+    private companion object {
+        const val MIN_LOOK_AHEAD = 6.0
+        const val MAX_LOOK_AHEAD = 15.0
+        const val SPEED_LOOK_AHEAD = 8.0
+        const val TURN_REACHED_RADIUS = 1.0
+        const val TURN_COSINE = 0.9
+        const val TURN_LEAD = 6.0
+    }
 }
