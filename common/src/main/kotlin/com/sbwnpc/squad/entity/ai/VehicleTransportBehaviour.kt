@@ -2,6 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.domain.port.Mobility
 import com.sbwnpc.squad.domain.port.Ports
@@ -29,14 +30,14 @@ import net.tslat.smartbrainlib.util.BrainUtils
 /**
  * Squad-transit-by-vehicle: when a squad's objective is far enough away that walking is silly, NPCs
  * seek out nearby vehicles instead of hoofing it. NPCs never fight while mounted; hostile fire only
- * interrupts non-ATTACK transport after a controlled stop. An ATTACK stops only for fire on the
- * vehicle itself from within [ATTACK_STOP_RANGE]; what it merely sees, it drives through.
+ * interrupts non-ATTACK transport after a controlled stop.
  *
- * An ATTACK's ride ends [SquadTransit.TRANSPORT_DISTANCE] short of the objective, and the squad
- * walks the rest: unloaded on the point itself, it got out among the defenders (playtest 25.10).
- * The driver of an armed vehicle stays at its gun there instead of leaving it empty for the
- * enemy to take. The standoff is a stopgap rule, to move into the squad level of the tactical
- * HTN when that decides the transport (#198).
+ * An ATTACK's ride ends where someone aboard first sees an armed enemy, or where fire on the
+ * vehicle from within [ATTACK_STOP_RANGE] stops it, and the squad gets out there; with no contact
+ * it goes on to the objective. Driving on at speed through what it saw, it unloaded the squad on
+ * the point among the defenders (playtest 25.10). The driver of an armed vehicle stays at its gun
+ * when the ride ends instead of leaving it empty for the enemy to take. A stopgap rule, to move
+ * into the squad level of the tactical HTN when that decides the transport (#198).
  *
  * Squad-level coordination is fully decentralized: each member independently consults
  * [VehicleTransportClaims], which is why this scales to several vehicles per squad without any
@@ -94,6 +95,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /** The order a scan found no vehicle for — see [tickSeeking]. */
     private var noVehicleForStamp = Int.MIN_VALUE
+
+    /** When the driver next looks for a contact that ends the ride — see [endRideOnContact]. */
+    private var nextContactCheckTick = 0
 
     /** The order the driver took up [Phase.OVERWATCH] under — see [tickOverwatch]. */
     private var overwatchStamp = Int.MIN_VALUE
@@ -699,12 +703,13 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             waitToStopThenDismount(entity, vehicle, isDriver = true)
             return
         }
+        endRideOnContact(entity, vehicle)
         if (arrived(entity, vehicle, home)) {
-            finishDriving(entity, vehicle)
+            finishDriving(entity, vehicle, atGoal = true)
             return
         }
         if (updateProgressAndCheckStall(entity, vehicle)) {
-            finishDriving(entity, vehicle)
+            finishDriving(entity, vehicle, atGoal = false)
             return
         }
         if (entity.tickCount < recoveryUntilTick) {
@@ -724,11 +729,35 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (waypoint == null) holdVehicle(vehicle) else steerToward(vehicle, aroundTrees(entity, vehicle, waypoint), throttle = !escort)
     }
 
-    private fun finishDriving(entity: NpcEntity, vehicle: Entity) {
+    /** Ends an ATTACK's ride where it stands once someone aboard sees an armed enemy: the stop
+     *  becomes the vehicle's landing, which the riders get out at too, see [arrived]. */
+    private fun endRideOnContact(entity: NpcEntity, vehicle: Entity) {
+        if (entity.tickCount < nextContactCheckTick) return
+        nextContactCheckTick = entity.tickCount + CONTACT_CHECK_TICKS
+        if (isBoat(vehicle) || isPermanentCrew(entity, vehicle) || entity.currentSquad()?.order != SquadOrder.ATTACK) return
+        if (VehicleTransportClaims.landingOf(vehicle.uuid)?.let { horizontalDistance(it, vehicle.position()) <= GROUND_EXIT_RADIUS } == true) return
+        val enemy = sightedFromTheVehicle(entity, vehicle) ?: return
+        VehicleTransportClaims.setLanding(vehicle.uuid, vehicle.position())
+        DebugFlags.log(LogGroup.VEHICLE, "{} ends the ride of {}: {} in sight at {} blocks", entity.uuid, vehicle.uuid, enemy.uuid, entity.distanceTo(enemy).toInt())
+    }
+
+    /** The nearest armed enemy (an NPC or a player; a zombie on the road is no reason to get out)
+     *  that anyone aboard can see within [NpcEntity.DETECTION_RANGE]. */
+    private fun sightedFromTheVehicle(entity: NpcEntity, vehicle: Entity): LivingEntity? {
+        val crew = vehicle.passengers.filterIsInstance<NpcEntity>()
+        val range = NpcEntity.DETECTION_RANGE
+        return entity.level().getEntitiesOfClass(LivingEntity::class.java, vehicle.boundingBox.inflate(range, CONTACT_HEIGHT, range)) {
+            (it is NpcEntity || it is net.minecraft.world.entity.player.Player) && it.isAlive && SquadTeams.isHostile(entity, it)
+        }.sortedBy { it.distanceToSqr(vehicle) }
+            .take(CONTACT_CANDIDATES)
+            .firstOrNull { enemy -> crew.any { DetectionSightline.canSeeWithin(it, enemy, range) } }
+    }
+
+    private fun finishDriving(entity: NpcEntity, vehicle: Entity, atGoal: Boolean) {
         if (isPermanentCrew(entity, vehicle)) {
             holdVehicle(vehicle)
             phase = Phase.HOLDING
-        } else if (attackStandoff(entity, vehicle) && keepsTheGun(entity, vehicle)) {
+        } else if (atGoal && keepsTheGun(entity, vehicle)) {
             startOverwatch(entity, vehicle)
         } else {
             waitToStopThenDismount(entity, vehicle, isDriver = true)
@@ -736,8 +765,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     /**
-     * Under ATTACK the driver of an armed ground vehicle stays at its gun when the ride ends, at the
-     * standoff or where fire from close by stopped it, rather than leave it empty for the enemy: in
+     * Under ATTACK the driver of an armed ground vehicle stays at its gun when the ride ends, at a
+     * contact, at the objective or where fire from close by stopped it, rather than leave it empty for the enemy: in
      * the 25.10 playtest the defenders took all four. He stays for as long as the attack stands, as
      * an ATTACK has no end of its own; the next order takes him off. Part of the #198 stopgap.
      */
@@ -775,6 +804,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             if (reordered) "new order" else "out of ammunition or out of action",
         )
         if (farOrder) {
+            // The stop he held is not where the new trip ends.
+            VehicleTransportClaims.clearLanding(vehicle.uuid)
             startMounted(entity, vehicle)
             return
         }
@@ -1602,7 +1633,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** Close enough to [home] to get off: a boat has to come right up to the landing point, or be
      *  washed up on land — a vehicle on the road stops well short and lets everyone walk in. */
     private fun arrived(entity: NpcEntity, vehicle: Entity, home: Vec3): Boolean {
-        if (!isBoat(vehicle)) return arrivedOverLand(entity, vehicle, home)
+        if (!isBoat(vehicle)) return arrivedOverLand(vehicle, home)
         // Under way to the next stretch of water, not to a bank: nobody gets off.
         if (entity.vehicle === vehicle && VehicleTransportClaims.driverOf(vehicle.uuid) == entity.uuid && !boatRouteComplete) return false
         val dist = horizontalDistance(vehicle.position(), home)
@@ -1612,9 +1643,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             (dist <= BOAT_BANK_RADIUS && restingAtBank(vehicle))
     }
 
-    private fun arrivedOverLand(entity: NpcEntity, vehicle: Entity, home: Vec3): Boolean {
+    private fun arrivedOverLand(vehicle: Entity, home: Vec3): Boolean {
         val afloat = vehicle.isInWater && Ports.vehicles.canCrossWater(vehicle)
-        if (!afloat && attackStandoff(entity, vehicle)) return true
         // Everyone uses the driver's arrival radius. Falling through to home (the landing
         // for passengers) made them get off 20 blocks early and obstruct their own driver.
         VehicleTransportClaims.landingOf(vehicle.uuid)?.let {
@@ -1623,14 +1653,6 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // An amphibious trip ends on its chosen bank, not 20 blocks short while still afloat.
         if (afloat) return false
         return vehicle.position().distanceTo(home) <= ARRIVAL_RADIUS
-    }
-
-    /** An ATTACK's carried squad is within walking distance of its objective, see the class KDoc.
-     *  A permanent crew drives on: the vehicle is its weapon, not its ride. */
-    private fun attackStandoff(entity: NpcEntity, vehicle: Entity): Boolean {
-        if (isPermanentCrew(entity, vehicle) || entity.currentSquad()?.order != SquadOrder.ATTACK) return false
-        val objective = entity.homeCenter() ?: return false
-        return horizontalDistance(vehicle.position(), objective) <= SquadTransit.TRANSPORT_DISTANCE
     }
 
     private fun isUsableGroundVehicle(vehicle: Entity, entity: NpcEntity): Boolean =
@@ -1834,6 +1856,12 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
         /** How close a hostile must be, hitting the vehicle, to stop an attack's ride. */
         private const val ATTACK_STOP_RANGE = 64.0
+
+        private const val CONTACT_CHECK_TICKS = 10
+        private const val CONTACT_HEIGHT = 24.0
+
+        /** The nearest few enemies are looked for from the vehicle; it stops for the first in sight. */
+        private const val CONTACT_CANDIDATES = 4
         private const val AVOIDANCE_INTERVAL_TICKS = 5
 
         /** Clears the temporary squad team after the final NPC leaves or dies in the vehicle. */
