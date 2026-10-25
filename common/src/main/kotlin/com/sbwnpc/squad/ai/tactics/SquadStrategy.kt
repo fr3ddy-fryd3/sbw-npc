@@ -7,9 +7,9 @@ import kotlin.math.hypot
  * How a squad fights for a while: when the [CombatSituation] permits it, what it is worth there,
  * and how it reshapes the members' tasks.
  *
- * [StrategyEvaluation] ranks the strategies by [allowed] and [score]; the squad HTN domain builds
- * one method per strategy that applies [shape]. Neither branches on which strategy it holds, so a
- * new strategy is one more implementation and one more [CombatStrategy] entry.
+ * The squad HTN domain builds one method per strategy, eligible by [allowed], ranked by [score]
+ * ([SquadManners]) and applying [shape]. It never branches on which strategy it holds, so a new
+ * strategy is one more implementation and one more [CombatStrategy] entry.
  */
 interface SquadStrategy {
     /** Why the strategy is chosen, or ruled out when not [allowed], as the evaluation reports it. */
@@ -20,8 +20,11 @@ interface SquadStrategy {
     /** Its utility in [situation], from 0 to 1. */
     fun score(situation: CombatSituation): Double
 
-    /** A member's [intent] as this strategy has it carried out. A member assaulting for the operation is never passed in. */
-    fun shape(intent: PositionIntent): PositionIntent
+    /**
+     * A member's [intent] as this strategy has it carried out, with what the squad keeps for it in
+     * [shaping]. A member assaulting for the operation is never passed in.
+     */
+    fun shape(intent: PositionIntent, shaping: SquadShaping): PositionIntent
 }
 
 /** The squad strategies, by name; each carries its [rules]. */
@@ -30,6 +33,8 @@ enum class CombatStrategy(val rules: SquadStrategy) {
     HOLD(Hold),
     GAIN_HEIGHT(GainHeight),
     WITHDRAW(Withdraw),
+    BOUND_OVERWATCH(BoundingOverwatch),
+    REGROUP(Regroup),
 }
 
 /** Go on with the tasks the team planned, while the attack can be carried on or nobody is in contact. */
@@ -40,7 +45,7 @@ private object Advance : SquadStrategy {
 
     override fun score(situation: CombatSituation) = BASE + situation.readyFraction * READINESS
 
-    override fun shape(intent: PositionIntent) = intent
+    override fun shape(intent: PositionIntent, shaping: SquadShaping) = intent
 
     private const val BASE = 0.55
 
@@ -56,7 +61,7 @@ private object Hold : SquadStrategy {
 
     override fun score(situation: CombatSituation) = if (!situation.offensive && situation.contact) DEFENDING else OTHERWISE
 
-    override fun shape(intent: PositionIntent) = if (intent.duty == CombatDuty.MOVE) intent.copy(duty = CombatDuty.FIRE, anchor = intent.origin, requireCover = false) else intent
+    override fun shape(intent: PositionIntent, shaping: SquadShaping) = if (intent.duty == CombatDuty.MOVE) intent.copy(duty = CombatDuty.FIRE, anchor = intent.origin, requireCover = false) else intent
 
     private const val DEFENDING = 0.9
     private const val OTHERWISE = 0.4
@@ -70,7 +75,7 @@ private object GainHeight : SquadStrategy {
 
     override fun score(situation: CombatSituation) = SCORE
 
-    override fun shape(intent: PositionIntent) = intent.copy(minimumHeight = intent.origin.y - DROP, elevationWeight = ELEVATION_WEIGHT)
+    override fun shape(intent: PositionIntent, shaping: SquadShaping) = intent.copy(minimumHeight = intent.origin.y - DROP, elevationWeight = ELEVATION_WEIGHT)
 
     private const val SCORE = 0.93
 
@@ -88,7 +93,7 @@ private object Withdraw : SquadStrategy {
 
     override fun score(situation: CombatSituation) = SCORE
 
-    override fun shape(intent: PositionIntent): PositionIntent {
+    override fun shape(intent: PositionIntent, shaping: SquadShaping): PositionIntent {
         if (intent.duty == CombatDuty.FOLLOW_ORDER) return intent
         val dx = intent.origin.x - (intent.focus?.x ?: intent.anchor.x)
         val dz = intent.origin.z - (intent.focus?.z ?: intent.anchor.z + 1)
@@ -101,6 +106,8 @@ private object Withdraw : SquadStrategy {
             exposureWeight = EXPOSURE_WEIGHT,
             // A sentry withdraws from his height too: kept, the floor refused every post below it.
             minimumHeight = null,
+            // Falling back is one run, not a fight from post to post.
+            legs = false,
             elevationWeight = 0.0,
         )
     }
@@ -117,4 +124,71 @@ private object Withdraw : SquadStrategy {
 
     /** Out of sight counts for much more than distance on the way back. */
     private const val EXPOSURE_WEIGHT = 10.0
+}
+
+/**
+ * An attack under fire advances by halves: one half rushes from post to post while the other fires
+ * from where it stands, then they swap ([BoundTurn]).
+ *
+ * Only the movers that advance by legs take part; the squad needs at least [MIN_MOVERS] of them so
+ * that each half has two. Each rush of the moving half waits for the firing half's fire
+ * ([PositionIntent.coveredBy]) instead of needing covering fire for the whole way, as
+ * [PositionIntent.requireCover] would: fire that lapsed mid-rush would stop him in the open.
+ */
+private object BoundingOverwatch : SquadStrategy {
+    override val reason = "bound_under_fire"
+
+    // An enemy above is GAIN_HEIGHT's: held, bounding could outscore it there. A scattered squad
+    // has no halves to cover each other, and held, bounding kept it from regrouping.
+    override fun allowed(situation: CombatSituation) = situation.contact && situation.offensive && situation.continuation && !situation.higherEnemy && !situation.scattered && situation.movers >= MIN_MOVERS
+
+    override fun score(situation: CombatSituation) = (if (situation.underFire) UNDER_FIRE else UNTOUCHED) + situation.readyFraction * READINESS
+
+    override fun shape(intent: PositionIntent, shaping: SquadShaping): PositionIntent {
+        val turn = shaping.turn
+        if (turn == null || !intent.legs || intent.duty != CombatDuty.MOVE) return intent
+        // The other half's fire is his cover: kept, the need for shelter at the end of each leg
+        // refused every post on open ground, and the half never moved.
+        if (intent.actor.id in turn.moving) return intent.copy(requireCover = false, requireShelter = false, coveredBy = turn.posts.keys)
+        val post = turn.posts[intent.actor.id] ?: intent.origin
+        return intent.copy(duty = CombatDuty.FIRE, anchor = post, requireCover = false, legs = false)
+    }
+
+    const val MIN_MOVERS = 4
+
+    // Under fire it outscores an Advance held (0.67 + 0.2 per readiness) once more than half the
+    // squad is ready to fire. With nobody hit for 13 s it never does, even held: bounds would only
+    // slow the advance down.
+    private const val UNDER_FIRE = 0.62
+    private const val UNTOUCHED = 0.3
+    private const val READINESS = 0.3
+}
+
+/**
+ * A scattered attack gathers at a rally point behind it ([SquadShaping.rally]) before it goes on.
+ *
+ * Only while it does not flank: a manoeuvre group round the flank is far from the rest on purpose.
+ * Once begun it goes on until every man is back near the squad ([CombatSituation.gathered]), then
+ * the squad chooses again. Ended as soon as it was no longer scattered, the squad spread out
+ * again and regrouped over and over. It ends after 20 s anyway and does not come back for 30 s
+ * ([CombatSituation.regroupSpent]): a squad that could not gather regrouped until the fight ended.
+ */
+private object Regroup : SquadStrategy {
+    override val reason = "scattered"
+
+    override fun allowed(situation: CombatSituation) = situation.offensive && !situation.flanking && !situation.gathered && !situation.regroupSpent && (situation.scattered || situation.regrouping)
+
+    override fun score(situation: CombatSituation) = SCORE
+
+    override fun shape(intent: PositionIntent, shaping: SquadShaping): PositionIntent {
+        val rally = shaping.rally
+        if (rally == null || intent.duty == CombatDuty.FOLLOW_ORDER || intent.duty == CombatDuty.SEARCH) return intent
+        // No shelter asked of the rally: on open ground under fire every post round it was refused
+        // for want of one, and the men stayed scattered for the whole regroup.
+        return intent.copy(duty = CombatDuty.MOVE, anchor = rally, legs = false, minimumHeight = null, elevationWeight = 0.0, requireShelter = false)
+    }
+
+    // Above an advance held by a squad all of whose men can fight (0.67 + 0.2 at readiness 1): at
+    // 0.8, below it, a squad that could fight never regrouped.
+    private const val SCORE = 0.9
 }

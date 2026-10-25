@@ -8,6 +8,13 @@ class GroundRouteProgressTest {
     private fun at(x: Double, z: Double = 0.0) = Vec3(x, 64.0, z)
 
     @Test
+    fun `the carrot stays close to a bend instead of cutting far across it`() {
+        val route = GroundRouteProgress()
+        route.reset(listOf(at(0.0), at(20.0), at(20.0, 30.0)), at(15.0))
+        assertEquals(at(20.0, 6.0), route.waypoint(at(15.0), 15.0))
+    }
+
+    @Test
     fun `finishing a search does not steer back to its obsolete starting position`() {
         val route = GroundRouteProgress()
         route.reset(listOf(at(0.0), at(30.0), at(60.0), at(120.0)), at(52.0))
@@ -21,7 +28,7 @@ class GroundRouteProgressTest {
         val route = GroundRouteProgress()
         route.reset(listOf(at(0.0), at(80.0), at(80.0, 40.0), at(0.0, 40.0)), at(60.0))
         val remaining = route.remaining
-        assertEquals(at(80.0, 10.0), route.waypoint(at(75.0), 15.0))
+        assertEquals(at(80.0, 6.0), route.waypoint(at(75.0), 15.0))
         assertTrue(route.remaining < remaining)
         assertEquals(at(65.0, 40.0), route.waypoint(at(80.0, 40.0), 15.0))
     }

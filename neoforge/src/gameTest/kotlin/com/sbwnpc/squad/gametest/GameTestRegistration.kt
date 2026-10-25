@@ -39,6 +39,7 @@ object GameTestRegistration {
             HtnTacticsGameTests::class.java,
             FollowOrderGameTests::class.java,
             WithdrawalGameTests::class.java,
+            FiringLineGameTests::class.java,
             FireSupportGameTests::class.java,
             TargetMemoryGameTests::class.java,
             SquadAreaGameTests::class.java,
@@ -50,9 +51,16 @@ object GameTestRegistration {
             VehicleSupportOrderGameTests::class.java,
             VehicleSupportSightlineGameTests::class.java,
             VehicleAimGameTests::class.java,
+            SquadTransportGameTests::class.java,
+            SquadTransitPriorityGameTests::class.java,
             VehicleRankGameTests::class.java,
+            VehicleBendGameTests::class.java,
             MarchRouteGameTests::class.java,
             NoticingGameTests::class.java,
+            HostileMobApiGameTests::class.java,
+            HostileMobCombatGameTests::class.java,
+            SquadManoeuvreGameTests::class.java,
+            TreePlatformGameTests::class.java,
         )
         // Saved-world replays require an explicit local fixture; ordinary suites stay portable.
         val replayClasses = if (System.getProperty("sbwnpc.gameTestReplay", "").isNotBlank()) listOf(SavedBattleGameTests::class.java) else emptyList()

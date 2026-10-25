@@ -263,7 +263,9 @@ object HtnTacticsGameTests {
         var observedFailure = false
         helper.onEachTick {
             if (helper.tick % 20L != 0L) return@onEachTick
-            observedFailure = observedFailure || blocked.any { NativeTactics.reports(it).values.any { report -> report.reason?.startsWith("local_") == true } }
+            // The failure itself shows only for a moment: the next method tries elsewhere, and the
+            // last one leaves the man to his order and gun while the failures are remembered.
+            observedFailure = observedFailure || blocked.any(::failedPostSearch)
             val firing = free.count { it.firedRecently(100) }
             val moved = free.count { it.position().distanceTo(origins.getValue(it.uuid)) >= 12 }
             if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} localFailure=$observedFailure freeFiring=$firing freeMoved=$moved")
@@ -280,6 +282,9 @@ object HtnTacticsGameTests {
             }
         }
     }
+
+    // Past the four neighbouring anchors, only the closer posts and the last-resort hold are left.
+    private fun failedPostSearch(npc: NpcEntity) = NativeTactics.reports(npc).values.any { it.reason?.startsWith("local_") == true } || NativeTactics.postFailures(npc) > 4
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1600, batch = "htn-reinforcement")
@@ -327,9 +332,7 @@ object HtnTacticsGameTests {
             if (group.any { it.incomingFire.recentPoint(helper.level.gameTime) != null }) firedOn = true
             if (joinedAt == null && issuedAt != null && helper.tick > issuedAt!! + 40 && !firedOn && group.all { helper.relativeVec(it.position()).x < 40.0 }) {
                 val entry = requireNotNull(NativeTactics.operation(original)).entry.center
-                val astray = group.filter { npc -> NativeTactics.assignment(npc).let { it == null || it.anchor.distanceTo(Vec3(entry.x, entry.y, entry.z)) > 1.0 } }
-                helper.assertTrue(astray.isEmpty(), "Distant reinforcement is not marching to the entry: ${astray.map { helper.relativeVec(it.position()) to NativeTactics.assignment(it) }}")
-                marchObserved = true
+                marchObserved = SquadTransportGameTests.reinforcementMarch(helper, group, squads.last(), entry, helper.tick - issuedAt!!)
             }
             // A reinforcement joins a fight in progress: once it reaches the fight it is under fire.
             if (joinedAt == null && helper.tick % 20L == 0L && group.any { helper.relativeVec(it.position()).x >= 65.0 }) group.forEach { it.incomingFire.record(it.position(), Vec3(1.0, 0.0, 0.0), null, helper.level.gameTime) }
