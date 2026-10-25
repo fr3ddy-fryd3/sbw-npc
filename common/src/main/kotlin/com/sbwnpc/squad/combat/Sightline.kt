@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.combat
 
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.level.ClipContext
@@ -66,14 +67,18 @@ object Sightline {
         val targetRide = target?.vehicle
         // Nor a hull the target is standing in — just dismounted and still inside the box, say.
         // Every line to it enters that hull first, so counting it meant no firing position
-        // anywhere would ever do.
+        // anywhere would ever do. Not for a mob, which never rode it, nor with the shooter's own
+        // side aboard: a zombie pressed against a squad's LAV touched its box too, and the squad
+        // shot into the LAV (in-game 24.10).
         val targetBody = target?.boundingBox
         return Ports.vehicles.within(level, area) { vehicle ->
             Ports.vehicles.isOperational(vehicle) &&
                 vehicle !== ridden && vehicle !== targetRide && vehicle !== target &&
-                (targetBody == null || !vehicle.boundingBox.intersects(targetBody))
+                (targetBody == null || !vehicle.boundingBox.intersects(targetBody) || keepsHull(vehicle, shooter, target))
         }.map { it.boundingBox }
     }
+
+    private fun keepsHull(vehicle: Entity, shooter: Entity, target: Entity?) = (target != null && SquadTeams.sideOf(target) == null) || vehicle.passengers.any { SquadTeams.sameSide(it, shooter) }
 
     /**
      * Whether a shot from [from] at [to] runs into one of [hulls].

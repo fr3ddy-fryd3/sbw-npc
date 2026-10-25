@@ -1,7 +1,9 @@
 package com.sbwnpc.squad.gametest
 
+import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.npc.TransportVehicle
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.core.BlockPos
@@ -82,6 +84,39 @@ object HostileMobCombatGameTests {
                 probe.scene.result("PASS", "tick=${helper.tick}")
                 helper.succeed()
             }
+        }
+    }
+
+    /**
+     * A squad's LAV a zombie leans on still counts in the fire check. In-game 24.10 a hull the target
+     * touched was left out as one it stood in, and the squad's misses went into its own LAV. Checked
+     * on [Sightline.vehicleHulls] itself: SBW's collision pushes a still zombie out of the hull, and a
+     * live one rarely stays in a shooter's cone long enough for a scene to catch the shot.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 100, batch = "mob-combat-hull")
+    fun aHullAZombieLeansOnStaysInTheFireCheck(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "mob-combat-hull")
+        val man = scene.spawn(Vec3(36.5, 1.0, 41.5))
+        val lav = requireNotNull(Ports.vehicles.create(helper.level, TransportVehicle.LAV_25))
+        val at = helper.absoluteVec(Vec3(48.5, 1.0, 41.5))
+        lav.moveTo(at.x, at.y, at.z, 0f, 0f)
+        helper.level.addFreshEntity(lav)
+        val zombie = requireNotNull(EntityType.ZOMBIE.create(helper.level)).also {
+            it.moveTo(lav.boundingBox.minX - 0.25, at.y, at.z, -90f, 0f)
+            it.isNoAi = true
+            helper.level.addFreshEntity(it)
+        }
+        scene.onClose = {
+            zombie.discard()
+            lav.discard()
+        }
+        helper.runAfterDelay(1) {
+            helper.assertTrue(zombie.boundingBox.intersects(lav.boundingBox), "The zombie does not touch the hull")
+            val hulls = Sightline.vehicleHulls(helper.level, man.boundingBox.minmax(zombie.boundingBox).inflate(8.0), man, zombie)
+            helper.assertTrue(hulls.any { it == lav.boundingBox }, "The LAV the zombie leans on is out of the fire check")
+            scene.result("PASS", "hulls=${hulls.size}")
+            helper.succeed()
         }
     }
 }
