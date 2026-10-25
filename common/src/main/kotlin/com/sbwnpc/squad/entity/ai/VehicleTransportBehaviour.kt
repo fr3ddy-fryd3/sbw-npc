@@ -735,10 +735,14 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
     }
 
-    /** Under ATTACK the driver of an armed vehicle stays at its gun when the ride ends, rather than
-     *  leave it empty for the enemy: in the 25.10 playtest the defenders took all four. */
+    /**
+     * Under ATTACK the driver of an armed ground vehicle stays at its gun when the ride ends, at the
+     * standoff or where fire from close by stopped it, rather than leave it empty for the enemy: in
+     * the 25.10 playtest the defenders took all four. He stays for as long as the attack stands, as
+     * an ATTACK has no end of its own; the next order takes him off. Part of the #198 stopgap.
+     */
     private fun keepsTheGun(entity: NpcEntity, vehicle: Entity): Boolean =
-        entity.currentSquad()?.order == SquadOrder.ATTACK && VehicleTransportClaims.driverOf(vehicle.uuid) == entity.uuid &&
+        !isBoat(vehicle) && entity.currentSquad()?.order == SquadOrder.ATTACK && VehicleTransportClaims.driverOf(vehicle.uuid) == entity.uuid &&
             Ports.vehicles.isOperational(vehicle) && Ports.vehicles.hasWeaponAt(vehicle, entity) && Ports.vehicles.seatHasAmmo(vehicle, entity)
 
     private fun startOverwatch(entity: NpcEntity, vehicle: Entity) {
@@ -750,14 +754,18 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     /** A new order ends the overwatch. A far one is driven from the seat he is already in, through
-     *  [startMounted] (which waits for the squad to board); otherwise he gets out with the order's
-     *  stamp, so he walks it like everyone else. */
+     *  [startMounted] (which waits for the squad to board). A near ATTACK keeps him at the gun; any
+     *  other near order, an empty gun or a disabled vehicle gets him out, and he walks. */
     private fun tickOverwatch(entity: NpcEntity, level: ServerLevel) {
         val vehicle = mountOrAbort(entity) ?: return
         holdVehicle(vehicle)
         val squad = entity.currentSquad()
         val reordered = squad?.orderStamp != overwatchStamp
-        if (!reordered && keepsTheGun(entity, vehicle)) return
+        val farOrder = squad != null && reordered && SquadTransit.distant(squad, level)
+        if (!farOrder && keepsTheGun(entity, vehicle)) {
+            overwatchStamp = squad?.orderStamp ?: overwatchStamp
+            return
+        }
         entity.vehicleOverwatch = false
         DebugFlags.log(
             LogGroup.VEHICLE,
@@ -766,7 +774,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             vehicle.uuid,
             if (reordered) "new order" else "out of ammunition or out of action",
         )
-        if (squad != null && reordered && SquadTransit.distant(squad, level)) {
+        if (farOrder) {
             startMounted(entity, vehicle)
             return
         }
@@ -1399,6 +1407,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             Ports.vehicles.cutPower(vehicle)
             return
         }
+        // Out of OVERWATCH under the same order means its gun has nothing left to keep him for.
         if (keepsTheGun(entity, vehicle) && overwatchStamp != entity.currentSquad()?.orderStamp) {
             startOverwatch(entity, vehicle)
             return

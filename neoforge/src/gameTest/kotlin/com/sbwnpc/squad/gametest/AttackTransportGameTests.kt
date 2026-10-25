@@ -8,6 +8,7 @@ import com.sbwnpc.squad.entity.ai.SquadTransit
 import com.sbwnpc.squad.entity.ai.VehicleTransportClaims
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.npc.TransportVehicle
+import com.sbwnpc.squad.squad.Squad
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.core.BlockPos
@@ -26,7 +27,7 @@ import java.util.UUID
 object AttackTransportGameTests {
     private val OBJECTIVE = BlockPos(88, 1, 210)
 
-    private class Ride(val scene: CombatIdleGameTests.Scene, val men: List<NpcEntity>, val lav: Entity) {
+    private class Ride(val scene: CombatIdleGameTests.Scene, val men: List<NpcEntity>, val lav: Entity, val squad: Squad) {
         val driver: NpcEntity? get() = VehicleTransportClaims.driverOf(lav.uuid)?.let { id -> men.firstOrNull { it.uuid == id } }
         val riders: List<NpcEntity> get() = men.filter { it !== driver }
         fun distanceToObjective(helper: GameTestHelper): Double {
@@ -55,7 +56,7 @@ object AttackTransportGameTests {
             lav.discard()
         }
         manager.issueOrderAt(helper.level, squad.id, SquadOrder.ATTACK, helper.absolutePos(OBJECTIVE))
-        return Ride(scene, men, lav)
+        return Ride(scene, men, lav, squad)
     }
 
     /** The riders get out about 100 blocks from the point, not on it, and walk on from there. */
@@ -112,6 +113,66 @@ object AttackTransportGameTests {
         }
     }
 
+    /** Runs [check] each tick once the driver has held the gun for 100 ticks after the unload, after [reorder]. */
+    private fun afterOverwatch(helper: GameTestHelper, name: String, reorder: (Ride) -> Unit, check: (Ride, Long) -> Unit) {
+        val ride = ride(helper, name)
+        var boarded = false
+        var unloadedAt: Long? = null
+        var reorderedAt: Long? = null
+        helper.onEachTick {
+            if (ride.men.all { it.vehicle === ride.lav }) boarded = true
+            if (!boarded) return@onEachTick
+            if (unloadedAt == null && ride.riders.all { it.vehicle == null }) unloadedAt = helper.tick
+            val unloaded = unloadedAt ?: return@onEachTick
+            if (reorderedAt == null && helper.tick - unloaded >= 100) {
+                helper.assertTrue(ride.driver?.vehicleOverwatch == true, "The driver was not at the gun before the new order")
+                reorder(ride)
+                reorderedAt = helper.tick
+            }
+            reorderedAt?.let { check(ride, helper.tick - it) }
+        }
+    }
+
+    /** A new far order is driven from the gun seat, with the squad picked up on the way out. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 2000, batch = "attack-transport-far-order")
+    fun attackDriverDrivesANewFarOrderFromTheGun(helper: GameTestHelper) {
+        val manager = SquadManager.get(helper.level)
+        var parked: Vec3? = null
+        afterOverwatch(helper, "attack-transport-far-order", { ride ->
+            parked = ride.lav.position()
+            manager.issueOrderAt(helper.level, ride.squad.id, SquadOrder.MOVE, helper.absolutePos(BlockPos(88, 1, 8)))
+        }) { ride, since ->
+            val driver = ride.driver
+            helper.assertTrue(driver != null && driver.vehicle === ride.lav, "The driver got out for a far order")
+            if (ride.lav.position().distanceTo(parked!!) > 12.0) {
+                helper.assertTrue(!driver!!.vehicleOverwatch, "The driver was still flagged at the gun under the new order")
+                ride.scene.result("PASS", "driving $since ticks after the new order, aboard=${ride.men.count { it.vehicle === ride.lav }}")
+                helper.succeed()
+            }
+        }
+    }
+
+    /** A new near order that is not an attack takes the driver off the gun, and he walks it. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1600, batch = "attack-transport-near-order")
+    fun attackDriverGetsOutForANewNearOrder(helper: GameTestHelper) {
+        val manager = SquadManager.get(helper.level)
+        var driver: NpcEntity? = null
+        afterOverwatch(helper, "attack-transport-near-order", { ride ->
+            driver = ride.driver
+            manager.issueOrderAt(helper.level, ride.squad.id, SquadOrder.DEFEND, BlockPos.containing(ride.lav.position()).offset(0, 0, 20))
+        }) { ride, since ->
+            val man = driver!!
+            if (man.vehicle == null) {
+                helper.assertTrue(!man.vehicleOverwatch, "The driver got out still flagged at the gun")
+                ride.scene.result("PASS", "out $since ticks after the new order")
+                helper.succeed()
+            }
+            helper.assertTrue(since < 200, "The driver stayed at the gun under a near DEFEND")
+        }
+    }
+
     /** An enemy beside the way is shot at while the vehicle is still moving. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1400, batch = "attack-transport-fire")
@@ -126,7 +187,7 @@ object AttackTransportGameTests {
             if (target.health < target.maxHealth) {
                 val speed = ride.lav.deltaMovement.horizontalDistance()
                 val shooter = target.lastDamageSource?.entity
-                helper.assertTrue(ride.riders.any { it.vehicle === ride.lav }, "The enemy was hit only after the unload")
+                helper.assertTrue(ride.riders.any { it.vehicle === ride.lav } && speed > 0.05, "The enemy was hit only once the vehicle had stopped")
                 helper.assertTrue(shooter != null && shooter === ride.driver, "The enemy was hit by $shooter, not by the driver at the gun")
                 ride.scene.result("PASS", "hit at tick=${helper.tick} speed=$speed")
                 helper.succeed()

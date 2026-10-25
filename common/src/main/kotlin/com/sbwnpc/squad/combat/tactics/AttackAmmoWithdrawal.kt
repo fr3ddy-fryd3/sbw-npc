@@ -23,6 +23,8 @@ internal object AttackAmmoWithdrawal {
         if (!view.offensive || squad.attackAmmoPolicy == AttackAmmoPolicy.PRESS_ON) return false
         // Never infer a squad-wide shortage from only the loaded/nearby part of its roster.
         val members = squad.members.mapNotNull { level.getEntity(it) as? NpcEntity }.filter { it.isAlive }
+        // Men on a ride are on their way; a driver kept at his gun is not, and the withdrawal's new
+        // order takes him off it.
         if (members.size != squad.members.size || members.any { it.vehicle != null && !it.vehicleOverwatch }) return false
         val infantry = members.filter {
             it.npcClass !in NON_INFANTRY && Ports.guns.isGun(it.primaryGun())

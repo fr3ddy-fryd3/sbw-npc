@@ -584,8 +584,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     /** True when no behaviour but [owner] has this NPC's seat; asked before starting, see [claimSeat]. */
     fun seatFreeFor(owner: Any): Boolean = claims?.freeFor(NpcActivity.SEAT, owner) != false
 
-    /** At an armed vehicle's gun after an attack's ride ([com.sbwnpc.squad.entity.ai.VehicleTransportBehaviour]
-     *  sets and clears it). Mounted, but no longer on his way anywhere: the squad's ammunition
+    /** At an armed vehicle's gun after an attack's ride ([VehicleTransportBehaviour] sets and
+     *  clears it). Mounted, but no longer on his way anywhere: the squad's ammunition
      *  withdrawal need not wait for him to get out, and its new order takes him off the gun. */
     var vehicleOverwatch = false
 
