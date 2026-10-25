@@ -1171,7 +1171,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     // Also used by GrenadeUseBehaviour, hence internal not private.
     internal fun isEnemy(other: LivingEntity): Boolean {
-        if (other !is NpcEntity && other !is Player) return false
+        if (other !is NpcEntity && other !is Player && other !is net.minecraft.world.entity.Mob) return false
         if (other is Player && (other.isCreative || other.isSpectator)) return false
         return SquadTeams.isHostile(this, other)
     }
