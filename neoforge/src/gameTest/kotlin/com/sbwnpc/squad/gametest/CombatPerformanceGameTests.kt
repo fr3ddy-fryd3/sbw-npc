@@ -44,7 +44,9 @@ object CombatPerformanceGameTests {
         scene.onClose = { nav.positionPathObserver = null }
         helper.runAtTickTime(80) {
             scene.result("MEASURED", "blockedSearches=$blockedSearches blockedSearchMillis=${blockedNanos / 1_000_000.0}")
-            helper.assertTrue(blockedSearches in 1..12, "Unchanged failed approach rebuilt $blockedSearches paths in 80 ticks")
+            // An advance by legs (#172) ends its first leg at the foot of the wall and searches once
+            // more for the next one before the post searches fail: 15 paths where a single run took 12.
+            helper.assertTrue(blockedSearches in 1..16, "Unchanged failed approach rebuilt $blockedSearches paths in 80 ticks")
             for (x in 40..41) for (z in 0..223) for (y in 1..8) helper.setBlock(BlockPos(x, y, z), Blocks.AIR)
         }
         helper.onEachTick {

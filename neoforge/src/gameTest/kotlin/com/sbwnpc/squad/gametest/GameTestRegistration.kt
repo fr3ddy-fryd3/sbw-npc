@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.gametest
 
+import com.sbwnpc.squad.integration.sbw.VehicleAimGameTests
 import com.sbwnpc.squad.integration.sbw.VehicleRankGameTests
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestGenerator
@@ -38,6 +39,7 @@ object GameTestRegistration {
             HtnTacticsGameTests::class.java,
             FollowOrderGameTests::class.java,
             WithdrawalGameTests::class.java,
+            FiringLineGameTests::class.java,
             FireSupportGameTests::class.java,
             TargetMemoryGameTests::class.java,
             SquadAreaGameTests::class.java,
@@ -46,9 +48,19 @@ object GameTestRegistration {
             DroneFlightGameTests::class.java,
             ObserverLookGameTests::class.java,
             VehicleSeatGameTests::class.java,
+            VehicleSupportOrderGameTests::class.java,
+            VehicleSupportSightlineGameTests::class.java,
+            VehicleAimGameTests::class.java,
+            SquadTransportGameTests::class.java,
+            SquadTransitPriorityGameTests::class.java,
             VehicleRankGameTests::class.java,
+            VehicleBendGameTests::class.java,
             MarchRouteGameTests::class.java,
             NoticingGameTests::class.java,
+            HostileMobApiGameTests::class.java,
+            HostileMobCombatGameTests::class.java,
+            SquadManoeuvreGameTests::class.java,
+            TreePlatformGameTests::class.java,
         )
         // Saved-world replays require an explicit local fixture; ordinary suites stay portable.
         val replayClasses = if (System.getProperty("sbwnpc.gameTestReplay", "").isNotBlank()) listOf(SavedBattleGameTests::class.java) else emptyList()

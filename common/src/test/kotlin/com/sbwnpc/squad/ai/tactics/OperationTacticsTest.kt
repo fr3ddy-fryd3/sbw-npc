@@ -120,6 +120,13 @@ class OperationTacticsTest {
     /** How near the objective a sentry counts as arrived in these tests. */
     private val arrival = 22.0
 
+    @Test fun `distant transit takes precedence over scouts and sentries without cancelling assault rules nearby`() {
+        val input = DutyInputs(TacticalOrder.ATTACK, here, FrontProposal(CombatDuty.FIRE, here, null), objective, nearObjective, inContact = true, elsewhere = false, scout = true, heightRole = true, primaryAmmo = true, hasPatrolRoute = false, reachedMove = false, wasFiring = false, arrival = arrival, transit = true)
+        assertEquals(CombatDuty.FOLLOW_ORDER, OperationTactics.duty(input, fireReach = 40.0, approachOffset = 10.0).duty)
+        assertEquals(CombatDuty.SEARCH, OperationTactics.duty(input.copy(transit = false), fireReach = 40.0, approachOffset = 10.0).duty)
+        assertEquals(CombatDuty.FOLLOW_ORDER, OperationTactics.duty(input.copy(order = TacticalOrder.DEFEND, scout = false, wasObserving = true), fireReach = 40.0, approachOffset = 10.0).duty)
+    }
+
     /** A sentry's duty under [order] where he stands [at], [observing] already or not. */
     private fun sentry(order: TacticalOrder, at: Point3, inContact: Boolean, observing: Boolean = false) = OperationTactics.duty(DutyInputs(order, at, FrontProposal(CombatDuty.FIRE, at, null), objective, null, inContact, elsewhere = false, scout = false, heightRole = true, primaryAmmo = true, hasPatrolRoute = false, reachedMove = false, wasFiring = false, arrival = arrival, wasObserving = observing), fireReach = 40.0, approachOffset = 10.0)
     private fun duty(order: TacticalOrder = TacticalOrder.ATTACK, proposal: FrontProposal = FrontProposal(CombatDuty.FIRE, Point3(60.0, 64.0, 100.0), null), inContact: Boolean = true, scout: Boolean = false, heightRole: Boolean = false, primaryAmmo: Boolean = true, reachedMove: Boolean = false, wasFiring: Boolean = false, elsewhere: Boolean = false) = OperationTactics.duty(DutyInputs(order, here, proposal, objective, Point3(90.0, 64.0, 100.0), inContact, elsewhere, scout, heightRole, primaryAmmo, hasPatrolRoute = false, reachedMove = reachedMove, wasFiring = wasFiring, arrival = arrival), fireReach = 40.0, approachOffset = 10.0)

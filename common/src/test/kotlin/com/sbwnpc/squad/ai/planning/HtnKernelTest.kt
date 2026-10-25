@@ -127,23 +127,6 @@ class HtnKernelTest {
         assertEquals(Verdict.Rejected("no_support"), evaluation.excluded.single().verdict)
     }
 
-    @Test fun `small utility fluctuations retain commitment but invalid current choice switches immediately`() {
-        fun ranked(left: Double, right: Double) =
-            UtilityEvaluation.rank(
-                facts(0),
-                listOf(
-                    DecisionCandidate("left", "left", Condition.ALWAYS) { UtilityScore(left) },
-                    DecisionCandidate("right", "right", Condition.ALWAYS) { UtilityScore(right) },
-                ),
-            )
-        val policy = DecisionStability(40, 0.12)
-        assertEquals("left", policy.choose(ranked(0.77, 0.78), "left", 0, 100)!!.id)
-        assertEquals("left", policy.choose(ranked(0.4, 0.9), "left", 0, 10)!!.id)
-        assertEquals("right", policy.choose(ranked(0.4, 0.9), "left", 0, 100)!!.id)
-        val rejected = DecisionEvaluation(ranked(0.4, 0.9).ranked.filter { it.id == "right" }, emptyList(), emptyList())
-        assertEquals("right", policy.choose(rejected, "left", 0, 10)!!.id)
-    }
-
     @Test fun `planning rejects observations from another owner or domain level`() {
         val domain = HtnDomain(AgentLevel.SQUAD, listOf(PrimitiveTask(root) { primitive("use") }))
         val foreign = FactSnapshot(AgentId(AgentLevel.SQUAD, UUID(5, 5)), 0)

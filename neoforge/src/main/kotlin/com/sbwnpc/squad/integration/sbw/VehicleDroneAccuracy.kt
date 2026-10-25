@@ -49,13 +49,16 @@ object VehicleDroneAccuracy {
         // The rank's scatter first: SBW lays a turret on a perfect lead, so the weapon's own spread is
         // all the error a gunner has. Tank and passenger weapons use this same shot path (#174).
         val ranked = TurretGunnerAccuracy.spread(parameters.spread, shooter.npcRank)
-        val spread = DroneCombat.spreadForTarget(ranked * DarkAim.spreadFactor(vehicle.level(), target), target)
+        val spread = gunnerSpread(vehicle, shooter, parameters.spread, target)
         // One shot in SPREAD_SAMPLE: a turret fires several times a second.
         if (ranked != parameters.spread && shooter.random.nextInt(SPREAD_SAMPLE) == 0) {
             DebugFlags.log(LogGroup.FIRE, "turret gunner {} rank={} spread {} -> {} target={}", shooter.uuid, shooter.npcRank, parameters.spread, spread, target?.uuid)
         }
         return if (spread == parameters.spread) parameters else parameters.copy(spread = spread)
     }
+
+    /** The spread an NPC gunner's shot at [target] really gets from a weapon of [base] spread. */
+    fun gunnerSpread(vehicle: VehicleEntity, shooter: NpcEntity, base: Double, target: Entity?): Double = DroneCombat.spreadForTarget(TurretGunnerAccuracy.spread(base, shooter.npcRank) * DarkAim.spreadFactor(vehicle.level(), target), target)
 
     private fun npcTarget(vehicle: VehicleEntity, shooter: NpcEntity, parameters: ShootParameters): Entity? {
         // Prefer the target captured when this shot was requested, including delayed weapons.

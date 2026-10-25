@@ -1,11 +1,13 @@
 package com.sbwnpc.squad.team
 
+import com.sbwnpc.squad.combat.HostileMobs
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.PlayerFactionRegistry
 import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
+import net.minecraft.world.entity.Mob
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.scores.PlayerTeam
 
@@ -81,14 +83,19 @@ object SquadTeams {
     /** Squad friend/foe: both sides need an actual squad faction, neither the same nor allied or
      *  at truce ([Diplomacy.friendly]), to be hostile.
      *  Nothing ever puts a player on the scoreboard team itself — a teamless player resolves
-     *  through their own chosen faction ([PlayerFactionRegistry]) instead. Anything with no
-     *  faction either way (vanilla mobs, a player who never picked one) is neutral, never an
-     *  autonomous target. */
+     *  through their own chosen faction ([PlayerFactionRegistry]) instead. A mob with no
+     *  faction is hostile to a side by [HostileMobs.threatens] (#135); anything else with no
+     *  faction (a player who never picked one) is neutral, never an autonomous target. */
     fun isHostile(a: Entity, b: Entity): Boolean {
         if (a === b) return false
-        val fa = hostilityFaction(a) ?: return false
-        val fb = hostilityFaction(b) ?: return false
-        return !Diplomacy.friendly(fa, fb)
+        val fa = hostilityFaction(a)
+        val fb = hostilityFaction(b)
+        return when {
+            fa != null && fb != null -> !Diplomacy.friendly(fa, fb)
+            fa == null && fb != null && a is Mob -> HostileMobs.threatens(a, b)
+            fb == null && fa != null && b is Mob -> HostileMobs.threatens(b, a)
+            else -> false
+        }
     }
 
     /** Both on a faction, and the same one, allied or at truce — see the `isAlliedTo` mixin. */
