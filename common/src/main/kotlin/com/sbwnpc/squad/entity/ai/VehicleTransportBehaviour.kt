@@ -35,8 +35,8 @@ import net.tslat.smartbrainlib.util.BrainUtils
  * An ATTACK's ride ends [SquadTransit.TRANSPORT_DISTANCE] short of the objective, and the squad
  * walks the rest: unloaded on the point itself, it got out among the defenders (playtest 25.10).
  * The driver of an armed vehicle stays at its gun there instead of leaving it empty for the
- * enemy to take. TODO: this standoff is a stopgap until the squad level of the tactical HTN
- * decides the transport (#198).
+ * enemy to take. The standoff is a stopgap rule, to move into the squad level of the tactical
+ * HTN when that decides the transport (#198).
  *
  * Squad-level coordination is fully decentralized: each member independently consults
  * [VehicleTransportClaims], which is why this scales to several vehicles per squad without any
@@ -60,6 +60,9 @@ import net.tslat.smartbrainlib.util.BrainUtils
  *    enough, independently of the driver.
  *  - COMBAT_DISMOUNT: stops after hostile fire (under ATTACK only from close by, see above); the
  *    assigned gunner stays in an armed seat until the threat clears.
+ *  - OVERWATCH (driver only, ATTACK): the ride is over and the rest are out; he holds the vehicle
+ *    and stays at its gun, which SBW lays at his target, until the order changes or the gun is
+ *    out of ammunition.
  *
  * Boats: [BoatTrips] weighs the boats near a squad against walking — down a river, across a lake,
  * over the water on the squad's route — and when one is worth it the squad takes it instead of a
@@ -76,7 +79,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         noTimeout()
     }
 
-    private enum class Phase { SEEKING, BOARDING, WAITING_FOR_SQUAD, DRIVING, HOLDING, RIDING, COMBAT_DISMOUNT }
+    private enum class Phase { SEEKING, BOARDING, WAITING_FOR_SQUAD, DRIVING, HOLDING, RIDING, COMBAT_DISMOUNT, OVERWATCH }
 
     private data class VehicleChoice(val vehicle: Entity, val isDriver: Boolean)
 
@@ -91,6 +94,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /** The order a scan found no vehicle for — see [tickSeeking]. */
     private var noVehicleForStamp = Int.MIN_VALUE
+
+    /** The order the driver took up [Phase.OVERWATCH] under — see [tickOverwatch]. */
+    private var overwatchStamp = Int.MIN_VALUE
     private var lastNoCandidateLogTick = 0
     private var lastEligibilityLogTick = -ELIGIBILITY_LOG_INTERVAL_TICKS
 
@@ -378,6 +384,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         VehicleTransportClaims.release(entity.uuid)
         entity.release(NpcActivity.SEAT, this)
         entity.release(NpcActivity.VEHICLE, this)
+        entity.vehicleOverwatch = false
         phase = Phase.SEEKING
         targetVehicleId = null
         tripDestination = null
@@ -407,6 +414,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             Phase.HOLDING -> tickHolding(entity)
             Phase.RIDING -> tickRiding(entity)
             Phase.COMBAT_DISMOUNT -> tickCombatDismount(entity)
+            Phase.OVERWATCH -> tickOverwatch(entity, level)
         }
     }
 
@@ -628,6 +636,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         val vehicle = entity.vehicle?.takeIf(Ports.vehicles::isVehicle)
         if (vehicle == null) {
             VehicleTransportClaims.release(entity.uuid)
+            entity.vehicleOverwatch = false
             targetVehicleId = null
             phase = Phase.SEEKING
             seekingStartTick = entity.tickCount
@@ -719,9 +728,49 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (isPermanentCrew(entity, vehicle)) {
             holdVehicle(vehicle)
             phase = Phase.HOLDING
+        } else if (attackStandoff(entity, vehicle) && keepsTheGun(entity, vehicle)) {
+            startOverwatch(entity, vehicle)
         } else {
             waitToStopThenDismount(entity, vehicle, isDriver = true)
         }
+    }
+
+    /** Under ATTACK the driver of an armed vehicle stays at its gun when the ride ends, rather than
+     *  leave it empty for the enemy: in the 25.10 playtest the defenders took all four. */
+    private fun keepsTheGun(entity: NpcEntity, vehicle: Entity): Boolean =
+        entity.currentSquad()?.order == SquadOrder.ATTACK && VehicleTransportClaims.driverOf(vehicle.uuid) == entity.uuid &&
+            Ports.vehicles.isOperational(vehicle) && Ports.vehicles.hasWeaponAt(vehicle, entity) && Ports.vehicles.seatHasAmmo(vehicle, entity)
+
+    private fun startOverwatch(entity: NpcEntity, vehicle: Entity) {
+        holdVehicle(vehicle)
+        overwatchStamp = entity.currentSquad()?.orderStamp ?: return
+        entity.vehicleOverwatch = true
+        phase = Phase.OVERWATCH
+        DebugFlags.log(LogGroup.VEHICLE, "{} stays at the gun of {} after the ride", entity.uuid, vehicle.uuid)
+    }
+
+    /** A new order ends the overwatch. A far one is driven from the seat he is already in, through
+     *  [startMounted] (which waits for the squad to board); otherwise he gets out with the order's
+     *  stamp, so he walks it like everyone else. */
+    private fun tickOverwatch(entity: NpcEntity, level: ServerLevel) {
+        val vehicle = mountOrAbort(entity) ?: return
+        holdVehicle(vehicle)
+        val squad = entity.currentSquad()
+        val reordered = squad?.orderStamp != overwatchStamp
+        if (!reordered && keepsTheGun(entity, vehicle)) return
+        entity.vehicleOverwatch = false
+        DebugFlags.log(
+            LogGroup.VEHICLE,
+            "{} leaves the gun of {}: {}",
+            entity.uuid,
+            vehicle.uuid,
+            if (reordered) "new order" else "out of ammunition or out of action",
+        )
+        if (squad != null && reordered && SquadTransit.distant(squad, level)) {
+            startMounted(entity, vehicle)
+            return
+        }
+        phase = Phase.COMBAT_DISMOUNT
     }
 
     private fun stopIfPowerExhausted(entity: NpcEntity, vehicle: Entity): Boolean {
@@ -1350,6 +1399,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             Ports.vehicles.cutPower(vehicle)
             return
         }
+        if (keepsTheGun(entity, vehicle) && overwatchStamp != entity.currentSquad()?.orderStamp) {
+            startOverwatch(entity, vehicle)
+            return
+        }
         waitToStopThenDismount(entity, vehicle, VehicleTransportClaims.driverOf(vehicle.uuid) == entity.uuid)
     }
 
@@ -1540,18 +1593,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** Close enough to [home] to get off: a boat has to come right up to the landing point, or be
      *  washed up on land — a vehicle on the road stops well short and lets everyone walk in. */
     private fun arrived(entity: NpcEntity, vehicle: Entity, home: Vec3): Boolean {
-        if (!isBoat(vehicle)) {
-            val afloat = vehicle.isInWater && Ports.vehicles.canCrossWater(vehicle)
-            if (!afloat && attackStandoff(entity, vehicle)) return true
-            // Everyone uses the driver's arrival radius. Falling through to home (the landing
-            // for passengers) made them get off 20 blocks early and obstruct their own driver.
-            VehicleTransportClaims.landingOf(vehicle.uuid)?.let {
-                return horizontalDistance(vehicle.position(), it) <= GROUND_EXIT_RADIUS
-            }
-            // An amphibious trip ends on its chosen bank, not 20 blocks short while still afloat.
-            if (afloat) return false
-            return vehicle.position().distanceTo(home) <= ARRIVAL_RADIUS
-        }
+        if (!isBoat(vehicle)) return arrivedOverLand(entity, vehicle, home)
         // Under way to the next stretch of water, not to a bank: nobody gets off.
         if (entity.vehicle === vehicle && VehicleTransportClaims.driverOf(vehicle.uuid) == entity.uuid && !boatRouteComplete) return false
         val dist = horizontalDistance(vehicle.position(), home)
@@ -1559,6 +1601,19 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             // Washed up by its landing. Anywhere else it ran aground on the way: that's stuck, not there.
             (!vehicle.isInWater && entity.tickCount - boardTick > BOAT_LAUNCH_GRACE_TICKS && dist <= BOAT_BANK_RADIUS) ||
             (dist <= BOAT_BANK_RADIUS && restingAtBank(vehicle))
+    }
+
+    private fun arrivedOverLand(entity: NpcEntity, vehicle: Entity, home: Vec3): Boolean {
+        val afloat = vehicle.isInWater && Ports.vehicles.canCrossWater(vehicle)
+        if (!afloat && attackStandoff(entity, vehicle)) return true
+        // Everyone uses the driver's arrival radius. Falling through to home (the landing
+        // for passengers) made them get off 20 blocks early and obstruct their own driver.
+        VehicleTransportClaims.landingOf(vehicle.uuid)?.let {
+            return horizontalDistance(vehicle.position(), it) <= GROUND_EXIT_RADIUS
+        }
+        // An amphibious trip ends on its chosen bank, not 20 blocks short while still afloat.
+        if (afloat) return false
+        return vehicle.position().distanceTo(home) <= ARRIVAL_RADIUS
     }
 
     /** An ATTACK's carried squad is within walking distance of its objective, see the class KDoc.

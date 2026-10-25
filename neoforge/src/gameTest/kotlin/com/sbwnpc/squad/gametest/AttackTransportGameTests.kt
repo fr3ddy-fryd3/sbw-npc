@@ -87,6 +87,31 @@ object AttackTransportGameTests {
         }
     }
 
+    /** The driver holds the gun seat after the unload instead of leaving the vehicle empty. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1400, batch = "attack-transport-overwatch")
+    fun attackDriverStaysAtTheGunAfterTheUnload(helper: GameTestHelper) {
+        val ride = ride(helper, "attack-transport-overwatch")
+        var boarded = false
+        var unloadedAt: Long? = null
+        helper.onEachTick {
+            if (ride.men.all { it.vehicle === ride.lav }) boarded = true
+            if (!boarded) return@onEachTick
+            if (unloadedAt == null && ride.riders.all { it.vehicle == null }) unloadedAt = helper.tick
+            val since = unloadedAt?.let { helper.tick - it } ?: return@onEachTick
+            val driver = ride.driver
+            helper.assertTrue(
+                driver != null && Ports.vehicles.seating(ride.lav).firstOrNull() === driver,
+                "The driver left the gun seat $since ticks after the unload",
+            )
+            if (since >= 300) {
+                helper.assertTrue(ride.lav.deltaMovement.horizontalDistance() < 0.05, "The vehicle kept driving after the unload")
+                ride.scene.result("PASS", "driver seated for $since ticks after the unload")
+                helper.succeed()
+            }
+        }
+    }
+
     /** An enemy beside the way is shot at while the vehicle is still moving. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1400, batch = "attack-transport-fire")
