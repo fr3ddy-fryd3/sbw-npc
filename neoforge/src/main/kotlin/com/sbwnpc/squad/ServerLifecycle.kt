@@ -28,6 +28,7 @@ object ServerLifecycle {
     fun onEntityJoin(event: net.neoforged.neoforge.event.entity.EntityJoinLevelEvent) {
         val level = event.level as? net.minecraft.server.level.ServerLevel ?: return
         if (SquadManager.get(level).discardDeletedEntity(event.entity)) {
+            com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER, "[squad] event=deleted_on_load entity={} type={}", event.entity.uuid, event.entity.type)
             event.isCanceled = true
         } else {
             (event.entity as? com.sbwnpc.squad.entity.NpcEntity)?.let {

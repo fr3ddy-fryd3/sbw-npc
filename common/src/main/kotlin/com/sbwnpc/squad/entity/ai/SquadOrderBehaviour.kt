@@ -18,10 +18,9 @@ import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 
 /**
- * Squad-order movement, in the Idle activity (`NpcEntity.getIdleTasks()`). Low priority: with an
- * enemy about, the Fight activity (`ATTACK_TARGET` set) outranks Idle on its own; within Idle,
- * [InvestigateBehaviour] comes first — [eligible] requires `!entity.isAlert()` for that, since Idle
- * behaviours don't exclude one another by themselves.
+ * Squad-order movement, below role work and supply in Core. A distant remembered contact still
+ * permits the journey; nearby combat, investigation and higher-priority actions keep their own
+ * navigation through [eligible].
  *
  *  - DEFEND: back to within [SquadFormation.defendArrivalRadius] of home (objective point or
  *    guarded entity), running when more than [DEFEND_RUN_DISTANCE] blocks away, then each man
@@ -71,12 +70,14 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
     private fun eligible(entity: NpcEntity): Boolean {
-        if (entity.target != null) return false
+        if (entity.target != null && !SquadTransit.marching(entity)) return false
         // On its way to a Supply — ResupplyBehaviour hands it back once topped up.
         if (entity.resupplying || entity.movementLockedByCover() || entity.combatLockedByMedic()) return false
-        // An alarm sends a mob to look — except while falling back, when looking is the one thing
-        // it must not do.
-        if (entity.isAlert() && entity.retreatPoint() == null && !com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) return false
+        // During a distant FOLLOW_ORDER, GunAttack already yields movement to this executor.
+        // A heard battle must not disable it too and strand the squad at its first path's end.
+        if (entity.isAlert() && !SquadTransit.marching(entity)) {
+            if (entity.retreatPoint() == null && !com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) return false
+        }
         // A dug-in mob clears COVER_HOLD for its whole holding duration (see
         // SeekCoverBehaviour.enterDugInHolding) so GunAttackBehaviour can still fire from the hole —
         // this behaviour never checked combatLockedByCover() in the first place (only target/alert/

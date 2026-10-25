@@ -14,16 +14,16 @@ entity, economy, army spawning and territorial policy are not implemented here.
 | Section | Status |
 |---|---|
 | [Five levels of decisions](#five-levels-of-decisions) | **Implemented** for the operation, squad, team and NPC levels (`NativeTactics`, `TacticalDomain`). The Commander level is not (#12). |
-| [Separate concepts within a level](#separate-concepts-within-a-level) | **Implemented**: orders (`IssuedCommand`), facts (`FactSnapshot`), strategy (`StrategyEvaluation`), plan (HTN) and execution (`PlanRuntime`) are separate types. |
+| [Separate concepts within a level](#separate-concepts-within-a-level) | **Implemented**: orders (`IssuedCommand`), facts (`FactSnapshot`), strategy (`SquadStrategy`), plan (HTN) and execution (`PlanRuntime`) are separate types. |
 | [Orders and authority](#orders-and-authority) | **Implemented** for players: principal, order id, capability checks, idempotent delivery. Commander authority is not. |
 | [Information and joint tactics](#information-and-joint-tactics) | **Partly**: contacts carry source and time and are shared per operation; there are no explicit accept/decline handshakes or cover confirmation between squads yet. |
 | [Task and executor contract](#task-and-executor-contract) | **Implemented** as `PositionIntent` (assignment) vs `TacticalTask`/`NativePositionAction` (execution), with `ExecutionStatus` results. The names `TaskSpec`/`TaskExecution` were placeholders. |
 | [Updates, saving and diagnostics](#updates-saving-and-diagnostics) | **Partly**: dated snapshots and per-decision logs exist; a full per-NPC explanation chain and saving plan state across loads do not. |
 | [Creating an operation and joining late](#creating-an-operation-and-joining-late) | **Implemented** (`OperationRegistry`: one operation per shared order, atomic selection check, pending reinforcement, physical entry). The "same point" tolerance is still open. |
 | [Commander AI](#commander-ai-army-resources-and-territory) | **Not implemented** (#12). |
-| [Teams for subtasks](#teams-for-subtasks) | **Implemented** (`TaskTeamAllocator`, up to six by default, keeping teams through changes of strength). |
+| [Teams for subtasks](#teams-for-subtasks) | **Implemented** (`TaskTeamAllocator`, up to six by default, keeping teams through changes of strength). A team chooses by utility whether its movers rush together or in pairs (`TeamRushes`). |
 | [Completing an area ATTACK](#proposal-completing-an-area-attack) | **Implemented** (`AreaControlClock`: occupation, inspection and 600 safe ticks, i.e. 30 s), plus attack phases deploy/assault/clear (`AttackPhase`). |
-| [Risk and withdrawal](#proposal-risk-and-withdrawal) | **Implemented with other thresholds**: the operation reviews its plan at 30% losses and withdraws at 60% (`OperationLosses`); a squad's own strategy withdraws at 40% under fire without a way to carry on (`StrategyEvaluation`). Squads with a barracks fighting on instead of withdrawing: not implemented yet (#57). |
+| [Risk and withdrawal](#proposal-risk-and-withdrawal) | **Implemented with other thresholds**: the operation reviews its plan at 30% losses and withdraws at 60% (`OperationLosses`); a squad's own strategy withdraws at 40% under fire without a way to carry on (`SquadStrategy`). Squads with a barracks fighting on instead of withdrawing: not implemented yet (#57). |
 | [Choosing strategies and plans](#proposal-choosing-strategies-and-plans) | **Partly**: the HTN core and utility scoring exist; utility is used for the squad's strategy only, not for the operation or the Commander ([UTILITY-DESIGN.md](UTILITY-DESIGN.md)). |
 | [Performance](#performance-150-visible-600-active) | **Partly measured**: a 600-NPC movement scene measures server cost; client FPS with 150 in view is not measured (#11). |
 

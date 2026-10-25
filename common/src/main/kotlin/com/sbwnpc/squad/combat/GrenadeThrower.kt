@@ -8,16 +8,24 @@ import net.minecraft.world.phys.Vec3
 
 /** Shared grenade trajectory and friendly-fire gate for regular and reserve throws. */
 object GrenadeThrower {
-    /** Close enough to reach, far enough not to catch the blast — for every thrower. */
+    /** Close enough to reach, roughly clear of the blast; [isSafeToThrow] checks each grenade's own. */
     const val MIN_RANGE = 5.0
     const val MAX_RANGE = 16.0
 
     /** Every throw path, including the grenade from a foxhole, uses the same reach limit. */
     internal fun inRange(from: Vec3, target: Vec3): Boolean = from.distanceTo(target) in MIN_RANGE..MAX_RANGE
 
-    fun isSafeToThrow(thrower: NpcEntity, target: Vec3, kind: GrenadeKind): Boolean =
-        FriendlyFireGuard.hasClearLineOfFire(thrower, target) &&
-            FriendlyFireGuard.hasClearBlastRadius(thrower, target, Ports.grenades.blastRadius(kind))
+    /**
+     * Whether [kind] thrown at [target] spares [thrower]'s side, the thrower included. The ally check
+     * leaves the thrower out, and an M67's blast (6 blocks) reaches past [MIN_RANGE]: a man threw one
+     * at a zombie five blocks off and killed himself and a medic (in-game 25.10).
+     */
+    fun isSafeToThrow(thrower: NpcEntity, target: Vec3, kind: GrenadeKind): Boolean {
+        val blast = Ports.grenades.blastRadius(kind)
+        return thrower.position().distanceTo(target) > blast + SELF_MARGIN &&
+            FriendlyFireGuard.hasClearLineOfFire(thrower, target) &&
+            FriendlyFireGuard.hasClearBlastRadius(thrower, target, blast)
+    }
 
     /**
      * The grenade [thrower] should throw at [target] now, or null for none: the one it would
@@ -38,6 +46,9 @@ object GrenadeThrower {
     /** An RGO touching down this close to its point has done what it was thrown for. */
     private const val NEAR_TARGET = 2.5
 
+    /** A grenade lands up to [NEAR_TARGET] short, and its target keeps moving. */
+    private const val SELF_MARGIN = 2.0
+
     /** Rechecks reach at release: a moving target may have left range since [pick]. */
     fun throwAt(thrower: NpcEntity, level: ServerLevel, target: Vec3, kind: GrenadeKind, targetVelocity: Vec3 = Vec3.ZERO): Boolean {
         if (thrower.grenadesLeft(kind) <= 0 || !inRange(thrower.position(), target) ||
@@ -48,6 +59,7 @@ object GrenadeThrower {
         }
         Ports.grenades.throwAt(thrower, level, target, targetVelocity, kind)
         thrower.spendGrenade(kind)
+        DebugFlags.log(LogGroup.GRENADE, "{} threw {} at {} ({} blocks, blast {})", thrower.uuid, kind, target, thrower.position().distanceTo(target), Ports.grenades.blastRadius(kind))
         return true
     }
 }

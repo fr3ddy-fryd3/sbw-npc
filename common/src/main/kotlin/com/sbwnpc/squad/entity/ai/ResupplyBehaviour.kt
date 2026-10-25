@@ -12,7 +12,7 @@ import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 
 /**
- * In the Idle activity: low on ammunition, no one to fight and a Supply to return to — go and stand by
+ * Before the ordinary journey in Core: low on ammunition, no one to fight and a Supply to return to — go and stand by
  * it until the block has topped the NPC up ([SupplyBlockEntity]), then let the squad order take it
  * back to whatever it was doing. [NpcEntity.resupplying] keeps [SquadOrderBehaviour] and
  * [InvestigateBehaviour] off it meanwhile.

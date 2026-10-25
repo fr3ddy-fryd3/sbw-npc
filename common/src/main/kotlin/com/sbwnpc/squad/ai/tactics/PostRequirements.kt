@@ -7,10 +7,8 @@ package com.sbwnpc.squad.ai.tactics
  */
 object PostRequirements {
     /** A man running under fire must end his run in cover. */
-    fun cover(duty: CombatDuty, incoming: Boolean): Boolean = incoming && duty == CombatDuty.MOVE
+    fun cover(duty: CombatDuty, incoming: Boolean): Boolean = incoming && duty.coverUnderFire
 
     /** A man moving or firing under fire needs shelter from the bearing the fire comes from. */
-    fun shelter(duty: CombatDuty, incoming: Boolean): Boolean = incoming && duty in SHELTERED
-
-    private val SHELTERED = setOf(CombatDuty.MOVE, CombatDuty.FIRE)
+    fun shelter(duty: CombatDuty, incoming: Boolean): Boolean = incoming && duty.shelterUnderFire
 }

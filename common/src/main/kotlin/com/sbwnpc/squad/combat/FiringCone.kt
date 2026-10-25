@@ -12,10 +12,7 @@ internal class FiringCone(private val from: Vec3, aim: Vec3, spread: Double) {
     private val distance = aim.distanceTo(from)
     private val direction = aim.subtract(from).normalize()
 
-    // Each component gets triangle(0, 0.0172275 * spread). The deviation vector is
-    // inside a sphere of radius sqrt(3) * amplitude around the unit aim direction.
-    private val deviation = sqrt(3.0) * 0.0172275 * spread.coerceAtLeast(0.0)
-    private val angle = if (deviation >= 1.0) Math.PI else asin(deviation)
+    private val angle = angleOf(spread)
     val bounds = AABB(from, aim).inflate(2.0 + distance * sin(angle.coerceAtMost(Math.PI / 2.0)))
 
     fun intersects(box: AABB): Boolean {
@@ -30,5 +27,19 @@ internal class FiringCone(private val from: Vec3, aim: Vec3, spread: Double) {
         val bodyAngle = acos((toBody.dot(direction) / bodyDistance).coerceIn(-1.0, 1.0))
         val bodyMargin = asin((radius / bodyDistance).coerceIn(0.0, 1.0))
         return bodyAngle <= angle + bodyMargin
+    }
+
+    companion object {
+        /** Vanilla Projectile.shoot's per-component triangle amplitude per unit of spread. */
+        private const val AMPLITUDE_PER_SPREAD = 0.0172275
+        private const val AXES = 3.0
+
+        /** The widest angle off the aim line a round fired with SBW [spread] can leave at, in radians. */
+        fun angleOf(spread: Double): Double {
+            // Each component gets triangle(0, amplitude). The deviation vector is inside a sphere
+            // of radius sqrt(3) * amplitude around the unit aim direction, one per axis.
+            val deviation = sqrt(AXES) * AMPLITUDE_PER_SPREAD * spread.coerceAtLeast(0.0)
+            return if (deviation >= 1.0) Math.PI else asin(deviation)
+        }
     }
 }

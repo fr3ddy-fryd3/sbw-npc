@@ -20,7 +20,11 @@ object FiringOpportunity {
         if (!terrainClear || !WeaponReach.inRange(entity, entity.eyePosition, target.eyePosition)) return Opportunity.VISIBLE
         val spread = DroneCombat.spreadForTarget(entity.spread, target)
         val hulls = Sightline.vehicleHulls(level, AABB(entity.eyePosition, target.eyePosition).inflate(2.0), entity, target)
-        if (Sightline.crosses(hulls, entity.eyePosition, target.eyePosition, spread)) return Opportunity.VISIBLE
+        if (Sightline.crosses(hulls, entity.eyePosition, target.eyePosition, spread) ||
+            Sightline.ownHullInLane(entity, entity.eyePosition, target.eyePosition, spread, target)
+        ) {
+            return Opportunity.VISIBLE
+        }
         val gun = Ports.guns.inHand(entity)
         val safety = FriendlyFireGuard.assess(entity, com.sbwnpc.squad.combat.tactics.SquadTactics.firingLaneEnd(entity, target), spread, target.position(), gun?.explosionRadius ?: 0.0)
         return if (safety.lineClear && safety.blastClear) Opportunity.SHOOTABLE else Opportunity.VISIBLE
