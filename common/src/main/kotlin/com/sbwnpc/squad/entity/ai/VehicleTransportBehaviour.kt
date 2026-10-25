@@ -28,8 +28,8 @@ import net.tslat.smartbrainlib.util.BrainUtils
 
 /**
  * Squad-transit-by-vehicle: when a squad's objective is far enough away that walking is silly, NPCs
- * seek out nearby vehicles instead of hoofing it. NPCs never fight while mounted; hostile fire only
- * interrupts non-ATTACK transport after a controlled stop.
+ * seek out nearby vehicles instead of hoofing it. Hostile fire interrupts non-ATTACK transport
+ * after a controlled stop; on arrival with contact the gunner stays to cover the dismount.
  *
  * Squad-level coordination is fully decentralized: each member independently consults
  * [VehicleTransportClaims], which is why this scales to several vehicles per squad without any
@@ -51,8 +51,8 @@ import net.tslat.smartbrainlib.util.BrainUtils
  *    falls back on short routes from the driver's own pathfinder.
  *  - RIDING (passenger only): just waiting for the vehicle to arrive; dismounts itself once close
  *    enough, independently of the driver.
- *  - COMBAT_DISMOUNT: stops after hostile fire under a non-ATTACK order; the assigned gunner stays
- *    in an armed seat until the threat clears.
+ *  - COMBAT_DISMOUNT: stops after hostile fire under a non-ATTACK order or on arrival with contact;
+ *    the assigned gunner stays in an armed seat until the threat clears.
  *
  * Boats: [BoatTrips] weighs the boats near a squad against walking — down a river, across a lake,
  * over the water on the squad's route — and when one is worth it the squad takes it instead of a
@@ -1450,10 +1450,17 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun engageVehicleThreat(entity: NpcEntity, vehicle: Entity, threat: LivingEntity): Boolean {
-        // Attacking drives through it; so does falling back — stopping to fight is the opposite of
-        // getting away. The gunner still shoots on the move.
+        // Spawned crews keep their seats. Infantry dismount would send them straight to HOLDING
+        // and back to DRIVING, stopping the same trip again every few ticks while contact lasts.
+        if (isPermanentCrew(entity, vehicle)) return false
+        // ATTACK drives through contact until arrival, when the gun covers the men getting out.
+        // Falling back keeps going: stopping to fight is the opposite of getting away.
         val order = entity.currentSquad()?.order
-        if (order == SquadOrder.ATTACK || order == SquadOrder.RETREAT) return false
+        if (order == SquadOrder.RETREAT) return false
+        if (order == SquadOrder.ATTACK) {
+            val home = resolveTripDestination(entity) ?: return false
+            if (!arrived(entity, vehicle, home)) return false
+        }
         // Stopping on the water only leaves everyone to swim under fire: keep going to the bank.
         if (isBoat(vehicle)) return false
 
@@ -1479,7 +1486,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         val gunner = vehicle.passengers.asSequence()
             .filterIsInstance<NpcEntity>()
-            .firstOrNull { Ports.vehicles.canFire(vehicle, it) }
+            .firstOrNull { Ports.vehicles.seatHasAmmo(vehicle, it) }
             ?: return null
         return gunner.takeIf { VehicleTransportClaims.claimCombatGunner(vehicle.uuid, it.uuid) }
     }
@@ -1490,8 +1497,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
      * turret for as long as that enemy lived, anywhere on the map.
      */
     private fun gunnerStillEngaged(entity: NpcEntity): Boolean {
-        val target = entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) } ?: return false
-        if (entity.sensing.hasLineOfSight(target)) gunnerSawThreatTick = entity.tickCount
+        val target = entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) }
+        if (target != null && entity.sensing.hasLineOfSight(target)) gunnerSawThreatTick = entity.tickCount
         return entity.tickCount - gunnerSawThreatTick < GUNNER_LOST_SIGHT_TICKS
     }
 
