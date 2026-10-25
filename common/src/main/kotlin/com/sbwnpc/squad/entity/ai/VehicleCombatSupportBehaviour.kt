@@ -262,29 +262,39 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  gets out, rather than sitting alone in the vehicle for as long as that enemy lives. */
     private fun engagementTarget(entity: NpcEntity): LivingEntity? {
         val level = entity.level() as? ServerLevel ?: return threat(entity)
-        targetId?.let { id ->
-            val target = level.getEntity(id) as? LivingEntity
-            if (target != null && target.isAlive && SquadTeams.isHostile(entity, target)) {
-                if (hasFiringSightline(entity, target)) sawTargetTick = entity.tickCount
-                if (entity.tickCount - sawTargetTick < LOST_SIGHT_TICKS) {
-                    engagedTick = entity.tickCount
-                    return target
-                }
+        val held = targetId?.let { level.getEntity(it) as? LivingEntity }?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) }
+        if (held != null) {
+            val inSight = hasFiringSightline(entity, held)
+            if (inSight) sawTargetTick = entity.tickCount
+            val shootable = if (inSight) null else shootableSensorPick(entity, held)
+            if (shootable != null) return takeTarget(entity, shootable)
+            if (entity.tickCount - sawTargetTick < LOST_SIGHT_TICKS) {
+                engagedTick = entity.tickCount
+                return held
             }
-            targetId = null
         }
-        return threat(entity)?.takeIf { hasFiringSightline(entity, it) }?.also {
-            DebugFlags.log(
-                LogGroup.VEHICLE,
-                "{} at the gun takes a new target {} ({} ticks after the last)",
-                entity.uuid,
-                it.uuid,
-                entity.tickCount - engagedTick,
-            )
-            targetId = it.uuid
-            sawTargetTick = entity.tickCount
-            engagedTick = entity.tickCount
-        }
+        targetId = null
+        return threat(entity)?.takeIf { hasFiringSightline(entity, it) }?.let { takeTarget(entity, it) }
+    }
+
+    /**
+     * The sensor's target while [held] is out of sight, when the gun can hit it. The hidden one used to
+     * be put back every tick, and the gun sat silent until the gunner climbed out (in-game 24.10).
+     */
+    private fun shootableSensorPick(entity: NpcEntity, held: LivingEntity): LivingEntity? = entity.target?.takeIf { it !== held && it.isAlive && SquadTeams.isHostile(entity, it) && hasFiringSightline(entity, it) }
+
+    private fun takeTarget(entity: NpcEntity, target: LivingEntity): LivingEntity {
+        DebugFlags.log(
+            LogGroup.VEHICLE,
+            "{} at the gun takes a new target {} ({} ticks after the last)",
+            entity.uuid,
+            target.uuid,
+            entity.tickCount - engagedTick,
+        )
+        targetId = target.uuid
+        sawTargetTick = entity.tickCount
+        engagedTick = entity.tickCount
+        return target
     }
 
     /** A head peeking above cover cannot keep a gun aimed at the hidden body indefinitely. */

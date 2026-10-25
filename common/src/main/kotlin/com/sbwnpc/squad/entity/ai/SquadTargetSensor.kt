@@ -82,7 +82,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         val reconsider = level.gameTime >= nextReallocationTick
         if (reconsider) nextReallocationTick = level.gameTime + REALLOCATION_MIN + entity.random.nextInt(REALLOCATION_JITTER)
         val desired = computeDesired(entity, level, directTarget, reconsider)
-        val feasible = if (desired != null && !VehicleTargeting.weaponPermits(entity, desired)) directTarget else desired
+        val feasible = feasible(entity, desired, directTarget)
         val target = gunnerNotices(entity, level, feasible, previous)
         // Capture sight loss before target selection can discard the personally observed enemy.
         if (previous != null && entity.lastSeenFire.observed(previous.uuid)) {
@@ -104,6 +104,23 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         }
         if (target != null) TankWeaponSelection.update(entity, target)
     }
+
+    /**
+     * [desired] if [entity]'s weapon permits it, else [directTarget]. A gun may keep a hidden focus it
+     * can reach, but not while an enemy it can hit stands in the open: in-game 24.10 a turret sat
+     * silent on a man behind cover.
+     */
+    private fun feasible(entity: NpcEntity, desired: LivingEntity?, directTarget: LivingEntity?): LivingEntity? =
+        when {
+            desired == null -> null
+
+            !VehicleTargeting.weaponPermits(entity, desired) -> directTarget
+
+            directTarget != null && directTarget !== desired && !VehicleTargeting.shootableNow(entity, desired) &&
+                VehicleTargeting.shootableNow(entity, directTarget) -> directTarget
+
+            else -> desired
+        }
 
     /**
      * At any vehicle weapon a new target counts only once the gunner has noticed it

@@ -226,4 +226,40 @@ object VehicleAimGameTests {
             }
         }
     }
+
+    /**
+     * A gunner whose squad's focus is hidden turns to an enemy he can shoot. In-game 24.10 the gun
+     * stayed laid on a man behind cover, as the squad's focus it could still reach, while another
+     * stood in the open, and the turret sat silent until the gunner gave up and climbed out.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 200, batch = "vehicle-aim-visible")
+    fun gunnerTurnsFromAHiddenFocusToAnEnemyInTheOpen(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "vehicle-aim-visible")
+        val (gun, man) = station(helper, scene, TransportVehicle.LAV_25, height = 1.0)
+        val hidden = scene.enemy(Vec3(24.5, 1.0, 60.5)).also { it.isNoAi = true }
+        val open = scene.enemy(Vec3(48.5, 1.0, 24.5)).also { it.isNoAi = true }
+        for (x in 12..36) for (y in 1..8) helper.setBlock(BlockPos(x, y, 40), Blocks.BEDROCK)
+        val manager = SquadManager.get(helper.level)
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(man.uuid))
+        manager.issueOrderAt(helper.level, squad.id, SquadOrder.ATTACK, hidden.blockPosition())
+        manager.setFocus(squad.id, hidden.uuid)
+        BrainUtils.setTargetOfEntity(man, hidden)
+        val sensor = SquadTargetSensor()
+        val scan = SquadTargetSensor::class.java.getDeclaredMethod("doTick", ServerLevel::class.java, NpcEntity::class.java).apply { isAccessible = true }
+        scene.onClose = {
+            manager.deleteSquad(helper.level, squad.id)
+            gun.discard()
+        }
+        helper.onEachTick {
+            man.sensing.tick()
+            scan.invoke(sensor, helper.level, man)
+            helper.assertTrue(DetectionSightline.canSee(man, open) && !DetectionSightline.canSee(man, hidden), "The scene's sightlines are wrong")
+            if (man.target === open) {
+                scene.result("PASS", "turned=${helper.tick}")
+                helper.succeed()
+            }
+            if (helper.tick >= 180L) helper.fail("The gunner stayed on the hidden focus: ${man.target}")
+        }
+    }
 }

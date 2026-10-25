@@ -25,6 +25,12 @@ object VehicleTargeting {
         return if (DetectionSightline.canSee(entity, target)) Ports.vehicles.canAimAt(vehicle, entity, target) else Ports.vehicles.canReach(vehicle, entity, target)
     }
 
+    /** Whether a mounted gunner's gun can be fired at [target] right now; true for everyone else. */
+    fun shootableNow(entity: NpcEntity, target: LivingEntity): Boolean {
+        val vehicle = entity.vehicle?.takeIf { Ports.vehicles.hasWeaponAt(it, entity) } ?: return true
+        return Ports.vehicles.canAimAt(vehicle, entity, target)
+    }
+
     // Vehicles drive on the ground like everyone else — a box `range` tall in every direction
     // (144 blocks at detection range) walked ~10x the chunk sections it needed to.
     private const val SEARCH_HEIGHT = 24.0
