@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/** SBW auto-fire reads Mob.target; detecting someone through a window must not permit a shot. */
+/** SBW auto-fire reads Mob.target; detecting someone through a window, or an ally in the way, must not permit a shot. */
 @Mixin(value = VehicleEntity.class, remap = false)
 public abstract class VehicleShootingMixin {
     @Inject(
@@ -26,8 +26,10 @@ public abstract class VehicleShootingMixin {
         if (target == null) return;
         VehicleEntity vehicle = (VehicleEntity) (Object) this;
         if (!(vehicle.level() instanceof ServerLevel)) return;
+        int seat = vehicle.getSeatIndex(shooter);
         if (!DetectionSightline.INSTANCE.canSee(npc, target) ||
-            !VehicleAim.canEngage(vehicle, shooter, vehicle.getSeatIndex(shooter), target)) {
+            !VehicleAim.canEngage(vehicle, shooter, seat, target) ||
+            !VehicleAim.friendliesClear(vehicle, npc, seat, target)) {
             cir.setReturnValue(false);
         }
     }

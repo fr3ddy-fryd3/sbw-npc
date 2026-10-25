@@ -262,4 +262,27 @@ object VehicleAimGameTests {
             if (helper.tick >= 180L) helper.fail("The gunner stayed on the hidden focus: ${man.target}")
         }
     }
+
+    /**
+     * A vehicle gun holds fire while a squadmate stands in its line, and fires once he is clear. In-game
+     * 25.10 a LAV's gunner killed a man standing between it and a mob: vehicle guns had no ally check.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 100, batch = "vehicle-aim-ally")
+    fun vehicleGunHoldsFireWithAnAllyInTheLine(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "vehicle-aim-ally")
+        val (gun, man) = station(helper, scene, TransportVehicle.LAV_25, height = 1.0)
+        val enemy = scene.enemy(Vec3(24.5, 1.0, 50.5)).also { it.isNoAi = true }
+        val ally = scene.spawn(Vec3(24.5, 1.0, 35.5)).also { it.isNoAi = true }
+        scene.onClose = { gun.discard() }
+        BrainUtils.setTargetOfEntity(man, enemy)
+        helper.runAfterDelay(2) {
+            helper.assertTrue(DetectionSightline.canSee(man, enemy), "The gunner does not see the enemy")
+            helper.assertFalse(gun.canShoot(man), "The gun fired through a squadmate")
+            ally.discard()
+            helper.assertTrue(gun.canShoot(man), "The gun would not fire with the line clear")
+            scene.result("PASS", "held=true")
+            helper.succeed()
+        }
+    }
 }

@@ -1,11 +1,14 @@
 package com.sbwnpc.squad.integration.sbw
 
 import com.atsuishio.superbwarfare.config.server.VehicleConfig
+import com.atsuishio.superbwarfare.data.gun.GunProp
 import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.atsuishio.superbwarfare.entity.vehicle.utils.VehicleVecUtils
 import com.atsuishio.superbwarfare.tools.RangeTool
 import com.sbwnpc.squad.combat.DetectionSightline
+import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.Sightline
+import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.util.Mth
 import net.minecraft.world.entity.Entity
@@ -39,6 +42,23 @@ object VehicleAim {
         val aim = body.boundingBox.center
         if (!DetectionSightline.visible(level, muzzle, aim, gunner) || Sightline.blocked(level, muzzle, aim, gunner)) return false
         return withinLimits(vehicle, gunner, seat, body, muzzle)
+    }
+
+    /**
+     * Whether a shot from the gun at [seat] on [target] keeps clear of [gunner]'s side: the cone its
+     * spread can scatter into, and the shell's blast at the target. Every other NPC weapon checks
+     * this through [FriendlyFireGuard]; vehicle guns did not, and a LAV's gunner killed a squadmate
+     * in front of a mob (in-game 25.10).
+     */
+    @JvmStatic
+    fun friendliesClear(vehicle: VehicleEntity, gunner: NpcEntity, seat: Int, target: LivingEntity): Boolean {
+        val muzzle = muzzle(vehicle, seat) ?: return true
+        val data = vehicle.getGunData(seat) ?: return true
+        val aim = (target.vehicle ?: target).boundingBox.center
+        val spread = VehicleDroneAccuracy.gunnerSpread(vehicle, gunner, vehicle.getProjectileSpread(gunner).toDouble(), target)
+        val shot = FriendlyFireGuard.VehicleShot(vehicle, muzzle, aim, spread, data.get(GunProp.EXPLOSION_RADIUS), data.get(GunProp.VELOCITY).toDouble())
+        val safety = FriendlyFireGuard.assess(gunner, shot)
+        return safety.lineClear && safety.blastClear
     }
 
     /**
