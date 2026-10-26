@@ -268,7 +268,7 @@ object TacticalPositions {
      * one over. Kneeling, since [NpcPosture] puts him down once he is settled there.
      */
     private fun clearOfGrass(level: ServerLevel, entity: NpcEntity, candidate: Vec3, aim: Vec3): Boolean {
-        val eye = candidate.add(0.0, NpcPosture.CROUCHING_DIMENSIONS.eyeHeight().toDouble(), 0.0)
+        val eye = candidate.add(0.0, NpcPosture.CROUCHING_EYE_HEIGHT.toDouble(), 0.0)
         val toward = aim.subtract(eye)
         val end = eye.add(toward.scale(minOf(1.0, GRASS_REACH / toward.length())))
         return DetectionSightline.trace(level, eye, end, CollisionContext.of(entity)) != DetectionSightline.Visibility.FOLIAGE
