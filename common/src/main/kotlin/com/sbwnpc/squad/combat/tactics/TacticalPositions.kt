@@ -39,7 +39,7 @@ object TacticalPositions {
                 task.search = null
             } else {
                 if (!TacticalBudget.path(entity)) return Result(Outcome.DEFERRED)
-                val path = pathToCandidates(entity, pending, task.expandedFireSearch)
+                val path = pathToCandidates(entity, pending, task.expandedFireSearch || task.job == TacticalJob.OVERWATCH)
                 recordPath(entity, task, search, pending, path)
                 // Recheck bodies, aim, cover and every route node in the normal ray turn.
                 // A queued proposal never directly commits navigation or skips live safety.
@@ -343,7 +343,7 @@ object TacticalPositions {
                     search.pendingPath = batch
                     return Result(Outcome.DEFERRED)
                 }
-                val path = pathToCandidates(entity, batch, task.expandedFireSearch)
+                val path = pathToCandidates(entity, batch, task.expandedFireSearch || task.job == TacticalJob.OVERWATCH)
                 recordPath(entity, task, search, batch, path)
                 candidate = search.routeValidation?.candidate ?: candidate
             }
