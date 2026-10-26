@@ -80,6 +80,7 @@ internal object GameTestGroups {
         ),
         "performance" to listOf(
             CombatPerformanceGameTests::class.java,
+            AllRolesLoadGameTests::class.java,
         ),
     )
 

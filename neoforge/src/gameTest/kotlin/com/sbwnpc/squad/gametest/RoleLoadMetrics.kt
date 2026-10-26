@@ -18,23 +18,25 @@ class RoleLoadMetrics(private val roles: Map<UUID, NpcClass>) {
 
     private val tracks = HashMap<UUID, Track>()
 
-    /** [firedAt] is the game tick of the man's last shot; [job] is his current task, null when he has none. */
-    fun sample(tick: Long, id: UUID, alive: Boolean, x: Double, z: Double, job: String?, firedAt: Long) {
-        val track = tracks.getOrPut(id) { Track(x, z, tick, job, tick, null) }
-        track.alive = alive
-        if (firedAt > track.lastFiredAt) track.lastFiredAt = firedAt
-        if (Math.hypot(x - track.x, z - track.z) >= MOVED_BLOCKS) {
-            track.x = x
-            track.z = z
+    /** One man as seen at a sample: [firedAt] is the game tick of his last shot, [job] his current task, null when he has none. */
+    data class Reading(val id: UUID, val alive: Boolean, val x: Double, val z: Double, val job: String?, val firedAt: Long)
+
+    fun sample(tick: Long, reading: Reading) {
+        val track = tracks.getOrPut(reading.id) { Track(reading.x, reading.z, tick, reading.job, tick, null) }
+        track.alive = reading.alive
+        if (reading.firedAt > track.lastFiredAt) track.lastFiredAt = reading.firedAt
+        if (Math.hypot(reading.x - track.x, reading.z - track.z) >= MOVED_BLOCKS) {
+            track.x = reading.x
+            track.z = reading.z
             track.movedAt = tick
         }
-        if (job != track.job) {
-            if (track.job != null && job != null) {
+        if (reading.job != track.job) {
+            if (track.job != null && reading.job != null) {
                 track.jobChanges++
-                if (job == track.previousJob && tick - track.jobSince <= REVERSAL_TICKS) track.quickReversals++
+                if (reading.job == track.previousJob && tick - track.jobSince <= REVERSAL_TICKS) track.quickReversals++
             }
             track.previousJob = track.job
-            track.job = job
+            track.job = reading.job
             track.jobSince = tick
         }
     }

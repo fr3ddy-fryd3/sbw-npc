@@ -37,8 +37,7 @@ object AllRolesLoadGameTests {
     /** One deployment slot of a faction's half of the arena. */
     private class Slot(val config: SquadToolItem.Config)
 
-    private fun config(faction: SquadFaction, preset: SquadPreset, role: NpcClass = NpcClass.RIFLEMAN, vehicle: Boolean = false) =
-        SquadToolItem.Config(role, NpcRank.RECRUIT, faction, preset, vehicle = vehicle, heliModel = HelicopterModel.AH_6)
+    private fun config(faction: SquadFaction, preset: SquadPreset, role: NpcClass = NpcClass.RIFLEMAN, vehicle: Boolean = false) = SquadToolItem.Config(role, NpcRank.RECRUIT, faction, preset, vehicle = vehicle, heliModel = HelicopterModel.AH_6)
 
     /** Infantry of every size, two squads carried by an APC, fire support, armour, drones, an aircraft and lone grenadiers. */
     private fun roster(faction: SquadFaction): List<Slot> =
@@ -118,6 +117,6 @@ object AllRolesLoadGameTests {
 
     private fun sample(metrics: RoleLoadMetrics, tick: Long, npc: NpcEntity) {
         val job = NativeTactics.assignment(npc)?.job?.name
-        metrics.sample(tick, npc.uuid, npc.isAlive, npc.x, npc.z, job, npc.level().gameTime - (npc.tickCount - npc.lastShotTick))
+        metrics.sample(tick, RoleLoadMetrics.Reading(npc.uuid, npc.isAlive, npc.x, npc.z, job, npc.level().gameTime - (npc.tickCount - npc.lastShotTick)))
     }
 }
