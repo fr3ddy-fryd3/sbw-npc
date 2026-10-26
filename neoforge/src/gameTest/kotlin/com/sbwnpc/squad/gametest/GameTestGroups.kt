@@ -83,14 +83,19 @@ internal object GameTestGroups {
         ),
     )
 
-    /** The classes of the named [names]; an unknown name stops the run with the known ones. */
-    fun classesOf(names: List<String>): List<Class<*>> {
+    /**
+     * The classes of the groups named in [names], or every [registered] class when none is named.
+     * An unknown name stops the run with the known ones.
+     */
+    fun select(registered: List<Class<*>>, names: List<String>): List<Class<*>> {
+        check(registered)
+        if (names.isEmpty()) return registered
         val unknown = names.filter { it !in groups }
         require(unknown.isEmpty()) { "Unknown GameTest group: $unknown; available: ${groups.keys}" }
         return names.flatMap { groups.getValue(it) }.distinct()
     }
 
-    fun check(registered: List<Class<*>>) {
+    private fun check(registered: List<Class<*>>) {
         val grouped = groups.values.flatten().toSet()
         val loose = registered.filter { it !in grouped }
         require(loose.isEmpty()) { "GameTest classes in no group (add them to GameTestGroups): ${loose.map { it.simpleName }}" }
