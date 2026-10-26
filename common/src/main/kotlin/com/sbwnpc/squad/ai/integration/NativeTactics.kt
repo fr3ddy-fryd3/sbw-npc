@@ -1093,7 +1093,13 @@ object NativeTactics {
                             hasPatrolRoute = view.hasPatrolRoute,
                             reachedMove = actions[member.id]?.let { it.intent.duty == CombatDuty.MOVE && it.reached() } == true,
                             wasFiring = oldIntents[member.id]?.duty == CombatDuty.FIRE,
-                            arrival = com.sbwnpc.squad.combat.SquadFormation.defendArrivalRadius(saved.members.size),
+                            // A patrol roams its whole area, so a sentry inside it has arrived; the defenders' ring radius
+                            // sent him roaming with the riflemen until he happened to pass near the objective.
+                            arrival = if (saved.order == SquadOrder.PATROL) {
+                                com.sbwnpc.squad.combat.SquadFormation.patrolRadius(saved.members.size)
+                            } else {
+                                com.sbwnpc.squad.combat.SquadFormation.defendArrivalRadius(saved.members.size)
+                            },
                             wasObserving = oldIntents[member.id]?.let { it.duty == CombatDuty.OBSERVE && it.anchor == saved.objective?.center?.point() } == true,
                             flanking = waypoint != null,
                             following = following,
