@@ -110,6 +110,7 @@ neoForge {
             systemProperty("sbwnpc.gameTestReports", layout.buildDirectory.dir("reports/gameTest/$gameTestReportName").get().asFile.absolutePath)
             systemProperty("sbwnpc.gameTestNegativeControl", providers.gradleProperty("gameTestNegativeControl").orElse("false").get())
             systemProperty("sbwnpc.gameTestFilter", providers.gradleProperty("gameTestFilter").orElse("").get())
+            systemProperty("sbwnpc.gameTestGroup", providers.gradleProperty("gameTestGroup").orElse("").get())
             systemProperty("sbwnpc.gameTestReplay", providers.gradleProperty("gameTestReplay").orElse("").get())
             systemProperty("sbwnpc.gameTestBattleSaves", providers.gradleProperty("gameTestBattleSaves").orElse("").get())
             systemProperty("sbwnpc.gameTestBattles", providers.gradleProperty("gameTestBattles").orElse("").get())
