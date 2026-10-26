@@ -44,12 +44,8 @@ import net.neoforged.neoforge.common.util.FakePlayerFactory
 import net.neoforged.neoforge.event.entity.player.PlayerEvent
 import net.neoforged.neoforge.event.entity.player.PlayerRespawnPositionEvent
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
-import net.neoforged.neoforge.network.handling.IPayloadContext
 import java.lang.reflect.InvocationTargetException
-import java.lang.reflect.Proxy
 import java.util.UUID
-import java.util.concurrent.CompletableFuture
-import java.util.function.Supplier
 
 @PrefixGameTestTemplate(false)
 object FactionLogisticsGameTests {
@@ -526,29 +522,13 @@ object FactionLogisticsGameTests {
 
     /** Execute the registered production handler on the test server thread; no replacement policy. */
     private fun handle(name: String, payload: CustomPacketPayload, player: ServerPlayer) {
-        val context = Proxy.newProxyInstance(IPayloadContext::class.java.classLoader, arrayOf(IPayloadContext::class.java)) { _, method, args ->
-            when (method.name) {
-                "player" -> player
-
-                "enqueueWork" -> {
-                    when (val task = args!!.single()) {
-                        is Runnable -> {
-                            task.run()
-                            CompletableFuture.completedFuture(null)
-                        }
-
-                        is Supplier<*> -> CompletableFuture.completedFuture(task.get())
-
-                        else -> error("Unexpected server work: $task")
-                    }
-                }
-
-                else -> error("Unexpected payload context method: ${method.name}")
-            }
-        } as IPayloadContext
-        val method = ModNetwork::class.java.getDeclaredMethod(name, payload.javaClass, IPayloadContext::class.java).apply { isAccessible = true }
+        val context = object : PayloadContext {
+            override fun player() = player
+            override fun enqueueWork(task: Runnable) = task.run()
+        }
+        val method = ServerPayloadHandlers::class.java.getDeclaredMethod(name, payload.javaClass, PayloadContext::class.java).apply { isAccessible = true }
         try {
-            method.invoke(ModNetwork, payload, context)
+            method.invoke(ServerPayloadHandlers, payload, context)
         } catch (failure: InvocationTargetException) {
             throw failure.targetException
         }
