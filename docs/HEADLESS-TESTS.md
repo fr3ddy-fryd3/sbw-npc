@@ -43,6 +43,7 @@ bash setup-minecraft-headless.sh --prepare
 # Afterwards:
 bash setup-minecraft-headless.sh --unit
 bash setup-minecraft-headless.sh --filter attackPastRidgeUnderFire,blockedMinorityResumesFireOnUnevenGround --report attack
+bash setup-minecraft-headless.sh --group overwatch --report overwatch
 bash setup-minecraft-headless.sh --all --report full
 
 # Repeat already prepared scenes without the network:
@@ -55,6 +56,7 @@ bash setup-minecraft-headless.sh --offline --report repeat
 | `--unit` | Run JUnit instead of GameTests |
 | `--all` | Run every registered GameTest |
 | `--filter METHODS` | Run the GameTest methods with these exact names, comma-separated. An unknown name stops the run with `Unknown GameTest` and the list of available ones |
+| `--group GROUPS` | Run the GameTests of these domains, comma-separated (see below). An unknown name stops the run with `Unknown GameTest group` and the list of known ones. Not combined with `--filter` |
 | `--report NAME` | Report directory name (default `cloud-YYYYmmdd-HHMMSS`). ASCII letters, digits, `-` and `_` only; a repeated name overwrites the report, so give runs you want to compare different names |
 | `--offline` | Use cached downloads and Gradle dependencies only |
 | `--no-system-install` | Don't install missing base tools through `apt-get` |
@@ -65,6 +67,24 @@ sessions, set `GRADLE_USER_HOME` before running. Local tools and archives live i
 `HEADLESS_GRADLE_HEAP=4G` sets Gradle's memory, `HEADLESS_GRADLE_BIN=/path/gradle` uses an existing
 Gradle 8.14.2. The script limits the build to two workers and no parallel tasks.
 
+Domains for `--group`, to run what a change touches (a class may sit in several):
+
+| Group | Scenes about |
+|---|---|
+| `overwatch` | Towers, sentries, far defence, scaffolding, observers' gaze |
+| `orders` | Attack, defend, patrol, follow, withdrawal, manoeuvres, areas, the HTN |
+| `posts` | Searching firing posts and cover, firing lines, target memory |
+| `movement` | Infantry marches, ladders, routes |
+| `combat` | Fights, allies' deaths, sidearms, ammunition, hostile mobs |
+| `perception` | Noticing and hearing |
+| `vehicles` | Seats, supply, transport, bends, gunners' aim and rank |
+| `aircraft` | Helicopters and drones |
+| `fire-support` | Mortar crews and fire missions |
+| `logistics` | Faction supply, experience, progression |
+| `performance` | Load and search-work measurements |
+
+A new scene class goes into `GameTestRegistration` and into a group in `GameTestGroups`.
+
 For manual commands, `source build/headless/env.sh`, then for example
 `"$HEADLESS_GRADLE_BIN" runGameTestServer -PgameTestFilter=moveAcrossFlatGround -PgameTestReportName=move`.
 Gradle properties the scenes read:
@@ -72,6 +92,7 @@ Gradle properties the scenes read:
 | Property | Meaning |
 |---|---|
 | `gameTestFilter` | Method names to run, as `--filter` |
+| `gameTestGroup` | Domains to run, as `--group` |
 | `gameTestReportName` | Report directory name, as `--report` |
 | `gameTestReplay` | Path to a saved battle fixture; only then are the `SavedBattleGameTests` scenes registered |
 | `gameTestWatchNpc` | The NPC whose trace a saved battle replay records |
@@ -135,7 +156,8 @@ prove a whole battle or a player's case is fixed.
 
 | File | Contents |
 |---|---|
-| [GameTestRegistration.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/GameTestRegistration.kt) | Registers the scene classes and applies `gameTestFilter` |
+| [GameTestRegistration.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/GameTestRegistration.kt) | Registers the scene classes and applies `gameTestGroup` and `gameTestFilter` |
+| [GameTestGroups.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/GameTestGroups.kt) | The scene classes by domain; a registered class in no group stops the server start |
 | [InfantryMovementGameTests.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/InfantryMovementGameTests.kt), [LadderNavigationGameTests.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/LadderNavigationGameTests.kt), [ScaffoldingGameTests.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/ScaffoldingGameTests.kt) | Movement: MOVE orders, arrival, ladders, scaffolding |
 | [HtnTacticsGameTests.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/HtnTacticsGameTests.kt) | Squads under the HTN: joint attacks, taking a point, reinforcements, water, withdrawal on losses, 600-NPC movement |
 | [AttackDeploymentGameTests.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/AttackDeploymentGameTests.kt), [AttackTrace.kt](../neoforge/src/gameTest/kotlin/com/sbwnpc/squad/gametest/AttackTrace.kt) | 16 riflemen attacking stationary targets; the trace measures the line, who fired, ammunition, rounds and damage |

@@ -189,8 +189,8 @@ KDoc (`/** ... */`) goes on every class, object and non-obvious public or `inter
   in each module's `detekt-baseline.xml`. Fix new findings rather than adding them to the baseline.
 - Cloud or headless setup: `bash setup-minecraft-headless.sh --prepare`. Then run
   `bash setup-minecraft-headless.sh` for three real server smoke scenes, `--unit` for JUnit, or
-  `--filter methodA,methodB --report name` for selected GameTests. `docs/HEADLESS-TESTS.md` covers
-  dependencies, caches, logs and full-suite runs.
+  `--filter methodA,methodB --report name` for selected GameTests, or `--group overwatch` for a
+  whole domain. `docs/HEADLESS-TESTS.md` covers dependencies, caches, logs, groups and full-suite runs.
 - Compiling (`compileKotlin`) is not a testable artifact. A real jar requires `build`.
 - Deploy for in-game testing into the **flat** `~/.minecraft/mods/` folder:
   ```
