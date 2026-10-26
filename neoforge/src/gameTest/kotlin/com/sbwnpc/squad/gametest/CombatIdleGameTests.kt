@@ -205,8 +205,7 @@ object CombatIdleGameTests {
             })
         }
         fun spawn(at: Vec3, role: NpcClass = NpcClass.RIFLEMAN, faction: SquadFaction = SquadFaction.PIG): NpcEntity = AttackDeploymentGameTests.spawn(helper, at, faction, role = role).also { entities += it }
-        fun deploy(preset: SquadPreset, at: Vec3): List<NpcEntity> {
-            val config = SquadToolItem.Config(NpcClass.RIFLEMAN, NpcRank.RECRUIT, SquadFaction.PIG, preset)
+        fun deploy(preset: SquadPreset, at: Vec3, config: SquadToolItem.Config = SquadToolItem.Config(NpcClass.RIFLEMAN, NpcRank.RECRUIT, SquadFaction.PIG, preset)): List<NpcEntity> {
             val result = SquadDeployment.deploy(helper.level, BlockPos.containing(helper.absoluteVec(at)), 0f, config, UUID.randomUUID())!!
             entities += result.members
             result.squad?.let { manager.disband(helper.level, it.id) }
