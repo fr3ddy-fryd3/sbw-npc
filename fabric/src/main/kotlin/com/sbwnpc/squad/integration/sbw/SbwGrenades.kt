@@ -2,7 +2,9 @@ package com.sbwnpc.squad.integration.sbw
 
 import com.atsuishio.superbwarfare.config.server.ExplosionConfig
 import com.atsuishio.superbwarfare.entity.projectile.HandGrenadeEntity
+import com.atsuishio.superbwarfare.entity.projectile.M18SmokeGrenadeEntity
 import com.atsuishio.superbwarfare.entity.projectile.RgoGrenadeEntity
+import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
 import com.atsuishio.superbwarfare.tools.RangeTool
 import com.sbwnpc.squad.domain.port.GrenadeKind
 import com.sbwnpc.squad.domain.port.Grenades
@@ -15,6 +17,9 @@ object SbwGrenades : Grenades {
     private const val THROW_SPEED = 1.0
     private const val GRAVITY = 0.05
     private const val MAX_FLIGHT_TICKS = 100
+
+    /** A thrown smoke grenade starts smoking about when it has landed. */
+    private const val SMOKE_FUSE_TICKS = 20
 
     /** SBW can return a prediction for an impossible shot; it must fit the real throw speed. */
     internal fun throwVelocity(from: Vec3, target: Vec3, targetVelocity: Vec3): Vec3? {
@@ -54,6 +59,12 @@ object SbwGrenades : Grenades {
             val next = pos.add(velocity)
             val hit = level.clip(net.minecraft.world.level.ClipContext(pos, next, net.minecraft.world.level.ClipContext.Block.COLLIDER, net.minecraft.world.level.ClipContext.Fluid.NONE, thrower))
             if (hit.type != net.minecraft.world.phys.HitResult.Type.MISS) return hit.location.distanceToSqr(predictedTarget) <= nearSqr
+            // A hull stops a grenade like a wall; it used to fly on through, and one meant for a
+            // zombie past a squad's LAV could drop at the thrower's feet (in-game 25.10).
+            val hull = level.getEntitiesOfClass(VehicleEntity::class.java, net.minecraft.world.phys.AABB(pos, next).inflate(1.0)) { it !== thrower.rootVehicle }
+                .mapNotNull { it.boundingBox.clip(pos, next).orElse(null) }
+                .minByOrNull { it.distanceToSqr(pos) }
+            if (hull != null) return hull.distanceToSqr(predictedTarget) <= nearSqr
             val bystander = level.getEntities(thrower, net.minecraft.world.phys.AABB(pos, next).inflate(0.3)) {
                 it is LivingEntity && it.isAlive && !it.isSpectator && it.vehicle !== thrower &&
                     it.boundingBox.inflate(0.3).clip(pos, next).isPresent && !com.sbwnpc.squad.team.SquadTeams.isHostile(thrower, it)
@@ -75,6 +86,22 @@ object SbwGrenades : Grenades {
         grenade.deltaMovement = velocity
         level.addFreshEntity(grenade)
     }
+
+    override fun throwSmoke(thrower: LivingEntity, level: ServerLevel, target: Vec3) {
+        val velocity = throwVelocity(Vec3(thrower.x, thrower.eyeY - 0.1, thrower.z), target, Vec3.ZERO) ?: return
+        val grenade = M18SmokeGrenadeEntity(thrower, level, SMOKE_FUSE_TICKS)
+        grenade.deltaMovement = velocity
+        level.addFreshEntity(grenade)
+    }
+
+    // The cloud is the grenade itself: once its fuse (the constructor's last argument) has run out
+    // it puffs smoke where it lies until SBW discards it at 200 ticks. The SmokeDecoyEntity pieces it
+    // also lays are decoys for locked-on weapons and show no smoke.
+    override fun isSmokeCloud(entity: Entity): Boolean = entity is M18SmokeGrenadeEntity
+
+    override fun smokeIsOut(entity: Entity): Boolean = entity.isAlive && smokeStarted(entity)
+
+    override fun smokeStarted(entity: Entity): Boolean = entity is M18SmokeGrenadeEntity && entity.tickCount >= SMOKE_FUSE_TICKS
 
     override fun item(kind: GrenadeKind): net.minecraft.world.item.ItemStack =
         when (kind) {

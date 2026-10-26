@@ -16,9 +16,11 @@ object SbwHearing {
     /** SBW's own "silent" barrel attachment. */
     private const val SUPPRESSOR = 2
 
+    fun suppressed(data: GunData): Boolean = data.attachment.get(AttachmentType.BARREL) == SUPPRESSOR
+
     fun radius(data: GunData): Double {
         val base = data.get(GunProp.SOUND_RADIUS) * Hearing.GUNSHOT_SCALE
-        return if (data.attachment.get(AttachmentType.BARREL) == SUPPRESSOR) base * Hearing.SUPPRESSED_SCALE else base
+        return if (suppressed(data)) base * Hearing.SUPPRESSED_SCALE else base
     }
 
     fun register() {
@@ -29,7 +31,7 @@ object SbwHearing {
     private fun onShot(event: ShootEvent.Post) {
         val shooter = event.shooter ?: return
         if (shooter is NpcEntity) return
-        Hearing.gunshot(event.level, shooter, radius(event.data))
+        Hearing.gunshot(event.level, shooter, radius(event.data), suppressed(event.data))
     }
 
     /** Called by the explosion mixin once an explosion has run. */

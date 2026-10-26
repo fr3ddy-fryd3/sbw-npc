@@ -8,6 +8,8 @@
   },
   "mixins": [
     "PathNavigationAccessor",
+    "PlayerTargetSearchMixin",
+    "MobGoalsAccessor",
     "VehicleBoardingMixin",
     "VehicleGunDataMixin",
     "VehicleShootingMixin",
