@@ -84,6 +84,7 @@ object ForgeEvents {
         com.sbwnpc.squad.map.MapFeed.tick(server)
         com.sbwnpc.squad.squad.SquadChunkLoader.tick(server)
         com.sbwnpc.squad.squad.OrderArrival.tick(server)
+        com.sbwnpc.squad.squad.FollowOrders.tick(server)
         com.sbwnpc.squad.squad.SquadReports.tick(server)
         com.sbwnpc.squad.route.PlanBudget.tick(server)
         StrayRounds.tick(server)
@@ -93,6 +94,7 @@ object ForgeEvents {
         com.sbwnpc.squad.team.Diplomacy.detach()
         com.sbwnpc.squad.map.MapFeed.clearAll()
         com.sbwnpc.squad.combat.Withdrawal.clearAll()
+        com.sbwnpc.squad.combat.SmokeClouds.clearAll()
         com.sbwnpc.squad.squad.FireSupport.clearAll()
         com.sbwnpc.squad.entity.ai.GrenadeUseBehaviour.clearAll()
         com.sbwnpc.squad.entity.ai.SquadMarch.clearAll()
@@ -118,6 +120,7 @@ object ForgeEvents {
         FiringSpots.clearAll()
         DroneRegistry.clearAll()
         GrenadeRegistry.clearAll()
+        com.sbwnpc.squad.entity.SmokeCloudRegistry.clearAll()
         StrayRounds.clearAll()
         SquadTeams.clearCache()
     }
@@ -126,6 +129,7 @@ object ForgeEvents {
         val level = event.level as? ServerLevel ?: return
         val entity = event.entity
         if (SquadManager.get(level).discardDeletedEntity(entity)) {
+            com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.ORDER, "[squad] event=deleted_on_load entity={} type={}", entity.uuid, entity.type)
             event.isCanceled = true
             return
         }
@@ -136,6 +140,7 @@ object ForgeEvents {
             NpcRegistry.add(entity)
         }
         GrenadeRegistry.join(entity, level)
+        com.sbwnpc.squad.entity.SmokeCloudRegistry.join(entity, level)
         DroneRegistry.join(entity, level)
         StrayRounds.join(entity, level)
         val projectile = entity as? Projectile ?: return
@@ -153,6 +158,8 @@ object ForgeEvents {
             NpcRegistry.remove(entity)
         }
         GrenadeRegistry.leave(entity, level)
+        com.sbwnpc.squad.entity.SmokeCloudRegistry.leave(entity, level)
+        com.sbwnpc.squad.combat.SmokeClouds.leave(entity, level)
         DroneRegistry.leave(entity, level)
         StrayRounds.leave(entity, level)
     }
