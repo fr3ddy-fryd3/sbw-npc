@@ -15,7 +15,7 @@ public abstract class AircraftSnapshotMixin {
         SbwAircraftSnapshots.write((VehicleEntity) (Object) this, tag);
     }
 
-    @Inject(method = "readAdditionalSaveData", at = @At("TAIL"))
+    @Inject(method = "m_7378_", at = @At("TAIL"))
     private void sbwnpc$readAircraftVisuals(CompoundTag tag, CallbackInfo ci) {
         SbwAircraftSnapshots.read((VehicleEntity) (Object) this, tag);
     }

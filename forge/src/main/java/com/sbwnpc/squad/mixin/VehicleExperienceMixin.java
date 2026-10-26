@@ -13,14 +13,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.util.ArrayDeque;
 
 /** SBW vehicles are plain Entities and do not emit LivingDamageEvent. */
-@Mixin(VehicleEntity.class)
+@Mixin(value = VehicleEntity.class, remap = false)
 public abstract class VehicleExperienceMixin {
     @Unique private final ArrayDeque<Float> sbwnpc$health = new ArrayDeque<>();
-    @Inject(method = "hurt", at = @At("HEAD"))
+    @Inject(method = "m_6469_", at = @At("HEAD"))
     private void sbwnpc$before(DamageSource source, float amount, CallbackInfoReturnable<Boolean> ci) {
         sbwnpc$health.push(Ports.INSTANCE.getVehicles().healthFraction((Entity)(Object)this));
     }
-    @Inject(method = "hurt", at = @At("RETURN"))
+    @Inject(method = "m_6469_", at = @At("RETURN"))
     private void sbwnpc$after(DamageSource source, float amount, CallbackInfoReturnable<Boolean> ci) {
         ExperienceAwards.vehicleDamage((Entity)(Object)this, source, sbwnpc$health.pop());
     }

@@ -70,7 +70,7 @@ adapter (a copy of the NeoForge one against SBW 0.8.9.2 for 1.20.1), the mixins 
 the packets. Java 17 output; Kotlin language and library 2.0, because Kotlin for Forge 4.11 ships the 2.0 runtime.
 
 Checked on a dedicated Forge 1.20.1-47.4.0 server (SBW 0.8.9.2, Kotlin for Forge 4.11.0, SmartBrainLib 1.15): it starts,
-the mixins apply, `/summon sbwnpc:npc` gives an NPC with an SBW rifle and sidearm, and the NPC is still there with its
+every mixin applies (the jar manifest names the config, and the mixins that target SBW use SBW's SRG method names), `/summon sbwnpc:npc` gives an NPC with an SBW rifle and sidearm, and the NPC is still there with its
 guns after a restart. Not checked: a client (screens, HUD, rendering, key bindings), players, deploying and commanding
 squads, combat, vehicles. Not tested in game.
 

@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /** A bullet's block hit raises no NeoForge event in SBW; NPCs next to it still notice the round. */
 @Mixin(value = ProjectileEntity.class, remap = false)
 public abstract class BulletImpactMixin {
-    @Inject(method = "onHitBlock(Lnet/minecraft/world/phys/BlockHitResult;)V", at = @At("HEAD"), remap = false)
+    @Inject(method = "m_8060_(Lnet/minecraft/world/phys/BlockHitResult;)V", at = @At("HEAD"), remap = false)
     private void sbwnpc$noticeNearMiss(BlockHitResult result, CallbackInfo ci) {
         NearMisses.INSTANCE.landed((ProjectileEntity) (Object) this, result.getLocation());
     }

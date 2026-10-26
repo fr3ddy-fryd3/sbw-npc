@@ -131,5 +131,9 @@ val modJar by configurations.creating {
     isCanBeResolved = false
     isCanBeConsumed = true
 }
-tasks.named<Jar>("jar") { archiveClassifier.set("forge") }
+tasks.named<Jar>("jar") {
+    archiveClassifier.set("forge")
+    // Forge 1.20.1 reads mixin configs from the jar manifest; the [[mixins]] table in mods.toml is NeoForge's and is ignored.
+    manifest.attributes("MixinConfigs" to "sbwnpc.forge.mixins.json")
+}
 artifacts.add(modJar.name, tasks.named("jar"))
