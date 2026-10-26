@@ -21,6 +21,7 @@ import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardOpenOption
 import java.util.UUID
 import java.util.function.Consumer
 
@@ -87,6 +88,9 @@ object AllRolesLoadGameTests {
             squads.forEach { (_, squad) -> manager.deleteSquad(helper.level, squad.id) }
         }
 
+        val reports = Path.of(System.getProperty("sbwnpc.gameTestReports"))
+        val timeline = reports.resolve("all-roles-load-timeline.csv")
+        Files.writeString(timeline, "tick,shootersSoFar,alive\n")
         val metrics = RoleLoadMetrics(members.associate { it.uuid to it.npcClass })
         val eastCentre = BlockPos.containing(helper.absoluteVec(Vec3(135.0, 1.0, 100.0)))
         squads.forEach { (men, squad) ->
@@ -98,14 +102,16 @@ object AllRolesLoadGameTests {
             if (helper.tick >= 200 && helper.tick % RoleLoadMetrics.SAMPLE_TICKS == 0L) {
                 members.forEach { npc -> sample(metrics, helper.tick, npc) }
             }
-            if (helper.tick % 200L == 0L) scene.result("RUNNING", "tick=${helper.tick} shooters=${shooters.size} alive=${members.count { it.isAlive }}/${members.size}")
+            if (helper.tick % 200L == 0L) {
+                Files.writeString(timeline, "${helper.tick},${shooters.size},${members.count { it.isAlive }}\n", StandardOpenOption.APPEND)
+            }
         }
         helper.runAtTickTime(ENDS_AT) {
             work.report(enforce = false)
             val summary = metrics.report(helper.tick)
-            Files.writeString(Path.of(System.getProperty("sbwnpc.gameTestReports"), "all-roles-load.txt"), "men=${members.size} shooters=${shooters.size} tick=${helper.tick}\n$summary")
+            Files.writeString(reports.resolve("all-roles-load-roles.txt"), "men=${members.size} shooters=${shooters.size} tick=${helper.tick}\n$summary")
             helper.assertTrue(shooters.size >= 20, "Too few men fired for a fight to measure: ${shooters.size}/${members.size}")
-            scene.result("PASS", "men=${members.size} shooters=${shooters.size} alive=${members.count { it.isAlive }}; see all-roles-load.txt and operation-work.txt")
+            scene.result("PASS", "men=${members.size} shooters=${shooters.size} alive=${members.count { it.isAlive }}; see all-roles-load-roles.txt, all-roles-load-timeline.csv and operation-work.txt")
             helper.succeed()
         }
     }
