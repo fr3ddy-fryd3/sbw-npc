@@ -20,7 +20,6 @@
     <ID>ComplexCondition:GunAttackBehaviour.kt$GunAttackBehaviour$current != null &amp;&amp; !current.isDone &amp;&amp; TacticalPositions.reaches(current, point) &amp;&amp; safeCombatPath(entity, target, current)</ID>
     <ID>ComplexCondition:GunAttackBehaviour.kt$GunAttackBehaviour$entity.tickCount &gt;= nextSidestepTick &amp;&amp; (firingPos == null || entity.navigation.isDone || atSpot(entity, firingPos!!))</ID>
     <ID>ComplexCondition:GunAttackBehaviour.kt$GunAttackBehaviour$held != null &amp;&amp; entity.tickCount &gt;= nextPositionCheckTick &amp;&amp; atSpot(entity, held) &amp;&amp; !GrenadeHazard.threatens(level, held) &amp;&amp; TickBudget.hasRaycasts(level) &amp;&amp; // With the hulls on the line: a spot a vehicle has since pulled in front of is no longer // "still has a shot", and keeping it had defenders standing behind a hull, never firing. concealmentScore( level, entity, target, held, entity.eyeHeight.toDouble(), Sightline.vehicleHulls(level, AABB(held, target.position()).inflate(VEHICLE_LANE_MARGIN), entity, target), )?.let { it &gt; 0.0 } == true &amp;&amp; !FiringSpots.crowded(held, FiringSpots.nearbyWithBodies(level, entity, STUCK_SEARCH_RADIUS)) &amp;&amp; FriendlyFireGuard.assess(entity, target.eyePosition, entity.spread, target.position(), 0.0).lineClear</ID>
-    <ID>ComplexCondition:Hearing.kt$Hearing$npc.isAlive &amp;&amp; (allSides || source == null || SquadTeams.isHostile(npc, source))</ID>
     <ID>ComplexCondition:HelicopterRideBehaviour.kt$HelicopterRideBehaviour$entity.vehicle != null || entity.diggedIn || entity.operatingDrone || entity.antiDroneEngaged</ID>
     <ID>ComplexCondition:MedicHealBehaviour.kt$MedicHealBehaviour$cached == null || (cached.isAlive &amp;&amp; needsHealing(entity, cached) &amp;&amp; available(entity, cached))</ID>
     <ID>ComplexCondition:MortarCrewBehaviour.kt$MortarCrewBehaviour$current != null &amp;&amp; Ports.vehicles.isOperational(current) &amp;&amp; !SquadTeams.isHostile(entity, current) &amp;&amp; MortarClaims.assign(current, entity) != null</ID>
@@ -109,7 +108,6 @@
     <ID>CyclomaticComplexMethod:NpcPosture.kt$NpcPosture$fun tick()</ID>
     <ID>CyclomaticComplexMethod:NpcStuckRecovery.kt$NpcStuckRecovery$fun tick()</ID>
     <ID>CyclomaticComplexMethod:OperationFront.kt$OperationFront$fun propose(actors: List&lt;FormationActor&gt;, enemies: List&lt;Point3&gt;, focus: Point3?, priorDuties: Map&lt;UUID, CombatDuty&gt; = emptyMap(), approach: Double? = null): Map&lt;UUID, FrontProposal&gt;</ID>
-    <ID>CyclomaticComplexMethod:OperationTactics.kt$OperationTactics$fun duty(inputs: DutyInputs, fireReach: Double, approachOffset: Double): DutyChoice</ID>
     <ID>CyclomaticComplexMethod:Operations.kt$OperationRegistry$fun command(batch: CommandBatch): OperationCommandResult</ID>
     <ID>CyclomaticComplexMethod:OrderArrival.kt$OrderArrival$fun tick(server: MinecraftServer)</ID>
     <ID>CyclomaticComplexMethod:OutOfAmmoBehaviour.kt$OutOfAmmoBehaviour$override fun tick(entity: NpcEntity)</ID>
@@ -153,8 +151,6 @@
     <ID>CyclomaticComplexMethod:VehicleAwareNavigation.kt$VehicleAwareNodeEvaluator$override fun getNeighbors(output: Array&lt;Node&gt;, node: Node): Int</ID>
     <ID>CyclomaticComplexMethod:VehicleAwareNavigation.kt$VehicleAwareNodeEvaluator$override fun getPathTypeOfMob(context: PathfindingContext, x: Int, y: Int, z: Int, mob: Mob): PathType</ID>
     <ID>CyclomaticComplexMethod:VehicleCombatSupportBehaviour.kt$VehicleCombatSupportBehaviour$override fun tick(entity: NpcEntity)</ID>
-    <ID>CyclomaticComplexMethod:VehicleTargeting.kt$VehicleTargeting$fun closestVisibleHostileAircrew(entity: NpcEntity, level: ServerLevel, groundRange: Double): LivingEntity?</ID>
-    <ID>CyclomaticComplexMethod:VehicleTargeting.kt$VehicleTargeting$fun closestVisibleHostileVehicleOccupant( entity: NpcEntity, level: ServerLevel, range: Double, ): LivingEntity?</ID>
     <ID>CyclomaticComplexMethod:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun boatWaypoint(entity: NpcEntity, vehicle: Entity, landing: Vec3): Vec3?</ID>
     <ID>CyclomaticComplexMethod:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun driveWaypoint(entity: NpcEntity, vehicle: Entity, home: Vec3): Vec3?</ID>
     <ID>CyclomaticComplexMethod:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun eligible(entity: NpcEntity, checkGiveup: Boolean): Boolean</ID>
@@ -392,7 +388,6 @@
     <ID>MagicNumber:Driving.kt$Driving$0.5</ID>
     <ID>MagicNumber:DroneFlightController.kt$DroneFlightController$0.5</ID>
     <ID>MagicNumber:DroneFlightController.kt$DroneFlightController$1.4</ID>
-    <ID>MagicNumber:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$0.5</ID>
     <ID>MagicNumber:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$1.5</ID>
     <ID>MagicNumber:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$1e-3</ID>
     <ID>MagicNumber:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$1e-6</ID>
@@ -423,10 +418,8 @@
     <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$22</ID>
     <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$24</ID>
     <ID>MagicNumber:FinishRouteScreen.kt$FinishRouteScreen$34</ID>
-    <ID>MagicNumber:FiringCone.kt$FiringCone$0.0172275</ID>
     <ID>MagicNumber:FiringCone.kt$FiringCone$0.5</ID>
     <ID>MagicNumber:FiringCone.kt$FiringCone$1.0e-6</ID>
-    <ID>MagicNumber:FiringCone.kt$FiringCone$3.0</ID>
     <ID>MagicNumber:FiringObstruction.kt$FiringObstruction$160</ID>
     <ID>MagicNumber:FiringObstruction.kt$FiringObstruction$80</ID>
     <ID>MagicNumber:FiringOpportunity.kt$FiringOpportunity$128.0</ID>
@@ -541,8 +534,6 @@
     <ID>MagicNumber:NativePositionAction.kt$NativePositionAction$1.3</ID>
     <ID>MagicNumber:NativePositionAction.kt$NativePositionAction$1.5</ID>
     <ID>MagicNumber:NativePositionAction.kt$NativePositionAction$120</ID>
-    <ID>MagicNumber:NativePositionAction.kt$NativePositionAction$3.0</ID>
-    <ID>MagicNumber:NativePositionAction.kt$NativePositionAction$30.0</ID>
     <ID>MagicNumber:NativePositionAction.kt$NativePositionAction$4</ID>
     <ID>MagicNumber:NativePositionAction.kt$NativePositionAction$4.0</ID>
     <ID>MagicNumber:NativePositionAction.kt$NativePositionAction$8.0</ID>
@@ -1033,7 +1024,6 @@
     <ID>TooManyFunctions:VehicleTransportBehaviour.kt$VehicleTransportBehaviour : ExtendedBehaviour</ID>
     <ID>TooManyFunctions:VehicleTransportClaims.kt$VehicleTransportClaims</ID>
     <ID>TooManyFunctions:Vehicles.kt$Vehicles</ID>
-    <ID>UnusedParameter:AntiDroneBehaviour.kt$AntiDroneBehaviour$level: ServerLevel</ID>
     <ID>UnusedParameter:BarracksBlockEntity.kt$BarracksBlockEntity.Companion$pos: BlockPos</ID>
     <ID>UnusedParameter:BarracksBlockEntity.kt$BarracksBlockEntity.Companion$state: BlockState</ID>
     <ID>UnusedParameter:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$level: ServerLevel</ID>
