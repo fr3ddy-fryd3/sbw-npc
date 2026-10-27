@@ -5,13 +5,31 @@
     <ID>ComplexCondition:AlliedVehicleBoarding.kt$AlliedVehicleBoarding$(item is NameTagItem &amp;&amp; stack.has(DataComponents.CUSTOM_NAME)) || stack.`is`(ModItems.C4_BOMB) || stack.`is`(ModItems.DETONATOR)</ID>
     <ID>ComplexCondition:AlliedVehicleBoarding.kt$AlliedVehicleBoarding$player.vehicle != null || player.isShiftKeyDown || player.isSpectator || player is FakePlayer</ID>
     <ID>ComplexCondition:SbwVehicles.kt$SbwVehicles$vehicle !is VehicleEntity || !isOperational(vehicle) || gun.item !is GunItem || rounds &lt;= 0</ID>
+    <ID>CyclomaticComplexMethod:AircraftLods.kt$AircraftLods$@JvmStatic fun augment(entity: VehicleEntity, original: List&lt;VehicleModelEntry&gt;): List&lt;VehicleModelEntry&gt;</ID>
     <ID>CyclomaticComplexMethod:AlliedVehicleBoarding.kt$AlliedVehicleBoarding$@JvmStatic fun interact(vehicle: VehicleEntity, player: Player, hand: InteractionHand): InteractionResult?</ID>
+    <ID>CyclomaticComplexMethod:SbwAircraftRendering.kt$SbwAircraftRendering$@JvmStatic fun render(context: WorldRenderContext)</ID>
+    <ID>CyclomaticComplexMethod:SbwAircraftRendering.kt$SbwAircraftRendering$@JvmStatic fun render(event: RenderLevelStageEvent)</ID>
     <ID>CyclomaticComplexMethod:SbwPlayerSupply.kt$SbwPlayerSupply$override fun issueKit(player: ServerPlayer, kit: Int, option: Int, faction: SquadFaction?): Boolean</ID>
     <ID>CyclomaticComplexMethod:SbwVehicles.kt$SbwVehicles$override fun takeSmallArmsAmmo(vehicle: Entity, gun: ItemStack, rounds: Int): Int</ID>
     <ID>CyclomaticComplexMethod:SquadMapPlugin.kt$SquadMapPlugin$private fun redraw(feed: CompoundTag)</ID>
+    <ID>LongMethod:SbwAircraftRendering.kt$SbwAircraftRendering$@JvmStatic fun render(context: WorldRenderContext)</ID>
+    <ID>LongMethod:SbwAircraftRendering.kt$SbwAircraftRendering$@JvmStatic fun render(event: RenderLevelStageEvent)</ID>
     <ID>LongMethod:SquadMapPlugin.kt$SquadMapPlugin$private fun redraw(feed: CompoundTag)</ID>
     <ID>LongParameterList:SquadMapPlugin.kt$SquadMapPlugin$( dim: ResourceKey&lt;Level&gt;, at: BlockPos, shape: MapShapes, color: Int, size: Double, opacity: Float, )</ID>
+    <ID>MagicNumber:AircraftLods.kt$AircraftLods$0.15</ID>
+    <ID>MagicNumber:AircraftLods.kt$AircraftLods$0.35</ID>
+    <ID>MagicNumber:AircraftLods.kt$AircraftLods$128</ID>
+    <ID>MagicNumber:AircraftLods.kt$AircraftLods$256</ID>
+    <ID>MagicNumber:AircraftLods.kt$AircraftLods$32</ID>
+    <ID>MagicNumber:AircraftLods.kt$AircraftLods$64</ID>
+    <ID>MagicNumber:AircraftLods.kt$AircraftLods$96</ID>
+    <ID>MagicNumber:AircraftVisibility.kt$AircraftVisibility$0.01</ID>
+    <ID>MagicNumber:AircraftVisibility.kt$AircraftVisibility$512f</ID>
     <ID>MagicNumber:FabricSupplySpawns.kt$FabricSupplySpawns$3</ID>
+    <ID>MagicNumber:SbwAircraftRendering.kt$SbwAircraftRendering$0.75f</ID>
+    <ID>MagicNumber:SbwAircraftRendering.kt$SbwAircraftRendering$15</ID>
+    <ID>MagicNumber:SbwAircraftRendering.kt$SbwAircraftRendering$3.0</ID>
+    <ID>MagicNumber:SbwAircraftRendering.kt$SbwAircraftRendering$50.0</ID>
     <ID>MagicNumber:SbwGrenades.kt$SbwGrenades$0.01</ID>
     <ID>MagicNumber:SbwGrenades.kt$SbwGrenades$0.1</ID>
     <ID>MagicNumber:SbwGrenades.kt$SbwGrenades$0.3</ID>
@@ -39,7 +57,10 @@
     <ID>MagicNumber:SquadMapPlugin.kt$SquadMapPlugin$4</ID>
     <ID>MagicNumber:SquadMapPlugin.kt$SquadMapPlugin$4.0</ID>
     <ID>MagicNumber:StaticGunMesh.kt$StaticGunMesh$3</ID>
+    <ID>NestedBlockDepth:SbwAircraftRendering.kt$SbwAircraftRendering$@JvmStatic fun render(context: WorldRenderContext)</ID>
+    <ID>NestedBlockDepth:SbwAircraftRendering.kt$SbwAircraftRendering$@JvmStatic fun render(event: RenderLevelStageEvent)</ID>
     <ID>NestedBlockDepth:SquadMapPlugin.kt$SquadMapPlugin$private fun redraw(feed: CompoundTag)</ID>
+    <ID>TooGenericExceptionCaught:AircraftLods.kt$AircraftLods$exception: Exception</ID>
     <ID>TooGenericExceptionCaught:StaticGunModels.kt$StaticGunModels$e: Exception</ID>
     <ID>TooManyFunctions:SbwDrones.kt$SbwDrones : Drones</ID>
     <ID>TooManyFunctions:SbwGuns.kt$SbwGuns : Guns</ID>

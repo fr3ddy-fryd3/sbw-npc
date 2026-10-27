@@ -26,6 +26,10 @@
   ],
   "client": [
     "KeyMappingMixin",
-    "UseItemMixin"
+    "UseItemMixin",
+    "AircraftRendererMixin",
+    "AircraftModelEntriesMixin",
+    "AircraftModelReloadMixin",
+    "AircraftWorldRenderMixin"
   ]
 }
