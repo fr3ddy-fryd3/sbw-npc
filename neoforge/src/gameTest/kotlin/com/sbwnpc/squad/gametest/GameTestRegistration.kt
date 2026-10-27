@@ -8,7 +8,7 @@ import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.neoforge.event.RegisterGameTestsEvent
 
-/** Optional method-name selection, using NeoForge's normal GameTest registration event. */
+/** Optional selection by domain ([GameTestGroups]) and method name, using NeoForge's normal GameTest registration event. */
 @EventBusSubscriber(modid = "sbwnpc", bus = EventBusSubscriber.Bus.MOD)
 object GameTestRegistration {
     @SubscribeEvent
@@ -37,6 +37,7 @@ object GameTestRegistration {
             CombatPerformanceGameTests::class.java,
             TacticalSearchGameTests::class.java,
             HtnTacticsGameTests::class.java,
+            AllRolesLoadGameTests::class.java,
             FollowOrderGameTests::class.java,
             WithdrawalGameTests::class.java,
             FiringLineGameTests::class.java,
@@ -65,7 +66,8 @@ object GameTestRegistration {
         // Saved-world replays require an explicit local fixture; ordinary suites stay portable.
         val replayClasses = if (System.getProperty("sbwnpc.gameTestReplay", "").isNotBlank()) listOf(SavedBattleGameTests::class.java) else emptyList()
         val battleClasses = if (System.getProperty("sbwnpc.gameTestBattleSaves", "").isNotBlank()) listOf(RealTerrainBattleGameTests::class.java) else emptyList()
-        val methods = (classes + replayClasses + battleClasses).flatMap { it.declaredMethods.toList() }.filter { it.isAnnotationPresent(GameTest::class.java) || it.isAnnotationPresent(GameTestGenerator::class.java) }
+        val selectedClasses = GameTestGroups.select(classes, System.getProperty("sbwnpc.gameTestGroup", "").split(',').filter { it.isNotBlank() })
+        val methods = (selectedClasses + replayClasses + battleClasses).flatMap { it.declaredMethods.toList() }.filter { it.isAnnotationPresent(GameTest::class.java) || it.isAnnotationPresent(GameTestGenerator::class.java) }
         val selected = System.getProperty("sbwnpc.gameTestFilter", "").split(',').filter { it.isNotBlank() }.toSet()
         require(selected.all { name -> methods.any { it.name == name } }) { "Unknown GameTest: $selected; available: ${methods.map { it.name }}" }
         methods.filter { selected.isEmpty() || it.name in selected }.forEach(event::register)

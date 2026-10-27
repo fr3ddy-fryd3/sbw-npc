@@ -11,6 +11,7 @@ Default: install missing tools, prepare dependencies, run three smoke GameTests.
   --unit              Run JUnit instead of GameTest
   --all               Run all registered GameTests
   --filter METHODS    Run exact GameTest method names, separated by commas
+  --group GROUPS      Run the GameTests of these domains, separated by commas
   --report NAME       Report directory name (default: cloud-YYYYmmdd-HHMMSS)
   --offline           Use cached downloads and Gradle dependencies only
   --no-system-install Do not install missing base tools through apt-get
@@ -29,6 +30,7 @@ HELP
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 mode=smoke
 filter=moveAcrossFlatGround,marchClimbsAndDescendsLadder,defendingSupportsReserveSmallTower
+group=
 report="cloud-$(date -u +%Y%m%d-%H%M%S)"
 offline=false
 system_install=true
@@ -37,7 +39,8 @@ while (($#)); do
         --prepare) mode=prepare; shift ;;
         --unit) mode=unit; shift ;;
         --all) mode=all; shift ;;
-        --filter) (($# >= 2)) || die '--filter requires method names'; mode=filter; filter=$2; shift 2 ;;
+        --filter) (($# >= 2)) || die '--filter requires method names'; [[ $mode != group ]] || die '--filter and --group are alternatives'; mode=filter; filter=$2; shift 2 ;;
+        --group) (($# >= 2)) || die '--group requires group names'; [[ $mode != filter ]] || die '--filter and --group are alternatives'; mode=group; group=$2; shift 2 ;;
         --report) (($# >= 2)) || die '--report requires a name'; report=$2; shift 2 ;;
         --offline) offline=true; shift ;;
         --no-system-install) system_install=false; shift ;;
@@ -47,6 +50,7 @@ while (($#)); do
 done
 [[ $report =~ ^[A-Za-z0-9_-]+$ ]] || die 'Report name must contain only ASCII letters, digits, _ and -'
 [[ $filter =~ ^[A-Za-z0-9_]+(,[A-Za-z0-9_]+)*$ ]] || die 'Filter must contain exact method names separated by commas'
+[[ -z $group || $group =~ ^[a-z-]+(,[a-z-]+)*$ ]] || die 'Groups must be lowercase names separated by commas'
 [[ $(uname -s) == Linux ]] || die 'This bootstrap supports Linux only'
 case "$(uname -m)" in
     x86_64) architecture=x64 ;;
@@ -181,7 +185,11 @@ case "$mode" in
     unit) args+=(test) ;;
     *)
         args+=(runGameTestServer "-PgameTestReportName=$report")
-        [[ $mode == all ]] || args+=("-PgameTestFilter=$filter")
+        if [[ $mode == group ]]; then
+            args+=("-PgameTestGroup=$group")
+        elif [[ $mode != all ]]; then
+            args+=("-PgameTestFilter=$filter")
+        fi
         ;;
 esac
 # PATH must expand when env.sh is sourced, not while generating the file.

@@ -73,7 +73,38 @@ A decision belongs in a pure function or object in `common/.../ai/tactics`, with
 
 A comment explains the reason for a constraint, a contract or the units of a formula. Method names
 describe the action. The history of a discussion or a long story of an old bug should not hide the
-current implementation. The full comment rules are in [AGENTS.md](../AGENTS.md).
+current implementation.
+
+### Code comments and KDoc
+
+Comments are for the next reader of the code, human or AI. Distilled from
+[Best practices for writing code comments](https://stackoverflow.blog/2021/12/23/best-practices-for-writing-code-comments/)
+and the [KDoc reference](https://kotlinlang.org/docs/kotlin-doc.html):
+
+- Say *why*, not *what*. Don't restate the code; a comment that only repeats it is noise that goes
+  stale. If a name or a small extraction would make the comment unnecessary, do that instead.
+- If a clear comment is hard to write, the code is probably unclear; consider fixing the code.
+- Explain anything unidiomatic or surprising, especially workarounds for vanilla, NeoForge,
+  SmartBrainLib or SuperbWarfare behaviour, so nobody "simplifies" it back into the bug.
+- When fixing a bug, leave a comment where the fix isn't self-evident, saying what went wrong.
+  Commit messages are where the full story goes; the comment is just enough to stop a regression.
+- Link the source when code is copied or adapted from somewhere, and link external references
+  (a wiki page, an SBW class, a forum thread) where they help the reader most.
+- Mark unfinished work with `TODO:` and what's missing, not a bare `TODO`.
+- Comments should dispel confusion, not cause it. Delete or fix comments that no longer match the
+  code; a stale comment is worse than none.
+- Write comments in English, like the rest of the sources.
+
+KDoc (`/** ... */`) goes on every class, object and non-obvious public or `internal` member:
+
+- The first paragraph is a one-sentence summary; details follow after a blank line. Markdown works.
+- Refer to code with `[Name]` or `[text][Name]` links (`[SquadManager.get]`, `[Ports.guns]`), not
+  backticks, so they resolve and get renamed with the code.
+- Prefer describing parameters and the return value in prose. Use block tags when they add
+  information: `@param name`, `@return`, `@throws ExceptionClass` (for exceptions a caller should
+  expect), `@property name` (constructor properties), `@receiver`, `@see`, `@sample`.
+- Mark deprecation with the `@Deprecated` annotation, not a KDoc tag.
+- Never put a literal `/*` inside a KDoc comment (see the gotcha in [AGENTS.md](../AGENTS.md)).
 
 When refactoring, keep event reasons and log fields: they connect observed behaviour with the rule,
 phase and task. Check whether logging is on before collecting expensive diagnostics.
