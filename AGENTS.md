@@ -67,6 +67,12 @@ two different claims.
   above. Rename the branch before the first push.
 - **End of a session:** nothing is left uncommitted. Commit it to your branch, even as an
   unfinished WIP commit, and update the issue with where it stands and what is next.
+- **One job per worktree.** Run one headless or Gradle job in a worktree at a time, and don't edit
+  or build in a tree while its headless run is going. A fresh worktree needs `SuperbWarfare/`,
+  `build/headless/downloads` and `tools` linked from the main checkout, or an `--offline`
+  bootstrap fails.
+- **`gh pr merge --delete-branch` also deletes the branch's checked-out worktree directory.** Merge
+  without it, or leave the worktree first, and remove the branch and worktree by hand.
 - **Remove what is finished:** delete merged branches, remove worktrees you no longer use, and
   close issues the PR resolved.
 - Don't leave generated files, archives or session dumps in the repository root. Keep them out of
@@ -137,34 +143,10 @@ The description:
 
 ## Code comments and KDoc
 
-Comments are for the next reader of the code, human or AI. Distilled from
-[Best practices for writing code comments](https://stackoverflow.blog/2021/12/23/best-practices-for-writing-code-comments/)
-and the [KDoc reference](https://kotlinlang.org/docs/kotlin-doc.html):
-
-- Say *why*, not *what*. Don't restate the code; a comment that only repeats it is noise that goes
-  stale. If a name or a small extraction would make the comment unnecessary, do that instead.
-- If a clear comment is hard to write, the code is probably unclear; consider fixing the code.
-- Explain anything unidiomatic or surprising, especially workarounds for vanilla, NeoForge,
-  SmartBrainLib or SuperbWarfare behaviour, so nobody "simplifies" it back into the bug.
-- When fixing a bug, leave a comment where the fix isn't self-evident, saying what went wrong.
-  Commit messages are where the full story goes; the comment is just enough to stop a regression.
-- Link the source when code is copied or adapted from somewhere, and link external references
-  (a wiki page, an SBW class, a forum thread) where they help the reader most.
-- Mark unfinished work with `TODO:` and what's missing, not a bare `TODO`.
-- Comments should dispel confusion, not cause it. Delete or fix comments that no longer match the
-  code; a stale comment is worse than none.
-- Write comments in English, like the rest of the sources.
-
-KDoc (`/** ... */`) goes on every class, object and non-obvious public or `internal` member:
-
-- The first paragraph is a one-sentence summary; details follow after a blank line. Markdown works.
-- Refer to code with `[Name]` or `[text][Name]` links (`[SquadManager.get]`, `[Ports.guns]`), not
-  backticks, so they resolve and get renamed with the code.
-- Prefer describing parameters and the return value in prose. Use block tags when they add
-  information: `@param name`, `@return`, `@throws ExceptionClass` (for exceptions a caller should
-  expect), `@property name` (constructor properties), `@receiver`, `@see`, `@sample`.
-- Mark deprecation with the `@Deprecated` annotation, not a KDoc tag.
-- Never put a literal `/*` inside a KDoc comment (see the gotcha below).
+Say *why*, not *what*; explain what is surprising or a workaround, so nobody "simplifies" it back
+into the bug; write in English. KDoc goes on every class, object and non-obvious public or
+`internal` member. Never put a literal `/*` inside a KDoc comment (see the gotcha below). The full
+rules are in [docs/CODE-STYLE.md](docs/CODE-STYLE.md).
 
 ## Talking to each other
 
@@ -176,35 +158,63 @@ KDoc (`/** ... */`) goes on every class, object and non-obvious public or `inter
 
 ## Build, test, deploy
 
+### Build
+
 - First time on a machine: `scripts/setup.sh` checks Java, resolves the pinned SBW artifact
   described below and runs `build`. Pass Gradle tasks to run those instead
-  (`scripts/setup.sh buildDevelop`), `--deploy` to copy the jar into `~/.minecraft/mods/` the way
-  the deploy step below describes, and `--refabricated` to also clone and build a development
-  checkout of [SuperbWarfare ReFabricated](https://github.com/CrawKatt/SuperbWarfareReFabricated) (the Fabric
-  fork, branch `0.8.9.2-1.21-Fabric`) into the gitignored `SuperbWarfareReFabricated/`. The addon
-  does not build against ReFabricated yet: that checkout is for the Fabric port work (#15),
-  reports its actual revision/dirty state, and is separate from the pinned addon dependency.
+  (`scripts/setup.sh buildDevelop`), `--deploy` to copy the jar into `~/.minecraft/mods/`, and
+  `--refabricated` to also clone and build a development checkout of
+  [SuperbWarfare ReFabricated](https://github.com/CrawKatt/SuperbWarfareReFabricated) (the Fabric
+  fork, branch `0.8.9.2-1.21-Fabric`) into the gitignored `SuperbWarfareReFabricated/`. That
+  checkout is for the Fabric port work (#15) and is separate from the pinned addon dependency.
   `scripts/setup.sh --help` lists the overrides. On Windows, run it from Git Bash or WSL.
-- Build: `./gradlew build`, the same as `buildProduction` (`DebugFlags` off).
-- For local testing with verbose trace logs and debug particle markers: `./gradlew buildDevelop`.
-  The flag is baked into the jar at build time by the generated `BuildFlags` object (see
-  `generateBuildFlags` in `common/build.gradle.kts`). It cannot be passed at runtime.
-- Tests only: `./gradlew test`.
-- GameTests are grouped by domain (`GameTestGroups`): run the ones a change can affect with
-  `--group overwatch` or `--group combat,perception`. A GameTest for a feature goes in the
-  feature's own branch, written first and red, so it is green when the feature lands. A new test
-  class belongs in a group, or the server refuses to start. The groups are listed in
-  `docs/HEADLESS-TESTS.md`.
+- `./gradlew build` is the same as `buildProduction` (`DebugFlags` off). For local testing with
+  verbose trace logs and debug particle markers, use `./gradlew buildDevelop`: the flag is baked
+  into the jar by the generated `BuildFlags` object (`generateBuildFlags` in
+  `common/build.gradle.kts`) and cannot be passed at runtime.
+- Loaders: NeoForge is the default. `./gradlew -Ploader=fabric :fabric:build` and
+  `./gradlew -Ploader=forge :forge:build` build the other two, and only the loader chosen with
+  `-Ploader` is configured. Status and decisions: `docs/LOADER-PORTS.md`.
+- Minecraft 1.21.1 (NeoForge, Fabric) and 1.20.1 (Forge) are the targets. A 1.21.6 or newer port
+  was investigated and shelved: SuperbWarfare's own port to that target isn't ready, and this
+  addon relies on Create/Ponder-style APIs that block on it.
+- SBW inputs are pinned in `gradle/sbw/`; normal builds use the published artifact for the
+  loader and verify SHA-512 before compilation and testing. Provenance:
+  `build/reports/sbw/input.txt`. Use `-PsbwSourceDir=/absolute/path` only for local development;
+  the checkout must match the loader/Minecraft target and its revision/dirty state is reported.
+  CI rejects this override.
+- The pinned SBW version is what the addon is built against, not what players need. Players need
+  SBW 0.8.9.1 or newer: `neoforge.mods.toml` declares `[0.8.9.1,)`, with no upper bound. Building
+  against a newer patch keeps the most players covered. When the pin moves, keep that lower bound
+  unless the addon starts relying on an API the older version lacks; then raise it on purpose.
+
+### Test and check
+
+- Compiling (`compileKotlin`) is not a testable artifact. A real jar requires `build`.
+- Unit tests: `./gradlew test`.
 - Code smells: `./gradlew detekt`, which `check` and `build` also run for each module. It runs
   detekt's code-smell rules only (`config/detekt/detekt.yml`); formatting is ktlint's job
   (`formatKotlin`, `checkKotlinStyle`, see `docs/CODE-STYLE.md`). Findings that predate detekt are
-  in each module's `detekt-baseline.xml`. Fix new findings rather than adding them to the baseline.
-- Cloud or headless setup: `bash setup-minecraft-headless.sh --prepare`. Then run
-  `bash setup-minecraft-headless.sh` for three real server smoke scenes, `--unit` for JUnit, or
-  `--filter methodA,methodB --report name` for selected GameTests, or `--group overwatch` for a
-  whole domain. `docs/HEADLESS-TESTS.md` covers dependencies, caches, logs, groups and full-suite runs.
-- Compiling (`compileKotlin`) is not a testable artifact. A real jar requires `build`.
-- Deploy for in-game testing into the **flat** `~/.minecraft/mods/` folder:
+  in each module's `detekt-baseline.xml`. Fix new findings rather than adding them to the baseline,
+  and run both before opening a PR.
+- Headless GameTests: `bash setup-minecraft-headless.sh --prepare` once, then the script alone
+  for three real server smoke scenes, `--unit` for JUnit, `--filter methodA,methodB --report name`
+  for selected scenes, or `--group overwatch` (or `--group combat,perception`) for a whole domain.
+  `docs/HEADLESS-TESTS.md` covers dependencies, caches, logs, the list of groups and full-suite runs.
+- A GameTest for a feature goes in the feature's own branch, written first and red, so it is
+  green when the feature lands. A new test class belongs in a group (`GameTestGroups`), or the
+  server refuses to start.
+- Local test pack for any loader: `python3 scripts/localpack.py <fabric|forge|neoforge> [--mrpack]`
+  downloads the pinned SuperbWarfare, the addon's dependencies and quality-of-life mods (lists in
+  `scripts/localpack/`) from Modrinth into `build/localpack/<loader>/mods`, with the built addon
+  jar. `--mrpack` writes a file that Prism Launcher or the Modrinth app imports, installing the
+  loader too.
+
+### Install for in-game testing
+
+- After checks pass, build with `buildDevelop` and install the jar locally by default. An explicit
+  instruction not to build or install overrides this; otherwise it needs no separate confirmation.
+- Install into the **flat** `~/.minecraft/mods/` folder:
   ```
   python3 install-local-mod.py build/libs/sbwnpc-<version>-mc1.21.1-neoforge.jar
   ```
@@ -213,41 +223,13 @@ KDoc (`/** ... */`) goes on every class, object and non-obvious public or `inter
 - Never overwrite a jar in place while Minecraft is running: the JVM caches ZIP offsets and later
   class loading can fail. The installer stages the new archive and swaps it in atomically. A full
   Minecraft restart loads the new build.
-- After checks pass, build with `buildDevelop` and install the jar locally by default. An explicit
-  instruction not to build or install overrides this; otherwise it needs no separate confirmation.
-- SBW inputs are pinned in `gradle/sbw/`; normal builds use the published NeoForge artifact
-  and verify SHA-512 before compilation/testing. Provenance: `build/reports/sbw/input.txt`.
-  Use `-PsbwSourceDir=/absolute/path` only for local development; the checkout must match
-  the loader/Minecraft target and its revision/dirty state is reported. CI rejects this override.
-- The pinned SBW version is what the addon is built against, not what players need. Players need
-  SBW 0.8.9.1 or newer: `neoforge.mods.toml` declares `[0.8.9.1,)`, with no upper bound. Building
-  against a newer patch keeps the most players covered. When the pin moves, keep that lower bound
-  unless the addon starts relying on an API the older version lacks; then raise it on purpose.
-- Minecraft 1.21.1 (NeoForge, Fabric) and 1.20.1 (Forge) are the targets. A 1.21.6 or newer port was
-  investigated and shelved: SuperbWarfare's own port to that target isn't ready, and this addon
-  relies on Create/Ponder-style APIs that block on it.
 
 ## Cloud sessions (Claude Code on the web)
 
-- `.claude/hooks/session-start.sh` runs `scripts/setup.sh testClasses` using the pinned SBW artifact.
-  Update its profile and SHA-512 together when intentionally changing the dependency, then rerun
-  the compatibility and build checks. Cloud setup does not clone a moving SBW branch.
-- The cloud environment's network allowlist must include these domains, or the build fails while
-  resolving dependencies:
-  - Gradle and Java: `mirrors.cloud.tencent.com` (Gradle wrapper), `plugins.gradle.org`,
-    `plugins-artifacts.gradle.org`, `repo.maven.apache.org`, `api.foojay.io`
-  - SuperbWarfare source: `github.com`
-  - NeoForge and Minecraft: `maven.neoforged.net`, `maven.parchmentmc.org`,
-    `libraries.minecraft.net`, `launchermeta.mojang.com`, `launcher.mojang.com`,
-    `piston-meta.mojang.com`, `piston-data.mojang.com`, `resources.download.minecraft.net`
-  - This addon's mod repositories: `thedarkcolour.github.io`, `dl.cloudsmith.io`,
-    `maven.blamejared.com`, `jitpack.io`
-  - SuperbWarfare's mod repositories: `cursemaven.com`, `edge.forgecdn.net`,
-    `mediafilez.forgecdn.net`, `api.modrinth.com`, `cdn.modrinth.com`, `maven.createmod.net`,
-    `maven.ryanhcode.dev`, `maven.sighs.cc`, `maven.shedaniel.me`, `maven.theillusivec4.top`,
-    `raw.githubusercontent.com`
-  - Only for `scripts/setup.sh --refabricated`: `maven.fabricmc.net`, `maven.terraformersmc.com`,
-    `maven.ladysnake.org`
+`.claude/hooks/session-start.sh` runs `scripts/setup.sh testClasses` using the pinned SBW artifact.
+Update its profile and SHA-512 together when intentionally changing the dependency, then rerun
+the compatibility and build checks. Cloud setup does not clone a moving SBW branch. The network
+allowlist the environment needs is in [docs/CLOUD-SESSIONS.md](docs/CLOUD-SESSIONS.md).
 
 ## Gotchas worth knowing before you hit them
 
