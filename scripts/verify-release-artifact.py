@@ -8,6 +8,7 @@ One loader per run, because a Gradle run configures one loader and stages only i
 """
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -74,6 +75,25 @@ def mod_metadata(loader: str, archive: zipfile.ZipFile) -> tuple[str, str]:
     return mod["modId"], mod["version"]
 
 
+def sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def check_remapped(loader: str, jar_name: str) -> None:
+    """Forge (SRG) and Fabric (intermediary) modules build a development jar with Mojang names in
+    <module>/build/devlibs, which loads on neither, and remap it into <module>/build/libs. The staged
+    jar must be the remapped one: byte-identical to the module's output and different from devlibs."""
+    if loader == "neoforge":
+        return
+    staged = ROOT / "build/libs" / jar_name
+    remapped = ROOT / loader / "build/libs" / jar_name
+    require(remapped.is_file(), True, f"{loader} module output {remapped}")
+    require(sha256(staged), sha256(remapped), f"staged {loader} jar matches the module's remapped jar")
+    development = ROOT / loader / "build/devlibs" / jar_name
+    if development.is_file():
+        require(sha256(staged) != sha256(development), True, f"staged {loader} jar is not the Mojang-named development jar")
+
+
 def verify(loader: str) -> str:
     gradle = properties(ROOT / "gradle.properties")
     profiles = {path.stem: properties(path) for path in (ROOT / "gradle/sbw").glob("*.properties")}
@@ -92,6 +112,8 @@ def verify(loader: str) -> str:
     expected_jar = f"sbwnpc-{gradle['mod_version']}-mc{minecraft}-{loader}.jar"
     jars = sorted(path.name for path in (ROOT / "build/libs").glob("*.jar"))
     require(jars, [expected_jar], "staged release jars")
+
+    check_remapped(loader, expected_jar)
 
     report = properties(ROOT / "build/reports/sbw/input.txt")
     require(report.get("mode"), "published", "SBW input mode")
