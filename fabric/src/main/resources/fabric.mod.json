@@ -24,6 +24,12 @@
         "adapter": "kotlin",
         "value": "com.sbwnpc.squad.client.SquadFabricClient"
       }
+    ],
+    "journeymap": [
+      {
+        "adapter": "kotlin",
+        "value": "com.sbwnpc.squad.integration.journeymap.SquadMapPlugin"
+      }
     ]
   },
   "depends": {
