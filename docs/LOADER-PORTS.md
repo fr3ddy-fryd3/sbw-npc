@@ -40,8 +40,9 @@ and the NPC renderer are shared with NeoForge from `common/src/client`.
 Differences and gaps:
 
 - NPCs wade at the vanilla pace: there is no swim speed attribute on Fabric.
-- NPCs hold an SBW gun in the default arm pose and the ordinary item renderer draws it (`SbwClientPorts`): SBW's own
-  pose and static gun model, and the aircraft level-of-detail rendering mixins, are not ported.
+- NPCs hold SBW guns in the pose the gun item gives (`GunGeoItem.getArmPose`, which the M2HB and the minigun override)
+  and draw its static LOD model, baked with the SimpleBedrockModel-Fabric revision ReFabricated bundles
+  (`SbwClientPorts`), as on NeoForge. The aircraft level-of-detail rendering mixins are not ported.
 - `PerfProbe` (a debug aid) is not wired on Fabric.
 - A deleted squad's entity is removed when it loads, instead of its join being cancelled.
 - Fabric API has no event to cancel an entity joining or a death, so those two NeoForge behaviours differ slightly.
@@ -59,7 +60,7 @@ Build prerequisites found on the way:
   bytecode is the same; add the host and `loom.layered { parchment(...) }` to get them.
 - **Maven Central rate limits (HTTP 429)** the shared cloud proxy; retrying later works.
 
-Still to do for Fabric: in-game testing on a client; SBW's gun pose and static gun model; aircraft rendering;
+Still to do for Fabric: long sessions and saving and reloading; aircraft rendering;
 a Fabric GameTest or server scene run in CI; the `enabled` profile and release artifact validation.
 
 ## Forge, Minecraft 1.20.1 (#16)
