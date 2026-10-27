@@ -104,9 +104,12 @@ dependencies {
     listOf("8BmcQJ2H:tmxM7U4W", "ohNO6lps:N5qzq0XV", "5aaWibi9:JagCscwi", "K01OU20C:nLsCe2VD", "9s6osm5g:HpMb5wGb")
         .forEach { modCompileOnly("maven.modrinth:$it") }
     modCompileOnly("info.journeymap:journeymap-api-fabric:${project.property("journeymap_api_version")}")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 tasks.withType<JavaCompile> { options.encoding = "UTF-8" }
+tasks.withType<Test> { useJUnitPlatform() }
 
 // fabric.mod.json holds ${version}; left as is, Loader reads that literal as the mod's version.
 tasks.processResources {
