@@ -126,4 +126,8 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
-tasks.withType<Test> { useJUnitPlatform() }
+tasks.withType<Test> {
+    useJUnitPlatform()
+    // ScreenBaseTest reads the screens' source text, so the test reruns when one changes.
+    inputs.dir("src/client/kotlin/com/sbwnpc/squad/client/screen").withPropertyName("screenSources")
+}

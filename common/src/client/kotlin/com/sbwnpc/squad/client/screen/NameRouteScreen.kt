@@ -1,17 +1,17 @@
 package com.sbwnpc.squad.client.screen
 
+import com.sbwnpc.squad.client.SquadScreen
 import com.sbwnpc.squad.network.RouteCmdPayload
 import com.sbwnpc.squad.network.sendToServer
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.Button
 import net.minecraft.client.gui.components.EditBox
-import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 
 /** Text-input step of finishing a recorded route — same shape as `RenameScreen`. Confirming sends
  *  the FINISH action, which the server resolves against whatever `RouteRecording` still has
  *  buffered for this player (not re-sent over the network here). */
-class NameRouteScreen : Screen(Component.literal("Name Route")) {
+class NameRouteScreen : SquadScreen(Component.literal("Name Route")) {
 
     private lateinit var box: EditBox
 

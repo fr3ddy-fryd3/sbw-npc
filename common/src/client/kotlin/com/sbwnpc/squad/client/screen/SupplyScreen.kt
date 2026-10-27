@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.client.screen
 
+import com.sbwnpc.squad.client.SquadScreen
 import com.sbwnpc.squad.network.SupplyCmdPayload
 import com.sbwnpc.squad.network.sendToServer
 import com.sbwnpc.squad.npc.SquadFaction
@@ -7,7 +8,6 @@ import net.minecraft.ChatFormatting
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.Button
 import net.minecraft.client.gui.components.Tooltip
-import net.minecraft.client.gui.screens.Screen
 import net.minecraft.core.BlockPos
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.nbt.CompoundTag
@@ -24,7 +24,7 @@ import net.minecraft.world.item.ItemStack
  * Kits are flicked through with the arrows, one class at a time; each of its weapons is a button that
  * takes the kit with that weapon. The list shows what comes with the weapon under the mouse.
  */
-class SupplyScreen(private val pos: BlockPos, snapshot: CompoundTag) : Screen(Component.literal("Supply")) {
+class SupplyScreen(private val pos: BlockPos, snapshot: CompoundTag) : SquadScreen(Component.literal("Supply")) {
 
     private class Option(val weapon: ItemStack, val items: List<Pair<ItemStack, Int>>)
     private class Kit(val name: String, val options: List<Option>)

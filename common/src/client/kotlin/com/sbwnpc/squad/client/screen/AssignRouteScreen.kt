@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.client.screen
 
+import com.sbwnpc.squad.client.SquadScreen
 import com.sbwnpc.squad.network.RouteCmdPayload
 import com.sbwnpc.squad.network.sendToServer
 import net.minecraft.client.Minecraft
@@ -15,7 +16,7 @@ class AssignRouteScreen(
     private val routeId: String,
     private val rows: List<AssignableSquad>,
     private val back: Screen,
-) : Screen(Component.literal("Assign Route")) {
+) : SquadScreen(Component.literal("Assign Route")) {
 
     override fun init() {
         val cx = width / 2

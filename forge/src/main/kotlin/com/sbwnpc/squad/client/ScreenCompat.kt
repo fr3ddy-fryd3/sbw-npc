@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.client
 
 import net.minecraft.client.gui.Font
+import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.AbstractWidget
 import net.minecraft.client.gui.components.Checkbox
 import net.minecraft.client.gui.screens.Screen
@@ -11,8 +12,20 @@ import net.minecraft.network.chat.Component
  * NeoForge and Fabric on 1.21 have their own with the same names.
  */
 
-/** A [Screen] that is told of mouse-wheel scrolling through [onScroll]. */
-abstract class ScrollScreen(title: Component) : Screen(title) {
+/**
+ * The base of every screen of the mod. Minecraft 1.20.1 draws no background behind a screen's
+ * widgets, so this one draws it before them: a screen calls `super.render` first and must not call
+ * [renderBackground] itself, or the dim is drawn twice. 1.20.1 has no blur, only the dim.
+ */
+abstract class SquadScreen(title: Component) : Screen(title) {
+    override fun render(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
+        renderBackground(graphics)
+        super.render(graphics, mouseX, mouseY, partialTick)
+    }
+}
+
+/** A [SquadScreen] that is told of mouse-wheel scrolling through [onScroll]. */
+abstract class ScrollScreen(title: Component) : SquadScreen(title) {
     /** Handles a scroll of [amount] (positive is up); null leaves it to the screen's widgets. */
     protected open fun onScroll(mouseX: Double, mouseY: Double, amount: Double): Boolean? = null
 
