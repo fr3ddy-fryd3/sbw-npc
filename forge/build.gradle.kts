@@ -29,6 +29,12 @@ repositories {
         }
     }
     maven {
+        // SimpleBedrockModel: SBW bundles it at runtime; the static gun meshes compile against it.
+        name = "SimpleBedrockModel"
+        url = uri("https://jitpack.io")
+        content { includeGroup("com.github.MCModderAnchor") }
+    }
+    maven {
         // JourneyMap API: compile-time only; JourneyMap brings its classes at runtime.
         name = "BlameJared"
         url = uri("https://maven.blamejared.com")
@@ -65,6 +71,7 @@ tasks.withType<JavaCompile> {
 
 legacyForge {
     version = forgeVersions.getProperty("forge_version")
+    addModdingDependenciesTo(sourceSets.test.get())
     // Mojang names for the shared sources, as on the other loaders; reobfuscated on packaging.
     mods {
         create(project.property("mod_id") as String) {
@@ -132,6 +139,9 @@ dependencies {
     // The GeckoLib SBW bundles (4.4.6): its types are in the drone signatures.
     modCompileOnly("maven.modrinth:8BmcQJ2H:iS7jylhp")
     modCompileOnly("info.journeymap:journeymap-api-forge:1.20.1-2.0.0")
+    modImplementation("com.github.MCModderAnchor:SimpleBedrockModel:2.5.1-forge-mc1.20.1")
+    // SimpleBedrockModel bundles this at runtime, but its pom does not list it, so a plain JVM test needs it.
+    testRuntimeOnly("com.maydaymemory:mae:1.1.4")
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
