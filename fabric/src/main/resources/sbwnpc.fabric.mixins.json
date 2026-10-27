@@ -1,0 +1,31 @@
+{
+  "required": true,
+  "package": "com.sbwnpc.squad.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "minVersion": "0.8",
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "mixins": [
+    "PathNavigationAccessor",
+    "PlayerTargetSearchMixin",
+    "MobGoalsAccessor",
+    "VehicleBoardingMixin",
+    "VehicleGunDataMixin",
+    "VehicleShootingMixin",
+    "AutoAimableEntityMixin",
+    "EntityAllianceMixin",
+    "EntityTrackingRangeMixin",
+    "AircraftSnapshotMixin",
+    "VehicleExperienceMixin",
+    "ExperienceHealingMixin",
+    "BulletImpactMixin",
+    "GameEventMixin",
+    "ExplosionMixin",
+    "RespawnPositionMixin"
+  ],
+  "client": [
+    "KeyMappingMixin",
+    "UseItemMixin"
+  ]
+}

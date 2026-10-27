@@ -4,13 +4,14 @@ val profileFile = settingsDir.resolve("gradle/sbw/$loader.properties")
 require(profileFile.isFile) { "Missing SBW profile: $profileFile" }
 val profile = java.util.Properties().apply { profileFile.inputStream().use { load(it) } }
 require(profile.getProperty("loader") == loader) { "SBW profile loader mismatch" }
-require(loader == "neoforge" && profile.getProperty("status") == "enabled") {
+// "preview" builds the loader for development; the release pipeline accepts only "enabled".
+require(profile.getProperty("status") in setOf("enabled", "preview") && (loader == "neoforge" || profile.getProperty("status") == "preview")) {
     "SBW $loader profile is ${profile.getProperty("status")}; see #15/#16 and docs/SBW-COMPATIBILITY.md"
 }
 require(profile.getProperty("minecraft") == providers.gradleProperty("minecraft_version").get()) {
     "SBW profile Minecraft version mismatch"
 }
-require(profile.getProperty("version") == providers.gradleProperty("superbwarfare_version").get()) {
+require(loader != "neoforge" || profile.getProperty("version") == providers.gradleProperty("superbwarfare_version").get()) {
     "superbwarfare_version must match the selected pinned profile"
 }
 val provenance = profile.stringPropertyNames().associate {
