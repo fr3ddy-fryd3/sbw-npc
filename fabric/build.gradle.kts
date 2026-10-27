@@ -25,6 +25,12 @@ repositories {
         }
     }
     maven {
+        // SimpleBedrockModel for Fabric: ReFabricated bundles it at runtime; the static gun meshes compile against it.
+        name = "SimpleBedrockModel-Fabric"
+        url = uri("https://jitpack.io")
+        content { includeGroup("com.github.Sh1roCu") }
+    }
+    maven {
         name = "SmartBrainLib (Cloudsmith)"
         url = uri("https://dl.cloudsmith.io/public/tslat/sbl/maven/")
         content { includeGroup("net.tslat.smartbrainlib") }
@@ -109,6 +115,9 @@ dependencies {
     // our own config), Trinkets and Cardinal Components (player data), Cloth Config. Versions as in the local pack.
     listOf("8BmcQJ2H:tmxM7U4W", "ohNO6lps:N5qzq0XV", "5aaWibi9:JagCscwi", "K01OU20C:nLsCe2VD", "9s6osm5g:HpMb5wGb")
         .forEach { modCompileOnly("maven.modrinth:$it") }
+    // The revision ReFabricated bundles (its gradle.properties: simple_bedrock_model_version).
+    // Not transitive: its pom lists mods the addon neither compiles against nor can resolve.
+    modCompileOnly("com.github.Sh1roCu:SimpleBedrockModel-Fabric:de0caee7f9656676e6de0859077fb61103007a9e") { isTransitive = false }
     modCompileOnly("info.journeymap:journeymap-api-fabric:${project.property("journeymap_api_version")}")
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

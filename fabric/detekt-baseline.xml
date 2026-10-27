@@ -17,6 +17,7 @@
     <ID>MagicNumber:SbwGrenades.kt$SbwGrenades$0.3</ID>
     <ID>MagicNumber:SbwPlayerSupply.kt$SbwPlayerSupply$10</ID>
     <ID>MagicNumber:SbwPlayerSupply.kt$SbwPlayerSupply.Spec$8</ID>
+    <ID>MagicNumber:SbwStaticGunRendering.kt$SbwStaticGunRendering$0.01f</ID>
     <ID>MagicNumber:SbwVehicles.kt$SbwVehicles$128</ID>
     <ID>MagicNumber:SbwVehicles.kt$SbwVehicles$16</ID>
     <ID>MagicNumber:SbwVehicles.kt$SbwVehicles$4</ID>
@@ -37,7 +38,9 @@
     <ID>MagicNumber:SquadMapPlugin.kt$SquadMapPlugin$3</ID>
     <ID>MagicNumber:SquadMapPlugin.kt$SquadMapPlugin$4</ID>
     <ID>MagicNumber:SquadMapPlugin.kt$SquadMapPlugin$4.0</ID>
+    <ID>MagicNumber:StaticGunMesh.kt$StaticGunMesh$3</ID>
     <ID>NestedBlockDepth:SquadMapPlugin.kt$SquadMapPlugin$private fun redraw(feed: CompoundTag)</ID>
+    <ID>TooGenericExceptionCaught:StaticGunModels.kt$StaticGunModels$e: Exception</ID>
     <ID>TooManyFunctions:SbwDrones.kt$SbwDrones : Drones</ID>
     <ID>TooManyFunctions:SbwGuns.kt$SbwGuns : Guns</ID>
     <ID>TooManyFunctions:SbwMortars.kt$SbwMortars : Mortars</ID>
