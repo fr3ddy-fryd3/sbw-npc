@@ -7,9 +7,10 @@ the start of every session. `CLAUDE.md` only imports this file.
 ## What this is
 
 [SBW] NPC Squads (`sbwnpc`) is an NPC squad addon for the SuperbWarfare weapons and vehicles mod,
-built on NeoForge 1.21.1 and Kotlin. Players recruit, deploy and command squads of AI-driven NPCs
-(riflemen, medics, snipers, machine gunners, mortar crews, tank crews, drone operators, ...) that
-fight, take cover, ride vehicles and follow orders (Attack, Defend, Patrol, Move).
+written in Kotlin for NeoForge and Fabric on Minecraft 1.21.1 and for Forge on 1.20.1. Players
+recruit, deploy and command squads of AI-driven NPCs (riflemen, medics, snipers, machine gunners,
+mortar crews, tank crews, drone operators, ...) that fight, take cover, ride vehicles and follow
+orders (Attack, Defend, Patrol, Move).
 
 It is a hobby project built entirely through AI-assisted development. Human playtesting,
 including multiplayer, catches what actually breaks in-game. "It compiles" and "it is tested" are
@@ -189,6 +190,11 @@ KDoc (`/** ... */`) goes on every class, object and non-obvious public or `inter
   The flag is baked into the jar at build time by the generated `BuildFlags` object (see
   `generateBuildFlags` in `common/build.gradle.kts`). It cannot be passed at runtime.
 - Tests only: `./gradlew test`.
+- GameTests are grouped by domain (`GameTestGroups`): run the ones a change can affect with
+  `--group overwatch` or `--group combat,perception`. A GameTest for a feature goes in the
+  feature's own branch, written first and red, so it is green when the feature lands. A new test
+  class belongs in a group, or the server refuses to start. The groups are listed in
+  `docs/HEADLESS-TESTS.md`.
 - Code smells: `./gradlew detekt`, which `check` and `build` also run for each module. It runs
   detekt's code-smell rules only (`config/detekt/detekt.yml`); formatting is ktlint's job
   (`formatKotlin`, `checkKotlinStyle`, see `docs/CODE-STYLE.md`). Findings that predate detekt are
@@ -217,9 +223,9 @@ KDoc (`/** ... */`) goes on every class, object and non-obvious public or `inter
   SBW 0.8.9.1 or newer: `neoforge.mods.toml` declares `[0.8.9.1,)`, with no upper bound. Building
   against a newer patch keeps the most players covered. When the pin moves, keep that lower bound
   unless the addon starts relying on an API the older version lacks; then raise it on purpose.
-- The project stays on NeoForge 1.21.1. A 1.21.6/Fabric port was investigated and shelved:
-  SuperbWarfare's own port to that target isn't ready, and this addon relies on Create/Ponder-style
-  APIs that block on it.
+- Minecraft 1.21.1 (NeoForge, Fabric) and 1.20.1 (Forge) are the targets. A 1.21.6 or newer port was
+  investigated and shelved: SuperbWarfare's own port to that target isn't ready, and this addon
+  relies on Create/Ponder-style APIs that block on it.
 
 ## Cloud sessions (Claude Code on the web)
 
