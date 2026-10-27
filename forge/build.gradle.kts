@@ -5,6 +5,7 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
 plugins {
     id("net.neoforged.moddev.legacyforge")
     id("sbwnpc.jvm-conventions")
+    id("sbwnpc.sbw-input")
 }
 
 // Named for the Minecraft it runs on (1.20.1), not the NeoForge line: sbwnpc-<version>-mc1.20.1-forge.jar.
