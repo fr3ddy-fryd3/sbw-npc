@@ -23,7 +23,7 @@ import java.util.function.Consumer
 /** The client side of the Forge entry point: renderers, keys, the HUD and the screens' banner. Only ever called on a client. */
 object SquadForgeClient {
     fun register(modBus: IEventBus) {
-        SbwClientPorts.install()
+        SbwClientPorts.install(modBus)
 
         modBus.addListener(Consumer<EntityRenderersEvent.RegisterLayerDefinitions> { it.registerLayerDefinition(NpcModel.LAYER, NpcModel::createBodyLayer) })
         modBus.addListener(Consumer<EntityRenderersEvent.RegisterRenderers> { it.registerEntityRenderer(ForgeEntities.NPC.get(), ::NpcRenderer) })
