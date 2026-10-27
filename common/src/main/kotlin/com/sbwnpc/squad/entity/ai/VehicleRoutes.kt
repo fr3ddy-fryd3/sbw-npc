@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.entity.ai
 
+import com.sbwnpc.squad.compat.VersionCompat
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.route.GroundMap
@@ -7,14 +8,11 @@ import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.Mob
-import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.level.PathNavigationRegion
 import net.minecraft.world.level.levelgen.Heightmap
 import net.minecraft.world.level.pathfinder.Node
 import net.minecraft.world.level.pathfinder.Path
 import net.minecraft.world.level.pathfinder.PathFinder
-import net.minecraft.world.level.pathfinder.PathType
-import net.minecraft.world.level.pathfinder.PathfindingContext
 import net.minecraft.world.phys.Vec3
 
 /**
@@ -53,26 +51,25 @@ object VehicleRoutes {
         val from = vehicle.blockPosition()
         val r = SEARCH_RANGE.toInt() + 8
         val region = PathNavigationRegion(level, from.offset(-r, -r, -r), from.offset(r, r, r))
-        val stepHeight = driver.getAttribute(Attributes.STEP_HEIGHT)
-        val previousStep = stepHeight?.baseValue
-        val waterCost = driver.getPathfindingMalus(PathType.WATER)
-        val bankCost = driver.getPathfindingMalus(PathType.WATER_BORDER)
+        val previousStep = VersionCompat.stepHeight(driver)
+        val waterCost = VersionCompat.getWaterMalus(driver)
+        val bankCost = VersionCompat.getWaterBorderMalus(driver)
         val amphibious = Ports.vehicles.canCrossWater(vehicle)
         try {
-            stepHeight?.baseValue = vehicle.maxUpStep().toDouble()
+            VersionCompat.setStepHeight(driver, vehicle.maxUpStep())
             // The pathfinder uses the hull's capabilities, then restores the infantry's costs
             // even if a search fails. Floating nodes stay at the surface rather than the bottom.
-            driver.setPathfindingMalus(PathType.WATER, if (amphibious) 1f else -1f)
-            if (amphibious) driver.setPathfindingMalus(PathType.WATER_BORDER, 0f)
+            VersionCompat.setWaterMalus(driver, if (amphibious) 1f else -1f)
+            if (amphibious) VersionCompat.setWaterBorderMalus(driver, 0f)
             val targetCorner = cornerOf(Vec3(target.x + 0.5, target.y.toDouble(), target.z + 0.5), vehicle.bbWidth)
             return SearchResult(
                 PathFinder(HullEvaluator(vehicle, width, height, amphibious), NODES)
                     .findPath(region, driver, setOf(targetCorner), SEARCH_RANGE, LEG_REACH, 1f),
             )
         } finally {
-            if (previousStep != null) stepHeight.baseValue = previousStep
-            driver.setPathfindingMalus(PathType.WATER, waterCost)
-            driver.setPathfindingMalus(PathType.WATER_BORDER, bankCost)
+            VersionCompat.setStepHeight(driver, previousStep)
+            VersionCompat.setWaterMalus(driver, waterCost)
+            VersionCompat.setWaterBorderMalus(driver, bankCost)
         }
     }
 
@@ -156,9 +153,6 @@ object VehicleRoutes {
             return getStartNode(at)
         }
 
-        override fun getPathTypeOfMob(context: PathfindingContext, x: Int, y: Int, z: Int, mob: Mob): PathType {
-            val type = super.getPathTypeOfMob(context, x, y, z, mob)
-            return if (!amphibious && type == PathType.WATER) PathType.BLOCKED else type
-        }
+        override fun filterType(type: NodePathType): NodePathType = if (!amphibious && type == NodeTypes.WATER) NodeTypes.BLOCKED else type
     }
 }

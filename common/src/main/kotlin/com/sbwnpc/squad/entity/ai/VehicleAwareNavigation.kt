@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.sbwnpc.squad.combat.tactics.PositionPaths
+import com.sbwnpc.squad.compat.VersionCompat
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.mixin.PathNavigationAccessor
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap
@@ -17,8 +18,6 @@ import net.minecraft.world.level.levelgen.Heightmap
 import net.minecraft.world.level.pathfinder.Node
 import net.minecraft.world.level.pathfinder.Path
 import net.minecraft.world.level.pathfinder.PathFinder
-import net.minecraft.world.level.pathfinder.PathType
-import net.minecraft.world.level.pathfinder.PathfindingContext
 import net.minecraft.world.level.pathfinder.WalkNodeEvaluator
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
@@ -221,7 +220,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) :
                 mob.uuid.toString().take(8), mob.blockPosition(), pos,
                 Math.sqrt(pos.distToCenterSqr(mob.x, mob.y, mob.z)).toInt(), branch, (mob as? com.sbwnpc.squad.entity.NpcEntity)?.target != null,
                 result?.let { "nodes=${it.nodeCount} reach=${it.canReach()} end=${it.endNode?.asBlockPos()} short=${"%.1f".format(it.distToTarget)}" }
-                    ?: "null (canUpdate=${canUpdatePath()} ground=${mob.onGround()} liquid=${mob.isInLiquid} passenger=${mob.isPassenger} y=${"%.2f".format(mob.y)})",
+                    ?: "null (canUpdate=${canUpdatePath()} ground=${mob.onGround()} liquid=${VersionCompat.isInLiquid(mob)} passenger=${mob.isPassenger} y=${"%.2f".format(mob.y)})",
             )
         }
         return result
@@ -523,205 +522,5 @@ class VehicleAwareNavigation(mob: Mob, level: Level) :
             "VehicleAwareNavigation.stop",
             "PathNavigation.moveTo",
         )
-    }
-}
-
-internal open class VehicleAwareNodeEvaluator(
-    private val permitsStep: (BlockPos, BlockPos) -> Boolean = { _, _ -> true },
-    private val onPrepare: () -> Unit = {},
-) : WalkNodeEvaluator() {
-    override fun getStart(): Node = if (mob.onClimbable()) getStartNode(mob.blockPosition()) else super.getStart()
-
-    override fun getNeighbors(output: Array<Node>, node: Node): Int {
-        val count = super.getNeighbors(output, node)
-        var accepted = 0
-        for (index in 0 until count) {
-            val next = output[index]
-            // WalkNodeEvaluator may cut sideways to ground several blocks below a rung.
-            // Keep descending the shaft instead: a mob can be almost a block above that
-            // integer node when it detaches, making the nominal safe drop cause fall damage.
-            if (climbable(node.asBlockPos()) && !climbable(next.asBlockPos()) && next.y < node.y - 1) continue
-            if (permitsStep(node.asBlockPos(), next.asBlockPos())) output[accepted++] = next
-        }
-        val from = node.asBlockPos()
-        if (climbable(from) || climbable(from.below())) {
-            for (next in listOf(from.above(), from.below())) {
-                if (!ladderEdge(from, next) || !permitsStep(from, next)) continue
-                val type = getPathTypeOfMob(currentContext, next.x, next.y, next.z, mob)
-                if (type != PathType.WALKABLE || mob.getPathfindingMalus(type) < 0f) continue
-                val neighbor = getNode(next)
-                if (neighbor.closed) continue
-                neighbor.type = type
-                neighbor.costMalus = mob.getPathfindingMalus(type)
-                if ((0 until accepted).none { output[it] === neighbor }) output[accepted++] = neighbor
-            }
-        }
-        return accepted
-    }
-
-    private fun climbable(pos: BlockPos): Boolean = Ports.loader.isLadder(currentContext.getBlockState(pos), mob.level(), pos, mob)
-
-    /** A platform can open onto the air cell immediately above the last ladder rung. */
-    private fun ladderEdge(from: BlockPos, to: BlockPos): Boolean {
-        if (climbable(from) && climbable(to)) return true
-        val lower = if (from.y < to.y) from else to
-        val upper = lower.above()
-        // Only the top exit is open air. This cannot connect across a missing rung in the shaft.
-        return climbable(lower) && currentContext.getBlockState(upper).getCollisionShape(currentContext.level(), upper).isEmpty
-    }
-
-    // Vanilla caches the aggregate type of a mob-sized node, but neighboring nodes repeatedly
-    // evaluate overlapping cells and their 24 surrounding hazards. Keep the final cell type
-    // for this search only; raw block types in PathfindingContext do not cache those hazards.
-    private val cellTypes = Long2ObjectOpenHashMap<PathType>()
-
-    /** Vehicles near the mob, each with the box round its hull for a quick first test. */
-    private var hulls: List<Pair<net.minecraft.world.entity.Entity, AABB>> = emptyList()
-    private var standingOn: BlockPos? = null
-    private var start: BlockPos? = null
-    private var escapingCanopy = false
-
-    /**
-     * One entity query for the whole path computation. [done] drops it again, and the evaluator's
-     * own per-position cache is cleared there too, so a vehicle that drives off doesn't leave
-     * phantom walls behind.
-     */
-    override fun prepare(level: PathNavigationRegion, mob: Mob) {
-        onPrepare()
-        cellTypes.clear()
-        super.prepare(level, mob)
-        val ridden = mob.vehicle
-        hulls = Ports.vehicles
-            .within(mob.level(), mob.boundingBox.inflate(SEARCH_RADIUS)) { vehicle ->
-                Ports.vehicles.isOperational(vehicle) && vehicle !== ridden
-            }
-            // The whole hull: a BMP's box is a 3.6-block square round its middle, its hull twice as
-            // long, and paths planned through the nose left men pressed against it.
-            .map { it to Ports.vehicles.hull(it).inflate(CLEARANCE) }
-            // One he's already up against or inside of doesn't count: every way out of it would
-            // be a wall, and he'd stand there with a one-node path while it waits for him.
-            .filterNot { (vehicle, _) -> Ports.vehicles.occupies(vehicle, mob.boundingBox, CLEARANCE) }
-        // Whatever the mob is standing in stays passable. Blocking it would leave the path with no
-        // valid start at all, which is precisely the situation of a mob that has already been
-        // pushed up onto a hull and now needs a route off it.
-        standingOn = if (hulls.isEmpty()) null else mob.blockPosition()
-        start = mob.blockPosition()
-        // A man already on a crown needs a way off it, but ground routes must not climb crowns.
-        escapingCanopy = (-1..0).any { dy ->
-            WalkingClearance.leaves(level.getBlockState(mob.blockPosition().offset(0, dy, 0)))
-        }
-    }
-
-    override fun done() {
-        cellTypes.clear()
-        hulls = emptyList()
-        standingOn = null
-        start = null
-        escapingCanopy = false
-        super.done()
-    }
-
-    /**
-     * Blocks that fill the upper part of their space without being full blocks — an azalea bush
-     * is its top half and a thin stem — are open ground to vanilla (only a full collision box
-     * counts as in the way), so paths ran straight through them and men walked into the bush with
-     * no jump to get over it. Anything a man can't step over is solid here, and stood on like it.
-     */
-    override fun getPathType(context: PathfindingContext, x: Int, y: Int, z: Int): PathType {
-        // The public evaluator API can also be queried outside a prepared path search. Those
-        // independent queries must see current terrain rather than retain a cached answer.
-        if (context !== currentContext) return calculatePathType(context, x, y, z)
-        val key = BlockPos.asLong(x, y, z)
-        cellTypes.get(key)?.let { return it }
-        return calculatePathType(context, x, y, z).also { cellTypes.put(key, it) }
-    }
-
-    private fun calculatePathType(context: PathfindingContext, x: Int, y: Int, z: Int): PathType {
-        val pos = BlockPos(x, y, z)
-        val state = context.getBlockState(pos)
-        val ladder = if (mob != null) Ports.loader.isLadder(state, mob.level(), pos, mob) else state.`is`(BlockTags.CLIMBABLE)
-        if (ladder) return PathType.WALKABLE
-        if (bodyHigh(context, x, y, z)) return PathType.BLOCKED
-        val type = super.getPathType(context, x, y, z)
-        if (type == PathType.OPEN) {
-            val below = BlockPos(x, y - 1, z)
-            val state = context.getBlockState(below)
-            // Partial roots need a raised walking node even when they are only half a block high.
-            if (!state.isAir && !state.getCollisionShape(context.level(), below).isEmpty) return PathType.WALKABLE
-        }
-        return type
-    }
-
-    private fun bodyHigh(context: PathfindingContext, x: Int, y: Int, z: Int): Boolean {
-        // Wherever the mob already is stays passable, or a man stuck half inside one has no start.
-        start?.let { if (it.x == x && it.y == y && it.z == z) return false }
-        if (context.getPathTypeFromState(x, y, z) != PathType.OPEN) return false
-        val pos = BlockPos(x, y, z)
-        val state = context.getBlockState(pos)
-        if (state.isAir) return false
-        val shape = state.getCollisionShape(context.level(), pos)
-        return !shape.isEmpty && shape.max(net.minecraft.core.Direction.Axis.Y) > STEP_OVER
-    }
-
-    override fun getPathTypeOfMob(context: PathfindingContext, x: Int, y: Int, z: Int, mob: Mob): PathType {
-        if (hulls.isNotEmpty() && !isStandingOn(x, y, z) && occupied(x, y, z)) {
-            return PathType.BLOCKED
-        }
-        val type = super.getPathTypeOfMob(context, x, y, z, mob)
-        if (mob.getPathfindingMalus(type) < 0f) return type
-        val pos = BlockPos(x, y, z)
-        val support = context.getBlockState(pos.below())
-        if (WalkingClearance.leaves(support) && (!escapingCanopy || y > (start?.y ?: y) + 1)) return PathType.BLOCKED
-        // Vanilla normally checks collisions only for fences/doors and jumps. A modded branch
-        // can occupy an otherwise empty neighboring node, and roots can catch the legs there.
-        // Keep the start usable for an NPC who was already pushed into an obstacle.
-        val origin = start
-        if (origin != null && origin.x == x && origin.z == z && kotlin.math.abs(origin.y - y) <= 1) return type
-        val floor = if (type == PathType.OPEN || type == PathType.WATER || climbable(pos)) {
-            y.toDouble()
-        } else {
-            getFloorLevel(pos)
-        }
-        val box = WalkingClearance.body(x, floor, z, mob.bbWidth, mob.bbHeight)
-        if (context.getBlockState(pos).`is`(Blocks.SCAFFOLDING)) {
-            // The real entity is still above the candidate: its collision context would
-            // falsely turn every lower scaffold into a solid floor. Supported shaft decks
-            // can be passed in either direction; all other colliders remain obstacles.
-            val collisions = BlockCollisions(context.level(), mob, box, false) { at, _ ->
-                val state = context.getBlockState(at)
-                !state.`is`(Blocks.SCAFFOLDING) || state.getValue(ScaffoldingBlock.DISTANCE) != 0
-            }
-            return if (collisions.asSequence().any { it }) PathType.BLOCKED else type
-        }
-        return if (context.level().noBlockCollision(mob, box)) type else PathType.BLOCKED
-    }
-
-    private fun isStandingOn(x: Int, y: Int, z: Int): Boolean {
-        val pos = standingOn ?: return false
-        return pos.x == x && pos.z == z && Math.abs(pos.y - y) <= 1
-    }
-
-    private fun occupied(x: Int, y: Int, z: Int): Boolean {
-        val node = AABB(
-            x.toDouble(),
-            y.toDouble(),
-            z.toDouble(),
-            x + 1.0,
-            y + 1.0,
-            z + 1.0,
-        )
-        // The box round a hull turned across the axes is far bigger than the hull — a BMP at an
-        // angle boxed in men standing well clear of it — so only the hull itself blocks.
-        return hulls.any { (vehicle, box) -> box.intersects(node) && Ports.vehicles.occupies(vehicle, node, CLEARANCE) }
-    }
-
-    private companion object {
-        const val SEARCH_RADIUS = 24.0
-
-        /** Taller than this (a carpet, a snow layer, a bottom slab are lower) can't be stepped over. */
-        const val STEP_OVER = 0.5
-
-        /** Keeps routes from hugging the hull close enough to catch on it. */
-        const val CLEARANCE = 0.3
     }
 }

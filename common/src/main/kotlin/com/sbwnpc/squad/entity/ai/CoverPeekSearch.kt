@@ -19,7 +19,7 @@ import java.util.UUID
 /** One cover episode's bounded peek search; rejected candidates survive admission delays. */
 internal class CoverPeekSearch(private val cover: BlockPos, private val aim: Vec3, private val targetId: UUID?, private val blind: Boolean) {
     data class Result(val point: Vec3, val path: Path)
-    private val base = cover.bottomCenter
+    private val base = Vec3.atBottomCenterOf(cover)
     private val forward = aim.subtract(base).multiply(1.0, 0.0, 1.0).normalize()
     private val side = Vec3(-forward.z, 0.0, forward.x)
     private val probes = listOf(0.5, 1.0, 1.5, 2.0, 2.5, 3.0).flatMap { distance ->

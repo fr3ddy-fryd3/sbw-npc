@@ -1,0 +1,613 @@
+package com.sbwnpc.squad.integration.sbw
+
+import com.atsuishio.superbwarfare.data.gun.Ammo
+import com.atsuishio.superbwarfare.data.gun.AmmoConsumer
+import com.atsuishio.superbwarfare.data.gun.GunData
+import com.atsuishio.superbwarfare.data.vehicle.subdata.EngineInfo
+import com.atsuishio.superbwarfare.data.vehicle.subdata.EngineType
+import com.atsuishio.superbwarfare.entity.vehicle.base.VehicleEntity
+import com.atsuishio.superbwarfare.entity.vehicle.utils.VehicleVecUtils
+import com.atsuishio.superbwarfare.init.ModEntities
+import com.atsuishio.superbwarfare.init.ModItems
+import com.atsuishio.superbwarfare.item.ammo.AmmoBoxItem
+import com.atsuishio.superbwarfare.item.ammo.AmmoSupplierItem
+import com.atsuishio.superbwarfare.item.gun.GunItem
+import com.atsuishio.superbwarfare.tools.OBB
+import com.sbwnpc.squad.domain.port.CannonRound
+import com.sbwnpc.squad.domain.port.Mobility
+import com.sbwnpc.squad.domain.port.Steering
+import com.sbwnpc.squad.domain.port.TurnRates
+import com.sbwnpc.squad.domain.port.VehicleModel
+import com.sbwnpc.squad.domain.port.Vehicles
+import com.sbwnpc.squad.npc.HelicopterModel
+import com.sbwnpc.squad.npc.TankModel
+import com.sbwnpc.squad.npc.TransportVehicle
+import net.minecraft.server.level.ServerLevel
+import net.minecraft.util.Mth
+import net.minecraft.world.entity.Entity
+import net.minecraft.world.entity.EntityType
+import net.minecraft.world.entity.LivingEntity
+import net.minecraft.world.item.ItemStack
+import net.minecraft.world.level.Level
+import net.minecraft.world.phys.AABB
+import net.minecraft.world.phys.Vec3
+
+object SbwVehicles : Vehicles {
+    /** `VehicleEntity.engineInfo` is deserialized lazily, on the vehicle's first engine tick, so a
+     *  vehicle nobody has driven yet has none to read. Mid-range of what the ground vehicles
+     *  actually draw (64 for a LAV, 128 for a T-90). */
+    private const val ASSUMED_COST_RATE = 96.0
+
+    /** Starting small-arms and autocannon ammunition, as a multiple of one full stack of each
+     *  kind (per user call). Tank main-gun shells are not scaled. */
+    private const val AMMO_SCALE = 4
+
+    /** Machine-gun belts go fastest of all, so rifle rounds get twice the rest (per user call). */
+    private const val RIFLE_ROUNDS = 64 * AMMO_SCALE * 2
+
+    private val types: Map<VehicleModel, () -> EntityType<*>> = mapOf(
+        TankModel.ZTZ_99A to { ModEntities.ZTZ_99A.get() },
+        TankModel.T_90A to { ModEntities.T_90A.get() },
+        TankModel.M1A2 to { ModEntities.M_1A_2.get() },
+        HelicopterModel.MI_28 to { ModEntities.MI_28.get() },
+        HelicopterModel.AH_6 to { ModEntities.AH_6.get() },
+        TransportVehicle.LAV_25 to { ModEntities.LAV_25.get() },
+        TransportVehicle.LAV_150 to { ModEntities.LAV_150.get() },
+        TransportVehicle.BMP_2 to { ModEntities.BMP_2.get() },
+    )
+
+    override fun isVehicle(entity: Entity?): Boolean = entity is VehicleEntity
+
+    override fun isOperational(entity: Entity?): Boolean = entity is VehicleEntity && entity.isAlive && !entity.isWreck
+
+    override fun isWreck(vehicle: Entity): Boolean = vehicle is VehicleEntity && vehicle.isWreck
+
+    override fun isLocked(vehicle: Entity): Boolean = vehicle is VehicleEntity && vehicle.locked
+
+    override fun seatCount(vehicle: Entity): Int = (vehicle as? VehicleEntity)?.maxPassengers ?: 0
+
+    override fun seatOf(vehicle: Entity, passenger: Entity): Int = (vehicle as? VehicleEntity)?.getSeatIndex(passenger) ?: -1
+
+    override fun seating(vehicle: Entity): List<Entity?> = (vehicle as? VehicleEntity)?.getOrderedPassengers() ?: emptyList()
+
+    // SBW's own seat switch, the one players use: refuses a taken seat and syncs seating to clients.
+    override fun changeSeat(vehicle: Entity, passenger: Entity, seat: Int): Boolean = (vehicle as? VehicleEntity)?.changeSeat(passenger, seat) == true
+
+    override fun hasWeaponAt(vehicle: Entity, passenger: Entity): Boolean = vehicle is VehicleEntity && vehicle.getGunData(passenger) != null
+
+    override fun isTurretGunner(vehicle: Entity, passenger: Entity): Boolean =
+        vehicle is VehicleEntity && modelOf(vehicle) !is TankModel &&
+            (passenger === vehicle.getNthEntity(vehicle.turretControllerIndex) || passenger === vehicle.getNthEntity(vehicle.passengerWeaponStationControllerIndex))
+
+    // SBW's engines simply stop responding when the battery runs down — `VehicleEngineUtils`
+    // zeroes every input once `energy <= energyCost` — with no outward sign beyond the vehicle not
+    // moving. Measured in ticks of driving because the vehicles differ by a factor of two in what
+    // they draw (`EnergyCostRate` 64 for a LAV, 128 for a T-90).
+    override fun hasPowerFor(vehicle: Entity, ticks: Double): Boolean {
+        if (vehicle !is VehicleEntity) return false
+        // Not everything runs on a battery — the mortar's MaxEnergy is 0, and nothing with no
+        // energy storage can ever be out of power.
+        if (!vehicle.hasEnergyStorage()) return true
+        val perTick = vehicle.engineInfo?.energyCostRate ?: ASSUMED_COST_RATE
+        return vehicle.energy > perTick * ticks
+    }
+
+    override fun modelOf(vehicle: Entity): VehicleModel? = if (vehicle !is VehicleEntity) null else types.entries.firstOrNull { it.value() == vehicle.type }?.key
+
+    override fun create(level: ServerLevel, model: VehicleModel): Entity? = types[model]?.invoke()?.create(level) as? VehicleEntity
+
+    override fun fuelAndArm(vehicle: Entity, model: VehicleModel) {
+        if (vehicle !is VehicleEntity) return
+        vehicle.energy = vehicle.maxEnergy
+        val hold = Hold(vehicle)
+        when (model) {
+            // Same main-gun AP/HE + coax rifle ammo + .50cal passenger ammo loadout for all three —
+            // verified against each model's own sbw/vehicles/*.json: same four weapon/ammo slots.
+            is TankModel -> {
+                // Main-gun shells stay at a stack each; the scale is for small arms and autocannons.
+                hold.stow(ModItems.LARGE_SHELL_AP.get(), 64)
+                hold.stow(ModItems.LARGE_SHELL_HE.get(), 64)
+                hold.stow(ModItems.HEAVY_AMMO.get(), 64 * AMMO_SCALE * 2)
+            }
+
+            // Which round a cannon fires is its selected ammo type, not a slot (see loadRound), so
+            // the stacks can go anywhere. The AH-6's 20mm only takes HE, so it gets no AP.
+            HelicopterModel.MI_28 -> {
+                hold.stow(ModItems.SMALL_SHELL_AP.get(), 64 * AMMO_SCALE)
+                hold.stow(ModItems.SMALL_SHELL_HE.get(), 64 * AMMO_SCALE)
+                hold.stow(ModItems.SMALL_ROCKET.get(), 16 * AMMO_SCALE)
+            }
+
+            HelicopterModel.AH_6 -> {
+                hold.stow(ModItems.SMALL_SHELL_HE.get(), 64 * AMMO_SCALE)
+                hold.stow(ModItems.SMALL_ROCKET.get(), 16 * AMMO_SCALE)
+            }
+
+            // Autocannon AP/HE and the 7.62 coax, all three models (sbw/vehicles/*.json); the BMP-2
+            // and LAV-25 also carry an ATGM — a single-shot launcher, one stack of its missiles.
+            is TransportVehicle -> {
+                hold.stow(ModItems.SMALL_SHELL_AP.get(), 64 * AMMO_SCALE)
+                hold.stow(ModItems.SMALL_SHELL_HE.get(), 64 * AMMO_SCALE)
+                if (model != TransportVehicle.LAV_150) hold.stow(ModItems.MEDIUM_ANTI_GROUND_MISSILE.get(), 4)
+            }
+
+            else -> {}
+        }
+        // Standard supplier boxes contain fixed amounts: round doubled round counts up to whole boxes.
+        hold.stowBoxes(ModItems.RIFLE_AMMO_BOX.get() as AmmoSupplierItem, RIFLE_ROUNDS * 2)
+        hold.stowBoxes(ModItems.HANDGUN_AMMO_BOX.get() as AmmoSupplierItem, 128 * 2)
+        hold.stowBoxes(ModItems.SNIPER_AMMO_BOX.get() as AmmoSupplierItem, 128 * 2)
+        hold.stowBoxes(ModItems.SHOTGUN_AMMO_BOX.get() as AmmoSupplierItem, 64 * 2)
+    }
+
+    override fun takeSmallArmsAmmo(vehicle: Entity, gun: ItemStack, rounds: Int): Int {
+        if (vehicle !is VehicleEntity || !isOperational(vehicle) || gun.item !is GunItem || rounds <= 0) return 0
+        val consumer = GunData.from(gun).selectedAmmoConsumer().also { if (!it.initialized()) it.init() }
+        if (consumer.type != AmmoConsumer.AmmoConsumeType.PLAYER_AMMO) return 0
+        val type = consumer.playerAmmoType ?: return 0
+        if (type !in setOf(Ammo.RIFLE, Ammo.HANDGUN, Ammo.SNIPER, Ammo.SHOTGUN)) return 0
+        val amount = consumer.loadAmount.coerceAtLeast(1)
+        var remaining = rounds / amount
+        var taken = 0
+        for (slot in 0 until vehicle.getContainerSize()) {
+            if (remaining == 0) break
+            val stack = vehicle.getItem(slot)
+            if (stack.item is AmmoBoxItem) {
+                val removed = minOf(type.get(stack) / amount, remaining) * amount
+                if (removed > 0) {
+                    type.add(stack, -removed)
+                    remaining -= removed / amount
+                    taken += removed
+                }
+                continue
+            }
+            val supplier = stack.item as? AmmoSupplierItem ?: continue
+            if (supplier.type != type) continue
+            val perItem = supplier.ammoToAdd
+            val needed = (remaining + perItem - 1) / perItem
+            val removed = vehicle.removeItem(slot, minOf(needed, stack.count)).count
+            // An opened supplier box goes entirely into the NPC reserve, including surplus rounds.
+            // Returning the actual amount prevents losing its remainder or creating ammunition.
+            remaining = (remaining - removed * perItem).coerceAtLeast(0)
+            taken += removed * perItem * amount
+        }
+        if (taken > 0) vehicle.setChanged()
+        return taken
+    }
+
+    /** Fills a vehicle's container from the first slot on, a full stack at a time. */
+    private class Hold(private val vehicle: VehicleEntity) {
+        private var slot = 0
+
+        fun stowBoxes(item: AmmoSupplierItem, rounds: Int) {
+            stow(item, (rounds + item.ammoToAdd - 1) / item.ammoToAdd)
+        }
+
+        fun stow(item: net.minecraft.world.item.Item, count: Int) {
+            var left = count
+            while (left > 0 && slot < vehicle.getContainerSize()) {
+                val existing = vehicle.getItem(slot)
+                if (existing.isEmpty || existing.item == item) {
+                    val added = minOf(left, item.maxStackSize - existing.count)
+                    if (added > 0) {
+                        vehicle.setItem(slot, ItemStack(item, existing.count + added))
+                        left -= added
+                    }
+                }
+                slot++
+            }
+        }
+    }
+
+    // SBW turns a vehicle at zero health into a wreck on its next tick and detonates it on contact.
+    override fun writeOff(vehicle: Entity) {
+        (vehicle as? VehicleEntity)?.health = 0f
+    }
+
+    override fun within(level: Level, area: AABB, filter: (Entity) -> Boolean): List<Entity> = level.getEntitiesOfClass(VehicleEntity::class.java, area) { filter(it) }
+
+    // --- Driving ---
+
+    private val GROUND_ENGINES = setOf(EngineType.WHEEL, EngineType.TRACK, EngineType.WHEELCHAIR)
+
+    override fun mobility(vehicle: Entity): Mobility? {
+        if (vehicle !is VehicleEntity) return null
+        return when (vehicle.computed().engineType) {
+            in GROUND_ENGINES -> Mobility.GROUND
+            EngineType.HELICOPTER, EngineType.AIRCRAFT -> Mobility.AIR
+            EngineType.SHIP -> Mobility.WATER
+            else -> Mobility.FIXED
+        }
+    }
+
+    override fun canCrossWater(vehicle: Entity): Boolean {
+        if (vehicle !is VehicleEntity || vehicle.computed().engineType !in GROUND_ENGINES) return false
+        // EngineInfo is lazy until the first engine tick; use the same computed JSON before then.
+        val buoyancy = vehicle.engineInfo?.buoyancy
+            ?: vehicle.computed().engineInfo.get("Buoyancy")?.asDouble ?: 0.0
+        return buoyancy > 0.0
+    }
+
+    /**
+     * Drives toward a route point through SBW's native wheel, track or boat controls.
+     *
+     * A short bend needs its requested wheel angle immediately: the human key-press ramp builds
+     * steering only after the nose has already reached the obstruction. Wheels therefore match
+     * the circle through the point using [VehicleEntity.rudderRot], compensating wheelEngine's
+     * unconditional 25% decay. Its native post-decay limit is [WHEEL_RUDDER_LIMIT], and the yaw rate
+     * is `-12 * speed * rudderRot * sign(power)` degrees per tick.
+     *
+     * Tracks and backing turns retain their heading-based input controls, releasing within
+     * [RUDDER_DEADBAND] of the requested rudder. Boats steer by heading and their own helm swing.
+     */
+    override fun driveToward(vehicle: Entity, point: Vec3, throttle: Boolean): Steering {
+        if (vehicle !is VehicleEntity) return Steering(right = false, left = false, detail = "not a vehicle")
+        val toTarget = point.subtract(vehicle.position())
+        // VehicleVecUtils.getYRotFromVector's raw output is the negation of yRot's own convention —
+        // every other call site in SuperbWarfare that compares it against yRot negates it first (e.g.
+        // VehicleEntity.updateRotation) — so it's negated here too.
+        val desiredYaw: Double = -VehicleVecUtils.getYRotFromVector(toTarget)
+        val diff = Mth.wrapDegrees(desiredYaw - vehicle.yRot.toDouble())
+
+        // A boat turns by the swing its helm builds up, not by where the rudder sits: its engine
+        // keeps pushing rudderRot the way it's held, so steering to a rudder target (below) held
+        // the helm hard over for good — the boat went round in circles. Steer by the heading
+        // itself: helm over until the bow is near the mark, then let it straighten.
+        if (vehicle.computed().engineType == EngineType.SHIP) {
+            // Right swings the bow to a higher yRot, left to a lower one (shipEngine: right takes
+            // deltaRot down, and yRot goes up by minus that).
+            val right = diff > SHIP_HEADING_DEADBAND
+            val left = diff < -SHIP_HEADING_DEADBAND
+            // Off the throttle through a sharp turn: at full speed the swing is too wide, and a
+            // boat turning onto the next leg of its way ran up the bank instead.
+            val sharp = Math.abs(diff) > SHIP_SHARP_TURN && vehicle.deltaMovement.horizontalDistance() > SHIP_TURN_SPEED
+            vehicle.forwardInputDown = throttle && !sharp
+            vehicle.backInputDown = false
+            vehicle.rightInputDown = right
+            vehicle.leftInputDown = left
+            return Steering(right, left, "ship pos=${vehicle.position()} yRot=${vehicle.yRot} desiredYaw=$desiredYaw diff=$diff speed=${vehicle.deltaMovement.horizontalDistance()}")
+        }
+
+        val targetRudder = steeringTarget(vehicle, diff, toTarget.horizontalDistance())
+        val rudderError = vehicle.rudderRot - targetRudder
+        var right = rudderError > RUDDER_DEADBAND
+        var left = rudderError < -RUDDER_DEADBAND
+        val speed = vehicle.deltaMovement.horizontalDistance()
+        // Signed along the bow: the speed alone cannot tell a brake from a reverse.
+        val facing = vehicle.getViewVector(1f)
+        val forwardSpeed = vehicle.deltaMovement.x * facing.x + vehicle.deltaMovement.z * facing.z
+        val sharp = Math.abs(diff) > SHARP_TURN
+        val detail = "pos=${vehicle.position()} yRot=${vehicle.yRot} desiredYaw=$desiredYaw diff=$diff " +
+            "rudderRot=${vehicle.rudderRot} targetRudder=$targetRudder speed=$speed"
+
+        // A sharp turn is not driven round at speed: a wheeled vehicle turns about a circle ten
+        // blocks and more across whatever its speed, and one turning back on itself on a hilltop
+        // drove off the edge of it, well off the way it was given.
+        if (sharp && vehicle.computed().engineType == EngineType.TRACK) {
+            // Tracks turn on the spot: off the throttle until it faces the way.
+            vehicle.forwardInputDown = false
+            vehicle.backInputDown = false
+            vehicle.rightInputDown = right
+            vehicle.leftInputDown = left
+            return Steering(right, left, "$detail pivot")
+        }
+        backing(vehicle, diff, forwardSpeed, throttle, detail)?.let { return it }
+        if (vehicle.computed().engineType == EngineType.WHEEL) {
+            // The short route follower commands a wheel angle, not a human's gradual key press.
+            // Compensate the native engine's unconditional decay before it applies that angle.
+            vehicle.rudderRot = targetRudder / WHEEL_RUDDER_DECAY
+            vehicle.deltaRot = 0f
+            right = false
+            left = false
+        }
+        vehicle.forwardInputDown = throttle && (!sharp || speed < CREEP_SPEED)
+        // Braking: the back key only slows a hull that rolls forwards; one rolling backwards it speeds up.
+        vehicle.backInputDown = sharp && forwardSpeed > TURN_SPEED
+        vehicle.rightInputDown = right
+        vehicle.leftInputDown = left
+        return Steering(right, left, if (sharp) "$detail creeping round" else detail)
+    }
+
+    private fun steeringTarget(vehicle: VehicleEntity, diff: Double, distance: Double): Float {
+        if (vehicle.computed().engineType != EngineType.WHEEL) {
+            return Mth.clamp((-diff / RUDDER_FULL_LOCK_DEGREES).toFloat(), -1f, 1f) * MAX_RUDDER_MAGNITUDE
+        }
+        // wheelEngine turns 12 degrees per block per rudder unit. Match the circle through
+        // the route point; heading alone understeers a short bend before the hull hits it.
+        // Past a right angle the circle no longer reaches the point ahead: sin falls back towards
+        // zero, and a hull with the point straight behind and no room to back drove straight on.
+        val bend = if (Math.abs(diff) >= RIGHT_ANGLE) Math.signum(diff) else Math.sin(Math.toRadians(diff))
+        val curvature = 2.0 * bend / distance.coerceAtLeast(1.0)
+        return (-Math.toDegrees(curvature) / WHEEL_YAW_PER_BLOCK).toFloat().coerceIn(-WHEEL_RUDDER_LIMIT, WHEEL_RUDDER_LIMIT)
+    }
+
+    /** Inputs for a wheeled vehicle backing round or still rolling back from it; null to drive on as usual. */
+    private fun backing(vehicle: VehicleEntity, diff: Double, forwardSpeed: Double, throttle: Boolean, detail: String): Steering? {
+        if (backsRound(vehicle, diff, forwardSpeed)) {
+            // Turning back on itself: backing round, the wheels over the other way, then on forward.
+            val right = diff < 0
+            val left = diff > 0
+            vehicle.forwardInputDown = false
+            vehicle.backInputDown = true
+            vehicle.rightInputDown = right
+            vehicle.leftInputDown = left
+            return Steering(right, left, "$detail backing round")
+        }
+        if (forwardSpeed >= -REVERSING_SPEED) return null
+        // Done backing but still rolling backwards: wheels straight and the throttle as a brake.
+        // The native yaw follows the sign of the power, not of the motion, so a forward wheel angle
+        // here turned the hull back past the exit angle; it chattered on that edge and kept rolling
+        // down a slope (headless 24.10).
+        if (vehicle.computed().engineType == EngineType.WHEEL) {
+            vehicle.rudderRot = 0f
+            vehicle.deltaRot = 0f
+        }
+        vehicle.forwardInputDown = throttle
+        vehicle.backInputDown = false
+        vehicle.rightInputDown = false
+        vehicle.leftInputDown = false
+        return Steering(false, false, "$detail stopping")
+    }
+
+    /**
+     * Whether a wheeled vehicle [diff] degrees off its way backs round. Once backing, it backs on
+     * until the way is well inside a sharp turn: switched to forward steering at a fixed angle
+     * while still rolling backwards, the forward wheel angle turned it back past that angle again,
+     * and it chattered between the two and reversed some 50 blocks without turning (in-game 23.10).
+     */
+    private fun backsRound(vehicle: VehicleEntity, diff: Double, forwardSpeed: Double): Boolean {
+        val backing = forwardSpeed < -REVERSING_SPEED && Math.abs(diff) > BACKING_EXIT_TURN
+        return (Math.abs(diff) > REVERSE_TURN || backing) && roomBehind(vehicle)
+    }
+
+    /** Ground to back onto behind the hull: nothing more than a step up or a drop it could climb back. */
+    private fun roomBehind(vehicle: VehicleEntity): Boolean {
+        val level = vehicle.level()
+        val hull = vehicle.getCombinedAABB()
+        val half = Math.max(hull.xsize, hull.zsize) / 2.0
+        val back = vehicle.getViewVector(1f).multiply(-1.0, 0.0, -1.0).normalize()
+        val from = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, vehicle.blockX, vehicle.blockZ)
+        val climb = Math.max(1.0, vehicle.maxUpStep().toDouble())
+        for (d in listOf(half + 1.0, half + BACK_ROOM)) {
+            val x = Mth.floor(vehicle.x + back.x * d)
+            val z = Mth.floor(vehicle.z + back.z * d)
+            val h = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z)
+            if (Math.abs(h - from) > climb) return false
+            // The heightmap counts fluids: water level with the bank passed as ground, and a LAV
+            // backing round on a shore reversed into a lake (in-game 24.10).
+            if (!level.getFluidState(net.minecraft.core.BlockPos(x, h - 1, z)).isEmpty) return false
+        }
+        return true
+    }
+
+    override fun reverse(vehicle: Entity, turnLeft: Boolean) {
+        if (vehicle !is VehicleEntity) return
+        vehicle.forwardInputDown = false
+        vehicle.backInputDown = true
+        vehicle.leftInputDown = turnLeft
+        vehicle.rightInputDown = !turnLeft
+    }
+
+    override fun release(vehicle: Entity) {
+        if (vehicle !is VehicleEntity) return
+        vehicle.forwardInputDown = false
+        vehicle.backInputDown = false
+        vehicle.leftInputDown = false
+        vehicle.rightInputDown = false
+    }
+
+    // Releasing the pedals alone does not slow a wheeled vehicle down fast enough: per
+    // VehicleEngineUtils.wheelEngine, `power` (throttle) only decays 3%/tick when idle and keeps
+    // adding forward thrust every tick proportional to itself regardless of input state. Zeroing it
+    // removes that thrust immediately; ground friction then kills actual speed within a few ticks.
+    override fun cutPower(vehicle: Entity) {
+        (vehicle as? VehicleEntity)?.power = 0f
+    }
+
+    override fun hull(vehicle: Entity): AABB = (vehicle as? VehicleEntity)?.getCombinedAABB() ?: vehicle.boundingBox
+
+    override fun occupies(vehicle: Entity, box: AABB, clearance: Double): Boolean {
+        if (vehicle !is VehicleEntity || vehicle.enableAABB()) return vehicle.boundingBox.inflate(clearance).intersects(box)
+        val obbs = vehicle.getOBBs()
+        if (obbs.isEmpty()) return vehicle.boundingBox.inflate(clearance).intersects(box)
+        val probe = box.inflate(clearance)
+        return obbs.any { OBB.isColliding(it, probe) }
+    }
+
+    override fun wouldHit(vehicle: Entity, other: Entity, offset: Vec3): Boolean {
+        if (vehicle !is VehicleEntity) return vehicle.boundingBox.move(offset).intersects(other.boundingBox)
+        return if (vehicle.enableAABB()) {
+            vehicle.boundingBox.move(offset).intersects(other.boundingBox)
+        } else {
+            vehicle.isInObb(other, offset)
+        }
+    }
+
+    // --- Damage ---
+
+    override fun lastHitTime(vehicle: Entity): Long = (vehicle as? VehicleEntity)?.lastDamageStamp ?: 0L
+
+    override fun lastAttacker(vehicle: Entity): Entity? {
+        if (vehicle !is VehicleEntity) return null
+        return vehicle.lastDamageSource?.entity as? LivingEntity ?: vehicle.lastAttacker as? LivingEntity
+    }
+
+    // --- Weapons ---
+
+    override fun canFire(vehicle: Entity, passenger: LivingEntity): Boolean = vehicle is VehicleEntity && vehicle.canShoot(passenger)
+
+    override fun canAimAt(vehicle: Entity, gunner: Entity, target: LivingEntity, seat: Int): Boolean = vehicle is VehicleEntity && VehicleAim.canEngage(vehicle, gunner, seat, target)
+
+    override fun canReach(vehicle: Entity, gunner: Entity, target: LivingEntity, seat: Int): Boolean = vehicle is VehicleEntity && VehicleAim.canReach(vehicle, gunner, seat, target)
+
+    override fun seatReady(vehicle: Entity, seat: Int): Boolean = vehicle is VehicleEntity && vehicle.getGunData(seat)?.canShoot(vehicle.ammoSupplier) == true
+
+    // `canShoot` is false while SBW reloads or cools a weapon; only an empty weapon counts here.
+    override fun seatHasAmmo(vehicle: Entity, passenger: Entity): Boolean {
+        if (vehicle !is VehicleEntity) return false
+        val gunData = vehicle.getGunData(passenger) ?: return false
+        return gunData.hasEnoughAmmoToShoot(vehicle.ammoSupplier) ||
+            gunData.countBackupAmmo(vehicle.ammoSupplier) > 0
+    }
+
+    // SBW only learns about a target it did not see acquired itself through these UUIDs — e.g. one
+    // the gunner already had while still walking up to the vehicle.
+    override fun aimAt(vehicle: Entity, gunner: Entity, target: LivingEntity?) {
+        if (vehicle !is VehicleEntity) return
+        val targetId = target?.stringUUID ?: "undefined"
+        if (gunner === vehicle.getNthEntity(vehicle.turretControllerIndex)) {
+            vehicle.aiTurretTargetUUID = targetId
+        }
+        if (gunner === vehicle.getNthEntity(vehicle.passengerWeaponStationControllerIndex)) {
+            vehicle.aiPassengerWeaponTargetUUID = targetId
+        }
+    }
+
+    // Every crewed SBW cannon the mod uses lists AP first and HE second in its `AmmoType` — the three
+    // tanks and the Mi-28's 30mm turret.
+    override fun loadRound(vehicle: Entity, seat: Int, weapon: Int, round: CannonRound) {
+        if (vehicle !is VehicleEntity) return
+        val ammo = when (round) {
+            CannonRound.ARMOUR_PIERCING -> 0
+            CannonRound.HIGH_EXPLOSIVE -> 1
+        }
+        if (vehicle.getWeaponIndex(seat) != weapon) {
+            vehicle.setWeaponIndex(seat, weapon)
+        }
+        vehicle.modifyGunData(seat, weapon) { gun ->
+            if (gun.selectedAmmoType.get() != ammo) {
+                gun.changeAmmoConsumer(ammo, vehicle.ammoSupplier)
+            }
+        }
+    }
+
+    // --- Condition ---
+
+    override fun engineRunning(vehicle: Entity): Boolean = (vehicle as? VehicleEntity)?.engineRunning() == true
+
+    override fun storedPower(vehicle: Entity): Int = (vehicle as? VehicleEntity)?.energy ?: 0
+
+    override fun healthFraction(vehicle: Entity): Float {
+        if (vehicle !is VehicleEntity) return 0f
+        return vehicle.health / vehicle.getMaxHealth()
+    }
+
+    // --- Rotorcraft ---
+    // The collective is `forwardInputDown`; `upInputDown` is a hover TOGGLE SBW self-clears and must
+    // never be written; attitude comes from the cyclic (`mouseMoveSpeedX`/`Y`), and the pedals are
+    // pure roll — yaw only ever comes from the cyclic.
+
+    override fun roll(heli: Entity): Float = (heli as? VehicleEntity)?.roll ?: 0f
+
+    override fun rotorSpeed(heli: Entity): Float = (heli as? VehicleEntity)?.synchedPropellerRot ?: 0f
+
+    override fun throttle(heli: Entity): Float = (heli as? VehicleEntity)?.power ?: 0f
+
+    // `computed().engineInfo` is the raw JSON the vehicle data was loaded from — casting it to an
+    // EngineInfo silently yields null. The deserialized one lives on the entity, and only appears
+    // once the engine has ticked at least once.
+    override fun turnRates(heli: Entity): TurnRates? {
+        val engine = (heli as? VehicleEntity)?.engineInfo as? EngineInfo.Helicopter ?: return null
+        return TurnRates(engine.yawSpeed, engine.pitchSpeed)
+    }
+
+    override fun setCollective(heli: Entity, climb: Boolean, sinkSlow: Boolean, sinkFast: Boolean) {
+        if (heli !is VehicleEntity) return
+        heli.forwardInputDown = climb
+        heli.backInputDown = sinkSlow
+        heli.downInputDown = sinkFast
+    }
+
+    override fun setCyclic(heli: Entity, x: Float, y: Float) {
+        if (heli !is VehicleEntity) return
+        heli.mouseMoveSpeedX = x
+        heli.mouseMoveSpeedY = y
+    }
+
+    override fun setHover(heli: Entity, on: Boolean) {
+        (heli as? VehicleEntity)?.hoverMode = on
+    }
+
+    override fun setRollInputs(heli: Entity, left: Boolean, right: Boolean) {
+        if (heli !is VehicleEntity) return
+        heli.leftInputDown = left
+        heli.rightInputDown = right
+    }
+
+    override fun neutralControls(heli: Entity) {
+        if (heli !is VehicleEntity) return
+        heli.forwardInputDown = false
+        heli.backInputDown = false
+        heli.downInputDown = false
+        heli.leftInputDown = false
+        heli.rightInputDown = false
+        heli.mouseMoveSpeedX = 0f
+        heli.mouseMoveSpeedY = 0f
+        heli.hoverMode = false
+    }
+
+    // There is no "engine off" input: with engineStart still set, the engine pushes power back up to
+    // 0.045 whenever it drops below 0.04, so a parked helicopter would spin its rotor and drain the
+    // battery forever. These are the same public fields the engine itself drives.
+    override fun shutDownEngine(heli: Entity) {
+        if (heli !is VehicleEntity) return
+        if (heli.engineStart || heli.power > 0f) {
+            heli.engineStart = false
+            heli.engineStartOver = false
+            heli.power = 0f
+        }
+    }
+
+    // Heading error (degrees) at/beyond which driveToward commands full steering lock
+    // (MAX_RUDDER_MAGNITUDE). Smaller = more aggressive (reaches full lock at a gentler heading
+    // error); 45° means anything from a moderate correction to a near-reversal all command close to
+    // full lock, while small corrections near the target heading get proportionally gentle steering.
+    private const val RUDDER_FULL_LOCK_DEGREES = 45.0
+    private const val WHEEL_YAW_PER_BLOCK = 12.0
+    private const val WHEEL_RUDDER_LIMIT = 0.6f
+    private const val WHEEL_RUDDER_DECAY = 0.75f
+
+    // Below the vehicle's hard rudderRot clamp (±0.8 in VehicleEngineUtils.wheelEngine) on purpose:
+    // rudderRot's *0.75 decay applies every tick even while an input is held, so continuous
+    // single-direction holding only settles at ~0.3-0.6 depending on speed (lower at cruising
+    // speed, since deltaRot's own decay also scales with speed) — well under the hard clamp.
+    // Targeting within that achievable range keeps the proportional response effective across most
+    // of a turn, not just its final stretch.
+    private const val MAX_RUDDER_MAGNITUDE = 0.4f
+
+    // How close actual rudderRot must get to the target before releasing input — too small and
+    // float noise/the engine's own per-tick rudderRot changes chatter the input on/off every tick;
+    // too large and steering stays visibly short of what was actually commanded.
+    private const val RUDDER_DEADBAND = 0.05f
+
+    // Heading error (degrees) within which a boat's helm is let go: the swing it has built up
+    // carries it the rest of the way.
+    private const val SHIP_HEADING_DEADBAND = 12.0
+
+    // A turn sharper than this (degrees) is taken at no more than SHIP_TURN_SPEED blocks a tick.
+    private const val SHIP_SHARP_TURN = 45.0
+    private const val SHIP_TURN_SPEED = 0.35
+
+    // A land vehicle's heading error (degrees) past which the turn is taken slowly, not at speed.
+    private const val SHARP_TURN = 60.0
+
+    // Past this (degrees), a wheeled vehicle backs round rather than drive a circle forward.
+    private const val REVERSE_TURN = 100.0
+
+    // Taking a sharp turn, a wheeled vehicle keeps the throttle on only below this (blocks a tick)
+    // and brakes above TURN_SPEED.
+    private const val CREEP_SPEED = 0.12
+    private const val TURN_SPEED = 0.25
+
+    // Past this heading error (degrees) the route point is behind the wheels' circle: full lock.
+    private const val RIGHT_ANGLE = 90.0
+
+    // Backing round, a wheeled vehicle backs on until its heading error (degrees) is below this.
+    private const val BACKING_EXIT_TURN = 30.0
+
+    // Rolling backwards faster than this (blocks a tick), a hull counts as backing round.
+    private const val REVERSING_SPEED = 0.02
+
+    // Blocks behind the hull that must be ground it can back onto.
+    private const val BACK_ROOM = 4.0
+}

@@ -36,6 +36,7 @@ class SquadMod(bus: IEventBus, container: ModContainer) {
         Ports.gear = SbwGear
         Ports.loader = NeoForgeLoaderHooks
         ClientboundPackets.transport = NeoForgeClientboundTransport
+        com.sbwnpc.squad.network.ServerboundPackets.transport = com.sbwnpc.squad.network.NeoForgeServerboundTransport
         Settings.current = SquadConfig
 
         container.registerConfig(net.neoforged.fml.config.ModConfig.Type.SERVER, com.sbwnpc.squad.config.SquadConfig.SPEC)

@@ -204,11 +204,6 @@ rules are in [docs/CODE-STYLE.md](docs/CODE-STYLE.md).
 - A GameTest for a feature goes in the feature's own branch, written first and red, so it is
   green when the feature lands. A new test class belongs in a group (`GameTestGroups`), or the
   server refuses to start.
-- Local test pack for any loader: `python3 scripts/localpack.py <fabric|forge|neoforge> [--mrpack]`
-  downloads the pinned SuperbWarfare, the addon's dependencies and quality-of-life mods (lists in
-  `scripts/localpack/`) from Modrinth into `build/localpack/<loader>/mods`, with the built addon
-  jar. `--mrpack` writes a file that Prism Launcher or the Modrinth app imports, installing the
-  loader too.
 
 ### Install for in-game testing
 
@@ -220,6 +215,10 @@ rules are in [docs/CODE-STYLE.md](docs/CODE-STYLE.md).
   ```
   Not into a `~/.minecraft/mods/1.21.1/` subfolder: the launcher doesn't read it. Remove any jar
   of another version from `mods/` first, so two versions of the mod don't load at once.
+- Local test pack for any loader: `python3 scripts/localpack.py <fabric|forge|neoforge> [--mrpack]` downloads the
+  pinned SuperbWarfare, the addon's dependencies and quality-of-life mods (lists in `scripts/localpack/`) from
+  Modrinth into `build/localpack/<loader>/mods`, with the built addon jar. `--mrpack` writes a file that Prism
+  Launcher or the Modrinth app imports, installing the loader too.
 - Never overwrite a jar in place while Minecraft is running: the JVM caches ZIP offsets and later
   class loading can fail. The installer stages the new archive and swaps it in atomically. A full
   Minecraft restart loads the new build.

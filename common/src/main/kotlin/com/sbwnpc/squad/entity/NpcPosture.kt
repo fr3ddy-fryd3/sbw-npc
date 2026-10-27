@@ -3,6 +3,7 @@ package com.sbwnpc.squad.entity
 import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.combat.TickBudget
 import com.sbwnpc.squad.combat.tactics.TacticalJob
+import com.sbwnpc.squad.compat.VersionCompat
 import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.EntityDimensions
@@ -44,7 +45,7 @@ class NpcPosture(private val npc: NpcEntity) {
             if (level != null) {
                 if (!TickBudget.hasRaycasts(level)) {
                     crouch = false
-                } else if (Sightline.blocked(level, npc.position().add(0.0, CROUCHING_DIMENSIONS.eyeHeight().toDouble(), 0.0), npc.target!!.eyePosition, npc)) {
+                } else if (Sightline.blocked(level, npc.position().add(0.0, CROUCHING_EYE_HEIGHT.toDouble(), 0.0), npc.target!!.eyePosition, npc)) {
                     crouch = false
                     standUntilTick = tick + STAND_TO_SHOOT_TICKS
                 }
@@ -67,7 +68,9 @@ class NpcPosture(private val npc: NpcEntity) {
         fun spreadFactor(npc: NpcEntity): Double = if (npc.isCrouching) CROUCHED_SPREAD else 1.0
 
         /** A player's crouch, scaled to the NPC's height; the eyes clear a one-block wall. */
-        val CROUCHING_DIMENSIONS: EntityDimensions = EntityDimensions.scalable(0.6f, 1.55f).withEyeHeight(1.35f)
+        const val STANDING_EYE_HEIGHT = 1.74f
+        const val CROUCHING_EYE_HEIGHT = 1.35f
+        val CROUCHING_DIMENSIONS: EntityDimensions = VersionCompat.crouchingDimensions(0.6f, 1.55f, CROUCHING_EYE_HEIGHT)
         private const val STILL_SPEED_SQR = 0.0025
         private const val CROUCH_AFTER_TICKS = 10
         private const val SIGHT_LOST_STAND_TICKS = 10

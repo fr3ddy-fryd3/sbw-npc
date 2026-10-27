@@ -27,6 +27,20 @@ val commonKotlin by configurations.creating {
     isCanBeConsumed = true
 }
 artifacts.add(commonKotlin.name, file("src/main/kotlin"))
+// Screens, renderers and the HUD: shared by the loaders like the rest, but kept out of src/main so
+// the shared gameplay code cannot grow a dependency on the client (see verifyCommonBoundary).
+val commonClientKotlin by configurations.creating {
+    isCanBeResolved = false
+    isCanBeConsumed = true
+}
+artifacts.add(commonClientKotlin.name, file("src/client/kotlin"))
+// Code that exists only for Minecraft 1.21 (NeoForge and Fabric); Forge on 1.20.1 has its own versions of
+// these classes in its module. Compiled with the shared sources here so the vanilla check sees both.
+val commonMc121Kotlin by configurations.creating {
+    isCanBeResolved = false
+    isCanBeConsumed = true
+}
+artifacts.add(commonMc121Kotlin.name, file("src/mc121/kotlin"))
 val commonResources by configurations.creating {
     isCanBeResolved = false
     isCanBeConsumed = true
@@ -74,7 +88,10 @@ artifacts.add(commonGeneratedKotlin.name, layout.buildDirectory.dir("generated/b
     builtBy(generateBuildFlags)
 }
 kotlin {
-    sourceSets.main { kotlin.srcDir(generateBuildFlags) }
+    sourceSets.main {
+        kotlin.srcDir(generateBuildFlags)
+        kotlin.srcDir("src/mc121/kotlin")
+    }
 }
 
 // Loaders recompile these sources; the vanilla check must not become a second shipped jar.
@@ -109,4 +126,8 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
-tasks.withType<Test> { useJUnitPlatform() }
+tasks.withType<Test> {
+    useJUnitPlatform()
+    // ScreenBaseTest reads the screens' source text, so the test reruns when one changes.
+    inputs.dir("src/client/kotlin/com/sbwnpc/squad/client/screen").withPropertyName("screenSources")
+}

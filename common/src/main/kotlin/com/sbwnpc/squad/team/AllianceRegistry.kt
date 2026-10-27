@@ -1,12 +1,12 @@
 package com.sbwnpc.squad.team
 
+import com.sbwnpc.squad.compat.SavedDataAccess
+import com.sbwnpc.squad.compat.VersionedSavedData
 import com.sbwnpc.squad.npc.SquadFaction
-import net.minecraft.core.HolderLookup
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
 import net.minecraft.nbt.Tag
 import net.minecraft.server.MinecraftServer
-import net.minecraft.world.level.saveddata.SavedData
 import java.util.UUID
 
 /**
@@ -16,7 +16,7 @@ import java.util.UUID
  * Factions are few and fixed, so everything is kept as bit masks and flat arrays indexed by
  * ordinal: [Diplomacy.friendly] runs inside every hostility check, which is to say constantly.
  */
-class AllianceRegistry : SavedData() {
+class AllianceRegistry : VersionedSavedData() {
     /** Each faction's alliance as a mask of its members, itself included; 0 when in none. */
     val blocOf = IntArray(FACTIONS)
 
@@ -44,7 +44,7 @@ class AllianceRegistry : SavedData() {
         val yes: HashMap<Int, MutableSet<UUID>> = HashMap(),
     )
 
-    override fun save(tag: CompoundTag, registries: HolderLookup.Provider): CompoundTag {
+    override fun write(tag: CompoundTag): CompoundTag {
         tag.putIntArray("Blocs", blocOf)
         tag.putLongArray("Truces", truceUntil)
         tag.putInt("NextProposal", nextProposalId)
@@ -94,7 +94,7 @@ class AllianceRegistry : SavedData() {
             return out
         }
 
-        private fun load(tag: CompoundTag, registries: HolderLookup.Provider): AllianceRegistry {
+        private fun load(tag: CompoundTag): AllianceRegistry {
             val reg = AllianceRegistry()
             tag.getIntArray("Blocs").copyInto(reg.blocOf, endIndex = minOf(FACTIONS, tag.getIntArray("Blocs").size))
             tag.getLongArray("Truces").let { it.copyInto(reg.truceUntil, endIndex = minOf(it.size, reg.truceUntil.size)) }
@@ -117,10 +117,6 @@ class AllianceRegistry : SavedData() {
             return reg
         }
 
-        fun get(server: MinecraftServer): AllianceRegistry =
-            server.overworld().dataStorage.computeIfAbsent(
-                SavedData.Factory({ AllianceRegistry() }, ::load, null),
-                FILE,
-            )
+        fun get(server: MinecraftServer): AllianceRegistry = SavedDataAccess.fetch(server.overworld().dataStorage, FILE, ::AllianceRegistry, ::load)
     }
 }

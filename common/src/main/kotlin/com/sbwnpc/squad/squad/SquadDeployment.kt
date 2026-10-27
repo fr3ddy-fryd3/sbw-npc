@@ -115,7 +115,7 @@ object SquadDeployment {
             npc.npcClass = cls
             npc.npcRank = rank
             npc.spawnFaction = faction
-            npc.finalizeSpawn(level, difficulty, MobSpawnType.SPAWN_EGG, null)
+            npc.spawnNpc(level, difficulty)
             level.addFreshEntity(npc)
             result.add(npc)
         }
@@ -155,7 +155,7 @@ object SquadDeployment {
             npc.npcClass = cls
             npc.npcRank = rank
             npc.spawnFaction = faction
-            npc.finalizeSpawn(level, difficulty, MobSpawnType.SPAWN_EGG, null)
+            npc.spawnNpc(level, difficulty)
             level.addFreshEntity(npc)
             result.add(npc)
         }

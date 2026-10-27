@@ -29,6 +29,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.InteractionHand
+import net.minecraft.world.item.CreativeModeTabs
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.context.BlockPlaceContext
 import net.minecraft.world.item.context.UseOnContext
@@ -44,15 +45,33 @@ import net.neoforged.neoforge.common.util.FakePlayerFactory
 import net.neoforged.neoforge.event.entity.player.PlayerEvent
 import net.neoforged.neoforge.event.entity.player.PlayerRespawnPositionEvent
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
-import net.neoforged.neoforge.network.handling.IPayloadContext
 import java.lang.reflect.InvocationTargetException
-import java.lang.reflect.Proxy
 import java.util.UUID
-import java.util.concurrent.CompletableFuture
-import java.util.function.Supplier
 
 @PrefixGameTestTemplate(false)
 object FactionLogisticsGameTests {
+    /**
+     * The squad items must be obtainable the way a player looks for them: in SuperbWarfare's *Items*
+     * creative tab, which is also what a recipe viewer such as JEI lists. The addon ships no JEI plugin
+     * of its own; JEI shows every item the creative tabs contain.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 20, batch = "item-availability")
+    fun squadItemsAreRegisteredAndListedInSbwItemsTab(helper: GameTestHelper) {
+        val squadItems = mapOf("squad_tool" to ModItems.SQUAD_TOOL.get(), "barracks" to ModItems.BARRACKS.get(), "supply" to ModItems.SUPPLY.get())
+        squadItems.forEach { (path, item) ->
+            helper.assertTrue(BuiltInRegistries.ITEM.getKey(item) == ResourceLocation.fromNamespaceAndPath("sbwnpc", path), "$path is not registered as sbwnpc:$path")
+        }
+
+        CreativeModeTabs.tryRebuildTabContents(helper.level.enabledFeatures(), true, helper.level.registryAccess())
+        val tab = requireNotNull(BuiltInRegistries.CREATIVE_MODE_TAB.get(ResourceLocation.fromNamespaceAndPath("superbwarfare", "item"))) { "SuperbWarfare's Items tab is missing" }
+        val listed = tab.displayItems.map { it.item }.toSet()
+        squadItems.forEach { (path, item) ->
+            helper.assertTrue(item in listed, "sbwnpc:$path is missing from SuperbWarfare's Items creative tab")
+        }
+        helper.succeed()
+    }
+
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 40, batch = "player-backup-pistols")
     fun everyPlayerWeaponIssuesTheMappedPistolAndReserveWithoutDuplication(helper: GameTestHelper) {
@@ -526,29 +545,13 @@ object FactionLogisticsGameTests {
 
     /** Execute the registered production handler on the test server thread; no replacement policy. */
     private fun handle(name: String, payload: CustomPacketPayload, player: ServerPlayer) {
-        val context = Proxy.newProxyInstance(IPayloadContext::class.java.classLoader, arrayOf(IPayloadContext::class.java)) { _, method, args ->
-            when (method.name) {
-                "player" -> player
-
-                "enqueueWork" -> {
-                    when (val task = args!!.single()) {
-                        is Runnable -> {
-                            task.run()
-                            CompletableFuture.completedFuture(null)
-                        }
-
-                        is Supplier<*> -> CompletableFuture.completedFuture(task.get())
-
-                        else -> error("Unexpected server work: $task")
-                    }
-                }
-
-                else -> error("Unexpected payload context method: ${method.name}")
-            }
-        } as IPayloadContext
-        val method = ModNetwork::class.java.getDeclaredMethod(name, payload.javaClass, IPayloadContext::class.java).apply { isAccessible = true }
+        val context = object : PayloadContext {
+            override fun player() = player
+            override fun enqueueWork(task: Runnable) = task.run()
+        }
+        val method = ServerPayloadHandlers::class.java.getDeclaredMethod(name, payload.javaClass, PayloadContext::class.java).apply { isAccessible = true }
         try {
-            method.invoke(ModNetwork, payload, context)
+            method.invoke(ServerPayloadHandlers, payload, context)
         } catch (failure: InvocationTargetException) {
             throw failure.targetException
         }

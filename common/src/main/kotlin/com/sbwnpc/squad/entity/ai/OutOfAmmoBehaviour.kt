@@ -111,7 +111,7 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
             return
         }
         val cover = search.value
-        if (cover != null && move(entity, cover.bottomCenter, hidden = true)) return
+        if (cover != null && move(entity, Vec3.atBottomCenterOf(cover), hidden = true)) return
         if (cover != null) failedCover += cover
         val away = (1..6).mapNotNull { DefaultRandomPos.getPosAway(entity, STEP, VERTICAL, target.position()) }
             .filter { retreat.permits(it) && !GrenadeHazard.threatens(level, it) }

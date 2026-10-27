@@ -1,5 +1,7 @@
 package com.sbwnpc.squad.combat
 
+import com.sbwnpc.squad.compat.VersionCompat
+import com.sbwnpc.squad.compat.VersionedClipContext
 import net.minecraft.core.BlockPos
 import net.minecraft.core.registries.Registries
 import net.minecraft.resources.ResourceLocation
@@ -11,7 +13,6 @@ import net.minecraft.world.level.ClipContext
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.StainedGlassPaneBlock
-import net.minecraft.world.level.block.TransparentBlock
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
@@ -60,7 +61,7 @@ object DetectionSightline {
         return Sighting(visibility, context.grassBlocks)
     }
 
-    private class DetectionContext(from: Vec3, to: Vec3, collision: CollisionContext) : ClipContext(from, to, Block.COLLIDER, Fluid.NONE, collision) {
+    private class DetectionContext(from: Vec3, to: Vec3, collision: CollisionContext) : VersionedClipContext(from, to, collision) {
         private var foliage = 0
 
         /** Grass cells the ray passed through, counted up to the number that hides the target. */
@@ -79,10 +80,10 @@ object DetectionSightline {
     }
 
     private fun isGrass(state: BlockState): Boolean =
-        state.`is`(Blocks.SHORT_GRASS) || state.`is`(Blocks.TALL_GRASS) ||
+        state.`is`(VersionCompat.shortGrass()) || state.`is`(Blocks.TALL_GRASS) ||
             state.`is`(Blocks.FERN) || state.`is`(Blocks.LARGE_FERN)
 
     private fun isGlass(state: BlockState): Boolean =
         state.`is`(GLASS_BLOCKS) || state.`is`(GLASS_PANES) ||
-            state.block is TransparentBlock || state.block is StainedGlassPaneBlock || state.`is`(Blocks.GLASS_PANE)
+            VersionCompat.isGlassBlock(state.block) || state.block is StainedGlassPaneBlock || state.`is`(Blocks.GLASS_PANE)
 }
