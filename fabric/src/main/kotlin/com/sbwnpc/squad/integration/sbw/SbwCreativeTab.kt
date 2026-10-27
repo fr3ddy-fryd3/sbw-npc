@@ -3,7 +3,6 @@ package com.sbwnpc.squad.integration.sbw
 import com.atsuishio.superbwarfare.init.ModTabs
 import com.sbwnpc.squad.init.ModItems
 import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents
-import net.minecraft.core.registries.BuiltInRegistries
 
 /**
  * Everything goes into SuperbWarfare's own *Items* tab rather than the vanilla ones: this is an
@@ -12,11 +11,13 @@ import net.minecraft.core.registries.BuiltInRegistries
  */
 object SbwCreativeTab {
     fun register() {
-        val tab = BuiltInRegistries.CREATIVE_MODE_TAB.getResourceKey(ModTabs.ITEM_TAB).orElse(null) ?: return
-        ItemGroupEvents.modifyEntriesEvent(tab).register { entries ->
-            entries.accept(ModItems.SQUAD_TOOL)
-            entries.accept(ModItems.BARRACKS)
-            entries.accept(ModItems.SUPPLY)
+        // Matched when the tab is built, not looked up now: our initializer can run before SBW has registered its tab.
+        ItemGroupEvents.MODIFY_ENTRIES_ALL.register { group, entries ->
+            if (group === ModTabs.ITEM_TAB) {
+                entries.accept(ModItems.SQUAD_TOOL)
+                entries.accept(ModItems.BARRACKS)
+                entries.accept(ModItems.SUPPLY)
+            }
         }
     }
 }
