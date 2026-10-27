@@ -1,17 +1,17 @@
 package com.sbwnpc.squad.squad
 
+import com.sbwnpc.squad.compat.SavedDataAccess
+import com.sbwnpc.squad.compat.VersionedSavedData
 import net.minecraft.core.BlockPos
-import net.minecraft.core.HolderLookup
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
 import net.minecraft.nbt.Tag
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerLevel
-import net.minecraft.world.level.saveddata.SavedData
 import java.util.UUID
 
 /** Server-wide registry of named patrol routes, per-player. */
-class RouteManager : SavedData() {
+class RouteManager : VersionedSavedData() {
 
     private val routes = LinkedHashMap<UUID, Route>()
 
@@ -30,7 +30,7 @@ class RouteManager : SavedData() {
         if (routes.remove(id) != null) setDirty()
     }
 
-    override fun save(tag: CompoundTag, registries: HolderLookup.Provider): CompoundTag {
+    override fun write(tag: CompoundTag): CompoundTag {
         val list = ListTag()
         routes.values.forEach { list.add(it.save()) }
         tag.put("Routes", list)
@@ -40,7 +40,7 @@ class RouteManager : SavedData() {
     companion object {
         private const val FILE = "sbwnpc_routes"
 
-        private fun load(tag: CompoundTag, registries: HolderLookup.Provider): RouteManager {
+        private fun load(tag: CompoundTag): RouteManager {
             val mgr = RouteManager()
             tag.getList("Routes", Tag.TAG_COMPOUND.toInt()).forEach { e ->
                 val route = Route.load(e as CompoundTag)
@@ -49,11 +49,7 @@ class RouteManager : SavedData() {
             return mgr
         }
 
-        fun get(server: MinecraftServer): RouteManager =
-            server.overworld().dataStorage.computeIfAbsent(
-                SavedData.Factory({ RouteManager() }, ::load, null),
-                FILE,
-            )
+        fun get(server: MinecraftServer): RouteManager = SavedDataAccess.fetch(server.overworld().dataStorage, FILE, ::RouteManager, ::load)
 
         fun get(level: ServerLevel): RouteManager = get(level.server)
     }

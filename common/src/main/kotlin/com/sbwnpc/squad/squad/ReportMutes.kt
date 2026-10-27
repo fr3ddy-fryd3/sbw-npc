@@ -1,15 +1,15 @@
 package com.sbwnpc.squad.squad
 
-import net.minecraft.core.HolderLookup
+import com.sbwnpc.squad.compat.SavedDataAccess
+import com.sbwnpc.squad.compat.VersionedSavedData
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.StringTag
 import net.minecraft.nbt.Tag
 import net.minecraft.server.MinecraftServer
-import net.minecraft.world.level.saveddata.SavedData
 import java.util.UUID
 
 /** Players who have switched their squads' radio calls ([SquadReports]) off — all squads at once. */
-class ReportMutes : SavedData() {
+class ReportMutes : VersionedSavedData() {
 
     private val muted = HashSet<UUID>()
 
@@ -22,7 +22,7 @@ class ReportMutes : SavedData() {
         return player !in muted
     }
 
-    override fun save(tag: CompoundTag, registries: HolderLookup.Provider): CompoundTag {
+    override fun write(tag: CompoundTag): CompoundTag {
         tag.put("Muted", net.minecraft.nbt.ListTag().apply { muted.forEach { add(StringTag.valueOf(it.toString())) } })
         return tag
     }
@@ -30,7 +30,7 @@ class ReportMutes : SavedData() {
     companion object {
         private const val FILE = "sbwnpc_report_mutes"
 
-        private fun load(tag: CompoundTag, registries: HolderLookup.Provider): ReportMutes {
+        private fun load(tag: CompoundTag): ReportMutes {
             val data = ReportMutes()
             tag.getList("Muted", Tag.TAG_STRING.toInt()).forEach { entry ->
                 runCatching { UUID.fromString(entry.asString) }.getOrNull()?.let { data.muted += it }
@@ -38,6 +38,6 @@ class ReportMutes : SavedData() {
             return data
         }
 
-        fun get(server: MinecraftServer): ReportMutes = server.overworld().dataStorage.computeIfAbsent(SavedData.Factory({ ReportMutes() }, ::load, null), FILE)
+        fun get(server: MinecraftServer): ReportMutes = SavedDataAccess.fetch(server.overworld().dataStorage, FILE, ::ReportMutes, ::load)
     }
 }

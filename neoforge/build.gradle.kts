@@ -201,6 +201,10 @@ val commonClientKotlin by configurations.creating {
     isCanBeConsumed = false
     isTransitive = false
 }
+val commonMc121Kotlin by configurations.creating {
+    isCanBeConsumed = false
+    isTransitive = false
+}
 val commonResources by configurations.creating {
     isCanBeConsumed = false
     isTransitive = false
@@ -228,6 +232,7 @@ configurations.named("runtimeClasspath") { extendsFrom(gameRuntimeOnly) }
 dependencies {
     add(commonKotlin.name, project(mapOf("path" to ":common", "configuration" to "commonKotlin")))
     add(commonClientKotlin.name, project(mapOf("path" to ":common", "configuration" to "commonClientKotlin")))
+    add(commonMc121Kotlin.name, project(mapOf("path" to ":common", "configuration" to "commonMc121Kotlin")))
     add(commonResources.name, project(mapOf("path" to ":common", "configuration" to "commonResources")))
     add(commonGeneratedKotlin.name, project(mapOf("path" to ":common", "configuration" to "commonGeneratedKotlin")))
     add(commonJava.name, project(mapOf("path" to ":common", "configuration" to "commonJava")))
@@ -325,6 +330,7 @@ kotlin {
     sourceSets.main {
         kotlin.srcDir(commonKotlin)
         kotlin.srcDir(commonClientKotlin)
+        kotlin.srcDir(commonMc121Kotlin)
         kotlin.srcDir(commonGeneratedKotlin)
     }
 }

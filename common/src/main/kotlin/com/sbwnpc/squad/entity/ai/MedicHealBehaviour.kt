@@ -4,6 +4,7 @@ import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.ModIdentity
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.compat.VersionCompat
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
@@ -238,11 +239,11 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun setSprinting(entity: NpcEntity, sprinting: Boolean) {
         val attr = entity.getAttribute(Attributes.MOVEMENT_SPEED) ?: return
         if (!sprinting) {
-            attr.removeModifier(SPRINT_MODIFIER_ID)
+            VersionCompat.removeModifier(attr, SPRINT_MODIFIER_ID)
             return
         }
         val amount = HEAL_SPRINT_SPEED_MULTIPLIER / entity.npcClass.speedMultiplier - 1.0
-        attr.addOrUpdateTransientModifier(AttributeModifier(SPRINT_MODIFIER_ID, amount, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL))
+        VersionCompat.setMultipliedModifier(attr, SPRINT_MODIFIER_ID, amount)
     }
 
     override fun tick(entity: NpcEntity) {

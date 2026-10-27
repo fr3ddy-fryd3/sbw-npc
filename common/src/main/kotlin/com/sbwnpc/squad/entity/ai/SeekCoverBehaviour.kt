@@ -275,14 +275,14 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             if (!com.sbwnpc.squad.combat.tactics.TacticalBudget.path(entity)) return
             pendingCover = null
             if (!CoverSearch.usable(entity, level, threat, it)) return
-            val path = com.sbwnpc.squad.combat.tactics.TacticalPositions.pathToPosition(entity, it.bottomCenter)
-            if (!com.sbwnpc.squad.combat.tactics.TacticalPositions.reaches(path, it.bottomCenter)) {
+            val path = com.sbwnpc.squad.combat.tactics.TacticalPositions.pathToPosition(entity, Vec3.atBottomCenterOf(it))
+            if (!com.sbwnpc.squad.combat.tactics.TacticalPositions.reaches(path, Vec3.atBottomCenterOf(it))) {
                 failedCover.add(it)
                 return
             }
             isFallbackRetreat = false
             coverTarget = it
-            FiringSpots.claim(entity.uuid, it.bottomCenter)
+            FiringSpots.claim(entity.uuid, Vec3.atBottomCenterOf(it))
             entity.navigation.moveTo(path, 1.0)
             markCoverChoice(level, it, GREEN)
             return
@@ -313,12 +313,12 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         pendingFallback?.let {
             if (!com.sbwnpc.squad.combat.tactics.TacticalBudget.path(entity)) return
             pendingFallback = null
-            if (!level.noCollision(entity, entity.getDimensions(entity.pose).makeBoundingBox(it.bottomCenter))) {
+            if (!level.noCollision(entity, entity.getDimensions(entity.pose).makeBoundingBox(Vec3.atBottomCenterOf(it)))) {
                 failedCover.add(it)
                 return
             }
-            val path = com.sbwnpc.squad.combat.tactics.TacticalPositions.pathToPosition(entity, it.bottomCenter)
-            if (!com.sbwnpc.squad.combat.tactics.TacticalPositions.reaches(path, it.bottomCenter)) {
+            val path = com.sbwnpc.squad.combat.tactics.TacticalPositions.pathToPosition(entity, Vec3.atBottomCenterOf(it))
+            if (!com.sbwnpc.squad.combat.tactics.TacticalPositions.reaches(path, Vec3.atBottomCenterOf(it))) {
                 failedCover.add(it)
                 return
             }

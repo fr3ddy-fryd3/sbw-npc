@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.client.screen
 
+import com.sbwnpc.squad.client.ScrollScreen
 import com.sbwnpc.squad.network.DiplomacyCmdPayload
 import com.sbwnpc.squad.network.RouteCmdPayload
 import com.sbwnpc.squad.network.SquadCmdPayload
@@ -11,7 +12,6 @@ import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.Button
 import net.minecraft.client.gui.components.Tooltip
-import net.minecraft.client.gui.screens.Screen
 import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.Tag
@@ -26,7 +26,7 @@ import net.minecraft.network.chat.Component
  * screen, so managing several squads in a row takes one trip instead of reopening the GUI each
  * time. [scrollMemory] is what keeps that from bouncing the list back to the top.
  */
-class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads")) {
+class CommandScreen(snapshot: CompoundTag) : ScrollScreen(Component.literal("Squads")) {
 
     private data class Row(
         val id: String,
@@ -147,10 +147,10 @@ class CommandScreen(snapshot: CompoundTag) : Screen(Component.literal("Squads"))
 
     private fun reportsLabel(): Component = if (reportsOn) Component.literal("Reports: on") else Component.literal("Reports: off").withStyle(ChatFormatting.GRAY)
 
-    override fun mouseScrolled(mouseX: Double, mouseY: Double, deltaX: Double, deltaY: Double): Boolean {
-        if (rows.size <= visibleRows) return super.mouseScrolled(mouseX, mouseY, deltaX, deltaY)
+    override fun onScroll(mouseX: Double, mouseY: Double, amount: Double): Boolean? {
+        if (rows.size <= visibleRows) return null
         val before = scroll
-        scroll = (scroll - deltaY.toInt()).coerceIn(0, rows.size - visibleRows)
+        scroll = (scroll - amount.toInt()).coerceIn(0, rows.size - visibleRows)
         if (scroll != before) rebuildWidgets()
         return true
     }

@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.client.screen
 
+import com.sbwnpc.squad.client.ScrollScreen
 import com.sbwnpc.squad.network.SquadCmdPayload
 import com.sbwnpc.squad.network.sendToServer
 import com.sbwnpc.squad.squad.SquadOrder
@@ -7,13 +8,12 @@ import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.Button
 import net.minecraft.client.gui.components.Tooltip
 import net.minecraft.client.gui.screens.ConfirmScreen
-import net.minecraft.client.gui.screens.Screen
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.Tag
 import net.minecraft.network.chat.Component
 
 /** A live view of entity-owned progression; unloaded soldiers are explicitly unavailable. */
-class SquadDetailsScreen(private var snapshot: CompoundTag) : Screen(Component.literal("Squad")) {
+class SquadDetailsScreen(private var snapshot: CompoundTag) : ScrollScreen(Component.literal("Squad")) {
     val squadId: String get() = snapshot.getString("Id")
     private val members get() = snapshot.getList("Members", Tag.TAG_COMPOUND.toInt()).map { it as CompoundTag }
         .sortedWith(compareByDescending<CompoundTag> { it.getBoolean("Loaded") }.thenByDescending { it.getDouble("Experience") })
@@ -127,8 +127,8 @@ class SquadDetailsScreen(private var snapshot: CompoundTag) : Screen(Component.l
         super.onClose()
     }
 
-    override fun mouseScrolled(mouseX: Double, mouseY: Double, deltaX: Double, deltaY: Double): Boolean {
-        scroll = (scroll - deltaY.toInt()).coerceIn(0, maxOf(0, members.size - visible))
+    override fun onScroll(mouseX: Double, mouseY: Double, amount: Double): Boolean? {
+        scroll = (scroll - amount.toInt()).coerceIn(0, maxOf(0, members.size - visible))
         return true
     }
 

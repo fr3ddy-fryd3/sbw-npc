@@ -51,7 +51,7 @@
     <ID>ComplexCondition:VehicleAwareNavigation.kt$VehicleAwareNavigation$current != null &amp;&amp; !current.isDone &amp;&amp; goal != null &amp;&amp; goal.closerThan(pos, GOAL_DRIFT)</ID>
     <ID>ComplexCondition:VehicleAwareNavigation.kt$VehicleAwareNavigation$mob.onClimbable() || !mob.onGround() || !mob.horizontalCollision || next.y &lt;= from.y</ID>
     <ID>ComplexCondition:VehicleAwareNavigation.kt$VehicleAwareNavigation$near != null &amp;&amp; !near.canReach() &amp;&amp; near.distToTarget &gt; SHORT_OF_GOAL &amp;&amp; npc != null &amp;&amp; (npc.target == null || resupplyTrip(npc))</ID>
-    <ID>ComplexCondition:VehicleAwareNavigation.kt$VehicleAwareNodeEvaluator$origin != null &amp;&amp; origin.x == x &amp;&amp; origin.z == z &amp;&amp; kotlin.math.abs(origin.y - y) &lt;= 1</ID>
+    <ID>ComplexCondition:VehicleAwareNodeEvaluator.kt$VehicleAwareNodeEvaluator$origin != null &amp;&amp; origin.x == x &amp;&amp; origin.z == z &amp;&amp; kotlin.math.abs(origin.y - y) &lt;= 1</ID>
     <ID>ComplexCondition:VehicleCrewBehaviour.kt$VehicleCrewBehaviour$vehicle != null &amp;&amp; entity.vehicle !== vehicle &amp;&amp; entity.target != null &amp;&amp; Helicopters.isHelicopter(vehicle) &amp;&amp; !Helicopters.canFly(vehicle)</ID>
     <ID>ComplexCondition:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$!boatRouteComplete &amp;&amp; boatRoute.isNotEmpty() &amp;&amp; entity.tickCount &gt;= boatLookAheadTick &amp;&amp; horizontalDistance(vehicle.position(), boatRoute.last()) &lt; BOAT_LOOKAHEAD</ID>
     <ID>ComplexCondition:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$!driveRouteComplete &amp;&amp; driveSearch == null &amp;&amp; entity.tickCount &gt;= driveLookAheadTick &amp;&amp; horizontalDistance(vehicle.position(), driveRoute.last()) &lt; DRIVE_LOOKAHEAD</ID>
@@ -103,7 +103,7 @@
     <ID>CyclomaticComplexMethod:NativeTactics.kt$NativeTactics.World$private fun observeArea(task: AreaControlTask, squads: List&lt;Squad&gt;, now: Long)</ID>
     <ID>CyclomaticComplexMethod:NpcEntity.kt$NpcEntity$fun resupply(): Boolean</ID>
     <ID>CyclomaticComplexMethod:NpcEntity.kt$NpcEntity$internal fun orderCenter(): Vec3?</ID>
-    <ID>CyclomaticComplexMethod:NpcEntity.kt$NpcEntity$override fun dropCustomDeathLoot(level: ServerLevel, damageSource: DamageSource, recentlyHit: Boolean)</ID>
+    <ID>CyclomaticComplexMethod:NpcEntity.kt$NpcEntity$override fun dropNpcLoot(damageSource: DamageSource, recentlyHit: Boolean)</ID>
     <ID>CyclomaticComplexMethod:NpcEntity.kt$NpcEntity$override fun readAdditionalSaveData(compound: CompoundTag)</ID>
     <ID>CyclomaticComplexMethod:NpcPosture.kt$NpcPosture$fun tick()</ID>
     <ID>CyclomaticComplexMethod:NpcStuckRecovery.kt$NpcStuckRecovery$fun tick()</ID>
@@ -148,8 +148,8 @@
     <ID>CyclomaticComplexMethod:VehicleAmmoSupply.kt$VehicleAmmoSupply$fun replenish(npc: NpcEntity): Int</ID>
     <ID>CyclomaticComplexMethod:VehicleAwareNavigation.kt$VehicleAwareNavigation$override fun createPath(pos: BlockPos, accuracy: Int): Path?</ID>
     <ID>CyclomaticComplexMethod:VehicleAwareNavigation.kt$VehicleAwareNavigation$private fun choosePath(pos: BlockPos, accuracy: Int): Path?</ID>
-    <ID>CyclomaticComplexMethod:VehicleAwareNavigation.kt$VehicleAwareNodeEvaluator$override fun getNeighbors(output: Array&lt;Node&gt;, node: Node): Int</ID>
-    <ID>CyclomaticComplexMethod:VehicleAwareNavigation.kt$VehicleAwareNodeEvaluator$override fun getPathTypeOfMob(context: PathfindingContext, x: Int, y: Int, z: Int, mob: Mob): PathType</ID>
+    <ID>CyclomaticComplexMethod:VehicleAwareNodeEvaluator.kt$VehicleAwareNodeEvaluator$override fun getNeighbors(output: Array&lt;Node&gt;, node: Node): Int</ID>
+    <ID>CyclomaticComplexMethod:VehicleAwareNodeEvaluator.kt$VehicleAwareNodeEvaluator$private fun vehicleAwareType(context: PathfindingContext, x: Int, y: Int, z: Int, mob: Mob): PathType</ID>
     <ID>CyclomaticComplexMethod:VehicleCombatSupportBehaviour.kt$VehicleCombatSupportBehaviour$override fun tick(entity: NpcEntity)</ID>
     <ID>CyclomaticComplexMethod:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun boatWaypoint(entity: NpcEntity, vehicle: Entity, landing: Vec3): Vec3?</ID>
     <ID>CyclomaticComplexMethod:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun driveWaypoint(entity: NpcEntity, vehicle: Entity, home: Vec3): Vec3?</ID>
@@ -164,7 +164,7 @@
     <ID>FunctionOnlyReturningConstant:SquadTactics.kt$SquadTactics$fun holdsAfterFailure(entity: NpcEntity): Boolean</ID>
     <ID>LargeClass:GunAttackBehaviour.kt$GunAttackBehaviour : ExtendedBehaviour</ID>
     <ID>LargeClass:NativeTactics.kt$NativeTactics$World</ID>
-    <ID>LargeClass:NpcEntity.kt$NpcEntity : PathfinderMobSmartBrainOwner</ID>
+    <ID>LargeClass:NpcEntity.kt$NpcEntity : NpcEntityBaseSmartBrainOwner</ID>
     <ID>LargeClass:VehicleTransportBehaviour.kt$VehicleTransportBehaviour : ExtendedBehaviour</ID>
     <ID>LongMethod:BlindReturnFireBehaviour.kt$BlindReturnFireBehaviour$override fun tick(entity: NpcEntity)</ID>
     <ID>LongMethod:CellPlanner.kt$CellPlanner.Search$fun step(budget: Int): Boolean</ID>
@@ -225,11 +225,13 @@
     <ID>LongParameterList:NpcClass.kt$NpcClass$( val weaponPool: List&lt;ResourceLocation&gt;, val shootDistanceMultiplier: Double = 1.0, val accuracyMultiplier: Double = 1.0, val speedMultiplier: Double = 1.4, // "everyone else" default per user request — was the one global value before /** Rear offset from a contacted enemy; ordinary order movement still reaches its objective. */ val attackStandoffDistance: Double = 0.0, /** Movement clearance; short-range assault weapons need to approach closer than rifles. */ val combatClearance: Double = 48.0, /** Most primaries can fire at shared contacts beyond detection range. */ val maxFireDistance: Double = Double.POSITIVE_INFINITY, )</ID>
     <ID>LongParameterList:OperationTactics.kt$OperationTactics$(phase: AttackPhase, objective: Point3, movers: List&lt;UUID&gt;, members: List&lt;AttackMember&gt;, threats: List&lt;Point3&gt;, previousClearing: Set&lt;UUID&gt;, origins: Map&lt;UUID, Point3&gt; = emptyMap(), standoffFrom: List&lt;Point3&gt; = threats)</ID>
     <ID>LongParameterList:OperationTacticsTest.kt$OperationTacticsTest$(order: TacticalOrder = TacticalOrder.ATTACK, proposal: FrontProposal = FrontProposal(CombatDuty.FIRE, Point3(60.0, 64.0, 100.0), null), inContact: Boolean = true, scout: Boolean = false, heightRole: Boolean = false, primaryAmmo: Boolean = true, reachedMove: Boolean = false, wasFiring: Boolean = false, elsewhere: Boolean = false)</ID>
+    <ID>LongParameterList:PayloadCompat.kt$Codecs$( a: PayloadCodec&lt;A&gt;, getA: (T) -&gt; A, b: PayloadCodec&lt;B&gt;, getB: (T) -&gt; B, c: PayloadCodec&lt;C&gt;, getC: (T) -&gt; C, build: (A, B, C) -&gt; T, )</ID>
     <ID>LongParameterList:Payloads.kt$ConfigureToolPayload$( val cls: Int, val rank: Int, val faction: Int, val preset: Int, val vehicle: Boolean, val vehicleModel: Int, val tankModel: Int, val heliModel: Int, )</ID>
     <ID>LongParameterList:SafeSpawn.kt$SafeSpawn$( level: ServerLevel, preferredX: Double, preferredZ: Double, aroundY: Int, dimensions: EntityDimensions, radius: Double = DEFAULT_CLEAR_RADIUS, requireSolidFloor: Boolean = false, acceptsPosition: (Vec3) -&gt; Boolean = { true }, )</ID>
     <ID>LongParameterList:SafeSpawn.kt$SafeSpawn$( level: ServerLevel, x: Double, y: Double, z: Double, dimensions: EntityDimensions, requireSolidFloor: Boolean, )</ID>
     <ID>LongParameterList:SafeSpawn.kt$SafeSpawn$( level: ServerLevel, x: Double, z: Double, aroundY: Int, dimensions: EntityDimensions, radius: Double = STANDING_RADIUS, requireSolidFloor: Boolean = false, acceptsPosition: (Vec3) -&gt; Boolean = { true }, )</ID>
     <ID>LongParameterList:SafeSpawn.kt$SafeSpawn$( level: ServerLevel, x: Double, z: Double, aroundY: Int, dimensions: EntityDimensions, range: Int = SEARCH_RANGE, requireSolidFloor: Boolean = false, )</ID>
+    <ID>LongParameterList:ScreenCompat.kt$WidgetCompat$(font: Font, x: Int, y: Int, label: Component, selected: Boolean, onChange: (Boolean) -&gt; Unit)</ID>
     <ID>LongParameterList:SeekCoverBehaviour.kt$SeekCoverBehaviour$(entity: NpcEntity, level: ServerLevel, cover: BlockPos, aim: Vec3, target: LivingEntity?, blind: Boolean)</ID>
     <ID>LongParameterList:Sightline.kt$Sightline$( level: ServerLevel, from: Vec3, to: Vec3, passer: Entity, hulls: List&lt;AABB&gt;, spreadDegrees: Double = 0.0, )</ID>
     <ID>LongParameterList:Squad.kt$Squad$( val id: UUID, var name: String, var faction: SquadFaction, var order: SquadOrder, val members: MutableList&lt;UUID&gt;, var objective: BlockPos?, /** Entity the squad is focused on: attack it (ATTACK) or guard it (DEFEND). */ var focusEntity: UUID?, val owner: UUID, /** Barracks this squad resupplies from, if any. */ var barracks: BarracksRef? = null, /** Classes the squad was formed/last topped up with. */ var originalComposition: List&lt;NpcClass&gt; = emptyList(), /** Legacy recruitment setting retained in saved data; new soldiers start as RECRUIT. */ var rank: NpcRank = NpcRank.DEFAULT, /** Patrol route this squad walks when on PATROL order, if any — see `Route`/`SquadOrderBehaviour`. */ var routeId: UUID? = null, /** The fixed rally point for the current MOVE command. */ var moveAssembly: BlockPos? = null, /** True once every member has reached its slot at [moveAssembly]. */ var moveFormationReady: Boolean = false, )</ID>
@@ -978,10 +980,11 @@
     <ID>NestedBlockDepth:VehicleAwareNavigation.kt$VehicleAwareNavigation$private fun choosePath(pos: BlockPos, accuracy: Int): Path?</ID>
     <ID>NestedBlockDepth:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun recoverIfStuck(entity: NpcEntity, vehicle: Entity, home: Vec3): Boolean</ID>
     <ID>NestedBlockDepth:WaterMap.kt$WaterMap$private fun read(level: ServerLevel, y: Int, cx: Int, cz: Int, now: Long): Chunk</ID>
+    <ID>SpreadOperator:NpcEntity.kt$NpcEntity$( com.sbwnpc.squad.entity.ai.SquadTacticalBehaviour(), *VersionCompat.doorBehaviours(), SeekCoverBehaviour(), com.sbwnpc.squad.entity.ai.BlindReturnFireBehaviour(), MortarCrewBehaviour(), com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour(), com.sbwnpc.squad.entity.ai.AntiDroneBehaviour(), VehicleCrewBehaviour(), com.sbwnpc.squad.entity.ai.HelicopterPilotBehaviour(), com.sbwnpc.squad.entity.ai.HelicopterGunnerBehaviour(), com.sbwnpc.squad.entity.ai.HelicopterRideBehaviour(), VehicleCombatSupportBehaviour(), com.sbwnpc.squad.entity.ai.FollowRideBehaviour(), MedicHealBehaviour(), com.sbwnpc.squad.entity.ai.SelfTreatBehaviour(), // Keep one journey executor through Idle/Fight changes: a remembered remote contact // must not prevent the squad from boarding or marching to its distant objective. com.sbwnpc.squad.entity.ai.ResupplyBehaviour(), com.sbwnpc.squad.entity.ai.VehicleTransportBehaviour(), SquadOrderBehaviour(), // Last: it has to override whatever the behaviours above did with the navigation. com.sbwnpc.squad.entity.ai.GrenadeEvadeBehaviour(), )</ID>
     <ID>ThrowingExceptionsWithoutMessageOrCause:NpcEntity.kt$NpcEntity$Throwable()</ID>
     <ID>ThrowingExceptionsWithoutMessageOrCause:VehicleAwareNavigation.kt$VehicleAwareNavigation$Throwable()</ID>
     <ID>TooManyFunctions:AntiDroneBehaviour.kt$AntiDroneBehaviour : ExtendedBehaviour</ID>
-    <ID>TooManyFunctions:BarracksBlock.kt$BarracksBlock : BaseEntityBlock</ID>
+    <ID>TooManyFunctions:BarracksBlock.kt$BarracksBlock : VersionedEntityBlock</ID>
     <ID>TooManyFunctions:CellPlanner.kt$CellPlanner$Search</ID>
     <ID>TooManyFunctions:ClientPayloadHandlers.kt$ClientPayloadHandlers</ID>
     <ID>TooManyFunctions:Diplomacy.kt$Diplomacy</ID>
@@ -1001,14 +1004,14 @@
     <ID>TooManyFunctions:NativePositionAction.kt$NativePositionAction : ActionExecution</ID>
     <ID>TooManyFunctions:NativeTactics.kt$NativeTactics</ID>
     <ID>TooManyFunctions:NativeTactics.kt$NativeTactics$World</ID>
-    <ID>TooManyFunctions:NpcEntity.kt$NpcEntity : PathfinderMobSmartBrainOwner</ID>
+    <ID>TooManyFunctions:NpcEntity.kt$NpcEntity : NpcEntityBaseSmartBrainOwner</ID>
     <ID>TooManyFunctions:OutOfAmmoBehaviour.kt$OutOfAmmoBehaviour : ExtendedBehaviour</ID>
-    <ID>TooManyFunctions:RecruitScreen.kt$RecruitScreen : Screen</ID>
+    <ID>TooManyFunctions:RecruitScreen.kt$RecruitScreen : SquadScreen</ID>
     <ID>TooManyFunctions:SeekCoverBehaviour.kt$SeekCoverBehaviour : ExtendedBehaviour</ID>
     <ID>TooManyFunctions:ServerPayloadHandlers.kt$ServerPayloadHandlers</ID>
-    <ID>TooManyFunctions:SquadDetailsScreen.kt$SquadDetailsScreen : Screen</ID>
+    <ID>TooManyFunctions:SquadDetailsScreen.kt$SquadDetailsScreen : ScrollScreen</ID>
     <ID>TooManyFunctions:SquadFormation.kt$SquadFormation</ID>
-    <ID>TooManyFunctions:SquadManager.kt$SquadManager : SavedData</ID>
+    <ID>TooManyFunctions:SquadManager.kt$SquadManager : VersionedSavedData</ID>
     <ID>TooManyFunctions:SquadMarch.kt$SquadMarch</ID>
     <ID>TooManyFunctions:SquadOrderBehaviour.kt$SquadOrderBehaviour : ExtendedBehaviour</ID>
     <ID>TooManyFunctions:SquadReports.kt$SquadReports</ID>
@@ -1016,14 +1019,15 @@
     <ID>TooManyFunctions:SquadTactics.kt$SquadTactics</ID>
     <ID>TooManyFunctions:SquadTargetSensor.kt$SquadTargetSensor : ExtendedSensor</ID>
     <ID>TooManyFunctions:SquadTeams.kt$SquadTeams</ID>
-    <ID>TooManyFunctions:SupplyBlock.kt$SupplyBlock : BaseEntityBlock</ID>
+    <ID>TooManyFunctions:SupplyBlock.kt$SupplyBlock : VersionedEntityBlock</ID>
     <ID>TooManyFunctions:TacticalPositions.kt$TacticalPositions</ID>
     <ID>TooManyFunctions:VehicleAwareNavigation.kt$VehicleAwareNavigation : GroundPathNavigationPositionPaths</ID>
-    <ID>TooManyFunctions:VehicleAwareNavigation.kt$VehicleAwareNodeEvaluator : WalkNodeEvaluator</ID>
+    <ID>TooManyFunctions:VehicleAwareNodeEvaluator.kt$VehicleAwareNodeEvaluator : WalkNodeEvaluator</ID>
     <ID>TooManyFunctions:VehicleCombatSupportBehaviour.kt$VehicleCombatSupportBehaviour : ExtendedBehaviour</ID>
     <ID>TooManyFunctions:VehicleTransportBehaviour.kt$VehicleTransportBehaviour : ExtendedBehaviour</ID>
     <ID>TooManyFunctions:VehicleTransportClaims.kt$VehicleTransportClaims</ID>
     <ID>TooManyFunctions:Vehicles.kt$Vehicles</ID>
+    <ID>TooManyFunctions:VersionCompat.kt$VersionCompat</ID>
     <ID>UnusedParameter:BarracksBlockEntity.kt$BarracksBlockEntity.Companion$pos: BlockPos</ID>
     <ID>UnusedParameter:BarracksBlockEntity.kt$BarracksBlockEntity.Companion$state: BlockState</ID>
     <ID>UnusedParameter:HelicopterPilotBehaviour.kt$HelicopterPilotBehaviour$level: ServerLevel</ID>
@@ -1032,6 +1036,7 @@
     <ID>UnusedParameter:SquadTactics.kt$SquadTactics$entity: NpcEntity</ID>
     <ID>UnusedParameter:SupplyBlockEntity.kt$SupplyBlockEntity.Companion$pos: BlockPos</ID>
     <ID>UnusedParameter:SupplyBlockEntity.kt$SupplyBlockEntity.Companion$state: BlockState</ID>
+    <ID>UnusedParameter:VersionCompat.kt$VersionCompat$mob: Mob</ID>
     <ID>UnusedPrivateProperty:MortarCrewBehaviour.kt$MortarCrewBehaviour.Companion$private const val SELF_DEFENSE_RANGE_SQR = 6.0 * 6.0</ID>
   </CurrentIssues>
 </SmellBaseline>

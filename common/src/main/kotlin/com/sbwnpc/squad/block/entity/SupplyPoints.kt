@@ -1,15 +1,16 @@
 package com.sbwnpc.squad.block.entity
 
+import com.sbwnpc.squad.compat.SavedDataAccess
+import com.sbwnpc.squad.compat.VersionCompat
+import com.sbwnpc.squad.compat.VersionedSavedData
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.team.Diplomacy
 import net.minecraft.core.BlockPos
-import net.minecraft.core.HolderLookup
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
 import net.minecraft.nbt.NbtUtils
 import net.minecraft.nbt.Tag
 import net.minecraft.server.level.ServerLevel
-import net.minecraft.world.level.saveddata.SavedData
 import net.minecraft.world.phys.Vec3
 
 /**
@@ -18,7 +19,7 @@ import net.minecraft.world.phys.Vec3
  * Existing worlds discover their supplies when the block entities next load; no terrain scan or
  * distant chunk load is needed to find one. Breaking a block removes its entry.
  */
-class SupplyPoints : SavedData() {
+class SupplyPoints : VersionedSavedData() {
     private val points = LinkedHashMap<BlockPos, SquadFaction?>()
 
     fun remember(pos: BlockPos, faction: SquadFaction?) {
@@ -63,7 +64,7 @@ class SupplyPoints : SavedData() {
         }
     }
 
-    override fun save(tag: CompoundTag, registries: HolderLookup.Provider): CompoundTag {
+    override fun write(tag: CompoundTag): CompoundTag {
         val list = ListTag()
         for ((pos, faction) in points) {
             list.add(
@@ -79,9 +80,8 @@ class SupplyPoints : SavedData() {
 
     companion object {
         private const val FILE = "sbwnpc_supply_points"
-        private val FACTORY = Factory({ SupplyPoints() }, { tag, _ -> load(tag) }, null)
 
-        fun get(level: ServerLevel): SupplyPoints = level.dataStorage.computeIfAbsent(FACTORY, FILE)
+        fun get(level: ServerLevel): SupplyPoints = SavedDataAccess.fetch(level.dataStorage, FILE, ::SupplyPoints, ::load)
 
         fun serves(own: SquadFaction?, other: SquadFaction?): Boolean = own == null || (other != null && Diplomacy.allied(own, other))
 
@@ -89,7 +89,7 @@ class SupplyPoints : SavedData() {
             val data = SupplyPoints()
             for (entry in tag.getList("Points", Tag.TAG_COMPOUND.toInt())) {
                 val point = entry as CompoundTag
-                val pos = NbtUtils.readBlockPos(point, "Pos").orElse(null) ?: continue
+                val pos = VersionCompat.readBlockPos(point, "Pos") ?: continue
                 val faction = if (point.contains("Faction")) {
                     // A malformed faction must not turn a restricted point into a public one.
                     runCatching { SquadFaction.valueOf(point.getString("Faction")) }.getOrNull() ?: continue

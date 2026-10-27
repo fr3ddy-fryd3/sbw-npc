@@ -1,5 +1,7 @@
 package com.sbwnpc.squad.client.screen
 
+import com.sbwnpc.squad.client.SquadScreen
+import com.sbwnpc.squad.client.WidgetCompat
 import com.sbwnpc.squad.client.FactionBanner
 import com.sbwnpc.squad.item.SquadToolItem
 import com.sbwnpc.squad.network.ConfigureBarracksPayload
@@ -14,9 +16,7 @@ import com.sbwnpc.squad.npc.TransportVehicle
 import net.minecraft.ChatFormatting
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.Button
-import net.minecraft.client.gui.components.Checkbox
 import net.minecraft.client.gui.components.Tooltip
-import net.minecraft.client.gui.screens.Screen
 import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.Tag
@@ -41,7 +41,7 @@ class RecruitScreen(
     private val barracksPos: BlockPos? = null,
     private var queueSnapshot: CompoundTag = CompoundTag(),
     private val onChange: (SquadToolItem.Config) -> Unit,
-) : Screen(title) {
+) : SquadScreen(title) {
 
     /** Opened from the squad tool, not a Barracks. */
     val forTool get() = deployLabel == null
@@ -93,15 +93,11 @@ class RecruitScreen(
         when (preset) {
             SquadPreset.FIVE, SquadPreset.SEVEN -> {
                 addRenderableWidget(
-                    Checkbox.builder(Component.literal("Spawn with vehicle"), font)
-                        .pos(cx - 100, y)
-                        .selected(vehicle)
-                        .onValueChange { _, v ->
-                            vehicle = v
-                            changed()
-                            rebuildWidgets()
-                        }
-                        .build(),
+                    WidgetCompat.checkbox(font, cx - 100, y, Component.literal("Spawn with vehicle"), vehicle) { value ->
+                        vehicle = value
+                        changed()
+                        rebuildWidgets()
+                    },
                 )
                 y += 24
                 if (vehicle) {

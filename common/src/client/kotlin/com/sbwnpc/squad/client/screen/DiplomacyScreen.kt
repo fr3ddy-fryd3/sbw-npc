@@ -1,5 +1,7 @@
 package com.sbwnpc.squad.client.screen
 
+import com.sbwnpc.squad.client.SquadScreen
+import com.sbwnpc.squad.client.WidgetCompat
 import com.sbwnpc.squad.network.DiplomacyCmdPayload
 import com.sbwnpc.squad.network.sendToServer
 import com.sbwnpc.squad.npc.SquadFaction
@@ -7,7 +9,6 @@ import net.minecraft.ChatFormatting
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.Button
 import net.minecraft.client.gui.components.Tooltip
-import net.minecraft.client.gui.screens.Screen
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.Tag
 import net.minecraft.network.chat.Component
@@ -17,7 +18,7 @@ import net.minecraft.network.chat.Component
  * for each: propose an alliance, agree to one on offer, or — for the player's own alliance — vote to
  * leave it. The rules themselves are the server's (`Diplomacy`); this only shows and asks.
  */
-class DiplomacyScreen(snapshot: CompoundTag) : Screen(Component.literal("Diplomacy")) {
+class DiplomacyScreen(snapshot: CompoundTag) : SquadScreen(Component.literal("Diplomacy")) {
 
     private data class Row(
         val faction: SquadFaction,
@@ -68,7 +69,7 @@ class DiplomacyScreen(snapshot: CompoundTag) : Screen(Component.literal("Diploma
                 }.tooltip(Tooltip.create(Component.literal("Offer ${row.faction.label} an alliance"))).build()
             }
             button?.let {
-                it.setRectangle(BUTTON_WIDTH, 20, left + WIDTH - BUTTON_WIDTH, y)
+                WidgetCompat.place(it, left + WIDTH - BUTTON_WIDTH, y, BUTTON_WIDTH)
                 addRenderableWidget(it)
             }
             y += ROW_HEIGHT

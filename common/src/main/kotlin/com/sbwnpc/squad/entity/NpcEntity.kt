@@ -1,6 +1,8 @@
 package com.sbwnpc.squad.entity
 
 import com.sbwnpc.squad.combat.SidearmKit
+import com.sbwnpc.squad.compat.NpcEntityBase
+import com.sbwnpc.squad.compat.VersionCompat
 import com.sbwnpc.squad.config.Settings
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.ai.GrenadeThrowBehaviour
@@ -53,7 +55,6 @@ import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.ServerLevelAccessor
-import net.minecraft.world.level.pathfinder.PathType
 import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.util.BrainUtils
 import java.util.UUID
@@ -69,7 +70,7 @@ import java.util.UUID
  * down in combat so it doesn't fight GunAttackBehaviour for the head) and wandering.
  */
 open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
-    PathfinderMob(type, level),
+    NpcEntityBase(type, level),
     net.tslat.smartbrainlib.api.SmartBrainOwner<NpcEntity> {
 
     var npcClass: NpcClass
@@ -851,10 +852,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     /** Where the squad is falling back to, while it is. */
     fun retreatPoint(): Vec3? = if (currentSquad()?.order == SquadOrder.RETREAT) homeCenter() else null
 
-    override fun defineSynchedData(builder: SynchedEntityData.Builder) {
-        super.defineSynchedData(builder)
-        builder.define(DATA_CLASS, NpcClass.DEFAULT.ordinal)
-        builder.define(DATA_RANK, NpcRank.RECRUIT.ordinal)
+    override fun defineNpcData() {
+        defineData(DATA_CLASS, NpcClass.DEFAULT.ordinal)
+        defineData(DATA_RANK, NpcRank.RECRUIT.ordinal)
     }
 
     /** Vehicles are not obstacles to vanilla pathfinding, so routes are plotted straight through
@@ -870,7 +870,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         moveControl = com.sbwnpc.squad.entity.ai.NpcMoveControl(this)
         // Vanilla forbids snow-filled nodes but gives the empty node above snow zero cost.
         // Avoid that unsupported surface; the climbing goal handles an accidental fall into it.
-        setPathfindingMalus(PathType.DANGER_POWDER_SNOW, -1f)
+        VersionCompat.avoidPowderSnow(this)
     }
 
     // Environmental recovery and idle goals beside the brain — see the class doc comment.
@@ -878,6 +878,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         super.registerGoals()
         this.goalSelector.addGoal(0, FloatGoal(this))
         this.goalSelector.addGoal(1, ClimbOnTopOfPowderSnowGoal(this, level()))
+        VersionCompat.addDoorGoal(this)
         this.goalSelector.addGoal(5, com.sbwnpc.squad.entity.ai.WaryScanGoal(this))
         this.goalSelector.addGoal(6, IdleLookAroundGoal(this))
         this.goalSelector.addGoal(7, IdleWanderGoal(this, SquadOrderBehaviour.WALK_SPEED_MODIFIER))
@@ -1010,7 +1011,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     /** See [NpcStuckRecovery.notePathGoesNowhere]; the navigation reports every path it plans. */
     fun notePathGoesNowhere(toward: BlockPos, goesNowhere: Boolean) = stuckRecovery.notePathGoesNowhere(toward, goesNowhere)
 
-    override fun getDefaultDimensions(pose: Pose): EntityDimensions = if (pose == Pose.CROUCHING) NpcPosture.CROUCHING_DIMENSIONS.scale(ageScale) else super.getDefaultDimensions(pose)
+    override fun poseDimensions(pose: Pose): EntityDimensions? = if (pose == Pose.CROUCHING) NpcPosture.CROUCHING_DIMENSIONS else null
 
     // --- Equipment sync ---
     // Vanilla re-compares every equipment slot against its last-broadcast copy each tick
@@ -1126,7 +1127,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     override fun getCoreTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
         net.tslat.smartbrainlib.api.core.BrainActivityGroup.coreTasks(
             com.sbwnpc.squad.entity.ai.SquadTacticalBehaviour(),
-            net.tslat.smartbrainlib.api.core.behaviour.custom.move.InteractWithDoor<NpcEntity>(),
+            *VersionCompat.doorBehaviours(),
             SeekCoverBehaviour(),
             com.sbwnpc.squad.entity.ai.BlindReturnFireBehaviour(),
             MortarCrewBehaviour(),
@@ -1188,18 +1189,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     // sent were not drawn at all past that.
     override fun shouldRenderAtSqrDistance(distance: Double): Boolean = distance < Settings.current.npcViewDistance().let { it.toDouble() * it }
 
-    @Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")
-    override fun finalizeSpawn(
-        level: ServerLevelAccessor,
-        difficulty: DifficultyInstance,
-        spawnType: MobSpawnType,
-        spawnGroupData: SpawnGroupData?,
-    ): SpawnGroupData? {
+    override fun prepareSpawn() {
         experience = ExperienceRules.threshold(npcRank)
         ensureExperienceIdentity()
         applyRole()
         spawnFaction?.let { SquadTeams.assign(this, it) }
-        return super.finalizeSpawn(level, difficulty, spawnType, spawnGroupData)
     }
 
     /** (Re)applies health from rank and equips the class weapon with a loaded mag + reserve. */
@@ -1281,10 +1275,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         assignedMortarId?.let { compound.putUUID("AssignedMortar", it) }
         if (!packedMortarState.isEmpty) compound.put("PackedMortar", packedMortarState.copy())
         compound.putInt("DronesLeft", dronesLeft)
-        if (!stowedWeapon.isEmpty) compound.put("StowedWeapon", stowedWeapon.save(registryAccess()))
-        if (!antiArmourWeapon.isEmpty) compound.put("AntiArmourWeapon", antiArmourWeapon.save(registryAccess()))
-        if (!sidearmWeapon.isEmpty) compound.put("Sidearm", sidearmWeapon.save(registryAccess()))
-        if (!sidearmPrimaryWeapon.isEmpty) compound.put("SidearmPrimary", sidearmPrimaryWeapon.save(registryAccess()))
+        if (!stowedWeapon.isEmpty) compound.put("StowedWeapon", VersionCompat.saveStack(this, stowedWeapon))
+        if (!antiArmourWeapon.isEmpty) compound.put("AntiArmourWeapon", VersionCompat.saveStack(this, antiArmourWeapon))
+        if (!sidearmWeapon.isEmpty) compound.put("Sidearm", VersionCompat.saveStack(this, sidearmWeapon))
+        if (!sidearmPrimaryWeapon.isEmpty) compound.put("SidearmPrimary", VersionCompat.saveStack(this, sidearmPrimaryWeapon))
     }
 
     override fun readAdditionalSaveData(compound: CompoundTag) {
@@ -1347,12 +1341,12 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             0
         }
         stowedWeapon = if (compound.contains("StowedWeapon")) {
-            ItemStack.parseOptional(registryAccess(), compound.getCompound("StowedWeapon"))
+            VersionCompat.loadStack(this, compound.getCompound("StowedWeapon"))
         } else {
             ItemStack.EMPTY
         }
         antiArmourWeapon = if (compound.contains("AntiArmourWeapon")) {
-            ItemStack.parseOptional(registryAccess(), compound.getCompound("AntiArmourWeapon"))
+            VersionCompat.loadStack(this, compound.getCompound("AntiArmourWeapon"))
         } else {
             ItemStack.EMPTY
         }
@@ -1362,8 +1356,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             setItemInHand(InteractionHand.MAIN_HAND, stowedWeapon)
             stowedWeapon = ItemStack.EMPTY
         }
-        sidearmWeapon = if (compound.contains("Sidearm")) ItemStack.parseOptional(registryAccess(), compound.getCompound("Sidearm")) else SidearmKit.issue(this)
-        sidearmPrimaryWeapon = if (compound.contains("SidearmPrimary")) ItemStack.parseOptional(registryAccess(), compound.getCompound("SidearmPrimary")) else ItemStack.EMPTY
+        sidearmWeapon = if (compound.contains("Sidearm")) VersionCompat.loadStack(this, compound.getCompound("Sidearm")) else SidearmKit.issue(this)
+        sidearmPrimaryWeapon = if (compound.contains("SidearmPrimary")) VersionCompat.loadStack(this, compound.getCompound("SidearmPrimary")) else ItemStack.EMPTY
         if (usingSidearm) setItemInHand(InteractionHand.MAIN_HAND, sidearmWeapon)
     }
 
@@ -1409,8 +1403,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      * whatever it drops when the chance is below 1.0, which would hand the player a near-broken
      * rifle.
      */
-    override fun dropCustomDeathLoot(level: ServerLevel, damageSource: DamageSource, recentlyHit: Boolean) {
-        super.dropCustomDeathLoot(level, damageSource, recentlyHit)
+    override fun dropNpcLoot(damageSource: DamageSource, recentlyHit: Boolean) {
         val rolls = ArrayList<String>(LOOTABLE_SLOTS.size + 1)
         SidearmKit.sync(this)
         for (stack in listOf(sidearmWeapon, sidearmPrimaryWeapon).distinct().filter { !it.isEmpty && it !== mainHandItem }) {

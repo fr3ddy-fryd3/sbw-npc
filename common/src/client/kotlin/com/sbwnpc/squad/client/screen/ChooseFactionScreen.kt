@@ -1,11 +1,11 @@
 package com.sbwnpc.squad.client.screen
 
+import com.sbwnpc.squad.client.SquadScreen
 import com.sbwnpc.squad.network.ChooseFactionPayload
 import com.sbwnpc.squad.network.sendToServer
 import com.sbwnpc.squad.npc.SquadFaction
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.Button
-import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 
 /**
@@ -14,7 +14,7 @@ import net.minecraft.network.chat.Component
  * one of the 8 factions, which locks it in server-side for good (see
  * [com.sbwnpc.squad.squad.PlayerFactionRegistry]).
  */
-class ChooseFactionScreen : Screen(Component.literal("Choose Your Faction")) {
+class ChooseFactionScreen : SquadScreen(Component.literal("Choose Your Faction")) {
 
     override fun init() {
         val cx = width / 2

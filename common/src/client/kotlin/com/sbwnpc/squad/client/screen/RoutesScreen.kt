@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.client.screen
 
+import com.sbwnpc.squad.client.SquadScreen
 import com.sbwnpc.squad.network.RouteCmdPayload
 import com.sbwnpc.squad.network.sendToServer
 import com.sbwnpc.squad.npc.SquadFaction
@@ -7,7 +8,6 @@ import net.minecraft.ChatFormatting
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.Button
-import net.minecraft.client.gui.screens.Screen
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.Tag
 import net.minecraft.network.chat.Component
@@ -15,7 +15,7 @@ import net.minecraft.network.chat.Component
 /** Lists the player's patrol routes, with `+ Add route` at the top to start recording a new one
  *  (server-side state, see `com.sbwnpc.squad.squad.RouteRecording`) and `[Assign]`/`[Delete]` per
  *  row. */
-class RoutesScreen(snapshot: CompoundTag) : Screen(Component.literal("Patrol Routes")) {
+class RoutesScreen(snapshot: CompoundTag) : SquadScreen(Component.literal("Patrol Routes")) {
 
     private data class RouteRow(val id: String, val name: String, val points: Int)
 

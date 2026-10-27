@@ -179,8 +179,9 @@ KDoc (`/** ... */`) goes on every class, object and non-obvious public or `inter
   reports its actual revision/dirty state, and is separate from the pinned addon dependency.
   `scripts/setup.sh --help` lists the overrides. On Windows, run it from Git Bash or WSL.
 - Build: `./gradlew build`, the same as `buildProduction` (`DebugFlags` off).
-- Fabric (preview, #15): `./gradlew -Ploader=fabric :fabric:build`. Only the loader chosen with
-  `-Ploader` is configured (default `neoforge`). Status and decisions: `docs/LOADER-PORTS.md`.
+- Fabric (preview, #15) and Forge (preview, #16): `./gradlew -Ploader=fabric :fabric:build`,
+  `./gradlew -Ploader=forge :forge:build`. Only the loader chosen with `-Ploader` is configured
+  (default `neoforge`). Status and decisions: `docs/LOADER-PORTS.md`.
 - For local testing with verbose trace logs and debug particle markers: `./gradlew buildDevelop`.
   The flag is baked into the jar at build time by the generated `BuildFlags` object (see
   `generateBuildFlags` in `common/build.gradle.kts`). It cannot be passed at runtime.
@@ -241,7 +242,7 @@ KDoc (`/** ... */`) goes on every class, object and non-obvious public or `inter
     `maven.ryanhcode.dev`, `maven.sighs.cc`, `maven.shedaniel.me`, `maven.theillusivec4.top`,
     `raw.githubusercontent.com`
   - Only for `scripts/setup.sh --refabricated` and `-Ploader=fabric`: `maven.fabricmc.net`,
-    `maven.terraformersmc.com`, `maven.ladysnake.org`. Optional, for Parchment names: `ldtteam.jfrog.io`.
+    `maven.terraformersmc.com`, `maven.ladysnake.org`; for `-Ploader=forge`: `maven.minecraftforge.net`. Optional, for Parchment names: `ldtteam.jfrog.io`.
 
 ## Gotchas worth knowing before you hit them
 
