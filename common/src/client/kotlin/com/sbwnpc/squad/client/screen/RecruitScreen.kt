@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.client.screen
 
+import com.sbwnpc.squad.client.SquadScreen
 import com.sbwnpc.squad.client.WidgetCompat
 import com.sbwnpc.squad.client.FactionBanner
 import com.sbwnpc.squad.item.SquadToolItem
@@ -16,7 +17,6 @@ import net.minecraft.ChatFormatting
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.Button
 import net.minecraft.client.gui.components.Tooltip
-import net.minecraft.client.gui.screens.Screen
 import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.Tag
@@ -41,7 +41,7 @@ class RecruitScreen(
     private val barracksPos: BlockPos? = null,
     private var queueSnapshot: CompoundTag = CompoundTag(),
     private val onChange: (SquadToolItem.Config) -> Unit,
-) : Screen(title) {
+) : SquadScreen(title) {
 
     /** Opened from the squad tool, not a Barracks. */
     val forTool get() = deployLabel == null

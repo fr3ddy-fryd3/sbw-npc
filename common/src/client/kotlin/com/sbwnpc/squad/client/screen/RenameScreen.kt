@@ -1,14 +1,14 @@
 package com.sbwnpc.squad.client.screen
 
+import com.sbwnpc.squad.client.SquadScreen
 import com.sbwnpc.squad.network.SquadCmdPayload
 import com.sbwnpc.squad.network.sendToServer
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.Button
 import net.minecraft.client.gui.components.EditBox
-import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 
-class RenameScreen(private val squadId: String, private val current: String) : Screen(Component.literal("Rename Squad")) {
+class RenameScreen(private val squadId: String, private val current: String) : SquadScreen(Component.literal("Rename Squad")) {
 
     private lateinit var box: EditBox
 

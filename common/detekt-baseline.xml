@@ -1006,7 +1006,7 @@
     <ID>TooManyFunctions:NativeTactics.kt$NativeTactics$World</ID>
     <ID>TooManyFunctions:NpcEntity.kt$NpcEntity : NpcEntityBaseSmartBrainOwner</ID>
     <ID>TooManyFunctions:OutOfAmmoBehaviour.kt$OutOfAmmoBehaviour : ExtendedBehaviour</ID>
-    <ID>TooManyFunctions:RecruitScreen.kt$RecruitScreen : Screen</ID>
+    <ID>TooManyFunctions:RecruitScreen.kt$RecruitScreen : SquadScreen</ID>
     <ID>TooManyFunctions:SeekCoverBehaviour.kt$SeekCoverBehaviour : ExtendedBehaviour</ID>
     <ID>TooManyFunctions:ServerPayloadHandlers.kt$ServerPayloadHandlers</ID>
     <ID>TooManyFunctions:SquadDetailsScreen.kt$SquadDetailsScreen : ScrollScreen</ID>

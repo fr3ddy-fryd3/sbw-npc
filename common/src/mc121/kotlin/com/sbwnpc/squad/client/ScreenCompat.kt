@@ -11,8 +11,15 @@ import net.minecraft.network.chat.Component
  * Forge on 1.20.1 has its own with the same names.
  */
 
-/** A [Screen] that is told of mouse-wheel scrolling through [onScroll]. */
-abstract class ScrollScreen(title: Component) : Screen(title) {
+/**
+ * The base of every screen of the mod. Minecraft 1.21 draws the background (dim and blur) in
+ * `Screen.render`, so nothing is added here; the 1.20.1 version draws it, so a screen calls
+ * `super.render` first and never [renderBackground] itself.
+ */
+abstract class SquadScreen(title: Component) : Screen(title)
+
+/** A [SquadScreen] that is told of mouse-wheel scrolling through [onScroll]. */
+abstract class ScrollScreen(title: Component) : SquadScreen(title) {
     /** Handles a scroll of [amount] (positive is up); null leaves it to the screen's widgets. */
     protected open fun onScroll(mouseX: Double, mouseY: Double, amount: Double): Boolean? = null
 

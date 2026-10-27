@@ -1,17 +1,17 @@
 package com.sbwnpc.squad.client.screen
 
+import com.sbwnpc.squad.client.SquadScreen
 import com.sbwnpc.squad.network.RouteCmdPayload
 import com.sbwnpc.squad.network.sendToServer
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.Button
-import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 
 /** Shown instead of the normal tool GUI while recording a route (air-click is intercepted
  *  server-side, see `ModNetwork`/`RouteRecording`). "Finish" asks for a name; "Cancel" drops the
  *  buffer without saving. */
-class FinishRouteScreen(private val pointCount: Int) : Screen(Component.literal("Recording Route")) {
+class FinishRouteScreen(private val pointCount: Int) : SquadScreen(Component.literal("Recording Route")) {
 
     override fun init() {
         val cx = width / 2
