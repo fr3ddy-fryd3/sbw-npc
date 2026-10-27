@@ -7,6 +7,7 @@ import com.atsuishio.superbwarfare.entity.vehicle.utils.VehicleMotionUtils
 import com.mojang.blaze3d.shaders.FogShape
 import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.blaze3d.vertex.VertexSorting
+import com.sbwnpc.squad.ModIdentity
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.LevelRenderer
@@ -21,6 +22,8 @@ import org.joml.Matrix4f
 
 /** Extends SBW's BVR render pass; synchronization and the vehicle renderers stay in SBW. */
 object SbwAircraftRendering {
+    private var reported = false
+
     @JvmStatic
     fun render(context: WorldRenderContext) {
         val minecraft = Minecraft.getInstance()
@@ -102,6 +105,10 @@ object SbwAircraftRendering {
                     .move(pos.subtract(entity.position())).inflate(3.0)
                 if (!frustum.isVisible(box)) continue
                 draw(entity, pos)
+                if (!reported) {
+                    reported = true
+                    ModIdentity.LOGGER.info("NPC aircraft renderer: first aircraft drawn by the BVR pass at {} blocks", Math.sqrt(pos.distanceToSqr(camera.position)).toInt())
+                }
             }
             buffers.endBatch()
 
