@@ -78,6 +78,12 @@ two different claims.
   contracts, or change one on purpose and test the changed contract.
 - Prefer an existing vanilla, NeoForge or SuperbWarfare class or mechanism over a new one. Check
   with the owner before building a parallel system for something SBW or vanilla already does.
+- **The mod is written for several loaders** (NeoForge and Fabric on 1.21.1, Forge on 1.20.1), so
+  write every change with that in mind. Shared code in `common` must not import loader API. What
+  differs between loaders goes into the loader module, or into the per-version file that exists
+  once per Minecraft version under the same name. When a change touches an API that differs,
+  such as events, networking, saved data, blocks, config or rendering, say in the PR how each
+  loader gets it. `docs/LOADER-PORTS.md` lists the seams and the known gaps.
 - **Commit as the work lands**, not in a batch at the end: a finished piece that compiles and
   passes tests is committed before the in-game check. If that check shows a commit was wrong, fix
   it with a follow-up commit, or rework the unpushed commits locally.
