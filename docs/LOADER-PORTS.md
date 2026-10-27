@@ -93,7 +93,7 @@ SBW adapter.
   file Prism Launcher or the Modrinth app imports) from Modrinth: the SuperbWarfare pinned in `gradle/sbw/`, the
   addon's dependencies and quality-of-life mods, plus the built addon jar. The lists are in `scripts/localpack/`.
   Mods the build pins to a version that an unpinned newest release would not load with (Fabric Language Kotlin on
-  Fabric loader 0.17.2, Kotlin for Forge 4.11) are listed under `pinned`.
+  Fabric loader 0.17.2, Kotlin for Forge 4.11, JEI on NeoForge 21.1.228: newer JEI needs 21.1.238) are listed under `pinned`.
 - Jars are named `sbwnpc-<version>-mc<minecraft>-<loader>.jar` on every loader.
 - Found and fixed while auditing the Fabric module: `fabric.mod.json` shipped the literal `${version}`;
   `verify-release-artifact.py` rejected a `preview` profile; the Fabric jar had no loader classifier.

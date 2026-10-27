@@ -1,5 +1,17 @@
 {
   "minecraft": "1.21.1",
-  "required": ["smartbrainlib"],
-  "qol": ["sodium", "lithium", "ferrite-core", "jei", "mouse-tweaks", "journeymap"]
+  "required": [
+    "smartbrainlib"
+  ],
+  "qol": [
+    "sodium",
+    "lithium",
+    "ferrite-core",
+    "jei",
+    "mouse-tweaks",
+    "journeymap"
+  ],
+  "pinned": {
+    "jei": "19.39.0.372"
+  }
 }
