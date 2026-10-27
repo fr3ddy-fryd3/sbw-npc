@@ -88,8 +88,8 @@ Differences and gaps:
 - SmartBrainLib 1.15 has no door behaviour; a vanilla goal opens doors instead.
 - Worlds are not portable between 1.20.1 and 1.21: block positions and item data are saved in each version's format.
 
-Still to do for Forge: in-game testing on a client; SBW's gun pose and static gun model; aircraft rendering; JourneyMap on
-Forge 47.x; the `enabled` profile and release artifact validation.
+Still to do for Forge: in-game testing on a client; SBW's gun pose and static gun model; aircraft rendering; running the
+JourneyMap plugin (`integration/journeymap`, a copy of the NeoForge one against JourneyMap API 1.20.1-2.0.0, compiled only) in JourneyMap; the `enabled` profile and release artifact validation.
 
 ## Local test pack and release
 

@@ -29,6 +29,12 @@ repositories {
         }
     }
     maven {
+        // JourneyMap API: compile-time only; JourneyMap brings its classes at runtime.
+        name = "BlameJared"
+        url = uri("https://maven.blamejared.com")
+        content { includeGroup("info.journeymap") }
+    }
+    maven {
         name = "Kotlin for Forge"
         url = uri("https://thedarkcolour.github.io/KotlinForForge/")
         content { includeGroup("thedarkcolour") }
@@ -125,6 +131,9 @@ dependencies {
     modCompileOnly(sbwCoordinate)
     // The GeckoLib SBW bundles (4.4.6): its types are in the drone signatures.
     modCompileOnly("maven.modrinth:8BmcQJ2H:iS7jylhp")
+    modCompileOnly("info.journeymap:journeymap-api-forge:1.20.1-2.0.0")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 val modJar by configurations.creating {
@@ -137,3 +146,5 @@ tasks.named<Jar>("jar") {
     manifest.attributes("MixinConfigs" to "sbwnpc.forge.mixins.json")
 }
 artifacts.add(modJar.name, tasks.named("jar"))
+
+tasks.withType<Test> { useJUnitPlatform() }
