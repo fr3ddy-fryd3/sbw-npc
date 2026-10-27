@@ -71,8 +71,9 @@ the packets. Java 17 output; Kotlin language and library 2.0, because Kotlin for
 
 Checked on a dedicated Forge 1.20.1-47.4.0 server (SBW 0.8.9.2, Kotlin for Forge 4.11.0, SmartBrainLib 1.15): it starts,
 every mixin applies (the jar manifest names the config, and the mixins that target SBW use SBW's SRG method names), `/summon sbwnpc:npc` gives an NPC with an SBW rifle and sidearm, and the NPC is still there with its
-guns after a restart. Not checked: a client (screens, HUD, rendering, key bindings), players, deploying and commanding
-squads, combat, vehicles. Not tested in game.
+guns after a restart. Played on a client (Forge 47.4.28) and with two clients on a dedicated Forge server by the owner:
+screens, NPC guns in hand, squads and orders, and a second player joining all work. Not checked: long sessions, saving
+and reloading, vehicles in depth.
 
 How the 1.21 and 1.20.1 differences are kept out of the shared code: classes whose overridable methods differ
 (`NpcEntityBase`, `VersionedSavedData`, `VersionedEntityBlock`, `VersionedBlockEntity`, `VersionedItem`, `ScrollScreen`),
@@ -83,13 +84,19 @@ ones in `common/src/mc121` (NeoForge and Fabric), the 1.20.1 ones in the `forge`
 Differences and gaps:
 
 - Data in the shared `data/` folder uses 1.21 folder names; the Forge module carries its own `loot_tables`.
-- NPCs hold an SBW gun in the default arm pose and the ordinary item renderer draws it (`SbwClientPorts`), as on Fabric.
+- NPCs hold SBW guns in SBW's own arm pose (the M2HB and the minigun have theirs) and draw its static LOD model
+  (`SbwClientPorts`), as on NeoForge. The mesh baking is a 1.20.1 copy of the NeoForge one: the vertex and hand-transform calls differ.
+- 1.20.1 draws no dimmed or blurred background behind a screen by itself: the mod's screens extend `SquadScreen`, which
+  draws the dim background there. There is no blur on 1.20.1.
 - The aircraft rendering mixins and `PerfProbe` are not ported.
 - SmartBrainLib 1.15 has no door behaviour; a vanilla goal opens doors instead.
 - Worlds are not portable between 1.20.1 and 1.21: block positions and item data are saved in each version's format.
 
-Still to do for Forge: in-game testing on a client; SBW's gun pose and static gun model; aircraft rendering; running the
-JourneyMap plugin (`integration/journeymap`, a copy of the NeoForge one against JourneyMap API 1.20.1-2.0.0, compiled only) in JourneyMap; the `enabled` profile and release artifact validation.
+Still to do for Forge: aircraft rendering; running the JourneyMap plugin (`integration/journeymap`, a copy of the NeoForge
+one against JourneyMap API 1.20.1-2.0.0, compiled only) in JourneyMap; the `enabled` profile and release artifact validation.
+JourneyMap 6.0.7 cannot be used on a Legacy Launcher client while `authserver.ely.by` is unreachable: it looks up player
+skins on the render thread through `authlib-ely` and the game freezes for 30 s per lookup (seen in thread dumps; not
+caused by this mod).
 
 ## Local test pack and release
 
