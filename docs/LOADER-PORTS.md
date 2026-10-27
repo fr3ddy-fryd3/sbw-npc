@@ -24,8 +24,9 @@ the shared sources, the Fabric entry points (`SquadFabricMod`, `SquadFabricClien
 
 Checked on a dedicated Fabric server (Fabric Loader 0.17.2, ReFabricated 0.8.9.2, the local pack's mods): it starts,
 SBW and the addon initialise, and `/summon sbwnpc:npc` gives an NPC with an SBW rifle and sidearm that stays alive.
-Not checked: a client (screens, HUD, rendering, key bindings), players, deploying and commanding squads, combat,
-vehicles, saving and reloading. `./gradlew runServer` cannot be used for this: ReFabricated reflects on
+Played on a client by fiol-dev (Fabric Loader 0.17.2 with Sodium, Lithium, JEI, JourneyMap and others): creative
+tab items, screens, the command HUD, squads and orders, and the JourneyMap squad squares and order menu work. Faction
+selection deliberately cannot be closed with Esc. Not checked: multiplayer, long sessions, saving and reloading. `./gradlew runServer` cannot be used for this: ReFabricated reflects on
 intermediary class names and fails in a development environment, so test with the built jar.
 The JourneyMap plugin (`integration/journeymap`) is a copy of the NeoForge one found through a `journeymap` entrypoint;
 it compiles but has not run against JourneyMap.
