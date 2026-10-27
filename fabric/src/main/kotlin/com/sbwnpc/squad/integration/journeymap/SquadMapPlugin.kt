@@ -24,6 +24,7 @@ import journeymap.api.v2.client.model.MapPolygon
 import journeymap.api.v2.client.model.ShapeProperties
 import journeymap.api.v2.client.model.TextProperties
 import journeymap.api.v2.client.util.UIState
+import journeymap.api.v2.common.JourneyMapPlugin
 import journeymap.api.v2.common.event.ClientEventRegistry
 import journeymap.api.v2.common.event.FullscreenEventRegistry
 import journeymap.api.v2.common.waypoint.Waypoint
@@ -68,6 +69,8 @@ import java.awt.geom.Point2D
  *
  * Only ever loaded by JourneyMap itself, so nothing else in the mod may refer to this class.
  */
+// JourneyMap on Fabric finds the class through the entrypoint, then reads this annotation; without it the plugin is rejected.
+@JourneyMapPlugin(apiVersion = "2.0.0")
 class SquadMapPlugin : IClientPlugin {
     private lateinit var api: IClientAPI
 
