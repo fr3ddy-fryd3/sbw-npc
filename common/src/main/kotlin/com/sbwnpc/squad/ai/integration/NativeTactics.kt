@@ -96,6 +96,21 @@ object NativeTactics {
     /** Test hook: called with the level of every agent whose plan search finished, to measure how often each level replans. */
     internal var planResultObserver: ((AgentLevel) -> Unit)? = null
     private fun world(npc: NpcEntity) = worlds.getOrPut(npc.level() as ServerLevel) { World(npc.level() as ServerLevel) }
+
+    /**
+     * The squad level's travel-or-engage decision (#231): whether the squad is in close combat, so that
+     * nobody of it boards. Taken here, once per game tick and squad, whoever asks first; a throttled
+     * brain must not make boarding lag a mob closing in.
+     */
+    fun inCloseCombat(squad: Squad, level: ServerLevel): Boolean {
+        val state = squad.tactics
+        if (state.transitDecidedAt != level.gameTime) {
+            state.inCloseCombat = SquadTransit.decide(squad, level)
+            state.transitDecidedAt = level.gameTime
+        }
+        return state.inCloseCombat
+    }
+
     fun refresh(npc: NpcEntity) {
         if (npc.vehicle == null && npc.npcClass in GROUND && npc.currentSquad() != null) world(npc).refresh(npc)
     }

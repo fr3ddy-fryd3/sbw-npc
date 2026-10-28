@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.entity.ai
 
+import com.sbwnpc.squad.ai.integration.NativeTactics
 import com.sbwnpc.squad.combat.CombatPositionSafety
 import com.sbwnpc.squad.combat.HostileMobs
 import com.sbwnpc.squad.entity.NpcEntity
@@ -27,25 +28,27 @@ object SquadTransit {
 
     /**
      * Whether the squad is in close combat, so that nobody of it boards (#198). One answer for the whole
-     * squad, so a fight on one man cannot leave him out while the others drive off.
-     *
-     * It is close combat when an enemy NPC or player is within a man's engagement distance, or a mob
-     * that threatens him ([HostileMobs.threatens]) is within [HostileMobs.CLOSE_RANGE] of him. Fire from
-     * further off never counts: everyone boards. Once a man of the squad is on the vehicle trip
-     * ([NpcEntity.vehicleTransport]) the squad has decided to travel, and a mob closing in no longer cancels the trip; whoever
-     * sees it shoots from where he stands.
+     * squad, taken by the tactical HTN (`NativeTactics.inCloseCombat`, which calls [decide]) and only read here, so a
+     * fight on one man cannot leave him out while the others drive off.
      */
     fun engaged(npc: NpcEntity): Boolean {
         val squad = npc.currentSquad() ?: return enemyClose(npc)
-        val level = npc.level() as ServerLevel
-        val now = level.gameTime
-        if (squad.engagedAt == now) return squad.engagedAnswer
+        return NativeTactics.inCloseCombat(squad, npc.level() as ServerLevel)
+    }
+
+    /**
+     * The squad's decision, for the HTN to store. It is close combat when an enemy NPC or player is within
+     * a man's engagement distance, or a mob that threatens him ([HostileMobs.threatens]) is within
+     * [HostileMobs.CLOSE_RANGE] of him. Fire from further off never counts: everyone boards. Once a man of
+     * the squad is on the vehicle trip ([NpcEntity.vehicleTransport]) the squad has decided to travel, and a
+     * mob closing in no longer cancels the trip; whoever sees it shoots from where he stands. A squad that
+     * is not [distant] has no trip to decide.
+     */
+    fun decide(squad: Squad, level: ServerLevel): Boolean {
+        if (!distant(squad, level)) return false
         val men = squad.members.mapNotNull { level.getEntity(it) as? NpcEntity }.filter { it.isAlive && it.squadId == squad.id }
         val travelling = men.any { it.vehicleTransport }
-        val answer = men.any(::enemyClose) || (!travelling && men.any { mobClose(it, level) })
-        squad.engagedAt = now
-        squad.engagedAnswer = answer
-        return answer
+        return men.any(::enemyClose) || (!travelling && men.any { mobClose(it, level) })
     }
 
     /**

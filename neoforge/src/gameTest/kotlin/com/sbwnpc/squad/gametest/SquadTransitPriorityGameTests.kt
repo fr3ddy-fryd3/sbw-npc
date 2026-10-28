@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.gametest
 
+import com.sbwnpc.squad.ai.integration.NativeTactics
 import com.sbwnpc.squad.combat.HostileMobs
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.MovementClaim
@@ -143,6 +144,32 @@ object SquadTransitPriorityGameTests {
                 scene.result("PASS", "tick=${helper.tick}")
                 helper.succeed()
             }
+        }
+    }
+
+    /** The squad's travel-or-engage decision is taken by the tactical HTN, with no vehicle in play (#231). */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 300, batch = "transit-decision")
+    fun tacticalHtnDecidesWhetherTheSquadIsInCloseCombat(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "transit-decision")
+        val manager = SquadManager.get(helper.level)
+        val men = listOf(32.5, 35.5).map { scene.spawn(Vec3(it, 1.0, 20.5)) }
+        val zombie = zombieAt(helper, Vec3(40.5, 1.0, 20.5))
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, men.map { it.uuid })
+        scene.onClose = {
+            manager.deleteSquad(helper.level, squad.id)
+            zombie.discard()
+        }
+        manager.issueOrderAt(helper.level, squad.id, SquadOrder.ATTACK, helper.absolutePos(BlockPos(150, 1, 20)))
+        helper.onEachTick { if (helper.tick < 100) zombie.target = men.first() }
+        helper.runAtTickTime(60) {
+            helper.assertTrue(NativeTactics.inCloseCombat(squad, helper.level), "A mob after the squad within 16 blocks did not put it in close combat")
+            zombie.discard()
+        }
+        helper.runAtTickTime(120) {
+            helper.assertTrue(!NativeTactics.inCloseCombat(squad, helper.level), "The squad stayed in close combat after the mob was gone")
+            scene.result("PASS", "tick=${helper.tick}")
+            helper.succeed()
         }
     }
 

@@ -12,4 +12,8 @@ class SquadTacticalState {
     var nextAssessment = Long.MIN_VALUE
     var nextTrace = Long.MIN_VALUE
     var peakStrength = 0
+
+    /** The squad's travel-or-engage decision (#231): true while it is in close combat and nobody boards. */
+    var inCloseCombat = false
+    var transitDecidedAt = Long.MIN_VALUE
 }

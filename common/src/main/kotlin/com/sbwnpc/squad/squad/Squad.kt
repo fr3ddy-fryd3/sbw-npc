@@ -49,10 +49,6 @@ class Squad(
 
     var orderStamp: Int = 0
 
-    /** The last answer of [com.sbwnpc.squad.entity.ai.SquadTransit.engaged] and the game tick it was given, so one tick scans for it once. Not saved. */
-    internal var engagedAt: Long = -1
-    internal var engagedAnswer: Boolean = false
-
     /** Explicit common command identity and objective; execution plans/cursors are not persisted. */
     var command: com.sbwnpc.squad.ai.tactics.IssuedCommand? = null
         internal set
