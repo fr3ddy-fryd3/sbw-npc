@@ -33,6 +33,7 @@ import com.sbwnpc.squad.combat.tactics.TacticalPositions
 import com.sbwnpc.squad.domain.port.HandGun
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.domain.port.TriggerMode
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcPosture
 import com.sbwnpc.squad.npc.NpcClass
@@ -948,7 +949,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
             return CombatMovement.LOCAL
         }
-        if (entity.coverPeekPoint != null) {
+        if (entity.holds(NpcActivity.PEEK)) {
             bounding = true
             boundPhaseStarted = false
             firingPos = null
@@ -1049,7 +1050,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun clearBlockedFiringLane(entity: NpcEntity, target: LivingEntity, tacticalMovement: Boolean) {
         // Do not replace withdrawal, cover peeking or dug-in positions with sidesteps.
-        if (!lineIsClear && !entity.diggedIn && !fallingBack && entity.coverPeekPoint == null) {
+        val holdsPosition = entity.diggedIn || fallingBack || entity.holds(NpcActivity.PEEK)
+        if (!lineIsClear && !holdsPosition) {
             // Dug in: hold fire rather than step out of the hole to clear an ally's line of fire —
             // same reasoning as advanceOrHold's guard above.
             if (tacticalMovement) {

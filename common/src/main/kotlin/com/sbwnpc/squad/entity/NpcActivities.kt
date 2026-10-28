@@ -32,6 +32,12 @@ enum class NpcActivity(val holds: Set<Cap>) {
     /** Moving to, holding or leaving cover: [com.sbwnpc.squad.entity.ai.SeekCoverBehaviour]. */
     COVER(setOf(Cap.FEET, Cap.FIRE)),
 
+    /**
+     * Stepping out of cover to return fire ([com.sbwnpc.squad.entity.ai.SeekCoverBehaviour]). The
+     * cover claim is let go for the peek, so the rifle is free; the feet belong to the peek.
+     */
+    PEEK(setOf(Cap.FEET)),
+
     /** Running from a live grenade: [com.sbwnpc.squad.entity.ai.GrenadeEvadeBehaviour]. */
     EVADE(setOf(Cap.FEET, Cap.FIRE)),
 

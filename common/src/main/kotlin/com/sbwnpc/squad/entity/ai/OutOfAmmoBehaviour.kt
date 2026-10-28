@@ -62,7 +62,7 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun tick(entity: NpcEntity) {
         val target = entity.target ?: return
         beginEpisode(entity)
-        if (entity.movementLockedByCover() || entity.coverPeekPoint != null || entity.evadingGrenade() || entity.combatLockedByMedic()) return
+        if (entity.movementLockedByCover() || entity.evadingGrenade() || entity.combatLockedByMedic()) return
         // A fully empty NPC can return to a known Supply even outside the ordinary search radius.
         entity.retreatPoint()?.let { rally ->
             entity.release(NpcActivity.RESUPPLY, this)

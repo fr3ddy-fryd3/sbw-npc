@@ -329,9 +329,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     fun combatLockedByCover(): Boolean = holds(NpcActivity.COVER) || evadingGrenade()
 
     /** Peeking permits shooting while cover keeps sole ownership of the short movement. */
-    var coverPeekPoint: Vec3? = null
-        internal set
-    fun movementLockedByCover(): Boolean = combatLockedByCover() || coverPeekPoint != null
+    fun movementLockedByCover(): Boolean = combatLockedByCover() || holds(NpcActivity.PEEK)
 
     /** Running from a live grenade (GrenadeEvadeBehaviour). Part of [combatLockedByCover]; exposed
      *  on its own for the movers that don't read that lock. */

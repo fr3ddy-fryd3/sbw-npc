@@ -100,6 +100,7 @@ class NpcActivitiesTest {
             NpcActivity.RESUPPLY to (false to false),
             NpcActivity.HEAL to (false to false),
             NpcActivity.COVER to (false to false),
+            NpcActivity.PEEK to (false to false),
             NpcActivity.EVADE to (false to false),
         )
         assertEquals(NpcActivity.entries.toSet(), placed.keys)
@@ -145,6 +146,16 @@ class NpcActivitiesTest {
         assertNull(activities.holder(Cap.FIRE, 0))
         assertTrue(activities.may(Cap.FIRE, 0))
         assertFalse(activities.may(Cap.FEET, 0))
+    }
+
+    @Test fun `a man peeking out of cover keeps his feet to the peek and still shoots`() {
+        activities.claim(NpcActivity.COVER, cover, 0)
+        activities.claim(NpcActivity.PEEK, first, 0)
+        assertEquals(NpcActivity.PEEK, activities.holder(Cap.FEET, 0))
+        assertEquals(NpcActivity.COVER, activities.holder(Cap.FIRE, 0))
+        activities.release(NpcActivity.COVER, cover, 0)
+        assertTrue(activities.may(Cap.FIRE, 0), "once cover is let go the trigger is free")
+        assertFalse(activities.mayFor(NpcActivity.HEAL, Cap.FEET, 0))
     }
 
     @Test fun `a dug-in man keeps his feet in the hole and his rifle free`() {

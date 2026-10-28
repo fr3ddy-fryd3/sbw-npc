@@ -90,6 +90,19 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var fallbackThreat: Vec3? = null
     private var peekSearch: CoverPeekSearch? = null
     private var phaseUntilTick = 0
+
+    /** Where the peek is going, while [NpcActivity.PEEK] is held. */
+    private var peekAt: Vec3? = null
+
+    private fun beginPeek(entity: NpcEntity, point: Vec3) {
+        peekAt = point
+        entity.claim(NpcActivity.PEEK, this)
+    }
+
+    private fun endPeek(entity: NpcEntity) {
+        peekAt = null
+        entity.release(NpcActivity.PEEK, this)
+    }
     private var isFallbackRetreat = false // coverTarget came from fallbackAwayFrom, not CoverSearch.find
     private var blindPeek = false
     private var waitingForPeek = false
@@ -191,7 +204,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         isFallbackRetreat = false
         blindPeek = false
         waitingForPeek = false
-        entity.coverPeekPoint = null
+        endPeek(entity)
         failedCover.clear()
         digsUsed = 0
         digTicksRemaining = 0
@@ -202,7 +215,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun stop(entity: NpcEntity) {
-        entity.coverPeekPoint = null
+        endPeek(entity)
         entity.incomingFire.endReply()
         coverTarget = null
         pendingCover = null
@@ -355,7 +368,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  ever gets its first dwell/peek check after arriving) without that drift. */
     private fun enterCover(entity: NpcEntity, refreshSuppression: Boolean = false) {
         peekSearch = null
-        entity.coverPeekPoint = null
+        endPeek(entity)
         blindPeek = false
         waitingForPeek = false
         entity.navigation.stop()
@@ -718,7 +731,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
             phase = Phase.PEEKING
             blindPeek = false
-            entity.coverPeekPoint = peekPoint.point
+            beginPeek(entity, peekPoint.point)
             phaseUntilTick = entity.tickCount + PEEK_TICKS
             // Unlock — GunAttackBehaviour (no longer locked out, see combatLockedByCover) takes
             // over aiming/approach/fire from here; this is just enough of a nudge to clear
@@ -738,7 +751,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
                 phase = Phase.PEEKING
                 blindPeek = true
                 waitingForPeek = true
-                entity.coverPeekPoint = peek.point
+                beginPeek(entity, peek.point)
                 phaseUntilTick = entity.tickCount + 100
                 entity.navigation.moveTo(peek.path, 1.0)
                 DebugFlags.log(LogGroup.ORDER, "[return-fire] {} moving to peek={}", entity.uuid, peek.point)
@@ -780,7 +793,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
                 duckBackToCover(entity)
                 return
             }
-            val point = entity.coverPeekPoint ?: return
+            val point = peekAt ?: return
             if (entity.position().distanceTo(point) > 1.0) {
                 if (entity.navigation.isDone) entity.navigateTo(point, 1.0)
                 return
@@ -818,7 +831,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun duckBackToCover(entity: NpcEntity) {
         peekSearch = null
-        entity.coverPeekPoint = null
+        endPeek(entity)
         waitingForPeek = false
         entity.incomingFire.endReply()
         phase = Phase.RETURNING_TO_COVER
