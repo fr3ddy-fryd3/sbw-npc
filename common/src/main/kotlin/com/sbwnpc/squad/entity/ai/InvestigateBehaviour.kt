@@ -4,6 +4,7 @@ import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DeathSites
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.team.SquadTeams
@@ -68,8 +69,8 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
     // in-game as digging in not actually preventing the mob from running off once shot at again.
     // Not while falling back either: investigating gunfire means walking toward it.
     private fun eligible(entity: NpcEntity) =
-        entity.target == null && !entity.movementLockedByCover() && !entity.diggedIn && !entity.busyWithRole() &&
-            entity.retreatPoint() == null && !entity.resupplying &&
+        entity.target == null && !entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK) && !entity.holds(NpcActivity.DUG_IN) && !entity.busyWithRole() &&
+            entity.retreatPoint() == null && !entity.holds(NpcActivity.RESUPPLY) &&
             !com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity) &&
             !com.sbwnpc.squad.combat.tactics.SquadTactics.holdsAfterFailure(entity) &&
             !com.sbwnpc.squad.combat.CombatPosition.holdsPosition(entity.currentSquad()?.order)
@@ -194,11 +195,11 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
                 entity,
                 when {
                     entity.target != null -> "found a target"
-                    entity.combatLockedByCover() -> "taken for cover"
-                    entity.diggedIn -> "dug in"
+                    entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE) -> "taken for cover"
+                    entity.holds(NpcActivity.DUG_IN) -> "dug in"
                     entity.busyWithRole() -> "busy with a role"
                     entity.retreatPoint() != null -> "falling back"
-                    entity.resupplying -> "off to resupply"
+                    entity.holds(NpcActivity.RESUPPLY) -> "off to resupply"
                     else -> "stopped"
                 },
             )

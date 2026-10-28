@@ -5,6 +5,7 @@ import com.sbwnpc.squad.ai.planning.*
 import com.sbwnpc.squad.ai.tactics.*
 import com.sbwnpc.squad.combat.*
 import com.sbwnpc.squad.combat.tactics.*
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.SquadTransit
 import com.sbwnpc.squad.npc.NpcClass
@@ -157,8 +158,8 @@ object NativeTactics {
     /** How many post searches in a row [npc] failed round his task's anchor, while remembered. */
     fun postFailures(npc: NpcEntity): Int = world(npc).postFailuresOf(npc.uuid)
     fun movable(npc: NpcEntity) =
-        npc.isAlive && npc.vehicle == null && !npc.busyWithRole() && !npc.resupplying && !npc.diggedIn &&
-            !npc.evadingGrenade() && !npc.movementLockedByCover() && !npc.combatLockedByMedic() && npc.retreatPoint() == null
+        npc.isAlive && npc.vehicle == null && !npc.busyWithRole() && !npc.holds(NpcActivity.RESUPPLY) && !npc.holds(NpcActivity.DUG_IN) &&
+            !npc.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK, NpcActivity.HEAL) && npc.retreatPoint() == null
     private val GROUND = setOf(NpcClass.RIFLEMAN, NpcClass.SHOTGUNNER, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.DRONE_OPERATOR)
 
     private class PendingDeath(val entity: LivingEntity, val cancelled: () -> Boolean)
@@ -735,7 +736,7 @@ object NativeTactics {
             }
             val inspected = occupied && observers.any { it.position().distanceTo(point) <= 24 && Vision.inCone(it.position(), it.yHeadRot, point) && DetectionSightline.visible(level, it.eyePosition, point.add(0.0, 1.5, 0.0), it) } && remaining.isEmpty()
             val loaded = listOf(-24, 24).all { x -> listOf(-24, 24).all { z -> level.hasChunkAt(net.minecraft.core.BlockPos.containing(point.add(x.toDouble(), 0.0, z.toDouble()))) } }
-            val fire = observers.any { it.incomingFire.recentPoint(now) != null || it.evadingGrenade() }
+            val fire = observers.any { it.incomingFire.recentPoint(now) != null || it.holds(NpcActivity.EVADE) }
             val clock = areaClocks.getOrPut(task.operation, ::AreaControlClock)
             clock.observe(now, loaded, occupied, inspected, contacts.isNotEmpty() || discovered, fire)
             areaObservedAt[task.operation] = now

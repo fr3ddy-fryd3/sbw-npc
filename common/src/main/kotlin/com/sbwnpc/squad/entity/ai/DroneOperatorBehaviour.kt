@@ -119,12 +119,12 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     // --- eligibility ---
 
-    private fun baseEligible(entity: NpcEntity): Boolean = entity.npcClass == NpcClass.DRONE_OPERATOR && !entity.diggedIn && !entity.vehicleTransport
+    private fun baseEligible(entity: NpcEntity): Boolean = entity.npcClass == NpcClass.DRONE_OPERATOR && !entity.holdsAny(NpcActivity.DUG_IN, NpcActivity.VEHICLE)
 
     private fun canPrepareLaunch(entity: NpcEntity): Boolean {
         if (entity.dronesLeft <= 0) return false
         if (entity.tickCount < nextLaunchTick) return false
-        if (entity.movementLockedByCover() || entity.combatLockedByMedic()) return false
+        if (entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK, NpcActivity.HEAL)) return false
         // Someone right on top of the operator: shoot back (GunAttackBehaviour), don't launch.
         val personalThreat = entity.target?.takeIf { it.isAlive && entity.distanceToSqr(it) <= SELF_DEFENSE_RANGE_SQR }
         if (personalThreat != null) return false
@@ -379,7 +379,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         val walk = launchWalk
         if (walk == null) {
             // Cover may have replaced the return path and ended the walk on an earlier tick.
-            if (!entity.movementLockedByCover() && !entity.combatLockedByMedic()) entity.navigation.stop()
+            if (!entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK, NpcActivity.HEAL)) entity.navigation.stop()
         } else if (walk.returnHome(entity)) {
             launchWalk = null
         }

@@ -121,11 +121,11 @@ class MortarCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun eligible(entity: NpcEntity): Boolean {
         if (entity.npcClass != NpcClass.MORTAR || !MortarClaims.available(entity)) return false
-        if (entity.carryingMortar) return true
+        if (entity.holds(NpcActivity.CARRYING_MORTAR)) return true
         val level = entity.level() as? ServerLevel ?: return false
         MortarClaims.refresh(level)
         carrier = NpcRegistry.all(level).firstOrNull {
-            it !== entity && it.isAlive && it.carryingMortar &&
+            it !== entity && it.isAlive && it.holds(NpcActivity.CARRYING_MORTAR) &&
                 (
                     (entity.assignedMortarId != null && it.assignedMortarId == entity.assignedMortarId) ||
                         (entity.assignedMortarId == null && entity.squadId != null && it.squadId == entity.squadId)
@@ -169,12 +169,12 @@ class MortarCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun tick(entity: NpcEntity) {
         val level = entity.level() as? ServerLevel ?: return
         entity.release(NpcActivity.MORTAR_ERRAND, this)
-        if (entity.carryingMortar) {
+        if (entity.holds(NpcActivity.CARRYING_MORTAR)) {
             entity.release(NpcActivity.MORTAR_CREW, this)
             tickDisplacing(entity, level)
             return
         }
-        carrier?.takeIf { it.isAlive && it.carryingMortar }?.let { with ->
+        carrier?.takeIf { it.isAlive && it.holds(NpcActivity.CARRYING_MORTAR) }?.let { with ->
             entity.claim(NpcActivity.MORTAR_CREW, this)
             entity.claim(NpcActivity.MORTAR_ERRAND, this)
             if (entity.distanceToSqr(with) > 25.0) entity.navigateTo(with.position(), DISPLACE_SPEED) else entity.navigation.stop()

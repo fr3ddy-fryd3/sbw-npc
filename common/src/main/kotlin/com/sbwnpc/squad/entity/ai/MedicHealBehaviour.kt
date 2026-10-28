@@ -122,8 +122,8 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
         // else that respects NpcEntity.diggedIn (PM review finding — this was one of two Core tasks
         // that still didn't) — even a critically wounded ally doesn't get the medic to abandon its
         // own hole; treating can wait until it's healed/no longer holding.
-        if (entity.diggedIn) return null
-        if (entity.vehicleTransport) return null
+        if (entity.holds(NpcActivity.DUG_IN)) return null
+        if (entity.holds(NpcActivity.VEHICLE)) return null
         val faction = SquadTeams.factionOf(entity) ?: return null
         val level = entity.level() as? ServerLevel ?: return null
         var best: LivingEntity? = null
@@ -190,7 +190,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun eligible(entity: NpcEntity): Boolean =
         entity.npcClass == NpcClass.MEDIC &&
-            !entity.evadingGrenade() && !entity.movementLockedByCover() && !entity.vehicleTransport && !entity.diggedIn && candidate(entity) != null
+            !entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK) && !entity.holdsAny(NpcActivity.DUG_IN, NpcActivity.VEHICLE) && candidate(entity) != null
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = eligible(entity)
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = eligible(entity)

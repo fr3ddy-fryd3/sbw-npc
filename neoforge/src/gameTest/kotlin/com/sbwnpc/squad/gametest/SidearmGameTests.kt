@@ -454,7 +454,7 @@ object SidearmGameTests {
             Files.writeString(report, trace)
         }
         helper.onEachTick {
-            trace.append("${helper.tick},${npc.position().distanceTo(origin)},${npc.target != null},${npc.navigation.isDone},${npc.deltaMovement.horizontalDistance()},${npc.movementLockedByCover()},${Ports.guns.inHand(npc)?.hasAmmo()}\n")
+            trace.append("${helper.tick},${npc.position().distanceTo(origin)},${npc.target != null},${npc.navigation.isDone},${npc.deltaMovement.horizontalDistance()},${npc.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK)},${Ports.guns.inHand(npc)?.hasAmmo()}\n")
             helper.assertTrue(npc.nearestSupply() == null, "Empty-kit control unexpectedly has Supply")
             helper.assertTrue(Ports.guns.inHand(npc)?.hasAmmo() == false, "Empty-kit control can still fire")
             helper.assertTrue(!SidearmKit.hasSmallArmsAmmo(npc), "Empty kit regenerated ammunition: primary=${Ports.guns.roundsLeft(npc.primaryGun())} pistol=${Ports.guns.roundsLeft(npc.sidearmWeapon)} supply=${npc.nearestSupply()}")

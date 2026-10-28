@@ -36,7 +36,7 @@ class FollowRideBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
-        entity.vehicle == null && entity.freeFor(NpcActivity.SEAT, this) && !entity.vehicleTransport && !entity.operatingDrone && !entity.antiDroneEngaged && !entity.diggedIn &&
+        entity.vehicle == null && entity.freeFor(NpcActivity.SEAT, this) && !entity.holdsAny(NpcActivity.VEHICLE, NpcActivity.DRONE, NpcActivity.ANTI_DRONE, NpcActivity.DUG_IN) &&
             ownerVehicle(level, entity)?.let { boardable(entity, it) } == true
 
     override fun start(entity: NpcEntity) {

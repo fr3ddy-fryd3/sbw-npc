@@ -77,7 +77,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
-    private fun eligible(entity: NpcEntity): Boolean = !entity.vehicleTransport && !entity.operatingDrone
+    private fun eligible(entity: NpcEntity): Boolean = !entity.holdsAny(NpcActivity.VEHICLE, NpcActivity.DRONE)
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
         startCheck.check(entity) {
@@ -215,7 +215,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
         val shooter = isShooter(entity)
 
         val panicRange = if (shooter) SHOOTER_PANIC_RANGE else HIDER_PANIC_RANGE
-        val canRun = shooter || !entity.combatLockedByCover()
+        val canRun = shooter || !entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE)
         if (dist <= panicRange && closing && canRun) {
             evade(entity, drone)
             return

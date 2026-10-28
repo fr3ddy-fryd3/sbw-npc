@@ -234,13 +234,13 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 "combat interrupted (target=${entity.target != null} alert=${entity.isAlert()} suppressed=${entity.isSuppressed()})"
             }
         }
-        if (entity.diggedIn) return logEligibility(entity, false) { "dug in" }
-        if (entity.movementLockedByCover() || entity.combatLockedByMedic()) return logEligibility(entity, false) { "cover or medic owns movement" }
+        if (entity.holds(NpcActivity.DUG_IN)) return logEligibility(entity, false) { "dug in" }
+        if (entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK, NpcActivity.HEAL)) return logEligibility(entity, false) { "cover or medic owns movement" }
         // Off to a Supply: the order waits till he's topped up, the ride to it too. Both ran at
         // once, and each took the other off him in turn.
-        if (entity.resupplying) return logEligibility(entity, false) { "resupplying" }
-        if (entity.operatingDrone) return logEligibility(entity, false) { "flying a drone" }
-        if (entity.antiDroneEngaged) return logEligibility(entity, false) { "dealing with a hostile drone" }
+        if (entity.holds(NpcActivity.RESUPPLY)) return logEligibility(entity, false) { "resupplying" }
+        if (entity.holds(NpcActivity.DRONE)) return logEligibility(entity, false) { "flying a drone" }
+        if (entity.holds(NpcActivity.ANTI_DRONE)) return logEligibility(entity, false) { "dealing with a hostile drone" }
         // Already looked once for this order and there was nothing: walk it.
         if (entity.currentSquad()?.orderStamp == noVehicleForStamp) {
             return logEligibility(entity, false) { "no vehicle for this order, walking" }
@@ -649,7 +649,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             val member = level.getEntity(id) as? NpcEntity ?: return@all true // dead/unloaded: don't block on it
             !member.isAlive || member.vehicle != null || member.distanceToSqr(vehicle) > SEARCH_RADIUS * SEARCH_RADIUS || combatInterrupted(member) ||
                 // A boat seats few: whoever isn't coming along is swimming, not late.
-                (boat && !member.vehicleTransport)
+                (boat && !member.holds(NpcActivity.VEHICLE))
         }
         val timedOut = entity.tickCount - waitStartTick > WAIT_TIMEOUT_TICKS
         if (allAccountedFor || timedOut) {

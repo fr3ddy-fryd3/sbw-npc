@@ -3,6 +3,7 @@ package com.sbwnpc.squad.combat.tactics
 import com.sbwnpc.squad.combat.*
 import com.sbwnpc.squad.domain.port.Mobility
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.TankModel
@@ -51,7 +52,7 @@ object SquadTactics {
     fun holdsAfterFailure(entity: NpcEntity): Boolean = false
 
     fun equip(entity: NpcEntity) {
-        if (entity.vehicle != null || entity.busyWithRole() || entity.combatLockedByMedic() || entity.resupplying) return
+        if (entity.vehicle != null || entity.busyWithRole() || entity.holdsAny(NpcActivity.HEAL, NpcActivity.RESUPPLY)) return
         val task = task(entity) ?: return
         val target = entity.target ?: return
         if (task.job == TacticalJob.ANTI_ARMOUR && AntiArmourKit.loaded(entity) &&

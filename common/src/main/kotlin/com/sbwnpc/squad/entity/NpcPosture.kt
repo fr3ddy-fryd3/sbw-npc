@@ -26,7 +26,7 @@ class NpcPosture(private val npc: NpcEntity) {
         if (npc.pose != Pose.STANDING && npc.pose != Pose.CROUCHING) return
         val tick = npc.tickCount
         val moving = !npc.navigation.isDone || npc.deltaMovement.horizontalDistanceSqr() > STILL_SPEED_SQR
-        val position = npc.combatLockedByCover() || npc.diggedIn || npc.target != null ||
+        val position = npc.holdsAny(NpcActivity.COVER, NpcActivity.EVADE) || npc.holds(NpcActivity.DUG_IN) || npc.target != null ||
             npc.currentSquad()?.order == SquadOrder.DEFEND
         stillTicks = if (!moving && npc.onGround() && !npc.isPassenger && !npc.isInWater && position) stillTicks + 1 else 0
         val blockedSince = npc.blockedSightSince

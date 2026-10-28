@@ -227,7 +227,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun canEngage(entity: NpcEntity): Boolean {
         if (entity.busyWithRole()) return false
-        if (entity.combatLockedByCover() || entity.combatLockedByMedic()) return false
+        if (entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.HEAL)) return false
         val target = entity.target ?: return false
         if (entity.incomingFire.replying(entity.level().gameTime) && !canTrackTarget(entity, target)) return false
         val gun = currentGun(entity) ?: return false
@@ -242,7 +242,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (canEngage(entity)) return true
         // Cover, a medic's treatment or AntiDroneBehaviour (which owns the gun and the feet while
         // a hostile drone is inbound) take the mob over; nothing to finish walking to then.
-        if (entity.combatLockedByCover() || entity.combatLockedByMedic() || entity.antiDroneEngaged) return false
+        if (entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.HEAL, NpcActivity.ANTI_DRONE)) return false
         return !entity.navigation.isDone && currentGun(entity)?.hasAmmo() == true
     }
 
@@ -297,7 +297,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         // Dug in: fight from the hole, never reposition to advance/bound toward the target — see
         // NpcEntity.diggedIn's own doc comment. Aiming/firing below is completely unaffected.
-        if (entity.diggedIn) {
+        if (entity.holds(NpcActivity.DUG_IN)) {
             entity.navigation.stop()
             bounding = true
             boundPhaseStarted = false
@@ -701,7 +701,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun tryHoldingAdvance(entity: NpcEntity, target: LivingEntity): Boolean {
-        if (entity.usingSidearm || entity.diggedIn || holdingAdvanceComplete) return false
+        if (entity.usingSidearm || entity.holds(NpcActivity.DUG_IN) || holdingAdvanceComplete) return false
         val order = entity.currentSquad()?.order
         if (!CombatPosition.mayAdvance(order, entity.npcClass, entity.position(), target.position())) return false
         // Pick one endpoint for this approach. Following every movement of a distant target
@@ -1050,7 +1050,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun clearBlockedFiringLane(entity: NpcEntity, target: LivingEntity, tacticalMovement: Boolean) {
         // Do not replace withdrawal, cover peeking or dug-in positions with sidesteps.
-        val holdsPosition = entity.diggedIn || fallingBack || entity.holds(NpcActivity.PEEK)
+        val holdsPosition = entity.holds(NpcActivity.DUG_IN) || fallingBack || entity.holds(NpcActivity.PEEK)
         if (!lineIsClear && !holdsPosition) {
             // Dug in: hold fire rather than step out of the hole to clear an ally's line of fire —
             // same reasoning as advanceOrHold's guard above.

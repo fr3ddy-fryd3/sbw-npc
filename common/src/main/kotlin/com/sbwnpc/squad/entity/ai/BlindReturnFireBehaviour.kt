@@ -7,6 +7,7 @@ import com.sbwnpc.squad.combat.Hearing
 import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.combat.WeaponReach
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
@@ -22,8 +23,8 @@ class BlindReturnFireBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
     private fun eligible(entity: NpcEntity): Boolean {
-        if (entity.busyWithRole() || entity.combatLockedByCover() || entity.combatLockedByMedic() ||
-            entity.resupplying || entity.vehicle != null || entity.evadingGrenade()
+        if (entity.busyWithRole() || entity.vehicle != null ||
+            entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.HEAL, NpcActivity.RESUPPLY)
         ) {
             return false
         }

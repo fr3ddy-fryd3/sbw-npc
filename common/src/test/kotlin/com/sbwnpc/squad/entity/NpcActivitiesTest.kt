@@ -97,6 +97,7 @@ class NpcActivitiesTest {
             NpcActivity.ANTI_DRONE to (true to false),
             NpcActivity.DUG_IN to (false to false),
             NpcActivity.SEAT to (false to false),
+            NpcActivity.ORDER to (false to false),
             NpcActivity.RESUPPLY to (false to false),
             NpcActivity.HEAL to (false to false),
             NpcActivity.COVER to (false to false),
@@ -179,6 +180,17 @@ class NpcActivitiesTest {
         assertFalse(activities.mayFor(NpcActivity.RESUPPLY, Cap.FIRE, 0), "cover holds the trigger too")
         assertTrue(activities.mayFor(NpcActivity.EVADE, Cap.FEET, 0))
         assertTrue(activities.mayFor(NpcActivity.COVER, Cap.FEET, 0), "a kind is not blocked by itself")
+    }
+
+    @Test fun `the squad order walks only while nothing else holds the feet`() {
+        for (other in NpcActivity.entries.filter { it != NpcActivity.ORDER && Cap.FEET in it.holds }) {
+            val held = NpcActivities()
+            held.claim(other, cover, 0)
+            assertFalse(held.mayFor(NpcActivity.ORDER, Cap.FEET, 0), "$other")
+        }
+        activities.claim(NpcActivity.ORDER, first, 0)
+        assertTrue(activities.mayFor(NpcActivity.ORDER, Cap.FEET, 0), "the order is not blocked by itself")
+        assertTrue(activities.may(Cap.FIRE, 0), "walking to the order leaves the trigger free")
     }
 
     @Test fun `a lower kind never blocks a higher one`() {

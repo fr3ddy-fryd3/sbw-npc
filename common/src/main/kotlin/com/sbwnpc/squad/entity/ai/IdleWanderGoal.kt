@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.entity.ai
 
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal
 
@@ -21,7 +22,7 @@ import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal
  */
 class IdleWanderGoal(private val npc: NpcEntity, speedModifier: Double) : WaterAvoidingRandomStrollGoal(npc, speedModifier) {
     private fun eligible(): Boolean {
-        if (npc.target != null || npc.diggedIn || npc.busyWithRole()) return false
+        if (npc.target != null || npc.holds(NpcActivity.DUG_IN) || npc.busyWithRole()) return false
         if (npc.wary()) return false
         return npc.homeCenter() == null
     }

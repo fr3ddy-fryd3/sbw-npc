@@ -232,7 +232,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun tick(entity: NpcEntity) {
         val level = entity.level() as? ServerLevel ?: return
         // A live grenade outranks cover — GrenadeEvadeBehaviour has the legs until it's clear.
-        if (entity.evadingGrenade()) return
+        if (entity.holds(NpcActivity.EVADE)) return
         // DUG_IN_HOLDING/HOLDING_OPEN/EXITING_HOLE deliberately do NOT bail out on threatPos == null
         // the way every other phase does below — none of them are gated by the threat-suppression
         // memory the way MOVING_TO_COVER/IN_COVER/etc. are (see each one's own doc comment).
@@ -468,7 +468,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  triggers mid-firefight (canDigIn requires an actively-covering ally), so the very next recheck
      *  after finishing would almost always find a live target and immediately walk back out to peek
      *  anyway — reported in-game as "выкопал яму и почти сразу её покинул". Clearing the [NpcActivity.COVER] claim
-     *  immediately hands aiming/firing to [GunAttackBehaviour] as normal; [NpcEntity.diggedIn] is the
+     *  immediately hands aiming/firing to [GunAttackBehaviour] as normal; [NpcActivity.DUG_IN] is the
      *  new signal that tells it to skip all repositioning (advance/bounding/sidestep) while still
      *  aiming and shooting exactly as it would anywhere else — see that flag's own doc comment. */
     private fun enterDugInHolding(entity: NpcEntity) {
@@ -485,7 +485,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  [shouldKeepRunning] for the "healed back up" exit, and below for the "nothing left to fight"
      *  exit. [GunAttackBehaviour] does all the actual aiming/shooting on its own once the [NpcActivity.COVER] claim
      *  is cleared (see [enterDugInHolding]); this just keeps the suppression memory (and therefore
-     *  this whole behaviour, and therefore [NpcEntity.diggedIn]) alive while there's still a live
+     *  this whole behaviour, and therefore [NpcActivity.DUG_IN]) alive while there's still a live
      *  target to hold position against. Once the target's gone, suppression is deliberately left to
      *  lapse on its own instead of being force-refreshed forever — a mob with nothing shooting back
      *  at it and nothing to shoot at has no reason to stay pinned in a hole. */
@@ -516,7 +516,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  dig any further — hold the current spot and keep firing rather than fleeing across open
      *  ground. Clears the [NpcActivity.COVER] claim like [enterDugInHolding] so [GunAttackBehaviour] keeps
      *  full control of aim/fire AND its own partial-cover positioning (`holdFiringPosition`) — unlike
-     *  actually digging in, [NpcEntity.diggedIn] is deliberately NOT set here, since there's no hole
+     *  actually digging in, [NpcActivity.DUG_IN] is deliberately NOT set here, since there's no hole
      *  to stay locked into; GunAttackBehaviour is free to reposition within its own small search
      *  radius exactly as it would with no suppression involved at all. */
     private fun enterHoldingOpen(entity: NpcEntity) {
@@ -692,7 +692,8 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun isActuallyCovering(ally: NpcEntity): Boolean {
         if (ally.firedRecently(COVERING_FIRE_WINDOW_TICKS)) return true
         val target = ally.target
-        if (target != null && target.isAlive && !ally.combatLockedByCover() && ally.sensing.hasLineOfSight(target)) return true
+        val shootable = target?.takeIf { it.isAlive && !ally.holdsAny(NpcActivity.COVER, NpcActivity.EVADE) }
+        if (shootable != null && ally.sensing.hasLineOfSight(shootable)) return true
         return !ally.isSuppressed()
     }
 

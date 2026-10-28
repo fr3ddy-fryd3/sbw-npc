@@ -188,7 +188,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private fun eligible(entity: NpcEntity): Boolean =
-        orderAllowsSupport(entity) && !entity.vehicleTransport && !entity.operatingDrone && !entity.antiDroneEngaged && !entity.diggedIn && !entity.isSuppressed() &&
+        orderAllowsSupport(entity) && !entity.holdsAny(NpcActivity.VEHICLE, NpcActivity.DRONE, NpcActivity.ANTI_DRONE, NpcActivity.DUG_IN) && !entity.isSuppressed() &&
             entity.npcClass != NpcClass.MORTAR &&
             threat(entity) != null
 

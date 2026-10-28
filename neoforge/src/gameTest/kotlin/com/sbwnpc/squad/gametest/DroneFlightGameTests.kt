@@ -63,9 +63,9 @@ object DroneFlightGameTests {
         helper.onEachTick {
             roof.report()
             helper.assertTrue(operator.isAlive, "The operator died while finding open sky")
-            if (preparingAt == null && operator.operatingDrone && operator.dronesLeft == 10) preparingAt = operator.position()
+            if (preparingAt == null && operator.holds(NpcActivity.DRONE) && operator.dronesLeft == 10) preparingAt = operator.position()
             val drone = roof.drone()
-            if (helper.tick % 20L == 0L) scene.result("RUNNING", "tick=${helper.tick} operator=${operator.position()} home=$home busy=${operator.operatingDrone} left=${operator.dronesLeft} launchedAt=$launchedAt drone=${drone?.position()}")
+            if (helper.tick % 20L == 0L) scene.result("RUNNING", "tick=${helper.tick} operator=${operator.position()} home=$home busy=${operator.holds(NpcActivity.DRONE)} left=${operator.dronesLeft} launchedAt=$launchedAt drone=${drone?.position()}")
             if (drone != null && launchedAt == null) {
                 launchedAt = operator.position()
                 helper.assertTrue(home.distanceTo(operator.position()) > 3.0, "The drone launched through the broad roof")
@@ -88,7 +88,7 @@ object DroneFlightGameTests {
         helper.onEachTick {
             roof.report()
             helper.assertTrue(roof.operator.dronesLeft == 10, "Searching without open sky consumed a drone")
-            if (helper.tick >= 100 && !roof.operator.operatingDrone) freeTicks++
+            if (helper.tick >= 100 && !roof.operator.holds(NpcActivity.DRONE)) freeTicks++
             if (helper.tick >= 300) {
                 helper.assertTrue(freeTicks >= 50, "A failed launch search kept the operator's movement indefinitely")
                 roof.scene.result("PASS", "tick=${helper.tick} freeTicks=$freeTicks")
@@ -105,13 +105,13 @@ object DroneFlightGameTests {
         var orderedAt: Long? = null
         helper.onEachTick {
             roof.report()
-            if (orderedAt == null && roof.operator.operatingDrone && roof.operator.dronesLeft == 10) {
+            if (orderedAt == null && roof.operator.holds(NpcActivity.DRONE) && roof.operator.dronesLeft == 10) {
                 roof.manager.issueOrderAt(helper.level, roof.squad.id, SquadOrder.RETREAT, helper.absolutePos(BlockPos(100, 1, 20)))
                 orderedAt = helper.tick
             }
             val since = orderedAt?.let { helper.tick - it } ?: return@onEachTick
             helper.assertTrue(roof.operator.dronesLeft == 10, "The operator launched instead of withdrawing")
-            if (since > 5) helper.assertTrue(!roof.operator.operatingDrone, "The launch walk kept control after RETREAT")
+            if (since > 5) helper.assertTrue(!roof.operator.holds(NpcActivity.DRONE), "The launch walk kept control after RETREAT")
             if (since >= 40) {
                 roof.scene.result("PASS", "orderedAt=$orderedAt finishedAt=${helper.tick}")
                 helper.succeed()

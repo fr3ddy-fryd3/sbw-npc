@@ -15,7 +15,7 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 /**
  * Before the ordinary journey in Core: low on ammunition, no one to fight and a Supply to return to — go and stand by
  * it until the block has topped the NPC up ([SupplyBlockEntity]), then let the squad order take it
- * back to whatever it was doing. [NpcEntity.resupplying] keeps [SquadOrderBehaviour] and
+ * back to whatever it was doing. [NpcActivity.RESUPPLY] keeps [SquadOrderBehaviour] and
  * [InvestigateBehaviour] off it meanwhile.
  *
  * A target ends it at once: the Fight activity takes over, and if the NPC is all but out by then
@@ -36,8 +36,8 @@ class ResupplyBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
     private fun free(entity: NpcEntity): Boolean =
-        entity.target == null && !entity.isPassenger && !entity.busyWithRole() && !entity.diggedIn &&
-            !entity.combatLockedByCover() && !entity.evadingGrenade() && entity.retreatPoint() == null
+        entity.target == null && !entity.isPassenger && !entity.busyWithRole() && !entity.holds(NpcActivity.DUG_IN) &&
+            !entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE) && entity.retreatPoint() == null
 
     private val startCheck = StartCheckThrottle(START_CHECK_INTERVAL_TICKS)
 

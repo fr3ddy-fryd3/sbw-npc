@@ -40,7 +40,7 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
     private fun empty(entity: NpcEntity): Boolean {
-        if (entity.isPassenger || entity.vehicleTransport || entity.servingMortar || entity.operatingDrone) return false
+        if (entity.isPassenger || entity.holdsAny(NpcActivity.VEHICLE, NpcActivity.MORTAR_CREW, NpcActivity.DRONE)) return false
         val target = entity.target ?: return false
         if (!target.isAlive) return false
         val gun = Ports.guns.inHand(entity) ?: return false
@@ -62,7 +62,7 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun tick(entity: NpcEntity) {
         val target = entity.target ?: return
         beginEpisode(entity)
-        if (entity.movementLockedByCover() || entity.evadingGrenade() || entity.combatLockedByMedic()) return
+        if (entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK, NpcActivity.HEAL)) return
         // A fully empty NPC can return to a known Supply even outside the ordinary search radius.
         entity.retreatPoint()?.let { rally ->
             entity.release(NpcActivity.RESUPPLY, this)

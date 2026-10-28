@@ -21,6 +21,12 @@ enum class Cap { FEET, FIRE, LOOK }
  */
 enum class NpcActivity(val holds: Set<Cap>) {
     /**
+     * Walking to the squad's order point ([com.sbwnpc.squad.entity.ai.SquadOrderBehaviour]). The
+     * lowest claim: anything else that holds the feet takes it over. The trigger stays free.
+     */
+    ORDER(setOf(Cap.FEET)),
+
+    /**
      * Walking to a Supply: [com.sbwnpc.squad.entity.ai.ResupplyBehaviour] and the out-of-ammo
      * fallback. Feet only: the fallback walks while the NPC keeps firing its last rounds.
      */

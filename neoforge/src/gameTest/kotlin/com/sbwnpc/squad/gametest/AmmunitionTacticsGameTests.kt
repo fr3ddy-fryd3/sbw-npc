@@ -8,6 +8,7 @@ import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.SidearmKit
 import com.sbwnpc.squad.combat.tactics.DefensiveOverwatch
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.init.ModBlocks
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.AttackAmmoPolicy
@@ -102,7 +103,7 @@ object AmmunitionTacticsGameTests {
             }
             if (rally != null && retriedAt == null) helper.assertTrue(squad.objective == rally, "The retreat point drifted with the moving squad")
             members.forEachIndexed { index, npc ->
-                if (helper.tick % 10L == 0L) trace.append("${helper.tick},${squad.order},$index,${npc.x},${npc.y},${npc.z},${npc.ammoFraction()},${npc.usingSidearm},${npc.resupplying}\n")
+                if (helper.tick % 10L == 0L) trace.append("${helper.tick},${squad.order},$index,${npc.x},${npc.y},${npc.z},${npc.ammoFraction()},${npc.usingSidearm},${npc.holds(NpcActivity.RESUPPLY)}\n")
             }
             if (retriedAt != null) {
                 helper.assertTrue(squad.order == SquadOrder.ATTACK && squad.attackAmmoPolicy == AttackAmmoPolicy.PRESS_ON, "Explicit retry was automatically aborted again")

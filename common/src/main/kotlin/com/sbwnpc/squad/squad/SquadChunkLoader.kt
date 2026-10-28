@@ -3,6 +3,7 @@ package com.sbwnpc.squad.squad
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.config.Settings
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import net.minecraft.core.BlockPos
@@ -101,7 +102,7 @@ object SquadChunkLoader {
         lastSpots.keys.retainAll(mgr.all().map { it.id }.toSet())
     }
 
-    private fun resupplying(npc: NpcEntity): Boolean = npc.resupplying || (npc.servingMortar && npc.mortarShellsLeft <= 0 && npc.nearestSupply() != null)
+    private fun resupplying(npc: NpcEntity): Boolean = npc.holds(NpcActivity.RESUPPLY) || (npc.holds(NpcActivity.MORTAR_CREW) && npc.mortarShellsLeft <= 0 && npc.nearestSupply() != null)
 
     private fun remember(mgr: SquadManager, squad: Squad, members: List<NpcEntity>) {
         lastSpots[squad.id] = members.map { Spot(it.level().dimension(), ChunkPos(it.blockPosition())) }.toSet()
