@@ -1,9 +1,11 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.sbwnpc.squad.combat.CombatPositionSafety
+import com.sbwnpc.squad.combat.HostileMobs
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.squad.Squad
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.entity.Mob
 import net.minecraft.world.phys.Vec3
 
 /** One distance decision for the squad's journey, including members already aboard. */
@@ -24,18 +26,50 @@ object SquadTransit {
     }
 
     /**
-     * Whether the squad as a whole is fighting instead of travelling: any man of it has a target and is not
-     * marching ([marching]). One answer for every man, so that a mob or an enemy on one of them cannot leave
-     * him fighting while the rest board and the vehicle drives off without him (#198).
+     * Whether the squad is in close combat, so that nobody of it boards (#198). One answer for the whole
+     * squad, so a fight on one man cannot leave him out while the others drive off.
+     *
+     * It is close combat when an enemy NPC or player is within a man's engagement distance, or a mob
+     * that threatens him ([HostileMobs.threatens]) is within [HostileMobs.CLOSE_RANGE] of him. Fire from
+     * further off never counts: everyone boards. Once a man of the squad is on the vehicle trip
+     * ([NpcEntity.vehicleTransport]) the squad has decided to travel, and a mob closing in no longer cancels the trip; whoever
+     * sees it shoots from where he stands.
      */
     fun engaged(npc: NpcEntity): Boolean {
-        if (npc.target != null && !marching(npc)) return true
-        val squad = npc.currentSquad() ?: return false
+        val squad = npc.currentSquad() ?: return enemyClose(npc)
         val level = npc.level() as ServerLevel
-        return squad.members.any { id ->
-            val member = level.getEntity(id) as? NpcEntity
-            member != null && member !== npc && member.isAlive && member.squadId == squad.id && member.target != null && !marching(member)
-        }
+        val now = level.gameTime
+        if (squad.engagedAt == now) return squad.engagedAnswer
+        val men = squad.members.mapNotNull { level.getEntity(it) as? NpcEntity }.filter { it.isAlive && it.squadId == squad.id }
+        val travelling = men.any { it.vehicleTransport }
+        val answer = men.any(::enemyClose) || (!travelling && men.any { mobClose(it, level) })
+        squad.engagedAt = now
+        squad.engagedAnswer = answer
+        return answer
+    }
+
+    /**
+     * Whether the squad has decided to travel: it is [distant] from its objective and not [engaged].
+     * The vehicle is the cover then, so nobody runs for cover ([SeekCoverBehaviour]) and a hit man runs
+     * on to the ride.
+     */
+    fun travelling(npc: NpcEntity): Boolean {
+        val squad = npc.currentSquad() ?: return false
+        return distant(squad, npc.level() as ServerLevel) && !engaged(npc)
+    }
+
+    private fun enemyClose(man: NpcEntity): Boolean {
+        val target = man.target ?: return false
+        if (target is Mob && target !is NpcEntity) return false
+        val engage = maxOf(man.npcClass.assaultDistance, CombatPositionSafety.clearance(man.npcClass) + CombatPositionSafety.APPROACH_MARGIN)
+        return man.distanceToSqr(target) <= engage * engage
+    }
+
+    private fun mobClose(man: NpcEntity, level: ServerLevel): Boolean {
+        val reach = HostileMobs.CLOSE_RANGE
+        return level.getEntitiesOfClass(Mob::class.java, man.boundingBox.inflate(reach)) {
+            it !is NpcEntity && it.isAlive && it.distanceToSqr(man) <= reach * reach && HostileMobs.threatens(it, man)
+        }.isNotEmpty()
     }
 
     /** Whether the loaded living squad is still far from its ordered objective in this dimension. */

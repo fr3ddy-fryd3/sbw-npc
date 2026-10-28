@@ -161,9 +161,11 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = MEMORIES
 
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = entity.isSuppressed()
+    // Once the squad travels the vehicle is the cover: a hit man runs on to it instead of into a hole (#198).
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = entity.isSuppressed() && !SquadTransit.travelling(entity)
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean {
+        if (SquadTransit.travelling(entity)) return false
         // Dug in and rested back up past the same threshold that let it dig in the first place —
         // don't stand down immediately: try to actually leave the hole first (see
         // beginExitingHole/tickExitingHole — a MAX_DIGS-deep pit isn't always trivially climbable).
