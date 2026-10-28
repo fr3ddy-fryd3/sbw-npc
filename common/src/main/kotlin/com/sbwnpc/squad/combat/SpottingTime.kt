@@ -70,6 +70,9 @@ object SpottingTime {
 
     /** Who is looking, and how well: the rank and class factors on the time and on the cut-off distance. */
     data class Observer(val timeFactor: Double = 1.0, val cutoffFactor: Double = 1.0) {
+        /** The same observer while wary (#186): he notices in 1/[WARY_FACTOR] of the time, whatever else applies. */
+        fun wary() = copy(timeFactor = timeFactor / WARY_FACTOR)
+
         companion object {
             fun of(rank: NpcRank, npcClass: NpcClass): Observer {
                 val sniper = npcClass == NpcClass.SNIPER
@@ -132,4 +135,7 @@ object SpottingTime {
     }
 
     private const val MAX_LIGHT = 15
+
+    /** A wary observer spots 1.25 times as fast. */
+    const val WARY_FACTOR = 1.25
 }

@@ -270,6 +270,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     private var waryUntilTick = 0
     private var lastHitWarning = Int.MIN_VALUE / 2
 
+    /** Once a fight has been quiet for 30 s the NPC grows wary of where the enemy was last seen (#186). */
+    private val contact = com.sbwnpc.squad.combat.ContactTracker()
+
     /** Whether the NPC is wary: a squadmate fell, a round hit or missed it narrowly, so it watches where the threat came from. */
     fun wary(): Boolean = waryAt != null && tickCount < waryUntilTick
 
@@ -979,6 +982,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         com.sbwnpc.squad.combat.VehicleAmmoSupply.tick(this)
         SidearmKit.update(this)
         takeNewOrders()
+        contact.update(target?.position(), tickCount)?.let { becomeWary(it) }
         if (equipmentResyncTicksRemaining > 0) {
             equipmentResyncTicksRemaining--
             resyncEquipmentForNewlySpawnedNpc()

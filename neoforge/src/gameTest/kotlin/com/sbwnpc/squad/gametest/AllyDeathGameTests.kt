@@ -87,6 +87,34 @@ object AllyDeathGameTests {
         }
     }
 
+    /** Thirty seconds after a man last had a target he grows wary of where the enemy was last seen (#186). */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 800, batch = "contact-end")
+    fun manGrowsWaryThirtySecondsAfterContactEnds(helper: GameTestHelper) {
+        for (x in 0..79) for (z in 0..47) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        val man = AttackDeploymentGameTests.spawn(helper, Vec3(20.5, 1.0, 22.5), SquadFaction.PIG)
+        val enemy = AttackDeploymentGameTests.spawn(helper, Vec3(40.5, 1.0, 22.5), SquadFaction.COW).apply { isNoAi = true }
+        val lastSeen = helper.absoluteVec(Vec3(40.5, 1.0, 22.5))
+        helper.runAtTickTime(20) {
+            man.target = enemy
+            helper.assertTrue(!man.wary(), "The man was wary before the contact ended")
+        }
+        helper.runAtTickTime(40) {
+            man.target = null
+            enemy.discard()
+        }
+        helper.runAtTickTime(500) {
+            helper.assertTrue(!man.wary(), "The man grew wary before 30 seconds had passed")
+        }
+        helper.runAtTickTime(700) {
+            helper.assertTrue(man.wary(), "The man did not grow wary 30 seconds after the contact ended")
+            val toward = man.waryToward()!!
+            helper.assertTrue(toward.distanceTo(lastSeen) < 2.0, "The man is wary of $toward, not where the enemy was last seen")
+            man.discard()
+            helper.succeed()
+        }
+    }
+
     /** Wariness only steers an idle NPC's eyes: an enemy in the open is still fought. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 400, batch = "ally-death-engage")
