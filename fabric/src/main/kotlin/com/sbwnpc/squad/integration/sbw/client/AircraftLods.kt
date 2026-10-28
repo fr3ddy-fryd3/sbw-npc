@@ -45,8 +45,9 @@ object AircraftLods {
 
     @JvmStatic
     fun augment(entity: VehicleEntity, original: List<VehicleModelEntry>): List<VehicleModelEntry> {
-        if (original.isEmpty() || !AircraftVisibility.isAircraft(entity)) return original
-        return entries.getOrPut(entity) {
+        if (!AircraftVisibility.isAircraft(entity)) return original
+        if (original.isEmpty()) return trace(entity, original, original)
+        return trace(entity, original, entries.getOrPut(entity) {
             val resourceModels = VehicleResource.compute(entity).getModels()
             val mainPath = resourceModels.firstOrNull { it.distance == 0 }?.model ?: return@getOrPut original
             val result = original.toMutableList()
@@ -74,7 +75,17 @@ object AircraftLods {
                 result += original.first().copy(instance = VehicleModelInstance(mesh), lodDistance = if (index == 0) 128 else 256)
             }
             result.sortedBy { it.lodDistance }
+        })
+    }
+
+    private val traced = HashSet<Any>()
+
+    /** Logs once per vehicle type what its model list became, to show whether this mod's LODs reached it. */
+    private fun trace(entity: VehicleEntity, original: List<VehicleModelEntry>, result: List<VehicleModelEntry>): List<VehicleModelEntry> {
+        if (traced.add(entity.type)) {
+            ModIdentity.LOGGER.info("NPC aircraft LODs for {}: native {} -> {}", entity.type, original.map { it.lodDistance }, result.map { it.lodDistance })
         }
+        return result
     }
 
     @JvmStatic
