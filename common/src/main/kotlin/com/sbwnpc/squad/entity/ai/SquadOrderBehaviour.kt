@@ -6,6 +6,8 @@ import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.FollowFormation
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.SquadFormation
+import com.sbwnpc.squad.entity.Cap
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.squad.RouteManager
 import com.sbwnpc.squad.squad.Squad
@@ -71,22 +73,16 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun eligible(entity: NpcEntity): Boolean {
         if (entity.target != null && !SquadTransit.marching(entity)) return false
-        // On its way to a Supply — ResupplyBehaviour hands it back once topped up.
-        if (entity.resupplying || entity.movementLockedByCover() || entity.combatLockedByMedic()) return false
+        // Anything else that holds the feet comes first: a walk to a Supply (ResupplyBehaviour hands
+        // it back once topped up), cover, treatment, a grenade, a foxhole, a role, the mortar crew's
+        // errand. A dug-in mob in particular would otherwise be marched off toward its DEFEND/PATROL
+        // slot, right out of its own hole, as soon as its target died or broke LOS for a moment.
+        if (!entity.mayFor(NpcActivity.ORDER, Cap.FEET)) return false
         // During a distant FOLLOW_ORDER, GunAttack already yields movement to this executor.
         // A heard battle must not disable it too and strand the squad at its first path's end.
         if (entity.isAlert() && !SquadTransit.marching(entity)) {
             if (entity.retreatPoint() == null && !com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) return false
         }
-        // A dug-in mob clears the cover claim for its whole holding duration (see
-        // SeekCoverBehaviour.enterDugInHolding) so GunAttackBehaviour can still fire from the hole —
-        // this behaviour never checked combatLockedByCover() in the first place (only target/alert/
-        // order), so without this a dug-in mob whose target happened to die/break LOS for even a
-        // moment would get marched off toward its DEFEND/PATROL slot, right out of its own hole.
-        if (entity.diggedIn) return false
-        if (entity.busyWithRole()) return false
-        if (entity.movingMortar()) return false
-        if (entity.evadingGrenade()) return false
         // homeCenter() is null outside a squad too.
         return entity.homeCenter() != null
     }
@@ -96,22 +92,19 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = eligible(entity)
 
     override fun stop(entity: NpcEntity) {
+        entity.release(NpcActivity.ORDER, this)
         startCheck.reset()
         if (!com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) com.sbwnpc.squad.combat.FiringSpots.release(entity.uuid)
     }
 
     override fun start(entity: NpcEntity) {
+        entity.claim(NpcActivity.ORDER, this)
         repathCooldown = 0
         moveAnchor = null
     }
 
     override fun tick(entity: NpcEntity) {
         val squad = entity.currentSquad() ?: return
-        if (entity.retreatPoint() == null && com.sbwnpc.squad.combat.tactics.SquadTactics.holdsAfterFailure(entity)) {
-            entity.navigation.stop()
-            return
-        }
-        if (com.sbwnpc.squad.combat.tactics.SquadTactics.move(entity)) return
         val order = squad.order
         val home = entity.homeCenter() ?: return
         val dist = entity.position().distanceTo(home)
@@ -290,8 +283,8 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         return squad.members.all { id ->
             val member = level.getEntity(id) as? NpcEntity ?: return@all true
             // Busy elsewhere: not coming to the rally, so not worth waiting for.
-            if (member.target != null || member.vehicle != null || member.vehicleTransport ||
-                member.servingMortar || member.operatingDrone || member.diggedIn
+            if (member.target != null || member.vehicle != null ||
+                member.holdsAny(NpcActivity.VEHICLE, NpcActivity.MORTAR_CREW, NpcActivity.DRONE, NpcActivity.DUG_IN)
             ) {
                 return@all true
             }

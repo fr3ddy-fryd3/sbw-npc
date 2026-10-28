@@ -3,6 +3,7 @@ package com.sbwnpc.squad.entity.ai
 import com.sbwnpc.squad.combat.tactics.PositionPaths
 import com.sbwnpc.squad.compat.VersionCompat
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.mixin.PathNavigationAccessor
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap
 import net.minecraft.core.BlockPos
@@ -445,7 +446,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) :
         return null
     }
 
-    private fun resupplyTrip(npc: com.sbwnpc.squad.entity.NpcEntity): Boolean = npc.resupplying || (npc.servingMortar && npc.mortarShellsLeft <= 0)
+    private fun resupplyTrip(npc: com.sbwnpc.squad.entity.NpcEntity): Boolean = npc.holds(NpcActivity.RESUPPLY) || (npc.holds(NpcActivity.MORTAR_CREW) && npc.mortarShellsLeft <= 0)
 
     /** What the path being walked was last planned to, on the near, formation and route branches. */
     private var nearGoal: BlockPos? = null

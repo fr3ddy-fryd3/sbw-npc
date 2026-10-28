@@ -4,6 +4,7 @@ import com.sbwnpc.squad.combat.DarkAim
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.combat.tactics.SquadTactics
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcPosture
 import com.sbwnpc.squad.squad.Squad
@@ -145,7 +146,7 @@ class AttackTrace(private val helper: GameTestHelper, private val squad: Squad, 
                 Locale.ROOT, "%d,%s,%.4f,%.4f,%.4f,%.4f,%s,%d,%d,%s,%d,%d,%s,\"%s\",\"%s\",%d,%s,%s%n",
                 helper.tick, npc.uuid, p.x, p.y, p.z, npc.health, npc.target?.uuid, npc.lastShotTick,
                 Ports.guns.roundsLeft(npc.mainHandItem), npc.navigation.isDone, path?.nextNodeIndex ?: -1, path?.nodeCount ?: 0,
-                task?.job, task?.position, task?.anchor, 0, npc.combatLockedByCover(), npc.combatLockedByMedic(),
+                task?.job, task?.position, task?.anchor, 0, npc.holdsAny(NpcActivity.COVER, NpcActivity.EVADE), npc.holds(NpcActivity.HEAL),
             )
             Files.writeString(directory.resolve("attack-members.csv"), record, APPEND)
         }

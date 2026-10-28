@@ -2,6 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.tactics.SquadTactics
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
@@ -24,8 +25,13 @@ class SquadTacticalBehaviour : ExtendedBehaviour<NpcEntity>() {
             )
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity) = eligible(entity)
     override fun shouldKeepRunning(entity: NpcEntity) = eligible(entity)
+    override fun stop(entity: NpcEntity) {
+        entity.release(NpcActivity.TACTIC, this)
+    }
+
     override fun tick(entity: NpcEntity) {
-        SquadTactics.tick(entity)
+        // move() runs the planner tick before it answers.
+        if (SquadTactics.move(entity)) entity.claim(NpcActivity.TACTIC, this) else entity.release(NpcActivity.TACTIC, this)
         SquadTactics.equip(entity)
     }
 }

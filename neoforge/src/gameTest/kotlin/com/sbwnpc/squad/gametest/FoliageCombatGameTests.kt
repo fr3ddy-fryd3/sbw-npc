@@ -7,6 +7,7 @@ import com.sbwnpc.squad.combat.tactics.TacticalJob
 import com.sbwnpc.squad.combat.tactics.TacticalPositions
 import com.sbwnpc.squad.combat.tactics.TacticalTask
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
@@ -38,7 +39,7 @@ object FoliageCombatGameTests {
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 400, batch = "foliage")
     fun foliageKeepsPhysicalPostAndAllowsOnlyTwoSafeBursts(helper: GameTestHelper) {
         for (x in 0..159) for (z in 0..127) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
-        val shooter = AttackDeploymentGameTests.spawn(helper, Vec3(20.5, 1.0, 64.5), SquadFaction.PIG).apply { diggedIn = true }
+        val shooter = AttackDeploymentGameTests.spawn(helper, Vec3(20.5, 1.0, 64.5), SquadFaction.PIG).apply { claim(NpcActivity.DUG_IN, this@FoliageCombatGameTests) }
         val enemy = AttackDeploymentGameTests.spawn(helper, Vec3(80.5, 1.0, 64.5), SquadFaction.COW).apply {
             isNoAi = true
             getAttribute(Attributes.MAX_HEALTH)!!.baseValue = 5000.0
@@ -140,7 +141,7 @@ object FoliageCombatGameTests {
                 when (lock) {
                     "ally" -> ally.setPos(ally.x, ally.y, helper.absoluteVec(Vec3(0.0, 0.0, 10.5)).z)
                     "wall" -> stoneWall(Blocks.AIR)
-                    "supply" -> shooter.resupply(this, false)
+                    "supply" -> shooter.release(NpcActivity.RESUPPLY, this)
                 }
                 lock = ""
             }
@@ -162,7 +163,7 @@ object FoliageCombatGameTests {
                         helper.assertTrue(!TacticalPositions.firingReady(shooter, task, shooter.position()), "Physical wall failed to invalidate the firing lane")
                     }
 
-                    "supply" -> shooter.resupply(this, true)
+                    "supply" -> shooter.claim(NpcActivity.RESUPPLY, this)
                 }
             }
             helper.assertTrue(hiddenRounds <= 6, "Concealment refilled the finite burst budget")

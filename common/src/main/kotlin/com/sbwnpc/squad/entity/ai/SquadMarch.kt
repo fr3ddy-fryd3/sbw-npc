@@ -301,7 +301,7 @@ object SquadMarch {
      * arcs exist to avoid.
      */
     private fun routeGoal(level: ServerLevel, npc: NpcEntity, squad: com.sbwnpc.squad.squad.Squad, ownGoal: BlockPos): BlockPos {
-        if (npc.target != null || com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(npc)) return ownGoal
+        if (npc.target != null || npc.holds(com.sbwnpc.squad.entity.NpcActivity.TACTIC)) return ownGoal
         val objective = squad.objective ?: return ownGoal
         val requested = Vec3(objective.x + 0.5, objective.y.toDouble(), objective.z + 0.5)
         // The same point for every man: the squad's own area beside a shared objective where it

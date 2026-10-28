@@ -9,6 +9,7 @@ import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.combat.tactics.TacticalJob
 import com.sbwnpc.squad.combat.tactics.TacticalPositions
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import com.sbwnpc.squad.init.ModBlocks
@@ -236,7 +237,7 @@ object RoofedOverwatchGameTests {
             val at = helper.relativeVec(npc.position())
             if (npc.onClimbable() && npc.deltaMovement.y < -0.01 && at.y < 6.5) descended = true
             val next = npc.navigation.path?.takeUnless { it.isDone }?.nextNodePos?.let { relativeNode(helper, it) }
-            trace.append("${helper.tick},${at.x},${at.y},${at.z},${npc.onClimbable()},${npc.onGround()},${npc.horizontalCollision},${npc.deltaMovement.y},${next?.x},${next?.y},${next?.z},${npc.navigation.isDone},${npc.health},${npc.ammoFraction()},${npc.resupplying}\n")
+            trace.append("${helper.tick},${at.x},${at.y},${at.z},${npc.onClimbable()},${npc.onGround()},${npc.horizontalCollision},${npc.deltaMovement.y},${next?.x},${next?.y},${next?.z},${npc.navigation.isDone},${npc.health},${npc.ammoFraction()},${npc.holds(NpcActivity.RESUPPLY)}\n")
             if (helper.tick % 10L == 0L) Files.writeString(report.resolve("$name.csv"), trace)
             helper.assertTrue(npc.isAlive && npc.health == npc.maxHealth, "Leaving the tower caused fall damage")
             val arrived = when (mode) {
@@ -264,7 +265,7 @@ object RoofedOverwatchGameTests {
                 Departure.SUPPLY -> {
                     if (at.y < 3.0 && npc.ammoFraction() >= 0.8 && npc.position().distanceTo(helper.absolutePos(destination).center) <= SupplyBlockEntity.RADIUS) supplied = true
                     val task = com.sbwnpc.squad.ai.integration.NativeTactics.assignment(npc)
-                    val returned = supplied && !npc.resupplying && task?.job == TacticalJob.OVERWATCH &&
+                    val returned = supplied && !npc.holds(NpcActivity.RESUPPLY) && task?.job == TacticalJob.OVERWATCH &&
                         task.position == previousPost && npc.onGround() && FiringPostArrival.reached(npc.position(), previousPost!!)
                     if (!returned) {
                         returnSince = null

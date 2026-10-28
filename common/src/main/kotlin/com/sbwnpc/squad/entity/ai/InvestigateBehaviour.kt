@@ -4,6 +4,7 @@ import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DeathSites
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.team.SquadTeams
@@ -24,7 +25,7 @@ import net.tslat.smartbrainlib.util.BrainUtils
  * Reads [ModMemories.ALERT_POSITION] — expires on its own via TTL; `NpcEntity.clearAlert()` clears
  * it early on arrival.
  *
- * Beside [SquadOrderBehaviour] in Idle. `!entity.combatLockedByCover()` is checked explicitly: Idle
+ * Beside [SquadOrderBehaviour] in Idle. the cover and evade claims are checked explicitly: Idle
  * behaviours aren't mutually exclusive with `SeekCoverBehaviour`, which lives in Core.
  */
 class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
@@ -59,19 +60,18 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = MEMORIES
 
-    // !entity.diggedIn too (not just !combatLockedByCover()): a dug-in mob deliberately clears
+    // the dug-in claim too (not just cover): a dug-in mob deliberately clears
     // the cover claim for its whole holding duration (see SeekCoverBehaviour.enterDugInHolding) so
-    // GunAttackBehaviour can fire from the hole — but that means combatLockedByCover() alone no
+    // GunAttackBehaviour can fire from the hole — but that means the cover claim alone no
     // longer implies "don't touch this mob's movement" once dug in. Without this, a dug-in mob whose
     // target happened to die/break LOS (leaving `target == null` for even a moment) would satisfy
     // this eligibility and get walked off toward some alert position, out of its own hole — reported
     // in-game as digging in not actually preventing the mob from running off once shot at again.
     // Not while falling back either: investigating gunfire means walking toward it.
     private fun eligible(entity: NpcEntity) =
-        entity.target == null && !entity.movementLockedByCover() && !entity.diggedIn && !entity.busyWithRole() &&
-            entity.retreatPoint() == null && !entity.resupplying &&
-            !com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity) &&
-            !com.sbwnpc.squad.combat.tactics.SquadTactics.holdsAfterFailure(entity) &&
+        entity.target == null && !entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK) && !entity.holds(NpcActivity.DUG_IN) && !entity.busyWithRole() &&
+            entity.retreatPoint() == null && !entity.holds(NpcActivity.RESUPPLY) &&
+            !entity.holds(NpcActivity.TACTIC) &&
             !com.sbwnpc.squad.combat.CombatPosition.holdsPosition(entity.currentSquad()?.order)
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = eligible(entity)
@@ -194,11 +194,11 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
                 entity,
                 when {
                     entity.target != null -> "found a target"
-                    entity.combatLockedByCover() -> "taken for cover"
-                    entity.diggedIn -> "dug in"
+                    entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE) -> "taken for cover"
+                    entity.holds(NpcActivity.DUG_IN) -> "dug in"
                     entity.busyWithRole() -> "busy with a role"
                     entity.retreatPoint() != null -> "falling back"
-                    entity.resupplying -> "off to resupply"
+                    entity.holds(NpcActivity.RESUPPLY) -> "off to resupply"
                     else -> "stopped"
                 },
             )
