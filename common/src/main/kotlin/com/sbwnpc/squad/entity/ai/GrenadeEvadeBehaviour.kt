@@ -6,8 +6,8 @@ import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.GrenadeHazard
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.entity.GrenadeRegistry
+import com.sbwnpc.squad.entity.MovementClaim
 import com.sbwnpc.squad.entity.NpcEntity
-import com.sbwnpc.squad.init.ModMemories
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
@@ -15,12 +15,11 @@ import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.minecraft.world.entity.ai.util.DefaultRandomPos
 import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
-import net.tslat.smartbrainlib.util.BrainUtils
 
 /**
  * A live grenade close by: drop everything and get out of its blast.
  *
- * Takes the mob over the same way cover does — [ModMemories.GRENADE_EVADE] makes
+ * Takes the mob over the same way cover does — [MovementClaim.EVADE] makes
  * `NpcEntity.combatLockedByCover()` true, so shooting, throwing and investigating stand down, and
  * the few movers that don't read that lock check [NpcEntity.evadingGrenade] themselves. It is last
  * in the core list on purpose: behaviours that hold an NPC in place (the mortar, the drone
@@ -59,7 +58,7 @@ class GrenadeEvadeBehaviour : ExtendedBehaviour<NpcEntity>() {
         val g = grenade ?: return
         giveUpTick = entity.tickCount + MAX_EVADE_TICKS
         fleeTo = fleePoint(entity, g.position())
-        BrainUtils.setForgettableMemory(entity, ModMemories.GRENADE_EVADE.get(), true, MAX_EVADE_TICKS)
+        entity.claimMovement(this, MovementClaim.EVADE, MAX_EVADE_TICKS)
         fleeTo?.let { entity.navigation.moveTo(it.x, it.y, it.z, SPRINT_SPEED) }
         // The old spot is inside the blast; whatever was headed there has to pick again after.
         FiringSpots.release(entity.uuid)
@@ -87,7 +86,7 @@ class GrenadeEvadeBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun stop(entity: NpcEntity) {
-        BrainUtils.clearMemory(entity, ModMemories.GRENADE_EVADE.get())
+        entity.releaseMovement(this, MovementClaim.EVADE)
         grenade = null
         fleeTo = null
     }

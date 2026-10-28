@@ -60,7 +60,7 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = MEMORIES
 
     // !entity.diggedIn too (not just !combatLockedByCover()): a dug-in mob deliberately clears
-    // COVER_HOLD for its whole holding duration (see SeekCoverBehaviour.enterDugInHolding) so
+    // the cover claim for its whole holding duration (see SeekCoverBehaviour.enterDugInHolding) so
     // GunAttackBehaviour can fire from the hole — but that means combatLockedByCover() alone no
     // longer implies "don't touch this mob's movement" once dug in. Without this, a dug-in mob whose
     // target happened to die/break LOS (leaving `target == null` for even a moment) would satisfy

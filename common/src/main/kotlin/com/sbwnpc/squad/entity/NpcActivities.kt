@@ -26,9 +26,6 @@ enum class NpcActivity {
     /** Shooting at or running from a hostile drone: [com.sbwnpc.squad.entity.ai.AntiDroneBehaviour]. */
     ANTI_DRONE,
 
-    /** Walking to a Supply: [com.sbwnpc.squad.entity.ai.ResupplyBehaviour] and the out-of-ammo fallback. */
-    RESUPPLYING,
-
     /** Holding a foxhole it dug: [com.sbwnpc.squad.entity.ai.SeekCoverBehaviour]. */
     DUG_IN,
 

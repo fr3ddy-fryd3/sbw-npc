@@ -4,8 +4,8 @@ import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.MovementClaim
 import com.sbwnpc.squad.entity.NpcEntity
-import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
@@ -20,7 +20,6 @@ import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.levelgen.Heightmap
 import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
-import net.tslat.smartbrainlib.util.BrainUtils
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.UUID
@@ -125,12 +124,13 @@ object DroneFlightGameTests {
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "drone-launch-cover")
     fun coverInterruptingLaunchReturnKeepsItsOwnPath(helper: GameTestHelper) {
         val roof = RoofLaunchScene(helper, "drone-launch-cover", 6)
+        val coverOwner = Any()
         var coverPath: net.minecraft.world.level.pathfinder.Path? = null
         var interruptedAt: Long? = null
         helper.onEachTick {
             roof.report()
             if (interruptedAt == null && roof.drone() != null) {
-                BrainUtils.setMemory(roof.operator, ModMemories.COVER_HOLD.get(), true)
+                roof.operator.claimMovement(coverOwner, MovementClaim.COVER)
                 val cover = roof.operator.position().add(8.0, 0.0, 0.0)
                 roof.operator.navigation.moveTo(cover.x, cover.y, cover.z, 1.0)
                 coverPath = roof.operator.navigation.path

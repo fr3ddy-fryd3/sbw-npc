@@ -12,8 +12,8 @@ import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal
  * automatically excludes it the way a real target/flag conflict would in a fully vanilla AI.
  *
  * `target == null` alone was already the right gate for ordinary combat (SeekCoverBehaviour/
- * GunAttackBehaviour only ever run with a live target or while suppressed with COVER_HOLD set).
- * `!diggedIn` is required in addition: a dug-in mob deliberately clears COVER_HOLD for its whole
+ * GunAttackBehaviour only ever run with a live target or while suppressed with the cover claim set).
+ * `!diggedIn` is required in addition: a dug-in mob deliberately clears the cover claim for its whole
  * holding duration (see `SeekCoverBehaviour.enterDugInHolding`) so `GunAttackBehaviour` can still
  * fire from the hole, and its target can legitimately go null for a moment (dies, breaks LOS)
  * without the mob actually being done holding its position — reported in-game as digging in not

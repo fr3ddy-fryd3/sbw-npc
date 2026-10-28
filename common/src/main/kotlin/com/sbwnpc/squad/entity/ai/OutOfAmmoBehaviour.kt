@@ -52,7 +52,7 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun start(entity: NpcEntity) {
         nextStepTick = 0
-        entity.resupplying = entity.nearestSupply() != null
+        entity.resupply(this, entity.nearestSupply() != null)
         FiringSpots.release(entity.uuid)
         DebugFlags.log(LogGroup.AMMO, "{} ({}) out of ammo, running from {}", entity.uuid, entity.npcClass, entity.target?.name?.string)
         beginEpisode(entity)
@@ -64,7 +64,7 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.movementLockedByCover() || entity.coverPeekPoint != null || entity.evadingGrenade() || entity.combatLockedByMedic()) return
         // A fully empty NPC can return to a known Supply even outside the ordinary search radius.
         entity.retreatPoint()?.let { rally ->
-            entity.resupplying = false
+            entity.resupply(this, false)
             val squad = entity.currentSquad()!!
             val point = com.sbwnpc.squad.combat.Withdrawal.positionFor(entity, squad, rally)
             trace(entity, "ordered_retreat", point ?: entity.position())
@@ -78,7 +78,7 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
             return
         }
         entity.nearestSupply()?.let {
-            entity.resupplying = true
+            entity.resupply(this, true)
             trace(entity, "supply", it)
             if (entity.tickCount < nextStepTick && !entity.navigation.isDone) return
             nextStepTick = entity.tickCount + REPATH_TICKS
@@ -86,7 +86,7 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
             ownedPath = entity.navigation.path
             return
         }
-        entity.resupplying = false
+        entity.resupply(this, false)
         if (retreat.exhausted(entity.position(), entity.level().gameTime)) {
             hold(entity, "limit_reached")
             return
@@ -161,7 +161,7 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun stop(entity: NpcEntity) {
-        entity.resupplying = false
+        entity.resupply(this, false)
         stopOwnedPath(entity)
         // Target loss is temporary when contacts are relayed by the squad. Only ammo restores the allowance.
         if (Ports.guns.inHand(entity)?.hasAmmo() != false) retreat.reset()
