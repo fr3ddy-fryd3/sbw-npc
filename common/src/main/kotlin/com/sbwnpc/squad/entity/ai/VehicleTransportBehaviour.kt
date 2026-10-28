@@ -227,7 +227,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // Taking any mounted man for its own, this put a FOLLOW rider straight back out (#136).
         if (!entity.freeFor(NpcActivity.SEAT, this)) return logEligibility(entity, false) { "another behaviour has his seat" }
         if (entity.vehicle != null) return true // already mounted: DRIVING/RIDING keep going regardless
-        if (com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) return logEligibility(entity, false) { "tactical position duty takes priority" }
+        if (entity.holds(NpcActivity.TACTIC)) return logEligibility(entity, false) { "tactical position duty takes priority" }
 
         if (combatInterrupted(entity)) {
             return logEligibility(entity, false) {

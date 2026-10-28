@@ -256,7 +256,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.readyToCover = false
         // The fight is over; a gunner left holding a launcher would meet the next rifleman with it.
         AntiArmourKit.wield(entity, launcher = false)
-        if (!SquadTactics.hasTask(entity)) FiringSpots.release(entity.uuid)
+        if (!entity.holds(NpcActivity.TACTIC)) FiringSpots.release(entity.uuid)
         entity.blockedSightSince = null
         entity.isAggressive = false
         entity.stopUsingItem()
@@ -955,17 +955,13 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             firingPos = null
             return CombatMovement.LOCAL
         }
-        if (SquadTactics.holdsAfterFailure(entity)) {
-            holdFiringPosition(entity, target)
-            return CombatMovement.LOCAL
-        }
         if (entity.usingSidearm) {
             finishHoldingAdvance(entity)
             if (holding) return holdOrderedPosition(entity, target, squad, defendHome, opening = false)
             holdFiringPosition(entity, target)
             return CombatMovement.LOCAL
         }
-        if (SquadTransit.marching(entity) || SquadTactics.move(entity)) {
+        if (SquadTransit.marching(entity) || entity.holds(NpcActivity.TACTIC)) {
             bounding = true
             boundPhaseStarted = false
             firingPos = null

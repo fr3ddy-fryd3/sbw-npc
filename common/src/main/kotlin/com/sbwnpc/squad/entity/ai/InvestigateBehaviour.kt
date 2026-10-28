@@ -71,8 +71,7 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun eligible(entity: NpcEntity) =
         entity.target == null && !entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK) && !entity.holds(NpcActivity.DUG_IN) && !entity.busyWithRole() &&
             entity.retreatPoint() == null && !entity.holds(NpcActivity.RESUPPLY) &&
-            !com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity) &&
-            !com.sbwnpc.squad.combat.tactics.SquadTactics.holdsAfterFailure(entity) &&
+            !entity.holds(NpcActivity.TACTIC) &&
             !com.sbwnpc.squad.combat.CombatPosition.holdsPosition(entity.currentSquad()?.order)
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = eligible(entity)

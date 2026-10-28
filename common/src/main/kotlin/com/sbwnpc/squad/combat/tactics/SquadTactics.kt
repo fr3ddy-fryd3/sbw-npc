@@ -48,9 +48,6 @@ object SquadTactics {
     fun task(entity: NpcEntity) = com.sbwnpc.squad.ai.integration.NativeTactics.assignment(entity)
     fun hasTask(entity: NpcEntity): Boolean = task(entity) != null
 
-    /** A failed combat route yields local firing-position work, rather than a frontal assault. */
-    fun holdsAfterFailure(entity: NpcEntity): Boolean = false
-
     fun equip(entity: NpcEntity) {
         if (entity.vehicle != null || entity.busyWithRole() || entity.holdsAny(NpcActivity.HEAL, NpcActivity.RESUPPLY)) return
         val task = task(entity) ?: return

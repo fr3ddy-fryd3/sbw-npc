@@ -27,6 +27,12 @@ enum class NpcActivity(val holds: Set<Cap>) {
     ORDER(setOf(Cap.FEET)),
 
     /**
+     * Walking to a post the squad planner chose ([com.sbwnpc.squad.entity.ai.SquadTacticalBehaviour]).
+     * Above the squad order, below everything that needs the man where he stands.
+     */
+    TACTIC(setOf(Cap.FEET)),
+
+    /**
      * Walking to a Supply: [com.sbwnpc.squad.entity.ai.ResupplyBehaviour] and the out-of-ammo
      * fallback. Feet only: the fallback walks while the NPC keeps firing its last rounds.
      */

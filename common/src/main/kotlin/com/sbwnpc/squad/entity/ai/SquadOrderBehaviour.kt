@@ -81,7 +81,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         // During a distant FOLLOW_ORDER, GunAttack already yields movement to this executor.
         // A heard battle must not disable it too and strand the squad at its first path's end.
         if (entity.isAlert() && !SquadTransit.marching(entity)) {
-            if (entity.retreatPoint() == null && !com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) return false
+            if (entity.retreatPoint() == null) return false
         }
         // homeCenter() is null outside a squad too.
         return entity.homeCenter() != null
@@ -94,7 +94,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun stop(entity: NpcEntity) {
         entity.release(NpcActivity.ORDER, this)
         startCheck.reset()
-        if (!com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) com.sbwnpc.squad.combat.FiringSpots.release(entity.uuid)
+        if (!entity.holds(NpcActivity.TACTIC)) com.sbwnpc.squad.combat.FiringSpots.release(entity.uuid)
     }
 
     override fun start(entity: NpcEntity) {
@@ -105,11 +105,6 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun tick(entity: NpcEntity) {
         val squad = entity.currentSquad() ?: return
-        if (entity.retreatPoint() == null && com.sbwnpc.squad.combat.tactics.SquadTactics.holdsAfterFailure(entity)) {
-            entity.navigation.stop()
-            return
-        }
-        if (com.sbwnpc.squad.combat.tactics.SquadTactics.move(entity)) return
         val order = squad.order
         val home = entity.homeCenter() ?: return
         val dist = entity.position().distanceTo(home)

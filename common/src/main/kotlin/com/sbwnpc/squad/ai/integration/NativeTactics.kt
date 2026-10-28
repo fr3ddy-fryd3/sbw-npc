@@ -5,6 +5,7 @@ import com.sbwnpc.squad.ai.planning.*
 import com.sbwnpc.squad.ai.tactics.*
 import com.sbwnpc.squad.combat.*
 import com.sbwnpc.squad.combat.tactics.*
+import com.sbwnpc.squad.entity.Cap
 import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.SquadTransit
@@ -157,9 +158,7 @@ object NativeTactics {
 
     /** How many post searches in a row [npc] failed round his task's anchor, while remembered. */
     fun postFailures(npc: NpcEntity): Int = world(npc).postFailuresOf(npc.uuid)
-    fun movable(npc: NpcEntity) =
-        npc.isAlive && npc.vehicle == null && !npc.busyWithRole() && !npc.holds(NpcActivity.RESUPPLY) && !npc.holds(NpcActivity.DUG_IN) &&
-            !npc.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK, NpcActivity.HEAL) && npc.retreatPoint() == null
+    fun movable(npc: NpcEntity) = npc.isAlive && npc.vehicle == null && npc.mayFor(NpcActivity.TACTIC, Cap.FEET) && npc.retreatPoint() == null
     private val GROUND = setOf(NpcClass.RIFLEMAN, NpcClass.SHOTGUNNER, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.DRONE_OPERATOR)
 
     private class PendingDeath(val entity: LivingEntity, val cancelled: () -> Boolean)

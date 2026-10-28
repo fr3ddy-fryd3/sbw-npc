@@ -98,6 +98,7 @@ class NpcActivitiesTest {
             NpcActivity.DUG_IN to (false to false),
             NpcActivity.SEAT to (false to false),
             NpcActivity.ORDER to (false to false),
+            NpcActivity.TACTIC to (false to false),
             NpcActivity.RESUPPLY to (false to false),
             NpcActivity.HEAL to (false to false),
             NpcActivity.COVER to (false to false),
@@ -191,6 +192,18 @@ class NpcActivitiesTest {
         activities.claim(NpcActivity.ORDER, first, 0)
         assertTrue(activities.mayFor(NpcActivity.ORDER, Cap.FEET, 0), "the order is not blocked by itself")
         assertTrue(activities.may(Cap.FIRE, 0), "walking to the order leaves the trigger free")
+    }
+
+    @Test fun `a planner assignment outranks the order and gives way to everything else`() {
+        activities.claim(NpcActivity.TACTIC, first, 0)
+        assertFalse(activities.mayFor(NpcActivity.ORDER, Cap.FEET, 0))
+        assertTrue(activities.mayFor(NpcActivity.TACTIC, Cap.FEET, 0))
+        assertTrue(activities.may(Cap.FIRE, 0), "walking to a post leaves the trigger free")
+        for (other in listOf(NpcActivity.RESUPPLY, NpcActivity.HEAL, NpcActivity.COVER, NpcActivity.PEEK, NpcActivity.EVADE, NpcActivity.DUG_IN, NpcActivity.VEHICLE)) {
+            val held = NpcActivities()
+            held.claim(other, cover, 0)
+            assertFalse(held.mayFor(NpcActivity.TACTIC, Cap.FEET, 0), "$other")
+        }
     }
 
     @Test fun `a lower kind never blocks a higher one`() {
