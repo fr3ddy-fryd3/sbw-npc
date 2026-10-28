@@ -16,8 +16,6 @@ import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.world.entity.Entity
-import net.minecraft.world.entity.EntityType
-import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import net.tslat.smartbrainlib.util.BrainUtils
@@ -40,7 +38,7 @@ object SquadTransportGameTests {
         return moved
     }
 
-    private fun park(helper: GameTestHelper, at: Vec3): Entity =
+    internal fun park(helper: GameTestHelper, at: Vec3): Entity =
         requireNotNull(Ports.vehicles.create(helper.level, TransportVehicle.LAV_25)).also {
             val point = helper.absoluteVec(at)
             it.moveTo(point.x, point.y, point.z, 0f, 0f)
@@ -94,52 +92,6 @@ object SquadTransportGameTests {
                 assertTransportDriver(helper, lav)
                 helper.assertTrue(!remoteContact || retainedContactTicks >= 5, "The remote contact was cleared instead of retained during boarding")
                 scene.result("PASS", "tick=${helper.tick} aboard=${men.size} retainedContactTicks=$retainedContactTicks")
-                helper.succeed()
-            }
-        }
-    }
-
-    /**
-     * A mob on one man must not split the squad (#198): while he fights, the others do not drive off
-     * without him. The vehicle stays where it is parked while some of the squad are aboard and some
-     * are not, up to the driver's wait limit.
-     */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "transport-mob-contact")
-    fun vehicleWaitsForTheManFightingAMobNextToTheBoardingSquad(helper: GameTestHelper) {
-        val scene = CombatIdleGameTests.Scene(helper, "transport-mob-contact")
-        val manager = SquadManager.get(helper.level)
-        val men = listOf(20.5, 40.5, 41.5, 42.5).map { scene.spawn(Vec3(it, 1.0, 20.5)) }
-        val lav = park(helper, Vec3(45.5, 1.0, 20.5))
-        val parkedAt = lav.position()
-        // Only the first man has it as a target (set each tick, as if he had noticed it); sturdy so the fight lasts.
-        val zombie = EntityType.ZOMBIE.create(helper.level)!!.also {
-            val at = helper.absoluteVec(Vec3(12.5, 1.0, 20.5))
-            it.moveTo(at.x, at.y, at.z, 0f, 0f)
-            it.isNoAi = true
-            it.getAttribute(Attributes.MAX_HEALTH)!!.baseValue = 1000.0
-            it.health = 1000f
-            helper.level.addFreshEntity(it)
-        }
-        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, men.map { it.uuid })
-        scene.onClose = {
-            manager.deleteSquad(helper.level, squad.id)
-            lav.discard()
-            zombie.discard()
-        }
-        manager.issueOrderAt(helper.level, squad.id, SquadOrder.ATTACK, helper.absolutePos(BlockPos(150, 1, 20)))
-        var split = false
-        helper.onEachTick {
-            zombie.target = men.first()
-            BrainUtils.setTargetOfEntity(men.first(), zombie)
-            val aboard = men.count { it.vehicle === lav }
-            if (aboard in 1 until men.size) {
-                split = true
-                helper.assertTrue(lav.position().distanceTo(parkedAt) <= 4.0, "The vehicle drove off with $aboard of ${men.size} aboard while the first man fought the zombie")
-            }
-            if (helper.tick >= 250) {
-                helper.assertTrue(split, "The squad never split between the ride and the fight, so the scene proved nothing")
-                scene.result("PASS", "tick=${helper.tick} aboard=$aboard")
                 helper.succeed()
             }
         }
