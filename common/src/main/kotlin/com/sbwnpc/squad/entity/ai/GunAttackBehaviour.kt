@@ -256,7 +256,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.readyToCover = false
         // The fight is over; a gunner left holding a launcher would meet the next rifleman with it.
         AntiArmourKit.wield(entity, launcher = false)
-        if (!entity.holds(NpcActivity.TACTIC)) FiringSpots.release(entity.uuid)
+        if (!SquadTactics.hasTask(entity)) FiringSpots.release(entity.uuid)
         entity.blockedSightSince = null
         entity.isAggressive = false
         entity.stopUsingItem()
@@ -296,7 +296,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             boundPhaseStarted = false
         }
         // Dug in: fight from the hole, never reposition to advance/bound toward the target — see
-        // NpcEntity.diggedIn's own doc comment. Aiming/firing below is completely unaffected.
+        // [NpcActivity.DUG_IN]'s doc comment. Aiming/firing below is completely unaffected.
         if (entity.holds(NpcActivity.DUG_IN)) {
             entity.navigation.stop()
             bounding = true

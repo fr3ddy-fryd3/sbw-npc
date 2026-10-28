@@ -30,7 +30,7 @@ class SquadTacticalBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun tick(entity: NpcEntity) {
-        SquadTactics.tick(entity)
+        // move() runs the planner tick before it answers.
         if (SquadTactics.move(entity)) entity.claim(NpcActivity.TACTIC, this) else entity.release(NpcActivity.TACTIC, this)
         SquadTactics.equip(entity)
     }

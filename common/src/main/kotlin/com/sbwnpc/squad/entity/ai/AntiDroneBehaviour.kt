@@ -54,7 +54,7 @@ import kotlin.math.roundToInt
  *    answer to an FPV); inside [HIDER_PANIC_RANGE] with the drone closing, run instead.
  *  - An operator flying its own drone stays on the monitor (not eligible).
  *
- * `NpcEntity.antiDroneEngaged` locks GunAttack/grenades/orders/investigating/vehicles for the
+ * the [NpcActivity.ANTI_DRONE] claim locks GunAttack/grenades/orders/investigating/vehicles for the
  * duration, and keeps the AI LOD at full rate. The threat is dropped when the drone is dead,
  * gone, out of range, or the memory expires.
  */

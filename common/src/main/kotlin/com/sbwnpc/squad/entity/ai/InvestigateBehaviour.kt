@@ -25,7 +25,7 @@ import net.tslat.smartbrainlib.util.BrainUtils
  * Reads [ModMemories.ALERT_POSITION] — expires on its own via TTL; `NpcEntity.clearAlert()` clears
  * it early on arrival.
  *
- * Beside [SquadOrderBehaviour] in Idle. `!entity.combatLockedByCover()` is checked explicitly: Idle
+ * Beside [SquadOrderBehaviour] in Idle. the cover and evade claims are checked explicitly: Idle
  * behaviours aren't mutually exclusive with `SeekCoverBehaviour`, which lives in Core.
  */
 class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
@@ -60,9 +60,9 @@ class InvestigateBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = MEMORIES
 
-    // !entity.diggedIn too (not just !combatLockedByCover()): a dug-in mob deliberately clears
+    // the dug-in claim too (not just cover): a dug-in mob deliberately clears
     // the cover claim for its whole holding duration (see SeekCoverBehaviour.enterDugInHolding) so
-    // GunAttackBehaviour can fire from the hole — but that means combatLockedByCover() alone no
+    // GunAttackBehaviour can fire from the hole — but that means the cover claim alone no
     // longer implies "don't touch this mob's movement" once dug in. Without this, a dug-in mob whose
     // target happened to die/break LOS (leaving `target == null` for even a moment) would satisfy
     // this eligibility and get walked off toward some alert position, out of its own hole — reported

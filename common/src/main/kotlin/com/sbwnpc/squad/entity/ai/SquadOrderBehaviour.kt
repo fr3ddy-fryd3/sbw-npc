@@ -94,7 +94,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun stop(entity: NpcEntity) {
         entity.release(NpcActivity.ORDER, this)
         startCheck.reset()
-        if (!entity.holds(NpcActivity.TACTIC)) com.sbwnpc.squad.combat.FiringSpots.release(entity.uuid)
+        if (!com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) com.sbwnpc.squad.combat.FiringSpots.release(entity.uuid)
     }
 
     override fun start(entity: NpcEntity) {

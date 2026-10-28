@@ -20,8 +20,8 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
  * A live grenade close by: drop everything and get out of its blast.
  *
  * Takes the mob over the same way cover does — [NpcActivity.EVADE] makes
- * `NpcEntity.combatLockedByCover()` true, so shooting, throwing and investigating stand down, and
- * the few movers that don't read that lock check [NpcEntity.evadingGrenade] themselves. It is last
+ * the [NpcActivity.EVADE] claim held, so shooting, throwing and investigating stand down, and
+ * the few movers that ignore cover check [NpcActivity.EVADE] themselves. It is last
  * in the core list on purpose: behaviours that hold an NPC in place (the mortar, the drone
  * operator) stop its navigation every tick, and this has to be the one that moves it anyway.
  *

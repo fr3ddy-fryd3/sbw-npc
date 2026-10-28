@@ -614,7 +614,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** Vehicle can vanish out from under any mounted phase (destroyed, despawned) — that ejects the
      *  NPC (`entity.vehicle` goes back to null) without killing it, so without this the phase would
      *  never advance again: `eligible()`'s `entity.vehicle != null` fast path stops applying, but
-     *  nothing else ever calls `stop()` either, permanently stranding vehicleTransport=true (every
+     *  nothing else ever calls `stop()` either, permanently stranding the VEHICLE claim (every
      *  other behaviour stays locked out forever). Resetting to SEEKING lets the next tick's normal
      *  eligibility check decide whether to look for another vehicle or stand down entirely. */
     private fun mountOrAbort(entity: NpcEntity): Entity? {

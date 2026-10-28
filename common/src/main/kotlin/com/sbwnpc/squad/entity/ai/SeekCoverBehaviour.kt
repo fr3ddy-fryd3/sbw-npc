@@ -33,7 +33,7 @@ import net.tslat.smartbrainlib.util.BrainUtils
  * fire on its current target before ducking back in, repeating for as long as it stays suppressed.
  *
  * Drives the [NpcActivity.COVER] claim. While it is absent (the PEEKING window),
- * `NpcEntity.combatLockedByCover()` is false, so `GunAttackBehaviour`/`GrenadeThrowBehaviour` take
+ * the cover and evade claims are not held, so `GunAttackBehaviour`/`GrenadeThrowBehaviour` take
  * movement, aim and fire back for that window; this behaviour only steps the mob out toward its
  * target for the peek and otherwise keeps out of the way.
  *
@@ -500,7 +500,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         // dropped since the last check — a fresh hit, not just the same old damage) and the ground
         // still allows it — capped at MAX_DIGS total, never unlimited (see digsUsed's own doc
         // comment). Real cover isn't re-checked here: even if some turned up, nothing currently
-        // moves a diggedIn mob out of its hole to use it, so there'd be no alternative action to
+        // moves a dug-in mob out of its hole to use it, so there'd be no alternative action to
         // take on that information anyway.
         val tookFreshHit = entity.health < healthAtLastDigInCheck
         healthAtLastDigInCheck = entity.health
@@ -554,7 +554,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         duggenSideExit = false
         phaseUntilTick = entity.tickCount + EXIT_CHECK_TICKS
         // Must clear BEFORE issuing the exit navigation below — every other system that reads
-        // NpcEntity.diggedIn (GunAttackBehaviour first among them) treats it as "hands off this
+        // [NpcActivity.DUG_IN] (GunAttackBehaviour first among them) treats it as "hands off this
         // mob's movement" and would otherwise call navigation.stop() on the very same/next tick,
         // canceling the exit attempt before it could ever actually leave.
         entity.release(NpcActivity.DUG_IN, this)
@@ -734,7 +734,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             blindPeek = false
             beginPeek(entity, peekPoint.point)
             phaseUntilTick = entity.tickCount + PEEK_TICKS
-            // Unlock — GunAttackBehaviour (no longer locked out, see combatLockedByCover) takes
+            // Unlock — GunAttackBehaviour (no longer locked out, see [NpcActivity.COVER]) takes
             // over aiming/approach/fire from here; this is just enough of a nudge to clear
             // whatever's currently blocking sight from the cover point itself.
             entity.release(NpcActivity.COVER, this)

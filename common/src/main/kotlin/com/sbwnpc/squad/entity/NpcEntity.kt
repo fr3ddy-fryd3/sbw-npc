@@ -508,7 +508,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
      * What this NPC has taken up and who holds its feet, trigger and gaze; every claim and takeover
      * is traced in the `movement` log group. Transient, apart from [NpcActivity.CARRYING_MORTAR].
      */
-    val claims: NpcActivities
+    private val claims: NpcActivities
         get() = activities ?: NpcActivities { com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.MOVEMENT, "{} event={}", uuid, it) }.also { activities = it }
 
     /**

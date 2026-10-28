@@ -119,7 +119,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun scanCandidate(entity: NpcEntity): LivingEntity? {
         if (entity.npcClass != NpcClass.MEDIC) return null
         // A dug-in medic (badly hurt enough to take cover itself) must stay put like everything
-        // else that respects NpcEntity.diggedIn (PM review finding — this was one of two Core tasks
+        // else that respects [NpcActivity.DUG_IN] (PM review finding — this was one of two Core tasks
         // that still didn't) — even a critically wounded ally doesn't get the medic to abandon its
         // own hole; treating can wait until it's healed/no longer holding.
         if (entity.holds(NpcActivity.DUG_IN)) return null

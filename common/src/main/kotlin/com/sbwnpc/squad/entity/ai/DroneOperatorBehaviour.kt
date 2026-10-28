@@ -66,7 +66,7 @@ import java.util.UUID
  * nearby and returns to his original post after launch. Preparation owns his movement too.
  * While flying the operator stands still holding the Monitor
  * (its gun is stowed in `NpcEntity.stowedWeapon`) and every other movement/combat behaviour stands
- * down via `NpcEntity.operatingDrone`; suppression doesn't interrupt the flight (the operator is
+ * down via the [NpcActivity.DRONE] claim; suppression doesn't interrupt the flight (the operator is
  * stationary either way, SeekCoverBehaviour may shuffle it into cover meanwhile).
  */
 class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {

@@ -164,7 +164,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
      * has the barrel lined up — but the AH-6's bench seats have no weapon of their own, so the
      * riders shoot what they are carrying.
      *
-     * [GunAttackBehaviour] can't do it for them: riding sets `vehicleTransport`, which is exactly
+     * [GunAttackBehaviour] can't do it for them: riding holds [NpcActivity.VEHICLE], which is exactly
      * what tells it to stand down, and it would also try to walk them into a firing position.
      */
     private fun fireFromBench(entity: NpcEntity, heli: Entity) {
