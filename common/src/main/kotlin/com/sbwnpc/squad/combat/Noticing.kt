@@ -27,14 +27,17 @@ class Noticing(
 
     /**
      * Whether [observer] has noticed [candidate]. Instant for its current target, for an enemy that
-     * has just fired, and while [observer] is under fire; otherwise it takes [SpottingTime.seconds]
+     * has just fired, for one its squad already has a contact on ([SquadKnowledge]), and while
+     * [observer] is under fire; otherwise it takes [SpottingTime.seconds]
      * by distance, light and weather at [candidate], [offAxis], posture, [grassBlocks], size and
      * the observer's experience.
      */
     fun noticed(observer: NpcEntity, level: ServerLevel, candidate: Entity, offAxis: Double, grassBlocks: Int = 0): Boolean {
         val now = level.gameTime
         val gaveAway = candidate is NpcEntity && candidate.firedRecently(GIVEAWAY_TICKS)
-        if (candidate === observer.target || gaveAway || observer.incomingFire.pending(now)) {
+        val knownToSquad = SquadKnowledge.known(observer.currentSquad()?.tactics?.contacts?.get(candidate.uuid)?.seenAt, now)
+        val alreadyNoticed = candidate === observer.target || gaveAway || knownToSquad
+        if (alreadyNoticed || observer.incomingFire.pending(now)) {
             progress.fill(candidate.uuid, now)
             return true
         }

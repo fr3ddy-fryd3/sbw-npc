@@ -95,9 +95,9 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
             net.minecraft.world.entity.LivingEntity::class.java,
             entity.boundingBox.inflate(reach, 6.0, reach),
         ) {
-            it.isAlive && it !== entity && entity.isEnemy(it) && !VehicleTargeting.isAircrew(it) &&
-                com.sbwnpc.squad.combat.DetectionSightline.canSee(entity, it)
+            it.isAlive && it !== entity && entity.isEnemy(it) && !VehicleTargeting.isAircrew(it) && noticed(entity, level, it)
         }
+        noticing.endScan(level.gameTime)
         if (enemies.size < CLUSTER_SIZE) return null
         val radiusSqr = CLUSTER_RADIUS * CLUSTER_RADIUS
         var best: List<net.minecraft.world.entity.LivingEntity>? = null
@@ -106,8 +106,6 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
             if (bunch.size < CLUSTER_SIZE || bunch.size <= (best?.size ?: 0)) continue
             val middle = Vec3(bunch.sumOf { it.x } / bunch.size, bunch.sumOf { it.y } / bunch.size, bunch.sumOf { it.z } / bunch.size)
             if (!inRange(entity, middle)) continue
-            // Seen, not merely known of: one in the bunch has to be in view.
-            if (bunch.none { com.sbwnpc.squad.combat.DetectionSightline.canSee(entity, it) }) continue
             best = bunch
         }
         val bunch = best ?: return null
@@ -115,6 +113,16 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     private var nextClusterScanTick = 0
+
+    /** Seen, not merely known of: in view and noticed, by his own spotting time or by his squad's contact. */
+    private fun noticed(entity: NpcEntity, level: ServerLevel, enemy: net.minecraft.world.entity.LivingEntity): Boolean {
+        val sighting = com.sbwnpc.squad.combat.DetectionSightline.sight(entity, enemy)
+        if (sighting.visibility != com.sbwnpc.squad.combat.DetectionSightline.Visibility.VISIBLE) return false
+        val offAxis = com.sbwnpc.squad.combat.Vision.offAxis(entity.position(), entity.yHeadRot, enemy.position())
+        return noticing.noticed(entity, level, enemy, offAxis, sighting.grassBlocks)
+    }
+
+    private val noticing = com.sbwnpc.squad.combat.Noticing("grenade", com.sbwnpc.squad.combat.LogGroup.GRENADE)
 
     /** Pinned down, and the memory of where the fire is coming from is still live. */
     private fun suppressionPoint(entity: NpcEntity): Vec3? {
