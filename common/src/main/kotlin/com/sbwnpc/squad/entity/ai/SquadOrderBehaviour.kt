@@ -81,7 +81,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         // During a distant FOLLOW_ORDER, GunAttack already yields movement to this executor.
         // A heard battle must not disable it too and strand the squad at its first path's end.
         if (entity.isAlert() && !SquadTransit.marching(entity)) {
-            if (entity.retreatPoint() == null) return false
+            if (entity.retreatPoint() == null && !com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) return false
         }
         // homeCenter() is null outside a squad too.
         return entity.homeCenter() != null
