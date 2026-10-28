@@ -225,7 +225,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.assignedVehicleId?.let { assigned -> return entity.vehicle?.uuid == assigned }
         // Seated, or on his way to a seat, by another behaviour: his ride is not this squad trip.
         // Taking any mounted man for its own, this put a FOLLOW rider straight back out (#136).
-        if (!entity.seatFreeFor(this)) return logEligibility(entity, false) { "another behaviour has his seat" }
+        if (!entity.freeFor(NpcActivity.SEAT, this)) return logEligibility(entity, false) { "another behaviour has his seat" }
         if (entity.vehicle != null) return true // already mounted: DRIVING/RIDING keep going regardless
         if (com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) return logEligibility(entity, false) { "tactical position duty takes priority" }
 
@@ -293,11 +293,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     // Mounted, the trip goes on whatever else is true, as long as the seat is this trip's: the start
     // check is throttled, so another behaviour can have seated him since it last said yes.
-    override fun shouldKeepRunning(entity: NpcEntity): Boolean = if (entity.vehicle != null) entity.assignedVehicleId != null || entity.seatFreeFor(this) else eligible(entity, checkGiveup = true)
+    override fun shouldKeepRunning(entity: NpcEntity): Boolean = if (entity.vehicle != null) entity.assignedVehicleId != null || entity.freeFor(NpcActivity.SEAT, this) else eligible(entity, checkGiveup = true)
 
     override fun start(entity: NpcEntity) {
         // A permanent crew's seat is VehicleCrewBehaviour's; this only drives it.
-        if (entity.assignedVehicleId == null) entity.claimSeat(this)
+        if (entity.assignedVehicleId == null) entity.claimAlone(NpcActivity.SEAT, this)
         val mounted = entity.vehicle?.takeIf(Ports.vehicles::isVehicle)
         if (mounted != null) {
             startMounted(entity, mounted)

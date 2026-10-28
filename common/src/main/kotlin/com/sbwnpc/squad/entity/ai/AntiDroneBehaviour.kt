@@ -12,6 +12,7 @@ import com.sbwnpc.squad.combat.SpottingTime
 import com.sbwnpc.squad.combat.Vision
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.DroneRegistry
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcPosture
 import com.sbwnpc.squad.entity.NpcRegistry
@@ -96,7 +97,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun start(entity: NpcEntity) {
-        entity.antiDroneEngaged = true
+        entity.claim(NpcActivity.ANTI_DRONE, this)
         entity.navigation.stop()
         evadeUntilTick = 0
         evadeTarget = null
@@ -105,7 +106,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun stop(entity: NpcEntity) {
         startCheck.reset()
-        entity.antiDroneEngaged = false
+        entity.release(NpcActivity.ANTI_DRONE, this)
         entity.stopUsingItem()
         entity.navigation.stop()
     }

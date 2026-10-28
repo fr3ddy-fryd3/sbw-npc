@@ -11,6 +11,7 @@ import com.sbwnpc.squad.combat.SidearmKit
 import com.sbwnpc.squad.combat.WeaponReach
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.domain.port.TriggerMode
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.ai.AmmoRetreat
 import com.sbwnpc.squad.init.ModBlocks
 import com.sbwnpc.squad.init.ModEntities
@@ -50,7 +51,7 @@ object SidearmGameTests {
         val shooters = weapons.mapIndexed { index, weapon ->
             val role = if (weapon in NpcClass.SHOTGUNNER.weaponPool) NpcClass.SHOTGUNNER else NpcClass.RIFLEMAN
             AttackDeploymentGameTests.spawn(helper, Vec3(20.5, 1.0, 12.5 + index * 16), SquadFaction.PIG, role = role).apply {
-                diggedIn = true
+                claim(NpcActivity.DUG_IN, this@SidearmGameTests)
                 setItemInHand(InteractionHand.MAIN_HAND, Ports.guns.issue(weapon, this, role.startingRounds(weapon)))
                 helper.assertTrue(!mainHandItem.isEmpty, "Unregistered weapon: $weapon")
                 ammunition(mainHandItem, 1, role.startingRounds(weapon) - 1)
@@ -182,7 +183,7 @@ object SidearmGameTests {
         }
         val shooters = roles.mapIndexed { index, role ->
             AttackDeploymentGameTests.spawn(helper, Vec3(20.5, 1.0, 16.5 + index * 12), SquadFaction.PIG, role = role).apply {
-                diggedIn = true
+                claim(NpcActivity.DUG_IN, this@SidearmGameTests)
                 setItemInHand(InteractionHand.MAIN_HAND, Ports.guns.issue(ResourceLocation.fromNamespaceAndPath("superbwarfare", weapons[index]), this, 100))
                 if (index in 2..3) ammunition(mainHandItem, 0, 0)
             }
@@ -270,7 +271,7 @@ object SidearmGameTests {
                     Ports.guns.persist(npc.mainHandItem)
                     npc.stowedWeapon = npc.mainHandItem.copy()
                     npc.setItemInHand(InteractionHand.MAIN_HAND, Ports.drones.monitor())
-                    npc.operatingDrone = true
+                    npc.claim(NpcActivity.DRONE, this)
                     SidearmKit.update(npc)
                     helper.assertTrue(Ports.drones.isMonitor(npc.mainHandItem), "Pistol displaced the drone monitor")
                 }
@@ -302,7 +303,7 @@ object SidearmGameTests {
         val names = listOf("mp_443", "glock_17", "m_1911")
         val shooters = names.mapIndexed { index, name ->
             AttackDeploymentGameTests.spawn(helper, Vec3(20.5, 1.0, 40.5 + index * 16), SquadFaction.PIG).apply {
-                diggedIn = true
+                claim(NpcActivity.DUG_IN, this@SidearmGameTests)
                 sidearmWeapon = Ports.guns.issue(ResourceLocation.fromNamespaceAndPath("superbwarfare", name), this, if (name == "m_1911") 70 else 85)
                 ammunition(mainHandItem, 0, 0)
             }

@@ -10,6 +10,7 @@ import com.sbwnpc.squad.combat.Noticing
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.combat.Vision
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.npc.NpcClass
@@ -175,7 +176,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
             launch(entity, level, target)
         } else {
             launchWalk = DroneLaunchWalk(entity)
-            entity.operatingDrone = true
+            entity.claim(NpcActivity.DRONE, this)
             entity.navigation.stop()
         }
     }
@@ -312,7 +313,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         phase = Phase.LAUNCH
 
         entity.dronesLeft--
-        entity.operatingDrone = true
+        entity.claim(NpcActivity.DRONE, this)
         entity.navigation.stop()
         holdMonitor(entity)
         DebugFlags.log(LogGroup.DRONE, "{} launched drone {} at {} ({} left)", entity.uuid, drone.uuid, target.pos, entity.dronesLeft)
@@ -343,7 +344,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         droneId = null
         targetEntityId = null
         lastDronePos = null
-        entity.operatingDrone = false
+        entity.release(NpcActivity.DRONE, this)
         restoreWeapon(entity)
     }
 

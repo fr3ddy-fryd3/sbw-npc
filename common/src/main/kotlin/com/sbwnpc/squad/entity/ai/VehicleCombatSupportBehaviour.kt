@@ -52,7 +52,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var nextBoardTick = 0
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
-        entity.tickCount >= nextBoardTick && entity.seatFreeFor(this) && eligible(entity) &&
+        entity.tickCount >= nextBoardTick && entity.freeFor(NpcActivity.SEAT, this) && eligible(entity) &&
             threat(entity)?.let { hasFiringSightline(entity, it) } == true &&
             findSupportVehicle(entity, level) != null
 
@@ -75,7 +75,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         val level = entity.level() as? ServerLevel ?: return
         val target = threat(entity) ?: return
         val vehicle = findSupportVehicle(entity, level) ?: return
-        if (!entity.claimSeat(this)) return
+        if (!entity.claimAlone(NpcActivity.SEAT, this)) return
         if (!VehicleTransportClaims.claimPassenger(vehicle.uuid, entity.uuid, Ports.vehicles.seatCount(vehicle))) {
             entity.release(NpcActivity.SEAT, this)
             return

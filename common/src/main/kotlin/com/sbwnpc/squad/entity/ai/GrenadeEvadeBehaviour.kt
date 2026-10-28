@@ -6,7 +6,7 @@ import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.GrenadeHazard
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.entity.GrenadeRegistry
-import com.sbwnpc.squad.entity.MovementClaim
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
@@ -19,7 +19,7 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 /**
  * A live grenade close by: drop everything and get out of its blast.
  *
- * Takes the mob over the same way cover does — [MovementClaim.EVADE] makes
+ * Takes the mob over the same way cover does — [NpcActivity.EVADE] makes
  * `NpcEntity.combatLockedByCover()` true, so shooting, throwing and investigating stand down, and
  * the few movers that don't read that lock check [NpcEntity.evadingGrenade] themselves. It is last
  * in the core list on purpose: behaviours that hold an NPC in place (the mortar, the drone
@@ -58,7 +58,7 @@ class GrenadeEvadeBehaviour : ExtendedBehaviour<NpcEntity>() {
         val g = grenade ?: return
         giveUpTick = entity.tickCount + MAX_EVADE_TICKS
         fleeTo = fleePoint(entity, g.position())
-        entity.claimMovement(this, MovementClaim.EVADE, MAX_EVADE_TICKS)
+        entity.claim(NpcActivity.EVADE, this, MAX_EVADE_TICKS)
         fleeTo?.let { entity.navigation.moveTo(it.x, it.y, it.z, SPRINT_SPEED) }
         // The old spot is inside the blast; whatever was headed there has to pick again after.
         FiringSpots.release(entity.uuid)
@@ -86,7 +86,7 @@ class GrenadeEvadeBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun stop(entity: NpcEntity) {
-        entity.releaseMovement(this, MovementClaim.EVADE)
+        entity.release(NpcActivity.EVADE, this)
         grenade = null
         fleeTo = null
     }

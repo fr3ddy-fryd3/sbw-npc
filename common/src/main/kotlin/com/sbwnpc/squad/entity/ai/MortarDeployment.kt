@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.squad.SafeSpawn
 import com.sbwnpc.squad.team.SquadTeams
@@ -22,7 +23,7 @@ object MortarDeployment {
         carrier.packedMortarState = MortarCycle.pack(mortar)
         MortarClaims.releaseMortar(mortar.uuid)
         mortar.discard()
-        carrier.carryingMortar = true
+        carrier.claim(NpcActivity.CARRYING_MORTAR, this)
         return true
     }
 
@@ -62,7 +63,7 @@ object MortarDeployment {
         carrier.packedMortarState = net.minecraft.nbt.CompoundTag()
         level.addFreshEntity(mortar)
         SquadTeams.factionOf(carrier)?.let { SquadTeams.assign(mortar, it) }
-        carrier.carryingMortar = false
+        carrier.release(NpcActivity.CARRYING_MORTAR, this)
     }
 
     /** A carrier that dies sets its load down rather than taking it with it. */

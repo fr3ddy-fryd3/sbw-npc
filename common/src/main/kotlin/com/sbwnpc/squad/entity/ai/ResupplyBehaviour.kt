@@ -5,6 +5,7 @@ import com.sbwnpc.squad.block.entity.SupplyBlockEntity
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
@@ -47,7 +48,7 @@ class ResupplyBehaviour : ExtendedBehaviour<NpcEntity>() {
             !travel.stalled(entity.tickCount)
 
     override fun start(entity: NpcEntity) {
-        entity.resupply(this, true)
+        entity.claim(NpcActivity.RESUPPLY, this)
         entity.clearAlert()
         travel.reset(entity.tickCount, entity.position())
         nextRepathTick = 0
@@ -76,7 +77,7 @@ class ResupplyBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun stop(entity: NpcEntity) {
-        entity.resupply(this, false)
+        entity.release(NpcActivity.RESUPPLY, this)
         DebugFlags.log(
             LogGroup.SUPPLY,
             "{} ({}) done resupplying ({})",

@@ -1107,7 +1107,7 @@ object NativeTactics {
                             // a slot parity can leave one half empty, so nobody covers or nobody runs.
                             followBound = following && OperationTactics.followBound(index, now, toLeader),
                             followSlot = leaderAt?.let { com.sbwnpc.squad.combat.FollowFormation.slot(it, heading, saved.members.indexOf(member.id), heading != null) },
-                            followRide = leader?.vehicle != null || man?.activities?.has(com.sbwnpc.squad.entity.NpcActivity.VEHICLE) == true,
+                            followRide = leader?.vehicle != null || man?.holds(com.sbwnpc.squad.entity.NpcActivity.VEHICLE) == true,
                             transit = transit,
                         ),
                         FIRE_POST_REACH,

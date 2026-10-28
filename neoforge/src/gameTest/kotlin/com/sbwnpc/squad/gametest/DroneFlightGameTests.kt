@@ -4,7 +4,7 @@ import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.domain.port.Ports
-import com.sbwnpc.squad.entity.MovementClaim
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
@@ -130,7 +130,7 @@ object DroneFlightGameTests {
         helper.onEachTick {
             roof.report()
             if (interruptedAt == null && roof.drone() != null) {
-                roof.operator.claimMovement(coverOwner, MovementClaim.COVER)
+                roof.operator.claim(NpcActivity.COVER, coverOwner)
                 val cover = roof.operator.position().add(8.0, 0.0, 0.0)
                 roof.operator.navigation.moveTo(cover.x, cover.y, cover.z, 1.0)
                 coverPath = roof.operator.navigation.path

@@ -6,6 +6,7 @@ import com.mojang.authlib.GameProfile
 import com.sbwnpc.squad.combat.Alarm
 import com.sbwnpc.squad.combat.Hearing
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.npc.SquadFaction
@@ -120,7 +121,7 @@ object HearingGameTests {
     @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 110, batch = "hearing")
     fun hostileLandingBehindNpcTurnsHeadBeforeAcquiringTarget(helper: GameTestHelper) {
         for (x in 0..23) for (z in 0..11) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
-        val npc = AttackDeploymentGameTests.spawn(helper, Vec3(16.5, 1.0, 6.5), SquadFaction.COW).apply { diggedIn = true }
+        val npc = AttackDeploymentGameTests.spawn(helper, Vec3(16.5, 1.0, 6.5), SquadFaction.COW).apply { claim(NpcActivity.DUG_IN, this@HearingGameTests) }
         val oldEnemy = AttackDeploymentGameTests.spawn(helper, Vec3(22.5, 1.0, 6.5), SquadFaction.PIG).apply { isNoAi = true }
         val manager = SquadManager.get(helper.level)
         val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.COW, listOf(npc.uuid))
