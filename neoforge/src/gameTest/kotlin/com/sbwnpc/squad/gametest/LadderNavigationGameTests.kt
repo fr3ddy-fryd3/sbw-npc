@@ -11,6 +11,8 @@ import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.LadderBlock
+import net.minecraft.world.level.block.TrapDoorBlock
+import net.minecraft.world.level.block.state.properties.Half
 import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import java.nio.file.Files
@@ -86,6 +88,46 @@ object LadderNavigationGameTests {
             helper.assertTrue(path?.canReach() != true, "Path crossed three missing ladder blocks")
             npc.discard()
             helper.succeed()
+        }
+    }
+
+    /**
+     * A tower hatch (#177): the ladder ends under a floor, and a closed wooden trapdoor in it is the only
+     * way up. He must open it, climb through, and stand on the floor above.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "scaffolding_arena", timeoutTicks = 600, batch = "ladder-hatch")
+    fun marchClimbsLadderThroughAClosedHatch(helper: GameTestHelper) {
+        for (x in 0..23) for (z in 0..11) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        for (y in 1..9) {
+            helper.setBlock(BlockPos(12, y, 6), Blocks.STONE)
+            helper.setBlock(BlockPos(11, y, 6), Blocks.LADDER.defaultBlockState().setValue(LadderBlock.FACING, Direction.WEST))
+        }
+        for (x in 10..16) for (z in 4..8) helper.setBlock(BlockPos(x, 10, z), Blocks.STONE)
+        val hatch = BlockPos(11, 10, 6)
+        helper.setBlock(hatch, Blocks.OAK_TRAPDOOR.defaultBlockState().setValue(TrapDoorBlock.FACING, Direction.WEST).setValue(TrapDoorBlock.HALF, Half.BOTTOM))
+        val npc = AttackDeploymentGameTests.spawn(helper, Vec3(4.5, 1.0, 6.5), SquadFaction.PIG)
+        val manager = SquadManager.get(helper.level)
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(npc.uuid))
+        manager.setOrder(squad.id, SquadOrder.MOVE)
+        manager.setObjective(helper.level, squad.id, helper.absolutePos(BlockPos(14, 11, 6)))
+        helper.runAtTickTime(10) {
+            val path = (npc.navigation as VehicleAwareNavigation).createPositionPath(helper.absolutePos(BlockPos(14, 11, 6)))
+            helper.assertTrue(path?.canReach() == true, "No route up the ladder through the closed hatch")
+        }
+        var opened = false
+        helper.onEachTick {
+            if (helper.getBlockState(hatch).getValue(TrapDoorBlock.OPEN)) opened = true
+            val at = helper.relativeVec(npc.position())
+            // Succeeds only once the hatch is shut again behind him; one left open runs into the timeout.
+            val shut = !helper.getBlockState(hatch).getValue(TrapDoorBlock.OPEN)
+            val up = at.y >= 10.9 && at.x >= 13.5
+            if (shut && up && npc.onGround()) {
+                helper.assertTrue(opened, "He got up without opening the hatch")
+                manager.disband(helper.level, squad.id)
+                npc.discard()
+                helper.succeed()
+            }
         }
     }
 
