@@ -1,10 +1,10 @@
 package com.sbwnpc.squad.gametest
 
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.MovementClaim
 import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.ai.SquadTransit
 import com.sbwnpc.squad.entity.ai.VehicleTransportClaims
-import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.npc.TransportVehicle
 import com.sbwnpc.squad.squad.SquadManager
@@ -66,8 +66,8 @@ object SquadTransitPriorityGameTests {
         val control = men.last()
         val seatOwner = Any()
         drone.operatingDrone = true
-        BrainUtils.setMemory(patient, ModMemories.MEDIC_HEALING.get(), true)
-        BrainUtils.setMemory(covered, ModMemories.COVER_HOLD.get(), true)
+        patient.claimMovement(seatOwner, MovementClaim.HEAL)
+        covered.claimMovement(seatOwner, MovementClaim.COVER)
         helper.assertTrue(seated.claimSeat(seatOwner), "Could not establish the existing seat owner")
         seated.claim(NpcActivity.VEHICLE, seatOwner)
         underFire.incomingFire.record(underFire.eyePosition, Vec3(1.0, 0.0, 0.0), null, helper.level.gameTime)

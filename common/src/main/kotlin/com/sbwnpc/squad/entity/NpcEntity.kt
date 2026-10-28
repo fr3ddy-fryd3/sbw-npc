@@ -322,9 +322,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     /** True while [com.sbwnpc.squad.entity.ai.SeekCoverBehaviour] must have the mob to itself for
      *  movement and combat goals should stand down entirely — false during its PEEKING phase, the
      *  deliberate window where the mob steps out to return fire and GunAttackBehaviour/
-     *  GrenadeThrowBehaviour take back over. Backed by [ModMemories.COVER_HOLD] (see its own doc
-     *  comment) instead of a hand-rolled enum with a logging setter. */
-    fun combatLockedByCover(): Boolean = BrainUtils.hasMemory(this, ModMemories.COVER_HOLD.get()) || evadingGrenade()
+     *  GrenadeThrowBehaviour take back over. Backed by the [MovementClaim.COVER] and
+     *  [MovementClaim.EVADE] claims in [movement]. */
+    fun combatLockedByCover(): Boolean = movement.has(MovementClaim.COVER, tickCount) || evadingGrenade()
 
     /** Peeking permits shooting while cover keeps sole ownership of the short movement. */
     var coverPeekPoint: Vec3? = null
@@ -333,9 +333,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     /** Running from a live grenade (GrenadeEvadeBehaviour). Part of [combatLockedByCover]; exposed
      *  on its own for the movers that don't read that lock. */
-    fun evadingGrenade(): Boolean = BrainUtils.hasMemory(this, ModMemories.GRENADE_EVADE.get())
+    fun evadingGrenade(): Boolean = movement.has(MovementClaim.EVADE, tickCount)
 
-    fun combatLockedByMedic(): Boolean = BrainUtils.hasMemory(this, ModMemories.MEDIC_HEALING.get())
+    fun combatLockedByMedic(): Boolean = movement.has(MovementClaim.HEAL, tickCount)
 
     // Set by GunAttackBehaviour every time it actually fires (not just "has a target" — genuinely
     // pulled the trigger this tick). Used by SeekCoverBehaviour to verify an ally is really
@@ -581,6 +581,19 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         activities = activities.with(NpcActivity.SEAT, true)
         return true
     }
+
+    // Not created with the other fields, like [claims].
+    private var movementClaims: MovementClaims? = null
+
+    /** Who holds this NPC's movement and which claim wins; every claim and takeover is traced in the `movement` log group. */
+    val movement: MovementClaims
+        get() = movementClaims ?: MovementClaims { com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.MOVEMENT, "{} event={}", uuid, it) }.also { movementClaims = it }
+
+    /** [owner] claims this NPC's movement as [kind], for [lifetime] ticks if it should lapse unrenewed; see [MovementClaims]. */
+    fun claimMovement(owner: Any, kind: MovementClaim, lifetime: Int? = null) = movement.claim(owner, kind, tickCount, lifetime)
+
+    /** [owner] gives up its [kind] claim on this NPC's movement. */
+    fun releaseMovement(owner: Any, kind: MovementClaim) = movement.release(owner, kind, tickCount)
 
     /** True when no behaviour but [owner] has this NPC's seat; asked before starting, see [claimSeat]. */
     fun seatFreeFor(owner: Any): Boolean = claims?.freeFor(NpcActivity.SEAT, owner) != false

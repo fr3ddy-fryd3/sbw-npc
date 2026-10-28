@@ -78,7 +78,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.isAlert() && !SquadTransit.marching(entity)) {
             if (entity.retreatPoint() == null && !com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) return false
         }
-        // A dug-in mob clears COVER_HOLD for its whole holding duration (see
+        // A dug-in mob clears the cover claim for its whole holding duration (see
         // SeekCoverBehaviour.enterDugInHolding) so GunAttackBehaviour can still fire from the hole —
         // this behaviour never checked combatLockedByCover() in the first place (only target/alert/
         // order), so without this a dug-in mob whose target happened to die/break LOS for even a
