@@ -5,9 +5,11 @@ import com.atsuishio.superbwarfare.init.ModDamageTypes
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.SquadManager
+import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
+import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
@@ -111,6 +113,40 @@ object AllyDeathGameTests {
             val toward = man.waryToward()!!
             helper.assertTrue(toward.distanceTo(lastSeen) < 2.0, "The man is wary of $toward, not where the enemy was last seen")
             man.discard()
+            helper.succeed()
+        }
+    }
+
+    /** Within 100 blocks of its objective a squad on foot is wary, and on ATTACK walks, until its first target (#148). */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 200, batch = "objective-approach")
+    fun squadApproachingItsObjectiveIsWaryAndWalksUntilContact(helper: GameTestHelper) {
+        for (x in 0..79) for (z in 0..47) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        val manager = SquadManager.get(helper.level)
+        fun squad(at: Vec3, order: SquadOrder, objective: BlockPos): NpcEntity {
+            val man = AttackDeploymentGameTests.spawn(helper, at, SquadFaction.PIG)
+            val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(man.uuid))
+            manager.setOrder(squad.id, order)
+            manager.setObjective(helper.level, squad.id, helper.absolutePos(objective))
+            return man
+        }
+        val attacker = squad(Vec3(10.5, 1.0, 10.5), SquadOrder.ATTACK, BlockPos(70, 1, 10))
+        val mover = squad(Vec3(10.5, 1.0, 20.5), SquadOrder.MOVE, BlockPos(70, 1, 20))
+        val distant = squad(Vec3(10.5, 1.0, 30.5), SquadOrder.ATTACK, BlockPos(10 + 150, 1, 30))
+        val base = attacker.getAttributeValue(Attributes.MOVEMENT_SPEED)
+        var enemy: NpcEntity? = null
+        helper.runAtTickTime(60) {
+            helper.assertTrue(attacker.wary() && mover.wary(), "A man within 100 blocks of his objective was not wary: attacker=${attacker.wary()} mover=${mover.wary()} squad=${attacker.currentSquad()?.order} obj=${attacker.currentSquad()?.objective} pos=${attacker.blockPosition()}")
+            helper.assertTrue(!distant.wary(), "A man 150 blocks from his objective was wary")
+            helper.assertTrue(attacker.getAttributeValue(Attributes.MOVEMENT_SPEED) < base * 0.7, "The attacking man did not slow to a walk")
+            helper.assertTrue(mover.getAttributeValue(Attributes.MOVEMENT_SPEED) > base * 0.95, "The MOVE order was slowed further")
+            enemy = AttackDeploymentGameTests.spawn(helper, Vec3(60.5, 1.0, 40.5), SquadFaction.COW).apply { isNoAi = true }
+            attacker.target = enemy
+        }
+        helper.runAtTickTime(80) {
+            helper.assertTrue(!attacker.wary(), "The man stayed wary after his first contact")
+            helper.assertTrue(attacker.getAttributeValue(Attributes.MOVEMENT_SPEED) > base * 0.95, "The man kept walking after his first contact")
+            listOf(attacker, mover, distant, enemy!!).forEach { it.discard() }
             helper.succeed()
         }
     }
