@@ -84,7 +84,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         if (reconsider) nextReallocationTick = level.gameTime + REALLOCATION_MIN + entity.random.nextInt(REALLOCATION_JITTER)
         val desired = computeDesired(entity, level, directTarget, reconsider)
         val feasible = feasible(entity, desired, directTarget)
-        val target = gunnerNotices(entity, level, feasible, previous)
+        val target = withinRange(entity, gunnerNotices(entity, level, feasible, previous), directTarget)
         // Capture sight loss before target selection can discard the personally observed enemy.
         if (previous != null && entity.lastSeenFire.observed(previous.uuid)) {
             entity.noticeHidden(previous, DetectionSightline.trace(entity, previous))
@@ -142,6 +142,19 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         }
         gunnerNoticing.endScan(level.gameTime)
         return chosen
+    }
+
+    /**
+     * [chosen] unless it has stayed beyond detection range for the grace period. Shared contacts and
+     * holding orders keep a target alive for as long as any squadmate refreshes it, so a shooter
+     * would otherwise fire at a man he cannot see, 280 blocks off. Aircrew and gunners have their
+     * own reach; the nearest visible enemy stands in when the far one is let go.
+     */
+    private fun withinRange(mob: NpcEntity, chosen: LivingEntity?, directTarget: LivingEntity?): LivingEntity? {
+        if (chosen == null || mob.vehicle != null || mob.npcClass == NpcClass.MORTAR) return chosen
+        val range = VehicleTargeting.rangeFor(chosen, NpcEntity.DETECTION_RANGE)
+        val inRange = mob.distanceToSqr(chosen) <= range * range
+        return if (beyondRange.expired(chosen.uuid, inRange, mob.level().gameTime)) directTarget else chosen
     }
 
     /** Priority is explicit here: later queries run only when earlier sources have no target. */
@@ -208,16 +221,11 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
 
     private fun retainedDefensiveTarget(mob: NpcEntity): LivingEntity? {
         if (!CombatPosition.holdsPosition(mob.currentSquad()?.order)) return null
-        // A holding order may retain a visible target beyond the ordinary detection radius, for a while.
-        val target = mob.target?.takeIf { it.isAlive && SquadTeams.isHostile(mob, it) }
-        if (target == null) {
-            beyondRange.expired(inRange = true, now = mob.level().gameTime)
-            return null
+        // A holding order may retain a visible target beyond the ordinary detection radius.
+        return mob.target?.takeIf { target ->
+            target.isAlive && SquadTeams.isHostile(mob, target) &&
+                FiringOpportunity.assess(mob, target) == TacticalTargetSelection.Opportunity.SHOOTABLE
         }
-        val range = VehicleTargeting.rangeFor(target, NpcEntity.DETECTION_RANGE)
-        val inRange = mob.distanceToSqr(target) <= range * range
-        if (beyondRange.expired(inRange, mob.level().gameTime)) return null
-        return target.takeIf { FiringOpportunity.assess(mob, it) == TacticalTargetSelection.Opportunity.SHOOTABLE }
     }
 
     private fun withdrawalTarget(mob: NpcEntity, level: ServerLevel, directTarget: LivingEntity?): LivingEntity? {

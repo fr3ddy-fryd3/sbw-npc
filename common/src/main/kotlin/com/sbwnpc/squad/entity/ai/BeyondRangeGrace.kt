@@ -1,19 +1,25 @@
 package com.sbwnpc.squad.entity.ai
 
+import java.util.UUID
+
 /**
- * How long a held target may stay beyond detection range. A holding order keeps a visible target
- * past the ordinary radius, but without a limit a squad kept shooting at a man 170 blocks away
- * who was already withdrawing; everyone else lets such a target go after the same grace.
+ * How long one target may stay beyond detection range. A shared contact or a holding order keeps a
+ * target past the ordinary radius for as long as any squadmate refreshes it, so a squad kept
+ * shooting at a man 280 blocks away; every shooter lets such a target go after the same grace.
  */
 internal class BeyondRangeGrace(private val graceTicks: Long) {
-    private var since: Long? = null
+    private var target: UUID? = null
+    private var since = 0L
 
-    fun expired(inRange: Boolean, now: Long): Boolean {
-        if (inRange) {
-            since = null
+    fun expired(id: UUID?, inRange: Boolean, now: Long): Boolean {
+        if (id == null || inRange) {
+            target = null
             return false
         }
-        val start = since ?: now.also { since = it }
-        return now - start >= graceTicks
+        if (id != target) {
+            target = id
+            since = now
+        }
+        return now - since >= graceTicks
     }
 }
