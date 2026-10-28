@@ -192,8 +192,13 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
+    /**
+     * Whether [entity] stays out of the ride: the squad is fighting (one answer for all of them, see
+     * [SquadTransit.engaged]), or he himself is alert, suppressed or has rounds landing near him and takes
+     * cover first. The vehicle waits for that man: see [tickWaiting].
+     */
     private fun combatInterrupted(entity: NpcEntity) =
-        (entity.target != null && !SquadTransit.marching(entity)) || entity.isAlert() || entity.isSuppressed() ||
+        SquadTransit.engaged(entity) || entity.isAlert() || entity.isSuppressed() ||
             entity.incomingFire.recentPoint(entity.level().gameTime) != null
 
     /** [checkGiveup] must be false when called from [checkExtraStartConditions] (deciding whether to
@@ -647,11 +652,13 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         val allAccountedFor = squad == null || squad.members.all { id ->
             if (id == entity.uuid) return@all true
             val member = level.getEntity(id) as? NpcEntity ?: return@all true // dead/unloaded: don't block on it
-            !member.isAlive || member.vehicle != null || member.distanceToSqr(vehicle) > SEARCH_RADIUS * SEARCH_RADIUS || combatInterrupted(member) ||
+            !member.isAlive || member.vehicle != null || member.distanceToSqr(vehicle) > SEARCH_RADIUS * SEARCH_RADIUS ||
                 // A boat seats few: whoever isn't coming along is swimming, not late.
                 (boat && !member.vehicleTransport)
         }
-        val timedOut = entity.tickCount - waitStartTick > WAIT_TIMEOUT_TICKS
+        // A fighting squad is waited for longer: driving off with the men still at it split the squad (#198).
+        val waited = entity.tickCount - waitStartTick
+        val timedOut = waited > (if (SquadTransit.engaged(entity)) ENGAGED_WAIT_TIMEOUT_TICKS else WAIT_TIMEOUT_TICKS)
         if (allAccountedFor || timedOut) {
             // Stuck-detection's baseline (lastStuckCheckTick/lastStuckCheckPos) was last set back at
             // boarding time, in tickBoarding — it was never touched during the wait. The vehicle has
@@ -1717,6 +1724,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val ARRIVAL_STOP_SPEED_SQR = 0.0004 // ~0.02 blocks/tick — "stopped" next to a multi-block vehicle
         private const val ARRIVAL_STOP_TIMEOUT_TICKS = 60 // ~3s fallback if it never fully stops
         private const val WAIT_TIMEOUT_TICKS = 400 // ~20s
+        private const val ENGAGED_WAIT_TIMEOUT_TICKS = 1200 // ~60s: the squad is in a fight and the ride waits for it
         private const val SEEK_INTERVAL_TICKS = 20
         private const val SEEK_GIVEUP_TICKS = 200 // ~10s of scanning before falling back to walking
 

@@ -23,6 +23,21 @@ object SquadTransit {
         return distant(squad, npc.level() as ServerLevel)
     }
 
+    /**
+     * Whether the squad as a whole is fighting instead of travelling: any man of it has a target and is not
+     * marching ([marching]). One answer for every man, so that a mob or an enemy on one of them cannot leave
+     * him fighting while the rest board and the vehicle drives off without him (#198).
+     */
+    fun engaged(npc: NpcEntity): Boolean {
+        if (npc.target != null && !marching(npc)) return true
+        val squad = npc.currentSquad() ?: return false
+        val level = npc.level() as ServerLevel
+        return squad.members.any { id ->
+            val member = level.getEntity(id) as? NpcEntity
+            member != null && member !== npc && member.isAlive && member.squadId == squad.id && member.target != null && !marching(member)
+        }
+    }
+
     /** Whether the loaded living squad is still far from its ordered objective in this dimension. */
     fun distant(squad: Squad, level: ServerLevel): Boolean {
         if (squad.objectiveDimension?.let { it != level.dimension() } == true) return false
