@@ -29,6 +29,7 @@ import com.sbwnpc.squad.squad.Squad
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
+import com.sbwnpc.squad.util.SaveableStacks
 import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.chat.Component
@@ -1458,8 +1459,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         if (roll >= AMMO_DROP_CHANCE) return
         // A box of it where there is one — loose rounds on a body looked odd — and a magazine's
         // worth of whatever else (heavy rounds, rockets) has no box.
-        val ammo = Ports.guns.ammoBox(gun).takeUnless { it.isEmpty }
-            ?: Ports.guns.ammoItems(gun, minOf(reserve, Ports.guns.magazineSize(gun).coerceAtLeast(1)))
+        val ammo = SaveableStacks.capped(
+            Ports.guns.ammoBox(gun).takeUnless { it.isEmpty }
+                ?: Ports.guns.ammoItems(gun, minOf(reserve, Ports.guns.magazineSize(gun).coerceAtLeast(1))),
+        )
         if (ammo.isEmpty) {
             rolls[rolls.size - 1] += " (no ammo item)"
             return
