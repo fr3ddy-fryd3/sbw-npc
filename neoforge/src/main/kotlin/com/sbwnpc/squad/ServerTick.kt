@@ -11,6 +11,7 @@ object ServerTick {
     @SubscribeEvent
     fun onServerTick(event: ServerTickEvent.Post) {
         SelectionHighlight.tick(event.server)
+        com.sbwnpc.squad.squad.DeployPreview.tick(event.server)
         PilotlessHelicopters.tick(event.server)
         com.sbwnpc.squad.team.Diplomacy.tick(event.server)
         com.sbwnpc.squad.map.MapFeed.tick(event.server)
