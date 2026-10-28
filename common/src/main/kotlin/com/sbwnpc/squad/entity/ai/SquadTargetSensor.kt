@@ -84,7 +84,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         if (reconsider) nextReallocationTick = level.gameTime + REALLOCATION_MIN + entity.random.nextInt(REALLOCATION_JITTER)
         val desired = computeDesired(entity, level, directTarget, reconsider)
         val feasible = feasible(entity, desired, directTarget)
-        val target = withinRange(entity, gunnerNotices(entity, level, feasible, previous), directTarget)
+        val target = withinRange(entity, gunnerNotices(entity, level, feasible, previous), previous, directTarget)
         // Capture sight loss before target selection can discard the personally observed enemy.
         if (previous != null && entity.lastSeenFire.observed(previous.uuid)) {
             entity.noticeHidden(previous, DetectionSightline.trace(entity, previous))
@@ -145,16 +145,21 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     }
 
     /**
-     * [chosen] unless it has stayed beyond detection range for the grace period. Shared contacts and
-     * holding orders keep a target alive for as long as any squadmate refreshes it, so a shooter
-     * would otherwise fire at a man he cannot see, 280 blocks off. Aircrew and gunners have their
-     * own reach; the nearest visible enemy stands in when the far one is let go.
+     * [chosen] unless it is beyond detection range. A target already held may stay out of range for
+     * the grace period; one not held yet is never taken from out there. Shared contacts keep a
+     * target alive for as long as any squadmate refreshes it, so a shooter would otherwise fire at
+     * a man he cannot see, 280 blocks off, on any order. Past [DetectionSightline.MAX_SIGHT] it is
+     * dropped at once. Aircrew and gunners have their own reach; the nearest visible enemy stands in.
      */
-    private fun withinRange(mob: NpcEntity, chosen: LivingEntity?, directTarget: LivingEntity?): LivingEntity? {
+    private fun withinRange(mob: NpcEntity, chosen: LivingEntity?, previous: LivingEntity?, directTarget: LivingEntity?): LivingEntity? {
         if (chosen == null || mob.vehicle != null || mob.npcClass == NpcClass.MORTAR) return chosen
         val range = VehicleTargeting.rangeFor(chosen, NpcEntity.DETECTION_RANGE)
-        val inRange = mob.distanceToSqr(chosen) <= range * range
-        return if (beyondRange.expired(chosen.uuid, inRange, mob.level().gameTime)) directTarget else chosen
+        val distanceSqr = mob.distanceToSqr(chosen)
+        val inRange = distanceSqr <= range * range
+        val tooFar = distanceSqr > DetectionSightline.MAX_SIGHT * DetectionSightline.MAX_SIGHT
+        val expired = beyondRange.expired(chosen.uuid, inRange, mob.level().gameTime)
+        val refused = !inRange && chosen !== previous
+        return if (tooFar || expired || refused) directTarget else chosen
     }
 
     /** Priority is explicit here: later queries run only when earlier sources have no target. */
