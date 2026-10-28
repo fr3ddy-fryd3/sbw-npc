@@ -5,8 +5,8 @@ require(profileFile.isFile) { "Missing SBW profile: $profileFile" }
 val profile = java.util.Properties().apply { profileFile.inputStream().use { load(it) } }
 require(profile.getProperty("loader") == loader) { "SBW profile loader mismatch" }
 // "preview" builds the loader for development; the release pipeline accepts only "enabled".
-require(profile.getProperty("status") in setOf("enabled", "preview") && (loader == "neoforge" || profile.getProperty("status") == "preview")) {
-    "SBW $loader profile is ${profile.getProperty("status")}; see #15/#16 and docs/SBW-COMPATIBILITY.md"
+require(profile.getProperty("status") in setOf("enabled", "preview")) {
+    "SBW $loader profile is ${profile.getProperty("status")}; see docs/SBW-COMPATIBILITY.md"
 }
 // gradle.properties describes the NeoForge build; the other loaders carry their own versions.
 require(loader != "neoforge" || profile.getProperty("minecraft") == providers.gradleProperty("minecraft_version").get()) {

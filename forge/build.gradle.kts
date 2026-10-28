@@ -5,6 +5,7 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
 plugins {
     id("net.neoforged.moddev.legacyforge")
     id("sbwnpc.jvm-conventions")
+    id("sbwnpc.sbw-input")
 }
 
 // Named for the Minecraft it runs on (1.20.1), not the NeoForge line: sbwnpc-<version>-mc1.20.1-forge.jar.
@@ -155,6 +156,8 @@ tasks.named<Jar>("jar") {
     // Forge 1.20.1 reads mixin configs from the jar manifest; the [[mixins]] table in mods.toml is NeoForge's and is ignored.
     manifest.attributes("MixinConfigs" to "sbwnpc.forge.mixins.json")
 }
-artifacts.add(modJar.name, tasks.named("jar"))
+// The jar task builds the Mojang-named development jar (build/devlibs); reobfJar turns it into the SRG-named one
+// that Forge 1.20.1 loads (build/libs). The release jar and the staged copy must be the second.
+artifacts.add(modJar.name, tasks.named("reobfJar"))
 
 tasks.withType<Test> { useJUnitPlatform() }
