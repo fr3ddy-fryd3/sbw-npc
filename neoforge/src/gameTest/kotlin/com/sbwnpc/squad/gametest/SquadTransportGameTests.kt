@@ -38,7 +38,7 @@ object SquadTransportGameTests {
         return moved
     }
 
-    private fun park(helper: GameTestHelper, at: Vec3): Entity =
+    internal fun park(helper: GameTestHelper, at: Vec3): Entity =
         requireNotNull(Ports.vehicles.create(helper.level, TransportVehicle.LAV_25)).also {
             val point = helper.absoluteVec(at)
             it.moveTo(point.x, point.y, point.z, 0f, 0f)

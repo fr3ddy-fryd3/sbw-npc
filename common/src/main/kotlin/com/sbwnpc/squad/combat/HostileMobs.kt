@@ -33,6 +33,9 @@ object HostileMobs {
     /** Blocks within which a mob that is not attacking a man himself is still his enemy. */
     private const val ENGAGE_RANGE = 32.0
 
+    /** Blocks within which a threatening mob keeps a squad from boarding its ride (#198). */
+    const val CLOSE_RANGE = ENGAGE_RANGE / 2
+
     /** The nearest squad NPC in [area] that [mob] may target under [conditions], as for a player. */
     fun nearestNpc(mob: Mob, conditions: TargetingConditions, area: AABB): LivingEntity? = mob.level().getNearestEntity(mob.level().getEntitiesOfClass(NpcEntity::class.java, area) { it.currentSquad() != null }, conditions, mob, mob.x, mob.eyeY, mob.z)
 
