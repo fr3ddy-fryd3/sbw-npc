@@ -533,7 +533,10 @@ object SquadMarch {
         val from = npc.blockPosition()
         val r = SEARCH_RANGE.toInt() + 8
         val region = PathNavigationRegion(level, from.offset(-r, -r, -r), from.offset(r, r, r))
-        val evaluator = VehicleAwareNodeEvaluator().apply { setCanPassDoors(true) }
+        val evaluator = VehicleAwareNodeEvaluator().apply {
+            setCanPassDoors(true)
+            setCanOpenDoors(true)
+        }
         val path = PathFinder(evaluator, NODES).findPath(region, npc, setOf(target), SEARCH_RANGE, LEG_REACH, 1f)
         val route = path?.let { p -> (0 until p.nodeCount).map { p.getNode(it).asBlockPos() } }.orEmpty()
         val end = route.lastOrNull()
