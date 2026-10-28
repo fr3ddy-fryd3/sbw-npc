@@ -93,10 +93,26 @@ object AircraftLods {
         val scale = AircraftVisibility.lodScale(RenderSystem.getProjectionMatrix().m11(), Minecraft.getInstance().options.fov().get())
         val matrix = stack.last().pose()
         val distanceSq = (matrix.m30() * matrix.m30() + matrix.m31() * matrix.m31() + matrix.m32() * matrix.m32()) * scale * scale
-        return highestLod(models) {
+        val chosen = highestLod(models) {
             distanceSq >= it.lodDistance.toDouble() * it.lodDistance &&
                 RenderDistanceHelper.shouldRenderLOD(entity, stack, it.lodDistance.toDouble())
         }
+        traceSelect(entity, models, chosen, distanceSq, scale)
+        return chosen
+    }
+
+    private const val SELECT_TRACE_MS = 3000L
+    private val lastSelectTrace = HashMap<Int, Long>()
+
+    /** Logs what [select] picked at most every 3s per aircraft: scaled distance, candidates and the choice. */
+    private fun traceSelect(entity: VehicleEntity, models: List<VehicleModelEntry>, chosen: VehicleModelEntry?, distanceSq: Double, scale: Double) {
+        val now = System.currentTimeMillis()
+        if (now - (lastSelectTrace[entity.id] ?: 0L) < SELECT_TRACE_MS) return
+        lastSelectTrace[entity.id] = now
+        ModIdentity.LOGGER.info(
+            "NPC aircraft LOD select {} id={}: distance={} scale={} models={} chosen={} sameAsFirst={}",
+            entity.type, entity.id, Math.sqrt(distanceSq).toInt(), scale, models.map { it.lodDistance }, chosen?.lodDistance, chosen === models.firstOrNull(),
+        )
     }
 
     internal inline fun highestLod(models: List<VehicleModelEntry>, allowed: (VehicleModelEntry) -> Boolean): VehicleModelEntry? {
