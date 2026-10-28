@@ -3,6 +3,7 @@ import java.util.Properties
 plugins {
     id("fabric-loom") version "1.17.20"
     id("sbwnpc.jvm-conventions")
+    id("sbwnpc.sbw-input")
 }
 
 version = rootProject.version
