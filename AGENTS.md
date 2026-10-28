@@ -153,6 +153,10 @@ rules are in [docs/CODE-STYLE.md](docs/CODE-STYLE.md).
 - Issues, PRs, commit messages and repository docs are written in English. The repository is
   public.
 - The README is for players only: no internals, no performance numbers.
+- **Aim to do better than asked.** When you are asked to do something "this way" and you know a
+  better way, or something worth adding that is more correct in meaning or logic, propose it. Just
+  closing the task as written only works if the person spells out the exact state they want, and a
+  person is the slow part: every missing detail costs a round trip and slows development down.
 - If two tasks touch the same code, such as tactics, navigation or the map, say so in both issues
   before starting, so nobody's work gets overwritten.
 
