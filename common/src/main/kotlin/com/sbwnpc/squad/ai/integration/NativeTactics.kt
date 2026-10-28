@@ -1069,7 +1069,7 @@ object NativeTactics {
                 // the order's own march, each man's sighted target still drew him off after it.
                 val entry = if (marching && saved.order == SquadOrder.ATTACK) operations.pending(saved.id)?.let { operations.operation(it.operation) }?.entry?.center else null
                 val following = saved.order == com.sbwnpc.squad.squad.SquadOrder.FOLLOW
-                val transit = SquadTransit.travelling(saved, level)
+                val transit = SquadTransit.distant(saved, level)
                 val leader = if (following) level.getPlayerByUUID(saved.owner) else null
                 val heading = saved.followHeading.takeIf { it != net.minecraft.world.phys.Vec3.ZERO }?.let { it.x to it.z }
                 val intents = view.members.mapIndexed { index, member ->
