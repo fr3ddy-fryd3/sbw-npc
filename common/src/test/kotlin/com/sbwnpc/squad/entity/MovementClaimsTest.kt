@@ -30,6 +30,14 @@ class MovementClaimsTest {
         assertEquals(MovementClaim.COVER, claims.owner(0), "the claim it outranked takes over again")
     }
 
+    @Test fun `a walk to a Supply gives way to treatment, cover and evasion`() {
+        claims.claim(Any(), MovementClaim.RESUPPLY, 0)
+        assertEquals(MovementClaim.RESUPPLY, claims.owner(0))
+        claims.claim(medic, MovementClaim.HEAL, 0)
+        assertEquals(MovementClaim.HEAL, claims.owner(0))
+        assertTrue(claims.has(MovementClaim.RESUPPLY, 0))
+    }
+
     @Test fun `a lower claim does not take movement from a higher one`() {
         claims.claim(cover, MovementClaim.COVER, 0)
         claims.claim(medic, MovementClaim.HEAL, 0)

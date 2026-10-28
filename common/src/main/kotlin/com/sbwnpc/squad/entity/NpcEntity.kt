@@ -521,13 +521,12 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     var activities = NpcActivities()
         private set
 
-    /** Set by [com.sbwnpc.squad.entity.ai.ResupplyBehaviour] while it walks this NPC to a Supply,
-     *  so squad orders and alarms leave it be. Transient. */
-    var resupplying: Boolean
-        get() = activities.has(NpcActivity.RESUPPLYING)
-        set(value) {
-            activities = activities.with(NpcActivity.RESUPPLYING, value)
-        }
+    /** Whether a behaviour is walking this NPC to a Supply ([resupply]), so squad orders and alarms leave it be. Transient. */
+    val resupplying: Boolean
+        get() = movement.has(MovementClaim.RESUPPLY, tickCount)
+
+    /** [owner] starts or stops walking this NPC to a Supply; its own claim only, so two behaviours cannot clear each other's. */
+    fun resupply(owner: Any, on: Boolean) = if (on) claimMovement(owner, MovementClaim.RESUPPLY) else releaseMovement(owner, MovementClaim.RESUPPLY)
 
     /** Classes that carry hand grenades at all: not the crews, whose hands are on something else. */
     private fun carriesGrenades(): Boolean =

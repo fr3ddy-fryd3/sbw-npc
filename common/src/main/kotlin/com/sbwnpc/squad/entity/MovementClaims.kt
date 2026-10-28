@@ -9,6 +9,9 @@ import java.util.IdentityHashMap
  * one is suspended, not dropped, and owns it again when the higher one lets go.
  */
 enum class MovementClaim {
+    /** Walking to a Supply: [com.sbwnpc.squad.entity.ai.ResupplyBehaviour] and the out-of-ammo fallback. */
+    RESUPPLY,
+
     /** A medic walking to or treating a critically wounded ally: [com.sbwnpc.squad.entity.ai.MedicHealBehaviour]. */
     HEAL,
 
