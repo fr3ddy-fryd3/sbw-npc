@@ -4,6 +4,7 @@ import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
@@ -22,7 +23,7 @@ class SelfTreatBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
         startCheck.check(entity) {
-            entity.medkitsLeft > 0 && !entity.isPassenger && (entity.combatLockedByCover() || entity.diggedIn) &&
+            entity.medkitsLeft > 0 && !entity.isPassenger && (entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE) || entity.holds(NpcActivity.DUG_IN)) &&
                 entity.health < entity.maxHealth * WOUNDED_FRACTION
         }
 

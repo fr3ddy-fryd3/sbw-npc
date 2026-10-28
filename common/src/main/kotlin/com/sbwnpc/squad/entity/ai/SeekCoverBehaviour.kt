@@ -7,7 +7,7 @@ import com.sbwnpc.squad.combat.GrenadeThrower
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.combat.TickBudget
-import com.sbwnpc.squad.entity.MovementClaim
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.init.ModMemories
@@ -32,8 +32,8 @@ import net.tslat.smartbrainlib.util.BrainUtils
  * threat's last known position can't see, ducks there, then periodically steps back OUT to return
  * fire on its current target before ducking back in, repeating for as long as it stays suppressed.
  *
- * Drives the [MovementClaim.COVER] claim. While it is absent (the PEEKING window),
- * `NpcEntity.combatLockedByCover()` is false, so `GunAttackBehaviour`/`GrenadeThrowBehaviour` take
+ * Drives the [NpcActivity.COVER] claim. While it is absent (the PEEKING window),
+ * the cover and evade claims are not held, so `GunAttackBehaviour`/`GrenadeThrowBehaviour` take
  * movement, aim and fire back for that window; this behaviour only steps the mob out toward its
  * target for the peek and otherwise keeps out of the way.
  *
@@ -90,6 +90,19 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var fallbackThreat: Vec3? = null
     private var peekSearch: CoverPeekSearch? = null
     private var phaseUntilTick = 0
+
+    /** Where the peek is going, while [NpcActivity.PEEK] is held. */
+    private var peekAt: Vec3? = null
+
+    private fun beginPeek(entity: NpcEntity, point: Vec3) {
+        peekAt = point
+        entity.claim(NpcActivity.PEEK, this)
+    }
+
+    private fun endPeek(entity: NpcEntity) {
+        peekAt = null
+        entity.release(NpcActivity.PEEK, this)
+    }
     private var isFallbackRetreat = false // coverTarget came from fallbackAwayFrom, not CoverSearch.find
     private var blindPeek = false
     private var waitingForPeek = false
@@ -191,18 +204,18 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         isFallbackRetreat = false
         blindPeek = false
         waitingForPeek = false
-        entity.coverPeekPoint = null
+        endPeek(entity)
         failedCover.clear()
         digsUsed = 0
         digTicksRemaining = 0
         digPos = null
         duggenSideExit = false
-        entity.diggedIn = false
-        entity.claimMovement(this, MovementClaim.COVER)
+        entity.release(NpcActivity.DUG_IN, this)
+        entity.claim(NpcActivity.COVER, this)
     }
 
     override fun stop(entity: NpcEntity) {
-        entity.coverPeekPoint = null
+        endPeek(entity)
         entity.incomingFire.endReply()
         coverTarget = null
         pendingCover = null
@@ -212,14 +225,14 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         FiringSpots.release(entity.uuid)
         entity.navigation.stop()
         digPos?.let { clearDigProgress(entity) }
-        entity.diggedIn = false
-        entity.releaseMovement(this, MovementClaim.COVER)
+        entity.release(NpcActivity.DUG_IN, this)
+        entity.release(NpcActivity.COVER, this)
     }
 
     override fun tick(entity: NpcEntity) {
         val level = entity.level() as? ServerLevel ?: return
         // A live grenade outranks cover — GrenadeEvadeBehaviour has the legs until it's clear.
-        if (entity.evadingGrenade()) return
+        if (entity.holds(NpcActivity.EVADE)) return
         // DUG_IN_HOLDING/HOLDING_OPEN/EXITING_HOLE deliberately do NOT bail out on threatPos == null
         // the way every other phase does below — none of them are gated by the threat-suppression
         // memory the way MOVING_TO_COVER/IN_COVER/etc. are (see each one's own doc comment).
@@ -355,7 +368,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  ever gets its first dwell/peek check after arriving) without that drift. */
     private fun enterCover(entity: NpcEntity, refreshSuppression: Boolean = false) {
         peekSearch = null
-        entity.coverPeekPoint = null
+        endPeek(entity)
         blindPeek = false
         waitingForPeek = false
         entity.navigation.stop()
@@ -454,15 +467,15 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  cover, where popping out to trade shots and ducking back makes sense. Digging only ever
      *  triggers mid-firefight (canDigIn requires an actively-covering ally), so the very next recheck
      *  after finishing would almost always find a live target and immediately walk back out to peek
-     *  anyway — reported in-game as "выкопал яму и почти сразу её покинул". Clearing the [MovementClaim.COVER] claim
-     *  immediately hands aiming/firing to [GunAttackBehaviour] as normal; [NpcEntity.diggedIn] is the
+     *  anyway — reported in-game as "выкопал яму и почти сразу её покинул". Clearing the [NpcActivity.COVER] claim
+     *  immediately hands aiming/firing to [GunAttackBehaviour] as normal; [NpcActivity.DUG_IN] is the
      *  new signal that tells it to skip all repositioning (advance/bounding/sidestep) while still
      *  aiming and shooting exactly as it would anywhere else — see that flag's own doc comment. */
     private fun enterDugInHolding(entity: NpcEntity) {
         entity.navigation.stop()
         phase = Phase.DUG_IN_HOLDING
-        entity.diggedIn = true
-        entity.releaseMovement(this, MovementClaim.COVER)
+        entity.claim(NpcActivity.DUG_IN, this)
+        entity.release(NpcActivity.COVER, this)
         phaseUntilTick = entity.tickCount + RECHECK_TICKS
         healthAtLastDigInCheck = entity.health
     }
@@ -470,9 +483,9 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** Holds the mob in its foxhole for as long as it's both still hurt (below [DIG_HEALTH_FRACTION],
      *  the same threshold that let it dig in the first place) and still actively fighting — see
      *  [shouldKeepRunning] for the "healed back up" exit, and below for the "nothing left to fight"
-     *  exit. [GunAttackBehaviour] does all the actual aiming/shooting on its own once the [MovementClaim.COVER] claim
+     *  exit. [GunAttackBehaviour] does all the actual aiming/shooting on its own once the [NpcActivity.COVER] claim
      *  is cleared (see [enterDugInHolding]); this just keeps the suppression memory (and therefore
-     *  this whole behaviour, and therefore [NpcEntity.diggedIn]) alive while there's still a live
+     *  this whole behaviour, and therefore [NpcActivity.DUG_IN]) alive while there's still a live
      *  target to hold position against. Once the target's gone, suppression is deliberately left to
      *  lapse on its own instead of being force-refreshed forever — a mob with nothing shooting back
      *  at it and nothing to shoot at has no reason to stay pinned in a hole. */
@@ -487,7 +500,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         // dropped since the last check — a fresh hit, not just the same old damage) and the ground
         // still allows it — capped at MAX_DIGS total, never unlimited (see digsUsed's own doc
         // comment). Real cover isn't re-checked here: even if some turned up, nothing currently
-        // moves a diggedIn mob out of its hole to use it, so there'd be no alternative action to
+        // moves a dug-in mob out of its hole to use it, so there'd be no alternative action to
         // take on that information anyway.
         val tookFreshHit = entity.health < healthAtLastDigInCheck
         healthAtLastDigInCheck = entity.health
@@ -501,15 +514,15 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     /** Per user request: engaged (has a target) with no real cover nearby and unable/unwilling to
      *  dig any further — hold the current spot and keep firing rather than fleeing across open
-     *  ground. Clears the [MovementClaim.COVER] claim like [enterDugInHolding] so [GunAttackBehaviour] keeps
+     *  ground. Clears the [NpcActivity.COVER] claim like [enterDugInHolding] so [GunAttackBehaviour] keeps
      *  full control of aim/fire AND its own partial-cover positioning (`holdFiringPosition`) — unlike
-     *  actually digging in, [NpcEntity.diggedIn] is deliberately NOT set here, since there's no hole
+     *  actually digging in, [NpcActivity.DUG_IN] is deliberately NOT set here, since there's no hole
      *  to stay locked into; GunAttackBehaviour is free to reposition within its own small search
      *  radius exactly as it would with no suppression involved at all. */
     private fun enterHoldingOpen(entity: NpcEntity) {
         entity.navigation.stop()
         phase = Phase.HOLDING_OPEN
-        entity.releaseMovement(this, MovementClaim.COVER)
+        entity.release(NpcActivity.COVER, this)
         phaseUntilTick = entity.tickCount + RECHECK_TICKS
     }
 
@@ -541,10 +554,10 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         duggenSideExit = false
         phaseUntilTick = entity.tickCount + EXIT_CHECK_TICKS
         // Must clear BEFORE issuing the exit navigation below — every other system that reads
-        // NpcEntity.diggedIn (GunAttackBehaviour first among them) treats it as "hands off this
+        // [NpcActivity.DUG_IN] (GunAttackBehaviour first among them) treats it as "hands off this
         // mob's movement" and would otherwise call navigation.stop() on the very same/next tick,
         // canceling the exit attempt before it could ever actually leave.
-        entity.diggedIn = false
+        entity.release(NpcActivity.DUG_IN, this)
         val level = entity.level() as? ServerLevel
         val hole = coverTarget
         if (level != null && hole != null) {
@@ -679,7 +692,8 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun isActuallyCovering(ally: NpcEntity): Boolean {
         if (ally.firedRecently(COVERING_FIRE_WINDOW_TICKS)) return true
         val target = ally.target
-        if (target != null && target.isAlive && !ally.combatLockedByCover() && ally.sensing.hasLineOfSight(target)) return true
+        val shootable = target?.takeIf { it.isAlive && !ally.holdsAny(NpcActivity.COVER, NpcActivity.EVADE) }
+        if (shootable != null && ally.sensing.hasLineOfSight(shootable)) return true
         return !ally.isSuppressed()
     }
 
@@ -718,12 +732,12 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
             phase = Phase.PEEKING
             blindPeek = false
-            entity.coverPeekPoint = peekPoint.point
+            beginPeek(entity, peekPoint.point)
             phaseUntilTick = entity.tickCount + PEEK_TICKS
-            // Unlock — GunAttackBehaviour (no longer locked out, see combatLockedByCover) takes
+            // Unlock — GunAttackBehaviour (no longer locked out, see [NpcActivity.COVER]) takes
             // over aiming/approach/fire from here; this is just enough of a nudge to clear
             // whatever's currently blocking sight from the cover point itself.
-            entity.releaseMovement(this, MovementClaim.COVER)
+            entity.release(NpcActivity.COVER, this)
             entity.navigation.moveTo(peekPoint.path, 1.0)
         } else {
             val aim = entity.incomingFire.point(level.gameTime)
@@ -738,7 +752,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
                 phase = Phase.PEEKING
                 blindPeek = true
                 waitingForPeek = true
-                entity.coverPeekPoint = peek.point
+                beginPeek(entity, peek.point)
                 phaseUntilTick = entity.tickCount + 100
                 entity.navigation.moveTo(peek.path, 1.0)
                 DebugFlags.log(LogGroup.ORDER, "[return-fire] {} moving to peek={}", entity.uuid, peek.point)
@@ -780,7 +794,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
                 duckBackToCover(entity)
                 return
             }
-            val point = entity.coverPeekPoint ?: return
+            val point = peekAt ?: return
             if (entity.position().distanceTo(point) > 1.0) {
                 if (entity.navigation.isDone) entity.navigateTo(point, 1.0)
                 return
@@ -788,7 +802,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             waitingForPeek = false
             phaseUntilTick = entity.tickCount + 60
             entity.incomingFire.beginReply(entity.level().gameTime)
-            entity.releaseMovement(this, MovementClaim.COVER)
+            entity.release(NpcActivity.COVER, this)
             DebugFlags.log(LogGroup.ORDER, "[return-fire] {} peek ready, rounds={}", entity.uuid, entity.incomingFire.roundsLeft)
         }
         if (blindPeek && !entity.incomingFire.pending(entity.level().gameTime)) {
@@ -818,12 +832,12 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun duckBackToCover(entity: NpcEntity) {
         peekSearch = null
-        entity.coverPeekPoint = null
+        endPeek(entity)
         waitingForPeek = false
         entity.incomingFire.endReply()
         phase = Phase.RETURNING_TO_COVER
         phaseUntilTick = entity.tickCount + 80
-        entity.claimMovement(this, MovementClaim.COVER)
+        entity.claim(NpcActivity.COVER, this)
         val target = coverTarget ?: return
         entity.navigation.moveTo(target.x + 0.5, target.y.toDouble(), target.z + 0.5, 1.0)
     }

@@ -51,16 +51,16 @@ class HelicopterGunnerBehaviour : ExtendedBehaviour<NpcEntity>() {
     // itself only while walking to a vacant turret.
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
         entity.npcClass == NpcClass.HELICOPTER_GUNNER &&
-            (turret(entity) != null || (entity.seatFreeFor(this) && openTurretSeat(entity, level) != null))
+            (turret(entity) != null || (entity.freeFor(NpcActivity.SEAT, this) && openTurretSeat(entity, level) != null))
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean {
         if (entity.npcClass != NpcClass.HELICOPTER_GUNNER) return false
         val level = entity.level() as? ServerLevel ?: return false
-        return turret(entity) != null || (entity.seatFreeFor(this) && openTurretSeat(entity, level) != null)
+        return turret(entity) != null || (entity.freeFor(NpcActivity.SEAT, this) && openTurretSeat(entity, level) != null)
     }
 
     override fun start(entity: NpcEntity) {
-        if (turret(entity) == null) entity.claimSeat(this)
+        if (turret(entity) == null) entity.claimAlone(NpcActivity.SEAT, this)
         entity.claim(NpcActivity.VEHICLE, this)
     }
 

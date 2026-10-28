@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.gametest
 
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.CoverPeekSearch
 import com.sbwnpc.squad.entity.ai.SeekCoverBehaviour
@@ -95,9 +96,9 @@ object CoverBudgetGameTests {
             helper.assertTrue(npc.incomingFire.pending(helper.level.gameTime), "Hostile ranged hit did not create an incoming-fire episode")
         }
         helper.onEachTick {
-            peeked = peeked || npc.coverPeekPoint != null
+            peeked = peeked || npc.holds(NpcActivity.PEEK)
             beganReply = beganReply || npc.incomingFire.replying(helper.level.gameTime)
-            if (helper.tick % 40L == 0L) scene.result("CHECK", "tick=${helper.tick} at=${helper.relativeVec(npc.position())} peek=${npc.coverPeekPoint?.let(helper::relativeVec)} roundsLeft=${npc.incomingFire.roundsLeft} peeked=$peeked beganReply=$beganReply lastShot=${npc.lastShotTick}")
+            if (helper.tick % 40L == 0L) scene.result("CHECK", "tick=${helper.tick} at=${helper.relativeVec(npc.position())} peek=${npc.holds(NpcActivity.PEEK)} roundsLeft=${npc.incomingFire.roundsLeft} peeked=$peeked beganReply=$beganReply lastShot=${npc.lastShotTick}")
             if (helper.tick > 20 && peeked && beganReply && npc.incomingFire.roundsLeft == 0) {
                 helper.assertTrue(npc.lastShotTick >= 0 && npc.isAlive, "No live physical return-fire shooter")
                 scene.result("PASS", "peeked=$peeked beganReply=$beganReply roundsLeft=0 at=${helper.relativeVec(npc.position())} tick=${helper.tick}")
@@ -137,9 +138,9 @@ object CoverBudgetGameTests {
             // NoAI suppresses other behaviors; actors stand on an actual solid floor.
             actors.forEach { (npc, behaviour) ->
                 npc.setOnGround(true)
-                if (npc.coverPeekPoint == null) tick.invoke(behaviour, npc)
+                if (!npc.holds(NpcActivity.PEEK)) tick.invoke(behaviour, npc)
             }
-            val assigned = actors.count { it.first.coverPeekPoint != null }
+            val assigned = actors.count { it.first.holds(NpcActivity.PEEK) }
             val maximum = searches.values.maxOrNull() ?: 0
             val report = "tick=${helper.tick} assigned=$assigned/16 native=${searches.values.sum()} maximumNativePerTick=$maximum pathCalls=${calls.values.sum()}\n"
             Files.writeString(Path.of(System.getProperty("sbwnpc.gameTestReports")).resolve("cover-peek-budget.txt"), report)

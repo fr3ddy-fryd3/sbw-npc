@@ -8,6 +8,7 @@ import com.sbwnpc.squad.combat.Sightline
 import com.sbwnpc.squad.combat.WeaponReach
 import com.sbwnpc.squad.compat.VersionCompat
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.RouteManager
@@ -28,7 +29,7 @@ internal object TacticalSnapshotCollector {
         state.peakStrength = maxOf(state.peakStrength, members.size)
         val knownFocus = state.contacts.values.filter { now - it.seenAt < VISIBLE_CONTACT_TICKS }.maxByOrNull { it.priority }?.position
         val terrain = TacticalTerrain.assess(level, npcs, knownFocus ?: reference.homeCenter(), knownFocus)
-        val engaged = npcs.filter { it.target != null && it.npcClass != NpcClass.MEDIC && !it.busyWithRole() && !it.resupplying }
+        val engaged = npcs.filter { it.target != null && it.npcClass != NpcClass.MEDIC && !it.busyWithRole() && !it.holds(NpcActivity.RESUPPLY) }
         return TacticalSnapshot(
             now = now,
             order = squad.order,
@@ -38,7 +39,7 @@ internal object TacticalSnapshotCollector {
             members = members,
             contacts = state.contacts.values.toList(),
             incoming = npcs.mapNotNull { it.incomingFire.recentPoint(now) },
-            grenade = npcs.any { it.evadingGrenade() || GrenadeHazard.threatens(level, it.position()) },
+            grenade = npcs.any { it.holds(NpcActivity.EVADE) || GrenadeHazard.threatens(level, it.position()) },
             narrow = terrain.narrow,
             open = terrain.open,
             stalled = TacticalRules.stalled(engaged.count { hasBlockedShot(it) }, engaged.size),
@@ -63,8 +64,8 @@ internal object TacticalSnapshotCollector {
         val target = npc.target
         val gun = Ports.guns.inHand(npc)
         val ready = (gun?.hasAmmo() == true || AntiArmourKit.loaded(npc)) &&
-            !npc.busyWithRole() && !npc.resupplying && !npc.combatLockedByMedic() && !npc.evadingGrenade()
-        val canFire = ready && !npc.combatLockedByCover() && (npc.readyToCover || npc.firedRecently(RECENT_FIRE_TICKS)) &&
+            !npc.busyWithRole() && !npc.holdsAny(NpcActivity.RESUPPLY, NpcActivity.HEAL, NpcActivity.EVADE)
+        val canFire = ready && !npc.holdsAny(NpcActivity.COVER, NpcActivity.EVADE) && (npc.readyToCover || npc.firedRecently(RECENT_FIRE_TICKS)) &&
             target != null && target.uuid in visibleTargetIds && WeaponReach.inRange(npc, npc.eyePosition, target.eyePosition) &&
             DetectionSightline.canSee(npc, target) && hasFiringSight(npc, target)
         return TacticalMember(

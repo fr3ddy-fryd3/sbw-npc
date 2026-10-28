@@ -4,6 +4,7 @@ import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.combat.tactics.TacticalJob
 import com.sbwnpc.squad.combat.tactics.TacticalPositions
 import com.sbwnpc.squad.combat.tactics.TacticalTask
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.init.ModEntities
 import com.sbwnpc.squad.npc.NpcClass
@@ -260,7 +261,7 @@ object InfantryMovementGameTests {
                 control.wantedX, control.wantedY, control.wantedZ,
             )
             val squad = npc.currentSquad()
-            val diagnostics = "${npc.level().gameTime},${squad?.moveFormationReady},${squad?.moveRallySince},${npc.target?.uuid},${npc.isAlert()},${npc.resupplying},${npc.movementLockedByCover()},${npc.combatLockedByMedic()},${npc.yRot},${npc.yHeadRot}\n"
+            val diagnostics = "${npc.level().gameTime},${squad?.moveFormationReady},${squad?.moveRallySince},${npc.target?.uuid},${npc.isAlert()},${npc.holds(NpcActivity.RESUPPLY)},${npc.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK)},${npc.holds(NpcActivity.HEAL)},${npc.yRot},${npc.yHeadRot}\n"
             Files.writeString(file, line.trimEnd() + "," + diagnostics, java.nio.file.StandardOpenOption.APPEND)
         }
 
