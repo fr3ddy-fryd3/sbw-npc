@@ -285,8 +285,22 @@ class VehicleAwareNavigation(mob: Mob, level: Level) :
             stopOnLanding = null
         }
         super.tick()
+        workHatches()
         traceWalk()
         traceLadder()
+    }
+
+    /** The hatch this man opened and has yet to shut behind him, see [Hatches]. */
+    private var openedHatch: BlockPos? = null
+
+    /** Opens a closed wooden trapdoor on the next two nodes as he reaches it, and shuts it again once he is past. */
+    private fun workHatches() {
+        openedHatch?.let { if (Hatches.closeBehind(mob, it)) openedHatch = null }
+        val active = path?.takeUnless { it.isDone } ?: return
+        for (index in active.nextNodeIndex until minOf(active.nodeCount, active.nextNodeIndex + 2)) {
+            val pos = active.getNode(index).asBlockPos()
+            if (Hatches.open(mob, pos)) openedHatch = pos
+        }
     }
 
     private var lastLadderLogTick = Int.MIN_VALUE / 2

@@ -67,7 +67,15 @@ internal open class VehicleAwareNodeEvaluator(
         return accepted
     }
 
-    private fun climbable(pos: BlockPos): Boolean = Ports.loader.isLadder(level.getBlockState(pos), mob.level(), pos, mob)
+    private fun shaft(pos: BlockPos): Boolean = Ports.loader.isLadder(level.getBlockState(pos), mob.level(), pos, mob)
+
+    /** The lid of a shaft: a wooden trapdoor right above a ladder or scaffolding cell, see [Hatches]. */
+    private fun hatch(pos: BlockPos): Boolean = Hatches.isTrapdoor(level.getBlockState(pos)) && shaft(pos.below())
+
+    /** Whether [pos] is the lid, the cell under it or the cell above it: the cells a hatch changes the type of. */
+    private fun nearHatch(pos: BlockPos): Boolean = hatch(pos) || hatch(pos.above()) || hatch(pos.below())
+
+    private fun climbable(pos: BlockPos): Boolean = shaft(pos) || hatch(pos)
 
     /** A platform can open onto the air cell immediately above the last ladder rung. */
     private fun ladderEdge(from: BlockPos, to: BlockPos): Boolean {
@@ -131,7 +139,7 @@ internal open class VehicleAwareNodeEvaluator(
         val pos = BlockPos(x, y, z)
         val state = getter.getBlockState(pos)
         val ladder = if (mob != null) Ports.loader.isLadder(state, mob.level(), pos, mob) else state.`is`(BlockTags.CLIMBABLE)
-        if (ladder) return BlockPathTypes.WALKABLE
+        if (ladder || (mob != null && hatch(pos))) return BlockPathTypes.WALKABLE
         if (bodyHigh(getter, x, y, z)) return BlockPathTypes.BLOCKED
         val type = super.getBlockPathType(getter, x, y, z)
         if (type == BlockPathTypes.OPEN) {
@@ -159,9 +167,11 @@ internal open class VehicleAwareNodeEvaluator(
 
     private fun vehicleAwareType(getter: BlockGetter, x: Int, y: Int, z: Int, mob: Mob): BlockPathTypes {
         if (hulls.blocks(x, y, z)) return BlockPathTypes.BLOCKED
-        val type = super.getBlockPathType(getter, x, y, z, mob)
-        if (mob.getPathfindingMalus(type) < 0f) return type
         val pos = BlockPos(x, y, z)
+        val raw = super.getBlockPathType(getter, x, y, z, mob)
+        // A lid in the shaft is walked through, not a trapdoor hazard to avoid.
+        val type = if (raw == BlockPathTypes.TRAPDOOR && nearHatch(pos)) BlockPathTypes.WALKABLE else raw
+        if (mob.getPathfindingMalus(type) < 0f) return type
         val support = getter.getBlockState(pos.below())
         if (WalkingClearance.leaves(support) && (!escapingCanopy || y > (start?.y ?: y) + 1)) return BlockPathTypes.BLOCKED
         // Vanilla normally checks collisions only for fences/doors and jumps. A modded branch
@@ -175,6 +185,14 @@ internal open class VehicleAwareNodeEvaluator(
             getFloorLevel(pos)
         }
         val box = WalkingClearance.body(x, floor, z, mob.bbWidth, mob.bbHeight)
+        if (hatch(pos) || hatch(pos.above())) {
+            // The lid opens as he reaches it, so its closed shape is no obstacle to the route.
+            val collisions = BlockCollisions(level, mob, box, false) { at, _ ->
+                val state = getter.getBlockState(at)
+                !hatch(at) && (!state.`is`(Blocks.SCAFFOLDING) || state.getValue(ScaffoldingBlock.DISTANCE) != 0)
+            }
+            return if (collisions.asSequence().any { it }) BlockPathTypes.BLOCKED else type
+        }
         if (getter.getBlockState(pos).`is`(Blocks.SCAFFOLDING)) {
             // The real entity is still above the candidate: its collision context would
             // falsely turn every lower scaffold into a solid floor. Supported shaft decks
