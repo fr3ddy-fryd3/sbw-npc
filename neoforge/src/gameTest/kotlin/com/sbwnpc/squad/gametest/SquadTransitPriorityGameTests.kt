@@ -212,13 +212,13 @@ object SquadTransitPriorityGameTests {
             squadsLav.discard()
             freeLav.discard()
         }
-        // He is busy until his squad has taken its vehicle, as one left behind is.
-        late.resupplying = true
+        // He does nothing until his squad has taken its vehicle, as one left behind has not looked yet.
+        late.isNoAi = true
         manager.issueOrderAt(helper.level, squad.id, SquadOrder.ATTACK, helper.absolutePos(BlockPos(150, 1, 20)))
         helper.onEachTick {
             if (helper.tick == 60L) {
                 helper.assertTrue(VehicleTransportClaims.vehicleOf(men.first().uuid) == squadsLav.uuid, "His squad had not claimed its vehicle yet")
-                late.resupplying = false
+                late.isNoAi = false
             }
             val claimed = VehicleTransportClaims.vehicleOf(late.uuid)
             if (helper.tick > 60 && claimed != null) {
