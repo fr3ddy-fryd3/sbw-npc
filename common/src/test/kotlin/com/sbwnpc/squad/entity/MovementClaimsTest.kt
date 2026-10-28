@@ -89,4 +89,50 @@ class MovementClaimsTest {
         claims.release(cover, MovementClaim.COVER, 0)
         assertTrue(events.isEmpty())
     }
+
+    @Test fun `a walk to a Supply holds the feet but never the trigger`() {
+        claims.claim(Any(), MovementClaim.RESUPPLY, 0)
+        assertEquals(MovementClaim.RESUPPLY, claims.holder(Cap.FEET, 0))
+        assertNull(claims.holder(Cap.FIRE, 0))
+        assertTrue(claims.may(Cap.FIRE, 0))
+        assertFalse(claims.may(Cap.FEET, 0))
+    }
+
+    @Test fun `treatment, cover and evasion hold feet and trigger`() {
+        for (kind in listOf(MovementClaim.HEAL, MovementClaim.COVER, MovementClaim.EVADE)) {
+            val fresh = MovementClaims()
+            fresh.claim(Any(), kind, 0)
+            assertEquals(kind, fresh.holder(Cap.FEET, 0))
+            assertEquals(kind, fresh.holder(Cap.FIRE, 0))
+        }
+    }
+
+    @Test fun `each capability goes to its own highest holder`() {
+        claims.claim(Any(), MovementClaim.RESUPPLY, 0)
+        claims.claim(medic, MovementClaim.HEAL, 0)
+        assertEquals(MovementClaim.HEAL, claims.holder(Cap.FEET, 0))
+        claims.release(medic, MovementClaim.HEAL, 0)
+        assertEquals(MovementClaim.RESUPPLY, claims.holder(Cap.FEET, 0))
+    }
+
+    @Test fun `a kind may use a capability unless a higher kind holds it`() {
+        claims.claim(Any(), MovementClaim.COVER, 0)
+        assertFalse(claims.mayFor(MovementClaim.HEAL, Cap.FEET, 0))
+        assertFalse(claims.mayFor(MovementClaim.RESUPPLY, Cap.FIRE, 0), "cover holds the trigger too")
+        assertTrue(claims.mayFor(MovementClaim.EVADE, Cap.FEET, 0))
+        assertTrue(claims.mayFor(MovementClaim.COVER, Cap.FEET, 0), "a kind is not blocked by itself")
+    }
+
+    @Test fun `a lower kind never blocks a higher one, and a held trigger-free kind blocks no shot`() {
+        claims.claim(Any(), MovementClaim.RESUPPLY, 0)
+        assertTrue(claims.mayFor(MovementClaim.HEAL, Cap.FEET, 0))
+        assertTrue(claims.mayFor(MovementClaim.HEAL, Cap.FIRE, 0))
+    }
+
+    @Test fun `a lapsed claim stops holding its capabilities`() {
+        claims.claim(evade, MovementClaim.EVADE, 0, lifetime = 5)
+        assertEquals(MovementClaim.EVADE, claims.holder(Cap.FIRE, 4))
+        assertNull(claims.holder(Cap.FIRE, 5))
+        assertTrue(claims.may(Cap.FEET, 5))
+    }
 }

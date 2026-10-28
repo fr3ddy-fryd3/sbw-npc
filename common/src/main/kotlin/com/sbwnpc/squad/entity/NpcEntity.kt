@@ -323,9 +323,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     /** True while [com.sbwnpc.squad.entity.ai.SeekCoverBehaviour] must have the mob to itself for
      *  movement and combat goals should stand down entirely — false during its PEEKING phase, the
      *  deliberate window where the mob steps out to return fire and GunAttackBehaviour/
-     *  GrenadeThrowBehaviour take back over. Backed by the [MovementClaim.COVER] and
-     *  [MovementClaim.EVADE] claims in [movement]. */
-    fun combatLockedByCover(): Boolean = movement.has(MovementClaim.COVER, tickCount) || evadingGrenade()
+     *  GrenadeThrowBehaviour take back over. True while a claim above [MovementClaim.HEAL] holds
+     *  the trigger in [movement]: cover or a grenade evasion. */
+    fun combatLockedByCover(): Boolean = !movement.mayFor(MovementClaim.HEAL, Cap.FIRE, tickCount)
 
     /** Peeking permits shooting while cover keeps sole ownership of the short movement. */
     var coverPeekPoint: Vec3? = null

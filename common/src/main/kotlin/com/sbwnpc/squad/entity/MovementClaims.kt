@@ -4,22 +4,30 @@ import java.util.Collections
 import java.util.EnumMap
 import java.util.IdentityHashMap
 
+/** What an NPC can be made to do by someone else's claim: walk, shoot. */
+enum class Cap { FEET, FIRE }
+
 /**
  * What can hold an NPC's movement, lowest priority first. The highest claim held owns it; a lower
- * one is suspended, not dropped, and owns it again when the higher one lets go.
+ * one is suspended, not dropped, and owns it again when the higher one lets go. Each kind also
+ * says which [Cap]s it takes: ranking applies per capability, so a kind that holds only the feet
+ * leaves the trigger free.
  */
-enum class MovementClaim {
-    /** Walking to a Supply: [com.sbwnpc.squad.entity.ai.ResupplyBehaviour] and the out-of-ammo fallback. */
-    RESUPPLY,
+enum class MovementClaim(val holds: Set<Cap>) {
+    /**
+     * Walking to a Supply: [com.sbwnpc.squad.entity.ai.ResupplyBehaviour] and the out-of-ammo
+     * fallback. Feet only: the fallback walks while the NPC keeps firing its last rounds.
+     */
+    RESUPPLY(setOf(Cap.FEET)),
 
     /** A medic walking to or treating a critically wounded ally: [com.sbwnpc.squad.entity.ai.MedicHealBehaviour]. */
-    HEAL,
+    HEAL(setOf(Cap.FEET, Cap.FIRE)),
 
     /** Moving to, holding or leaving cover: [com.sbwnpc.squad.entity.ai.SeekCoverBehaviour]. */
-    COVER,
+    COVER(setOf(Cap.FEET, Cap.FIRE)),
 
     /** Running from a live grenade: [com.sbwnpc.squad.entity.ai.GrenadeEvadeBehaviour]. */
-    EVADE,
+    EVADE(setOf(Cap.FEET, Cap.FIRE)),
 }
 
 /**
@@ -61,6 +69,15 @@ class MovementClaims(private val report: (String) -> Unit = {}) {
 
     /** The claim that owns movement, or null when nobody holds it. */
     fun owner(now: Int): MovementClaim? = holds.entries.filter { it.value.until > now }.maxByOrNull { it.key.ordinal }?.key
+
+    /** The highest live claim that takes [cap], or null when it is free. */
+    fun holder(cap: Cap, now: Int): MovementClaim? = holds.entries.filter { it.value.until > now && cap in it.key.holds }.maxByOrNull { it.key.ordinal }?.key
+
+    /** Whether nobody holds [cap]. */
+    fun may(cap: Cap, now: Int): Boolean = holder(cap, now) == null
+
+    /** Whether [kind] may use [cap]: nothing ranked above [kind] holds it. */
+    fun mayFor(kind: MovementClaim, cap: Cap, now: Int): Boolean = (holder(cap, now)?.ordinal ?: -1) <= kind.ordinal
 
     /** Whether any claim of [kind] is held, owning movement or suspended. */
     fun has(kind: MovementClaim, now: Int): Boolean = holds[kind]?.let { it.until > now } == true
