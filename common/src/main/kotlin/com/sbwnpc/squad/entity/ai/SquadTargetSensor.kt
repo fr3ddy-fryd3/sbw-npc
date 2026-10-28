@@ -55,6 +55,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     /** A turret gunner's own: what the ground scan drains is not what he has been watching. */
     private val gunnerNoticing = Noticing("turret gunner", LogGroup.VEHICLE, cutOff = false)
     private var nextReallocationTick = Long.MIN_VALUE
+    private val beyondRange = BeyondRangeGrace(BEYOND_RANGE_GRACE_TICKS)
 
     // ExtendedSensor's default is a flat 20 ticks with NO initial offset (nextTickTime starts at 0
     // — confirmed via javap), so every NPC deployed in the same tick (a whole preset squad, a
@@ -207,11 +208,16 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
 
     private fun retainedDefensiveTarget(mob: NpcEntity): LivingEntity? {
         if (!CombatPosition.holdsPosition(mob.currentSquad()?.order)) return null
-        // A holding order may retain a visible target beyond the ordinary detection radius.
-        return mob.target?.takeIf { target ->
-            target.isAlive && SquadTeams.isHostile(mob, target) &&
-                FiringOpportunity.assess(mob, target) == TacticalTargetSelection.Opportunity.SHOOTABLE
+        // A holding order may retain a visible target beyond the ordinary detection radius, for a while.
+        val target = mob.target?.takeIf { it.isAlive && SquadTeams.isHostile(mob, it) }
+        if (target == null) {
+            beyondRange.expired(inRange = true, now = mob.level().gameTime)
+            return null
         }
+        val range = VehicleTargeting.rangeFor(target, NpcEntity.DETECTION_RANGE)
+        val inRange = mob.distanceToSqr(target) <= range * range
+        if (beyondRange.expired(inRange, mob.level().gameTime)) return null
+        return target.takeIf { FiringOpportunity.assess(mob, it) == TacticalTargetSelection.Opportunity.SHOOTABLE }
     }
 
     private fun withdrawalTarget(mob: NpcEntity, level: ServerLevel, directTarget: LivingEntity?): LivingEntity? {
@@ -360,6 +366,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         private const val REALLOCATION_MIN = 80L
         private const val REALLOCATION_JITTER = 41 // 4..6s, independent for each NPC; aim stays stable between reviews.
         private const val DETECTION_HEIGHT = 24.0
+        private const val BEYOND_RANGE_GRACE_TICKS = 200L // 10s, like a shared contact
 
         /** How many visible enemies a scan considers when spreading the squad's fire. */
         private const val MAX_SPREAD_CANDIDATES = 4
