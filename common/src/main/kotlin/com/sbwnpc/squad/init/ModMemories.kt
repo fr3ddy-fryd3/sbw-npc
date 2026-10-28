@@ -17,32 +17,9 @@ object ModMemories {
     val SUPPRESSING_THREAT: Supplier<MemoryModuleType<Vec3>> =
         SBLConstants.SBL_LOADER.registerMemoryType("suppressing_threat")
 
-    /** [com.sbwnpc.squad.entity.ai.SeekCoverBehaviour]'s "hands off, I own the mob right now" flag
-     *  (its phases stay private to it), read by [com.sbwnpc.squad.entity.ai.GunAttackBehaviour] and
-     *  [com.sbwnpc.squad.entity.ai.GrenadeThrowBehaviour]. Present while locked (moving to/holding/
-     *  returning to cover), absent while peeking out to fire or not suppressed at all. */
-    val COVER_HOLD: Supplier<MemoryModuleType<Boolean>> =
-        SBLConstants.SBL_LOADER.registerMemoryType("cover_hold")
-
     /** TTL memory; presence alone means "alert, go investigate this position". */
     val ALERT_POSITION: Supplier<MemoryModuleType<Vec3>> =
         SBLConstants.SBL_LOADER.registerMemoryType("alert_position")
-
-    /** Same "hands off, I own the mob right now" idiom as [COVER_HOLD], owned by
-     *  [com.sbwnpc.squad.entity.ai.MedicHealBehaviour] instead: present while a medic is actively
-     *  moving to/treating a CRITICALLY wounded ally (the one case where healing must win over an
-     *  ongoing firefight, per user decision) — read by [com.sbwnpc.squad.entity.ai.GunAttackBehaviour]
-     *  the same way it already reads [COVER_HOLD]. Not set for the ordinary opportunistic heal (no
-     *  live target of its own) — nothing to lock out there, GunAttackBehaviour is already inactive
-     *  without a target. */
-    val MEDIC_HEALING: Supplier<MemoryModuleType<Boolean>> =
-        SBLConstants.SBL_LOADER.registerMemoryType("medic_healing")
-
-    /** Present while [com.sbwnpc.squad.entity.ai.GrenadeEvadeBehaviour] is running the NPC away
-     *  from a live grenade — the same "hands off" idiom as [COVER_HOLD], and folded into
-     *  `NpcEntity.combatLockedByCover()` so everything that already respects cover respects this. */
-    val GRENADE_EVADE: Supplier<MemoryModuleType<Boolean>> =
-        SBLConstants.SBL_LOADER.registerMemoryType("grenade_evade")
 
     /** UUID of a hostile drone this NPC (or a squadmate who shouted) knows is in the air nearby —
      *  see AntiDroneBehaviour. TTL memory: forgotten a few seconds after the last sighting. */

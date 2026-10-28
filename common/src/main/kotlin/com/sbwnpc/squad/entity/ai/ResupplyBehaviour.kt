@@ -47,7 +47,7 @@ class ResupplyBehaviour : ExtendedBehaviour<NpcEntity>() {
             !travel.stalled(entity.tickCount)
 
     override fun start(entity: NpcEntity) {
-        entity.resupplying = true
+        entity.resupply(this, true)
         entity.clearAlert()
         travel.reset(entity.tickCount, entity.position())
         nextRepathTick = 0
@@ -76,7 +76,7 @@ class ResupplyBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun stop(entity: NpcEntity) {
-        entity.resupplying = false
+        entity.resupply(this, false)
         DebugFlags.log(
             LogGroup.SUPPLY,
             "{} ({}) done resupplying ({})",

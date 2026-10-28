@@ -140,7 +140,7 @@ object FoliageCombatGameTests {
                 when (lock) {
                     "ally" -> ally.setPos(ally.x, ally.y, helper.absoluteVec(Vec3(0.0, 0.0, 10.5)).z)
                     "wall" -> stoneWall(Blocks.AIR)
-                    "supply" -> shooter.resupplying = false
+                    "supply" -> shooter.resupply(this, false)
                 }
                 lock = ""
             }
@@ -162,7 +162,7 @@ object FoliageCombatGameTests {
                         helper.assertTrue(!TacticalPositions.firingReady(shooter, task, shooter.position()), "Physical wall failed to invalidate the firing lane")
                     }
 
-                    "supply" -> shooter.resupplying = true
+                    "supply" -> shooter.resupply(this, true)
                 }
             }
             helper.assertTrue(hiddenRounds <= 6, "Concealment refilled the finite burst budget")

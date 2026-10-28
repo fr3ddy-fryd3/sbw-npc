@@ -116,9 +116,9 @@ build; its revision and dirty state are recorded in `build/reports/sbw/input.txt
 - **Fight tasks** run while there is an attack target: `GunAttackBehaviour` (positioning and
   shooting), out-of-ammo retreat, melee, and grenades.
 
-Behaviours share state through memory types registered in `init/ModMemories.kt` (for example
-`COVER_HOLD`, which tells the shooting and grenade behaviours that cover-seeking owns the NPC right
-now). Where two NPCs could grab the same thing, a claim registry decides (`MortarClaims`,
+Behaviours share state through memory types registered in `init/ModMemories.kt`. An NPC's movement
+is a claimed resource (`entity/MovementClaims.kt`): cover, grenade evasion and a medic's treatment
+claim it with a priority, and the shooting and grenade behaviours stand down while cover holds it. Where two NPCs could grab the same thing, a claim registry decides (`MortarClaims`,
 `VehicleTransportClaims`, `DroneLinks`).
 
 Idle behaviours have no automatic exclusivity, so each one's start conditions are written to

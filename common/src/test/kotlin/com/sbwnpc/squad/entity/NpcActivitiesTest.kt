@@ -11,11 +11,11 @@ class NpcActivitiesTest {
     @Test fun `an activity is on until its behaviour clears it`() {
         var activities = NpcActivities()
         NpcActivity.entries.forEach { assertFalse(activities.has(it), "$it") }
-        activities = activities.with(NpcActivity.DUG_IN, true).with(NpcActivity.RESUPPLYING, true)
+        activities = activities.with(NpcActivity.DUG_IN, true).with(NpcActivity.CARRYING_MORTAR, true)
         assertTrue(activities.has(NpcActivity.DUG_IN))
         activities = activities.with(NpcActivity.DUG_IN, false)
         assertFalse(activities.has(NpcActivity.DUG_IN))
-        assertTrue(activities.has(NpcActivity.RESUPPLYING))
+        assertTrue(activities.has(NpcActivity.CARRYING_MORTAR))
     }
 
     @Test fun `a mortar crewman serves, runs errands and carries the tube at once`() {
@@ -37,7 +37,6 @@ class NpcActivitiesTest {
             NpcActivity.MORTAR_ERRAND to (false to true),
             NpcActivity.CARRYING_MORTAR to (false to true),
             NpcActivity.ANTI_DRONE to (true to false),
-            NpcActivity.RESUPPLYING to (false to false),
             NpcActivity.DUG_IN to (false to false),
             NpcActivity.SEAT to (false to false),
         )
@@ -84,9 +83,9 @@ class ActivityClaimsTest {
 
     @Test fun `a claim reports the held activities it cannot stand with`() {
         val claims = ActivityClaims()
-        val held = NpcActivities().with(NpcActivity.DUG_IN, true).with(NpcActivity.RESUPPLYING, true)
+        val held = NpcActivities().with(NpcActivity.DUG_IN, true).with(NpcActivity.CARRYING_MORTAR, true)
         assertEquals(setOf(NpcActivity.DUG_IN), claims.claim(NpcActivity.VEHICLE, first, held))
-        assertEquals(emptySet<NpcActivity>(), claims.claim(NpcActivity.RESUPPLYING, first, held))
+        assertEquals(emptySet<NpcActivity>(), claims.claim(NpcActivity.CARRYING_MORTAR, first, held))
     }
 
     @Test fun `a seat has one owner at a time`() {

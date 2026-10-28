@@ -6,9 +6,9 @@ import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.compat.VersionCompat
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.MovementClaim
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
-import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.team.Diplomacy
 import com.sbwnpc.squad.team.SquadTeams
@@ -19,7 +19,6 @@ import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
-import net.tslat.smartbrainlib.util.BrainUtils
 import java.util.UUID
 
 /**
@@ -31,8 +30,7 @@ import java.util.UUID
  * Per explicit user decision (confirmed during planning): a medic heals a CRITICALLY wounded ally
  * (health below [CRITICAL_HEALTH_FRACTION]) even while it has a live target and is
  * actively engaged — for that case it locks [GunAttackBehaviour] out via
- * [ModMemories.MEDIC_HEALING] (same "hands off, I own the mob right now" idiom as
- * `SeekCoverBehaviour`'s `COVER_HOLD`) for as long as treatment takes. A merely wounded ally (below
+ * [MovementClaim.HEAL] (a lower claim than cover's) for as long as treatment takes. A merely wounded ally (below
  * [NEEDS_HEAL_FRACTION] but not critical) is only tended opportunistically, when the medic itself
  * has no target. The same memory owns movement during both treatments, so an idle tactical
  * behaviour cannot replace the medic's route to a patient with its squad position.
@@ -200,7 +198,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun start(entity: NpcEntity) {
         unreachableUntil.entries.removeIf { it.value <= entity.tickCount }
         selectPatient(entity, candidate(entity))
-        if (healTargetId != null) BrainUtils.setMemory(entity, ModMemories.MEDIC_HEALING.get(), true)
+        if (healTargetId != null) entity.claimMovement(this, MovementClaim.HEAL)
     }
 
     private fun selectPatient(entity: NpcEntity, patient: LivingEntity?) {
@@ -226,7 +224,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
         healTargetId = null
         entity.navigation.stop()
         setSprinting(entity, false)
-        BrainUtils.clearMemory(entity, ModMemories.MEDIC_HEALING.get())
+        entity.releaseMovement(this, MovementClaim.HEAL)
     }
 
     /** Per user request: a medic's normal pace is [NpcClass.speedMultiplier] (1.3, like SNIPER —
@@ -254,7 +252,7 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
         val sticky = healTargetId?.let { level.getEntity(it) as? LivingEntity }?.takeIf { it.isAlive && needsHealing(entity, it) && available(entity, it) }
         val ally = sticky ?: candidate(entity)?.also { selectPatient(entity, it) } ?: return
 
-        BrainUtils.setMemory(entity, ModMemories.MEDIC_HEALING.get(), true)
+        entity.claimMovement(this, MovementClaim.HEAL)
 
         val dist = entity.position().distanceTo(ally.position())
         if (dist > HEAL_RANGE) {
