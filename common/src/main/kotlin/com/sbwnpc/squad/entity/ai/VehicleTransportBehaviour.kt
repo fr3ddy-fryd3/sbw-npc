@@ -132,6 +132,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     // be seeking/using a vehicle right now) still reads the live entity.homeCenter() every tick, which
     // is correct there — only the actual driving target is locked in once committed.
     private var tripDestination: Vec3? = null
+
+    // The squad's order the destination was taken for. An order issued mid-trip replaces the destination
+    // whatever its kind: MOVE and RETREAT are followed live, but a trip that kept the objective of an
+    // Attack drove on to it after a Defend elsewhere had been given, dropped the men there, and they walked back.
+    private var tripOrderStamp: Int? = null
     private var observedDamageStamp = 0L
 
     /** Last tick the combat gunner could see its target — see [gunnerStillEngaged]. */
@@ -337,6 +342,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         boardTick = entity.tickCount
         waitStartTick = entity.tickCount
         tripDestination = if (isBoat(vehicle)) landingOf(vehicle) ?: BoatTrips.tripOf(vehicle.uuid)?.route?.landing else entity.homeCenter()
+        tripOrderStamp = entity.currentSquad()?.orderStamp
         boatRoute = emptyList()
         boatRouteComplete = true
         resetDriveRoute()
@@ -561,6 +567,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // to drive to; stay mounted but idle rather than steering at a stale/absent target — the
         // eligibility check will unmount this NPC on its own on the next tick.
         tripDestination = if (isBoat(vehicle)) landingOf(vehicle) ?: BoatTrips.tripOf(vehicle.uuid)?.route?.landing else entity.homeCenter()
+        tripOrderStamp = entity.currentSquad()?.orderStamp
         observedDamageStamp = Ports.vehicles.lastHitTime(vehicle)
         boatRoute = emptyList()
         boatRouteComplete = true
@@ -1410,7 +1417,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             VehicleTransportClaims.landingOf(entity.vehicle!!.uuid)?.let { return it }
         }
         val order = entity.currentSquad()?.order
-        if (order != SquadOrder.MOVE && order != SquadOrder.RETREAT) return tripDestination
+        val replaced = entity.currentSquad()?.orderStamp != tripOrderStamp
+        if (order != SquadOrder.MOVE && order != SquadOrder.RETREAT && !replaced) return tripDestination
+        tripOrderStamp = entity.currentSquad()?.orderStamp
         val destination = entity.homeCenter()
         if (destination != tripDestination) {
             tripDestination = destination
