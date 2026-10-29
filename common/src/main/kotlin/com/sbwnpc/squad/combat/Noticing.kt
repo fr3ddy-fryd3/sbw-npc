@@ -48,7 +48,8 @@ class Noticing(
             weatherAt(level, candidate.blockPosition()),
             size,
         )
-        val required = SpottingTime.seconds(SpottingTime.Observer.of(observer.npcRank, observer.npcClass), target, cutOff)
+        val eyes = SpottingTime.Observer.of(observer.npcRank, observer.npcClass).let { if (observer.wary()) it.wary() else it }
+        val required = SpottingTime.seconds(eyes, target, cutOff)
         val before = progress.seconds(candidate.uuid)
         return progress.advance(candidate.uuid, now, required).also { seen ->
             // Once each: when he is first noticed, and when he first comes into view too far off for this light.
