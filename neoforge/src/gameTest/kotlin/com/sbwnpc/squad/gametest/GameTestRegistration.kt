@@ -58,6 +58,7 @@ object GameTestRegistration {
             VehicleBendGameTests::class.java,
             MarchRouteGameTests::class.java,
             NoticingGameTests::class.java,
+            SightRangeGameTests::class.java,
             HostileMobApiGameTests::class.java,
             HostileMobCombatGameTests::class.java,
             SquadManoeuvreGameTests::class.java,
