@@ -52,7 +52,7 @@ object ObjectiveApproach {
             val objective = squad?.objective
             if (squad == null || objective == null) return end(npc)
             val spent = spentSquad == squad.id && spentStamp == squad.orderStamp
-            val onFoot = npc.vehicle == null && !npc.vehicleTransport
+            val onFoot = npc.vehicle == null && !npc.holds(com.sbwnpc.squad.entity.NpcActivity.VEHICLE)
             val distance = npc.position().distanceTo(Vec3.atCenterOf(objective))
             if (!cautious(squad.order, distance, onFoot, spent)) return end(npc)
             toward = Vec3.atCenterOf(objective)
