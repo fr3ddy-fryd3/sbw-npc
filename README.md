@@ -101,9 +101,11 @@ Two modes, switched with **Ctrl + right-click on air**. The current one is on th
 
 **Recruit mode — what gets deployed**
 
-- **Right-click air** opens the deploy config: preset, class (Single only), faction, and the
+- **Right-click** deploys where you look, up to 64 blocks away, on a block or at a distant spot. Cover in the
+  way takes the squad instead of the ground behind it. The squad is lined up abreast and faces you. A column
+  of particles, visible only to you, marks the spot while the tool is in your hand.
+- **Shift + right-click** opens the deploy config: preset, class (Single only), faction, and the
   vehicle or airframe where the preset has one.
-- **Right-click a block** deploys it there, lined up abreast and facing you.
 - Presets: `Single`, `5: Riflemen`, `7: Standard`, `16: Large`, `32: Company`, `Mortar Crew`, `Tank Crew`
   (ZTZ-99A / T-90A / M1A2), `Drone Team`, `Heli Crew` — Mi-28 gunship or AH-6 transport, and the
   airframe decides which crew comes with it. `5` and `7` can bring a LAV-25 / LAV-150 / BMP-2.
