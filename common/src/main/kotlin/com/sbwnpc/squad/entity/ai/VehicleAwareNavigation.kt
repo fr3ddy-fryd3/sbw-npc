@@ -288,11 +288,25 @@ class VehicleAwareNavigation(mob: Mob, level: Level) :
             stopOnLanding = null
         }
         super.tick()
+        workHatches()
         // SmartBrainLib's door task reads the route from this brain memory, which only vanilla's own
         // brain walk fills. Without it no door on our routes was ever opened.
         mob.brain.setMemory(MemoryModuleType.PATH, path?.takeUnless { it.isDone })
         traceWalk()
         traceLadder()
+    }
+
+    /** The hatch this man opened and has yet to shut behind him, see [Hatches]. */
+    private var openedHatch: BlockPos? = null
+
+    /** Opens a closed wooden trapdoor on the next two nodes as he reaches it, and shuts it again once he is past. */
+    private fun workHatches() {
+        openedHatch?.let { if (Hatches.closeBehind(mob, it)) openedHatch = null }
+        val active = path?.takeUnless { it.isDone } ?: return
+        for (index in active.nextNodeIndex until minOf(active.nodeCount, active.nextNodeIndex + 2)) {
+            val pos = active.getNode(index).asBlockPos()
+            if (Hatches.open(mob, pos)) openedHatch = pos
+        }
     }
 
     private var lastLadderLogTick = Int.MIN_VALUE / 2
