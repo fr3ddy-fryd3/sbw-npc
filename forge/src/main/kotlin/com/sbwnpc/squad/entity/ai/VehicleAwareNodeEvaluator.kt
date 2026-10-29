@@ -85,7 +85,6 @@ internal open class VehicleAwareNodeEvaluator(
      */
     private fun dropLimit(pos: BlockPos): Int = if (level.getBlockState(pos).`is`(Blocks.SCAFFOLDING)) 0 else 1
 
-    private fun climbable(pos: BlockPos): Boolean = Ports.loader.isLadder(level.getBlockState(pos), mob.level(), pos, mob)
 
     /** A platform can open onto the air cell immediately above the last ladder rung. */
     private fun ladderEdge(from: BlockPos, to: BlockPos): Boolean {
