@@ -27,14 +27,20 @@ class Noticing(
 
     /**
      * Whether [observer] has noticed [candidate]. Instant for its current target, for an enemy that
-     * has just fired, and while [observer] is under fire; otherwise it takes [SpottingTime.seconds]
+     * has just fired, for one its squad already has a contact on ([SquadKnowledge]), and while
+     * [observer] is under fire; otherwise it takes [SpottingTime.seconds]
      * by distance, light and weather at [candidate], [offAxis], posture, [grassBlocks], size and
      * the observer's experience.
      */
     fun noticed(observer: NpcEntity, level: ServerLevel, candidate: Entity, offAxis: Double, grassBlocks: Int = 0): Boolean {
         val now = level.gameTime
         val gaveAway = candidate is NpcEntity && candidate.firedRecently(GIVEAWAY_TICKS)
-        if (candidate === observer.target || gaveAway || observer.incomingFire.pending(now)) {
+        val knownToSquad = squadKnows(observer, candidate, now)
+        val alreadyNoticed = candidate === observer.target || gaveAway || knownToSquad
+        if (alreadyNoticed || observer.incomingFire.pending(now)) {
+            if (knownToSquad && progress.seconds(candidate.uuid) == 0.0) {
+                DebugFlags.log(group, "{} noticed {} by {} at once: his squad has a contact on him", observer.uuid, candidate.uuid, by)
+            }
             progress.fill(candidate.uuid, now)
             return true
         }
@@ -51,14 +57,26 @@ class Noticing(
         val eyes = SpottingTime.Observer.of(observer.npcRank, observer.npcClass).let { if (observer.wary()) it.wary() else it }
         val required = SpottingTime.seconds(eyes, target, cutOff)
         val before = progress.seconds(candidate.uuid)
-        return progress.advance(candidate.uuid, now, required).also { seen ->
-            // Once each: when he is first noticed, and when he first comes into view too far off for this light.
-            if (seen && required != null && before < required) {
-                DebugFlags.log(group, "{} noticed {} by {} at {} blocks, light {}, {}, after {}s of {}s needed", observer.uuid, candidate.uuid, by, target.distance.toInt(), target.light, target.weather, "%.1f".format(progress.seconds(candidate.uuid)), "%.1f".format(required))
-            } else if (required == null && before == 0.0) {
-                DebugFlags.log(group, "{} cannot notice {} by {} at {} blocks, light {}, {}: past the cut-off", observer.uuid, candidate.uuid, by, target.distance.toInt(), target.light, target.weather)
-            }
+        return progress.advance(candidate.uuid, now, required).also { seen -> trace(observer, candidate, Look(target, required, before), seen) }
+    }
+
+    /** What one look at a candidate came to: the needs it was judged by and the time already spent. */
+    private data class Look(val target: SpottingTime.Target, val required: Double?, val before: Double)
+
+    /** Once each: when he is first noticed, and when he first comes into view too far off for this light. */
+    private fun trace(observer: NpcEntity, candidate: Entity, look: Look, seen: Boolean) {
+        val (target, required, before) = look
+        if (seen && required != null && before < required) {
+            DebugFlags.log(group, "{} noticed {} by {} at {} blocks, light {}, {}, after {}s of {}s needed", observer.uuid, candidate.uuid, by, target.distance.toInt(), target.light, target.weather, "%.1f".format(progress.seconds(candidate.uuid)), "%.1f".format(required))
+        } else if (required == null && before == 0.0) {
+            DebugFlags.log(group, "{} cannot notice {} by {} at {} blocks, light {}, {}: past the cut-off", observer.uuid, candidate.uuid, by, target.distance.toInt(), target.light, target.weather)
         }
+    }
+
+    /** Whether the observer's squad has told its men of [candidate], see [SquadKnowledge]. */
+    private fun squadKnows(observer: NpcEntity, candidate: Entity, now: Long): Boolean {
+        val contact = observer.currentSquad()?.tactics?.contacts?.get(candidate.uuid)
+        return SquadKnowledge.known(contact?.seenAt, contact?.firstSeenAt, now, contact != null && observer.uuid in contact.seenBy)
     }
 
     /** After a scan: whatever it did not look at drains, see [SpottingProgress.endScan]. */
