@@ -274,11 +274,14 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     /** Once a fight has been quiet for 30 s the NPC grows wary of where the enemy was last seen (#186). */
     private val contact = com.sbwnpc.squad.combat.ContactTracker()
 
+    /** Wary and, on ATTACK, walking while within 100 blocks of the squad's objective, until the first target (#148). */
+    private val approach = com.sbwnpc.squad.combat.ObjectiveApproach.State()
+
     /** Whether the NPC is wary: a squadmate fell, a round hit or missed it narrowly, so it watches where the threat came from. */
-    fun wary(): Boolean = waryAt != null && tickCount < waryUntilTick
+    fun wary(): Boolean = approach.toward != null || (waryAt != null && tickCount < waryUntilTick)
 
     /** Where the threat the NPC is wary of came from, while it is wary. */
-    fun waryToward(): Vec3? = waryAt?.takeIf { wary() }
+    fun waryToward(): Vec3? = approach.toward ?: waryAt?.takeIf { wary() }
 
     /**
      * Makes the NPC wary of a threat from [toward] for [WARY_TICKS]: it turns there now, then
@@ -890,6 +893,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         SidearmKit.update(this)
         takeNewOrders()
         contact.update(target?.position(), tickCount)?.let { becomeWary(it) }
+        approach.update(this)
         if (equipmentResyncTicksRemaining > 0) {
             equipmentResyncTicksRemaining--
             resyncEquipmentForNewlySpawnedNpc()
