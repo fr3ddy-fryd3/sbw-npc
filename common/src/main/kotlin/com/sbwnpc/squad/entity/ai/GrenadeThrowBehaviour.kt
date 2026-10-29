@@ -3,6 +3,7 @@ package com.sbwnpc.squad.entity.ai
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.GrenadeThrower
 import com.sbwnpc.squad.combat.VehicleTargeting
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import net.minecraft.server.level.ServerLevel
@@ -39,7 +40,7 @@ class GrenadeThrowBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean {
         if (entity.npcClass != NpcClass.GRENADIER) return false
         if (entity.busyWithRole()) return false
-        if (entity.combatLockedByCover()) return false // SeekCoverBehaviour owns the mob until this lapses
+        if (entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE)) return false // SeekCoverBehaviour owns the mob until this lapses
         if (entity.tickCount < nextThrowTick) return false
         if (!entity.hasGrenade) return false
         val target = entity.target ?: return false

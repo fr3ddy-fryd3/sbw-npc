@@ -116,9 +116,14 @@ build; its revision and dirty state are recorded in `build/reports/sbw/input.txt
 - **Fight tasks** run while there is an attack target: `GunAttackBehaviour` (positioning and
   shooting), out-of-ammo retreat, melee, and grenades.
 
-Behaviours share state through memory types registered in `init/ModMemories.kt`. An NPC's movement
-is a claimed resource (`entity/MovementClaims.kt`): cover, grenade evasion and a medic's treatment
-claim it with a priority, and the shooting and grenade behaviours stand down while cover holds it. Where two NPCs could grab the same thing, a claim registry decides (`MortarClaims`,
+Behaviours share state through memory types registered in `init/ModMemories.kt`. What an NPC has
+taken up is a set of owned claims (`entity/NpcActivities.kt`): each `NpcActivity` kind (squad order,
+planner post, resupply, medic treatment, cover, peeking, grenade evasion, a foxhole, the vehicle,
+drone and mortar roles, ...) has a rank and holds some of the NPC's capabilities (`Cap.FEET`, `FIRE`,
+`LOOK`). A behaviour claims its kind with itself as owner and releases it when it stops; the highest
+kind holding a capability owns it and the lower ones are suspended, not dropped. A behaviour asks
+`entity.mayFor(kind, cap)` before it starts and `entity.holds(kind)` where it needs one kind; nothing
+reads a per-feature flag. Add a kind in one place: the enum. Where two NPCs could grab the same thing, a claim registry decides (`MortarClaims`,
 `VehicleTransportClaims`, `DroneLinks`).
 
 Idle behaviours have no automatic exclusivity, so each one's start conditions are written to

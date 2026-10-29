@@ -2,6 +2,7 @@ package com.sbwnpc.squad.entity.ai
 
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
@@ -26,8 +27,8 @@ object MortarClaims {
     fun isLoaderClaimedByOther(mortar: UUID, npc: UUID) = loaders[mortar]?.let { it != npc } == true
 
     fun available(npc: NpcEntity): Boolean =
-        npc.npcClass == com.sbwnpc.squad.npc.NpcClass.MORTAR && npc.isAlive && !npc.isRemoved && !npc.isPassenger && !npc.vehicleTransport &&
-            !npc.diggedIn && !npc.movementLockedByCover() && !npc.combatLockedByMedic() && !npc.evadingGrenade() &&
+        npc.npcClass == com.sbwnpc.squad.npc.NpcClass.MORTAR && npc.isAlive && !npc.isRemoved && !npc.isPassenger && !npc.holds(NpcActivity.VEHICLE) &&
+            !npc.holds(NpcActivity.DUG_IN) && !npc.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK, NpcActivity.HEAL) &&
             npc.target?.let { it.isAlive && npc.distanceToSqr(it) <= 36.0 } != true
 
     fun refresh(level: ServerLevel) {
@@ -71,7 +72,7 @@ object MortarClaims {
         trace(mortar, away, Role.LOADER, "supply_errand")
     }
 
-    fun atPost(npc: NpcEntity, mortar: Entity): Boolean = available(npc) && !npc.mortarErrand && npc.distanceToSqr(mortar) <= 6.25
+    fun atPost(npc: NpcEntity, mortar: Entity): Boolean = available(npc) && !npc.holds(NpcActivity.MORTAR_ERRAND) && npc.distanceToSqr(mortar) <= 6.25
 
     fun activeCrew(mortar: Entity): Int {
         val level = mortar.level() as ServerLevel

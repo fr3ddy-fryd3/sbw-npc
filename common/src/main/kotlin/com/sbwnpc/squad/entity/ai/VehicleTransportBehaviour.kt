@@ -225,22 +225,22 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.assignedVehicleId?.let { assigned -> return entity.vehicle?.uuid == assigned }
         // Seated, or on his way to a seat, by another behaviour: his ride is not this squad trip.
         // Taking any mounted man for its own, this put a FOLLOW rider straight back out (#136).
-        if (!entity.seatFreeFor(this)) return logEligibility(entity, false) { "another behaviour has his seat" }
+        if (!entity.freeFor(NpcActivity.SEAT, this)) return logEligibility(entity, false) { "another behaviour has his seat" }
         if (entity.vehicle != null) return true // already mounted: DRIVING/RIDING keep going regardless
-        if (com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) return logEligibility(entity, false) { "tactical position duty takes priority" }
+        if (entity.holds(NpcActivity.TACTIC)) return logEligibility(entity, false) { "tactical position duty takes priority" }
 
         if (combatInterrupted(entity)) {
             return logEligibility(entity, false) {
                 "combat interrupted (target=${entity.target != null} alert=${entity.isAlert()} suppressed=${entity.isSuppressed()})"
             }
         }
-        if (entity.diggedIn) return logEligibility(entity, false) { "dug in" }
-        if (entity.movementLockedByCover() || entity.combatLockedByMedic()) return logEligibility(entity, false) { "cover or medic owns movement" }
+        if (entity.holds(NpcActivity.DUG_IN)) return logEligibility(entity, false) { "dug in" }
+        if (entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK, NpcActivity.HEAL)) return logEligibility(entity, false) { "cover or medic owns movement" }
         // Off to a Supply: the order waits till he's topped up, the ride to it too. Both ran at
         // once, and each took the other off him in turn.
-        if (entity.resupplying) return logEligibility(entity, false) { "resupplying" }
-        if (entity.operatingDrone) return logEligibility(entity, false) { "flying a drone" }
-        if (entity.antiDroneEngaged) return logEligibility(entity, false) { "dealing with a hostile drone" }
+        if (entity.holds(NpcActivity.RESUPPLY)) return logEligibility(entity, false) { "resupplying" }
+        if (entity.holds(NpcActivity.DRONE)) return logEligibility(entity, false) { "flying a drone" }
+        if (entity.holds(NpcActivity.ANTI_DRONE)) return logEligibility(entity, false) { "dealing with a hostile drone" }
         // Already looked once for this order and there was nothing: walk it.
         if (entity.currentSquad()?.orderStamp == noVehicleForStamp) {
             return logEligibility(entity, false) { "no vehicle for this order, walking" }
@@ -293,11 +293,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     // Mounted, the trip goes on whatever else is true, as long as the seat is this trip's: the start
     // check is throttled, so another behaviour can have seated him since it last said yes.
-    override fun shouldKeepRunning(entity: NpcEntity): Boolean = if (entity.vehicle != null) entity.assignedVehicleId != null || entity.seatFreeFor(this) else eligible(entity, checkGiveup = true)
+    override fun shouldKeepRunning(entity: NpcEntity): Boolean = if (entity.vehicle != null) entity.assignedVehicleId != null || entity.freeFor(NpcActivity.SEAT, this) else eligible(entity, checkGiveup = true)
 
     override fun start(entity: NpcEntity) {
         // A permanent crew's seat is VehicleCrewBehaviour's; this only drives it.
-        if (entity.assignedVehicleId == null) entity.claimSeat(this)
+        if (entity.assignedVehicleId == null) entity.claimAlone(NpcActivity.SEAT, this)
         val mounted = entity.vehicle?.takeIf(Ports.vehicles::isVehicle)
         if (mounted != null) {
             startMounted(entity, mounted)
@@ -614,7 +614,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** Vehicle can vanish out from under any mounted phase (destroyed, despawned) — that ejects the
      *  NPC (`entity.vehicle` goes back to null) without killing it, so without this the phase would
      *  never advance again: `eligible()`'s `entity.vehicle != null` fast path stops applying, but
-     *  nothing else ever calls `stop()` either, permanently stranding vehicleTransport=true (every
+     *  nothing else ever calls `stop()` either, permanently stranding the VEHICLE claim (every
      *  other behaviour stays locked out forever). Resetting to SEEKING lets the next tick's normal
      *  eligibility check decide whether to look for another vehicle or stand down entirely. */
     private fun mountOrAbort(entity: NpcEntity): Entity? {
@@ -649,7 +649,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             val member = level.getEntity(id) as? NpcEntity ?: return@all true // dead/unloaded: don't block on it
             !member.isAlive || member.vehicle != null || member.distanceToSqr(vehicle) > SEARCH_RADIUS * SEARCH_RADIUS || combatInterrupted(member) ||
                 // A boat seats few: whoever isn't coming along is swimming, not late.
-                (boat && !member.vehicleTransport)
+                (boat && !member.holds(NpcActivity.VEHICLE))
         }
         val timedOut = entity.tickCount - waitStartTick > WAIT_TIMEOUT_TICKS
         if (allAccountedFor || timedOut) {

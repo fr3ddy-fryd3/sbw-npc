@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.combat
 
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.squad.Squad
 import net.minecraft.server.level.ServerLevel
@@ -133,7 +134,7 @@ object Withdrawal {
                         "point ${m.position().distanceTo(state.point).toInt()} " +
                         (spot?.let { "spot ${m.position().distanceTo(it).toInt()} " } ?: "no spot ") +
                         "target=${m.target != null} navDone=${m.navigation.isDone} speed=${"%.2f".format(m.deltaMovement.horizontalDistance())} " +
-                        "suppressed=${m.isSuppressed()} pinned=${m.combatLockedByCover()} dug=${m.diggedIn}"
+                        "suppressed=${m.isSuppressed()} pinned=${m.holdsAny(NpcActivity.COVER, NpcActivity.EVADE)} dug=${m.holds(NpcActivity.DUG_IN)}"
                 },
             )
         }
@@ -145,7 +146,7 @@ object Withdrawal {
         val runners = members.filter { half(it, squad) == state.moving }
         val boundDone = state.targets.isNotEmpty() && runners.all { m ->
             // Pinned down in cover or dug in: it isn't coming this bound, so don't wait on it.
-            if (m.combatLockedByCover() || m.diggedIn) return@all true
+            if (m.holdsAny(NpcActivity.COVER, NpcActivity.EVADE) || m.holds(NpcActivity.DUG_IN)) return@all true
             val spot = state.targets[m.uuid] ?: return@all true
             val d = m.position().distanceTo(spot)
             // Stopped short is as far as he is getting this bound — waiting on him held every bound

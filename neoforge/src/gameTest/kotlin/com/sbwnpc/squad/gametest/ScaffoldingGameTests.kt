@@ -2,6 +2,7 @@ package com.sbwnpc.squad.gametest
 
 import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
+import com.sbwnpc.squad.entity.ai.VehicleAwareNodeEvaluator
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
@@ -12,8 +13,10 @@ import net.minecraft.gametest.framework.GameTestInfo
 import net.minecraft.gametest.framework.GameTestListener
 import net.minecraft.gametest.framework.GameTestRunner
 import net.minecraft.world.entity.Pose
+import net.minecraft.world.level.PathNavigationRegion
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.ScaffoldingBlock
+import net.minecraft.world.level.pathfinder.Node
 import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import java.nio.file.Files
@@ -46,6 +49,37 @@ object ScaffoldingGameTests {
             val path = (npc.navigation as VehicleAwareNavigation).createPositionPath(helper.absolutePos(BlockPos(11, 7, 6)))
             helper.assertTrue(path?.canReach() != true, "Scaffold clearance bypassed a solid roof")
             npc.discard()
+            helper.succeed()
+        }
+    }
+
+    /**
+     * A shaft beside a raised block: the old rule let the route step off the shaft one block down onto
+     * the block, the follower cut that corner too early, and the man climbed back up (#178). From a
+     * scaffolding node the evaluator must offer no sideways step to lower ground, only a level one.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "scaffolding_arena", timeoutTicks = 40, batch = "scaffold-exit")
+    fun scaffoldingNodeOffersNoSidewaysStepDown(helper: GameTestHelper) {
+        for (x in 0..23) for (z in 0..11) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        for (y in 1..10) helper.setBlock(BlockPos(11, y, 6), Blocks.SCAFFOLDING.defaultBlockState().setValue(ScaffoldingBlock.DISTANCE, 0).setValue(ScaffoldingBlock.BOTTOM, y == 1))
+        for (x in 12..14) for (z in 5..7) for (y in 1..4) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
+        val npc = AttackDeploymentGameTests.spawn(helper, Vec3(11.5, 6.0, 6.5), SquadFaction.PIG).apply { isNoAi = true }
+        helper.runAtTickTime(10) {
+            val at = npc.blockPosition()
+            val evaluator = VehicleAwareNodeEvaluator()
+            evaluator.prepare(PathNavigationRegion(helper.level, at.offset(-16, -16, -16), at.offset(16, 16, 16)), npc)
+            val start = evaluator.start
+            val out = arrayOfNulls<Node>(32)
+
+            @Suppress("UNCHECKED_CAST")
+            val count = evaluator.getNeighbors(out as Array<Node>, start)
+            val neighbours = (0 until count).map { out[it]!!.asBlockPos() }
+            val down = neighbours.filter { it.y < start.y && !helper.level.getBlockState(it).`is`(Blocks.SCAFFOLDING) }
+            evaluator.done()
+            npc.discard()
+            helper.assertTrue(helper.level.getBlockState(at).`is`(Blocks.SCAFFOLDING), "The man is not inside the shaft")
+            helper.assertTrue(down.isEmpty(), "Shaft node ${start.asBlockPos()} offers sideways steps down: $down of $neighbours")
             helper.succeed()
         }
     }

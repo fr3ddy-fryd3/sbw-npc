@@ -57,7 +57,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = canRide(entity) && entity.seatFreeFor(this) && (aboard(entity) != null || lift(entity, level) != null)
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = canRide(entity) && entity.freeFor(NpcActivity.SEAT, this) && (aboard(entity) != null || lift(entity, level) != null)
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean {
         if (aboard(entity) != null) return true
@@ -66,7 +66,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun start(entity: NpcEntity) {
-        entity.claimSeat(this)
+        entity.claimAlone(NpcActivity.SEAT, this)
         phase = if (aboard(entity) != null) Phase.RIDING else Phase.BOARDING
         groundedSince = Int.MIN_VALUE / 2
     }
@@ -139,7 +139,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun board(entity: NpcEntity, level: ServerLevel) {
         val heli = lift(entity, level) ?: return
         // Again after a wrecked aircraft put him out: the next lift is boarded under the same hold.
-        if (!entity.claimSeat(this)) return
+        if (!entity.claimAlone(NpcActivity.SEAT, this)) return
         entity.claim(NpcActivity.VEHICLE, this)
         val hull = heli.boundingBox
         if (hull.distanceToSqr(entity.position()) > BOARD_DISTANCE_SQR) {
@@ -164,7 +164,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
      * has the barrel lined up — but the AH-6's bench seats have no weapon of their own, so the
      * riders shoot what they are carrying.
      *
-     * [GunAttackBehaviour] can't do it for them: riding sets `vehicleTransport`, which is exactly
+     * [GunAttackBehaviour] can't do it for them: riding holds [NpcActivity.VEHICLE], which is exactly
      * what tells it to stand down, and it would also try to walk them into a firing position.
      */
     private fun fireFromBench(entity: NpcEntity, heli: Entity) {
@@ -261,7 +261,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  tick. */
     private fun wantsLift(entity: NpcEntity): Boolean {
         if (entity.tickCount < noLiftUntilTick) return false
-        if (entity.vehicle != null || entity.diggedIn || entity.operatingDrone || entity.antiDroneEngaged) return false
+        if (entity.vehicle != null || entity.holdsAny(NpcActivity.DUG_IN, NpcActivity.DRONE, NpcActivity.ANTI_DRONE)) return false
         if (Helicopters.fightingClose(entity)) return false
         if (deliveredStamp != null && deliveredStamp == entity.currentSquad()?.orderStamp) return false
         val home = entity.homeCenter() ?: return false

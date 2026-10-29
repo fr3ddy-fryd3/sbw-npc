@@ -48,7 +48,7 @@ internal open class VehicleAwareNodeEvaluator(
             // WalkNodeEvaluator may cut sideways to ground several blocks below a rung.
             // Keep descending the shaft instead: a mob can be almost a block above that
             // integer node when it detaches, making the nominal safe drop cause fall damage.
-            if (climbable(node.asBlockPos()) && !climbable(next.asBlockPos()) && next.y < node.y - 1) continue
+            if (climbable(node.asBlockPos()) && !climbable(next.asBlockPos()) && next.y < node.y - dropLimit(node.asBlockPos())) continue
             if (permitsStep(node.asBlockPos(), next.asBlockPos())) output[accepted++] = next
         }
         val from = node.asBlockPos()
@@ -66,6 +66,15 @@ internal open class VehicleAwareNodeEvaluator(
         }
         return accepted
     }
+
+    /**
+     * How far below a climbable node the route may leave the shaft sideways. A ladder allows one block.
+     * A scaffolding shaft allows none: the follower cuts the corner to a node one block lower while the
+     * mob is still 1-1.5 blocks above it, he walks sideways into the next column, and the collision on a
+     * climbable block makes him climb back up to the top. Scaffolding always stands on the ground, so the
+     * shaft has a bottom node to step out from level.
+     */
+    private fun dropLimit(pos: BlockPos): Int = if (level.getBlockState(pos).`is`(Blocks.SCAFFOLDING)) 0 else 1
 
     private fun climbable(pos: BlockPos): Boolean = Ports.loader.isLadder(level.getBlockState(pos), mob.level(), pos, mob)
 

@@ -9,6 +9,7 @@ import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.Noticing
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.npc.NpcClass
@@ -120,11 +121,11 @@ class MortarCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun eligible(entity: NpcEntity): Boolean {
         if (entity.npcClass != NpcClass.MORTAR || !MortarClaims.available(entity)) return false
-        if (entity.carryingMortar) return true
+        if (entity.holds(NpcActivity.CARRYING_MORTAR)) return true
         val level = entity.level() as? ServerLevel ?: return false
         MortarClaims.refresh(level)
         carrier = NpcRegistry.all(level).firstOrNull {
-            it !== entity && it.isAlive && it.carryingMortar &&
+            it !== entity && it.isAlive && it.holds(NpcActivity.CARRYING_MORTAR) &&
                 (
                     (entity.assignedMortarId != null && it.assignedMortarId == entity.assignedMortarId) ||
                         (entity.assignedMortarId == null && entity.squadId != null && it.squadId == entity.squadId)
@@ -161,21 +162,21 @@ class MortarCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
         mortar = null
         carrier = null
         postOf = null
-        entity.servingMortar = false
-        entity.mortarErrand = false
+        entity.release(NpcActivity.MORTAR_CREW, this)
+        entity.release(NpcActivity.MORTAR_ERRAND, this)
     }
 
     override fun tick(entity: NpcEntity) {
         val level = entity.level() as? ServerLevel ?: return
-        entity.mortarErrand = false
-        if (entity.carryingMortar) {
-            entity.servingMortar = false
+        entity.release(NpcActivity.MORTAR_ERRAND, this)
+        if (entity.holds(NpcActivity.CARRYING_MORTAR)) {
+            entity.release(NpcActivity.MORTAR_CREW, this)
             tickDisplacing(entity, level)
             return
         }
-        carrier?.takeIf { it.isAlive && it.carryingMortar }?.let { with ->
-            entity.servingMortar = true
-            entity.mortarErrand = true
+        carrier?.takeIf { it.isAlive && it.holds(NpcActivity.CARRYING_MORTAR) }?.let { with ->
+            entity.claim(NpcActivity.MORTAR_CREW, this)
+            entity.claim(NpcActivity.MORTAR_ERRAND, this)
             if (entity.distanceToSqr(with) > 25.0) entity.navigateTo(with.position(), DISPLACE_SPEED) else entity.navigation.stop()
             return
         }
@@ -192,8 +193,8 @@ class MortarCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.mortarShellsLeft <= 0) {
             entity.nearestSupply()?.let { supply ->
                 MortarClaims.handOver(m, entity)
-                entity.servingMortar = true
-                entity.mortarErrand = true
+                entity.claim(NpcActivity.MORTAR_CREW, this)
+                entity.claim(NpcActivity.MORTAR_ERRAND, this)
                 if (entity.position().closerThan(supply, com.sbwnpc.squad.block.entity.SupplyBlockEntity.RADIUS - 3.0)) {
                     entity.navigation.stop()
                 } else {
@@ -205,13 +206,13 @@ class MortarCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
         val post = if (role == MortarClaims.Role.OPERATOR) m.position() else loadingPost(entity, m)
         val dist = entity.distanceTo(m)
         if (dist > 2.5) {
-            entity.servingMortar = true
-            entity.mortarErrand = true
+            entity.claim(NpcActivity.MORTAR_CREW, this)
+            entity.claim(NpcActivity.MORTAR_ERRAND, this)
             val speed = if (dist > RUN_TO_TUBE_DISTANCE) DISPLACE_SPEED else 1.0
             if (!com.sbwnpc.squad.combat.FiringPostArrival.steer(entity, post, speed)) entity.navigateTo(post, speed)
             return
         }
-        entity.servingMortar = true
+        entity.claim(NpcActivity.MORTAR_CREW, this)
         entity.navigation.stop()
         entity.lookControl.setLookAt(m.x, m.y + 0.5, m.z)
         if (!Ports.mortars.hasShell(m) && !Ports.mortars.isFiring(m) && entity.mortarShellsLeft > 0) {
@@ -281,8 +282,8 @@ class MortarCrewBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** Walk to the tube and break it down, so the crew can carry it to where it was sent. */
     private fun packForRelocation(entity: NpcEntity, m: Entity) {
         if (entity.position().distanceTo(m.position()) > 2.5) {
-            entity.servingMortar = false
-            entity.mortarErrand = true
+            entity.release(NpcActivity.MORTAR_CREW, this)
+            entity.claim(NpcActivity.MORTAR_ERRAND, this)
             entity.navigateTo(m.x, m.y, m.z, DISPLACE_SPEED)
             return
         }

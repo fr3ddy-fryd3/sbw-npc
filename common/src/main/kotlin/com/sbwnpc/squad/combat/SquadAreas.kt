@@ -2,6 +2,7 @@ package com.sbwnpc.squad.combat
 
 import com.sbwnpc.squad.combat.tactics.PositionPaths
 import com.sbwnpc.squad.combat.tactics.TacticalBudget
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.npc.NpcClass
@@ -115,7 +116,7 @@ object SquadAreas {
         }
         if (pending.isEmpty()) return
         val area = pending[Math.floorMod(world.cursor++, pending.size)]
-        val actor = world.members[area.request.squad].orEmpty().mapNotNull { level.getEntity(it) as? NpcEntity }.filter { !it.busyWithRole() && !it.resupplying && !it.movementLockedByCover() && !it.combatLockedByMedic() }
+        val actor = world.members[area.request.squad].orEmpty().mapNotNull { level.getEntity(it) as? NpcEntity }.filter { !it.busyWithRole() && !it.holds(NpcActivity.RESUPPLY) && !it.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK, NpcActivity.HEAL) }
             .minByOrNull { it.position().distanceToSqr(area.center) } ?: return
         val navigation = actor.navigation as? PositionPaths ?: return
         if (!navigation.canPlan || !TacticalBudget.path(actor)) return
