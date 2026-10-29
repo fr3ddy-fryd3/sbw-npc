@@ -5,6 +5,8 @@ import com.sbwnpc.squad.ai.planning.*
 import com.sbwnpc.squad.ai.tactics.*
 import com.sbwnpc.squad.combat.*
 import com.sbwnpc.squad.combat.tactics.*
+import com.sbwnpc.squad.entity.Cap
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.SquadTransit
 import com.sbwnpc.squad.npc.NpcClass
@@ -156,9 +158,7 @@ object NativeTactics {
 
     /** How many post searches in a row [npc] failed round his task's anchor, while remembered. */
     fun postFailures(npc: NpcEntity): Int = world(npc).postFailuresOf(npc.uuid)
-    fun movable(npc: NpcEntity) =
-        npc.isAlive && npc.vehicle == null && !npc.busyWithRole() && !npc.resupplying && !npc.diggedIn &&
-            !npc.evadingGrenade() && !npc.movementLockedByCover() && !npc.combatLockedByMedic() && npc.retreatPoint() == null
+    fun movable(npc: NpcEntity) = npc.isAlive && npc.vehicle == null && npc.mayFor(NpcActivity.TACTIC, Cap.FEET) && npc.retreatPoint() == null
     private val GROUND = setOf(NpcClass.RIFLEMAN, NpcClass.SHOTGUNNER, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.DRONE_OPERATOR)
 
     private class PendingDeath(val entity: LivingEntity, val cancelled: () -> Boolean)
@@ -735,7 +735,7 @@ object NativeTactics {
             }
             val inspected = occupied && observers.any { it.position().distanceTo(point) <= 24 && Vision.inCone(it.position(), it.yHeadRot, point) && DetectionSightline.visible(level, it.eyePosition, point.add(0.0, 1.5, 0.0), it) } && remaining.isEmpty()
             val loaded = listOf(-24, 24).all { x -> listOf(-24, 24).all { z -> level.hasChunkAt(net.minecraft.core.BlockPos.containing(point.add(x.toDouble(), 0.0, z.toDouble()))) } }
-            val fire = observers.any { it.incomingFire.recentPoint(now) != null || it.evadingGrenade() }
+            val fire = observers.any { it.incomingFire.recentPoint(now) != null || it.holds(NpcActivity.EVADE) }
             val clock = areaClocks.getOrPut(task.operation, ::AreaControlClock)
             clock.observe(now, loaded, occupied, inspected, contacts.isNotEmpty() || discovered, fire)
             areaObservedAt[task.operation] = now
@@ -1107,7 +1107,7 @@ object NativeTactics {
                             // a slot parity can leave one half empty, so nobody covers or nobody runs.
                             followBound = following && OperationTactics.followBound(index, now, toLeader),
                             followSlot = leaderAt?.let { com.sbwnpc.squad.combat.FollowFormation.slot(it, heading, saved.members.indexOf(member.id), heading != null) },
-                            followRide = leader?.vehicle != null || man?.activities?.has(com.sbwnpc.squad.entity.NpcActivity.VEHICLE) == true,
+                            followRide = leader?.vehicle != null || man?.holds(com.sbwnpc.squad.entity.NpcActivity.VEHICLE) == true,
                             transit = transit,
                         ),
                         FIRE_POST_REACH,

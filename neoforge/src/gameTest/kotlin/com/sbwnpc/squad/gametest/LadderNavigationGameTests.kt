@@ -10,8 +10,10 @@ import net.minecraft.core.Direction
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.level.block.DoorBlock
 import net.minecraft.world.level.block.LadderBlock
 import net.minecraft.world.level.block.TrapDoorBlock
+import net.minecraft.world.level.block.state.properties.DoubleBlockHalf
 import net.minecraft.world.level.block.state.properties.Half
 import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
@@ -19,9 +21,42 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.UUID
 
-/** Real brains traverse a ten-block ladder; a route result alone cannot pass the arrival check. */
+/** Real brains traverse a ten-block ladder and a closed door; a route result alone cannot pass the arrival check. */
 @PrefixGameTestTemplate(false)
 object LadderNavigationGameTests {
+    /** A closed wooden door in a wall is the only way through; routes through the doors of a base (#177). */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "scaffolding_arena", timeoutTicks = 600, batch = "door-march")
+    fun marchOpensAClosedWoodenDoorAndPassesThrough(helper: GameTestHelper) {
+        for (x in 0..23) for (z in 0..11) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        for (z in 0..11) for (y in 1..4) helper.setBlock(BlockPos(11, y, z), Blocks.STONE)
+        val closed = Blocks.OAK_DOOR.defaultBlockState().setValue(DoorBlock.FACING, Direction.EAST)
+        val door = BlockPos(11, 1, 6)
+        helper.setBlock(door, closed.setValue(DoorBlock.HALF, DoubleBlockHalf.LOWER))
+        helper.setBlock(door.above(), closed.setValue(DoorBlock.HALF, DoubleBlockHalf.UPPER))
+        val npc = AttackDeploymentGameTests.spawn(helper, Vec3(6.5, 1.0, 6.5), SquadFaction.PIG)
+        val manager = SquadManager.get(helper.level)
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(npc.uuid))
+        manager.setOrder(squad.id, SquadOrder.MOVE)
+        val goal = BlockPos(17, 1, 6)
+        manager.setObjective(helper.level, squad.id, helper.absolutePos(goal))
+        helper.runAtTickTime(10) {
+            val path = (npc.navigation as VehicleAwareNavigation).createPositionPath(helper.absolutePos(goal))
+            helper.assertTrue(path?.canReach() == true, "No route through the closed door")
+        }
+        var opened = false
+        helper.onEachTick {
+            if (helper.getBlockState(door).getValue(DoorBlock.OPEN)) opened = true
+            val at = helper.relativeVec(npc.position())
+            if (at.x >= 14.5 && npc.onGround()) {
+                helper.assertTrue(opened, "He crossed the wall without opening the door")
+                manager.disband(helper.level, squad.id)
+                npc.discard()
+                helper.succeed()
+            }
+        }
+    }
+
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "scaffolding_arena", timeoutTicks = 500, batch = "ladder")
     fun marchClimbsAndDescendsLadder(helper: GameTestHelper) {

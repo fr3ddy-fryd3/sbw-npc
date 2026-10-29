@@ -79,6 +79,7 @@ object ForgeEvents {
 
     private fun onServerTick(server: net.minecraft.server.MinecraftServer) {
         SelectionHighlight.tick(server)
+        com.sbwnpc.squad.squad.DeployPreview.tick(server)
         PilotlessHelicopters.tick(server)
         com.sbwnpc.squad.team.Diplomacy.tick(server)
         com.sbwnpc.squad.map.MapFeed.tick(server)

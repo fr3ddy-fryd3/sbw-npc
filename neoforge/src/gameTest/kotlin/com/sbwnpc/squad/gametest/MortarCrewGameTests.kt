@@ -5,6 +5,7 @@ import com.sbwnpc.squad.block.entity.SupplyBlockEntity
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.MortarClaims
 import com.sbwnpc.squad.init.ModBlocks
@@ -120,7 +121,7 @@ object MortarCrewGameTests {
             }
             away?.let { npc ->
                 val at = helper.relativeVec(npc.position())
-                trace.append("${helper.tick},${at.x},${at.y},${at.z},${npc.mortarShellsLeft},${npc.servingMortar},${npc.mortarErrand},${npc.navigation.isDone},${npc.position().distanceTo(helper.absolutePos(point).center)},${npc.distanceTo(scene.mortar)}\n")
+                trace.append("${helper.tick},${at.x},${at.y},${at.z},${npc.mortarShellsLeft},${npc.holds(NpcActivity.MORTAR_CREW)},${npc.holds(NpcActivity.MORTAR_ERRAND)},${npc.navigation.isDone},${npc.position().distanceTo(helper.absolutePos(point).center)},${npc.distanceTo(scene.mortar)}\n")
                 helper.assertTrue(npc.assignedMortarId == scene.mortar.uuid, "Supply errand lost the original tube assignment")
                 if (npc.position().distanceTo(origin!!) > 10.0) traveled = true
                 if (traveled && npc.distanceToSqr(scene.mortar) > 6.25 && MortarClaims.activeCrew(scene.mortar) == 1) soloObserved = true
@@ -158,13 +159,13 @@ object MortarCrewGameTests {
                 scene.manager.setOrder(scene.squad.id, SquadOrder.DEFEND)
                 scene.manager.setObjective(helper.level, scene.squad.id, helper.absolutePos(BlockPos(55, 1, 64)))
             }
-            scene.crew.firstOrNull { it.carryingMortar }?.let { npc ->
+            scene.crew.firstOrNull { it.holds(NpcActivity.CARRYING_MORTAR) }?.let { npc ->
                 carrying = true
                 val tag = CompoundTag()
                 npc.saveWithoutId(tag)
                 val loaded = ModEntities.NPC.get().create(helper.level)!!
                 loaded.load(tag)
-                helper.assertTrue(loaded.carryingMortar && loaded.assignedMortarId == npc.assignedMortarId && loaded.packedMortarState == npc.packedMortarState, "Carrier save lost tube state")
+                helper.assertTrue(loaded.holds(NpcActivity.CARRYING_MORTAR) && loaded.assignedMortarId == npc.assignedMortarId && loaded.packedMortarState == npc.packedMortarState, "Carrier save lost tube state")
                 for ((name, ordinal) in listOf("MORTAR_OPERATOR" to 5, "MORTAR_LOADER" to 6)) {
                     tag.putString("NpcClass", name)
                     tag.putInt("MortarShells", 0)
@@ -174,7 +175,7 @@ object MortarCrewGameTests {
                 }
                 helper.assertTrue(NpcClass.TANK_CREW.ordinal == 7 && NpcClass.DRONE_OPERATOR.ordinal == 10 && NpcClass.selectable.none { it.name == "MORTAR_OPERATOR" || it.name == "MORTAR_LOADER" }, "Role migration shifted unrelated IDs or exposed legacy types")
             }
-            if (carrying && scene.crew.none { it.carryingMortar }) {
+            if (carrying && scene.crew.none { it.holds(NpcActivity.CARRYING_MORTAR) }) {
                 deployed = scene.crew.first().assignedMortarId?.let(helper.level::getEntity)
                 val tube = deployed ?: return@onEachTick
                 helper.assertTrue(tube.uuid != scene.mortar.uuid && tube.position().distanceTo(helper.absoluteVec(Vec3(55.5, 1.0, 64.5))) <= 8.0, "Mortar did not physically redeploy at the new objective")

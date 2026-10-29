@@ -7,6 +7,7 @@ import com.sbwnpc.squad.combat.TickBudget
 import com.sbwnpc.squad.combat.WeaponReach
 import com.sbwnpc.squad.combat.tactics.SquadTactics
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.team.SquadTeams
@@ -37,9 +38,9 @@ internal class CombatParticipationTrace(private val level: ServerLevel, path: Pa
         val conditions = mutableListOf<String>()
         if (!npc.isAlive) conditions += "dead"
         if (npc.busyWithRole()) conditions += "role_lock"
-        if (npc.resupplying) conditions += "resupply"
-        if (npc.combatLockedByCover()) conditions += "cover_lock"
-        if (npc.combatLockedByMedic()) conditions += "medic_lock"
+        if (npc.holds(NpcActivity.RESUPPLY)) conditions += "resupply"
+        if (npc.holdsAny(NpcActivity.COVER, NpcActivity.EVADE)) conditions += "cover_lock"
+        if (npc.holds(NpcActivity.HEAL)) conditions += "medic_lock"
         if (gun == null) {
             conditions += "no_gun"
         } else if (!gun.hasAmmo()) {

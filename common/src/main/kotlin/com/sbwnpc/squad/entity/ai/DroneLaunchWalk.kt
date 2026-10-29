@@ -3,6 +3,7 @@ package com.sbwnpc.squad.entity.ai
 import com.sbwnpc.squad.combat.tactics.PositionPaths
 import com.sbwnpc.squad.combat.tactics.TacticalBudget
 import com.sbwnpc.squad.combat.tactics.TacticalPositions
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.util.Terrain
 import net.minecraft.server.level.ServerLevel
@@ -96,7 +97,7 @@ internal class DroneLaunchWalk(entity: NpcEntity) {
 
     private fun sameOrder(entity: NpcEntity) = entity.currentSquad()?.orderStamp == orderStamp
 
-    private fun returnInterrupted(entity: NpcEntity) = !sameOrder(entity) || entity.movementLockedByCover() || entity.combatLockedByMedic()
+    private fun returnInterrupted(entity: NpcEntity) = !sameOrder(entity) || entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK, NpcActivity.HEAL)
 
     private companion object {
         const val SEARCH_RADIUS = 12

@@ -4,7 +4,6 @@ import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.ai.SquadTransit
 import com.sbwnpc.squad.entity.ai.VehicleTransportClaims
-import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.npc.TransportVehicle
 import com.sbwnpc.squad.squad.SquadManager
@@ -65,10 +64,10 @@ object SquadTransitPriorityGameTests {
         val underFire = men[4]
         val control = men.last()
         val seatOwner = Any()
-        drone.operatingDrone = true
-        BrainUtils.setMemory(patient, ModMemories.MEDIC_HEALING.get(), true)
-        BrainUtils.setMemory(covered, ModMemories.COVER_HOLD.get(), true)
-        helper.assertTrue(seated.claimSeat(seatOwner), "Could not establish the existing seat owner")
+        drone.claim(NpcActivity.DRONE, this)
+        patient.claim(NpcActivity.HEAL, seatOwner)
+        covered.claim(NpcActivity.COVER, seatOwner)
+        helper.assertTrue(seated.claimAlone(NpcActivity.SEAT, seatOwner), "Could not establish the existing seat owner")
         seated.claim(NpcActivity.VEHICLE, seatOwner)
         underFire.incomingFire.record(underFire.eyePosition, Vec3(1.0, 0.0, 0.0), null, helper.level.gameTime)
         val lav = requireNotNull(Ports.vehicles.create(helper.level, TransportVehicle.LAV_25))
@@ -88,7 +87,7 @@ object SquadTransitPriorityGameTests {
             helper.assertTrue(men.take(5).all { it.vehicle == null && VehicleTransportClaims.vehicleOf(it.uuid) == null }, "The ride took a man held by a role, treatment, cover, seat owner or recent fire")
             if (helper.tick >= 40) {
                 helper.assertTrue(control.vehicle === lav, "The free control man did not board")
-                helper.assertTrue(seated.seatFreeFor(seatOwner) && !seated.seatFreeFor(Any()), "Transit replaced the original seat owner")
+                helper.assertTrue(seated.freeFor(NpcActivity.SEAT, seatOwner) && !seated.freeFor(NpcActivity.SEAT, Any()), "Transit replaced the original seat owner")
                 helper.assertTrue(underFire.incomingFire.recentPoint(helper.level.gameTime) != null, "The incoming-fire fixture expired before the boarding check")
                 scene.result("PASS", "tick=${helper.tick} preserved=5 boarded=1")
                 helper.succeed()

@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.entity.ai
 
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal
 
@@ -12,8 +13,8 @@ import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal
  * automatically excludes it the way a real target/flag conflict would in a fully vanilla AI.
  *
  * `target == null` alone was already the right gate for ordinary combat (SeekCoverBehaviour/
- * GunAttackBehaviour only ever run with a live target or while suppressed with COVER_HOLD set).
- * `!diggedIn` is required in addition: a dug-in mob deliberately clears COVER_HOLD for its whole
+ * GunAttackBehaviour only ever run with a live target or while suppressed with the cover claim set).
+ * not being dug in is required in addition: a dug-in mob deliberately clears the cover claim for its whole
  * holding duration (see `SeekCoverBehaviour.enterDugInHolding`) so `GunAttackBehaviour` can still
  * fire from the hole, and its target can legitimately go null for a moment (dies, breaks LOS)
  * without the mob actually being done holding its position — reported in-game as digging in not
@@ -21,7 +22,7 @@ import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal
  */
 class IdleWanderGoal(private val npc: NpcEntity, speedModifier: Double) : WaterAvoidingRandomStrollGoal(npc, speedModifier) {
     private fun eligible(): Boolean {
-        if (npc.target != null || npc.diggedIn || npc.busyWithRole()) return false
+        if (npc.target != null || npc.holds(NpcActivity.DUG_IN) || npc.busyWithRole()) return false
         if (npc.wary()) return false
         return npc.homeCenter() == null
     }
