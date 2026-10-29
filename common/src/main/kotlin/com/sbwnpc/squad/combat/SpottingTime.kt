@@ -73,6 +73,13 @@ object SpottingTime {
         /** The same observer while wary (#186): he notices in 1/[WARY_FACTOR] of the time, whatever else applies. */
         fun wary() = copy(timeFactor = timeFactor / WARY_FACTOR)
 
+        /**
+         * The same observer looking down from the air (#245): the cut-off is widened by the same factor
+         * as the aircrew's ground search ([VehicleTargeting.AIR_RANGE_FACTOR]). Light and weather
+         * still shorten it, so aircrew do not see at night as if it were day.
+         */
+        fun airborne() = copy(cutoffFactor = cutoffFactor * VehicleTargeting.AIR_RANGE_FACTOR)
+
         companion object {
             fun of(rank: NpcRank, npcClass: NpcClass): Observer {
                 val sniper = npcClass == NpcClass.SNIPER
@@ -120,11 +127,11 @@ object SpottingTime {
 
     /**
      * Seconds the target takes to be noticed, or null when it is too far away for this light to ever
-     * be. With [cutOff] false there is no such distance, only a longer time.
+     * be.
      */
-    fun seconds(observer: Observer, target: Target, cutOff: Boolean = true): Double? {
+    fun seconds(observer: Observer, target: Target): Double? {
         val light = Light.of(target.light.coerceIn(0, MAX_LIGHT))
-        if (cutOff && target.distance > light.cutoff * observer.cutoffFactor * target.weather.reachFactor * target.size.reachFactor) return null
+        if (target.distance > light.cutoff * observer.cutoffFactor * target.weather.reachFactor * target.size.reachFactor) return null
         val base = BASE_SECONDS + DISTANCE_SECONDS * (target.distance / REFERENCE_DISTANCE).let { it * it }
         var factor = light.timeFactor * observer.timeFactor * target.weather.timeFactor * target.size.timeFactor *
             (1.0 + (CONE_EDGE_FACTOR - 1.0) * target.offAxis.coerceIn(0.0, 1.0))
