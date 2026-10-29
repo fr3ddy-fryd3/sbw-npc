@@ -13,9 +13,10 @@ object SquadKnowledge {
 
     /**
      * Whether a contact last seen at [seenAt] (null: none), first seen at [firstSeenAt], is one the
-     * squad can act on at [now]: told long enough ago, and still fresh.
+     * squad can act on at [now]: still fresh, and either told long enough ago or noticed by this man
+     * himself ([sawHimHimself]), who needs no call.
      */
-    fun known(seenAt: Long?, firstSeenAt: Long?, now: Long): Boolean = seenAt != null && firstSeenAt != null && now - seenAt <= KNOWN_TICKS && now - firstSeenAt >= SHARE_TICKS
+    fun known(seenAt: Long?, firstSeenAt: Long?, now: Long, sawHimHimself: Boolean): Boolean = seenAt != null && firstSeenAt != null && now - seenAt <= KNOWN_TICKS && (sawHimHimself || now - firstSeenAt >= SHARE_TICKS)
 
     /** When the call on an enemy started: kept while the contact stays fresh, restarted once it has lapsed. */
     fun firstSeenAt(oldSeenAt: Long?, oldFirstSeenAt: Long?, now: Long): Long = if (oldSeenAt != null && oldFirstSeenAt != null && now - oldSeenAt <= KNOWN_TICKS) oldFirstSeenAt else now

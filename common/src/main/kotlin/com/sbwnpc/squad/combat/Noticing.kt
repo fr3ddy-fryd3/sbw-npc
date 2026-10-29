@@ -76,7 +76,7 @@ class Noticing(
     /** Whether the observer's squad has told its men of [candidate], see [SquadKnowledge]. */
     private fun squadKnows(observer: NpcEntity, candidate: Entity, now: Long): Boolean {
         val contact = observer.currentSquad()?.tactics?.contacts?.get(candidate.uuid)
-        return SquadKnowledge.known(contact?.seenAt, contact?.firstSeenAt, now)
+        return SquadKnowledge.known(contact?.seenAt, contact?.firstSeenAt, now, contact != null && observer.uuid in contact.seenBy)
     }
 
     /** After a scan: whatever it did not look at drains, see [SpottingProgress.endScan]. */

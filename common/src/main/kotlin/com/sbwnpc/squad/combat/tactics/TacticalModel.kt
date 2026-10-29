@@ -52,6 +52,8 @@ data class TacticalContact(
     val airborne: Boolean = false,
     /** When the squad first had this contact; the call to the others counts from here, see [com.sbwnpc.squad.combat.SquadKnowledge]. */
     val firstSeenAt: Long = seenAt,
+    /** The men of the squad who noticed this enemy themselves: they need no call. */
+    val seenBy: Set<UUID> = emptySet(),
 )
 data class TacticalSnapshot(
     val now: Long,
