@@ -38,6 +38,9 @@ class Noticing(
         val knownToSquad = SquadKnowledge.known(observer.currentSquad()?.tactics?.contacts?.get(candidate.uuid)?.seenAt, now)
         val alreadyNoticed = candidate === observer.target || gaveAway || knownToSquad
         if (alreadyNoticed || observer.incomingFire.pending(now)) {
+            if (knownToSquad && progress.seconds(candidate.uuid) == 0.0) {
+                DebugFlags.log(group, "{} noticed {} by {} at once: his squad has a contact on him", observer.uuid, candidate.uuid, by)
+            }
             progress.fill(candidate.uuid, now)
             return true
         }
