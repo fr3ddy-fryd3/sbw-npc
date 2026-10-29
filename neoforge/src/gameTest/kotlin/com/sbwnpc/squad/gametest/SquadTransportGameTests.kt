@@ -97,6 +97,43 @@ object SquadTransportGameTests {
         }
     }
 
+    /**
+     * A new order replaces the old one on the ride too: a squad that boarded for an Attack far to the
+     * east and is then told to defend a spot behind it must not be driven on to the old objective
+     * (in game 29.10 the ride went to the old target, dropped the men there, and they walked back).
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1200, batch = "transport-new-order")
+    fun rideDoesNotCarryOnToTheObjectiveOfAReplacedOrder(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "transport-new-order")
+        val manager = SquadManager.get(helper.level)
+        val men = listOf(32.5, 35.5, 38.5, 41.5, 44.5).map { scene.spawn(Vec3(it, 1.0, 20.5)) }
+        val lav = park(helper, Vec3(45.5, 1.0, 24.5))
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, men.map { it.uuid })
+        scene.onClose = {
+            manager.deleteSquad(helper.level, squad.id)
+            lav.discard()
+        }
+        manager.issueOrderAt(helper.level, squad.id, SquadOrder.ATTACK, helper.absolutePos(BlockPos(160, 1, 20)))
+        var replacedAt = -1L
+        var boardedX = 0.0
+        helper.onEachTick {
+            if (replacedAt < 0 && men.all { it.vehicle === lav }) {
+                replacedAt = helper.tick
+                boardedX = helper.relativeVec(lav.position()).x
+                manager.issueOrderAt(helper.level, squad.id, SquadOrder.DEFEND, helper.absolutePos(BlockPos(8, 1, 20)))
+            }
+            if (replacedAt >= 0) {
+                val x = helper.relativeVec(lav.position()).x
+                helper.assertTrue(x < boardedX + 15.0, "The ride drove on towards the replaced order's objective: x=$x, boarded at $boardedX, tick ${helper.tick}")
+                if (helper.tick >= replacedAt + 500) {
+                    scene.result("PASS", "boardedAt=$replacedAt boardedX=$boardedX x=$x")
+                    helper.succeed()
+                }
+            }
+        }
+    }
+
     /** A man outside the vehicle search radius walks instead of making his own trip to the ride. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "transport-straggler")
