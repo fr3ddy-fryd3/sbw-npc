@@ -38,6 +38,7 @@ object SquadTactics {
             } == true,
             priority = 1.0 + (if (dangerous) 1.0 else 0.0) + (if (target.uuid == squad.focusEntity) 5.0 else 0.0),
             airborne = target.vehicle?.let { Ports.vehicles.mobility(it) == Mobility.AIR } == true,
+            firstSeenAt = SquadKnowledge.firstSeenAt(old?.seenAt, old?.firstSeenAt, now),
         )
         // Discovery is shared even before this observer can start its gun behavior.
         TeamAwareness.report(squad.faction, target.uuid, target.position(), now, "${npc.npcClass} ${npc.uuid.toString().take(8)}")
@@ -87,6 +88,7 @@ object SquadTactics {
         val task = task(entity)
         val view = snapshot(entity) ?: return null
         val known = TacticalTargets.candidates(view, null, task?.focus ?: entity.position(), AntiArmourKit.loaded(entity)).asSequence()
+            .filter { SquadKnowledge.known(it.seenAt, it.firstSeenAt, view.now) }
             .mapNotNull { level.getEntity(it.id) as? LivingEntity }
             .filter { it.isAlive && entity.isEnemy(it) }
             .filter { task?.job != TacticalJob.ANTI_ARMOUR || AntiArmourKit.worthARocket(entity, it) }

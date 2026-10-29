@@ -50,6 +50,8 @@ data class TacticalContact(
     val armoured: Boolean = false,
     val priority: Double = 1.0,
     val airborne: Boolean = false,
+    /** When the squad first had this contact; the call to the others counts from here, see [com.sbwnpc.squad.combat.SquadKnowledge]. */
+    val firstSeenAt: Long = seenAt,
 )
 data class TacticalSnapshot(
     val now: Long,
