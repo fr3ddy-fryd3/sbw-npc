@@ -20,8 +20,6 @@ class Noticing(
     private val by: String,
     private val group: LogGroup = LogGroup.SPOTTING,
     private val size: SpottingTime.Size = SpottingTime.Size.PERSON,
-    /** False for a mounted gunner: his optics have no cut-off, only the time, see [SpottingTime.seconds]. */
-    private val cutOff: Boolean = true,
 ) {
     private val progress = SpottingProgress()
 
@@ -54,8 +52,10 @@ class Noticing(
             weatherAt(level, candidate.blockPosition()),
             size,
         )
-        val eyes = SpottingTime.Observer.of(observer.npcRank, observer.npcClass).let { if (observer.wary()) it.wary() else it }
-        val required = SpottingTime.seconds(eyes, target, cutOff)
+        val eyes = SpottingTime.Observer.of(observer.npcRank, observer.npcClass)
+            .let { if (VehicleTargeting.isAircrew(observer)) it.airborne() else it }
+            .let { if (observer.wary()) it.wary() else it }
+        val required = SpottingTime.seconds(eyes, target)
         val before = progress.seconds(candidate.uuid)
         return progress.advance(candidate.uuid, now, required).also { seen -> trace(observer, candidate, Look(target, required, before), seen) }
     }
