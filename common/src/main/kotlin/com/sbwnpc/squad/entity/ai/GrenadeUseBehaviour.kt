@@ -95,7 +95,8 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
             net.minecraft.world.entity.LivingEntity::class.java,
             entity.boundingBox.inflate(reach, 6.0, reach),
         ) {
-            it.isAlive && it !== entity && entity.isEnemy(it) && !VehicleTargeting.isAircrew(it) && noticed(entity, level, it)
+            // Nor inside armour: a hand grenade does it no harm (#237).
+            it.isAlive && it !== entity && entity.isEnemy(it) && !VehicleTargeting.isAircrew(it) && !com.sbwnpc.squad.combat.AntiArmourKit.armoured(it) && noticed(entity, level, it)
         }
         noticing.endScan(level.gameTime)
         if (enemies.size < CLUSTER_SIZE) return null

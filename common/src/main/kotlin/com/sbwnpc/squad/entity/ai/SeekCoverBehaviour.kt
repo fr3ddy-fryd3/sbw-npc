@@ -169,13 +169,17 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             -1 to -1,
         )
 
-        private val MEMORIES: List<Pair<MemoryModuleType<*>, MemoryStatus>> =
-            listOf(Pair.of(ModMemories.SUPPRESSING_THREAT.get(), MemoryStatus.VALUE_PRESENT))
+        // Registered, not required present: it starts on either, see checkExtraStartConditions.
+        private val MEMORIES: List<Pair<MemoryModuleType<*>, MemoryStatus>> = listOf(
+            Pair.of(ModMemories.SUPPRESSING_THREAT.get(), MemoryStatus.REGISTERED),
+            Pair.of(ModMemories.ARMOUR_PIN.get(), MemoryStatus.REGISTERED),
+        )
     }
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = MEMORIES
 
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = entity.isSuppressed()
+    /** Suppressed, or pinned by armour he cannot hurt (#237): cover from either, the fire first. */
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = entity.isSuppressed() || entity.armourPin != null
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean {
         // Dug in and rested back up past the same threshold that let it dig in the first place —
@@ -189,7 +193,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             return true
         }
         if (phase == Phase.RETURNING_TO_COVER) return entity.tickCount < phaseUntilTick
-        return entity.isSuppressed() || (phase == Phase.PEEKING && entity.tickCount < phaseUntilTick) ||
+        return entity.isSuppressed() || entity.armourPin != null || (phase == Phase.PEEKING && entity.tickCount < phaseUntilTick) ||
             (entity.incomingFire.pending(entity.level().gameTime) && knownTarget(entity) == null)
     }
 
@@ -242,7 +246,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
             Phase.EXITING_HOLE -> return tickExitingHole(entity, level)
             else -> Unit
         }
-        val threat = entity.threatPos ?: entity.incomingFire.point(level.gameTime)
+        val threat = entity.threatPos ?: entity.incomingFire.point(level.gameTime) ?: entity.armourPin
         when (phase) {
             Phase.MOVING_TO_COVER -> threat?.let { tickMovingToCover(entity, level, it) }
             Phase.DIGGING_IN -> tickDiggingIn(entity, level)
@@ -266,7 +270,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
                 // only be reached with digsUsed == 0 (start() resets both together, and nothing else
                 // nulls coverTarget mid-episode), but that's an accident of today's control flow, not
                 // an explicit guarantee — keep both call sites of canDigIn consistent (PM review finding).
-                if (isFallbackRetreat && digsUsed < MAX_DIGS && canDigIn(entity, level, entity.blockPosition())) {
+                if (mayDigInAtFallback(entity, level)) {
                     startDigging(entity)
                 } else {
                     enterCover(entity, refreshSuppression = true)
@@ -307,11 +311,13 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         // possible, otherwise just hold this spot and keep firing (GunAttackBehaviour already finds
         // the best nearby partial cover to shoot from on its own). Only the "no target at all,
         // genuinely blind" case still falls back to fallbackAwayFrom below.
-        if (entity.target != null && (
-                !entity.incomingFire.pending(level.gameTime) ||
-                    com.sbwnpc.squad.combat.DetectionSightline.canSeeWithin(entity, entity.target!!, NpcEntity.DETECTION_RANGE)
-                )
-        ) {
+        // Not from armour (owner, 30.10): a hole or the open is still in its line of fire, so with
+        // no cover he gets out of it, by the fallback below, whatever he is fighting.
+        val engaged = entity.target != null && (
+            !entity.incomingFire.pending(level.gameTime) ||
+                com.sbwnpc.squad.combat.DetectionSightline.canSeeWithin(entity, entity.target!!, NpcEntity.DETECTION_RANGE)
+            )
+        if (engaged && !entity.pinnedByArmourOnly()) {
             pendingFallback = null
             if (digsUsed < MAX_DIGS && canDigIn(entity, level, entity.blockPosition())) {
                 startDigging(entity)
@@ -705,6 +711,15 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  "digging in" must NOT be). */
     private fun isFlatEnoughToDig(level: ServerLevel, pos: BlockPos): Boolean = DIG_NEIGHBOR_OFFSETS.all { (dx, dz) -> Terrain.groundAt(level, pos.offset(dx, 0, dz)).y >= pos.y }
 
+    /** At a fallback spot that is no real cover, he digs in where the ground allows; never against armour, whose guns a hole does not stop. */
+    private fun mayDigInAtFallback(entity: NpcEntity, level: ServerLevel): Boolean = isFallbackRetreat && digsUsed < MAX_DIGS && !entity.pinnedByArmourOnly() && canDigIn(entity, level, entity.blockPosition())
+
+    /** Whether the armour he is pinned by still has a line to his eye from its crewman's. */
+    private fun armourSees(entity: NpcEntity, level: ServerLevel): Boolean {
+        val pin = entity.armourPin ?: return false
+        return com.sbwnpc.squad.combat.DetectionSightline.visible(level, pin, entity.eyePosition, entity)
+    }
+
     private fun tickInCover(entity: NpcEntity, level: ServerLevel) {
         if (entity.tickCount < phaseUntilTick) return
         // Re-check dig-in eligibility periodically while sitting at a fallback (not-real-cover)
@@ -717,8 +732,14 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         // digsUsed < MAX_DIGS: without this cap, digging one hole and falling into it
         // (blockPosition() drops by one) re-passes every condition of canDigIn at the new, deeper
         // spot — see digsUsed's own doc comment for the endless-shaft bug this caused.
-        if (isFallbackRetreat && digsUsed < MAX_DIGS && canDigIn(entity, level, entity.blockPosition())) {
+        if (mayDigInAtFallback(entity, level)) {
             startDigging(entity)
+            return
+        }
+        // A fallback leg against armour ends where the vehicle may still see him: go on until it does not.
+        if (isFallbackRetreat && entity.pinnedByArmourOnly() && armourSees(entity, level)) {
+            phase = Phase.MOVING_TO_COVER
+            coverTarget = null
             return
         }
         val known = knownTarget(entity)

@@ -31,5 +31,10 @@ object ModMemories {
     val DRONE_HEARD: Supplier<MemoryModuleType<java.util.UUID>> =
         SBLConstants.SBL_LOADER.registerMemoryType("drone_heard")
 
+    /** TTL memory: an armoured vehicle this man cannot hurt has a line to him, at this position (#237).
+     *  Not suppression: nothing has fired, and every reader of suppression would take it for fire. */
+    val ARMOUR_PIN: Supplier<MemoryModuleType<Vec3>> =
+        SBLConstants.SBL_LOADER.registerMemoryType("armour_pin")
+
     fun init() {}
 }

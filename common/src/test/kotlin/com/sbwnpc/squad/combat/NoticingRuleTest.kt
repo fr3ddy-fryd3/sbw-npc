@@ -46,6 +46,7 @@ class NoticingRuleTest {
         val COUNTED = mapOf(
             "com/sbwnpc/squad/ai/integration/NativePositionAction.kt" to Counted(2, "line to a firing post"),
             "com/sbwnpc/squad/ai/integration/NativeTactics.kt" to Counted(5, "witnesses of an area and posts: who could have seen a point, not who noticed an enemy"),
+            "com/sbwnpc/squad/combat/ArmourCover.kt" to Counted(1, "line of fire from armour the squad has already noticed"),
             "com/sbwnpc/squad/combat/FiringOpportunity.kt" to Counted(1, "line of fire"),
             "com/sbwnpc/squad/combat/VehicleTargeting.kt" to Counted(3, "a gunner's or aircrew's own sight is instant by design, and weaponPermits is an aim line"),
             "com/sbwnpc/squad/combat/tactics/SquadTactics.kt" to Counted(1, "line to an enemy a squadmate already has"),
@@ -58,7 +59,7 @@ class NoticingRuleTest {
             "com/sbwnpc/squad/entity/ai/GunAttackBehaviour.kt" to Counted(1, "line of fire"),
             "com/sbwnpc/squad/entity/ai/HelicopterPilotBehaviour.kt" to Counted(2, "aircrew keep their sight"),
             "com/sbwnpc/squad/entity/ai/HelicopterRideBehaviour.kt" to Counted(1, "concealment of the chosen target: line of fire"),
-            "com/sbwnpc/squad/entity/ai/SeekCoverBehaviour.kt" to Counted(3, "cover points and exposure"),
+            "com/sbwnpc/squad/entity/ai/SeekCoverBehaviour.kt" to Counted(4, "cover points and exposure, and whether the armour it hides from still has a line to it"),
             "com/sbwnpc/squad/entity/ai/SquadTargetSensor.kt" to Counted(5, "inside the sensor: the sight half of the scan, the spotting time sits beside it; close threats and squadmates' targets"),
             "com/sbwnpc/squad/entity/ai/VehicleCombatSupportBehaviour.kt" to Counted(1, "line to an already chosen target"),
         )
