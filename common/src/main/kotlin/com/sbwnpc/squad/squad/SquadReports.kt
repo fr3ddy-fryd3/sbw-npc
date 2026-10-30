@@ -105,10 +105,17 @@ object SquadReports {
         send(server, squad, Kind.RESUPPLY, "${className(npc)} going to resupply")
     }
 
-    /** The attack has [able] of its [base] men left with something to fire, too few to go on. */
-    fun attackCalledOff(server: MinecraftServer, squad: Squad, able: Int, base: Int, toSupply: Boolean) {
-        val to = if (toSupply) "to the Supply" else "100 m"
-        send(server, squad, Kind.ATTACK_FAILED, "Attack called off: $able of $base still able to fight. Falling back $to")
+    /**
+     * The attack has [able] of its [base] men left with something to fire, too few to go on.
+     * [toSupply] is null when no fallback point could be picked, the squad's men not being loaded.
+     */
+    fun attackCalledOff(server: MinecraftServer, squad: Squad, able: Int, base: Int, toSupply: Boolean?) {
+        val to = when (toSupply) {
+            true -> ". Falling back to the Supply"
+            false -> ". Falling back 100 m"
+            null -> ""
+        }
+        send(server, squad, Kind.ATTACK_FAILED, "Attack called off: $able of $base still able to fight$to")
     }
 
     fun remnantAttacking(server: MinecraftServer, squad: Squad, living: Int, full: Int) {
@@ -119,8 +126,10 @@ object SquadReports {
         send(server, squad, Kind.ATTACK, "Attack delayed: $dry/$living out of primary ammunition. Resupplying first, then attacking")
     }
 
-    fun poorChances(server: MinecraftServer, squad: Squad, dry: Int, living: Int) {
-        send(server, squad, Kind.ATTACK, "Attacking with $dry/$living out of primary ammunition and no Supply to refill at: poor chances")
+    /** [refilledOnce] when the squad has already been to a Supply for this attack and does not go back. */
+    fun poorChances(server: MinecraftServer, squad: Squad, dry: Int, living: Int, refilledOnce: Boolean) {
+        val why = if (refilledOnce) "after one refill" else "and no Supply to refill at"
+        send(server, squad, Kind.ATTACK, "Attacking with $dry/$living out of primary ammunition $why: poor chances")
     }
 
     /** Back to the attack after a refill; not [refilled] when it stalled and was given up. */

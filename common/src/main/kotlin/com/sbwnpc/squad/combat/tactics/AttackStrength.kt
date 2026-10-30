@@ -5,6 +5,7 @@ import com.sbwnpc.squad.block.entity.SupplyPoints
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.SidearmKit
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
@@ -51,7 +52,7 @@ internal object AttackStrength {
         var able = 0
         for (id in squad.members) {
             val npc = level.getEntity(id) as? NpcEntity
-            if (npc != null && (!npc.isAlive || !infantry(npc.npcClass))) continue
+            if (npc != null && !fighter(npc)) continue
             living++
             if (npc == null || SidearmKit.hasPrimaryAmmo(npc) || npc.holds(NpcActivity.RESUPPLY)) able++
         }
@@ -59,6 +60,9 @@ internal object AttackStrength {
         val full = maxOf(squad.originalComposition.count(::infantry), living)
         return CombatStrength.Count(full, living, able)
     }
+
+    /** A living rifleman of the attack: infantry with a gun of his own, armed or dry. */
+    private fun fighter(npc: NpcEntity) = npc.isAlive && infantry(npc.npcClass) && Ports.guns.isGun(npc.primaryGun())
 
     private class Refill(var closest: Double, var able: Int, var lastProgress: Long)
 
@@ -73,6 +77,8 @@ internal object AttackStrength {
      */
     fun update(squad: Squad, level: ServerLevel, view: TacticalSnapshot): Boolean {
         if (squad.resupplyAttack != null) return resumeOnceRefilled(squad, level, view)
+        // A player's order ended the refill (SquadManager.issueOrder): its clock goes with it.
+        refills.remove(squad.id)
         if (squad.order != SquadOrder.ATTACK || squad.barracks != null || squad.attackBase != null) return false
         if (squad.members.any { level.getEntity(it) == null }) return false
         val count = count(squad, level)
@@ -104,7 +110,7 @@ internal object AttackStrength {
 
             CombatStrength.Start.ATTACK -> {
                 squad.attackBase = count.able
-                if (CombatStrength.poorChances(count)) SquadReports.poorChances(level.server, squad, count.dry, count.living)
+                if (CombatStrength.poorChances(count)) SquadReports.poorChances(level.server, squad, count.dry, count.living, squad.attackResupplied)
             }
         }
         manager.setDirty()

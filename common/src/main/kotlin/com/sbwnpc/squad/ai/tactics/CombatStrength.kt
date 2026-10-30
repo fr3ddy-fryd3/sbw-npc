@@ -14,8 +14,7 @@ enum class OperationStanding {
 /**
  * One measure of what an attack can still do (#238): a man counts while he is alive and has
  * something to fire, so a squad that has shot itself dry has lost as much as one that has lost its
- * men. It replaced two rules that did not know of each other, one counting the dead of an
- * operation and one aborting a squad with half its rifles empty.
+ * men, and one rule decides on both.
  *
  * An attack is measured once, when it starts. Its standing is then the share of that base it has
  * lost, so a squad sent in at half strength is judged by what it had, not by its full complement.

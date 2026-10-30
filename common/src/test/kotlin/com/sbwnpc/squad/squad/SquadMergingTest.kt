@@ -23,6 +23,31 @@ class SquadMergingTest {
         ).apply { recruitmentRoster = RecruitmentRoster.migrate(originalComposition, members.associateWith { role }) }
 
     @Test
+    fun `a measured attack merged into an unmeasured attacking squad counts each man once`() {
+        val from = group().apply {
+            order = SquadOrder.ATTACK
+            attackBase = 1
+        }
+        val into = group().apply { order = SquadOrder.ATTACK }
+        SquadMerging.transfer(from, into, 0)
+        assertEquals(2, into.attackBase)
+        assertFalse(into.attackRemnant)
+    }
+
+    @Test
+    fun `a squad merged into one that is not attacking keeps no base for its next attack`() {
+        val from = group().apply {
+            order = SquadOrder.ATTACK
+            attackBase = 1
+            attackRemnant = true
+        }
+        val into = group()
+        SquadMerging.transfer(from, into, 0)
+        assertNull(into.attackBase)
+        assertFalse(into.attackRemnant)
+    }
+
+    @Test
     fun `merge preserves receiver commands and only occupied places across save and selection`() {
         val from = group(NpcClass.SNIPER)
         val into = group(NpcClass.MEDIC)

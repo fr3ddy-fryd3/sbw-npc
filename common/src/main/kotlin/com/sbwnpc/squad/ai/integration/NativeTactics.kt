@@ -804,7 +804,7 @@ object NativeTactics {
             manager.withdraw(squad.id, "attack_strength")
             val retreat = if (view != null && reference != null) AttackStrength.fallBack(level, squad, reference, view) else null
             retreat?.let { manager.setObjective(level, squad.id, net.minecraft.core.BlockPos.containing(it.point)) }
-            SquadReports.attackCalledOff(level.server, squad, able, base, retreat?.toSupply == true)
+            SquadReports.attackCalledOff(level.server, squad, able, base, retreat?.toSupply)
         }
 
         /**
@@ -816,7 +816,6 @@ object NativeTactics {
          * they lose (#57). So are remnants, sent in to fight to the end, and squads not yet measured.
          * The attack goes on while any of those is still in it.
          */
-
         private fun standing(operation: UUID, now: Long): OperationStanding {
             val manager = SquadManager.get(level)
             val all = (operations.operation(operation)?.members?.keys ?: setOf(operation))
