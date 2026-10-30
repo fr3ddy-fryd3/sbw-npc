@@ -329,6 +329,11 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (pendingFallback == null) {
             pendingFallback = fallbackAwayFrom(entity, threat)
             fallbackThreat = threat
+            // Nowhere to fall back to from armour: hold and fight rather than search every tick in its line.
+            if (pendingFallback == null && entity.pinnedByArmourOnly()) {
+                enterHoldingOpen(entity)
+                return
+            }
         }
         pendingFallback?.let {
             if (!com.sbwnpc.squad.combat.tactics.TacticalBudget.path(entity)) return
@@ -711,7 +716,7 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
      *  "digging in" must NOT be). */
     private fun isFlatEnoughToDig(level: ServerLevel, pos: BlockPos): Boolean = DIG_NEIGHBOR_OFFSETS.all { (dx, dz) -> Terrain.groundAt(level, pos.offset(dx, 0, dz)).y >= pos.y }
 
-    /** At a fallback spot that is no real cover, he digs in where the ground allows; never against armour, whose guns a hole does not stop. */
+    /** At a fallback spot that is no real cover, he digs in where the ground allows; not from armour alone, whose guns a hole does not stop. */
     private fun mayDigInAtFallback(entity: NpcEntity, level: ServerLevel): Boolean = isFallbackRetreat && digsUsed < MAX_DIGS && !entity.pinnedByArmourOnly() && canDigIn(entity, level, entity.blockPosition())
 
     /** Whether the armour he is pinned by still has a line to his eye from its crewman's. */

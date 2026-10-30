@@ -75,7 +75,10 @@ object SquadTactics {
     fun targetDeath(entity: LivingEntity, cancelled: () -> Boolean) = com.sbwnpc.squad.ai.integration.NativeTactics.targetDeath(entity, cancelled)
 
     /** Drops every world's tactical state when the server stops. */
-    fun clearAll() = com.sbwnpc.squad.ai.integration.NativeTactics.clearAll()
+    fun clearAll() {
+        com.sbwnpc.squad.ai.integration.NativeTactics.clearAll()
+        ArmourCover.clearAll()
+    }
 
     fun preferredTarget(entity: NpcEntity, level: ServerLevel, probeCursor: Int = 0, reconsiderCurrent: Boolean = false): LivingEntity? {
         val task = task(entity)

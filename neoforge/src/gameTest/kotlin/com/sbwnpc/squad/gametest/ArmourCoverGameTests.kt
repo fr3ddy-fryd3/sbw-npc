@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.gametest
 
 import com.sbwnpc.squad.combat.AntiArmourKit
+import com.sbwnpc.squad.combat.ArmourCover
 import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcActivity
@@ -46,7 +47,10 @@ object ArmourCoverGameTests {
         val men = roles.mapIndexed { i, role -> scene.spawn(Vec3(20.5, 1.0, 56.5 + i * 3), role) }
         val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, men.map { it.uuid })
 
+        private val oldGroups = com.sbwnpc.squad.combat.DebugFlags.enabledGroups
+
         init {
+            com.sbwnpc.squad.combat.DebugFlags.enabledGroups = oldGroups + setOf(com.sbwnpc.squad.combat.LogGroup.DIG, com.sbwnpc.squad.combat.LogGroup.ORDER)
             helper.level.setDayTime(DAY_TIME)
             if (wall) for (z in 44..54) for (y in 1..2) helper.setBlock(BlockPos(24, y, z), Blocks.STONE)
             manager.setOrder(squad.id, SquadOrder.DEFEND)
@@ -56,6 +60,7 @@ object ArmourCoverGameTests {
                 crew.stopRiding()
                 lav.discard()
                 helper.level.setDayTime(oldTime)
+                com.sbwnpc.squad.combat.DebugFlags.enabledGroups = oldGroups
             }
         }
 
@@ -78,7 +83,7 @@ object ArmourCoverGameTests {
                 riflemen.forEach {
                     // A peek out of cover to fire at the infantry may cross the armour's line; standing in it may not.
                     val sanctioned = it.holdsAny(NpcActivity.COVER, NpcActivity.PEEK) || it.firedRecently(60)
-                    helper.assertTrue(sanctioned || !front.exposed(it), "A rifleman stood in the armour's line of fire at tick ${helper.tick}: ${NpcActivity.entries.filter(it::holds)}")
+                    helper.assertTrue(sanctioned || !front.exposed(it), "A rifleman stood in the armour's line of fire at tick ${helper.tick}: ${NpcActivity.entries.filter(it::holds)} pin=${it.armourPin} suppressed=${it.isSuppressed()}")
                 }
             }
             if (helper.tick % 100L == 0L) front.scene.result("RUNNING", "tick=${helper.tick} pinned=${riflemen.count { it.armourPin != null }} cover=${riflemen.count { it.holds(NpcActivity.COVER) }} exposed=${riflemen.count(front::exposed)}")
@@ -125,6 +130,32 @@ object ArmourCoverGameTests {
         helper.onEachTick {
             helper.assertTrue(gunner.armourPin == null, "A man with a loaded launcher was pinned by the armour")
             if (Ports.guns.roundsLeft(launcher()) < rockets) {
+                front.scene.result("PASS", "tick=${helper.tick}")
+                helper.succeed()
+            }
+        }
+    }
+
+    /**
+     * A pin does not outlast the line for long: walled in where the armour cannot see him while his
+     * medic still does, a rifleman is let go [ArmourCover.HOLD_TICKS] plus [ArmourCover.PIN_TICKS] after.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 900, batch = "armour-cover-release")
+    fun pinLapsesOnceTheArmourHasLostHim(helper: GameTestHelper) {
+        val front = Front(helper, "armour-cover-release", wall = false, roles = listOf(NpcClass.RIFLEMAN, NpcClass.MEDIC), infantry = false)
+        val rifleman = front.men.first()
+        var walledAt: Long? = null
+        helper.onEachTick {
+            if (walledAt == null && rifleman.armourPin != null) {
+                walledAt = helper.tick
+                val at = BlockPos.containing(helper.relativeVec(rifleman.position()))
+                for (dx in -1..1) for (dz in -1..1) for (y in 0..2) if (dx != 0 || dz != 0) helper.setBlock(at.offset(dx, y, dz), Blocks.STONE)
+                helper.setBlock(at.offset(0, 2, 0), Blocks.STONE)
+            }
+            val since = walledAt?.let { helper.tick - it } ?: return@onEachTick
+            if (since >= ArmourCover.HOLD_TICKS + ArmourCover.PIN_TICKS + 40) {
+                helper.assertTrue(rifleman.armourPin == null, "A rifleman the armour cannot see stayed pinned $since ticks")
                 front.scene.result("PASS", "tick=${helper.tick}")
                 helper.succeed()
             }

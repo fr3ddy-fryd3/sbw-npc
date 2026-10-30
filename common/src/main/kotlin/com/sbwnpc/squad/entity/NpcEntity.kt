@@ -838,7 +838,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     private var lodRecheckTick = 0
     private var brainTickInterval = 1
 
-    private fun inCombatState(): Boolean = target != null || isSuppressed() || isAlert() || holdsAny(NpcActivity.DRONE, NpcActivity.ANTI_DRONE)
+    private fun inCombatState(): Boolean = target != null || isSuppressed() || armourPin != null || isAlert() || holdsAny(NpcActivity.DRONE, NpcActivity.ANTI_DRONE)
 
     private fun refreshAiLod() {
         brainTickInterval = when {
