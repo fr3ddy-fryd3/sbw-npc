@@ -59,7 +59,7 @@ class NoticingRuleTest {
             "com/sbwnpc/squad/entity/ai/HelicopterPilotBehaviour.kt" to Counted(2, "aircrew keep their sight"),
             "com/sbwnpc/squad/entity/ai/HelicopterRideBehaviour.kt" to Counted(1, "concealment of the chosen target: line of fire"),
             "com/sbwnpc/squad/entity/ai/SeekCoverBehaviour.kt" to Counted(3, "cover points and exposure"),
-            "com/sbwnpc/squad/entity/ai/SquadTargetSensor.kt" to Counted(5, "inside the sensor: the sight half of the scan, the spotting time sits beside it; close threats and squadmates' targets"),
+            "com/sbwnpc/squad/entity/ai/SquadTargetSensor.kt" to Counted(4, "inside the sensor: the sight half of the scan, the spotting time sits beside it; close threats and squadmates' targets"),
             "com/sbwnpc/squad/entity/ai/VehicleCombatSupportBehaviour.kt" to Counted(1, "line to an already chosen target"),
         )
     }
