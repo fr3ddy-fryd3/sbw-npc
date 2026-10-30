@@ -18,8 +18,19 @@ object DefensivePostSpacingGameTests {
     /** Four riflemen standing on one spot spread to posts at least [SPACING] apart once they hold. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 600, batch = "defend-post-spacing")
-    fun defendersOnOneSpotSpreadToPostsOfTheirOwn(helper: GameTestHelper) {
-        val scene = CombatIdleGameTests.Scene(helper, "defend-post-spacing")
+    fun defendersOnOneSpotSpreadToPostsOfTheirOwn(helper: GameTestHelper) = spread(helper, "defend-post-spacing", wall = false)
+
+    /**
+     * The same behind a knee-high wall: the spot they share already has cover and a shot over it,
+     * the case where a man keeps the post he stands on.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 600, batch = "defend-post-spacing-wall")
+    fun defendersOnOneCoveredSpotSpreadToPostsOfTheirOwn(helper: GameTestHelper) = spread(helper, "defend-post-spacing-wall", wall = true)
+
+    private fun spread(helper: GameTestHelper, name: String, wall: Boolean) {
+        val scene = CombatIdleGameTests.Scene(helper, name)
+        if (wall) for (z in 50..70) helper.setBlock(net.minecraft.core.BlockPos(32, 1, z), net.minecraft.world.level.block.Blocks.STONE)
         val manager = SquadManager.get(helper.level)
         val men = (0 until 4).map { scene.spawn(Vec3(30.5, 1.0, 60.5)) }
         scene.enemy(Vec3(110.5, 1.0, 60.5))
