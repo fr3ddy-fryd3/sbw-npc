@@ -16,6 +16,36 @@ It is a hobby project built entirely through AI-assisted development. Human play
 including multiplayer, catches what actually breaks in-game. "It compiles" and "it is tested" are
 two different claims.
 
+## How the AI decides (read before changing any AI)
+
+The AI is built on agreed patterns, described in
+[docs/AI-ARCHITECTURE-DESIGN.md](docs/AI-ARCHITECTURE-DESIGN.md). Read that document before any
+change to how NPCs, squads or operations behave. A change that does not fit these layers is a
+design change: agree it with the owner before writing code.
+
+- **Order, situation, strategy, plan and execution are separate types** (`IssuedCommand`,
+  `FactSnapshot`, `SquadStrategy`, the HTN plan, `PlanRuntime`). The situation is a set of facts
+  that hold at once, not a table of mutually exclusive states. A strategy reads the snapshot and
+  proposes; it never calls navigation or changes another level's tasks.
+- **Utility** compares the allowed options (the squad strategy today, the operation by design).
+  Options that are unreachable or forbidden are excluded before scoring.
+- **HTN** decides how a goal is carried out, at each of the five levels in its own domain
+  (`TacticalDomain` and its siblings): the operation, the squad, the team, and the NPC choosing his
+  position, cover, path and target. A new manoeuvre is new tasks, methods and conditions, not a new
+  mechanism beside the planner. Every compound task keeps a last-resort method (`hold_as_ordered`,
+  #172), so no man is left without a plan.
+- **SmartBrainLib behaviours are execution adapters**: they walk, aim, fire, heal and board as the
+  planner chose. Outside the planner only the design's explicit mandatory rules decide: authority,
+  safety, immediate reactions to danger (a live grenade, a drone closing in), and completion and
+  refusal criteria. The existing ammunition rules, the repeat of an ATTACK after a refusal and the
+  priority of medical help stay as they are until a change is agreed separately.
+- **Suspending the planner is an exception.** A behaviour or `NpcActivity` that takes a man's feet
+  from the plan (`SUSPENDED(higher_priority_action)` in the decision trace) for a new reason, or a
+  new memory type that starts one, needs the owner's approval. `DecisionLayerRuleTest` lists every
+  behaviour and sensor, every such activity and every memory type the mod registers, so a new one
+  fails the build until it is added there with the reason and the decision behind it.
+- When in doubt whether something is a decision or an execution, treat it as a decision and ask.
+
 ## Where the work lives
 
 - **Every piece of work is an issue on the GitHub Project board
@@ -80,6 +110,12 @@ two different claims.
 
 ## Changes, verification and publishing
 
+- **Workflow (owner's rule) for every change to how NPCs, squads or operations act:** a written
+  plan, an independent review of the plan by a separate agent, implementation, tests, and an
+  independent review of the test results and the diff. Say in the PR what each review found. The plan names the layer each decision lives in (the HTN task or method, the utility
+  option, the state, the strategy) or the explicit safety rule that justifies doing it elsewhere,
+  and both reviews check that against `docs/AI-ARCHITECTURE-DESIGN.md`. A plan that cannot name
+  its layer goes to the owner first.
 - Before implementing a feature, trace its callers and the state it shares with neighbouring
   behaviours: navigation, targeting, cover, weapon ownership, supply and role locks. Keep existing
   contracts, or change one on purpose and test the changed contract.
