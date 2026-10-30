@@ -373,7 +373,7 @@ object NativeTactics {
                     },
                     events = { if (DecisionTrace.on) tracePlanning(id, it) },
                 ) { feedback ->
-                    if (DecisionTrace.on) flushPlanning(id)
+                    if (DecisionTrace.on) flushPlanning(id, feedback.result)
                     planResultObserver?.invoke(id.level)
                     if (id.level == AgentLevel.SQUAD) (feedback.result as? PlanningResult.Ready)?.let { recordManner(id.id, it.plan, level.gameTime) }
                     DebugFlags.log(LogGroup.ORDER, "[htn] level={} actor={} event=plan_result result={}", id.level, id.id, feedback.result.javaClass.simpleName)
@@ -1348,19 +1348,32 @@ object NativeTactics {
             if (option !in options) options += option
         }
 
-        /** Records each task the search had a real choice at: more than one option, or a rejection. */
-        private fun flushPlanning(id: AgentId) {
+        /**
+         * Records each task the search had a real choice at (more than one option, or a rejection),
+         * the option the plan took marked `*`, and how the search ended.
+         */
+        private fun flushPlanning(id: AgentId, result: PlanningResult) {
             val weighed = weighing.remove(id) ?: return
-            val now = level.gameTime
-            val actor = "${id.level} ${DecisionTrace.short(id.id)}"
-            weighed.filterValues { options -> options.size > 1 || options.any { "rejected" in it } }.forEach { (node, options) ->
-                val detail = "$node: ${options.joinToString("; ")}"
+            val taken = (result as? PlanningResult.Ready)?.plan?.tasks?.map { it.node }.orEmpty()
+            val record = { event: String, detail: String ->
                 val group = traceGroup(id)
                 if (group != null) {
-                    DecisionTrace.group(group, now, actor, "plan", detail)
+                    DecisionTrace.group(group, level.gameTime, "${id.level} ${DecisionTrace.short(id.id)}", event, detail)
                 } else if (id.level == AgentLevel.NPC) {
-                    DecisionTrace.man(id.id, now, "plan", detail)
+                    DecisionTrace.man(id.id, level.gameTime, event, detail)
                 }
+            }
+            weighed.filterValues { options -> options.size > 1 || options.any { "rejected" in it } }.forEach { (node, options) ->
+                val marked = options.map { option ->
+                    val method = option.substringBefore(' ')
+                    if (taken.any { it == "$node/$method" || it.startsWith("$node/$method/") }) "*$option" else option
+                }
+                record("plan", "$node: ${marked.joinToString("; ")}")
+            }
+            when (result) {
+                is PlanningResult.Failed -> record("plan_failed", result.reasons.distinct().joinToString("; ") + if (result.limitReached) " (search limit)" else "")
+                is PlanningResult.WaitingForFacts -> record("plan_waiting", result.facts.joinToString(", "))
+                else -> Unit
             }
         }
 
@@ -1372,6 +1385,7 @@ object NativeTactics {
 
         /** The ids whose trace records are still wanted: squads, their operations and men in this level. */
         fun traceIds(): Set<UUID> {
+            weighing.keys.retainAll(agents.keys)
             val manager = SquadManager.get(level)
             return manager.all().flatMapTo(HashSet()) { squad -> squad.members + squad.id + listOfNotNull(operations.operationOf(squad.id)?.id) }
         }
