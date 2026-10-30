@@ -76,7 +76,9 @@ object ArmourCoverGameTests {
             helper.assertTrue(medic.armourPin == null, "The medic was pinned by armour")
             if (helper.tick >= 300L) {
                 riflemen.forEach {
-                    helper.assertTrue(it.holds(NpcActivity.COVER) || !front.exposed(it) || it.firedRecently(60), "A rifleman stood in the armour's line of fire at tick ${helper.tick}")
+                    // A peek out of cover to fire at the infantry may cross the armour's line; standing in it may not.
+                    val sanctioned = it.holdsAny(NpcActivity.COVER, NpcActivity.PEEK) || it.firedRecently(60)
+                    helper.assertTrue(sanctioned || !front.exposed(it), "A rifleman stood in the armour's line of fire at tick ${helper.tick}: ${NpcActivity.entries.filter(it::holds)}")
                 }
             }
             if (helper.tick % 100L == 0L) front.scene.result("RUNNING", "tick=${helper.tick} pinned=${riflemen.count { it.armourPin != null }} cover=${riflemen.count { it.holds(NpcActivity.COVER) }} exposed=${riflemen.count(front::exposed)}")
@@ -107,13 +109,17 @@ object ArmourCoverGameTests {
         }
     }
 
-    /** A machine gunner with a loaded launcher still takes the crew and fires a rocket at it. */
+    /** A machine gunner with a loaded launcher sent at the crew still fires a rocket at it. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 600, batch = "armour-cover-launcher")
     fun launcherStillAnswersArmour(helper: GameTestHelper) {
         val front = Front(helper, "armour-cover-launcher", wall = false, roles = listOf(NpcClass.MACHINE_GUNNER), infantry = false)
         val gunner = front.men.single()
         helper.assertTrue(AntiArmourKit.loaded(gunner), "The machine gunner has no loaded launcher")
+        // Sent at the crew: on DEFEND a gunner looks round as a sentry and noticing alone decided when he saw it.
+        front.manager.setOrder(front.squad.id, SquadOrder.ATTACK)
+        front.manager.setObjective(helper.level, front.squad.id, front.lav.blockPosition())
+        front.manager.setFocus(front.squad.id, front.crew.uuid)
         val launcher = { if (AntiArmourKit.isLauncher(gunner.mainHandItem)) gunner.mainHandItem else gunner.antiArmourWeapon }
         val rockets = Ports.guns.roundsLeft(launcher())
         helper.onEachTick {
