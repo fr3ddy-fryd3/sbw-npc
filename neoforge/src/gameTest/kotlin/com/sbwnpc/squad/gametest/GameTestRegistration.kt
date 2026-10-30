@@ -56,6 +56,7 @@ object GameTestRegistration {
             FollowOrderGameTests::class.java,
             WithdrawalGameTests::class.java,
             FiringLineGameTests::class.java,
+            DefensivePostSpacingGameTests::class.java,
             FireSupportGameTests::class.java,
             TargetMemoryGameTests::class.java,
             SquadAreaGameTests::class.java,
