@@ -1,10 +1,12 @@
 package com.sbwnpc.squad.ai.integration
 
 import com.sbwnpc.squad.ai.coordination.*
+import com.sbwnpc.squad.ai.diagnostics.DecisionTrace
 import com.sbwnpc.squad.ai.planning.*
 import com.sbwnpc.squad.ai.tactics.*
 import com.sbwnpc.squad.combat.*
 import com.sbwnpc.squad.combat.tactics.*
+import com.sbwnpc.squad.compat.VersionCompat
 import com.sbwnpc.squad.entity.Cap
 import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
@@ -152,6 +154,14 @@ object NativeTactics {
     fun clearAll() {
         worlds.values.forEach { it.clear() }
         worlds.clear()
+        DecisionTrace.clearAll()
+    }
+
+    /** Every squad of every level as the decision trace shows it; records of what is gone are dropped. */
+    fun traceSections(): List<DecisionTrace.Section> {
+        val sections = worlds.values.flatMap { it.traceSections() }
+        DecisionTrace.retain(worlds.values.flatMapTo(HashSet()) { it.traceIds() })
+        return sections
     }
     fun snapshot(npc: NpcEntity): TacticalSnapshot? = npc.squadId?.let { world(npc).combatView(it) }
     fun reports(npc: NpcEntity) = world(npc).agents[AgentId(AgentLevel.NPC, npc.uuid)]?.runtime?.reports.orEmpty()
@@ -343,6 +353,7 @@ object NativeTactics {
                                 // Heights tell a front anchor off the ground (a slope, a ridge) from a crowded area (#55).
                                 // The planned anchor is put on the ground before the search; searched is where it looked.
                                 val ground = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, net.minecraft.util.Mth.floor(searched.x), net.minecraft.util.Mth.floor(searched.z))
+                                DecisionTrace.man(failed.actor.id, level.gameTime, "post_failed", "${failed.duty} rejected=$rejections")
                                 DebugFlags.log(
                                     LogGroup.ORDER, "[htn] actor={} event=local_failure duty={} rejected={} anchorY={} searchedY={} groundY={} actorY={} distance={}",
                                     failed.actor.id, failed.duty, rejections, "%.0f".format(failed.anchor.y), "%.0f".format(searched.y), ground, "%.0f".format(npc.y), "%.0f".format(npc.position().distanceTo(searched)),
@@ -355,9 +366,14 @@ object NativeTactics {
                     id,
                     TacticalDomain.at(id.level),
                     PlanRuntime(factory, leases) { event ->
-                        if (event.report.status == ExecutionStatus.FAILED) DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=action_failed reason={}", id.id, event.report.reason)
+                        if (event.report.status == ExecutionStatus.FAILED) {
+                            DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=action_failed reason={}", id.id, event.report.reason)
+                            if (DecisionTrace.on) traceAction(id, event.report.reason)
+                        }
                     },
+                    events = { if (DecisionTrace.on) tracePlanning(id, it) },
                 ) { feedback ->
+                    if (DecisionTrace.on) flushPlanning(id)
                     planResultObserver?.invoke(id.level)
                     if (id.level == AgentLevel.SQUAD) (feedback.result as? PlanningResult.Ready)?.let { recordManner(id.id, it.plan, level.gameTime) }
                     DebugFlags.log(LogGroup.ORDER, "[htn] level={} actor={} event=plan_result result={}", id.level, id.id, feedback.result.javaClass.simpleName)
@@ -420,6 +436,7 @@ object NativeTactics {
             strategies[squad] = strategy to now
             val scores = situations[squad]?.let { situation -> CombatStrategy.entries.filter { it.rules.allowed(situation) }.associate { it.name to "%.2f".format(it.rules.score(situation)) } }
             DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=strategy from={} to={} scores={} situation={}", squad, old, strategy, scores, situations[squad])
+            DecisionTrace.group(squad, now, "squad", "strategy", "$old -> $strategy, allowed and scored: $scores")
         }
         private fun facts(id: AgentId, now: Long): FactSnapshot {
             val empty = FactSnapshot(id, now)
@@ -774,7 +791,10 @@ object NativeTactics {
                 threatsNearby = threats.size,
                 sectorsHeld = sectorsHeld[operation] != false,
             )
-            if (progress.phase != before) DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=attack_phase from={} to={} inputs={}", operation, before, progress.phase, inputs)
+            if (progress.phase != before) {
+                DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=attack_phase from={} to={} inputs={}", operation, before, progress.phase, inputs)
+                DecisionTrace.group(operation, level.gameTime, "operation", "attack_phase", "$before -> ${progress.phase}, $inputs")
+            }
             val occupying = progress.occupying
             val bounders = squads.singleOrNull()
                 ?.takeIf { !holding && strategies[it.id]?.first in setOf(CombatStrategy.ADVANCE, CombatStrategy.GAIN_HEIGHT, CombatStrategy.BOUND_OVERWATCH) }
@@ -1115,6 +1135,7 @@ object NativeTactics {
                     )
                     if (dutyRules.put(member.id, ruled.rule) != ruled.rule) {
                         DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=duty_rule rule={} duty={}", member.id, ruled.rule, ruled.choice.duty)
+                        DecisionTrace.man(member.id, now, "duty", "${ruled.choice.duty} <- ${ruled.rule}")
                     }
                     val choice = ruled.choice
                     val duty = choice.duty
@@ -1289,6 +1310,9 @@ object NativeTactics {
                     }
                 }
                 finishAreas()
+                if (DecisionTrace.on) {
+                    DecisionTrace.tick(level.server.tickCount.toLong(), VersionCompat.serverDirectory(level.server).resolve("logs").resolve(DecisionTrace.FILE)) { NativeTactics.traceSections() }
+                }
             }
             val id = AgentId(AgentLevel.NPC, npc.uuid)
             val agent = agents[id] ?: return
@@ -1300,6 +1324,97 @@ object NativeTactics {
             actions[npc.uuid]?.maintainLook()
             report(agent, now)
         }
+
+        /** The options each agent's current plan search weighed per task, until its result comes in. */
+        private val weighing = HashMap<AgentId, LinkedHashMap<String, MutableList<String>>>()
+
+        /** The squad or operation an agent's decisions are filed under; a man's own go to him. */
+        private fun traceGroup(id: AgentId): UUID? =
+            when (id.level) {
+                AgentLevel.OPERATION, AgentLevel.SQUAD -> id.id
+                AgentLevel.TEAM -> missions.entries.firstOrNull { (_, mission) -> mission.teams.any { it.agent == id } }?.key
+                AgentLevel.NPC -> null
+            }
+
+        /** Gathers what the planner weighed; the decision is recorded once its result is in ([flushPlanning]). */
+        private fun tracePlanning(id: AgentId, event: PlanningEvent) {
+            val method = event.method ?: return
+            val option = when (val verdict = event.verdict) {
+                Verdict.Allowed -> "$method ${event.score?.value?.let { "%.2f".format(it) } ?: "-"}"
+                is Verdict.Rejected -> "$method rejected: ${verdict.reason}"
+                is Verdict.Unknown -> "$method unknown: ${verdict.facts}"
+            }
+            val options = weighing.getOrPut(id, ::LinkedHashMap).getOrPut(event.node, ::ArrayList)
+            if (option !in options) options += option
+        }
+
+        /** Records each task the search had a real choice at: more than one option, or a rejection. */
+        private fun flushPlanning(id: AgentId) {
+            val weighed = weighing.remove(id) ?: return
+            val now = level.gameTime
+            val actor = "${id.level} ${DecisionTrace.short(id.id)}"
+            weighed.filterValues { options -> options.size > 1 || options.any { "rejected" in it } }.forEach { (node, options) ->
+                val detail = "$node: ${options.joinToString("; ")}"
+                val group = traceGroup(id)
+                if (group != null) {
+                    DecisionTrace.group(group, now, actor, "plan", detail)
+                } else if (id.level == AgentLevel.NPC) {
+                    DecisionTrace.man(id.id, now, "plan", detail)
+                }
+            }
+        }
+
+        private fun traceAction(id: AgentId, reason: String?) {
+            val now = level.gameTime
+            val group = traceGroup(id)
+            if (group != null) DecisionTrace.group(group, now, "${id.level} ${DecisionTrace.short(id.id)}", "action_failed", reason.orEmpty()) else DecisionTrace.man(id.id, now, "action_failed", reason.orEmpty())
+        }
+
+        /** The ids whose trace records are still wanted: squads, their operations and men in this level. */
+        fun traceIds(): Set<UUID> {
+            val manager = SquadManager.get(level)
+            return manager.all().flatMapTo(HashSet()) { squad -> squad.members + squad.id + listOfNotNull(operations.operationOf(squad.id)?.id) }
+        }
+
+        /** Each squad with men in this level, its chain per man and its last decisions, for [DecisionTrace]. */
+        fun traceSections(): List<DecisionTrace.Section> {
+            val manager = SquadManager.get(level)
+            return manager.all().mapNotNull { squad ->
+                val men = squad.members.mapNotNull { level.getEntity(it) as? NpcEntity }
+                if (men.isEmpty()) return@mapNotNull null
+                val operation = operations.operationOf(squad.id)
+                val command = squad.command
+                val header = listOf(
+                    "order=${squad.order} command=${command?.order}/${command?.id?.let(DecisionTrace::short)} goal=${command?.goal} outcome=${squad.commandOutcome}${squad.commandReason?.let { " reason=$it" }.orEmpty()} objective=${squad.objective?.toShortString()}",
+                    "operation=${operation?.id?.let(DecisionTrace::short)} squads=${operation?.members?.size ?: 1} phase=${operation?.let { attackPhase(it.id) }} standing=${operation?.let { standings[it.id] }}",
+                    "strategy=${strategyOf(squad.id)} approach=${approachOf(squad.id)}",
+                )
+                val teams = missions[squad.id]?.teams.orEmpty()
+                val chains = men.map { npc -> chainOf(npc, teams) }
+                val decisions = (
+                    DecisionTrace.decisionsOf(squad.id) + operation?.let { DecisionTrace.decisionsOf(it.id) }.orEmpty() +
+                        men.flatMap { DecisionTrace.decisionsOf(it.uuid) }
+                    ).sortedBy { it.tick }.takeLast(DecisionTrace.LAST_DECISIONS)
+                DecisionTrace.Section("${squad.name} ${squad.id}", header, chains, decisions)
+            }
+        }
+
+        /** One man's line: his duty and the rule that set it, his post, his action or why he waits, and what else holds him. */
+        private fun chainOf(npc: NpcEntity, teams: List<TeamMission>): String {
+            val action = actions[npc.uuid]
+            val intent = action?.intent
+            val team = teams.firstOrNull { team -> team.members.any { it.actor.id == npc.uuid } }?.agent?.id?.let(DecisionTrace::short)
+            val reports = agents[AgentId(AgentLevel.NPC, npc.uuid)]?.runtime?.reports.orEmpty()
+                .entries.joinToString(",") { (task, report) -> "$task:${report.status}${report.reason?.let { "($it)" }.orEmpty()}" }
+            val failure = failures[npc.uuid]?.takeIf { level.gameTime < it.failedAt + FAILURE_MEMORY_TICKS }
+            val target = npc.target?.let { "${DecisionTrace.short(it.uuid)}@${npc.distanceTo(it).toInt()}" }
+            val flags = listOfNotNull("suppressed".takeIf { npc.isSuppressed() }, "alert".takeIf { npc.isAlert() }, "in_vehicle".takeIf { npc.vehicle != null })
+            return "${DecisionTrace.short(npc.uuid)} ${npc.npcClass} team=$team duty=${intent?.duty} <- ${dutyRules[npc.uuid]} anchor=${intent?.anchor?.let { "%.0f,%.0f,%.0f".format(it.x, it.y, it.z) }}" +
+                " post=${action?.assignment?.position?.let { "%.0f,%.0f,%.0f".format(it.x, it.y, it.z) }} reached=${action?.reached()} action=[$reports]" +
+                (failure?.let { " failed=${it.attempts}x ${it.rejections}" }.orEmpty()) +
+                " target=$target holds=${npc.activitiesHeld()} $flags"
+        }
+
         private val areaTasks = HashMap<UUID, AreaControlTask>()
         fun holdsArea(squad: UUID) = areaTasks.values.any { squad in it.commands.keys }
         fun strategyOf(squad: UUID) = strategies[squad]?.first
