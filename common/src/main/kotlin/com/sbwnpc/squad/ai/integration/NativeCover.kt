@@ -46,6 +46,9 @@ internal class CoverState : PlanExecutor {
     var cycles = 0
     var failure: CoverFailure? = null
     var hole: BlockPos? = null
+
+    /** The feet level he dug down from: he is out of the hole once his feet are back on it. */
+    var surface = 0
     var digs = 0
     var healthAtDig = 0f
     private var fireFrom: Vec3? = null
@@ -466,6 +469,7 @@ internal class NativeDig(private val dig: DigIn, npc: NpcEntity, private val sta
         level.destroyBlockProgress(npc.id, pos, -1)
         level.destroyBlock(pos, false, npc, DESTROY_UPDATE_LIMIT)
         state.hole = at
+        if (dig.number == 0) state.surface = at.y
         state.digs = dig.number + 1
         state.healthAtDig = npc.health
         CoverMechanics.maybeThrowGrenadeOnceDugIn(npc, level)
@@ -534,7 +538,9 @@ internal class NativeLeaveHole(private val npc: NpcEntity, private val state: Co
     override fun tick(now: Long): ActionUpdate {
         finish.ready()?.let { return it }
         val hole = state.hole
-        if (hole == null || npc.blockPosition().y > hole.y) {
+        // The cover behaviour's test, feet above the hole's own level, never passes after a single
+        // dig: the hole is the cell he stood in, so walking out puts his feet back on that level.
+        if (hole == null || npc.blockPosition().y >= state.surface) {
             state.leftHole()
             return finish.now("out_of_hole", now)
         }
