@@ -1,7 +1,13 @@
 package com.sbwnpc.squad.gametest
 
+import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.LogGroup
+import com.sbwnpc.squad.combat.SpottingTime
+import com.sbwnpc.squad.combat.Vision
 import com.sbwnpc.squad.domain.port.Ports
+import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.ai.SquadTargetSensor
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.TransportVehicle
@@ -129,7 +135,7 @@ object NoticingGameTests {
         val manager = SquadManager.get(helper.level)
         val oldTime = helper.level.dayTime
         helper.level.setDayTime(NIGHT_TIME)
-        com.sbwnpc.squad.combat.DebugFlags.enabledGroups += setOf(LogGroup.SPOTTING, LogGroup.VEHICLE)
+        DebugFlags.enabledGroups += setOf(LogGroup.SPOTTING, LogGroup.VEHICLE)
         val lav = requireNotNull(Ports.vehicles.create(helper.level, TransportVehicle.LAV_150)).also {
             val point = helper.absoluteVec(Vec3(20.5, 1.0, 60.5))
             it.moveTo(point.x, point.y, point.z, -90f, 0f)
@@ -147,7 +153,7 @@ object NoticingGameTests {
         // for the fight before the test could watch him; and a squadmate's contact would be noticed
         // at once (SquadKnowledge).
         listOf(gunner, passenger).forEach { it.isNoAi = true }
-        val sensor = com.sbwnpc.squad.entity.ai.SquadTargetSensor()
+        val sensor = SquadTargetSensor()
         listOf(gunner, passenger).forEach { it.npcRank = NpcRank.REGULAR }
         val enemy = scene.enemy(Vec3(20.5 + enemyDistance, 1.0, 60.5))
         val squad = manager.create(helper.level, UUID(90, if (gun) 33L else 32L), requireNotNull(crewman.spawnFaction), listOf(crewman.uuid, other.uuid))
@@ -182,11 +188,11 @@ object NoticingGameTests {
     }
 
     /** Not passing for the wrong reason: the enemy is in view, and in the dark band the scene is about. */
-    private fun assertInView(helper: GameTestHelper, crewman: com.sbwnpc.squad.entity.NpcEntity, enemy: com.sbwnpc.squad.entity.NpcEntity, gun: Boolean) {
-        helper.assertTrue(gun || com.sbwnpc.squad.combat.Vision.inCone(crewman.position(), crewman.yHeadRot, enemy.position()), "The enemy is outside the passenger's cone")
-        helper.assertTrue(com.sbwnpc.squad.combat.DetectionSightline.canSee(crewman, enemy), "The crewman has no line to the enemy")
+    private fun assertInView(helper: GameTestHelper, crewman: NpcEntity, enemy: NpcEntity, gun: Boolean) {
+        helper.assertTrue(gun || Vision.inCone(crewman.position(), crewman.yHeadRot, enemy.position()), "The enemy is outside the passenger's cone")
+        helper.assertTrue(DetectionSightline.canSee(crewman, enemy), "The crewman has no line to the enemy")
         // The sky darkens a tick after the clock is set.
         val light = helper.level.getMaxLocalRawBrightness(enemy.blockPosition())
-        helper.assertTrue(helper.tick < 2 || com.sbwnpc.squad.combat.SpottingTime.Light.of(light) == com.sbwnpc.squad.combat.SpottingTime.Light.DARK, "The scene is not in the DARK band: light $light")
+        helper.assertTrue(helper.tick < 2 || SpottingTime.Light.of(light) == SpottingTime.Light.DARK, "The scene is not in the DARK band: light $light")
     }
 }
