@@ -34,12 +34,12 @@ class SupplyPoints : VersionedSavedData() {
         setDirty()
     }
 
-    /** The nearest Supply within [range] of [from] that serves [faction], or null. */
-    fun nearestServing(from: Vec3, faction: SquadFaction?, range: Double): BlockPos? {
+    /** The nearest Supply within [range] of [from] that serves [faction] and that [accept] takes, or null. */
+    fun nearestServing(from: Vec3, faction: SquadFaction?, range: Double, accept: (BlockPos) -> Boolean = { true }): BlockPos? {
         var best: BlockPos? = null
         var bestD2 = range * range
         for ((pos, own) in points) {
-            if (!serves(own, faction)) continue
+            if (!serves(own, faction) || !accept(pos)) continue
             val d2 = pos.center.distanceToSqr(from)
             if (d2 <= bestD2) {
                 best = pos
@@ -50,9 +50,9 @@ class SupplyPoints : VersionedSavedData() {
     }
 
     /** Check the chosen destination when its chunk is already loaded, without waking distant land. */
-    fun nearestServing(level: ServerLevel, from: Vec3, faction: SquadFaction?, range: Double): BlockPos? {
+    fun nearestServing(level: ServerLevel, from: Vec3, faction: SquadFaction?, range: Double, accept: (BlockPos) -> Boolean = { true }): BlockPos? {
         while (true) {
-            val pos = nearestServing(from, faction, range) ?: return null
+            val pos = nearestServing(from, faction, range, accept) ?: return null
             val chunk = level.chunkSource.getChunkNow(pos.x shr 4, pos.z shr 4) ?: return pos
             val be = chunk.getBlockEntity(pos) as? SupplyBlockEntity
             if (be == null || be.isRemoved) {

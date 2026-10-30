@@ -230,22 +230,8 @@ class SquadManager : VersionedSavedData() {
         squad.commandOutcome = com.sbwnpc.squad.ai.tactics.CommandOutcome.ACTIVE
         squad.commandReason = null
         squad.pendingCommandStamp = squad.orderStamp
-        if (squad.order == SquadOrder.ATTACK && squad.attackAmmoPolicy == AttackAmmoPolicy.RETRY_AVAILABLE) {
-            squad.attackAmmoPolicy = AttackAmmoPolicy.PRESS_ON
-            setDirty()
-            com.sbwnpc.squad.combat.DebugFlags.log(
-                com.sbwnpc.squad.combat.LogGroup.ORDER,
-                "[tactics] {} squad={} event=attack_retry source=player ammo_policy=PRESS_ON",
-                squad.name,
-                squad.id,
-            )
-        }
-    }
-
-    /** The ammunition failure, unlike a manual retreat, arms the next explicit attack retry. */
-    fun withdrawForAmmo(id: UUID) {
-        squads[id]?.attackAmmoPolicy = AttackAmmoPolicy.RETRY_AVAILABLE
-        withdraw(id, "primary_ammo_exhausted")
+        // The player's word calls a resupply detour off, whatever the new order is.
+        squad.resupplyAttack = null
     }
 
     /** Calls the squad's command off as failed for [reason] and falls back. */
@@ -272,8 +258,12 @@ class SquadManager : VersionedSavedData() {
                 isTankSquad(it) -> SquadOrder.MOVE
                 else -> SquadOrder.DEFEND
             }
-            if (it.order != SquadOrder.ATTACK && it.attackAmmoPolicy == AttackAmmoPolicy.PRESS_ON) {
-                it.attackAmmoPolicy = AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY
+            // Repeated, re-aimed or re-focused, an attack keeps the strength it started with.
+            if (it.order != SquadOrder.ATTACK) {
+                it.attackBase = null
+                it.attackRemnant = false
+                it.attackResupplied = false
+                it.attackUnmeasuredOnLoad = false
             }
             it.orderStamp++
             setDirty()

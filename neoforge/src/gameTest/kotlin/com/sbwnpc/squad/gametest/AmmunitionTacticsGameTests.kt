@@ -10,8 +10,8 @@ import com.sbwnpc.squad.combat.tactics.DefensiveOverwatch
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.init.ModBlocks
+import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.SquadFaction
-import com.sbwnpc.squad.squad.AttackAmmoPolicy
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.core.BlockPos
@@ -35,116 +35,6 @@ import java.util.function.Consumer
 
 @PrefixGameTestTemplate(false)
 object AmmunitionTacticsGameTests {
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 1600, batch = "ammo-withdrawal")
-    fun halfEmptyAttackWithdrawsAndDoesNotRestartAfterSupply(helper: GameTestHelper) = withdrawal(helper, retry = false)
-
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 1600, batch = "ammo-retry")
-    fun reissuedAttackAdvancesWithoutAnotherAmmoRetreat(helper: GameTestHelper) = withdrawal(helper, retry = true)
-
-    private fun withdrawal(helper: GameTestHelper, retry: Boolean) {
-        val supplyScope = IsolatedSupplyPoints(helper.level)
-        floor(helper)
-        val members = (0..3).map {
-            AttackDeploymentGameTests.spawn(helper, Vec3(120.5, 1.0, 55.5 + it * 4), SquadFaction.PIG)
-        }
-        ammunition(members[0].primaryGun(), 0, 0)
-        ammunition(members[0].sidearmWeapon, 0, 0)
-        val enemy = AttackDeploymentGameTests.spawn(helper, Vec3(155.5, 1.0, 61.5), SquadFaction.COW).apply {
-            isNoAi = true
-            getAttribute(Attributes.MAX_HEALTH)!!.baseValue = 10000.0
-            health = maxHealth
-        }
-        val oldGroups = DebugFlags.enabledGroups
-        DebugFlags.enabledGroups = oldGroups + setOf(LogGroup.ORDER, LogGroup.RETREAT, LogGroup.SUPPLY, LogGroup.AMMO)
-        // Attractive Supply beside the fighting position must not override the collective retreat.
-        val forwardSupply = BlockPos(126, 1, 86)
-        helper.setBlock(forwardSupply, ModBlocks.SUPPLY.get())
-        (helper.getBlockEntity(forwardSupply) as SupplyBlockEntity).faction = SquadFaction.PIG
-        val manager = SquadManager.get(helper.level)
-        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, members.map { it.uuid })
-        manager.issueOrder(squad.id, SquadOrder.ATTACK)
-        manager.setObjective(helper.level, squad.id, helper.absolutePos(BlockPos(155, 1, 61)))
-        val origins = members.map { it.position() }
-        var abortedAt: Long? = null
-        var rally: BlockPos? = null
-        var heldSince: Long? = null
-        var retriedAt: Long? = null
-        var retryOrigins: List<Vec3> = emptyList()
-        var retryAmmo: List<Double> = emptyList()
-        val reportName = if (retry) "ammo-retry" else "ammo-withdrawal"
-        val trace = StringBuilder("tick,order,member,x,y,z,primary,sidearm,resupplying\n")
-        cleanup(helper) {
-            DebugFlags.enabledGroups = oldGroups
-            manager.deleteSquad(helper.level, squad.id)
-            (members + enemy).forEach { it.discard() }
-            helper.setBlock(forwardSupply, Blocks.AIR)
-            rally?.let { helper.level.setBlockAndUpdate(it, Blocks.AIR.defaultBlockState()) }
-            supplyScope.close()
-            report("$reportName.csv", trace.toString())
-        }
-        helper.onEachTick {
-            if (helper.tick == 20L) {
-                helper.assertTrue(squad.order == SquadOrder.ATTACK, "One empty primary out of four aborted the attack")
-                ammunition(members[1].primaryGun(), 0, 0)
-            }
-            if (helper.tick >= 50L && retriedAt == null) helper.assertTrue(squad.order != SquadOrder.ATTACK, "Half-empty attack did not abort, or restarted without a player order")
-            if (squad.order == SquadOrder.RETREAT && abortedAt == null) {
-                abortedAt = helper.tick
-                rally = squad.objective!!
-                val point = rally!!.bottomCenter
-                val center = Vec3(members.sumOf { it.x } / 4, members.sumOf { it.y } / 4, members.sumOf { it.z } / 4)
-                val depth = center.x - point.x
-                helper.assertTrue(depth in 95.0..105.0, "Ammo retreat objective has wrong depth: $depth")
-                helper.assertTrue(squad.focusEntity == null, "Retreat retained an attack entity focus")
-                helper.level.setBlockAndUpdate(rally!!, ModBlocks.SUPPLY.get().defaultBlockState())
-                (helper.level.getBlockEntity(rally!!) as SupplyBlockEntity).faction = SquadFaction.PIG
-            }
-            if (rally != null && retriedAt == null) helper.assertTrue(squad.objective == rally, "The retreat point drifted with the moving squad")
-            members.forEachIndexed { index, npc ->
-                if (helper.tick % 10L == 0L) trace.append("${helper.tick},${squad.order},$index,${npc.x},${npc.y},${npc.z},${npc.ammoFraction()},${npc.usingSidearm},${npc.holds(NpcActivity.RESUPPLY)}\n")
-            }
-            if (retriedAt != null) {
-                helper.assertTrue(squad.order == SquadOrder.ATTACK && squad.attackAmmoPolicy == AttackAmmoPolicy.PRESS_ON, "Explicit retry was automatically aborted again")
-                helper.assertTrue(members.take(2).all { !SidearmKit.hasPrimaryAmmo(it) }, "Retry test accidentally refilled its empty primaries")
-                if (helper.tick - retriedAt!! >= 200L) {
-                    // A covered bound has a moving rifleman and a firing rifleman, not two runners.
-                    val progress = members.drop(2).mapIndexed { index, npc -> npc.x - retryOrigins[index].x }
-                    helper.assertTrue(progress.max() >= 10.0 && progress.min() >= -5.0, "Retry did not advance under cover, or riflemen fled: $progress")
-                    helper.assertTrue(members.drop(2).withIndex().all { (index, npc) -> npc.ammoFraction() < retryAmmo[index] }, "Moving/covering riflemen did not fire during retry")
-                    manager.issueOrder(squad.id, SquadOrder.RETREAT)
-                    manager.setObjective(helper.level, squad.id, rally)
-                    helper.assertTrue(squad.order == SquadOrder.RETREAT && squad.attackAmmoPolicy == AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY, "Manual retreat did not cancel the retry")
-                    report("$reportName-result.txt", "abort=$abortedAt\nheld=$heldSince\nretry=$retriedAt\nfinished=${helper.tick}\nprogress=$progress\nmanualRetreat=${squad.order}\n")
-                    helper.succeed()
-                }
-                return@onEachTick
-            }
-            val arrived = squad.order == SquadOrder.DEFEND && members.all { it.ammoFraction() > 0.8 && it.position().subtract(origins[members.indexOf(it)]).horizontalDistance() >= 70.0 }
-            if (arrived) {
-                if (heldSince == null) heldSince = helper.tick
-                if (helper.tick - heldSince!! >= 100) {
-                    if (retry) {
-                        helper.setBlock(forwardSupply, Blocks.AIR)
-                        helper.level.setBlockAndUpdate(rally!!, Blocks.AIR.defaultBlockState())
-                        members.take(2).forEach { ammunition(it.primaryGun(), 0, 0) }
-                        retryOrigins = members.drop(2).map { it.position() }
-                        retryAmmo = members.drop(2).map { it.ammoFraction() }
-                        retriedAt = helper.tick
-                        manager.issueOrder(squad.id, SquadOrder.ATTACK)
-                        manager.setObjective(helper.level, squad.id, enemy.blockPosition())
-                    } else {
-                        report("$reportName-result.txt", "abort=$abortedAt\nheld=$heldSince\nfinished=${helper.tick}\norder=${squad.order}\nrally=$rally\n")
-                        helper.succeed()
-                    }
-                }
-            } else {
-                heldSince = null
-            }
-        }
-    }
-
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 600, batch = "pistol-defence")
     fun pistolDefenderWaitsInCoverThenFiresAtCloseContact(helper: GameTestHelper) = cover(helper, SquadOrder.DEFEND)
@@ -210,14 +100,14 @@ object AmmunitionTacticsGameTests {
         }
     }
 
-    private fun ammunition(stack: ItemStack, loaded: Int, reserve: Int) {
+    internal fun ammunition(stack: ItemStack, loaded: Int, reserve: Int) {
         val data = GunData.from(stack)
         data.ammo.set(loaded)
         data.virtualAmmo.set(reserve)
         data.save()
     }
 
-    private fun floor(helper: GameTestHelper) {
+    internal fun floor(helper: GameTestHelper) {
         for (x in 0..159) for (z in 0..127) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
     }
 
@@ -227,7 +117,7 @@ object AmmunitionTacticsGameTests {
         Files.writeString(file, content)
     }
 
-    private fun cleanup(helper: GameTestHelper, action: () -> Unit) {
+    internal fun cleanup(helper: GameTestHelper, action: () -> Unit) {
         helper.testInfo.addListener(object : GameTestListener {
             override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
             override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = action()
