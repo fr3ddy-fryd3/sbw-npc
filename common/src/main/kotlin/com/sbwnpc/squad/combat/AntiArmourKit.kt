@@ -2,6 +2,8 @@ package com.sbwnpc.squad.combat
 
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.npc.TankModel
+import com.sbwnpc.squad.npc.TransportVehicle
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.InteractionHand
@@ -44,6 +46,18 @@ object AntiArmourKit {
     fun worthARocket(npc: NpcEntity, target: LivingEntity?): Boolean {
         val ride = target?.vehicle ?: return false
         return Ports.vehicles.isOperational(ride) && ride !== npc.vehicle
+    }
+
+    /**
+     * Whether [target] rides armour small arms cannot hurt: an operational tank or armoured transport
+     * of the addon's own models (other SBW vehicles are not known to be armoured). Narrower than
+     * [worthARocket], which also counts helicopters: a rifle still has a say against those.
+     */
+    fun armoured(target: LivingEntity): Boolean {
+        val ride = target.vehicle ?: return false
+        if (!Ports.vehicles.isOperational(ride)) return false
+        val model = Ports.vehicles.modelOf(ride)
+        return model is TankModel || model is TransportVehicle
     }
 
     /** True once the gunner is holding what it should be holding. */

@@ -36,6 +36,7 @@ object GameTestRegistration {
             SidearmGameTests::class.java,
             AmmunitionTacticsGameTests::class.java,
             AttackStrengthGameTests::class.java,
+            ArmourCoverGameTests::class.java,
             MortarCrewGameTests::class.java,
             HelicopterOrbitGameTests::class.java,
             DefensiveOverwatchGameTests::class.java,

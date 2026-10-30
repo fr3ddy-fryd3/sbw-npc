@@ -6,8 +6,6 @@ import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
-import com.sbwnpc.squad.npc.TankModel
-import com.sbwnpc.squad.npc.TransportVehicle
 import com.sbwnpc.squad.squad.Squad
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity
@@ -29,13 +27,7 @@ object SquadTactics {
             position = target.position(),
             seenAt = now,
             velocity = velocity,
-            armoured = target.vehicle?.let {
-                Ports.vehicles.isOperational(it) &&
-                    (
-                        Ports.vehicles.modelOf(it) is TankModel ||
-                            Ports.vehicles.modelOf(it) is TransportVehicle
-                        )
-            } == true,
+            armoured = AntiArmourKit.armoured(target),
             priority = 1.0 + (if (dangerous) 1.0 else 0.0) + (if (target.uuid == squad.focusEntity) 5.0 else 0.0),
             airborne = target.vehicle?.let { Ports.vehicles.mobility(it) == Mobility.AIR } == true,
             firstSeenAt = SquadKnowledge.firstSeenAt(old?.seenAt, old?.firstSeenAt, now),
@@ -83,7 +75,10 @@ object SquadTactics {
     fun targetDeath(entity: LivingEntity, cancelled: () -> Boolean) = com.sbwnpc.squad.ai.integration.NativeTactics.targetDeath(entity, cancelled)
 
     /** Drops every world's tactical state when the server stops. */
-    fun clearAll() = com.sbwnpc.squad.ai.integration.NativeTactics.clearAll()
+    fun clearAll() {
+        com.sbwnpc.squad.ai.integration.NativeTactics.clearAll()
+        ArmourCover.clearAll()
+    }
 
     fun preferredTarget(entity: NpcEntity, level: ServerLevel, probeCursor: Int = 0, reconsiderCurrent: Boolean = false): LivingEntity? {
         val task = task(entity)

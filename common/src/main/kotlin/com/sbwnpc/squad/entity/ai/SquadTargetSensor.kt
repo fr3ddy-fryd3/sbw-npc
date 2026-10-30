@@ -1,5 +1,7 @@
 package com.sbwnpc.squad.entity.ai
 
+import com.sbwnpc.squad.combat.AntiArmourKit
+import com.sbwnpc.squad.combat.ArmourCover
 import com.sbwnpc.squad.combat.CombatPosition
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.DetectionSightline
@@ -16,6 +18,7 @@ import com.sbwnpc.squad.combat.tactics.TacticalJob
 import com.sbwnpc.squad.combat.tactics.TacticalTargetSelection
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.init.ModMemories
 import com.sbwnpc.squad.init.ModSensors
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.SquadOrder
@@ -104,6 +107,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             SquadTactics.observe(entity, target)
         }
         if (target != null) TankWeaponSelection.update(entity, target)
+        ArmourCover.check(entity, level)
     }
 
     /**
@@ -116,6 +120,8 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             desired == null -> null
 
             !VehicleTargeting.weaponPermits(entity, desired) -> directTarget
+
+            !mayTake(entity, desired) -> directTarget
 
             directTarget != null && directTarget !== desired && !VehicleTargeting.shootableNow(entity, desired) &&
                 VehicleTargeting.shootableNow(entity, directTarget) -> directTarget
@@ -165,6 +171,13 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         val refused = !inRange && chosen !== previous
         return if (tooFar || expired || refused) directTarget else chosen
     }
+
+    /**
+     * A man on foot without a loaded launcher never takes an armoured vehicle's crew for a target
+     * (#237): he cannot hurt it, and holding it, he stood in its line of fire and shot at nobody.
+     * Seen, it is still reported to the squad, and [ArmourCover] takes him out of its line.
+     */
+    private fun mayTake(mob: NpcEntity, target: LivingEntity): Boolean = mob.vehicle != null || AntiArmourKit.loaded(mob) || !AntiArmourKit.armoured(target)
 
     /** Priority is explicit here: later queries run only when earlier sources have no target. */
     private fun computeDesired(mob: NpcEntity, level: ServerLevel, directTarget: LivingEntity?, reconsider: Boolean): LivingEntity? {
@@ -366,7 +379,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             val sighting = DetectionSightline.sight(mob, candidate)
             if (sighting.visibility == DetectionSightline.Visibility.VISIBLE && (gunner || noticing.noticed(mob, level, candidate, if (allRound) GUNNER_OFF_AXIS else Vision.offAxis(mob.position(), mob.yHeadRot, candidate.position()), sighting.grassBlocks))) {
                 SquadTactics.observe(mob, candidate)
-                if (!VehicleTargeting.weaponPermits(mob, candidate)) continue
+                if (!VehicleTargeting.weaponPermits(mob, candidate) || !mayTake(mob, candidate)) continue
                 visible += candidate
                 if (visible.size >= MAX_SPREAD_CANDIDATES || mob.currentSquad() == null) break
             }
@@ -389,6 +402,6 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         /** How many visible enemies a scan considers when spreading the squad's fire. */
         private const val MAX_SPREAD_CANDIDATES = 4
 
-        private val MEMORIES: List<MemoryModuleType<*>> = listOf(MemoryModuleType.ATTACK_TARGET)
+        private val MEMORIES: List<MemoryModuleType<*>> = listOf(MemoryModuleType.ATTACK_TARGET, ModMemories.ARMOUR_PIN.get())
     }
 }

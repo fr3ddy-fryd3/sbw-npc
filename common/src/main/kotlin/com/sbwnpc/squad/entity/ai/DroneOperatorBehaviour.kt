@@ -124,7 +124,10 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun canPrepareLaunch(entity: NpcEntity): Boolean {
         if (entity.dronesLeft <= 0) return false
         if (entity.tickCount < nextLaunchTick) return false
-        if (entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK, NpcActivity.HEAL)) return false
+        // In cover from armour alone he still launches, from there (owner, 30.10): the drone is his
+        // answer to it, and nothing is firing at him.
+        if (entity.holdsAny(NpcActivity.EVADE, NpcActivity.PEEK, NpcActivity.HEAL)) return false
+        if (entity.holds(NpcActivity.COVER) && !entity.pinnedByArmourOnly()) return false
         // Someone right on top of the operator: shoot back (GunAttackBehaviour), don't launch.
         val personalThreat = entity.target?.takeIf { it.isAlive && entity.distanceToSqr(it) <= SELF_DEFENSE_RANGE_SQR }
         if (personalThreat != null) return false

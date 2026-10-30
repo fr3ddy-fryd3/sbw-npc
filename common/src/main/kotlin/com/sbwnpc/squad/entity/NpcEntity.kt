@@ -166,6 +166,12 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     fun isSuppressed(): Boolean = BrainUtils.hasMemory(this, ModMemories.SUPPRESSING_THREAT.get())
     val threatPos: Vec3? get() = BrainUtils.getMemory(this, ModMemories.SUPPRESSING_THREAT.get())
 
+    /** The eye of an armoured vehicle's crewman with a line to him, see [com.sbwnpc.squad.combat.ArmourCover]. */
+    val armourPin: Vec3? get() = BrainUtils.getMemory(this, ModMemories.ARMOUR_PIN.get())
+
+    /** In cover from armour alone: nothing is firing at him. */
+    fun pinnedByArmourOnly(): Boolean = armourPin != null && !isSuppressed() && !incomingFire.pending(level().gameTime)
+
     /** Each trigger extends the timer (doesn't stack duration), capped so sustained fire doesn't
      *  grant an indefinite "immune to squad orders" state; measured against the memory's own
      *  remaining TTL. */
@@ -832,7 +838,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     private var lodRecheckTick = 0
     private var brainTickInterval = 1
 
-    private fun inCombatState(): Boolean = target != null || isSuppressed() || isAlert() || holdsAny(NpcActivity.DRONE, NpcActivity.ANTI_DRONE)
+    private fun inCombatState(): Boolean = target != null || isSuppressed() || armourPin != null || isAlert() || holdsAny(NpcActivity.DRONE, NpcActivity.ANTI_DRONE)
 
     private fun refreshAiLod() {
         brainTickInterval = when {

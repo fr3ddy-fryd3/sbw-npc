@@ -48,6 +48,7 @@ internal object GameTestGroups {
             SidearmGameTests::class.java,
             AmmunitionTacticsGameTests::class.java,
             AttackStrengthGameTests::class.java,
+            ArmourCoverGameTests::class.java,
             HostileMobApiGameTests::class.java,
             HostileMobCombatGameTests::class.java,
         ),
