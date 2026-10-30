@@ -15,6 +15,7 @@ import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
+import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
@@ -28,16 +29,17 @@ import java.util.UUID
 @PrefixGameTestTemplate(false)
 object PlannedCoverGameTests {
     /**
-     * One [role] in a squad of his own on DEFEND where he stands at [at], and an enemy [shooter]
+     * One [role] in a squad of his own on DEFEND where he stands at the first of [men], and an enemy [shooter]
      * at [from] that hits him every [HIT_EVERY] ticks from tick [HIT_FROM]. With a [wall], a stone
-     * wall two high at x 24 over those z lies between them a few blocks from him.
+     * wall two high at x 24 over those z lies between them a few blocks from him. Riflemen at
+     * the rest of [men] join him.
      */
-    private class UnderFire(val helper: GameTestHelper, name: String, at: Vec3, from: Vec3, wall: IntRange?, role: NpcClass = NpcClass.RIFLEMAN) {
+    private class UnderFire(val helper: GameTestHelper, name: String, men: List<Vec3>, from: Vec3, wall: IntRange?, role: NpcClass = NpcClass.RIFLEMAN) {
         val scene = CombatIdleGameTests.Scene(helper, name)
         val manager = SquadManager.get(helper.level)
-        val man: NpcEntity = scene.spawn(at, role)
+        val man: NpcEntity = scene.spawn(men.first(), role)
         val shooter: NpcEntity = scene.enemy(from)
-        val squad = manager.create(helper.level, UUID.randomUUID(), requireNotNull(man.spawnFaction), listOf(man.uuid))
+        val squad = manager.create(helper.level, UUID.randomUUID(), requireNotNull(man.spawnFaction), listOf(man.uuid) + men.drop(1).map { scene.spawn(it).uuid })
 
         /** Ticks on which he held cover while his plan was suspended: none is the contract. */
         var suspendedInCover = 0
@@ -80,6 +82,7 @@ object PlannedCoverGameTests {
                 Ports.guns.inHand(shooter)!!.inflictHit(man, 1.0f)
                 if (firstHit == null) firstHit = now
             }
+            DecisionTrace.decisionsOf(man.uuid).filter { it.event == "plan" }.forEach { decision -> TAKEN.findAll(decision.detail).forEach { taken += it.groupValues[1] } }
             val claimed = man.holdsAny(NpcActivity.COVER, NpcActivity.PEEK)
             if (claimed && !NativeTactics.movable(man)) suspendedInCover++
             if (claimed) reacted = true
@@ -105,6 +108,7 @@ object PlannedCoverGameTests {
 
         /** Out of the line except while moving for cover or peeking from it, and behind cover at times. */
         fun assertSheltered(who: String) {
+            helper.assertTrue(reacted, "$who never took cover or peeked")
             helper.assertTrue(exposedIdle == 0, "$who stood in the shooter's line for $exposedIdle ticks neither taking cover nor peeking: $idleAt")
             helper.assertTrue(hidden > 0, "$who was never out of the shooter's line")
         }
@@ -112,8 +116,14 @@ object PlannedCoverGameTests {
         /** Whether the shooter's eye has a line to his. */
         fun exposed() = DetectionSightline.visible(helper.level, shooter.eyePosition, man.eyePosition, man)
 
-        /** Whether his recorded plan choices include [method] as the one taken. */
-        fun chose(method: String) = DecisionTrace.decisionsOf(man.uuid).any { it.event == "plan" && "*$method" in it.detail }
+        /** Every method his plans took, kept here: the decision trace holds only his latest decisions. */
+        private val taken = HashSet<String>()
+
+        /** Whether any of his plans took [method]. */
+        fun chose(method: String) = method in taken
+
+        /** Whether a plan of his after [tick] chose something other than his hole at its root. */
+        fun outOfHoleSince(tick: Long) = DecisionTrace.decisionsOf(man.uuid).any { it.event == "plan" && it.tick > tick && it.detail.startsWith("root:") && "*in_hole" !in it.detail }
 
         fun choices() = DecisionTrace.decisionsOf(man.uuid).filter { it.event == "plan" }.map { it.detail }
     }
@@ -122,7 +132,7 @@ object PlannedCoverGameTests {
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "planned-cover-take")
     fun suppressedRiflemanTakesCoverInHisPlan(helper: GameTestHelper) {
-        val fire = UnderFire(helper, "planned-cover-take", Vec3(20.5, 1.0, 64.5), Vec3(140.5, 1.0, 64.5), wall = EXACT_WALL)
+        val fire = UnderFire(helper, "planned-cover-take", listOf(Vec3(20.5, 1.0, 64.5)), Vec3(140.5, 1.0, 64.5), wall = EXACT_WALL)
         helper.onEachTick {
             fire.tick()
             if (helper.tick % 50L == 0L) fire.scene.result("RUNNING", "tick=${helper.tick} at=${helper.relativeVec(fire.man.position())} exposed=${fire.exposed()} idle=${fire.exposedIdle} hidden=${fire.hidden} cover=${fire.man.holds(NpcActivity.COVER)} suspended=${fire.suspendedInCover} choices=${fire.choices()}")
@@ -140,7 +150,7 @@ object PlannedCoverGameTests {
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 800, batch = "planned-cover-peek")
     fun pinnedRiflemanPeeksRepeatedlyUnderContinuousFire(helper: GameTestHelper) {
-        val fire = UnderFire(helper, "planned-cover-peek", Vec3(20.5, 1.0, 57.5), Vec3(60.5, 1.0, 50.5), wall = WALL)
+        val fire = UnderFire(helper, "planned-cover-peek", listOf(Vec3(20.5, 1.0, 57.5)), Vec3(60.5, 1.0, 50.5), wall = WALL)
         var peeks = 0
         var peeking = false
         var shotsWhileDucking = 0
@@ -171,13 +181,13 @@ object PlannedCoverGameTests {
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "planned-cover-hold")
     fun noCoverHoldsAndFires(helper: GameTestHelper) {
-        val fire = UnderFire(helper, "planned-cover-hold", Vec3(20.5, 1.0, 100.5), Vec3(56.5, 1.0, 100.5), wall = null)
+        val fire = UnderFire(helper, "planned-cover-hold", listOf(Vec3(20.5, 1.0, 100.5)), Vec3(56.5, 1.0, 100.5), wall = null)
         helper.onEachTick {
             fire.tick()
             if (helper.tick >= 300L) {
                 helper.assertTrue(fire.suspendedInCover == 0, "His plan was suspended for ${fire.suspendedInCover} ticks while he held cover")
                 helper.assertTrue(fire.man.lastShotTick >= 0, "He never fired")
-                helper.assertTrue(fire.chose("under_fire"), "His plan never took up the fire: ${fire.choices()}")
+                helper.assertTrue(fire.chose("hold_open"), "His plan did not hold in the open: ${fire.choices()}")
                 fire.scene.result("PASS", "choices=${fire.choices()}")
                 helper.succeed()
             }
@@ -188,7 +198,7 @@ object PlannedCoverGameTests {
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "planned-cover-fall-back")
     fun noCoverNoTargetFallsBack(helper: GameTestHelper) {
-        val fire = UnderFire(helper, "planned-cover-fall-back", Vec3(140.5, 1.0, 100.5), Vec3(4.5, 1.0, 100.5), wall = null)
+        val fire = UnderFire(helper, "planned-cover-fall-back", listOf(Vec3(140.5, 1.0, 100.5)), Vec3(4.5, 1.0, 100.5), wall = null)
         val start = fire.man.position().distanceTo(fire.shooter.position())
         helper.onEachTick {
             fire.tick()
@@ -196,7 +206,7 @@ object PlannedCoverGameTests {
                 val gained = fire.man.position().distanceTo(fire.shooter.position()) - start
                 helper.assertTrue(fire.suspendedInCover == 0, "His plan was suspended for ${fire.suspendedInCover} ticks while he held cover")
                 helper.assertTrue(gained >= 4.0, "He fell back only ${"%.1f".format(gained)} blocks: ${fire.choices()}")
-                helper.assertTrue(fire.chose("under_fire"), "His plan never took up the fire: ${fire.choices()}")
+                helper.assertTrue(fire.chose("fall_back"), "His plan did not fall back: ${fire.choices()}")
                 fire.scene.result("PASS", "gained=$gained choices=${fire.choices()}")
                 helper.succeed()
             }
@@ -207,7 +217,7 @@ object PlannedCoverGameTests {
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "planned-cover-medic")
     fun medicUnderFireTakesCoverInHisPlan(helper: GameTestHelper) {
-        val fire = UnderFire(helper, "planned-cover-medic", Vec3(20.5, 1.0, 64.5), Vec3(140.5, 1.0, 64.5), wall = EXACT_WALL, role = NpcClass.MEDIC)
+        val fire = UnderFire(helper, "planned-cover-medic", listOf(Vec3(20.5, 1.0, 64.5)), Vec3(140.5, 1.0, 64.5), wall = EXACT_WALL, role = NpcClass.MEDIC)
         helper.onEachTick {
             fire.tick()
             if (helper.tick >= 300L) {
@@ -221,21 +231,57 @@ object PlannedCoverGameTests {
     }
 
     /**
-     * How soon he moves for cover after the first hit: the plan must react about as soon as the
-     * suspending behaviour did. [REACTION_TICKS] comes from this scene's run on develop (30.10).
+     * Badly hurt with no cover and a squadmate beside him, he digs in through his plan, holds the
+     * hole, and once healed climbs back out of it.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 700, batch = "planned-cover-dig")
+    fun hurtRiflemanDigsInAndClimbsOutOnceHealed(helper: GameTestHelper) {
+        val fire = UnderFire(helper, "planned-cover-dig", listOf(Vec3(140.5, 1.0, 100.5), Vec3(143.5, 1.0, 103.5)), Vec3(4.5, 1.0, 100.5), wall = null)
+        // After the scene, which lays its own stone floor.
+        for (x in 134..146) for (z in 94..106) helper.setBlock(BlockPos(x, 0, z), Blocks.DIRT)
+        fire.man.getAttribute(Attributes.MAX_HEALTH)!!.baseValue = 100.0
+        fire.man.health = 20f
+        // A medkit would heal him above the dig threshold before he digs.
+        fire.man.medkitsLeft = 0
+        var dugAt: Long? = null
+        var lowest = fire.man.y
+        helper.onEachTick {
+            val now = helper.tick
+            val healAt = dugAt?.let { it + HOLD_BEFORE_HEAL }
+            fire.tick(until = healAt ?: Long.MAX_VALUE)
+            lowest = minOf(lowest, fire.man.y)
+            if (dugAt == null && fire.man.holds(NpcActivity.DUG_IN)) dugAt = now
+            if (now == healAt) fire.man.health = fire.man.maxHealth
+            // Out on the surface, and his plan has stopped running from the hole: the climb is over.
+            val out = healAt != null && now > healAt && fire.outOfHoleSince(healAt)
+            if (out && helper.relativeVec(fire.man.position()).y >= 1.0) {
+                helper.assertTrue(fire.suspendedInCover == 0, "His plan was suspended for ${fire.suspendedInCover} ticks while he held cover")
+                helper.assertTrue(fire.chose("dig_in") && fire.chose("leave_hole"), "His plan did not dig in and leave: ${fire.choices()}")
+                helper.assertTrue(helper.relativeVec(Vec3(0.0, lowest, 0.0)).y < 1.0, "He never stood in his hole")
+                fire.scene.result("PASS", "dugAt=$dugAt outAt=$now choices=${fire.choices()}")
+                helper.succeed()
+            }
+            if (now % 50L == 0L) fire.scene.result("RUNNING", "health=${fire.man.health}/${fire.man.maxHealth} tick=$now dugAt=$dugAt at=${helper.relativeVec(fire.man.position())} dug=${fire.man.holds(NpcActivity.DUG_IN)} choices=${fire.choices()}")
+        }
+    }
+
+    /**
+     * How soon he takes cover after the first hit: the plan must react about as soon as the
+     * suspending behaviour did. [REACTION_TICKS] comes from this scene's runs on develop (30.10).
      */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 300, batch = "planned-cover-reaction")
     fun reactionTimeUnderFire(helper: GameTestHelper) {
-        val fire = UnderFire(helper, "planned-cover-reaction", Vec3(20.5, 1.0, 57.5), Vec3(140.5, 1.0, 50.5), wall = WALL)
-        val start = fire.man.position()
+        val fire = UnderFire(helper, "planned-cover-reaction", listOf(Vec3(20.5, 1.0, 57.5)), Vec3(140.5, 1.0, 50.5), wall = WALL)
         helper.onEachTick {
             fire.tick()
             val hit = fire.firstHit ?: return@onEachTick
-            if (fire.man.position().distanceTo(start) >= 0.5) {
+            // His claim, not his displacement: a hit's knockback moves him too.
+            if (fire.man.holdsAny(NpcActivity.COVER, NpcActivity.PEEK)) {
                 val ticks = helper.tick - hit
                 fire.scene.result("PASS", "reaction=$ticks")
-                helper.assertTrue(ticks <= REACTION_TICKS, "He took $ticks ticks to move for cover, more than $REACTION_TICKS")
+                helper.assertTrue(ticks <= REACTION_TICKS, "He took $ticks ticks to take cover, more than $REACTION_TICKS")
                 helper.succeed()
             }
         }
@@ -245,7 +291,7 @@ object PlannedCoverGameTests {
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 800, batch = "planned-cover-churn")
     fun coverPlanDoesNotChurn(helper: GameTestHelper) {
-        val fire = UnderFire(helper, "planned-cover-churn", Vec3(20.5, 1.0, 57.5), Vec3(60.5, 1.0, 50.5), wall = WALL)
+        val fire = UnderFire(helper, "planned-cover-churn", listOf(Vec3(20.5, 1.0, 57.5)), Vec3(60.5, 1.0, 50.5), wall = WALL)
         var plans = 0
         require(NativeTactics.planResultObserver == null)
         NativeTactics.planResultObserver = { level -> if (level == AgentLevel.NPC) plans++ }
@@ -269,7 +315,7 @@ object PlannedCoverGameTests {
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 300, batch = "planned-cover-unplanned")
     fun unplannedRoleKeepsSeekCover(helper: GameTestHelper) {
-        val fire = UnderFire(helper, "planned-cover-unplanned", Vec3(20.5, 1.0, 57.5), Vec3(140.5, 1.0, 50.5), wall = WALL, role = NpcClass.MORTAR)
+        val fire = UnderFire(helper, "planned-cover-unplanned", listOf(Vec3(20.5, 1.0, 57.5)), Vec3(140.5, 1.0, 50.5), wall = WALL, role = NpcClass.MORTAR)
         var covered = false
         helper.onEachTick {
             fire.tick()
@@ -282,10 +328,19 @@ object PlannedCoverGameTests {
         }
     }
 
-    /** Twice the 5 ticks the suspending cover behaviour took on develop 232d8fc3 (30.10). */
-    private const val REACTION_TICKS = 10L
+    /**
+     * Twice the 1 tick the suspending cover behaviour took to claim cover on develop 232d8fc3 (three
+     * runs, 30.10). The plan took 2 in each of five runs.
+     */
+    private const val REACTION_TICKS = 2L
+
+    /** A taken option in a plan decision's detail: `*name score`. */
+    private val TAKEN = Regex("""\*(\w+)""")
 
     private const val HIT_EVERY = 20L
+
+    /** Ticks in his hole under fire before the dig scene heals him. */
+    private const val HOLD_BEFORE_HEAL = 100L
     private const val HIT_FROM = 20L
 
     /** Contract breaks a scene lists in its failure. */

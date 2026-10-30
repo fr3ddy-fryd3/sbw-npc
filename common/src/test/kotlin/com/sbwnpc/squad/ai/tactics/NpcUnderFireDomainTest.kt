@@ -68,11 +68,20 @@ class NpcUnderFireDomainTest {
         val booleans = listOf(false, true)
         val flags = booleans.flatMap { fire -> booleans.flatMap { failure -> booleans.flatMap { dig -> booleans.map { listOf(fire, failure && fire, dig, it) } } } }
         val combinations = flags.flatMap { f -> (0..UnderFire.MAX_DIGS).flatMap { digs -> booleans.flatMap { hit -> booleans.map { healed -> facts(f[0], f[1], f[2], f[3], digs, hit, healed) } } } }
-        combinations.forEach { input ->
-            val allowed = ArrayList<String>()
-            HtnPlanningSession(TacticalDomain.npc, owner, TacticalDomain.NPC.call(intent), input, event = { if (it.node == "root" && it.verdict == Verdict.Allowed && it.method != null) allowed += it.method!! }).advance(40)
-            assertEquals(1, allowed.distinct().size, "$input: $allowed")
+        val calls = listOf(intent, intent.copy(assault = true), intent.copy(ordered = true))
+        calls.forEach { call ->
+            combinations.forEach { input ->
+                val allowed = ArrayList<String>()
+                HtnPlanningSession(TacticalDomain.npc, owner, TacticalDomain.NPC.call(call), input, event = { if (it.node == "root" && it.verdict == Verdict.Allowed && it.method != null) allowed += it.method!! }).advance(40)
+                assertEquals(1, allowed.distinct().size, "$call $input: $allowed")
+            }
         }
+    }
+
+    @Test fun `a man moving for his order stays in his hole until he would leave it`() {
+        val ordered = intent.copy(ordered = true)
+        assertEquals(TacticalDomain.HOLD_HOLE, first(facts(underFire = true, digs = 1), ordered).key)
+        assertEquals(TacticalDomain.LEAVE_HOLE, first(facts(underFire = true, digs = 1, healed = true), ordered).key)
     }
 
     @Test fun `a finished cover cycle changes the plan's input so he looks again`() {
