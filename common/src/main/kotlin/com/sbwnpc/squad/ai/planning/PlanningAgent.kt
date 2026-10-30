@@ -9,6 +9,8 @@ class PlanningAgent(
     val agent: AgentId,
     private val domain: HtnDomain,
     val runtime: PlanRuntime,
+    /** Every method the planner weighs or rejects, for the decision trace; nothing by default. */
+    private val events: (PlanningEvent) -> Unit = {},
     private val feedback: (PlanningFeedback) -> Unit = {},
 ) {
     private var owner: PlanOwner? = null
@@ -43,7 +45,7 @@ class PlanningAgent(
         waiting = emptySet()
         held = false
         lastAttempt = null
-        search = HtnPlanningSession(domain, next, task, facts)
+        search = HtnPlanningSession(domain, next, task, facts, event = events)
         status = PlanningStatus.PLANNING
     }
 
@@ -51,7 +53,7 @@ class PlanningAgent(
     fun repair(facts: FactSnapshot) {
         require(facts.owner == agent)
         val current = owner ?: return
-        search = HtnPlanningSession(domain, current, root!!, facts)
+        search = HtnPlanningSession(domain, current, root!!, facts, event = events)
         lastAttempt = null
         waiting = emptySet()
         status = PlanningStatus.PLANNING
