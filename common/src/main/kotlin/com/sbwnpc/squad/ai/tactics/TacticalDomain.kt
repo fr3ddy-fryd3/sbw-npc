@@ -115,7 +115,8 @@ data class OperationMission(val squads: List<SquadMission>, val secure: AreaCont
 
 /**
  * Where fire on a man comes from, rounded to [GRID] blocks so the rounds of one shooter keep the
- * same value and do not replan him on every hit.
+ * same value and do not replan him on every hit. The integration also keeps a sector while the fire
+ * stays near where it was taken, so a point on a cell boundary does not flip it either.
  */
 data class FireSector(val x: Int, val z: Int) {
     companion object {

@@ -174,7 +174,7 @@ object NativeTactics {
      * Whether his plan may move him. His own plan's cover actions hold his feet as his plan
      * ([PlanExecutor]), so they do not suspend it; any other claim ranked above [NpcActivity.TACTIC] does.
      */
-    fun movable(npc: NpcEntity) = npc.isAlive && npc.vehicle == null && npc.mayForBesides(NpcActivity.TACTIC, Cap.FEET) { it is PlanExecutor } && npc.retreatPoint() == null
+    fun movable(npc: NpcEntity) = npc.isAlive && npc.vehicle == null && npc.mayFor(NpcActivity.TACTIC, Cap.FEET) { it is PlanExecutor } && npc.retreatPoint() == null
 
     /** Whether the planner plans for [npc]: he has an NPC agent, a ground role in a loaded squad. */
     fun plans(npc: NpcEntity): Boolean = worlds[npc.level()]?.agents?.containsKey(AgentId(AgentLevel.NPC, npc.uuid)) == true
@@ -330,6 +330,36 @@ object NativeTactics {
             },
         )
 
+        /** The plan's cover actions (#251), each run on the man's own [CoverState]. */
+        private fun coverBindings() =
+            listOf(
+                ActionBinding(TacticalDomain.COVER_MOVE) { ticket, move ->
+                    require(ticket.owner.agent == move.actor)
+                    val npc = coverActor(move.actor)
+                    NativeCoverMove(move, npc, coverOf(npc)) { npc.threatPos ?: npc.incomingFire.point(level.gameTime) }
+                },
+                ActionBinding(TacticalDomain.COVER_CYCLE) { ticket, cycle ->
+                    require(ticket.owner.agent == cycle.actor)
+                    val npc = coverActor(cycle.actor)
+                    NativeCoverCycle(cycle, npc, coverOf(npc))
+                },
+                ActionBinding(TacticalDomain.DIG) { ticket, dig ->
+                    require(ticket.owner.agent == dig.actor)
+                    val npc = coverActor(dig.actor)
+                    NativeDig(dig, npc, coverOf(npc))
+                },
+                ActionBinding(TacticalDomain.HOLD_HOLE) { ticket, hold ->
+                    require(ticket.owner.agent == hold.actor)
+                    val npc = coverActor(hold.actor)
+                    NativeHoldHole(npc, coverOf(npc))
+                },
+                ActionBinding(TacticalDomain.LEAVE_HOLE) { ticket, leave ->
+                    require(ticket.owner.agent == leave.actor)
+                    val npc = coverActor(leave.actor)
+                    NativeLeaveHole(npc, coverOf(npc))
+                },
+            )
+
         private fun ensure(id: AgentId): PlanningAgent =
             agents.getOrPut(id) {
                 val factory = ActionRegistry(
@@ -355,31 +385,7 @@ object NativeTactics {
                             require(ticket.owner.agent == pause.actor)
                             firePause(pause, requireNotNull(level.getEntity(pause.actor.id) as? NpcEntity))
                         },
-                        ActionBinding(TacticalDomain.COVER_MOVE) { ticket, move ->
-                            require(ticket.owner.agent == move.actor)
-                            val npc = coverActor(move.actor)
-                            NativeCoverMove(move, npc, coverOf(npc)) { npc.threatPos ?: npc.incomingFire.point(level.gameTime) }
-                        },
-                        ActionBinding(TacticalDomain.COVER_CYCLE) { ticket, cycle ->
-                            require(ticket.owner.agent == cycle.actor)
-                            val npc = coverActor(cycle.actor)
-                            NativeCoverCycle(cycle, npc, coverOf(npc))
-                        },
-                        ActionBinding(TacticalDomain.DIG) { ticket, dig ->
-                            require(ticket.owner.agent == dig.actor)
-                            val npc = coverActor(dig.actor)
-                            NativeDig(dig, npc, coverOf(npc))
-                        },
-                        ActionBinding(TacticalDomain.HOLD_HOLE) { ticket, hold ->
-                            require(ticket.owner.agent == hold.actor)
-                            val npc = coverActor(hold.actor)
-                            NativeHoldHole(npc, coverOf(npc))
-                        },
-                        ActionBinding(TacticalDomain.LEAVE_HOLE) { ticket, leave ->
-                            require(ticket.owner.agent == leave.actor)
-                            val npc = coverActor(leave.actor)
-                            NativeLeaveHole(npc, coverOf(npc))
-                        },
+                    ) + coverBindings() + listOf(
                         ActionBinding(TacticalDomain.POSITION) { ticket, intent ->
                             require(ticket.owner.agent == intent.actor)
                             val original = goals[intent.actor] ?: intent
@@ -520,21 +526,21 @@ object NativeTactics {
         /** His facts about fire, cover and his foxhole (#251); the costly ones only while they matter. */
         private fun coverFacts(facts: FactSnapshot, npc: NpcEntity?, now: Long): FactSnapshot {
             npc ?: return facts.observe(TacticalFacts.UNDER_FIRE, false).observe(TacticalFacts.DIGS, 0)
-            val state = cover[npc.uuid]
             val underFire = npc.isSuppressed()
-            val sector = npc.threatPos?.takeIf { underFire }?.let { FireSector.of(it.x, it.z) }
+            val sector = npc.threatPos?.takeIf { underFire }?.let { coverOf(npc).fireSector(it) }
+            val state = cover[npc.uuid]
             val digs = state?.digs ?: 0
             var result = facts.observe(TacticalFacts.UNDER_FIRE, underFire).observe(TacticalFacts.DIGS, digs)
                 .observe(TacticalFacts.COVER_CYCLES, state?.cycles ?: 0)
                 .observe(TacticalFacts.SHELTERED, state?.sheltered(npc, sector) == true)
             sector?.let { result = result.observe(TacticalFacts.FIRE_SECTOR, it) }
             state?.failure?.let { result = result.observe(TacticalFacts.COVER_FAILURE, it, observedAt = it.failedAt, expiresAt = it.failedAt + FAILURE_MEMORY_TICKS) }
-            if (!underFire && digs == 0) return result
+            // Only the answers to no cover and the hole read these, and a man peeking from cover
+            // sees his target and loses it again: observed always, they would replan him each time.
+            if ((state?.failure == null || !underFire) && digs == 0) return result
             val level = npc.level() as ServerLevel
             result = result.observe(TacticalFacts.ENGAGED, engaged(npc, now))
-            if (state?.failure != null || digs > 0) {
-                result = result.observe(TacticalFacts.DIG_POSSIBLE, CoverMechanics.canDigIn(npc, level, npc.blockPosition()))
-            }
+                .observe(TacticalFacts.DIG_POSSIBLE, CoverMechanics.canDigIn(npc, level, npc.blockPosition()))
             if (digs > 0) {
                 result = result.observe(TacticalFacts.HIT_IN_HOLE, npc.health < state!!.healthAtDig)
                     .observe(TacticalFacts.HEALED, npc.health >= npc.maxHealth * CoverMechanics.DIG_HEALTH_FRACTION)
