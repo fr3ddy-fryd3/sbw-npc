@@ -26,8 +26,9 @@ object CoverMechanics {
 
     // One initial dig, plus at most one extra block deeper if hit again while dug in and still
     // no real cover — per user request. NOT unlimited: a fresh hole drops the man a block and every
-    // dig condition can hold again at the new depth, an endless shaft in-game.
-    const val MAX_DIGS = 2
+    // dig condition can hold again at the new depth, an endless shaft in-game. The plan's methods
+    // read the same cap.
+    const val MAX_DIGS = com.sbwnpc.squad.ai.tactics.UnderFire.MAX_DIGS
     const val COVERING_ALLY_RADIUS = 16.0
     const val COVERING_FIRE_WINDOW_TICKS = 40 // ~2s — covers gaps between shots, not just a single tick
 
