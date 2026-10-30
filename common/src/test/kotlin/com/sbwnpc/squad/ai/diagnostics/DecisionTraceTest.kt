@@ -27,7 +27,7 @@ class DecisionTraceTest {
 
     @Test fun `keeps the newest decisions in order and skips a repeat`() {
         repeat(DecisionTrace.LAST_DECISIONS + 5) { DecisionTrace.group(squad, it.toLong(), "squad", "plan", "choice $it") }
-        DecisionTrace.group(squad, 999, "squad", "plan", "choice ${DecisionTrace.LAST_DECISIONS + 4}")
+        DecisionTrace.group(squad, 999, "squad", "plan", "choice ${DecisionTrace.LAST_DECISIONS + 1}")
         val kept = DecisionTrace.decisionsOf(squad)
         assertEquals(DecisionTrace.LAST_DECISIONS, kept.size)
         assertEquals(5L, kept.first().tick)

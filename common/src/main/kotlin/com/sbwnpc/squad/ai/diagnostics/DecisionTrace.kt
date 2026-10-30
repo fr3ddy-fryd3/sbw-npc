@@ -39,6 +39,9 @@ object DecisionTrace {
 
     private const val BYTES_PER_KB = 1024
 
+    /** A decision equal to one of this many latest is a repeat. */
+    private const val REPEAT_WINDOW = 8
+
     /** Enough of an id to tell the men of one dump apart. */
     private const val SHORT_ID = 8
 
@@ -62,8 +65,9 @@ object DecisionTrace {
     fun group(group: UUID, tick: Long, actor: String, event: String, detail: String) {
         if (!enabled) return
         val ring = groups.getOrPut(group) { ArrayDeque() }
-        // A replan that weighed the same and chose the same adds nothing to read.
-        if (ring.lastOrNull()?.let { it.actor == actor && it.event == event && it.detail == detail } == true) return
+        // A replan that weighed the same and chose the same adds nothing to read. A squad replans its
+        // strategy and its approach in turn, so the same decision recurs a few entries apart.
+        if (ring.takeLast(REPEAT_WINDOW).any { it.actor == actor && it.event == event && it.detail == detail }) return
         add(ring, Decision(tick, actor, event, detail), LAST_DECISIONS)
     }
 
