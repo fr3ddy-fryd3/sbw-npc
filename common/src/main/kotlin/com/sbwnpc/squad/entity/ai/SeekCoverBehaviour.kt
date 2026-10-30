@@ -28,6 +28,10 @@ import net.tslat.smartbrainlib.util.BrainUtils
  * exclusive) SmartBrainLib `Activity` would `stop()`/`start()` it every time `the cover claim` toggles
  * for a peek, losing `coverTarget`/`phase` right when they need to survive.
  *
+ * Only for the roles the planner does not cover yet (tank crews on foot, mortar crews, aircrew on
+ * foot, #256): a planned man takes cover through his plan's own actions (`NativeCover`, #251), which
+ * share the physical steps in [CoverMechanics].
+ *
  * Full suppression response — not just duck-and-hold: while suppressed, the mob finds a point the
  * threat's last known position can't see, ducks there, then periodically steps back OUT to return
  * fire on its current target before ducking back in, repeating for as long as it stays suppressed.
@@ -139,9 +143,12 @@ class SeekCoverBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = MEMORIES
 
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = entity.isSuppressed()
+    // Only for the roles the planner does not cover yet (#256): a planned man takes cover in his plan (#251).
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = entity.isSuppressed() && !com.sbwnpc.squad.combat.tactics.SquadTactics.plans(entity)
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean {
+        // He joined a plan mid-episode: from here his plan answers the fire.
+        if (com.sbwnpc.squad.combat.tactics.SquadTactics.plans(entity)) return false
         // Dug in and rested back up past the same threshold that let it dig in the first place —
         // don't stand down immediately: try to actually leave the hole first (see
         // beginExitingHole/tickExitingHole — a CoverMechanics.MAX_DIGS-deep pit isn't always trivially climbable).

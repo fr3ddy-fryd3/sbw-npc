@@ -10,6 +10,7 @@ import com.sbwnpc.squad.compat.VersionCompat
 import com.sbwnpc.squad.entity.Cap
 import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.ai.CoverMechanics
 import com.sbwnpc.squad.entity.ai.SquadTransit
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.SquadFaction
@@ -168,7 +169,15 @@ object NativeTactics {
 
     /** How many post searches in a row [npc] failed round his task's anchor, while remembered. */
     fun postFailures(npc: NpcEntity): Int = world(npc).postFailuresOf(npc.uuid)
-    fun movable(npc: NpcEntity) = npc.isAlive && npc.vehicle == null && npc.mayFor(NpcActivity.TACTIC, Cap.FEET) && npc.retreatPoint() == null
+
+    /**
+     * Whether his plan may move him. His own plan's cover actions hold his feet as his plan
+     * ([PlanExecutor]), so they do not suspend it; any other claim ranked above [NpcActivity.TACTIC] does.
+     */
+    fun movable(npc: NpcEntity) = npc.isAlive && npc.vehicle == null && npc.mayForBesides(NpcActivity.TACTIC, Cap.FEET) { it is PlanExecutor } && npc.retreatPoint() == null
+
+    /** Whether the planner plans for [npc]: he has an NPC agent, a ground role in a loaded squad. */
+    fun plans(npc: NpcEntity): Boolean = worlds[npc.level()]?.agents?.containsKey(AgentId(AgentLevel.NPC, npc.uuid)) == true
     private val GROUND = setOf(NpcClass.RIFLEMAN, NpcClass.SHOTGUNNER, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.DRONE_OPERATOR)
 
     private class PendingDeath(val entity: LivingEntity, val cancelled: () -> Boolean)
@@ -185,6 +194,9 @@ object NativeTactics {
         val pendingDeaths = HashMap<UUID, PendingDeath>()
         val agents = LinkedHashMap<AgentId, PlanningAgent>()
         val actions = HashMap<UUID, NativePositionAction>()
+
+        /** What each man's cover actions found and did, read back as his facts (#251). */
+        private val cover = HashMap<UUID, CoverState>()
 
         // Each sentry's last height post, offered back when an OVERWATCH duty returns to him.
         private val heldPosts = HashMap<UUID, HeldPost>()
@@ -343,6 +355,31 @@ object NativeTactics {
                             require(ticket.owner.agent == pause.actor)
                             firePause(pause, requireNotNull(level.getEntity(pause.actor.id) as? NpcEntity))
                         },
+                        ActionBinding(TacticalDomain.COVER_MOVE) { ticket, move ->
+                            require(ticket.owner.agent == move.actor)
+                            val npc = coverActor(move.actor)
+                            NativeCoverMove(move, npc, coverOf(npc)) { npc.threatPos ?: npc.incomingFire.point(level.gameTime) }
+                        },
+                        ActionBinding(TacticalDomain.COVER_CYCLE) { ticket, cycle ->
+                            require(ticket.owner.agent == cycle.actor)
+                            val npc = coverActor(cycle.actor)
+                            NativeCoverCycle(cycle, npc, coverOf(npc))
+                        },
+                        ActionBinding(TacticalDomain.DIG) { ticket, dig ->
+                            require(ticket.owner.agent == dig.actor)
+                            val npc = coverActor(dig.actor)
+                            NativeDig(dig, npc, coverOf(npc))
+                        },
+                        ActionBinding(TacticalDomain.HOLD_HOLE) { ticket, hold ->
+                            require(ticket.owner.agent == hold.actor)
+                            val npc = coverActor(hold.actor)
+                            NativeHoldHole(npc, coverOf(npc))
+                        },
+                        ActionBinding(TacticalDomain.LEAVE_HOLE) { ticket, leave ->
+                            require(ticket.owner.agent == leave.actor)
+                            val npc = coverActor(leave.actor)
+                            NativeLeaveHole(npc, coverOf(npc))
+                        },
                         ActionBinding(TacticalDomain.POSITION) { ticket, intent ->
                             require(ticket.owner.agent == intent.actor)
                             val original = goals[intent.actor] ?: intent
@@ -469,6 +506,51 @@ object NativeTactics {
             }
             return result
         }
+        private fun coverOf(npc: NpcEntity) = cover.getOrPut(npc.uuid, ::CoverState)
+
+        /**
+         * The man a cover action is for. His post action is over while it runs: dropped here, so his
+         * stale post neither answers for his assignment nor keeps his plan repairing.
+         */
+        private fun coverActor(actor: AgentId): NpcEntity {
+            actions.remove(actor.id)?.overwatchPost?.let { heldPosts[actor.id] = it }
+            return requireNotNull(level.getEntity(actor.id) as? NpcEntity)
+        }
+
+        /** His facts about fire, cover and his foxhole (#251); the costly ones only while they matter. */
+        private fun coverFacts(facts: FactSnapshot, npc: NpcEntity?, now: Long): FactSnapshot {
+            npc ?: return facts.observe(TacticalFacts.UNDER_FIRE, false).observe(TacticalFacts.DIGS, 0)
+            val state = cover[npc.uuid]
+            val underFire = npc.isSuppressed()
+            val sector = npc.threatPos?.takeIf { underFire }?.let { FireSector.of(it.x, it.z) }
+            val digs = state?.digs ?: 0
+            var result = facts.observe(TacticalFacts.UNDER_FIRE, underFire).observe(TacticalFacts.DIGS, digs)
+                .observe(TacticalFacts.COVER_CYCLES, state?.cycles ?: 0)
+                .observe(TacticalFacts.SHELTERED, state?.sheltered(npc, sector) == true)
+            sector?.let { result = result.observe(TacticalFacts.FIRE_SECTOR, it) }
+            state?.failure?.let { result = result.observe(TacticalFacts.COVER_FAILURE, it, observedAt = it.failedAt, expiresAt = it.failedAt + FAILURE_MEMORY_TICKS) }
+            if (!underFire && digs == 0) return result
+            val level = npc.level() as ServerLevel
+            result = result.observe(TacticalFacts.ENGAGED, engaged(npc, now))
+            if (state?.failure != null || digs > 0) {
+                result = result.observe(TacticalFacts.DIG_POSSIBLE, CoverMechanics.canDigIn(npc, level, npc.blockPosition()))
+            }
+            if (digs > 0) {
+                result = result.observe(TacticalFacts.HIT_IN_HOLE, npc.health < state!!.healthAtDig)
+                    .observe(TacticalFacts.HEALED, npc.health >= npc.maxHealth * CoverMechanics.DIG_HEALTH_FRACTION)
+            }
+            return result
+        }
+
+        /**
+         * A live target he sees, or one not shooting at him now: the cover behaviour's test for
+         * holding and firing in the open rather than falling back across it.
+         */
+        private fun engaged(npc: NpcEntity, now: Long): Boolean {
+            val target = npc.target?.takeIf { it.isAlive } ?: return false
+            return !npc.incomingFire.pending(now) || com.sbwnpc.squad.combat.DetectionSightline.canSeeWithin(npc, target, NpcEntity.DETECTION_RANGE)
+        }
+
         private fun npcFacts(empty: FactSnapshot): FactSnapshot {
             val id = empty.owner
             val now = empty.now
@@ -481,6 +563,7 @@ object NativeTactics {
                 .observe(TacticalFacts.LEGS_DONE, legs[id.id] ?: 0)
                 .observe(TacticalFacts.SUPPORT_FIRING, supportFiring(id, now), expiresAt = now + 11)
             failures[id.id]?.let { failure -> result = result.observe(TacticalFacts.POST_FAILURE, failure, observedAt = failure.failedAt, expiresAt = failure.failedAt + FAILURE_MEMORY_TICKS) }
+            result = coverFacts(result, npc, now)
             return result
         }
         fun combatView(squad: UUID): TacticalSnapshot? {
@@ -679,6 +762,10 @@ object NativeTactics {
                 agents.keys.filter { it !in desiredAgents }.toList().forEach { id -> agents.remove(id)?.cancel(now, "actor_not_active") }
                 children.keys.removeIf { it !in desiredAgents }
                 failures.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
+                // A man leaving the plan keeps no foxhole claim nobody would release.
+                cover.entries.removeIf { (id, state) ->
+                    (AgentId(AgentLevel.NPC, id) !in desiredAgents).also { gone -> if (gone) (level.getEntity(id) as? NpcEntity)?.release(NpcActivity.DUG_IN, state) }
+                }
                 allocationOrigins.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 formationDuties.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 plannedContact.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
@@ -1483,6 +1570,7 @@ object NativeTactics {
             actions.clear()
             heldPosts.clear()
             legs.clear()
+            cover.clear()
             supportWaits.clear()
         }
     }

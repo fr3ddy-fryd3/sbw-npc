@@ -155,6 +155,12 @@ class NpcActivities(private val report: (String) -> Unit = {}) {
     /** Whether nobody holds [cap]. */
     fun may(cap: Cap, now: Int): Boolean = holder(cap, now) == null
 
+    /**
+     * Whether [kind] may use [cap] once the claims held only by owners [own] accepts are set aside:
+     * a man's own plan actions take his feet as his plan, not from it (#251).
+     */
+    fun mayForBesides(kind: NpcActivity, cap: Cap, now: Int, own: (Any) -> Boolean): Boolean = holds.entries.none { (held, hold) -> hold.until > now && cap in held.holds && held.ordinal > kind.ordinal && !hold.owners.all(own) }
+
     /** Whether [kind] may use [cap]: nothing ranked above [kind] holds it. */
     fun mayFor(kind: NpcActivity, cap: Cap, now: Int): Boolean = (holder(cap, now)?.ordinal ?: -1) <= kind.ordinal
 
