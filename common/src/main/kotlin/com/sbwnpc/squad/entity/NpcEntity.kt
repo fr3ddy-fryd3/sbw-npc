@@ -546,6 +546,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     /** Whether anybody holds [kind]. */
     fun holds(kind: NpcActivity): Boolean = activities?.has(kind, tickCount) == true
 
+    /** Every activity he holds now, for the decision trace. */
+    fun activitiesHeld(): List<NpcActivity> = NpcActivity.entries.filter(::holds)
+
     /** Whether nobody holds [cap] for this NPC. */
     fun may(cap: Cap): Boolean = activities?.may(cap, tickCount) != false
 
