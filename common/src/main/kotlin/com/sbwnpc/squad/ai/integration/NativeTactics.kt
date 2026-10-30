@@ -152,6 +152,7 @@ object NativeTactics {
     fun clearAll() {
         worlds.values.forEach { it.clear() }
         worlds.clear()
+        AttackStrength.clearAll()
     }
     fun snapshot(npc: NpcEntity): TacticalSnapshot? = npc.squadId?.let { world(npc).combatView(it) }
     fun reports(npc: NpcEntity) = world(npc).agents[AgentId(AgentLevel.NPC, npc.uuid)]?.runtime?.reports.orEmpty()
@@ -210,7 +211,6 @@ object NativeTactics {
         // Per squad attacking alone: the members it sends round a flank, see [approachBearings].
         private val manoeuvres = HashMap<UUID, Set<UUID>>()
         private val boundTraces = HashMap<UUID, Map<UUID, ClosingPost>>()
-        private val losses = HashMap<UUID, OperationLosses>()
         private val standings = HashMap<UUID, OperationStanding>()
         private val unverified = HashMap<UUID, MutableMap<UUID, Vec3>>()
 
@@ -532,7 +532,7 @@ object NativeTactics {
                 }
                 loaded.forEach { (saved, npcs) ->
                     var view = TacticalSnapshotCollector.collect(saved, level, npcs, npcs.first())
-                    if (AttackAmmoWithdrawal.apply(saved, level, view)) view = TacticalSnapshotCollector.collect(saved, level, npcs, npcs.first())
+                    if (AttackStrength.update(saved, level, view)) view = TacticalSnapshotCollector.collect(saved, level, npcs, npcs.first())
                     snapshots[saved.id] = view
                     saved.tactics.snapshot = view
                     val goal = saved.command?.goal as? ObjectiveKey.Entity
@@ -796,48 +796,51 @@ object NativeTactics {
             return if (bounds.isEmpty()) roles else roles.copy(closing = bounds)
         }
 
+        /** Withdraws [squad] from a called-off attack, to a Supply behind it when there is one. */
+        private fun callOff(squad: Squad, able: Int, base: Int) {
+            val manager = SquadManager.get(level)
+            val view = snapshots[squad.id]
+            val reference = squad.members.firstNotNullOfOrNull { level.getEntity(it) as? NpcEntity }
+            manager.withdraw(squad.id, "attack_strength")
+            val retreat = if (view != null && reference != null) AttackStrength.fallBack(level, squad, reference, view) else null
+            retreat?.let { manager.setObjective(level, squad.id, net.minecraft.core.BlockPos.containing(it.point)) }
+            SquadReports.attackCalledOff(level.server, squad, able, base, retreat?.toSupply == true)
+        }
+
         /**
-         * The attacking operation's standing after its losses, over every squad in it, loaded or
-         * not. On [OperationStanding.WITHDRAW] the attack is called off here and each squad falls back.
+         * The attacking operation's standing by its strength ([CombatStrength]), over every squad in
+         * it, loaded or not: the able men left of the bases its squads went in with. On
+         * [OperationStanding.WITHDRAW] the attack is called off here and those squads fall back.
          *
          * Squads with a barracks are left out: it replaces their fallen, so they fight on whatever
-         * they lose (#57). Their men do not count, and a withdrawal pulls back only the squads
-         * without one; the attack goes on while a squad with a barracks is still in it.
+         * they lose (#57). So are remnants, sent in to fight to the end, and squads not yet measured.
+         * The attack goes on while any of those is still in it.
          */
+
         private fun standing(operation: UUID, now: Long): OperationStanding {
             val manager = SquadManager.get(level)
             val all = (operations.operation(operation)?.members?.keys ?: setOf(operation))
                 .mapNotNull(manager::get)
                 .filter { it.order == SquadOrder.ATTACK && it.commandOutcome == CommandOutcome.ACTIVE && operations.pending(it.id) == null }
-            val attacking = all.filter { it.barracks == null }
-            if (attacking.isEmpty()) {
-                losses.remove(operation)
+            val counted = all.filter { it.barracks == null && !it.attackRemnant && it.attackBase != null }
+            if (counted.isEmpty()) {
                 standings.remove(operation)
                 return OperationStanding.STEADY
             }
-            val record = losses.getOrPut(operation, ::OperationLosses)
-            record.retain(attacking.mapTo(HashSet()) { it.id })
-            attacking.forEach { record.observe(it.id, it.members) }
-            val fraction = record.fraction { id -> manager.get(id)?.members.orEmpty() }
-            val standing = OperationLosses.standing(fraction)
+            val base = counted.sumOf { it.attackBase!! }
+            val able = counted.sumOf { AttackStrength.count(it, level).able }
+            val standing = CombatStrength.standing(able, base)
             if (standings.put(operation, standing) != standing) {
-                DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=attack_standing standing={} losses={}", operation, standing, "%.2f".format(fraction))
+                DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=attack_standing standing={} able={} base={}", operation, standing, able, base)
             }
             if (standing == OperationStanding.WITHDRAW) {
-                attacking.forEach { squad ->
-                    val view = snapshots[squad.id]
-                    val reference = squad.members.firstNotNullOfOrNull { level.getEntity(it) as? NpcEntity }
-                    manager.withdraw(squad.id, "operation_losses")
-                    if (view != null && reference != null) manager.setObjective(level, squad.id, net.minecraft.core.BlockPos.containing(AttackAmmoWithdrawal.fallBack(level, reference, view)))
-                    com.sbwnpc.squad.squad.SquadReports.attackFailedLosses(level.server, squad, (fraction * 100).toInt())
-                }
-                losses.remove(operation)
+                counted.forEach { callOff(it, able, base) }
                 standings.remove(operation)
-                // The squads with a barracks fight on. This update still lists the withdrawn squads
-                // with the operation's, so it is skipped like a full withdrawal; the next one plans
-                // the attack without them.
-                if (attacking.size < all.size) {
-                    attacking.forEach { operations.detach(it.id) }
+                // The squads left out fight on. This update still lists the withdrawn squads with
+                // the operation's, so it is skipped like a full withdrawal; the next one plans the
+                // attack without them.
+                if (counted.size < all.size) {
+                    counted.forEach { operations.detach(it.id) }
                     return standing
                 }
                 operations.finish(operation, OperationStatus.CANCELLED)

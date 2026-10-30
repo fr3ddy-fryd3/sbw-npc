@@ -612,7 +612,7 @@ object HtnTacticsGameTests {
                 }
             }
             if (helper.tick > 300 && squads.all { it.order == SquadOrder.RETREAT }) {
-                helper.assertTrue(squads.all { it.commandReason == "operation_losses" && it.commandOutcome == com.sbwnpc.squad.ai.tactics.CommandOutcome.FAILED }, "Withdrawal not recorded as failed: ${squads.map { it.commandReason }}")
+                helper.assertTrue(squads.all { it.commandReason == "attack_strength" && it.commandOutcome == com.sbwnpc.squad.ai.tactics.CommandOutcome.FAILED }, "Withdrawal not recorded as failed: ${squads.map { it.commandReason }}")
                 val away = squads.all { squad -> squad.objective?.let { it.center.distanceTo(target.center) > 100 } == true }
                 helper.assertTrue(away, "Fallback point not away from the objective: ${squads.map { it.objective }}")
                 scene.result("PASS", "tick=${helper.tick} orders=${squads.map { it.order }} objectives=${squads.map { it.objective }}")

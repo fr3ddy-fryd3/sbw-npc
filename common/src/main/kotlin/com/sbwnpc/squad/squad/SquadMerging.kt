@@ -47,6 +47,12 @@ object SquadMerging {
         destination.members.addAll(members)
         destination.recruitmentRoster = RecruitmentRoster(slots.toMutableList())
         destination.originalComposition = slots.map { it.role }
+        // An attack measured on one side keeps measuring the merged squad: the other side's men
+        // join its base, or losing them would read as no loss at all. Merged, it is no remnant.
+        if (source.attackBase != null || destination.attackBase != null) {
+            destination.attackBase = (source.attackBase ?: source.members.size) + (destination.attackBase ?: destination.members.size)
+            destination.attackRemnant = false
+        }
         destination.orderStamp++
         destination.moveFormationReady = false
         destination.moveRallySince = 0L

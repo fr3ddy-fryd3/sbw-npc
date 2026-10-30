@@ -28,6 +28,7 @@ object SquadReports {
         RESUPPLY(600, ChatFormatting.GRAY),
         ARRIVED(0, ChatFormatting.GREEN),
         ATTACK_FAILED(0, ChatFormatting.GOLD),
+        ATTACK(0, ChatFormatting.AQUA),
     }
 
     private val lastSent = HashMap<Pair<UUID, Kind>, Long>()
@@ -104,12 +105,27 @@ object SquadReports {
         send(server, squad, Kind.RESUPPLY, "${className(npc)} going to resupply")
     }
 
-    fun attackFailedAmmo(server: MinecraftServer, squad: Squad, empty: Int, infantry: Int) {
-        send(server, squad, Kind.ATTACK_FAILED, "Attack failed: primary ammunition exhausted ($empty/$infantry). Falling back 100 m")
+    /** The attack has [able] of its [base] men left with something to fire, too few to go on. */
+    fun attackCalledOff(server: MinecraftServer, squad: Squad, able: Int, base: Int, toSupply: Boolean) {
+        val to = if (toSupply) "to the Supply" else "100 m"
+        send(server, squad, Kind.ATTACK_FAILED, "Attack called off: $able of $base still able to fight. Falling back $to")
     }
 
-    fun attackFailedLosses(server: MinecraftServer, squad: Squad, lostPercent: Int) {
-        send(server, squad, Kind.ATTACK_FAILED, "Attack called off: the attack lost $lostPercent% of its men. Falling back 100 m")
+    fun remnantAttacking(server: MinecraftServer, squad: Squad, living: Int, full: Int) {
+        send(server, squad, Kind.ATTACK, "Remnant of the squad ($living/$full) attacking to the end")
+    }
+
+    fun resupplyingFirst(server: MinecraftServer, squad: Squad, dry: Int, living: Int) {
+        send(server, squad, Kind.ATTACK, "Attack delayed: $dry/$living out of primary ammunition. Resupplying first, then attacking")
+    }
+
+    fun poorChances(server: MinecraftServer, squad: Squad, dry: Int, living: Int) {
+        send(server, squad, Kind.ATTACK, "Attacking with $dry/$living out of primary ammunition and no Supply to refill at: poor chances")
+    }
+
+    /** Back to the attack after a refill; not [refilled] when it stalled and was given up. */
+    fun resupplied(server: MinecraftServer, squad: Squad, refilled: Boolean) {
+        send(server, squad, Kind.ATTACK, if (refilled) "Resupplied, attacking" else "Could not finish resupplying, attacking")
     }
 
     /** [squad] has taken its point, or fallen back to it, and holds it now. */

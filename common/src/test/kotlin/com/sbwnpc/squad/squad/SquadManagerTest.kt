@@ -11,6 +11,7 @@ import com.sbwnpc.squad.npc.NpcClass.SNIPER
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.npc.SquadPreset
+import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
 import net.minecraft.world.phys.Vec3
@@ -87,56 +88,49 @@ class SquadManagerTest {
         )
 
     @Test
-    fun `ammo withdrawal offers a saved retry consumed only by an explicit attack`() {
+    fun `an attack keeps its base through repeated attack orders and loses it on any other order`() {
         val source = garrison(listOf(RIFLEMAN))
         var mgr = manager(source)
         mgr.issueOrder(source.id, SquadOrder.ATTACK)
-        assertEquals(AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY, mgr.get(source.id)!!.attackAmmoPolicy)
-        mgr.withdrawForAmmo(source.id)
-        assertEquals(SquadOrder.RETREAT, mgr.get(source.id)!!.order)
-        mgr = SquadManager.load(mgr.saveState(CompoundTag()))
-        mgr.setOrder(source.id, SquadOrder.DEFEND) // Ordinary arrival, including after Supply.
-        assertEquals(AttackAmmoPolicy.RETRY_AVAILABLE, mgr.get(source.id)!!.attackAmmoPolicy)
-        mgr.setOrder(source.id, SquadOrder.ATTACK) // An internal update is not the player's retry.
-        assertEquals(AttackAmmoPolicy.RETRY_AVAILABLE, mgr.get(source.id)!!.attackAmmoPolicy)
-        mgr = SquadManager.load(mgr.saveState(CompoundTag()))
-        mgr.issueOrder(source.id, SquadOrder.ATTACK)
-        assertEquals(AttackAmmoPolicy.PRESS_ON, mgr.get(source.id)!!.attackAmmoPolicy)
-        mgr = SquadManager.load(mgr.saveState(CompoundTag()))
-        mgr.issueOrder(source.id, SquadOrder.ATTACK) // Moving the attack target does not rearm retreat.
-        assertEquals(AttackAmmoPolicy.PRESS_ON, mgr.get(source.id)!!.attackAmmoPolicy)
-        mgr.issueOrder(source.id, SquadOrder.RETREAT)
-        assertEquals(SquadOrder.RETREAT, mgr.get(source.id)!!.order)
-        assertEquals(AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY, mgr.get(source.id)!!.attackAmmoPolicy)
-        mgr.issueOrder(source.id, SquadOrder.ATTACK)
-        assertEquals(AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY, mgr.get(source.id)!!.attackAmmoPolicy)
-    }
-
-    @Test
-    fun `manual retreat and rejected tank attacks do not grant an ammunition override`() {
-        for (composition in listOf(listOf(RIFLEMAN), listOf(NpcClass.TANK_CREW))) {
-            val source = garrison(composition)
-            val mgr = manager(source)
-            mgr.issueOrder(source.id, SquadOrder.RETREAT)
-            mgr.issueOrder(source.id, SquadOrder.ATTACK)
-            assertEquals(AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY, mgr.get(source.id)!!.attackAmmoPolicy)
-            if (NpcClass.TANK_CREW in composition) {
-                mgr.withdrawForAmmo(source.id)
-                mgr.issueOrder(source.id, SquadOrder.ATTACK)
-                assertEquals(SquadOrder.MOVE, mgr.get(source.id)!!.order)
-                assertEquals(AttackAmmoPolicy.RETRY_AVAILABLE, mgr.get(source.id)!!.attackAmmoPolicy)
-            }
+        mgr.get(source.id)!!.apply {
+            attackBase = 6
+            attackRemnant = true
+            attackResupplied = true
         }
+        mgr = SquadManager.load(mgr.saveState(CompoundTag()))
+        mgr.issueOrder(source.id, SquadOrder.ATTACK) // A re-aimed or repeated attack is the same attack.
+        assertEquals(6, mgr.get(source.id)!!.attackBase)
+        assertTrue(mgr.get(source.id)!!.attackRemnant)
+        assertTrue(mgr.get(source.id)!!.attackResupplied)
+        mgr.issueOrder(source.id, SquadOrder.DEFEND)
+        assertNull(mgr.get(source.id)!!.attackBase)
+        assertFalse(mgr.get(source.id)!!.attackRemnant)
+        assertFalse(mgr.get(source.id)!!.attackResupplied)
     }
 
     @Test
-    fun `missing or invalid saved ammo policy defaults to normal attack`() {
+    fun `a player order calls a resupply detour off and an internal one does not`() {
         val source = garrison(listOf(RIFLEMAN))
-        for (value in listOf(null, "UNKNOWN", "PRESS_ON")) {
-            val tag = source.save()
-            if (value == null) tag.remove("AttackAmmoPolicy") else tag.putString("AttackAmmoPolicy", value)
-            assertEquals(AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY, Squad.load(tag).attackAmmoPolicy)
+        val mgr = manager(source)
+        val waiting = ResupplyAttack(BlockPos(1, 2, 3), UUID.randomUUID())
+        mgr.get(source.id)!!.resupplyAttack = waiting
+        mgr.setOrder(source.id, SquadOrder.MOVE)
+        assertEquals(waiting, mgr.get(source.id)!!.resupplyAttack)
+        val loaded = SquadManager.load(mgr.saveState(CompoundTag()))
+        assertEquals(waiting, loaded.get(source.id)!!.resupplyAttack)
+        loaded.issueOrder(source.id, SquadOrder.MOVE)
+        assertNull(loaded.get(source.id)!!.resupplyAttack)
+    }
+
+    @Test
+    fun `an attack saved before strength was measured is measured on load, not classified`() {
+        val source = garrison(listOf(RIFLEMAN)).apply { order = SquadOrder.ATTACK }
+        val old = source.save().apply {
+            remove("AttackRemnant")
+            putString("AttackAmmoPolicy", "PRESS_ON")
         }
+        assertTrue(Squad.load(old).attackUnmeasuredOnLoad)
+        assertFalse(Squad.load(source.save()).attackUnmeasuredOnLoad)
     }
 
     @Test

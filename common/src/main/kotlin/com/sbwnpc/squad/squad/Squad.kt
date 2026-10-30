@@ -17,6 +17,23 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.level.Level
 import java.util.UUID
 
+/** What a squad was attacking when it went to refill first: the point, or the entity it was focused on. */
+data class ResupplyAttack(val objective: BlockPos?, val focus: UUID?) {
+    fun save(): CompoundTag =
+        CompoundTag().also { tag ->
+            objective?.let { tag.put("Objective", NbtUtils.writeBlockPos(it)) }
+            focus?.let { tag.putUUID("Focus", it) }
+        }
+
+    companion object {
+        fun load(tag: CompoundTag) =
+            ResupplyAttack(
+                if (tag.contains("Objective")) VersionCompat.readBlockPos(tag, "Objective") else null,
+                if (tag.hasUUID("Focus")) tag.getUUID("Focus") else null,
+            )
+    }
+}
+
 /** A barracks needs both its position and dimension: the same coordinates exist in every world. */
 data class BarracksRef(val dimension: ResourceKey<Level>, val pos: BlockPos)
 
@@ -76,9 +93,24 @@ class Squad(
     /** Null only for a pre-1.0 save whose member roles have not been resolved yet. */
     var recruitmentRoster: RecruitmentRoster? = null
 
-    /** Saved separately from transient tactics so arrival and reload preserve an offered retry. */
-    var attackAmmoPolicy: AttackAmmoPolicy = AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY
-        internal set
+    /**
+     * The attack's strength when it started ([com.sbwnpc.squad.combat.tactics.CombatStrength]): null
+     * while the squad is not attacking, or until the attack has been measured. Saved, so a reload
+     * mid-attack does not measure it again from the men left by then.
+     */
+    var attackBase: Int? = null
+
+    /** Sent into this attack as the remnant of a squad: it fights to the end and is never withdrawn on strength. */
+    var attackRemnant = false
+
+    /** This attack has already gone to a Supply once: dry again, it attacks rather than going back. */
+    var attackResupplied = false
+
+    /** The attack waiting while the squad refills at a Supply, resumed once it has. */
+    var resupplyAttack: ResupplyAttack? = null
+
+    /** Loaded attacking from a save older than [attackBase]: measured as it stands, not classified. */
+    internal var attackUnmeasuredOnLoad = false
 
     fun save(): CompoundTag {
         val tag = CompoundTag()
@@ -92,7 +124,10 @@ class Squad(
         objectiveDimension?.let { tag.putString("ObjectiveDimension", it.location().toString()) }
         tacticalOperation?.let { tag.putUUID("TacticalOperation", it) }
         tacticalObjective?.let { tag.put("TacticalObjective", NbtUtils.writeBlockPos(it)) }
-        tag.putString("AttackAmmoPolicy", attackAmmoPolicy.name)
+        attackBase?.let { tag.putInt("AttackBase", it) }
+        tag.putBoolean("AttackRemnant", attackRemnant)
+        tag.putBoolean("AttackResupplied", attackResupplied)
+        resupplyAttack?.let { tag.put("ResupplyAttack", it.save()) }
         tag.putString("Rank", rank.name)
         val list = ListTag()
         members.forEach { list.add(NbtUtils.createUUID(it)) }
@@ -162,11 +197,11 @@ class Squad(
             if (tag.contains("RecruitmentRoster", Tag.TAG_LIST.toInt())) {
                 squad.recruitmentRoster = RecruitmentRoster.load(tag.getList("RecruitmentRoster", Tag.TAG_COMPOUND.toInt()))
             }
-            squad.attackAmmoPolicy = runCatching { AttackAmmoPolicy.valueOf(tag.getString("AttackAmmoPolicy")) }
-                .getOrDefault(AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY)
-            if (squad.order != SquadOrder.ATTACK && squad.attackAmmoPolicy == AttackAmmoPolicy.PRESS_ON) {
-                squad.attackAmmoPolicy = AttackAmmoPolicy.WITHDRAW_WHEN_EMPTY
-            }
+            if (tag.contains("AttackBase", Tag.TAG_INT.toInt())) squad.attackBase = tag.getInt("AttackBase")
+            squad.attackRemnant = tag.getBoolean("AttackRemnant")
+            squad.attackResupplied = tag.getBoolean("AttackResupplied")
+            if (tag.contains("ResupplyAttack", Tag.TAG_COMPOUND.toInt())) squad.resupplyAttack = ResupplyAttack.load(tag.getCompound("ResupplyAttack"))
+            squad.attackUnmeasuredOnLoad = squad.order == SquadOrder.ATTACK && squad.attackBase == null && !tag.contains("AttackRemnant")
             return squad
         }
 

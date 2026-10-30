@@ -27,7 +27,8 @@ class SquadMergingTest {
         val from = group(NpcClass.SNIPER)
         val into = group(NpcClass.MEDIC)
         into.order = SquadOrder.ATTACK
-        into.attackAmmoPolicy = AttackAmmoPolicy.PRESS_ON
+        into.attackBase = 3
+        into.attackRemnant = true
         val focus = UUID.randomUUID()
         into.focusEntity = focus
         from.recruitmentRoster!!.slots += RecruitmentRoster.Slot(UUID.randomUUID(), NpcClass.RIFLEMAN)
@@ -51,7 +52,9 @@ class SquadMergingTest {
         assertNull(loaded.get(from.id))
         assertEquals(into.name, result.name)
         assertEquals(SquadOrder.ATTACK, result.order)
-        assertEquals(AttackAmmoPolicy.PRESS_ON, result.attackAmmoPolicy)
+        // The receiver's attack goes on with the other squad's man in its base.
+        assertEquals(3 + from.members.size, result.attackBase)
+        assertFalse(result.attackRemnant)
         assertEquals(into.objective, result.objective)
         assertEquals(focus, result.focusEntity)
         assertEquals(into.members + from.members, result.members)
