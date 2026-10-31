@@ -58,6 +58,10 @@ object PlannedCoverGameTests {
             private set
         private var reacted = false
 
+        /** Ticks he held cover, not peeking and not moving, still in the shooter's line. */
+        var exposedInCover = 0
+            private set
+
         /** Ticks he was out of the shooter's line. */
         var hidden = 0
             private set
@@ -86,6 +90,7 @@ object PlannedCoverGameTests {
             val claimed = man.holdsAny(NpcActivity.COVER, NpcActivity.PEEK)
             if (claimed && !NativeTactics.movable(man)) suspendedInCover++
             if (claimed) reacted = true
+            if (man.holds(NpcActivity.COVER) && !man.holds(NpcActivity.PEEK) && man.navigation.isDone && exposed()) exposedInCover++
             when {
                 !exposed() -> hidden++
                 reacted && !claimed -> idle(now)
@@ -141,6 +146,27 @@ object PlannedCoverGameTests {
                 fire.assertSheltered("He")
                 helper.assertTrue(fire.chose("under_fire") && fire.chose("take_cover"), "His plan did not choose cover: ${fire.choices()}")
                 fire.scene.result("PASS", "tick=${helper.tick} hidden=${fire.hidden} handovers=${fire.handovers}")
+                helper.succeed()
+            }
+        }
+    }
+
+    /**
+     * The shooter about 3 degrees off due east, between two steps of the quantized hit bearing
+     * (#264): cover judged from the rounded point alone left him at the wall's end, in the real
+     * shooter's line.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "planned-cover-off-step")
+    fun coverHidesFromShooterOffTheBearingStep(helper: GameTestHelper) {
+        val fire = UnderFire(helper, "planned-cover-off-step", listOf(Vec3(20.5, 1.0, 57.5)), Vec3(140.5, 1.0, 50.5), wall = WALL)
+        helper.onEachTick {
+            fire.tick()
+            if (helper.tick % 50L == 0L) fire.scene.result("RUNNING", "tick=${helper.tick} at=${helper.relativeVec(fire.man.position())} exposed=${fire.exposed()} idle=${fire.exposedIdle} hidden=${fire.hidden}")
+            if (helper.tick >= 300L) {
+                fire.assertSheltered("He")
+                helper.assertTrue(fire.exposedInCover == 0, "He settled in cover still in the shooter's line for ${fire.exposedInCover} ticks")
+                fire.scene.result("PASS", "tick=${helper.tick} hidden=${fire.hidden}")
                 helper.succeed()
             }
         }
