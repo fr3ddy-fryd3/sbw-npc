@@ -546,8 +546,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     /** Whether nobody holds [cap] for this NPC. */
     fun may(cap: Cap): Boolean = activities?.may(cap, tickCount) != false
 
-    /** Whether [kind] may use [cap]: nothing ranked above it holds it. */
-    fun mayFor(kind: NpcActivity, cap: Cap): Boolean = activities?.mayFor(kind, cap, tickCount) != false
+    /** Whether [kind] may use [cap]: nothing ranked above it holds it, besides owners [own] accepts. */
+    fun mayFor(kind: NpcActivity, cap: Cap, own: ((Any) -> Boolean)? = null): Boolean = activities?.mayFor(kind, cap, tickCount, own) != false
 
     /** Whether anybody holds any of [kinds]. */
     fun holdsAny(vararg kinds: NpcActivity): Boolean = kinds.any(::holds)

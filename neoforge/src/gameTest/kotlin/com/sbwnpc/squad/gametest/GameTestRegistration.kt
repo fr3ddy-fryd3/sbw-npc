@@ -34,6 +34,7 @@ object GameTestRegistration {
             LadderNavigationGameTests::class.java,
             ScaffoldingGameTests::class.java,
             SidearmGameTests::class.java,
+            PlannedCoverGameTests::class.java,
             AmmunitionTacticsGameTests::class.java,
             MortarCrewGameTests::class.java,
             HelicopterOrbitGameTests::class.java,

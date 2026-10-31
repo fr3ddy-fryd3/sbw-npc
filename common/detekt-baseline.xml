@@ -9,6 +9,7 @@
     <ID>ComplexCondition:Assignments.kt$AssignmentLedger$previous != null &amp;&amp; previous.ticket.parent == parent &amp;&amp; previous.task == task &amp;&amp; previous.continuous == continuous &amp;&amp; previous.status != AssignmentStatus.REVOKED</ID>
     <ID>ComplexCondition:BlindReturnFireBehaviour.kt$BlindReturnFireBehaviour$entity.busyWithRole() || entity.combatLockedByCover() || entity.combatLockedByMedic() || entity.resupplying || entity.vehicle != null || entity.evadingGrenade()</ID>
     <ID>ComplexCondition:CellPlanner.kt$CellPlanner.Search$dx != 0 &amp;&amp; dz != 0 &amp;&amp; (!medium.open(x + dx, z) || !medium.open(x, z + dz))</ID>
+    <ID>ComplexCondition:CoverMechanics.kt$CoverMechanics$!(hurtEnough &amp;&amp; diggableGround &amp;&amp; flatEnough &amp;&amp; covered)</ID>
     <ID>ComplexCondition:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$phase != Phase.LAUNCH &amp;&amp; phase != Phase.RETURN &amp;&amp; (drone.onGround() || drone.horizontalCollision || drone.verticalCollision)</ID>
     <ID>ComplexCondition:Execution.kt$PlanRuntime$entry.ticket != ticket || !entry.acceptsExternal || !entry.started || entry.status !in setOf(ExecutionStatus.RUNNING, ExecutionStatus.SUSPENDED)</ID>
     <ID>ComplexCondition:ExperienceAwards.kt$ExperienceAwards$loader != null &amp;&amp; loader !== npc &amp;&amp; tube != null &amp;&amp; MortarClaims.atPost(loader, tube)</ID>
@@ -34,7 +35,6 @@
     <ID>ComplexCondition:OutOfAmmoBehaviour.kt$OutOfAmmoBehaviour$entity.movementLockedByCover() || entity.coverPeekPoint != null || entity.evadingGrenade() || entity.combatLockedByMedic()</ID>
     <ID>ComplexCondition:PlanningAgent.kt$PlanningAgent$runtime.completed &amp;&amp; search == null &amp;&amp; waiting.isEmpty() &amp;&amp; status == PlanningStatus.EXECUTING</ID>
     <ID>ComplexCondition:PlanningAgent.kt$PlanningAgent$search == null &amp;&amp; status in setOf(PlanningStatus.EXECUTING, PlanningStatus.COMPLETED) &amp;&amp; old != null &amp;&amp; !old.inputUnchanged(facts)</ID>
-    <ID>ComplexCondition:SeekCoverBehaviour.kt$SeekCoverBehaviour$!(hurtEnough &amp;&amp; diggableGround &amp;&amp; flatEnough &amp;&amp; covered)</ID>
     <ID>ComplexCondition:SeekCoverBehaviour.kt$SeekCoverBehaviour$entity.tickCount &gt;= phaseUntilTick || (!blindReply &amp;&amp; (target == null || !target.isAlive))</ID>
     <ID>ComplexCondition:SeekCoverBehaviour.kt$SeekCoverBehaviour$target != null &amp;&amp; target.isAlive &amp;&amp; !ally.combatLockedByCover() &amp;&amp; ally.sensing.hasLineOfSight(target)</ID>
     <ID>ComplexCondition:SquadFormation.kt$SquadFormation$(shape == Shape.RING &amp;&amp; !rearSupport) || shape == Shape.PERIMETER || shape == Shape.SCATTER</ID>
@@ -350,6 +350,17 @@
     <ID>MagicNumber:CommandScreen.kt$CommandScreen$8</ID>
     <ID>MagicNumber:CommandScreen.kt$CommandScreen$88</ID>
     <ID>MagicNumber:CommandScreen.kt$CommandScreen$92</ID>
+    <ID>MagicNumber:CoverMechanics.kt$CoverMechanics$0.1f</ID>
+    <ID>MagicNumber:CoverMechanics.kt$CoverMechanics$0.2f</ID>
+    <ID>MagicNumber:CoverMechanics.kt$CoverMechanics$0.3</ID>
+    <ID>MagicNumber:CoverMechanics.kt$CoverMechanics$0.35f</ID>
+    <ID>MagicNumber:CoverMechanics.kt$CoverMechanics$0.5</ID>
+    <ID>MagicNumber:CoverMechanics.kt$CoverMechanics$0.55f</ID>
+    <ID>MagicNumber:CoverMechanics.kt$CoverMechanics$0.6f</ID>
+    <ID>MagicNumber:CoverMechanics.kt$CoverMechanics$1.0e-6</ID>
+    <ID>MagicNumber:CoverMechanics.kt$CoverMechanics$1.5f</ID>
+    <ID>MagicNumber:CoverMechanics.kt$CoverMechanics$12</ID>
+    <ID>MagicNumber:CoverMechanics.kt$CoverMechanics$512</ID>
     <ID>MagicNumber:CoverPeekSearch.kt$CoverPeekSearch$0.5</ID>
     <ID>MagicNumber:CoverPeekSearch.kt$CoverPeekSearch$1.5</ID>
     <ID>MagicNumber:CoverPeekSearch.kt$CoverPeekSearch$16.0</ID>
@@ -684,13 +695,9 @@
     <ID>MagicNumber:RoutesScreen.kt$RoutesScreen$90</ID>
     <ID>MagicNumber:SafeSpawn.kt$SafeSpawn$0.1</ID>
     <ID>MagicNumber:SafeSpawn.kt$SafeSpawn$8</ID>
-    <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$0.3</ID>
     <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$0.5</ID>
-    <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$1.0e-6</ID>
     <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$1.5</ID>
-    <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$1.5f</ID>
     <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$100</ID>
-    <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$12</ID>
     <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$40</ID>
     <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$512</ID>
     <ID>MagicNumber:SeekCoverBehaviour.kt$SeekCoverBehaviour$60</ID>
