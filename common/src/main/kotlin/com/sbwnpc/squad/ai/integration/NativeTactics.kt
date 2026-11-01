@@ -102,11 +102,14 @@ object NativeTactics {
     internal var planResultObserver: ((AgentLevel) -> Unit)? = null
     private fun world(npc: NpcEntity) = worlds.getOrPut(npc.level() as ServerLevel) { World(npc.level() as ServerLevel) }
     fun refresh(npc: NpcEntity) {
-        if (npc.vehicle == null && npc.npcClass in GROUND && npc.currentSquad() != null) world(npc).refresh(npc)
+        if (planned(npc)) world(npc).refresh(npc)
     }
+
+    /** Whether [npc] is one his squad plans for, a ground role on foot in a squad: he gets a full NPC agent. */
+    fun planned(npc: NpcEntity) = npc.vehicle == null && npc.npcClass in GROUND && npc.currentSquad() != null
     fun tick(npc: NpcEntity) = world(npc).tick(npc)
     fun assignment(npc: NpcEntity): NativeAssignment? {
-        if (npc.vehicle != null || npc.npcClass !in GROUND || npc.currentSquad() == null) return null
+        if (!planned(npc)) return null
         refresh(npc)
         return world(npc).actions[npc.uuid]?.takeIf { it.intent.commandsMovement }?.assignment
     }
@@ -237,7 +240,8 @@ object NativeTactics {
         fun engages(npc: NpcEntity): Boolean = agents[AgentId(AgentLevel.NPC, npc.uuid)]?.runtime?.reports?.values?.any { Engage.isUnit(it.ticket.identity) && it.status == ExecutionStatus.RUNNING } == true
 
         fun engaging(npc: NpcEntity) {
-            if (npc.npcClass in GROUND && npc.currentSquad() != null) return
+            // A man with a full agent plans his fight in it; who gets one is [planned]'s alone.
+            if (AgentId(AgentLevel.NPC, npc.uuid) in agents && npc.uuid !in engagers) return
             val known = engagers[npc.uuid]
             val stamp = npc.currentSquad()?.orderStamp ?: 0
             engagers[npc.uuid] = Engager(level.gameTime + ENGAGER_TICKS, known?.takeIf { it.stamp == stamp }?.command ?: UUID.nameUUIDFromBytes("engage:${npc.uuid}:$stamp".toByteArray()), stamp)
