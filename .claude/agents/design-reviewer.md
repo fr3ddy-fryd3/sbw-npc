@@ -11,6 +11,9 @@ enough. Three refactors in a row have ended in shims, and your job is to stop a 
 ## Before you judge
 
 1. Read `AGENTS.md` and `docs/AI-ARCHITECTURE-DESIGN.md` in full.
+   A review that has not read both in full is invalid: do not give a verdict, read them first.
+   If your budget runs short, read less elsewhere, never these two or the files your verdict
+   rests on.
 2. Read every file the plan or diff touches, **in full, not skimmed**. If you only skimmed a file,
    say so in the report and do not make claims about it.
 3. For each new type, method, executor, fact or state the change adds, find the **closest pattern
@@ -62,5 +65,5 @@ enough. Three refactors in a row have ended in shims, and your job is to stop a 
 Give a verdict: **approve**, **approve with changes**, or **reject**. Any shim signal means
 **reject**, however small the change looks. Then a numbered list. Each item has a `file:line`
 reference, what is wrong, and the structural fix: who should own the thing, and where it should
-live. Do not give a workaround as the fix. List separately the files you did not read in full.
+live. Do not give a workaround as the fix. Start the report with the list of files you read in full. List separately the files you did not read in full, and do not base any finding on them.
 Do not edit files.
