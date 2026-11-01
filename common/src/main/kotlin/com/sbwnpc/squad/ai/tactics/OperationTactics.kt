@@ -73,6 +73,8 @@ data class DutyInputs(
     val followRide: Boolean = false,
     /** Squad-wide distant transit: the ordinary order and vehicle behaviours own movement. */
     val transit: Boolean = false,
+    /** He fights with his sidearm: his main weapon is empty, see [MemberDuties]' `sidearm_fire`. */
+    val sidearm: Boolean = false,
 ) {
     /**
      * Whether a sentry takes his height post: at his objective, or with none, or already on duty for it.

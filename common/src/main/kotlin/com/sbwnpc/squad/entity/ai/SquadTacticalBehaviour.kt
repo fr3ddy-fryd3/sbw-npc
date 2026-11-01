@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
+import com.sbwnpc.squad.ai.integration.NativeTactics
 import com.sbwnpc.squad.combat.tactics.SquadTactics
 import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
@@ -15,14 +16,11 @@ class SquadTacticalBehaviour : ExtendedBehaviour<NpcEntity>() {
         noTimeout()
     }
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
-    private fun eligible(entity: NpcEntity) =
-        entity.squadId != null && entity.vehicle == null &&
-            entity.npcClass !in setOf(
-                com.sbwnpc.squad.npc.NpcClass.TANK_CREW,
-                com.sbwnpc.squad.npc.NpcClass.HELICOPTER_PILOT,
-                com.sbwnpc.squad.npc.NpcClass.HELICOPTER_GUNNER,
-                com.sbwnpc.squad.npc.NpcClass.MORTAR,
-            )
+
+    // A man his squad plans for starts it, so his full agent gets made; any man with an NPC agent,
+    // an engage-only one too (a crewman or a squadless man in a fight, #251 step B), keeps it so
+    // his plan ticks.
+    private fun eligible(entity: NpcEntity) = entity.vehicle == null && (NativeTactics.planned(entity) || NativeTactics.hasAgent(entity))
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity) = eligible(entity)
     override fun shouldKeepRunning(entity: NpcEntity) = eligible(entity)
     override fun stop(entity: NpcEntity) {

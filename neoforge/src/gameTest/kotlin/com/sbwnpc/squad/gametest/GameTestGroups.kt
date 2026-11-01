@@ -48,6 +48,8 @@ internal object GameTestGroups {
             AllyDeathGameTests::class.java,
             SidearmGameTests::class.java,
             PlannedCoverGameTests::class.java,
+            PlannedEngageGameTests::class.java,
+            EngageOnlyGameTests::class.java,
             AmmunitionTacticsGameTests::class.java,
             HostileMobApiGameTests::class.java,
             HostileMobCombatGameTests::class.java,

@@ -53,6 +53,9 @@ object MemberDuties {
         // it and let the player walk away (#116). A player in a vehicle is followed by the ride.
         rule("follow_ride", { it.inputs.following && it.inputs.followRide }, { CombatDuty.FOLLOW_ORDER }, { it.objectiveOrHere }),
         rule("follow_bound", { it.inputs.following && it.inputs.followBound && it.inputs.followSlot != null }, { CombatDuty.MOVE }, { it.inputs.followSlot!! }),
+        // On his sidearm he fires from where he is, and his own plan never sends him forward
+        // (owner, 31.10). After the follow rules: following, he still keeps up with his squad's bounds.
+        rule("sidearm_fire", { it.inputs.sidearm }, { CombatDuty.FIRE }, { it.inputs.position }),
         rule("defending_fire", { it.inputs.order != TacticalOrder.ATTACK }, { CombatDuty.FIRE }, { it.inputs.position }),
         // Firing on the way would stop him short of his sector.
         rule("flank_march", { it.inputs.flanking }, { CombatDuty.MOVE }, { if (it.approach) it.approachAnchor else it.proposal.anchor }),

@@ -102,11 +102,14 @@ object NativeTactics {
     internal var planResultObserver: ((AgentLevel) -> Unit)? = null
     private fun world(npc: NpcEntity) = worlds.getOrPut(npc.level() as ServerLevel) { World(npc.level() as ServerLevel) }
     fun refresh(npc: NpcEntity) {
-        if (npc.vehicle == null && npc.npcClass in GROUND && npc.currentSquad() != null) world(npc).refresh(npc)
+        if (planned(npc)) world(npc).refresh(npc)
     }
+
+    /** Whether [npc] is one his squad plans for, a ground role on foot in a squad: he gets a full NPC agent. */
+    fun planned(npc: NpcEntity) = npc.vehicle == null && npc.npcClass in GROUND && npc.currentSquad() != null
     fun tick(npc: NpcEntity) = world(npc).tick(npc)
     fun assignment(npc: NpcEntity): NativeAssignment? {
-        if (npc.vehicle != null || npc.npcClass !in GROUND || npc.currentSquad() == null) return null
+        if (!planned(npc)) return null
         refresh(npc)
         return world(npc).actions[npc.uuid]?.takeIf { it.intent.commandsMovement }?.assignment
     }
@@ -117,8 +120,20 @@ object NativeTactics {
     fun ownsLook(npc: NpcEntity): Boolean = worlds[npc.level()]?.actions?.get(npc.uuid)?.ownsLook == true
     fun ownsMovement(npc: NpcEntity): Boolean {
         tick(npc)
-        return assignment(npc) != null && movable(npc)
+        return movable(npc) && (assignment(npc) != null || world(npc).engages(npc))
     }
+
+    /**
+     * [npc] fights with no plan of his own (a role outside [GROUND], no squad): an engage-only
+     * agent plans his moves in the fight while he keeps reporting this (#251 step B). His gun
+     * behaviour reports it every tick it fights, as it reports what it sees.
+     */
+    fun engaging(npc: NpcEntity) {
+        if (npc.vehicle == null) world(npc).engaging(npc)
+    }
+
+    /** Whether [npc] has an NPC agent of either kind, full or engage-only: what ticks it. */
+    fun hasAgent(npc: NpcEntity): Boolean = worlds[npc.level()]?.agents?.containsKey(AgentId(AgentLevel.NPC, npc.uuid)) == true
     fun reposition(npc: NpcEntity) {
         world(npc).actions[npc.uuid]?.requestFireRecovery(npc.level().gameTime)
     }
@@ -176,11 +191,24 @@ object NativeTactics {
      */
     fun movable(npc: NpcEntity) = npc.isAlive && npc.vehicle == null && npc.mayFor(NpcActivity.TACTIC, Cap.FEET) { it is PlanExecutor } && npc.retreatPoint() == null
 
-    /** Whether the planner plans for [npc]: he has an NPC agent, a ground role in a loaded squad. */
-    fun plans(npc: NpcEntity): Boolean = worlds[npc.level()]?.agents?.containsKey(AgentId(AgentLevel.NPC, npc.uuid)) == true
+    /**
+     * Whether the planner plans for [npc]: he has a full NPC agent, a ground role in a loaded squad,
+     * whose plan decides his cover too. An engage-only agent plans only his moves in a fight.
+     */
+    fun plans(npc: NpcEntity): Boolean = hasAgent(npc) && worlds[npc.level()]?.engager(npc.uuid) == false
     private val GROUND = setOf(NpcClass.RIFLEMAN, NpcClass.SHOTGUNNER, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.GRENADIER, NpcClass.MEDIC, NpcClass.DRONE_OPERATOR)
 
     private class PendingDeath(val entity: LivingEntity, val cancelled: () -> Boolean)
+
+    /** A man fighting with no full agent: his engage-only agent's [command], kept until [until]; [stamp] his squad's order then. */
+    private data class Engager(val until: Long, val command: UUID, val stamp: Int)
+
+    /**
+     * An engager's agent outlives his last report by 2 s: his gun behaviour stops and starts again
+     * while a target is lost and found for a moment, and the agent, its plan and his firing spot
+     * must not be dropped and made again each time.
+     */
+    private const val ENGAGER_TICKS = 40L
 
     /** One group of an attack that takes an approach sector: a squad, or a lone squad's manoeuvre group. */
     private data class SectorGroup(val squad: UUID, val manoeuvre: Boolean)
@@ -197,6 +225,31 @@ object NativeTactics {
 
         /** What each man's cover actions found and did, read back as his facts (#251). */
         private val cover = HashMap<UUID, CoverState>()
+
+        /** What each man's engage keeps across its units (#251 step B). */
+        private val engageStates = HashMap<UUID, EngageState>()
+
+        /** Men fighting with no full agent, until their last report expires; see [NativeTactics.engaging]. */
+        private val engagers = HashMap<UUID, Engager>()
+
+        fun engager(id: UUID) = id in engagers
+
+        private fun engageOf(npc: NpcEntity) = engageStates.getOrPut(npc.uuid) { EngageState(npc) }
+
+        // His engage facts' band memory, dropped with his agent like [engageStates].
+        private val engageBands = HashMap<UUID, EngageBands>()
+
+        /** Whether one of [npc]'s engage units runs now: his plan moves him. */
+        fun engages(npc: NpcEntity): Boolean = agents[AgentId(AgentLevel.NPC, npc.uuid)]?.runtime?.reports?.values?.any { Engage.isUnit(it.ticket.identity) && it.status == ExecutionStatus.RUNNING } == true
+
+        fun engaging(npc: NpcEntity) {
+            // A man with a full agent plans his fight in it; who gets one is [planned]'s alone.
+            if (AgentId(AgentLevel.NPC, npc.uuid) in agents && npc.uuid !in engagers) return
+            val known = engagers[npc.uuid]
+            val stamp = npc.currentSquad()?.orderStamp ?: 0
+            engagers[npc.uuid] = Engager(level.gameTime + ENGAGER_TICKS, known?.takeIf { it.stamp == stamp }?.command ?: UUID.nameUUIDFromBytes("engage:${npc.uuid}:$stamp".toByteArray()), stamp)
+            if (known == null) refresh(npc)
+        }
 
         // Each sentry's last height post, offered back when an OVERWATCH duty returns to him.
         private val heldPosts = HashMap<UUID, HeldPost>()
@@ -330,6 +383,18 @@ object NativeTactics {
             },
         )
 
+        /** The plan's engage units (#251 step B), each run on the man's own [EngageState]. */
+        private fun engageBinding() =
+            listOf(
+                ActionBinding(TacticalDomain.ENGAGE) { ticket, unit ->
+                    require(ticket.owner.agent == unit.actor)
+                    val npc = requireNotNull(level.getEntity(unit.actor.id) as? NpcEntity)
+                    // His position action, if any, is over: the engage moves him now.
+                    actions.remove(unit.actor.id)?.overwatchPost?.let { heldPosts[unit.actor.id] = it }
+                    EngageAction.of(unit, npc, engageOf(npc))
+                },
+            )
+
         /** The plan's cover actions (#251), each run on the man's own [CoverState]. */
         private fun coverBindings() =
             listOf(
@@ -385,7 +450,7 @@ object NativeTactics {
                             require(ticket.owner.agent == pause.actor)
                             firePause(pause, requireNotNull(level.getEntity(pause.actor.id) as? NpcEntity))
                         },
-                    ) + coverBindings() + listOf(
+                    ) + coverBindings() + engageBinding() + listOf(
                         ActionBinding(TacticalDomain.POSITION) { ticket, intent ->
                             require(ticket.owner.agent == intent.actor)
                             val original = goals[intent.actor] ?: intent
@@ -570,6 +635,7 @@ object NativeTactics {
                 .observe(TacticalFacts.SUPPORT_FIRING, supportFiring(id, now), expiresAt = now + 11)
             failures[id.id]?.let { failure -> result = result.observe(TacticalFacts.POST_FAILURE, failure, observedAt = failure.failedAt, expiresAt = failure.failedAt + FAILURE_MEMORY_TICKS) }
             result = coverFacts(result, npc, now)
+            if (npc != null) result = EngageFacts.observe(result, npc, engageOf(npc), engageBands.getOrPut(npc.uuid, ::EngageBands), now)
             return result
         }
         fun combatView(squad: UUID): TacticalSnapshot? {
@@ -599,8 +665,8 @@ object NativeTactics {
         fun refresh(reference: NpcEntity) {
             if (refreshing) return
             val now = level.gameTime
-            val squad = reference.currentSquad() ?: return
-            if (now < nextObservation && knownOrders[squad.id] == squad.orderStamp) return
+            val squad = reference.currentSquad()
+            if (now < nextObservation && (squad == null || knownOrders[squad.id] == squad.orderStamp)) return
             refreshing = true
             try {
                 nextObservation = now + 10
@@ -765,6 +831,7 @@ object NativeTactics {
                     areaTasks.remove(id.id)
                     operations.forget(id.id)
                 }
+                commandEngagers(now, desiredAgents)
                 agents.keys.filter { it !in desiredAgents }.toList().forEach { id -> agents.remove(id)?.cancel(now, "actor_not_active") }
                 children.keys.removeIf { it !in desiredAgents }
                 failures.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
@@ -772,6 +839,9 @@ object NativeTactics {
                 cover.entries.removeIf { (id, state) ->
                     (AgentId(AgentLevel.NPC, id) !in desiredAgents).also { gone -> if (gone) (level.getEntity(id) as? NpcEntity)?.release(NpcActivity.DUG_IN, state) }
                 }
+                // Nor a firing spot nobody would release.
+                engageStates.entries.removeIf { (id, state) -> (AgentId(AgentLevel.NPC, id) !in desiredAgents).also { gone -> if (gone) state.dispose() } }
+                engageBands.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 allocationOrigins.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 formationDuties.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 plannedContact.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
@@ -783,6 +853,22 @@ object NativeTactics {
                 retiredAssignments.clear()
             } finally {
                 refreshing = false
+            }
+        }
+
+        /**
+         * Keeps an engage-only agent for every man still reporting a fight with no full agent, its
+         * root `npc.engage`, recommanded when his squad's order changes; the rest are dropped by
+         * the sweep that follows. A man who gained a full agent is no engager any more.
+         */
+        private fun commandEngagers(now: Long, desired: MutableSet<AgentId>) {
+            engagers.entries.removeIf { (id, engager) -> engager.until < now || AgentId(AgentLevel.NPC, id) in desired || (level.getEntity(id) as? NpcEntity)?.isAlive != true }
+            engagers.forEach { (id, engager) ->
+                val agentId = AgentId(AgentLevel.NPC, id)
+                desired += agentId
+                val fresh = agentId !in agents
+                ensure(agentId).command(engager.command, TacticalDomain.ENGAGE_TASK.call(EngageTask(agentId)), facts(agentId, now))
+                if (fresh) DecisionTrace.man(id, now, "agent", "engager")
             }
         }
 
@@ -1203,9 +1289,11 @@ object NativeTactics {
                             scout = member.id in scouts,
                             heightRole = member.role in HEIGHT_ROLES,
                             primaryAmmo = member.primaryAmmo,
+                            sidearm = member.sidearmOnly,
                             hasPatrolRoute = view.hasPatrolRoute,
                             reachedMove = actions[member.id]?.let { it.intent.duty == CombatDuty.MOVE && it.reached() } == true,
-                            wasFiring = oldIntents[member.id]?.duty == CombatDuty.FIRE,
+                            // A pistol's FIRE is no post he settled on: with his main weapon back he moves on with the others.
+                            wasFiring = oldIntents[member.id]?.duty == CombatDuty.FIRE && dutyRules[member.id] != "sidearm_fire",
                             // A patrol roams its whole area, so a sentry inside it has arrived; the defenders' ring radius
                             // sent him roaming with the riflemen until he happened to pass near the objective.
                             arrival = if (saved.order == SquadOrder.PATROL) {
