@@ -116,6 +116,11 @@ design change: agree it with the owner before writing code.
   option, the state, the strategy) or the explicit safety rule that justifies doing it elsewhere,
   and both reviews check that against `docs/AI-ARCHITECTURE-DESIGN.md`. A plan that cannot name
   its layer goes to the owner first.
+- Both reviews are run by the `design-reviewer` agent (`.claude/agents/design-reviewer.md`), not a
+  general agent with an ad hoc prompt. It rejects shims as well as layer violations: a flag routed
+  into old code, a side channel through the entity, an old decider kept as a fallback, a hollow
+  executor. Fix what it rejects structurally, and never by simplifying the plan without saying
+  what the simpler version gives up.
 - Before implementing a feature, trace its callers and the state it shares with neighbouring
   behaviours: navigation, targeting, cover, weapon ownership, supply and role locks. Keep existing
   contracts, or change one on purpose and test the changed contract.
