@@ -1281,9 +1281,11 @@ object NativeTactics {
                             scout = member.id in scouts,
                             heightRole = member.role in HEIGHT_ROLES,
                             primaryAmmo = member.primaryAmmo,
+                            sidearm = member.sidearmOnly,
                             hasPatrolRoute = view.hasPatrolRoute,
                             reachedMove = actions[member.id]?.let { it.intent.duty == CombatDuty.MOVE && it.reached() } == true,
-                            wasFiring = oldIntents[member.id]?.duty == CombatDuty.FIRE,
+                            // A pistol's FIRE is no post he settled on: with his main weapon back he moves on with the others.
+                            wasFiring = oldIntents[member.id]?.duty == CombatDuty.FIRE && dutyRules[member.id] != "sidearm_fire",
                             // A patrol roams its whole area, so a sentry inside it has arrived; the defenders' ring radius
                             // sent him roaming with the riflemen until he happened to pass near the objective.
                             arrival = if (saved.order == SquadOrder.PATROL) {

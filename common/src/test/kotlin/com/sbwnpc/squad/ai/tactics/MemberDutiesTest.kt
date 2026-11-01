@@ -129,4 +129,32 @@ class MemberDutiesTest {
         // Half of the flag combinations follow a player, and of those only DEFEND's are checked.
         assertEquals((TacticalOrder.entries.size + 1) * proposals.size * objectives.size * (1 shl 13), checked)
     }
+
+    @Test
+    fun `on his sidearm a man in a fight fires from where he is, unless his half bounds after his player`() {
+        val here = Point3(50.0, 64.0, 100.0)
+        val attack = DutyInputs(
+            order = TacticalOrder.ATTACK,
+            position = here,
+            proposal = FrontProposal(CombatDuty.MOVE, Point3(90.0, 64.0, 100.0), null),
+            objective = Point3(120.0, 64.0, 100.0),
+            inspect = null,
+            inContact = true,
+            elsewhere = false,
+            scout = false,
+            heightRole = false,
+            primaryAmmo = false,
+            hasPatrolRoute = false,
+            reachedMove = false,
+            wasFiring = false,
+            arrival = 22.0,
+            sidearm = true,
+        )
+        assertEquals(RuledDuty("sidearm_fire", DutyChoice(CombatDuty.FIRE, here)), MemberDuties.choose(attack, 40.0, 10.0))
+        assertEquals("mover", MemberDuties.choose(attack.copy(sidearm = false), 40.0, 10.0).rule)
+        assertEquals("no_fight", MemberDuties.choose(attack.copy(inContact = false), 40.0, 10.0).rule)
+        val slot = Point3(52.0, 64.0, 104.0)
+        val bounding = attack.copy(order = TacticalOrder.DEFEND, following = true, followBound = true, followSlot = slot)
+        assertEquals(RuledDuty("follow_bound", DutyChoice(CombatDuty.MOVE, slot)), MemberDuties.choose(bounding, 40.0, 10.0))
+    }
 }
