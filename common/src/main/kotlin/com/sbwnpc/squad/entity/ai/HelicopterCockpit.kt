@@ -259,7 +259,10 @@ class HelicopterCockpit(private val pilot: NpcEntity, private val contact: AirCo
             }
 
             Phase.TRANSIT -> {
-                fly(level, heli, station, facing, mission.speed, rollRate, clearance)
+                // Only a leg it lands at is flown to a stop: a patrol's or an orbit's next point is
+                // always close ahead, and braking for it held the aircraft to a crawl.
+                val speed = if (mission.landOnArrival) minOf(mission.speed, stoppingSpeed(heli.position(), station)) else mission.speed
+                fly(level, heli, station, facing, speed, rollRate, clearance)
                 if (!mission.attackOrbit && HelicopterFlightController.horizontalDistance(heli.position(), station) <= ON_STATION_RADIUS) {
                     onStationReached(mission)
                     phase = if (mission.landOnArrival) Phase.LANDING else Phase.STATION
@@ -688,3 +691,12 @@ class HelicopterCockpit(private val pilot: NpcEntity, private val contact: AirCo
         const val APPROACH_DISTANCE = 150.0
     }
 }
+
+/** The deceleration [stoppingSpeed] plans against, in blocks per tick squared. */
+private const val BRAKE_DECEL = 0.025
+
+/**
+ * The fastest it may close on [target] and still stop by the controller's arrival radius. Braking
+ * only on arrival, at 1.275 it overshot its landing spot by 10 to 17 blocks (headless, 01.11).
+ */
+private fun stoppingSpeed(pos: Vec3, target: Vec3): Double = Math.sqrt(2.0 * BRAKE_DECEL * maxOf(0.0, HelicopterFlightController.horizontalDistance(pos, target) - HelicopterFlightController.ARRIVE_RADIUS))

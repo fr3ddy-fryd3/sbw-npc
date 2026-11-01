@@ -69,16 +69,10 @@ object HelicopterFlightController {
     /** Below this the rotor is too slow to steer with; commanding a huge stick deflection to
      *  compensate would only snap the airframe around the moment it does spin up. */
     const val MIN_AUTHORITY = 0.02f
-    private const val ARRIVE_RADIUS = 6.0
+    const val ARRIVE_RADIUS = 6.0
     private const val THRUST_HEADING_TOLERANCE = 35f
     private const val SPEED_TO_PITCH = 45f
 
-    /**
-     * The deceleration the speed is planned against, in blocks per tick squared: under it the
-     * aircraft can still stop by [ARRIVE_RADIUS]. Braking only on arrival, at 1.275 it overshot
-     * its landing spot by 10 to 17 blocks (headless, 01.11); the cruise is reached only far out.
-     */
-    private const val BRAKE_DECEL = 0.025
     private const val ALTITUDE_DEADBAND = 1.5
     private const val FAST_SINK_MARGIN = 8.0
 
@@ -237,8 +231,7 @@ object HelicopterFlightController {
         val desiredPitch = if (arrived || !pointed) {
             0f
         } else {
-            val braking = Math.sqrt(2.0 * BRAKE_DECEL * (horizontalDistance(pos, target) - ARRIVE_RADIUS))
-            ((minOf(cruiseSpeed, braking) - closingSpeed(pos, target, velocity)) * SPEED_TO_PITCH).toFloat()
+            ((cruiseSpeed - closingSpeed(pos, target, velocity)) * SPEED_TO_PITCH).toFloat()
                 .coerceIn(-MAX_PITCH_ANGLE, MAX_PITCH_ANGLE)
         }
         val pitchRate = (desiredPitch - pitch).coerceIn(-MAX_PITCH_RATE, MAX_PITCH_RATE)
