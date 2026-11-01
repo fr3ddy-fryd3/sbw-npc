@@ -10,6 +10,7 @@ import com.sbwnpc.squad.compat.VersionCompat
 import com.sbwnpc.squad.entity.Cap
 import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.entity.ai.CoverMechanics
 import com.sbwnpc.squad.entity.ai.SquadTransit
 import com.sbwnpc.squad.npc.NpcClass
@@ -104,8 +105,17 @@ object NativeTactics {
     internal var planResultObserver: ((AgentLevel) -> Unit)? = null
     private fun world(npc: NpcEntity) = worlds.getOrPut(npc.level() as ServerLevel) { World(npc.level() as ServerLevel) }
     fun refresh(npc: NpcEntity) {
-        if (planned(npc) || crewed(npc) || aircrew(npc)) world(npc).refresh(npc)
+        if (planned(npc) || supports(npc)) world(npc).refresh(npc)
     }
+
+    /** A mortarman, aircrew or drone operator: a support role his own plan runs, in a squad or not. */
+    private fun supports(npc: NpcEntity) = crewed(npc) || aircrew(npc) || operatesDrone(npc)
+
+    /** Whether [npc] is a drone operator on foot: his plan flies his drone, a squadless one's in a root of its own (#259). */
+    fun operatesDrone(npc: NpcEntity) = DroneWorld.operates(npc)
+
+    /** Flies [npc]'s drone on a tick his plan did not (#259). */
+    fun keepFlying(npc: NpcEntity) = world(npc).keepFlying(npc)
 
     /** Whether [npc] flies a helicopter or works its turret: his aircraft's plan runs him (#260, #261). */
     fun aircrew(npc: NpcEntity) = AirRoster.aircrew(npc)
@@ -244,7 +254,7 @@ object NativeTactics {
         private val engagers = HashMap<UUID, Engager>()
 
         /** Whether [id]'s plan decides his cover: not an engager's, nor a crewman's, whose plans have no cover (#258). */
-        fun coversFor(id: UUID) = id !in engagers && fireSupport.roster.unitOf(id) == null
+        fun coversFor(id: UUID) = id !in engagers && id !in loneOperators && fireSupport.roster.unitOf(id) == null
 
         private fun engageOf(npc: NpcEntity) = engageStates.getOrPut(npc.uuid) { EngageState(npc) }
 
@@ -271,6 +281,12 @@ object NativeTactics {
 
         /** The level's helicopters, their facts and their crews' flight and turret (#260, #261). */
         private val air = AirWorld(level)
+
+        /** The level's drone operators' stations and strike facts (#259). */
+        private val drones = DroneWorld(level)
+
+        /** The squadless drone operators, each planned in a root of his own (#259); no plan decides their cover. */
+        private val loneOperators = HashSet<UUID>()
         val operations = OperationRegistry({ a, b -> Diplomacy.allied(SquadFaction.valueOf(a), SquadFaction.valueOf(b)) }, { _, _ -> true })
         private val snapshots = HashMap<UUID, TacticalSnapshot>()
         private val sharedViews = HashMap<UUID, TacticalSnapshot>()
@@ -435,6 +451,15 @@ object NativeTactics {
                 },
             )
 
+        /** A drone operator's strike (#259), flown by his station. */
+        private fun droneBinding() =
+            listOf(
+                ActionBinding(DroneStrike.ACTION) { ticket, duty ->
+                    require(ticket.owner.agent == duty.actor)
+                    drones.action(duty, requireNotNull(level.getEntity(duty.actor.id) as? NpcEntity))
+                },
+            )
+
         /** The plan's cover actions (#251), each run on the man's own [CoverState]. */
         private fun coverBindings() =
             listOf(
@@ -490,7 +515,7 @@ object NativeTactics {
                             require(ticket.owner.agent == pause.actor)
                             firePause(pause, requireNotNull(level.getEntity(pause.actor.id) as? NpcEntity))
                         },
-                    ) + coverBindings() + engageBinding() + crewBinding() + airBindings() + listOf(
+                    ) + coverBindings() + engageBinding() + crewBinding() + airBindings() + droneBinding() + listOf(
                         ActionBinding(TacticalDomain.POSITION) { ticket, intent ->
                             require(ticket.owner.agent == intent.actor)
                             val original = goals[intent.actor] ?: intent
@@ -685,6 +710,7 @@ object NativeTactics {
             if (npc != null) result = EngageFacts.observe(result, npc, engageOf(npc), engageBands.getOrPut(npc.uuid, ::EngageBands), now)
             if (npc != null && fireSupport.roster.unitOf(npc.uuid) != null) result = fireSupport.manFacts(result, npc)
             if (npc != null && air.roster.unitOf(npc.uuid) != null) result = air.manFacts(result, npc)
+            if (npc != null && DroneWorld.operates(npc)) result = drones.manFacts(result, npc, teamTarget(id, npc), coversFor(npc.uuid))
             return result
         }
         fun combatView(squad: UUID): TacticalSnapshot? {
@@ -899,6 +925,7 @@ object NativeTactics {
                 }
                 commandCrews(now, desiredAgents)
                 commandAircraft(now, desiredAgents)
+                commandLoneOperators(now, desiredAgents)
                 commandEngagers(now, desiredAgents)
                 agents.keys.filter { it !in desiredAgents }.toList().forEach { id ->
                     DebugFlags.log(LogGroup.ORDER, "[htn] actor={} level={} event=agent_dropped reason=actor_not_active", id.id, id.level)
@@ -906,6 +933,7 @@ object NativeTactics {
                 }
                 fireSupport.sweep(desiredAgents)
                 air.sweep()
+                drones.sweep()
                 children.keys.removeIf { it !in desiredAgents }
                 failures.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 // A man leaving the plan keeps no foxhole claim nobody would release.
@@ -984,6 +1012,30 @@ object NativeTactics {
                 desired += it
                 ensure(it)
             }
+        }
+
+        /**
+         * Keeps a root agent for every squadless drone operator (#259), as [commandCrews] does for
+         * a squadless crew: his strike, his engage in a fight, else nothing. It stands in for the
+         * engage-only agent such a man would get, so he has one NPC agent, not two.
+         */
+        private fun commandLoneOperators(now: Long, desired: MutableSet<AgentId>) {
+            loneOperators.clear()
+            NpcRegistry.all(level).filter { DroneWorld.operates(it) && it.currentSquad() == null }.forEach { npc ->
+                val agent = AgentId(AgentLevel.NPC, npc.uuid)
+                if (agent in desired) return@forEach
+                loneOperators += npc.uuid
+                desired += agent
+                val fresh = agent !in agents
+                ensure(agent).command(UUID.nameUUIDFromBytes("drone:${npc.uuid}".toByteArray()), DroneStrike.ALONE.call(StrikeCall(agent)), facts(agent, now))
+                if (fresh) DecisionTrace.man(npc.uuid, now, "agent", "squadless_operator")
+            }
+        }
+
+        /** The enemy most of [man]'s team fight (#259): his team's operator strikes it first. */
+        private fun teamTarget(man: AgentId, npc: NpcEntity): LivingEntity? {
+            val team = children.entries.firstOrNull { (id, members) -> id.level == AgentLevel.TEAM && man in members }?.value ?: return null
+            return DroneWorld.teamTarget(npc, team.mapNotNull { level.getEntity(it.id) as? NpcEntity })
         }
 
         /** Keeps a root agent for every squadless aircraft (#260), as [commandCrews] does for a squadless crew. */
@@ -1605,6 +1657,8 @@ object NativeTactics {
         }
         fun keepAloft(npc: NpcEntity) = air.keepAloft(npc, level.gameTime)
 
+        fun keepFlying(npc: NpcEntity) = drones.keepFlying(npc)
+
         fun tick(npc: NpcEntity) {
             refresh(npc)
             val now = level.gameTime
@@ -1796,6 +1850,8 @@ object NativeTactics {
             supportWaits.clear()
             fireSupport.clear()
             air.clear()
+            drones.clear()
+            loneOperators.clear()
         }
     }
 }

@@ -10,7 +10,7 @@
     <ID>ComplexCondition:BlindReturnFireBehaviour.kt$BlindReturnFireBehaviour$entity.busyWithRole() || entity.combatLockedByCover() || entity.combatLockedByMedic() || entity.resupplying || entity.vehicle != null || entity.evadingGrenade()</ID>
     <ID>ComplexCondition:CellPlanner.kt$CellPlanner.Search$dx != 0 &amp;&amp; dz != 0 &amp;&amp; (!medium.open(x + dx, z) || !medium.open(x, z + dz))</ID>
     <ID>ComplexCondition:CoverMechanics.kt$CoverMechanics$!(hurtEnough &amp;&amp; diggableGround &amp;&amp; flatEnough &amp;&amp; covered)</ID>
-    <ID>ComplexCondition:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$phase != Phase.LAUNCH &amp;&amp; phase != Phase.RETURN &amp;&amp; (drone.onGround() || drone.horizontalCollision || drone.verticalCollision)</ID>
+    <ID>ComplexCondition:DroneStation.kt$DroneStation$phase != Phase.LAUNCH &amp;&amp; phase != Phase.RETURN &amp;&amp; (drone.onGround() || drone.horizontalCollision || drone.verticalCollision)</ID>
     <ID>ComplexCondition:Execution.kt$PlanRuntime$entry.ticket != ticket || !entry.acceptsExternal || !entry.started || entry.status !in setOf(ExecutionStatus.RUNNING, ExecutionStatus.SUSPENDED)</ID>
     <ID>ComplexCondition:ExperienceAwards.kt$ExperienceAwards$loader != null &amp;&amp; loader !== npc &amp;&amp; tube != null &amp;&amp; MortarClaims.atPost(loader, tube)</ID>
     <ID>ComplexCondition:ExperienceLedger.kt$ExperienceLedger$!fraction.isFinite() || fraction &lt;= 0 || shares.isEmpty() || tag.getBoolean("Finished")</ID>
@@ -66,9 +66,8 @@
     <ID>CyclomaticComplexMethod:CellPlanner.kt$CellPlanner.Search$private fun visitCell(n: Long, cg: Double)</ID>
     <ID>CyclomaticComplexMethod:CoverPeekSearch.kt$CoverPeekSearch$fun find(entity: NpcEntity, level: ServerLevel, aim: Vec3, target: LivingEntity?): Result?</ID>
     <ID>CyclomaticComplexMethod:Diplomacy.kt$Diplomacy$private fun resolve(server: MinecraftServer, reg: AllianceRegistry)</ID>
-    <ID>CyclomaticComplexMethod:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$override fun tick(entity: NpcEntity)</ID>
-    <ID>CyclomaticComplexMethod:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$private fun retarget(entity: NpcEntity, level: ServerLevel, drone: Entity): Boolean</ID>
-    <ID>CyclomaticComplexMethod:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$private fun scanForEnemy(entity: NpcEntity): StrikeTarget?</ID>
+    <ID>CyclomaticComplexMethod:DroneStation.kt$DroneStation$fun tick(): Outcome</ID>
+    <ID>CyclomaticComplexMethod:DroneStation.kt$DroneStation$private fun scan(): StrikeTarget?</ID>
     <ID>CyclomaticComplexMethod:Execution.kt$PlanRuntime$fun install(next: HtnPlan, facts: FactSnapshot): Boolean</ID>
     <ID>CyclomaticComplexMethod:Execution.kt$PlanRuntime$fun tick(facts: FactSnapshot, work: Int = 64)</ID>
     <ID>CyclomaticComplexMethod:ExperienceAwards.kt$ExperienceAwards$fun damage(victim: Entity, source: DamageSource, fraction: Double, dead: Boolean)</ID>
@@ -392,10 +391,10 @@
     <ID>MagicNumber:Driving.kt$Driving$0.5</ID>
     <ID>MagicNumber:DroneFlightController.kt$DroneFlightController$0.5</ID>
     <ID>MagicNumber:DroneFlightController.kt$DroneFlightController$1.4</ID>
-    <ID>MagicNumber:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$1.5</ID>
-    <ID>MagicNumber:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$1e-3</ID>
-    <ID>MagicNumber:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$1e-6</ID>
-    <ID>MagicNumber:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$8</ID>
+    <ID>MagicNumber:DroneStation.kt$DroneStation$1.5</ID>
+    <ID>MagicNumber:DroneStation.kt$DroneStation$1e-3</ID>
+    <ID>MagicNumber:DroneStation.kt$DroneStation$1e-6</ID>
+    <ID>MagicNumber:DroneStation.kt$DroneStation$8</ID>
     <ID>MagicNumber:DryGround.kt$DryGround$4</ID>
     <ID>MagicNumber:DryGround.kt$DryGround$8</ID>
     <ID>MagicNumber:Execution.kt$ResourceLeases$20.0</ID>
@@ -961,8 +960,7 @@
     <ID>NestedBlockDepth:CellPlanner.kt$CellPlanner.Search$fun step(budget: Int): Boolean</ID>
     <ID>NestedBlockDepth:CellPlanner.kt$CellPlanner.Search$private fun visitCell(n: Long, cg: Double)</ID>
     <ID>NestedBlockDepth:CoverSearch.kt$CoverSearch$fun find(entity: NpcEntity, level: ServerLevel, threat: Vec3, excluded: Set&lt;BlockPos&gt; = emptySet(), permitted: (Vec3) -&gt; Boolean = { true }): BlockPos?</ID>
-    <ID>NestedBlockDepth:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$private fun refreshTarget(entity: NpcEntity, level: ServerLevel, drone: Entity): Boolean</ID>
-    <ID>NestedBlockDepth:DroneOperatorBehaviour.kt$DroneOperatorBehaviour$private fun strikeTarget(entity: NpcEntity): StrikeTarget?</ID>
+    <ID>NestedBlockDepth:DroneStation.kt$DroneStation$private fun refreshTarget(drone: Entity)</ID>
     <ID>NestedBlockDepth:GroundMap.kt$GroundMap$private fun read(level: ServerLevel, cx: Int, cz: Int, now: Long): Chunk</ID>
     <ID>NestedBlockDepth:GunAttackBehaviour.kt$GunAttackBehaviour$private fun clearBlockedFiringLane(entity: NpcEntity, target: LivingEntity, tacticalMovement: Boolean)</ID>
     <ID>NestedBlockDepth:GunAttackBehaviour.kt$GunAttackBehaviour$private fun tickShooting(entity: NpcEntity, target: LivingEntity, gun: HandGun, canShootTarget: Boolean)</ID>
@@ -978,7 +976,7 @@
     <ID>NestedBlockDepth:VehicleAwareNavigation.kt$VehicleAwareNavigation$private fun choosePath(pos: BlockPos, accuracy: Int): Path?</ID>
     <ID>NestedBlockDepth:VehicleTransportBehaviour.kt$VehicleTransportBehaviour$private fun recoverIfStuck(entity: NpcEntity, vehicle: Entity, home: Vec3): Boolean</ID>
     <ID>NestedBlockDepth:WaterMap.kt$WaterMap$private fun read(level: ServerLevel, y: Int, cx: Int, cz: Int, now: Long): Chunk</ID>
-    <ID>SpreadOperator:NpcEntity.kt$NpcEntity$( com.sbwnpc.squad.entity.ai.SquadTacticalBehaviour(), *VersionCompat.doorBehaviours(), SeekCoverBehaviour(), com.sbwnpc.squad.entity.ai.BlindReturnFireBehaviour(), com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour(), com.sbwnpc.squad.entity.ai.AntiDroneBehaviour(), VehicleCrewBehaviour(), com.sbwnpc.squad.entity.ai.HelicopterGunnerBehaviour(), com.sbwnpc.squad.entity.ai.HelicopterRideBehaviour(), VehicleCombatSupportBehaviour(), com.sbwnpc.squad.entity.ai.FollowRideBehaviour(), MedicHealBehaviour(), com.sbwnpc.squad.entity.ai.SelfTreatBehaviour(), // Keep one journey executor through Idle/Fight changes: a remembered remote contact // must not prevent the squad from boarding or marching to its distant objective. com.sbwnpc.squad.entity.ai.ResupplyBehaviour(), com.sbwnpc.squad.entity.ai.VehicleTransportBehaviour(), SquadOrderBehaviour(), // Last: it has to override whatever the behaviours above did with the navigation. com.sbwnpc.squad.entity.ai.GrenadeEvadeBehaviour(), )</ID>
+    <ID>SpreadOperator:NpcEntity.kt$NpcEntity$( com.sbwnpc.squad.entity.ai.SquadTacticalBehaviour(), *VersionCompat.doorBehaviours(), SeekCoverBehaviour(), com.sbwnpc.squad.entity.ai.BlindReturnFireBehaviour(), com.sbwnpc.squad.entity.ai.AntiDroneBehaviour(), VehicleCrewBehaviour(), com.sbwnpc.squad.entity.ai.HelicopterGunnerBehaviour(), com.sbwnpc.squad.entity.ai.HelicopterRideBehaviour(), VehicleCombatSupportBehaviour(), com.sbwnpc.squad.entity.ai.FollowRideBehaviour(), MedicHealBehaviour(), com.sbwnpc.squad.entity.ai.SelfTreatBehaviour(), // Keep one journey executor through Idle/Fight changes: a remembered remote contact // must not prevent the squad from boarding or marching to its distant objective. com.sbwnpc.squad.entity.ai.ResupplyBehaviour(), com.sbwnpc.squad.entity.ai.VehicleTransportBehaviour(), SquadOrderBehaviour(), // Last: it has to override whatever the behaviours above did with the navigation. com.sbwnpc.squad.entity.ai.GrenadeEvadeBehaviour(), )</ID>
     <ID>ThrowingExceptionsWithoutMessageOrCause:NpcEntity.kt$NpcEntity$Throwable()</ID>
     <ID>ThrowingExceptionsWithoutMessageOrCause:VehicleAwareNavigation.kt$VehicleAwareNavigation$Throwable()</ID>
     <ID>TooManyFunctions:AntiDroneBehaviour.kt$AntiDroneBehaviour : ExtendedBehaviour</ID>
@@ -986,7 +984,7 @@
     <ID>TooManyFunctions:CellPlanner.kt$CellPlanner$Search</ID>
     <ID>TooManyFunctions:ClientPayloadHandlers.kt$ClientPayloadHandlers</ID>
     <ID>TooManyFunctions:Diplomacy.kt$Diplomacy</ID>
-    <ID>TooManyFunctions:DroneOperatorBehaviour.kt$DroneOperatorBehaviour : ExtendedBehaviour</ID>
+    <ID>TooManyFunctions:DroneStation.kt$DroneStation</ID>
     <ID>TooManyFunctions:Drones.kt$Drones</ID>
     <ID>TooManyFunctions:Execution.kt$PlanRuntime</ID>
     <ID>TooManyFunctions:ExperienceAwards.kt$ExperienceAwards</ID>

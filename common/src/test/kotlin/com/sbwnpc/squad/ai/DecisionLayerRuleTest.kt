@@ -76,7 +76,6 @@ class DecisionLayerRuleTest {
         val BEHAVIOURS = sortedMapOf(
             "AntiDroneBehaviour" to UNAUDITED,
             "BlindReturnFireBehaviour" to UNAUDITED,
-            "DroneOperatorBehaviour" to UNAUDITED,
             "FollowRideBehaviour" to UNAUDITED,
             "GrenadeEvadeBehaviour" to UNAUDITED,
             "GrenadeThrowBehaviour" to UNAUDITED,
@@ -115,7 +114,7 @@ class DecisionLayerRuleTest {
             NpcActivity.MORTAR_ERRAND to "held by a crewman's planned crew duty (CrewDutyAction, #258), which is his plan; it suspends a ground man's plan only if one ever held it",
             NpcActivity.CARRYING_MORTAR to "physical state while a tube is packed, claimed by MortarDeployment; the crew plan's DISPLACE duty decides the carry (#258)",
             NpcActivity.ANTI_DRONE to UNAUDITED,
-            NpcActivity.DRONE to UNAUDITED,
+            NpcActivity.DRONE to "held by an operator's planned strike (DroneStation, #259), which is his plan; his other families stand aside while his drone is up",
             NpcActivity.MORTAR_CREW to "held by a crewman's planned crew duty (CrewDutyAction, #258), which is his plan",
             NpcActivity.SEAT to UNAUDITED,
             NpcActivity.VEHICLE to UNAUDITED,

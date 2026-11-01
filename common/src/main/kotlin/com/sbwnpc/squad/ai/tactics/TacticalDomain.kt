@@ -415,13 +415,24 @@ object TacticalDomain {
                 listOf(
                     // Under fire, or in the hole he dug, the man answers that first; every method
                     // below stands aside meanwhile (UnderFire.duty), so exactly one family applies.
-                    Method("under_fire", eligible = { intent -> UnderFire.eligible(intent) }, decompose = { intent, _ -> TaskNetwork.sequence(UNDER_FIRE.call(intent)) }),
-                    Method("in_hole", eligible = { _ -> UnderFire.inHole() }, decompose = { intent, _ -> TaskNetwork.sequence(IN_HOLE.call(intent)) }),
+                    // A drone in the air keeps him at its monitor through all of it (DroneStrike.flying).
+                    Method("under_fire", eligible = { intent -> Condition { facts -> DroneStrike.flying(facts) ?: UnderFire.eligible(intent).evaluate(facts) } }, decompose = { intent, _ -> TaskNetwork.sequence(UNDER_FIRE.call(intent)) }),
+                    Method("in_hole", eligible = { _ -> Condition { facts -> DroneStrike.flying(facts) ?: UnderFire.inHole().evaluate(facts) } }, decompose = { intent, _ -> TaskNetwork.sequence(IN_HOLE.call(intent)) }),
+                    // A drone operator flies his drone, or launches one when not under fire, ahead
+                    // of his duty and his engage (#259).
+                    Method("drone_strike", eligible = { intent ->
+                        Condition { facts ->
+                            if (DroneStrike.flying(facts) == null) UnderFire.duty(intent, facts)?.let { return@Condition it }
+                            DroneStrike.takesOver().evaluate(facts)
+                        }
+                    }, decompose = { intent, _ -> TaskNetwork.sequence(DroneStrike.TASK.call(StrikeCall(intent.actor))) }),
                     // In contact, with nothing commanding his movement, his engage moves him; every
                     // other method below stands aside meanwhile (NpcFamilies.standsAside).
                     Method("engage", eligible = { intent ->
                         Condition { facts ->
+                            DroneStrike.flying(facts)?.let { return@Condition it }
                             UnderFire.duty(intent, facts)?.let { return@Condition it }
+                            DroneStrike.standsAside(facts)?.let { return@Condition it }
                             Engage.eligible(intent).evaluate(facts)
                         }
                     }, decompose = { intent, _ -> TaskNetwork.sequence(ENGAGE_TASK.call(EngageTask(intent.actor))) }),
@@ -564,7 +575,7 @@ object TacticalDomain {
                     planning = ownActor(pause.actor),
                 )
             },
-        ) + crewTasks.second + airTasks.second,
+        ) + crewTasks.second + airTasks.second + DroneStrike.tasks { call -> TaskNetwork.sequence(ENGAGE_TASK.call(EngageTask(call.actor))) },
     )
     private const val NEIGHBOR_ATTEMPTS = 4
 

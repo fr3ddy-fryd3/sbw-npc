@@ -59,7 +59,7 @@ enum class NpcClass(
     /** Works the gunship turret from seat 1 (HelicopterGunnerBehaviour); same sidearm caveat. */
     HELICOPTER_GUNNER(listOf(loc("glock_18"), loc("mp_443"))),
 
-    // Flies kamikaze drones at targets 80-150 blocks out (by rank) — see DroneOperatorBehaviour.
+    // Flies kamikaze drones at targets 80-150 blocks out (by rank) — see ai/integration/DroneStation and the `npc.strike` plan.
     // Same rifles as RIFLEMAN (per user request): once the drones are spent it fights on as an
     // ordinary rifleman rather than plinking with a sidearm.
     DRONE_OPERATOR(rifles, shootDistanceMultiplier = 2.0, speedMultiplier = 1.3),

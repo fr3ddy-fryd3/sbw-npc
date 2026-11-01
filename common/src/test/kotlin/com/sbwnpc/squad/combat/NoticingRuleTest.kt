@@ -53,7 +53,7 @@ class NoticingRuleTest {
             "com/sbwnpc/squad/combat/tactics/TacticalSnapshotCollector.kt" to Counted(2, "who of the squad sees the contact, for the picture"),
             "com/sbwnpc/squad/entity/NpcEntity.kt" to Counted(3, "line checks on its own target"),
             "com/sbwnpc/squad/entity/ai/AntiDroneBehaviour.kt" to Counted(1, "line to the drone it has already noticed through Noticing"),
-            "com/sbwnpc/squad/entity/ai/DroneOperatorBehaviour.kt" to Counted(1, "line to a target it has already noticed through Noticing"),
+            "com/sbwnpc/squad/ai/integration/DroneStation.kt" to Counted(1, "line to a target it has already noticed through Noticing"),
             "com/sbwnpc/squad/entity/ai/GrenadeThrowBehaviour.kt" to Counted(1, "line of the throw"),
             "com/sbwnpc/squad/entity/ai/GrenadeUseBehaviour.kt" to Counted(2, "line to its own current target, which it has noticed"),
             "com/sbwnpc/squad/entity/ai/GunAttackBehaviour.kt" to Counted(1, "line of fire"),

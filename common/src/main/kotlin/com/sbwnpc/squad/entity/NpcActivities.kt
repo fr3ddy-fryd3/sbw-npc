@@ -68,7 +68,7 @@ enum class NpcActivity(val holds: Set<Cap>) {
     /** Shooting at or running from a hostile drone: [com.sbwnpc.squad.entity.ai.AntiDroneBehaviour]. */
     ANTI_DRONE(setOf(Cap.FEET, Cap.FIRE, Cap.LOOK)),
 
-    /** Preparing or flying a drone: [com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour]. */
+    /** Preparing or flying a drone: [com.sbwnpc.squad.ai.integration.DroneStation], driven by the strike plan (#259). */
     DRONE(setOf(Cap.FEET, Cap.FIRE, Cap.LOOK)),
 
     /** At a mortar as its operator or loader: [com.sbwnpc.squad.ai.integration.CrewDutyAction]. */
