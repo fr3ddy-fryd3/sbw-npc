@@ -86,6 +86,7 @@ internal class CrewState(val noticing: Noticing) {
         DebugFlags.log(LogGroup.FIRE_SUPPORT, "event=out_of_reach target={} carry_to={}", target.key, reachPoint)
     }
 
+    /** Forgets the target's reach: a new target, or a tube set up again where it was carried. */
     fun clearReach() {
         unreachableSince = null
         reachPoint = null
@@ -117,9 +118,11 @@ internal class CrewRoster(private val level: ServerLevel) {
         val found = ArrayList<CrewUnit>()
         men.groupBy { it.squadId to tubeOf(it) }.forEach { (key, group) ->
             val (squad, tube) = key
-            val ordered = if (tube == null) group else group.sortedWith(compareBy({ MortarClaims.role(tube, it.uuid)?.ordinal ?: Int.MAX_VALUE }, { !it.holds(NpcActivity.CARRYING_MORTAR) }, { it.uuid }))
+            // The posted men first, then by id: the order of a crew's men never changes with who holds
+            // which post (that is `crew.operator`), or a shell errand's swap would replan the operation.
+            val ordered = if (tube == null) group else group.sortedWith(compareBy({ MortarClaims.role(tube, it.uuid) == null && !it.holds(NpcActivity.CARRYING_MORTAR) }, { it.uuid }))
             val posted = if (tube == null) emptyList() else ordered.take(MortarClaims.POSTS)
-            if (posted.isNotEmpty()) found += crewUnit(posted, squad, tube)
+            if (posted.isNotEmpty()) found += crewUnit(posted.sortedBy { it.uuid }, squad, tube)
             found += (ordered - posted.toSet()).filter { squad != null || freeTube(it, now) != null }.map { crewUnit(listOf(it), squad, null) }
         }
         units = found.associateBy { it.crew.agent }
@@ -142,7 +145,7 @@ internal class CrewRoster(private val level: ServerLevel) {
     }
 
     /** [squad]'s crews this update; with null, the squadless men's, each its own root. */
-    fun crews(squad: UUID?): List<SupportCrew> = units.values.filter { it.squad == squad }.map { it.crew }
+    fun crews(squad: UUID?): List<SupportCrew> = units.values.filter { it.squad == squad }.map { it.crew }.sortedBy { it.agent.id }
 
     /** The squads with crews this update. */
     fun squads(): Set<UUID> = units.values.mapNotNullTo(HashSet()) { it.squad }

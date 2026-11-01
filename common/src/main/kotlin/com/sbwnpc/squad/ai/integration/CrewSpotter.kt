@@ -16,6 +16,7 @@ import com.sbwnpc.squad.squad.SquadReports
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity
+import com.sbwnpc.squad.squad.FireSupport as InfantrySupport
 
 /**
  * A crew's eyes and its target choice (#258), run at the crew's scan rate whatever its plan does:
@@ -29,7 +30,9 @@ internal class CrewSpotter(private val level: ServerLevel) {
         val faction = SquadTeams.factionOf(eyes)
         val reported = faction?.let { TeamAwareness.sightings(it, now) }?.firstOrNull { (level.getEntity(it.target) as? LivingEntity)?.isAlive == true }
         val own = state.ownSighting?.takeIf { now - state.ownSeenAt <= FireSupportTargets.OWN_SIGHTING_HOLD_TICKS }
-        val chosen = FireSupportTargets.choose(squad?.let(::ordered)?.copy(ownSighting = own, factionSighting = reported?.target) ?: FireOptions(ownSighting = own, factionSighting = reported?.target), state.target)
+        val sighted = faction?.let { TeamAwareness.sightings(it, now) }.orEmpty().mapTo(HashSet()) { it.target.toString() } + listOfNotNull(own?.toString())
+        val options = (squad?.let(::ordered) ?: FireOptions()).copy(ownSighting = own, factionSighting = reported?.target, sighted = sighted)
+        val chosen = FireSupportTargets.choose(options, state.target)
         if (chosen != state.target) DebugFlags.log(LogGroup.FIRE_SUPPORT, "crew={} event=target from={} to={}", unit.crew.agent.id, state.target, chosen)
         state.target = chosen
         // Where the side last saw it, not where it is now: the shell goes where the call said.
@@ -44,7 +47,7 @@ internal class CrewSpotter(private val level: ServerLevel) {
     private fun ordered(squad: Squad) =
         FireOptions(
             barrage = squad.order == SquadOrder.BARRAGE && squad.objective != null,
-            preparation = squad.order == SquadOrder.ATTACK && squad.objective != null && com.sbwnpc.squad.squad.FireSupport.infantryApproaching(level, squad),
+            preparation = squad.order == SquadOrder.ATTACK && squad.objective != null && InfantrySupport.infantryApproaching(level, squad),
             commanded = squad.takeIf { it.order == SquadOrder.ATTACK }?.let(::commanded),
             orderKey = "${squad.id}:${squad.orderStamp}",
         )
@@ -62,14 +65,18 @@ internal class CrewSpotter(private val level: ServerLevel) {
         // Nearest first and few raycasts: the nearest one seen is the target either way, and the
         // infantry fighting the rest already reports them.
         var spotted: LivingEntity? = null
+        var kept: LivingEntity? = null
         for ((checks, candidate) in Hostiles.within(level, eyes, detectionRadius(eyes)).withIndex()) {
             if (checks >= MAX_LOS_CHECKS) break
             if (DetectionSightline.sight(eyes, candidate).visibility != DetectionSightline.Visibility.VISIBLE) continue
             if (!state.noticing.noticed(eyes, level, candidate, offAxis = 1.0)) continue
             if (faction != null) TeamAwareness.report(faction, candidate.uuid, candidate.position(), now, "mortar ${eyes.uuid.toString().take(SHORT_ID)}")
             if (spotted == null) spotted = candidate
+            if (candidate.uuid == state.ownSighting) kept = candidate
         }
         state.noticing.endScan(now)
+        // The one he watches while he still notices him, not whichever is a step nearer this scan.
+        kept?.let { spotted = it }
         if (spotted == null) return
         if (state.ownSighting != spotted.uuid) SquadReports.contact(eyes, spotted)
         state.ownSighting = spotted.uuid

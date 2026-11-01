@@ -21,8 +21,15 @@ class FireSupportTargetsTest {
 
     @Test fun `the same enemy known another way keeps the target, another enemy changes it`() {
         val own = FireSupportTargets.choose(FireOptions(ownSighting = enemy), null)
-        assertSame(own, FireSupportTargets.choose(FireOptions(factionSighting = enemy), own))
+        assertSame(own, FireSupportTargets.choose(FireOptions(factionSighting = enemy, sighted = setOf(enemy.toString())), own))
         assertEquals(FireTarget(FireSource.FACTION_SIGHTING, other.toString()), FireSupportTargets.choose(FireOptions(factionSighting = other), own))
+    }
+
+    @Test fun `a target still in view is kept when another enemy is reported fresher, and dropped once out of view`() {
+        val first = FireSupportTargets.choose(FireOptions(factionSighting = enemy, sighted = setOf(enemy.toString())), null)
+        val both = setOf(enemy.toString(), other.toString())
+        assertSame(first, FireSupportTargets.choose(FireOptions(factionSighting = other, sighted = both), first))
+        assertEquals(other.toString(), FireSupportTargets.choose(FireOptions(factionSighting = other, sighted = setOf(other.toString())), first)?.key)
     }
 
     @Test fun `a new order is a new target, the same order is not`() {

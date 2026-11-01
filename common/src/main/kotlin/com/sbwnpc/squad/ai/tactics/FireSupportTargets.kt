@@ -40,6 +40,8 @@ data class FireOptions(
     val ownSighting: UUID? = null,
     val factionSighting: UUID? = null,
     val orderKey: String = "",
+    /** The keys of every enemy the crew or its faction still sees, so a target still in view is kept. */
+    val sighted: Set<String> = emptySet(),
 )
 
 /**
@@ -50,9 +52,9 @@ data class FireOptions(
  */
 object FireSupportTargets {
     /**
-     * The target for [options], keeping [previous] when the same enemy is now known another way:
-     * a sighting that passes from the crew's own eyes to a faction report, or back, is still the
-     * same target, and must not replan the crew.
+     * The target for [options], keeping [previous] while a sighting wins and its enemy is still
+     * [FireOptions.sighted]: the same enemy known another way, or another enemy reported fresher
+     * or standing a little nearer, must not switch the crew's fire and replan it every scan.
      */
     fun choose(options: FireOptions, previous: FireTarget?): FireTarget? {
         val chosen = when {
@@ -63,10 +65,10 @@ object FireSupportTargets {
             options.factionSighting != null -> FireTarget(FireSource.FACTION_SIGHTING, options.factionSighting.toString())
             else -> null
         }
-        return if (sameEnemy(previous, chosen)) previous else chosen
+        return if (keeps(previous, chosen, options.sighted)) previous else chosen
     }
 
-    private fun sameEnemy(previous: FireTarget?, chosen: FireTarget?) = previous != null && chosen != null && previous.sighting && chosen.sighting && previous.key == chosen.key
+    private fun keeps(previous: FireTarget?, chosen: FireTarget?, sighted: Set<String>) = previous != null && chosen != null && previous.sighting && chosen.sighting && previous.key in sighted
 
     /** A crew rescans for enemies this often, as the operator did before (#258). */
     const val SCAN_INTERVAL_TICKS = 20

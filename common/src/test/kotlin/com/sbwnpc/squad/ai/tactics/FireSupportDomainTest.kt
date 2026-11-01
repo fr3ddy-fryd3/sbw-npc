@@ -65,7 +65,6 @@ class FireSupportDomainTest {
     @Test fun `a crew fires its target, the operator laying and the loader loading`() {
         val duties = duties(Situation(fire = target, operator = operator))
         assertEquals(listOf(CrewDuty(operator, CrewWork.OPERATE, target), CrewDuty(loader, CrewWork.LOAD)), duties)
-        assertEquals("fire_mission/own_sighting", FireSupport.methodId(FireSupport.Plan.FIRE_MISSION, facts(Situation(fire = target))))
     }
 
     @Test fun `swapping the posts to fetch shells keeps the crew resupplying`() {

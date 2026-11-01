@@ -1,5 +1,6 @@
 package com.sbwnpc.squad.ai.integration
 
+import com.sbwnpc.squad.ai.coordination.Point3
 import com.sbwnpc.squad.ai.planning.ActionExecution
 import com.sbwnpc.squad.ai.planning.ActionUpdate
 import com.sbwnpc.squad.ai.tactics.CrewDuty
@@ -25,11 +26,16 @@ import net.minecraft.world.phys.Vec3
  * [NpcActivity.MORTAR_CREW] and [NpcActivity.MORTAR_ERRAND] claims, as part of his plan.
  */
 internal class CrewHand(private val npc: NpcEntity) : PlanExecutor {
+    /** When he lays next, and whether his last lay found the target in reach. */
     var nextAimTick = 0L
     var reachable = true
+
+    /** The barrage point he holds, for which order, until when. */
     var barrageAim: BlockPos? = null
     var barrageFor: String? = null
     var nextBarrageShift = 0L
+
+    /** His last friendly-near-impact check: when, for which aim, and its answer. */
     var friendlyAt = Long.MIN_VALUE / 2
     var friendlyTarget: BlockPos? = null
     var friendlyResult = false
@@ -148,7 +154,7 @@ internal class CrewMoves(private val npc: NpcEntity, private val hand: CrewHand,
     }
 
     /** Packs the tube, carries it to [to] and sets it up there, or where he stands with no [to]. */
-    fun displace(to: com.sbwnpc.squad.ai.coordination.Point3?) {
+    fun displace(to: Point3?) {
         if (!npc.holds(NpcActivity.CARRYING_MORTAR)) {
             val m = hand.tube() ?: return hand.release()
             if (npc.distanceTo(m) > CrewDutyAction.AT_TUBE) {
@@ -167,8 +173,14 @@ internal class CrewMoves(private val npc: NpcEntity, private val hand: CrewHand,
         }
         npc.navigation.stop()
         val facing = world.stateOf(npc.uuid)?.target?.let(laying::resolve)?.center
-        // Nowhere to set up on this spot: walk on towards the target and try again.
-        if (MortarDeployment.deploy(level, npc, facing) == null) facing?.let { npc.navigateTo(it, DISPLACE_SPEED) }
+        if (MortarDeployment.deploy(level, npc, facing) != null) return
+        // Nowhere to set up on this spot: try a step aside round where he was sent, never towards
+        // the enemy; sent nowhere, walk on towards the target as before.
+        if (point == null) {
+            facing?.let { npc.navigateTo(it, DISPLACE_SPEED) }
+            return
+        }
+        npc.navigateTo(point.add(npc.random.nextDouble() * SIDE_STEP * 2 - SIDE_STEP, 0.0, npc.random.nextDouble() * SIDE_STEP * 2 - SIDE_STEP), DISPLACE_SPEED)
     }
 
     /** Keeps up with the man of his crew carrying the tube. */
@@ -197,7 +209,8 @@ internal class CrewMoves(private val npc: NpcEntity, private val hand: CrewHand,
         val tube = NpcRegistry.all(level).asSequence().filter { it !== npc && it.squadId == squad && it.isAlive }
             .mapNotNull { it.assignedMortarId?.let(level::getEntity) }.filter { it.isAlive }.minByOrNull { npc.distanceToSqr(it) } ?: return hand.release()
         if (npc.distanceTo(tube) <= FireSupportWorld.RELOCATE_RANGE) {
-            hand.release()
+            // He stands by it: holding his feet, so his order does not walk him off meanwhile.
+            hand.hold(crew = false, errand = true)
             npc.navigation.stop()
             return
         }
@@ -210,5 +223,6 @@ internal class CrewMoves(private val npc: NpcEntity, private val hand: CrewHand,
         const val DISPLACE_SPEED = 1.3
         private const val SUPPLY_MARGIN = 3.0
         private const val FOLLOW_DISTANCE_SQR = 25.0
+        private const val SIDE_STEP = 3.0
     }
 }

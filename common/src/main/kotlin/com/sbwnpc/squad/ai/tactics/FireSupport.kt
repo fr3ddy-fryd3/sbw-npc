@@ -174,9 +174,6 @@ object FireSupport {
             wants(plan, facts)
         }
 
-    /** The method id of [plan] on [facts]; a fire mission carries why it fires there. */
-    fun methodId(plan: Plan, facts: FactView? = null) = if (plan == Plan.FIRE_MISSION) "fire_mission/${facts?.value(CrewFacts.FIRE)?.source?.name?.lowercase() ?: "none"}" else plan.name.lowercase()
-
     /** Each man's duty under [plan]: the operator's part, and the rest's. */
     fun duties(plan: Plan, crew: SupportCrew, facts: FactView): List<CrewDuty> {
         val operator = facts.value(CrewFacts.OPERATOR)?.takeIf { it in crew.members } ?: crew.members.first()

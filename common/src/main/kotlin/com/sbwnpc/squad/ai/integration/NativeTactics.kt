@@ -24,6 +24,7 @@ import net.minecraft.world.phys.shapes.CollisionContext
 import java.util.UUID
 import kotlin.math.hypot
 import kotlin.math.max
+import com.sbwnpc.squad.ai.tactics.FireSupport as CrewPlan
 
 /** Production owner: world observation, domain evaluation and native adapters have separate boundaries. */
 object NativeTactics {
@@ -405,7 +406,7 @@ object NativeTactics {
         /** A crewman's duty (#258), run on his own [CrewHand]. */
         private fun crewBinding() =
             listOf(
-                ActionBinding(com.sbwnpc.squad.ai.tactics.FireSupport.ACTION) { ticket, duty ->
+                ActionBinding(CrewPlan.ACTION) { ticket, duty ->
                     require(ticket.owner.agent == duty.actor)
                     fireSupport.action(duty, requireNotNull(level.getEntity(duty.actor.id) as? NpcEntity))
                 },
@@ -799,6 +800,8 @@ object NativeTactics {
                 opGroups.forEach { (operation, members) ->
                     val ground = members.filter { it.id in activeIds }
                     val standing = if (ground.isEmpty()) OperationStanding.STEADY else standing(operation, now)
+                    // Its crews too lose their plan for this one update: the next one finds their squads
+                    // retreating on their own, and plans the carry to the rally point under them.
                     if (standing == OperationStanding.WITHDRAW) return@forEach
                     val grounded = if (ground.isEmpty()) emptyList() else layout(ground, now, holding = standing == OperationStanding.REVIEW)
                     val squadMissions = grounded.map { it.copy(support = fireSupport.roster.crews(it.agent.id)) } +
@@ -928,7 +931,7 @@ object NativeTactics {
             fireSupport.roster.crews(null).forEach { crew ->
                 val fresh = crew.agent !in agents
                 ensureCrew(crew, desired)
-                agents.getValue(crew.agent).command(UUID.nameUUIDFromBytes("crew:${crew.agent.id}".toByteArray()), com.sbwnpc.squad.ai.tactics.FireSupport.TEAM_TASK.call(crew), facts(crew.agent, now))
+                agents.getValue(crew.agent).command(UUID.nameUUIDFromBytes("crew:${crew.agent.id}".toByteArray()), CrewPlan.TEAM_TASK.call(crew), facts(crew.agent, now))
                 if (fresh) DecisionTrace.man(crew.members.first().id, now, "agent", "squadless_crew")
             }
         }
