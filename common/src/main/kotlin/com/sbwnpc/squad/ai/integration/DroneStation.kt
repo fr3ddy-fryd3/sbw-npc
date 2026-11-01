@@ -14,6 +14,7 @@ import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.entity.ai.DroneFlightController
 import com.sbwnpc.squad.entity.ai.DroneLaunchWalk
+import com.sbwnpc.squad.experience.ExperienceAwards
 import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.squad.SquadReports
 import com.sbwnpc.squad.team.SquadTeams
@@ -319,6 +320,7 @@ internal class DroneStation(val operator: NpcEntity) {
         val spawn = launchPoint(operator.position()) ?: return
         val drone = Ports.drones.createKamikaze(level)
         usesAddonBlast = Ports.drones.blowsUpOnCrash(drone)
+        ExperienceAwards.launchedBy(drone, operator)
         drone.moveTo(spawn.x, spawn.y, spawn.z, operator.yRot, 0f)
         // Same scoreboard team as the operator: SBW turrets / hostile vehicles treat it as an enemy
         // vehicle, allies leave it alone.

@@ -21,6 +21,7 @@ object ExperienceAwards {
     private const val WOUNDS = "sbwnpcExperienceWounds"
     private const val MEDICAL = "sbwnpcExperienceMedical"
     private const val QUIET_TICKS = 600L
+    private const val DRONE_OPERATOR = "sbwnpcDroneOperator"
     private const val PARTICIPATION_XP = 20.0
     private const val OBJECTIVE_XP = 30.0
     private const val MEDICAL_XP_PER_HP = 2.0
@@ -49,7 +50,7 @@ object ExperienceAwards {
     fun damage(victim: Entity, source: DamageSource, fraction: Double, dead: Boolean) {
         val level = victim.level() as? ServerLevel ?: return
         if (!target(victim) || fraction <= 0 || !fraction.isFinite()) return
-        val attacker = source.entity ?: return
+        val attacker = operatorOf(level, source.directEntity) ?: operatorOf(level, source.entity) ?: source.entity ?: return
         if (!SquadTeams.isHostile(victim, attacker)) return
         recordWound(victim, fraction, level.gameTime)
         val budget = targetBudget(victim)
@@ -77,6 +78,19 @@ object ExperienceAwards {
             }
         }
         Ports.loader.persistentData(victim).put(LEDGER, tag)
+    }
+
+    /** Marks [drone] as flown by [operator], so its blast pays him and not the drone. */
+    fun launchedBy(drone: Entity, operator: NpcEntity) = Ports.loader.persistentData(drone).putUUID(DRONE_OPERATOR, operator.uuid)
+
+    /**
+     * The operator of [entity] if it is a drone one flew. The FPV drone's crash blast names the
+     * drone as its attacker: on his side's team it passed the hostility check, but it is no NPC, so
+     * its share went to nobody and an operator never earned a point for a kill.
+     */
+    private fun operatorOf(level: ServerLevel, entity: Entity?): NpcEntity? {
+        val data = entity?.let { Ports.loader.persistentData(it) }?.takeIf { it.hasUUID(DRONE_OPERATOR) } ?: return null
+        return level.getEntity(data.getUUID(DRONE_OPERATOR)) as? NpcEntity
     }
 
     private fun recordWound(victim: Entity, fraction: Double, now: Long) {
