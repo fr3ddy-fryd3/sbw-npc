@@ -653,7 +653,8 @@ class HelicopterCockpit(private val pilot: NpcEntity, private val contact: AirCo
         const val ON_DECK_HEIGHT = 0.6
         const val TELEMETRY_INTERVAL = 20
         const val TRAFFIC_INTERVAL_TICKS = 10
-        const val CRUISE_SPEED = 0.85
+        /** Half again the first 0.85 and 0.35: the aircraft crawled to and about its area (in-game 01.11). */
+        const val CRUISE_SPEED = 1.275
         const val HOLD_SPEED = 0.15
 
         /** Close enough for the turret to do real work, far enough not to be parked overhead. */
@@ -665,7 +666,7 @@ class HelicopterCockpit(private val pilot: NpcEntity, private val contact: AirCo
         /** Keep treating the area as hot for this long after the last confirmed target. */
         const val COMBAT_HOLD_TICKS = 200
         const val LOITER_RADIUS = 70.0
-        const val LOITER_SPEED = 0.35
+        const val LOITER_SPEED = 0.525
         const val LOITER_STEP = Math.PI / 4
 
         /** Half the transit margin: high enough to clear the trees, low enough to be part of the
