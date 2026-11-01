@@ -236,6 +236,9 @@ object NativeTactics {
 
         private fun engageOf(npc: NpcEntity) = engageStates.getOrPut(npc.uuid) { EngageState(npc) }
 
+        // His engage facts' band memory, dropped with his agent like [engageStates].
+        private val engageBands = HashMap<UUID, EngageBands>()
+
         /** Whether one of [npc]'s engage units runs now: his plan moves him. */
         fun engages(npc: NpcEntity): Boolean = agents[AgentId(AgentLevel.NPC, npc.uuid)]?.runtime?.reports?.values?.any { Engage.isUnit(it.ticket.identity) && it.status == ExecutionStatus.RUNNING } == true
 
@@ -632,7 +635,7 @@ object NativeTactics {
                 .observe(TacticalFacts.SUPPORT_FIRING, supportFiring(id, now), expiresAt = now + 11)
             failures[id.id]?.let { failure -> result = result.observe(TacticalFacts.POST_FAILURE, failure, observedAt = failure.failedAt, expiresAt = failure.failedAt + FAILURE_MEMORY_TICKS) }
             result = coverFacts(result, npc, now)
-            if (npc != null) result = EngageFacts.observe(result, npc, engageOf(npc), now)
+            if (npc != null) result = EngageFacts.observe(result, npc, engageOf(npc), engageBands.getOrPut(npc.uuid, ::EngageBands), now)
             return result
         }
         fun combatView(squad: UUID): TacticalSnapshot? {
@@ -838,6 +841,7 @@ object NativeTactics {
                 }
                 // Nor a firing spot nobody would release.
                 engageStates.entries.removeIf { (id, state) -> (AgentId(AgentLevel.NPC, id) !in desiredAgents).also { gone -> if (gone) state.dispose() } }
+                engageBands.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 allocationOrigins.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 formationDuties.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 plannedContact.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }

@@ -3,6 +3,7 @@ package com.sbwnpc.squad.gametest
 import com.sbwnpc.squad.ai.integration.NativeTactics
 import com.sbwnpc.squad.combat.CombatPosition
 import com.sbwnpc.squad.combat.tactics.SquadTactics
+import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
@@ -124,6 +125,35 @@ object EngageOnlyGameTests {
         }
     }
 
+    /**
+     * A squadless man suppressed with a wall nearby: SeekCover, an immediate reaction outside his
+     * plan, takes his feet. While it holds them no engage unit of his runs, so the two never steer
+     * him at once, and he reaches the wall.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "planned-engage-suppressed")
+    fun suppressedEngagerTakesCoverWithoutHisEngage(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "planned-engage-suppressed")
+        val man = scene.spawn(Vec3(20.5, 1.0, 100.5))
+        val enemy = scene.enemy(Vec3(60.5, 1.0, 100.5))
+        for (y in 1..2) for (z in 103..107) helper.setBlock(BlockPos(24, y, z), Blocks.STONE)
+        man.target = enemy
+        var covered = 0
+        helper.onEachTick {
+            if (helper.tick % 10L == 0L) SquadTactics.refresh(man)
+            if (helper.tick in SUPPRESS_FROM..SUPPRESS_UNTIL) man.suppress(enemy.eyePosition)
+            if (man.holds(NpcActivity.COVER)) {
+                covered++
+                helper.assertTrue(!SquadTactics.move(man), "His engage steered him while SeekCover held his feet at tick ${helper.tick}")
+            }
+            if (helper.tick >= SUPPRESS_UNTIL) {
+                helper.assertTrue(covered > 0, "He never took cover under fire")
+                scene.result("PASS", "covered=$covered")
+                helper.succeed()
+            }
+        }
+    }
+
     /** A bound may end a block or two past the edge of his area before the next one turns him back. */
     private const val LEASH_SLACK = 3.0
 
@@ -136,4 +166,8 @@ object EngageOnlyGameTests {
     /** The tick the wall goes up, once he is fighting, and how long it stays: under ENGAGER_TICKS (40) of not reporting. */
     private const val WALL_UP = 120L
     private const val WALL_TICKS = 20L
+
+    /** He is suppressed from once he fights until the scene ends. */
+    private const val SUPPRESS_FROM = 60L
+    private const val SUPPRESS_UNTIL = 300L
 }

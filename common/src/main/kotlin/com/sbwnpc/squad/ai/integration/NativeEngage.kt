@@ -29,8 +29,8 @@ import java.util.UUID
 /**
  * What one man's engage keeps across its units (#251 step B), held by [NativeTactics] beside his
  * cover state: the firing spot he holds and its claim in [FiringSpots], where his fight started,
- * his advance from a post, the units he finished, the rest after a batch of sidesteps, and the
- * last values of his band facts. Each unit's own timing lives in its action.
+ * his advance from a post, the units he finished, and the rests after his sidesteps and searches.
+ * Each unit's own timing lives in its action; his band facts' memory is [EngageBands].
  *
  * Released however his engage ends: a cancelled unit lets the spot go, and so does dropping him
  * from the plan ([dispose]).
@@ -54,10 +54,9 @@ internal class EngageState(private val npc: NpcEntity) {
         private set
     var sidestepRestUntil = 0
 
-    // The band facts' last values, written only by [EngageFacts].
-    var inReach = false
-    var outside = false
-    var keepAway = false
+    /** Until when his last search for a spot clear of a hull stands, kept across units like [sidestepRestUntil]. */
+    var researchRestUntil = 0
+
     private var orderStamp: Int? = null
     private var sidearm: Boolean? = null
 
@@ -132,11 +131,22 @@ internal class EngageState(private val npc: NpcEntity) {
 }
 
 /**
+ * The last value of each of one man's band facts, which [EngageFacts] alone reads and writes: a
+ * band keeps its value between its two edges, so the fact needs its previous value. Kept by
+ * [NativeTactics] for as long as his NPC agent, apart from his executor's [EngageState].
+ */
+internal class EngageBands {
+    var inReach = false
+    var outside = false
+    var keepAway = false
+}
+
+/**
  * The facts of one man's engage, observed every tick: what his gun saw ([FireObservation]) and the
  * distances [CombatGeometry] measures, with the bands that keep an edge from flipping his move.
  */
 internal object EngageFacts {
-    fun observe(facts: FactSnapshot, npc: NpcEntity, state: EngageState, now: Long): FactSnapshot {
+    fun observe(facts: FactSnapshot, npc: NpcEntity, state: EngageState, bands: EngageBands, now: Long): FactSnapshot {
         val target = npc.target?.takeIf { it.isAlive }
         val seen = npc.fireObservation
         val squad = npc.currentSquad()
@@ -152,13 +162,13 @@ internal object EngageFacts {
             .observe(TacticalFacts.ENGAGE_UNITS, state.units)
         val distance = target?.let { CombatGeometry.flat(npc.position(), it.position()) }
         val keepAway = CombatGeometry.keepAway(npc)
-        state.keepAway = keepAway > 0.0 && band(state.keepAway, distance, keepAway, within = true)
-        result = result.observe(TacticalFacts.KEEP_AWAY, state.keepAway)
-        state.inReach = band(state.inReach, distance, CombatGeometry.stoppingDistance(npc), within = true)
-        result = result.observe(TacticalFacts.IN_REACH, state.inReach)
+        bands.keepAway = keepAway > 0.0 && band(bands.keepAway, distance, keepAway, within = true)
+        result = result.observe(TacticalFacts.KEEP_AWAY, bands.keepAway)
+        bands.inReach = band(bands.inReach, distance, CombatGeometry.stoppingDistance(npc), within = true)
+        result = result.observe(TacticalFacts.IN_REACH, bands.inReach)
         val home = CombatGeometry.defendHome(npc)
-        state.outside = home != null && band(state.outside, CombatGeometry.flat(npc.position(), home), CombatGeometry.leash(npc) - Engage.BAND, within = false)
-        result = result.observe(TacticalFacts.OUTSIDE_AREA, state.outside)
+        bands.outside = home != null && band(bands.outside, CombatGeometry.flat(npc.position(), home), CombatGeometry.leash(npc) - Engage.BAND, within = false)
+        result = result.observe(TacticalFacts.OUTSIDE_AREA, bands.outside)
         val mayAdvance = holding && target != null && !state.advanceDone && !npc.holds(NpcActivity.DUG_IN) &&
             CombatPosition.mayAdvance(squad?.order, npc.npcClass, npc.position(), target.position())
         return result.observe(TacticalFacts.MAY_ADVANCE, mayAdvance)
@@ -261,23 +271,36 @@ internal abstract class EngageAction(protected val npc: NpcEntity, protected val
  * Holds a nearby spot that keeps a clear shot on the target while hiding as much of him as the
  * terrain allows, and fires from it. The spot is looked at again every 3-5 s ([EngageAction.HOLD_MIN_TICKS]
  * and jitter): he really holds a chosen spot and fires, no endless micro-shuffling. Each look ends
- * the unit, so the plan sees the fight again between holds. With [research] the look comes at
- * once: a hull pulled into his line of fire, which no sidestep clears.
+ * the unit, so the plan sees the fight again between holds.
+ *
+ * With [research] a hull stands in his line of fire, which no sidestep clears: he looks for
+ * another spot at once, walks there and stands. The unit ends when the hull is out of his lane
+ * ([EngageMove.endsOn]), or once he has stood on the new spot to the end of
+ * [EngageState.researchRestUntil]: a spot still behind the hull gets one more search then, never
+ * one per tick while he walks.
  */
 private class HoldSpot(npc: NpcEntity, state: EngageState, sidearm: Boolean, private val research: Boolean) : EngageAction(npc, state, sidearm) {
     private var looks = 0
 
     override fun start(now: Long): ActionUpdate {
-        if (research) state.nextCheck = 0
+        if (research && clock >= state.researchRestUntil) {
+            state.nextCheck = 0
+            state.researchRestUntil = clock + RESEARCH_REST_TICKS
+        }
         return super.start(now)
     }
 
     override fun step(target: LivingEntity) {
         val level = npc.level() as? ServerLevel ?: return
-        if (!look(level, target)) return
-        looks++
-        if (research || looks > 1) done(if (research) "spot_searched" else "held")
+        if (look(level, target)) looks++
+        when {
+            research -> if (looks > 0 && clock >= state.researchRestUntil && standsOnSpot()) done("spot_searched")
+            looks > 1 -> done("held")
+        }
     }
+
+    /** He stands on the spot he holds, or holds none to walk to. */
+    private fun standsOnSpot() = state.spot.let { it == null || FiringPostArrival.reached(npc.position(), it) }
 
     /** One tick of the hold; true when it looked at the spot again and settled on one. */
     private fun look(level: ServerLevel, target: LivingEntity): Boolean {
@@ -334,6 +357,9 @@ private class HoldSpot(npc: NpcEntity, state: EngageState, sidearm: Boolean, pri
     private companion object {
         /** A search the tick's budget cut short resumes this soon. */
         const val DEFERRED_RETRY_TICKS = 2
+
+        /** A search for a spot clear of a hull at most this often, 3 s: the shortest hold. */
+        const val RESEARCH_REST_TICKS = HOLD_MIN_TICKS
     }
 }
 

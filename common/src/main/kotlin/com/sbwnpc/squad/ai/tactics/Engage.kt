@@ -24,7 +24,7 @@ enum class EngageMove(val endsOn: FactKey<Boolean>? = null) {
     SIDESTEP(TacticalFacts.LANE_BLOCKED_ALLY),
 
     /** A vehicle hull stands in his line of fire: he looks for another spot; a sidestep cannot clear a hull. */
-    RESEARCH_SPOT,
+    RESEARCH_SPOT(TacticalFacts.LANE_BLOCKED_HULL),
 
     /** A target he can newly shoot gets an opening burst before he moves. */
     OPEN_FIRE(TacticalFacts.OPENING_DUE),

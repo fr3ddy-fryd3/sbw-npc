@@ -5,11 +5,14 @@ import com.sbwnpc.squad.ai.diagnostics.DecisionTrace
 import com.sbwnpc.squad.combat.CombatPosition
 import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.tactics.SquadTactics
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.npc.TransportVehicle
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
+import net.minecraft.world.entity.Entity
 import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import java.util.UUID
@@ -238,8 +241,50 @@ object PlannedEngageGameTests {
         }
     }
 
+    /**
+     * An LAV parked across his line of fire: his plan looks for a spot clear of it, and looks
+     * again at most once per rest while the hull stays, not every tick he walks.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "planned-engage-hull")
+    fun hullInTheLaneMakesHimSearchOnce(helper: GameTestHelper) {
+        val contact = Contact(helper, "planned-engage-hull", 15.0)
+        var parkedAt: Long? = null
+        var parkedGameTime = 0L
+        var lav: Entity? = null
+        contact.scene.onClose.let { close ->
+            contact.scene.onClose = {
+                lav?.discard()
+                close()
+            }
+        }
+        helper.onEachTick {
+            contact.tick()
+            if (parkedAt == null && contact.man.lastShotTick >= 0) {
+                val at = contact.man.position().add(contact.enemy.position()).scale(0.5)
+                lav = requireNotNull(Ports.vehicles.create(helper.level, TransportVehicle.LAV_25)).also {
+                    it.moveTo(at.x, at.y, at.z, 0f, 0f)
+                    helper.level.addFreshEntity(it)
+                }
+                parkedAt = helper.tick
+                parkedGameTime = helper.level.gameTime
+            }
+            val since = parkedAt ?: return@onEachTick
+            if (helper.tick - since >= HULL_TICKS) {
+                val searches = DecisionTrace.decisionsOf(contact.man.uuid).count { it.event == "plan" && it.tick >= parkedGameTime && "*research_spot" in it.detail }
+                helper.assertTrue(searches in 1..MAX_SEARCHES, "He searched $searches times in $HULL_TICKS ticks behind a hull")
+                contact.scene.result("PASS", "searches=$searches")
+                helper.succeed()
+            }
+        }
+    }
+
     /** A taken option in a plan decision's detail: `*name score`. */
     private val TAKEN = Regex("""\*(\w+)""")
+
+    /** How long the hull stands in his lane, and the searches allowed in it: one per 60-tick rest, and the first. */
+    private const val HULL_TICKS = 100L
+    private const val MAX_SEARCHES = 3
 
     /** Blocks forward that count as having closed in: two bounds' worth. */
     private const val CLOSED = 6.0
