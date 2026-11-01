@@ -86,7 +86,9 @@ class SquadAreaLayout {
             point = Vec3(other.center.x + away.x * spacing, request.point.y, other.center.z + away.z * spacing)
         }
         val placed = ground(request, point)?.takeIf { it !in rejected[request.squad].orEmpty() && free(request, it) }
-        areas[request.squad] = SquadArea(request, placed ?: request.point)
+        // A point found unreachable is not handed back: unplaced, the caller marks it unavailable.
+        val center = placed ?: request.point.takeIf { it !in rejected[request.squad].orEmpty() } ?: return
+        areas[request.squad] = SquadArea(request, center)
     }
 
     private fun conflicts(request: SquadAreaRequest, point: Vec3, area: SquadArea) =
