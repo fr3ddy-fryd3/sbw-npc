@@ -602,6 +602,35 @@ object HelicopterOrbitGameTests {
         }
     }
 
+    /**
+     * Aircrew whose squad is gone from under them in the air still fly (#260): their aircraft is
+     * planned as a squadless one, which with its target in sight holds the standoff, and is never
+     * left on the last controls it had.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 1800, batch = "gunship-squad-lost")
+    fun gunshipWhoseSquadIsGoneFliesOnAsASquadlessAircraft(helper: GameTestHelper) {
+        val scene = Scene(helper, HelicopterModel.MI_28)
+        var lostAt: Long? = null
+        helper.onEachTick {
+            scene.tick()
+            val since = lostAt
+            if (since == null) {
+                if (scene.airborne && helper.tick >= 300) {
+                    lostAt = helper.tick
+                    scene.crew.forEach { it.squadId = UUID.randomUUID() }
+                }
+                return@onEachTick
+            }
+            val height = scene.heli.y - Helicopters.groundY(helper.level, scene.heli.x, scene.heli.z)
+            helper.assertTrue(height >= 6.0, "Squadless gunship sank to $height")
+            if (helper.tick - since >= 200) {
+                scene.result("lostAt=$since height=$height")
+                helper.succeed()
+            }
+        }
+    }
+
     private class Scene(
         val helper: GameTestHelper,
         model: HelicopterModel = HelicopterModel.AH_6,

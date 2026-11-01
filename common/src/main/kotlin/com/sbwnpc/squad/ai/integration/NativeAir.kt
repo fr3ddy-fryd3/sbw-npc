@@ -52,7 +52,8 @@ internal class AirRoster(private val level: ServerLevel) {
             val gunners = men.filter { it.npcClass == NpcClass.HELICOPTER_GUNNER }.sortedBy { it.uuid }
             val agent = AgentId(AgentLevel.TEAM, UUID.nameUUIDFromBytes("air:${heli.uuid}".toByteArray()))
             val aircraft = Aircraft(agent, pilot?.let { AgentId(AgentLevel.NPC, it.uuid) }, gunners.map { AgentId(AgentLevel.NPC, it.uuid) })
-            AirUnit(aircraft, (pilot ?: gunners.first()).squadId, heli.uuid)
+            // A squad id naming no squad is no squad: the aircraft is planned as a squadless one, not left unplanned.
+            AirUnit(aircraft, (pilot ?: gunners.first()).squadId?.takeIf { SquadManager.get(level).get(it) != null }, heli.uuid)
         }
         units = found.associateBy { it.aircraft.agent }
         byMan = found.flatMap { unit -> (listOfNotNull(unit.aircraft.pilot) + unit.aircraft.gunners).map { it.id to unit } }.toMap()
@@ -98,8 +99,7 @@ internal class AirWorld(private val level: ServerLevel) {
     private val cockpits = HashMap<UUID, HelicopterCockpit>()
     private val turrets = HashMap<UUID, TurretHand>()
 
-    /** Each aircraft's last fitness, so its change is logged once. */
-    private val fitness = HashMap<UUID, Boolean>()
+    private val fitness = Fitness()
 
     fun teamFacts(empty: FactSnapshot): FactSnapshot {
         val unit = roster.unit(empty.owner) ?: return empty
@@ -113,23 +113,13 @@ internal class AirWorld(private val level: ServerLevel) {
         val focusAlive = order == AirOrder.ATTACK && (squad?.focusEntity?.let(level::getEntity) as? LivingEntity)?.isAlive == true
         var result = empty
             .observe(AirFacts.AIRFRAME, if (Helicopters.hasTurret(heli)) Airframe.GUNSHIP else Airframe.TRANSPORT)
-            .observe(AirFacts.FIT, fit(heli, pilot))
+            .observe(AirFacts.FIT, fitness.fit(heli, pilot))
             .observe(AirFacts.ORDER, order)
             .observe(AirFacts.HAS_OBJECTIVE, unit.aircraft.pilot?.let { (level.getEntity(it.id) as? NpcEntity)?.homeCenter() } != null)
             .observe(AirFacts.IN_CONTACT, contact.recent(now) || focusAlive)
             .observe(AirFacts.MET_ENEMY, contact.pos != null)
         target?.let { result = result.observe(AirFacts.TARGET, it.uuid) }
         return result
-    }
-
-    /** It can fly and someone aboard can fight; logged when that changes. */
-    private fun fit(heli: Entity, pilot: Entity?): Boolean {
-        val flyable = Helicopters.canFly(heli)
-        val armed = pilot != null && armedAboard(pilot, heli)
-        if (fitness.put(heli.uuid, flyable && armed) != (flyable && armed)) {
-            DebugFlags.log(LogGroup.HELI, "{} event=fitness fit={} flyable={} armed={}", heli.uuid, flyable && armed, flyable, armed)
-        }
-        return flyable && armed
     }
 
     /** [npc]'s own fact: whether he still sits where his aircraft's plan has him. */
@@ -158,13 +148,18 @@ internal class AirWorld(private val level: ServerLevel) {
 
     private fun contactOf(unit: AirUnit) = contacts.getOrPut(unit.vehicle, ::AirContact)
 
-    /** Drops the men and aircraft no agent plans for any more: a pilot leaving the plan leaves neutral controls. */
-    fun sweep(desired: Set<AgentId>) {
-        cockpits.entries.removeIf { (id, cockpit) -> (AgentId(AgentLevel.NPC, id) !in desired).also { gone -> if (gone) cockpit.release() } }
-        turrets.entries.removeIf { (id, hand) -> (AgentId(AgentLevel.NPC, id) !in desired).also { gone -> if (gone) hand.release() } }
+    /**
+     * Drops the men no longer at their aircraft's controls or gun: out of the seat, dead, or the
+     * aircraft gone. A man still seated keeps his cockpit even with no plan this update (a mixed
+     * operation withdrawing replans its squads the next one), so [keepAloft] holds the aircraft
+     * instead of neutral controls dropping it.
+     */
+    fun sweep() {
+        cockpits.entries.removeIf { (id, cockpit) -> (roster.unitOf(id) == null).also { gone -> if (gone) cockpit.release() } }
+        turrets.entries.removeIf { (id, hand) -> (roster.unitOf(id) == null).also { gone -> if (gone) hand.release() } }
         val flying = roster.vehicles()
         contacts.keys.removeIf { it !in flying }
-        fitness.keys.removeIf { it !in flying }
+        fitness.keep(flying)
     }
 
     fun clear() {
@@ -173,22 +168,45 @@ internal class AirWorld(private val level: ServerLevel) {
         cockpits.clear()
         turrets.clear()
         contacts.clear()
-        fitness.clear()
+        fitness.keep(emptySet())
         roster.clear()
     }
 
     fun flight(duty: FlightDuty, npc: NpcEntity): FlightAction {
         val unit = requireNotNull(roster.unitOf(npc.uuid))
-        val cockpit = cockpits.getOrPut(npc.uuid) { HelicopterCockpit(npc, contactOf(unit)) }
+        val cockpit = cockpitOf(npc, unit)
         return FlightAction(duty, cockpit) { roster.unitOf(npc.uuid)?.let { target(it, level.gameTime) } }
     }
 
     /** Holds [npc]'s aircraft if no flight of his plan flew it this tick. */
     fun keepAloft(npc: NpcEntity, now: Long) {
-        cockpits[npc.uuid]?.takeIf { it.flownAt != now }?.hold()
+        if (npc.npcClass != NpcClass.HELICOPTER_PILOT) return
+        val unit = roster.unitOf(npc.uuid) ?: return
+        cockpitOf(npc, unit).takeIf { it.flownAt != now }?.hold()
     }
 
+    private fun cockpitOf(npc: NpcEntity, unit: AirUnit) = cockpits.getOrPut(npc.uuid) { HelicopterCockpit(npc, contactOf(unit)) }
+
     fun turret(npc: NpcEntity) = TurretAction(turrets.getOrPut(npc.uuid) { TurretHand(npc) })
+}
+
+/** Whether each aircraft can fight, logged when that changes. */
+private class Fitness {
+    private val last = HashMap<UUID, Boolean>()
+
+    /** It can fly and someone aboard can fight; logged when that changes. */
+    fun fit(heli: Entity, pilot: Entity?): Boolean {
+        val flyable = Helicopters.canFly(heli)
+        val armed = pilot != null && armedAboard(pilot, heli)
+        if (last.put(heli.uuid, flyable && armed) != (flyable && armed)) {
+            DebugFlags.log(LogGroup.HELI, "{} event=fitness fit={} flyable={} armed={}", heli.uuid, flyable && armed, flyable, armed)
+        }
+        return flyable && armed
+    }
+
+    fun keep(vehicles: Set<UUID>) {
+        last.keys.removeIf { it !in vehicles }
+    }
 }
 
 /** [man]'s own target, while it lives and is his enemy. */

@@ -905,7 +905,7 @@ object NativeTactics {
                     agents.remove(id)?.cancel(now, "actor_not_active")
                 }
                 fireSupport.sweep(desiredAgents)
-                air.sweep(desiredAgents)
+                air.sweep()
                 children.keys.removeIf { it !in desiredAgents }
                 failures.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 // A man leaving the plan keeps no foxhole claim nobody would release.
