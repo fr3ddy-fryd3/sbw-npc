@@ -81,7 +81,7 @@ class SquadAreaLayout {
         var point = request.point
         repeat(NUDGE_PASSES) {
             val other = areas.values.firstOrNull { conflicts(request, point, it) } ?: return@repeat
-            val away = point.subtract(other.center).multiply(1.0, 0.0, 1.0).let { if (it.lengthSqr() < 1e-6) Vec3(1.0, 0.0, 0.0) else it.normalize() }
+            val away = point.subtract(other.center).multiply(1.0, 0.0, 1.0).let { if (it.lengthSqr() < NUDGE_MARGIN * NUDGE_MARGIN) Vec3(1.0, 0.0, 0.0) else it.normalize() }
             val spacing = request.radius + other.request.radius + GAP + NUDGE_MARGIN
             point = Vec3(other.center.x + away.x * spacing, request.point.y, other.center.z + away.z * spacing)
         }
