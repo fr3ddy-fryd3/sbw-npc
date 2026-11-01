@@ -213,7 +213,9 @@ internal class FireSupportWorld(private val level: ServerLevel) {
         result = result.observe(CrewFacts.OUT_OF_REACH, state.reachPoint != null).observe(CrewFacts.SHELLS_OUT, shellsOut(unit, men))
         state.reachPoint?.let { result = result.observe(CrewFacts.REACH_POINT, it) }
         state.target?.let { result = result.observe(CrewFacts.FIRE, it) }
-        unit.tube?.let(MortarClaims::operator)?.let { id -> AgentId(AgentLevel.NPC, id).takeIf { it in unit.crew.members } }?.let { result = result.observe(CrewFacts.OPERATOR, it) }
+        // A packed tube has no posts: its carrier is the operator, or the duties fall back to the
+        // first man and give the displacement to one with no tube to carry, who stops at once.
+        (carrier?.uuid ?: unit.tube?.let(MortarClaims::operator))?.let { id -> AgentId(AgentLevel.NPC, id).takeIf { it in unit.crew.members } }?.let { result = result.observe(CrewFacts.OPERATOR, it) }
         return result
     }
 
