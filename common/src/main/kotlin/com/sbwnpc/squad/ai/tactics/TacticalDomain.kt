@@ -214,6 +214,53 @@ object TacticalFacts {
 
     /** He has healed past the health that let him dig in. */
     val HEALED = FactKey("actor.healed", Boolean::class.javaObjectType)
+
+    // His engage (#251 step B), see Engage: observed every tick for every planned man, true or false.
+
+    /** He has a live target and is not marching on with his squad: he fights where he is. */
+    val IN_CONTACT = FactKey("actor.in_contact", Boolean::class.javaObjectType)
+
+    /** He fights with his pistol. */
+    val SIDEARM = FactKey("actor.sidearm", Boolean::class.javaObjectType)
+
+    /** He is a downed pilot and an enemy is nearer than he keeps away from. */
+    val KEEP_AWAY = FactKey("actor.keep_away", Boolean::class.javaObjectType)
+
+    /** His target is within his stopping distance, with a band of [Engage.BAND] on the way out. */
+    val IN_REACH = FactKey("actor.in_reach", Boolean::class.javaObjectType)
+
+    /** He had a clear shot at his target within [Engage.CLEAR_SHOT_TICKS]. */
+    val CLEAR_SHOT = FactKey("actor.clear_shot", Boolean::class.javaObjectType)
+
+    /** His squad's order holds a position (DEFEND, PATROL). */
+    val HOLDING_ORDER = FactKey("actor.holding_order", Boolean::class.javaObjectType)
+
+    /** A defender stands outside his area, with a band of [Engage.BAND] on the way back in. */
+    val OUTSIDE_AREA = FactKey("actor.outside_area", Boolean::class.javaObjectType)
+
+    /** Holding, his target is far enough off for one bounded approach, and he has not made it yet from this post. */
+    val MAY_ADVANCE = FactKey("actor.may_advance", Boolean::class.javaObjectType)
+
+    /** Lane checks in a row with an ally in his line of fire. */
+    val LANE_ALLY_CHECKS = FactKey("actor.lane_ally_checks", Int::class.javaObjectType)
+
+    /** Lane checks in a row with a vehicle hull in his line of fire. */
+    val LANE_HULL_CHECKS = FactKey("actor.lane_hull_checks", Int::class.javaObjectType)
+
+    /** The tick of his first shootable line to his current target, or [Engage.NO_SIGHT]. */
+    val FIRST_SHOOTABLE_AT = FactKey("actor.first_shootable_at", Long::class.javaObjectType)
+
+    /** Rounds he fired at his current target. */
+    val SHOTS_AT_TARGET = FactKey("actor.shots_at_target", Int::class.javaObjectType)
+
+    /** His weapon fires automatic bursts. */
+    val AUTOMATIC = FactKey("actor.automatic", Boolean::class.javaObjectType)
+
+    /** He walks off to resupply or withdraws: the ammunition rules have his feet. */
+    val RESUPPLYING = FactKey("actor.resupplying", Boolean::class.javaObjectType)
+
+    /** Engage units he finished; each one makes him replan, as [COVER_CYCLES] do. */
+    val ENGAGE_UNITS = FactKey("actor.engage_units", Int::class.javaObjectType)
 }
 
 object TacticalDomain {
@@ -343,6 +390,13 @@ object TacticalDomain {
     private val POST = TaskKey("npc.post", PositionIntent::class.java)
     private val LEG = TaskKey("npc.leg", MemberLeg::class.java)
     private val PAUSE = TaskKey("npc.fire_pause", FirePause::class.java)
+
+    /** A man in contact whose movement nothing else commands; also the root of an engage-only agent. */
+    val ENGAGE_TASK = TaskKey("npc.engage", EngageTask::class.java)
+
+    /** One unit of the move his engage chose, see [EngageUnit]. */
+    val ENGAGE = ActionKey("npc.engage_unit", EngageUnit::class.java)
+    private val ENGAGE_UNIT = TaskKey("npc.engage_unit", EngageUnit::class.java)
     val npc = HtnDomain(
         AgentLevel.NPC,
         listOf(
@@ -353,14 +407,23 @@ object TacticalDomain {
                     // below stands aside meanwhile (UnderFire.duty), so exactly one family applies.
                     Method("under_fire", eligible = { intent -> UnderFire.eligible(intent) }, decompose = { intent, _ -> TaskNetwork.sequence(UNDER_FIRE.call(intent)) }),
                     Method("in_hole", eligible = { _ -> UnderFire.inHole() }, decompose = { intent, _ -> TaskNetwork.sequence(IN_HOLE.call(intent)) }),
+                    // In contact, with nothing commanding his movement, his engage moves him; every
+                    // other method below stands aside meanwhile (NpcFamilies.standsAside).
+                    Method("engage", eligible = { intent ->
+                        Condition { facts ->
+                            UnderFire.duty(intent, facts)?.let { return@Condition it }
+                            Engage.eligible(intent).evaluate(facts)
+                        }
+                    }, decompose = { intent, _ -> TaskNetwork.sequence(ENGAGE_TASK.call(EngageTask(intent.actor))) }),
                     // A mover in a fight rushes from cover to cover and fires from each, rather than
                     // running the whole way to his slot under fire.
                     Method("fire_and_bound", eligible = { intent ->
                         Condition { facts ->
-                            UnderFire.duty(intent, facts)?.let { return@Condition it }
+                            NpcFamilies.standsAside(intent, facts)?.let { return@Condition it }
                             val failure = facts.value(TacticalFacts.POST_FAILURE)
                             when {
                                 !intent.boundsByLegs -> Verdict.Rejected("not_advancing_by_legs")
+                                facts.sidearm -> Verdict.Rejected("sidearm")
                                 failure?.anchor == intent.anchor -> Verdict.Rejected("preferred_query_exhausted")
                                 else -> Verdict.Allowed
                             }
@@ -371,10 +434,10 @@ object TacticalDomain {
                     }),
                     Method("preferred_post", eligible = { intent ->
                         Condition { facts ->
-                            UnderFire.duty(intent, facts)?.let { return@Condition it }
+                            NpcFamilies.standsAside(intent, facts)?.let { return@Condition it }
                             val failure = facts.value(TacticalFacts.POST_FAILURE)
                             when {
-                                intent.boundsByLegs -> Verdict.Rejected("advances_by_legs")
+                                intent.boundsByLegs && !facts.sidearm -> Verdict.Rejected("advances_by_legs")
                                 failure?.anchor == intent.anchor -> Verdict.Rejected("preferred_query_exhausted")
                                 else -> Verdict.Allowed
                             }
@@ -382,7 +445,7 @@ object TacticalDomain {
                     }, decompose = { intent, _ -> TaskNetwork.sequence(POST.call(intent)) }),
                     Method("neighbor_post", eligible = { intent ->
                         Condition { facts ->
-                            UnderFire.duty(intent, facts)?.let { return@Condition it }
+                            NpcFamilies.standsAside(intent, facts)?.let { return@Condition it }
                             val failure = facts.value(TacticalFacts.POST_FAILURE)
                             if (failure?.anchor == intent.anchor && failure.attempts <= NEIGHBOR_ATTEMPTS) Verdict.Allowed else Verdict.Rejected("local_alternatives_exhausted")
                         }
@@ -404,9 +467,13 @@ object TacticalDomain {
                     // same blind spot forever.
                     Method("closer_post", eligible = { intent ->
                         Condition { facts ->
-                            UnderFire.duty(intent, facts)?.let { return@Condition it }
+                            NpcFamilies.standsAside(intent, facts)?.let { return@Condition it }
                             val failure = facts.value(TacticalFacts.POST_FAILURE)
-                            if (failure?.anchor != intent.anchor || failure.attempts <= NEIGHBOR_ATTEMPTS) Verdict.Rejected("neighbors_not_exhausted") else closer(intent, failure)
+                            when {
+                                failure?.anchor != intent.anchor || failure.attempts <= NEIGHBOR_ATTEMPTS -> Verdict.Rejected("neighbors_not_exhausted")
+                                facts.sidearm -> Verdict.Rejected("sidearm")
+                                else -> closer(intent, failure)
+                            }
                         }
                     }, decompose = { intent, facts ->
                         val step = facts.value(TacticalFacts.POST_FAILURE)!!.attempts - NEIGHBOR_ATTEMPTS - 1
@@ -417,15 +484,15 @@ object TacticalDomain {
                     // plan at all and stood with his last failed search for a task.
                     Method("hold_as_ordered", eligible = { intent ->
                         Condition { facts ->
-                            UnderFire.duty(intent, facts)?.let { return@Condition it }
+                            NpcFamilies.standsAside(intent, facts)?.let { return@Condition it }
                             val failure = facts.value(TacticalFacts.POST_FAILURE)
                             when {
                                 failure?.anchor != intent.anchor || failure.attempts <= NEIGHBOR_ATTEMPTS -> Verdict.Rejected("posts_not_exhausted")
-                                closer(intent, failure) == Verdict.Allowed -> Verdict.Rejected("closer_post_left")
+                                !facts.sidearm && closer(intent, failure) == Verdict.Allowed -> Verdict.Rejected("closer_post_left")
                                 else -> Verdict.Allowed
                             }
                         }
-                    }, decompose = { intent, _ -> TaskNetwork.sequence(POST.call(intent.copy(hold = true, requireCover = false, requireShelter = false, legs = false, coveredBy = emptySet()))) }),
+                    }, decompose = { intent, facts -> engageOrHold(intent, facts, forward = true, POST.call(intent.copy(hold = true, requireCover = false, requireShelter = false, legs = false, coveredBy = emptySet()))) }),
                 ),
             ),
             CompoundTask(
@@ -437,9 +504,8 @@ object TacticalDomain {
                     }),
                     Method("dig_in", eligible = { _ -> UnderFire.noCover(dig = true) }, decompose = { intent, facts -> TaskNetwork.sequence(DIG_TASK.call(DigIn(intent.actor, facts.value(TacticalFacts.DIGS) ?: 0))) }),
                     // Engaged with no cover in reach: his post where he stands, his gun fighting from it.
-                    Method("hold_open", eligible = { _ -> Condition.all(UnderFire.noCover(dig = false), Condition.test(TacticalFacts.ENGAGED, "not_engaged") { it }) }, decompose = { intent, _ ->
-                        TaskNetwork.sequence(POST.call(intent.copy(hold = true, requireCover = false, requireShelter = false, legs = false, coveredBy = emptySet())))
-                    }),
+                    // In the open under fire he never moves towards the enemy (forward = false).
+                    Method("hold_open", eligible = { _ -> Condition.all(UnderFire.noCover(dig = false), Condition.test(TacticalFacts.ENGAGED, "not_engaged") { it }) }, decompose = { intent, facts -> engageOrHold(intent, facts, forward = false, POST.call(intent.copy(hold = true, requireCover = false, requireShelter = false, legs = false, coveredBy = emptySet()))) }),
                     Method("fall_back", eligible = { _ -> Condition.all(UnderFire.noCover(dig = false), Condition.test(TacticalFacts.ENGAGED, "engaged") { !it }) }, decompose = { intent, facts ->
                         val sector = facts.value(TacticalFacts.FIRE_SECTOR)!!
                         TaskNetwork.sequence(COVER_MOVE_TASK.call(CoverMove(intent.actor, sector, fallBack = true)), COVER_CYCLE_TASK.call(CoverCycle(intent.actor, facts.value(TacticalFacts.COVER_CYCLES) ?: 0)))
@@ -454,6 +520,22 @@ object TacticalDomain {
                     Method("hold_in_hole", eligible = { _ -> UnderFire.holdHole() }, decompose = { intent, facts -> TaskNetwork.sequence(HOLD_HOLE_TASK.call(HoldHole(intent.actor, facts.value(TacticalFacts.DIGS)!!))) }),
                 ),
             ),
+            CompoundTask(
+                ENGAGE_TASK,
+                Engage.ORDER.map { move ->
+                    Method(Engage.methodId(move), eligible = { task -> Engage.applies(move, task) }, decompose = { task, facts ->
+                        TaskNetwork.sequence(ENGAGE_UNIT.call(EngageUnit(task.actor, move, facts.value(TacticalFacts.ENGAGE_UNITS) ?: 0, facts.sidearm)))
+                    })
+                },
+            ),
+            PrimitiveTask(ENGAGE_UNIT) { unit ->
+                PrimitiveSpec(
+                    Engage.identity(unit),
+                    ActionSpec(ENGAGE, unit, setOf(ResourceKey(unit.actor, "motion")), timeoutTicks = COVER_TIMEOUT),
+                    TaskContract(maintain = Engage.maintain(), completed = Engage.unitOver(unit)),
+                    planning = ownActor(unit.actor),
+                )
+            },
             PrimitiveTask(COVER_MOVE_TASK) { move -> motion("cover_move", COVER_MOVE, move, move.actor, Condition.test(TacticalFacts.SHELTERED, "not_sheltered") { it }) },
             // Done once its dwell and peek are over; the count it raises makes the plan look again.
             PrimitiveTask(COVER_CYCLE_TASK) { cycle -> motion("cover_cycle:${cycle.number}", COVER_CYCLE, cycle, cycle.actor, Condition.test(TacticalFacts.COVER_CYCLES, "cycle_running") { it > cycle.number }) },
@@ -475,6 +557,8 @@ object TacticalDomain {
         ),
     )
     private const val NEIGHBOR_ATTEMPTS = 4
+
+    private val FactView.sidearm get() = value(TacticalFacts.SIDEARM) == true
 
     /** A fire pause that neither fired nor ended by itself within 10 s is given up. */
     private const val FIRE_PAUSE_TIMEOUT = 200L
