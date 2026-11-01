@@ -89,11 +89,15 @@ object EngageOnlyGameTests {
         val enemy = scene.enemy(Vec3(80.5, 1.0, 100.5))
         pilot.target = enemy
         val start = pilot.position().distanceTo(enemy.position())
+        var planned = false
         helper.onEachTick {
             if (helper.tick % 10L == 0L) SquadTactics.refresh(pilot)
+            // His engage-only agent lives while his gun reports the fight; once he is far enough
+            // off to stop firing it goes, so it only has to have planned him at some point.
+            planned = planned || NativeTactics.hasAgent(pilot)
             if (helper.tick >= 300L) {
                 val now = pilot.position().distanceTo(enemy.position())
-                helper.assertTrue(NativeTactics.hasAgent(pilot), "He has no engage-only agent")
+                helper.assertTrue(planned, "He never had an engage-only agent")
                 helper.assertTrue(now > start + KEPT_AWAY, "He backed off only ${"%.1f".format(now - start)} blocks")
                 scene.result("PASS", "away=${"%.1f".format(now - start)}")
                 helper.succeed()
