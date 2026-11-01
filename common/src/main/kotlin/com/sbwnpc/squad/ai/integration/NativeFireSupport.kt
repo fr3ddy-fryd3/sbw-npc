@@ -101,8 +101,8 @@ internal class CrewState(val noticing: Noticing) {
 
 /**
  * Which mortarmen form which crew this update (#258): the men assigned to one tube, two at most,
- * and each man left over (no tube, or a third at one) as a crew of his own. A squadless man is a
- * crew only while he has a tube or a free one is in reach, so an idle squadless mortarman gets no plan.
+ * and each man left over (no tube, or a third at one) as a crew of his own while his squad has a
+ * tube or a free one is in reach; a mortarman with neither gets no crew plan.
  */
 internal class CrewRoster(private val level: ServerLevel) {
     private var units: Map<AgentId, CrewUnit> = emptyMap()
@@ -116,6 +116,7 @@ internal class CrewRoster(private val level: ServerLevel) {
         val carried = men.filter { it.holds(NpcActivity.CARRYING_MORTAR) }.mapNotNullTo(HashSet()) { it.assignedMortarId }
         val tubeOf = { man: NpcEntity -> man.assignedMortarId?.takeIf { id -> id in carried || level.getEntity(id)?.let { usable(man, it) } == true } }
         val found = ArrayList<CrewUnit>()
+        val tubed = men.filter { tubeOf(it) != null }.mapNotNullTo(HashSet()) { it.squadId }
         men.groupBy { it.squadId to tubeOf(it) }.forEach { (key, group) ->
             val (squad, tube) = key
             // The posted men first, then by id: the order of a crew's men never changes with who holds
@@ -123,7 +124,9 @@ internal class CrewRoster(private val level: ServerLevel) {
             val ordered = if (tube == null) group else group.sortedWith(compareBy({ MortarClaims.role(tube, it.uuid) == null && !it.holds(NpcActivity.CARRYING_MORTAR) }, { it.uuid }))
             val posted = if (tube == null) emptyList() else ordered.take(MortarClaims.POSTS)
             if (posted.isNotEmpty()) found += crewUnit(posted.sortedBy { it.uuid }, squad, tube)
-            found += (ordered - posted.toSet()).filter { squad != null || freeTube(it, now) != null }.map { crewUnit(listOf(it), squad, null) }
+            // A man left over has a crew's work only with a tube to stand by or take; with none he
+            // fights as any man of his squad does, through his engage (#251).
+            found += (ordered - posted.toSet()).filter { (squad != null && squad in tubed) || freeTube(it, now) != null }.map { crewUnit(listOf(it), squad, null) }
         }
         units = found.associateBy { it.crew.agent }
         byMan = found.flatMap { unit -> unit.crew.members.map { it.id to unit } }.toMap()
