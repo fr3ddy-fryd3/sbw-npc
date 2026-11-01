@@ -135,6 +135,9 @@ object NativeTactics {
         return world(npc).actions[npc.uuid]?.takeIf { it.intent.commandsMovement }?.assignment
     }
 
+    /** The team agent [npc] is planned in, or null; GameTests read it to see a team kept across a strike (#259). */
+    internal fun teamOf(npc: NpcEntity): AgentId? = worlds[npc.level()]?.teamOf(AgentId(AgentLevel.NPC, npc.uuid))
+
     /** How many of [members] hold a slot [FireSlotSight] found no point for that sees the defence; GameTests read it. */
     internal fun slotsWithoutSight(level: ServerLevel, members: Collection<UUID>): Int = worlds[level]?.slotsWithoutSight(members) ?: 0
 
@@ -1032,9 +1035,12 @@ object NativeTactics {
             }
         }
 
+        /** The team agent [man] is planned in, or null. */
+        fun teamOf(man: AgentId): AgentId? = children.entries.firstOrNull { (id, members) -> id.level == AgentLevel.TEAM && man in members }?.key
+
         /** The enemy most of [man]'s team fight (#259): his team's operator strikes it first. */
         private fun teamTarget(man: AgentId, npc: NpcEntity): LivingEntity? {
-            val team = children.entries.firstOrNull { (id, members) -> id.level == AgentLevel.TEAM && man in members }?.value ?: return null
+            val team = teamOf(man)?.let(children::get) ?: return null
             return DroneWorld.teamTarget(npc, team.mapNotNull { level.getEntity(it.id) as? NpcEntity })
         }
 

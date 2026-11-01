@@ -87,13 +87,14 @@ internal class DroneWorld(private val level: ServerLevel) {
     }
 
     /**
-     * Drops the station of every man who is no operator on foot any more. One who boarded or dug
-     * in loses his drone's signal; one who died has lost it already ([DroneStation.onOperatorDied]).
+     * Drops the station of every man who is no operator on foot any more, and with it his drone's
+     * signal: one who boarded, dug in or left the level (a drone nobody flies must not fly on).
+     * One who died has lost it already ([DroneStation.onOperatorDied]); the abort finds no drone.
      */
     fun sweep() {
         stations.entries.removeIf { (id, station) ->
             val npc = level.getEntity(id) as? NpcEntity
-            (npc == null || !operates(npc)).also { gone -> if (gone && npc?.isAlive == true) station.abort() }
+            (npc == null || !operates(npc)).also { gone -> if (gone) station.abort() }
         }
     }
 
