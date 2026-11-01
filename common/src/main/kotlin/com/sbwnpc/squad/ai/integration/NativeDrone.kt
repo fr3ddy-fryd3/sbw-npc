@@ -39,7 +39,6 @@ internal class DroneWorld(private val level: ServerLevel) {
         var result = facts.observe(DroneFacts.AIRBORNE, station.airborne)
             .observe(DroneFacts.HOLD, hold(npc, station, planCovers))
             .observe(DroneFacts.OPTIONS, options(npc, station, team))
-            .observe(DroneFacts.SKY_OPEN, station.skyOpen())
         station.flying?.let { result = result.observe(DroneFacts.FLYING, it.strikePoint()) }
         return result
     }
@@ -87,14 +86,16 @@ internal class DroneWorld(private val level: ServerLevel) {
     }
 
     /**
-     * Drops the station of every man who is no operator on foot any more, and with it his drone's
-     * signal: one who boarded, dug in or left the level (a drone nobody flies must not fly on).
-     * One who died has lost it already ([DroneStation.onOperatorDied]); the abort finds no drone.
+     * Loses the drone's signal of every man who is no operator on foot any more: one who boarded,
+     * dug in or left the level (a drone nobody flies must not fly on). One who died has lost it
+     * already ([DroneStation.onOperatorDied]); the abort finds no drone. The station of a man still
+     * here is kept, so his pause after a flight survives a ride.
      */
     fun sweep() {
         stations.entries.removeIf { (id, station) ->
             val npc = level.getEntity(id) as? NpcEntity
-            (npc == null || !operates(npc)).also { gone -> if (gone) station.abort() }
+            if (npc == null || !operates(npc)) station.abort()
+            npc == null || !npc.isAlive
         }
     }
 
@@ -149,7 +150,8 @@ internal class StrikeAction(private var duty: StrikeDuty, private val station: D
 
     override fun revise(spec: ActionSpec<*>, now: Long): Boolean {
         val next = spec.parameters as? StrikeDuty ?: return false
-        if (next != duty) {
+        // A new source for the same target is the trace's, not the drone's.
+        if (next.target != duty.target) {
             DebugFlags.log(LogGroup.DRONE, "{} event=strike_revised source={} -> {} target={}", actor.id, duty.source, next.source, next.target)
             station.aim(next.target?.let(target))
         }

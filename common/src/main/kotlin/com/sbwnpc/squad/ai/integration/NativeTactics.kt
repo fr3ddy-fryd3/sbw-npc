@@ -1023,10 +1023,11 @@ object NativeTactics {
          * engage-only agent such a man would get, so he has one NPC agent, not two.
          */
         private fun commandLoneOperators(now: Long, desired: MutableSet<AgentId>) {
-            loneOperators.clear()
-            NpcRegistry.all(level).filter { DroneWorld.operates(it) && it.currentSquad() == null }.forEach { npc ->
+            val lone = NpcRegistry.all(level).filter { DroneWorld.operates(it) && it.currentSquad() == null && AgentId(AgentLevel.NPC, it.uuid) !in desired }
+            // Kept between passes, not cleared first: his facts read it for whether his cover is planned.
+            loneOperators.retainAll(lone.mapTo(HashSet()) { it.uuid })
+            lone.forEach { npc ->
                 val agent = AgentId(AgentLevel.NPC, npc.uuid)
-                if (agent in desired) return@forEach
                 loneOperators += npc.uuid
                 desired += agent
                 val fresh = agent !in agents

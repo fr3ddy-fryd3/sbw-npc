@@ -70,8 +70,9 @@ internal class StrikeTarget(val entityId: UUID?, val pos: Vec3)
  * One drone per operator, [MAX_DRONES] carried, refilled at a barracks
  * (SquadManager.resupplyAtBarracks). Under broad cover he first walks to a reachable launch column
  * nearby and returns to his original post after launch. While flying the operator stands still
- * holding the Monitor (its gun is stowed in `NpcEntity.stowedWeapon`) and every other movement
- * behaviour stands down via the [NpcActivity.DRONE] claim.
+ * holding the Monitor (its gun is stowed in `NpcEntity.stowedWeapon`): his plan's other families
+ * stand aside while the drone is up, and the behaviours outside the plan stand down via the
+ * [NpcActivity.DRONE] claim.
  */
 internal class DroneStation(val operator: NpcEntity) {
     private enum class Phase { LAUNCH, CRUISE, ATTACK, HOLD, RETURN }
@@ -115,6 +116,11 @@ internal class DroneStation(val operator: NpcEntity) {
     private val noticing = Noticing("drone operator", LogGroup.FIRE_SUPPORT)
 
     private val level get() = operator.level() as ServerLevel
+
+    init {
+        // A world saved mid-flight comes back with no drone up and the monitor still in hand.
+        restoreWeapon()
+    }
 
     val airborne get() = droneId != null
 
@@ -217,9 +223,6 @@ internal class DroneStation(val operator: NpcEntity) {
             .minByOrNull { operator.position().distanceToSqr(it.pos) } ?: return null
         return StrikeTarget(sighting.target, sighting.pos)
     }
-
-    /** He can launch where he stands. */
-    fun skyOpen(): Boolean = launchPoint(operator.position()) != null
 
     /**
      * Where the drone can go up from: [LAUNCH_HEIGHT] over the operator's feet, right above him or a

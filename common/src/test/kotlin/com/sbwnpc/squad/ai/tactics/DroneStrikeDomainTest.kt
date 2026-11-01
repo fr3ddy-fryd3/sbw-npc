@@ -16,7 +16,7 @@ class DroneStrikeDomainTest {
     private data class Situation(val airborne: Boolean = false, val flying: Boolean = false, val hold: DroneHold = DroneHold.NONE, val sources: Set<StrikeSource> = emptySet())
 
     private fun facts(s: Situation, base: FactSnapshot = FactSnapshot(actor, 1)): FactSnapshot {
-        var f = base.observe(DroneFacts.AIRBORNE, s.airborne).observe(DroneFacts.HOLD, s.hold).observe(DroneFacts.SKY_OPEN, true)
+        var f = base.observe(DroneFacts.AIRBORNE, s.airborne).observe(DroneFacts.HOLD, s.hold)
             .observe(DroneFacts.OPTIONS, StrikeOptions(s.sources.associateWith { point(it.ordinal.toLong()) }))
         if (s.flying) f = f.observe(DroneFacts.FLYING, point(99))
         return f
@@ -90,11 +90,13 @@ class DroneStrikeDomainTest {
 
     @Test fun `a man who is no operator plans as before`() {
         assertEquals(TacticalDomain.POSITION, first(base(underFire = false)).key)
+        assertEquals(Verdict.Rejected("no_drone"), DroneStrike.takesOver().evaluate(base(underFire = false)))
     }
 
     @Test fun `a squadless operator strikes, engages in a fight, else stands by`() {
         fun alone(input: FactSnapshot) = (HtnPlanningSession(TacticalDomain.npc, owner, DroneStrike.ALONE.call(StrikeCall(actor)), input).advance(60) as PlanningResult.Ready).plan
         assertEquals(DroneStrike.ACTION, alone(facts(Situation(sources = setOf(StrikeSource.REPORTED)), FactSnapshot(actor, 1).observe(TacticalFacts.IN_CONTACT, false))).tasks.single().spec.action.key)
         assertTrue(alone(facts(Situation(), FactSnapshot(actor, 1).observe(TacticalFacts.IN_CONTACT, false))).tasks.isEmpty())
+        assertEquals(DroneStrike.ACTION, alone(facts(Situation(airborne = true, flying = true), FactSnapshot(actor, 1).observe(TacticalFacts.IN_CONTACT, true))).tasks.single().spec.action.key)
     }
 }

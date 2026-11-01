@@ -60,10 +60,13 @@ data class StrikeOptions(val bySource: Map<StrikeSource, StrikePoint>) {
 
 /** Why he keeps his drone in its case, [NONE] when he may launch one. */
 enum class DroneHold {
+    /** Nothing keeps it: he may launch. */
     NONE,
 
     /** His squad falls back: nothing new goes up. */
     RETREAT,
+
+    /** He has flown all he carried; a barracks refills him. */
     NO_DRONES,
 
     /** 10–15 s after a flight before the next. */
@@ -84,10 +87,11 @@ data class StrikeCall(val actor: AgentId) {
 }
 
 /**
- * What his drone does: fly at [target] (from [source]), or home with [target] null. [openSky] is
- * whether he can launch where he stands; without it he first walks to a column of open sky.
+ * What his drone does: fly at [target], or home with [target] null. [source] names the method
+ * that chose it, for the trace; where he launches from (here, or a walk to open sky) is the
+ * station's to find, as the launch column is mechanics, not a choice.
  */
-data class StrikeDuty(val actor: AgentId, val target: StrikePoint?, val source: StrikeSource?, val openSky: Boolean) {
+data class StrikeDuty(val actor: AgentId, val target: StrikePoint?, val source: StrikeSource?) {
     init {
         require(actor.level == AgentLevel.NPC)
     }
@@ -102,9 +106,6 @@ object DroneFacts {
     val FLYING = FactKey("drone.flying", StrikePoint::class.java)
     val HOLD = FactKey("drone.hold", DroneHold::class.java)
     val OPTIONS = FactKey("drone.options", StrikeOptions::class.java)
-
-    /** He can launch where he stands. */
-    val SKY_OPEN = FactKey("drone.sky_open", Boolean::class.javaObjectType)
 }
 
 /**
@@ -215,7 +216,7 @@ object DroneStrike {
             Plan.FLY_HOME, Plan.STAND_BY -> null
             else -> facts.value(DroneFacts.OPTIONS)?.bySource?.get(plan.source)
         }
-        return StrikeDuty(call.actor, target, plan.source, facts.value(DroneFacts.SKY_OPEN) == true)
+        return StrikeDuty(call.actor, target, plan.source)
     }
 
     /** The strike's tasks, joined into the NPC domain; [engage] is a squadless man's fight. */
