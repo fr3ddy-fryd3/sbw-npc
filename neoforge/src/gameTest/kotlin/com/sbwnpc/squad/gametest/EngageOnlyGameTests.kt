@@ -139,16 +139,21 @@ object EngageOnlyGameTests {
         for (y in 1..2) for (z in 103..107) helper.setBlock(BlockPos(24, y, z), Blocks.STONE)
         man.target = enemy
         var covered = 0
+        var coveredWithAgent = 0
         helper.onEachTick {
             if (helper.tick % 10L == 0L) SquadTactics.refresh(man)
             if (helper.tick in SUPPRESS_FROM..SUPPRESS_UNTIL) man.suppress(enemy.eyePosition)
             if (man.holds(NpcActivity.COVER)) {
                 covered++
+                if (NativeTactics.hasAgent(man)) coveredWithAgent++
                 helper.assertTrue(!SquadTactics.move(man), "His engage steered him while SeekCover held his feet at tick ${helper.tick}")
             }
             if (helper.tick >= SUPPRESS_UNTIL) {
                 helper.assertTrue(covered > 0, "He never took cover under fire")
-                scene.result("PASS", "covered=$covered")
+                // His engage-only agent goes once his gun stops reporting the fight; the check
+                // above only proves something while it still lives.
+                helper.assertTrue(coveredWithAgent > 0, "His agent was gone before he reached cover, so nothing tested the hand-off")
+                scene.result("PASS", "covered=$covered withAgent=$coveredWithAgent")
                 helper.succeed()
             }
         }

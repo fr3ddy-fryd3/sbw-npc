@@ -277,12 +277,15 @@ internal abstract class EngageAction(protected val npc: NpcEntity, protected val
  * another spot at once, walks there and stands. The unit ends when the hull is out of his lane
  * ([EngageMove.endsOn]), or once he has stood on the new spot to the end of
  * [EngageState.researchRestUntil]: a spot still behind the hull gets one more search then, never
- * one per tick while he walks.
+ * one per tick while he walks. A spot he does not reach within a rest and its jitter ends the
+ * unit too.
  */
 private class HoldSpot(npc: NpcEntity, state: EngageState, sidearm: Boolean, private val research: Boolean) : EngageAction(npc, state, sidearm) {
     private var looks = 0
+    private var startedAt = 0
 
     override fun start(now: Long): ActionUpdate {
+        startedAt = clock
         if (research && clock >= state.researchRestUntil) {
             state.nextCheck = 0
             state.researchRestUntil = clock + RESEARCH_REST_TICKS
@@ -294,7 +297,11 @@ private class HoldSpot(npc: NpcEntity, state: EngageState, sidearm: Boolean, pri
         val level = npc.level() as? ServerLevel ?: return
         if (look(level, target)) looks++
         when {
-            research -> if (looks > 0 && clock >= state.researchRestUntil && standsOnSpot()) done("spot_searched")
+            research && looks > 0 && clock >= state.researchRestUntil && standsOnSpot() -> done("spot_searched")
+
+            // A spot he cannot reach: the plan looks at the fight again rather than wait on the hull.
+            research && clock - startedAt >= RESEARCH_REST_TICKS + HOLD_JITTER_TICKS -> done("spot_unreachable")
+
             looks > 1 -> done("held")
         }
     }
