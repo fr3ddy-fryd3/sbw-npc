@@ -147,9 +147,13 @@ internal class DroneStation(val operator: NpcEntity) {
     /** An enemy at arm's length: he shoots it, he does not launch. */
     fun threatened(): Boolean = operator.target?.let { it.isAlive && operator.distanceToSqr(it) <= SELF_DEFENSE_RANGE_SQR } == true
 
-    /** Whether [target] may be struck: always on foot, and from the air only one not given up on with no ally in the blast. */
+    /**
+     * Whether [target] may be struck: with no ally in the blast, and from the air only one not
+     * given up on. Checked on foot too: an ATTACK objective the infantry already stood on outranked
+     * the enemy he saw himself, and every drone flew there, held over the allies and came home.
+     */
     fun strikable(target: StrikeTarget): Boolean {
-        if (!airborne) return true
+        if (!airborne) return FriendlyFireGuard.hasClearBlastRadius(operator, target.pos, maxOf(Ports.drones.warheadRadius(true), Ports.drones.warheadRadius(false)))
         if (target.entityId != null && target.entityId in rejected) return false
         // The ally check skips the operator itself, and a drone on its way home is close to him.
         val radius = warheadRadius()
@@ -186,7 +190,9 @@ internal class DroneStation(val operator: NpcEntity) {
             if (DetectionSightline.sight(operator, c).visibility != DetectionSightline.Visibility.VISIBLE) continue
             if (!noticing.noticed(operator, level, c, Vision.offAxis(operator.position(), operator.yHeadRot, c.position()))) continue
             if (faction != null) TeamAwareness.report(faction, c.uuid, c.position(), tick, "drone operator ${operator.uuid.toString().take(8)}")
-            if (spotted == null) spotted = c
+            // Every one he notices is reported; the nearest he may strike is his, not the nearest
+            // of all: one with allies on him dropped the whole of his own sighting.
+            if (spotted == null && strikable(StrikeTarget(c.uuid, c.position()))) spotted = c
         }
         noticing.endScan(tick)
         spotted ?: return null
