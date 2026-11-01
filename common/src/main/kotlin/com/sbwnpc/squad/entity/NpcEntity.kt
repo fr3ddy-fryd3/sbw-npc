@@ -335,6 +335,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     var readyToCover: Boolean = false
     internal var debugAimTicks: Int = 0
     val firingObstruction = com.sbwnpc.squad.combat.FiringObstruction()
+
+    /** What his gun saw of his fight, for his plan's engage facts (#251 step B). */
+    val fireObservation = com.sbwnpc.squad.combat.FireObservation()
     var lastFireAt: Vec3? = null
         internal set
     private var sightedTarget: UUID? = null

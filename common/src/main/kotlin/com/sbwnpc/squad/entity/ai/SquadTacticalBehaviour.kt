@@ -15,13 +15,22 @@ class SquadTacticalBehaviour : ExtendedBehaviour<NpcEntity>() {
         noTimeout()
     }
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
+
+    // A squad's ground roles start it, so their full agents get made; any man with an NPC agent,
+    // an engage-only one too (a crewman or a squadless man in a fight, #251 step B), keeps it so
+    // his plan ticks.
     private fun eligible(entity: NpcEntity) =
-        entity.squadId != null && entity.vehicle == null &&
-            entity.npcClass !in setOf(
-                com.sbwnpc.squad.npc.NpcClass.TANK_CREW,
-                com.sbwnpc.squad.npc.NpcClass.HELICOPTER_PILOT,
-                com.sbwnpc.squad.npc.NpcClass.HELICOPTER_GUNNER,
-                com.sbwnpc.squad.npc.NpcClass.MORTAR,
+        entity.vehicle == null && (
+            (
+                entity.squadId != null &&
+                    entity.npcClass !in setOf(
+                        com.sbwnpc.squad.npc.NpcClass.TANK_CREW,
+                        com.sbwnpc.squad.npc.NpcClass.HELICOPTER_PILOT,
+                        com.sbwnpc.squad.npc.NpcClass.HELICOPTER_GUNNER,
+                        com.sbwnpc.squad.npc.NpcClass.MORTAR,
+                    )
+                ) ||
+                com.sbwnpc.squad.ai.integration.NativeTactics.hasAgent(entity)
             )
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity) = eligible(entity)
     override fun shouldKeepRunning(entity: NpcEntity) = eligible(entity)

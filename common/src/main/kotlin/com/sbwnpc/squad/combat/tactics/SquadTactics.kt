@@ -61,6 +61,9 @@ object SquadTactics {
         }
     }
 
+    /** He fights now: an engage-only plan moves a man with no plan of his own (#251 step B). */
+    fun engaging(entity: NpcEntity) = com.sbwnpc.squad.ai.integration.NativeTactics.engaging(entity)
+
     fun move(entity: NpcEntity): Boolean = com.sbwnpc.squad.ai.integration.NativeTactics.ownsMovement(entity)
 
     /** Whether the planner plans for [entity]; his cover under fire is then his plan's (#251). */
