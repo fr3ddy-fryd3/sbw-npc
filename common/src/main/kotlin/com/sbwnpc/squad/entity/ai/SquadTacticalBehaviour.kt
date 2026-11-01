@@ -20,8 +20,14 @@ class SquadTacticalBehaviour : ExtendedBehaviour<NpcEntity>() {
     // A man his squad plans for starts it, so his full agent gets made, and so does a mortarman,
     // whose crew agent gets made (#258); any man with an NPC agent,
     // an engage-only one too (a crewman or a squadless man in a fight, #251 step B), keeps it so
-    // his plan ticks.
-    private fun eligible(entity: NpcEntity) = entity.vehicle == null && (NativeTactics.planned(entity) || NativeTactics.crewed(entity) || NativeTactics.hasAgent(entity))
+    // his plan ticks. A helicopter's pilot and gunner run their aircraft's plan from the seat
+    // (#260, #261), every tick, as it flies the aircraft.
+    private fun eligible(entity: NpcEntity) =
+        if (entity.vehicle != null) {
+            NativeTactics.aircrew(entity)
+        } else {
+            NativeTactics.planned(entity) || NativeTactics.crewed(entity) || NativeTactics.hasAgent(entity)
+        }
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity) = eligible(entity)
     override fun shouldKeepRunning(entity: NpcEntity) = eligible(entity)
     override fun stop(entity: NpcEntity) {
@@ -29,6 +35,11 @@ class SquadTacticalBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun tick(entity: NpcEntity) {
+        if (entity.vehicle != null) {
+            NativeTactics.tick(entity)
+            NativeTactics.keepAloft(entity)
+            return
+        }
         // move() runs the planner tick before it answers.
         if (SquadTactics.move(entity)) entity.claim(NpcActivity.TACTIC, this) else entity.release(NpcActivity.TACTIC, this)
         SquadTactics.equip(entity)

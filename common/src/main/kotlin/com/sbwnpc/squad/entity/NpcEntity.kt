@@ -837,7 +837,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     private var lodRecheckTick = 0
     private var brainTickInterval = 1
 
-    private fun inCombatState(): Boolean = target != null || isSuppressed() || isAlert() || holdsAny(NpcActivity.DRONE, NpcActivity.ANTI_DRONE)
+    // Aircrew too: the flight control and the turret are worked from the plan's tick, every tick,
+    // and an aircraft flown one tick in four drifts and misses its attack's quiet interval (#260).
+    private fun inCombatState(): Boolean = target != null || isSuppressed() || isAlert() || holdsAny(NpcActivity.DRONE, NpcActivity.ANTI_DRONE) || com.sbwnpc.squad.ai.integration.AirRoster.aircrew(this)
 
     private fun refreshAiLod() {
         brainTickInterval = when {
@@ -1066,7 +1068,6 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour(),
             com.sbwnpc.squad.entity.ai.AntiDroneBehaviour(),
             VehicleCrewBehaviour(),
-            com.sbwnpc.squad.entity.ai.HelicopterPilotBehaviour(),
             com.sbwnpc.squad.entity.ai.HelicopterGunnerBehaviour(),
             com.sbwnpc.squad.entity.ai.HelicopterRideBehaviour(),
             VehicleCombatSupportBehaviour(),

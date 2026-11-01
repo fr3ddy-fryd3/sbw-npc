@@ -83,7 +83,6 @@ class DecisionLayerRuleTest {
             "GrenadeUseBehaviour" to UNAUDITED,
             "GunAttackBehaviour" to UNAUDITED,
             "HelicopterGunnerBehaviour" to UNAUDITED,
-            "HelicopterPilotBehaviour" to UNAUDITED,
             "HelicopterRideBehaviour" to UNAUDITED,
             "InvestigateBehaviour" to UNAUDITED,
             "MedicHealBehaviour" to UNAUDITED,
