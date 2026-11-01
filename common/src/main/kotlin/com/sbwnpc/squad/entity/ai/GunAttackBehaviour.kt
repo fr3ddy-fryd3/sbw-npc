@@ -1,6 +1,9 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
+import com.sbwnpc.squad.ai.integration.CombatNavigator
+import com.sbwnpc.squad.ai.integration.FiringSpotSearch
+import com.sbwnpc.squad.ai.integration.RelocationBounds
 import com.sbwnpc.squad.combat.Alarm
 import com.sbwnpc.squad.combat.AntiArmourKit
 import com.sbwnpc.squad.combat.CombatPosition
@@ -25,11 +28,7 @@ import com.sbwnpc.squad.combat.TickBudget
 import com.sbwnpc.squad.combat.WeaponReach
 import com.sbwnpc.squad.combat.Withdrawal
 import com.sbwnpc.squad.combat.tactics.DefensiveOverwatch
-import com.sbwnpc.squad.combat.tactics.PositionPaths
 import com.sbwnpc.squad.combat.tactics.SquadTactics
-import com.sbwnpc.squad.combat.tactics.TacticalBudget
-import com.sbwnpc.squad.combat.tactics.TacticalFirePosts
-import com.sbwnpc.squad.combat.tactics.TacticalPositions
 import com.sbwnpc.squad.domain.port.HandGun
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.domain.port.TriggerMode
@@ -47,7 +46,6 @@ import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.minecraft.world.entity.ai.util.DefaultRandomPos
-import net.minecraft.world.level.pathfinder.Path
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
@@ -78,7 +76,8 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var aimTime = 0
     private val shootTimer = MillisTimer()
     private val openingFire = OpeningFire()
-    private val pathRetry = CombatPathRetry()
+    private val navigator = CombatNavigator()
+    private val spotSearch = FiringSpotSearch(navigator)
 
     /** Patrol combat stays around the place contact began, including on a long assigned route. */
     private var firingOrigin: Vec3? = null
@@ -113,9 +112,6 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     // mob settles into range, and re-evaluated only every HOLD_MIN_TICKS+jitter after that).
     private var firingPos: Vec3? = null
     private var nextPositionCheckTick = 0
-    private var firingSearch: FiringSearch? = null
-    private var firingSearchDeferred = false
-    private var selectedFiringPath: Path? = null
 
     private var nextFriendlyFireCheckTick = 0
     private var nextFallBackTick = 0
@@ -168,35 +164,10 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val HOLD_MIN_TICKS = 60
         private const val HOLD_JITTER_TICKS = 40
 
-        // How far out to look for a better partial-cover firing spot once already in range — a
-        // local shuffle, not a retreat search (contrast SeekCoverBehaviour's much larger MIN/MAX_
-        // RADIUS, which is for fleeing to real cover far from a threat). Widened from 4.0 to 7.0 per
-        // user request; 0 (staying exactly put) is still always in range via bestFiringSpot's own
-        // baseline score for the entity's current position, so this only affects how far it's
-        // willing to reposition, never whether it's allowed to just hold where it already is.
-        private const val POSITION_SEARCH_RADIUS = 7.0
-
-        /** Slack around the shooter-to-target line when looking for vehicles on it. */
-        private const val VEHICLE_LANE_MARGIN = 2.0
-
-        /** Used only when there is no shot at all from where the mob stands — a vehicle hull is
-         *  longer than the ordinary search is wide. */
-        private const val STUCK_SEARCH_RADIUS = 14.0
-        private const val STUCK_GRID_STEP = 3
-        private const val POSITION_GRID_STEP = 2
         private const val ARRIVE_DISTANCE = 1.0
 
         /** A finished path that stopped this close to the spot counts as having got there. */
         private const val SETTLE_DISTANCE = 2.5
-
-        // Priority order for holdFiringPosition's concealment scoring — highest first (a candidate
-        // blocked at 1.5 hides more of the mob's body than one only blocked at 0.5). All sit below
-        // NpcEntity.eyeHeight (~1.62 for this model's standard proportions), so a high score never
-        // conflicts with the separate line-of-fire requirement (see concealmentScore's doc comment).
-        private val CONCEALMENT_HEIGHTS = listOf(1.5, 1.0, 0.5)
-
-        // Sky blue — debug visual for holdFiringPosition's chosen spot, see markFiringPosition().
-        private val FIRING_POSITION_COLOR = org.joml.Vector3f(0.3f, 0.6f, 1.0f)
 
         private val MEMORIES: List<Pair<MemoryModuleType<*>, MemoryStatus>> =
             listOf(Pair.of(MemoryModuleType.ATTACK_TARGET, MemoryStatus.VALUE_PRESENT))
@@ -286,12 +257,12 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         nextWitnessCheckTick = 0
         witnessed = true
         automaticBurst.reset()
-        pathRetry.reset()
+        navigator.reset()
     }
 
     private fun advanceOrHold(entity: NpcEntity, target: LivingEntity, canCover: Boolean) {
         val path = entity.navigation.path
-        if (path != null && !path.isDone && !safeCombatPath(entity, target, path)) {
+        if (path != null && !path.isDone && !navigator.safePath(entity, target, path)) {
             entity.navigation.stop()
             boundPhaseStarted = false
         }
@@ -416,40 +387,22 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         // A useful firing post is kept in every order. An enemy moving farther away is no reason
         // to abandon a clear shot in favour of slightly better concealment.
         val held = firingPos
-        if (held != null && entity.tickCount >= nextPositionCheckTick &&
-            atSpot(entity, held) && !GrenadeHazard.threatens(level, held) && TickBudget.hasRaycasts(level) &&
-            // With the hulls on the line: a spot a vehicle has since pulled in front of is no longer
-            // "still has a shot", and keeping it had defenders standing behind a hull, never firing.
-            concealmentScore(
-                level,
-                entity,
-                target,
-                held,
-                entity.eyeHeight.toDouble(),
-                Sightline.vehicleHulls(level, AABB(held, target.position()).inflate(VEHICLE_LANE_MARGIN), entity, target),
-            )?.let { it > 0.0 } == true &&
-            !FiringSpots.crowded(held, FiringSpots.nearbyWithBodies(level, entity, STUCK_SEARCH_RADIUS)) &&
-            FriendlyFireGuard.assess(entity, target.eyePosition, entity.spread, target.position(), 0.0).lineClear
-        ) {
+        if (held != null && entity.tickCount >= nextPositionCheckTick && stillGood(level, entity, target, held)) {
             nextPositionCheckTick = entity.tickCount + HOLD_MIN_TICKS + entity.random.nextInt(HOLD_JITTER_TICKS)
         }
         val pos = firingPos
         if (pos != null && entity.tickCount < nextPositionCheckTick) {
             if (atSpot(entity, pos)) {
                 entity.navigation.stop()
-            } else if (safeCombatPosition(entity, target, pos) && FiringPostArrival.steer(entity, pos, 1.0)) {
+            } else if (navigator.safePosition(entity, target, pos) && FiringPostArrival.steer(entity, pos, 1.0)) {
                 // Finish the actual post after vanilla consumes its last waypoint.
             } else {
-                navigateCombat(entity, target, pos)
+                navigator.navigate(entity, target, pos)
             }
             return
         }
-        firingSearchDeferred = true
-        val found = TickBudget.search<Vec3?>(entity, TickBudget.Work.LOCAL_FIRE, null) {
-            firingSearchDeferred = false
-            bestFiringSpot(entity, level, target)
-        }
-        if (found == null && firingSearchDeferred) {
+        val found = spotSearch.find(FiringSpotSearch.Shot(level, entity, target, bounds(entity)))
+        if (found == null && spotSearch.deferred) {
             nextPositionCheckTick = entity.tickCount + 2
             return
         }
@@ -457,7 +410,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         val chosen = found ?: entity.position()
         firingPos = chosen
         FiringSpots.claim(entity.uuid, chosen)
-        markFiringPosition(level, chosen)
+        spotSearch.mark(level, chosen)
         if (DebugFlags.on(LogGroup.ORDER)) {
             DebugFlags.log(
                 LogGroup.ORDER,
@@ -465,220 +418,42 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                 entity.uuid,
                 chosen,
                 horizontalDistance(chosen, target.position()),
-                concealmentScore(level, entity, target, chosen, entity.eyeHeight.toDouble(), Sightline.vehicleHulls(level, AABB(chosen, target.position()).inflate(VEHICLE_LANE_MARGIN), entity, target)),
+                spotSearch.concealmentAt(FiringSpotSearch.Shot(level, entity, target, bounds(entity)), chosen),
             )
         }
         if (!atSpot(entity, chosen)) {
-            navigateCombat(entity, target, chosen)
+            navigator.navigate(entity, target, chosen)
         } else {
             entity.navigation.stop()
         }
     }
 
-    /** Player-facing visual, per user request — same idiom as SeekCoverBehaviour's own
-     *  markCoverChoice. One burst each time [holdFiringPosition] (re-)picks a spot, whether or not
-     *  it's actually different from the last one, so it's visible even for a squad member that keeps
-     *  re-confirming its own current position as still the best available. Gated on
-     *  [DebugFlags.markersEnabled] — one place to toggle these off, since the user expects to do
-     *  that fairly often (e.g. playing with a friend). */
-    private fun markFiringPosition(level: ServerLevel, pos: Vec3) {
-        if (!DebugFlags.markersEnabled) return
-        level.sendParticles(
-            net.minecraft.core.particles.DustParticleOptions(FIRING_POSITION_COLOR, 1.5f),
-            pos.x, pos.y + 0.5, pos.z, 12, 0.3, 0.3, 0.3, 0.0,
-        )
-    }
-
-    /** Scans a small grid within [POSITION_SEARCH_RADIUS] of [entity]'s current position for the
-     *  best-scoring valid firing spot (see [concealmentScore]) — null if nothing beats the mob's own
-     *  current position (including if the current position IS the best, the common case once
-     *  already settled somewhere decent), so [holdFiringPosition] knows to just stay put. */
-    private fun bestFiringSpot(entity: NpcEntity, level: ServerLevel, target: LivingEntity): Vec3? {
-        val origin = entity.position()
-        val eyeHeight = entity.eyeHeight.toDouble()
-        // Fetched once for the whole grid: the candidates below are all tested against the same
-        // handful of hulls, and an entity query per candidate would be far more than this search
-        // can afford.
-        val area = AABB(origin, target.position())
-            .inflate(STUCK_SEARCH_RADIUS + VEHICLE_LANE_MARGIN)
-        val hulls = Sightline.vehicleHulls(level, area, entity, target)
-        // Walked once for the whole search rather than per candidate — see FiringSpots.nearby.
-        val taken = FiringSpots.nearbyWithBodies(level, entity, STUCK_SEARCH_RADIUS)
-        // Standing in a grenade's blast is never the best spot, however good the view.
-        val here = if (GrenadeHazard.threatens(level, origin)) {
-            null
-        } else {
-            concealmentScore(level, entity, target, origin, eyeHeight, hulls)
-        }
-        // Shoulder to shoulder with a squadmate is not a spot worth keeping: any free spot in
-        // reach beats it. Still kept if nothing else will do — that's the null return below.
-        val baseline = if (here == null || FiringSpots.crowded(origin, taken)) -1.0 else here
-
-        // Resume the wider search directly; restarting the small grid would discard its queue.
-        val pending = firingSearch
-        if (pending != null && pending.matches(entity, target) && pending.radius == STUCK_SEARCH_RADIUS) {
-            return sweep(level, entity, target, origin, eyeHeight, hulls, taken, STUCK_SEARCH_RADIUS, STUCK_GRID_STEP, baseline)
-        }
-
-        sweep(level, entity, target, origin, eyeHeight, hulls, taken, POSITION_SEARCH_RADIUS, POSITION_GRID_STEP, baseline)
-            ?.let { return it }
-        if (firingSearchDeferred) return null
-        // With no reachable improvement nearby, try the wider grid for a blocked or exposed post.
-        // Open ground remains valid when the wider search cannot find reachable shelter.
-        if (here == null || here == 0.0) {
-            return sweep(
-                level, entity, target, origin, eyeHeight, hulls, taken,
-                STUCK_SEARCH_RADIUS, STUCK_GRID_STEP, baseline,
-            )
-        }
-        return null
-    }
-
-    private data class FiringCandidate(val point: Vec3, val concealment: Double)
-
-    private class FiringSearch(
-        val origin: Vec3,
-        val target: java.util.UUID,
-        val aim: Vec3,
-        val radius: Double,
-        step: Int,
-    ) {
-        val probes = (-radius.toInt()..radius.toInt() step step).flatMap { dx ->
-            (-radius.toInt()..radius.toInt() step step).filter { dz -> dx * dx + dz * dz <= radius * radius }.map { dz -> origin.add(dx.toDouble(), 0.0, dz.toDouble()) }
-        }
-        var probeIndex = 0
-        var sorted = false
-        val remaining = ArrayList<FiringCandidate>()
-        fun matches(entity: NpcEntity, enemy: LivingEntity): Boolean = origin.distanceToSqr(entity.position()) <= 16.0 && target == enemy.uuid && aim.distanceToSqr(enemy.eyePosition) <= 4.0
+    /** Whether the spot he holds still serves: he stands on it, out of any blast, still a shot, not crowded, his lane clear. */
+    private fun stillGood(level: ServerLevel, entity: NpcEntity, target: LivingEntity, held: Vec3): Boolean {
+        if (!atSpot(entity, held) || GrenadeHazard.threatens(level, held) || !TickBudget.hasRaycasts(level)) return false
+        // With the hulls on the line: a spot a vehicle has since pulled in front of is no longer
+        // "still has a shot", and keeping it had defenders standing behind a hull, never firing.
+        val shot = spotSearch.concealmentAt(FiringSpotSearch.Shot(level, entity, target, bounds(entity)), held)
+        if (shot == null || shot <= 0.0) return false
+        return !FiringSpots.crowded(held, FiringSpots.nearbyWithBodies(level, entity, FiringSpotSearch.STUCK_SEARCH_RADIUS)) &&
+            FriendlyFireGuard.assess(entity, target.eyePosition, entity.spread, target.position(), 0.0).lineClear
     }
 
     private fun clearFiringSearch() {
-        firingSearch = null
-        selectedFiringPath = null
+        spotSearch.clear()
+        navigator.forgetSelection()
     }
 
-    private fun sweep(
-        level: ServerLevel,
-        entity: NpcEntity,
-        target: LivingEntity,
-        origin: Vec3,
-        eyeHeight: Double,
-        hulls: List<AABB>,
-        taken: List<Vec3>,
-        radius: Double,
-        step: Int,
-        startingScore: Double,
-    ): Vec3? {
-        val pending = firingSearch?.takeIf { it.radius == radius && it.matches(entity, target) }
-        val search = pending ?: FiringSearch(origin, target.uuid, target.eyePosition, radius, step).also { firingSearch = it }
-        if (!collectFiringCandidates(search, level, entity, target, eyeHeight, hulls, taken, startingScore)) {
-            firingSearchDeferred = true
-            return null
-        }
-        if (search.remaining.isEmpty()) {
-            firingSearch = null
-            return null
-        }
-        if (!TacticalBudget.path(entity)) {
-            firingSearchDeferred = true
-            return null
-        }
-        val tier = search.remaining.first().concealment
-        val batch = search.remaining.takeWhile { it.concealment == tier }.take(16)
-        val points = batch.filter {
-            !FiringSpots.crowded(it.point, taken) && !GrenadeHazard.threatens(level, it.point) &&
-                concealmentScore(level, entity, target, it.point, eyeHeight, hulls)?.let { score -> score > startingScore } == true &&
-                FriendlyFireGuard.assess(entity, target.eyePosition, entity.spread, target.position(), 0.0, it.point.add(0.0, eyeHeight, 0.0)).lineClear
-        }.map { it.point }
-        // Rejected geometry cannot become the first candidate again while waiting for A*.
-        search.remaining.removeAll { it in batch && it.point !in points }
-        val path = if (points.isEmpty()) null else TacticalPositions.pathToCandidates(entity, points)
-        val chosen = path?.takeIf { it.canReach() }?.let { route -> points.firstOrNull { PositionPaths.walkingNode(it) == route.target } }
-        if (chosen != null && safeCombatPath(entity, target, path!!)) {
-            selectedFiringPath = path
-            firingSearch = null
-            return chosen
-        }
-        search.remaining.removeAll { if (chosen == null) it in batch else it.point == chosen }
-        firingSearchDeferred = search.remaining.isNotEmpty()
-        if (!firingSearchDeferred) firingSearch = null
-        return null
-    }
-
-    private fun collectFiringCandidates(
-        search: FiringSearch,
-        level: ServerLevel,
-        entity: NpcEntity,
-        target: LivingEntity,
-        eyeHeight: Double,
-        hulls: List<AABB>,
-        taken: List<Vec3>,
-        startingScore: Double,
-    ): Boolean {
-        if (search.sorted) return true
-        var inspected = 0
-        while (search.probeIndex < search.probes.size) {
-            if (!TickBudget.hasRaycasts(level) || inspected++ >= 24) return false
-            val probe = search.probes[search.probeIndex++]
-            val ground = Terrain.standableOrNull(level, probe.x, probe.y, probe.z) ?: continue
-            if (FiringSpots.crowded(ground, taken) || GrenadeHazard.threatens(level, ground)) continue
-            val score = concealmentScore(level, entity, target, ground, eyeHeight, hulls) ?: continue
-            if (score <= startingScore) continue
-            if (!FriendlyFireGuard.assess(entity, target.eyePosition, entity.spread, target.position(), 0.0, ground.add(0.0, eyeHeight, 0.0)).lineClear) continue
-            search.remaining.add(FiringCandidate(ground, score))
-        }
-        // A good-looking unreachable post must not hide the next reachable sheltered candidate.
-        search.remaining.sortWith(compareByDescending<FiringCandidate> { it.concealment }.thenBy { it.point.distanceToSqr(search.origin) })
-        search.sorted = true
-        return true
-    }
-
-    /** Null if [pos] has no clear shot at [target] at all — rejected outright, useless as a firing
-     *  spot. Otherwise the concealment score: the highest of [CONCEALMENT_HEIGHTS] at which a
-     *  raycast from the target's eye to a point that high above [pos] is BLOCKED (real terrain in
-     *  the way), or `0.0` if none are blocked (open ground — still a valid spot, just no concealment
-     *  bonus). Every height tested is below [eyeHeight], so a high score can never itself block the
-     *  line-of-fire check above — a candidate "blocked at 1.5" still sees/shoots fine from its actual
-     *  eye height, just with everything below the neck hidden. */
-    private fun concealmentScore(
-        level: ServerLevel,
-        entity: NpcEntity,
-        target: LivingEntity,
-        pos: Vec3,
-        eyeHeight: Double,
-        vehicleHulls: List<AABB>,
-    ): Double? {
-        if (!canRelocate(entity, pos) || !safeCombatPosition(entity, target, pos)) return null
-        val myEye = Vec3(pos.x, pos.y + eyeHeight, pos.z)
-        val outsideWeaponRange = !WeaponReach.inRange(entity, myEye, target.eyePosition)
-        if (!outsideWeaponRange && Sightline.blocked(level, target.eyePosition, myEye, entity)) return null
-        // Standing behind armour is cover from the enemy, but it is not a firing position.
-        if (!outsideWeaponRange && Sightline.crosses(vehicleHulls, myEye, target.eyePosition, entity.spread)) return null
-        if (!outsideWeaponRange && Sightline.ownHullInLane(entity, myEye, target.eyePosition, entity.spread, target)) return null
-        // Nor is standing ON one. Vehicles have collision, so a mob that walks into a hull rides up
-        // onto it, and a spot inside the box is a spot on the roof of an APC.
-        if (vehicleHulls.any { it.contains(Vec3(pos.x, pos.y + 0.5, pos.z)) }) return null
-        if (entity.usingSidearm && !DefensiveOverwatch.nearbyCover(pos, target.eyePosition) { from, to -> Sightline.blocked(level, from, to, entity) }) return 0.0
-        for (height in CONCEALMENT_HEIGHTS) {
-            val point = Vec3(pos.x, pos.y + height, pos.z)
-            if (Sightline.blocked(level, target.eyePosition, point, entity)) return height
-        }
-        return 0.0
-    }
-
-    /** Optional firing shifts stay near the defend point or the patrol's original contact post. */
-    private fun canRelocate(entity: NpcEntity, point: Vec3): Boolean {
-        val task = SquadTactics.task(entity)
-        if (task?.permitsFront(point) == false) return false
-        val recoveryPost = task?.localFirePost
-        if (recoveryPost != null && !TacticalFirePosts.withinPost(recoveryPost, point, recovery = true)) return false
-        val squad = entity.currentSquad() ?: return true
-        if (!CombatPosition.holdsPosition(squad.order)) return true
-        val post = firingOrigin ?: entity.position()
-        if (!CombatPosition.withinArea(post, point, CombatPosition.MAX_ADVANCE_DISTANCE)) return false
-        val home = entity.homeCenter()
-        return squad.order != SquadOrder.DEFEND || home == null ||
-            CombatPosition.withinArea(home, point, CombatPosition.defendRadius(entity.npcClass, squad.members.size))
+    /** Where he may shift to fire from: his task's front, and his post and defend area under a holding order. */
+    private fun bounds(entity: NpcEntity): RelocationBounds {
+        val squad = entity.currentSquad()
+        return RelocationBounds.of(
+            SquadTactics.task(entity),
+            CombatPosition.holdsPosition(squad?.order),
+            firingOrigin ?: entity.position(),
+            entity.homeCenter().takeIf { squad?.order == SquadOrder.DEFEND },
+            CombatPosition.defendRadius(entity.npcClass, squad?.members?.size ?: 1),
+        )
     }
 
     private fun holdOpeningFire(entity: NpcEntity) {
@@ -712,7 +487,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             val level = entity.level() as? ServerLevel ?: return false
             Terrain.standableOrNull(level, goal.x, entity.y + 4.0, goal.z, 12) ?: return false
         }
-        if (!canRelocate(entity, spot)) return false
+        if (!bounds(entity).permits(spot)) return false
         if (atSpot(entity, spot) ||
             (entity.navigation.isDone && horizontalDistance(entity.position(), spot) <= SETTLE_DISTANCE)
         ) {
@@ -726,7 +501,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         FiringSpots.claim(entity.uuid, spot)
         nextPositionCheckTick = entity.tickCount + HOLD_MIN_TICKS
         advancingFromPost = true
-        return navigateCombat(entity, target, spot)
+        return navigator.navigate(entity, target, spot)
     }
 
     private fun moveTowardFormationSlot(entity: NpcEntity, target: LivingEntity) {
@@ -750,53 +525,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         )
         val level = entity.level() as? ServerLevel ?: return
         val ground = Terrain.standableOrNull(level, step.x, step.y + 4.0, step.z, 12) ?: return
-        navigateCombat(entity, target, ground)
-    }
-
-    private fun safeCombatPosition(entity: NpcEntity, target: LivingEntity, point: Vec3): Boolean {
-        val view = entity.currentSquad()?.tactics?.snapshot
-        return CombatPositionSafety.permits(entity.position(), point, target.position(), CombatPositionSafety.clearance(entity.npcClass)) &&
-            (view == null || TacticalPositions.safeDistance(entity, view, point))
-    }
-
-    private fun safeCombatPath(entity: NpcEntity, target: LivingEntity, path: net.minecraft.world.level.pathfinder.Path): Boolean {
-        val view = entity.currentSquad()?.tactics?.snapshot
-        if (view != null && !TacticalPositions.safePath(entity, view, path)) return false
-        return CombatPositionSafety.permitsPath(entity.position(), path, listOf(target.position()), CombatPositionSafety.clearance(entity.npcClass))
-    }
-
-    /** Local firing shifts use the same enemy clearance as coordinated squad routes. */
-    private fun navigateCombat(entity: NpcEntity, target: LivingEntity, point: Vec3): Boolean {
-        val current = entity.navigation.path
-        if (current != null && !current.isDone && TacticalPositions.reaches(current, point) && safeCombatPath(entity, target, current)) return true
-        if (current != null && !current.isDone && !safeCombatPath(entity, target, current)) entity.navigation.stop()
-        // Validate cheap geometry before paying for A*. A completed post needs no new path.
-        if (!safeCombatPosition(entity, target, point)) {
-            entity.navigation.stop()
-            return false
-        }
-        if (atSpot(entity, point)) {
-            entity.navigation.stop()
-            pathRetry.reset()
-            return true
-        }
-        val selected = selectedFiringPath
-        selectedFiringPath = null
-        if (selected != null && TacticalPositions.reaches(selected, point) && safeCombatPath(entity, target, selected)) {
-            pathRetry.reset()
-            return entity.navigation.moveTo(selected, 1.0)
-        }
-        val request = CombatPathRetry.Request(entity.position(), point, target.uuid, target.position())
-        if (!pathRetry.permits(request, entity.level().gameTime)) return false
-        if ((entity.navigation as? VehicleAwareNavigation)?.canPlan == false || !TacticalBudget.path(entity)) return false
-        val path = TacticalPositions.pathToPosition(entity, point)
-        if (!TacticalPositions.reaches(path, point) || !safeCombatPath(entity, target, path!!)) {
-            pathRetry.reject(request, entity.level().gameTime)
-            entity.navigation.stop()
-            return false
-        }
-        pathRetry.reset()
-        return entity.navigation.moveTo(path, 1.0)
+        navigator.navigate(entity, target, ground)
     }
 
     override fun tick(entity: NpcEntity) {
@@ -862,7 +591,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         advancingFromPost = false
         holdingAdvanceGoal = null
         holdingAdvanceComplete = false
-        pathRetry.reset()
+        navigator.reset()
     }
 
     private fun hasClearShot(entity: NpcEntity, target: LivingEntity): Boolean {
@@ -1017,7 +746,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             // A vehicle in the way counts as "line not clear" too, but it is answered differently
             // from an ally in the way — see the block further down.
             val level = entity.level() as ServerLevel
-            val lane = AABB(entity.eyePosition, aimPoint).inflate(VEHICLE_LANE_MARGIN)
+            val lane = AABB(entity.eyePosition, aimPoint).inflate(FiringSpotSearch.VEHICLE_LANE_MARGIN)
             val hulls = Sightline.vehicleHulls(level, lane, entity, target)
             val hullInTheWay =
                 Sightline.crosses(hulls, entity.eyePosition, aimPoint, shotSpread) ||
@@ -1068,7 +797,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
                 } else {
                     nextSidestepTick = entity.tickCount + SIDESTEP_COOLDOWN
                     sidestepAttempts++
-                    FriendlyFireGuard.sidestepAwayFromAllies(entity, target.eyePosition) { canRelocate(entity, it) }?.let {
+                    FriendlyFireGuard.sidestepAwayFromAllies(entity, target.eyePosition) { bounds(entity).permits(it) }?.let {
                         firingPos = it
                         FiringSpots.claim(entity.uuid, it)
                         nextPositionCheckTick = entity.tickCount + HOLD_MIN_TICKS
