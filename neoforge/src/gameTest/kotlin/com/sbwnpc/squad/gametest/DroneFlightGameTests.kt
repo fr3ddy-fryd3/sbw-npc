@@ -25,10 +25,10 @@ import java.nio.file.Path
 import java.util.UUID
 import kotlin.math.abs
 
+private fun atShelter(operator: NpcEntity, shelter: Vec3?): Boolean = shelter != null && operator.position().distanceTo(shelter) <= 1.0 && operator.navigation.isDone
+
 @PrefixGameTestTemplate(false)
 object DroneFlightGameTests {
-    private fun atShelter(operator: NpcEntity, shelter: Vec3?): Boolean = shelter != null && operator.position().distanceTo(shelter) <= 1.0 && operator.navigation.isDone
-
     /** A defensive post under broad cover, with a distant strike target confirmed by a spotter. */
     private class RoofLaunchScene(val helper: GameTestHelper, name: String, radius: Int) {
         val scene = CombatIdleGameTests.Scene(helper, name)

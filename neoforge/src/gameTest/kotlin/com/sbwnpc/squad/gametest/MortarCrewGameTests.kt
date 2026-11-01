@@ -337,17 +337,20 @@ object MortarCrewGameTests {
         helper.assertTrue(Ports.mortars.canReach(tube, scene.squad.objective!!), "Mortar fixture is outside real ballistic limits")
         return scene
     }
-    private fun report(name: String, content: String) {
-        val path = Path.of(System.getProperty("sbwnpc.gameTestReports"), name)
-        Files.createDirectories(path.parent)
-        Files.writeString(path, content)
-    }
-    private fun cleanup(helper: GameTestHelper, action: () -> Unit) {
-        helper.testInfo.addListener(object : GameTestListener {
-            override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
-            override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = action()
-            override fun testFailed(test: GameTestInfo, runner: GameTestRunner) = action()
-            override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) = action()
-        })
-    }
+}
+
+private fun report(name: String, content: String) {
+    val path = Path.of(System.getProperty("sbwnpc.gameTestReports"), name)
+    Files.createDirectories(path.parent)
+    Files.writeString(path, content)
+}
+
+/** Runs [action] when the test ends, passed or failed, so a scene's entities and claims never leak into the next. */
+private fun cleanup(helper: GameTestHelper, action: () -> Unit) {
+    helper.testInfo.addListener(object : GameTestListener {
+        override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
+        override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = action()
+        override fun testFailed(test: GameTestInfo, runner: GameTestRunner) = action()
+        override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) = action()
+    })
 }
