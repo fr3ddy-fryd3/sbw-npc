@@ -69,10 +69,9 @@ object HelicopterFlightController {
     /** Below this the rotor is too slow to steer with; commanding a huge stick deflection to
      *  compensate would only snap the airframe around the moment it does spin up. */
     const val MIN_AUTHORITY = 0.02f
-    const val ARRIVE_RADIUS = 6.0
+    private const val ARRIVE_RADIUS = 6.0
     private const val THRUST_HEADING_TOLERANCE = 35f
     private const val SPEED_TO_PITCH = 45f
-
     private const val ALTITUDE_DEADBAND = 1.5
     private const val FAST_SINK_MARGIN = 8.0
 

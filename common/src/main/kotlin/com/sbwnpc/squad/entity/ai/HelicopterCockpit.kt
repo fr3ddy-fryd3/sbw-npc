@@ -259,10 +259,7 @@ class HelicopterCockpit(private val pilot: NpcEntity, private val contact: AirCo
             }
 
             Phase.TRANSIT -> {
-                // Only a leg it lands at is flown to a stop: a patrol's or an orbit's next point is
-                // always close ahead, and braking for it held the aircraft to a crawl.
-                val speed = if (mission.landOnArrival) minOf(mission.speed, stoppingSpeed(heli.position(), station)) else mission.speed
-                fly(level, heli, station, facing, speed, rollRate, clearance)
+                fly(level, heli, station, facing, mission.speed, rollRate, clearance)
                 if (!mission.attackOrbit && HelicopterFlightController.horizontalDistance(heli.position(), station) <= ON_STATION_RADIUS) {
                     onStationReached(mission)
                     phase = if (mission.landOnArrival) Phase.LANDING else Phase.STATION
@@ -657,8 +654,11 @@ class HelicopterCockpit(private val pilot: NpcEntity, private val contact: AirCo
         const val TELEMETRY_INTERVAL = 20
         const val TRAFFIC_INTERVAL_TICKS = 10
 
-        /** Half again the first 0.85 and 0.35: the aircraft crawled to and about its area (in-game 01.11). */
-        const val CRUISE_SPEED = 1.275
+        /**
+         * The leg to a landing spot. Half again faster (headless, 01.11), it overshot the spot by 10
+         * to 17 blocks; braking for it, it circled the spot wider than [ON_STATION_RADIUS].
+         */
+        const val CRUISE_SPEED = 0.85
         const val HOLD_SPEED = 0.15
 
         /** Close enough for the turret to do real work, far enough not to be parked overhead. */
@@ -670,6 +670,8 @@ class HelicopterCockpit(private val pilot: NpcEntity, private val contact: AirCo
         /** Keep treating the area as hot for this long after the last confirmed target. */
         const val COMBAT_HOLD_TICKS = 200
         const val LOITER_RADIUS = 70.0
+
+        /** Half again the first 0.35: the aircraft crawled about its area (in-game 01.11). */
         const val LOITER_SPEED = 0.525
         const val LOITER_STEP = Math.PI / 4
 
@@ -691,12 +693,3 @@ class HelicopterCockpit(private val pilot: NpcEntity, private val contact: AirCo
         const val APPROACH_DISTANCE = 150.0
     }
 }
-
-/** The deceleration [stoppingSpeed] plans against, in blocks per tick squared. */
-private const val BRAKE_DECEL = 0.025
-
-/**
- * The fastest it may close on [target] and still stop by the controller's arrival radius. Braking
- * only on arrival, at 1.275 it overshot its landing spot by 10 to 17 blocks (headless, 01.11).
- */
-private fun stoppingSpeed(pos: Vec3, target: Vec3): Double = Math.sqrt(2.0 * BRAKE_DECEL * maxOf(0.0, HelicopterFlightController.horizontalDistance(pos, target) - HelicopterFlightController.ARRIVE_RADIUS))
