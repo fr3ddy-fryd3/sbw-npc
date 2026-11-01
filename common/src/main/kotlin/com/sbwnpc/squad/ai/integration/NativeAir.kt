@@ -8,6 +8,7 @@ import com.sbwnpc.squad.ai.planning.AgentLevel
 import com.sbwnpc.squad.ai.planning.FactSnapshot
 import com.sbwnpc.squad.ai.tactics.AirFacts
 import com.sbwnpc.squad.ai.tactics.AirOrder
+import com.sbwnpc.squad.ai.tactics.AirSupport
 import com.sbwnpc.squad.ai.tactics.Aircraft
 import com.sbwnpc.squad.ai.tactics.Airframe
 import com.sbwnpc.squad.ai.tactics.FlightDuty
@@ -104,9 +105,8 @@ internal class AirWorld(private val level: ServerLevel) {
         val unit = roster.unit(empty.owner) ?: return empty
         val heli = level.getEntity(unit.vehicle) ?: return empty
         val now = empty.now
-        val target = target(unit)
+        val target = target(unit, now)
         val contact = contactOf(unit)
-        contact.observe(target, now)
         val squad = unit.squad?.let { SquadManager.get(level).get(it) }
         val order = airOrder(squad?.order)
         val pilot = heli.firstPassenger
@@ -137,11 +137,23 @@ internal class AirWorld(private val level: ServerLevel) {
 
     /**
      * The aircraft's one target (#261), by today's priority: the turret gunner's, chosen by his
-     * sensor with his own noticing, else the pilot's.
+     * sensor with his own noticing. His sight of it comes and goes as the aircraft turns, so while
+     * he is aboard the aircraft keeps his last target for [AirSupport.CONTACT_HOLD_TICKS]: falling
+     * back to the pilot's own between his sightings parked the aircraft on one man while the turret
+     * was laid on another. With no gunner, it is the pilot's.
      */
-    fun target(unit: AirUnit): LivingEntity? {
-        val men = (unit.aircraft.gunners + listOfNotNull(unit.aircraft.pilot)).mapNotNull { level.getEntity(it.id) as? NpcEntity }
-        return men.firstNotNullOfOrNull { man -> man.target?.takeIf { it.isAlive && SquadTeams.isHostile(man, it) } }
+    fun target(unit: AirUnit, now: Long): LivingEntity? {
+        val contact = contactOf(unit)
+        val gunners = unit.aircraft.gunners.mapNotNull { level.getEntity(it.id) as? NpcEntity }
+        val pilot = unit.aircraft.pilot?.let { level.getEntity(it.id) as? NpcEntity }
+        val chosen = gunners.firstNotNullOfOrNull(::hostileTarget)
+            ?: if (gunners.isNotEmpty()) {
+                contact.target?.let(level::getEntity)?.let { it as? LivingEntity }?.takeIf { contact.recent(now) && it.isAlive && SquadTeams.isHostile(gunners.first(), it) }
+            } else {
+                pilot?.let(::hostileTarget)
+            }
+        contact.observe(chosen, now)
+        return chosen
     }
 
     private fun contactOf(unit: AirUnit) = contacts.getOrPut(unit.vehicle, ::AirContact)
@@ -168,7 +180,7 @@ internal class AirWorld(private val level: ServerLevel) {
     fun flight(duty: FlightDuty, npc: NpcEntity): FlightAction {
         val unit = requireNotNull(roster.unitOf(npc.uuid))
         val cockpit = cockpits.getOrPut(npc.uuid) { HelicopterCockpit(npc, contactOf(unit)) }
-        return FlightAction(duty, cockpit) { roster.unitOf(npc.uuid)?.let(::target) }
+        return FlightAction(duty, cockpit) { roster.unitOf(npc.uuid)?.let { target(it, level.gameTime) } }
     }
 
     /** Holds [npc]'s aircraft if no flight of his plan flew it this tick. */
@@ -178,6 +190,9 @@ internal class AirWorld(private val level: ServerLevel) {
 
     fun turret(npc: NpcEntity) = TurretAction(turrets.getOrPut(npc.uuid) { TurretHand(npc) })
 }
+
+/** [man]'s own target, while it lives and is his enemy. */
+private fun hostileTarget(man: NpcEntity) = man.target?.takeIf { it.isAlive && SquadTeams.isHostile(man, it) }
 
 /** The squad's [order] as its aircraft's plan reads it, [AirOrder.NONE] with no squad. */
 private fun airOrder(order: SquadOrder?) =

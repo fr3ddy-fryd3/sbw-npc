@@ -31,10 +31,15 @@ class AirContact {
     var pos: Vec3? = null
         private set
 
+    /** The target last seen, which the aircraft keeps through its gunner's gaps in sight. */
+    var target: java.util.UUID? = null
+        private set
+
     fun observe(target: LivingEntity?, now: Long) {
         if (target == null) return
         seenAt = now
         pos = target.position()
+        this.target = target.uuid
     }
 
     /** Whether a target was seen within [AirSupport.CONTACT_HOLD_TICKS]: a sensor gap or a broken line of sight is no end of the fight. */
@@ -161,7 +166,6 @@ class HelicopterCockpit(private val pilot: NpcEntity, private val contact: AirCo
         holdY = null
         // Sampled once a tick, before anything acts on it.
         val rollRate = rollRate(heli)
-        contact.observe(target, level.gameTime)
         completeAttack(entity, heli, level)
         val home = entity.homeCenter() ?: heli.position()
         val airworthy = Helicopters.canFly(heli)
