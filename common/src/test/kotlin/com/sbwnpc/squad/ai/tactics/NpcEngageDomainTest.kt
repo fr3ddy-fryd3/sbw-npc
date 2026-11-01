@@ -22,10 +22,9 @@ class NpcEngageDomainTest {
         val holding: Boolean = false,
         val outside: Boolean = false,
         val mayAdvance: Boolean = false,
-        val allyChecks: Int = 0,
-        val hullChecks: Int = 0,
-        val firstShootable: Long = Engage.NO_SIGHT,
-        val shots: Int = 0,
+        val allyBlocked: Boolean = false,
+        val hullBlocked: Boolean = false,
+        val openingDue: Boolean = false,
         val units: Int = 0,
     )
 
@@ -35,8 +34,8 @@ class NpcEngageDomainTest {
             .observe(TacticalFacts.IN_CONTACT, s.contact).observe(TacticalFacts.SIDEARM, s.sidearm).observe(TacticalFacts.KEEP_AWAY, s.keepAway)
             .observe(TacticalFacts.IN_REACH, s.inReach).observe(TacticalFacts.CLEAR_SHOT, s.clearShot).observe(TacticalFacts.HOLDING_ORDER, s.holding)
             .observe(TacticalFacts.OUTSIDE_AREA, s.outside).observe(TacticalFacts.MAY_ADVANCE, s.mayAdvance)
-            .observe(TacticalFacts.LANE_ALLY_CHECKS, s.allyChecks).observe(TacticalFacts.LANE_HULL_CHECKS, s.hullChecks)
-            .observe(TacticalFacts.FIRST_SHOOTABLE_AT, s.firstShootable).observe(TacticalFacts.SHOTS_AT_TARGET, s.shots).observe(TacticalFacts.AUTOMATIC, true)
+            .observe(TacticalFacts.LANE_BLOCKED_ALLY, s.allyBlocked).observe(TacticalFacts.LANE_BLOCKED_HULL, s.hullBlocked)
+            .observe(TacticalFacts.OPENING_DUE, s.openingDue)
             .observe(TacticalFacts.ENGAGE_UNITS, s.units)
 
     private fun unit(input: FactSnapshot, call: PositionIntent = follower): EngageUnit {
@@ -66,16 +65,14 @@ class NpcEngageDomainTest {
         assertEquals(EngageMove.RETURN_TO_AREA, move(Situation(sidearm = true, holding = true, outside = true)))
     }
 
-    @Test fun `a fresh target gets an opening burst first, until the window or the burst is over`() {
-        assertEquals(EngageMove.OPEN_FIRE, move(Situation(clearShot = true, firstShootable = 990)))
-        assertEquals(EngageMove.CLOSE_IN, move(Situation(clearShot = true, firstShootable = 1000 - Engage.OPENING_WINDOW)))
-        assertEquals(EngageMove.CLOSE_IN, move(Situation(clearShot = true, firstShootable = 990, shots = Engage.OPENING_ROUNDS_AUTOMATIC)))
+    @Test fun `a fresh target gets an opening burst first, then he moves`() {
+        assertEquals(EngageMove.OPEN_FIRE, move(Situation(clearShot = true, openingDue = true)))
+        assertEquals(EngageMove.CLOSE_IN, move(Situation(clearShot = true)))
     }
 
-    @Test fun `an ally in the lane for two checks makes him step aside, one check moves nobody`() {
-        assertEquals(EngageMove.CLOSE_IN, move(Situation(clearShot = true, allyChecks = Engage.LANE_DWELL_CHECKS - 1)))
-        assertEquals(EngageMove.SIDESTEP, move(Situation(clearShot = true, allyChecks = Engage.LANE_DWELL_CHECKS)))
-        assertEquals(EngageMove.RESEARCH_SPOT, move(Situation(clearShot = true, hullChecks = Engage.LANE_DWELL_CHECKS)))
+    @Test fun `an ally in his lane makes him step aside, a hull makes him look for another spot`() {
+        assertEquals(EngageMove.SIDESTEP, move(Situation(clearShot = true, allyBlocked = true)))
+        assertEquals(EngageMove.RESEARCH_SPOT, move(Situation(clearShot = true, hullBlocked = true)))
     }
 
     @Test fun `in the open under fire his engage never takes him forward`() {
@@ -95,7 +92,6 @@ class NpcEngageDomainTest {
     /** Every situation the moves tell apart: each fact they read on both sides of what they test. */
     private fun situations(): List<Situation> {
         val booleans = listOf(false, true)
-        val checks = listOf(0, Engage.LANE_DWELL_CHECKS)
         val axes: List<(Situation) -> List<Situation>> = listOf(
             { s -> booleans.map { s.copy(sidearm = it) } },
             { s -> booleans.map { s.copy(keepAway = it) } },
@@ -104,9 +100,9 @@ class NpcEngageDomainTest {
             { s -> booleans.map { s.copy(holding = it) } },
             { s -> booleans.map { s.copy(outside = it) } },
             { s -> booleans.map { s.copy(mayAdvance = it) } },
-            { s -> checks.map { s.copy(allyChecks = it) } },
-            { s -> checks.map { s.copy(hullChecks = it) } },
-            { s -> listOf(s, s.copy(firstShootable = 990)) },
+            { s -> booleans.map { s.copy(allyBlocked = it) } },
+            { s -> booleans.map { s.copy(hullBlocked = it) } },
+            { s -> booleans.map { s.copy(openingDue = it) } },
         )
         return axes.fold(listOf(Situation())) { all, axis -> all.flatMap(axis) }
     }
@@ -141,7 +137,7 @@ class NpcEngageDomainTest {
         val close = EngageUnit(actor, EngageMove.CLOSE_IN, 0, false)
         assertEquals(Verdict.Rejected("unit_running"), Engage.unitOver(close).evaluate(facts(Situation())))
         assertEquals(Verdict.Allowed, Engage.unitOver(close).evaluate(facts(Situation(units = 1))))
-        assertEquals(Verdict.Allowed, Engage.unitOver(EngageUnit(actor, EngageMove.OPEN_FIRE, 0, false)).evaluate(facts(Situation(firstShootable = 990, shots = Engage.OPENING_ROUNDS_AUTOMATIC))))
-        assertEquals(Verdict.Allowed, Engage.unitOver(EngageUnit(actor, EngageMove.SIDESTEP, 0, false)).evaluate(facts(Situation(allyChecks = 0))))
+        assertEquals(Verdict.Allowed, Engage.unitOver(EngageUnit(actor, EngageMove.OPEN_FIRE, 0, false)).evaluate(facts(Situation())))
+        assertEquals(Verdict.Allowed, Engage.unitOver(EngageUnit(actor, EngageMove.SIDESTEP, 0, false)).evaluate(facts(Situation())))
     }
 }

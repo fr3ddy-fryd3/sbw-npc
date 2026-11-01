@@ -223,7 +223,7 @@ object TacticalFacts {
     /** He fights with his pistol. */
     val SIDEARM = FactKey("actor.sidearm", Boolean::class.javaObjectType)
 
-    /** He is a downed pilot and an enemy is nearer than he keeps away from. */
+    /** He is a downed pilot and an enemy is nearer than he keeps away from, with a band of [Engage.BAND] on the way out. */
     val KEEP_AWAY = FactKey("actor.keep_away", Boolean::class.javaObjectType)
 
     /** His target is within his stopping distance, with a band of [Engage.BAND] on the way out. */
@@ -241,20 +241,17 @@ object TacticalFacts {
     /** Holding, his target is far enough off for one bounded approach, and he has not made it yet from this post. */
     val MAY_ADVANCE = FactKey("actor.may_advance", Boolean::class.javaObjectType)
 
-    /** Lane checks in a row with an ally in his line of fire. */
-    val LANE_ALLY_CHECKS = FactKey("actor.lane_ally_checks", Int::class.javaObjectType)
+    /** An ally has stood in his line of fire for [Engage.LANE_DWELL_CHECKS] lane checks in a row. */
+    val LANE_BLOCKED_ALLY = FactKey("actor.lane_blocked_ally", Boolean::class.javaObjectType)
 
-    /** Lane checks in a row with a vehicle hull in his line of fire. */
-    val LANE_HULL_CHECKS = FactKey("actor.lane_hull_checks", Int::class.javaObjectType)
+    /** A vehicle hull has stood in his line of fire for [Engage.LANE_DWELL_CHECKS] lane checks in a row. */
+    val LANE_BLOCKED_HULL = FactKey("actor.lane_blocked_hull", Boolean::class.javaObjectType)
 
-    /** The tick of his first shootable line to his current target, or [Engage.NO_SIGHT]. */
-    val FIRST_SHOOTABLE_AT = FactKey("actor.first_shootable_at", Long::class.javaObjectType)
-
-    /** Rounds he fired at his current target. */
-    val SHOTS_AT_TARGET = FactKey("actor.shots_at_target", Int::class.javaObjectType)
-
-    /** His weapon fires automatic bursts. */
-    val AUTOMATIC = FactKey("actor.automatic", Boolean::class.javaObjectType)
+    /**
+     * His current target is fresh: within [Engage.OPENING_WINDOW] of his first shootable line to it,
+     * and his opening burst is not fired yet.
+     */
+    val OPENING_DUE = FactKey("actor.opening_due", Boolean::class.javaObjectType)
 
     /** He walks off to resupply or withdraws: the ammunition rules have his feet. */
     val RESUPPLYING = FactKey("actor.resupplying", Boolean::class.javaObjectType)
@@ -531,7 +528,7 @@ object TacticalDomain {
             PrimitiveTask(ENGAGE_UNIT) { unit ->
                 PrimitiveSpec(
                     Engage.identity(unit),
-                    ActionSpec(ENGAGE, unit, setOf(ResourceKey(unit.actor, "motion")), timeoutTicks = COVER_TIMEOUT),
+                    ActionSpec(ENGAGE, unit, setOf(ResourceKey(unit.actor, "motion")), timeoutTicks = Engage.UNIT_TIMEOUT),
                     TaskContract(maintain = Engage.maintain(), completed = Engage.unitOver(unit)),
                     planning = ownActor(unit.actor),
                 )

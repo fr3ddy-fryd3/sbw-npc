@@ -9,6 +9,7 @@ import com.sbwnpc.squad.ai.tactics.EngageUnit
 import com.sbwnpc.squad.ai.tactics.TacticalFacts
 import com.sbwnpc.squad.combat.CombatPosition
 import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.FireObservation
 import com.sbwnpc.squad.combat.FiringPostArrival
 import com.sbwnpc.squad.combat.FiringSpots
 import com.sbwnpc.squad.combat.FriendlyFireGuard
@@ -23,6 +24,7 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.util.DefaultRandomPos
 import net.minecraft.world.phys.Vec3
+import java.util.UUID
 
 /**
  * What one man's engage keeps across its units (#251 step B), held by [NativeTactics] beside his
@@ -55,6 +57,7 @@ internal class EngageState(private val npc: NpcEntity) {
     // The band facts' last values, written only by [EngageFacts].
     var inReach = false
     var outside = false
+    var keepAway = false
     private var orderStamp: Int? = null
     private var sidearm: Boolean? = null
 
@@ -142,16 +145,15 @@ internal object EngageFacts {
             .observe(TacticalFacts.SIDEARM, npc.usingSidearm)
             .observe(TacticalFacts.HOLDING_ORDER, holding)
             .observe(TacticalFacts.CLEAR_SHOT, now - seen.clearShotAt < Engage.CLEAR_SHOT_TICKS)
-            .observe(TacticalFacts.LANE_ALLY_CHECKS, seen.allyBlockedChecks)
-            .observe(TacticalFacts.LANE_HULL_CHECKS, seen.hullBlockedChecks)
-            .observe(TacticalFacts.FIRST_SHOOTABLE_AT, seen.firstShootableAt?.takeIf { seen.target == target?.uuid } ?: Engage.NO_SIGHT)
-            .observe(TacticalFacts.SHOTS_AT_TARGET, if (seen.target == target?.uuid) seen.shots else 0)
-            .observe(TacticalFacts.AUTOMATIC, seen.automatic)
+            .observe(TacticalFacts.LANE_BLOCKED_ALLY, seen.allyBlockedChecks >= Engage.LANE_DWELL_CHECKS)
+            .observe(TacticalFacts.LANE_BLOCKED_HULL, seen.hullBlockedChecks >= Engage.LANE_DWELL_CHECKS)
+            .observe(TacticalFacts.OPENING_DUE, openingDue(seen, target?.uuid, now))
             .observe(TacticalFacts.RESUPPLYING, npc.lowAmmoFallback() != null || npc.retreatPoint() != null)
             .observe(TacticalFacts.ENGAGE_UNITS, state.units)
         val distance = target?.let { CombatGeometry.flat(npc.position(), it.position()) }
         val keepAway = CombatGeometry.keepAway(npc)
-        result = result.observe(TacticalFacts.KEEP_AWAY, distance != null && keepAway > 0.0 && distance < keepAway)
+        state.keepAway = keepAway > 0.0 && band(state.keepAway, distance, keepAway, within = true)
+        result = result.observe(TacticalFacts.KEEP_AWAY, state.keepAway)
         state.inReach = band(state.inReach, distance, CombatGeometry.stoppingDistance(npc), within = true)
         result = result.observe(TacticalFacts.IN_REACH, state.inReach)
         val home = CombatGeometry.defendHome(npc)
@@ -163,11 +165,20 @@ internal object EngageFacts {
     }
 
     /**
+     * The opening burst at [target] is still to fire. The plan reads only this flag, not the shot
+     * count, so it repairs once when the burst or the window ends, not on every round.
+     */
+    fun openingDue(seen: FireObservation, target: UUID?, now: Long): Boolean {
+        val first = seen.firstShootableAt?.takeIf { seen.target == target } ?: return false
+        return now - first < Engage.OPENING_WINDOW && seen.shots < if (seen.automatic) Engage.OPENING_ROUNDS_AUTOMATIC else 1
+    }
+
+    /**
      * A distance fact with a band: [within] the fact holds at [limit] or nearer and lets go only
      * past [limit] + [Engage.BAND]; otherwise it holds past [limit] + [Engage.BAND] and lets go at
      * [limit] or nearer. Between the two it keeps [previous].
      */
-    private fun band(previous: Boolean, distance: Double?, limit: Double, within: Boolean): Boolean {
+    fun band(previous: Boolean, distance: Double?, limit: Double, within: Boolean): Boolean {
         distance ?: return false
         val near = distance <= limit
         val far = distance > limit + Engage.BAND
@@ -400,15 +411,12 @@ private class JoinFire(npc: NpcEntity, state: EngageState, sidearm: Boolean) : E
 
 /**
  * A defender outside his area walks back into it. The order still owns the destination: an enemy
- * met remains observable and shootable on the way, and arriving is no firing prerequisite.
+ * met remains observable and shootable on the way, and arriving is no firing prerequisite. The
+ * plan ends the unit once he is back inside ([EngageMove.endsOn]); this only walks.
  */
 private class ReturnToArea(npc: NpcEntity, state: EngageState, sidearm: Boolean) : EngageAction(npc, state, sidearm) {
     override fun step(target: LivingEntity) {
-        val home = CombatGeometry.defendHome(npc)
-        if (home == null || CombatGeometry.flat(npc.position(), home) <= CombatGeometry.leash(npc) - Engage.BAND) {
-            done("inside_area")
-            return
-        }
+        val home = CombatGeometry.defendHome(npc) ?: return done("no_area")
         state.letGo()
         npc.navigation.moveTo(home.x, home.y, home.z, 1.0)
     }
