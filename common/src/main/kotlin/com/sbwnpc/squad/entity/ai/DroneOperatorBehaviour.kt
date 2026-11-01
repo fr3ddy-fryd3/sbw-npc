@@ -34,7 +34,7 @@ import java.util.UUID
 
 /**
  * DRONE_OPERATOR's whole job: spot a target 80-160 blocks out (by rank — same autonomous scan +
- * faction relay as [MortarCrewBehaviour], plus the squad's ATTACK focus/objective), launch an
+ * faction relay as [com.sbwnpc.squad.ai.integration.CrewSpotter], plus the squad's ATTACK focus/objective), launch an
  * SBW kamikaze drone at it and fly it there from the server, no Monitor/player needed. Core task
  * like the mortar crew — it must keep flying regardless of Fight/Idle activity.
  *
@@ -192,7 +192,7 @@ class DroneOperatorBehaviour : ExtendedBehaviour<NpcEntity>() {
         cleanup(entity)
     }
 
-    // --- target acquisition (mirrors MortarCrewBehaviour.fireTarget) ---
+    // --- target acquisition (mirrors CrewSpotter.update) ---
 
     private fun maxRange(entity: NpcEntity): Double {
         val t = entity.npcRank.ordinal / (NpcRank.entries.size - 1).toDouble()

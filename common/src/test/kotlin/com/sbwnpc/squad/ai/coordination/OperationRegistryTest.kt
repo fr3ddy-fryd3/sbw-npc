@@ -25,6 +25,19 @@ class OperationRegistryTest {
         assertEquals(OperationStatus.CANCELLED, registry.operation(old.id)!!.status)
     }
 
+    @Test fun `a support squad is a member that fights for nothing, and joins a running operation at once`() {
+        val registry = registry()
+        val mortars = squad(12).copy(role = ParticipantRole.SUPPORT)
+        val operation = started(registry.command(batch(1, squad(10), mortars)))
+        assertEquals(setOf(squad(10).id), operation.ground.keys)
+        assertEquals(setOf(mortars.id), operation.support.keys)
+        val late = squad(13).copy(role = ParticipantRole.SUPPORT)
+        val joined = (registry.command(batch(2, late, at = 20)) as OperationCommandResult.Joined).operation
+        assertEquals(operation.id, joined.id)
+        assertEquals(operation.id, registry.operationOf(late.id)!!.id)
+        assertEquals(setOf(squad(10).id), registry.operation(operation.id)!!.ground.keys)
+    }
+
     @Test fun `reinforcement contributes no membership before fresh safe physical arrival`() {
         val registry = registry()
         val operation = started(registry.command(batch(1, squad(10), squad(11))))

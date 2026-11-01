@@ -4,7 +4,6 @@ import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
-import com.sbwnpc.squad.entity.ai.MortarCrewBehaviour
 import com.sbwnpc.squad.network.MapFeedPayload
 import com.sbwnpc.squad.network.sendToClient
 import com.sbwnpc.squad.npc.SquadFaction
@@ -143,7 +142,7 @@ object MapFeed {
             }
             // Who may join it: the map has no alliance registry of its own.
             t.putInt("Allies", com.sbwnpc.squad.team.Diplomacy.alliesOf(squad.faction).fold(0) { mask, it -> mask or (1 shl it.ordinal) })
-            if (squad.order == SquadOrder.BARRAGE) t.putInt("Zone", MortarCrewBehaviour.BARRAGE_RADIUS.toInt())
+            if (squad.order == SquadOrder.BARRAGE) t.putInt("Zone", com.sbwnpc.squad.ai.integration.TubeLaying.BARRAGE_RADIUS.toInt())
             if (squad.order == SquadOrder.PATROL) {
                 routes.get(squad.routeId)?.points?.let { pts ->
                     t.putIntArray("Route", pts.flatMap { listOf(it.x, it.z) }.toIntArray())

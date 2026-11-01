@@ -17,10 +17,11 @@ class SquadTacticalBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
-    // A man his squad plans for starts it, so his full agent gets made; any man with an NPC agent,
+    // A man his squad plans for starts it, so his full agent gets made, and so does a mortarman,
+    // whose crew agent gets made (#258); any man with an NPC agent,
     // an engage-only one too (a crewman or a squadless man in a fight, #251 step B), keeps it so
     // his plan ticks.
-    private fun eligible(entity: NpcEntity) = entity.vehicle == null && (NativeTactics.planned(entity) || NativeTactics.hasAgent(entity))
+    private fun eligible(entity: NpcEntity) = entity.vehicle == null && (NativeTactics.planned(entity) || NativeTactics.crewed(entity) || NativeTactics.hasAgent(entity))
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity) = eligible(entity)
     override fun shouldKeepRunning(entity: NpcEntity) = eligible(entity)
     override fun stop(entity: NpcEntity) {

@@ -11,7 +11,6 @@ import com.sbwnpc.squad.entity.ai.IdleWanderGoal
 import com.sbwnpc.squad.entity.ai.InvestigateBehaviour
 import com.sbwnpc.squad.entity.ai.MedicHealBehaviour
 import com.sbwnpc.squad.entity.ai.MortarClaims
-import com.sbwnpc.squad.entity.ai.MortarCrewBehaviour
 import com.sbwnpc.squad.entity.ai.MortarDeployment
 import com.sbwnpc.squad.entity.ai.SeekCoverBehaviour
 import com.sbwnpc.squad.entity.ai.SquadOrderBehaviour
@@ -579,7 +578,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     var medkitsLeft: Int = MEDKITS
 
     /** Shells a mortar loader carries for its crew's tube — see
-     *  [com.sbwnpc.squad.entity.ai.MortarCrewBehaviour]. Persisted; zero for every other class. */
+     *  [com.sbwnpc.squad.ai.integration.CrewDutyAction]. Persisted; zero for every other class. */
     var mortarShellsLeft: Int = 0
 
     /** Kamikaze drones this operator still carries; refilled by SquadManager.resupplyAtBarracks.
@@ -1064,7 +1063,6 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             *VersionCompat.doorBehaviours(),
             SeekCoverBehaviour(),
             com.sbwnpc.squad.entity.ai.BlindReturnFireBehaviour(),
-            MortarCrewBehaviour(),
             com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour(),
             com.sbwnpc.squad.entity.ai.AntiDroneBehaviour(),
             VehicleCrewBehaviour(),
