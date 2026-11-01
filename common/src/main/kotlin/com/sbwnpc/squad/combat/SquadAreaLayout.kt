@@ -4,7 +4,8 @@ import com.sbwnpc.squad.npc.SquadFaction
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
-data class SquadAreaRequest(val squad: UUID, val faction: SquadFaction, val point: Vec3, val radius: Double)
+/** [nudge]: a patrol's area moves only as far as it overlaps another, never a whole spacing step away. */
+data class SquadAreaRequest(val squad: UUID, val faction: SquadFaction, val point: Vec3, val radius: Double, val nudge: Boolean = false)
 data class SquadArea(val request: SquadAreaRequest, val center: Vec3)
 
 /** Stable spatial leases. No combat roles, enemy knowledge or entity/world references. */
@@ -47,6 +48,7 @@ class SquadAreaLayout {
     }
 
     private fun place(request: SquadAreaRequest, ground: (SquadAreaRequest, Vec3) -> Vec3?) {
+        if (request.nudge) return nudge(request, ground)
         val old = areas.remove(request.squad)
         val occupied = areas.values.filter { it.request.faction == request.faction }
         val stride = request.radius + (occupied.maxOfOrNull { it.request.radius } ?: request.radius) + GAP
@@ -69,6 +71,28 @@ class SquadAreaLayout {
         }
     }
 
+    /**
+     * Pushes a patrol's area straight off each area it overlaps, by the overlap alone. A whole
+     * spacing step sent a squad patrolling 66 blocks from another's point 80 blocks into a forest,
+     * away from where it was ordered; with no free ground that near, it keeps its point and overlaps.
+     */
+    private fun nudge(request: SquadAreaRequest, ground: (SquadAreaRequest, Vec3) -> Vec3?) {
+        areas.remove(request.squad)
+        var point = request.point
+        repeat(NUDGE_PASSES) {
+            val other = areas.values.firstOrNull { conflicts(request, point, it) } ?: return@repeat
+            val away = point.subtract(other.center).multiply(1.0, 0.0, 1.0).let { if (it.lengthSqr() < 1e-6) Vec3(1.0, 0.0, 0.0) else it.normalize() }
+            val spacing = request.radius + other.request.radius + GAP + NUDGE_MARGIN
+            point = Vec3(other.center.x + away.x * spacing, request.point.y, other.center.z + away.z * spacing)
+        }
+        val placed = ground(request, point)?.takeIf { it !in rejected[request.squad].orEmpty() && free(request, it) }
+        areas[request.squad] = SquadArea(request, placed ?: request.point)
+    }
+
+    private fun conflicts(request: SquadAreaRequest, point: Vec3, area: SquadArea) =
+        area.request.squad != request.squad && area.request.faction == request.faction &&
+            point.subtract(area.center).horizontalDistance() < request.radius + area.request.radius + GAP
+
     private fun free(request: SquadAreaRequest, point: Vec3): Boolean =
         areas.values.none {
             it.request.squad != request.squad && it.request.faction == request.faction &&
@@ -78,5 +102,7 @@ class SquadAreaLayout {
     companion object {
         const val GAP = 6.0
         const val MAX_OFFSET = 160.0
+        private const val NUDGE_PASSES = 3
+        private const val NUDGE_MARGIN = 0.01
     }
 }

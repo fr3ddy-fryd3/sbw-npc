@@ -64,7 +64,7 @@ object SquadAreas {
             val members = loaded[squad.id] ?: return@mapNotNull null
             val point = members.first().orderCenter() ?: return@mapNotNull null
             val radius = if (squad.order == SquadOrder.PATROL) SquadFormation.patrolRadius(squad.members.size) + 2.0 else SquadFormation.perimeterRadius(squad.members.size) + 6.0
-            SquadAreaRequest(squad.id, squad.faction, point, radius)
+            SquadAreaRequest(squad.id, squad.faction, point, radius, nudge = squad.order == SquadOrder.PATROL)
         }
         val before = requests.associate { it.squad to world.layout.area(it.squad)?.center }
         for (request in requests) {
