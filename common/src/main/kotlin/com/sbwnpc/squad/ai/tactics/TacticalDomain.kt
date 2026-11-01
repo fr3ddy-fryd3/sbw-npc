@@ -97,7 +97,9 @@ data class BoundTurn(val number: Int, val moving: Set<java.util.UUID>, val posts
  */
 data class SquadShaping(val turn: BoundTurn? = null, val rally: Point3? = null)
 data class TeamMission(val agent: AgentId, val members: List<PositionIntent>)
-data class SquadMission(val agent: AgentId, val teams: List<TeamMission>)
+
+/** A squad's [teams] of ground men and its mortar crews ([support], #258), which the squad's strategy never shapes. */
+data class SquadMission(val agent: AgentId, val teams: List<TeamMission>, val support: List<SupportCrew> = emptyList())
 
 /** A squad's [mission] under the [strategy] its method chose, for the choice of its [SquadApproach]. */
 data class StrategyMission(val mission: SquadMission, val strategy: CombatStrategy)
@@ -279,6 +281,9 @@ object TacticalDomain {
             PrimitiveSpec(task.child.id.toString(), ActionSpec(DelegationAction.KEY, task.copy(continuous = true), setOf(ResourceKey(task.child, "command")), timeoutTicks = Long.MAX_VALUE), TaskContract())
         }
     private fun children(tasks: List<DelegationTask>) = TaskNetwork(tasks.map { NetworkNode(it.child.id.toString(), DELEGATE.call(it)) })
+
+    /** The mortar crew's tasks, joined into the team and NPC domains below. */
+    private val crewTasks = FireSupport.tasks(::children)
     private fun coordinate(mission: OperationMission, roles: AttackRoles): TaskNetwork {
         val nodes = mission.squads.map { squad -> NetworkNode(squad.agent.id.toString(), DELEGATE.call(DelegationTask(squad.agent, SQUAD.call(OperationTactics.apply(squad, roles))))) }
         return TaskNetwork(nodes + listOfNotNull(mission.secure?.let { NetworkNode("secure", SECURE_TASK.call(it)) }))
@@ -316,10 +321,15 @@ object TacticalDomain {
         listOf(
             CompoundTask(
                 SQUAD,
-                CombatStrategy.entries.map { strategy ->
+                // A squad of crews alone has no ground men to shape: it only supports.
+                listOf(
+                    Method<SquadMission>("support_only", eligible = { mission ->
+                        Condition { if (mission.teams.isEmpty() && mission.support.isNotEmpty()) Verdict.Allowed else Verdict.Rejected("has_ground_teams") }
+                    }, decompose = { mission, _ -> children(FireSupport.delegations(mission)) }),
+                ) + CombatStrategy.entries.map { strategy ->
                     Method(
                         SquadManners.methodId(strategy),
-                        eligible = { SquadManners.eligible(strategy) },
+                        eligible = { mission -> if (mission.teams.isEmpty()) Condition { Verdict.Rejected("no_ground_teams") } else SquadManners.eligible(strategy) },
                         score = { _, facts -> SquadManners.score(strategy, facts) },
                         decompose = { mission, _ -> TaskNetwork.sequence(APPROACH.call(StrategyMission(mission, strategy))) },
                     )
@@ -347,7 +357,7 @@ object TacticalDomain {
                                 )
                                 DelegationTask(team.agent, TEAM.call(selected))
                             }
-                            children(tasks)
+                            children(tasks + FireSupport.delegations(mission))
                         },
                     )
                 },
@@ -370,7 +380,7 @@ object TacticalDomain {
                 },
             ),
             delegate(),
-        ),
+        ) + crewTasks.first,
     )
     val COVER_MOVE = ActionKey("npc.cover_move", CoverMove::class.java)
     val COVER_CYCLE = ActionKey("npc.cover_cycle", CoverCycle::class.java)
@@ -551,7 +561,7 @@ object TacticalDomain {
                     planning = ownActor(pause.actor),
                 )
             },
-        ),
+        ) + crewTasks.second,
     )
     private const val NEIGHBOR_ATTEMPTS = 4
 
