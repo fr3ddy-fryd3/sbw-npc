@@ -46,7 +46,7 @@ object NativeTactics {
     private const val NO_TARGET_PAUSE_TICKS = 10L
 
     /** Duty rules whose movers advance by legs in a fight, see [PositionIntent.legs]. */
-    private val LEG_RULES = setOf("mover", "fire_approach")
+    private val LEG_RULES = setOf("mover", "fire_approach", "retreat_bound")
 
     /** A bounding half that has not finished a leg each by then hands over anyway, 15 s. */
     private const val BOUND_TURN_TICKS = 300L
@@ -65,6 +65,12 @@ object NativeTactics {
 
     /** How long after its incoming fire lapsed a squad still counts as under fire, see [CombatSituation.underFire]. */
     private const val UNDER_FIRE_TICKS = 200L
+
+    /**
+     * How long a retreating squad's close contact outlasts the last sight of it, 2 s. Taken as it
+     * came and went, every man's task flipped between a bound and a run, and was planned again.
+     */
+    private const val RETREAT_CONTACT_TICKS = 40L
 
     /**
      * How long after the focus was last seen well above the squad it still counts as above, see
@@ -223,7 +229,7 @@ object NativeTactics {
      * Whether his plan may move him. His own plan's cover actions hold his feet as his plan
      * ([PlanExecutor]), so they do not suspend it; any other claim ranked above [NpcActivity.TACTIC] does.
      */
-    fun movable(npc: NpcEntity) = npc.isAlive && npc.vehicle == null && npc.mayFor(NpcActivity.TACTIC, Cap.FEET) { it is PlanExecutor } && npc.retreatPoint() == null
+    fun movable(npc: NpcEntity) = npc.isAlive && npc.vehicle == null && npc.mayFor(NpcActivity.TACTIC, Cap.FEET) { it is PlanExecutor }
 
     /**
      * Whether the planner plans for [npc]: he has a full NPC agent, a ground role in a loaded squad,
@@ -378,6 +384,11 @@ object NativeTactics {
 
         // When a man of each squad was last hit, see CombatSituation.underFire.
         private val lastHits = HashMap<UUID, Long>()
+
+        // When each squad last had a close contact, see TacticalSnapshot.closeContact.
+        private val closeContacts = HashMap<UUID, Long>()
+
+        private val retreatSmoke = RetreatSmoke(level)
 
         // When each squad's focus was last well above it, see ENEMY_ABOVE_TICKS.
         private val lastAbove = HashMap<UUID, Long>()
@@ -788,6 +799,8 @@ object NativeTactics {
                     boundTurns.remove(id)
                     rallies.remove(id)
                     lastHits.remove(id)
+                    closeContacts.remove(id)
+                    retreatSmoke.forget(id)
                     lastAbove.remove(id)
                     alarms.remove(id)
                     regroupEnds.remove(id)
@@ -1475,13 +1488,18 @@ object NativeTactics {
             return squads.map { saved ->
                 val view = snapshots.getValue(saved.id)
                 if (view.incoming.isNotEmpty()) lastHits[saved.id] = now
+                if (view.closeContact) closeContacts[saved.id] = now
+                // Falling back, only an enemy its men see near is a fight: on reported ones the
+                // squad bounded all the way back (#253).
+                val retreating = saved.order == SquadOrder.RETREAT
+                val contact = if (retreating) closeContacts[saved.id]?.let { now - it <= RETREAT_CONTACT_TICKS } == true else focus != null
                 if (focus == null) {
                     lastAbove.remove(saved.id)
                 } else if (focus.y > view.center.y + 4) {
                     lastAbove[saved.id] = now
                 }
                 val situation = CombatSituation(
-                    focus != null,
+                    contact,
                     // An operation reviewing its losses holds the line it has instead of pushing on;
                     // a squad with a barracks presses on (#57).
                     saved.order == SquadOrder.ATTACK && (!holding || saved.barracks != null),
@@ -1492,6 +1510,7 @@ object NativeTactics {
                     view.fighting.isNotEmpty(),
                     reinforced = saved.barracks != null,
                     underFire = lastHits[saved.id]?.let { now - it <= UNDER_FIRE_TICKS } == true,
+                    retreating = retreating,
                 )
                 val strategy = strategies[saved.id]?.first
                 val strategyKept = strategy == null || seenStrategies.put(saved.id, strategy) == strategy
@@ -1505,7 +1524,7 @@ object NativeTactics {
                 val leader = if (following) level.getPlayerByUUID(saved.owner) else null
                 val heading = saved.followHeading.takeIf { it != net.minecraft.world.phys.Vec3.ZERO }?.let { it.x to it.z }
                 val intents = view.members.mapIndexed { index, member ->
-                    val man = if (following) level.getEntity(member.id) as? NpcEntity else null
+                    val man = if (following || retreating) level.getEntity(member.id) as? NpcEntity else null
                     val leaderAt = leader?.position()?.point()
                     val toLeader = leaderAt?.let { kotlin.math.hypot(member.position.x - it.x, member.position.z - it.z) } ?: 0.0
                     val waypoint = waypoints[member.id]
@@ -1517,7 +1536,7 @@ object NativeTactics {
                             proposal = proposal,
                             objective = saved.objective?.center?.point(),
                             inspect = inspect?.point(),
-                            inContact = focus != null,
+                            inContact = contact,
                             elsewhere = saved.objectiveDimension?.let { it != level.dimension() } == true,
                             scout = member.id in scouts,
                             heightRole = member.role in HEIGHT_ROLES,
@@ -1543,6 +1562,7 @@ object NativeTactics {
                             followSlot = leaderAt?.let { com.sbwnpc.squad.combat.FollowFormation.slot(it, heading, saved.members.indexOf(member.id), heading != null) },
                             followRide = leader?.vehicle != null || man?.holds(com.sbwnpc.squad.entity.NpcActivity.VEHICLE) == true,
                             transit = transit,
+                            retreatSlot = man?.takeIf { retreating }?.let { m -> m.homeCenter()?.let { com.sbwnpc.squad.combat.SquadAreas.rallySlot(m, it).point() } },
                         ),
                         FIRE_POST_REACH,
                         CombatPosition.LOCAL_MOVE_RADIUS,
@@ -1559,8 +1579,13 @@ object NativeTactics {
                     // stood five seconds before. Nor does it wait for cover: when the whole squad runs to
                     // catch up there is nobody left to give it, and the run was planned over and over.
                     val bounding = following && duty == CombatDuty.MOVE
-                    val requireCover = PostRequirements.cover(duty, situation.incoming) && !bounding
-                    val requireShelter = PostRequirements.shelter(duty, situation.incoming)
+                    // Falling back he runs for his place whatever fires at him, as an ordered retreat
+                    // always did: waiting for covering fire or shelter, a squad with nobody left to
+                    // give it stayed where it was ordered away from. In contact its halves cover
+                    // each other instead ([CombatStrategy.BOUND_OVERWATCH]).
+                    val fallingBack = retreating && duty == CombatDuty.MOVE
+                    val requireCover = PostRequirements.cover(duty, situation.incoming) && !bounding && !fallingBack
+                    val requireShelter = PostRequirements.shelter(duty, situation.incoming) && !fallingBack
                     val settled = strategyKept && (focus?.distanceTo(plannedContact[member.id] ?: focus) ?: 0.0) < 8
                     val moving = waypoint != null || member.id in wasArcing || bounding
                     val byLegs = ruled.rule in LEG_RULES
@@ -1600,9 +1625,10 @@ object NativeTactics {
                     DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=follow_bound running={} of={}", saved.id, intents.count { it.duty == CombatDuty.MOVE }, intents.size)
                 }
                 val movers = intents.filter { it.legs && it.duty == CombatDuty.MOVE && !it.assault && !it.ordered }
-                // Only an attack bounds or regroups. Measured for every squad, the spread of one
-                // walking behind its player changed its situation, and replanned it, nearly every time.
-                situations[saved.id] = if (!situation.offensive) {
+                // Only an attack or a retreat bounds, and only an attack regroups. Measured for every
+                // squad, the spread of one walking behind its player changed its situation, and
+                // replanned it, nearly every time.
+                situations[saved.id] = if (!situation.offensive && !retreating) {
                     situation
                 } else {
                     val radius = com.sbwnpc.squad.combat.SquadFormation.perimeterRadius(view.members.size)
@@ -1621,10 +1647,25 @@ object NativeTactics {
                     )
                 }
                 updateBoundTurn(saved.id, movers, view, focus, now)
+                if (retreating) coverRetreat(saved, view, contact) else retreatSmoke.forget(saved.id)
                 updateRally(saved.id, strategy, view.center, focus)
                 val teams = teamAllocators.getOrPut(saved.id, ::TaskTeamAllocator).assign(saved.id, intents)
                 SquadMission(AgentId(AgentLevel.SQUAD, saved.id), teams).also { missions[saved.id] = it }
             }
+        }
+
+        /**
+         * Screens a retreating squad with smoke once it is fired on ([RetreatSmoke]): towards the
+         * nearest enemy its men see in [contact], or else where the fire came from. Squads pulled
+         * back out of contact mostly threw nothing until fire from an unseen enemy counted too
+         * (in-game 21.10).
+         */
+        private fun coverRetreat(saved: Squad, view: TacticalSnapshot, contact: Boolean) {
+            val fireFrom = view.incoming.firstOrNull()
+            val seen = view.visible.minByOrNull { it.position.distanceToSqr(view.center) }?.position
+            val toward = if (contact) seen ?: fireFrom else fireFrom
+            val men = view.members.mapNotNull { level.getEntity(it.id) as? NpcEntity }
+            retreatSmoke.cover(saved.id, saved.orderStamp, men, boundTurns[saved.id]?.turn?.posts?.keys.orEmpty(), toward)
         }
 
         /**
@@ -1908,6 +1949,8 @@ object NativeTactics {
             drones.clear()
             loneOperators.clear()
             alarms.clear()
+            closeContacts.clear()
+            retreatSmoke.clear()
         }
     }
 }

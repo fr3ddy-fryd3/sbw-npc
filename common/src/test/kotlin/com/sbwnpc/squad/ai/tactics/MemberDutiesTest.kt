@@ -158,4 +158,35 @@ class MemberDutiesTest {
         val bounding = attack.copy(order = TacticalOrder.DEFEND, following = true, followBound = true, followSlot = slot)
         assertEquals(RuledDuty("follow_bound", DutyChoice(CombatDuty.MOVE, slot)), MemberDuties.choose(bounding, 40.0, 10.0))
     }
+
+    @Test
+    fun `a retreating man bounds to his rally place in contact, runs there without, and fires once there`() {
+        val here = Point3(50.0, 64.0, 100.0)
+        val slot = Point3(10.0, 64.0, 100.0)
+        val retreat = DutyInputs(
+            order = TacticalOrder.RETREAT,
+            position = here,
+            proposal = FrontProposal(CombatDuty.FIRE, Point3(90.0, 64.0, 100.0), null),
+            objective = Point3(8.0, 64.0, 100.0),
+            inspect = null,
+            inContact = true,
+            elsewhere = false,
+            scout = false,
+            heightRole = true,
+            primaryAmmo = true,
+            hasPatrolRoute = false,
+            reachedMove = false,
+            wasFiring = false,
+            arrival = 22.0,
+            wasObserving = true,
+            retreatSlot = slot,
+        )
+        assertEquals(RuledDuty("retreat_bound", DutyChoice(CombatDuty.MOVE, slot)), MemberDuties.choose(retreat, 40.0, 10.0))
+        assertEquals(RuledDuty("retreat_run", DutyChoice(CombatDuty.MOVE, slot)), MemberDuties.choose(retreat.copy(inContact = false), 40.0, 10.0))
+        // Six blocks off, height included, he is at his place.
+        val there = Point3(14.0, 68.0, 100.0)
+        assertEquals(RuledDuty("retreat_settled", DutyChoice(CombatDuty.FIRE, there)), MemberDuties.choose(retreat.copy(position = there), 40.0, 10.0))
+        assertEquals("retreat_bound", MemberDuties.choose(retreat.copy(position = Point3(14.0, 69.0, 100.0)), 40.0, 10.0).rule)
+        assertEquals("elsewhere", MemberDuties.choose(retreat.copy(elsewhere = true), 40.0, 10.0).rule)
+    }
 }

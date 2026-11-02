@@ -64,14 +64,13 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
         beginEpisode(entity)
         if (entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK, NpcActivity.HEAL)) return
         // A fully empty NPC can return to a known Supply even outside the ordinary search radius.
+        // Ordered back with nothing to fire, he has no cover to give his squad's bounds: he runs
+        // straight to his place at the rally point (owner, #253).
         entity.retreatPoint()?.let { rally ->
             entity.release(NpcActivity.RESUPPLY, this)
-            val squad = entity.currentSquad()!!
-            val point = com.sbwnpc.squad.combat.Withdrawal.positionFor(entity, squad, rally)
-            trace(entity, "ordered_retreat", point ?: entity.position())
-            if (point == null) {
-                entity.navigation.stop()
-            } else if (entity.tickCount >= nextStepTick || entity.navigation.isDone) {
+            val point = com.sbwnpc.squad.combat.SquadAreas.rallySlot(entity, rally)
+            trace(entity, "ordered_retreat", point)
+            if (entity.tickCount >= nextStepTick || entity.navigation.isDone) {
                 nextStepTick = entity.tickCount + REPATH_TICKS
                 entity.navigateTo(point, SPEED)
                 ownedPath = entity.navigation.path

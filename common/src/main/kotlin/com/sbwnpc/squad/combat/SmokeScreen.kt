@@ -12,7 +12,7 @@ import net.minecraft.world.phys.Vec3
  * The smoke a squad throws between itself and the enemy as it starts to fall back.
  *
  * A quarter of the squad throws, rounded down but at least one man. The throwers are given by
- * [Withdrawal]: the half that is holding while the other bounds, so the runners are screened by
+ * [RetreatSmoke]: the half that is holding while the other bounds, so the runners are screened by
  * men who stay to cover them, or anyone left when nobody holds. The grenades go down side by side
  * across the line to the enemy, in front of the thrower nearest it, so they make one wide screen
  * and not one small cloud (#115). A man whose throw is not possible (a wall, a squadmate in

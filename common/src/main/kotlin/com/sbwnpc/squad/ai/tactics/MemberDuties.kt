@@ -21,6 +21,9 @@ object MemberDuties {
     /** How far below where a sentry stands his height post may be. */
     const val HEIGHT_POST_DROP = 2.0
 
+    /** A retreating man this near his place at the rally point, height included, is there; the squad counts its arrival the same way. */
+    const val RETREAT_ARRIVAL = 6.0
+
     private class Situation(val inputs: DutyInputs, fireReach: Double, private val approachOffset: Double) {
         val proposal = inputs.proposal
         val approach = proposal.duty == CombatDuty.FIRE && inputs.position.distanceTo(proposal.anchor) > fireReach
@@ -34,6 +37,13 @@ object MemberDuties {
 
     private val RULES = listOf(
         rule("elsewhere", { it.inputs.elsewhere || it.inputs.transit }, { CombatDuty.FOLLOW_ORDER }, { it.objectiveOrHere }),
+        // A retreat falls back to each man's place at the rally point, by legs in contact so the
+        // squad's halves can cover each other ([CombatStrategy.BOUND_OVERWATCH]), in one run
+        // without. Before the sentry: a sentry leaves his height too. At his place he fires from
+        // it: left a mover there, his leg never ended and every bound turn waited out its timer.
+        rule("retreat_settled", { s -> s.inputs.retreatSlot?.let { s.inputs.position.distanceTo(it) <= RETREAT_ARRIVAL } == true }, { CombatDuty.FIRE }, { it.inputs.position }),
+        rule("retreat_bound", { it.inputs.retreatSlot != null && it.inputs.inContact }, { CombatDuty.MOVE }, { it.inputs.retreatSlot!! }),
+        rule("retreat_run", { it.inputs.retreatSlot != null }, { CombatDuty.MOVE }, { it.inputs.retreatSlot!! }),
         rule("scout", { it.inputs.scout && it.inputs.order in SCOUTING_ORDERS }, { CombatDuty.SEARCH }, { requireNotNull(it.inputs.inspect) { "a scout needs a point to inspect" } }),
         // A sentry fights from his height, in defence and in a fight too. Sent to fire from where he
         // stood, a gunner stayed below the tower, and a sentry left it whenever a reported target

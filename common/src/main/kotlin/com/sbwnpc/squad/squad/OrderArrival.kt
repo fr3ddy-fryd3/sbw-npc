@@ -47,7 +47,7 @@ object OrderArrival {
                 val landed = ride == null || !Helicopters.isHelicopter(ride) || Helicopters.isGrounded(npc.level() as ServerLevel, ride)
                 landed && if (squad.order == SquadOrder.RETREAT && ride == null) {
                     val home = npc.homeCenter() ?: point
-                    npc.position().distanceTo(com.sbwnpc.squad.combat.SquadAreas.rallySlot(npc, home)) <= 6.0
+                    npc.position().distanceTo(com.sbwnpc.squad.combat.SquadAreas.rallySlot(npc, home)) <= com.sbwnpc.squad.ai.tactics.MemberDuties.RETREAT_ARRIVAL
                 } else {
                     SquadFormation.reachedPoint(npc, point, squad.members.size)
                 }
@@ -70,7 +70,6 @@ object OrderArrival {
             mgr.setOrder(squad.id, next)
             if (next == SquadOrder.MOVE) mgr.setObjective(members.first().level() as ServerLevel, squad.id, goal)
             if (next == SquadOrder.MOVE) SquadReports.landing(server, squad) else SquadReports.holding(server, squad, was)
-            com.sbwnpc.squad.combat.Withdrawal.forget(squad.id)
         }
     }
 }

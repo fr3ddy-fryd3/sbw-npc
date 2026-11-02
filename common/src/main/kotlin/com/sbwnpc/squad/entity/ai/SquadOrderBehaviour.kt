@@ -31,7 +31,8 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
  *    otherwise wander around home in an area sized for the squad.
  *  - ATTACK: advance on home at a run. Taking the point turns the squad to DEFEND —
  *    [com.sbwnpc.squad.squad.OrderArrival].
- *  - RETREAT: fall back to the point, bounding under fire ([com.sbwnpc.squad.combat.Withdrawal]).
+ *  - RETREAT: run to his place at the point. A man his squad's plan moves gets there by its
+ *    tasks instead, by bounds under fire (#253); this is the run for the rest.
  *  - MOVE: walk calmly to the objective and hold the assigned infantry-grid slot.
  *
  * Destination points go through [SquadFormation.slotTarget] instead of the bare anchor — every
@@ -179,17 +180,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
             SquadOrder.FOLLOW -> tickFollow(entity, squad, home)
 
-            // Nobody in sight: just get there at a run. Under fire GunAttackBehaviour takes over
-            // and makes it a fighting withdrawal.
-            SquadOrder.RETREAT -> {
-                // A squadmate is in a fight: this one's half may be the one holding to cover it.
-                val bound = com.sbwnpc.squad.combat.Withdrawal.positionFor(entity, squad, home)
-                if (bound == null) {
-                    entity.navigation.stop()
-                } else {
-                    moveToSlot(entity, bound, RUN_SPEED_MODIFIER)
-                }
-            }
+            SquadOrder.RETREAT -> moveToSlot(entity, com.sbwnpc.squad.combat.SquadAreas.rallySlot(entity, home), RUN_SPEED_MODIFIER)
         }
     }
 

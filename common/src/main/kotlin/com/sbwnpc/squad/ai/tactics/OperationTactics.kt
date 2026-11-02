@@ -75,6 +75,11 @@ data class DutyInputs(
     val transit: Boolean = false,
     /** He fights with his sidearm: his main weapon is empty, see [MemberDuties]' `sidearm_fire`. */
     val sidearm: Boolean = false,
+    /**
+     * On a RETREAT order: his own place at the rally point, see
+     * [com.sbwnpc.squad.combat.SquadAreas.rallySlot]. The squad's arrival is counted by these places.
+     */
+    val retreatSlot: Point3? = null,
 ) {
     /**
      * Whether a sentry takes his height post: at his objective, or with none, or already on duty for it.

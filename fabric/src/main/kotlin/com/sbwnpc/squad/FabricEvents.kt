@@ -100,7 +100,6 @@ object FabricEvents {
     private fun onServerStopped() {
         com.sbwnpc.squad.team.Diplomacy.detach()
         com.sbwnpc.squad.map.MapFeed.clearAll()
-        com.sbwnpc.squad.combat.Withdrawal.clearAll()
         com.sbwnpc.squad.combat.SmokeClouds.clearAll()
         com.sbwnpc.squad.squad.FireSupport.clearAll()
         com.sbwnpc.squad.entity.ai.GrenadeUseBehaviour.clearAll()

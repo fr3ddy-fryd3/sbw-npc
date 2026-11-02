@@ -681,8 +681,10 @@ object TacticalDomain {
  * @property underFire one of its men was hit within the last 13 s or so: [incoming] lasts 3 s
  *   after a hit and this 10 s more. A few distant riflemen hit too seldom to keep [incoming], and a
  *   strategy weighed by it was taken up and dropped every few seconds.
+ * @property retreating it falls back to its rally point on a RETREAT order (#253). Its [contact]
+ *   is then only an enemy its men see near, see [com.sbwnpc.squad.combat.tactics.TacticalSnapshot.closeContact].
  */
-data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean, val reinforced: Boolean = false, val movers: Int = 0, val flanking: Boolean = false, val scattered: Boolean = false, val gathered: Boolean = false, val regrouping: Boolean = false, val regroupSpent: Boolean = false, val underFire: Boolean = incoming)
+data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean, val reinforced: Boolean = false, val movers: Int = 0, val flanking: Boolean = false, val scattered: Boolean = false, val gathered: Boolean = false, val regrouping: Boolean = false, val regroupSpent: Boolean = false, val underFire: Boolean = incoming, val retreating: Boolean = false)
 
 /**
  * How a squad's strategy methods choose between the [CombatStrategy] entries.

@@ -157,6 +157,27 @@ class TacticalDomainTest {
         assertTrue(SquadManners.eligible(CombatStrategy.BOUND_OVERWATCH).evaluate(squadFacts(underFire.copy(movers = 3))) is Verdict.Rejected)
     }
 
+    @Test fun `a retreat in contact falls back by halves, otherwise in one run, and never holds, withdraws or regroups`() {
+        val retreat = CombatSituation(true, false, false, false, 0.25, 0.6, false, movers = 4, underFire = false, retreating = true)
+        assertEquals(CombatStrategy.BOUND_OVERWATCH, strategyOf(squadPlan(squadFacts(retreat))))
+        // Under an enemy above too: falling back is no time to climb.
+        assertEquals(CombatStrategy.BOUND_OVERWATCH, strategyOf(squadPlan(squadFacts(retreat.copy(higherEnemy = true)))))
+        assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(retreat.copy(movers = 3)))))
+        assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(retreat.copy(contact = false)))))
+        // Hit after heavy losses, a defending squad withdraws on its own; a retreating one keeps to its point.
+        assertEquals(CombatStrategy.WITHDRAW, strategyOf(squadPlan(squadFacts(retreat.copy(incoming = true, retreating = false)))))
+        assertEquals(CombatStrategy.BOUND_OVERWATCH, strategyOf(squadPlan(squadFacts(retreat.copy(incoming = true)))))
+        for (contact in listOf(true, false)) {
+            for (movers in 0..5) {
+                val situation = retreat.copy(contact = contact, movers = movers, incoming = contact, scattered = movers == 5)
+                assertTrue(CombatStrategy.entries.any { it.rules.allowed(situation) }, "no strategy for $situation")
+                listOf(CombatStrategy.HOLD, CombatStrategy.WITHDRAW, CombatStrategy.REGROUP, CombatStrategy.GAIN_HEIGHT).forEach {
+                    assertTrue(!it.rules.allowed(situation.copy(higherEnemy = true)), "$it allowed in $situation")
+                }
+            }
+        }
+    }
+
     @Test fun `in a bounding turn one half rushes when covered and the other fires from its post`() {
         val runner = intent.copy(legs = true)
         val gunner = intent.copy(actor = AgentId(AgentLevel.NPC, UUID(0, 2)), legs = true)
