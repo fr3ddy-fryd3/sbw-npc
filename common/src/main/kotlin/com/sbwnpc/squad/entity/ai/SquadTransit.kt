@@ -7,7 +7,7 @@ import com.sbwnpc.squad.combat.HostileMobs
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.squad.Squad
 import net.minecraft.server.level.ServerLevel
-import net.minecraft.world.entity.player.Player
+import net.minecraft.world.entity.Mob
 import net.minecraft.world.phys.Vec3
 
 /**
@@ -33,11 +33,13 @@ object SquadTransit {
     fun contact(npc: NpcEntity): JourneyContact {
         val target = npc.target?.takeIf { it.isAlive } ?: return JourneyContact.NONE
         val distance = npc.distanceTo(target).toDouble()
-        return if (target is NpcEntity || target is Player) {
+        // A mob on no side counts while it goes for the squad; anything else he fights (another
+        // squad, a player, another mod's soldier) is an enemy.
+        return if (target is Mob && target !is NpcEntity && HostileMobs.threatens(target, npc)) {
+            JourneyContact(enemy = false, mob = distance <= HostileMobs.CLOSE_RANGE)
+        } else {
             val engage = maxOf(npc.npcClass.assaultDistance, CombatPositionSafety.clearance(npc.npcClass) + CombatPositionSafety.APPROACH_MARGIN)
             JourneyContact(enemy = distance <= engage, mob = false)
-        } else {
-            JourneyContact(enemy = false, mob = distance <= HostileMobs.CLOSE_RANGE)
         }
     }
 
