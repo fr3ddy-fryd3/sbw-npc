@@ -23,7 +23,10 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
  * Long trips have no overall time limit while reaching fresh ground. A minute without progress
  * still ends an unreachable trip, instead of holding up squad orders forever.
  */
-class ResupplyBehaviour : ExtendedBehaviour<NpcEntity>() {
+class ResupplyBehaviour :
+    ExtendedBehaviour<NpcEntity>(),
+    MandatoryRuleOwner {
+    override val rule = MandatoryRule.RESUPPLY
 
     init {
         noTimeout()

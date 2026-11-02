@@ -24,8 +24,10 @@ class SelfTreatBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
         startCheck.check(entity) {
-            // A medic treating a patient treats himself first: the owner ranks it above medic help (#257).
-            entity.medkitsLeft > 0 && !entity.isPassenger && (entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.HEAL) || entity.holds(NpcActivity.DUG_IN)) &&
+            // A medic treating a patient treats himself first: the owner ranks it above medic help, and
+            // below a live grenade and a drone, which keep his hands (#257).
+            entity.medkitsLeft > 0 && !entity.isPassenger && MandatoryRules.may(MandatoryRule.SELF_TREAT, entity) &&
+                (entity.holdsAny(NpcActivity.COVER, NpcActivity.HEAL) || entity.holds(NpcActivity.DUG_IN)) &&
                 entity.health < entity.maxHealth * WOUNDED_FRACTION
         }
 

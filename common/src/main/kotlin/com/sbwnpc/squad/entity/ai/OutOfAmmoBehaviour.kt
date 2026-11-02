@@ -23,7 +23,10 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
  * Empty NPCs go to a known friendly Supply, even far away. Without Supply they seek nearby
  * cover or make a bounded withdrawal; a relayed target cannot make them flee indefinitely.
  */
-class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
+class OutOfAmmoBehaviour :
+    ExtendedBehaviour<NpcEntity>(),
+    MandatoryRuleOwner {
+    override val rule = MandatoryRule.OUT_OF_AMMO
 
     init {
         noTimeout()

@@ -298,7 +298,7 @@ object NativeTactics {
         /** Notes in the decision trace the mandatory rule that takes [man]'s feet from his plan, once per rule. */
         private fun traceRule(man: UUID, rule: MandatoryRule?, now: Long) {
             if (rule == null) {
-                suspendedBy.remove(man)
+                suspendedBy.remove(man)?.let { DecisionTrace.man(man, now, "rule", "${it.id} lets the plan go on") }
             } else if (suspendedBy.put(man, rule) != rule) {
                 DecisionTrace.man(man, now, "rule", "${rule.id} suspends the plan")
                 DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=rule_suspends rule={}", man, rule.id)

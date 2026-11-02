@@ -190,10 +190,10 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun eligible(entity: NpcEntity): Boolean =
         entity.npcClass == NpcClass.MEDIC &&
-            MandatoryRules.may(MandatoryRule.MEDIC_HELP, entity) &&
             !entity.holdsAny(NpcActivity.COVER, NpcActivity.PEEK) && !entity.holdsAny(NpcActivity.DUG_IN, NpcActivity.VEHICLE) && candidate(entity) != null
 
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = eligible(entity)
+    // A higher rule pauses the treatment instead of ending it: the medic keeps his patient (#257).
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = MandatoryRules.may(MandatoryRule.MEDIC_HELP, entity) && eligible(entity)
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = eligible(entity)
 
     override fun start(entity: NpcEntity) {
@@ -246,6 +246,11 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     override fun tick(entity: NpcEntity) {
+        if (MandatoryRules.may(MandatoryRule.MEDIC_HELP, entity)) treat(entity)
+    }
+
+    /** One tick of going to and treating the patient, while no higher rule holds the medic. */
+    private fun treat(entity: NpcEntity) {
         val level = entity.level() as? ServerLevel ?: return
         // Keep tending the same ally as long as it still genuinely needs it — re-picking a fresh
         // candidate every tick (even one that's merely alive but already healed up) would abandon a
