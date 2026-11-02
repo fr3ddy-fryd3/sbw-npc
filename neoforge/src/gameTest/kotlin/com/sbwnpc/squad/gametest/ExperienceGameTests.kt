@@ -384,7 +384,7 @@ object ExperienceGameTests {
         cleanup(helper) { listOf(medic, patient, enemy).forEach { it.discard() } }
         helper.onEachTick {
             if (patient.health > damaged && medic.experience > 0) {
-                helper.assertTrue(medic.experience <= (patient.maxHealth - damaged) * 2 + 0.01, "Medic earned more than healed combat health")
+                helper.assertTrue(medic.experience <= (patient.maxHealth - damaged) * 2 * rate(NpcClass.MEDIC) + 0.01, "Medic earned more than healed combat health")
                 helper.assertTrue(Ports.guns.isGun(medic.mainHandItem), "Healing displaced the medic weapon")
                 helper.succeed()
             }
