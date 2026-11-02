@@ -51,6 +51,7 @@ internal object GameTestGroups {
             PlannedEngageGameTests::class.java,
             EngageOnlyGameTests::class.java,
             AmmunitionTacticsGameTests::class.java,
+            AttackStrengthGameTests::class.java,
             HostileMobApiGameTests::class.java,
             HostileMobCombatGameTests::class.java,
         ),

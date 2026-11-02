@@ -38,6 +38,7 @@ object GameTestRegistration {
             PlannedEngageGameTests::class.java,
             EngageOnlyGameTests::class.java,
             AmmunitionTacticsGameTests::class.java,
+            AttackStrengthGameTests::class.java,
             MortarCrewGameTests::class.java,
             HelicopterOrbitGameTests::class.java,
             DefensiveOverwatchGameTests::class.java,

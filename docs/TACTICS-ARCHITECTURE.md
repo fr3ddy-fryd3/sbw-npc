@@ -33,7 +33,7 @@ removed it.
 | `TacticalFirePosts`, `TacticalFrontPost`, `DefensiveOverwatch` | Local firing-post search, a firing strip, protected high posts on defence. |
 | `TacticalTargets`, `TacticalTargetSelection` | Target choice from the shared contacts without reassigning on every scan. |
 | `TacticalBudget`, `TacticalRules` | Shared path-search budget; order constraints during the search. |
-| `AttackAmmoWithdrawal` | Withdrawal of an attack out of ammunition through the squad's saved order. |
+| `AttackStrength` | An attack's combat strength in the world: measures it when it starts (remnant, refill first, or its base), resumes it after a refill, and picks where a called-off attack falls back to. |
 
 ## Rules
 
