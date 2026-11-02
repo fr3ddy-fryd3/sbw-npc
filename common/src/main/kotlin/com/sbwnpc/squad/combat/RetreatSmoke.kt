@@ -12,11 +12,13 @@ import java.util.UUID
  *
  * Kept per order ([com.sbwnpc.squad.squad.Squad.orderStamp]), not per point: a second retreat to
  * the same point found the first one's screen already thrown and threw none. A throw that cannot be
- * made is tried again a second later, a few times.
+ * made is tried again a second later, a few times, at the place laid for it: laid again round
+ * whoever threw next, the screen put a late grenade where an early one already smoked.
  */
 class RetreatSmoke(private val level: ServerLevel) {
     private class Screen(val stamp: Int) {
-        var thrown = 0
+        /** The places not thrown at yet, null until the screen is laid. */
+        var left: List<SmokeScreen.Spot>? = null
         var tries = 0
         var nextTick = 0L
     }
@@ -31,15 +33,15 @@ class RetreatSmoke(private val level: ServerLevel) {
      */
     fun cover(squad: UUID, stamp: Int, members: List<NpcEntity>, holding: Set<UUID>, toward: Vec3?) {
         val screen = screens[squad]?.takeIf { it.stamp == stamp } ?: Screen(stamp).also { screens[squad] = it }
-        val wanted = SmokeScreen.grenadesFor(members.size)
         val now = level.gameTime
-        val due = screen.thrown < wanted && screen.tries < TRIES && now >= screen.nextTick
+        val due = screen.left?.isNotEmpty() != false && screen.tries < TRIES && now >= screen.nextTick
         if (toward == null || !due) return
         screen.tries++
         screen.nextTick = now + RETRY_TICKS
         val covering = members.filter { it.uuid in holding }
         val throwers = if (SmokeScreen.throwers(covering).isEmpty()) members else covering
-        screen.thrown += SmokeScreen.throwFrom(level, throwers, toward, wanted - screen.thrown)
+        val left = screen.left ?: SmokeScreen.lay(level, throwers, toward, SmokeScreen.grenadesFor(members.size)).ifEmpty { return }
+        screen.left = left - SmokeScreen.throwAt(level, throwers, left).toSet()
     }
 
     /** [squad] no longer falls back, or is gone. */
