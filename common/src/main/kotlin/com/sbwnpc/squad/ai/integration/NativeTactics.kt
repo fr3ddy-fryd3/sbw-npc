@@ -1763,8 +1763,8 @@ object NativeTactics {
         /**
          * Starts or swaps the turn of a squad bounding by halves. A turn ends once every mover of
          * its moving half still moving has finished a leg more than when it began, or after
-         * [BOUND_TURN_TICKS] ([RETREAT_BOUND_TURN_TICKS] in a retreat); the other movers then move. The first halves alternate along the
-         * front, so each half covers all of it.
+         * [BOUND_TURN_TICKS] ([RETREAT_BOUND_TURN_TICKS] in a retreat); the other movers then move. The first
+         * halves are split by [BoundHalves], so each covers all of the front and a heavy gun covers each rush.
          */
         private fun updateBoundTurn(squad: UUID, movers: List<PositionIntent>, view: TacticalSnapshot, focus: Vec3?, now: Long) {
             if (strategies[squad]?.first != CombatStrategy.BOUND_OVERWATCH) {
@@ -1780,7 +1780,8 @@ object NativeTactics {
                 else -> return
             }
             val waiting = ids.filter { current != null && it !in current.turn.moving }
-            val moving = waiting.ifEmpty { alongFront(movers, view.center, focus).filterIndexed { index, _ -> index % 2 == 0 } }.toSet()
+            val heavy = view.members.filter { it.role in HEIGHT_ROLES }.mapTo(HashSet()) { it.id }
+            val moving = waiting.ifEmpty { BoundHalves.firstMoving(alongFront(movers, view.center, focus), heavy) }.toSet()
             val posts = view.members.filter { it.id !in moving }.associate { it.id to it.position.point() }
             val turn = BoundTurn((current?.turn?.number ?: -1) + 1, moving, posts)
             boundTurns[squad] = BoundState(turn, now, moving.associateWith { legs[it] ?: 0 })
