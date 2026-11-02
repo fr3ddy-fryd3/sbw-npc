@@ -34,7 +34,7 @@ class RetreatSmoke(private val level: ServerLevel) {
     fun cover(squad: UUID, stamp: Int, members: List<NpcEntity>, holding: Set<UUID>, toward: Vec3?) {
         val screen = screens[squad]?.takeIf { it.stamp == stamp } ?: Screen(stamp).also { screens[squad] = it }
         val now = level.gameTime
-        val due = screen.left?.isNotEmpty() != false && screen.tries < TRIES && now >= screen.nextTick
+        val due = screen.left.let { it == null || it.isNotEmpty() } && screen.tries < TRIES && now >= screen.nextTick
         if (toward == null || !due) return
         screen.tries++
         screen.nextTick = now + RETRY_TICKS
