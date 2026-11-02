@@ -427,7 +427,7 @@ object NativeTactics {
         private val plannedContact = HashMap<UUID, Vec3?>()
 
         // The MemberDuties case each member's duty last came from, to log only when it changes.
-        private val dutyRules = HashMap<UUID, String>()
+        private val dutyRules = HashMap<UUID, HeldDuty>()
         private val failures = HashMap<UUID, LocalPositionFailure>()
 
         // Legs each mover has finished of an advance by legs, see [TacticalFacts.LEGS_DONE].
@@ -1619,7 +1619,8 @@ object NativeTactics {
                     val toLeader = leaderAt?.let { kotlin.math.hypot(member.position.x - it.x, member.position.z - it.z) } ?: 0.0
                     val waypoint = waypoints[member.id]
                     val proposal = waypoint?.let { FrontProposal(CombatDuty.MOVE, it, null) } ?: proposals.getValue(member.id)
-                    val ruled = entry?.takeUnless { transit }?.let { RuledDuty("reinforcement_entry", DutyChoice(CombatDuty.MOVE, it)) } ?: MemberDuties.choose(
+                    val held = dutyRules[member.id]
+                    val chosen = entry?.takeUnless { transit }?.let { RuledDuty("reinforcement_entry", DutyChoice(CombatDuty.MOVE, it)) } ?: MemberDuties.choose(
                         DutyInputs(
                             order = saved.order.tactical(),
                             position = member.position.point(),
@@ -1635,7 +1636,7 @@ object NativeTactics {
                             hasPatrolRoute = view.hasPatrolRoute,
                             reachedMove = actions[member.id]?.let { it.intent.duty == CombatDuty.MOVE && it.reached() } == true,
                             // A pistol's FIRE is no post he settled on: with his main weapon back he moves on with the others.
-                            wasFiring = oldIntents[member.id]?.duty == CombatDuty.FIRE && dutyRules[member.id] != "sidearm_fire",
+                            wasFiring = oldIntents[member.id]?.duty == CombatDuty.FIRE && dutyRules[member.id]?.rule != "sidearm_fire",
                             // A patrol roams its whole area, so a sentry inside it has arrived; the defenders' ring radius
                             // sent him roaming with the riflemen until he happened to pass near the objective.
                             arrival = if (saved.order == SquadOrder.PATROL) {
@@ -1658,7 +1659,9 @@ object NativeTactics {
                         FIRE_POST_REACH,
                         CombatPosition.LOCAL_MOVE_RADIUS,
                     )
-                    if (dutyRules.put(member.id, ruled.rule) != ruled.rule) {
+                    val ruled = MemberDuties.switching(held, chosen, now)
+                    dutyRules[member.id] = HeldDuty(ruled.rule, ruled.choice, held?.takeIf { it.choice.duty == ruled.choice.duty }?.since ?: now)
+                    if (held?.rule != ruled.rule) {
                         DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=duty_rule rule={} duty={}", member.id, ruled.rule, ruled.choice.duty)
                         DecisionTrace.man(member.id, now, "duty", "${ruled.choice.duty} <- ${ruled.rule}")
                     }
@@ -1975,7 +1978,7 @@ object NativeTactics {
             val failure = failures[npc.uuid]?.takeIf { level.gameTime < it.failedAt + FAILURE_MEMORY_TICKS }
             val target = npc.target?.let { "${DecisionTrace.short(it.uuid)}@${npc.distanceTo(it).toInt()}" }
             val flags = listOfNotNull("suppressed".takeIf { npc.isSuppressed() }, "alert".takeIf { npc.isAlert() }, "in_vehicle".takeIf { npc.vehicle != null })
-            return "${DecisionTrace.short(npc.uuid)} ${npc.npcClass} team=$team duty=${intent?.duty} <- ${dutyRules[npc.uuid]} anchor=${intent?.anchor?.let { "%.0f,%.0f,%.0f".format(it.x, it.y, it.z) }}" +
+            return "${DecisionTrace.short(npc.uuid)} ${npc.npcClass} team=$team duty=${intent?.duty} <- ${dutyRules[npc.uuid]?.rule} anchor=${intent?.anchor?.let { "%.0f,%.0f,%.0f".format(it.x, it.y, it.z) }}" +
                 " post=${action?.assignment?.position?.let { "%.0f,%.0f,%.0f".format(it.x, it.y, it.z) }} reached=${action?.reached()} action=[$reports]" +
                 (failure?.let { " failed=${it.attempts}x ${it.rejections}" }.orEmpty()) +
                 " target=$target holds=${npc.activitiesHeld()} $flags"

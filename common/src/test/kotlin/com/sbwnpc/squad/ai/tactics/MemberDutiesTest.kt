@@ -194,4 +194,22 @@ class MemberDutiesTest {
         assertEquals("retreat_bound", MemberDuties.choose(retreat.copy(position = Point3(23.0, 64.0, 100.0), wasFiring = true), 40.0, 10.0).rule)
         assertEquals("elsewhere", MemberDuties.choose(retreat.copy(elsewhere = true), 40.0, 10.0).rule)
     }
+
+    @Test
+    fun `a man holds a fresh fire post at the front before moving again, and switches at once for anything else`() {
+        val post = Point3(0.0, 1.0, 0.0)
+        val firing = HeldDuty("mover_settled", DutyChoice(CombatDuty.FIRE, post), since = 100)
+        val move = RuledDuty("mover", DutyChoice(CombatDuty.MOVE, Point3(20.0, 1.0, 0.0)))
+        val held = MemberDuties.switching(firing, move, 100 + MemberDuties.FIRE_DWELL_TICKS - 1)
+        assertEquals(RuledDuty(MemberDuties.FIRE_HELD, firing.choice), held)
+        assertEquals(move, MemberDuties.switching(firing, move, 100 + MemberDuties.FIRE_DWELL_TICKS))
+        // A retreat, an order or a first post is never held back.
+        val retreat = RuledDuty("retreat_run", DutyChoice(CombatDuty.MOVE, Point3(-30.0, 1.0, 0.0)))
+        assertEquals(retreat, MemberDuties.switching(firing, retreat, 101))
+        assertEquals(move, MemberDuties.switching(null, move, 101))
+        // Taking up a post is not delayed.
+        val moving = HeldDuty("mover", move.choice, since = 100)
+        val settle = RuledDuty("mover_settled", DutyChoice(CombatDuty.FIRE, post))
+        assertEquals(settle, MemberDuties.switching(moving, settle, 101))
+    }
 }

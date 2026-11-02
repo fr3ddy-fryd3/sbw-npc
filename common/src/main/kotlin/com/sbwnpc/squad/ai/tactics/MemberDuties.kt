@@ -7,6 +7,9 @@ import kotlin.math.hypot
 /** A member's duty chosen by [rule], the id of the [MemberDuties] case that applied. */
 data class RuledDuty(val rule: String, val choice: DutyChoice)
 
+/** The duty a member holds, by [rule], and the tick he took it up [since]. */
+data class HeldDuty(val rule: String, val choice: DutyChoice, val since: Long)
+
 /** The post a member's new duty asks for, to compare with the intent he holds; see [MemberDuties.keeps]. */
 data class WantedPost(val duty: CombatDuty, val anchor: Point3, val requireCover: Boolean, val requireShelter: Boolean, val legs: Boolean)
 
@@ -105,6 +108,30 @@ object MemberDuties {
         for (rule in RULES) rule.choose(situation)?.let { return RuledDuty(rule.id, it) }
         error("front_proposal always applies")
     }
+
+    /**
+     * The cost of switching duties (#262, owner 2.11): a man who settled on a fire post at the front
+     * holds it for at least [FIRE_DWELL_TICKS] before his front rules send him moving again. On the
+     * edge of a rule (just beyond a fire post's reach, just short of a mover's arrival) the chain
+     * flipped him between firing and moving every update, and he did neither. Taking up a post is
+     * never delayed, and a rule outside the front (an order, a retreat, a scout, a follow) switches
+     * him at once.
+     */
+    fun switching(held: HeldDuty?, ruled: RuledDuty, now: Long): RuledDuty {
+        held ?: return ruled
+        val back = held.choice.duty == CombatDuty.FIRE && ruled.choice.duty == CombatDuty.MOVE
+        val withinFront = held.rule in FRONT_RULES && ruled.rule in FRONT_RULES
+        return if (back && withinFront && now - held.since < FIRE_DWELL_TICKS) RuledDuty(FIRE_HELD, held.choice) else ruled
+    }
+
+    /** How long a fire post at the front is held before a front rule moves him on, 3 s. */
+    const val FIRE_DWELL_TICKS = 60L
+
+    /** The rule id of a fire post held by [switching]; it counts as the front rule it holds. */
+    const val FIRE_HELD = "fire_held"
+
+    /** The rules the front's own shape decides by, between which [switching] costs. */
+    private val FRONT_RULES = setOf("flank_march", "mover_settled", "mover", "fire_approach", "front_proposal", FIRE_HELD)
 
     /** The rule ids in the order they are tried. */
     val ruleIds: List<String> get() = RULES.map { it.id }
