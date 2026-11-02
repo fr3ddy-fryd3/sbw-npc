@@ -50,7 +50,7 @@ object SquadTransitPriorityGameTests {
         }
     }
 
-    /** Five occupied men stay off the ride while an otherwise identical free man boards. */
+    /** Four men held by a role, treatment, cover or a seat stay off the ride; a man under fire boards with a free one. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 160, batch = "transit-priorities")
     fun distantTransitRespectsRoleTreatmentCoverAndSeatOwners(helper: GameTestHelper) {
@@ -84,12 +84,13 @@ object SquadTransitPriorityGameTests {
         }
         manager.issueOrderAt(helper.level, squad.id, SquadOrder.ATTACK, helper.absolutePos(BlockPos(150, 1, 20)))
         helper.onEachTick {
-            helper.assertTrue(men.take(5).all { it.vehicle == null && VehicleTransportClaims.vehicleOf(it.uuid) == null }, "The ride took a man held by a role, treatment, cover, seat owner or recent fire")
+            helper.assertTrue(men.take(4).all { it.vehicle == null && VehicleTransportClaims.vehicleOf(it.uuid) == null }, "The ride took a man held by a role, treatment, cover or seat owner")
             if (helper.tick >= 40) {
                 helper.assertTrue(control.vehicle === lav, "The free control man did not board")
+                // A travelling squad boards under fire (#231, #255): a shot from afar does not end the trip.
+                helper.assertTrue(underFire.vehicle === lav, "Recent fire kept a man of a travelling squad from the ride")
                 helper.assertTrue(seated.freeFor(NpcActivity.SEAT, seatOwner) && !seated.freeFor(NpcActivity.SEAT, Any()), "Transit replaced the original seat owner")
-                helper.assertTrue(underFire.incomingFire.recentPoint(helper.level.gameTime) != null, "The incoming-fire fixture expired before the boarding check")
-                scene.result("PASS", "tick=${helper.tick} preserved=5 boarded=1")
+                scene.result("PASS", "tick=${helper.tick} preserved=4 boarded=2")
                 helper.succeed()
             }
         }
