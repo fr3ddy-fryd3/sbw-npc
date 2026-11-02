@@ -201,7 +201,8 @@ object TacticalPositions {
             search.reject("no_goal_progress")
             return
         }
-        if (!TacticalRules.withinOrder(context.view, candidate, context.homeRadius)) {
+        // A scout is sent past the defended ring on purpose, to a noise his squad chose within its reach (#254).
+        if (task.job != TacticalJob.SEARCH && !TacticalRules.withinOrder(context.view, candidate, context.homeRadius)) {
             search.reject("order")
             return
         }
