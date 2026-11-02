@@ -170,6 +170,12 @@ object NativeTactics {
         if (npc.vehicle == null) world(npc).engaging(npc)
     }
 
+    /**
+     * Whether [npc]'s squad travels to its objective ([SquadJourney], #255): the one decision the
+     * vehicle and order behaviours carry out, instead of each man judging his own fight.
+     */
+    fun travelling(npc: NpcEntity): Boolean = worlds[npc.level()]?.travelling(npc) == true
+
     /** Whether [npc] has an NPC agent of either kind, full or engage-only: what ticks it. */
     fun hasAgent(npc: NpcEntity): Boolean = worlds[npc.level()]?.agents?.containsKey(AgentId(AgentLevel.NPC, npc.uuid)) == true
 
@@ -411,6 +417,13 @@ object NativeTactics {
 
         // When each squad last had a close contact, see TacticalSnapshot.closeContact.
         private val closeContacts = HashMap<UUID, Long>()
+
+        /**
+         * The squads travelling to their objective ([SquadJourney]), by the order stamp they travel
+         * under. Kept while every man is aboard and none is planned, so it is dropped only by a new
+         * order, the squad's end or the squad's own update deciding otherwise.
+         */
+        private val journeys = HashMap<UUID, Int>()
 
         private val retreatSmoke = RetreatSmoke(level)
 
@@ -712,6 +725,7 @@ object NativeTactics {
             situations[id]?.let { result = result.observe(TacticalFacts.SITUATION, it) }
             boundTurns[id]?.let { result = result.observe(TacticalFacts.BOUND_TURN, it.turn) }
             rallies[id]?.let { result = result.observe(TacticalFacts.RALLY, it) }
+            if (id in journeys) result = result.observe(TacticalFacts.TRAVELLING, true)
             approaches[id]?.let { result = result.observe(TacticalFacts.APPROACH, it) }
             strategies[id]?.let { (strategy, since) ->
                 result = result.observe(TacticalFacts.MANNER, strategy)
@@ -842,6 +856,7 @@ object NativeTactics {
                 // picture below (snapshots, losses, arrival, layout) counts them (#258, #260).
                 fireSupport.roster.collect(now)
                 air.roster.collect()
+                journeys.entries.removeIf { (id, stamp) -> manager.get(id)?.orderStamp != stamp }
                 val supportOnly = (fireSupport.roster.squads() + air.roster.squads()).filter { it !in activeIds }.mapNotNull(manager::get)
                 snapshots.keys.filter { it !in activeIds }.toList().forEach { id ->
                     snapshots.remove(id)
@@ -1610,7 +1625,7 @@ object NativeTactics {
                 // the order's own march, each man's sighted target still drew him off after it.
                 val entry = if (marching && saved.order == SquadOrder.ATTACK) operations.pending(saved.id)?.let { operations.operation(it.operation) }?.entry?.center else null
                 val following = saved.order == com.sbwnpc.squad.squad.SquadOrder.FOLLOW
-                val transit = SquadTransit.distant(saved, level)
+                val transit = journey(saved, view)
                 val leader = if (following) level.getPlayerByUUID(saved.owner) else null
                 val heading = saved.followHeading.takeIf { it != net.minecraft.world.phys.Vec3.ZERO }?.let { it.x to it.z }
                 val intents = view.members.mapIndexed { index, member ->
@@ -1710,7 +1725,9 @@ object NativeTactics {
                             inspection = if (duty == CombatDuty.SEARCH) inspect?.point() else null,
                             standoff = sightClearance?.let { minOf(it, CombatPositionSafety.clearance(member.role)) } ?: CombatPositionSafety.clearance(member.role),
                             sightClearance = sightClearance,
-                            ordered = bounding,
+                            // A travelling squad's men make for the vehicles or the objective: no cover
+                            // on the way, and its strategy stands aside (#228, #255).
+                            ordered = bounding || transit,
                             legs = byLegs,
                         )
                     }
@@ -1762,6 +1779,26 @@ object NativeTactics {
             val toward = if (contact) seen ?: fireFrom else fireFrom
             retreatSmoke.cover(saved.id, saved.orderStamp, men, boundTurns[saved.id]?.turn?.posts?.keys.orEmpty(), toward)
         }
+
+        /**
+         * Whether [saved] travels to its objective, decided for the whole squad ([SquadJourney]) from
+         * the men on foot here now and recorded for the vehicle and order behaviours to read.
+         */
+        private fun journey(saved: Squad, view: TacticalSnapshot): Boolean {
+            val contacts = view.members.mapNotNull { (level.getEntity(it.id) as? NpcEntity)?.let(SquadTransit::contact) }
+            val contact = JourneyContact(contacts.any { it.enemy }, contacts.any { it.mob })
+            val travelling = journeys[saved.id] == saved.orderStamp
+            val travels = SquadJourney.travels(SquadTransit.distant(saved, level), contact, travelling)
+            if (travels != travelling) {
+                if (travels) journeys[saved.id] = saved.orderStamp else journeys.remove(saved.id)
+                DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=journey travels={} contact={}", saved.id, travels, contact)
+                DecisionTrace.group(saved.id, level.gameTime, "squad", "journey", if (travels) "travels to its objective" else "stays to fight or arrives, contact=$contact")
+            }
+            return travels
+        }
+
+        /** Whether [npc]'s squad travels to its objective under its current order. */
+        fun travelling(npc: NpcEntity): Boolean = npc.currentSquad()?.let { journeys[it.id] == it.orderStamp } == true
 
         /**
          * Starts or swaps the turn of a squad bounding by halves. A turn ends once every mover of
@@ -2046,6 +2083,7 @@ object NativeTactics {
             loneOperators.clear()
             alarms.clear()
             closeContacts.clear()
+            journeys.clear()
             retreatSmoke.clear()
             grenades.clear()
             suspendedBy.clear()

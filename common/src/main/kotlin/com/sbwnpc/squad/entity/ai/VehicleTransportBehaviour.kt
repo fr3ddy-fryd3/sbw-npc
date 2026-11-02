@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
+import com.sbwnpc.squad.ai.integration.NativeTactics
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.domain.port.Mobility
@@ -197,8 +198,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
+    // Only for a boat taken by a squad not travelling: travel or fight is the squad's decision
+    // (NativeTactics.travelling, #255), but a boat near a squad in a fight is no way out of it.
     private fun combatInterrupted(entity: NpcEntity) =
-        (entity.target != null && !SquadTransit.marching(entity)) || entity.isAlert() || entity.isSuppressed() ||
+        entity.target != null || entity.isAlert() || entity.isSuppressed() ||
             entity.incomingFire.recentPoint(entity.level().gameTime) != null
 
     /** [checkGiveup] must be false when called from [checkExtraStartConditions] (deciding whether to
@@ -234,11 +237,6 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (entity.vehicle != null) return true // already mounted: DRIVING/RIDING keep going regardless
         if (entity.holds(NpcActivity.TACTIC)) return logEligibility(entity, false) { "tactical position duty takes priority" }
 
-        if (combatInterrupted(entity)) {
-            return logEligibility(entity, false) {
-                "combat interrupted (target=${entity.target != null} alert=${entity.isAlert()} suppressed=${entity.isSuppressed()})"
-            }
-        }
         if (entity.holds(NpcActivity.DUG_IN)) return logEligibility(entity, false) { "dug in" }
         if (entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK, NpcActivity.HEAL)) return logEligibility(entity, false) { "cover or medic owns movement" }
         // Off to a Supply: the order waits till he's topped up, the ride to it too. Both ran at
@@ -273,8 +271,13 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         // the trip off and freed his seat over and over.
         boatTrips = trips.ifEmpty { boatTrips.takeIf { checkGiveup && targetVehicleId != null }.orEmpty() }
         val dist = entity.position().distanceTo(home)
-        if (!SquadTransit.distant(squad, entity.level() as ServerLevel) && boatTrips.isEmpty()) {
-            return logEligibility(entity, false) { "squad is within ${SquadTransit.TRANSPORT_DISTANCE} blocks of its objective (this man is $dist blocks away)" }
+        if (!NativeTactics.travelling(entity)) {
+            if (boatTrips.isEmpty()) return logEligibility(entity, false) { "his squad does not travel (this man is $dist blocks from its objective)" }
+            if (combatInterrupted(entity)) {
+                return logEligibility(entity, false) {
+                    "no boat in a fight (target=${entity.target != null} alert=${entity.isAlert()} suppressed=${entity.isSuppressed()})"
+                }
+            }
         }
         if (checkGiveup && phase == Phase.SEEKING && entity.tickCount - seekingStartTick > SEEK_GIVEUP_TICKS) {
             giveupCooldownUntilTick = entity.tickCount + GIVEUP_COOLDOWN_TICKS
@@ -654,7 +657,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         val allAccountedFor = squad == null || squad.members.all { id ->
             if (id == entity.uuid) return@all true
             val member = level.getEntity(id) as? NpcEntity ?: return@all true // dead/unloaded: don't block on it
-            !member.isAlive || member.vehicle != null || member.distanceToSqr(vehicle) > SEARCH_RADIUS * SEARCH_RADIUS || combatInterrupted(member) ||
+            !member.isAlive || member.vehicle != null || member.distanceToSqr(vehicle) > SEARCH_RADIUS * SEARCH_RADIUS ||
                 // A boat seats few: whoever isn't coming along is swimming, not late.
                 (boat && !member.holds(NpcActivity.VEHICLE))
         }

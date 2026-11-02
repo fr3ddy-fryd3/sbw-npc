@@ -277,4 +277,12 @@ class TacticalDomainTest {
         assertEquals(CombatDuty.FIRE, shaped(bound).duty)
         assertEquals(CombatDuty.MOVE, shaped(bound.copy(ordered = true)).duty)
     }
+
+    @Test fun `a travelling squad hands its men their intents unshaped, and no strategy runs`() {
+        val travelling = squadFacts(blocked).observe(TacticalFacts.TRAVELLING, true)
+        val plan = squadPlan(travelling)
+        assertEquals("travel", plan.tasks.single().node.split('/')[1])
+        assertEquals(intent, shapedMember(plan))
+        assertEquals(CombatStrategy.HOLD, strategyOf(squadPlan(squadFacts(blocked))))
+    }
 }
