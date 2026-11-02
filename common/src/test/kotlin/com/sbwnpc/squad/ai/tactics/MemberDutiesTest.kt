@@ -32,6 +32,7 @@ class MemberDutiesTest {
                     (order == TacticalOrder.DEFEND || (order == TacticalOrder.PATROL && !hasPatrolRoute)) && heightRole && primaryAmmo && !following &&
                         takesSentryPost -> CombatDuty.OBSERVE
 
+                    // A retreat reaches here only without a place at the rally point (#253): retreatSlot is null in this grid.
                     !inContact || order in setOf(TacticalOrder.RETREAT, TacticalOrder.MOVE, TacticalOrder.BARRAGE) -> CombatDuty.FOLLOW_ORDER
 
                     // Following in a fight: the squad keeps up with its player by bounds, one half running
@@ -185,8 +186,12 @@ class MemberDutiesTest {
         assertEquals(RuledDuty("retreat_run", DutyChoice(CombatDuty.MOVE, slot)), MemberDuties.choose(retreat.copy(inContact = false), 40.0, 10.0))
         // Six blocks off, height included, he is at his place.
         val there = Point3(14.0, 68.0, 100.0)
-        assertEquals(RuledDuty("retreat_settled", DutyChoice(CombatDuty.FIRE, there)), MemberDuties.choose(retreat.copy(position = there), 40.0, 10.0))
-        assertEquals("retreat_bound", MemberDuties.choose(retreat.copy(position = Point3(14.0, 69.0, 100.0)), 40.0, 10.0).rule)
+        assertEquals(RuledDuty("retreat_settled", DutyChoice(CombatDuty.FIRE, slot)), MemberDuties.choose(retreat.copy(position = there), 40.0, 10.0))
+        val off = Point3(14.0, 69.0, 100.0)
+        assertEquals("retreat_bound", MemberDuties.choose(retreat.copy(position = off), 40.0, 10.0).rule)
+        // Already firing at his place, a post a few blocks farther out keeps him settled.
+        assertEquals("retreat_settled", MemberDuties.choose(retreat.copy(position = off, wasFiring = true), 40.0, 10.0).rule)
+        assertEquals("retreat_bound", MemberDuties.choose(retreat.copy(position = Point3(23.0, 64.0, 100.0), wasFiring = true), 40.0, 10.0).rule)
         assertEquals("elsewhere", MemberDuties.choose(retreat.copy(elsewhere = true), 40.0, 10.0).rule)
     }
 }

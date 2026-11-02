@@ -24,6 +24,9 @@ object MemberDuties {
     /** A retreating man this near his place at the rally point, height included, is there; the squad counts its arrival the same way. */
     const val RETREAT_ARRIVAL = 6.0
 
+    /** How far from his place a retreating man already firing there stays settled. */
+    private const val RETREAT_SETTLED = 2 * RETREAT_ARRIVAL
+
     private class Situation(val inputs: DutyInputs, fireReach: Double, private val approachOffset: Double) {
         val proposal = inputs.proposal
         val approach = proposal.duty == CombatDuty.FIRE && inputs.position.distanceTo(proposal.anchor) > fireReach
@@ -40,8 +43,12 @@ object MemberDuties {
         // A retreat falls back to each man's place at the rally point, by legs in contact so the
         // squad's halves can cover each other ([CombatStrategy.BOUND_OVERWATCH]), in one run
         // without. Before the sentry: a sentry leaves his height too. At his place he fires from
-        // it: left a mover there, his leg never ended and every bound turn waited out its timer.
-        rule("retreat_settled", { s -> s.inputs.retreatSlot?.let { s.inputs.position.distanceTo(it) <= RETREAT_ARRIVAL } == true }, { CombatDuty.FIRE }, { it.inputs.position }),
+        // round it: left a mover there, his leg never ended and every bound turn waited out its
+        // timer. Once firing he stays settled a little farther out, or a post searched round his
+        // place a few blocks off sent him back to it and out again.
+        rule("retreat_settled", { s ->
+            s.inputs.retreatSlot?.let { s.inputs.position.distanceTo(it) <= if (s.inputs.wasFiring) RETREAT_SETTLED else RETREAT_ARRIVAL } == true
+        }, { CombatDuty.FIRE }, { it.inputs.retreatSlot!! }),
         rule("retreat_bound", { it.inputs.retreatSlot != null && it.inputs.inContact }, { CombatDuty.MOVE }, { it.inputs.retreatSlot!! }),
         rule("retreat_run", { it.inputs.retreatSlot != null }, { CombatDuty.MOVE }, { it.inputs.retreatSlot!! }),
         rule("scout", { it.inputs.scout && it.inputs.order in SCOUTING_ORDERS }, { CombatDuty.SEARCH }, { requireNotNull(it.inputs.inspect) { "a scout needs a point to inspect" } }),

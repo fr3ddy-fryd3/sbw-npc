@@ -51,6 +51,12 @@ object NativeTactics {
     /** A bounding half that has not finished a leg each by then hands over anyway, 15 s. */
     private const val BOUND_TURN_TICKS = 300L
 
+    /**
+     * The same for a retreat, 5 s: the old fighting withdrawal swapped its halves within 3 s, and a
+     * man who found no post back held his whole half where it was ordered away from.
+     */
+    private const val RETREAT_BOUND_TURN_TICKS = 100L
+
     /** A rush waits this long at most, after the leg before it, for the men covering it to fire, 3 s. */
     private const val SUPPORT_FALLBACK_TICKS = 60L
 
@@ -1562,7 +1568,8 @@ object NativeTactics {
                             followSlot = leaderAt?.let { com.sbwnpc.squad.combat.FollowFormation.slot(it, heading, saved.members.indexOf(member.id), heading != null) },
                             followRide = leader?.vehicle != null || man?.holds(com.sbwnpc.squad.entity.NpcActivity.VEHICLE) == true,
                             transit = transit,
-                            retreatSlot = man?.takeIf { retreating }?.let { m -> m.homeCenter()?.let { com.sbwnpc.squad.combat.SquadAreas.rallySlot(m, it).point() } },
+                            // A man his out-of-ammunition rule runs back is not his squad's to move (#253).
+                            retreatSlot = man?.takeIf { retreating && movable(it) }?.let { m -> m.homeCenter()?.let { com.sbwnpc.squad.combat.SquadAreas.rallySlot(m, it).point() } },
                         ),
                         FIRE_POST_REACH,
                         CombatPosition.LOCAL_MOVE_RADIUS,
@@ -1662,16 +1669,17 @@ object NativeTactics {
          */
         private fun coverRetreat(saved: Squad, view: TacticalSnapshot, contact: Boolean) {
             val fireFrom = view.incoming.firstOrNull()
-            val seen = view.visible.minByOrNull { it.position.distanceToSqr(view.center) }?.position
-            val toward = if (contact) seen ?: fireFrom else fireFrom
             val men = view.members.mapNotNull { level.getEntity(it.id) as? NpcEntity }
+            // A target one of them fights, not a contact only reported to the squad.
+            val seen = men.mapNotNull { it.target?.takeIf { target -> target.isAlive } }.minByOrNull { it.position().distanceToSqr(view.center) }?.position()
+            val toward = if (contact) seen ?: fireFrom else fireFrom
             retreatSmoke.cover(saved.id, saved.orderStamp, men, boundTurns[saved.id]?.turn?.posts?.keys.orEmpty(), toward)
         }
 
         /**
          * Starts or swaps the turn of a squad bounding by halves. A turn ends once every mover of
          * its moving half still moving has finished a leg more than when it began, or after
-         * [BOUND_TURN_TICKS]; the other movers then move. The first halves alternate along the
+         * [BOUND_TURN_TICKS] ([RETREAT_BOUND_TURN_TICKS] in a retreat); the other movers then move. The first halves alternate along the
          * front, so each half covers all of it.
          */
         private fun updateBoundTurn(squad: UUID, movers: List<PositionIntent>, view: TacticalSnapshot, focus: Vec3?, now: Long) {
@@ -1683,7 +1691,7 @@ object NativeTactics {
             val current = boundTurns[squad]
             val reason = when {
                 current == null -> "start"
-                now - current.startedAt >= BOUND_TURN_TICKS -> "timeout"
+                now - current.startedAt >= if (situations[squad]?.retreating == true) RETREAT_BOUND_TURN_TICKS else BOUND_TURN_TICKS -> "timeout"
                 current.turn.moving.filter { it in ids }.all { (legs[it] ?: 0) > (current.legsAtStart[it] ?: 0) } -> "legs_done"
                 else -> return
             }

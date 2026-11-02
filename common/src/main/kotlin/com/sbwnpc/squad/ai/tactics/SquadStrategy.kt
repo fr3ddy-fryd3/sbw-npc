@@ -48,7 +48,9 @@ private object Advance : SquadStrategy {
 
     override fun score(situation: CombatSituation) = BASE + situation.readyFraction * READINESS
 
-    override fun shape(intent: PositionIntent, shaping: SquadShaping) = intent
+    // A retreat with no halves to cover each other runs the whole way: stopping post by post
+    // with nobody firing for him, a man of a small squad only gave the enemy more time to shoot.
+    override fun shape(intent: PositionIntent, shaping: SquadShaping) = if (shaping.retreating && intent.legs) intent.copy(legs = false) else intent
 
     private const val BASE = 0.55
 

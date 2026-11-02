@@ -94,8 +94,9 @@ data class BoundTurn(val number: Int, val moving: Set<java.util.UUID>, val posts
  *
  * @property turn the bounding turn under [CombatStrategy.BOUND_OVERWATCH].
  * @property rally where the squad gathers under [CombatStrategy.REGROUP].
+ * @property retreating it falls back on a RETREAT order (#253).
  */
-data class SquadShaping(val turn: BoundTurn? = null, val rally: Point3? = null)
+data class SquadShaping(val turn: BoundTurn? = null, val rally: Point3? = null, val retreating: Boolean = false)
 data class TeamMission(val agent: AgentId, val members: List<PositionIntent>)
 
 /** A squad's [teams] of ground men, its mortar crews ([support], #258) and its helicopters ([air], #260), which the squad's strategy never shapes. */
@@ -350,7 +351,7 @@ object TacticalDomain {
                         decompose = { (mission, strategy), facts ->
                             // Only a bounding squad has a turn and only a regrouping one a rally; otherwise the facts are
                             // absent and never change.
-                            val shaping = SquadShaping(facts.value(TacticalFacts.BOUND_TURN), facts.value(TacticalFacts.RALLY))
+                            val shaping = SquadShaping(facts.value(TacticalFacts.BOUND_TURN), facts.value(TacticalFacts.RALLY), facts.value(TacticalFacts.SITUATION)?.retreating == true)
                             val tasks = mission.teams.map { team ->
                                 val selected = team.copy(
                                     // A member assaulting for the operation keeps its role whatever the squad's own strategy,
