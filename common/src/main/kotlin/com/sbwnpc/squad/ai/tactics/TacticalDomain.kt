@@ -113,8 +113,37 @@ enum class SquadApproach {
     /** The whole squad comes on from where it is. */
     FRONTAL,
 }
+
+/** Rejects the ordinary coordination of an operation that calls its attack off or weighs its losses. */
+private fun steady(mission: OperationMission) =
+    Condition {
+        when {
+            mission.callOff != null -> Verdict.Rejected("calling_off")
+            mission.review -> Verdict.Rejected("reviewing")
+            else -> Verdict.Allowed
+        }
+    }
+
 data class AreaControlTask(val operation: java.util.UUID, val objective: Point3, val commands: Map<java.util.UUID, java.util.UUID>)
-data class OperationMission(val squads: List<SquadMission>, val secure: AreaControlTask? = null, val attack: AttackRoles = AttackRoles.NONE)
+
+/**
+ * Where a called-off squad falls back to: [point], a Supply when [toSupply].
+ */
+data class FallBack(val point: Point3, val toSupply: Boolean)
+
+/**
+ * An attack the operation calls off by its strength (#252, the rules of #238): its counted
+ * [squads] fall back each to its [fallBacks] point, with [able] of the [base] men they went in with.
+ * With [partial] the squads left out of the count fight on, and only these leave the operation.
+ */
+data class CallOff(val operation: java.util.UUID, val squads: List<java.util.UUID>, val able: Int, val base: Int, val partial: Boolean, val fallBacks: Map<java.util.UUID, FallBack>)
+
+/**
+ * What an operation's plan carries out: its [squads]' missions, the area it [secure]s and its
+ * [attack] roles; with [callOff] the attack it calls off instead, and with [review] an attack that
+ * holds the line it has while its losses are weighed (#252).
+ */
+data class OperationMission(val squads: List<SquadMission>, val secure: AreaControlTask? = null, val attack: AttackRoles = AttackRoles.NONE, val callOff: CallOff? = null, val review: Boolean = false)
 
 /**
  * Where fire on a man comes from, rounded to [GRID] blocks so the rounds of one shooter keep the
@@ -269,6 +298,10 @@ object TacticalDomain {
     val TEAM = TaskKey("team.execute", TeamMission::class.java)
     val NPC = TaskKey("npc.execute", PositionIntent::class.java)
     val SECURE = ActionKey("operation.secure_area", AreaControlTask::class.java)
+
+    /** Calling an attack off (#252), carried out by the integration. */
+    val CALL_OFF = ActionKey("operation.call_off", CallOff::class.java)
+    private val CALL_OFF_TASK = TaskKey("operation.call_off", CallOff::class.java)
     private val SECURE_TASK = TaskKey("operation.hold_and_inspect", AreaControlTask::class.java)
     val POSITION = ActionKey("npc.position", PositionIntent::class.java)
 
@@ -293,6 +326,9 @@ object TacticalDomain {
         return TaskNetwork(nodes + listOfNotNull(mission.secure?.let { NetworkNode("secure", SECURE_TASK.call(it)) }))
     }
 
+    /** The call-off is done in its first tick; this only bounds a refused one. */
+    private const val CALL_OFF_TICKS = 20L
+
     val operation = HtnDomain(
         AgentLevel.OPERATION,
         listOf(
@@ -300,17 +336,29 @@ object TacticalDomain {
                 OPERATION,
                 // Without an attack phase the squads carry out their own missions; an attacking
                 // operation deploys a firing line, assaults into its objective or clears around it.
+                // An attack that has lost too much is called off before anything else; one weighing
+                // its losses holds the line it has (its squads were laid out holding) whatever its
+                // phase. Each stands the later ones aside: methods of equal score are tried by name.
                 listOf(
-                    Method<OperationMission>("coordinate", eligible = {
-                        Condition { facts -> if (facts.value(TacticalFacts.ATTACK_PHASE) == null) Verdict.Allowed else Verdict.Rejected("attack_phase_known") }
+                    Method<OperationMission>("withdraw", eligible = { mission ->
+                        Condition { if (mission.callOff != null) Verdict.Allowed else Verdict.Rejected("strength_holds") }
+                    }, decompose = { mission, _ -> TaskNetwork.sequence(CALL_OFF_TASK.call(mission.callOff!!)) }),
+                    Method<OperationMission>("review", eligible = { mission ->
+                        Condition { if (mission.review && mission.callOff == null) Verdict.Allowed else Verdict.Rejected("not_reviewing") }
+                    }, decompose = { mission, _ -> coordinate(mission, mission.attack) }),
+                    Method<OperationMission>("coordinate", eligible = { mission ->
+                        Condition.all(steady(mission), Condition { facts -> if (facts.value(TacticalFacts.ATTACK_PHASE) == null) Verdict.Allowed else Verdict.Rejected("attack_phase_known") })
                     }, decompose = { mission, _ -> coordinate(mission, AttackRoles.NONE) }),
                 ) + AttackPhase.entries.map { phase ->
-                    Method<OperationMission>(phase.name.lowercase(), eligible = {
-                        Condition.test(TacticalFacts.ATTACK_PHASE, "other_attack_phase") { it == phase }
+                    Method<OperationMission>(phase.name.lowercase(), eligible = { mission ->
+                        Condition.all(steady(mission), Condition.test(TacticalFacts.ATTACK_PHASE, "other_attack_phase") { it == phase })
                     }, decompose = { mission, _ -> coordinate(mission, mission.attack) })
                 },
             ),
             delegate(),
+            PrimitiveTask(CALL_OFF_TASK) { callOff ->
+                PrimitiveSpec("call_off", ActionSpec(CALL_OFF, callOff, timeoutTicks = CALL_OFF_TICKS), TaskContract())
+            },
             PrimitiveTask(SECURE_TASK) { task ->
                 PrimitiveSpec(
                     "secure",

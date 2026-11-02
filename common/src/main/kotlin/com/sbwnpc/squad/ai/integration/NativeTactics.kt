@@ -570,6 +570,16 @@ object NativeTactics {
                                 override fun cancel(now: Long, reason: String) = Unit
                             }
                         },
+                        ActionBinding(TacticalDomain.CALL_OFF) { ticket, callOff ->
+                            require(ticket.owner.agent == AgentId(AgentLevel.OPERATION, callOff.operation))
+                            object : ActionExecution {
+                                override fun start(now: Long) = carryOut(callOff, now)
+                                override fun tick(now: Long) = carryOut(callOff, now)
+                                override fun suspend(now: Long, reason: String) = Unit
+                                override fun resume(now: Long) = Unit
+                                override fun cancel(now: Long, reason: String) = Unit
+                            }
+                        },
                         ActionBinding(DelegationAction.KEY) { ticket, task -> DelegationAction(ticket, task, ledger) },
                         ActionBinding(TacticalDomain.FIRE_PAUSE) { ticket, pause ->
                             require(ticket.owner.agent == pause.actor)
@@ -931,13 +941,18 @@ object NativeTactics {
                 val desiredAgents = HashSet<AgentId>()
                 opGroups.forEach { (operation, members) ->
                     val ground = members.filter { it.id in activeIds }
-                    val standing = if (ground.isEmpty()) OperationStanding.STEADY else standing(operation, now)
-                    // Its crews too lose their plan for this one update: the next one finds their squads
-                    // retreating on their own, and plans the carry to the rally point under them.
-                    if (standing == OperationStanding.WITHDRAW) return@forEach
-                    val grounded = if (ground.isEmpty()) emptyList() else layout(ground, now, holding = standing == OperationStanding.REVIEW)
-                    val squadMissions = grounded.map { it.copy(support = fireSupport.roster.crews(it.agent.id), air = air.roster.aircraft(it.agent.id)) } +
-                        members.filter { it.id !in activeIds }.map { SquadMission(AgentId(AgentLevel.SQUAD, it.id), emptyList(), fireSupport.roster.crews(it.id), air.roster.aircraft(it.id)) }
+                    val measure = if (ground.isEmpty()) AttackMeasure.STEADY else measure(operation, now)
+                    val holding = measure.standing == OperationStanding.REVIEW
+                    // A called-off attack gives its squads, crews and aircraft nothing to do for this one
+                    // update while its plan calls it off: the next one finds the squads retreating on
+                    // their own, and plans the carry to the rally point under them.
+                    val squadMissions = if (measure.callOff != null) {
+                        members.map { SquadMission(AgentId(AgentLevel.SQUAD, it.id), emptyList()) }
+                    } else {
+                        val grounded = if (ground.isEmpty()) emptyList() else layout(ground, now, holding)
+                        grounded.map { it.copy(support = fireSupport.roster.crews(it.agent.id), air = air.roster.aircraft(it.agent.id)) } +
+                            members.filter { it.id !in activeIds }.map { SquadMission(AgentId(AgentLevel.SQUAD, it.id), emptyList(), fireSupport.roster.crews(it.id), air.roster.aircraft(it.id)) }
+                    }
                     val root = AgentId(AgentLevel.OPERATION, operation)
                     roots += root
                     desiredAgents += root
@@ -960,7 +975,7 @@ object NativeTactics {
                     }
                     // A reinforcement still on its way only approaches: the area it is going to
                     // is held and completed by the operation it joins, never by itself.
-                    val active = ground.filter { it.order == SquadOrder.ATTACK && it.commandOutcome == CommandOutcome.ACTIVE && operations.pending(it.id) == null }
+                    val active = if (measure.callOff != null) emptyList() else ground.filter { it.order == SquadOrder.ATTACK && it.commandOutcome == CommandOutcome.ACTIVE && operations.pending(it.id) == null }
                     val first = active.firstOrNull()
                     val area = first?.command?.goal as? ObjectiveKey.Area ?: first?.objective?.let { point ->
                         if (first.command == null) ObjectiveKey.Area(level.dimension().location().toString(), point.x, point.y, point.z) else null
@@ -971,13 +986,13 @@ object NativeTactics {
                         null
                     }
                     val roles = if (secure != null) {
-                        attackRoles(operation, secure, active, now, holding = standing == OperationStanding.REVIEW)
+                        attackRoles(operation, secure, active, now, holding)
                     } else {
                         attacks.remove(operation)
                         boundTraces.remove(operation)
                         AttackRoles.NONE
                     }
-                    ensure(root).command(operation, TacticalDomain.OPERATION.call(OperationMission(squadMissions, secure, roles)), facts(root, now))
+                    ensure(root).command(operation, TacticalDomain.OPERATION.call(OperationMission(squadMissions, secure, roles, measure.callOff, holding)), facts(root, now))
                 }
                 agents.keys.filter { it.level == AgentLevel.OPERATION && it !in roots }.toList().forEach { id ->
                     agents.remove(id)?.cancel(now, "operation_membership_changed")
@@ -1251,52 +1266,78 @@ object NativeTactics {
             return if (bounds.isEmpty()) roles else roles.copy(closing = bounds)
         }
 
-        /** Withdraws [squad] from a called-off attack, to a Supply behind it when there is one. */
-        private fun callOff(squad: Squad, able: Int, base: Int) {
+        /**
+         * The attacking operation's [standing] by its strength, and on [OperationStanding.WITHDRAW] the
+         * [callOff] its plan carries out (#252).
+         */
+        private data class AttackMeasure(val standing: OperationStanding, val callOff: CallOff? = null) {
+            companion object {
+                val STEADY = AttackMeasure(OperationStanding.STEADY)
+            }
+        }
+
+        /** The squads of [operation] still attacking: ordered to, active and not on their way. */
+        private fun attacking(operation: UUID): List<Squad> {
             val manager = SquadManager.get(level)
-            val view = snapshots[squad.id]
-            val reference = squad.members.firstNotNullOfOrNull { level.getEntity(it) as? NpcEntity }
-            manager.withdraw(squad.id, "attack_strength")
-            val retreat = if (view != null && reference != null) AttackStrength.fallBack(level, squad, reference, view) else null
-            retreat?.let { manager.setObjective(level, squad.id, net.minecraft.core.BlockPos.containing(it.point)) }
-            SquadReports.attackCalledOff(level.server, squad, able, base, retreat?.toSupply)
+            return (operations.operation(operation)?.ground?.keys ?: setOf(operation))
+                .mapNotNull(manager::get)
+                .filter { it.order == SquadOrder.ATTACK && it.commandOutcome == CommandOutcome.ACTIVE && operations.pending(it.id) == null }
         }
 
         /**
-         * The attacking operation's standing by its strength ([CombatStrength]), over every squad in
-         * it, loaded or not: the able men left of the bases its squads went in with. On
-         * [OperationStanding.WITHDRAW] the attack is called off here and those squads fall back.
+         * Measures the attacking operation by its strength ([CombatStrength]), over every squad in it,
+         * loaded or not: the able men left of the bases its squads went in with. Only measures; on
+         * [OperationStanding.WITHDRAW] the operation's plan calls the attack off ([carryOut]).
          *
          * Squads with a barracks are left out: it replaces their fallen, so they fight on whatever
          * they lose (#57). So are remnants, sent in to fight to the end, and squads not yet measured.
          * The attack goes on while any of those is still in it.
          */
-        private fun standing(operation: UUID, now: Long): OperationStanding {
-            val manager = SquadManager.get(level)
-            val all = (operations.operation(operation)?.ground?.keys ?: setOf(operation))
-                .mapNotNull(manager::get)
-                .filter { it.order == SquadOrder.ATTACK && it.commandOutcome == CommandOutcome.ACTIVE && operations.pending(it.id) == null }
+        private fun measure(operation: UUID, now: Long): AttackMeasure {
+            val all = attacking(operation)
             val counted = all.filter { it.barracks == null && !it.attackRemnant && it.attackBase != null }
             if (counted.isEmpty()) {
                 standings.remove(operation)
-                return OperationStanding.STEADY
+                return AttackMeasure.STEADY
             }
             val base = counted.sumOf { it.attackBase!! }
             val able = counted.sumOf { AttackStrength.count(it, level).able }
             val standing = CombatStrength.standing(able, base)
             if (standings.put(operation, standing) != standing) {
-                DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=attack_standing standing={} able={} base={}", operation, standing, able, base)
+                DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=attack_standing standing={} able={} base={} tick={}", operation, standing, able, base, now)
             }
-            if (standing == OperationStanding.WITHDRAW) {
-                counted.forEach { callOff(it, able, base) }
-                standings.remove(operation)
-                // The squads left out fight on. This update still lists the withdrawn squads with
-                // the operation's, so it is skipped like a full withdrawal; the next one plans the
-                // attack without them.
-                if (counted.size < all.size) {
-                    counted.forEach { operations.detach(it.id) }
-                    return standing
-                }
+            if (standing != OperationStanding.WITHDRAW) return AttackMeasure(standing)
+            val fallBacks = counted.mapNotNull { squad -> fallBack(squad)?.let { squad.id to it } }.toMap()
+            return AttackMeasure(standing, CallOff(operation, counted.map { it.id }, able, base, counted.size < all.size, fallBacks))
+        }
+
+        /** Where [squad] falls back to from a called-off attack: a Supply behind it when there is one. */
+        private fun fallBack(squad: Squad): FallBack? {
+            val view = snapshots[squad.id] ?: return null
+            val reference = squad.members.firstNotNullOfOrNull { level.getEntity(it) as? NpcEntity } ?: return null
+            return AttackStrength.fallBack(level, squad, reference, view)?.let { FallBack(it.point.point(), it.toSupply) }
+        }
+
+        /**
+         * Calls the attack off as [callOff] says: its squads fall back, and the operation either lets
+         * them go while the squads left out fight on, or ends with its support withdrawn. Done once:
+         * a squad no longer attacking, or an operation no longer running, is not called off again.
+         */
+        private fun carryOut(callOff: CallOff, now: Long): ActionUpdate {
+            val manager = SquadManager.get(level)
+            val operation = callOff.operation
+            val attacking = attacking(operation).mapTo(HashSet()) { it.id }
+            val squads = callOff.squads.filter { it in attacking }.mapNotNull(manager::get)
+            squads.forEach { squad ->
+                val fallBack = callOff.fallBacks[squad.id]
+                manager.withdraw(squad.id, "attack_strength")
+                fallBack?.let { manager.setObjective(level, squad.id, net.minecraft.core.BlockPos.containing(it.point.x, it.point.y, it.point.z)) }
+                SquadReports.attackCalledOff(level.server, squad, callOff.able, callOff.base, fallBack?.toSupply)
+            }
+            standings.remove(operation)
+            if (callOff.partial) {
+                squads.forEach { operations.detach(it.id) }
+            } else if (operations.operation(operation)?.status == OperationStatus.ACTIVE) {
                 // Its support falls back with it, packing its tubes for the rally point (#258).
                 operations.operation(operation)?.support?.keys?.forEach { manager.withdraw(it, "operation_losses") }
                 operations.finish(operation, OperationStatus.CANCELLED)
@@ -1307,7 +1348,8 @@ object NativeTactics {
                 boundTraces.remove(operation)
                 sectorsHeld.remove(operation)
             }
-            return standing
+            DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=attack_called_off squads={} partial={} able={} base={}", operation, squads.size, callOff.partial, callOff.able, callOff.base)
+            return ActionUpdate.Completed(listOf(ActionEvidence("attack_called_off", now)))
         }
 
         private fun nearest(points: List<Point3>, from: Point3) = points.minOfOrNull { hypot(it.x - from.x, it.z - from.z) } ?: 0.0
