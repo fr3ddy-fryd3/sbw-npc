@@ -50,7 +50,8 @@ object ExperienceAwards {
     fun damage(victim: Entity, source: DamageSource, fraction: Double, dead: Boolean) {
         val level = victim.level() as? ServerLevel ?: return
         if (!target(victim) || fraction <= 0 || !fraction.isFinite()) return
-        val attacker = operatorOf(level, source.directEntity) ?: operatorOf(level, source.entity) ?: source.entity ?: return
+        val attacker = operatorOf(level, source.directEntity) ?: operatorOf(level, source.entity) ?: source.entity
+            ?: blamed?.takeIf { source.directEntity == null } ?: return
         if (!SquadTeams.isHostile(victim, attacker)) return
         recordWound(victim, fraction, level.gameTime)
         val budget = targetBudget(victim)
@@ -82,6 +83,25 @@ object ExperienceAwards {
 
     /** Marks [drone] as flown by [operator], so its blast pays him and not the drone. */
     fun launchedBy(drone: Entity, operator: NpcEntity) = Ports.loader.persistentData(drone).putUUID(DRONE_OPERATOR, operator.uuid)
+
+    /** Who answers for damage with no source entity while [block] runs; see [blame]. */
+    private var blamed: Entity? = null
+
+    /**
+     * Runs [block] with [operator] answering for damage that names no entity. The drone addon's
+     * crash blast is a second, sourceless explosion (`ServerLevel.explode(null, ...)`) after SBW's
+     * own: whoever it killed was "blown up" by nobody, and the operator lost the kill. Explosions
+     * hurt within the call, on the server thread.
+     */
+    fun <T> blame(operator: Entity, block: () -> T): T {
+        val outer = blamed
+        blamed = operator
+        try {
+            return block()
+        } finally {
+            blamed = outer
+        }
+    }
 
     /**
      * The operator of [entity] if it is a drone one flew. The FPV drone's crash blast names the
