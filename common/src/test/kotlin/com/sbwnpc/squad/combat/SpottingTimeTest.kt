@@ -122,11 +122,11 @@ class SpottingTimeTest {
         assertEquals(regular.cutoffFactor, regular.wary().cutoffFactor)
     }
 
-    @Test fun `aircrew see the ground twice as far, and the dark still shortens it`() {
+    @Test fun `aircrew see the ground half again as far, and the dark still shortens it`() {
         val air = elite.airborne()
-        assertNotNull(seconds(256.0, 15, air))
-        assertNull(seconds(257.0, 15, air))
-        assertNotNull(seconds(64.0, 0, air))
-        assertNull(seconds(65.0, 0, air))
+        assertNotNull(seconds(192.0, 15, air))
+        assertNull(seconds(193.0, 15, air))
+        assertNotNull(seconds(48.0, 0, air))
+        assertNull(seconds(49.0, 0, air))
     }
 }

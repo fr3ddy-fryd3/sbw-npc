@@ -11,7 +11,6 @@ import com.sbwnpc.squad.entity.ai.IdleWanderGoal
 import com.sbwnpc.squad.entity.ai.InvestigateBehaviour
 import com.sbwnpc.squad.entity.ai.MedicHealBehaviour
 import com.sbwnpc.squad.entity.ai.MortarClaims
-import com.sbwnpc.squad.entity.ai.MortarCrewBehaviour
 import com.sbwnpc.squad.entity.ai.MortarDeployment
 import com.sbwnpc.squad.entity.ai.SeekCoverBehaviour
 import com.sbwnpc.squad.entity.ai.SquadOrderBehaviour
@@ -447,7 +446,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             medkitsLeft = MEDKITS
             topped = true
         }
-        val maxDrones = com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES
+        val maxDrones = com.sbwnpc.squad.ai.integration.DroneStation.MAX_DRONES
         if (npcClass == NpcClass.DRONE_OPERATOR && dronesLeft < maxDrones) {
             dronesLeft = maxDrones
             topped = true
@@ -579,7 +578,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     var medkitsLeft: Int = MEDKITS
 
     /** Shells a mortar loader carries for its crew's tube — see
-     *  [com.sbwnpc.squad.entity.ai.MortarCrewBehaviour]. Persisted; zero for every other class. */
+     *  [com.sbwnpc.squad.ai.integration.CrewDutyAction]. Persisted; zero for every other class. */
     var mortarShellsLeft: Int = 0
 
     /** Kamikaze drones this operator still carries; refilled by SquadManager.resupplyAtBarracks.
@@ -600,7 +599,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     /** The gun stowed while the operator holds the drone monitor — persisted so a world save
      *  mid-flight doesn't leave the operator with a monitor and no weapon (see
-     *  DroneOperatorBehaviour.holdMonitor/restoreWeapon). */
+     *  DroneStation.holdMonitor/restoreWeapon). */
     var stowedWeapon: ItemStack = ItemStack.EMPTY
 
     /** The backup pistol; while drawn this is the same stack as the hand/monitor stow. */
@@ -838,7 +837,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     private var lodRecheckTick = 0
     private var brainTickInterval = 1
 
-    private fun inCombatState(): Boolean = target != null || isSuppressed() || isAlert() || holdsAny(NpcActivity.DRONE, NpcActivity.ANTI_DRONE)
+    // Aircrew too: the flight control and the turret are worked from the plan's tick, every tick,
+    // and an aircraft flown one tick in four drifts and misses its attack's quiet interval (#260).
+    private fun inCombatState(): Boolean = target != null || isSuppressed() || isAlert() || holdsAny(NpcActivity.DRONE, NpcActivity.ANTI_DRONE) || com.sbwnpc.squad.ai.integration.AirRoster.aircrew(this)
 
     private fun refreshAiLod() {
         brainTickInterval = when {
@@ -1064,11 +1065,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             *VersionCompat.doorBehaviours(),
             SeekCoverBehaviour(),
             com.sbwnpc.squad.entity.ai.BlindReturnFireBehaviour(),
-            MortarCrewBehaviour(),
-            com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour(),
             com.sbwnpc.squad.entity.ai.AntiDroneBehaviour(),
             VehicleCrewBehaviour(),
-            com.sbwnpc.squad.entity.ai.HelicopterPilotBehaviour(),
             com.sbwnpc.squad.entity.ai.HelicopterGunnerBehaviour(),
             com.sbwnpc.squad.entity.ai.HelicopterRideBehaviour(),
             VehicleCombatSupportBehaviour(),
@@ -1168,7 +1166,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         smokeLeft = if (carriesGrenades()) SMOKE_GRENADES else 0
         medkitsLeft = MEDKITS
         mortarShellsLeft = if (npcClass == NpcClass.MORTAR) MORTAR_SHELLS else 0
-        if (npcClass == NpcClass.DRONE_OPERATOR) dronesLeft = com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES
+        if (npcClass == NpcClass.DRONE_OPERATOR) dronesLeft = com.sbwnpc.squad.ai.integration.DroneStation.MAX_DRONES
 
         // A belt-fed gun does nothing to a tank, and the machine gunner is the one member of an
         // ordinary squad with a free hand for something that does.
@@ -1270,7 +1268,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         dronesLeft = if (compound.contains("DronesLeft")) {
             compound.getInt("DronesLeft")
         } else if (npcClass == NpcClass.DRONE_OPERATOR) {
-            com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES
+            com.sbwnpc.squad.ai.integration.DroneStation.MAX_DRONES
         } else {
             0
         }
@@ -1311,10 +1309,10 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
                 (level() as? ServerLevel)?.let { com.sbwnpc.squad.vehicle.PilotlessHelicopters.pilotDown(it, ride) }
             }
         }
-        // Operator down -> signal lost: its drone crashes where it is (DroneOperatorBehaviour.stop
-        // would do this too once the brain notices the death, but the entity may already be gone
-        // from the level by then). Drop the gun, not the monitor, as loot.
-        com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.onOperatorDied(this)
+        // Operator down -> signal lost: its drone crashes where it is, here, as the entity may
+        // already be gone from the level before his plan is next looked at. Drop the gun, not the
+        // monitor, as loot.
+        com.sbwnpc.squad.ai.integration.DroneStation.onOperatorDied(this)
         super.die(cause)
     }
 

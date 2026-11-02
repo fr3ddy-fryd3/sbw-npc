@@ -3,14 +3,12 @@ package com.sbwnpc.squad.entity.ai
 import com.mojang.datafixers.util.Pair
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
-import com.sbwnpc.squad.combat.VehicleCannonAmmo
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.team.SquadTeams
 import com.sbwnpc.squad.vehicle.Helicopters
-import com.sbwnpc.squad.vehicle.PilotlessDrop
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
@@ -20,21 +18,15 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 import java.util.UUID
 
 /**
- * Works the gunship's turret. SBW already flies the turret onto a target by itself once it has an
- * auto-aim UUID (`AutoAimableEntity`), which is the same machinery tank and IFV gunners use here —
- * so this only has to keep that UUID pointed at the right thing and keep the right round loaded.
- *
- * Nothing here touches the aircraft's flight: [HelicopterPilotBehaviour] parks it at a standoff
- * hover facing the target, which is what puts the target inside the turret's declared traverse.
+ * Walks a [NpcClass.HELICOPTER_GUNNER] on foot to a landed friendly gunship whose turret has nobody
+ * on it, and seats him there. Getting into a seat is seating, as [VehicleCrewBehaviour]'s is; once
+ * aboard, his aircraft's plan works the gun (#261).
  */
 class HelicopterGunnerBehaviour : ExtendedBehaviour<NpcEntity>() {
-    private val pilotless = PilotlessDrop()
-
     private var nextSearchTick = 0
     private var seatTarget: UUID? = null
 
     private companion object {
-        const val CANNON_WEAPON = 0
         const val SEARCH_RANGE = 40.0
         const val SEARCH_INTERVAL_TICKS = 40
         const val BOARD_DISTANCE_SQR = 2.5 * 2.5
@@ -47,47 +39,24 @@ class HelicopterGunnerBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
-    // Works the gun from the seat his crew contract holds (VehicleCrewBehaviour); holds the seat
-    // itself only while walking to a vacant turret.
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
-        entity.npcClass == NpcClass.HELICOPTER_GUNNER &&
-            (turret(entity) != null || (entity.freeFor(NpcActivity.SEAT, this) && openTurretSeat(entity, level) != null))
+    // He holds the seat himself only while walking to it; aboard, his crew contract holds it.
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = boarding(entity, level)
 
-    override fun shouldKeepRunning(entity: NpcEntity): Boolean {
-        if (entity.npcClass != NpcClass.HELICOPTER_GUNNER) return false
-        val level = entity.level() as? ServerLevel ?: return false
-        return turret(entity) != null || (entity.freeFor(NpcActivity.SEAT, this) && openTurretSeat(entity, level) != null)
-    }
+    override fun shouldKeepRunning(entity: NpcEntity): Boolean = (entity.level() as? ServerLevel)?.let { boarding(entity, it) } == true
+
+    private fun boarding(entity: NpcEntity, level: ServerLevel) = entity.npcClass == NpcClass.HELICOPTER_GUNNER && entity.vehicle == null && entity.freeFor(NpcActivity.SEAT, this) && openTurretSeat(entity, level) != null
 
     override fun start(entity: NpcEntity) {
-        if (turret(entity) == null) entity.claimAlone(NpcActivity.SEAT, this)
+        entity.claimAlone(NpcActivity.SEAT, this)
         entity.claim(NpcActivity.VEHICLE, this)
     }
 
     override fun stop(entity: NpcEntity) {
-        entity.vehicle?.let { Ports.vehicles.aimAt(it, entity, null) }
         entity.release(NpcActivity.SEAT, this)
         entity.release(NpcActivity.VEHICLE, this)
     }
 
-    override fun tick(entity: NpcEntity) {
-        val gunship = turret(entity) ?: run {
-            boardVacantTurret(entity)
-            return
-        }
-        // At the gun his crew contract holds the seat; the VEHICLE claim stays with the gun.
-        entity.release(NpcActivity.SEAT, this)
-        entity.claim(NpcActivity.VEHICLE, this)
-        entity.navigation.stop()
-        (entity.level() as? ServerLevel)?.let { pilotless.tick(it, gunship) }
-        val target = entity.target?.takeIf { it.isAlive && SquadTeams.isHostile(entity, it) }
-        if (target == null) {
-            Ports.vehicles.aimAt(gunship, entity, null)
-            return
-        }
-        VehicleCannonAmmo.select(gunship, Helicopters.GUNNER_SEAT, CANNON_WEAPON, target)
-        Ports.vehicles.aimAt(gunship, entity, target)
-    }
+    override fun tick(entity: NpcEntity) = boardVacantTurret(entity)
 
     /**
      * A friendly gunship sitting on the ground with nobody on the gun. Losing the gunner leaves the
@@ -134,12 +103,5 @@ class HelicopterGunnerBehaviour : ExtendedBehaviour<NpcEntity>() {
             seatTarget = null
             DebugFlags.log(LogGroup.HELI, "{} took over the turret on {}", entity.uuid, gunship.uuid)
         }
-    }
-
-    private fun turret(entity: NpcEntity): Entity? {
-        val vehicle = entity.vehicle ?: return null
-        if (!Helicopters.hasTurret(vehicle) || !Ports.vehicles.isOperational(vehicle)) return null
-        if (Ports.vehicles.seatOf(vehicle, entity) != Helicopters.GUNNER_SEAT) return null
-        return vehicle
     }
 }

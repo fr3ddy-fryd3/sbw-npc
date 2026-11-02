@@ -540,6 +540,97 @@ object HelicopterOrbitGameTests {
         }
     }
 
+    /**
+     * The Mi-28 has one target, its gunner's (#261): with two enemies about, the pilot holds the
+     * standoff ring around the man the turret is laid on.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 1800, batch = "gunship-one-target")
+    fun gunshipStandsOffFromTheTargetItsGunnerLays(helper: GameTestHelper) {
+        val scene = Scene(helper, HelicopterModel.MI_28)
+        val second = AttackDeploymentGameTests.spawn(helper, Vec3(124.5, 1.0, 116.5), SquadFaction.COW).apply {
+            isNoAi = true
+            getAttribute(Attributes.MAX_HEALTH)!!.baseValue = 100000.0
+            health = maxHealth
+        }
+        scene.onClose = { second.discard() }
+        var held = 0
+        var laid: net.minecraft.world.entity.LivingEntity? = null
+        helper.onEachTick {
+            scene.tick()
+            // His sight comes and goes as the aircraft turns: the man he last laid on is the target.
+            scene.crew[1].target?.let { laid = it }
+            val target = laid
+            val ring = target?.let { scene.heli.position().subtract(it.position()).horizontalDistance() }
+            held = if (scene.airborne && ring != null && ring in 12.0..30.0) held + 1 else 0
+            if (held >= 100) {
+                scene.result("target=${target!!.uuid} ring=$ring pilotTarget=${scene.crew[0].target?.uuid}")
+                helper.succeed()
+            }
+        }
+    }
+
+    /**
+     * A new order replans the aircraft in the air (#260): its flight is cancelled with the old
+     * operation and planned again, and on the ticks between the cockpit holds it level instead of
+     * dropping it or flying on with the old controls.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 1800, batch = "gunship-replan-aloft")
+    fun gunshipHoldsItsHeightWhileANewOrderIsPlannedInTheAir(helper: GameTestHelper) {
+        val scene = Scene(helper, HelicopterModel.MI_28)
+        var orderedAt: Long? = null
+        var startY = 0.0
+        helper.onEachTick {
+            scene.tick()
+            val height = scene.heli.y - Helicopters.groundY(helper.level, scene.heli.x, scene.heli.z)
+            val since = orderedAt
+            if (since == null) {
+                if (scene.airborne && scene.crew[1].target != null && helper.tick >= 300) {
+                    orderedAt = helper.tick
+                    startY = scene.heli.y
+                    scene.manager.setOrder(scene.squad.id, SquadOrder.DEFEND)
+                }
+                return@onEachTick
+            }
+            helper.assertTrue(height >= 6.0, "Gunship sank to $height while replanning")
+            helper.assertTrue(abs(scene.heli.y - startY) <= 16.0, "Gunship strayed ${scene.heli.y - startY} in height while replanning")
+            if (helper.tick - since >= 200) {
+                scene.result("orderedAt=$since startY=$startY y=${scene.heli.y} height=$height")
+                helper.succeed()
+            }
+        }
+    }
+
+    /**
+     * Aircrew whose squad is gone from under them in the air still fly (#260): their aircraft is
+     * planned as a squadless one, which with its target in sight holds the standoff, and is never
+     * left on the last controls it had.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 1800, batch = "gunship-squad-lost")
+    fun gunshipWhoseSquadIsGoneFliesOnAsASquadlessAircraft(helper: GameTestHelper) {
+        val scene = Scene(helper, HelicopterModel.MI_28)
+        var lostAt: Long? = null
+        helper.onEachTick {
+            scene.tick()
+            val since = lostAt
+            if (since == null) {
+                if (scene.airborne && helper.tick >= 300) {
+                    lostAt = helper.tick
+                    scene.crew.forEach { it.squadId = UUID.randomUUID() }
+                }
+                return@onEachTick
+            }
+            val height = scene.heli.y - Helicopters.groundY(helper.level, scene.heli.x, scene.heli.z)
+            helper.assertTrue(height >= 6.0, "Squadless gunship sank to $height")
+            if (helper.tick - since >= 200) {
+                scene.result("lostAt=$since height=$height")
+                helper.succeed()
+            }
+        }
+    }
+
     private class Scene(
         val helper: GameTestHelper,
         model: HelicopterModel = HelicopterModel.AH_6,

@@ -218,7 +218,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun eligible(entity: NpcEntity, checkGiveup: Boolean): Boolean {
         // Never take the controls of something that isn't a ground vehicle. A helicopter reads
         // forwardInputDown as its collective and the left/right pedals as roll, so "driving" one
-        // spins the rotor up and rolls it onto its back; HelicopterPilotBehaviour owns those.
+        // spins the rotor up and rolls it onto its back; HelicopterCockpit flies those.
         entity.vehicle?.takeIf(Ports.vehicles::isVehicle)?.let { mounted ->
             val mobility = Ports.vehicles.mobility(mounted)
             if (mobility != Mobility.GROUND && mobility != Mobility.WATER) {

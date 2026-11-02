@@ -59,7 +59,7 @@ enum class NpcActivity(val holds: Set<Cap>) {
      */
     DUG_IN(setOf(Cap.FEET)),
 
-    /** Walked somewhere by the mortar crew's own behaviour, see [com.sbwnpc.squad.entity.ai.MortarCrewBehaviour]. */
+    /** Walked somewhere on a crew duty of his plan (#258), see [com.sbwnpc.squad.ai.integration.CrewDutyAction]. */
     MORTAR_ERRAND(setOf(Cap.FEET)),
 
     /** Carrying a broken-down mortar to a new position: [com.sbwnpc.squad.entity.ai.MortarDeployment]. */
@@ -68,10 +68,10 @@ enum class NpcActivity(val holds: Set<Cap>) {
     /** Shooting at or running from a hostile drone: [com.sbwnpc.squad.entity.ai.AntiDroneBehaviour]. */
     ANTI_DRONE(setOf(Cap.FEET, Cap.FIRE, Cap.LOOK)),
 
-    /** Preparing or flying a drone: [com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour]. */
+    /** Preparing or flying a drone: [com.sbwnpc.squad.ai.integration.DroneStation], driven by the strike plan (#259). */
     DRONE(setOf(Cap.FEET, Cap.FIRE, Cap.LOOK)),
 
-    /** At a mortar as its operator or loader: [com.sbwnpc.squad.entity.ai.MortarCrewBehaviour]. */
+    /** At a mortar as its operator or loader: [com.sbwnpc.squad.ai.integration.CrewDutyAction]. */
     MORTAR_CREW(setOf(Cap.FEET, Cap.FIRE, Cap.LOOK)),
 
     /**

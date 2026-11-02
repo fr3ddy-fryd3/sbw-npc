@@ -632,7 +632,7 @@ class SquadManager : VersionedSavedData() {
                 if (npc != null && npc.npcClass == NpcClass.DRONE_OPERATOR && npc.isAlive &&
                     npc.position().distanceToSqr(pos) <= RESUPPLY_RADIUS * RESUPPLY_RADIUS
                 ) {
-                    npc.dronesLeft = com.sbwnpc.squad.entity.ai.DroneOperatorBehaviour.MAX_DRONES
+                    npc.dronesLeft = com.sbwnpc.squad.ai.integration.DroneStation.MAX_DRONES
                 }
             }
         }

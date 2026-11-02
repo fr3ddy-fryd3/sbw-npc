@@ -1,6 +1,9 @@
 package com.sbwnpc.squad.gametest
 
 import com.atsuishio.superbwarfare.entity.projectile.MortarShellEntity
+import com.sbwnpc.squad.ai.integration.NativeTactics
+import com.sbwnpc.squad.ai.planning.ExecutionStatus
+import com.sbwnpc.squad.ai.tactics.Engage
 import com.sbwnpc.squad.block.entity.SupplyBlockEntity
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
@@ -229,6 +232,81 @@ object MortarCrewGameTests {
         }
     }
 
+    /** An enemy at arm's length: the operator fights him off through his engage, his crew duty set aside (#258). */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 600, batch = "mortar-self-defence")
+    fun mortarmanDefendsHimselfAtArmsLength(helper: GameTestHelper) {
+        val scene = scene(helper)
+        var enemy: NpcEntity? = null
+        cleanup(helper) {
+            scene.close()
+            enemy?.discard()
+        }
+        helper.onEachTick {
+            if (enemy == null && MortarClaims.activeCrew(scene.mortar) == 2) {
+                val operator = scene.crew.first { it.uuid == MortarClaims.operator(scene.mortar.uuid) }
+                enemy = AttackDeploymentGameTests.spawn(helper, helper.relativeVec(operator.position()).add(4.0, 0.0, 0.0), SquadFaction.COW).also { operator.target = it }
+            }
+            val man = enemy?.let { foe -> scene.crew.firstOrNull { it.target === foe } } ?: return@onEachTick
+            val running = NativeTactics.reports(man).values.filter { it.status == ExecutionStatus.RUNNING }.map { it.ticket.identity }
+            if (running.any(Engage::isUnit)) {
+                helper.assertTrue(running.none { it.startsWith("crew:") }, "His crew duty still runs beside his engage: $running")
+                helper.succeed()
+            }
+        }
+    }
+
+    /** A squadless mortarman takes a free friendly tube in reach and serves it, through a crew plan of his own (#258). */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 600, batch = "mortar-squadless")
+    fun squadlessMortarmanTakesAFreeTube(helper: GameTestHelper) {
+        for (x in 0..63) for (z in 40..90) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        val tube = Ports.mortars.create(helper.level, -90f)
+        val pos = helper.absoluteVec(Vec3(24.5, 1.0, 64.5))
+        tube.moveTo(pos.x, pos.y, pos.z, -90f, 0f)
+        helper.level.addFreshEntity(tube)
+        SquadTeams.assign(tube, SquadFaction.PIG)
+        val man = AttackDeploymentGameTests.spawn(helper, Vec3(12.5, 1.0, 64.5), SquadFaction.PIG, role = NpcClass.MORTAR)
+        cleanup(helper) {
+            MortarClaims.release(man.uuid)
+            man.discard()
+            MortarClaims.releaseMortar(tube.uuid)
+            tube.discard()
+        }
+        helper.onEachTick {
+            if (MortarClaims.role(tube.uuid, man.uuid) != null && MortarClaims.atPost(man, tube)) {
+                helper.assertTrue(NativeTactics.reports(man).values.any { it.ticket.identity.startsWith("crew:") }, "He serves the tube with no crew plan")
+                helper.succeed()
+            }
+        }
+    }
+
+    /** A squad of a crew alone on DEFEND keeps its crew's plan from one update to the next (#258 v2.1). */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 500, batch = "mortar-defend-agents")
+    fun mortarOnlyDefendSquadKeepsItsPlan(helper: GameTestHelper) {
+        val scene = scene(helper)
+        scene.manager.setOrder(scene.squad.id, SquadOrder.DEFEND)
+        scene.manager.setObjective(helper.level, scene.squad.id, BlockPos.containing(scene.mortar.position()))
+        val tickets = scene.crew.associateWith { HashSet<Any>() }
+        cleanup(helper) { scene.close() }
+        helper.onEachTick {
+            if (helper.tick < SETTLE) return@onEachTick
+            scene.crew.forEach { man ->
+                helper.assertTrue(NativeTactics.hasAgent(man), "${man.uuid} lost his crew agent at tick ${helper.tick}")
+                NativeTactics.reports(man).values.filter { it.ticket.identity.startsWith("crew:") }.forEach { tickets.getValue(man) += it.ticket }
+            }
+            if (helper.tick >= SETTLE + HOLD) {
+                // One duty each, held: a crew planned anew every update would make a new ticket each time.
+                helper.assertTrue(tickets.values.all { it.size == 1 }, "The crew was planned anew while holding: ${tickets.values.map { it.size }}")
+                helper.succeed()
+            }
+        }
+    }
+
+    private const val SETTLE = 100L
+    private const val HOLD = 300L
+
     private class Scene(val helper: GameTestHelper, val mortar: Entity, val crew: MutableList<NpcEntity>) {
         val manager = SquadManager.get(helper.level)
         val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, crew.map { it.uuid })
@@ -259,17 +337,20 @@ object MortarCrewGameTests {
         helper.assertTrue(Ports.mortars.canReach(tube, scene.squad.objective!!), "Mortar fixture is outside real ballistic limits")
         return scene
     }
-    private fun report(name: String, content: String) {
-        val path = Path.of(System.getProperty("sbwnpc.gameTestReports"), name)
-        Files.createDirectories(path.parent)
-        Files.writeString(path, content)
-    }
-    private fun cleanup(helper: GameTestHelper, action: () -> Unit) {
-        helper.testInfo.addListener(object : GameTestListener {
-            override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
-            override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = action()
-            override fun testFailed(test: GameTestInfo, runner: GameTestRunner) = action()
-            override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) = action()
-        })
-    }
+}
+
+private fun report(name: String, content: String) {
+    val path = Path.of(System.getProperty("sbwnpc.gameTestReports"), name)
+    Files.createDirectories(path.parent)
+    Files.writeString(path, content)
+}
+
+/** Runs [action] when the test ends, passed or failed, so a scene's entities and claims never leak into the next. */
+private fun cleanup(helper: GameTestHelper, action: () -> Unit) {
+    helper.testInfo.addListener(object : GameTestListener {
+        override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
+        override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = action()
+        override fun testFailed(test: GameTestInfo, runner: GameTestRunner) = action()
+        override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) = action()
+    })
 }

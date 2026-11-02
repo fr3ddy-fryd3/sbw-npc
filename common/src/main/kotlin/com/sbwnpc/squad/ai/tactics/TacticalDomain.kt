@@ -97,7 +97,9 @@ data class BoundTurn(val number: Int, val moving: Set<java.util.UUID>, val posts
  */
 data class SquadShaping(val turn: BoundTurn? = null, val rally: Point3? = null)
 data class TeamMission(val agent: AgentId, val members: List<PositionIntent>)
-data class SquadMission(val agent: AgentId, val teams: List<TeamMission>)
+
+/** A squad's [teams] of ground men, its mortar crews ([support], #258) and its helicopters ([air], #260), which the squad's strategy never shapes. */
+data class SquadMission(val agent: AgentId, val teams: List<TeamMission>, val support: List<SupportCrew> = emptyList(), val air: List<Aircraft> = emptyList())
 
 /** A squad's [mission] under the [strategy] its method chose, for the choice of its [SquadApproach]. */
 data class StrategyMission(val mission: SquadMission, val strategy: CombatStrategy)
@@ -279,6 +281,12 @@ object TacticalDomain {
             PrimitiveSpec(task.child.id.toString(), ActionSpec(DelegationAction.KEY, task.copy(continuous = true), setOf(ResourceKey(task.child, "command")), timeoutTicks = Long.MAX_VALUE), TaskContract())
         }
     private fun children(tasks: List<DelegationTask>) = TaskNetwork(tasks.map { NetworkNode(it.child.id.toString(), DELEGATE.call(it)) })
+
+    /** The mortar crew's tasks, joined into the team and NPC domains below. */
+    private val crewTasks = FireSupport.tasks(::children)
+
+    /** The helicopter's tasks, joined the same way. */
+    private val airTasks = AirSupport.tasks(::children)
     private fun coordinate(mission: OperationMission, roles: AttackRoles): TaskNetwork {
         val nodes = mission.squads.map { squad -> NetworkNode(squad.agent.id.toString(), DELEGATE.call(DelegationTask(squad.agent, SQUAD.call(OperationTactics.apply(squad, roles))))) }
         return TaskNetwork(nodes + listOfNotNull(mission.secure?.let { NetworkNode("secure", SECURE_TASK.call(it)) }))
@@ -316,10 +324,15 @@ object TacticalDomain {
         listOf(
             CompoundTask(
                 SQUAD,
-                CombatStrategy.entries.map { strategy ->
+                // A squad of crews or aircraft alone has no ground men to shape: it only supports.
+                listOf(
+                    Method<SquadMission>("support_only", eligible = { mission ->
+                        Condition { if (mission.teams.isEmpty() && (mission.support.isNotEmpty() || mission.air.isNotEmpty())) Verdict.Allowed else Verdict.Rejected("has_ground_teams") }
+                    }, decompose = { mission, _ -> children(FireSupport.delegations(mission) + AirSupport.delegations(mission)) }),
+                ) + CombatStrategy.entries.map { strategy ->
                     Method(
                         SquadManners.methodId(strategy),
-                        eligible = { SquadManners.eligible(strategy) },
+                        eligible = { mission -> if (mission.teams.isEmpty()) Condition { Verdict.Rejected("no_ground_teams") } else SquadManners.eligible(strategy) },
                         score = { _, facts -> SquadManners.score(strategy, facts) },
                         decompose = { mission, _ -> TaskNetwork.sequence(APPROACH.call(StrategyMission(mission, strategy))) },
                     )
@@ -347,7 +360,7 @@ object TacticalDomain {
                                 )
                                 DelegationTask(team.agent, TEAM.call(selected))
                             }
-                            children(tasks)
+                            children(tasks + FireSupport.delegations(mission) + AirSupport.delegations(mission))
                         },
                     )
                 },
@@ -370,7 +383,7 @@ object TacticalDomain {
                 },
             ),
             delegate(),
-        ),
+        ) + crewTasks.first + airTasks.first,
     )
     val COVER_MOVE = ActionKey("npc.cover_move", CoverMove::class.java)
     val COVER_CYCLE = ActionKey("npc.cover_cycle", CoverCycle::class.java)
@@ -402,13 +415,24 @@ object TacticalDomain {
                 listOf(
                     // Under fire, or in the hole he dug, the man answers that first; every method
                     // below stands aside meanwhile (UnderFire.duty), so exactly one family applies.
-                    Method("under_fire", eligible = { intent -> UnderFire.eligible(intent) }, decompose = { intent, _ -> TaskNetwork.sequence(UNDER_FIRE.call(intent)) }),
-                    Method("in_hole", eligible = { _ -> UnderFire.inHole() }, decompose = { intent, _ -> TaskNetwork.sequence(IN_HOLE.call(intent)) }),
+                    // A drone in the air keeps him at its monitor through all of it (DroneStrike.flying).
+                    Method("under_fire", eligible = { intent -> Condition { facts -> DroneStrike.flying(facts) ?: UnderFire.eligible(intent).evaluate(facts) } }, decompose = { intent, _ -> TaskNetwork.sequence(UNDER_FIRE.call(intent)) }),
+                    Method("in_hole", eligible = { _ -> Condition { facts -> DroneStrike.flying(facts) ?: UnderFire.inHole().evaluate(facts) } }, decompose = { intent, _ -> TaskNetwork.sequence(IN_HOLE.call(intent)) }),
+                    // A drone operator flies his drone, or launches one when not under fire, ahead
+                    // of his duty and his engage (#259).
+                    Method("drone_strike", eligible = { intent ->
+                        Condition { facts ->
+                            if (DroneStrike.flying(facts) == null) UnderFire.duty(intent, facts)?.let { return@Condition it }
+                            DroneStrike.takesOver().evaluate(facts)
+                        }
+                    }, decompose = { intent, _ -> TaskNetwork.sequence(DroneStrike.TASK.call(StrikeCall(intent.actor))) }),
                     // In contact, with nothing commanding his movement, his engage moves him; every
                     // other method below stands aside meanwhile (NpcFamilies.standsAside).
                     Method("engage", eligible = { intent ->
                         Condition { facts ->
+                            DroneStrike.flying(facts)?.let { return@Condition it }
                             UnderFire.duty(intent, facts)?.let { return@Condition it }
+                            DroneStrike.standsAside(facts)?.let { return@Condition it }
                             Engage.eligible(intent).evaluate(facts)
                         }
                     }, decompose = { intent, _ -> TaskNetwork.sequence(ENGAGE_TASK.call(EngageTask(intent.actor))) }),
@@ -551,7 +575,7 @@ object TacticalDomain {
                     planning = ownActor(pause.actor),
                 )
             },
-        ),
+        ) + crewTasks.second + airTasks.second + DroneStrike.tasks { call -> TaskNetwork.sequence(ENGAGE_TASK.call(EngageTask(call.actor))) },
     )
     private const val NEIGHBOR_ATTEMPTS = 4
 

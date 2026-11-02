@@ -13,6 +13,7 @@ import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
+import com.sbwnpc.squad.vehicle.Helicopters
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
@@ -327,7 +328,9 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         return found
     }
 
+    /** Not an aircraft: its guns aim by flying it, so a man who cannot fly sat in it doing nothing. */
     private fun isSupportVehicle(vehicle: Entity): Boolean {
+        if (Helicopters.isHelicopter(vehicle)) return false
         if (!Ports.vehicles.isOperational(vehicle) || Ports.vehicles.isLocked(vehicle) || vehicle.passengers.isNotEmpty()) return false
         if (hasPlayerAboard(vehicle) || VehicleTransportClaims.claimedSeats(vehicle.uuid) != 0) return false
         val seat = Ports.vehicles.seating(vehicle).indexOfFirst { it == null }
