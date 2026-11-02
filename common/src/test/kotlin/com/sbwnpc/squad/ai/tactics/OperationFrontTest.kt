@@ -32,6 +32,19 @@ class OperationFrontTest {
         assertEquals(wide, OperationFront.propose(actors.reversed(), listOf(Point3(120.0, 1.0, -64.0), Point3(120.0, 1.0, 128.0)), focus))
     }
 
+    @Test fun `of men with one reach the ones nearest the front row take it`() {
+        // Front row 56 short of the focus, at x=64: three men stand on it, three far back at x=0,
+        // the far ones listed first, so neither lateral place nor listing order picks them.
+        val squad = UUID(1, 9)
+        val back = (0 until 3).map { FormationActor(UUID(2, it.toLong()), squad, Point3(0.0, 1.0, 30.0 + it * 2)) }
+        val near = (0 until 3).map { FormationActor(UUID(3, it.toLong()), squad, Point3(62.0, 1.0, 30.0 + it * 2)) }
+        val proposals = OperationFront.propose(back + near, listOf(focus), focus)
+        val movers = proposals.filterValues { it.duty == CombatDuty.MOVE }.keys
+        // Six men field four movers and two in support: the support is two of the men far back.
+        assertTrue(near.all { it.id in movers }, "movers=$movers")
+        assertEquals(2, back.count { proposals.getValue(it.id).duty == CombatDuty.FIRE })
+    }
+
     @Test fun `small force never allocates everyone to movement waiting for nonexistent support`() {
         for (size in 1..8) {
             val result = OperationFront.propose(actors.take(size), listOf(focus), focus)

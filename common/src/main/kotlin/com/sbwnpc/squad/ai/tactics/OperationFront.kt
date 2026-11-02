@@ -46,8 +46,13 @@ object OperationFront {
         val minimumSupport = min(actors.size, max(1, actors.size / 3))
         val frontCount = min(actors.size - minimumSupport, columns * 2)
         val supportCount = min(actors.size - frontCount, max(minimumSupport, frontCount / 2))
+
         // Round-robin the squads before allocating duties, then preserve lateral order per duty.
-        val squads = actors.groupBy { it.squad }.toSortedMap(compareBy { it.toString() }).values.map { group -> group.sortedWith(compareBy<FormationActor> { it.engagementDistance }.thenBy { projection(it.position) }.thenBy { it.id.toString() }) }
+        // Among men of one reach the one nearest his row takes the front, the farther ones the
+        // support and the rear (#262): by lateral place alone a man far back ran up to the front
+        // while one already standing there was sent back to support.
+        fun offRow(actor: FormationActor) = abs((actor.position.x - origin.x) * fx + (actor.position.z - origin.z) * fz + reach + actor.engagementDistance)
+        val squads = actors.groupBy { it.squad }.toSortedMap(compareBy { it.toString() }).values.map { group -> group.sortedWith(compareBy<FormationActor> { it.engagementDistance }.thenBy(::offRow).thenBy { it.id.toString() }) }
         val balanced = (0 until squads.maxOf { it.size }).flatMap { index -> squads.mapNotNull { it.getOrNull(index) } }
         val remaining = balanced.toMutableList()
         fun take(duty: CombatDuty, count: Int): List<FormationActor> {
