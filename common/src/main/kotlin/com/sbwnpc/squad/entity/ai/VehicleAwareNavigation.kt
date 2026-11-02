@@ -326,7 +326,7 @@ class VehicleAwareNavigation(mob: Mob, level: Level) :
     }
 
     private fun investigating() =
-        (mob as? com.sbwnpc.squad.entity.NpcEntity)?.isAlert() == true &&
+        (mob as? com.sbwnpc.squad.entity.NpcEntity)?.let { com.sbwnpc.squad.combat.tactics.SquadTactics.scouting(it) } == true &&
             com.sbwnpc.squad.combat.DebugFlags.on(com.sbwnpc.squad.combat.LogGroup.PATH)
 
     /** While he's off to look at a noise: who took his path away or swapped it, from the frames above. */

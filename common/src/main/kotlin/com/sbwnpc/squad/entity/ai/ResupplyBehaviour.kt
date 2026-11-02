@@ -15,8 +15,7 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 /**
  * Before the ordinary journey in Core: low on ammunition, no one to fight and a Supply to return to — go and stand by
  * it until the block has topped the NPC up ([SupplyBlockEntity]), then let the squad order take it
- * back to whatever it was doing. [NpcActivity.RESUPPLY] keeps [SquadOrderBehaviour] and
- * [InvestigateBehaviour] off it meanwhile.
+ * back to whatever it was doing. [NpcActivity.RESUPPLY] keeps [SquadOrderBehaviour] off it meanwhile.
  *
  * A target ends it at once: the Fight activity takes over, and if the NPC is all but out by then
  * [GunAttackBehaviour] falls back on the Supply itself, firing.

@@ -67,7 +67,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var defendPostHome: Vec3? = null
 
     // No memory gate needed — eligibility is purely squad/order/target state, same as the old goal's
-    // canUse(). Unlike GunAttackBehaviour/SeekCoverBehaviour/InvestigateBehaviour, nothing here is
+    // canUse(). Unlike GunAttackBehaviour/SeekCoverBehaviour, nothing here is
     // driven by a SmartBrainLib memory.
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
@@ -78,11 +78,6 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         // errand. A dug-in mob in particular would otherwise be marched off toward its DEFEND/PATROL
         // slot, right out of its own hole, as soon as its target died or broke LOS for a moment.
         if (!entity.mayFor(NpcActivity.ORDER, Cap.FEET)) return false
-        // During a distant FOLLOW_ORDER, GunAttack already yields movement to this executor.
-        // A heard battle must not disable it too and strand the squad at its first path's end.
-        if (entity.isAlert() && !SquadTransit.marching(entity)) {
-            if (entity.retreatPoint() == null && !com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) return false
-        }
         // homeCenter() is null outside a squad too.
         return entity.homeCenter() != null
     }

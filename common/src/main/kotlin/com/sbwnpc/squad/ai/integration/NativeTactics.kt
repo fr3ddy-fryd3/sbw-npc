@@ -158,6 +158,15 @@ object NativeTactics {
 
     /** Whether [npc] has an NPC agent of either kind, full or engage-only: what ticks it. */
     fun hasAgent(npc: NpcEntity): Boolean = worlds[npc.level()]?.agents?.containsKey(AgentId(AgentLevel.NPC, npc.uuid)) == true
+
+    /** A man of [npc]'s squad heard a noise at [at]: his squad decides whether anyone goes to look (#254). */
+    fun heard(npc: NpcEntity, at: Vec3) {
+        val squad = npc.squadId ?: return
+        world(npc).heard(squad, at.point(), npc.level().gameTime)
+    }
+
+    fun scouting(npc: NpcEntity): Boolean = worlds[npc.level()]?.actions?.get(npc.uuid)?.intent?.duty == CombatDuty.SEARCH
+
     fun reposition(npc: NpcEntity) {
         world(npc).actions[npc.uuid]?.requestFireRecovery(npc.level().gameTime)
     }
@@ -329,6 +338,9 @@ object NativeTactics {
         // When each remembered position was last seen, so one nobody can reach expires.
         private val unverifiedSeen = HashMap<UUID, MutableMap<UUID, Long>>()
         private val completions = HashMap<UUID, AreaControlTask>()
+
+        // Per squad: the noises its men heard and the spots its scouts checked, see [SquadAlarms].
+        private val alarms = HashMap<UUID, SquadAlarms>()
 
         // Per squad on its way as a reinforcement: when it was last fired on, and whether it fights.
         private val reinforcementFire = HashMap<UUID, Long>()
@@ -716,6 +728,8 @@ object NativeTactics {
             if (npc != null && DroneWorld.operates(npc)) result = drones.manFacts(result, npc, teamTarget(id, npc), coversFor(npc.uuid))
             return result
         }
+        fun heard(squad: UUID, at: Point3, now: Long) = alarms.getOrPut(squad, ::SquadAlarms).heard(at, now)
+
         fun combatView(squad: UUID): TacticalSnapshot? {
             sharedViews[squad]?.let { return it }
             val own = snapshots[squad] ?: return null
@@ -774,6 +788,7 @@ object NativeTactics {
                     rallies.remove(id)
                     lastHits.remove(id)
                     lastAbove.remove(id)
+                    alarms.remove(id)
                     regroupEnds.remove(id)
                     approaches.remove(id)
                     flankable.remove(id)
@@ -1345,6 +1360,28 @@ object NativeTactics {
             return Terrain.feetAt(level, Vec3(point.x, surface.toDouble(), point.z))
         }
 
+        /**
+         * The noise [squads] send their scouts to look at, or null (#254): nothing in a fight or on a
+         * reinforcement's march ([busy]), nor under an order that sends nobody
+         * ([MemberDuties.SCOUTING_ORDERS]), nor one farther than [UnverifiedContacts.SCOUT_RADIUS] from
+         * the point the squads hold or take. A spot a scout of [scouts] has come near or sees is checked
+         * on the way, so the next one heard is the answer.
+         */
+        private fun alarmToCheck(squads: List<Squad>, scouts: Set<UUID>, busy: Boolean, anchor: () -> Point3, now: Long): Point3? {
+            if (busy || squads.first().order.tactical() !in MemberDuties.SCOUTING_ORDERS) return null
+            val boards = squads.mapNotNull { alarms[it.id] }
+            if (boards.isEmpty()) return null
+            val from = anchor()
+            val pending = { boards.firstNotNullOfOrNull { it.pending(now, from, UnverifiedContacts.SCOUT_RADIUS) } }
+            val spot = pending() ?: return null
+            val seenBy = scouts.mapNotNull { level.getEntity(it) as? NpcEntity }.firstOrNull {
+                it.position().point().horizontalDistanceSquared(spot) <= SquadAlarms.ARRIVAL * SquadAlarms.ARRIVAL || DeathSites.canConfirm(it, spot.native())
+            } ?: return spot
+            boards.forEach { it.checked(spot, now) }
+            DebugFlags.log(LogGroup.HEARING, "[htn] squad={} event=alarm_checked spot={} by={}", squads.first().id, spot, seenBy.uuid)
+            return pending()
+        }
+
         /** Geometry proposes areas; actual arrival, useful fire and native reachability remain observations. */
         private fun layout(squads: List<Squad>, now: Long, holding: Boolean = false): List<SquadMission> {
             val seen = squads.flatMap { combatView(it.id)!!.contacts }.filter { now - it.seenAt <= 200 }.distinctBy { it.id }
@@ -1370,9 +1407,15 @@ object NativeTactics {
             }
             val inspectAnchor = { UnverifiedContacts.inspectAnchor(currentAreaTask(operation)?.objective, squads.first().objective?.let { Vec3.atBottomCenterOf(it).point() }, center.point()) }
             val activeAttack = squads.firstOrNull { it.order == SquadOrder.ATTACK && it.commandOutcome == CommandOutcome.ACTIVE }?.objective?.let { Vec3.atBottomCenterOf(it).point() }
-            val inspect = UnverifiedContacts.inspectTarget(focus != null, marching, inspectAnchor, remembered.values.map { it.point() }, activeAttack)?.native()
-            val existingScouts = squads.flatMap { missions[it.id]?.teams.orEmpty() }.flatMap { it.members }.filter { it.duty == CombatDuty.SEARCH }.mapTo(HashSet()) { it.actor.id }
-            val candidates = squads.flatMap { snapshots.getValue(it.id).members }.filter { it.ready }.map { it.id to it.position.point() }
+            val previousDuties = squads.flatMap { missions[it.id]?.teams.orEmpty() }.flatMap { it.members }.associate { it.actor.id to it.duty }
+            val existingScouts = previousDuties.filterValues { it == CombatDuty.SEARCH }.keys
+            val attacking = squads.first().order == SquadOrder.ATTACK
+            val busy = focus != null || marching
+            val alarm = alarmToCheck(squads, existingScouts, busy, inspectAnchor, now)
+            // Only an attack goes looking for an enemy it saw; under any other order it is the noise alone (#254).
+            val inspect = UnverifiedContacts.inspectTarget(busy, inspectAnchor, if (attacking) remembered.values.map { it.point() } else emptyList(), alarm, activeAttack)?.native()
+            // A sentry on his height is no scout: the scout rule comes before his post and would take him off it.
+            val candidates = squads.flatMap { snapshots.getValue(it.id).members }.filter { it.ready && previousDuties[it.id] != CombatDuty.OBSERVE }.map { it.id to it.position.point() }
             val scouts = UnverifiedContacts.scouts(candidates, existingScouts, inspect?.point())
             val actors = squads.flatMap { saved ->
                 snapshots.getValue(saved.id).members.map { member ->
@@ -1859,6 +1902,7 @@ object NativeTactics {
             air.clear()
             drones.clear()
             loneOperators.clear()
+            alarms.clear()
         }
     }
 }

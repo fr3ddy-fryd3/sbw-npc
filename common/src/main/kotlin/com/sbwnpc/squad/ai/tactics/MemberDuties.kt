@@ -34,7 +34,7 @@ object MemberDuties {
 
     private val RULES = listOf(
         rule("elsewhere", { it.inputs.elsewhere || it.inputs.transit }, { CombatDuty.FOLLOW_ORDER }, { it.objectiveOrHere }),
-        rule("scout", { it.inputs.scout && it.inputs.order == TacticalOrder.ATTACK }, { CombatDuty.SEARCH }, { requireNotNull(it.inputs.inspect) { "a scout needs a point to inspect" } }),
+        rule("scout", { it.inputs.scout && it.inputs.order in SCOUTING_ORDERS }, { CombatDuty.SEARCH }, { requireNotNull(it.inputs.inspect) { "a scout needs a point to inspect" } }),
         // A sentry fights from his height, in defence and in a fight too. Sent to fire from where he
         // stood, a gunner stayed below the tower, and a sentry left it whenever a reported target
         // hid (#73). Out of ammunition for his main weapon he is no sentry, and a height is no
@@ -43,9 +43,7 @@ object MemberDuties {
         // A height post is searched round the objective, so he first marches there with the
         // squad: searched from a tower 44-155 blocks off, no post qualified and he never left
         // the tower (#166).
-        rule("sentry_post", { s ->
-            with(s.inputs) { (order == TacticalOrder.DEFEND || (order == TacticalOrder.PATROL && !hasPatrolRoute)) && heightRole && primaryAmmo && !following && takesSentryPost }
-        }, { CombatDuty.OBSERVE }, { it.objectiveOrHere }),
+        rule("sentry_post", { it.inputs.sentry }, { CombatDuty.OBSERVE }, { it.objectiveOrHere }),
         rule("no_fight", { !it.inputs.inContact || it.inputs.order in MARCHING_ORDERS }, { CombatDuty.FOLLOW_ORDER }, { it.objectiveOrHere }),
         // Following in a fight: the squad keeps up with its player by bounds, one half running
         // to its places by him while the other fires, then the other way round (owner, 21.10).
@@ -71,6 +69,13 @@ object MemberDuties {
         rule("fire_approach", { it.approach }, { CombatDuty.MOVE }, { it.approachAnchor }),
         rule("front_proposal", { true }, { it.proposal.duty }, { it.proposal.anchor }),
     )
+
+    /**
+     * The orders under which the squad sends scouts to look ([UnverifiedContacts.scouts]): at a
+     * remembered enemy in an attack, at a noise under these four (#254). Following a player,
+     * falling back or barraging, nobody leaves; they only turn towards a noise.
+     */
+    val SCOUTING_ORDERS = setOf(TacticalOrder.ATTACK, TacticalOrder.MOVE, TacticalOrder.DEFEND, TacticalOrder.PATROL)
 
     private val MARCHING_ORDERS = setOf(TacticalOrder.RETREAT, TacticalOrder.MOVE, TacticalOrder.BARRAGE)
 

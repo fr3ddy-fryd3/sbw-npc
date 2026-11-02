@@ -8,7 +8,6 @@ import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.ai.GrenadeThrowBehaviour
 import com.sbwnpc.squad.entity.ai.IdleLookAroundGoal
 import com.sbwnpc.squad.entity.ai.IdleWanderGoal
-import com.sbwnpc.squad.entity.ai.InvestigateBehaviour
 import com.sbwnpc.squad.entity.ai.MedicHealBehaviour
 import com.sbwnpc.squad.entity.ai.MortarClaims
 import com.sbwnpc.squad.entity.ai.MortarDeployment
@@ -178,14 +177,15 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         BrainUtils.setForgettableMemory(this, ModMemories.SUPPRESSING_THREAT.get(), threat, ticks.toInt())
     }
 
-    // Alertness (see InvestigateBehaviour / Alarm): a real "heard something, go check it out"
-    // reaction, distinct from actually having a target. Two sources — GunAttackBehaviour.tick()
-    // raises this on nearby allies whenever it fires (heard gunfire), and die() raises it on nearby
-    // squadmates when the killer can't be resolved as a direct TeamAwareness contact (see die()
-    // below). Backed by a SmartBrainLib TTL memory.
+    // Alertness (see Alarm): "heard something worth a look", distinct from actually having a
+    // target. Two sources — GunAttackBehaviour.tick() raises this on nearby allies whenever it fires
+    // (heard gunfire), and die() raises it on nearby squadmates when the killer can't be resolved as
+    // a direct TeamAwareness contact (see die() below). Backed by a SmartBrainLib TTL memory. Who
+    // walks over to look is the squad's decision (#254): the spot goes to it here and in [hear].
     fun isAlert(): Boolean = BrainUtils.hasMemory(this, ModMemories.ALERT_POSITION.get())
 
     fun alert(pos: Vec3) {
+        com.sbwnpc.squad.combat.tactics.SquadTactics.heard(this, pos)
         if (com.sbwnpc.squad.combat.CombatPosition.holdsPosition(currentSquad()?.order)) {
             hear(pos)
             return
@@ -205,12 +205,14 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     /**
      * An eligible noise heard at [at], including allied player gunfire — see [com.sbwnpc.squad.combat.Hearing].
-     * With nothing to fight, it turns to face the sound; and if nothing holds it where it is, goes
-     * to see. Holding means dug in, at a crew post, defending, barraging, on the move or falling
-     * back to an objective, or off to a Supply — none of those drop what they're doing for a noise.
-     * Without [goLook] it only turns: others of its squad go to look instead.
+     * His squad learns of it first, whatever he is doing: whether anyone walks over to look is its
+     * plan's decision (#254). With nothing to fight he turns to face the sound, and is marked alert
+     * if nothing holds him where he is. Holding means dug in, at a crew post, defending, barraging,
+     * on the move or falling back to an objective, or off to a Supply. Without [goLook] he only
+     * turns: he is not among the men who would be free to go.
      */
     fun hear(at: Vec3, nearbyFootstep: Boolean = false, goLook: Boolean = true) {
+        com.sbwnpc.squad.combat.tactics.SquadTactics.heard(this, at)
         val currentTarget = target
         if (currentTarget != null) {
             if (!nearbyFootstep || com.sbwnpc.squad.combat.DetectionSightline.canSee(this, currentTarget)) {
@@ -228,7 +230,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         heardUntilTick = tickCount + HEARD_LOOK_TICKS
         val holding = if (goLook) holdReason() else "others of the squad look"
         if (holding == null) alert(at)
-        logHearing(at, if (holding == null) "turns and goes to look" else "turns, holds ($holding)")
+        logHearing(at, if (holding == null) "turns, alert" else "turns, holds ($holding)")
     }
 
     /** What keeps this NPC where it is when it hears a noise, or null when it is free to go and look. */
@@ -319,9 +321,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     /** Whether an active role, vehicle, medical or tactics controller owns the look direction. */
     fun lookOwnedElsewhere(): Boolean = !may(Cap.LOOK) || vehicle != null || com.sbwnpc.squad.combat.tactics.SquadTactics.ownsLook(this)
 
-    /** Called by [com.sbwnpc.squad.entity.ai.InvestigateBehaviour] once it reaches the alert
-     *  position (or gives up navigating to it) — ends the investigation instead of waiting out the
-     *  full timer. */
+    /** Ends the alert before its timer, e.g. once he sets off for a Supply. */
     fun clearAlert() {
         BrainUtils.clearMemory(this, ModMemories.ALERT_POSITION.get())
     }
@@ -1080,13 +1080,6 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             SquadOrderBehaviour(),
             // Last: it has to override whatever the behaviours above did with the navigation.
             com.sbwnpc.squad.entity.ai.GrenadeEvadeBehaviour(),
-        )
-
-    // Investigating remains idle-only. Supply, transport and ordinary orders retain their own
-    // guards in Core, in that priority order, so remembered remote contacts do not cancel a trip.
-    override fun getIdleTasks(): net.tslat.smartbrainlib.api.core.BrainActivityGroup<NpcEntity> =
-        net.tslat.smartbrainlib.api.core.BrainActivityGroup.idleTasks(
-            InvestigateBehaviour(),
         )
 
     // Fight: only while ATTACK_TARGET is set, all running side by side. AnimatableMeleeAttack is

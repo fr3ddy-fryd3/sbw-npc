@@ -83,7 +83,6 @@ class DecisionLayerRuleTest {
             "GunAttackBehaviour" to UNAUDITED,
             "HelicopterGunnerBehaviour" to UNAUDITED,
             "HelicopterRideBehaviour" to UNAUDITED,
-            "InvestigateBehaviour" to UNAUDITED,
             "MedicHealBehaviour" to UNAUDITED,
             "OutOfAmmoBehaviour" to UNAUDITED,
             "ResupplyBehaviour" to UNAUDITED,
@@ -99,7 +98,7 @@ class DecisionLayerRuleTest {
 
         val MEMORIES = sortedMapOf(
             "SUPPRESSING_THREAT" to UNAUDITED,
-            "ALERT_POSITION" to UNAUDITED,
+            "ALERT_POSITION" to "perception: a man heard something worth a look; nothing walks on it, his squad's plan sends scouts (#254)",
             "DRONE_THREAT" to UNAUDITED,
             "DRONE_HEARD" to UNAUDITED,
         )

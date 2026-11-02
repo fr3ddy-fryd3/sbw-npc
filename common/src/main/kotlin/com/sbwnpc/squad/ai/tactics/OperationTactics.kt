@@ -86,6 +86,10 @@ data class DutyInputs(
      */
     val takesSentryPost: Boolean
         get() = wasObserving || objective?.let { hypot(position.x - it.x, position.z - it.z) <= arrival } != false
+
+    /** Whether he keeps a height post under this order, [MemberDuties]' `sentry_post`. */
+    val sentry: Boolean
+        get() = (order == TacticalOrder.DEFEND || (order == TacticalOrder.PATROL && !hasPatrolRoute)) && heightRole && primaryAmmo && !following && takesSentryPost
 }
 
 data class DutyChoice(val duty: CombatDuty, val anchor: Point3)

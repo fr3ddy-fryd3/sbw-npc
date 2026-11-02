@@ -18,7 +18,8 @@ class MemberDutiesTest {
                 val duty = when {
                     elsewhere -> CombatDuty.FOLLOW_ORDER
 
-                    scout && order == TacticalOrder.ATTACK -> CombatDuty.SEARCH
+                    // #254: a noise is looked at under DEFEND, PATROL and MOVE too.
+                    scout && order in setOf(TacticalOrder.ATTACK, TacticalOrder.MOVE, TacticalOrder.DEFEND, TacticalOrder.PATROL) -> CombatDuty.SEARCH
 
                     // A sentry fights from his height, in defence and in a fight too. Sent to fire from where he
                     // stood, a gunner stayed below the tower, and a sentry left it whenever a reported target
