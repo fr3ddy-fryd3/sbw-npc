@@ -185,11 +185,11 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     fun isAlert(): Boolean = BrainUtils.hasMemory(this, ModMemories.ALERT_POSITION.get())
 
     fun alert(pos: Vec3) {
-        com.sbwnpc.squad.combat.tactics.SquadTactics.heard(this, pos)
         if (com.sbwnpc.squad.combat.CombatPosition.holdsPosition(currentSquad()?.order)) {
             hear(pos)
             return
         }
+        com.sbwnpc.squad.combat.tactics.SquadTactics.heard(this, pos)
         val remaining = if (isAlert()) {
             BrainUtils.getTimeUntilMemoryExpires(this, ModMemories.ALERT_POSITION.get())
         } else {

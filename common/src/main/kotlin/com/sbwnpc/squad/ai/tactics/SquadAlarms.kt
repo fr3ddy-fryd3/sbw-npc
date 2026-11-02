@@ -32,6 +32,9 @@ class SquadAlarms {
         heard.keys.removeIf { near(it, at) }
     }
 
+    /** Drops every spot heard and not yet looked at, e.g. the noise of a fight the squad itself was in. */
+    fun forget() = heard.clear()
+
     /**
      * The spot to look at by [now]: the latest heard one not yet checked and, when [reach] is given,
      * within it of [anchor]. Null when there is none.

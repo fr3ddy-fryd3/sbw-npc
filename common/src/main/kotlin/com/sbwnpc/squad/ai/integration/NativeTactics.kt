@@ -165,6 +165,7 @@ object NativeTactics {
         world(npc).heard(squad, at.point(), npc.level().gameTime)
     }
 
+    /** Whether [npc]'s plan has sent him to look at a spot: his post is a SEARCH one. */
     fun scouting(npc: NpcEntity): Boolean = worlds[npc.level()]?.actions?.get(npc.uuid)?.intent?.duty == CombatDuty.SEARCH
 
     fun reposition(npc: NpcEntity) {
@@ -1362,15 +1363,16 @@ object NativeTactics {
 
         /**
          * The noise [squads] send their scouts to look at, or null (#254): nothing in a fight or on a
-         * reinforcement's march ([busy]), nor under an order that sends nobody
+         * reinforcement's march ([busy], which also forgets what was heard of it), nor while any of them is under an order that sends nobody
          * ([MemberDuties.SCOUTING_ORDERS]), nor one farther than [UnverifiedContacts.SCOUT_RADIUS] from
          * the point the squads hold or take. A spot a scout of [scouts] has come near or sees is checked
          * on the way, so the next one heard is the answer.
          */
         private fun alarmToCheck(squads: List<Squad>, scouts: Set<UUID>, busy: Boolean, anchor: () -> Point3, now: Long): Point3? {
-            if (busy || squads.first().order.tactical() !in MemberDuties.SCOUTING_ORDERS) return null
             val boards = squads.mapNotNull { alarms[it.id] }
-            if (boards.isEmpty()) return null
+            // The noise of its own fight is no spot to look at once it is over.
+            if (busy) boards.forEach { it.forget() }
+            if (busy || boards.isEmpty() || squads.any { it.order.tactical() !in MemberDuties.SCOUTING_ORDERS }) return null
             val from = anchor()
             val pending = { boards.firstNotNullOfOrNull { it.pending(now, from, UnverifiedContacts.SCOUT_RADIUS) } }
             val spot = pending() ?: return null
@@ -1409,13 +1411,16 @@ object NativeTactics {
             val activeAttack = squads.firstOrNull { it.order == SquadOrder.ATTACK && it.commandOutcome == CommandOutcome.ACTIVE }?.objective?.let { Vec3.atBottomCenterOf(it).point() }
             val previousDuties = squads.flatMap { missions[it.id]?.teams.orEmpty() }.flatMap { it.members }.associate { it.actor.id to it.duty }
             val existingScouts = previousDuties.filterValues { it == CombatDuty.SEARCH }.keys
-            val attacking = squads.first().order == SquadOrder.ATTACK
+            val attacking = squads.all { it.order == SquadOrder.ATTACK }
             val busy = focus != null || marching
             val alarm = alarmToCheck(squads, existingScouts, busy, inspectAnchor, now)
             // Only an attack goes looking for an enemy it saw; under any other order it is the noise alone (#254).
             val inspect = UnverifiedContacts.inspectTarget(busy, inspectAnchor, if (attacking) remembered.values.map { it.point() } else emptyList(), alarm, activeAttack)?.native()
-            // A sentry on his height is no scout: the scout rule comes before his post and would take him off it.
-            val candidates = squads.flatMap { snapshots.getValue(it.id).members }.filter { it.ready && previousDuties[it.id] != CombatDuty.OBSERVE }.map { it.id to it.position.point() }
+            // A sentry is no scout, on his height or still on his way to it: the scout rule comes before
+            // his post and would take him off it. A height man of a squad that keeps sentries counts as one.
+            val keepsSentries = squads.filter { it.order == SquadOrder.DEFEND || (it.order == SquadOrder.PATROL && !snapshots.getValue(it.id).hasPatrolRoute) }.mapTo(HashSet()) { it.id }
+            val candidates = squads.flatMap { saved -> snapshots.getValue(saved.id).members.filterNot { saved.id in keepsSentries && it.role in HEIGHT_ROLES && it.primaryAmmo } }
+                .filter { it.ready && previousDuties[it.id] != CombatDuty.OBSERVE }.map { it.id to it.position.point() }
             val scouts = UnverifiedContacts.scouts(candidates, existingScouts, inspect?.point())
             val actors = squads.flatMap { saved ->
                 snapshots.getValue(saved.id).members.map { member ->
