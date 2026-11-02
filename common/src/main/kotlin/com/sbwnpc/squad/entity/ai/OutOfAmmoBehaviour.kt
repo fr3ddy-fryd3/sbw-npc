@@ -47,7 +47,7 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
         return !gun.hasAmmo()
     }
 
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = empty(entity)
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = empty(entity) && MandatoryRules.may(MandatoryRule.OUT_OF_AMMO, entity)
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = empty(entity)
 
@@ -62,7 +62,8 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun tick(entity: NpcEntity) {
         val target = entity.target ?: return
         beginEpisode(entity)
-        if (entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK, NpcActivity.HEAL)) return
+        // A rule above his (#257) or his cover has him for now; his run goes on after.
+        if (entity.holdsAny(NpcActivity.COVER, NpcActivity.PEEK) || !MandatoryRules.may(MandatoryRule.OUT_OF_AMMO, entity)) return
         // A fully empty NPC can return to a known Supply even outside the ordinary search radius.
         // Ordered back with nothing to fire, he has no cover to give his squad's bounds: he runs
         // straight to his place at the rally point (owner, #253). The claim keeps his feet from

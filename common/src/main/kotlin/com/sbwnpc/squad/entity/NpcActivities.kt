@@ -14,7 +14,9 @@ enum class Cap { FEET, FIRE, LOOK }
  * Ranking applies per [Cap]: the highest kind that holds a capability owns it, a lower one is
  * suspended, not dropped, and owns it again when the higher one lets go. A kind that holds only the
  * feet leaves the trigger free. Roles rank above the movement claims because the movement
- * behaviours do not start for an NPC that has one (their eligibility lists say `busyWithRole`).
+ * behaviours do not start for an NPC that has one (their eligibility lists say `busyWithRole`);
+ * the drone reaction is the one role a live grenade ([EVADE]) outranks, as the mandatory rules
+ * order them ([com.sbwnpc.squad.entity.ai.MandatoryRule]).
  *
  * Some are held together by design: a mortar crewman serves his tube while his crew sends him on an
  * errand, and the operator may carry the tube as well.
@@ -50,9 +52,6 @@ enum class NpcActivity(val holds: Set<Cap>) {
      */
     PEEK(setOf(Cap.FEET)),
 
-    /** Running from a live grenade: [com.sbwnpc.squad.entity.ai.GrenadeEvadeBehaviour]. */
-    EVADE(setOf(Cap.FEET, Cap.FIRE)),
-
     /**
      * Holding a foxhole it dug: [com.sbwnpc.squad.entity.ai.SeekCoverBehaviour]. The man fights from
      * the hole, so the trigger stays free.
@@ -67,6 +66,14 @@ enum class NpcActivity(val holds: Set<Cap>) {
 
     /** Shooting at or running from a hostile drone: [com.sbwnpc.squad.entity.ai.AntiDroneBehaviour]. */
     ANTI_DRONE(setOf(Cap.FEET, Cap.FIRE, Cap.LOOK)),
+
+    /**
+     * Running from a live grenade: [com.sbwnpc.squad.entity.ai.GrenadeEvadeBehaviour]. Above the
+     * drone reaction, a hole and a mortar errand, as the mandatory rules rank it
+     * ([com.sbwnpc.squad.entity.ai.MandatoryRule]); below the roles that fly or crew, whose man
+     * stays at his post.
+     */
+    EVADE(setOf(Cap.FEET, Cap.FIRE)),
 
     /** Preparing or flying a drone: [com.sbwnpc.squad.ai.integration.DroneStation], driven by the strike plan (#259). */
     DRONE(setOf(Cap.FEET, Cap.FIRE, Cap.LOOK)),
@@ -143,8 +150,11 @@ class NpcActivities(private val report: (String) -> Unit = {}) {
         report("released $kind holder=$after" + if (after != null && after < kind) " resumed=$after" else "")
     }
 
-    /** Whether anybody holds [kind], owning its capabilities or suspended. */
-    fun has(kind: NpcActivity, now: Int): Boolean = holds[kind]?.let { it.until > now } == true
+    /**
+     * Whether anybody holds [kind], owning its capabilities or suspended; with [owner], anybody it
+     * accepts, which tells apart the rules that claim the same kind.
+     */
+    fun has(kind: NpcActivity, now: Int, owner: (Any) -> Boolean = { true }): Boolean = holds[kind]?.let { hold -> hold.until > now && hold.owners.any(owner) } == true
 
     /** True when nobody but [owner] holds [kind]. */
     fun freeFor(kind: NpcActivity, owner: Any): Boolean = holds[kind]?.owners.orEmpty().all { it === owner }

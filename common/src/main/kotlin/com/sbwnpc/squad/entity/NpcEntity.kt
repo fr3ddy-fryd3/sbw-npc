@@ -548,6 +548,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     /** Whether anybody holds [kind]. */
     fun holds(kind: NpcActivity): Boolean = activities?.has(kind, tickCount) == true
 
+    /** Whether an owner [owner] accepts holds [kind]: which rule holds a kind several rules claim. */
+    fun holdsBy(kind: NpcActivity, owner: (Any) -> Boolean): Boolean = activities?.has(kind, tickCount, owner) == true
+
     /** Every activity he holds now, for the decision trace. */
     fun activitiesHeld(): List<NpcActivity> = NpcActivity.entries.filter(::holds)
 

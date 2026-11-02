@@ -36,7 +36,7 @@ class ResupplyBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun free(entity: NpcEntity): Boolean =
         entity.target == null && !entity.isPassenger && !entity.busyWithRole() && !entity.holds(NpcActivity.DUG_IN) &&
-            !entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE) && entity.retreatPoint() == null
+            !entity.holds(NpcActivity.COVER) && MandatoryRules.may(MandatoryRule.RESUPPLY, entity) && entity.retreatPoint() == null
 
     private val startCheck = StartCheckThrottle(START_CHECK_INTERVAL_TICKS)
 

@@ -77,7 +77,8 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
-    private fun eligible(entity: NpcEntity): Boolean = !entity.holdsAny(NpcActivity.VEHICLE, NpcActivity.DRONE)
+    // A live grenade outranks a drone (#257): he runs from it, and takes the drone up again after.
+    private fun eligible(entity: NpcEntity): Boolean = !entity.holdsAny(NpcActivity.VEHICLE, NpcActivity.DRONE) && MandatoryRules.may(MandatoryRule.ANTI_DRONE, entity)
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
         startCheck.check(entity) {

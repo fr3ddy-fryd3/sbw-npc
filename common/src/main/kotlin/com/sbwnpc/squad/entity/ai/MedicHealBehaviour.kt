@@ -190,7 +190,8 @@ class MedicHealBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun eligible(entity: NpcEntity): Boolean =
         entity.npcClass == NpcClass.MEDIC &&
-            !entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK) && !entity.holdsAny(NpcActivity.DUG_IN, NpcActivity.VEHICLE) && candidate(entity) != null
+            MandatoryRules.may(MandatoryRule.MEDIC_HELP, entity) &&
+            !entity.holdsAny(NpcActivity.COVER, NpcActivity.PEEK) && !entity.holdsAny(NpcActivity.DUG_IN, NpcActivity.VEHICLE) && candidate(entity) != null
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = eligible(entity)
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = eligible(entity)

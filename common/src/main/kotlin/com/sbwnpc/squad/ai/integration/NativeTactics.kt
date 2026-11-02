@@ -12,6 +12,8 @@ import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.entity.ai.CoverMechanics
+import com.sbwnpc.squad.entity.ai.MandatoryRule
+import com.sbwnpc.squad.entity.ai.MandatoryRules
 import com.sbwnpc.squad.entity.ai.SquadTransit
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.SquadFaction
@@ -289,6 +291,19 @@ object NativeTactics {
 
         // Who may throw a grenade and at what (#263).
         private val grenades = GrenadeChoice(level)
+
+        // The mandatory rule each man's plan was last suspended for (#257), for the decision trace.
+        private val suspendedBy = HashMap<UUID, MandatoryRule>()
+
+        /** Notes in the decision trace the mandatory rule that takes [man]'s feet from his plan, once per rule. */
+        private fun traceRule(man: UUID, rule: MandatoryRule?, now: Long) {
+            if (rule == null) {
+                suspendedBy.remove(man)
+            } else if (suspendedBy.put(man, rule) != rule) {
+                DecisionTrace.man(man, now, "rule", "${rule.id} suspends the plan")
+                DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=rule_suspends rule={}", man, rule.id)
+            }
+        }
 
         /** Whether one of [npc]'s engage units runs now: his plan moves him. */
         fun engages(npc: NpcEntity): Boolean = agents[AgentId(AgentLevel.NPC, npc.uuid)]?.runtime?.reports?.values?.any { Engage.isUnit(it.ticket.identity) && it.status == ExecutionStatus.RUNNING } == true
@@ -744,7 +759,9 @@ object NativeTactics {
             val now = empty.now
             val npc = level.getEntity(id.id) as? NpcEntity
             val action = actions[id.id]
-            var result = empty.observe(TacticalFacts.MOVABLE, npc != null && movable(npc))
+            val mayMove = npc != null && movable(npc)
+            traceRule(id.id, npc?.takeUnless { mayMove }?.let(MandatoryRules::suspending), now)
+            var result = empty.observe(TacticalFacts.MOVABLE, mayMove)
                 .observe(TacticalFacts.COVER, goals[id]?.let(::covering) ?: false, expiresAt = now + 11)
                 .observe(TacticalFacts.ARRIVED, action?.reached() ?: false)
                 .observe(TacticalFacts.AT_POST, action?.atPost() ?: false)
@@ -1001,6 +1018,7 @@ object NativeTactics {
                 engageStates.entries.removeIf { (id, state) -> (AgentId(AgentLevel.NPC, id) !in desiredAgents).also { gone -> if (gone) state.dispose() } }
                 engageBands.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 grenades.keep { AgentId(AgentLevel.NPC, it) in desiredAgents }
+                suspendedBy.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 allocationOrigins.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 formationDuties.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 plannedContact.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
@@ -1982,6 +2000,7 @@ object NativeTactics {
             closeContacts.clear()
             retreatSmoke.clear()
             grenades.clear()
+            suspendedBy.clear()
         }
     }
 }
