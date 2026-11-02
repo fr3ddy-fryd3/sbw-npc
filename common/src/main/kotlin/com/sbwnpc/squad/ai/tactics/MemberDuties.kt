@@ -131,7 +131,7 @@ object MemberDuties {
     const val FIRE_HELD = "fire_held"
 
     /** The rules the front's own shape decides by, between which [switching] costs. */
-    private val FRONT_RULES = setOf("flank_march", "mover_settled", "mover", "fire_approach", "front_proposal", FIRE_HELD)
+    private val FRONT_RULES = setOf("mover_settled", "mover", "fire_approach", "front_proposal", FIRE_HELD)
 
     /** The rule ids in the order they are tried. */
     val ruleIds: List<String> get() = RULES.map { it.id }

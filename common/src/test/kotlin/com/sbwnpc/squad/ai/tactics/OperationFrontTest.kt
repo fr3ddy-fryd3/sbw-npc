@@ -45,6 +45,16 @@ class OperationFrontTest {
         assertEquals(2, back.count { proposals.getValue(it.id).duty == CombatDuty.FIRE })
     }
 
+    @Test fun `on an approach bearing the men nearest the line set back from the enemy take it`() {
+        // Bearing 0 puts the front east of the focus; an enemy 30 east of it sets the line back
+        // 30 more, to x=206. Three men stand on it, three by the focus itself.
+        val squad = UUID(1, 9)
+        val onLine = (0 until 3).map { FormationActor(UUID(3, it.toLong()), squad, Point3(204.0, 1.0, 30.0 + it * 2)) }
+        val byFocus = (0 until 3).map { FormationActor(UUID(2, it.toLong()), squad, Point3(140.0, 1.0, 30.0 + it * 2)) }
+        val proposals = OperationFront.propose(byFocus + onLine, listOf(Point3(150.0, 1.0, 32.0)), focus, approach = 0.0)
+        assertTrue(onLine.all { proposals.getValue(it.id).duty == CombatDuty.MOVE }, proposals.toString())
+    }
+
     @Test fun `small force never allocates everyone to movement waiting for nonexistent support`() {
         for (size in 1..8) {
             val result = OperationFront.propose(actors.take(size), listOf(focus), focus)

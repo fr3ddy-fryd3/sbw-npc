@@ -28,6 +28,11 @@ class BoundHalvesTest {
         }
     }
 
+    @Test fun `a squad of heavy guns alone still rushes its larger half first`() {
+        assertEquals(setOf(men[0]), BoundHalves.firstMoving(men.take(1), men.toSet()))
+        assertEquals(2, BoundHalves.firstMoving(men.take(3), men.toSet()).size)
+    }
+
     @Test fun `an odd squad moves the larger half first and keeps every man in one half`() {
         val five = men.take(5)
         val moving = BoundHalves.firstMoving(five, setOf(five[1], five[3]))

@@ -198,12 +198,15 @@ class MemberDutiesTest {
     @Test
     fun `a man holds a fresh fire post at the front before moving again, and switches at once for anything else`() {
         val post = Point3(0.0, 1.0, 0.0)
-        val firing = HeldDuty("mover_settled", DutyChoice(CombatDuty.FIRE, post), since = 100)
-        val move = RuledDuty("mover", DutyChoice(CombatDuty.MOVE, Point3(20.0, 1.0, 0.0)))
+        // A support post that moved just out of his reach: he would walk to it, then fire, then walk.
+        val firing = HeldDuty("front_proposal", DutyChoice(CombatDuty.FIRE, post), since = 100)
+        val move = RuledDuty("fire_approach", DutyChoice(CombatDuty.MOVE, Point3(20.0, 1.0, 0.0)))
         val held = MemberDuties.switching(firing, move, 100 + MemberDuties.FIRE_DWELL_TICKS - 1)
         assertEquals(RuledDuty(MemberDuties.FIRE_HELD, firing.choice), held)
         assertEquals(move, MemberDuties.switching(firing, move, 100 + MemberDuties.FIRE_DWELL_TICKS))
-        // A retreat, an order or a first post is never held back.
+        // A retreat, a flank the squad splits off, an order or a first post is never held back.
+        val flank = RuledDuty("flank_march", DutyChoice(CombatDuty.MOVE, Point3(0.0, 1.0, 40.0)))
+        assertEquals(flank, MemberDuties.switching(firing, flank, 101))
         val retreat = RuledDuty("retreat_run", DutyChoice(CombatDuty.MOVE, Point3(-30.0, 1.0, 0.0)))
         assertEquals(retreat, MemberDuties.switching(firing, retreat, 101))
         assertEquals(move, MemberDuties.switching(null, move, 101))

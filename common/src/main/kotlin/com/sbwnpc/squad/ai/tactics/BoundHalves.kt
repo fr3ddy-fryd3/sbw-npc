@@ -18,7 +18,9 @@ object BoundHalves {
      */
     fun firstMoving(alongFront: List<UUID>, heavy: Set<UUID>): Set<UUID> {
         val guns = alongFront.filter { it in heavy }
-        val moving = guns.filterIndexed { index, _ -> index % 2 == 1 }.toMutableSet()
+        // More guns than the firing half holds: the rest rush with the first half.
+        val firingGuns = minOf((guns.size + 1) / 2, alongFront.size / 2)
+        val moving = guns.filterIndexed { index, _ -> index % 2 == 1 || index / 2 >= firingGuns }.toMutableSet()
         var firingRoom = alongFront.size / 2 - (guns.size - moving.size)
         var movingRoom = (alongFront.size + 1) / 2 - moving.size
         alongFront.filter { it !in heavy }.forEachIndexed { index, id ->
