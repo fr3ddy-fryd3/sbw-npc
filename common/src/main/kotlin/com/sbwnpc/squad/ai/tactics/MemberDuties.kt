@@ -27,8 +27,15 @@ object MemberDuties {
     /** A retreating man this near his place at the rally point, height included, is there; the squad counts its arrival the same way. */
     const val RETREAT_ARRIVAL = 6.0
 
-    /** How far from his place a retreating man already firing there stays settled. */
-    private const val RETREAT_SETTLED = 2 * RETREAT_ARRIVAL
+    /**
+     * How far from his place a retreating man already firing there stays settled; his squad counts
+     * him arrived as far out ([com.sbwnpc.squad.squad.OrderArrival]), or a squad whose men fired from
+     * posts round their places never took its point.
+     */
+    const val RETREAT_SETTLED = 2 * RETREAT_ARRIVAL
+
+    /** The rule id of a retreating man settled at his place, firing from round it. */
+    const val RETREAT_SETTLED_RULE = "retreat_settled"
 
     private class Situation(val inputs: DutyInputs, fireReach: Double, private val approachOffset: Double) {
         val proposal = inputs.proposal
@@ -49,7 +56,7 @@ object MemberDuties {
         // round it: left a mover there, his leg never ended and every bound turn waited out its
         // timer. Once firing he stays settled a little farther out, or a post searched round his
         // place a few blocks off sent him back to it and out again.
-        rule("retreat_settled", { s ->
+        rule(RETREAT_SETTLED_RULE, { s ->
             s.inputs.retreatSlot?.let { s.inputs.position.distanceTo(it) <= if (s.inputs.wasFiring) RETREAT_SETTLED else RETREAT_ARRIVAL } == true
         }, { CombatDuty.FIRE }, { it.inputs.retreatSlot!! }),
         rule("retreat_bound", { it.inputs.retreatSlot != null && it.inputs.inContact }, { CombatDuty.MOVE }, { it.inputs.retreatSlot!! }),

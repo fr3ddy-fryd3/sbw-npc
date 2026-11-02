@@ -1,8 +1,10 @@
 package com.sbwnpc.squad.squad
 
+import com.sbwnpc.squad.ai.tactics.MemberDuties
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.SquadFormation
+import com.sbwnpc.squad.combat.tactics.SquadTactics
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.vehicle.Helicopters
 import net.minecraft.server.MinecraftServer
@@ -47,7 +49,9 @@ object OrderArrival {
                 val landed = ride == null || !Helicopters.isHelicopter(ride) || Helicopters.isGrounded(npc.level() as ServerLevel, ride)
                 landed && if (squad.order == SquadOrder.RETREAT && ride == null) {
                     val home = npc.homeCenter() ?: point
-                    npc.position().distanceTo(com.sbwnpc.squad.combat.SquadAreas.rallySlot(npc, home)) <= com.sbwnpc.squad.ai.tactics.MemberDuties.RETREAT_ARRIVAL
+                    val off = npc.position().distanceTo(com.sbwnpc.squad.combat.SquadAreas.rallySlot(npc, home))
+                    // There by the same measure his plan settles him by: at his place, or firing from round it.
+                    off <= MemberDuties.RETREAT_ARRIVAL || (off <= MemberDuties.RETREAT_SETTLED && SquadTactics.settledAtRally(npc))
                 } else {
                     SquadFormation.reachedPoint(npc, point, squad.members.size)
                 }

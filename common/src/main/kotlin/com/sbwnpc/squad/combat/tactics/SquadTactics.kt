@@ -79,6 +79,9 @@ object SquadTactics {
     /** Runs the HTN planning this NPC takes part in, once per tick for its squad and above. */
     fun tick(entity: NpcEntity) = com.sbwnpc.squad.ai.integration.NativeTactics.tick(entity)
 
+    /** Whether [entity]'s plan holds him settled at his place at the rally point, firing from round it. */
+    fun settledAtRally(entity: NpcEntity): Boolean = com.sbwnpc.squad.ai.integration.NativeTactics.settledAtRally(entity)
+
     /** Whether the NPC's current post action aims its head, so idle looking must not. */
     fun ownsLook(entity: NpcEntity): Boolean = com.sbwnpc.squad.ai.integration.NativeTactics.ownsLook(entity)
 

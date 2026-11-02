@@ -176,6 +176,9 @@ object NativeTactics {
      */
     fun travelling(npc: NpcEntity): Boolean = worlds[npc.level()]?.travelling(npc) == true
 
+    /** Whether [npc]'s plan holds him settled at his place at the rally point, firing from round it. */
+    fun settledAtRally(npc: NpcEntity): Boolean = worlds[npc.level()]?.dutyRule(npc.uuid) == MemberDuties.RETREAT_SETTLED_RULE
+
     /** Whether [npc] has an NPC agent of either kind, full or engage-only: what ticks it. */
     fun hasAgent(npc: NpcEntity): Boolean = worlds[npc.level()]?.agents?.containsKey(AgentId(AgentLevel.NPC, npc.uuid)) == true
 
@@ -1800,6 +1803,9 @@ object NativeTactics {
                 DecisionTrace.group(saved.id, level.gameTime, "squad", "journey", if (travels) "travels to its objective" else "stays to fight or arrives, contact=$contact")
             }
         }
+
+        /** The rule [man]'s duty was last chosen by, while his squad's order stands. */
+        fun dutyRule(man: UUID): String? = dutyRules[man]?.rule
 
         /** Whether [npc]'s squad travels to its objective under its current order. */
         fun travelling(npc: NpcEntity): Boolean = npc.currentSquad()?.let { journeys[it.id] == it.orderStamp } == true
