@@ -25,7 +25,7 @@ enum class StrikeSource {
     /** The focus of his squad's ATTACK. */
     FOCUS,
 
-    /** The point of his squad's ATTACK. */
+    /** The enemy his side knows nearest the point of his squad's ATTACK. */
     OBJECTIVE,
 
     /** The enemy his own team is fighting: the team's operator works for it first. */

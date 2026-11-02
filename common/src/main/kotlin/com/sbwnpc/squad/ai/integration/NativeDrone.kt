@@ -6,6 +6,7 @@ import com.sbwnpc.squad.ai.planning.ActionSpec
 import com.sbwnpc.squad.ai.planning.ActionUpdate
 import com.sbwnpc.squad.ai.planning.AgentId
 import com.sbwnpc.squad.ai.planning.FactSnapshot
+import com.sbwnpc.squad.ai.tactics.AttackPhase
 import com.sbwnpc.squad.ai.tactics.DroneFacts
 import com.sbwnpc.squad.ai.tactics.DroneHold
 import com.sbwnpc.squad.ai.tactics.StrikeDuty
@@ -53,7 +54,7 @@ internal class DroneWorld(private val level: ServerLevel) {
             else -> DroneHold.NONE
         }
 
-    /** One target per source; the focus and objective only under ATTACK, all within his launch envelope. */
+    /** One target per source; the focus and an enemy known at the objective only under ATTACK, all within his launch envelope. */
     private fun options(npc: NpcEntity, station: DroneStation, team: LivingEntity?): StrikeOptions {
         val found = LinkedHashMap<StrikeSource, StrikePoint>()
         fun offer(source: StrikeSource, target: StrikeTarget?) {
@@ -62,7 +63,7 @@ internal class DroneWorld(private val level: ServerLevel) {
         val squad = npc.currentSquad()
         if (squad?.order == SquadOrder.ATTACK) {
             squad.focusEntity?.let { (level.getEntity(it) as? LivingEntity)?.takeIf(LivingEntity::isAlive) }?.let { offer(StrikeSource.FOCUS, StrikeTarget(it.uuid, it.position())) }
-            squad.objective?.let { offer(StrikeSource.OBJECTIVE, StrikeTarget(null, it.center)) }
+            squad.objective?.let { offer(StrikeSource.OBJECTIVE, station.reportedAt(it.center, AttackPhase.OBJECTIVE_RADIUS)) }
         }
         team?.let { offer(StrikeSource.TEAM, StrikeTarget(it.uuid, it.position())) }
         // His own eyes run at their rate whether or not a source above already gave a target: they

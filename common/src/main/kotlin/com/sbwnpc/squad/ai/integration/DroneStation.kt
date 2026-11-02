@@ -220,15 +220,23 @@ internal class DroneStation(val operator: NpcEntity) {
     }
 
     /** Where his side last saw an enemy in his reach, the nearest such report: the drone's camera takes over once it is there. */
-    fun reported(): StrikeTarget? {
-        val faction = SquadTeams.factionOf(operator) ?: return null
-        val sighting = TeamAwareness.sightings(faction, level.gameTime).asSequence()
+    fun reported(): StrikeTarget? = known().minByOrNull { operator.position().distanceToSqr(it.pos) }
+
+    /**
+     * The enemy his side knows nearest [point], within [radius] of it. An ATTACK's point alone is
+     * no target: struck bare, every drone blew up on empty ground where nobody had seen anyone.
+     */
+    fun reportedAt(point: Vec3, radius: Double): StrikeTarget? = known().filter { it.pos.distanceTo(point) <= radius }.minByOrNull { it.pos.distanceToSqr(point) }
+
+    /** Every enemy his side has reported that is alive, in his reach and strikable. */
+    private fun known(): Sequence<StrikeTarget> {
+        val faction = SquadTeams.factionOf(operator) ?: return emptySequence()
+        return TeamAwareness.sightings(faction, level.gameTime).asSequence()
             .filter { s ->
                 val e = level.getEntity(s.target) as? LivingEntity
                 e != null && e.isAlive && SquadTeams.isHostile(operator, e) && inLaunchRange(s.pos) && strikable(StrikeTarget(s.target, s.pos))
             }
-            .minByOrNull { operator.position().distanceToSqr(it.pos) } ?: return null
-        return StrikeTarget(sighting.target, sighting.pos)
+            .map { StrikeTarget(it.target, it.pos) }
     }
 
     /**
@@ -694,7 +702,7 @@ internal class DroneStation(val operator: NpcEntity) {
         if (detonated) return
         detonated = true
         if (usesAddonBlast) {
-            drone?.let(Ports.drones::crash)
+            drone?.let { ExperienceAwards.blame(operator) { Ports.drones.crash(it) } }
             return
         }
         Ports.drones.explodeWarhead(level, operator, drone, at)
