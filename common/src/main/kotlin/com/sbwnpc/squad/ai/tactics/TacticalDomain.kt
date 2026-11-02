@@ -422,7 +422,8 @@ object TacticalDomain {
                     // grenade is for the fire itself (Grenades.throws).
                     Method("grenade", eligible = { intent ->
                         Condition { facts ->
-                            DroneStrike.flying(facts)?.let { return@Condition it }
+                            // An operator about to launch or flying his drone keeps to it.
+                            DroneStrike.standsAside(facts)?.let { return@Condition it }
                             val underFire = UnderFire.eligible(intent).evaluate(facts).takeIf { it == Verdict.Allowed } ?: UnderFire.inHole().evaluate(facts)
                             Grenades.throws(facts, underFire)
                         }

@@ -31,7 +31,7 @@ enum class GrenadeReason {
 
 /** A man's grenade facts, observed by the integration's grenade choice. */
 object GrenadeFacts {
-    /** Why his squad lets him throw now: [GrenadeReason.NONE] for everyone but its one chosen thrower. */
+    /** Why he would throw now, his squad's ration allowing: [GrenadeReason.NONE] for no throw. */
     val DUE = FactKey("grenade.due", GrenadeReason::class.java)
 
     /** Grenades he has thrown: each throw is a new action, not the last one carried on. */
@@ -47,8 +47,8 @@ data class GrenadeThrow(val actor: AgentId, val number: Int)
  * so a throw comes before closing in and before holding a spot to fire (owner, 2.11). The NPC level
  * chooses by conditions and order, not utility (#172).
  *
- * The throw conditions are the observation's ([GrenadeFacts.DUE]): it already names one man per
- * squad and ration window, so the whole squad does not replan for a grenade only one will throw.
+ * The throw conditions and the squad's ration are the observation's ([GrenadeFacts.DUE]): the
+ * first man whose plan throws spends the ration, and the others' facts go back.
  */
 object Grenades {
     /** The throw, carried out by the integration's executor. */

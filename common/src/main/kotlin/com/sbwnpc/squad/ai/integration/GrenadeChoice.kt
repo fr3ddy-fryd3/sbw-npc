@@ -19,6 +19,7 @@ import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity
+import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
@@ -31,34 +32,30 @@ import java.util.UUID
  * he sees, beside his launcher. A squad throws one grenade per [SQUAD_COOLDOWN_TICKS], so an ambush
  * draws an answer, not a volley; the grenadier's are not counted against it.
  *
- * Only one man of a squad is told he may throw ([GrenadeFacts.DUE]): when every man could flush the
- * same dug-in target, telling them all made the whole squad plan a throw that one would make and the
- * others give up (plan review, #263). The first to qualify holds the turn for [CLAIM_TICKS].
+ * Every man of a squad whose ration is free and who would throw is told so ([GrenadeFacts.DUE]);
+ * the first whose plan throws spends the ration and the others' facts go back. A turn given to one
+ * man ahead of his plan went to men under fire or in their hole, whose plans refuse a flush, and
+ * kept the man who could throw waiting (diff review, #263).
  */
 internal class GrenadeChoice(private val level: ServerLevel) {
     private val aims = GrenadeAims(level)
 
-    private class Turn(val man: UUID, val since: Long)
-
     private val hands = HashMap<UUID, Hand>()
     private val lastSquadThrow = HashMap<UUID, Long>()
-    private val turns = HashMap<UUID, Turn>()
 
     /** [npc]'s grenade facts at [now]: why he throws, if his squad lets him, and how many he has thrown. */
     fun observe(facts: FactSnapshot, npc: NpcEntity, now: Long): FactSnapshot {
         val hand = hands.getOrPut(npc.uuid) { Hand(npc) }
         val aim = aims.aim(npc, hand, now)
         hand.aim = aim
-        // A man who no longer would throw hands his squad's turn on at once.
-        if (aim == null) npc.squadId?.let { squad -> if (turns[squad]?.man == npc.uuid) turns.remove(squad) }
-        val reason = aim?.takeIf { mayThrow(npc, now) }?.reason ?: GrenadeReason.NONE
+        val reason = aim?.takeIf { rationFree(npc, now) }?.reason ?: GrenadeReason.NONE
         return facts.observe(GrenadeFacts.DUE, reason).observe(GrenadeFacts.THROWN, hand.thrown)
     }
 
     /** The throw [npc]'s plan chose, carried out on the aim observed for it. */
     fun action(npc: NpcEntity): ActionExecution = Throw(npc)
 
-    /** Keeps only the men [planned] still holds an agent for; a turn of one gone runs out by itself. */
+    /** Keeps only the men [planned] still holds an agent for. */
     fun keep(planned: (UUID) -> Boolean) {
         hands.keys.removeIf { !planned(it) }
     }
@@ -66,47 +63,48 @@ internal class GrenadeChoice(private val level: ServerLevel) {
     /** [squad] is gone. */
     fun forgetSquad(squad: UUID) {
         lastSquadThrow.remove(squad)
-        turns.remove(squad)
     }
 
     fun clear() {
         hands.clear()
         lastSquadThrow.clear()
-        turns.clear()
     }
 
-    /** Whether [npc]'s squad lets him throw at [now]: its ration is free and the turn is his. */
-    private fun mayThrow(npc: NpcEntity, now: Long): Boolean {
+    /** Whether [npc]'s squad's ration lets him throw at [now]; a grenadier's own throws are not counted against it. */
+    private fun rationFree(npc: NpcEntity, now: Long): Boolean {
         if (npc.npcClass == NpcClass.GRENADIER) return true
         val squad = npc.squadId ?: return true
-        if (lastSquadThrow[squad]?.let { now - it < SQUAD_COOLDOWN_TICKS } == true) return false
-        val turn = turns[squad]?.takeIf { now - it.since <= CLAIM_TICKS && it.man != npc.uuid }
-        if (turn != null) return false
-        if (turns[squad]?.man != npc.uuid) turns[squad] = Turn(npc.uuid, now)
-        return true
+        return lastSquadThrow[squad]?.let { now - it >= SQUAD_COOLDOWN_TICKS } != false
     }
 
     /** One throw: on the aim observed for it, a grenadier's led from where his target is now. */
     private inner class Throw(private val npc: NpcEntity) : ActionExecution {
         override fun start(now: Long): ActionUpdate {
-            val hand = hands[npc.uuid] ?: return ActionUpdate.Failed("no_hand")
-            val aim = hand.aim?.takeIf { now - it.tick <= AIM_TICKS } ?: return ActionUpdate.Failed("no_aim")
-            val target = npc.target
+            val hand = hands[npc.uuid]
+            val aim = hand?.aim?.takeIf { now - it.tick <= AIM_TICKS } ?: return refused("no_aim")
+            val target = npc.target?.takeIf { it.isAlive }
             val point = if (aim.reason == GrenadeReason.GRENADIER && target != null) target.boundingBox.center else aim.point
             val velocity = if (aim.reason == GrenadeReason.GRENADIER && target != null) target.deltaMovement else aim.velocity
             npc.navigation.stop()
-            if (!GrenadeThrower.throwAt(npc, level, point, aim.kind, velocity)) return ActionUpdate.Failed("throw_blocked")
+            if (!GrenadeThrower.throwAt(npc, level, point, aim.kind, velocity)) return refused("throw_blocked")
             hand.thrown++
             hand.aim = null
-            hand.nextThrowTick = npc.tickCount + if (aim.reason == GrenadeReason.GRENADIER) GRENADIER_COOLDOWN_TICKS + npc.random.nextInt(GRENADIER_COOLDOWN_JITTER) else SELF_COOLDOWN_TICKS
-            if (aim.reason != GrenadeReason.GRENADIER) {
-                npc.squadId?.let { squad ->
-                    lastSquadThrow[squad] = now
-                    turns.remove(squad)
-                }
-            }
+            npc.grenadeReadyTick = npc.tickCount + if (aim.reason == GrenadeReason.GRENADIER) GRENADIER_COOLDOWN_TICKS + npc.random.nextInt(GRENADIER_COOLDOWN_JITTER) else SELF_COOLDOWN_TICKS
+            if (aim.reason != GrenadeReason.GRENADIER) npc.squadId?.let { lastSquadThrow[it] = now }
             DebugFlags.log(LogGroup.GRENADE, "[htn] actor={} event=grenade_thrown reason={} kind={}", npc.uuid, aim.reason, aim.kind)
-            return ActionUpdate.Completed(emptyList<ActionEvidence>())
+            return ActionUpdate.Completed(listOf(ActionEvidence("grenade_thrown", now, "${npc.uuid}:${hand.thrown}")))
+        }
+
+        /**
+         * A throw that could not be made waits out [RETRY_TICKS] before he is told to throw again:
+         * his facts then change, and his plan falls back to his duty or engage. Kept due, it
+         * stood on a failed throw with nothing to replan it.
+         */
+        private fun refused(reason: String): ActionUpdate {
+            hands[npc.uuid]?.aim = null
+            npc.grenadeReadyTick = npc.tickCount + RETRY_TICKS
+            DebugFlags.log(LogGroup.GRENADE, "[htn] actor={} event=grenade_refused reason={}", npc.uuid, reason)
+            return ActionUpdate.Failed(reason)
         }
 
         override fun tick(now: Long): ActionUpdate = ActionUpdate.Failed("throw_over")
@@ -126,8 +124,8 @@ internal class GrenadeChoice(private val level: ServerLevel) {
         /** One grenade per squad per this, 6 s. */
         const val SQUAD_COOLDOWN_TICKS = 120L
 
-        /** How long the man whose turn it is keeps it without throwing, 2 s. */
-        const val CLAIM_TICKS = 40L
+        /** After a throw that could not be made, 1 s. */
+        const val RETRY_TICKS = 20
 
         /** An aim this old is still thrown at: planning the throw takes a tick or three. */
         const val AIM_TICKS = 10L
@@ -139,7 +137,6 @@ private class Aim(val point: Vec3, val kind: GrenadeKind, val velocity: Vec3, va
 
 /** One man's clocks and his last aim. */
 private class Hand(npc: NpcEntity) {
-    var nextThrowTick = 0
     var nextClusterScanTick = 0
     var thrown = 0
     var aim: Aim? = null
@@ -154,7 +151,7 @@ private class GrenadeAims(private val level: ServerLevel) {
     /** What [npc] would throw at [now], and why, or null while he may not or need not. */
     fun aim(npc: NpcEntity, hand: Hand, now: Long): Aim? {
         val ready = npc.isAlive && npc.hasGrenade
-        if (!ready || npc.busyWithRole() || npc.tickCount < hand.nextThrowTick) return null
+        if (!ready || npc.busyWithRole() || npc.tickCount < npc.grenadeReadyTick) return null
         return if (npc.npcClass == NpcClass.GRENADIER) grenadierAim(npc, now) else reserveAim(npc, hand, now)
     }
 
@@ -215,7 +212,7 @@ private class GrenadeAims(private val level: ServerLevel) {
      * [CLUSTER_SCAN_TICKS]: it is an area query and some line-of-sight checks, per man.
      */
     private fun clusterPoint(npc: NpcEntity, hand: Hand): Vec3? {
-        if (npc.tickCount < hand.nextClusterScanTick) return hand.aim?.takeIf { it.reason == GrenadeReason.BUNCH }?.point
+        if (npc.tickCount < hand.nextClusterScanTick) return hand.aim?.takeIf { it.reason == GrenadeReason.BUNCH }?.point?.takeIf { stillBunched(npc, it) }
         hand.nextClusterScanTick = npc.tickCount + CLUSTER_SCAN_TICKS
         val reach = GrenadeThrower.MAX_RANGE + CLUSTER_RADIUS
         val enemies = level.getEntitiesOfClass(LivingEntity::class.java, npc.boundingBox.inflate(reach, BUNCH_HEIGHT, reach)) {
@@ -231,6 +228,15 @@ private class GrenadeAims(private val level: ServerLevel) {
             .filter { (_, middle) -> GrenadeThrower.inRange(npc.position(), middle) }
             .maxByOrNull { it.first }?.second
     }
+
+    /**
+     * Whether a bunch found by the last scan is still at [point]: kept between scans so the fact
+     * does not come and go with the scan clock, but never thrown where the bunch has died or moved.
+     */
+    private fun stillBunched(npc: NpcEntity, point: Vec3): Boolean =
+        level.getEntitiesOfClass(LivingEntity::class.java, AABB.ofSize(point, CLUSTER_RADIUS * 2, BUNCH_HEIGHT, CLUSTER_RADIUS * 2)) {
+            it.isAlive && npc.isEnemy(it) && it.distanceToSqr(point) <= CLUSTER_RADIUS * CLUSTER_RADIUS
+        }.size >= CLUSTER_SIZE
 
     /** Seen, not merely known of: in view and noticed, by his own spotting time or by his squad's contact. */
     private fun noticed(npc: NpcEntity, hand: Hand, enemy: LivingEntity): Boolean {

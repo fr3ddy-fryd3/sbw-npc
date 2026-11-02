@@ -389,6 +389,13 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     /** Smoke grenades carried, thrown to cover a withdrawal, see [com.sbwnpc.squad.combat.SmokeScreen]. */
     var smokeLeft = 0
 
+    /**
+     * His own tick from which he may throw a grenade again ([com.sbwnpc.squad.ai.integration.GrenadeChoice]).
+     * On the man, not his plan: his plan comes and goes with his fights, and a cooldown kept there
+     * started over each time.
+     */
+    var grenadeReadyTick = 0
+
     /** Which grenade to throw now, or null with none left: the RGO while defending or falling
      *  back, the RGN otherwise — and whichever is left when that one has run out. */
     fun grenadeToThrow(): com.sbwnpc.squad.domain.port.GrenadeKind? {
