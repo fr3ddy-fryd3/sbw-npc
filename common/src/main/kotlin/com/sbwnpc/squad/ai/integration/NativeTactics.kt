@@ -1328,6 +1328,8 @@ object NativeTactics {
             val operation = callOff.operation
             val attacking = attacking(operation).mapTo(HashSet()) { it.id }
             val squads = callOff.squads.filter { it in attacking }.mapNotNull(manager::get)
+            // Already carried out (the plan ran again), or its squads left the attack meanwhile.
+            if (squads.isEmpty()) return ActionUpdate.Completed(listOf(ActionEvidence("attack_already_left", now)))
             squads.forEach { squad ->
                 val fallBack = callOff.fallBacks[squad.id]
                 manager.withdraw(squad.id, "attack_strength")
