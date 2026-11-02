@@ -37,7 +37,7 @@ import net.tslat.smartbrainlib.util.BrainUtils
  * fire on its current target before ducking back in, repeating for as long as it stays suppressed.
  *
  * Drives the [NpcActivity.COVER] claim. While it is absent (the PEEKING window),
- * the cover and evade claims are not held, so `GunAttackBehaviour`/`GrenadeThrowBehaviour` take
+ * the cover and evade claims are not held, so `GunAttackBehaviour` and the plan take
  * movement, aim and fire back for that window; this behaviour only steps the mob out toward its
  * target for the peek and otherwise keeps out of the way.
  *

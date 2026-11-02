@@ -232,7 +232,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (canShootTarget || foliageHidden) {
             entity.blockedSightSince = null
         } else if (entity.blockedSightSince == null) {
-            // Stamped once, on the tick sight was lost — GrenadeUseBehaviour measures from here.
+            // Stamped once, on the tick sight was lost — the plan's grenade choice measures from here.
             entity.blockedSightSince = entity.tickCount
         }
         // Losing sight starts the aim over.

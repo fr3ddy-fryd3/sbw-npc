@@ -286,6 +286,9 @@ object NativeTactics {
         // His engage facts' band memory, dropped with his agent like [engageStates].
         private val engageBands = HashMap<UUID, EngageBands>()
 
+        // Who may throw a grenade and at what (#263).
+        private val grenades = GrenadeChoice(level)
+
         /** Whether one of [npc]'s engage units runs now: his plan moves him. */
         fun engages(npc: NpcEntity): Boolean = agents[AgentId(AgentLevel.NPC, npc.uuid)]?.runtime?.reports?.values?.any { Engage.isUnit(it.ticket.identity) && it.status == ExecutionStatus.RUNNING } == true
 
@@ -462,6 +465,15 @@ object NativeTactics {
                 },
             )
 
+        /** A grenade throw (#263), on the aim [GrenadeChoice] observed for it. */
+        private fun grenadeBinding() =
+            listOf(
+                ActionBinding(Grenades.ACTION) { ticket, call ->
+                    require(ticket.owner.agent == call.actor)
+                    grenades.action(requireNotNull(level.getEntity(call.actor.id) as? NpcEntity))
+                },
+            )
+
         /** A crewman's duty (#258), run on his own [CrewHand]. */
         private fun crewBinding() =
             listOf(
@@ -548,7 +560,7 @@ object NativeTactics {
                             require(ticket.owner.agent == pause.actor)
                             firePause(pause, requireNotNull(level.getEntity(pause.actor.id) as? NpcEntity))
                         },
-                    ) + coverBindings() + engageBinding() + crewBinding() + airBindings() + droneBinding() + listOf(
+                    ) + coverBindings() + engageBinding() + grenadeBinding() + crewBinding() + airBindings() + droneBinding() + listOf(
                         ActionBinding(TacticalDomain.POSITION) { ticket, intent ->
                             require(ticket.owner.agent == intent.actor)
                             val original = goals[intent.actor] ?: intent
@@ -740,10 +752,16 @@ object NativeTactics {
                 .observe(TacticalFacts.SUPPORT_FIRING, supportFiring(id, now), expiresAt = now + 11)
             failures[id.id]?.let { failure -> result = result.observe(TacticalFacts.POST_FAILURE, failure, observedAt = failure.failedAt, expiresAt = failure.failedAt + FAILURE_MEMORY_TICKS) }
             result = coverFacts(result, npc, now)
-            if (npc != null) result = EngageFacts.observe(result, npc, engageOf(npc), engageBands.getOrPut(npc.uuid, ::EngageBands), now)
-            if (npc != null && fireSupport.roster.unitOf(npc.uuid) != null) result = fireSupport.manFacts(result, npc)
-            if (npc != null && air.roster.unitOf(npc.uuid) != null) result = air.manFacts(result, npc)
-            if (npc != null && DroneWorld.operates(npc)) result = drones.manFacts(result, npc, teamTarget(id, npc), coversFor(npc.uuid))
+            return if (npc != null) manFacts(result, id, npc, now) else result
+        }
+
+        /** What [npc]'s own fight, grenades and role add to his facts. */
+        private fun manFacts(facts: FactSnapshot, id: AgentId, npc: NpcEntity, now: Long): FactSnapshot {
+            var result = EngageFacts.observe(facts, npc, engageOf(npc), engageBands.getOrPut(npc.uuid, ::EngageBands), now)
+            result = grenades.observe(result, npc, now)
+            if (fireSupport.roster.unitOf(npc.uuid) != null) result = fireSupport.manFacts(result, npc)
+            if (air.roster.unitOf(npc.uuid) != null) result = air.manFacts(result, npc)
+            if (DroneWorld.operates(npc)) result = drones.manFacts(result, npc, teamTarget(id, npc), coversFor(npc.uuid))
             return result
         }
         fun heard(squad: UUID, at: Point3, now: Long) = alarms.getOrPut(squad, ::SquadAlarms).heard(at, now)
@@ -807,6 +825,7 @@ object NativeTactics {
                     lastHits.remove(id)
                     closeContacts.remove(id)
                     retreatSmoke.forget(id)
+                    grenades.forgetSquad(id)
                     lastAbove.remove(id)
                     alarms.remove(id)
                     regroupEnds.remove(id)
@@ -981,6 +1000,7 @@ object NativeTactics {
                 // Nor a firing spot nobody would release.
                 engageStates.entries.removeIf { (id, state) -> (AgentId(AgentLevel.NPC, id) !in desiredAgents).also { gone -> if (gone) state.dispose() } }
                 engageBands.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
+                grenades.keep { AgentId(AgentLevel.NPC, it) in desiredAgents }
                 allocationOrigins.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 formationDuties.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 plannedContact.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
@@ -1011,7 +1031,7 @@ object NativeTactics {
                 val agentId = AgentId(AgentLevel.NPC, id)
                 desired += agentId
                 val fresh = agentId !in agents
-                ensure(agentId).command(engager.command, TacticalDomain.ENGAGE_TASK.call(EngageTask(agentId)), facts(agentId, now))
+                ensure(agentId).command(engager.command, TacticalDomain.FIGHT_TASK.call(EngageTask(agentId)), facts(agentId, now))
                 if (fresh) DecisionTrace.man(id, now, "agent", "engager")
             }
         }
@@ -1959,6 +1979,7 @@ object NativeTactics {
             alarms.clear()
             closeContacts.clear()
             retreatSmoke.clear()
+            grenades.clear()
         }
     }
 }

@@ -402,8 +402,11 @@ object TacticalDomain {
     private val LEG = TaskKey("npc.leg", MemberLeg::class.java)
     private val PAUSE = TaskKey("npc.fire_pause", FirePause::class.java)
 
-    /** A man in contact whose movement nothing else commands; also the root of an engage-only agent. */
+    /** A man in contact whose movement nothing else commands. */
     val ENGAGE_TASK = TaskKey("npc.engage", EngageTask::class.java)
+
+    /** The root of an engage-only agent: a grenade his squad lets him throw, else his engage (#263). */
+    val FIGHT_TASK = TaskKey("npc.fight", EngageTask::class.java)
 
     /** One unit of the move his engage chose, see [EngageUnit]. */
     val ENGAGE = ActionKey("npc.engage_unit", EngageUnit::class.java)
@@ -414,6 +417,16 @@ object TacticalDomain {
             CompoundTask(
                 NPC,
                 listOf(
+                    // A grenade his squad lets him throw comes before his duty and his engage
+                    // (#263); a man under fire or in his hole answers that first unless the
+                    // grenade is for the fire itself (Grenades.throws).
+                    Method("grenade", eligible = { intent ->
+                        Condition { facts ->
+                            DroneStrike.flying(facts)?.let { return@Condition it }
+                            val underFire = UnderFire.eligible(intent).evaluate(facts).takeIf { it == Verdict.Allowed } ?: UnderFire.inHole().evaluate(facts)
+                            Grenades.throws(facts, underFire)
+                        }
+                    }, decompose = { intent, facts -> TaskNetwork.sequence(Grenades.next(intent.actor, facts)) }),
                     // Under fire, or in the hole he dug, the man answers that first; every method
                     // below stands aside meanwhile (UnderFire.duty), so exactly one family applies.
                     // A drone in the air keeps him at its monitor through all of it (DroneStrike.flying).
@@ -542,6 +555,15 @@ object TacticalDomain {
                     Method("hold_in_hole", eligible = { _ -> UnderFire.holdHole() }, decompose = { intent, facts -> TaskNetwork.sequence(HOLD_HOLE_TASK.call(HoldHole(intent.actor, facts.value(TacticalFacts.DIGS)!!))) }),
                 ),
             ),
+            CompoundTask(
+                FIGHT_TASK,
+                listOf(
+                    // An engage-only man has no cover or hole of his own in his plan to answer first.
+                    Method("grenade", eligible = { _ -> Condition { facts -> Grenades.throws(facts, Verdict.Rejected("no_under_fire_plan")) } }, decompose = { task, facts -> TaskNetwork.sequence(Grenades.next(task.actor, facts)) }),
+                    Method("engage", eligible = { _ -> Condition.ALWAYS }, decompose = { task, _ -> TaskNetwork.sequence(ENGAGE_TASK.call(task)) }),
+                ),
+            ),
+            Grenades.task(),
             CompoundTask(
                 ENGAGE_TASK,
                 Engage.ORDER.map { move ->

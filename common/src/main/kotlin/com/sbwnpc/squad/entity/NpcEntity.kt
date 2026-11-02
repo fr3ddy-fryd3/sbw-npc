@@ -5,7 +5,6 @@ import com.sbwnpc.squad.compat.NpcEntityBase
 import com.sbwnpc.squad.compat.VersionCompat
 import com.sbwnpc.squad.config.Settings
 import com.sbwnpc.squad.domain.port.Ports
-import com.sbwnpc.squad.entity.ai.GrenadeThrowBehaviour
 import com.sbwnpc.squad.entity.ai.IdleLookAroundGoal
 import com.sbwnpc.squad.entity.ai.IdleWanderGoal
 import com.sbwnpc.squad.entity.ai.MedicHealBehaviour
@@ -564,7 +563,7 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     /** Tick at which this NPC last lost sight of its target, or null while it can see it. Stamped
      *  by [com.sbwnpc.squad.entity.ai.GunAttackBehaviour], read by
-     *  [com.sbwnpc.squad.entity.ai.GrenadeUseBehaviour] to tell "behind cover" from "behind a tree
+     *  [com.sbwnpc.squad.ai.integration.GrenadeChoice] to tell "behind cover" from "behind a tree
      *  for a moment". Combat-moment state, not persisted. */
     var blockedSightSince: Int? = null
 
@@ -1091,11 +1090,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             // Gun empty: run from the target rather than stand facing it (GunAttack stands down).
             com.sbwnpc.squad.entity.ai.OutOfAmmoBehaviour(),
             net.tslat.smartbrainlib.api.core.behaviour.custom.attack.AnimatableMeleeAttack<NpcEntity>(20),
-            GrenadeThrowBehaviour(),
-            com.sbwnpc.squad.entity.ai.GrenadeUseBehaviour(),
         )
 
-    // Also used by GrenadeUseBehaviour, hence internal not private.
+    // Also used by the plan's grenade choice, hence internal not private.
     internal fun isEnemy(other: LivingEntity): Boolean {
         if (other !is NpcEntity && other !is Player && other !is net.minecraft.world.entity.Mob) return false
         if (other is Player && (other.isCreative || other.isSpectator)) return false
@@ -1151,9 +1148,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
         // Two RGN and two RGO per fighter, crews excepted (they aren't a combat-suppression role)
         // — per user request. Counted, NOT visible offhand items — user feedback: holding a
-        // physical grenade in the offhand looked wrong (both hands full). Thrown by
-        // GrenadeUseBehaviour, the grenadier's GrenadeThrowBehaviour and SeekCoverBehaviour's
-        // post-dig throw, all from these same counts.
+        // physical grenade in the offhand looked wrong (both hands full). Thrown by the plan's
+        // grenade throws (GrenadeChoice) and SeekCoverBehaviour's post-dig throw, all from these
+        // same counts.
         rgnLeft = if (carriesGrenades()) GRENADES_OF_EACH else 0
         rgoLeft = rgnLeft
         smokeLeft = if (carriesGrenades()) SMOKE_GRENADES else 0
