@@ -29,6 +29,7 @@ internal object GameTestGroups {
             WithdrawalGameTests::class.java,
             AttackDeploymentGameTests::class.java,
             TerrainAttackGameTests::class.java,
+            HeightMenGameTests::class.java,
         ),
         "posts" to listOf(
             TacticalSearchGameTests::class.java,
@@ -48,6 +49,7 @@ internal object GameTestGroups {
             AllyDeathGameTests::class.java,
             SidearmGameTests::class.java,
             PlannedCoverGameTests::class.java,
+            WoundedCoverGameTests::class.java,
             PlannedEngageGameTests::class.java,
             EngageOnlyGameTests::class.java,
             AmmunitionTacticsGameTests::class.java,
