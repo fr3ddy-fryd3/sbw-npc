@@ -1,5 +1,7 @@
 package com.sbwnpc.squad.gametest
 
+import com.sbwnpc.squad.combat.DebugFlags
+import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.ai.SquadTransit
@@ -101,6 +103,8 @@ object SquadTransitPriorityGameTests {
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 200, batch = "transit-left-behind")
     fun manLeftBehindTakesHisSquadsVehicleBeforeANearerFreeOne(helper: GameTestHelper) {
         val scene = CombatIdleGameTests.Scene(helper, "transit-left-behind")
+        val oldGroups = DebugFlags.enabledGroups
+        DebugFlags.enabledGroups = oldGroups + setOf(LogGroup.VEHICLE, LogGroup.ORDER)
         val manager = SquadManager.get(helper.level)
         val driver = scene.spawn(Vec3(45.5, 1.0, 20.5))
         val straggler = scene.spawn(Vec3(20.5, 1.0, 20.5))
@@ -119,6 +123,7 @@ object SquadTransitPriorityGameTests {
             squads.ejectPassengers()
             squads.discard()
             nearer.discard()
+            DebugFlags.enabledGroups = oldGroups
         }
         helper.assertTrue(driver.startRiding(squads, true), "Could not seat the squad's driver")
         manager.issueOrderAt(helper.level, squad.id, SquadOrder.ATTACK, helper.absolutePos(BlockPos(220, 1, 20)))

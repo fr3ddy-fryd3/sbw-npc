@@ -690,9 +690,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             !member.isAlive || member.vehicle != null || member.distanceToSqr(vehicle) > SEARCH_RADIUS * SEARCH_RADIUS ||
                 // A boat seats few: whoever isn't coming along is swimming, not late.
                 (boat && !member.holds(NpcActivity.VEHICLE)) ||
-                // On land his squad said who rides here (#255); the rest are in other vehicles or walk.
-                // Once it stops travelling it gives out no seats, and he sets off with whoever is aboard.
-                (!boat && NativeTactics.seatOf(member)?.vehicle != vehicle.uuid)
+                (!boat && !awaited(member, vehicle))
         }
         val timedOut = entity.tickCount - waitStartTick > WAIT_TIMEOUT_TICKS
         if (allAccountedFor || timedOut) {
@@ -712,6 +710,19 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             groundTravelProgress.reset(entity.tickCount, vehicle.position())
             phase = Phase.DRIVING
         }
+    }
+
+    /**
+     * Whether a driver on land waits for [member] (#255): his squad gave him a seat in [vehicle], or is
+     * still working its seats out. Those come a moment after the order, and a driver who read "no
+     * seat here" in that moment drove off from the man walking to him. Once the squad stops
+     * travelling it gives out no seats, and the driver sets off with whoever is aboard. A crewman
+     * with his own vehicle is no rider of the squad's and is never given a seat.
+     */
+    private fun awaited(member: NpcEntity, vehicle: Entity): Boolean {
+        if (member.assignedVehicleId != null || !NativeTactics.travelling(member)) return false
+        val seat = NativeTactics.seatOf(member) ?: return !NativeTactics.walks(member)
+        return seat.vehicle == vehicle.uuid
     }
 
     private fun tickDriving(entity: NpcEntity) {
