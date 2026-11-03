@@ -44,6 +44,9 @@ object NativeTactics {
     /** A man's close duty options are logged at most this often, 5 s. */
     private const val CLOSE_DUTY_LOG_TICKS = 100L
 
+    /** How often a travelling squad looks again for seats while a man still has none: as each man did before (#255). */
+    private const val SEAT_CHECK_TICKS = 20L
+
     /** Seen enemies this close to an attacked area keep it from counting as held. */
     private const val AREA_THREAT_RADIUS = 128.0
 
@@ -185,6 +188,17 @@ object NativeTactics {
      */
     fun travelling(npc: NpcEntity): Boolean = worlds[npc.level()]?.travelling(npc) == true
 
+    /** The seat in a ground vehicle [npc]'s travelling squad gave him ([SeatAllocation], #255), if any. */
+    fun seatOf(npc: NpcEntity): RideSeat? = worlds[npc.level()]?.seatOf(npc)
+
+    /** Whether [npc]'s travelling squad has no seat for him and he walks its journey. */
+    fun walks(npc: NpcEntity): Boolean = worlds[npc.level()]?.walks(npc) == true
+
+    /** [npc] could not board the seat his squad gave him in [vehicle]; see [World.seatRefused]. */
+    fun seatRefused(npc: NpcEntity, vehicle: UUID) {
+        worlds[npc.level()]?.seatRefused(npc, vehicle)
+    }
+
     /** Whether [npc]'s plan holds him settled at his place at the rally point, firing from round it. */
     fun settledAtRally(npc: NpcEntity): Boolean = worlds[npc.level()]?.dutyRule(npc.uuid) == MemberDuties.RETREAT_SETTLED_RULE
 
@@ -284,6 +298,9 @@ object NativeTactics {
     private class SlotSight(val slot: Point3, val sighted: FireSlotSight.Sighted?, val searchedAt: Long) {
         fun answers(anchor: Point3, now: Long) = FireSlotSight.stillAnswers(hypot(slot.x - anchor.x, slot.z - anchor.z), sighted != null, now - searchedAt)
     }
+
+    /** A squad's [seats] for its journey under order [stamp], and by man the vehicles he failed to board. */
+    private data class SquadRide(val stamp: Int, val seats: SeatPlan, val refused: Map<UUID, Set<UUID>> = emptyMap())
 
     private class World(val level: ServerLevel) {
         val pendingDeaths = HashMap<UUID, PendingDeath>()
@@ -445,6 +462,18 @@ object NativeTactics {
          * order, the squad's end or the squad's own update deciding otherwise.
          */
         private val journeys = HashMap<UUID, Int>()
+
+        /**
+         * A travelling squad's seats as its plan gave them out ([TacticalDomain.BOARD], #255), with
+         * the vehicles each man failed to board. Only the plan's board action writes the seats.
+         */
+        private val rides = HashMap<UUID, SquadRide>()
+
+        /** The seats each travelling squad's men are due, worked out from [rides] for its plan ([TacticalFacts.SEATS]). */
+        private val seatsDue = HashMap<UUID, SeatPlan>()
+
+        /** When each travelling squad's seats are next worked out. */
+        private val seatChecks = HashMap<UUID, Long>()
 
         private val retreatSmoke = RetreatSmoke(level)
 
@@ -617,6 +646,28 @@ object NativeTactics {
                                 override fun cancel(now: Long, reason: String) = Unit
                             }
                         },
+                        ActionBinding(TacticalDomain.BOARD) { ticket, boarding ->
+                            require(ticket.owner.agent == AgentId(AgentLevel.SQUAD, boarding.squad))
+                            object : ActionExecution {
+                                private var seats = boarding.seats
+                                private fun publish(): ActionUpdate {
+                                    board(boarding.squad, seats)
+                                    return ActionUpdate.Running
+                                }
+                                override fun start(now: Long) = publish()
+                                override fun tick(now: Long) = publish()
+                                override fun revise(spec: ActionSpec<*>, now: Long): Boolean {
+                                    seats = (spec.parameters as? Boarding)?.takeIf { it.squad == boarding.squad }?.seats ?: return false
+                                    publish()
+                                    return true
+                                }
+                                override fun suspend(now: Long, reason: String) = Unit
+                                override fun resume(now: Long) = Unit
+                                override fun cancel(now: Long, reason: String) {
+                                    rides.remove(boarding.squad)
+                                }
+                            }
+                        },
                         ActionBinding(DelegationAction.KEY) { ticket, task -> DelegationAction(ticket, task, ledger) },
                         ActionBinding(TacticalDomain.FIRE_PAUSE) { ticket, pause ->
                             require(ticket.owner.agent == pause.actor)
@@ -750,6 +801,7 @@ object NativeTactics {
             boundTurns[id]?.let { result = result.observe(TacticalFacts.BOUND_TURN, it.turn) }
             rallies[id]?.let { result = result.observe(TacticalFacts.RALLY, it) }
             if (id in journeys) result = result.observe(TacticalFacts.TRAVELLING, true)
+            seatsDue[id]?.let { result = result.observe(TacticalFacts.SEATS, it) }
             approaches[id]?.let { result = result.observe(TacticalFacts.APPROACH, it) }
             strategies[id]?.let { (strategy, since) ->
                 result = result.observe(TacticalFacts.MANNER, strategy)
@@ -883,6 +935,10 @@ object NativeTactics {
                 journeys.entries.removeIf { (id, stamp) -> manager.get(id)?.orderStamp != stamp }
                 // Every squad, crews and planned men alike, before anything plans with it.
                 manager.all().forEach(::journey)
+                seatsDue.keys.retainAll(journeys.keys)
+                seatChecks.keys.retainAll(journeys.keys)
+                rides.entries.removeIf { (id, ride) -> journeys[id] != ride.stamp }
+                journeys.keys.mapNotNull(manager::get).forEach { seats(it, now) }
                 val supportOnly = (fireSupport.roster.squads() + air.roster.squads()).filter { it !in activeIds }.mapNotNull(manager::get)
                 snapshots.keys.filter { it !in activeIds }.toList().forEach { id ->
                     snapshots.remove(id)
@@ -1865,6 +1921,55 @@ object NativeTactics {
             }
         }
 
+        /**
+         * Works out the seats [saved]'s men are due for its journey ([SeatAllocation]) from those its
+         * plan gave out, every [SEAT_CHECK_TICKS]. Only while a man on foot has neither a seat nor
+         * word to walk: once all have one, nothing is searched till the order changes.
+         */
+        private fun seats(saved: Squad, now: Long) {
+            if (now < (seatChecks[saved.id] ?: Long.MIN_VALUE)) return
+            seatChecks[saved.id] = now + SEAT_CHECK_TICKS
+            val ride = rides[saved.id]?.takeIf { it.stamp == saved.orderStamp }
+            val given = ride?.seats ?: SeatPlan.EMPTY
+            val riders = saved.members.mapNotNull { level.getEntity(it) as? NpcEntity }
+                .filter { it.isAlive && it.vehicle == null && it.squadId == saved.id && it.assignedVehicleId == null }
+            if (saved.id in seatsDue && riders.none { given.undecided(it.uuid) }) return
+            val plan = SeatAllocation.allocate(given, riders.map { SeatRider(it.uuid, it.position().point()) }, SquadTransit.seatVehicles(saved, riders, level), ride?.refused.orEmpty())
+            if (seatsDue.put(saved.id, plan) != plan) {
+                DebugFlags.log(LogGroup.VEHICLE, "[htn] squad={} event=seats seats={} walks={}", saved.id, plan.seats, plan.walks)
+                DecisionTrace.group(saved.id, now, "squad", "seats", "${plan.seats.size} ride in ${plan.seats.values.map { it.vehicle }.distinct().size} vehicles, ${plan.walks.size} walk")
+            }
+        }
+
+        /** Gives [squad]'s men the [seats] its plan decided on, under its current order. */
+        private fun board(squad: UUID, seats: SeatPlan) {
+            val stamp = SquadManager.get(level).get(squad)?.orderStamp ?: return
+            val ride = rides[squad]?.takeIf { it.stamp == stamp }
+            if (ride?.seats != seats) rides[squad] = SquadRide(stamp, seats, ride?.refused.orEmpty())
+        }
+
+        /** The seat [npc]'s squad gave him for its journey under its current order. */
+        fun seatOf(npc: NpcEntity): RideSeat? = ride(npc)?.seats?.seats?.get(npc.uuid)
+
+        /** Whether [npc]'s squad told him to walk its journey: no seat for him under this order. */
+        fun walks(npc: NpcEntity): Boolean = ride(npc)?.seats?.walks?.contains(npc.uuid) == true
+
+        /**
+         * [npc] could not board the seat he was given in [vehicle]: he loses it, and that vehicle is
+         * not given him again this order, so the next look gives him another or sends him walking.
+         */
+        fun seatRefused(npc: NpcEntity, vehicle: UUID) {
+            val squad = npc.squadId ?: return
+            val ride = ride(npc) ?: return
+            rides[squad] = ride.copy(
+                seats = ride.seats.copy(seats = ride.seats.seats - npc.uuid),
+                refused = ride.refused + (npc.uuid to ride.refused[npc.uuid].orEmpty() + vehicle),
+            )
+            seatChecks.remove(squad)
+        }
+
+        private fun ride(npc: NpcEntity): SquadRide? = npc.currentSquad()?.let { squad -> rides[squad.id]?.takeIf { it.stamp == squad.orderStamp } }
+
         /** The rule [man]'s duty was last chosen by, while his squad's order stands. */
         fun dutyRule(man: UUID): String? = dutyRules[man]?.rule
 
@@ -2155,6 +2260,9 @@ object NativeTactics {
             alarms.clear()
             closeContacts.clear()
             journeys.clear()
+            rides.clear()
+            seatsDue.clear()
+            seatChecks.clear()
             retreatSmoke.clear()
             grenades.clear()
             suspendedBy.clear()

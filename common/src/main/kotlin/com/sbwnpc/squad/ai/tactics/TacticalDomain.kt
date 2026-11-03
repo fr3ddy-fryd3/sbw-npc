@@ -150,6 +150,9 @@ data class FallBack(val point: Point3, val toSupply: Boolean)
  */
 data class CallOff(val operation: java.util.UUID, val squads: List<java.util.UUID>, val able: Int, val base: Int, val partial: Boolean, val fallBacks: Map<java.util.UUID, FallBack>)
 
+/** A travelling squad's [seats] in its ground vehicles ([SeatAllocation], #255), given out by its plan. */
+data class Boarding(val squad: java.util.UUID, val seats: SeatPlan)
+
 /**
  * What an operation's plan carries out: its [squads]' missions, the area it [secure]s and its
  * [attack] roles; with [callOff] the attack it calls off instead, and with [review] an attack that
@@ -227,6 +230,9 @@ object TacticalFacts {
 
     /** The squad travels to its objective instead of fighting where it is ([SquadJourney], #255). */
     val TRAVELLING = FactKey("squad.travelling", Boolean::class.javaObjectType)
+
+    /** Who of a travelling squad rides in which of its ground vehicles, and who walks ([SeatAllocation]). */
+    val SEATS = FactKey("squad.seats", SeatPlan::class.java)
 
     /** The half covering his rush is firing, or has had long enough to start; see [PositionIntent.coveredBy]. */
     val SUPPORT_FIRING = FactKey("actor.support_firing", Boolean::class.javaObjectType)
@@ -325,6 +331,10 @@ object TacticalDomain {
     private val DELEGATE = TaskKey("delegate.task", DelegationTask::class.java)
     private val APPROACH = TaskKey("squad.approach", StrategyMission::class.java)
 
+    /** Giving a travelling squad's men their seats (#255), carried out by the integration. */
+    val BOARD = ActionKey("squad.board", Boarding::class.java)
+    private val BOARD_TASK = TaskKey("squad.board", Boarding::class.java)
+
     private fun delegate() =
         PrimitiveTask(DELEGATE) { task ->
             PrimitiveSpec(task.child.id.toString(), ActionSpec(DelegationAction.KEY, task.copy(continuous = true), setOf(ResourceKey(task.child, "command")), timeoutTicks = Long.MAX_VALUE), TaskContract())
@@ -397,7 +407,12 @@ object TacticalDomain {
                     // for the vehicles or the objective as their order says, and no strategy shapes them.
                     Method<SquadMission>("travel", eligible = { mission ->
                         Condition { facts -> if (mission.teams.isNotEmpty() && facts.value(TacticalFacts.TRAVELLING) == true) Verdict.Allowed else Verdict.Rejected("not_travelling") }
-                    }, decompose = { mission, _ -> children(mission.teams.map { DelegationTask(it.agent, TEAM.call(it)) } + FireSupport.delegations(mission) + AirSupport.delegations(mission)) }),
+                    }, decompose = { mission, facts ->
+                        val teams = children(mission.teams.map { DelegationTask(it.agent, TEAM.call(it)) } + FireSupport.delegations(mission) + AirSupport.delegations(mission))
+                        // The seats only once they are worked out: till then its men wait where they are.
+                        val seats = facts.value(TacticalFacts.SEATS)?.let { NetworkNode("board", BOARD_TASK.call(Boarding(mission.agent.id, it))) }
+                        TaskNetwork(teams.nodes + listOfNotNull(seats))
+                    }),
                 ) + CombatStrategy.entries.map { strategy ->
                     Method(
                         SquadManners.methodId(strategy),
@@ -440,6 +455,10 @@ object TacticalDomain {
                 },
             ),
             delegate(),
+            // Never done by itself: the seats hold while the squad travels, and go when it stops.
+            PrimitiveTask(BOARD_TASK) { boarding ->
+                PrimitiveSpec("board", ActionSpec(BOARD, boarding, timeoutTicks = Long.MAX_VALUE), TaskContract())
+            },
         ),
     )
     val team = HtnDomain(

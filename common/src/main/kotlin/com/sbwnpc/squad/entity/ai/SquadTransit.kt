@@ -1,13 +1,19 @@
 package com.sbwnpc.squad.entity.ai
 
+import com.sbwnpc.squad.ai.coordination.Point3
 import com.sbwnpc.squad.ai.integration.NativeTactics
 import com.sbwnpc.squad.ai.tactics.JourneyContact
+import com.sbwnpc.squad.ai.tactics.SeatAllocation
+import com.sbwnpc.squad.ai.tactics.SeatVehicle
 import com.sbwnpc.squad.combat.CombatPositionSafety
 import com.sbwnpc.squad.combat.HostileMobs
+import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.squad.Squad
+import com.sbwnpc.squad.vehicle.RideCandidates
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Mob
+import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 
 /**
@@ -59,5 +65,32 @@ object SquadTransit {
         val middle = positions.size / 2
         val center = Vec3(positions.map { it.x }.sorted()[middle], positions.map { it.y }.sorted()[middle], positions.map { it.z }.sorted()[middle])
         return center.distanceTo(objective) > TRANSPORT_DISTANCE
+    }
+
+    /**
+     * The ground vehicles [riders] of [squad] could be given seats in ([SeatAllocation]): within
+     * [SeatAllocation.REACH] of one of them, usable ([RideCandidates.isUsableGroundVehicle]), not a
+     * crew's own vehicle, and either the squad's already or nobody else's, with no other NPC
+     * aboard or bound for it. One box over the riders for the whole squad.
+     */
+    fun seatVehicles(squad: Squad, riders: List<NpcEntity>, level: ServerLevel): List<SeatVehicle> {
+        val first = riders.firstOrNull() ?: return emptyList()
+        val box = riders.drop(1).fold(first.boundingBox) { box, man -> box.minmax(man.boundingBox) }.inflate(SeatAllocation.REACH)
+        val crews = squad.members.mapNotNullTo(HashSet()) { (level.getEntity(it) as? NpcEntity)?.assignedVehicleId }
+        val bound = squad.members.mapNotNull(VehicleTransportClaims::vehicleOf).groupingBy { it }.eachCount()
+        return Ports.vehicles.within(level, box).mapNotNull { vehicle ->
+            if (vehicle.uuid in crews || !RideCandidates.isUsableGroundVehicle(vehicle, first)) return@mapNotNull null
+            val npcs = vehicle.passengers.filterIsInstance<NpcEntity>()
+            val ours = npcs.isNotEmpty() || bound.containsKey(vehicle.uuid)
+            val strangers = npcs.any { it.squadId != squad.id } || VehicleTransportClaims.claimedSeats(vehicle.uuid) > (bound[vehicle.uuid] ?: 0)
+            if (strangers) return@mapNotNull null
+            SeatVehicle(
+                vehicle.uuid,
+                Point3(vehicle.x, vehicle.y, vehicle.z),
+                free = Ports.vehicles.seatCount(vehicle) - vehicle.passengers.size,
+                driven = Ports.vehicles.seating(vehicle).firstOrNull() != null,
+                ours = ours,
+            )
+        }
     }
 }

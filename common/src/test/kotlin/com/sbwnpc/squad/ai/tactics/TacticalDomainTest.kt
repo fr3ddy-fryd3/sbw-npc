@@ -285,4 +285,12 @@ class TacticalDomainTest {
         assertEquals(intent, shapedMember(plan))
         assertEquals(CombatStrategy.HOLD, strategyOf(squadPlan(squadFacts(blocked))))
     }
+
+    @Test fun `a travelling squad gives out the seats worked out for it, once they are`() {
+        val seats = SeatPlan(mapOf(UUID(0, 1) to RideSeat(UUID(1, 1), driver = true)))
+        val plan = squadPlan(squadFacts(blocked).observe(TacticalFacts.TRAVELLING, true).observe(TacticalFacts.SEATS, seats))
+        val board = plan.tasks.single { it.spec.action.key == TacticalDomain.BOARD }
+        assertEquals(seats, (board.spec.action.parameters as Boarding).seats)
+        assertTrue(squadPlan(squadFacts(blocked).observe(TacticalFacts.TRAVELLING, true)).tasks.none { it.spec.action.key == TacticalDomain.BOARD })
+    }
 }
