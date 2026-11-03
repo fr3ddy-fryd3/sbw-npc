@@ -65,7 +65,6 @@ class BlindReturnFireBehaviour : ExtendedBehaviour<NpcEntity>() {
             if (incoming) com.sbwnpc.squad.combat.IncomingFire.laneEnd(entity.eyePosition, aim) else aim,
             entity,
             hulls,
-            spread,
         )
         val allyBlocked = !FriendlyFireGuard.hasClearLineOfFire(entity, aim, spread)
         if (terrainBlocked || allyBlocked) {

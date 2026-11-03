@@ -283,18 +283,18 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             val level = entity.level() as ServerLevel
             val lane = AABB(entity.eyePosition, aimPoint).inflate(FiringSpotSearch.VEHICLE_LANE_MARGIN)
             val hulls = Sightline.vehicleHulls(level, lane, entity, target)
-            val hullInTheWay =
-                Sightline.crosses(hulls, entity.eyePosition, aimPoint, shotSpread) ||
-                    Sightline.ownHullInLane(entity, entity.eyePosition, aimPoint, shotSpread, target)
+            val enemyHull = Sightline.crosses(hulls, entity.eyePosition, aimPoint)
+            val ownHull = !enemyHull && Sightline.ownHullInLane(entity, entity.eyePosition, aimPoint, shotSpread, target)
+            val hullInTheWay = enemyHull || ownHull
             lineIsClear = assessment.lineClear && !hullInTheWay
             entity.fireObservation.lane(assessment.lineClear, hullInTheWay)
             if (DebugFlags.on(LogGroup.FIRE) && hulls.isNotEmpty()) {
                 DebugFlags.log(
                     LogGroup.FIRE,
-                    "{} at {} target {} at {} hulls {} vehicles on lane={} crossing={} allyClear={} -> lineIsClear={} answer={}",
+                    "{} at {} target {} at {} hulls {} vehicles on lane={} crossing={} own={} allyClear={} -> lineIsClear={} answer={}",
                     entity.uuid, entity.blockPosition(), target.name.string, target.blockPosition(),
                     hulls.map { net.minecraft.core.BlockPos.containing(it.center) },
-                    hulls.size, hullInTheWay, assessment.lineClear, lineIsClear,
+                    hulls.size, enemyHull, ownHull, assessment.lineClear, lineIsClear,
                     if (lineIsClear) {
                         "fire"
                     } else if (hullInTheWay) {

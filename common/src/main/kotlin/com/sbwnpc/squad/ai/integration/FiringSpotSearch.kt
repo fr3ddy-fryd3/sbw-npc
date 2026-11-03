@@ -73,7 +73,7 @@ class FiringSpotSearch(private val navigator: CombatNavigator) {
         val outsideWeaponRange = !WeaponReach.inRange(entity, myEye, target.eyePosition)
         if (!outsideWeaponRange && Sightline.blocked(level, target.eyePosition, myEye, entity)) return null
         // Standing behind armour is cover from the enemy, but it is not a firing position.
-        if (!outsideWeaponRange && Sightline.crosses(vehicleHulls, myEye, target.eyePosition, entity.spread)) return null
+        if (!outsideWeaponRange && Sightline.crosses(vehicleHulls, myEye, target.eyePosition)) return null
         if (!outsideWeaponRange && Sightline.ownHullInLane(entity, myEye, target.eyePosition, entity.spread, target)) return null
         // Nor is standing ON one. Vehicles have collision, so a mob that walks into a hull rides up
         // onto it, and a spot inside the box is a spot on the roof of an APC.
