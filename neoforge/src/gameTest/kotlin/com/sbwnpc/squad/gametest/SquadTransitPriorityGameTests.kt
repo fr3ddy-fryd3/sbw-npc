@@ -121,7 +121,7 @@ object SquadTransitPriorityGameTests {
             nearer.discard()
         }
         helper.assertTrue(driver.startRiding(squads, true), "Could not seat the squad's driver")
-        manager.issueOrderAt(helper.level, squad.id, SquadOrder.ATTACK, helper.absolutePos(BlockPos(150, 1, 20)))
+        manager.issueOrderAt(helper.level, squad.id, SquadOrder.ATTACK, helper.absolutePos(BlockPos(220, 1, 20)))
         helper.onEachTick {
             helper.assertTrue(VehicleTransportClaims.vehicleOf(straggler.uuid) != nearer.uuid && straggler.vehicle !== nearer, "The man left behind took a nearer free vehicle over his squad's")
             if (straggler.vehicle === squads) {
