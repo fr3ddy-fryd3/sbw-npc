@@ -201,7 +201,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
             threat(entity) != null
 
     /** A temporary weapon station cannot hold up an explicit march or the squad's withdrawal. */
-    private fun orderAllowsSupport(entity: NpcEntity): Boolean = WeaponStationScan.orderAllows(entity.currentSquad()?.order, NativeTactics.travelling(entity))
+    private fun orderAllowsSupport(entity: NpcEntity): Boolean = WeaponStationScan.orderAllows(entity.currentSquad()?.order, NativeTactics.holding(entity))
 
     // The hostile-vehicle scan (an entity query + raycasts) used to run from this behaviour's
     // start check EVERY tick for EVERY non-mortar NPC on the map, whether or not anything armoured

@@ -192,6 +192,9 @@ object NativeTactics {
      */
     fun travelling(npc: NpcEntity): Boolean = worlds[npc.level()]?.travelling(npc) == true
 
+    /** Whether [npc]'s squad stands its ground where it fights ([CombatStrategy.HOLD]). */
+    fun holding(npc: NpcEntity): Boolean = worlds[npc.level()]?.holding(npc) == true
+
     /** The vehicle whose gun [npc]'s team plan sent him to man ([WeaponStations], #255), if any. */
     fun stationOf(npc: NpcEntity): UUID? = worlds[npc.level()]?.stationOf(npc)
 
@@ -2026,7 +2029,7 @@ object NativeTactics {
             val due = HashMap<AgentId, StationPlan>()
             missions.forEach { (squadId, mission) ->
                 val saved = manager.get(squadId) ?: return@forEach
-                if (situations[squadId]?.contact != true || squadId in journeys || !WeaponStationScan.orderAllows(saved.order, travelling = false)) return@forEach
+                if (situations[squadId]?.contact != true || squadId in journeys || !WeaponStationScan.orderAllows(saved.order, holding = strategies[squadId]?.first == CombatStrategy.HOLD)) return@forEach
                 mission.teams.forEach { team ->
                     val men = team.members.mapNotNull { level.getEntity(it.actor.id) as? NpcEntity }.filter(WeaponStationScan::free)
                     val guns = WeaponStationScan.stations(men, level)
@@ -2073,6 +2076,8 @@ object NativeTactics {
 
         /** Whether [npc]'s squad travels to its objective under its current order. */
         fun travelling(npc: NpcEntity): Boolean = npc.currentSquad()?.let { journeys[it.id] == it.orderStamp } == true
+
+        fun holding(npc: NpcEntity): Boolean = npc.squadId?.let { strategies[it]?.first } == CombatStrategy.HOLD
 
         /**
          * Starts or swaps the turn of a squad bounding by halves. A turn ends once every mover of
@@ -2149,7 +2154,8 @@ object NativeTactics {
          * Whether [actor]'s next rush is covered ([PositionIntent.coveredBy]): one of the men covering
          * it fired lately. Nothing else starts it: with no target, the fallback of 3 s or the cover
          * dead, rushes went out uncovered (in-game 03.11). Waiting [SUPPORT_STALL_TICKS] on the same
-         * leg stalls his squad's cover, and its strategy changes ([CombatSituation.coverStalled]).
+         * leg stalls his squad's cover, and its strategy changes ([CombatSituation.coverStalled]);
+         * a rush still waiting then goes, as it would under the strategy that follows.
          *
          * A retreat does not wait: its halves cover each other when they can, and a squad ordered
          * away must not stand under fire for want of targets to shoot back at.
@@ -2158,6 +2164,9 @@ object NativeTactics {
             val cover = goals[actor]?.coveredBy?.takeIf { it.isNotEmpty() } ?: return true
             val squad = (level.getEntity(actor.id) as? NpcEntity)?.squadId
             if (squad != null && situations[squad]?.retreating == true) return true
+            // Stalled, the squad gives up rushes under covering fire; a man whose task still waits
+            // for it must not stand there until the next plan.
+            if (squad != null && coverStalled(squad, now)) return true
             if (cover.mapNotNull { level.getEntity(it) as? NpcEntity }.any { it.isAlive && it.firedRecently(SUPPORT_FIRE_TICKS) }) return true
             val leg = legs[actor.id] ?: 0
             val since = supportWaits[actor.id]?.takeIf { it.first == leg }?.second ?: now.also { supportWaits[actor.id] = leg to it }

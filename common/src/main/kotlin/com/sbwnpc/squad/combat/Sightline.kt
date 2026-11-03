@@ -87,8 +87,8 @@ object Sightline {
      * the target and has no cone, and in the dark a squad emptied its rifles past a zombie into its
      * own LAV (in-game 25.10). The spread is SBW's, as in [FiringCone].
      *
-     * A vehicle is the shooter's when one of his side rides it or is assigned to it, or, empty and
-     * nobody's, when it stands within [OWN_EMPTY_RADIUS] of him. Every empty vehicle counted, and
+     * A vehicle is the shooter's when one of his side rides it, or, empty, when it stands within
+     * [OWN_EMPTY_RADIUS] of him or one of his side is assigned to it. Every empty vehicle counted, and
      * an enemy's dismounted transport among its men made the ground ten blocks in front of it
      * unshootable from anywhere (in-game 03.11).
      */
@@ -107,11 +107,12 @@ object Sightline {
     }
 
     /** See [ownHullInLane]: whether [vehicle] is [shooter]'s side's. */
+    // Near him it is his whoever it is assigned to, which also spares the scan of every NPC: this
+    // runs for each candidate post. One assigned to both sides counts as ours, erring towards not firing.
     private fun ours(vehicle: Entity, shooter: Entity, from: Vec3, level: ServerLevel): Boolean {
         if (vehicle.passengers.isNotEmpty()) return vehicle.passengers.any { SquadTeams.sameSide(it, shooter) }
-        val assigned = NpcRegistry.all(level).filter { it.isAlive && it.assignedVehicleId == vehicle.uuid }
-        if (assigned.isNotEmpty()) return assigned.any { SquadTeams.sameSide(it, shooter) }
-        return vehicle.boundingBox.distanceToSqr(from) <= OWN_EMPTY_RADIUS * OWN_EMPTY_RADIUS
+        if (vehicle.boundingBox.distanceToSqr(from) <= OWN_EMPTY_RADIUS * OWN_EMPTY_RADIUS) return true
+        return NpcRegistry.all(level).any { it.isAlive && it.assignedVehicleId == vehicle.uuid && SquadTeams.sameSide(it, shooter) }
     }
 
     /** See [ownHullInLane]: how near the shooter an empty vehicle nobody is assigned to counts as his. */

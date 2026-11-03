@@ -1401,9 +1401,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
 
     /**
      * A squadmate going down alerts the men round him: wary toward his killer when there is one,
-     * otherwise an [Alarm] at the body. A known killer gives only the direction: reported as a
-     * contact to the side, he was a target at once for every man of it, at 60–80 blocks, without
-     * anyone seeing him (in-game 03.11), so they have to spot him for themselves.
+     * otherwise an [Alarm] at the body. A known killer is not their target: they turn towards where
+     * he fired from and must spot him. Reported as a contact to the side, he was a target at once
+     * for every man of it, at 60–80 blocks, without anyone seeing him (in-game 03.11).
      */
     private fun alertAllies(cause: net.minecraft.world.damagesource.DamageSource) {
         val attacker = cause.entity as? LivingEntity

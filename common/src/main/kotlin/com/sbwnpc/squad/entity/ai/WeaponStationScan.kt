@@ -24,12 +24,12 @@ object WeaponStationScan {
     const val THREAT_RANGE = 48.0
 
     /**
-     * A temporary weapon station cannot hold up the squad's withdrawal, nor a march while the squad
-     * travels ([travelling]). A march stopped in a fight is held up already: refused under every
-     * MOVE, a gun beside a squad fighting on an operation's march stood empty for four minutes
-     * (in-game 03.11).
+     * A temporary weapon station cannot hold up the squad's withdrawal, nor a march, unless the
+     * squad has stopped to fight and stands its ground ([holding]): that march is held up already.
+     * Refused under every MOVE, a gun beside a squad fighting on an operation's march stood empty
+     * for four minutes (in-game 03.11).
      */
-    fun orderAllows(order: SquadOrder?, travelling: Boolean): Boolean = order != SquadOrder.RETREAT && !(order == SquadOrder.MOVE && travelling)
+    fun orderAllows(order: SquadOrder?, holding: Boolean): Boolean = order != SquadOrder.RETREAT && (order != SquadOrder.MOVE || holding)
 
     /** Whether [npc] is free to go to a gun: on foot, no crew or mortar man, and nothing else holds him. */
     fun free(npc: NpcEntity): Boolean =

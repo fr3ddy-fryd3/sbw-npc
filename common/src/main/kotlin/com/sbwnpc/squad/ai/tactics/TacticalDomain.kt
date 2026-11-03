@@ -831,7 +831,8 @@ object TacticalDomain {
  *   is then only an enemy its men see near, see [com.sbwnpc.squad.combat.tactics.TacticalSnapshot.closeContact].
  * @property coverStalled within the last 30 s one of its men waited 5 s for covering fire for a
  *   rush that never came: it does not bound by halves, and its teams do not rush in pairs. A rush
- *   that started without the fire anyway crossed open ground uncovered (in-game 03.11).
+ *   that started without the fire anyway crossed open ground uncovered (in-game 03.11). Once the
+ *   30 s are up it may bound again, and stall again if its halves still have nothing to fire at.
  */
 data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean, val reinforced: Boolean = false, val movers: Int = 0, val flanking: Boolean = false, val scattered: Boolean = false, val gathered: Boolean = false, val regrouping: Boolean = false, val regroupSpent: Boolean = false, val underFire: Boolean = incoming, val retreating: Boolean = false, val coverStalled: Boolean = false)
 
