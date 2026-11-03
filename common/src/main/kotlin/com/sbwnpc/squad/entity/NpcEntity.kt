@@ -1399,23 +1399,16 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         rolls[rolls.size - 1] += if (spawnAtLocation(Ports.grenades.item(kind)) != null) " DROPPED $kind" else " (spawn failed)"
     }
 
-    /** A squadmate going down is itself an "invariant" every shooter-AI convention treats as a
-     *  strong signal (F.E.A.R./Half-Life-style squad escalation on a downed ally). When the killer
-     *  is resolvable, this is strictly better than a vague alert — feed it into [TeamAwareness] so
-     *  the infantry can act on it after the normal relay delay. Not as a sighting, though: nobody
-     *  saw him, and fire support only shoots at what someone has seen. Only when the killer can't
-     *  be resolved (fell, environmental, whatever) does this fall back to a plain [Alarm] at the
-     *  death position. */
+    /**
+     * A squadmate going down alerts the men round him: wary toward his killer when there is one,
+     * otherwise an [Alarm] at the body. A known killer gives only the direction: reported as a
+     * contact to the side, he was a target at once for every man of it, at 60–80 blocks, without
+     * anyone seeing him (in-game 03.11), so they have to spot him for themselves.
+     */
     private fun alertAllies(cause: net.minecraft.world.damagesource.DamageSource) {
-        val faction = com.sbwnpc.squad.team.SquadTeams.factionOf(this) ?: return
-        val level = level() as? ServerLevel ?: return
         val attacker = cause.entity as? LivingEntity
         val knownKiller = attacker != null && attacker.isAlive && com.sbwnpc.squad.team.SquadTeams.isHostile(this, attacker)
-        if (knownKiller) {
-            com.sbwnpc.squad.combat.TeamAwareness.reportUnseen(faction, attacker!!.uuid, level.gameTime)
-        } else {
-            com.sbwnpc.squad.combat.Alarm.raiseDeath(this, DEATH_ALARM_RADIUS)
-        }
+        if (!knownKiller) com.sbwnpc.squad.combat.Alarm.raiseDeath(this, DEATH_ALARM_RADIUS)
         // Neither of those shows on the allies who were not sent to look: in-game they went on as
         // if nothing had happened (#66). Everyone near grows wary of where the threat came from.
         warnSquadmates(if (knownKiller) attacker!!.position() else position(), DEATH_ALARM_RADIUS)

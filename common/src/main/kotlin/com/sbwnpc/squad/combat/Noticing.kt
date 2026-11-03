@@ -25,8 +25,8 @@ class Noticing(
 
     /**
      * Whether [observer] has noticed [candidate]. Instant for its current target, for an enemy that
-     * has just fired, for one its squad already has a contact on ([SquadKnowledge]), and while
-     * [observer] is under fire; otherwise it takes [SpottingTime.seconds]
+     * has just fired and for one its squad already has a contact on ([SquadKnowledge]); otherwise it
+     * takes [SpottingTime.seconds], as wary while [observer] is under fire,
      * by distance, light and weather at [candidate], [offAxis], posture, [grassBlocks], size and
      * the observer's experience.
      */
@@ -35,7 +35,7 @@ class Noticing(
         val gaveAway = candidate is NpcEntity && candidate.firedRecently(GIVEAWAY_TICKS)
         val knownToSquad = squadKnows(observer, candidate, now)
         val alreadyNoticed = candidate === observer.target || gaveAway || knownToSquad
-        if (alreadyNoticed || observer.incomingFire.pending(now)) {
+        if (alreadyNoticed) {
             if (knownToSquad && progress.seconds(candidate.uuid) == 0.0) {
                 DebugFlags.log(group, "{} noticed {} by {} at once: his squad has a contact on him", observer.uuid, candidate.uuid, by)
             }
@@ -54,7 +54,9 @@ class Noticing(
         )
         val eyes = SpottingTime.Observer.of(observer.npcRank, observer.npcClass)
             .let { if (VehicleTargeting.isAircrew(observer)) it.airborne() else it }
-            .let { if (observer.wary()) it.wary() else it }
+            // Under fire he looks harder, but sees no faster than wary: noticed at once, a man hit by a
+            // player at 60 blocks found him in a moment (in-game 03.11).
+            .let { if (observer.wary() || observer.incomingFire.pending(now)) it.wary() else it }
         val required = SpottingTime.seconds(eyes, target)
         val before = progress.seconds(candidate.uuid)
         return progress.advance(candidate.uuid, now, required).also { seen -> trace(observer, candidate, Look(target, required, before), seen) }

@@ -30,7 +30,7 @@ import java.util.UUID
 object TeamAwareness {
 
     private class Contact(val firstSeenTick: Long, var lastSeenTick: Long) {
-        /** Set once someone has actually seen it — [NEVER] for a contact only known by its kills. */
+        /** Set once someone has actually seen it. */
         var firstSightedTick = NEVER
         var lastSightedTick = NEVER
         var lastSightedPos: Vec3 = Vec3.ZERO
@@ -67,12 +67,6 @@ object TeamAwareness {
         contact.lastSightedTick = tick
         contact.lastSightedPos = pos
         contact.sightedBy = by
-    }
-
-    /** An enemy known to be about without anyone seeing him — whoever just killed one of ours.
-     *  Infantry turn to meet him; fire support does not shoot at him on this alone. */
-    fun reportUnseen(faction: SquadFaction, target: UUID, tick: Long) {
-        touch(faction, target, tick)
     }
 
     private fun touch(faction: SquadFaction, target: UUID, tick: Long): Contact {
