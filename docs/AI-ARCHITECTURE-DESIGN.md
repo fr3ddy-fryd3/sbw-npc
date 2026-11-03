@@ -280,7 +280,10 @@ A late reinforcement is "on its way" with a conditional link to the operation. I
 approach and local reactions and gets the information it is allowed, but it does not count as an
 arrived member and gives no cover by assignment alone. On reaching a safe entry area near the goal
 and confirming it can fight, it joins; it need not walk straight into the enemy's point. The entry
-area is an explicit operation parameter and is checked physically.
+area is an explicit operation parameter and is checked physically. An attack's area is a ring of
+80 blocks round its objective, entered from any side: a reinforcement from the far side encircles
+the enemy. On its way it makes for a point 48 blocks short of the objective on its own line, never
+the objective itself. A held point (defence, patrol) is joined at the point.
 
 Adding a member opens new capacity and roles while keeping untouched tasks. Changing its order
 removes the link. A completed or cancelled operation does not accept members: a late order gets its

@@ -221,6 +221,10 @@ object NativeTactics {
     fun reposition(npc: NpcEntity) {
         world(npc).actions[npc.uuid]?.requestFireRecovery(npc.level().gameTime)
     }
+
+    /** The point [npc]'s pending squad marches to, to join an attack ([ReinforcementMarch.marchPoint]). */
+    fun reinforcementPoint(npc: NpcEntity): Point3? = npc.squadId?.let { worlds[npc.level()]?.reinforcementPoint(it) }
+
     fun operation(npc: NpcEntity): OperationView? = npc.currentSquad()?.let { world(npc).operations.operationOf(it.id) }
     fun operationOf(level: ServerLevel, squad: UUID): OperationView? = worlds[level]?.operations?.operationOf(squad)
     fun coordinated(npc: NpcEntity) = (operation(npc)?.members?.size ?: 0) > 1
@@ -444,6 +448,7 @@ object NativeTactics {
         // Per squad on its way as a reinforcement: when it was last fired on, and whether it fights.
         private val reinforcementFire = HashMap<UUID, Long>()
         private val reinforcementEngaged = HashMap<UUID, Boolean>()
+        private val reinforcementPoints = HashMap<UUID, Pair<UUID, Point3>>()
         private val sequences = HashMap<AssignmentTicket, Long>()
         private val retiredAssignments = ArrayList<AssignmentTicket>()
         private val leases = ResourceLeases()
@@ -1012,17 +1017,16 @@ object NativeTactics {
                     val view = snapshots[first.id]
                     val center = view?.center ?: fireSupport.roster.center(first.id) ?: air.roster.center(first.id) ?: return@forEach
                     val objective = first.tacticalObjective ?: first.objective ?: net.minecraft.core.BlockPos.containing(view?.home ?: center)
-                    val direction = objective.center.subtract(center).multiply(1.0, 0.0, 1.0).normalize()
-                    // An attack is joined short of the objective, on the side it was approached from.
-                    // A held point (defence, patrol) is already occupied, so it is joined at the point.
-                    val entry = if (first.order == SquadOrder.ATTACK) objective.center.subtract(direction.scale(48.0)) else objective.center
+                    // An attack is joined anywhere round its objective; a held point (defence, patrol)
+                    // is already occupied, so it is joined at the point.
+                    val entryRadius = if (first.order == SquadOrder.ATTACK) ReinforcementMarch.JOIN_RADIUS else 32.0
                     val participants = selected.map { saved ->
                         val role = if (saved.id in activeIds) ParticipantRole.GROUND else ParticipantRole.SUPPORT
                         SquadParticipant(saved.id, saved.owner, saved.faction.name, level.dimension().location().toString(), saved.orderStamp.toLong(), role)
                     }
                     val commandId = UUID.nameUUIDFromBytes("$group:${selected.joinToString { "${it.id}:${it.orderStamp}" }}".toByteArray())
                     val key = first.command?.goal?.takeIf { first.commandOutcome == CommandOutcome.ACTIVE && first.command?.order == first.order.tactical() } ?: ObjectiveKey.Area(first.objectiveDimension?.location()?.toString() ?: level.dimension().location().toString(), objective.x, objective.y, objective.z)
-                    val accepted = operations.command(CommandBatch(commandId, first.owner, first.order.tactical(), key, participants, now, EntryArea(entry.point(), 32.0, 16.0)))
+                    val accepted = operations.command(CommandBatch(commandId, first.owner, first.order.tactical(), key, participants, now, EntryArea(objective.center.point(), entryRadius, 16.0)))
                     DebugFlags.log(LogGroup.ORDER, "[htn] event=operation_command principal={} squads={} order={} objective={} result={}", first.owner, participants.map { it.id }, first.order, key, accepted)
                     selected.forEach { saved ->
                         knownOrders[saved.id] = saved.orderStamp
@@ -1499,6 +1503,23 @@ object NativeTactics {
             return engaged
         }
 
+        /**
+         * The point pending [squad] marches to ([ReinforcementMarch.marchPoint]), worked out from
+         * [from] the first time it is asked under its current pending link and kept for that link, so
+         * its own drift does not move it; a new order is a new link and gets its own. Null while it
+         * stands within the stand-off, looked at again each pass, so a squad pushed back out marches in.
+         */
+        private fun reinforcementPoint(squad: UUID, from: Point3): Point3? {
+            val pending = operations.pending(squad) ?: return null
+            reinforcementPoints[squad]?.takeIf { it.first == pending.command }?.let { return it.second }
+            reinforcementPoints.remove(squad)
+            val objective = operations.operation(pending.operation)?.entry?.center ?: return null
+            return ReinforcementMarch.marchPoint(objective, from)?.also { reinforcementPoints[squad] = pending.command to it }
+        }
+
+        /** The point pending [squad] marches to under its current link: null when it has none. */
+        fun reinforcementPoint(squad: UUID): Point3? = operations.pending(squad)?.let { pending -> reinforcementPoints[squad]?.takeIf { it.first == pending.command }?.second }
+
         /** Where an attacking operation's squads close on: its area objective, or the order's own. */
         private fun attackObjective(operation: UUID, squads: List<Squad>): Point3? {
             if (squads.any { it.order != SquadOrder.ATTACK }) return null
@@ -1655,6 +1676,7 @@ object NativeTactics {
                 squads.forEach {
                     reinforcementFire.remove(it.id)
                     reinforcementEngaged.remove(it.id)
+                    reinforcementPoints.remove(it.id)
                 }
             }
             val center = Vec3(members.map { it.position.x }.average(), members.map { it.position.y }.average(), members.map { it.position.z }.average())
@@ -1763,9 +1785,10 @@ object NativeTactics {
                 val strategyKept = strategy == null || seenStrategies.put(saved.id, strategy) == strategy
                 val old = missions[saved.id]
                 val oldIntents = old?.teams?.flatMap { it.members }?.associateBy { it.actor.id }.orEmpty()
-                // Marching on, an attack's reinforcement makes for the operation's entry itself: left to
-                // the order's own march, each man's sighted target still drew him off after it.
-                val entry = if (marching && saved.order == SquadOrder.ATTACK) operations.pending(saved.id)?.let { operations.operation(it.operation) }?.entry?.center else null
+                // Marching on, an attack's reinforcement makes for its own point short of the objective:
+                // left to the order's own march, each man's sighted target still drew him off after it.
+                // The point is fixed once, so the squad's own drift does not move it every pass.
+                val entry = if (marching && saved.order == SquadOrder.ATTACK) reinforcementPoint(saved.id, view.center.point()) else null
                 val following = saved.order == com.sbwnpc.squad.squad.SquadOrder.FOLLOW
                 val transit = journeys[saved.id] == saved.orderStamp
                 val leader = if (following) level.getPlayerByUUID(saved.owner) else null
@@ -2318,6 +2341,7 @@ object NativeTactics {
             alarms.clear()
             closeContacts.clear()
             journeys.clear()
+            reinforcementPoints.clear()
             rides.clear()
             stations.clear()
             stationsDue.clear()

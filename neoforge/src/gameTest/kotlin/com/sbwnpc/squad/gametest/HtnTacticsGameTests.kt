@@ -327,11 +327,11 @@ object HtnTacticsGameTests {
                 pendingObserved = true
                 helper.assertTrue(!NativeTactics.holdsArea(squads.last().id), "Pending reinforcement runs its own area completion")
             }
-            // Far from the fight and unfired on, it makes for the operation's entry instead of
+            // Far from the fight and unfired on, it makes for its point short of the objective instead of
             // fighting where it stands: in-game 16.10 an enemy 280 m away stopped a reinforcement for good.
             if (group.any { it.incomingFire.recentPoint(helper.level.gameTime) != null }) firedOn = true
             if (joinedAt == null && issuedAt != null && helper.tick > issuedAt!! + 40 && !firedOn && group.all { helper.relativeVec(it.position()).x < 40.0 }) {
-                val entry = requireNotNull(NativeTactics.operation(original)).entry.center
+                val entry = requireNotNull(NativeTactics.reinforcementPoint(npc)) { "Marching reinforcement has no point to march to" }
                 marchObserved = SquadTransportGameTests.reinforcementMarch(helper, group, squads.last(), entry, helper.tick - issuedAt!!)
             }
             // A reinforcement joins a fight in progress: once it reaches the fight it is under fire.
