@@ -12,6 +12,7 @@ import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
+import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
 import com.sbwnpc.squad.vehicle.Helicopters
 import com.sbwnpc.squad.vehicle.RideCandidates
@@ -201,7 +202,10 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
             threat(entity) != null
 
     /** A temporary weapon station cannot hold up an explicit march or the squad's withdrawal. */
-    private fun orderAllowsSupport(entity: NpcEntity): Boolean = WeaponStationScan.orderAllows(entity.currentSquad()?.order, NativeTactics.holding(entity))
+    private fun orderAllowsSupport(entity: NpcEntity): Boolean {
+        val order = entity.currentSquad()?.order
+        return order != SquadOrder.MOVE && order != SquadOrder.RETREAT
+    }
 
     // The hostile-vehicle scan (an entity query + raycasts) used to run from this behaviour's
     // start check EVERY tick for EVERY non-mortar NPC on the map, whether or not anything armoured

@@ -192,9 +192,6 @@ object NativeTactics {
      */
     fun travelling(npc: NpcEntity): Boolean = worlds[npc.level()]?.travelling(npc) == true
 
-    /** Whether [npc]'s squad stands its ground where it fights ([CombatStrategy.HOLD]). */
-    fun holding(npc: NpcEntity): Boolean = worlds[npc.level()]?.holding(npc) == true
-
     /** The vehicle whose gun [npc]'s team plan sent him to man ([WeaponStations], #255), if any. */
     fun stationOf(npc: NpcEntity): UUID? = worlds[npc.level()]?.stationOf(npc)
 
@@ -2029,7 +2026,7 @@ object NativeTactics {
             val due = HashMap<AgentId, StationPlan>()
             missions.forEach { (squadId, mission) ->
                 val saved = manager.get(squadId) ?: return@forEach
-                if (situations[squadId]?.contact != true || squadId in journeys || !WeaponStationScan.orderAllows(saved.order, holding = strategies[squadId]?.first == CombatStrategy.HOLD)) return@forEach
+                if (situations[squadId]?.contact != true || squadId in journeys || !WeaponStationScan.orderAllows(saved.order)) return@forEach
                 mission.teams.forEach { team ->
                     val men = team.members.mapNotNull { level.getEntity(it.actor.id) as? NpcEntity }.filter(WeaponStationScan::free)
                     val guns = WeaponStationScan.stations(men, level)
@@ -2076,8 +2073,6 @@ object NativeTactics {
 
         /** Whether [npc]'s squad travels to its objective under its current order. */
         fun travelling(npc: NpcEntity): Boolean = npc.currentSquad()?.let { journeys[it.id] == it.orderStamp } == true
-
-        fun holding(npc: NpcEntity): Boolean = npc.squadId?.let { strategies[it]?.first } == CombatStrategy.HOLD
 
         /**
          * Starts or swaps the turn of a squad bounding by halves. A turn ends once every mover of
