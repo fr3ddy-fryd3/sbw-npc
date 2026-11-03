@@ -313,7 +313,9 @@ object NativeTactics {
             return ActionUpdate.Running
         }
         override fun start(now: Long) = publish()
-        override fun tick(now: Long) = publish()
+
+        // Given out once per decision: what the integration took back since (a refused seat) stays taken.
+        override fun tick(now: Long) = ActionUpdate.Running
         override fun revise(spec: ActionSpec<*>, now: Long): Boolean {
             given = read(spec.parameters) ?: return false
             publish()
@@ -1988,7 +1990,9 @@ object NativeTactics {
                 mission.teams.forEach { team ->
                     val men = team.members.mapNotNull { level.getEntity(it.actor.id) as? NpcEntity }.filter(WeaponStationScan::free)
                     val guns = WeaponStationScan.stations(men, level)
+                    // Only to a man whose own enemy the gun bears on: given to one who could not open fire, it stood unmanned.
                     val plan = WeaponStations.assign(stations[team.agent].orEmpty(), guns, WeaponStationScan.hands(men))
+                        .filter { (vehicle, man) -> men.first { it.uuid == man }.let { WeaponStationScan.bears(it, vehicle, level) } }
                     if (plan.isNotEmpty()) due[team.agent] = StationPlan(plan)
                 }
             }

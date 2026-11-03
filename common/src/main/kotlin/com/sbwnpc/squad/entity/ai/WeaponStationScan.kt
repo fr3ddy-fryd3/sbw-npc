@@ -36,19 +36,22 @@ object WeaponStationScan {
 
     /**
      * The empty armed vehicles ([RideCandidates.isSupportVehicle]) within [WeaponStations.REACH] of
-     * one of [men], not held for another squad ([SeatHold]), whose free seat's gun can be aimed at
-     * the nearest man's enemy. One box over the men.
+     * one of [men] whose free seat's gun can be aimed at the nearest man's enemy. One box over the men.
      */
     fun stations(men: List<NpcEntity>, level: ServerLevel): List<WeaponStation> {
         val first = men.firstOrNull() ?: return emptyList()
         val box = men.drop(1).fold(first.boundingBox) { box, man -> box.minmax(man.boundingBox) }.inflate(WeaponStations.REACH)
         return Ports.vehicles.within(level, box).filter(RideCandidates::isSupportVehicle).mapNotNull { vehicle ->
-            val man = men.minBy { it.distanceToSqr(vehicle) }
-            val threat = threat(man, level) ?: return@mapNotNull null
-            val seat = Ports.vehicles.seating(vehicle).indexOfFirst { it == null }
-            if (SeatHold.refuses(vehicle, man, vehicle.passengers.size) || !Ports.vehicles.canAimAt(vehicle, man, threat, seat)) return@mapNotNull null
+            if (!bears(men.minBy { it.distanceToSqr(vehicle) }, vehicle.uuid, level)) return@mapNotNull null
             WeaponStation(vehicle.uuid, Point3(vehicle.x, vehicle.y, vehicle.z))
         }
+    }
+
+    /** Whether the gun of [vehicle]'s free seat can be laid on [npc]'s enemy. */
+    fun bears(npc: NpcEntity, vehicle: java.util.UUID, level: ServerLevel): Boolean {
+        val gun = level.getEntity(vehicle)?.takeIf(Ports.vehicles::isVehicle) ?: return false
+        val threat = threat(npc, level) ?: return false
+        return Ports.vehicles.canAimAt(gun, npc, threat, Ports.vehicles.seating(gun).indexOfFirst { it == null })
     }
 
     /** The enemy vehicle crew [npc] sees, else his own hostile target. */

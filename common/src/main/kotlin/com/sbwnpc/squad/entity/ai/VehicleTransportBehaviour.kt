@@ -30,6 +30,7 @@ import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 import net.tslat.smartbrainlib.util.BrainUtils
+import java.util.UUID
 
 /**
  * Squad-transit-by-vehicle: when a squad's objective is far enough away that walking is silly, NPCs
@@ -285,9 +286,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         // On land his squad gives out the seats (#255): told to walk, he walks.
         if (boatTrips.isEmpty() && NativeTactics.walks(entity)) return logEligibility(entity, false) { "his squad has no seat for him, walking" }
-        // Only a boat is looked for by himself; a seat on land waits on his squad, which always answers.
-        val seekingTooLong = phase == Phase.SEEKING && entity.tickCount - seekingStartTick > SEEK_GIVEUP_TICKS
-        if (checkGiveup && boatTrips.isNotEmpty() && seekingTooLong) {
+        // A seat on land is his squad's to give and comes within a second or two; still none after
+        // this long (a squad whose plan gives none out), he walks rather than stand waiting.
+        if (checkGiveup && phase == Phase.SEEKING && entity.tickCount - seekingStartTick > SEEK_GIVEUP_TICKS) {
             giveupCooldownUntilTick = entity.tickCount + GIVEUP_COOLDOWN_TICKS
             return logEligibility(entity, false) {
                 "gave up seeking a vehicle after $SEEK_GIVEUP_TICKS ticks, cooling down for $GIVEUP_COOLDOWN_TICKS ticks"
@@ -538,7 +539,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     /** Boarding [vehicle] failed: the claim goes, and a seat his squad gave him there is refused. */
-    private fun abortBoarding(entity: NpcEntity, vehicle: java.util.UUID?) {
+    private fun abortBoarding(entity: NpcEntity, vehicle: UUID?) {
         VehicleTransportClaims.release(entity.uuid)
         if (vehicle != null && NativeTactics.seatOf(entity)?.vehicle == vehicle) NativeTactics.seatRefused(entity, vehicle)
         targetVehicleId = null
@@ -690,6 +691,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 // A boat seats few: whoever isn't coming along is swimming, not late.
                 (boat && !member.holds(NpcActivity.VEHICLE)) ||
                 // On land his squad said who rides here (#255); the rest are in other vehicles or walk.
+                // Once it stops travelling it gives out no seats, and he sets off with whoever is aboard.
                 (!boat && NativeTactics.seatOf(member)?.vehicle != vehicle.uuid)
         }
         val timedOut = entity.tickCount - waitStartTick > WAIT_TIMEOUT_TICKS

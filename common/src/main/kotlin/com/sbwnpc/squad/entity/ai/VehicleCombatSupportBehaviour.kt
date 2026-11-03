@@ -22,7 +22,6 @@ import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.ai.memory.MemoryModuleType
 import net.minecraft.world.entity.ai.memory.MemoryStatus
 import net.minecraft.world.entity.player.Player
-import net.minecraft.world.phys.AABB
 import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 import net.tslat.smartbrainlib.util.BrainUtils
 import java.util.UUID
@@ -30,8 +29,9 @@ import java.util.UUID
 /**
  * Mans the gun of the empty armed vehicle his team's plan sent him to ([NativeTactics.stationOf],
  * [com.sbwnpc.squad.ai.tactics.WeaponStations], #255): walks to it, boards, aims and fires, and
- * gets out once the enemy has been out of sight a while or his order no longer allows it. Who
- * goes to which gun is the team's decision; this only carries it out.
+ * gets out once the enemy has been out of sight a while or his order no longer allows it, even if
+ * the team has given the gun up meanwhile. Who goes to which gun is the team's decision; this only
+ * carries it out.
  */
 class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private enum class Phase { APPROACHING, FIRING }
@@ -325,11 +325,8 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private fun hasPlayerAboard(vehicle: Entity): Boolean = vehicle.passengers.any { it is Player }
 
     private companion object {
-        const val SEARCH_RADIUS = 20.0
-        const val SEARCH_RADIUS_SQR = SEARCH_RADIUS * SEARCH_RADIUS
         const val TARGET_SEARCH_RADIUS = 48.0
         const val THREAT_RESCAN_TICKS = 10
-        const val VEHICLE_SEARCH_INTERVAL_TICKS = 20
         const val BOARD_DISTANCE_SQR = 2.5 * 2.5
         const val BOARD_SPEED = 1.0
         const val LOST_SIGHT_TICKS = 200

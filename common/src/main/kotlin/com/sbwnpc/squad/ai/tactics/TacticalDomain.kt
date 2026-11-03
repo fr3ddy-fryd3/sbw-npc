@@ -319,6 +319,12 @@ object TacticalFacts {
     val ENGAGE_UNITS = FactKey("actor.engage_units", Int::class.javaObjectType)
 }
 
+/**
+ * A travelling squad's seats once they are worked out, for its ground men and its crews on foot
+ * alike: a squad of crews alone that set off by road waited for seats nobody gave out (#255).
+ */
+private fun boarding(mission: SquadMission, facts: FactView) = facts.value(TacticalFacts.SEATS)?.takeIf { facts.value(TacticalFacts.TRAVELLING) == true }?.let { NetworkNode("board", TacticalDomain.BOARD_TASK.call(Boarding(mission.agent.id, it))) }
+
 object TacticalDomain {
     val OPERATION = TaskKey("operation.execute", OperationMission::class.java)
     val SQUAD = TaskKey("squad.execute", SquadMission::class.java)
@@ -343,12 +349,13 @@ object TacticalDomain {
 
     /** Giving a travelling squad's men their seats (#255), carried out by the integration. */
     val BOARD = ActionKey("squad.board", Boarding::class.java)
-    private val BOARD_TASK = TaskKey("squad.board", Boarding::class.java)
+    internal val BOARD_TASK = TaskKey("squad.board", Boarding::class.java)
 
     private fun delegate() =
         PrimitiveTask(DELEGATE) { task ->
             PrimitiveSpec(task.child.id.toString(), ActionSpec(DelegationAction.KEY, task.copy(continuous = true), setOf(ResourceKey(task.child, "command")), timeoutTicks = Long.MAX_VALUE), TaskContract())
         }
+
     private fun children(tasks: List<DelegationTask>) = TaskNetwork(tasks.map { NetworkNode(it.child.id.toString(), DELEGATE.call(it)) })
 
     /** The mortar crew's tasks, joined into the team and NPC domains below. */
@@ -412,16 +419,14 @@ object TacticalDomain {
                 listOf(
                     Method<SquadMission>("support_only", eligible = { mission ->
                         Condition { if (mission.teams.isEmpty() && (mission.support.isNotEmpty() || mission.air.isNotEmpty())) Verdict.Allowed else Verdict.Rejected("has_ground_teams") }
-                    }, decompose = { mission, _ -> children(FireSupport.delegations(mission) + AirSupport.delegations(mission)) }),
+                    }, decompose = { mission, facts -> TaskNetwork(children(FireSupport.delegations(mission) + AirSupport.delegations(mission)).nodes + listOfNotNull(boarding(mission, facts))) }),
                     // A squad travelling to its objective (#255) is no squad in a fight: its men make
                     // for the vehicles or the objective as their order says, and no strategy shapes them.
                     Method<SquadMission>("travel", eligible = { mission ->
                         Condition { facts -> if (mission.teams.isNotEmpty() && facts.value(TacticalFacts.TRAVELLING) == true) Verdict.Allowed else Verdict.Rejected("not_travelling") }
                     }, decompose = { mission, facts ->
                         val teams = children(mission.teams.map { DelegationTask(it.agent, TEAM.call(it)) } + FireSupport.delegations(mission) + AirSupport.delegations(mission))
-                        // The seats only once they are worked out: till then its men wait where they are.
-                        val seats = facts.value(TacticalFacts.SEATS)?.let { NetworkNode("board", BOARD_TASK.call(Boarding(mission.agent.id, it))) }
-                        TaskNetwork(teams.nodes + listOfNotNull(seats))
+                        TaskNetwork(teams.nodes + listOfNotNull(boarding(mission, facts)))
                     }),
                 ) + CombatStrategy.entries.map { strategy ->
                     Method(

@@ -293,4 +293,12 @@ class TacticalDomainTest {
         assertEquals(seats, (board.spec.action.parameters as Boarding).seats)
         assertTrue(squadPlan(squadFacts(blocked).observe(TacticalFacts.TRAVELLING, true)).tasks.none { it.spec.action.key == TacticalDomain.BOARD })
     }
+
+    @Test fun `a travelling squad of crews alone gives out its seats too`() {
+        val seats = SeatPlan(mapOf(UUID(0, 1) to RideSeat(UUID(1, 1), driver = true)))
+        val crew = SupportCrew(AgentId(AgentLevel.TEAM, UUID(0, 9)), listOf(AgentId(AgentLevel.NPC, UUID(0, 1))))
+        val facts = squadFacts(blocked).observe(TacticalFacts.TRAVELLING, true).observe(TacticalFacts.SEATS, seats)
+        val plan = (HtnPlanningSession(TacticalDomain.squad, PlanOwner(squadId, UUID(1, 1)), TacticalDomain.SQUAD.call(SquadMission(squadId, emptyList(), listOf(crew))), facts).advance(20) as PlanningResult.Ready).plan
+        assertTrue(plan.tasks.any { it.spec.action.key == TacticalDomain.BOARD })
+    }
 }
