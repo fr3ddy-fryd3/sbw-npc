@@ -297,4 +297,17 @@ class MemberDutiesTest {
     fun `equal scores go to the option listed first, never by name`() {
         assertEquals(listOf(DutyUtility.FRONT_PROPOSAL, DutyUtility.MOVE_TO_FRONT, DutyUtility.FIRE_HERE, DutyUtility.OBSERVE_HEIGHT, DutyUtility.TAKE_COVER), DutyUtility.optionIds)
     }
+
+    @Test
+    fun `a fire dwell never holds off cover, and a held height loses to a wound`() {
+        val here = Point3(0.0, 1.0, 0.0)
+        val beyond = attack(FrontProposal(CombatDuty.FIRE, Point3(60.0, 1.0, 0.0), null), here)
+        val firing = HeldDuty(DutyUtility.FRONT_PROPOSAL, DutyChoice(CombatDuty.FIRE, Point3(1.0, 1.0, 0.0)), since = 100)
+        assertEquals(DutyUtility.TAKE_COVER, MemberDuties.choose(beyond.copy(health = 0.3), 40.0, 10.0, firing, 101).ruled.rule)
+        val rise = Point3(10.0, 9.0, 10.0)
+        val onHeight = HeldDuty(DutyUtility.OBSERVE_HEIGHT, DutyChoice(CombatDuty.OBSERVE, rise), since = 0)
+        val decision = MemberDuties.choose(beyond.copy(heightRole = true, height = rise, health = 0.39), 40.0, 10.0, onHeight, 101)
+        assertEquals(DutyUtility.TAKE_COVER, decision.ruled.rule)
+        assertEquals(true, decision.evaluation!!.ranked[0].score.value > decision.evaluation!!.ranked[1].score.value)
+    }
 }

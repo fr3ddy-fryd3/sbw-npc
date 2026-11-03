@@ -30,23 +30,54 @@ object FrontHeights {
     /** A column this near a [refused][rise] rise is part of it. */
     private const val REFUSED_RADIUS = 6.0
 
+    /** A chunk's size as a shift and as a mask of block coordinates. */
+    private const val CHUNK_SHIFT = 4
+    private const val CHUNK_MASK = 15
+
+    /** A man walks up one block at a step; a column more than this above the last is a wall. */
+    private const val CLIMB = 1
+
     /**
-     * The highest column top within [RADIUS] of [front], at least [RISE] above it and not near a
-     * [refused] rise, or null when the ground round it is flat.
+     * The highest column top within [RADIUS] of [front], at least [RISE] above it, a man can walk
+     * up to from [front] ([climbable]) and not near a [refused] rise, or null when the ground round
+     * it is flat. Columns in chunks not loaded are skipped: reading them would load them.
      */
-    fun rise(level: ServerLevel, front: Vec3, refused: Collection<Vec3> = emptyList()): Vec3? {
-        var best: Vec3? = null
-        for (dx in -RADIUS..RADIUS step STEP) {
-            for (dz in -RADIUS..RADIUS step STEP) {
-                if (dx * dx + dz * dz > RADIUS * RADIUS) continue
-                val x = Mth.floor(front.x) + dx
-                val z = Mth.floor(front.z) + dz
-                val top = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z).toDouble()
-                if (top < front.y + RISE || (best != null && top <= best.y)) continue
-                if (refused.any { hypot(it.x - (x + MIDDLE), it.z - (z + MIDDLE)) < REFUSED_RADIUS }) continue
-                best = Vec3(x + MIDDLE, top, z + MIDDLE)
+    fun rise(level: ServerLevel, front: Vec3, refused: Collection<Vec3> = emptyList()): Vec3? =
+        columns(front)
+            .mapNotNull { (x, z) -> top(level, x, z)?.let { Vec3(x + MIDDLE, it.toDouble(), z + MIDDLE) } }
+            .filter { it.y >= front.y + RISE && refused.none { r -> hypot(r.x - it.x, r.z - it.z) < REFUSED_RADIUS } }
+            // Highest first, so the walk up is checked only until one qualifies.
+            .sortedByDescending { it.y }
+            .firstOrNull { climbable(level, front, Mth.floor(it.x), Mth.floor(it.z)) }
+
+    /** The columns sampled round [front], every [STEP] blocks within [RADIUS]. */
+    private fun columns(front: Vec3): Sequence<Pair<Int, Int>> =
+        sequence {
+            for (dx in -RADIUS..RADIUS step STEP) {
+                for (dz in -RADIUS..RADIUS step STEP) {
+                    if (dx * dx + dz * dz <= RADIUS * RADIUS) yield(Mth.floor(front.x) + dx to Mth.floor(front.z) + dz)
+                }
             }
         }
-        return best
+
+    /**
+     * Whether the ground from [front] straight to column ([x], [z]) never rises more than [CLIMB]
+     * in a block. A roof or a sheer wall tops the heightmap too, and the height men walked to
+     * its foot again and again as each column of it was offered and refused in turn.
+     */
+    private fun climbable(level: ServerLevel, front: Vec3, x: Int, z: Int): Boolean {
+        val fx = Mth.floor(front.x)
+        val fz = Mth.floor(front.z)
+        val steps = maxOf(kotlin.math.abs(x - fx), kotlin.math.abs(z - fz))
+        var last = top(level, fx, fz) ?: return false
+        for (i in 1..steps) {
+            val here = top(level, fx + Math.round((x - fx) * i / steps.toDouble()).toInt(), fz + Math.round((z - fz) * i / steps.toDouble()).toInt()) ?: return false
+            if (here - last > CLIMB) return false
+            last = here
+        }
+        return true
     }
+
+    /** The first free block above column ([x], [z]), or null when its chunk is not loaded. */
+    private fun top(level: ServerLevel, x: Int, z: Int): Int? = level.chunkSource.getChunkNow(x shr CHUNK_SHIFT, z shr CHUNK_SHIFT)?.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x and CHUNK_MASK, z and CHUNK_MASK)?.plus(1)
 }

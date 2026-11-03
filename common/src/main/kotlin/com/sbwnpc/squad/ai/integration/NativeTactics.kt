@@ -35,6 +35,9 @@ object NativeTactics {
     /** Farthest fire-post anchor whose local probes still fall inside the position query's reach. */
     private const val FIRE_POST_REACH = TacticalPositions.SEARCH_REACH - CombatPosition.LOCAL_MOVE_RADIUS
 
+    /** The rises an operation remembers refusing; the oldest is forgotten, being far behind a moving front. */
+    private const val MAX_REFUSED_RISES = 8
+
     /** How often an attack's front looks again for a rise for its height men, 5 s. */
     private const val FRONT_RISE_TICKS = 100L
 
@@ -1517,8 +1520,10 @@ object NativeTactics {
             if (!fighting || posts.isEmpty()) return null
             val offered = frontRises[operation]?.second
             val refused = refusedRises.getOrPut(operation, ::ArrayList)
+            // A height man's OBSERVE anchor is the rise itself, so his failed search names it exactly.
             if (offered != null && heightMen.any { failures[it.id]?.anchor == offered }) {
                 refused += offered.native()
+                if (refused.size > MAX_REFUSED_RISES) refused.removeAt(0)
                 frontRises.remove(operation)
                 DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=front_rise_refused rise={}", operation, offered)
             }
@@ -1537,7 +1542,6 @@ object NativeTactics {
          * the point the squads hold or take. A spot a scout of [scouts] has come near or sees is checked
          * on the way, so the next one heard is the answer.
          */
-
         private fun alarmToCheck(squads: List<Squad>, scouts: Set<UUID>, busy: Boolean, anchor: () -> Point3, now: Long): Point3? {
             val boards = squads.mapNotNull { alarms[it.id] }
             // The noise of its own fight is no spot to look at once it is over.
@@ -1733,11 +1737,11 @@ object NativeTactics {
                     )
                     val ruled = decision.ruled
                     dutyRules[member.id] = HeldDuty(ruled.rule, ruled.choice, held?.takeIf { it.rule == ruled.rule }?.since ?: now)
-                    val weighed = decision.evaluation?.describe() ?: "hard"
+                    val weighed by lazy { decision.evaluation?.describe() ?: "hard" }
                     if (held?.rule != ruled.rule) {
                         DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=duty_rule rule={} duty={} options={}", member.id, ruled.rule, ruled.choice.duty, weighed)
                         DecisionTrace.man(member.id, now, "duty", "${ruled.choice.duty} <- ${ruled.rule} [$weighed]")
-                    } else if (decision.evaluation?.close(DutyUtility.HELD_ADVANTAGE) == true && now - (closeDuties[member.id] ?: Long.MIN_VALUE / 2) >= CLOSE_DUTY_LOG_TICKS) {
+                    } else if (decision.evaluation?.close(DutyUtility.CLOSE_MARGIN) == true && now - (closeDuties[member.id] ?: Long.MIN_VALUE / 2) >= CLOSE_DUTY_LOG_TICKS) {
                         // The options drifting close is what comes before a flip: shown only on a flip, it never was.
                         closeDuties[member.id] = now
                         DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=duty_close rule={} options={}", member.id, ruled.rule, weighed)

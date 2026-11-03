@@ -129,6 +129,12 @@ object DutyUtility {
     const val HELD_ADVANTAGE = 0.1
 
     /**
+     * Options this near each other are logged as close (`duty_close`): within [HELD_ADVANTAGE] a
+     * settled man's held fire post and his move on were always "close", and the log said nothing.
+     */
+    const val CLOSE_MARGIN = 0.05
+
+    /**
      * The cost of switching back (#262, owner 2.11): a man who settled on a fire post at the front
      * holds it for at least [FIRE_DWELL_TICKS] before an option moves him again. On the edge of a
      * condition (just beyond a fire post's reach, just short of a mover's arrival) he flipped
