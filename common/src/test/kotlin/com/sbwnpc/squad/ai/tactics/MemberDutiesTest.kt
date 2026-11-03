@@ -244,7 +244,7 @@ class MemberDutiesTest {
     @Test
     fun `the front options are weighed with the excluded ones named, and the trace shows them all`() {
         val decision = MemberDuties.choose(attack(FrontProposal(CombatDuty.MOVE, Point3(30.0, 1.0, 0.0), null)), 40.0, 10.0)
-        assertEquals("move_to_front 0.55 (x front_proposal:proposal_moves; x fire_here:not_settled; x take_cover:fit)", decision.evaluation!!.describe())
+        assertEquals("move_to_front 0.55 (x front_proposal:proposal_moves; x fire_here:not_settled; x observe_height:not_a_height_role; x take_cover:fit)", decision.evaluation!!.describe())
         val held = HeldDuty(DutyUtility.MOVE_TO_FRONT, DutyChoice(CombatDuty.MOVE, Point3(30.0, 1.0, 0.0)), since = 0)
         val kept = MemberDuties.choose(attack(FrontProposal(CombatDuty.MOVE, Point3(30.0, 1.0, 0.0), null)), 40.0, 10.0, held, 10)
         assertEquals(0.65, kept.evaluation!!.ranked.first().score.value, 1e-9)
@@ -274,5 +274,27 @@ class MemberDutiesTest {
         // On his sidearm he fires, as before; outside an attack nothing is weighed.
         assertEquals("sidearm_fire", MemberDuties.choose(front.copy(primaryAmmo = false, sidearm = true), 40.0, 10.0).ruled.rule)
         assertEquals("defending_fire", MemberDuties.choose(front.copy(order = TacticalOrder.DEFEND, health = 0.1), 40.0, 10.0).ruled.rule)
+    }
+
+    @Test
+    fun `a sniper or gunner in an attack takes a rise by the front, and keeps his place on flat ground`() {
+        val here = Point3(0.0, 1.0, 0.0)
+        val rise = Point3(10.0, 9.0, 10.0)
+        val front = attack(FrontProposal(CombatDuty.FIRE, Point3(20.0, 1.0, 0.0), null), here).copy(heightRole = true)
+        assertEquals(RuledDuty(DutyUtility.OBSERVE_HEIGHT, DutyChoice(CombatDuty.OBSERVE, rise)), MemberDuties.choose(front.copy(height = rise), 40.0, 10.0).ruled)
+        assertEquals(DutyUtility.FRONT_PROPOSAL, MemberDuties.choose(front, 40.0, 10.0).ruled.rule)
+        // Held at the front, a rise still draws him; a rifleman is never offered one.
+        val atFront = HeldDuty(DutyUtility.FRONT_PROPOSAL, DutyChoice(CombatDuty.FIRE, Point3(20.0, 1.0, 0.0)), since = 0)
+        assertEquals(DutyUtility.OBSERVE_HEIGHT, MemberDuties.choose(front.copy(height = rise), 40.0, 10.0, atFront, 200).ruled.rule)
+        assertEquals(DutyUtility.FRONT_PROPOSAL, MemberDuties.choose(front.copy(heightRole = false, height = rise), 40.0, 10.0).ruled.rule)
+        // Wounded, even on his height, he takes cover; out of ammunition he is no height man.
+        val onHeight = HeldDuty(DutyUtility.OBSERVE_HEIGHT, DutyChoice(CombatDuty.OBSERVE, rise), since = 0)
+        assertEquals(DutyUtility.TAKE_COVER, MemberDuties.choose(front.copy(height = rise, health = 0.39), 40.0, 10.0, onHeight, 200).ruled.rule)
+        assertEquals(DutyUtility.TAKE_COVER, MemberDuties.choose(front.copy(height = rise, primaryAmmo = false), 40.0, 10.0).ruled.rule)
+    }
+
+    @Test
+    fun `equal scores go to the option listed first, never by name`() {
+        assertEquals(listOf(DutyUtility.FRONT_PROPOSAL, DutyUtility.MOVE_TO_FRONT, DutyUtility.FIRE_HERE, DutyUtility.OBSERVE_HEIGHT, DutyUtility.TAKE_COVER), DutyUtility.optionIds)
     }
 }

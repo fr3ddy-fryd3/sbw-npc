@@ -72,6 +72,14 @@ object DutyUtility {
      */
     const val TAKE_COVER = "take_cover"
 
+    /**
+     * A sniper or machine gunner takes the rise by the front ([DutyInputs.height]) instead of his
+     * place in the line (owner, 3.11): from above he covers both halves of a bounding squad, and
+     * where a rise is, his post on it is searched as any height post's. On flat ground he keeps
+     * his place, and the squad's halves keep a heavy gun each ([BoundHalves]).
+     */
+    const val OBSERVE_HEIGHT = "observe_height"
+
     /** Below this share of his health a man in contact takes cover. */
     const val WOUNDED = 0.40
 
@@ -82,7 +90,7 @@ object DutyUtility {
     const val RECOVERED = 0.55
 
     // Listed in the order a tie is broken in: the front's own shape first, then moving up to it,
-    // then firing where he is, then taking cover.
+    // then firing where he is, then a height, then taking cover.
     private val OPTIONS = listOf(
         Option(FRONT_PROPOSAL, { f ->
             allowedIf(f.proposal.duty != CombatDuty.MOVE && !f.approach, if (f.approach) "post_beyond_reach" else "proposal_moves")
@@ -96,6 +104,13 @@ object DutyUtility {
         Option(FIRE_HERE, { f ->
             allowedIf(f.settled, "not_settled")
         }, { UtilityScore(FIRE_HERE_SCORE, reason = "settled") }, { f -> DutyChoice(CombatDuty.FIRE, f.inputs.position) }),
+        Option(OBSERVE_HEIGHT, { f ->
+            when {
+                !f.inputs.heightRole -> Verdict.Rejected("not_a_height_role")
+                f.unarmed -> Verdict.Rejected("no_ammunition")
+                else -> allowedIf(f.inputs.height != null, "no_rise")
+            }
+        }, { UtilityScore(HEIGHT_SCORE, reason = "rise_by_front") }, { f -> DutyChoice(CombatDuty.OBSERVE, f.inputs.height!!) }),
         Option(TAKE_COVER, { f ->
             allowedIf(f.unarmed || f.inputs.health < if (f.held?.rule == TAKE_COVER) RECOVERED else WOUNDED, "fit")
         }, { f ->
@@ -152,7 +167,10 @@ object DutyUtility {
     private const val MOVE_SCORE = 0.55
     private const val FIRE_HERE_SCORE = 0.5
 
-    /** A man just under [WOUNDED] already outscores the front's shape held ([FRONT_PROPOSAL_SCORE] + [HELD_ADVANTAGE]). */
-    private const val COVER_BASE = 0.75
-    private const val COVER_WOUND = 0.25
+    /** Above the front's shape held ([FRONT_PROPOSAL_SCORE] + [HELD_ADVANTAGE]): a rise is worth leaving the line for. */
+    private const val HEIGHT_SCORE = 0.75
+
+    /** A wounded man outscores every other option held, a height's ([HEIGHT_SCORE] + [HELD_ADVANTAGE]) included. */
+    private const val COVER_BASE = 0.9
+    private const val COVER_WOUND = 0.1
 }

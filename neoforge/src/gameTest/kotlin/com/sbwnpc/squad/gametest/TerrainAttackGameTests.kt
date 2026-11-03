@@ -42,6 +42,73 @@ import java.util.function.Consumer
 /** A few exposed scouts see the enemy, while the ridge blocks most of an already spread line. */
 @PrefixGameTestTemplate(false)
 object TerrainAttackGameTests {
+    /** The ground a height-men scene stands on: a flat field, a hill they can walk up, or a pillar they cannot. */
+    private enum class Ground { FLAT, HILL, PILLAR }
+
+    /**
+     * A sniper and a machine gunner attacking with four riflemen take the rise by the front (#262):
+     * a hill stepped one block at a time, 6 high, between them and the enemy. On flat ground
+     * they keep their places in the line, and a sheer pillar, which the heightmap offers as a rise
+     * too, is refused once they find no post on it, and they go back to the line.
+     */
+    private fun heightMen(helper: GameTestHelper, name: String, ground: Ground) {
+        AmmunitionTacticsGameTests.floor(helper)
+        for (x in 0..FIELD_X) for (z in FIELD_Z) for (y in 1..FIELD_CLEAR) helper.setBlock(BlockPos(x, y, z), Blocks.AIR)
+        when (ground) {
+            Ground.FLAT -> Unit
+
+            Ground.HILL -> for (x in HILL_FROM..HILL_TO) {
+                val top = minOf(x - HILL_FROM, HILL_TO - x, HILL_HEIGHT)
+                for (z in HILL_Z) for (y in 1..top) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
+            }
+
+            Ground.PILLAR -> for (x in PILLAR_X) for (z in PILLAR_Z) for (y in 1..PILLAR_HEIGHT) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
+        }
+        val scene = CombatIdleGameTests.Scene(helper, name)
+        val manager = SquadManager.get(helper.level)
+        val heavy = listOf(scene.spawn(Vec3(14.5, 1.0, 60.5), com.sbwnpc.squad.npc.NpcClass.SNIPER), scene.spawn(Vec3(14.5, 1.0, 64.5), com.sbwnpc.squad.npc.NpcClass.MACHINE_GUNNER))
+        val riflemen = listOf(56.5, 60.5, 64.5, 68.5).map { scene.spawn(Vec3(10.5, 1.0, it)) }
+        val enemy = scene.enemy(Vec3(110.5, 1.0, 64.5))
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, (heavy + riflemen).map { it.uuid })
+        manager.setOrder(squad.id, SquadOrder.ATTACK)
+        manager.setObjective(helper.level, squad.id, enemy.blockPosition())
+        manager.setFocus(squad.id, enemy.uuid)
+        scene.onClose = { manager.deleteSquad(helper.level, squad.id) }
+        val chose = HashSet<UUID>()
+        var highest = 0.0
+        val start = heavy.map { it.position() }
+        helper.onEachTick {
+            val now = helper.tick
+            heavy.filter { man -> com.sbwnpc.squad.ai.diagnostics.DecisionTrace.decisionsOf(man.uuid).any { it.event == "duty" && "<- ${com.sbwnpc.squad.ai.tactics.DutyUtility.OBSERVE_HEIGHT}" in it.detail } }.forEach { chose += it.uuid }
+            highest = maxOf(highest, heavy.maxOf { helper.relativeVec(it.position()).y })
+            if (now % 50L == 0L) scene.result("RUNNING", "tick=$now chose=${chose.size} highest=$highest at=${heavy.map { helper.relativeVec(it.position()) }}")
+            if (ground == Ground.HILL && chose.size == heavy.size && highest >= HILL_HEIGHT - 1) {
+                scene.result("PASS", "tick=$now highest=$highest")
+                helper.succeed()
+            }
+            if (ground != Ground.HILL && now >= FLAT_CHECK_TICK) {
+                val duties = heavy.map { man -> com.sbwnpc.squad.ai.diagnostics.DecisionTrace.decisionsOf(man.uuid).lastOrNull { it.event == "duty" }?.detail }
+                if (ground == Ground.FLAT) helper.assertTrue(chose.isEmpty(), "A height man took a height on flat ground")
+                helper.assertTrue(duties.none { it != null && "<- ${com.sbwnpc.squad.ai.tactics.DutyUtility.OBSERVE_HEIGHT}" in it }, "A height man still held a height he cannot climb: $duties")
+                helper.assertTrue(heavy.indices.all { heavy[it].position().x - start[it].x >= LINE_ADVANCE }, "The height men did not go up to the line: ${heavy.map { helper.relativeVec(it.position()) }}")
+                scene.result("PASS", "tick=$now chose=${chose.size}")
+                helper.succeed()
+            }
+        }
+    }
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 900, batch = "height-men-hill")
+    fun sniperAndGunnerInAnAttackTakeTheRiseByTheFront(helper: GameTestHelper) = heightMen(helper, "height-men-hill", Ground.HILL)
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 900, batch = "height-men-flat")
+    fun sniperAndGunnerOnFlatGroundKeepTheirPlacesInTheLine(helper: GameTestHelper) = heightMen(helper, "height-men-flat", Ground.FLAT)
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 900, batch = "height-men-pillar")
+    fun sniperAndGunnerRefuseAPillarTheyCannotClimbAndJoinTheLine(helper: GameTestHelper) = heightMen(helper, "height-men-pillar", Ground.PILLAR)
+
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1200, batch = "terrain")
     fun attackPastRidgeWithoutReturnFire(helper: GameTestHelper) = ridge(helper, returnFire = false)
@@ -336,4 +403,26 @@ object TerrainAttackGameTests {
             }
         }
     }
+
+    /** The hill the height men are to take: its foot and far foot along x, and its width. */
+    private const val HILL_FROM = 30
+    private const val HILL_TO = 58
+    private const val HILL_HEIGHT = 6
+    private val HILL_Z = 44..84
+
+    /** A sheer pillar by the front, 8 high, that no man can climb. */
+    private val PILLAR_X = 40..42
+    private val PILLAR_Z = 62..64
+    private const val PILLAR_HEIGHT = 8
+
+    /** The field cleared of the arena's own blocks, so flat is flat. */
+    private const val FIELD_X = 130
+    private val FIELD_Z = 30..100
+    private const val FIELD_CLEAR = 12
+
+    /** By then a height man has gone up to the line, and been given a height if any was offered. */
+    private const val FLAT_CHECK_TICK = 500L
+
+    /** How far towards the enemy a height man in the line has come from where he started. */
+    private const val LINE_ADVANCE = 10.0
 }

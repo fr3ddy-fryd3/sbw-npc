@@ -35,6 +35,9 @@ object NativeTactics {
     /** Farthest fire-post anchor whose local probes still fall inside the position query's reach. */
     private const val FIRE_POST_REACH = TacticalPositions.SEARCH_REACH - CombatPosition.LOCAL_MOVE_RADIUS
 
+    /** How often an attack's front looks again for a rise for its height men, 5 s. */
+    private const val FRONT_RISE_TICKS = 100L
+
     /** A man's close duty options are logged at most this often, 5 s. */
     private const val CLOSE_DUTY_LOG_TICKS = 100L
 
@@ -363,6 +366,15 @@ object NativeTactics {
         private val slotSights = HashMap<UUID, SlotSight>()
         fun slotsWithoutSight(members: Collection<UUID>) = members.count { id -> slotSights[id]?.let { it.sighted == null } == true }
         private val sectorsHeld = HashMap<UUID, Boolean>()
+
+        /** Each attacking operation's rise by its front for its height men ([FrontHeights]), and when it was read. */
+        private val frontRises = HashMap<UUID, Pair<Long, Point3?>>()
+
+        /**
+         * Rises a height man of the operation found no post on ([FrontHeights] reads only the
+         * heightmap: a roof or a sheer wall counts there too), never offered to it again.
+         */
+        private val refusedRises = HashMap<UUID, MutableList<Vec3>>()
 
         // Members on the arc to their sector at the last layout: their intent is not kept once the
         // arc ends, or they would stay on its last waypoint.
@@ -1032,6 +1044,8 @@ object NativeTactics {
                     flankTraces.remove(id.id)
                     boundTraces.remove(id.id)
                     sectorsHeld.remove(id.id)
+                    frontRises.remove(id.id)
+                    refusedRises.remove(id.id)
                     areaObservedAt.remove(id.id)
                     areaTraces.remove(id.id)
                     unverified.remove(id.id)
@@ -1376,6 +1390,8 @@ object NativeTactics {
                 flankTraces.remove(operation)
                 boundTraces.remove(operation)
                 sectorsHeld.remove(operation)
+                frontRises.remove(operation)
+                refusedRises.remove(operation)
             }
             DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=attack_called_off squads={} partial={} able={} base={}", operation, squads.size, callOff.partial, callOff.able, callOff.base)
             return ActionUpdate.Completed(listOf(ActionEvidence("attack_called_off", now)))
@@ -1492,12 +1508,36 @@ object NativeTactics {
         }
 
         /**
+         * The rise by an attack's front its [heightMen] could fight from, read off the heightmap
+         * round the centre of their front [proposals] at most every [FRONT_RISE_TICKS], or null
+         * without one. A rise one of them failed to find a post on is refused, and another looked for.
+         */
+        private fun frontRise(operation: UUID, attacking: Boolean, focus: Vec3?, heightMen: List<TacticalMember>, proposals: Map<UUID, FrontProposal>, now: Long): Point3? {
+            val posts = heightMen.mapNotNull { proposals[it.id]?.anchor }
+            if (!attacking || focus == null || posts.isEmpty()) return null
+            val offered = frontRises[operation]?.second
+            val refused = refusedRises.getOrPut(operation, ::ArrayList)
+            if (offered != null && heightMen.any { failures[it.id]?.anchor == offered }) {
+                refused += offered.native()
+                frontRises.remove(operation)
+                DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=front_rise_refused rise={}", operation, offered)
+            }
+            frontRises[operation]?.takeIf { now - it.first < FRONT_RISE_TICKS }?.let { return it.second }
+            val front = Vec3(posts.map { it.x }.average(), posts.map { it.y }.average(), posts.map { it.z }.average())
+            val rise = FrontHeights.rise(level, front, refused)?.point()
+            if (rise != offered) DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=front_rise front={} rise={}", operation, front, rise)
+            frontRises[operation] = now to rise
+            return rise
+        }
+
+        /**
          * The noise [squads] send their scouts to look at, or null (#254): nothing in a fight or on a
          * reinforcement's march ([busy], which also forgets what was heard of it), nor while any of them is under an order that sends nobody
          * ([MemberDuties.SCOUTING_ORDERS]), nor one farther than [UnverifiedContacts.SCOUT_RADIUS] from
          * the point the squads hold or take. A spot a scout of [scouts] has come near or sees is checked
          * on the way, so the next one heard is the answer.
          */
+
         private fun alarmToCheck(squads: List<Squad>, scouts: Set<UUID>, busy: Boolean, anchor: () -> Point3, now: Long): Point3? {
             val boards = squads.mapNotNull { alarms[it.id] }
             // The noise of its own fight is no spot to look at once it is over.
@@ -1578,6 +1618,7 @@ object NativeTactics {
                 }.associate { (id, proposal) -> id to withSight(operation, id, proposal, defenders, members.first { it.id == id }.role) }
             }
             proposals.forEach { (id, proposal) -> formationDuties[id] = proposal.duty }
+            val rise = frontRise(operation, attacking, focus, members.filter { it.role in HEIGHT_ROLES && it.primaryAmmo }, proposals, now)
             // A man far round the objective from his sector gets there along the arc, not across the
             // point. Once the assault is on, its closing posts lead him to the point instead.
             val waypoints = if (bearings.isEmpty() || objective == null || (attacks[operation]?.phase ?: AttackPhase.DEPLOY) != AttackPhase.DEPLOY) {
@@ -1661,6 +1702,7 @@ object NativeTactics {
                             primaryAmmo = member.primaryAmmo,
                             sidearm = member.sidearmOnly,
                             health = member.health,
+                            height = rise?.takeIf { member.role in HEIGHT_ROLES },
                             hasPatrolRoute = view.hasPatrolRoute,
                             reachedMove = actions[member.id]?.let { it.intent.duty == CombatDuty.MOVE && it.reached() } == true,
                             // A pistol's FIRE is no post he settled on: with his main weapon back he moves on with the others.

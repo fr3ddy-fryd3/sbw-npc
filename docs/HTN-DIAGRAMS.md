@@ -43,6 +43,7 @@ flowchart LR
     A_C --> A_MV1["fire_here: the front says move and he is there,<br/>already fired, or within 8 blocks"]:::case --> D_FI1["fire where he stands"]:::duty
     A_C --> A_MV2["move_to_front: the front says move and he is not there,<br/>or its fire post is beyond reach"]:::case --> D_MV2["move to his front slot,<br/>or to short of the post"]:::duty
     A_C --> A_FI2["front_proposal: a fire post in reach,<br/>or a rear guard"]:::case --> D_FI2["fire from the post,<br/>or guard the rear"]:::duty
+    A_C --> A_OH["observe_height: sniper or machine gunner with ammo,<br/>a rise 4+ above the front within 24 (heightmap),<br/>not one a height man found no post on"]:::case --> D_OH["a height post on the rise"]:::duty
     A_C --> A_TC["take_cover: under 40% health (until over 55%),<br/>or nothing to fire; outscores the rest"]:::case --> D_TC["a sheltered post near him,<br/>no lane needed, never closes in"]:::duty
 
     T1 --> O_DEF(["DEFEND, or PATROL without a route"]):::task
