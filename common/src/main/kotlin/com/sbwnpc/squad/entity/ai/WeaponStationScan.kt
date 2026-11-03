@@ -23,8 +23,13 @@ object WeaponStationScan {
     /** How far a man looks for an enemy vehicle's crew to shoot at from a gun. */
     const val THREAT_RANGE = 48.0
 
-    /** A temporary weapon station cannot hold up an explicit march or the squad's withdrawal. */
-    fun orderAllows(order: SquadOrder?): Boolean = order != SquadOrder.MOVE && order != SquadOrder.RETREAT
+    /**
+     * A temporary weapon station cannot hold up the squad's withdrawal, nor a march while the squad
+     * travels ([travelling]). A march stopped in a fight is held up already: refused under every
+     * MOVE, a gun beside a squad fighting on an operation's march stood empty for four minutes
+     * (in-game 03.11).
+     */
+    fun orderAllows(order: SquadOrder?, travelling: Boolean): Boolean = order != SquadOrder.RETREAT && !(order == SquadOrder.MOVE && travelling)
 
     /** Whether [npc] is free to go to a gun: on foot, no crew or mortar man, and nothing else holds him. */
     fun free(npc: NpcEntity): Boolean =

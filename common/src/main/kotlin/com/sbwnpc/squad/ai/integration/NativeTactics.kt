@@ -2018,7 +2018,7 @@ object NativeTactics {
             val due = HashMap<AgentId, StationPlan>()
             missions.forEach { (squadId, mission) ->
                 val saved = manager.get(squadId) ?: return@forEach
-                if (situations[squadId]?.contact != true || squadId in journeys || !WeaponStationScan.orderAllows(saved.order)) return@forEach
+                if (situations[squadId]?.contact != true || squadId in journeys || !WeaponStationScan.orderAllows(saved.order, travelling = false)) return@forEach
                 mission.teams.forEach { team ->
                     val men = team.members.mapNotNull { level.getEntity(it.actor.id) as? NpcEntity }.filter(WeaponStationScan::free)
                     val guns = WeaponStationScan.stations(men, level)
