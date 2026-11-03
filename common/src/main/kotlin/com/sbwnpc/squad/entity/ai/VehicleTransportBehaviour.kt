@@ -283,7 +283,11 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 }
             }
         }
-        if (checkGiveup && phase == Phase.SEEKING && entity.tickCount - seekingStartTick > SEEK_GIVEUP_TICKS) {
+        // On land his squad gives out the seats (#255): told to walk, he walks.
+        if (boatTrips.isEmpty() && NativeTactics.walks(entity)) return logEligibility(entity, false) { "his squad has no seat for him, walking" }
+        // Only a boat is looked for by himself; a seat on land waits on his squad, which always answers.
+        val seekingTooLong = phase == Phase.SEEKING && entity.tickCount - seekingStartTick > SEEK_GIVEUP_TICKS
+        if (checkGiveup && boatTrips.isNotEmpty() && seekingTooLong) {
             giveupCooldownUntilTick = entity.tickCount + GIVEUP_COOLDOWN_TICKS
             return logEligibility(entity, false) {
                 "gave up seeking a vehicle after $SEEK_GIVEUP_TICKS ticks, cooling down for $GIVEUP_COOLDOWN_TICKS ticks"
@@ -422,6 +426,10 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         nextSeekTick = entity.tickCount + SEEK_INTERVAL_TICKS
 
         val squad = entity.currentSquad() ?: return
+        if (boatTrips.isEmpty()) {
+            boardGivenSeat(entity, level)
+            return
+        }
         val nearby = Ports.vehicles.within(
             level,
             AABB.ofSize(entity.position(), SEARCH_RADIUS * 2, SEARCH_RADIUS * 2, SEARCH_RADIUS * 2),
@@ -429,11 +437,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         val choice = nearby.asSequence()
             .filter { entity.distanceToSqr(it) <= SEARCH_RADIUS * SEARCH_RADIUS }
             .filter { vehicle ->
-                if (boatTrips.isNotEmpty()) {
-                    boatTrips.any { it.boat == vehicle.uuid } && isUsableBoat(vehicle, entity)
-                } else {
-                    isUsableGroundVehicle(vehicle, entity)
-                }
+                boatTrips.any { it.boat == vehicle.uuid } && isUsableBoat(vehicle, entity)
             }
             .mapNotNull { vehicle ->
                 val claimedBySquad = squad.members.any { VehicleTransportClaims.vehicleOf(it) == vehicle.uuid }
@@ -477,15 +481,8 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             }
             // The boats worth taking are full or gone: walk, or a road vehicle if it's far — and
             // leave the boats be for a while.
-            if (boatTrips.isNotEmpty()) {
-                boatTrips = emptyList()
-                boatCooldownUntilTick = entity.tickCount + BOAT_COOLDOWN_TICKS
-                return
-            }
-            // One look is enough. Standing here scanning for ten seconds, walking for twenty and
-            // scanning again was a squad on a long march freezing every half a minute. Nothing in
-            // reach now: walk, and don't look again until the next order.
-            noVehicleForStamp = squad.orderStamp
+            boatTrips = emptyList()
+            boatCooldownUntilTick = entity.tickCount + BOAT_COOLDOWN_TICKS
             return
         }
 
@@ -519,6 +516,36 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
     }
 
+    /**
+     * Claims the seat his travelling squad gave him ([NativeTactics.seatOf]); with none yet he
+     * waits for it where he is. A claim refused means the vehicle is not his to take after all.
+     */
+    private fun boardGivenSeat(entity: NpcEntity, level: ServerLevel) {
+        val seat = NativeTactics.seatOf(entity) ?: return
+        val vehicle = level.getEntity(seat.vehicle)?.takeIf(Ports.vehicles::isVehicle)
+        val claimed = vehicle != null && if (seat.driver) {
+            VehicleTransportClaims.claimDriver(vehicle.uuid, entity.uuid)
+        } else {
+            VehicleTransportClaims.claimPassenger(vehicle.uuid, entity.uuid, Ports.vehicles.seatCount(vehicle), SeatHold.heldFor(vehicle, entity), vehicle.passengers.map { it.uuid })
+        }
+        if (!claimed) {
+            NativeTactics.seatRefused(entity, seat.vehicle)
+            return
+        }
+        targetVehicleId = seat.vehicle
+        phase = Phase.BOARDING
+        DebugFlags.log(LogGroup.VEHICLE, "{} claimed the {} seat his squad gave him in {}", entity.uuid, if (seat.driver) "driver" else "passenger", seat.vehicle)
+    }
+
+    /** Boarding [vehicle] failed: the claim goes, and a seat his squad gave him there is refused. */
+    private fun abortBoarding(entity: NpcEntity, vehicle: java.util.UUID?) {
+        VehicleTransportClaims.release(entity.uuid)
+        if (vehicle != null && NativeTactics.seatOf(entity)?.vehicle == vehicle) NativeTactics.seatRefused(entity, vehicle)
+        targetVehicleId = null
+        phase = Phase.SEEKING
+        seekingStartTick = entity.tickCount
+    }
+
     private fun tickBoarding(entity: NpcEntity, level: ServerLevel) {
         val vehicle = targetVehicleId?.let { level.getEntity(it)?.takeIf(Ports.vehicles::isVehicle) }
         // Re-verified here, not just at claim time in tickSeeking — a player can board/park in the
@@ -526,10 +553,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (vehicle == null || !Ports.vehicles.isOperational(vehicle) || Ports.vehicles.isLocked(vehicle) ||
             hasBlockingPlayerAboard(vehicle, entity) || vehicle.passengers.size >= Ports.vehicles.seatCount(vehicle)
         ) {
-            VehicleTransportClaims.release(entity.uuid)
-            targetVehicleId = null
-            phase = Phase.SEEKING
-            seekingStartTick = entity.tickCount
+            abortBoarding(entity, targetVehicleId)
             return
         }
 
@@ -560,10 +584,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 entity.uuid,
                 vehicle.uuid,
             )
-            VehicleTransportClaims.release(entity.uuid)
-            targetVehicleId = null
-            phase = Phase.SEEKING
-            seekingStartTick = entity.tickCount
+            abortBoarding(entity, targetVehicleId)
             return
         }
         DebugFlags.log(LogGroup.VEHICLE, "{} boarded {}", entity.uuid, vehicle.uuid)
@@ -667,7 +688,9 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             val member = level.getEntity(id) as? NpcEntity ?: return@all true // dead/unloaded: don't block on it
             !member.isAlive || member.vehicle != null || member.distanceToSqr(vehicle) > SEARCH_RADIUS * SEARCH_RADIUS ||
                 // A boat seats few: whoever isn't coming along is swimming, not late.
-                (boat && !member.holds(NpcActivity.VEHICLE))
+                (boat && !member.holds(NpcActivity.VEHICLE)) ||
+                // On land his squad said who rides here (#255); the rest are in other vehicles or walk.
+                (!boat && NativeTactics.seatOf(member)?.vehicle != vehicle.uuid)
         }
         val timedOut = entity.tickCount - waitStartTick > WAIT_TIMEOUT_TICKS
         if (allAccountedFor || timedOut) {
