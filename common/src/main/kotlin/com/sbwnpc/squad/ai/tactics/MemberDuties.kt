@@ -107,8 +107,7 @@ object MemberDuties {
     fun choose(inputs: DutyInputs, fireReach: Double, approachOffset: Double, held: HeldDuty? = null, now: Long = 0): DutyDecision {
         val situation = Situation(inputs, fireReach, approachOffset)
         for (rule in RULES) rule.choose(situation)?.let { return DutyDecision(RuledDuty(rule.id, it), null) }
-        val front = DutyUtility.FrontInputs(inputs, situation.approach, situation.approachAnchor)
-        return DutyUtility.choose(front, held, now)
+        return DutyUtility.choose(DutyUtility.FrontInputs(inputs, situation.approach, situation.approachAnchor, held), now)
     }
 
     /** The hard rule ids in the order they are tried, then [DutyUtility]'s options. */

@@ -122,7 +122,14 @@ class MemberDutiesTest {
                             followSlot = if (flag(12)) Point3(52.0, 64.0, 104.0) else null,
                             followRide = flag(13),
                         )
-                        assertEquals(LegacyDuty.duty(inputs, 40.0, 10.0), MemberDuties.choose(inputs, 40.0, 10.0).ruled.choice, "$inputs")
+                        val ruled = MemberDuties.choose(inputs, 40.0, 10.0).ruled
+                        // The one case the old chain sent to the front row: a man with nothing to fire takes cover instead.
+                        if (ruled.rule == DutyUtility.TAKE_COVER) {
+                            assertEquals(DutyChoice(CombatDuty.TAKE_COVER, here), ruled.choice, "$inputs")
+                            assertEquals(false, inputs.primaryAmmo, "$inputs")
+                        } else {
+                            assertEquals(LegacyDuty.duty(inputs, 40.0, 10.0), ruled.choice, "$inputs")
+                        }
                         checked++
                     }
                 }
@@ -153,7 +160,9 @@ class MemberDutiesTest {
             sidearm = true,
         )
         assertEquals(RuledDuty("sidearm_fire", DutyChoice(CombatDuty.FIRE, here)), MemberDuties.choose(attack, 40.0, 10.0).ruled)
-        assertEquals(DutyUtility.MOVE_TO_FRONT, MemberDuties.choose(attack.copy(sidearm = false), 40.0, 10.0).ruled.rule)
+        assertEquals(DutyUtility.MOVE_TO_FRONT, MemberDuties.choose(attack.copy(sidearm = false, primaryAmmo = true), 40.0, 10.0).ruled.rule)
+        // With neither, he has nothing to fire and waits in cover.
+        assertEquals(DutyUtility.TAKE_COVER, MemberDuties.choose(attack.copy(sidearm = false), 40.0, 10.0).ruled.rule)
         assertEquals("no_fight", MemberDuties.choose(attack.copy(inContact = false), 40.0, 10.0).ruled.rule)
         val slot = Point3(52.0, 64.0, 104.0)
         val bounding = attack.copy(order = TacticalOrder.DEFEND, following = true, followBound = true, followSlot = slot)
@@ -235,11 +244,35 @@ class MemberDutiesTest {
     @Test
     fun `the front options are weighed with the excluded ones named, and the trace shows them all`() {
         val decision = MemberDuties.choose(attack(FrontProposal(CombatDuty.MOVE, Point3(30.0, 1.0, 0.0), null)), 40.0, 10.0)
-        assertEquals("move_to_front 0.55 (x front_proposal:proposal_moves; x fire_here:not_settled)", decision.evaluation!!.describe())
+        assertEquals("move_to_front 0.55 (x front_proposal:proposal_moves; x fire_here:not_settled; x take_cover:fit)", decision.evaluation!!.describe())
         val held = HeldDuty(DutyUtility.MOVE_TO_FRONT, DutyChoice(CombatDuty.MOVE, Point3(30.0, 1.0, 0.0)), since = 0)
         val kept = MemberDuties.choose(attack(FrontProposal(CombatDuty.MOVE, Point3(30.0, 1.0, 0.0), null)), 40.0, 10.0, held, 10)
         assertEquals(0.65, kept.evaluation!!.ranked.first().score.value, 1e-9)
         // A hard rule weighs nothing.
         assertEquals(null, MemberDuties.choose(attack(FrontProposal(CombatDuty.MOVE, Point3(30.0, 1.0, 0.0), null)).copy(order = TacticalOrder.DEFEND), 40.0, 10.0).evaluation)
+    }
+
+    @Test
+    fun `a wounded man in a fight takes cover until he is well again, and a man with nothing to fire waits in cover`() {
+        val here = Point3(0.0, 1.0, 0.0)
+        val front = attack(FrontProposal(CombatDuty.FIRE, Point3(20.0, 1.0, 0.0), null), here)
+        val cover = DutyChoice(CombatDuty.TAKE_COVER, here)
+        assertEquals(DutyUtility.FRONT_PROPOSAL, MemberDuties.choose(front.copy(health = 0.45), 40.0, 10.0).ruled.rule)
+        val wounded = MemberDuties.choose(front.copy(health = 0.39), 40.0, 10.0).ruled
+        assertEquals(RuledDuty(DutyUtility.TAKE_COVER, cover), wounded)
+        // Healed past the first threshold he stays in cover, and goes back only well past it.
+        val inCover = HeldDuty(DutyUtility.TAKE_COVER, cover, since = 0)
+        assertEquals(DutyUtility.TAKE_COVER, MemberDuties.choose(front.copy(health = 0.5), 40.0, 10.0, inCover, 200).ruled.rule)
+        assertEquals(DutyUtility.FRONT_PROPOSAL, MemberDuties.choose(front.copy(health = 0.56), 40.0, 10.0, inCover, 200).ruled.rule)
+        // Held for a long while, the front's shape still loses to a wound.
+        val atFront = HeldDuty(DutyUtility.FRONT_PROPOSAL, DutyChoice(CombatDuty.FIRE, Point3(20.0, 1.0, 0.0)), since = 0)
+        assertEquals(DutyUtility.TAKE_COVER, MemberDuties.choose(front.copy(health = 0.39), 40.0, 10.0, atFront, 200).ruled.rule)
+        // With no ammunition and no sidearm he never moves up, and waits in cover.
+        val unarmed = MemberDuties.choose(attack(FrontProposal(CombatDuty.MOVE, Point3(30.0, 1.0, 0.0), null), here).copy(primaryAmmo = false), 40.0, 10.0)
+        assertEquals(RuledDuty(DutyUtility.TAKE_COVER, cover), unarmed.ruled)
+        assertEquals(true, unarmed.evaluation!!.excluded.any { it.id == DutyUtility.MOVE_TO_FRONT })
+        // On his sidearm he fires, as before; outside an attack nothing is weighed.
+        assertEquals("sidearm_fire", MemberDuties.choose(front.copy(primaryAmmo = false, sidearm = true), 40.0, 10.0).ruled.rule)
+        assertEquals("defending_fire", MemberDuties.choose(front.copy(order = TacticalOrder.DEFEND, health = 0.1), 40.0, 10.0).ruled.rule)
     }
 }

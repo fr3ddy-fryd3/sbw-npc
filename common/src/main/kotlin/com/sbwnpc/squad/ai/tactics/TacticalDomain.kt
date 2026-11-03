@@ -20,6 +20,8 @@ import kotlin.math.min
  * @property shelterUnderFire under incoming fire his post must give shelter from its bearing.
  * @property heightPost he fights from a height post round his anchor, with a floor below which
  *   no post counts ([MemberDuties.HEIGHT_POST_DROP]).
+ * @property holdsBack his post always hides him from the enemy he faces, and he never closes in:
+ *   no closer post, no forward move of his engage. He still fires from where he is.
  */
 enum class CombatDuty(
     val advancing: Boolean = false,
@@ -35,6 +37,16 @@ enum class CombatDuty(
     OBSERVE(watching = true, heightPost = true),
     SEARCH(advancing = true, watching = true),
     FOLLOW_ORDER(commandsMovement = false),
+
+    /**
+     * A wounded man, or one with nothing to fire, in a sheltered post near where he is ([DutyUtility]).
+     * Its post needs no firing lane: with the enemy beyond his reach no post had one, and the
+     * last resort's engage walked him into the front row he was to keep out of.
+     */
+    TAKE_COVER,
+    ;
+
+    val holdsBack get() = this == TAKE_COVER
 }
 
 /**
@@ -569,6 +581,7 @@ object TacticalDomain {
                             when {
                                 failure?.anchor != intent.anchor || failure.attempts <= NEIGHBOR_ATTEMPTS -> Verdict.Rejected("neighbors_not_exhausted")
                                 facts.sidearm -> Verdict.Rejected("sidearm")
+                                intent.duty.holdsBack -> Verdict.Rejected("holds_back")
                                 else -> closer(intent, failure)
                             }
                         }
@@ -585,11 +598,11 @@ object TacticalDomain {
                             val failure = facts.value(TacticalFacts.POST_FAILURE)
                             when {
                                 failure?.anchor != intent.anchor || failure.attempts <= NEIGHBOR_ATTEMPTS -> Verdict.Rejected("posts_not_exhausted")
-                                !facts.sidearm && closer(intent, failure) == Verdict.Allowed -> Verdict.Rejected("closer_post_left")
+                                !facts.sidearm && !intent.duty.holdsBack && closer(intent, failure) == Verdict.Allowed -> Verdict.Rejected("closer_post_left")
                                 else -> Verdict.Allowed
                             }
                         }
-                    }, decompose = { intent, facts -> engageOrHold(intent, facts, forward = true, POST.call(intent.copy(hold = true, requireCover = false, requireShelter = false, legs = false, coveredBy = emptySet()))) }),
+                    }, decompose = { intent, facts -> engageOrHold(intent, facts, forward = !intent.duty.holdsBack, POST.call(intent.copy(hold = true, requireCover = false, requireShelter = false, legs = false, coveredBy = emptySet()))) }),
                 ),
             ),
             CompoundTask(

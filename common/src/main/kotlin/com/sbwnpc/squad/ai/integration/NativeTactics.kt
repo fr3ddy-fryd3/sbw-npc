@@ -1660,6 +1660,7 @@ object NativeTactics {
                             heightRole = member.role in HEIGHT_ROLES,
                             primaryAmmo = member.primaryAmmo,
                             sidearm = member.sidearmOnly,
+                            health = member.health,
                             hasPatrolRoute = view.hasPatrolRoute,
                             reachedMove = actions[member.id]?.let { it.intent.duty == CombatDuty.MOVE && it.reached() } == true,
                             // A pistol's FIRE is no post he settled on: with his main weapon back he moves on with the others.

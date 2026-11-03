@@ -30,9 +30,15 @@ data class DutyEvaluation(val ranked: List<RankedDecision<DutyChoice>>, val excl
  * that fired.
  */
 object DutyUtility {
-    /** What the options read: the member's [inputs], and whether his fire post is beyond reach ([approach]) with the place short of it to make for. */
-    class FrontInputs(val inputs: DutyInputs, val approach: Boolean, val approachAnchor: Point3) {
+    /**
+     * What the options read: the member's [inputs], whether his fire post is beyond reach
+     * ([approach]) with the place short of it to make for, and the duty he [held] until now.
+     */
+    class FrontInputs(val inputs: DutyInputs, val approach: Boolean, val approachAnchor: Point3, val held: HeldDuty? = null) {
         val proposal get() = inputs.proposal
+
+        /** Nothing to fire: no ammunition for his main weapon and no sidearm in hand (that one is `sidearm_fire`'s). */
+        val unarmed get() = !inputs.primaryAmmo && !inputs.sidearm
 
         /**
          * A mover that reached his post, or already fired, or stands in his slot's area keeps firing
@@ -57,17 +63,45 @@ object DutyUtility {
     /** The front's own duty at its post: a fire post in reach, or a rear guard's. */
     const val FRONT_PROPOSAL = "front_proposal"
 
-    // Listed in the order a tie is broken in: the front's own shape first, then moving up to it.
+    /**
+     * Fire from a post that hides him, near where he stands, instead of his place at the front
+     * ([CombatDuty.TAKE_COVER]): a
+     * wounded man, or one with nothing left to fire, stood in the front row with the rest until
+     * he fell (owner, 3.11). With no ammunition at all the mandatory ammunition rule then takes
+     * him back; until it does, he waits in cover.
+     */
+    const val TAKE_COVER = "take_cover"
+
+    /** Below this share of his health a man in contact takes cover. */
+    const val WOUNDED = 0.40
+
+    /**
+     * Above this share he goes back to the front. Between the two he keeps what he does: healing
+     * across one threshold, he flipped between the front and cover with every point a medic gave him.
+     */
+    const val RECOVERED = 0.55
+
+    // Listed in the order a tie is broken in: the front's own shape first, then moving up to it,
+    // then firing where he is, then taking cover.
     private val OPTIONS = listOf(
         Option(FRONT_PROPOSAL, { f ->
             allowedIf(f.proposal.duty != CombatDuty.MOVE && !f.approach, if (f.approach) "post_beyond_reach" else "proposal_moves")
         }, { UtilityScore(FRONT_PROPOSAL_SCORE, reason = "front_shape") }, { f -> DutyChoice(f.proposal.duty, f.proposal.anchor) }),
         Option(MOVE_TO_FRONT, { f ->
-            allowedIf((f.proposal.duty == CombatDuty.MOVE && !f.settled) || f.approach, if (f.settled) "settled" else "post_in_reach")
+            when {
+                f.unarmed -> Verdict.Rejected("no_ammunition")
+                else -> allowedIf((f.proposal.duty == CombatDuty.MOVE && !f.settled) || f.approach, if (f.settled) "settled" else "post_in_reach")
+            }
         }, { UtilityScore(MOVE_SCORE, reason = "close_up") }, { f -> DutyChoice(CombatDuty.MOVE, if (f.approach) f.approachAnchor else f.proposal.anchor) }),
         Option(FIRE_HERE, { f ->
             allowedIf(f.settled, "not_settled")
         }, { UtilityScore(FIRE_HERE_SCORE, reason = "settled") }, { f -> DutyChoice(CombatDuty.FIRE, f.inputs.position) }),
+        Option(TAKE_COVER, { f ->
+            allowedIf(f.unarmed || f.inputs.health < if (f.held?.rule == TAKE_COVER) RECOVERED else WOUNDED, "fit")
+        }, { f ->
+            // It outscores every other option, held or not: a wounded man is worth more to the squad alive.
+            if (f.unarmed) UtilityScore(1.0, reason = "no_ammunition") else UtilityScore(minOf(1.0, COVER_BASE + COVER_WOUND * (1.0 - f.inputs.health / RECOVERED)), reason = "wounded")
+        }, { f -> DutyChoice(CombatDuty.TAKE_COVER, f.inputs.position) }),
     )
 
     /** The option ids, in the order a tie is broken in. */
@@ -89,8 +123,9 @@ object DutyUtility {
      */
     const val FIRE_DWELL_TICKS = 60L
 
-    /** [front]'s best option, the one he [held] given [HELD_ADVANTAGE] and kept as it was through its fire dwell. */
-    fun choose(front: FrontInputs, held: HeldDuty?, now: Long): DutyDecision {
+    /** [front]'s best option, the one he held given [HELD_ADVANTAGE] and kept as it was through its fire dwell. */
+    fun choose(front: FrontInputs, now: Long): DutyDecision {
+        val held = front.held
         val ranked = ArrayList<RankedDecision<DutyChoice>>(OPTIONS.size)
         val excluded = ArrayList<ExcludedDecision>(OPTIONS.size)
         for (option in OPTIONS) {
@@ -109,11 +144,15 @@ object DutyUtility {
         ranked.sortWith(compareByDescending { it.score.value })
         val evaluation = DutyEvaluation(ranked, excluded)
         val best = ranked.first()
-        val dwelling = held != null && held.rule in optionIds && held.choice.duty == CombatDuty.FIRE && best.value.duty == CombatDuty.MOVE && now - held.since < FIRE_DWELL_TICKS
-        return DutyDecision(if (dwelling) RuledDuty(held!!.rule, held.choice) else RuledDuty(best.id, best.value), evaluation)
+        val dwelling = held?.takeIf { it.rule in optionIds && it.choice.duty == CombatDuty.FIRE && best.value.duty == CombatDuty.MOVE && now - it.since < FIRE_DWELL_TICKS }
+        return DutyDecision(dwelling?.let { RuledDuty(it.rule, it.choice) } ?: RuledDuty(best.id, best.value), evaluation)
     }
 
     private const val FRONT_PROPOSAL_SCORE = 0.6
     private const val MOVE_SCORE = 0.55
     private const val FIRE_HERE_SCORE = 0.5
+
+    /** A man just under [WOUNDED] already outscores the front's shape held ([FRONT_PROPOSAL_SCORE] + [HELD_ADVANTAGE]). */
+    private const val COVER_BASE = 0.75
+    private const val COVER_WOUND = 0.25
 }
