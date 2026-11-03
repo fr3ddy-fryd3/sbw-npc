@@ -1508,13 +1508,13 @@ object NativeTactics {
         }
 
         /**
-         * The rise by an attack's front its [heightMen] could fight from, read off the heightmap
+         * The rise by an attack's front its [heightMen] could fight from, while it is [fighting], read off the heightmap
          * round the centre of their front [proposals] at most every [FRONT_RISE_TICKS], or null
          * without one. A rise one of them failed to find a post on is refused, and another looked for.
          */
-        private fun frontRise(operation: UUID, attacking: Boolean, focus: Vec3?, heightMen: List<TacticalMember>, proposals: Map<UUID, FrontProposal>, now: Long): Point3? {
+        private fun frontRise(operation: UUID, fighting: Boolean, heightMen: List<TacticalMember>, proposals: Map<UUID, FrontProposal>, now: Long): Point3? {
             val posts = heightMen.mapNotNull { proposals[it.id]?.anchor }
-            if (!attacking || focus == null || posts.isEmpty()) return null
+            if (!fighting || posts.isEmpty()) return null
             val offered = frontRises[operation]?.second
             val refused = refusedRises.getOrPut(operation, ::ArrayList)
             if (offered != null && heightMen.any { failures[it.id]?.anchor == offered }) {
@@ -1618,7 +1618,7 @@ object NativeTactics {
                 }.associate { (id, proposal) -> id to withSight(operation, id, proposal, defenders, members.first { it.id == id }.role) }
             }
             proposals.forEach { (id, proposal) -> formationDuties[id] = proposal.duty }
-            val rise = frontRise(operation, attacking, focus, members.filter { it.role in HEIGHT_ROLES && it.primaryAmmo }, proposals, now)
+            val rise = frontRise(operation, attacking && focus != null, members.filter { it.role in HEIGHT_ROLES && it.primaryAmmo }, proposals, now)
             // A man far round the objective from his sector gets there along the arc, not across the
             // point. Once the assault is on, its closing posts lead him to the point instead.
             val waypoints = if (bearings.isEmpty() || objective == null || (attacks[operation]?.phase ?: AttackPhase.DEPLOY) != AttackPhase.DEPLOY) {
