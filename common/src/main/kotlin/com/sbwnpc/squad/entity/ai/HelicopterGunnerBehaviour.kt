@@ -75,6 +75,7 @@ class HelicopterGunnerBehaviour : ExtendedBehaviour<NpcEntity>() {
             .filter { it.onGround() }
             .filter { SquadTeams.factionOf(it) == SquadTeams.factionOf(entity) }
             .filter { Ports.vehicles.seating(it).getOrNull(Helicopters.GUNNER_SEAT) == null }
+            .filter { gunship -> !SeatHold.refuses(gunship, entity, Ports.vehicles.seating(gunship).count { it != null }) }
             .minByOrNull { entity.distanceToSqr(it) }
     }
 

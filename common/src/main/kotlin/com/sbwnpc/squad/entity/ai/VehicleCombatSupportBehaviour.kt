@@ -77,7 +77,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         val target = threat(entity) ?: return
         val vehicle = findSupportVehicle(entity, level) ?: return
         if (!entity.claimAlone(NpcActivity.SEAT, this)) return
-        if (!VehicleTransportClaims.claimPassenger(vehicle.uuid, entity.uuid, Ports.vehicles.seatCount(vehicle))) {
+        if (!VehicleTransportClaims.claimPassenger(vehicle.uuid, entity.uuid, Ports.vehicles.seatCount(vehicle), SeatHold.heldFor(vehicle, entity))) {
             entity.release(NpcActivity.SEAT, this)
             return
         }

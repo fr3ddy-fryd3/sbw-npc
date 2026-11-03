@@ -369,6 +369,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 vehicle.uuid,
                 entity.uuid,
                 Ports.vehicles.seatCount(vehicle),
+                SeatHold.heldFor(vehicle, entity),
                 vehicle.passengers.map { it.uuid },
             )
             phase = Phase.RIDING
@@ -491,6 +492,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 choice.vehicle.uuid,
                 entity.uuid,
                 Ports.vehicles.seatCount(choice.vehicle),
+                SeatHold.heldFor(choice.vehicle, entity),
                 choice.vehicle.passengers.map { it.uuid },
             )
         }
@@ -601,6 +603,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                     vehicle.uuid,
                     it,
                     Ports.vehicles.seatCount(vehicle),
+                    SeatHold.heldFor(vehicle, entity),
                     vehicle.passengers.map { p -> p.uuid },
                 )
             }
@@ -609,6 +612,7 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 vehicle.uuid,
                 entity.uuid,
                 Ports.vehicles.seatCount(vehicle),
+                SeatHold.heldFor(vehicle, entity),
                 vehicle.passengers.map { it.uuid },
             )
         }
