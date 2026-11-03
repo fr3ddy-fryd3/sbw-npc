@@ -815,13 +815,21 @@ object NativeTactics {
                 AgentLevel.TEAM -> when {
                     fireSupport.roster.unit(id) != null -> fireSupport.teamFacts(empty)
                     air.roster.unit(id) != null -> air.teamFacts(empty)
-                    else -> (stationsDue[id]?.let { empty.observe(TacticalFacts.STATIONS, it) } ?: empty)
-                        .observe(TacticalFacts.COVER_STALLED, missions.entries.firstOrNull { (_, mission) -> mission.teams.any { it.agent == id } }?.key?.let { coverStalled(it, empty.now) } == true)
+                    else -> groundTeamFacts(empty)
                 }
 
                 AgentLevel.NPC -> npcFacts(empty)
             }
         }
+
+        /** A ground team's guns to man, and whether its squad's covering fire stalled. */
+        private fun groundTeamFacts(empty: FactSnapshot): FactSnapshot {
+            val id = empty.owner
+            val squad = missions.entries.firstOrNull { (_, mission) -> mission.teams.any { it.agent == id } }?.key
+            return (stationsDue[id]?.let { empty.observe(TacticalFacts.STATIONS, it) } ?: empty)
+                .observe(TacticalFacts.COVER_STALLED, squad?.let { coverStalled(it, empty.now) } == true)
+        }
+
         private fun operationFacts(empty: FactSnapshot): FactSnapshot {
             var result = empty
             val id = empty.owner.id
