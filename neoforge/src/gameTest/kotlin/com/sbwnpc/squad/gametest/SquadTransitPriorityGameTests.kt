@@ -95,4 +95,38 @@ object SquadTransitPriorityGameTests {
             }
         }
     }
+
+    /** A man left behind boards the vehicle his squad already rides in, not a nearer free one (#228, #255). */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 200, batch = "transit-left-behind")
+    fun manLeftBehindTakesHisSquadsVehicleBeforeANearerFreeOne(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "transit-left-behind")
+        val manager = SquadManager.get(helper.level)
+        val driver = scene.spawn(Vec3(45.5, 1.0, 20.5))
+        val straggler = scene.spawn(Vec3(20.5, 1.0, 20.5))
+        fun lav(x: Double) = requireNotNull(Ports.vehicles.create(helper.level, TransportVehicle.LAV_25)).also {
+            val at = helper.absoluteVec(Vec3(x, 1.0, 20.5))
+            it.moveTo(at.x, at.y, at.z, 0f, 0f)
+            helper.level.addFreshEntity(it)
+            Ports.vehicles.fuelAndArm(it, TransportVehicle.LAV_25)
+        }
+        val squads = lav(45.5)
+        val nearer = lav(25.5)
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(driver.uuid, straggler.uuid))
+        scene.onClose = {
+            manager.deleteSquad(helper.level, squad.id)
+            squads.ejectPassengers()
+            squads.discard()
+            nearer.discard()
+        }
+        helper.assertTrue(driver.startRiding(squads, true), "Could not seat the squad's driver")
+        manager.issueOrderAt(helper.level, squad.id, SquadOrder.ATTACK, helper.absolutePos(BlockPos(150, 1, 20)))
+        helper.onEachTick {
+            helper.assertTrue(VehicleTransportClaims.vehicleOf(straggler.uuid) != nearer.uuid && straggler.vehicle !== nearer, "The man left behind took a nearer free vehicle over his squad's")
+            if (straggler.vehicle === squads) {
+                scene.result("PASS", "tick=${helper.tick} boarded his squad's vehicle")
+                helper.succeed()
+            }
+        }
+    }
 }
