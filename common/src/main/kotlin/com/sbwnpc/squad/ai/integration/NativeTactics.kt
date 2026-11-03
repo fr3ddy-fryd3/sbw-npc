@@ -35,6 +35,9 @@ object NativeTactics {
     /** Farthest fire-post anchor whose local probes still fall inside the position query's reach. */
     private const val FIRE_POST_REACH = TacticalPositions.SEARCH_REACH - CombatPosition.LOCAL_MOVE_RADIUS
 
+    /** A man's close duty options are logged at most this often, 5 s. */
+    private const val CLOSE_DUTY_LOG_TICKS = 100L
+
     /** Seen enemies this close to an attacked area keep it from counting as held. */
     private const val AREA_THREAT_RADIUS = 128.0
 
@@ -48,7 +51,7 @@ object NativeTactics {
     private const val NO_TARGET_PAUSE_TICKS = 10L
 
     /** Duty rules whose movers advance by legs in a fight, see [PositionIntent.legs]. */
-    private val LEG_RULES = setOf("mover", "fire_approach", "retreat_bound")
+    private val LEG_RULES = setOf(DutyUtility.MOVE_TO_FRONT, "retreat_bound")
 
     /** A bounding half that has not finished a leg each by then hands over anyway, 15 s. */
     private const val BOUND_TURN_TICKS = 300L
@@ -444,6 +447,9 @@ object NativeTactics {
 
         // The MemberDuties case each member's duty last came from, to log only when it changes.
         private val dutyRules = HashMap<UUID, HeldDuty>()
+
+        /** When each man's close duty options were last logged, see `duty_close`. */
+        private val closeDuties = HashMap<UUID, Long>()
         private val failures = HashMap<UUID, LocalPositionFailure>()
 
         // Legs each mover has finished of an advance by legs, see [TacticalFacts.LEGS_DONE].
@@ -926,6 +932,7 @@ object NativeTactics {
                             formationDuties.remove(it)
                             plannedContact.remove(it)
                             dutyRules.remove(it)
+                            closeDuties.remove(it)
                             slotSights.remove(it)
                         }
                     }
@@ -1640,7 +1647,7 @@ object NativeTactics {
                     val waypoint = waypoints[member.id]
                     val proposal = waypoint?.let { FrontProposal(CombatDuty.MOVE, it, null) } ?: proposals.getValue(member.id)
                     val held = dutyRules[member.id]
-                    val chosen = entry?.takeUnless { transit }?.let { RuledDuty("reinforcement_entry", DutyChoice(CombatDuty.MOVE, it)) } ?: MemberDuties.choose(
+                    val decision = entry?.takeUnless { transit }?.let { DutyDecision(RuledDuty("reinforcement_entry", DutyChoice(CombatDuty.MOVE, it)), null) } ?: MemberDuties.choose(
                         DutyInputs(
                             order = saved.order.tactical(),
                             position = member.position.point(),
@@ -1678,12 +1685,19 @@ object NativeTactics {
                         ),
                         FIRE_POST_REACH,
                         CombatPosition.LOCAL_MOVE_RADIUS,
+                        held,
+                        now,
                     )
-                    val ruled = MemberDuties.switching(held, chosen, now)
-                    dutyRules[member.id] = HeldDuty(ruled.rule, ruled.choice, held?.takeIf { it.choice.duty == ruled.choice.duty }?.since ?: now)
+                    val ruled = decision.ruled
+                    dutyRules[member.id] = HeldDuty(ruled.rule, ruled.choice, held?.takeIf { it.rule == ruled.rule }?.since ?: now)
+                    val weighed = decision.evaluation?.describe() ?: "hard"
                     if (held?.rule != ruled.rule) {
-                        DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=duty_rule rule={} duty={}", member.id, ruled.rule, ruled.choice.duty)
-                        DecisionTrace.man(member.id, now, "duty", "${ruled.choice.duty} <- ${ruled.rule}")
+                        DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=duty_rule rule={} duty={} options={}", member.id, ruled.rule, ruled.choice.duty, weighed)
+                        DecisionTrace.man(member.id, now, "duty", "${ruled.choice.duty} <- ${ruled.rule} [$weighed]")
+                    } else if (decision.evaluation?.close(DutyUtility.HELD_ADVANTAGE) == true && now - (closeDuties[member.id] ?: Long.MIN_VALUE / 2) >= CLOSE_DUTY_LOG_TICKS) {
+                        // The options drifting close is what comes before a flip: shown only on a flip, it never was.
+                        closeDuties[member.id] = now
+                        DebugFlags.log(LogGroup.ORDER, "[htn] actor={} event=duty_close rule={} options={}", member.id, ruled.rule, weighed)
                     }
                     val choice = ruled.choice
                     val duty = choice.duty

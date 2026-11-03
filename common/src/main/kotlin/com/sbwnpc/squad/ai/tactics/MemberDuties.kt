@@ -4,10 +4,13 @@ import com.sbwnpc.squad.ai.coordination.Point3
 import com.sbwnpc.squad.ai.coordination.TacticalOrder
 import kotlin.math.hypot
 
-/** A member's duty chosen by [rule], the id of the [MemberDuties] case that applied. */
+/** A member's duty chosen by [rule], the id of the [MemberDuties] case or [DutyUtility] option that applied. */
 data class RuledDuty(val rule: String, val choice: DutyChoice)
 
-/** The duty a member holds, by [rule], and the tick he took it up [since]. */
+/** A member's chosen duty, with the options weighed for it when no hard rule applied ([evaluation]). */
+data class DutyDecision(val ruled: RuledDuty, val evaluation: DutyEvaluation?)
+
+/** The duty a member holds, by [rule] (a hard rule or a [DutyUtility] option), and the tick that [rule] began [since]. */
 data class HeldDuty(val rule: String, val choice: DutyChoice, val since: Long)
 
 /** The post a member's new duty asks for, to compare with the intent he holds; see [MemberDuties.keeps]. */
@@ -18,7 +21,8 @@ data class WantedPost(val duty: CombatDuty, val anchor: Point3, val requireCover
  *
  * Each case names its duty and its anchor together, so a case reads as one decision. Later cases
  * may assume the earlier ones did not apply (an ATTACK order past `defending_fire`, for example).
- * The front's proposals ([FrontProposal]) only carry MOVE, FIRE and REAR_GUARD.
+ * These are the orders and the mandatory cases: when one applies nothing is weighed. A man they
+ * leave, in contact under an ATTACK, gets the best of his front options ([DutyUtility], #262).
  */
 object MemberDuties {
     /** How far below where a sentry stands his height post may be. */
@@ -84,17 +88,6 @@ object MemberDuties {
         rule("defending_fire", { it.inputs.order != TacticalOrder.ATTACK }, { CombatDuty.FIRE }, { it.inputs.position }),
         // Firing on the way would stop him short of his sector.
         rule("flank_march", { it.inputs.flanking }, { CombatDuty.MOVE }, { if (it.approach) it.approachAnchor else it.proposal.anchor }),
-        // A mover that reached its post, or already fired, keeps firing instead of moving on.
-        // So does one that stands in his slot's area without a post: where no post has a
-        // firing lane, in-game 17.10 a flank's movers ran between search posts 10-15 blocks
-        // apart round their slot for minutes (#58).
-        rule("mover_settled", { s ->
-            with(s.inputs) { proposal.duty == CombatDuty.MOVE && (reachedMove || wasFiring || distance(position, proposal.anchor) <= OperationTactics.MOVE_ARRIVAL) }
-        }, { CombatDuty.FIRE }, { it.inputs.position }),
-        rule("mover", { it.proposal.duty == CombatDuty.MOVE }, { CombatDuty.MOVE }, { it.proposal.anchor }),
-        // A local fire-post query cannot see a post beyond its reach: approach it first.
-        rule("fire_approach", { it.approach }, { CombatDuty.MOVE }, { it.approachAnchor }),
-        rule("front_proposal", { true }, { it.proposal.duty }, { it.proposal.anchor }),
     )
 
     /**
@@ -107,41 +100,19 @@ object MemberDuties {
     private val MARCHING_ORDERS = setOf(TacticalOrder.RETREAT, TacticalOrder.MOVE, TacticalOrder.BARRAGE)
 
     /**
-     * What one member does under his order and where. A fire post farther than [fireReach] is
-     * first approached as movement to [approachOffset] short of it.
+     * What one member does under his order and where: the first hard rule that applies, else the
+     * best of his front options by [DutyUtility], with the one he [held] kept for its dwell. A fire
+     * post farther than [fireReach] is first approached as movement to [approachOffset] short of it.
      */
-    fun choose(inputs: DutyInputs, fireReach: Double, approachOffset: Double): RuledDuty {
+    fun choose(inputs: DutyInputs, fireReach: Double, approachOffset: Double, held: HeldDuty? = null, now: Long = 0): DutyDecision {
         val situation = Situation(inputs, fireReach, approachOffset)
-        for (rule in RULES) rule.choose(situation)?.let { return RuledDuty(rule.id, it) }
-        error("front_proposal always applies")
+        for (rule in RULES) rule.choose(situation)?.let { return DutyDecision(RuledDuty(rule.id, it), null) }
+        val front = DutyUtility.FrontInputs(inputs, situation.approach, situation.approachAnchor)
+        return DutyUtility.choose(front, held, now)
     }
 
-    /**
-     * The cost of switching duties (#262, owner 2.11): a man who settled on a fire post at the front
-     * holds it for at least [FIRE_DWELL_TICKS] before his front rules send him moving again. On the
-     * edge of a rule (just beyond a fire post's reach, just short of a mover's arrival) the chain
-     * flipped him between firing and moving every update, and he did neither. Taking up a post is
-     * never delayed, and a rule outside the front (an order, a retreat, a scout, a follow) switches
-     * him at once.
-     */
-    fun switching(held: HeldDuty?, ruled: RuledDuty, now: Long): RuledDuty {
-        held ?: return ruled
-        val back = held.choice.duty == CombatDuty.FIRE && ruled.choice.duty == CombatDuty.MOVE
-        val withinFront = held.rule in FRONT_RULES && ruled.rule in FRONT_RULES
-        return if (back && withinFront && now - held.since < FIRE_DWELL_TICKS) RuledDuty(FIRE_HELD, held.choice) else ruled
-    }
-
-    /** How long a fire post at the front is held before a front rule moves him on, 3 s. */
-    const val FIRE_DWELL_TICKS = 60L
-
-    /** The rule id of a fire post held by [switching]; it counts as the front rule it holds. */
-    const val FIRE_HELD = "fire_held"
-
-    /** The rules the front's own shape decides by, between which [switching] costs. */
-    private val FRONT_RULES = setOf("mover_settled", "mover", "fire_approach", "front_proposal", FIRE_HELD)
-
-    /** The rule ids in the order they are tried. */
-    val ruleIds: List<String> get() = RULES.map { it.id }
+    /** The hard rule ids in the order they are tried, then [DutyUtility]'s options. */
+    val ruleIds: List<String> get() = RULES.map { it.id } + DutyUtility.optionIds
 
     /**
      * Whether a member keeps his [previous] intent instead of a new one for the [wanted] post.
@@ -165,7 +136,7 @@ object MemberDuties {
     /** Below this he stands on the post, with no direction to step back along. */
     private const val MIN_LENGTH = 1.0E-4
 
-    private fun short(post: Point3, from: Point3, offset: Double): Point3 {
+    internal fun short(post: Point3, from: Point3, offset: Double): Point3 {
         val dx = from.x - post.x
         val dz = from.z - post.z
         val length = hypot(dx, dz)
@@ -173,5 +144,5 @@ object MemberDuties {
         return Point3(post.x + dx / length * offset, post.y, post.z + dz / length * offset)
     }
 
-    private fun distance(a: Point3, b: Point3) = hypot(a.x - b.x, a.z - b.z)
+    internal fun distance(a: Point3, b: Point3) = hypot(a.x - b.x, a.z - b.z)
 }

@@ -217,11 +217,11 @@ object OperationTactics {
     }
 
     /**
-     * What one member does under his order and where, by the first of [MemberDuties]' cases that
-     * applies. A fire post farther than [fireReach] is first approached as movement to
+     * What one member does under his order and where, by [MemberDuties]' hard rules or the best of
+     * his front options. A fire post farther than [fireReach] is first approached as movement to
      * [approachOffset] short of it, because a local fire-post query cannot see a post beyond its reach.
      */
-    fun duty(inputs: DutyInputs, fireReach: Double, approachOffset: Double): DutyChoice = MemberDuties.choose(inputs, fireReach, approachOffset).choice
+    fun duty(inputs: DutyInputs, fireReach: Double, approachOffset: Double): DutyChoice = MemberDuties.choose(inputs, fireReach, approachOffset).ruled.choice
 
     /**
      * Whether a following man in a fight runs to his place this beat. Halves of the squad

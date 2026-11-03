@@ -122,7 +122,7 @@ class MemberDutiesTest {
                             followSlot = if (flag(12)) Point3(52.0, 64.0, 104.0) else null,
                             followRide = flag(13),
                         )
-                        assertEquals(LegacyDuty.duty(inputs, 40.0, 10.0), MemberDuties.choose(inputs, 40.0, 10.0).choice, "$inputs")
+                        assertEquals(LegacyDuty.duty(inputs, 40.0, 10.0), MemberDuties.choose(inputs, 40.0, 10.0).ruled.choice, "$inputs")
                         checked++
                     }
                 }
@@ -152,12 +152,12 @@ class MemberDutiesTest {
             arrival = 22.0,
             sidearm = true,
         )
-        assertEquals(RuledDuty("sidearm_fire", DutyChoice(CombatDuty.FIRE, here)), MemberDuties.choose(attack, 40.0, 10.0))
-        assertEquals("mover", MemberDuties.choose(attack.copy(sidearm = false), 40.0, 10.0).rule)
-        assertEquals("no_fight", MemberDuties.choose(attack.copy(inContact = false), 40.0, 10.0).rule)
+        assertEquals(RuledDuty("sidearm_fire", DutyChoice(CombatDuty.FIRE, here)), MemberDuties.choose(attack, 40.0, 10.0).ruled)
+        assertEquals(DutyUtility.MOVE_TO_FRONT, MemberDuties.choose(attack.copy(sidearm = false), 40.0, 10.0).ruled.rule)
+        assertEquals("no_fight", MemberDuties.choose(attack.copy(inContact = false), 40.0, 10.0).ruled.rule)
         val slot = Point3(52.0, 64.0, 104.0)
         val bounding = attack.copy(order = TacticalOrder.DEFEND, following = true, followBound = true, followSlot = slot)
-        assertEquals(RuledDuty("follow_bound", DutyChoice(CombatDuty.MOVE, slot)), MemberDuties.choose(bounding, 40.0, 10.0))
+        assertEquals(RuledDuty("follow_bound", DutyChoice(CombatDuty.MOVE, slot)), MemberDuties.choose(bounding, 40.0, 10.0).ruled)
     }
 
     @Test
@@ -182,37 +182,64 @@ class MemberDutiesTest {
             wasObserving = true,
             retreatSlot = slot,
         )
-        assertEquals(RuledDuty("retreat_bound", DutyChoice(CombatDuty.MOVE, slot)), MemberDuties.choose(retreat, 40.0, 10.0))
-        assertEquals(RuledDuty("retreat_run", DutyChoice(CombatDuty.MOVE, slot)), MemberDuties.choose(retreat.copy(inContact = false), 40.0, 10.0))
+        assertEquals(RuledDuty("retreat_bound", DutyChoice(CombatDuty.MOVE, slot)), MemberDuties.choose(retreat, 40.0, 10.0).ruled)
+        assertEquals(RuledDuty("retreat_run", DutyChoice(CombatDuty.MOVE, slot)), MemberDuties.choose(retreat.copy(inContact = false), 40.0, 10.0).ruled)
         // Six blocks off, height included, he is at his place.
         val there = Point3(14.0, 68.0, 100.0)
-        assertEquals(RuledDuty("retreat_settled", DutyChoice(CombatDuty.FIRE, slot)), MemberDuties.choose(retreat.copy(position = there), 40.0, 10.0))
+        assertEquals(RuledDuty("retreat_settled", DutyChoice(CombatDuty.FIRE, slot)), MemberDuties.choose(retreat.copy(position = there), 40.0, 10.0).ruled)
         val off = Point3(14.0, 69.0, 100.0)
-        assertEquals("retreat_bound", MemberDuties.choose(retreat.copy(position = off), 40.0, 10.0).rule)
+        assertEquals("retreat_bound", MemberDuties.choose(retreat.copy(position = off), 40.0, 10.0).ruled.rule)
         // Already firing at his place, a post a few blocks farther out keeps him settled.
-        assertEquals("retreat_settled", MemberDuties.choose(retreat.copy(position = off, wasFiring = true), 40.0, 10.0).rule)
-        assertEquals("retreat_bound", MemberDuties.choose(retreat.copy(position = Point3(23.0, 64.0, 100.0), wasFiring = true), 40.0, 10.0).rule)
-        assertEquals("elsewhere", MemberDuties.choose(retreat.copy(elsewhere = true), 40.0, 10.0).rule)
+        assertEquals("retreat_settled", MemberDuties.choose(retreat.copy(position = off, wasFiring = true), 40.0, 10.0).ruled.rule)
+        assertEquals("retreat_bound", MemberDuties.choose(retreat.copy(position = Point3(23.0, 64.0, 100.0), wasFiring = true), 40.0, 10.0).ruled.rule)
+        assertEquals("elsewhere", MemberDuties.choose(retreat.copy(elsewhere = true), 40.0, 10.0).ruled.rule)
+    }
+
+    private fun attack(proposal: FrontProposal, position: Point3 = Point3(0.0, 1.0, 0.0), wasFiring: Boolean = false) =
+        DutyInputs(
+            order = TacticalOrder.ATTACK,
+            position = position,
+            proposal = proposal,
+            objective = Point3(100.0, 1.0, 0.0),
+            inspect = null,
+            inContact = true,
+            elsewhere = false,
+            scout = false,
+            heightRole = false,
+            primaryAmmo = true,
+            hasPatrolRoute = false,
+            reachedMove = false,
+            wasFiring = wasFiring,
+            arrival = 22.0,
+        )
+
+    @Test
+    fun `a man holds a fresh fire post at the front before moving again, and switches at once for a hard rule`() {
+        val post = Point3(0.0, 1.0, 0.0)
+        // A support post that moved just out of his reach: he would walk to it, then fire, then walk.
+        val firing = HeldDuty(DutyUtility.FRONT_PROPOSAL, DutyChoice(CombatDuty.FIRE, post), since = 100)
+        val beyond = attack(FrontProposal(CombatDuty.FIRE, Point3(60.0, 1.0, 0.0), null))
+        val dwell = MemberDuties.choose(beyond, 40.0, 10.0, firing, 100 + DutyUtility.FIRE_DWELL_TICKS - 1).ruled
+        assertEquals(RuledDuty(DutyUtility.FRONT_PROPOSAL, firing.choice), dwell)
+        val moved = MemberDuties.choose(beyond, 40.0, 10.0, firing, 100 + DutyUtility.FIRE_DWELL_TICKS).ruled
+        assertEquals(RuledDuty(DutyUtility.MOVE_TO_FRONT, DutyChoice(CombatDuty.MOVE, Point3(50.0, 1.0, 0.0))), moved)
+        // A flank the squad splits off, or the end of the fight, is never held back.
+        assertEquals("flank_march", MemberDuties.choose(beyond.copy(flanking = true), 40.0, 10.0, firing, 101).ruled.rule)
+        assertEquals("no_fight", MemberDuties.choose(beyond.copy(inContact = false), 40.0, 10.0, firing, 101).ruled.rule)
+        // Taking up a post is not delayed.
+        val moving = HeldDuty(DutyUtility.MOVE_TO_FRONT, DutyChoice(CombatDuty.MOVE, post), since = 100)
+        val arrived = attack(FrontProposal(CombatDuty.MOVE, Point3(2.0, 1.0, 0.0), null))
+        assertEquals(RuledDuty(DutyUtility.FIRE_HERE, DutyChoice(CombatDuty.FIRE, post)), MemberDuties.choose(arrived, 40.0, 10.0, moving, 101).ruled)
     }
 
     @Test
-    fun `a man holds a fresh fire post at the front before moving again, and switches at once for anything else`() {
-        val post = Point3(0.0, 1.0, 0.0)
-        // A support post that moved just out of his reach: he would walk to it, then fire, then walk.
-        val firing = HeldDuty("front_proposal", DutyChoice(CombatDuty.FIRE, post), since = 100)
-        val move = RuledDuty("fire_approach", DutyChoice(CombatDuty.MOVE, Point3(20.0, 1.0, 0.0)))
-        val held = MemberDuties.switching(firing, move, 100 + MemberDuties.FIRE_DWELL_TICKS - 1)
-        assertEquals(RuledDuty(MemberDuties.FIRE_HELD, firing.choice), held)
-        assertEquals(move, MemberDuties.switching(firing, move, 100 + MemberDuties.FIRE_DWELL_TICKS))
-        // A retreat, a flank the squad splits off, an order or a first post is never held back.
-        val flank = RuledDuty("flank_march", DutyChoice(CombatDuty.MOVE, Point3(0.0, 1.0, 40.0)))
-        assertEquals(flank, MemberDuties.switching(firing, flank, 101))
-        val retreat = RuledDuty("retreat_run", DutyChoice(CombatDuty.MOVE, Point3(-30.0, 1.0, 0.0)))
-        assertEquals(retreat, MemberDuties.switching(firing, retreat, 101))
-        assertEquals(move, MemberDuties.switching(null, move, 101))
-        // Taking up a post is not delayed.
-        val moving = HeldDuty("mover", move.choice, since = 100)
-        val settle = RuledDuty("mover_settled", DutyChoice(CombatDuty.FIRE, post))
-        assertEquals(settle, MemberDuties.switching(moving, settle, 101))
+    fun `the front options are weighed with the excluded ones named, and the trace shows them all`() {
+        val decision = MemberDuties.choose(attack(FrontProposal(CombatDuty.MOVE, Point3(30.0, 1.0, 0.0), null)), 40.0, 10.0)
+        assertEquals("move_to_front 0.55 (x front_proposal:proposal_moves; x fire_here:not_settled)", decision.evaluation!!.describe())
+        val held = HeldDuty(DutyUtility.MOVE_TO_FRONT, DutyChoice(CombatDuty.MOVE, Point3(30.0, 1.0, 0.0)), since = 0)
+        val kept = MemberDuties.choose(attack(FrontProposal(CombatDuty.MOVE, Point3(30.0, 1.0, 0.0), null)), 40.0, 10.0, held, 10)
+        assertEquals(0.65, kept.evaluation!!.ranked.first().score.value, 1e-9)
+        // A hard rule weighs nothing.
+        assertEquals(null, MemberDuties.choose(attack(FrontProposal(CombatDuty.MOVE, Point3(30.0, 1.0, 0.0), null)).copy(order = TacticalOrder.DEFEND), 40.0, 10.0).evaluation)
     }
 }

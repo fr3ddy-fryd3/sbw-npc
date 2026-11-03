@@ -38,15 +38,11 @@ flowchart LR
     T1 --> O_ATT(["ATTACK"]):::task
     O_ATT --> A_SC["scout"]:::case --> D_SE["search the point to inspect"]:::duty
     O_ATT --> A_NC["no contact"]:::case --> D_FO2["follow the order:<br/>march to the objective"]:::duty
-    O_ATT --> A_C(["in contact: the front's proposal"]):::task
-    A_C --> A_FL["flanking round the objective<br/>(squad's approach: flank)"]:::case --> D_MV1["move to the next waypoint"]:::duty
-    A_C --> A_MV["front says move"]:::case
-    A_MV --> A_MV1["there, already fired,<br/>or within 8 blocks"]:::case --> D_FI1["fire where he stands"]:::duty
-    A_MV --> A_MV2["otherwise"]:::case --> D_MV2["move to his front slot"]:::duty
-    A_C --> A_FI["front says fire"]:::case
-    A_FI --> A_FI1["post beyond reach"]:::case --> D_MV3["move to short of the post"]:::duty
-    A_FI --> A_FI2["post in reach"]:::case --> D_FI2["fire from the post"]:::duty
-    A_C --> A_RG["front says rear guard"]:::case --> D_RG["rear guard"]:::duty
+    O_ATT --> A_FL["in contact, flanking round the objective<br/>(squad's approach: flank)"]:::case --> D_MV1["move to the next waypoint"]:::duty
+    O_ATT --> A_C(["in contact: the best of his front options<br/>(DutyUtility; the one held +0.1,<br/>a fresh fire post kept 3 s)"]):::task
+    A_C --> A_MV1["fire_here: the front says move and he is there,<br/>already fired, or within 8 blocks"]:::case --> D_FI1["fire where he stands"]:::duty
+    A_C --> A_MV2["move_to_front: the front says move and he is not there,<br/>or its fire post is beyond reach"]:::case --> D_MV2["move to his front slot,<br/>or to short of the post"]:::duty
+    A_C --> A_FI2["front_proposal: a fire post in reach,<br/>or a rear guard"]:::case --> D_FI2["fire from the post,<br/>or guard the rear"]:::duty
 
     T1 --> O_DEF(["DEFEND, or PATROL without a route"]):::task
     O_DEF --> F_SEN["machine gunner or sniper<br/>with ammo, not following a player,<br/>arrived at the objective or already on its post"]:::case --> D_OB["observe from a height post<br/>round the objective"]:::duty
