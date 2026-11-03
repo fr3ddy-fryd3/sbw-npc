@@ -13,6 +13,10 @@ import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
 import com.sbwnpc.squad.vehicle.DriverAllegiance
+import com.sbwnpc.squad.vehicle.RideCandidates.hasBlockingPlayerAboard
+import com.sbwnpc.squad.vehicle.RideCandidates.isBoat
+import com.sbwnpc.squad.vehicle.RideCandidates.isUsableBoat
+import com.sbwnpc.squad.vehicle.RideCandidates.isUsableGroundVehicle
 import com.sbwnpc.squad.vehicle.TreeAvoidance
 import com.sbwnpc.squad.vehicle.VehiclePower
 import net.minecraft.core.BlockPos
@@ -1540,13 +1544,6 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var mortarPriorityCheckTick = Int.MIN_VALUE / 2 // not MIN_VALUE: `tickCount - MIN_VALUE` overflows
     private var mortarPriorityCached = false
 
-    private fun isBoat(vehicle: Entity): Boolean = Ports.vehicles.mobility(vehicle) == Mobility.WATER
-
-    /** Afloat with a free seat, charged, and nobody's player at the helm. */
-    private fun isUsableBoat(vehicle: Entity, entity: NpcEntity): Boolean =
-        Ports.vehicles.isOperational(vehicle) && !Ports.vehicles.isLocked(vehicle) && Ports.vehicles.seatCount(vehicle) > 0 &&
-            isBoat(vehicle) && vehicle.isInWater && VehiclePower.hasReserve(vehicle) && !hasBlockingPlayerAboard(vehicle, entity)
-
     /** Close enough to [home] to get off: a boat has to come right up to the landing point, or be
      *  washed up on land — a vehicle on the road stops well short and lets everyone walk in. */
     private fun arrived(entity: NpcEntity, vehicle: Entity, home: Vec3): Boolean {
@@ -1568,11 +1565,6 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
             (!vehicle.isInWater && entity.tickCount - boardTick > BOAT_LAUNCH_GRACE_TICKS && dist <= BOAT_BANK_RADIUS) ||
             (dist <= BOAT_BANK_RADIUS && restingAtBank(vehicle))
     }
-
-    private fun isUsableGroundVehicle(vehicle: Entity, entity: NpcEntity): Boolean =
-        Ports.vehicles.isOperational(vehicle) && !Ports.vehicles.isLocked(vehicle) && Ports.vehicles.seatCount(vehicle) > 0 &&
-            Ports.vehicles.mobility(vehicle) == Mobility.GROUND && VehiclePower.hasReserve(vehicle) &&
-            !hasBlockingPlayerAboard(vehicle, entity)
 
     private fun forwardDirection(vehicle: Entity): Vec3 {
         val movement = vehicle.deltaMovement
@@ -1636,17 +1628,6 @@ class VehicleTransportBehaviour : ExtendedBehaviour<NpcEntity>() {
                 steering.left,
             )
         }
-    }
-
-    /** A player of ours may ride along in the back; a player at the wheel, or anyone not ours,
-     *  keeps the vehicle his — NPCs never take over a player's vehicle. */
-    private fun hasBlockingPlayerAboard(vehicle: Entity, entity: NpcEntity): Boolean {
-        val players = vehicle.passengers.filterIsInstance<net.minecraft.world.entity.player.Player>()
-        if (players.isEmpty()) return false
-        // A player at the wheel is driving it himself.
-        if (players.any { Ports.vehicles.seatOf(vehicle, it) == 0 }) return true
-        // One of ours in the back rides along; anyone else keeps it his.
-        return players.any { !DriverAllegiance.isAlliedDriver(it, entity) }
     }
 
     private fun holdVehicle(vehicle: Entity) {
