@@ -61,7 +61,7 @@ enum class CombatDuty(
  * @property sightClearance how near the defence his post may lie when it is nearer than his role's
  *   clearance: a blind firing-line slot found sight only there (#93). Null keeps the role's own.
  * @property coveredBy the men whose fire covers his rushes: each rush waits to start until one
- *   of them fires ([TacticalFacts.SUPPORT_FIRING]). Empty, he rushes when ready.
+ *   of them fires ([TacticalFacts.SUPPORT_FIRING]), however long that takes. Empty, he rushes when ready.
  */
 data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null, val elevationWeight: Double = 0.0, val assault: Boolean = false, val standoff: Double = 0.0, val sightClearance: Double? = null, val ordered: Boolean = false, val hold: Boolean = false, val legs: Boolean = false, val coveredBy: Set<java.util.UUID> = emptySet()) {
     init {
@@ -240,7 +240,13 @@ object TacticalFacts {
     /** Who of a travelling squad rides in which of its ground vehicles, and who walks ([SeatAllocation]). */
     val SEATS = FactKey("squad.seats", SeatPlan::class.java)
 
-    /** The half covering his rush is firing, or has had long enough to start; see [PositionIntent.coveredBy]. */
+    /**
+     * The team's squad waited too long for covering fire for a rush ([CombatSituation.coverStalled]):
+     * its men no longer rush in pairs.
+     */
+    val COVER_STALLED = FactKey("team.cover_stalled", Boolean::class.javaObjectType)
+
+    /** The men covering his rush are firing; see [PositionIntent.coveredBy]. */
     val SUPPORT_FIRING = FactKey("actor.support_firing", Boolean::class.javaObjectType)
     val ATTACK_PHASE = FactKey("operation.attack_phase", AttackPhase::class.java)
 
@@ -823,8 +829,11 @@ object TacticalDomain {
  *   strategy weighed by it was taken up and dropped every few seconds.
  * @property retreating it falls back to its rally point on a RETREAT order (#253). Its [contact]
  *   is then only an enemy its men see near, see [com.sbwnpc.squad.combat.tactics.TacticalSnapshot.closeContact].
+ * @property coverStalled within the last 30 s one of its men waited 5 s for covering fire for a
+ *   rush that never came: it does not bound by halves, and its teams do not rush in pairs. A rush
+ *   that started without the fire anyway crossed open ground uncovered (in-game 03.11).
  */
-data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean, val reinforced: Boolean = false, val movers: Int = 0, val flanking: Boolean = false, val scattered: Boolean = false, val gathered: Boolean = false, val regrouping: Boolean = false, val regroupSpent: Boolean = false, val underFire: Boolean = incoming, val retreating: Boolean = false)
+data class CombatSituation(val contact: Boolean, val offensive: Boolean, val higherEnemy: Boolean, val incoming: Boolean, val readyFraction: Double, val lossFraction: Double, val continuation: Boolean, val reinforced: Boolean = false, val movers: Int = 0, val flanking: Boolean = false, val scattered: Boolean = false, val gathered: Boolean = false, val regrouping: Boolean = false, val regroupSpent: Boolean = false, val underFire: Boolean = incoming, val retreating: Boolean = false, val coverStalled: Boolean = false)
 
 /**
  * How a squad's strategy methods choose between the [CombatStrategy] entries.
@@ -937,11 +946,11 @@ enum class TeamRush {
 object TeamRushes {
     private fun movers(mission: TeamMission) = mission.members.filter { it.legs && it.duty == CombatDuty.MOVE && !it.assault && !it.ordered && it.coveredBy.isEmpty() }
 
-    /** Whether [rush]'s method applies: pairs need two movers nobody covers yet. */
+    /** Whether [rush]'s method applies: pairs need two movers nobody covers yet, in a squad whose cover has not stalled. */
     fun eligible(rush: TeamRush, mission: TeamMission) =
         when (rush) {
             TeamRush.TOGETHER -> Condition.ALWAYS
-            TeamRush.PAIRS -> if (movers(mission).size >= 2) Condition.ALWAYS else Condition { Verdict.Rejected("no_pair") }
+            TeamRush.PAIRS -> if (movers(mission).size >= 2) Condition.test(TacticalFacts.COVER_STALLED, "cover_stalled") { !it } else Condition { Verdict.Rejected("no_pair") }
         }
 
     /** [rush]'s score: pairs by whether the movers are under fire and by how far they have to go. */

@@ -148,9 +148,10 @@ private object BoundingOverwatch : SquadStrategy {
     override val reason = "bound_under_fire"
 
     // An enemy above is GAIN_HEIGHT's: held, bounding could outscore it there. A scattered squad
-    // has no halves to cover each other, and held, bounding kept it from regrouping.
+    // has no halves to cover each other, and held, bounding kept it from regrouping. A squad whose
+    // halves did not fire for a rush advances cover to cover instead of waiting on them.
     override fun allowed(situation: CombatSituation) =
-        situation.contact && !situation.scattered && situation.movers >= MIN_MOVERS &&
+        situation.contact && !situation.scattered && !situation.coverStalled && situation.movers >= MIN_MOVERS &&
             (situation.retreating || (situation.offensive && situation.continuation && !situation.higherEnemy))
 
     // Falling back in contact it always outscores an Advance, hit or not: the halves covering each

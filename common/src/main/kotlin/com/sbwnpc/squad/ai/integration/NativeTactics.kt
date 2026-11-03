@@ -72,8 +72,11 @@ object NativeTactics {
      */
     private const val RETREAT_BOUND_TURN_TICKS = 100L
 
-    /** A rush waits this long at most, after the leg before it, for the men covering it to fire, 3 s. */
-    private const val SUPPORT_FALLBACK_TICKS = 60L
+    /** A rush that has waited this long for the men covering it to fire stalls its squad's cover, 5 s. */
+    private const val SUPPORT_STALL_TICKS = 100L
+
+    /** How long a stalled cover keeps the squad from rushes under covering fire, 30 s ([CombatSituation.coverStalled]). */
+    private const val COVER_STALL_TICKS = 600L
 
     /** How long a failed post search is remembered, 10 s. */
     private const val FAILURE_MEMORY_TICKS = 200L
@@ -476,6 +479,9 @@ object NativeTactics {
         // The leg each covered mover waits to start, and since when; see supportFiring.
         private val supportWaits = HashMap<UUID, Pair<Int, Long>>()
 
+        /** By squad, when one of its rushes last waited [SUPPORT_STALL_TICKS] for covering fire. */
+        private val coverStalls = HashMap<UUID, Long>()
+
         // Where each regrouping squad gathers, fixed when it began to regroup.
         private val rallies = HashMap<UUID, Point3>()
 
@@ -809,7 +815,8 @@ object NativeTactics {
                 AgentLevel.TEAM -> when {
                     fireSupport.roster.unit(id) != null -> fireSupport.teamFacts(empty)
                     air.roster.unit(id) != null -> air.teamFacts(empty)
-                    else -> stationsDue[id]?.let { empty.observe(TacticalFacts.STATIONS, it) } ?: empty
+                    else -> (stationsDue[id]?.let { empty.observe(TacticalFacts.STATIONS, it) } ?: empty)
+                        .observe(TacticalFacts.COVER_STALLED, missions.entries.firstOrNull { (_, mission) -> mission.teams.any { it.agent == id } }?.key?.let { coverStalled(it, empty.now) } == true)
                 }
 
                 AgentLevel.NPC -> npcFacts(empty)
@@ -987,6 +994,7 @@ object NativeTactics {
                     lastAbove.remove(id)
                     alarms.remove(id)
                     regroupEnds.remove(id)
+                    coverStalls.remove(id)
                     approaches.remove(id)
                     flankable.remove(id)
                     flankBlockedAt.remove(id)
@@ -1929,6 +1937,7 @@ object NativeTactics {
                         regrouping = strategy == CombatStrategy.REGROUP && strategies[saved.id]!!.second + REGROUP_MAX_TICKS > now,
                         regroupSpent = (strategy == CombatStrategy.REGROUP && strategies[saved.id]!!.second + REGROUP_MAX_TICKS <= now) ||
                             regroupEnds[saved.id]?.let { now - it < REGROUP_COOLDOWN_TICKS } == true,
+                        coverStalled = coverStalled(saved.id, now),
                     )
                 }
                 updateBoundTurn(saved.id, movers, view, focus, now)
@@ -2130,17 +2139,28 @@ object NativeTactics {
 
         /**
          * Whether [actor]'s next rush is covered ([PositionIntent.coveredBy]): one of the men covering
-         * it fired lately, none of them has anything to fire at, or he has waited
-         * [SUPPORT_FALLBACK_TICKS] since his last leg.
+         * it fired lately. Nothing else starts it: with no target, the fallback of 3 s or the cover
+         * dead, rushes went out uncovered (in-game 03.11). Waiting [SUPPORT_STALL_TICKS] on the same
+         * leg stalls his squad's cover, and its strategy changes ([CombatSituation.coverStalled]).
+         *
+         * A retreat does not wait: its halves cover each other when they can, and a squad ordered
+         * away must not stand under fire for want of targets to shoot back at.
          */
         private fun supportFiring(actor: AgentId, now: Long): Boolean {
             val cover = goals[actor]?.coveredBy?.takeIf { it.isNotEmpty() } ?: return true
+            val squad = (level.getEntity(actor.id) as? NpcEntity)?.squadId
+            if (squad != null && situations[squad]?.retreating == true) return true
+            if (cover.mapNotNull { level.getEntity(it) as? NpcEntity }.any { it.isAlive && it.firedRecently(SUPPORT_FIRE_TICKS) }) return true
             val leg = legs[actor.id] ?: 0
             val since = supportWaits[actor.id]?.takeIf { it.first == leg }?.second ?: now.also { supportWaits[actor.id] = leg to it }
-            if (now - since >= SUPPORT_FALLBACK_TICKS) return true
-            val men = cover.mapNotNull { level.getEntity(it) as? NpcEntity }.filter { it.isAlive }
-            return men.none { it.target != null } || men.any { it.firedRecently(SUPPORT_FIRE_TICKS) }
+            if (squad != null && now - since >= SUPPORT_STALL_TICKS && !coverStalled(squad, now)) {
+                coverStalls[squad] = now
+                DebugFlags.log(LogGroup.ORDER, "[htn] squad={} event=cover_stalled actor={} waited={}", squad, actor.id, now - since)
+            }
+            return false
         }
+
+        private fun coverStalled(squad: UUID, now: Long) = coverStalls[squad]?.let { now - it < COVER_STALL_TICKS } == true
         fun keepAloft(npc: NpcEntity) = air.keepAloft(npc, level.gameTime)
 
         fun keepFlying(npc: NpcEntity) = drones.keepFlying(npc)
@@ -2334,6 +2354,7 @@ object NativeTactics {
             legs.clear()
             cover.clear()
             supportWaits.clear()
+            coverStalls.clear()
             fireSupport.clear()
             air.clear()
             drones.clear()

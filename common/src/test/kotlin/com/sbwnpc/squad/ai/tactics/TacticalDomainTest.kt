@@ -157,6 +157,12 @@ class TacticalDomainTest {
         assertTrue(SquadManners.eligible(CombatStrategy.BOUND_OVERWATCH).evaluate(squadFacts(underFire.copy(movers = 3))) is Verdict.Rejected)
     }
 
+    @Test fun `a squad whose covering fire did not come for a rush advances instead of bounding`() {
+        val stalled = CombatSituation(true, true, false, true, 0.75, 0.0, true, movers = 4, coverStalled = true)
+        assertTrue(SquadManners.eligible(CombatStrategy.BOUND_OVERWATCH).evaluate(squadFacts(stalled)) is Verdict.Rejected)
+        assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(stalled, CombatStrategy.BOUND_OVERWATCH))))
+    }
+
     @Test fun `a retreat in contact falls back by halves, otherwise in one run, and never holds, withdraws or regroups`() {
         val retreat = CombatSituation(true, false, false, false, 0.25, 0.6, false, movers = 4, underFire = false, retreating = true)
         assertEquals(CombatStrategy.BOUND_OVERWATCH, strategyOf(squadPlan(squadFacts(retreat))))
@@ -240,8 +246,9 @@ class TacticalDomainTest {
 
     @Test fun `a team under fire with far to go rushes in pairs that cover each other`() {
         val teamId = AgentId(AgentLevel.TEAM, UUID(0, 8))
-        fun rushed(vararg members: PositionIntent): Pair<String, List<PositionIntent>> {
-            val plan = (HtnPlanningSession(TacticalDomain.team, PlanOwner(teamId, UUID(1, 1)), TacticalDomain.TEAM.call(TeamMission(teamId, members.toList())), FactSnapshot(teamId, 0)).advance(20) as PlanningResult.Ready).plan
+        fun rushed(vararg members: PositionIntent, stalled: Boolean = false): Pair<String, List<PositionIntent>> {
+            val facts = FactSnapshot(teamId, 0).observe(TacticalFacts.COVER_STALLED, stalled)
+            val plan = (HtnPlanningSession(TacticalDomain.team, PlanOwner(teamId, UUID(1, 1)), TacticalDomain.TEAM.call(TeamMission(teamId, members.toList())), facts).advance(20) as PlanningResult.Ready).plan
             return plan.tasks.first().node.split('/')[1] to plan.tasks.map { (it.spec.action.parameters as com.sbwnpc.squad.ai.coordination.DelegationTask).task.parameters as PositionIntent }
         }
         val men = (1L..3L).map { intent.copy(actor = AgentId(AgentLevel.NPC, UUID(0, it)), legs = true) }
@@ -252,6 +259,8 @@ class TacticalDomainTest {
         assertEquals("together", rushed(*men.map { it.copy(requireCover = false) }.toTypedArray()).first)
         assertEquals("together", rushed(*men.map { it.copy(anchor = Point3(8.0, 1.0, 0.0)) }.toTypedArray()).first)
         assertEquals("together", rushed(men[0]).first)
+        // Its squad's covering fire did not come: no more pairs waiting on it.
+        assertEquals("together", rushed(*men.toTypedArray(), stalled = true).first)
     }
 
     @Test fun `withdrawal changes execution goal away from known threat without requiring cover fire`() {
