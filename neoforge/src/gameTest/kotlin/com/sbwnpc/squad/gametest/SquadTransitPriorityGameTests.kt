@@ -104,12 +104,13 @@ object SquadTransitPriorityGameTests {
         val manager = SquadManager.get(helper.level)
         val driver = scene.spawn(Vec3(45.5, 1.0, 20.5))
         val straggler = scene.spawn(Vec3(20.5, 1.0, 20.5))
-        fun lav(x: Double) = requireNotNull(Ports.vehicles.create(helper.level, TransportVehicle.LAV_25)).also {
-            val at = helper.absoluteVec(Vec3(x, 1.0, 20.5))
-            it.moveTo(at.x, at.y, at.z, 0f, 0f)
-            helper.level.addFreshEntity(it)
-            Ports.vehicles.fuelAndArm(it, TransportVehicle.LAV_25)
-        }
+        fun lav(x: Double) =
+            requireNotNull(Ports.vehicles.create(helper.level, TransportVehicle.LAV_25)).also {
+                val at = helper.absoluteVec(Vec3(x, 1.0, 20.5))
+                it.moveTo(at.x, at.y, at.z, 0f, 0f)
+                helper.level.addFreshEntity(it)
+                Ports.vehicles.fuelAndArm(it, TransportVehicle.LAV_25)
+            }
         val squads = lav(45.5)
         val nearer = lav(25.5)
         val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(driver.uuid, straggler.uuid))
