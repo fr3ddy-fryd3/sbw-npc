@@ -19,8 +19,8 @@ data class StationPlan(val men: Map<UUID, UUID>)
  * as many vehicles as there are; a man keeps the gun he was given while both are still there.
  */
 object WeaponStations {
-    /** How far a man walks to a vehicle's gun. */
-    const val REACH = 20.0
+    /** How far a man walks to a vehicle's gun: 20 blocks left guns a squad fought beside unmanned in-game. */
+    const val REACH = 32.0
 
     /** Each of [stations] given the nearest of [hands] within [REACH] not given another, keeping [previous]. */
     fun assign(previous: Map<UUID, UUID>, stations: List<WeaponStation>, hands: List<StationHand>): Map<UUID, UUID> {
