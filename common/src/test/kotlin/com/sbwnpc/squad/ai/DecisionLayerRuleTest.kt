@@ -89,7 +89,7 @@ class DecisionLayerRuleTest {
             "SquadOrderBehaviour" to UNAUDITED,
             "SquadTacticalBehaviour" to UNAUDITED,
             "SquadTargetSensor" to UNAUDITED,
-            "VehicleCombatSupportBehaviour" to UNAUDITED,
+            "VehicleCombatSupportBehaviour" to "execution: mans the gun his team plan gave him (STATIONS, team.man_stations, #255)",
             "VehicleCrewBehaviour" to UNAUDITED,
             "VehicleTransportBehaviour" to "execution: boards the seat his travelling squad gave him (SEATS, squad.board, #255); boats are still weighed per man (BoatTrips)",
         )

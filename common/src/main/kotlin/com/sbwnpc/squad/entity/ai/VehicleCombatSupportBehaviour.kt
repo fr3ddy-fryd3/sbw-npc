@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.entity.ai
 
 import com.mojang.datafixers.util.Pair
+import com.sbwnpc.squad.ai.integration.NativeTactics
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.LogGroup
@@ -26,6 +27,12 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 import net.tslat.smartbrainlib.util.BrainUtils
 import java.util.UUID
 
+/**
+ * Mans the gun of the empty armed vehicle his team's plan sent him to ([NativeTactics.stationOf],
+ * [com.sbwnpc.squad.ai.tactics.WeaponStations], #255): walks to it, boards, aims and fires, and
+ * gets out once the enemy has been out of sight a while or his order no longer allows it. Who
+ * goes to which gun is the team's decision; this only carries it out.
+ */
 class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private enum class Phase { APPROACHING, FIRING }
 
@@ -56,7 +63,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
         entity.tickCount >= nextBoardTick && entity.freeFor(NpcActivity.SEAT, this) && eligible(entity) &&
             threat(entity)?.let { hasFiringSightline(entity, it) } == true &&
-            findSupportVehicle(entity, level) != null
+            stationVehicle(entity, level) != null
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean {
         val vehicle = vehicleId?.let { (entity.level() as? ServerLevel)?.getEntity(it)?.takeIf(Ports.vehicles::isVehicle) }
@@ -76,7 +83,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun start(entity: NpcEntity) {
         val level = entity.level() as? ServerLevel ?: return
         val target = threat(entity) ?: return
-        val vehicle = findSupportVehicle(entity, level) ?: return
+        val vehicle = stationVehicle(entity, level) ?: return
         if (!entity.claimAlone(NpcActivity.SEAT, this)) return
         if (!VehicleTransportClaims.claimPassenger(vehicle.uuid, entity.uuid, Ports.vehicles.seatCount(vehicle), SeatHold.heldFor(vehicle, entity))) {
             entity.release(NpcActivity.SEAT, this)
@@ -206,7 +213,6 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     // few ticks; a cached hit is still re-validated (alive, hostile, still mounted) on every read.
     private var threatScanTick = Int.MIN_VALUE / 2 // not MIN_VALUE: `tickCount - MIN_VALUE` overflows
     private var threatCache: LivingEntity? = null
-    private var nextVehicleSearchTick = 0
 
     private fun threat(entity: NpcEntity): LivingEntity? {
         if (entity.tickCount - threatScanTick < THREAT_RESCAN_TICKS) {
@@ -313,21 +319,8 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         return sightClear
     }
 
-    private fun findSupportVehicle(entity: NpcEntity, level: ServerLevel): Entity? {
-        // Only reached with a live threat; while there's simply no free armed vehicle around, don't
-        // re-run the box query every tick — a "none" answer is good for a second.
-        if (entity.tickCount < nextVehicleSearchTick) return null
-        val target = threat(entity) ?: return null
-        val box = AABB.ofSize(entity.position(), SEARCH_RADIUS * 2, SEARCH_RADIUS * 2, SEARCH_RADIUS * 2)
-        val found = Ports.vehicles.within(level, box)
-            .asSequence()
-            .filter { entity.distanceToSqr(it) <= SEARCH_RADIUS_SQR }
-            .filter(RideCandidates::isSupportVehicle)
-            .filter { vehicle -> Ports.vehicles.canAimAt(vehicle, entity, target, Ports.vehicles.seating(vehicle).indexOfFirst { it == null }) }
-            .minByOrNull { entity.distanceToSqr(it) }
-        if (found == null) nextVehicleSearchTick = entity.tickCount + VEHICLE_SEARCH_INTERVAL_TICKS
-        return found
-    }
+    /** The vehicle his team's plan sent him to, while it is still an empty gun to man. */
+    private fun stationVehicle(entity: NpcEntity, level: ServerLevel): Entity? = NativeTactics.stationOf(entity)?.let(level::getEntity)?.takeIf { Ports.vehicles.isVehicle(it) && RideCandidates.isSupportVehicle(it) }
 
     private fun hasPlayerAboard(vehicle: Entity): Boolean = vehicle.passengers.any { it is Player }
 

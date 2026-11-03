@@ -15,6 +15,7 @@ import com.sbwnpc.squad.entity.ai.CoverMechanics
 import com.sbwnpc.squad.entity.ai.MandatoryRule
 import com.sbwnpc.squad.entity.ai.MandatoryRules
 import com.sbwnpc.squad.entity.ai.SquadTransit
+import com.sbwnpc.squad.entity.ai.WeaponStationScan
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.*
@@ -188,6 +189,9 @@ object NativeTactics {
      */
     fun travelling(npc: NpcEntity): Boolean = worlds[npc.level()]?.travelling(npc) == true
 
+    /** The vehicle whose gun [npc]'s team plan sent him to man ([WeaponStations], #255), if any. */
+    fun stationOf(npc: NpcEntity): UUID? = worlds[npc.level()]?.stationOf(npc)
+
     /** The seat in a ground vehicle [npc]'s travelling squad gave him ([SeatAllocation], #255), if any. */
     fun seatOf(npc: NpcEntity): RideSeat? = worlds[npc.level()]?.seatOf(npc)
 
@@ -301,6 +305,24 @@ object NativeTactics {
 
     /** A squad's [seats] for its journey under order [stamp], and by man the vehicles he failed to board. */
     private data class SquadRide(val stamp: Int, val seats: SeatPlan, val refused: Map<UUID, Set<UUID>> = emptyMap())
+
+    /** A plan's action that keeps [given] out with [put] while it runs, revised by [read], and takes it back with [drop]. */
+    private class Allotment<T>(private var given: T, private val read: (Any) -> T?, private val put: (T) -> Unit, private val drop: () -> Unit) : ActionExecution {
+        private fun publish(): ActionUpdate {
+            put(given)
+            return ActionUpdate.Running
+        }
+        override fun start(now: Long) = publish()
+        override fun tick(now: Long) = publish()
+        override fun revise(spec: ActionSpec<*>, now: Long): Boolean {
+            given = read(spec.parameters) ?: return false
+            publish()
+            return true
+        }
+        override fun suspend(now: Long, reason: String) = Unit
+        override fun resume(now: Long) = Unit
+        override fun cancel(now: Long, reason: String) = drop()
+    }
 
     private class World(val level: ServerLevel) {
         val pendingDeaths = HashMap<UUID, PendingDeath>()
@@ -475,6 +497,13 @@ object NativeTactics {
         /** When each travelling squad's seats are next worked out. */
         private val seatChecks = HashMap<UUID, Long>()
 
+        /** By ground team, the vehicle guns its plan sent its men to ([TacticalDomain.MAN_STATIONS], #255): vehicle to man. */
+        private val stations = HashMap<AgentId, Map<UUID, UUID>>()
+
+        /** By ground team, who should man which gun, worked out for its plan ([TacticalFacts.STATIONS]). */
+        private val stationsDue = HashMap<AgentId, StationPlan>()
+        private var nextStationCheck = Long.MIN_VALUE
+
         private val retreatSmoke = RetreatSmoke(level)
 
         // When each squad's focus was last well above it, see ENEMY_ABOVE_TICKS.
@@ -586,6 +615,22 @@ object NativeTactics {
                 },
             )
 
+        /**
+         * The squad's seats and the team's guns (#255): each plan's action only gives out what its
+         * plan decided, revised in place as the decision changes, and takes it back when cancelled.
+         */
+        private fun allotmentBindings() =
+            listOf(
+                ActionBinding(TacticalDomain.BOARD) { ticket, boarding ->
+                    require(ticket.owner.agent == AgentId(AgentLevel.SQUAD, boarding.squad))
+                    Allotment(boarding.seats, { (it as? Boarding)?.takeIf { next -> next.squad == boarding.squad }?.seats }, { board(boarding.squad, it) }, { rides.remove(boarding.squad) })
+                },
+                ActionBinding(TacticalDomain.MAN_STATIONS) { ticket, manning ->
+                    require(ticket.owner.agent == manning.team)
+                    Allotment(manning.plan.men, { (it as? StationManning)?.takeIf { next -> next.team == manning.team }?.plan?.men }, { stations[manning.team] = it }, { stations.remove(manning.team) })
+                },
+            )
+
         /** The plan's cover actions (#251), each run on the man's own [CoverState]. */
         private fun coverBindings() =
             listOf(
@@ -646,34 +691,12 @@ object NativeTactics {
                                 override fun cancel(now: Long, reason: String) = Unit
                             }
                         },
-                        ActionBinding(TacticalDomain.BOARD) { ticket, boarding ->
-                            require(ticket.owner.agent == AgentId(AgentLevel.SQUAD, boarding.squad))
-                            object : ActionExecution {
-                                private var seats = boarding.seats
-                                private fun publish(): ActionUpdate {
-                                    board(boarding.squad, seats)
-                                    return ActionUpdate.Running
-                                }
-                                override fun start(now: Long) = publish()
-                                override fun tick(now: Long) = publish()
-                                override fun revise(spec: ActionSpec<*>, now: Long): Boolean {
-                                    seats = (spec.parameters as? Boarding)?.takeIf { it.squad == boarding.squad }?.seats ?: return false
-                                    publish()
-                                    return true
-                                }
-                                override fun suspend(now: Long, reason: String) = Unit
-                                override fun resume(now: Long) = Unit
-                                override fun cancel(now: Long, reason: String) {
-                                    rides.remove(boarding.squad)
-                                }
-                            }
-                        },
                         ActionBinding(DelegationAction.KEY) { ticket, task -> DelegationAction(ticket, task, ledger) },
                         ActionBinding(TacticalDomain.FIRE_PAUSE) { ticket, pause ->
                             require(ticket.owner.agent == pause.actor)
                             firePause(pause, requireNotNull(level.getEntity(pause.actor.id) as? NpcEntity))
                         },
-                    ) + coverBindings() + engageBinding() + grenadeBinding() + crewBinding() + airBindings() + droneBinding() + listOf(
+                    ) + allotmentBindings() + coverBindings() + engageBinding() + grenadeBinding() + crewBinding() + airBindings() + droneBinding() + listOf(
                         ActionBinding(TacticalDomain.POSITION) { ticket, intent ->
                             require(ticket.owner.agent == intent.actor)
                             val original = goals[intent.actor] ?: intent
@@ -779,7 +802,7 @@ object NativeTactics {
                 AgentLevel.TEAM -> when {
                     fireSupport.roster.unit(id) != null -> fireSupport.teamFacts(empty)
                     air.roster.unit(id) != null -> air.teamFacts(empty)
-                    else -> empty
+                    else -> stationsDue[id]?.let { empty.observe(TacticalFacts.STATIONS, it) } ?: empty
                 }
 
                 AgentLevel.NPC -> npcFacts(empty)
@@ -939,6 +962,10 @@ object NativeTactics {
                 seatChecks.keys.retainAll(journeys.keys)
                 rides.entries.removeIf { (id, ride) -> journeys[id] != ride.stamp }
                 journeys.keys.mapNotNull(manager::get).forEach { seats(it, now) }
+                if (now >= nextStationCheck) {
+                    nextStationCheck = now + SEAT_CHECK_TICKS
+                    weaponStations(manager)
+                }
                 val supportOnly = (fireSupport.roster.squads() + air.roster.squads()).filter { it !in activeIds }.mapNotNull(manager::get)
                 snapshots.keys.filter { it !in activeIds }.toList().forEach { id ->
                     snapshots.remove(id)
@@ -1948,6 +1975,33 @@ object NativeTactics {
             if (ride?.seats != seats) rides[squad] = SquadRide(stamp, seats, ride?.refused.orEmpty())
         }
 
+        /**
+         * Works out, for each ground team of a squad in a fight that is not travelling and whose
+         * order lets a man leave for a gun, who mans which empty armed vehicle nearby
+         * ([WeaponStations]), keeping what its plan gave out. Nothing for the others.
+         */
+        private fun weaponStations(manager: SquadManager) {
+            val due = HashMap<AgentId, StationPlan>()
+            missions.forEach { (squadId, mission) ->
+                val saved = manager.get(squadId) ?: return@forEach
+                if (situations[squadId]?.contact != true || squadId in journeys || !WeaponStationScan.orderAllows(saved.order)) return@forEach
+                mission.teams.forEach { team ->
+                    val men = team.members.mapNotNull { level.getEntity(it.actor.id) as? NpcEntity }.filter(WeaponStationScan::free)
+                    val guns = WeaponStationScan.stations(men, level)
+                    val plan = WeaponStations.assign(stations[team.agent].orEmpty(), guns, WeaponStationScan.hands(men))
+                    if (plan.isNotEmpty()) due[team.agent] = StationPlan(plan)
+                }
+            }
+            due.filter { (team, plan) -> stationsDue[team] != plan }.forEach { (team, plan) ->
+                DebugFlags.log(LogGroup.VEHICLE, "[htn] team={} event=weapon_stations men={}", team.id, plan.men)
+            }
+            stationsDue.clear()
+            stationsDue.putAll(due)
+        }
+
+        /** The vehicle whose gun [npc]'s team plan sent him to man, if any. */
+        fun stationOf(npc: NpcEntity): UUID? = stations.values.firstNotNullOfOrNull { men -> men.entries.firstOrNull { it.value == npc.uuid }?.key }
+
         /** The seat [npc]'s squad gave him for its journey under its current order. */
         fun seatOf(npc: NpcEntity): RideSeat? = ride(npc)?.seats?.seats?.get(npc.uuid)
 
@@ -2261,6 +2315,8 @@ object NativeTactics {
             closeContacts.clear()
             journeys.clear()
             rides.clear()
+            stations.clear()
+            stationsDue.clear()
             seatsDue.clear()
             seatChecks.clear()
             retreatSmoke.clear()

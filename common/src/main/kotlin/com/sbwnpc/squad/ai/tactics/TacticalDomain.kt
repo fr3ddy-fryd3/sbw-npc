@@ -153,6 +153,9 @@ data class CallOff(val operation: java.util.UUID, val squads: List<java.util.UUI
 /** A travelling squad's [seats] in its ground vehicles ([SeatAllocation], #255), given out by its plan. */
 data class Boarding(val squad: java.util.UUID, val seats: SeatPlan)
 
+/** A team's men sent to the vehicle guns its [plan] gave them ([WeaponStations], #255). */
+data class StationManning(val team: AgentId, val plan: StationPlan)
+
 /**
  * What an operation's plan carries out: its [squads]' missions, the area it [secure]s and its
  * [attack] roles; with [callOff] the attack it calls off instead, and with [review] an attack that
@@ -230,6 +233,9 @@ object TacticalFacts {
 
     /** The squad travels to its objective instead of fighting where it is ([SquadJourney], #255). */
     val TRAVELLING = FactKey("squad.travelling", Boolean::class.javaObjectType)
+
+    /** Who of a team in a fight mans which empty armed vehicle's gun ([WeaponStations]). */
+    val STATIONS = FactKey("team.stations", StationPlan::class.java)
 
     /** Who of a travelling squad rides in which of its ground vehicles, and who walks ([SeatAllocation]). */
     val SEATS = FactKey("squad.seats", SeatPlan::class.java)
@@ -330,6 +336,10 @@ object TacticalDomain {
     val FIRE_PAUSE = ActionKey("npc.fire_pause", FirePause::class.java)
     private val DELEGATE = TaskKey("delegate.task", DelegationTask::class.java)
     private val APPROACH = TaskKey("squad.approach", StrategyMission::class.java)
+
+    /** Sending a team's men to the guns its plan gave them (#255), carried out by the integration. */
+    val MAN_STATIONS = ActionKey("team.man_stations", StationManning::class.java)
+    private val MAN_STATIONS_TASK = TaskKey("team.man_stations", StationManning::class.java)
 
     /** Giving a travelling squad's men their seats (#255), carried out by the integration. */
     val BOARD = ActionKey("squad.board", Boarding::class.java)
@@ -471,11 +481,19 @@ object TacticalDomain {
                         rush.name.lowercase(),
                         eligible = { mission -> TeamRushes.eligible(rush, mission) },
                         score = { mission, _ -> TeamRushes.score(rush, mission) },
-                        decompose = { mission, _ -> children(TeamRushes.shape(rush, mission).members.map { DelegationTask(it.actor, NPC.call(it)) }) },
+                        decompose = { mission, facts ->
+                            val men = children(TeamRushes.shape(rush, mission).members.map { DelegationTask(it.actor, NPC.call(it)) })
+                            // Only while its squad fights and its order lets a man leave his place for a gun.
+                            val guns = facts.value(TacticalFacts.STATIONS)?.let { NetworkNode("man_stations", MAN_STATIONS_TASK.call(StationManning(mission.agent, it))) }
+                            TaskNetwork(men.nodes + listOfNotNull(guns))
+                        },
                     )
                 },
             ),
             delegate(),
+            PrimitiveTask(MAN_STATIONS_TASK) { manning ->
+                PrimitiveSpec("man_stations", ActionSpec(MAN_STATIONS, manning, timeoutTicks = Long.MAX_VALUE), TaskContract())
+            },
         ) + crewTasks.first + airTasks.first,
     )
     val COVER_MOVE = ActionKey("npc.cover_move", CoverMove::class.java)
