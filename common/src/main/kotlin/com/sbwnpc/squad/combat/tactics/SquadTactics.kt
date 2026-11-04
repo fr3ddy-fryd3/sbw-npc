@@ -66,8 +66,8 @@ object SquadTactics {
 
     fun move(entity: NpcEntity): Boolean = com.sbwnpc.squad.ai.integration.NativeTactics.ownsMovement(entity)
 
-    /** A man of [entity]'s squad heard a noise at [at]; see [com.sbwnpc.squad.ai.tactics.SquadAlarms]. */
-    fun heard(entity: NpcEntity, at: net.minecraft.world.phys.Vec3) = com.sbwnpc.squad.ai.integration.NativeTactics.heard(entity, at)
+    /** A man of [entity]'s squad heard a noise at [at], a spot to [walk] to if set; see [com.sbwnpc.squad.ai.tactics.SquadAlarms]. */
+    fun heard(entity: NpcEntity, at: net.minecraft.world.phys.Vec3, walk: Boolean = false) = com.sbwnpc.squad.ai.integration.NativeTactics.heard(entity, at, walk)
 
     /** Whether [entity]'s plan has sent him to look at a spot (a SEARCH post). */
     fun scouting(entity: NpcEntity): Boolean = com.sbwnpc.squad.ai.integration.NativeTactics.scouting(entity)

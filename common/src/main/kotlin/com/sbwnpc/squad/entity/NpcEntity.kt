@@ -1409,14 +1409,17 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         val attacker = cause.entity as? LivingEntity
         val knownKiller = attacker != null && attacker.isAlive && com.sbwnpc.squad.team.SquadTeams.isHostile(this, attacker)
         if (knownKiller) {
-            // The shot's direction, not the killer's place: a squad out of a fight sends a pair to
-            // look that way, no farther than [DEATH_LEAD_REACH] from the body. In-game 04.11 nobody
-            // went to look; a squad in a fight only turns ([UnverifiedContacts] sends nobody then).
+            // The shot's direction, not the killer's place: a squad out of a fight sends a pair that
+            // way, to the assault stand-off short of him but no farther than [DEATH_LEAD_REACH] from
+            // the body. In-game 04.11 nobody went to look; a squad in a fight only turns
+            // ([UnverifiedContacts] sends nobody then).
             val toward = attacker!!.position().subtract(position())
-            val lead = position().add(toward.normalize().scale(minOf(toward.length(), DEATH_LEAD_REACH)))
-            com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.HEARING, "[hearing-debug] {} event=death_lead at={} killerRange={}", uuid, BlockPos.containing(lead).toShortString(), toward.length().toInt())
+            val walk = (toward.length() - com.sbwnpc.squad.ai.tactics.OperationTactics.ASSAULT_STANDOFF).coerceIn(0.0, DEATH_LEAD_REACH)
+            val lead = position().add(toward.normalize().scale(walk))
+            com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.HEARING, "{} event=death_lead at={} killerRange={}", uuid, BlockPos.containing(lead).toShortString(), toward.length().toInt())
             // The squad's alarm, not every man's: [com.sbwnpc.squad.combat.Alarm.raise] would send them all.
-            currentSquad()?.members?.firstNotNullOfOrNull { (level() as ServerLevel).getEntity(it) as? NpcEntity }?.takeIf { it.isAlive }?.let { com.sbwnpc.squad.combat.tactics.SquadTactics.heard(it, lead) }
+            val mate = currentSquad()?.members?.firstNotNullOfOrNull { id -> ((level() as ServerLevel).getEntity(id) as? NpcEntity)?.takeIf { it !== this && it.isAlive } }
+            if (mate != null) com.sbwnpc.squad.combat.tactics.SquadTactics.heard(mate, lead, walk = true)
         } else {
             com.sbwnpc.squad.combat.Alarm.raiseDeath(this, DEATH_ALARM_RADIUS)
         }
@@ -1474,8 +1477,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         private const val SUPPRESSION_CAP_TICKS = 200
         private const val ALERT_DURATION_TICKS = 200 // ~10s to reach/abandon an investigation lead
 
-        /** How far (24 blocks) from a body killed by a known enemy his squad goes to look his way. */
-        private const val DEATH_LEAD_REACH = 24.0
+        /** How far (48 blocks) from a body killed by a known enemy his squad goes at most to look his way. */
+        private const val DEATH_LEAD_REACH = 48.0
         private const val DEATH_ALARM_RADIUS = 36.0 // detection range, x1.5 per user request (was 24)
 
         // How far an NPC can spot / act on relayed contacts — see the FOLLOW_RANGE note in

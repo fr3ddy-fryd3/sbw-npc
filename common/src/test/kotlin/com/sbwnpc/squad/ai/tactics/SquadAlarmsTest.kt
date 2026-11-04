@@ -2,8 +2,10 @@ package com.sbwnpc.squad.ai.tactics
 
 import com.sbwnpc.squad.ai.coordination.Point3
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class SquadAlarmsTest {
@@ -47,5 +49,16 @@ class SquadAlarmsTest {
         alarms.heard(Point3(40.0, 64.0, 0.0), 10)
         alarms.checked(Point3(40.0, 64.0, 0.0), 20)
         assertEquals(-36.0, alarms.pending(20, objective, null)!!.x)
+    }
+
+    @Test fun `a spot to walk to stays one until it is checked or forgotten`() {
+        val alarms = SquadAlarms()
+        alarms.heard(Point3(40.0, 64.0, 0.0), 10, walk = true)
+        val spot = alarms.pending(10, Point3(0.0, 64.0, 0.0), null)!!
+        assertTrue(alarms.walkTo(spot))
+        alarms.checked(spot, 20)
+        assertFalse(alarms.walkTo(spot))
+        alarms.heard(Point3(-40.0, 64.0, 0.0), 30)
+        assertFalse(alarms.walkTo(alarms.pending(30, Point3(0.0, 64.0, 0.0), null)!!))
     }
 }

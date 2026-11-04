@@ -213,9 +213,9 @@ object NativeTactics {
     fun hasAgent(npc: NpcEntity): Boolean = worlds[npc.level()]?.agents?.containsKey(AgentId(AgentLevel.NPC, npc.uuid)) == true
 
     /** A man of [npc]'s squad heard a noise at [at]: his squad decides whether anyone goes to look (#254). */
-    fun heard(npc: NpcEntity, at: Vec3) {
+    fun heard(npc: NpcEntity, at: Vec3, walk: Boolean = false) {
         val squad = npc.squadId ?: return
-        world(npc).heard(squad, at.point(), npc.level().gameTime)
+        world(npc).heard(squad, at.point(), npc.level().gameTime, walk)
     }
 
     /** Whether [npc]'s plan has sent him to look at a spot: his post is a SEARCH one. */
@@ -926,7 +926,7 @@ object NativeTactics {
             if (DroneWorld.operates(npc)) result = drones.manFacts(result, npc, teamTarget(id, npc), coversFor(npc.uuid))
             return result
         }
-        fun heard(squad: UUID, at: Point3, now: Long) = alarms.getOrPut(squad, ::SquadAlarms).heard(at, now)
+        fun heard(squad: UUID, at: Point3, now: Long, walk: Boolean) = alarms.getOrPut(squad, ::SquadAlarms).heard(at, now, walk)
 
         fun combatView(squad: UUID): TacticalSnapshot? {
             sharedViews[squad]?.let { return it }
@@ -1676,7 +1676,7 @@ object NativeTactics {
             val pending = { boards.firstNotNullOfOrNull { it.pending(now, from, UnverifiedContacts.SCOUT_RADIUS) } }
             val spot = pending() ?: return null
             val seenBy = scouts.mapNotNull { level.getEntity(it) as? NpcEntity }.firstOrNull {
-                it.position().point().horizontalDistanceSquared(spot) <= SquadAlarms.ARRIVAL * SquadAlarms.ARRIVAL || DeathSites.canConfirm(it, spot.native())
+                it.position().point().horizontalDistanceSquared(spot) <= SquadAlarms.ARRIVAL * SquadAlarms.ARRIVAL || (boards.none { board -> board.walkTo(spot) } && DeathSites.canConfirm(it, spot.native()))
             } ?: return spot
             boards.forEach { it.checked(spot, now) }
             DebugFlags.log(LogGroup.HEARING, "[htn] squad={} event=alarm_checked spot={} by={}", squads.first().id, spot, seenBy.uuid)

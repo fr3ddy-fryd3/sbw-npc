@@ -18,22 +18,35 @@ import kotlin.math.floor
 class SquadAlarms {
     private val heard = LinkedHashMap<Point3, Long>()
     private val checked = HashMap<Point3, Long>()
+    private val walkTo = HashSet<Point3>()
 
-    /** A man of the squad heard a noise at [at] by [now]. */
-    fun heard(at: Point3, now: Long) {
+    /**
+     * A man of the squad heard a noise at [at] by [now]. A spot to [walk] to counts as checked only
+     * once a scout gets there, not when he sees it: a killer's direction seen across open ground
+     * was "checked" from 20 blocks off in 3 s, and nobody seemed to go (in-game 04.11).
+     */
+    fun heard(at: Point3, now: Long, walk: Boolean = false) {
         val spot = snap(at)
         heard.remove(spot)
         heard[spot] = now
+        if (walk) walkTo += spot
     }
+
+    /** Whether [spot] (as [pending] gave it) is checked only by getting there. */
+    fun walkTo(spot: Point3) = spot in walkTo
 
     /** The scouts have seen the spot at [at] by [now]: it and what is heard round it wait out [CHECKED_TICKS]. */
     fun checked(at: Point3, now: Long) {
         checked[snap(at)] = now
         heard.keys.removeIf { near(it, at) }
+        walkTo.retainAll(heard.keys)
     }
 
     /** Drops every spot heard and not yet looked at, e.g. the noise of a fight the squad itself was in. */
-    fun forget() = heard.clear()
+    fun forget() {
+        heard.clear()
+        walkTo.clear()
+    }
 
     /**
      * The spot to look at by [now]: the latest heard one not yet checked and, when [reach] is given,
@@ -41,6 +54,7 @@ class SquadAlarms {
      */
     fun pending(now: Long, anchor: Point3, reach: Double?): Point3? {
         heard.values.removeIf { now - it > HEARD_TICKS }
+        walkTo.retainAll(heard.keys)
         checked.values.removeIf { now - it > CHECKED_TICKS }
         return heard.keys.reversed().firstOrNull { spot ->
             checked.keys.none { near(it, spot) } && (reach == null || spot.horizontalDistanceSquared(anchor) <= reach * reach)
