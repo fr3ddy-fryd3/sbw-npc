@@ -1399,11 +1399,13 @@ object NativeTactics {
                 ?.takeIf { !holding && strategies[it.id]?.first in setOf(CombatStrategy.ADVANCE, CombatStrategy.GAIN_HEIGHT, CombatStrategy.BOUND_OVERWATCH) }
                 ?.let { squad -> manoeuvres[squad.id].orEmpty() - arcing }
                 .orEmpty()
-            val attackers = members.map { AttackMember(it.id, it.position.point(), it.ready) }
+            val attackers = members.map { AttackMember(it.id, it.position.point(), it.ready, closeQuarters = it.role == NpcClass.SHOTGUNNER) }
             val known = (threats.map { it.position.point() } + defenders).distinct()
             // Every ready man takes part in an assault, not only the front rows of the line: the
             // flanks and rear guard a reinforcement was added to never left the firing line (#54).
-            val roles = progress.roles(now, task.objective, members.filter { it.ready }.map { it.id }, attackers, known)
+            val stalled = squads.filter { coverStalled(it.id, now) }.flatMapTo(HashSet()) { squad -> snapshots[squad.id]?.members.orEmpty().map { it.id } }
+            // A man whose squad's cover stalled closes in from cover to cover, not waiting for fire that never comes.
+            val roles = progress.roles(now, task.objective, members.filter { it.ready }.map { it.id }, attackers, known).let { it.copy(covers = it.covers - stalled) }
             if (progress.occupying && !occupying) {
                 DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=assault_occupy ready={} defenders={} movers={}", operation, inputs.readyShooters, defenders.size, roles.assault.size)
             }
@@ -2026,7 +2028,7 @@ object NativeTactics {
             val due = HashMap<AgentId, StationPlan>()
             missions.forEach { (squadId, mission) ->
                 val saved = manager.get(squadId) ?: return@forEach
-                if (situations[squadId]?.contact != true || squadId in journeys || !WeaponStationScan.orderAllows(saved.order)) return@forEach
+                if (situations[squadId]?.contact != true || squadId in journeys || !WeaponStationScan.orderAllows(saved, level)) return@forEach
                 mission.teams.forEach { team ->
                     val men = team.members.mapNotNull { level.getEntity(it.actor.id) as? NpcEntity }.filter(WeaponStationScan::free)
                     val guns = WeaponStationScan.stations(men, level)
@@ -2150,7 +2152,7 @@ object NativeTactics {
          * it fired lately. Nothing else starts it: with no target, the fallback of 3 s or the cover
          * dead, rushes went out uncovered (in-game 03.11). Waiting [SUPPORT_STALL_TICKS] on the same
          * leg stalls his squad's cover, and its strategy changes ([CombatSituation.coverStalled]);
-         * a rush still waiting then goes, as it would under the strategy that follows.
+         * a rush still waiting keeps waiting until that strategy's plan replaces it.
          *
          * A retreat does not wait: its halves cover each other when they can, and a squad ordered
          * away must not stand under fire for want of targets to shoot back at.
@@ -2159,9 +2161,9 @@ object NativeTactics {
             val cover = goals[actor]?.coveredBy?.takeIf { it.isNotEmpty() } ?: return true
             val squad = (level.getEntity(actor.id) as? NpcEntity)?.squadId
             if (squad != null && situations[squad]?.retreating == true) return true
-            // Stalled, the squad gives up rushes under covering fire; a man whose task still waits
-            // for it must not stand there until the next plan.
-            if (squad != null && coverStalled(squad, now)) return true
+            // Stalled, the squad gives up rushes under covering fire and its next plan sends the man
+            // from cover to cover. Released here instead, his rush would cross the open uncovered.
+            if (squad != null && coverStalled(squad, now)) return false
             if (cover.mapNotNull { level.getEntity(it) as? NpcEntity }.any { it.isAlive && it.firedRecently(SUPPORT_FIRE_TICKS) }) return true
             val leg = legs[actor.id] ?: 0
             val since = supportWaits[actor.id]?.takeIf { it.first == leg }?.second ?: now.also { supportWaits[actor.id] = leg to it }

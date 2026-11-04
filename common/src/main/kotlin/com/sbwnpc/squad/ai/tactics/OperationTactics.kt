@@ -11,8 +11,13 @@ import kotlin.math.sin
 /**
  * Who assaults into the objective and where, who goes after the enemies left around it, and who
  * closes on the point's defenders to fire from nearer.
+ *
+ * @property covers for a man closing in under covering fire, the men whose fire his rush waits
+ *   for; a closing man without an entry goes cover to cover instead.
+ * @property holding the men of an assault whose half is not closing in: they fire from where they
+ *   stand and cover the others.
  */
-data class AttackRoles(val assault: Map<UUID, Point3> = emptyMap(), val clearing: Map<UUID, Point3> = emptyMap(), val closing: Map<UUID, ClosingPost> = emptyMap()) {
+data class AttackRoles(val assault: Map<UUID, Point3> = emptyMap(), val clearing: Map<UUID, Point3> = emptyMap(), val closing: Map<UUID, ClosingPost> = emptyMap(), val covers: Map<UUID, Set<UUID>> = emptyMap(), val holding: Set<UUID> = emptySet()) {
     companion object {
         val NONE = AttackRoles()
     }
@@ -28,8 +33,16 @@ data class AttackRoles(val assault: Map<UUID, Point3> = emptyMap(), val clearing
  */
 data class ClosingPost(val post: Point3, val enemy: Point3)
 
-/** A member as the operation's attack roles see it. */
-data class AttackMember(val id: UUID, val position: Point3, val ready: Boolean)
+/**
+ * A member as the operation's attack roles see it.
+ *
+ * @property closeQuarters he fights at short range (a shotgunner), so his assault stops nearer
+ *   the enemy, see [assaultStandoff].
+ */
+data class AttackMember(val id: UUID, val position: Point3, val ready: Boolean, val closeQuarters: Boolean = false)
+
+/** How near a known enemy a man who does, or does not, fight at [closeQuarters] may come in an assault. */
+fun assaultStandoff(closeQuarters: Boolean) = if (closeQuarters) OperationTactics.CLOSE_QUARTERS_STANDOFF else OperationTactics.ASSAULT_STANDOFF
 
 /**
  * One member's situation for [OperationTactics.duty].
@@ -114,14 +127,15 @@ object OperationTactics {
     /** A mover this near (horizontally) his front slot has arrived and fires from where he is. */
     const val MOVE_ARRIVAL = 8.0
 
-    /** Closing in, a mover halves its distance to the point's nearest defender, down to this. */
-    const val CLOSE_DISTANCE = 20.0
-
     /**
-     * How near (16 blocks) a man in an assault may come to a known enemy. An assault shortens the
-     * range and keeps firing; it never runs onto the enemy (#88).
+     * How near (24 blocks) a man in an assault may come to a known enemy, and where his closing in
+     * stops. An assault shortens the range and keeps firing; it never runs onto the enemy (#88).
+     * At 20 and 16 blocks, in-game 04.11, the men stood too near the defenders.
      */
-    const val ASSAULT_STANDOFF = 16.0
+    const val ASSAULT_STANDOFF = 24.0
+
+    /** [ASSAULT_STANDOFF] for a man who fights at short range: a shotgun does little from 24 blocks. */
+    const val CLOSE_QUARTERS_STANDOFF = 16.0
 
     /**
      * Roles for [phase]. While defenders still hold the [objective] an assault closes in under
@@ -133,11 +147,14 @@ object OperationTactics {
      */
     fun roles(phase: AttackPhase, objective: Point3, movers: List<UUID>, members: List<AttackMember>, threats: List<Point3>, previousClearing: Set<UUID>, origins: Map<UUID, Point3> = emptyMap(), standoffFrom: List<Point3> = threats): AttackRoles {
         if (phase == AttackPhase.DEPLOY) return AttackRoles.NONE
+        val byId = members.associateBy { it.id }
         // An assault is not a run onto the defenders: it shortens the range and keeps firing.
         val defenders = threats.filter { atObjective(it, objective) }
         if (phase == AttackPhase.ASSAULT && defenders.isNotEmpty()) {
-            val positions = members.associate { it.id to it.position }
-            val closing = movers.mapNotNull { id -> (origins[id] ?: positions[id])?.let { id to closingPost(it, defenders) } }.toMap()
+            val closing = movers.mapNotNull { id ->
+                val member = byId[id] ?: return@mapNotNull null
+                id to closingPost(origins[id] ?: member.position, defenders, assaultStandoff(member.closeQuarters))
+            }.toMap()
             return AttackRoles(closing = closing)
         }
         val clearing = if (phase == AttackPhase.CLEAR && threats.isNotEmpty()) {
@@ -153,24 +170,24 @@ object OperationTactics {
             // A loose ring, so the assault group does not pile onto one block.
             val ring = 4.0 + index / 8 * 4.0
             val angle = index * Math.PI / 4 + index / 8 * Math.PI / 8
-            id to keepStandoff(Point3(objective.x + cos(angle) * ring, objective.y, objective.z + sin(angle) * ring), standoffFrom)
+            id to keepStandoff(Point3(objective.x + cos(angle) * ring, objective.y, objective.z + sin(angle) * ring), standoffFrom, assaultStandoff(byId[id]?.closeQuarters == true))
         }
         return AttackRoles(assault, clearing)
     }
 
     /**
-     * [slot] pushed out until it is [ASSAULT_STANDOFF] from every one of [threats]. Going onto a
+     * [slot] pushed out until it is [standoff] from every one of [threats]. Going onto a
      * point a defender still stands near, the ring would have put men right beside him (#88).
      */
-    fun keepStandoff(slot: Point3, threats: List<Point3>): Point3 {
+    fun keepStandoff(slot: Point3, threats: List<Point3>, standoff: Double = ASSAULT_STANDOFF): Point3 {
         var point = slot
         repeat(STANDOFF_PASSES) {
             // The nearest first, so the result does not depend on the order contacts are listed in.
-            val near = threats.filter { distance(it, point) < ASSAULT_STANDOFF }.minByOrNull { distance(it, point) } ?: return point
+            val near = threats.filter { distance(it, point) < standoff }.minByOrNull { distance(it, point) } ?: return point
             point = if (distance(near, point) < SAME_SPOT) {
-                Point3(near.x + ASSAULT_STANDOFF, point.y, near.z)
+                Point3(near.x + standoff, point.y, near.z)
             } else {
-                short(near, point, ASSAULT_STANDOFF).copy(y = point.y)
+                short(near, point, standoff).copy(y = point.y)
             }
         }
         return point
@@ -195,6 +212,7 @@ object OperationTactics {
                         val target = roles.clearing[intent.actor.id]
                         val slot = roles.assault[intent.actor.id]
                         val post = roles.closing[intent.actor.id]
+                        val covers = roles.covers[intent.actor.id]
                         when {
                             // Special duties (inspection, observation, marching orders) keep their own
                             // work. The rear guard joins an assault: left behind 84 blocks back, the
@@ -207,10 +225,17 @@ object OperationTactics {
 
                             slot != null -> intent.copy(duty = CombatDuty.MOVE, anchor = slot, requireCover = false, requireShelter = false, minimumHeight = null, assault = true)
 
-                            // Closing in is still fire from cover, but inside the role's clearance:
-                            // kept to 48 blocks, riflemen never reached a post 20-30 blocks from the
-                            // defenders and the assault stood where it began (#54).
-                            post != null -> intent.copy(duty = CombatDuty.FIRE, anchor = post.post, focus = post.enemy, minimumHeight = null, assault = true)
+                            // Closing in is fire from nearer, inside the role's clearance: kept to 48
+                            // blocks, riflemen never reached a post 20-30 blocks from the defenders and
+                            // the assault stood where it began (#54). The rush waits for the other
+                            // half's fire; with nobody to cover it, it goes from cover to cover. All
+                            // at once and in the open, in-game 04.11 a squad lost 5 of 16 in 50 s.
+                            post != null && covers != null -> intent.copy(duty = CombatDuty.FIRE, anchor = post.post, focus = post.enemy, requireCover = false, requireShelter = false, minimumHeight = null, assault = true, coveredBy = covers)
+
+                            post != null -> intent.copy(duty = CombatDuty.FIRE, anchor = post.post, focus = post.enemy, requireCover = true, minimumHeight = null, assault = true)
+
+                            // The half covering the rush fires from where it stands.
+                            intent.actor.id in roles.holding -> intent.copy(duty = CombatDuty.FIRE, anchor = intent.origin, minimumHeight = null, assault = true)
 
                             else -> intent
                         }
@@ -249,12 +274,15 @@ object OperationTactics {
     /** How long each half of a following squad runs or covers, 5 s. */
     const val BOUND_TICKS = 100L
 
-    /** Half as far from the nearest of [defenders] as [from], but no nearer than [CLOSE_DISTANCE]. */
-    fun closingPost(from: Point3, defenders: List<Point3>): ClosingPost {
+    /**
+     * Half as far from the nearest of [defenders] as [from], but no nearer than [nearest]. A man
+     * already nearer holds where he is: sent back, he would run away from the enemy under fire.
+     */
+    fun closingPost(from: Point3, defenders: List<Point3>, nearest: Double = ASSAULT_STANDOFF): ClosingPost {
         val enemy = defenders.minBy { distance(it, from) }
         val range = distance(enemy, from)
-        if (range <= CLOSE_DISTANCE) return ClosingPost(from, enemy)
-        return ClosingPost(short(enemy, from, max(CLOSE_DISTANCE, range / 2)).copy(y = from.y), enemy)
+        if (range <= nearest) return ClosingPost(from, enemy)
+        return ClosingPost(short(enemy, from, max(nearest, range / 2)).copy(y = from.y), enemy)
     }
 
     /**

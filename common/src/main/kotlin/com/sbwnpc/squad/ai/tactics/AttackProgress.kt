@@ -23,9 +23,14 @@ class AttackProgress(now: Long) {
     private var aborted = false
     private var clearing: Set<UUID> = emptySet()
 
-    // Where each mover stood as this assault began: its closing post is measured from there, so
-    // the post stays put while the man walks to it.
+    // Where each mover stood as his half's turn began: its closing post is measured from there,
+    // so the post stays put while the man walks to it.
     private val closingOrigins = HashMap<UUID, Point3>()
+
+    // The assault's two halves (0 and 1), the half closing in now and since when; see [turn].
+    private val halfOf = HashMap<UUID, Int>()
+    private var closingHalf = 0
+    private var turnSince: Long? = null
 
     // Defenders seen at the objective and when, kept past the short contact memory: see [defenders].
     private val knownDefenders = HashMap<UUID, Pair<Point3, Long>>()
@@ -111,23 +116,57 @@ class AttackProgress(now: Long) {
     fun roles(now: Long, objective: Point3, movers: List<UUID>, members: List<AttackMember>, threats: List<Point3>): AttackRoles {
         if (phase != AttackPhase.ASSAULT) {
             closingOrigins.clear()
+            halfOf.clear()
+            turnSince = null
             closedInSince = null
             assaultSince = null
             occupying = false
             return OperationTactics.roles(phase, objective, movers, members, threats, clearing).also { clearing = it.clearing.keys }
         }
-        members.filter { it.id in movers }.forEach { closingOrigins.putIfAbsent(it.id, it.position) }
-        if (!occupying) occupying = closedIn(now, objective, movers, members, threats)
+        val defenders = threats.filter { OperationTactics.atObjective(it, objective) }
+        if (!occupying) occupying = closedIn(now, movers, members, defenders)
         // Going onto the point, the defenders still round it no longer hold the movers back.
         val holding = if (occupying) threats.filterNot { OperationTactics.atObjective(it, objective) } else threats
-        return OperationTactics.roles(phase, objective, movers, members, holding, clearing, closingOrigins, standoffFrom = threats).also { clearing = it.clearing.keys }
+        val covering = covering(now, movers, members, defenders)
+        val roles = OperationTactics.roles(phase, objective, movers, members, holding, clearing, closingOrigins, standoffFrom = threats).also { clearing = it.clearing.keys }
+        if (roles.closing.isEmpty()) return roles
+        val closing = roles.closing - covering
+        return roles.copy(closing = closing, holding = covering, covers = if (covering.isEmpty()) emptyMap() else closing.keys.associateWith { covering })
+    }
+
+    /**
+     * Who of [movers] covers the others now. The assault goes in two halves: one closes in while
+     * the other fires, and each rush waits for the other half's fire. The turn passes once every
+     * man of the closing half stands on his post or at his stand-off, or after
+     * [BOUND_LIMIT_TICKS]; never on a clock shorter than a rush, which would stop a man in the
+     * open. With the other half gone, the closing men go from cover to cover.
+     */
+    private fun covering(now: Long, movers: List<UUID>, members: List<AttackMember>, defenders: List<Point3>): Set<UUID> {
+        halfOf.keys.retainAll(movers.toSet())
+        movers.sortedBy { it.toString() }.filter { it !in halfOf }.forEach { id -> halfOf[id] = if (halfOf.values.count { it == 0 } <= halfOf.values.count { it == 1 }) 0 else 1 }
+        val byId = members.associateBy { it.id }
+        fun closing() = movers.filter { halfOf[it] == closingHalf }
+        fun arrived(id: UUID): Boolean {
+            val member = byId[id] ?: return true
+            if (defenders.isEmpty()) return true
+            val origin = closingOrigins[id] ?: return false
+            val post = OperationTactics.closingPost(origin, defenders, assaultStandoff(member.closeQuarters)).post
+            return distance(member.position, post) <= CLOSED_IN_REACH
+        }
+        val since = turnSince
+        if (since == null || closing().all(::arrived) || now - since >= BOUND_LIMIT_TICKS) {
+            if (since != null) closingHalf = 1 - closingHalf
+            turnSince = now
+            closing().forEach { id -> byId[id]?.let { closingOrigins[id] = it.position } }
+        }
+        return movers.filterTo(HashSet()) { halfOf[it] != closingHalf }
     }
 
     /** Whether the closed-in assault is due to go onto the point now; starts its clocks on the way. */
-    private fun closedIn(now: Long, objective: Point3, movers: List<UUID>, members: List<AttackMember>, threats: List<Point3>): Boolean {
-        val closing = OperationTactics.roles(phase, objective, movers, members, threats, clearing, closingOrigins).closing
-        val positions = members.associate { it.id to it.position }
-        val standing = closing.count { (id, post) -> positions[id]?.let { distance(it, post.post) <= CLOSED_IN_REACH } == true }
+    private fun closedIn(now: Long, movers: List<UUID>, members: List<AttackMember>, defenders: List<Point3>): Boolean {
+        // A man has closed in once he stands at his stand-off from the nearest defender.
+        val closing = members.filter { it.id in movers }
+        val standing = closing.count { member -> defenders.isNotEmpty() && defenders.minOf { distance(it, member.position) } <= assaultStandoff(member.closeQuarters) + CLOSED_IN_REACH }
         if (closing.isNotEmpty() && standing * 2 >= closing.size && closedInSince == null) closedInSince = now
         val since = assaultSince ?: now.also { assaultSince = it }
         // Whatever keeps the movers off their closing posts, an assault that still has the
