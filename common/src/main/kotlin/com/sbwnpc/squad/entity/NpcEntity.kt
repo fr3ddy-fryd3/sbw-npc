@@ -1415,7 +1415,8 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
             val toward = attacker!!.position().subtract(position())
             val lead = position().add(toward.normalize().scale(minOf(toward.length(), DEATH_LEAD_REACH)))
             com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.HEARING, "[hearing-debug] {} event=death_lead at={} killerRange={}", uuid, BlockPos.containing(lead).toShortString(), toward.length().toInt())
-            com.sbwnpc.squad.combat.Alarm.raise(this, position(), lead, DEATH_ALARM_RADIUS)
+            // The squad's alarm, not every man's: [com.sbwnpc.squad.combat.Alarm.raise] would send them all.
+            currentSquad()?.members?.firstNotNullOfOrNull { (level() as ServerLevel).getEntity(it) as? NpcEntity }?.takeIf { it.isAlive }?.let { com.sbwnpc.squad.combat.tactics.SquadTactics.heard(it, lead) }
         } else {
             com.sbwnpc.squad.combat.Alarm.raiseDeath(this, DEATH_ALARM_RADIUS)
         }
