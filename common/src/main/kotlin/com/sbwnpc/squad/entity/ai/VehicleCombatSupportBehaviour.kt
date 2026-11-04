@@ -59,10 +59,23 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** Out of a vehicle having lost the target: not straight back into the same one. */
     private var nextBoardTick = 0
 
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
-        entity.tickCount >= nextBoardTick && entity.freeFor(NpcActivity.SEAT, this) && eligible(entity) &&
-            threat(entity)?.let { hasFiringSightline(entity, it) } == true &&
-            stationVehicle(entity, level) != null
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean {
+        val station = stationVehicle(entity, level) ?: return false
+        // A man his plan sent to a gun who does not go: say once a second why (in-game 04.11 one never boarded).
+        val refusal = when {
+            entity.tickCount < nextBoardTick -> "reboard_cooldown"
+            !entity.freeFor(NpcActivity.SEAT, this) -> "seat_held"
+            !orderAllowsSupport(entity) -> "order"
+            !eligible(entity) -> "busy_or_suppressed"
+            threat(entity) == null -> "no_threat"
+            !hasFiringSightline(entity, threat(entity)!!) -> "no_sightline"
+            else -> null
+        }
+        if (refusal != null && entity.tickCount % REFUSAL_LOG_TICKS == 0) {
+            DebugFlags.log(LogGroup.VEHICLE, "{} event=station_refused vehicle={} reason={} target={}", entity.uuid, station.uuid, refusal, threat(entity)?.uuid)
+        }
+        return refusal == null
+    }
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean {
         val vehicle = vehicleId?.let { (entity.level() as? ServerLevel)?.getEntity(it)?.takeIf(Ports.vehicles::isVehicle) }
@@ -325,6 +338,7 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private companion object {
         const val TARGET_SEARCH_RADIUS = 48.0
+        const val REFUSAL_LOG_TICKS = 20
         const val THREAT_RESCAN_TICKS = 10
         const val BOARD_DISTANCE_SQR = 2.5 * 2.5
         const val BOARD_SPEED = 1.0
