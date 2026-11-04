@@ -57,7 +57,9 @@ class SquadAlarms {
         walkTo.retainAll(heard.keys)
         checked.values.removeIf { now - it > CHECKED_TICKS }
         return heard.keys.reversed().firstOrNull { spot ->
-            checked.keys.none { near(it, spot) } && (reach == null || spot.horizontalDistanceSquared(anchor) <= reach * reach)
+            // A killer's direction is a new shot, not the same fight's noise: a second kill from the
+            // spot just checked sent nobody (in-game 04.11).
+            (spot in walkTo || checked.keys.none { near(it, spot) }) && (reach == null || spot.horizontalDistanceSquared(anchor) <= reach * reach)
         }
     }
 

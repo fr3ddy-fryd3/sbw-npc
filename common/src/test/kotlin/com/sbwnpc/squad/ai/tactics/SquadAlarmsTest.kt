@@ -61,4 +61,15 @@ class SquadAlarmsTest {
         alarms.heard(Point3(-40.0, 64.0, 0.0), 30)
         assertFalse(alarms.walkTo(alarms.pending(30, Point3(0.0, 64.0, 0.0), null)!!))
     }
+
+    @Test fun `a second kill from a spot just checked is looked at again`() {
+        val alarms = SquadAlarms()
+        val anchor = Point3(0.0, 64.0, 0.0)
+        alarms.heard(Point3(40.0, 64.0, 0.0), 10, walk = true)
+        alarms.checked(alarms.pending(10, anchor, null)!!, 20)
+        alarms.heard(Point3(42.0, 64.0, 0.0), 30)
+        assertNull(alarms.pending(30, anchor, null))
+        alarms.heard(Point3(42.0, 64.0, 0.0), 40, walk = true)
+        assertNotNull(alarms.pending(40, anchor, null))
+    }
 }
