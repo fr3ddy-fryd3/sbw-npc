@@ -12,7 +12,6 @@ import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
-import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
 import com.sbwnpc.squad.vehicle.Helicopters
 import com.sbwnpc.squad.vehicle.RideCandidates
@@ -201,10 +200,10 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
             entity.npcClass != NpcClass.MORTAR &&
             threat(entity) != null
 
-    /** A temporary weapon station cannot hold up an explicit march or the squad's withdrawal. */
+    /** See [WeaponStationScan.orderAllows]: the same rule as the team's choice of who mans a gun. */
     private fun orderAllowsSupport(entity: NpcEntity): Boolean {
-        val order = entity.currentSquad()?.order
-        return order != SquadOrder.MOVE && order != SquadOrder.RETREAT
+        val level = entity.level() as? ServerLevel ?: return false
+        return WeaponStationScan.orderAllows(entity.currentSquad(), level, manning = vehicleId != null)
     }
 
     // The hostile-vehicle scan (an entity query + raycasts) used to run from this behaviour's
