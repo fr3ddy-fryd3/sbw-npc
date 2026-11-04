@@ -285,7 +285,7 @@ private class ArmourWalk(private val npc: NpcEntity, private val state: ArmourSt
         val level = npc.level() as ServerLevel
         target?.let { return walk(it, now, covering = true, requireHidden = true) }
         if (!canSearch()) return ActionUpdate.Running
-        val found = (TickBudget.attempt(npc, TickBudget.Work.COVER) { CoverSearch.find(npc, level, state.source, failed) { state.hidden(npc, it) } } ?: return ActionUpdate.Running).value
+        val found = (TickBudget.attempt(npc, TickBudget.Work.COVER) { CoverSearch.find(npc, level, state.source, failed, CoverSearch.Filter(sheltered = { state.hidden(npc, it) })) } ?: return ActionUpdate.Running).value
         if (found == null || failed.size >= MAX_FAILED) {
             state.failed(now, escape = false)
             return done(now)
