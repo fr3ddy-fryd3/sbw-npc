@@ -960,6 +960,9 @@ object NativeTactics {
                 children.keys.removeIf { it !in desiredAgents }
                 failures.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 // A man leaving the plan keeps no foxhole claim nobody would release.
+                armour.entries.removeIf { (id, state) ->
+                    (AgentId(AgentLevel.NPC, id) !in desiredAgents).also { gone -> if (gone) FiringSpots.release(id, state.reservation) }
+                }
                 cover.entries.removeIf { (id, state) ->
                     (AgentId(AgentLevel.NPC, id) !in desiredAgents).also { gone -> if (gone) (level.getEntity(id) as? NpcEntity)?.release(NpcActivity.DUG_IN, state) }
                 }
