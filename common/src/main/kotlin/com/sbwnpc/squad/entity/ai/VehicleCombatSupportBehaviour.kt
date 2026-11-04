@@ -59,19 +59,32 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** Out of a vehicle having lost the target: not straight back into the same one. */
     private var nextBoardTick = 0
 
+    // The last station refusal traced, see [checkExtraStartConditions].
+    private var refusalLogTick = Int.MIN_VALUE / 2
+
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean {
         val station = stationVehicle(entity, level) ?: return false
         // A man his plan sent to a gun who does not go: say once a second why (in-game 04.11 one never boarded).
         val refusal = when {
             entity.tickCount < nextBoardTick -> "reboard_cooldown"
+
             !entity.freeFor(NpcActivity.SEAT, this) -> "seat_held"
+
             !orderAllowsSupport(entity) -> "order"
+
             !eligible(entity) -> "busy_or_suppressed"
+
             threat(entity) == null -> "no_threat"
-            !hasFiringSightline(entity, threat(entity)!!) -> "no_sightline"
+
+            // The gun's line, as the team's plan checked it ([WeaponStationScan.bears]), not the man's
+            // own: standing below a rise or behind the hull, he does not see what the gun on the roof
+            // does, and the gun his plan gave him stayed empty (in-game 04.11).
+            !Ports.vehicles.canAimAt(station, entity, threat(entity)!!, Ports.vehicles.seating(station).indexOfFirst { it == null }) -> "gun_cannot_aim"
+
             else -> null
         }
-        if (refusal != null && entity.tickCount % REFUSAL_LOG_TICKS == 0) {
+        if (refusal != null && entity.tickCount - refusalLogTick >= REFUSAL_LOG_TICKS) {
+            refusalLogTick = entity.tickCount
             DebugFlags.log(LogGroup.VEHICLE, "{} event=station_refused vehicle={} reason={} target={}", entity.uuid, station.uuid, refusal, threat(entity)?.uuid)
         }
         return refusal == null

@@ -515,6 +515,9 @@ object NativeTactics {
 
         /** By ground team, who should man which gun, worked out for its plan ([TacticalFacts.STATIONS]). */
         private val stationsDue = HashMap<AgentId, StationPlan>()
+
+        /** By squad, the last reason its teams were given no vehicle gun, logged once per change. */
+        private val stationRefusals = HashMap<UUID, String?>()
         private var nextStationCheck = Long.MIN_VALUE
 
         private val retreatSmoke = RetreatSmoke(level)
@@ -2029,7 +2032,14 @@ object NativeTactics {
             val due = HashMap<AgentId, StationPlan>()
             missions.forEach { (squadId, mission) ->
                 val saved = manager.get(squadId) ?: return@forEach
-                if (situations[squadId]?.contact != true || squadId in journeys || !WeaponStationScan.orderAllows(saved, level)) return@forEach
+                if (situations[squadId]?.contact != true) return@forEach
+                val refused = when {
+                    squadId in journeys -> "travelling"
+                    !WeaponStationScan.orderAllows(saved, level) -> "order_${saved.order}"
+                    else -> null
+                }
+                if (stationRefusals.put(squadId, refused) != refused && refused != null) DebugFlags.log(LogGroup.VEHICLE, "[htn] squad={} event=weapon_stations_refused reason={}", squadId, refused)
+                if (refused != null) return@forEach
                 mission.teams.forEach { team ->
                     val men = team.members.mapNotNull { level.getEntity(it.actor.id) as? NpcEntity }.filter(WeaponStationScan::free)
                     val guns = WeaponStationScan.stations(men, level)
@@ -2381,6 +2391,7 @@ object NativeTactics {
             rides.clear()
             stations.clear()
             stationsDue.clear()
+            stationRefusals.clear()
             seatsDue.clear()
             seatChecks.clear()
             retreatSmoke.clear()
