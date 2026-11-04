@@ -46,7 +46,11 @@ internal class DroneLaunchWalk(entity: NpcEntity) {
             if (!TacticalBudget.path(entity)) return Result.WAITING
             cursor++
             val path = TacticalPositions.pathToPosition(entity, point)
-            if (TacticalPositions.reaches(path, point)) {
+            if (TacticalPositions.reaches(path, point) && (0 until path!!.nodeCount).all { index ->
+                    val node = path.getNode(index)
+                    com.sbwnpc.squad.ai.integration.NativeTactics.armourSheltered(entity, Vec3.atBottomCenterOf(net.minecraft.core.BlockPos(node.x, node.y, node.z)))
+                }
+            ) {
                 ownedPath = path
                 entity.navigation.moveTo(path, WALK_SPEED)
             }

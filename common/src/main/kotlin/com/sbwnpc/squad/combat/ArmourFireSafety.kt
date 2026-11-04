@@ -1,0 +1,21 @@
+package com.sbwnpc.squad.combat
+
+import com.sbwnpc.squad.entity.NpcEntity
+
+/** Known armour never authorizes blind small-arms fire or a hand-thrown grenade. */
+object ArmourFireSafety {
+    /** A stored fire bearing through known armour is not a blind-fire or grenade destination. */
+    fun bearingContainsArmour(npc: NpcEntity, aim: net.minecraft.world.phys.Vec3): Boolean {
+        val bearing = aim.subtract(npc.position()).multiply(1.0, 0.0, 1.0).normalize()
+        val now = npc.level().gameTime
+        return npc.currentSquad()?.tactics?.contacts?.values.orEmpty().any { contact ->
+            if (!contact.armoured || contact.airborne || !SquadKnowledge.known(contact.seenAt, contact.firstSeenAt, now, npc.uuid in contact.seenBy)) return@any false
+            val delta = contact.position.subtract(npc.position()).multiply(1.0, 0.0, 1.0)
+            val along = delta.dot(bearing)
+            along > 0.0 && delta.subtract(bearing.scale(along)).length() <= ARMOUR_BEARING_WIDTH + along * ARMOUR_BEARING_ERROR
+        }
+    }
+
+    private const val ARMOUR_BEARING_WIDTH = 4.0
+    private const val ARMOUR_BEARING_ERROR = 0.1
+}

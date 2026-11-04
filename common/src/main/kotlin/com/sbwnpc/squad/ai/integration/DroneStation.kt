@@ -248,6 +248,7 @@ internal class DroneStation(val operator: NpcEntity) {
      * straight up before turning, so a clear column is the whole way out.
      */
     private fun launchPoint(feet: Vec3): Vec3? {
+        if (!NativeTactics.armourSheltered(operator, feet)) return null
         val base = feet.add(0.0, LAUNCH_HEIGHT, 0.0)
         val candidates = sequenceOf(base) + (0 until LAUNCH_SIDE_POINTS).asSequence().map {
             val angle = it * 2.0 * Math.PI / LAUNCH_SIDE_POINTS

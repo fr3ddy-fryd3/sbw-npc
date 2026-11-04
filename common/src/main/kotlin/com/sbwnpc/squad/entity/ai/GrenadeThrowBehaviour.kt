@@ -46,7 +46,7 @@ class GrenadeThrowBehaviour : ExtendedBehaviour<NpcEntity>() {
         val target = entity.target ?: return false
         if (!target.isAlive) return false
         // Nothing thrown by hand reaches a helicopter.
-        if (VehicleTargeting.isAircrew(target)) return false
+        if ((VehicleTargeting.isAircrew(target) || VehicleTargeting.isGroundArmour(target))) return false
         val dist = entity.distanceTo(target)
         if (dist !in GrenadeThrower.MIN_RANGE..GrenadeThrower.MAX_RANGE ||
             !com.sbwnpc.squad.combat.DetectionSightline.canSee(entity, target) || !entity.sensing.hasLineOfSight(target)

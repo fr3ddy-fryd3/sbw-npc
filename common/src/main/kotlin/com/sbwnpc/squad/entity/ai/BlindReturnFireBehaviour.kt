@@ -30,6 +30,7 @@ class BlindReturnFireBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
         val now = entity.level().gameTime
         val target = entity.target
+        if (target?.let(com.sbwnpc.squad.combat.VehicleTargeting::isGroundArmour) == true) return false
         if (target != null) {
             val visibility = DetectionSightline.trace(entity, target)
             if (target.isAlive && visibility == DetectionSightline.Visibility.VISIBLE) {
@@ -46,6 +47,7 @@ class BlindReturnFireBehaviour : ExtendedBehaviour<NpcEntity>() {
         val now = entity.level().gameTime
         val incoming = entity.incomingFire.replying(now)
         val aim = (if (incoming) entity.incomingFire.point(now) else entity.lastSeenFire.point(now)) ?: return
+        if (com.sbwnpc.squad.combat.ArmourFireSafety.bearingContainsArmour(entity, aim)) return
         val source = if (incoming) "return-fire" else "foliage-fire"
         com.sbwnpc.squad.combat.AntiArmourKit.wield(entity, launcher = false)
         val gun = Ports.guns.inHand(entity) ?: return

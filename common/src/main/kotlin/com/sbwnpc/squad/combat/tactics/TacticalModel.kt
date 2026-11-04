@@ -54,6 +54,8 @@ data class TacticalContact(
     val firstSeenAt: Long = seenAt,
     /** The men of the squad who noticed this enemy themselves: they need no call. */
     val seenBy: Set<UUID> = emptySet(),
+    /** The eye point at the sighting, so mounted crew do not inherit an infantry height guess. */
+    val eye: Vec3 = position.add(0.0, DEFAULT_CONTACT_EYE_HEIGHT, 0.0),
 )
 data class TacticalSnapshot(
     val now: Long,
@@ -78,3 +80,5 @@ data class TacticalSnapshot(
     val fighting get() = members.filter { it.ready && it.health >= 0.3 && (!offensive || it.primaryAmmo) }
     val offensive get() = order == SquadOrder.ATTACK
 }
+
+private const val DEFAULT_CONTACT_EYE_HEIGHT = 1.5

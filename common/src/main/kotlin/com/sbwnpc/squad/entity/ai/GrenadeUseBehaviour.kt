@@ -45,7 +45,7 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (!squadMayThrow(entity)) return false
 
         val point = clusterPoint(entity, level) ?: flushPoint(entity) ?: suppressionPoint(entity) ?: return false
-        if (!inRange(entity, point)) return false
+        if (!inRange(entity, point) || com.sbwnpc.squad.combat.ArmourFireSafety.bearingContainsArmour(entity, point)) return false
         val grenade = GrenadeThrower.pick(entity, level, point) ?: return false
         aimPoint = point
         kind = grenade
@@ -74,7 +74,7 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
         val target = entity.target ?: return null
         if (!target.isAlive) return null
         // Out of sight up in a helicopter is not something a grenade flushes out.
-        if (VehicleTargeting.isAircrew(target)) return null
+        if ((VehicleTargeting.isAircrew(target) || VehicleTargeting.isGroundArmour(target))) return null
         val since = entity.blockedSightSince ?: return null
         if (entity.tickCount - since < BLOCKED_TICKS) return null
         val known = entity.currentSquad()?.tactics?.contacts?.get(target.uuid)
@@ -103,6 +103,7 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
         var best: List<net.minecraft.world.entity.LivingEntity>? = null
         for (centre in enemies) {
             val bunch = enemies.filter { it.distanceToSqr(centre) <= radiusSqr }
+            if (bunch.any(VehicleTargeting::isGroundArmour)) continue
             if (bunch.size < CLUSTER_SIZE || bunch.size <= (best?.size ?: 0)) continue
             val middle = Vec3(bunch.sumOf { it.x } / bunch.size, bunch.sumOf { it.y } / bunch.size, bunch.sumOf { it.z } / bunch.size)
             if (!inRange(entity, middle)) continue
@@ -133,7 +134,7 @@ class GrenadeUseBehaviour : ExtendedBehaviour<NpcEntity>() {
         val from = known?.position?.takeIf { entity.level().gameTime - known.seenAt <= 100 }
             ?: target.position().takeIf { com.sbwnpc.squad.combat.DetectionSightline.canSee(entity, target) } ?: return null
         if (from.y - entity.y > AIR_THREAT_HEIGHT) return null
-        entity.target?.takeIf { VehicleTargeting.isAircrew(it) }?.let { return null }
+        entity.target?.takeIf { VehicleTargeting.isAircrew(it) || VehicleTargeting.isGroundArmour(it) }?.let { return null }
         return from
     }
 

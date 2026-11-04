@@ -1,8 +1,8 @@
 package com.sbwnpc.squad.gametest
 
-import com.sbwnpc.squad.combat.AntiArmourKit
-import com.sbwnpc.squad.ai.integration.NativeTactics
 import com.sbwnpc.squad.ai.diagnostics.DecisionTrace
+import com.sbwnpc.squad.ai.integration.NativeTactics
+import com.sbwnpc.squad.combat.AntiArmourKit
 import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcActivity
@@ -82,6 +82,7 @@ object ArmourCoverGameTests {
             if (helper.tick == 10L) com.sbwnpc.squad.combat.tactics.SquadTactics.observe(man, front.crew)
             answered = answered || DecisionTrace.decisionsOf(man.uuid).any { it.event == "plan" && "*answer_armour" in it.detail }
             if (helper.tick > 100L && !front.exposed(man)) hidden++
+            if (helper.tick % 50L == 0L) front.scene.result("RUNNING", "tick=${helper.tick} at=${helper.relativeVec(man.position())} hidden=$hidden reports=${NativeTactics.reports(man).values.map { "${it.ticket.identity}:${it.status}:${it.reason}" }}")
             helper.assertTrue(NativeTactics.movable(man), "Armour suspended his plan")
             helper.assertFalse(man.isSuppressed(), "Seeing armour was turned into bullet suppression")
             if (helper.tick >= 300L) {
@@ -106,6 +107,123 @@ object ArmourCoverGameTests {
                 val gained = man.position().distanceTo(front.lav.position()) - start
                 helper.assertTrue(gained >= 6.0 || !front.exposed(man), "He neither escaped nor retreated: gained=$gained")
                 front.scene.result("PASS", "gained=$gained")
+                helper.succeed()
+            }
+        }
+    }
+
+    /** A tank-focused ATTACK does not occupy the rifleman's aim while infantry can be fought from shelter. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 800, batch = "armour-infantry")
+    fun shelteredRiflemanFiresAtInfantryBesideArmour(helper: GameTestHelper) {
+        val front = Front(helper, "armour-infantry", wall = true, roles = listOf(NpcClass.RIFLEMAN))
+        val man = front.men.single()
+        val infantry = requireNotNull(front.rifleman)
+        val point = helper.absoluteVec(Vec3(42.5, 1.0, 80.5))
+        infantry.moveTo(point.x, point.y, point.z)
+        front.manager.setOrder(front.squad.id, SquadOrder.ATTACK)
+        front.manager.setObjective(helper.level, front.squad.id, front.lav.blockPosition())
+        front.manager.setFocus(front.squad.id, front.crew.uuid)
+        var safeShots = 0
+        var shotsAtCrew = 0
+        var lastShot = man.lastShotTick
+        helper.onEachTick {
+            if (helper.tick == 10L) {
+                com.sbwnpc.squad.combat.tactics.SquadTactics.observe(man, front.crew)
+                com.sbwnpc.squad.combat.tactics.SquadTactics.observe(man, infantry)
+            }
+            if (man.lastShotTick != lastShot) {
+                if (man.target === front.crew) shotsAtCrew++
+                if (man.target === infantry && !front.exposed(man)) safeShots++
+                lastShot = man.lastShotTick
+            }
+            if (helper.tick >= 600L) {
+                helper.assertTrue(safeShots > 0, "He never fired at infantry while sheltered from armour")
+                helper.assertTrue(shotsAtCrew == 0, "He fired $shotsAtCrew rounds at armour")
+                front.scene.result("PASS", "safeShots=$safeShots")
+                helper.succeed()
+            }
+        }
+    }
+
+    /** A loaded launcher sorties without advancing along the threat bearing, fires, and returns. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 900, batch = "armour-sortie")
+    fun launcherSortiesFiresAndReturnsFromArmourCover(helper: GameTestHelper) {
+        val front = Front(helper, "armour-sortie", wall = true, roles = listOf(NpcClass.MACHINE_GUNNER), infantry = false)
+        front.lav.isInvulnerable = true
+        val man = front.men.single()
+        front.manager.setOrder(front.squad.id, SquadOrder.ATTACK)
+        front.manager.setObjective(helper.level, front.squad.id, front.lav.blockPosition())
+        front.manager.setFocus(front.squad.id, front.crew.uuid)
+        val launcher = { if (AntiArmourKit.isLauncher(man.mainHandItem)) man.mainHandItem else man.antiArmourWeapon }
+        val rockets = Ports.guns.roundsLeft(launcher())
+        var fired = false
+        var returned = false
+        var sawReturn = false
+        var sortieOrigin: Vec3? = null
+        helper.onEachTick {
+            if (helper.tick == 10L) com.sbwnpc.squad.combat.tactics.SquadTactics.observe(man, front.crew)
+            val sortie = NativeTactics.reports(man).values.any { ":SORTIE:" in it.ticket.identity || ":FIRE:" in it.ticket.identity }
+            if (sortie && sortieOrigin == null) sortieOrigin = man.position()
+            if (sortie) {
+                sortieOrigin?.let { origin ->
+                    val toward = front.lav.position().subtract(origin).multiply(1.0, 0.0, 1.0).normalize()
+                    helper.assertTrue(man.position().subtract(origin).dot(toward) <= 0.75, "The launcher sortie moved forward toward armour")
+                }
+            }
+            fired = fired || Ports.guns.roundsLeft(launcher()) < rockets
+            if (fired) {
+                sawReturn = sawReturn || NativeTactics.reports(man).values.any { ":RETURN:" in it.ticket.identity }
+                returned = returned || (sawReturn && !front.exposed(man))
+            }
+            if (returned) {
+                front.scene.result("PASS", "fired=$fired returned=$returned")
+                helper.succeed()
+            }
+        }
+    }
+
+    /** Grounded operators launch only after reaching armour shelter, including a walk out from under a roof. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 700, batch = "armour-drone")
+    fun operatorLaunchesFromShelterFromArmour(helper: GameTestHelper) {
+        val front = Front(helper, "armour-drone", wall = true, roles = listOf(NpcClass.DRONE_OPERATOR), infantry = false)
+        val man = front.men.single()
+        man.dronesLeft = 0
+        front.manager.setOrder(front.squad.id, SquadOrder.ATTACK)
+        front.manager.setObjective(helper.level, front.squad.id, front.lav.blockPosition())
+        front.manager.setFocus(front.squad.id, front.crew.uuid)
+        for (x in 18..23) for (z in 48..57) helper.setBlock(BlockPos(x, 4, z), Blocks.STONE)
+        helper.onEachTick {
+            if (helper.tick == 10L) com.sbwnpc.squad.combat.tactics.SquadTactics.observe(man, front.crew)
+            if (helper.tick == 80L) man.dronesLeft = 1
+            if (man.holds(NpcActivity.DRONE)) {
+                helper.assertFalse(front.exposed(man), "He launched while exposed to armour")
+                front.scene.result("PASS", "at=${helper.relativeVec(man.position())}")
+                helper.succeed()
+            }
+        }
+    }
+
+    /** A threat memory expires after its last observed line, without tracking a hidden vehicle. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 700, batch = "armour-expiry")
+    fun armourResponseExpiresAfterLosingItsLine(helper: GameTestHelper) {
+        val front = Front(helper, "armour-expiry", wall = true, roles = listOf(NpcClass.RIFLEMAN), infantry = false)
+        val man = front.men.single()
+        var answered = false
+        helper.onEachTick {
+            if (helper.tick == 10L) com.sbwnpc.squad.combat.tactics.SquadTactics.observe(man, front.crew)
+            answered = answered || NativeTactics.reports(man).values.any { it.ticket.identity.startsWith("armour:") }
+            if (helper.tick == 100L) {
+                val at = BlockPos.containing(helper.relativeVec(man.position()))
+                for (x in -1..1) for (z in -1..1) for (y in 0..2) if (x != 0 || z != 0) helper.setBlock(at.offset(x, y, z), Blocks.STONE)
+            }
+            if (helper.tick >= 550L) {
+                helper.assertTrue(answered, "He never answered armour")
+                helper.assertFalse(NativeTactics.reports(man).values.any { it.ticket.identity.startsWith("armour:") }, "The hidden armour kept his response indefinitely")
+                front.scene.result("PASS", "expired=true")
                 helper.succeed()
             }
         }
