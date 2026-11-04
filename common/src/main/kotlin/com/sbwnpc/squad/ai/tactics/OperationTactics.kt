@@ -12,8 +12,8 @@ import kotlin.math.sin
  * Who assaults into the objective and where, who goes after the enemies left around it, and who
  * closes on the point's defenders to fire from nearer.
  *
- * @property covers for a man closing in under covering fire, the men whose fire his rush waits
- *   for; a closing man without an entry goes cover to cover instead.
+ * @property covers for a man closing in, the men whose fire his rush waits for: none, and he goes
+ *   at once; a closing man without an entry goes from cover to cover instead.
  * @property holding the men of an assault whose half is not closing in: they fire from where they
  *   stand and cover the others.
  */
@@ -38,8 +38,9 @@ data class ClosingPost(val post: Point3, val enemy: Point3)
  *
  * @property closeQuarters he fights at short range (a shotgunner), so his assault stops nearer
  *   the enemy, see [assaultStandoff].
+ * @property squad his squad: in an assault he covers, and is covered by, his own squad's men.
  */
-data class AttackMember(val id: UUID, val position: Point3, val ready: Boolean, val closeQuarters: Boolean = false)
+data class AttackMember(val id: UUID, val position: Point3, val ready: Boolean, val closeQuarters: Boolean = false, val squad: UUID? = null)
 
 /** How near a known enemy a man who does, or does not, fight at [closeQuarters] may come in an assault. */
 fun assaultStandoff(closeQuarters: Boolean) = if (closeQuarters) OperationTactics.CLOSE_QUARTERS_STANDOFF else OperationTactics.ASSAULT_STANDOFF

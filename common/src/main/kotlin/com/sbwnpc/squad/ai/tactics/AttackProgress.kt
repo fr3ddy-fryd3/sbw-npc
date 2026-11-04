@@ -127,40 +127,57 @@ class AttackProgress(now: Long) {
         if (!occupying) occupying = closedIn(now, movers, members, defenders)
         // Going onto the point, the defenders still round it no longer hold the movers back.
         val holding = if (occupying) threats.filterNot { OperationTactics.atObjective(it, objective) } else threats
-        val covering = covering(now, movers, members, defenders)
+        val cover = covering(now, movers, members, defenders)
         val roles = OperationTactics.roles(phase, objective, movers, members, holding, clearing, closingOrigins, standoffFrom = threats).also { clearing = it.clearing.keys }
         if (roles.closing.isEmpty()) return roles
-        val closing = roles.closing - covering
-        return roles.copy(closing = closing, holding = covering, covers = if (covering.isEmpty()) emptyMap() else closing.keys.associateWith { covering })
+        return roles.copy(closing = roles.closing - cover.holding, holding = cover.holding, covers = cover.covers)
     }
 
     /**
-     * Who of [movers] covers the others now. The assault goes in two halves: one closes in while
-     * the other fires, and each rush waits for the other half's fire. The turn passes once every
-     * man of the closing half stands on his post or at his stand-off, or after
-     * [BOUND_LIMIT_TICKS]; never on a clock shorter than a rush, which would stop a man in the
-     * open. With the other half gone, the closing men go from cover to cover.
+     * Who of [movers] covers whom now. Within [COVER_RANGE] of the defenders each squad's men go
+     * in two halves: one closes in while the other fires, and each rush waits for the fire of his
+     * own squad's other half. The turn passes once every man of the closing halves stands on his
+     * post or at his stand-off, or after [BOUND_LIMIT_TICKS]; never on a clock shorter than a
+     * rush, which would stop a man in the open. With no man of his squad left to cover him, a
+     * closing man goes from cover to cover. Farther out a man closes in without waiting: a half
+     * 140 blocks off covers nobody, and held there it never came up (#54).
      */
-    private fun covering(now: Long, movers: List<UUID>, members: List<AttackMember>, defenders: List<Point3>): Set<UUID> {
-        halfOf.keys.retainAll(movers.toSet())
-        movers.sortedBy { it.toString() }.filter { it !in halfOf }.forEach { id -> halfOf[id] = if (halfOf.values.count { it == 0 } <= halfOf.values.count { it == 1 }) 0 else 1 }
+    private fun covering(now: Long, movers: List<UUID>, members: List<AttackMember>, defenders: List<Point3>): AssaultCover {
         val byId = members.associateBy { it.id }
-        fun closing() = movers.filter { halfOf[it] == closingHalf }
-        fun arrived(id: UUID): Boolean {
-            val member = byId[id] ?: return true
-            if (defenders.isEmpty()) return true
-            val origin = closingOrigins[id] ?: return false
-            val post = OperationTactics.closingPost(origin, defenders, assaultStandoff(member.closeQuarters)).post
-            return distance(member.position, post) <= CLOSED_IN_REACH
-        }
+        val near = movers.filter { id -> byId[id]?.let { member -> defenders.isNotEmpty() && defenders.minOf { distance(it, member.position) } <= COVER_RANGE } == true }
+        halve(near, byId)
+        movers.filter { it !in near }.forEach { id -> byId[id]?.let { closingOrigins.putIfAbsent(id, it.position) } }
+        fun closing() = near.filter { halfOf[it] == closingHalf }
         val since = turnSince
-        if (since == null || closing().all(::arrived) || now - since >= BOUND_LIMIT_TICKS) {
+        if (since == null || closing().all { arrived(byId[it], defenders) } || now - since >= BOUND_LIMIT_TICKS) {
             if (since != null) closingHalf = 1 - closingHalf
             turnSince = now
             closing().forEach { id -> byId[id]?.let { closingOrigins[id] = it.position } }
         }
-        return movers.filterTo(HashSet()) { halfOf[it] != closingHalf }
+        val holding = near.filterTo(HashSet()) { halfOf[it] != closingHalf }
+        val covers = closing().mapNotNull { id -> holding.filterTo(HashSet()) { byId[it]?.squad == byId[id]?.squad }.takeIf { it.isNotEmpty() }?.let { id to it } }.toMap()
+        return AssaultCover(holding, covers + movers.filter { it !in near }.associateWith { emptySet() })
     }
+
+    /** Puts each of [near] not yet in a half into the smaller half of his own squad. */
+    private fun halve(near: List<UUID>, byId: Map<UUID, AttackMember>) {
+        halfOf.keys.retainAll(near.toSet())
+        near.sortedBy { it.toString() }.filter { it !in halfOf }.forEach { id ->
+            val squad = near.filter { byId[it]?.squad == byId[id]?.squad && it in halfOf }
+            halfOf[id] = if (squad.count { halfOf[it] == 0 } <= squad.count { halfOf[it] == 1 }) 0 else 1
+        }
+    }
+
+    /** Whether [member] stands on the closing post of his turn (or is gone). */
+    private fun arrived(member: AttackMember?, defenders: List<Point3>): Boolean {
+        if (member == null) return true
+        val origin = closingOrigins[member.id] ?: return false
+        val post = OperationTactics.closingPost(origin, defenders, assaultStandoff(member.closeQuarters)).post
+        return distance(member.position, post) <= CLOSED_IN_REACH
+    }
+
+    /** See [covering]: the men holding to cover, and for each closing man the men his rush waits for (none: it goes at once). */
+    private data class AssaultCover(val holding: Set<UUID>, val covers: Map<UUID, Set<UUID>>)
 
     /** Whether the closed-in assault is due to go onto the point now; starts its clocks on the way. */
     private fun closedIn(now: Long, movers: List<UUID>, members: List<AttackMember>, defenders: List<Point3>): Boolean {
@@ -238,6 +255,9 @@ class AttackProgress(now: Long) {
 
         /** An assault with the numbers goes onto the point after this long (60 s) in any case. */
         const val ASSAULT_LIMIT_TICKS = 1200L
+
+        /** Within this far (64 blocks) of the defenders an assault closes in by halves, see [covering]. */
+        const val COVER_RANGE = 64.0
 
         /** A bound stops this far from the nearest defender: nearer than the line, short of an assault. */
         const val BOUND_DISTANCE = 30.0

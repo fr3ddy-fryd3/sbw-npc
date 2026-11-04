@@ -1399,13 +1399,14 @@ object NativeTactics {
                 ?.takeIf { !holding && strategies[it.id]?.first in setOf(CombatStrategy.ADVANCE, CombatStrategy.GAIN_HEIGHT, CombatStrategy.BOUND_OVERWATCH) }
                 ?.let { squad -> manoeuvres[squad.id].orEmpty() - arcing }
                 .orEmpty()
-            val attackers = members.map { AttackMember(it.id, it.position.point(), it.ready, closeQuarters = it.role == NpcClass.SHOTGUNNER) }
+            val squadOf = squads.flatMap { squad -> snapshots[squad.id]?.members.orEmpty().map { it.id to squad.id } }.toMap()
+            val attackers = members.map { AttackMember(it.id, it.position.point(), it.ready, closeQuarters = it.role == NpcClass.SHOTGUNNER, squad = squadOf[it.id]) }
             val known = (threats.map { it.position.point() } + defenders).distinct()
             // Every ready man takes part in an assault, not only the front rows of the line: the
             // flanks and rear guard a reinforcement was added to never left the firing line (#54).
             val stalled = squads.filter { coverStalled(it.id, now) }.flatMapTo(HashSet()) { squad -> snapshots[squad.id]?.members.orEmpty().map { it.id } }
             // A man whose squad's cover stalled closes in from cover to cover, not waiting for fire that never comes.
-            val roles = progress.roles(now, task.objective, members.filter { it.ready }.map { it.id }, attackers, known).let { it.copy(covers = it.covers - stalled) }
+            val roles = progress.roles(now, task.objective, members.filter { it.ready }.map { it.id }, attackers, known).let { roles -> roles.copy(covers = roles.covers.filter { (id, cover) -> id !in stalled || cover.isEmpty() }) }
             if (progress.occupying && !occupying) {
                 DebugFlags.log(LogGroup.ORDER, "[htn] operation={} event=assault_occupy ready={} defenders={} movers={}", operation, inputs.readyShooters, defenders.size, roles.assault.size)
             }
