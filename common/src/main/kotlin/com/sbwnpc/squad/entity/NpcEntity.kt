@@ -1408,7 +1408,17 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
     private fun alertAllies(cause: net.minecraft.world.damagesource.DamageSource) {
         val attacker = cause.entity as? LivingEntity
         val knownKiller = attacker != null && attacker.isAlive && com.sbwnpc.squad.team.SquadTeams.isHostile(this, attacker)
-        if (!knownKiller) com.sbwnpc.squad.combat.Alarm.raiseDeath(this, DEATH_ALARM_RADIUS)
+        if (knownKiller) {
+            // The shot's direction, not the killer's place: a squad out of a fight sends a pair to
+            // look that way, no farther than [DEATH_LEAD_REACH] from the body. In-game 04.11 nobody
+            // went to look; a squad in a fight only turns ([UnverifiedContacts] sends nobody then).
+            val toward = attacker!!.position().subtract(position())
+            val lead = position().add(toward.normalize().scale(minOf(toward.length(), DEATH_LEAD_REACH)))
+            com.sbwnpc.squad.combat.DebugFlags.log(com.sbwnpc.squad.combat.LogGroup.HEARING, "[hearing-debug] {} event=death_lead at={} killerRange={}", uuid, BlockPos.containing(lead).toShortString(), toward.length().toInt())
+            com.sbwnpc.squad.combat.Alarm.raise(this, position(), lead, DEATH_ALARM_RADIUS)
+        } else {
+            com.sbwnpc.squad.combat.Alarm.raiseDeath(this, DEATH_ALARM_RADIUS)
+        }
         // Neither of those shows on the allies who were not sent to look: in-game they went on as
         // if nothing had happened (#66). Everyone near grows wary of where the threat came from.
         warnSquadmates(if (knownKiller) attacker!!.position() else position(), DEATH_ALARM_RADIUS)
@@ -1462,6 +1472,9 @@ open class NpcEntity(type: EntityType<out NpcEntity>, level: Level) :
         private const val SUPPRESSION_DURATION_TICKS = 100
         private const val SUPPRESSION_CAP_TICKS = 200
         private const val ALERT_DURATION_TICKS = 200 // ~10s to reach/abandon an investigation lead
+
+        /** How far (24 blocks) from a body killed by a known enemy his squad goes to look his way. */
+        private const val DEATH_LEAD_REACH = 24.0
         private const val DEATH_ALARM_RADIUS = 36.0 // detection range, x1.5 per user request (was 24)
 
         // How far an NPC can spot / act on relayed contacts — see the FOLLOW_RANGE note in
