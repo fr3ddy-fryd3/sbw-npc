@@ -63,13 +63,13 @@ enum class CombatDuty(
  * @property coveredBy the men whose fire covers his rushes: each rush waits to start until one
  *   of them fires ([TacticalFacts.SUPPORT_FIRING]), however long that takes. Empty, he rushes when ready.
  */
-data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null, val elevationWeight: Double = 0.0, val assault: Boolean = false, val standoff: Double = 0.0, val sightClearance: Double? = null, val ordered: Boolean = false, val hold: Boolean = false, val legs: Boolean = false, val coveredBy: Set<java.util.UUID> = emptySet(), val armour: ArmourContact? = null) {
+data class PositionIntent(val actor: AgentId, val duty: CombatDuty, val origin: Point3, val anchor: Point3, val focus: Point3?, val requireCover: Boolean = false, val requireShelter: Boolean = false, val minimumHeight: Double? = null, val exposureWeight: Double = 1.0, val inspection: Point3? = null, val elevationWeight: Double = 0.0, val assault: Boolean = false, val standoff: Double = 0.0, val sightClearance: Double? = null, val ordered: Boolean = false, val hold: Boolean = false, val legs: Boolean = false, val coveredBy: Set<java.util.UUID> = emptySet(), val armour: ArmourContact? = null, val holdFeet: Boolean = false) {
     init {
         require(actor.level == AgentLevel.NPC && exposureWeight.isFinite() && exposureWeight >= 0 && elevationWeight.isFinite() && elevationWeight >= 0)
     }
 
-    /** Whether this task takes over his movement, see [CombatDuty.commandsMovement] and [hold]. */
-    val commandsMovement get() = duty.commandsMovement && !hold
+    /** A failed-post hold keeps motion; ordinary holds leave it to the order. */
+    val commandsMovement get() = duty.commandsMovement && (!hold || holdFeet)
 
     /**
      * Whether he really goes by [legs]: a mover with an enemy to fire at. An assault keeps running
@@ -655,7 +655,7 @@ object TacticalDomain {
                                 else -> Verdict.Allowed
                             }
                         }
-                    }, decompose = { intent, facts -> engageOrHold(intent, facts, forward = !intent.duty.holdsBack, POST.call(intent.copy(hold = true, requireCover = false, requireShelter = false, legs = false, coveredBy = emptySet()))) }),
+                    }, decompose = { intent, facts -> engageOrHold(intent, facts, forward = !intent.duty.holdsBack, POST.call(intent.copy(hold = true, holdFeet = intent.duty.commandsMovement, requireCover = false, requireShelter = false, legs = false, coveredBy = emptySet()))) }),
                 ),
             ),
             CompoundTask(
@@ -752,7 +752,7 @@ object TacticalDomain {
                 timeoutTicks = if (intent.duty.commandsMovement) 1200 else Long.MAX_VALUE,
             ),
             // In the start, not the maintain: covering fire that lapses mid-rush must not stop him in the open.
-            TaskContract(start = if (intent.coveredBy.isNotEmpty()) Condition.test(TacticalFacts.SUPPORT_FIRING, "awaiting_support") { it } else Condition.ALWAYS, maintain = maintain, completed = completed),
+            TaskContract(start = if (intent.coveredBy.isNotEmpty()) Condition.test(TacticalFacts.SUPPORT_FIRING, "awaiting_support") { it } else Condition.ALWAYS, maintain = maintain, completed = if (intent.holdFeet) Condition { Verdict.Rejected("holding_position") } else completed),
             planning = ownActor(intent.actor),
         )
     }

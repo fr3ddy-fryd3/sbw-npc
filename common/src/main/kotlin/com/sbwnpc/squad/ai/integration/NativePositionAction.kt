@@ -131,6 +131,7 @@ internal class NativePositionAction(
             pendingStart = false
             npc.navigation.stop()
         }
+        if (intent.holdFeet) return ActionUpdate.Running
         // An assault post is measured from one enemy (ClosingPost): the search looks for a shot at
         // him, not at the man's own target, who may be far beyond his weapon's reach (#65).
         val enemy = intent.focus?.takeIf { intent.assault && intent.duty == CombatDuty.FIRE }?.native()
@@ -316,7 +317,7 @@ internal class NativePositionAction(
 
             next.armour != intent.armour -> "armour_source_changed"
 
-            next.inspection != intent.inspection || next.hold != intent.hold || next.legs != intent.legs -> "post_kind_changed"
+            next.inspection != intent.inspection || next.hold != intent.hold || next.holdFeet != intent.holdFeet || next.legs != intent.legs -> "post_kind_changed"
 
             // GAIN_HEIGHT sets the floor from where the man stands now, so it moved with every
             // step up or down a slope and threw away a post that was still high enough.
@@ -366,6 +367,7 @@ internal class NativePositionAction(
             lastProgress = now
             closest = Double.MAX_VALUE
             released = false
+            if (intent.holdFeet) pendingStart = true
         }
     }
     override fun dispose(now: Long, reason: String) {

@@ -184,6 +184,106 @@ object ArmourCoverGameTests {
         }
     }
 
+    /** A mixed attacking squad must find an actual launcher shot while infantry also distracts it. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1000, batch = "armour-mixed-attack")
+    fun mixedAttackFindsLauncherShotAgainstArmour(helper: GameTestHelper) {
+        val front = Front(helper, "armour-mixed-attack", wall = true, roles = listOf(NpcClass.MACHINE_GUNNER, NpcClass.RIFLEMAN, NpcClass.RIFLEMAN, NpcClass.MEDIC))
+        val gunner = front.men.first()
+        val infantry = requireNotNull(front.rifleman)
+        front.lav.isInvulnerable = true
+        front.crew.isInvulnerable = true
+        infantry.isInvulnerable = true
+        front.men.forEach { it.isInvulnerable = true }
+        front.manager.setOrder(front.squad.id, SquadOrder.ATTACK)
+        front.manager.setObjective(helper.level, front.squad.id, front.lav.blockPosition())
+        front.manager.setFocus(front.squad.id, front.crew.uuid)
+        val launcher = { if (AntiArmourKit.isLauncher(gunner.mainHandItem)) gunner.mainHandItem else gunner.antiArmourWeapon }
+        val rockets = Ports.guns.roundsLeft(launcher())
+        val starts = front.men.associate { it.uuid to it.position() }
+        val travel = front.men.associate { it.uuid to 0.0 }.toMutableMap()
+        val previous = starts.toMutableMap()
+        var fired = false
+        helper.assertTrue(rockets > 0, "Mixed-scene gunner has no loaded launcher")
+        helper.onEachTick {
+            if (helper.tick % 20L == 10L) {
+                front.men.forEach { com.sbwnpc.squad.combat.tactics.SquadTactics.observe(it, front.crew) }
+                com.sbwnpc.squad.combat.tactics.SquadTactics.observe(front.men.last(), infantry)
+            }
+            front.men.forEach { man ->
+                val now = man.position()
+                travel[man.uuid] = travel.getValue(man.uuid) + now.distanceTo(previous.getValue(man.uuid))
+                previous[man.uuid] = now
+            }
+            fired = fired || Ports.guns.roundsLeft(launcher()) < rockets
+            if (helper.tick % 100L == 0L) front.scene.result("RUNNING", "tick=${helper.tick} fired=$fired travel=${travel.values} gunner=${helper.relativeVec(gunner.position())} target=${gunner.target?.uuid} reports=${NativeTactics.reports(gunner).values}")
+            if (helper.tick >= 800L) {
+                helper.assertTrue(fired, "Mixed squad never fired a launcher: travel=${travel.values} at=${helper.relativeVec(gunner.position())} target=${gunner.target?.uuid} reports=${NativeTactics.reports(gunner).values}")
+                front.scene.result("PASS", "launcher fired, travel=${travel.values}")
+                helper.succeed()
+            }
+        }
+    }
+
+    /** An exhausted attack post must not resume the order march through a blind firing lane. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1200, batch = "armour-exhausted-post")
+    fun exhaustedAttackPostDoesNotResumeOrderMarch(helper: GameTestHelper) {
+        val front = Front(helper, "armour-exhausted-post", wall = false, roles = listOf(NpcClass.RIFLEMAN), infantry = false)
+        val man = front.men.single()
+        front.manager.setOrder(front.squad.id, SquadOrder.ATTACK)
+        front.manager.setObjective(helper.level, front.squad.id, front.lav.blockPosition())
+        front.manager.setFocus(front.squad.id, front.crew.uuid)
+        for (x in 35..43) for (z in 0..223) for (y in 1..10) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
+        val check = ExhaustedPostCheck(front, man)
+        helper.onEachTick { check.tick() }
+    }
+
+    private class ExhaustedPostCheck(private val front: Front, private val man: NpcEntity) {
+        private val helper = front.helper
+        private var holdingAt: Vec3? = null
+        private var holdingTick = 0L
+        private var moveStart: Vec3? = null
+
+        fun tick() {
+            front.scene.tick(front.squad)
+            if (helper.tick % 20L == 10L) com.sbwnpc.squad.combat.tactics.SquadTactics.observe(man, front.crew)
+            if (holdingAt == null) findHold() else checkHold()
+            if (helper.tick >= 1100L) helper.fail("Fixture did not complete: reports=${NativeTactics.reports(man).values}")
+        }
+
+        private fun findHold() {
+            val recent = DecisionTrace.decisionsOf(man.uuid).any { it.event == "plan" && "*hold_as_ordered" in it.detail && helper.level.gameTime - it.tick <= 2 }
+            if (recent && man.target == null) {
+                holdingAt = man.position()
+                holdingTick = helper.tick
+            }
+        }
+
+        private fun checkHold() {
+            val age = helper.tick - holdingTick
+            if (age in 10L..80L) {
+                helper.assertTrue(man.holds(NpcActivity.TACTIC), "The plan did not hold the NPC's feet")
+                helper.assertFalse(man.holds(NpcActivity.ORDER), "ORDER took the NPC's feet during the hold")
+                helper.assertTrue(man.position().distanceTo(requireNotNull(holdingAt)) < 2.0, "NPC moved away from the exhausted post")
+            }
+            if (age == 80L) issueMove()
+            if (age == 260L) {
+                val moved = man.position().distanceTo(requireNotNull(moveStart))
+                helper.assertTrue(moved > 2.0, "A new MOVE did not release the hold")
+                front.scene.result("PASS", "holdAt=$holdingTick moveDistance=$moved")
+                helper.succeed()
+            }
+        }
+
+        private fun issueMove() {
+            moveStart = man.position()
+            val destination = BlockPos.containing(helper.absoluteVec(Vec3(8.5, 1.0, 56.5)))
+            front.manager.setOrder(front.squad.id, SquadOrder.MOVE)
+            front.manager.setObjective(helper.level, front.squad.id, destination)
+        }
+    }
+
     /** Grounded operators launch only after reaching armour shelter, including a walk out from under a roof. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 700, batch = "armour-drone")
