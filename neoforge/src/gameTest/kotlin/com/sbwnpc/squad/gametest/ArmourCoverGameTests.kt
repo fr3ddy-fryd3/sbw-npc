@@ -138,7 +138,7 @@ object ArmourCoverGameTests {
                 lastShot = man.lastShotTick
             }
             if (helper.tick >= 600L) {
-                helper.assertTrue(safeShots > 0, "He never fired at infantry while sheltered from armour")
+                helper.assertTrue(safeShots > 0, "He never fired at infantry while sheltered from armour: at=${helper.relativeVec(man.position())} exposed=${front.exposed(man)} target=${man.target?.uuid} reports=${NativeTactics.reports(man).values} contacts=${front.squad.tactics.contacts.values}")
                 helper.assertTrue(shotsAtCrew == 0, "He fired $shotsAtCrew rounds at armour")
                 front.scene.result("PASS", "safeShots=$safeShots")
                 helper.succeed()
@@ -198,7 +198,7 @@ object ArmourCoverGameTests {
         helper.onEachTick {
             if (helper.tick == 10L) com.sbwnpc.squad.combat.tactics.SquadTactics.observe(man, front.crew)
             if (helper.tick == 80L) man.dronesLeft = 1
-            if (helper.tick >= 80L && man.holds(NpcActivity.DRONE)) helper.assertFalse(front.exposed(man), "He prepared his drone while exposed to armour")
+            if (helper.tick >= 80L && man.holds(NpcActivity.DRONE)) helper.assertFalse(front.exposed(man), "He prepared his drone while exposed to armour: tick=${helper.tick} at=${helper.relativeVec(man.position())} reports=${NativeTactics.reports(man).values} contacts=${front.squad.tactics.contacts.values}")
             if (helper.tick > 80L && man.dronesLeft == 0) {
                 helper.assertFalse(front.exposed(man), "He launched while exposed to armour")
                 front.scene.result("PASS", "at=${helper.relativeVec(man.position())}")
@@ -244,10 +244,10 @@ object ArmourCoverGameTests {
         val normalSpeed = speed.baseValue
         speed.baseValue = 0.0
         front.manager.setObjective(helper.level, front.squad.id, man.blockPosition())
-        for (x in 8..23) for (z in 38..64) helper.setBlock(BlockPos(x, 4, z), Blocks.STONE)
+        for (x in 6..26) for (z in 34..68) helper.setBlock(BlockPos(x, 4, z), Blocks.STONE)
         var launched = false
         helper.onEachTick {
-            if (helper.tick == 10L) com.sbwnpc.squad.combat.tactics.SquadTactics.observe(observer, front.crew)
+            if (helper.tick % 20L == 10L) com.sbwnpc.squad.combat.tactics.SquadTactics.observe(observer, front.crew)
             if (helper.tick == 80L) {
                 helper.assertFalse(front.exposed(man), "The operator fixture did not start sheltered")
                 val exposedColumn = helper.absoluteVec(Vec3(26.5, 1.0, 60.5))
@@ -255,9 +255,10 @@ object ArmourCoverGameTests {
                 speed.baseValue = normalSpeed
                 man.dronesLeft = 1
             }
+            if (helper.tick >= 80L && man.holds(NpcActivity.DRONE)) helper.assertFalse(front.exposed(man), "The known armour launch walk exposed its operator")
             if (helper.tick >= 80L) launched = launched || man.dronesLeft == 0
             if (helper.tick >= 350L) {
-                helper.assertFalse(launched, "He left shelter to launch into known armour's line")
+                helper.assertFalse(launched, "He left shelter to launch into known armour's line: at=${helper.relativeVec(man.position())} exposed=${front.exposed(man)} contacts=${front.squad.tactics.contacts.values} reports=${NativeTactics.reports(man).values}")
                 helper.assertTrue(man.dronesLeft == 1, "A refused launch spent its drone")
                 front.scene.result("PASS", "launch refused without spending drone")
                 helper.succeed()
