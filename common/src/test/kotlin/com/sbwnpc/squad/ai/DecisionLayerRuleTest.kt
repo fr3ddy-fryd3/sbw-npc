@@ -74,32 +74,29 @@ class DecisionLayerRuleTest {
         const val UNAUDITED = "predates the rule; layer to be decided by #249"
 
         val BEHAVIOURS = sortedMapOf(
-            "AntiDroneBehaviour" to UNAUDITED,
-            "BlindReturnFireBehaviour" to UNAUDITED,
+            "AntiDroneBehaviour" to "mandatory rule anti_drone, ranked in MandatoryRule (#257)",
+            "BlindReturnFireBehaviour" to "mandatory rule blind_return_fire, ranked in MandatoryRule (#257)",
             "FollowRideBehaviour" to UNAUDITED,
-            "GrenadeEvadeBehaviour" to UNAUDITED,
-            "GrenadeThrowBehaviour" to UNAUDITED,
-            "GrenadeUseBehaviour" to UNAUDITED,
+            "GrenadeEvadeBehaviour" to "mandatory rule evade_grenade, ranked in MandatoryRule (#257)",
             "GunAttackBehaviour" to UNAUDITED,
             "HelicopterGunnerBehaviour" to UNAUDITED,
             "HelicopterRideBehaviour" to UNAUDITED,
-            "InvestigateBehaviour" to UNAUDITED,
-            "MedicHealBehaviour" to UNAUDITED,
-            "OutOfAmmoBehaviour" to UNAUDITED,
-            "ResupplyBehaviour" to UNAUDITED,
+            "MedicHealBehaviour" to "mandatory rule medic_help, ranked in MandatoryRule (#257)",
+            "OutOfAmmoBehaviour" to "mandatory rule out_of_ammo, ranked in MandatoryRule (#257)",
+            "ResupplyBehaviour" to "mandatory rule resupply, ranked in MandatoryRule (#257)",
             "SeekCoverBehaviour" to "D, kept only for the roles the planner does not cover until #256; planned men take cover in their plan (#251)",
-            "SelfTreatBehaviour" to UNAUDITED,
+            "SelfTreatBehaviour" to "mandatory rule self_treat, ranked in MandatoryRule (#257)",
             "SquadOrderBehaviour" to UNAUDITED,
             "SquadTacticalBehaviour" to UNAUDITED,
             "SquadTargetSensor" to UNAUDITED,
-            "VehicleCombatSupportBehaviour" to UNAUDITED,
+            "VehicleCombatSupportBehaviour" to "execution: mans the gun his team plan gave him (STATIONS, team.man_stations, #255)",
             "VehicleCrewBehaviour" to UNAUDITED,
-            "VehicleTransportBehaviour" to UNAUDITED,
+            "VehicleTransportBehaviour" to "execution: boards the seat his travelling squad gave him (SEATS, squad.board, #255); boats are still weighed per man (BoatTrips)",
         )
 
         val MEMORIES = sortedMapOf(
             "SUPPRESSING_THREAT" to UNAUDITED,
-            "ALERT_POSITION" to UNAUDITED,
+            "ALERT_POSITION" to "perception: a man heard something worth a look; nothing walks on it, his squad's plan sends scouts (#254)",
             "DRONE_THREAT" to UNAUDITED,
             "DRONE_HEARD" to UNAUDITED,
         )

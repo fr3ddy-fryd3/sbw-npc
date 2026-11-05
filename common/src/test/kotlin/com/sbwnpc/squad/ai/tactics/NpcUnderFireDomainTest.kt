@@ -31,6 +31,24 @@ class NpcUnderFireDomainTest {
         assertEquals(TacticalDomain.POSITION, first(facts(underFire = false)).key)
     }
 
+    @Test fun `a grenade his squad lets him throw comes first, but under fire only one at the fire itself (#263)`() {
+        val flush = facts(underFire = false).observe(GrenadeFacts.DUE, GrenadeReason.FLUSH).observe(GrenadeFacts.THROWN, 2)
+        assertEquals(GrenadeThrow(actor, 2), first(flush).parameters)
+        assertEquals(Grenades.ACTION, first(flush).key)
+        // Under fire his cover move comes first: cut off mid-move, the search started over.
+        assertEquals(TacticalDomain.COVER_MOVE, first(facts(underFire = true).observe(GrenadeFacts.DUE, GrenadeReason.FLUSH)).key)
+        assertEquals(TacticalDomain.HOLD_HOLE, first(facts(underFire = true, digs = 1).observe(GrenadeFacts.DUE, GrenadeReason.BUNCH)).key)
+        assertEquals(Grenades.ACTION, first(facts(underFire = true).observe(GrenadeFacts.DUE, GrenadeReason.SUPPRESSION)).key)
+        assertEquals(TacticalDomain.POSITION, first(facts(underFire = false).observe(GrenadeFacts.DUE, GrenadeReason.NONE)).key)
+        // A man with no plan of his own throws before his engage.
+        val fight = { due: GrenadeReason ->
+            val input = facts(underFire = false).observe(GrenadeFacts.DUE, due).observe(GrenadeFacts.THROWN, 0)
+            (HtnPlanningSession(TacticalDomain.npc, owner, TacticalDomain.FIGHT_TASK.call(EngageTask(actor)), input).advance(40) as? PlanningResult.Ready)?.plan?.tasks?.first()?.spec?.action?.key
+        }
+        assertEquals(Grenades.ACTION, fight(GrenadeReason.GRENADIER))
+        assertNotEquals(Grenades.ACTION, fight(GrenadeReason.NONE))
+    }
+
     @Test fun `under fire with cover left he moves to cover and then dwells and peeks`() {
         val plan = plan(facts(underFire = true))
         assertEquals(listOf(TacticalDomain.COVER_MOVE, TacticalDomain.COVER_CYCLE), plan.tasks.map { it.spec.action.key })

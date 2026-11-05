@@ -10,9 +10,9 @@ import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
 /**
- * What NPCs hear of the other side: gunfire, explosions, and footsteps — players' and NPCs'. A noise gives no target — it only turns
- * a listener's head toward it, and sends those free to go and look there
- * ([NpcEntity.hear]). What they find they must see for themselves.
+ * What NPCs hear of the other side: gunfire, explosions, and footsteps — players' and NPCs'. A noise gives no target — it turns
+ * a listener's head toward it and tells his squad, whose plan may send a pair to look ([NpcEntity.hear],
+ * [com.sbwnpc.squad.ai.tactics.SquadAlarms]). What they find they must see for themselves.
  *
  * NPC shots alert enemies through hearing and allies through [Alarm]. A player's shot is an
  * investigation point for both sides: it carries no automatically known enemy target.

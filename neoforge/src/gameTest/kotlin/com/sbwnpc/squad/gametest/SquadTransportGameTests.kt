@@ -24,7 +24,7 @@ import java.util.UUID
 /** A distant ATTACK travels as a squad before the operation hands out position work. */
 @PrefixGameTestTemplate(false)
 object SquadTransportGameTests {
-    /** Observes physical march while far; after transit the reinforcement takes its entry post. */
+    /** Observes physical march while far; after transit the reinforcement makes for its march point ([entry]). */
     internal fun reinforcementMarch(helper: GameTestHelper, group: List<NpcEntity>, squad: Squad, entry: Point3, elapsed: Long): Boolean {
         val transit = SquadTransit.distant(squad, helper.level)
         val astray = group.filter { npc ->

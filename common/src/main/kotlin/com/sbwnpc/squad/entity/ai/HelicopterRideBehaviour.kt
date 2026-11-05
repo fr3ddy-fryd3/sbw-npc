@@ -254,6 +254,7 @@ class HelicopterRideBehaviour : ExtendedBehaviour<NpcEntity>() {
         // A pilot must already hold seat 0 — see the class doc.
         if (seats.getOrNull(PILOT_SEAT) == null) return "no pilot aboard"
         if (seats.drop(1).none { it == null }) return "full"
+        if (SeatHold.refuses(heli, entity, seats.count { it != null })) return "reserved"
         return null
     }
 

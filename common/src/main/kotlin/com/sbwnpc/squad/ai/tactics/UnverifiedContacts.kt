@@ -33,11 +33,12 @@ object UnverifiedContacts {
 
     /**
      * Where an operation's scouts look round [anchor], see [inspectAnchor]: off contact, the
-     * remembered position from [scoutTarget], else the objective of an attack still under way.
-     * Nothing is checked in a fight or by a reinforcement still marching past one; [anchor] is
-     * only asked for otherwise, since the men's centre it may fall back on needs men to exist.
+     * remembered position from [scoutTarget], else a noise the squad heard ([alarm], #254), else the
+     * objective of an attack still under way. Nothing is checked while [busy]: in a fight, or by a
+     * reinforcement still marching past one; [anchor] is only asked for otherwise, since the men's
+     * centre it may fall back on needs men to exist.
      */
-    fun inspectTarget(inContact: Boolean, marching: Boolean, anchor: () -> Point3, remembered: Collection<Point3>, activeAttackObjective: Point3?): Point3? = if (inContact || marching) null else scoutTarget(anchor(), remembered) ?: activeAttackObjective
+    fun inspectTarget(busy: Boolean, anchor: () -> Point3, remembered: Collection<Point3>, alarm: Point3?, activeAttackObjective: Point3?): Point3? = if (busy) null else scoutTarget(anchor(), remembered) ?: alarm ?: activeAttackObjective
 
     /** What the remembered positions are measured from: the area being taken, else the order's objective, else the men. */
     fun inspectAnchor(areaObjective: Point3?, orderObjective: Point3?, centre: Point3): Point3 = areaObjective ?: orderObjective ?: centre

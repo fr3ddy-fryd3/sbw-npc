@@ -354,7 +354,7 @@ object PlannedCoverGameTests {
      * him: the bearing of a hit is quantized (`IncomingFire.record`), and only a bearing on a step,
      * as due east is, lets cover found from it hide him from the real shooter at its exact end cell.
      */
-    private val EXACT_WALL = 52..62
+    internal val EXACT_WALL = 52..62
 
     /**
      * Twice the most plans [coverPlanDoesNotChurn] searched in its first green runs (10 and 9, 30.10):

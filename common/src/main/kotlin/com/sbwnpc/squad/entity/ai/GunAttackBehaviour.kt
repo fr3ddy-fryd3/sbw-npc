@@ -15,10 +15,8 @@ import com.sbwnpc.squad.combat.OffscreenFire
 import com.sbwnpc.squad.combat.ShotAim
 import com.sbwnpc.squad.combat.SidearmKit
 import com.sbwnpc.squad.combat.Sightline
-import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.combat.TeamAwareness
 import com.sbwnpc.squad.combat.WeaponReach
-import com.sbwnpc.squad.combat.Withdrawal
 import com.sbwnpc.squad.combat.tactics.SquadTactics
 import com.sbwnpc.squad.domain.port.HandGun
 import com.sbwnpc.squad.domain.port.Ports
@@ -41,8 +39,8 @@ import net.tslat.smartbrainlib.util.BrainUtils
  * Aiming and shooting at the target, in the Fight activity (`NpcEntity.getFightTasks()`), which
  * `BrainActivityGroup.fightTasks()` runs only while `MemoryModuleType.ATTACK_TARGET` is set.
  *
- * It moves the man only for the ammunition rules: a squad's fighting withdrawal and the walk to a
- * Supply. Every other move in the fight is his plan's (#251 step B): his position or cover action,
+ * It moves the man only for the ammunition rule, the walk to a Supply. Every other move in the
+ * fight is his plan's (#251 step B), a retreat's bounds too (#253): his position or cover action,
  * or his engage, which an engage-only agent plans for a man with no plan of his own. What the gun
  * sees on the way, the clear shots, the lane checks and the opening fire, it records in
  * [NpcEntity.fireObservation] for his plan's facts.
@@ -171,21 +169,6 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun rocketAimPoint(target: LivingEntity): Vec3 = target.vehicle?.boundingBox?.center ?: target.position().add(0.0, target.bbHeight * 0.3, 0.0)
 
-    /**
-     * A fighting withdrawal to [point], directed for the squad as a whole by [Withdrawal]: this
-     * member either runs its half's bound or holds and covers. Everyone keeps shooting whenever
-     * the target is in sight — a runner just doesn't stop to do it.
-     */
-    private fun withdraw(entity: NpcEntity, point: Vec3) {
-        val squad = entity.currentSquad()
-        val to = if (squad == null) point else Withdrawal.positionFor(entity, squad, point)
-        if (to == null) {
-            entity.navigation.stop()
-            return
-        }
-        entity.navigateTo(to, WITHDRAW_SPEED)
-    }
-
     override fun tick(entity: NpcEntity) {
         val target = entity.target ?: return
         val replyingToIncoming = entity.incomingFire.replying(entity.level().gameTime)
@@ -249,7 +232,7 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
         if (canShootTarget || foliageHidden) {
             entity.blockedSightSince = null
         } else if (entity.blockedSightSince == null) {
-            // Stamped once, on the tick sight was lost — GrenadeUseBehaviour measures from here.
+            // Stamped once, on the tick sight was lost — the plan's grenade choice measures from here.
             entity.blockedSightSince = entity.tickCount
         }
         // Losing sight starts the aim over.
@@ -269,16 +252,11 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
 
     /**
-     * The ammunition rules (AGENTS.md: they stay as they are): a squad's fighting withdrawal and
-     * the walk to a Supply when low. True while one of them has his feet; otherwise his plan moves
-     * him, and nothing here does. At the withdrawal point or the Supply he stands and fires.
+     * The ammunition rule (AGENTS.md: it stays as it is): the walk to a Supply when low. True while
+     * it has his feet; otherwise his plan moves him, a retreat included (#253), and nothing here
+     * does. At the Supply he stands and fires.
      */
     private fun followAmmunitionRules(entity: NpcEntity): Boolean {
-        val retreatTo = entity.retreatPoint()
-        if (retreatTo != null) {
-            if (entity.position().distanceTo(retreatTo) > SquadFormation.ARRIVAL_RADIUS) withdraw(entity, retreatTo) else entity.navigation.stop()
-            return true
-        }
         val resupplyAt = entity.lowAmmoFallback() ?: return false
         if (entity.position().distanceTo(resupplyAt) > SUPPLY_ARRIVE_DISTANCE) entity.navigateTo(resupplyAt, WITHDRAW_SPEED) else entity.navigation.stop()
         return true
@@ -305,18 +283,18 @@ class GunAttackBehaviour : ExtendedBehaviour<NpcEntity>() {
             val level = entity.level() as ServerLevel
             val lane = AABB(entity.eyePosition, aimPoint).inflate(FiringSpotSearch.VEHICLE_LANE_MARGIN)
             val hulls = Sightline.vehicleHulls(level, lane, entity, target)
-            val hullInTheWay =
-                Sightline.crosses(hulls, entity.eyePosition, aimPoint, shotSpread) ||
-                    Sightline.ownHullInLane(entity, entity.eyePosition, aimPoint, shotSpread, target)
+            val enemyHull = Sightline.crosses(hulls, entity.eyePosition, aimPoint)
+            val ownHull = !enemyHull && Sightline.ownHullInLane(entity, entity.eyePosition, aimPoint, shotSpread, target)
+            val hullInTheWay = enemyHull || ownHull
             lineIsClear = assessment.lineClear && !hullInTheWay
             entity.fireObservation.lane(assessment.lineClear, hullInTheWay)
             if (DebugFlags.on(LogGroup.FIRE) && hulls.isNotEmpty()) {
                 DebugFlags.log(
                     LogGroup.FIRE,
-                    "{} at {} target {} at {} hulls {} vehicles on lane={} crossing={} allyClear={} -> lineIsClear={} answer={}",
+                    "{} at {} target {} at {} hulls {} vehicles on lane={} crossing={} own={} allyClear={} -> lineIsClear={} answer={}",
                     entity.uuid, entity.blockPosition(), target.name.string, target.blockPosition(),
                     hulls.map { net.minecraft.core.BlockPos.containing(it.center) },
-                    hulls.size, hullInTheWay, assessment.lineClear, lineIsClear,
+                    hulls.size, enemyHull, ownHull, assessment.lineClear, lineIsClear,
                     if (lineIsClear) {
                         "fire"
                     } else if (hullInTheWay) {

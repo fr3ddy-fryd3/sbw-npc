@@ -13,7 +13,8 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 
 /**
  * In the Core tasks: a wounded NPC uses its own medical kit ([NpcEntity.medkitsLeft]) on the spot —
- * only once it is in cover, ducked or dug in (see [SeekCoverBehaviour]), never out in the open.
+ * only once it is in cover, ducked or dug in (see [SeekCoverBehaviour]), or a medic at his patient,
+ * never out in the open. A [MandatoryRule.SELF_TREAT].
  */
 class SelfTreatBehaviour : ExtendedBehaviour<NpcEntity>() {
 
@@ -23,7 +24,10 @@ class SelfTreatBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
         startCheck.check(entity) {
-            entity.medkitsLeft > 0 && !entity.isPassenger && (entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE) || entity.holds(NpcActivity.DUG_IN)) &&
+            // A medic treating a patient treats himself first: the owner ranks it above medic help, and
+            // below a live grenade and a drone, which keep his hands (#257).
+            entity.medkitsLeft > 0 && !entity.isPassenger && MandatoryRules.may(MandatoryRule.SELF_TREAT, entity) &&
+                (entity.holdsAny(NpcActivity.COVER, NpcActivity.HEAL) || entity.holds(NpcActivity.DUG_IN)) &&
                 entity.health < entity.maxHealth * WOUNDED_FRACTION
         }
 

@@ -66,12 +66,21 @@ object SquadTactics {
 
     fun move(entity: NpcEntity): Boolean = com.sbwnpc.squad.ai.integration.NativeTactics.ownsMovement(entity)
 
+    /** A man of [entity]'s squad heard a noise at [at], a spot to [walk] to if set; see [com.sbwnpc.squad.ai.tactics.SquadAlarms]. */
+    fun heard(entity: NpcEntity, at: net.minecraft.world.phys.Vec3, walk: Boolean = false) = com.sbwnpc.squad.ai.integration.NativeTactics.heard(entity, at, walk)
+
+    /** Whether [entity]'s plan has sent him to look at a spot (a SEARCH post). */
+    fun scouting(entity: NpcEntity): Boolean = com.sbwnpc.squad.ai.integration.NativeTactics.scouting(entity)
+
     /** Whether the planner plans for [entity]; his cover under fire is then his plan's (#251). */
     fun plans(entity: NpcEntity): Boolean = com.sbwnpc.squad.ai.integration.NativeTactics.plans(entity)
     fun repositionForFire(entity: NpcEntity) = com.sbwnpc.squad.ai.integration.NativeTactics.reposition(entity)
 
     /** Runs the HTN planning this NPC takes part in, once per tick for its squad and above. */
     fun tick(entity: NpcEntity) = com.sbwnpc.squad.ai.integration.NativeTactics.tick(entity)
+
+    /** Whether [entity]'s plan holds him settled at his place at the rally point, firing from round it. */
+    fun settledAtRally(entity: NpcEntity): Boolean = com.sbwnpc.squad.ai.integration.NativeTactics.settledAtRally(entity)
 
     /** Whether the NPC's current post action aims its head, so idle looking must not. */
     fun ownsLook(entity: NpcEntity): Boolean = com.sbwnpc.squad.ai.integration.NativeTactics.ownsLook(entity)

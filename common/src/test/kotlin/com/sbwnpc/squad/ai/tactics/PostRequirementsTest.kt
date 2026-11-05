@@ -4,10 +4,10 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
 class PostRequirementsTest {
-    @Test fun `nothing is required off fire`() {
+    @Test fun `off fire only a man taking cover needs shelter`() {
         CombatDuty.entries.forEach { duty ->
             assertEquals(false, PostRequirements.cover(duty, incoming = false), "cover for $duty")
-            assertEquals(false, PostRequirements.shelter(duty, incoming = false), "shelter for $duty")
+            assertEquals(duty == CombatDuty.TAKE_COVER, PostRequirements.shelter(duty, incoming = false), "shelter for $duty")
         }
     }
 
@@ -15,6 +15,6 @@ class PostRequirementsTest {
         val cover = CombatDuty.entries.filter { PostRequirements.cover(it, incoming = true) }
         val shelter = CombatDuty.entries.filter { PostRequirements.shelter(it, incoming = true) }
         assertEquals(listOf(CombatDuty.MOVE), cover)
-        assertEquals(listOf(CombatDuty.FIRE, CombatDuty.MOVE), shelter)
+        assertEquals(listOf(CombatDuty.FIRE, CombatDuty.MOVE, CombatDuty.TAKE_COVER), shelter)
     }
 }

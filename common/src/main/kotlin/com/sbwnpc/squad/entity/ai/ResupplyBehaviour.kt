@@ -15,8 +15,7 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
 /**
  * Before the ordinary journey in Core: low on ammunition, no one to fight and a Supply to return to — go and stand by
  * it until the block has topped the NPC up ([SupplyBlockEntity]), then let the squad order take it
- * back to whatever it was doing. [NpcActivity.RESUPPLY] keeps [SquadOrderBehaviour] and
- * [InvestigateBehaviour] off it meanwhile.
+ * back to whatever it was doing. [NpcActivity.RESUPPLY] keeps [SquadOrderBehaviour] off it meanwhile.
  *
  * A target ends it at once: the Fight activity takes over, and if the NPC is all but out by then
  * [GunAttackBehaviour] falls back on the Supply itself, firing.
@@ -24,7 +23,10 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
  * Long trips have no overall time limit while reaching fresh ground. A minute without progress
  * still ends an unreachable trip, instead of holding up squad orders forever.
  */
-class ResupplyBehaviour : ExtendedBehaviour<NpcEntity>() {
+class ResupplyBehaviour :
+    ExtendedBehaviour<NpcEntity>(),
+    MandatoryRuleOwner {
+    override val rule = MandatoryRule.RESUPPLY
 
     init {
         noTimeout()
@@ -37,7 +39,7 @@ class ResupplyBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     private fun free(entity: NpcEntity): Boolean =
         entity.target == null && !entity.isPassenger && !entity.busyWithRole() && !entity.holds(NpcActivity.DUG_IN) &&
-            !entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE) && entity.retreatPoint() == null
+            !entity.holds(NpcActivity.COVER) && MandatoryRules.may(MandatoryRule.RESUPPLY, entity) && entity.retreatPoint() == null
 
     private val startCheck = StartCheckThrottle(START_CHECK_INTERVAL_TICKS)
 

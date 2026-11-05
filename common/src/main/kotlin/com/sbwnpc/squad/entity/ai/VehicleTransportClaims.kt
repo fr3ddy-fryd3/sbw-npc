@@ -54,12 +54,17 @@ object VehicleTransportClaims {
         return occupants.size
     }
 
-    fun claimPassenger(vehicle: UUID, npc: UUID, maxSeats: Int, aboard: List<UUID> = emptyList()): Boolean {
+    /**
+     * Claims a passenger seat of [vehicle] for [npc] unless its [maxSeats] are taken, counting
+     * [held] seats the vehicle keeps for its own squad against him ([SeatHold.heldFor]). The hold
+     * is a parameter, not a default, so no boarding path can leave it out.
+     */
+    fun claimPassenger(vehicle: UUID, npc: UUID, maxSeats: Int, held: Int, aboard: List<UUID> = emptyList()): Boolean {
         val set = passengers[vehicle]
         if (set?.contains(npc) == true) return true
         // Excluding npc from the occupancy count lets a crewman already aboard (its own seat, not
         // a new one) restore its claim in an otherwise-full vehicle.
-        if (occupiedOrClaimedSeats(vehicle, aboard.filter { it != npc }) >= maxSeats) return false
+        if (occupiedOrClaimedSeats(vehicle, aboard.filter { it != npc }) + held >= maxSeats) return false
         release(npc)
         passengers.getOrPut(vehicle) { mutableSetOf() }.add(npc)
         claimedVehicle[npc] = vehicle

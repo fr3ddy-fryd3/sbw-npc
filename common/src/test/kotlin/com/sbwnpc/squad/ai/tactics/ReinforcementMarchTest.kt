@@ -42,4 +42,17 @@ class ReinforcementMarchTest {
         assertNull(ReinforcementMarch.nearestContact(emptyList(), listOf(Point3(0.0, 64.0, 0.0))))
         assertEquals(Double.MAX_VALUE, ReinforcementMarch.nearestContact(listOf(Point3(0.0, 64.0, 0.0)), emptyList()))
     }
+
+    @Test fun `a reinforcement marches to a point short of the objective on its own side`() {
+        val point = requireNotNull(ReinforcementMarch.marchPoint(Point3(0.0, 64.0, 0.0), Point3(0.0, 70.0, -200.0)))
+        assertEquals(0.0, point.x, 1e-9)
+        assertEquals(-ReinforcementMarch.STAND_OFF, point.z, 1e-9)
+        assertEquals(64.0, point.y, 1e-9)
+        assertTrue(ReinforcementMarch.STAND_OFF < ReinforcementMarch.JOIN_RADIUS)
+    }
+
+    @Test fun `a reinforcement already that close is not sent back out`() {
+        assertNull(ReinforcementMarch.marchPoint(Point3(0.0, 64.0, 0.0), Point3(30.0, 40.0, 0.0)))
+        assertNull(ReinforcementMarch.marchPoint(Point3(0.0, 64.0, 0.0), Point3(0.0, 64.0, 0.0)))
+    }
 }

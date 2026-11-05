@@ -157,6 +157,33 @@ class TacticalDomainTest {
         assertTrue(SquadManners.eligible(CombatStrategy.BOUND_OVERWATCH).evaluate(squadFacts(underFire.copy(movers = 3))) is Verdict.Rejected)
     }
 
+    @Test fun `a squad whose covering fire did not come for a rush advances instead of bounding`() {
+        val stalled = CombatSituation(true, true, false, true, 0.75, 0.0, true, movers = 4, coverStalled = true)
+        assertTrue(SquadManners.eligible(CombatStrategy.BOUND_OVERWATCH).evaluate(squadFacts(stalled)) is Verdict.Rejected)
+        assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(stalled, CombatStrategy.BOUND_OVERWATCH))))
+    }
+
+    @Test fun `a retreat in contact falls back by halves, otherwise in one run, and never holds, withdraws or regroups`() {
+        val retreat = CombatSituation(true, false, false, false, 0.25, 0.6, false, movers = 4, underFire = false, retreating = true)
+        assertEquals(CombatStrategy.BOUND_OVERWATCH, strategyOf(squadPlan(squadFacts(retreat))))
+        // Under an enemy above too: falling back is no time to climb.
+        assertEquals(CombatStrategy.BOUND_OVERWATCH, strategyOf(squadPlan(squadFacts(retreat.copy(higherEnemy = true)))))
+        assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(retreat.copy(movers = 3)))))
+        assertEquals(CombatStrategy.ADVANCE, strategyOf(squadPlan(squadFacts(retreat.copy(contact = false)))))
+        // Hit after heavy losses, a defending squad withdraws on its own; a retreating one keeps to its point.
+        assertEquals(CombatStrategy.WITHDRAW, strategyOf(squadPlan(squadFacts(retreat.copy(incoming = true, retreating = false)))))
+        assertEquals(CombatStrategy.BOUND_OVERWATCH, strategyOf(squadPlan(squadFacts(retreat.copy(incoming = true)))))
+        for (contact in listOf(true, false)) {
+            for (movers in 0..5) {
+                val situation = retreat.copy(contact = contact, movers = movers, incoming = contact, scattered = movers == 5)
+                assertTrue(CombatStrategy.entries.any { it.rules.allowed(situation) }, "no strategy for $situation")
+                listOf(CombatStrategy.HOLD, CombatStrategy.WITHDRAW, CombatStrategy.REGROUP, CombatStrategy.GAIN_HEIGHT).forEach {
+                    assertTrue(!it.rules.allowed(situation.copy(higherEnemy = true)), "$it allowed in $situation")
+                }
+            }
+        }
+    }
+
     @Test fun `in a bounding turn one half rushes when covered and the other fires from its post`() {
         val runner = intent.copy(legs = true)
         val gunner = intent.copy(actor = AgentId(AgentLevel.NPC, UUID(0, 2)), legs = true)
@@ -219,8 +246,9 @@ class TacticalDomainTest {
 
     @Test fun `a team under fire with far to go rushes in pairs that cover each other`() {
         val teamId = AgentId(AgentLevel.TEAM, UUID(0, 8))
-        fun rushed(vararg members: PositionIntent): Pair<String, List<PositionIntent>> {
-            val plan = (HtnPlanningSession(TacticalDomain.team, PlanOwner(teamId, UUID(1, 1)), TacticalDomain.TEAM.call(TeamMission(teamId, members.toList())), FactSnapshot(teamId, 0)).advance(20) as PlanningResult.Ready).plan
+        fun rushed(vararg members: PositionIntent, stalled: Boolean = false): Pair<String, List<PositionIntent>> {
+            val facts = FactSnapshot(teamId, 0).observe(TacticalFacts.COVER_STALLED, stalled)
+            val plan = (HtnPlanningSession(TacticalDomain.team, PlanOwner(teamId, UUID(1, 1)), TacticalDomain.TEAM.call(TeamMission(teamId, members.toList())), facts).advance(20) as PlanningResult.Ready).plan
             return plan.tasks.first().node.split('/')[1] to plan.tasks.map { (it.spec.action.parameters as com.sbwnpc.squad.ai.coordination.DelegationTask).task.parameters as PositionIntent }
         }
         val men = (1L..3L).map { intent.copy(actor = AgentId(AgentLevel.NPC, UUID(0, it)), legs = true) }
@@ -231,6 +259,8 @@ class TacticalDomainTest {
         assertEquals("together", rushed(*men.map { it.copy(requireCover = false) }.toTypedArray()).first)
         assertEquals("together", rushed(*men.map { it.copy(anchor = Point3(8.0, 1.0, 0.0)) }.toTypedArray()).first)
         assertEquals("together", rushed(men[0]).first)
+        // Its squad's covering fire did not come: no more pairs waiting on it.
+        assertEquals("together", rushed(*men.toTypedArray(), stalled = true).first)
     }
 
     @Test fun `withdrawal changes execution goal away from known threat without requiring cover fire`() {
@@ -255,5 +285,29 @@ class TacticalDomainTest {
         fun shaped(member: PositionIntent) = shapedMember(squadPlan(squadFacts(blocked), member))
         assertEquals(CombatDuty.FIRE, shaped(bound).duty)
         assertEquals(CombatDuty.MOVE, shaped(bound.copy(ordered = true)).duty)
+    }
+
+    @Test fun `a travelling squad hands its men their intents unshaped, and no strategy runs`() {
+        val travelling = squadFacts(blocked).observe(TacticalFacts.TRAVELLING, true)
+        val plan = squadPlan(travelling)
+        assertEquals("travel", plan.tasks.single().node.split('/')[1])
+        assertEquals(intent, shapedMember(plan))
+        assertEquals(CombatStrategy.HOLD, strategyOf(squadPlan(squadFacts(blocked))))
+    }
+
+    @Test fun `a travelling squad gives out the seats worked out for it, once they are`() {
+        val seats = SeatPlan(mapOf(UUID(0, 1) to RideSeat(UUID(1, 1), driver = true)))
+        val plan = squadPlan(squadFacts(blocked).observe(TacticalFacts.TRAVELLING, true).observe(TacticalFacts.SEATS, seats))
+        val board = plan.tasks.single { it.spec.action.key == TacticalDomain.BOARD }
+        assertEquals(seats, (board.spec.action.parameters as Boarding).seats)
+        assertTrue(squadPlan(squadFacts(blocked).observe(TacticalFacts.TRAVELLING, true)).tasks.none { it.spec.action.key == TacticalDomain.BOARD })
+    }
+
+    @Test fun `a travelling squad of crews alone gives out its seats too`() {
+        val seats = SeatPlan(mapOf(UUID(0, 1) to RideSeat(UUID(1, 1), driver = true)))
+        val crew = SupportCrew(AgentId(AgentLevel.TEAM, UUID(0, 9)), listOf(AgentId(AgentLevel.NPC, UUID(0, 1))))
+        val facts = squadFacts(blocked).observe(TacticalFacts.TRAVELLING, true).observe(TacticalFacts.SEATS, seats)
+        val plan = (HtnPlanningSession(TacticalDomain.squad, PlanOwner(squadId, UUID(1, 1)), TacticalDomain.SQUAD.call(SquadMission(squadId, emptyList(), listOf(crew))), facts).advance(20) as PlanningResult.Ready).plan
+        assertTrue(plan.tasks.any { it.spec.action.key == TacticalDomain.BOARD })
     }
 }

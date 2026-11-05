@@ -3,6 +3,7 @@ package com.sbwnpc.squad.gametest
 import com.atsuishio.superbwarfare.data.gun.GunData
 import com.atsuishio.superbwarfare.data.gun.value.AttachmentType
 import com.mojang.authlib.GameProfile
+import com.sbwnpc.squad.ai.integration.NativeTactics
 import com.sbwnpc.squad.combat.Alarm
 import com.sbwnpc.squad.combat.Hearing
 import com.sbwnpc.squad.domain.port.Ports
@@ -165,6 +166,51 @@ object HearingGameTests {
             npc.hear(npc.position().add(0.0, 0.0, 2.0), nearbyFootstep = true)
             helper.assertTrue(!npc.checkingNearbyNoise() && npc.target === player, "Footsteps stole attention from a currently visible enemy")
             helper.succeed()
+        }
+    }
+
+    /**
+     * A noise near a defended point: the squad sends its two men nearest the spot to look, the rest
+     * keep their posts, and the pair comes back once it has seen the spot (#254). A noise farther
+     * than the squad's reach of its point sends nobody.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 1400, batch = "hearing-squad")
+    fun aDefendingSquadSendsItsTwoNearestToANoiseAndTakesThemBack(helper: GameTestHelper) {
+        for (x in 0..159) for (z in 0..127) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        val men = (0..3).map { AttackDeploymentGameTests.spawn(helper, Vec3(40.5 + it * 3, 1.0, 40.5), SquadFaction.PIG) }
+        val manager = SquadManager.get(helper.level)
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, men.map { it.uuid })
+        manager.setOrder(squad.id, SquadOrder.DEFEND)
+        manager.setObjective(helper.level, squad.id, helper.absolutePos(BlockPos(44, 1, 40)))
+        cleanup(helper) { men.forEach { it.discard() } }
+        fun scouts() = men.filter { NativeTactics.scouting(it) }
+        val far = helper.absoluteVec(Vec3(44.5, 1.0, 40.5 + 80.0))
+        val near = helper.absoluteVec(Vec3(44.5 + 36.0, 1.0, 40.5))
+        helper.runAtTickTime(100) { men.first().hear(far) }
+        helper.runAtTickTime(200) {
+            helper.assertTrue(scouts().isEmpty(), "A noise 80 blocks from the defended point sent ${scouts().size} men")
+            men.first().hear(near)
+        }
+        var sent: List<NpcEntity>? = null
+        var closest = Double.MAX_VALUE
+        helper.onEachTick {
+            if (helper.tick < 220) return@onEachTick
+            val now = scouts()
+            if (sent == null && now.isNotEmpty()) {
+                helper.assertTrue(now.size == 2, "The squad sent ${now.size} men, not a pair")
+                // Their posts round the point have moved them since they spawned: nearest as they stand now.
+                val nearest = men.sortedBy { it.position().distanceTo(near) }.take(2).toSet()
+                helper.assertTrue(now.toSet() == nearest, "The pair sent was not the two nearest the noise")
+                sent = now
+            }
+            sent?.let { pair -> closest = minOf(closest, pair.minOf { it.position().distanceTo(near) }) }
+            if (sent != null && now.isEmpty()) {
+                // Seen from 16 blocks at most, round a spot kept on an 8-block grid.
+                helper.assertTrue(closest <= 22.0, "The pair turned back ${closest.toInt()} blocks short of the noise")
+                helper.assertTrue((men - sent!!.toSet()).all { it.position().distanceTo(helper.absoluteVec(Vec3(44.5, 1.0, 40.5))) <= 24.0 }, "The men not sent left the defended point")
+                helper.succeed()
+            }
         }
     }
 

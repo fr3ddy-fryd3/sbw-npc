@@ -45,6 +45,7 @@ internal object TacticalSnapshotCollector {
             stalled = TacticalRules.stalled(engaged.count { hasBlockedShot(it) }, engaged.size),
             peakStrength = state.peakStrength,
             hasPatrolRoute = squad.routeId?.let { RouteManager.get(level).get(it)?.points?.isNotEmpty() } == true,
+            closeContact = npcs.any { closeContact(it, visibleTargetIds) },
         )
     }
 
@@ -87,6 +88,12 @@ internal object TacticalSnapshotCollector {
         )
     }
 
+    private fun closeContact(npc: NpcEntity, visibleTargetIds: Set<UUID>): Boolean {
+        val target = npc.target ?: return false
+        return target.uuid in visibleTargetIds && Ports.guns.inHand(npc)?.hasAmmo() == true &&
+            npc.distanceToSqr(target) <= CLOSE_CONTACT_RANGE * CLOSE_CONTACT_RANGE && WeaponReach.inRange(npc, npc.eyePosition, target.eyePosition)
+    }
+
     private fun hasBlockedShot(npc: NpcEntity): Boolean = !npc.firedRecently(RECENT_FIRE_TICKS) && npc.blockedSightSince?.let { npc.tickCount - it >= BLOCKED_SIGHT_TICKS } == true
 
     private fun hasFiringSight(npc: NpcEntity, target: net.minecraft.world.entity.LivingEntity): Boolean =
@@ -101,6 +108,9 @@ internal object TacticalSnapshotCollector {
         val middle = points.size / 2
         return Vec3(points.map { it.x }.sorted()[middle], points.map { it.y }.sorted()[middle], points.map { it.z }.sorted()[middle])
     }
+
+    /** How near a seen enemy is a [TacticalSnapshot.closeContact]. */
+    const val CLOSE_CONTACT_RANGE = 64.0
 
     private const val CONTACT_MEMORY_TICKS = 200
     private const val VISIBLE_CONTACT_TICKS = 40
