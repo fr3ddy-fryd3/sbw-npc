@@ -79,8 +79,10 @@ object CoverMechanics {
      *  hitting an ally, the grenade just stays in reserve for next time. */
     fun maybeThrowGrenadeOnceDugIn(entity: NpcEntity, level: ServerLevel) {
         if (!entity.hasGrenade) return
+        if (entity.target?.let(com.sbwnpc.squad.combat.VehicleTargeting::isGroundArmour) == true) return
         if (entity.random.nextDouble() >= GRENADE_THROW_CHANCE) return
         val threat = entity.threatPos ?: return
+        if (com.sbwnpc.squad.combat.ArmourFireSafety.bearingContainsArmour(entity, threat)) return
         val grenade = GrenadeThrower.pick(entity, level, threat) ?: return
         GrenadeThrower.throwAt(entity, level, threat, grenade)
     }

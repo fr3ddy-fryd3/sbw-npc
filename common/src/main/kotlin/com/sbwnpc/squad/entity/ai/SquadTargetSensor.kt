@@ -115,6 +115,8 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
         when {
             desired == null -> null
 
+            entity.vehicle == null && !SquadTactics.permitsFire(entity, desired) -> SquadTactics.preferredTarget(entity, entity.level() as ServerLevel) ?: directTarget?.takeIf { SquadTactics.permitsFire(entity, it) }
+
             !VehicleTargeting.weaponPermits(entity, desired) -> directTarget
 
             directTarget != null && directTarget !== desired && !VehicleTargeting.shootableNow(entity, desired) &&
@@ -369,7 +371,7 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             val sighting = DetectionSightline.sight(mob, candidate)
             if (sighting.visibility == DetectionSightline.Visibility.VISIBLE && (gunner || noticing.noticed(mob, level, candidate, if (allRound) GUNNER_OFF_AXIS else Vision.offAxis(mob.position(), mob.yHeadRot, candidate.position()), sighting.grassBlocks))) {
                 SquadTactics.observe(mob, candidate)
-                if (!VehicleTargeting.weaponPermits(mob, candidate)) continue
+                if (!VehicleTargeting.weaponPermits(mob, candidate) || (mob.vehicle == null && !SquadTactics.permitsFire(mob, candidate))) continue
                 visible += candidate
                 if (visible.size >= MAX_SPREAD_CANDIDATES || mob.currentSquad() == null) break
             }

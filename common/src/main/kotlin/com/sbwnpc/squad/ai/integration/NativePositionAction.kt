@@ -58,11 +58,12 @@ internal class NativePositionAction(
         override fun requiresShelter(view: TacticalSnapshot, task: TacticalTask) = intent.requireShelter
         override fun clearance(role: NpcClass) = CombatPositionSafety.clearance(role, intent.assault).let { own -> intent.sightClearance?.let { minOf(it, own) } ?: own }
         override fun candidate(view: TacticalSnapshot, task: TacticalTask, point: Vec3, localAnchor: Vec3): Boolean {
+            if (intent.armour != null && !NativeTactics.armourSheltered(npc, point)) return false
             if (intent.minimumHeight?.let { point.y < it } == true) return false
             if (intent.inspection != null && point.distanceTo(intent.inspection.native()) <= 24 && !DetectionSightline.visible(npc.level() as ServerLevel, point.add(0.0, npc.eyeHeight.toDouble(), 0.0), intent.inspection.native().add(0.0, 1.5, 0.0), npc)) return false
             return !intent.duty.advancing || advances(npc.position(), task.anchor, localAnchor, point)
         }
-        override fun route(view: TacticalSnapshot, point: Vec3) = intent.minimumHeight?.let { point.y >= it } != false
+        override fun route(view: TacticalSnapshot, point: Vec3) = (intent.armour == null || NativeTactics.armourSheltered(npc, point)) && intent.minimumHeight?.let { point.y >= it } != false
     }
 
     init {
@@ -130,6 +131,7 @@ internal class NativePositionAction(
             pendingStart = false
             npc.navigation.stop()
         }
+        if (intent.holdFeet) return ActionUpdate.Running
         // An assault post is measured from one enemy (ClosingPost): the search looks for a shot at
         // him, not at the man's own target, who may be far beyond his weapon's reach (#65).
         val enemy = intent.focus?.takeIf { intent.assault && intent.duty == CombatDuty.FIRE }?.native()
@@ -313,7 +315,9 @@ internal class NativePositionAction(
 
             next.actor != intent.actor || next.duty != intent.duty -> "duty_changed"
 
-            next.inspection != intent.inspection || next.hold != intent.hold || next.legs != intent.legs -> "post_kind_changed"
+            next.armour != intent.armour -> "armour_source_changed"
+
+            next.inspection != intent.inspection || next.hold != intent.hold || next.holdFeet != intent.holdFeet || next.legs != intent.legs -> "post_kind_changed"
 
             // GAIN_HEIGHT sets the floor from where the man stands now, so it moved with every
             // step up or down a slope and threw away a post that was still high enough.
@@ -363,6 +367,7 @@ internal class NativePositionAction(
             lastProgress = now
             closest = Double.MAX_VALUE
             released = false
+            if (intent.holdFeet) pendingStart = true
         }
     }
     override fun dispose(now: Long, reason: String) {

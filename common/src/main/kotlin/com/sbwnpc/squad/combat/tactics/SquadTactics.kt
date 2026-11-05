@@ -27,6 +27,7 @@ object SquadTactics {
         state.contacts[target.uuid] = TacticalContact(
             id = target.uuid,
             position = target.position(),
+            eye = target.eyePosition,
             seenAt = now,
             velocity = velocity,
             armoured = target.vehicle?.let {
@@ -120,10 +121,7 @@ object SquadTactics {
         )
     }
 
-    fun permitsFire(entity: NpcEntity, target: LivingEntity): Boolean {
-        val view = snapshot(entity) ?: return true
-        return view.visible.none { it.id == target.uuid && it.armoured } || AntiArmourKit.loaded(entity)
-    }
+    fun permitsFire(entity: NpcEntity, target: LivingEntity): Boolean = !VehicleTargeting.isGroundArmour(target) || AntiArmourKit.loaded(entity)
 
     fun firingLaneEnd(entity: NpcEntity, target: LivingEntity): Vec3 = firingLaneEnd(entity, target.eyePosition)
 

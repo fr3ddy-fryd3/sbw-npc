@@ -53,7 +53,7 @@ data class EngageTask(val actor: AgentId, val forward: Boolean = true)
  * The [number]th unit of [move] in [actor]'s engage. [sidearm] is the weapon he planned it on: a
  * switch is a new action, not the same one carried on.
  */
-data class EngageUnit(val actor: AgentId, val move: EngageMove, val number: Int, val sidearm: Boolean)
+data class EngageUnit(val actor: AgentId, val move: EngageMove, val number: Int, val sidearm: Boolean, val armour: ArmourContact? = null)
 
 /**
  * The conditions of the NPC domain's engage methods: which [EngageMove] a man in contact makes.

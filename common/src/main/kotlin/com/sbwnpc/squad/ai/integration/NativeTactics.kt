@@ -271,6 +271,10 @@ object NativeTactics {
         DecisionTrace.retain(worlds.values.flatMapTo(HashSet()) { it.traceIds() })
         return sections
     }
+
+    /** A launch column may not expose an operator sheltering from known armour. */
+    internal fun armourSheltered(npc: NpcEntity, feet: Vec3): Boolean = worlds[npc.level()]?.armourSafe(npc, feet) ?: true
+
     fun snapshot(npc: NpcEntity): TacticalSnapshot? = npc.squadId?.let { world(npc).combatView(it) }
     fun reports(npc: NpcEntity) = world(npc).agents[AgentId(AgentLevel.NPC, npc.uuid)]?.runtime?.reports.orEmpty()
 
@@ -337,6 +341,9 @@ object NativeTactics {
         val pendingDeaths = HashMap<UUID, PendingDeath>()
         val agents = LinkedHashMap<AgentId, PlanningAgent>()
         val actions = HashMap<UUID, NativePositionAction>()
+
+        /** Observed armour sources and execution results for the NPC domain (#237). */
+        private val armour = HashMap<UUID, ArmourState>()
 
         /** What each man's cover actions found and did, read back as his facts (#251). */
         private val cover = HashMap<UUID, CoverState>()
@@ -650,6 +657,11 @@ object NativeTactics {
         /** The plan's cover actions (#251), each run on the man's own [CoverState]. */
         private fun coverBindings() =
             listOf(
+                ActionBinding(ArmourResponse.ACTION) { ticket, unit ->
+                    require(ticket.owner.agent == unit.actor)
+                    val npc = coverActor(unit.actor)
+                    NativeArmour(unit, npc, armour.getOrPut(npc.uuid, ::ArmourState))
+                },
                 ActionBinding(TacticalDomain.COVER_MOVE) { ticket, move ->
                     require(ticket.owner.agent == move.actor)
                     val npc = coverActor(move.actor)
@@ -857,6 +869,15 @@ object NativeTactics {
             }
             return result
         }
+
+        /** Launch paths stay hidden from known armour even before exposure starts a cover response. */
+        fun armourSafe(npc: NpcEntity, feet: Vec3): Boolean {
+            val state = armour[npc.uuid]
+            if (state?.commitment != null && !state.hidden(npc, feet)) return false
+            val contacts = npc.squadId?.let(::combatView)?.contacts.orEmpty()
+            return contacts.none { it.knownArmourTo(npc, level, level.gameTime) && !armourShelter(npc, it.eye, it.id, feet) }
+        }
+
         private fun coverOf(npc: NpcEntity) = cover.getOrPut(npc.uuid, ::CoverState)
 
         /**
@@ -902,6 +923,11 @@ object NativeTactics {
             return !npc.incomingFire.pending(now) || com.sbwnpc.squad.combat.DetectionSightline.canSeeWithin(npc, target, NpcEntity.DETECTION_RANGE)
         }
 
+        private fun armourFacts(facts: FactSnapshot, npc: NpcEntity?): FactSnapshot {
+            if (npc == null || !planned(npc)) return facts
+            return armour.getOrPut(npc.uuid, ::ArmourState).observe(facts, npc, npc.squadId?.let(::combatView))
+        }
+
         private fun npcFacts(empty: FactSnapshot): FactSnapshot {
             val id = empty.owner
             val now = empty.now
@@ -917,6 +943,7 @@ object NativeTactics {
                 .observe(TacticalFacts.SUPPORT_FIRING, supportFiring(id, now), expiresAt = now + 11)
             failures[id.id]?.let { failure -> result = result.observe(TacticalFacts.POST_FAILURE, failure, observedAt = failure.failedAt, expiresAt = failure.failedAt + FAILURE_MEMORY_TICKS) }
             result = coverFacts(result, npc, now)
+            result = armourFacts(result, npc)
             return if (npc != null) manFacts(result, id, npc, now) else result
         }
 
@@ -1178,6 +1205,9 @@ object NativeTactics {
                 children.keys.removeIf { it !in desiredAgents }
                 failures.keys.removeIf { AgentId(AgentLevel.NPC, it) !in desiredAgents }
                 // A man leaving the plan keeps no foxhole claim nobody would release.
+                armour.entries.removeIf { (id, state) ->
+                    (AgentId(AgentLevel.NPC, id) !in desiredAgents).also { gone -> if (gone) FiringSpots.release(id, state.reservation) }
+                }
                 cover.entries.removeIf { (id, state) ->
                     (AgentId(AgentLevel.NPC, id) !in desiredAgents).also { gone -> if (gone) (level.getEntity(id) as? NpcEntity)?.release(NpcActivity.DUG_IN, state) }
                 }
@@ -2377,6 +2407,7 @@ object NativeTactics {
             actions.clear()
             heldPosts.clear()
             legs.clear()
+            armour.clear()
             cover.clear()
             supportWaits.clear()
             coverStalls.clear()

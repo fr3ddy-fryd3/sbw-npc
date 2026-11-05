@@ -45,9 +45,10 @@ class NoticingRuleTest {
     private companion object {
         val COUNTED = mapOf(
             "com/sbwnpc/squad/ai/integration/NativePositionAction.kt" to Counted(2, "line to a firing post"),
+            "com/sbwnpc/squad/ai/integration/NativeArmour.kt" to Counted(3, "shelter and firing lines to an already known armour contact or current infantry target, never spotting"),
             "com/sbwnpc/squad/ai/integration/NativeCover.kt" to Counted(2, "the cover cycle's peek and reply: a line to its own current target, as SeekCover's"),
+            "com/sbwnpc/squad/ai/integration/NativeTactics.kt" to Counted(6, "witnesses of an area and posts: who could have seen a point, not who noticed an enemy; a man under fire still sees his own target; drone launch columns stay hidden from known armour"),
             "com/sbwnpc/squad/ai/integration/GrenadeChoice.kt" to Counted(2, "a grenadier's line of the throw, and the line to his own target, which he has noticed"),
-            "com/sbwnpc/squad/ai/integration/NativeTactics.kt" to Counted(6, "witnesses of an area and posts: who could have seen a point, not who noticed an enemy; a man under fire still sees his own target"),
             "com/sbwnpc/squad/combat/FiringOpportunity.kt" to Counted(1, "line of fire"),
             "com/sbwnpc/squad/combat/VehicleTargeting.kt" to Counted(3, "a gunner's or aircrew's own sight is instant by design, and weaponPermits is an aim line"),
             "com/sbwnpc/squad/combat/tactics/SquadTactics.kt" to Counted(1, "line to an enemy a squadmate already has"),

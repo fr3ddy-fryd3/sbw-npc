@@ -110,7 +110,7 @@ class OutOfAmmoBehaviour :
         if (entity.tickCount < nextStepTick) return
         nextStepTick = entity.tickCount + REPATH_TICKS
         val level = entity.level() as ServerLevel
-        val search = TickBudget.attempt(entity, TickBudget.Work.COVER) { CoverSearch.find(entity, level, target.position(), failedCover, retreat::permits) }
+        val search = TickBudget.attempt(entity, TickBudget.Work.COVER) { CoverSearch.find(entity, level, target.position(), failedCover, CoverSearch.Filter(permitted = retreat::permits)) }
         if (search == null) {
             nextStepTick = entity.tickCount + 2
             return

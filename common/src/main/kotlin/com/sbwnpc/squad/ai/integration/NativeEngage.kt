@@ -3,6 +3,7 @@ package com.sbwnpc.squad.ai.integration
 import com.sbwnpc.squad.ai.planning.ActionExecution
 import com.sbwnpc.squad.ai.planning.ActionUpdate
 import com.sbwnpc.squad.ai.planning.FactSnapshot
+import com.sbwnpc.squad.ai.tactics.ArmourContact
 import com.sbwnpc.squad.ai.tactics.Engage
 import com.sbwnpc.squad.ai.tactics.EngageMove
 import com.sbwnpc.squad.ai.tactics.EngageUnit
@@ -41,6 +42,21 @@ internal class EngageState(private val npc: NpcEntity) {
 
     var spot: Vec3? = null
         private set
+
+    val constrained get() = armourConstraint != null
+    private var armourConstraint: ArmourContact? = null
+
+    /** A changed planned source invalidates the spot search and its selected path. */
+    fun constrain(source: ArmourContact?) {
+        if (armourConstraint != source) {
+            letGo()
+            search.clear()
+            navigator.reset()
+            npc.navigation.stop()
+            armourConstraint = source
+        }
+        navigator.permits = if (source == null) ({ true }) else ({ point -> NativeTactics.armourSheltered(npc, point) })
+    }
 
     /** When the spot he holds is looked at again: until then he keeps it. */
     var nextCheck = 0
@@ -241,8 +257,9 @@ internal abstract class EngageAction(protected val npc: NpcEntity, protected val
 
     companion object {
         /** The action for [unit]. */
-        fun of(unit: EngageUnit, npc: NpcEntity, state: EngageState): EngageAction =
-            when (unit.move) {
+        fun of(unit: EngageUnit, npc: NpcEntity, state: EngageState): EngageAction {
+            state.constrain(unit.armour)
+            return when (unit.move) {
                 EngageMove.KEEP_AWAY -> KeepAway(npc, state, unit.sidearm)
                 EngageMove.RETURN_TO_AREA -> ReturnToArea(npc, state, unit.sidearm)
                 EngageMove.SIDESTEP -> Sidestep(npc, state, unit.sidearm)
@@ -253,6 +270,7 @@ internal abstract class EngageAction(protected val npc: NpcEntity, protected val
                 EngageMove.JOIN_FIRE -> JoinFire(npc, state, unit.sidearm)
                 EngageMove.HOLD_SPOT -> HoldSpot(npc, state, unit.sidearm, research = false)
             }
+        }
 
         /**
          * A firing pause, whether between bounds or holding a chosen spot, lasts long enough to
@@ -451,7 +469,7 @@ private class ReturnToArea(npc: NpcEntity, state: EngageState, sidearm: Boolean)
     override fun step(target: LivingEntity) {
         val home = CombatGeometry.defendHome(npc) ?: return done("no_area")
         state.letGo()
-        npc.navigation.moveTo(home.x, home.y, home.z, 1.0)
+        if (state.constrained) state.navigator.navigate(npc, target, home) else npc.navigation.moveTo(home.x, home.y, home.z, 1.0)
     }
 }
 
@@ -557,7 +575,12 @@ private class Sidestep(npc: NpcEntity, state: EngageState, sidearm: Boolean) : E
         nextTry = clock + COOLDOWN
         attempts++
         val bounds = state.bounds()
-        FriendlyFireGuard.sidestepAwayFromAllies(npc, target.eyePosition) { bounds.permits(it) }?.let {
+        FriendlyFireGuard.sidestepAwayFromAllies(npc, target.eyePosition) { bounds.permits(it) && (!state.constrained || state.navigator.safePosition(npc, target, it)) }?.let {
+            val route = npc.navigation.path
+            if (state.constrained && route != null && !state.navigator.safePath(npc, target, route)) {
+                npc.navigation.stop()
+                return
+            }
             state.hold(it)
             state.nextCheck = clock + HOLD_MIN_TICKS
         }

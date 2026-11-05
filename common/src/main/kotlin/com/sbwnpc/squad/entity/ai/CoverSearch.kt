@@ -17,6 +17,9 @@ import net.minecraft.world.phys.Vec3
  * apart from its phases because it keeps no state of its own.
  */
 object CoverSearch {
+    /** Keep cheap candidate restrictions separate from physical checks made nearest-first. */
+    class Filter(val permitted: (Vec3) -> Boolean = { true }, val sheltered: (Vec3) -> Boolean = { true })
+
     /** Two candidate sources, both filtered down to points hidden from EVERY nearby hostile (not
      *  just the specific threat that triggered suppression — see [nearbyThreats]) — the raycast in
      *  [isHiddenFrom] is the real gate, this is just about generating candidates likely to pass it:
@@ -29,37 +32,9 @@ object CoverSearch {
      *  actually shipped before and, per user feedback in-game, mostly just resulted in NPCs backing
      *  straight away from the threat (`SeekCoverBehaviour`'s fallback retreat) instead of finding real cover — because
      *  purely random points rarely land next to a wall by chance within a small sample. */
-    fun find(entity: NpcEntity, level: ServerLevel, threat: Vec3, excluded: Set<BlockPos> = emptySet(), permitted: (Vec3) -> Boolean = { true }): BlockPos? {
+    fun find(entity: NpcEntity, level: ServerLevel, threat: Vec3, excluded: Set<BlockPos> = emptySet(), filter: Filter = Filter()): BlockPos? {
         val origin = entity.blockPosition()
-        val candidates = ArrayList<BlockPos>(64)
-
-        // A wall one or two blocks away must be tried before a long run across incoming fire.
-        for (x in -4..4) {
-            for (z in -4..4) {
-                val ground = Terrain.groundAt(level, origin.offset(x, 0, z))
-                if (hasAdjacentSolidWall(level, ground)) candidates += ground
-            }
-        }
-
-        var dx = -MAX_RADIUS.toInt()
-        while (dx <= MAX_RADIUS.toInt()) {
-            var dz = -MAX_RADIUS.toInt()
-            while (dz <= MAX_RADIUS.toInt()) {
-                val distSq = (dx * dx + dz * dz).toDouble()
-                if (distSq in (MIN_RADIUS * MIN_RADIUS)..(MAX_RADIUS * MAX_RADIUS)) {
-                    val ground = Terrain.groundAt(level, origin.offset(dx, 0, dz))
-                    if (hasAdjacentSolidWall(level, ground)) candidates += ground
-                }
-                dz += WALL_SCAN_STEP
-            }
-            dx += WALL_SCAN_STEP
-        }
-
-        repeat(SAMPLE_COUNT) {
-            val angle = entity.random.nextDouble() * Math.PI * 2
-            val dist = MIN_RADIUS + entity.random.nextDouble() * (MAX_RADIUS - MIN_RADIUS)
-            candidates += Terrain.groundAt(level, origin.offset(Math.round(Math.cos(angle) * dist).toInt(), 0, Math.round(Math.sin(angle) * dist).toInt()))
-        }
+        val candidates = candidates(entity, level)
 
         val threats = nearbyThreats(entity, level, threat)
         // One query for the whole search: an APC is cover in every practical sense, and the grid
@@ -82,11 +57,50 @@ object CoverSearch {
             }
             .distinct()
             .filterNot { it in excluded }
-            .filter { permitted(Vec3.atBottomCenterOf(it)) }
+            .filter { filter.permitted(Vec3.atBottomCenterOf(it)) }
             .filterNot { GrenadeHazard.threatens(level, it) }
             .filterNot { FiringSpots.crowded(Vec3.atBottomCenterOf(it), taken) }
             .sortedBy { it.distSqr(origin) }
-            .firstOrNull { isHiddenFrom(level, entity, threats, it, hulls) }
+            .firstOrNull { isHiddenFrom(level, entity, threats, it, hulls) && filter.sheltered(Vec3.atBottomCenterOf(it)) }
+    }
+
+    private fun candidates(entity: NpcEntity, level: ServerLevel): List<BlockPos> {
+        val origin = entity.blockPosition()
+        val candidates = ArrayList<BlockPos>(64)
+
+        // A wall one or two blocks away must be tried before a long run across incoming fire.
+        for (x in -4..4) {
+            for (z in -4..4) {
+                val ground = Terrain.groundAt(level, origin.offset(x, 0, z))
+                if (hasAdjacentSolidWall(level, ground)) candidates += ground
+            }
+        }
+
+        var dx = -MAX_RADIUS.toInt()
+        while (dx <= MAX_RADIUS.toInt()) {
+            var dz = -MAX_RADIUS.toInt()
+            while (dz <= MAX_RADIUS.toInt()) {
+                val distSq = (dx * dx + dz * dz).toDouble()
+                if (distSq in (MIN_RADIUS * MIN_RADIUS)..(MAX_RADIUS * MAX_RADIUS)) {
+                    addWallCandidate(level, origin.offset(dx, 0, dz), candidates)
+                }
+                dz += WALL_SCAN_STEP
+            }
+            dx += WALL_SCAN_STEP
+        }
+
+        repeat(SAMPLE_COUNT) {
+            val angle = entity.random.nextDouble() * Math.PI * 2
+            val dist = MIN_RADIUS + entity.random.nextDouble() * (MAX_RADIUS - MIN_RADIUS)
+            candidates += Terrain.groundAt(level, origin.offset(Math.round(Math.cos(angle) * dist).toInt(), 0, Math.round(Math.sin(angle) * dist).toInt()))
+        }
+
+        return candidates
+    }
+
+    private fun addWallCandidate(level: ServerLevel, at: BlockPos, candidates: MutableList<BlockPos>) {
+        val ground = Terrain.groundAt(level, at)
+        if (hasAdjacentSolidWall(level, ground)) candidates += ground
     }
 
     /** Revalidate a queued cover proposal when native path admission becomes available. */
