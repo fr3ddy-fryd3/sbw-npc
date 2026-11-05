@@ -12,6 +12,7 @@ import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.NpcClass
+import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.team.SquadTeams
 import com.sbwnpc.squad.vehicle.Helicopters
 import com.sbwnpc.squad.vehicle.RideCandidates
@@ -38,6 +39,8 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var phase = Phase.APPROACHING
     private var vehicleId: UUID? = null
     private var targetId: UUID? = null
+    private var stationSquad: UUID? = null
+    private var stationOrderStamp: Int? = null
 
     /** Last tick the target was in sight — see [engagementTarget]. */
     private var sawTargetTick = 0
@@ -109,12 +112,15 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         val level = entity.level() as? ServerLevel ?: return
         val target = threat(entity) ?: return
         val vehicle = stationVehicle(entity, level) ?: return
+        val squad = entity.currentSquad() ?: return
         if (!entity.claimAlone(NpcActivity.SEAT, this)) return
         if (!VehicleTransportClaims.claimPassenger(vehicle.uuid, entity.uuid, Ports.vehicles.seatCount(vehicle), SeatHold.heldFor(vehicle, entity))) {
             entity.release(NpcActivity.SEAT, this)
             return
         }
         vehicleId = vehicle.uuid
+        stationSquad = squad.id.takeIf { squad.order == SquadOrder.MOVE }
+        stationOrderStamp = squad.orderStamp.takeIf { squad.order == SquadOrder.MOVE }
         targetId = target.uuid
         sawTargetTick = entity.tickCount
         engagedTick = entity.tickCount
@@ -142,6 +148,8 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         entity.navigation.stop()
         vehicleId = null
         targetId = null
+        stationSquad = null
+        stationOrderStamp = null
         phase = Phase.APPROACHING
         nextBoardTick = entity.tickCount + REBOARD_COOLDOWN_TICKS
     }
@@ -229,7 +237,13 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
     /** See [WeaponStationScan.orderAllows]: the same rule as the team's choice of who mans a gun. */
     private fun orderAllowsSupport(entity: NpcEntity): Boolean {
         val level = entity.level() as? ServerLevel ?: return false
-        return WeaponStationScan.orderAllows(entity.currentSquad(), level, manning = vehicleId != null)
+        val squad = entity.currentSquad()
+        if (vehicleId == null) return WeaponStationScan.orderAllows(squad, level)
+        if (stationSquad != null) {
+            // The team accepted this MOVE station after arrival; allies moving in combat do not revoke it.
+            return squad != null && squad.id == stationSquad && squad.orderStamp == stationOrderStamp && squad.order == SquadOrder.MOVE
+        }
+        return WeaponStationScan.orderAllows(squad, level, manning = true)
     }
 
     // The hostile-vehicle scan (an entity query + raycasts) used to run from this behaviour's
@@ -263,6 +277,8 @@ class VehicleCombatSupportBehaviour : ExtendedBehaviour<NpcEntity>() {
         VehicleTransportClaims.release(entity.uuid)
         vehicleId = null
         targetId = null
+        stationSquad = null
+        stationOrderStamp = null
         entity.release(NpcActivity.SEAT, this)
         entity.release(NpcActivity.VEHICLE, this)
         entity.navigation.stop()

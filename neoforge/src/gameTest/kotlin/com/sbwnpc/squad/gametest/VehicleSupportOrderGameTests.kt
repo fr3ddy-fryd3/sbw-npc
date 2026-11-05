@@ -15,24 +15,24 @@ import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import java.util.UUID
 
+private fun park(helper: GameTestHelper, at: Vec3): Entity =
+    requireNotNull(Ports.vehicles.create(helper.level, TransportVehicle.LAV_150)).also {
+        val point = helper.absoluteVec(at)
+        it.moveTo(point.x, point.y, point.z, 0f, 0f)
+        helper.level.addFreshEntity(it)
+        Ports.vehicles.fuelAndArm(it, TransportVehicle.LAV_150)
+    }
+
+private fun assertSupportReleased(helper: GameTestHelper, gun: Entity, man: NpcEntity) {
+    // The transport executor may legitimately claim the now-free wheel to carry him away.
+    val driving = VehicleTransportClaims.driverOf(gun.uuid) == man.uuid
+    helper.assertTrue(man.vehicle !== gun || driving, "The gunner kept the free vehicle for combat support")
+    helper.assertTrue(VehicleTransportClaims.vehicleOf(man.uuid) != gun.uuid || driving, "Combat support kept its seat claim")
+}
+
 /** A free vehicle's gun must not keep a man from a new movement or withdrawal order. */
 @PrefixGameTestTemplate(false)
 object VehicleSupportOrderGameTests {
-    private fun park(helper: GameTestHelper, at: Vec3): Entity =
-        requireNotNull(Ports.vehicles.create(helper.level, TransportVehicle.LAV_150)).also {
-            val point = helper.absoluteVec(at)
-            it.moveTo(point.x, point.y, point.z, 0f, 0f)
-            helper.level.addFreshEntity(it)
-            Ports.vehicles.fuelAndArm(it, TransportVehicle.LAV_150)
-        }
-
-    private fun assertSupportReleased(helper: GameTestHelper, gun: Entity, man: NpcEntity) {
-        // The transport executor may legitimately claim the now-free wheel to carry him away.
-        val driving = VehicleTransportClaims.driverOf(gun.uuid) == man.uuid
-        helper.assertTrue(man.vehicle !== gun || driving, "The gunner kept the free vehicle for combat support")
-        helper.assertTrue(VehicleTransportClaims.vehicleOf(man.uuid) != gun.uuid || driving, "Combat support kept its seat claim")
-    }
-
     private fun supportYieldsToOrder(helper: GameTestHelper, order: SquadOrder, withdrawal: Boolean = false) {
         val scene = CombatIdleGameTests.Scene(helper, "support-${if (withdrawal) "withdrawal" else order.name.lowercase()}")
         val manager = SquadManager.get(helper.level)
@@ -97,6 +97,100 @@ object VehicleSupportOrderGameTests {
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 600, batch = "support-at-move-point")
     fun squadOnItsMovePointMansTheGunBesideIt(helper: GameTestHelper) = manTheGun(helper, "at-move-point")
+
+    /** An already-manned gun stays occupied when allies leave an unchanged MOVE point. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1000, batch = "support-allies-leave")
+    fun gunnerKeepsMovePointStationWhenAlliesLeave(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "support-allies-leave")
+        val manager = SquadManager.get(helper.level)
+        val man = scene.spawn(Vec3(20.5, 1.0, 20.5)).apply { isInvulnerable = true }
+        val allies = (0..2).map { index ->
+            scene.spawn(Vec3(30.5 + index * 2, 1.0, 20.5)).apply {
+                isNoAi = true
+                isInvulnerable = true
+            }
+        }
+        val gun = park(helper, Vec3(20.5, 1.0, 24.5))
+        val enemy = scene.enemy(Vec3(60.5, 1.0, 20.5)).apply {
+            isNoAi = true
+            isInvulnerable = true
+        }
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, (allies + man).map { it.uuid })
+        manager.issueOrderAt(helper.level, squad.id, SquadOrder.MOVE, man.blockPosition())
+        manager.setFocus(squad.id, enemy.uuid)
+        scene.onClose = {
+            manager.deleteSquad(helper.level, squad.id)
+            gun.discard()
+            enemy.discard()
+        }
+        var movedAt: Long? = null
+        helper.onEachTick {
+            if (movedAt == null && man.vehicle === gun) {
+                allies.forEachIndexed { index, ally ->
+                    val away = helper.absoluteVec(Vec3(120.5 + index * 2, 1.0, 20.5))
+                    ally.teleportTo(away.x, away.y, away.z)
+                }
+                movedAt = helper.tick
+            }
+            val since = movedAt?.let { helper.tick - it } ?: return@onEachTick
+            if (since > 1) helper.assertTrue(man.vehicle === gun, "The gunner left after allies moved away from the unchanged MOVE point")
+            if (since >= 80) {
+                scene.result("PASS", "movedAt=$movedAt finishedAt=${helper.tick}")
+                helper.succeed()
+            }
+        }
+    }
+
+    /** A repeated MOVE is still a new command and releases the old station. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1000, batch = "support-repeat-move")
+    fun gunnerYieldsToNewMoveAtSamePoint(helper: GameTestHelper) = supportYieldsToChangedAssignment(helper, changeSquad = false)
+
+    /** A station assignment belongs to its squad, even when another squad has the same order stamp. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1000, batch = "support-change-squad")
+    fun gunnerYieldsWhenChangedToAnotherSquad(helper: GameTestHelper) = supportYieldsToChangedAssignment(helper, changeSquad = true)
+
+    private fun supportYieldsToChangedAssignment(helper: GameTestHelper, changeSquad: Boolean) {
+        val scene = CombatIdleGameTests.Scene(helper, "support-change-${if (changeSquad) "squad" else "order"}")
+        val manager = SquadManager.get(helper.level)
+        val man = scene.spawn(Vec3(20.5, 1.0, 20.5)).apply { isInvulnerable = true }
+        val gun = park(helper, Vec3(20.5, 1.0, 24.5))
+        val enemy = scene.enemy(Vec3(60.5, 1.0, 20.5)).apply {
+            isNoAi = true
+            isInvulnerable = true
+        }
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(man.uuid))
+        val destination = man.blockPosition()
+        manager.issueOrderAt(helper.level, squad.id, SquadOrder.MOVE, destination)
+        manager.setFocus(squad.id, enemy.uuid)
+        var otherSquad: UUID? = null
+        scene.onClose = {
+            manager.deleteSquad(helper.level, squad.id)
+            otherSquad?.let { manager.deleteSquad(helper.level, it) }
+            gun.discard()
+            enemy.discard()
+        }
+        var changedAt: Long? = null
+        helper.onEachTick {
+            if (changedAt == null && man.vehicle === gun) {
+                if (changeSquad) {
+                    manager.removeMemberEverywhere(man.uuid)
+                    otherSquad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(man.uuid)).id
+                } else {
+                    manager.issueOrderAt(helper.level, squad.id, SquadOrder.MOVE, destination)
+                }
+                changedAt = helper.tick
+            }
+            val since = changedAt?.let { helper.tick - it } ?: return@onEachTick
+            if (since >= 20) {
+                assertSupportReleased(helper, gun, man)
+                scene.result("PASS", "changedAt=$changedAt finishedAt=${helper.tick}")
+                helper.succeed()
+            }
+        }
+    }
 
     private fun manTheGun(helper: GameTestHelper, name: String) {
         val scene = CombatIdleGameTests.Scene(helper, "support-$name")
