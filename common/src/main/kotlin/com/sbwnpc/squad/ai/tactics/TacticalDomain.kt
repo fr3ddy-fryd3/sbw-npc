@@ -413,9 +413,8 @@ object TacticalDomain {
             CompoundTask(
                 NPC,
                 listOf(
-                    // Under fire, or in the hole he dug, the man answers that first; every method
-                    // below stands aside meanwhile (UnderFire.duty), so exactly one family applies.
-                    // A drone in the air keeps him at its monitor through all of it (DroneStrike.flying).
+                    // Armour, fire and an existing hole are answered in the plan before ordinary duty.
+                    // A drone already airborne keeps its flight; FOLLOW movers keep their bound.
                     Method<PositionIntent>("answer_armour", eligible = { intent -> Condition { facts -> if (ArmourResponse.answers(intent, facts) && !ArmourResponse.launches(facts)) Verdict.Allowed else Verdict.Rejected("no_armour_response") } }, decompose = { intent, _ -> TaskNetwork.sequence(ArmourResponse.TASK.call(intent)) }),
                     Method("under_fire", eligible = { intent -> Condition { facts -> DroneStrike.flying(facts) ?: ArmourResponse.standsAside(intent, facts) ?: UnderFire.eligible(intent).evaluate(facts) } }, decompose = { intent, _ -> TaskNetwork.sequence(UNDER_FIRE.call(intent)) }),
                     Method("in_hole", eligible = { intent -> Condition { facts -> DroneStrike.flying(facts) ?: ArmourResponse.standsAside(intent, facts) ?: UnderFire.inHole().evaluate(facts) } }, decompose = { intent, _ -> TaskNetwork.sequence(IN_HOLE.call(intent)) }),

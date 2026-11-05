@@ -23,6 +23,7 @@ internal class ArmourState {
     var runningOwner: Any? = null
     private var orderStamp: Int? = null
     var contact: ArmourContact? = null
+    private var sourceAnchor = Vec3.ZERO
     var source: Vec3 = Vec3.ZERO
     var eye: Vec3 = Vec3.ZERO
     private var seenAt = Long.MIN_VALUE
@@ -53,6 +54,7 @@ internal class ArmourState {
             hiddenNow = contact != null && hidden(npc, npc.position())
             sheltered = cover?.let { CoverState.on(npc, it) && hidden(npc, npc.position()) } == true
         }
+        if (contact == null) return facts
         val loaded = AntiArmourKit.loaded(npc)
         if (failedAt != Long.MIN_VALUE && now - failedAt >= RETRY_TICKS) {
             coverFailed = false
@@ -73,13 +75,14 @@ internal class ArmourState {
         val level = npc.level() as ServerLevel
         val current = contact?.let { level.getEntity(it.id) as? LivingEntity }
         if (current != null && !valid(npc, current)) clear(npc)
-        val known = view?.contacts.orEmpty().filter { it.armoured && !it.airborne && (level.getEntity(it.id) as? LivingEntity)?.let { live -> valid(npc, live) } == true && SquadKnowledge.known(it.seenAt, it.firstSeenAt, now, npc.uuid in it.seenBy) }
+        val known = view?.contacts.orEmpty().filter { it.knownArmourTo(npc, level, now) }
         val observed = known.filter { now - it.seenAt < RECENT_TICKS }
             .sortedBy { if (it.id == contact?.id) -1.0 else it.position.distanceToSqr(npc.position()) }
             .firstOrNull { DetectionSightline.visible(level, it.eye, npc.eyePosition, npc) }
         if (observed != null) {
-            if (observed.id != contact?.id) {
+            if (changedSource(observed)) {
                 clear(npc)
+                sourceAnchor = observed.position
                 source = observed.position
                 contact = ArmourContact(observed.id, FireSector.of(source.x, source.z))
             }
@@ -92,6 +95,8 @@ internal class ArmourState {
         }
         if (contact != null && now - exposedAt >= ArmourResponse.MEMORY_TICKS) clear(npc)
     }
+
+    private fun changedSource(observed: TacticalContact): Boolean = observed.id != contact?.id || observed.position.subtract(sourceAnchor).horizontalDistanceSqr() > FireSector.GRID * FireSector.GRID
 
     private fun valid(npc: NpcEntity, target: LivingEntity) = target.isAlive && npc.isEnemy(target) && VehicleTargeting.isGroundArmour(target)
 
@@ -110,6 +115,7 @@ internal class ArmourState {
     }
 
     private fun clear(npc: NpcEntity) {
+        cycle++
         FiringSpots.release(npc.uuid, reservation)
         running = null
         runningOwner = null
@@ -387,4 +393,11 @@ private class ArmourWalk(private val npc: NpcEntity, private val state: ArmourSt
         const val LAST_STEP_SQR = 6.25
         val ESCAPE_PROBES = listOf(6.0 to 0.0, 12.0 to -6.0, 12.0 to 6.0, 18.0 to 0.0)
     }
+}
+
+/** Only a known hostile operational ground vehicle supplies a shelter ray, never hidden live coordinates. */
+internal fun TacticalContact.knownArmourTo(npc: NpcEntity, level: ServerLevel, now: Long): Boolean {
+    if (!armoured || airborne || !SquadKnowledge.known(seenAt, firstSeenAt, now, npc.uuid in seenBy)) return false
+    val live = level.getEntity(id) as? LivingEntity ?: return false
+    return live.isAlive && npc.isEnemy(live) && VehicleTargeting.isGroundArmour(live)
 }

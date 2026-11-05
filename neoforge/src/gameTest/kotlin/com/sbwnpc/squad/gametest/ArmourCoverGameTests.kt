@@ -198,7 +198,8 @@ object ArmourCoverGameTests {
         helper.onEachTick {
             if (helper.tick == 10L) com.sbwnpc.squad.combat.tactics.SquadTactics.observe(man, front.crew)
             if (helper.tick == 80L) man.dronesLeft = 1
-            if (man.holds(NpcActivity.DRONE)) {
+            if (helper.tick >= 80L && man.holds(NpcActivity.DRONE)) helper.assertFalse(front.exposed(man), "He prepared his drone while exposed to armour")
+            if (helper.tick > 80L && man.dronesLeft == 0) {
                 helper.assertFalse(front.exposed(man), "He launched while exposed to armour")
                 front.scene.result("PASS", "at=${helper.relativeVec(man.position())}")
                 helper.succeed()
@@ -222,8 +223,66 @@ object ArmourCoverGameTests {
             }
             if (helper.tick >= 550L) {
                 helper.assertTrue(answered, "He never answered armour")
-                helper.assertFalse(NativeTactics.reports(man).values.any { it.ticket.identity.startsWith("armour:") }, "The hidden armour kept his response indefinitely")
+                helper.assertFalse(NativeTactics.reports(man).values.any { it.ticket.identity.startsWith("armour:") }, "The hidden armour kept his response indefinitely: at=${helper.relativeVec(man.position())} exposed=${front.exposed(man)} reports=${NativeTactics.reports(man).values} known=${front.squad.tactics.contacts.values.map { it.id to (helper.level.gameTime - it.seenAt) }}")
                 front.scene.result("PASS", "expired=true")
+                helper.succeed()
+            }
+        }
+    }
+
+    /** Known armour constrains a launch column even if it has never had a line to the operator. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 500, batch = "armour-known-launch")
+    fun hiddenOperatorDoesNotWalkIntoKnownArmourToLaunch(helper: GameTestHelper) {
+        val front = Front(helper, "armour-known-launch", wall = true, roles = listOf(NpcClass.DRONE_OPERATOR, NpcClass.RIFLEMAN), infantry = false)
+        val man = front.men.first()
+        val observer = front.men.last()
+        val home = helper.absoluteVec(Vec3(20.5, 1.0, 50.5))
+        man.moveTo(home.x, home.y, home.z)
+        man.dronesLeft = 0
+        val speed = requireNotNull(man.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED))
+        val normalSpeed = speed.baseValue
+        speed.baseValue = 0.0
+        front.manager.setObjective(helper.level, front.squad.id, man.blockPosition())
+        for (x in 8..23) for (z in 38..64) helper.setBlock(BlockPos(x, 4, z), Blocks.STONE)
+        var launched = false
+        helper.onEachTick {
+            if (helper.tick == 10L) com.sbwnpc.squad.combat.tactics.SquadTactics.observe(observer, front.crew)
+            if (helper.tick == 80L) {
+                helper.assertFalse(front.exposed(man), "The operator fixture did not start sheltered")
+                val exposedColumn = helper.absoluteVec(Vec3(26.5, 1.0, 60.5))
+                helper.assertFalse(NativeTactics.armourSheltered(man, exposedColumn), "A known armour source allowed an exposed launch column before any pin")
+                speed.baseValue = normalSpeed
+                man.dronesLeft = 1
+            }
+            if (helper.tick >= 80L) launched = launched || man.dronesLeft == 0
+            if (helper.tick >= 350L) {
+                helper.assertFalse(launched, "He left shelter to launch into known armour's line")
+                helper.assertTrue(man.dronesLeft == 1, "A refused launch spent its drone")
+                front.scene.result("PASS", "launch refused without spending drone")
+                helper.succeed()
+            }
+        }
+    }
+
+    /** A fresh sighting of a tank well to the side invalidates the old source and its physical unit. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 600, batch = "armour-moved-source")
+    fun movedArmourReplansCoverFromItsNewObservedSource(helper: GameTestHelper) {
+        val front = Front(helper, "armour-moved-source", wall = true, roles = listOf(NpcClass.RIFLEMAN), infantry = false)
+        val man = front.men.single()
+        var hiddenAfterMove = 0
+        helper.onEachTick {
+            if (helper.tick == 10L) com.sbwnpc.squad.combat.tactics.SquadTactics.observe(man, front.crew)
+            if (helper.tick == 100L) {
+                val point = helper.absoluteVec(Vec3(60.5, 1.0, 90.5))
+                front.lav.moveTo(point.x, point.y, point.z)
+            }
+            if (helper.tick == 110L) com.sbwnpc.squad.combat.tactics.SquadTactics.observe(man, front.crew)
+            if (helper.tick > 150L && !front.exposed(man)) hiddenAfterMove++
+            if (helper.tick >= 400L) {
+                helper.assertTrue(hiddenAfterMove >= 40, "He stayed exposed to the moved armour: hidden=$hiddenAfterMove")
+                front.scene.result("PASS", "source invalidated and cover replanned")
                 helper.succeed()
             }
         }
