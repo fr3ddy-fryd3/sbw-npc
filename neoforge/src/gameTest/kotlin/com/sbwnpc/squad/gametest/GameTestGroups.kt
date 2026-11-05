@@ -50,6 +50,7 @@ internal object GameTestGroups {
             SidearmGameTests::class.java,
             PlannedCoverGameTests::class.java,
             ArmourCoverGameTests::class.java,
+            ArmourLauncherGameTests::class.java,
             WoundedCoverGameTests::class.java,
             PlannedEngageGameTests::class.java,
             EngageOnlyGameTests::class.java,

@@ -33,7 +33,7 @@ object ArmourCoverGameTests {
      * enemy rifleman beside the vehicle unless not [infantry]. With [wall], a wall south of the squad
      * gives cover from the vehicle a few blocks away.
      */
-    private class Front(val helper: GameTestHelper, name: String, wall: Boolean, roles: List<NpcClass>, infantry: Boolean = true) {
+    internal class Front(val helper: GameTestHelper, name: String, wall: Boolean, roles: List<NpcClass>, infantry: Boolean = true) {
         val scene = CombatIdleGameTests.Scene(helper, name)
         val manager = SquadManager.get(helper.level)
         private val oldTime = helper.level.dayTime
