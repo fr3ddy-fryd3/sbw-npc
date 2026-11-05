@@ -1,12 +1,15 @@
 package com.sbwnpc.squad.gametest
 
+import com.sbwnpc.squad.ai.integration.NativeTactics
 import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.FiringOpportunity
 import com.sbwnpc.squad.combat.GrenadeThrower
 import com.sbwnpc.squad.combat.Sightline
+import com.sbwnpc.squad.combat.tactics.SquadTactics
 import com.sbwnpc.squad.combat.tactics.TacticalTargetSelection
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
+import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.npc.TransportVehicle
 import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.squad.SquadOrder
@@ -27,6 +30,81 @@ import java.util.function.Consumer
 /** Mobs that go for players go for squad NPCs, and are fought by them (#135). */
 @PrefixGameTestTemplate(false)
 object HostileMobCombatGameTests {
+    /** Nearby armour does not prevent a safe throw from shelter at infantry to the side. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 800, batch = "grenade-near-armour")
+    fun shelteredGrenadierThrowsAtInfantryNearArmour(helper: GameTestHelper) {
+        val front = ArmourCoverGameTests.Front(helper, "grenade-near-armour", wall = true, roles = listOf(NpcClass.GRENADIER))
+        val man = front.men.single().also {
+            it.rgnLeft = 2
+            it.rgoLeft = 0
+        }
+        val enemy = requireNotNull(front.rifleman)
+        val point = helper.absoluteVec(Vec3(18.5, 1.0, 40.5))
+        enemy.moveTo(point.x, point.y, point.z)
+        helper.onEachTick {
+            if (helper.tick == 10L) {
+                SquadTactics.observe(man, front.crew)
+                SquadTactics.observe(man, enemy)
+            }
+            if (man.rgnLeft < 2) {
+                val contact = front.squad.tactics.contacts[front.crew.uuid]
+                helper.assertTrue(contact != null && helper.level.gameTime - contact.seenAt <= 100, "The squad had no recent armour contact")
+                helper.assertTrue(man.target === enemy, "He did not throw at the infantry")
+                helper.assertFalse(front.exposed(man), "He threw while exposed to armour")
+                helper.assertTrue(plannedGrenadeThrown(man), "The throw was not made by the grenade plan")
+                front.scene.result("PASS", "tick=${helper.tick} grenades=${man.rgnLeft}")
+                helper.succeed()
+            }
+        }
+    }
+
+    /** A rifleman uses a reserve grenade against an observed group of infantry. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 800, batch = "rifleman-bunch-throw")
+    fun riflemanThrowsAtInfantryBunch(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "rifleman-bunch-throw")
+        val man = scene.spawn(Vec3(36.5, 1.0, 41.5)).also {
+            it.rgnLeft = 2
+            it.rgoLeft = 0
+            it.yRot = -90f
+            it.yHeadRot = -90f
+        }
+        val enemies = listOf(40.5, 41.5, 42.5).map { scene.enemy(Vec3(48.5, 1.0, it)) }
+        scene.squad(listOf(man), enemies[1], SquadOrder.DEFEND)
+        helper.onEachTick {
+            if (man.rgnLeft < 2) {
+                helper.assertTrue(plannedGrenadeThrown(man), "The throw was not made by the grenade plan")
+                scene.result("PASS", "tick=${helper.tick} grenades=${man.rgnLeft}")
+                helper.succeed()
+            }
+        }
+    }
+
+    /** A grenadier with a clear target in range carries out a planned hand throw. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 500, batch = "grenadier-hand-throw")
+    fun grenadierThrowsAtVisibleInfantry(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "grenadier-hand-throw")
+        val man = scene.spawn(Vec3(36.5, 1.0, 41.5), NpcClass.GRENADIER).also {
+            it.rgnLeft = 2
+            it.rgoLeft = 0
+            it.yRot = -90f
+            it.yHeadRot = -90f
+        }
+        val enemy = scene.enemy(Vec3(48.5, 1.0, 41.5))
+        scene.squad(listOf(man), enemy, SquadOrder.DEFEND)
+        helper.onEachTick {
+            if (man.rgnLeft < 2) {
+                helper.assertTrue(plannedGrenadeThrown(man), "The throw was not made by the grenade plan")
+                scene.result("PASS", "tick=${helper.tick} grenades=${man.rgnLeft}")
+                helper.succeed()
+            }
+        }
+    }
+
+    private fun plannedGrenadeThrown(man: NpcEntity): Boolean = NativeTactics.reports(man).values.any { report -> report.evidence.any { it.kind == "grenade_thrown" } }
+
     /** A defending squad with a mob of [type] nearby, at night so a zombie does not burn. */
     private class MobScene(val helper: GameTestHelper, name: String, type: EntityType<out Mob>) {
         val scene = CombatIdleGameTests.Scene(helper, name)
