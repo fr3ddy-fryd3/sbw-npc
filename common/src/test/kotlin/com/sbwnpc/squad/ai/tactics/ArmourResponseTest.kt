@@ -51,6 +51,45 @@ class ArmourResponseTest {
         assertFalse(ArmourResponse.answers(intent, facts().observe(ArmourFacts.HIDDEN, true).observe(ArmourFacts.EXPOSED, false).observe(ArmourFacts.LOADED, true).observe(ArmourFacts.SORTIE_ALLOWED, false)))
     }
 
+    @Test fun `outing retains completed sortie across replanning and ammo loss selects return`() {
+        val starts = ArrayList<ArmourStep>()
+        var completed = false
+        val runtime = PlanRuntime({ _, spec ->
+            val unit = spec.parameters as ArmourUnit
+            object : ActionExecution {
+                override fun start(now: Long): ActionUpdate {
+                    starts += unit.step
+                    return ActionUpdate.Running
+                }
+                override fun tick(now: Long): ActionUpdate = if (completed) ActionUpdate.Completed(listOf(ActionEvidence("physical_result", now))) else ActionUpdate.Running
+                override fun suspend(now: Long, reason: String) = Unit
+                override fun resume(now: Long) = Unit
+                override fun cancel(now: Long, reason: String) = Unit
+            }
+        }, ResourceLeases())
+        val domain = HtnDomain(AgentLevel.NPC, ArmourResponse.tasks())
+        val agent = PlanningAgent(actor, domain, runtime)
+        val initial = facts().at(10).observe(ArmourFacts.HIDDEN, true).observe(ArmourFacts.EXPOSED, false).observe(ArmourFacts.LOADED, true).observe(ArmourFacts.SORTIE_ALLOWED, true)
+        agent.command(UUID(3, 1), ArmourResponse.TASK.call(intent), initial)
+        agent.tick(initial, planningWork = 50)
+        val outing = initial.at(11).observe(ArmourFacts.COMMITMENT, ArmourCommitment(contact, 0)).observe(ArmourFacts.HIDDEN, false)
+        agent.tick(outing, planningWork = 50)
+        assertEquals(listOf(ArmourStep.SORTIE), starts)
+        completed = true
+        val arrived = outing.at(12).observe(ArmourFacts.CYCLE, 1)
+        agent.tick(arrived, planningWork = 50)
+        completed = false
+        agent.tick(arrived.at(13), planningWork = 50)
+        assertEquals(listOf(ArmourStep.SORTIE, ArmourStep.FIRE), starts)
+        agent.tick(arrived.at(14).observe(ArmourFacts.LOADED, false), planningWork = 50)
+        assertEquals(ArmourStep.RETURN, starts.last())
+        assertEquals(1, starts.count { it == ArmourStep.SORTIE })
+    }
+
+    @Test fun `stale open ray alone cannot take movement`() {
+        assertFalse(ArmourResponse.answers(intent, facts().observe(ArmourFacts.EXPOSED, false)))
+    }
+
     @Test fun `foxholes flying drones and ordered FOLLOW movers preserve ownership`() {
         assertFalse(ArmourResponse.active(facts().observe(TacticalFacts.DIGS, 1)))
         assertFalse(ArmourResponse.active(facts().observe(DroneFacts.AIRBORNE, true)))

@@ -214,15 +214,19 @@ object ArmourCoverGameTests {
         val front = Front(helper, "armour-expiry", wall = true, roles = listOf(NpcClass.RIFLEMAN), infantry = false)
         val man = front.men.single()
         var answered = false
+        var hidden = false
         helper.onEachTick {
             if (helper.tick == 10L) com.sbwnpc.squad.combat.tactics.SquadTactics.observe(man, front.crew)
             answered = answered || NativeTactics.reports(man).values.any { it.ticket.identity.startsWith("armour:") }
             if (helper.tick == 100L) {
+                // Two blocks east keeps his own cell clear; stone against his feet suffocates him.
                 val at = BlockPos.containing(helper.relativeVec(man.position()))
-                for (x in -1..1) for (z in -1..1) for (y in 0..2) if (x != 0 || z != 0) helper.setBlock(at.offset(x, y, z), Blocks.STONE)
+                for (x in 2..3) for (z in -8..8) for (y in 0..3) helper.setBlock(at.offset(x, y, z), Blocks.STONE)
             }
+            if (helper.tick > 100L) hidden = hidden || !front.exposed(man)
             if (helper.tick >= 550L) {
                 helper.assertTrue(answered, "He never answered armour")
+                helper.assertTrue(hidden, "The wall never broke the armour's line: at=${helper.relativeVec(man.position())}")
                 helper.assertFalse(NativeTactics.reports(man).values.any { it.ticket.identity.startsWith("armour:") }, "The hidden armour kept his response indefinitely: at=${helper.relativeVec(man.position())} exposed=${front.exposed(man)} reports=${NativeTactics.reports(man).values} known=${front.squad.tactics.contacts.values.map { it.id to (helper.level.gameTime - it.seenAt) }}")
                 front.scene.result("PASS", "expired=true")
                 helper.succeed()
