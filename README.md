@@ -6,8 +6,10 @@
 and command your own AI-driven infantry, mortar, tank, drone, and helicopter squads.
 
 ![NeoForge](https://img.shields.io/badge/NeoForge-1.21.1-orange)
+![Fabric](https://img.shields.io/badge/Fabric-1.21.1-lightgrey)
+![Forge](https://img.shields.io/badge/Forge-1.20.1-red)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
-![Status](https://img.shields.io/badge/status-active%20dev-yellow)
+![Status](https://img.shields.io/badge/status-alpha-yellow)
 
 </div>
 
@@ -23,29 +25,35 @@ follow orders — Attack, Defend, Patrol, Move — from a quick-command HUD or b
 clicking. Supply points keep them equipped, boats carry them across water, and radio reports tell
 you when they make contact, lose men, need ammunition, or reach their objective.
 
-## Version 1.0.0 design
+## Alpha
 
-[PLAN-1.0.0.md](PLAN-1.0.0.md) defines the next version: physical NPC commanders with delegated
-authority and succession, sequential barracks recruitment, earned ranks, engineering squads,
-territorial Supply points, and operations. These systems are being designed on `feature/1.0.0`;
-`develop` contains the released `0.6.0`. The recruitment queue is implemented
-on `feature/1.0.0`; the remaining systems are planned features, not part of
-the current release.
+1.0.0-alpha1 is the first release for all three loaders. It is an alpha: expect rough edges in the AI,
+and keep backups of worlds you care about. Bug reports are welcome on the [Issues](../../issues) page.
 
 ## Requirements
 
-- Minecraft 1.21.1 + NeoForge 21.1.203 or newer
-- Kotlin for Forge 5.8.0 or newer (NeoForge build)
-- [SuperbWarfare](https://github.com/Mercurows/SuperbWarfare) 0.8.9.1 or newer
-- SmartBrainLib 1.16.11 or newer
-- Optional: the SBW Drone Warfare addon, for the drone operator class to use its FPV drone model
-- Optional: [JourneyMap](https://www.curseforge.com/minecraft/mc-mods/journeymap) 6.x — your squads,
-  their objectives and the enemies your side has spotted on the map, and orders given from it
+| | NeoForge | Fabric | Forge |
+|---|---|---|---|
+| Minecraft | 1.21.1 | 1.21.1 | 1.20.1 |
+| Loader | NeoForge 21.1.203 or newer | Fabric Loader 0.17.2 or newer | Forge 47 or newer |
+| Kotlin | Kotlin for Forge 5.8.0 or newer | Fabric Language Kotlin | Kotlin for Forge 4.11 |
+| SuperbWarfare | [SuperbWarfare](https://github.com/Mercurows/SuperbWarfare) 0.8.9.1 or newer | [SuperbWarfare ReFabricated](https://github.com/CrawKatt/SuperbWarfareReFabricated) 0.8.9 or newer | SuperbWarfare 0.8.9 or newer for 1.20.1 |
+| SmartBrainLib | 1.16.11 or newer | 1.16.11 or newer | 1.15 or newer |
+
+Optional:
+
+- the SBW Drone Warfare addon, for the drone operator class to use its FPV drone model;
+- [JourneyMap](https://www.curseforge.com/minecraft/mc-mods/journeymap) 6.x: your squads, their
+  objectives and the enemies your side has spotted on the map, and orders given from it. Only tried
+  on NeoForge so far.
+
+Worlds don't carry over between Minecraft 1.20.1 and 1.21.1.
 
 ## Installation
 
-1. Install NeoForge, Kotlin for Forge, SuperbWarfare, and SmartBrainLib first.
-2. Grab the latest jar from the [Releases](../../releases) page.
+1. Install the loader, its Kotlin library, SuperbWarfare and SmartBrainLib first.
+2. Grab the jar for your loader from the [Releases](../../releases) page: the file name ends in
+   `-neoforge`, `-fabric` or `-forge`.
 3. Replace the previous NPC Squads jar in your `mods/` folder with the new one.
 
 ## Key conflicts
@@ -157,6 +165,7 @@ disbanding one moves the rest up into the freed numbers.
 | **Move** | Travel to the objective, then hold or land | Infantry, tank crews, helicopters |
 | **Barrage** | Shell a 40-block area around the objective instead of one point | Mortar crews |
 | **Retreat** | Fall back to the objective, then hold; helicopters land there | Everyone |
+| **Follow** | Stay with you, spread out, and fight on the way; ride in the vehicle you sit in. One squad follows a player at a time, and it holds where it stands if you die or leave | Infantry |
 
 Tank crews take **Move** and **Retreat** — they fight from the tank by themselves. A Mi-28 gunship takes
 Attack / Defend / Move / Retreat and attacks from a standoff hover. An AH-6 uses Defend to patrol
@@ -217,6 +226,8 @@ before it had logistics support may need to be broken and placed again.
 
 ## Worth knowing
 
+- Several squads ordered onto the same point fight it as one operation, each from its own side.
+  Right-clicking an operation's marker on the JourneyMap map lets the selected squads join it.
 - Squads take cover, dig in when badly hurt, and won't fire through a squadmate — or through a
   parked vehicle.
 - A squad with a distant objective commandeers a vehicle nearby and drives. You can ride along in
