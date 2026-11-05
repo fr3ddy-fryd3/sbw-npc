@@ -18,6 +18,15 @@ class ArmourResponseTest {
 
     private fun plan(facts: FactSnapshot, call: PositionIntent = intent) = (HtnPlanningSession(TacticalDomain.npc, PlanOwner(actor, UUID(1, 1)), TacticalDomain.NPC.call(call), facts).advance(50) as PlanningResult.Ready).plan
 
+    @Test fun `remembered hidden armour does not take ordinary infantry combat`() {
+        val input = facts().observe(ArmourFacts.HIDDEN, true)
+        assertFalse(ArmourResponse.answers(intent, input))
+    }
+
+    @Test fun `ordinary incoming fire keeps its existing priority over armour`() {
+        assertFalse(ArmourResponse.answers(intent, facts().observe(TacticalFacts.UNDER_FIRE, true)))
+    }
+
     @Test fun `an armour contact takes ordinary duty and assault into cover`() {
         for (call in listOf(intent, intent.copy(assault = true))) {
             val action = plan(facts(), call).tasks.first().spec.action
