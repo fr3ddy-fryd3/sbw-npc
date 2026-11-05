@@ -18,10 +18,10 @@ and command your own AI-driven infantry, mortar, tank, drone, and helicopter squ
 ## What is this
 
 [SBW] NPC Squads lets you recruit NPCs with a single tool, form them into squads, and command them like
-a small AI-controlled army: riflemen, medics, snipers, machine gunners, grenadiers, mortar crews,
+a small AI-controlled army: riflemen, shotgunners, medics, snipers, machine gunners, grenadiers, mortar crews,
 tank and helicopter crews, and kamikaze-drone operators. Squads take cover, dig in under fire, avoid shooting
 their own side, relay spotted enemies to the rest of their faction, ride and crew vehicles, and
-follow orders — Attack, Defend, Patrol, Move — from a quick-command HUD or by pointing and
+follow orders — Attack, Defend, Patrol, Move, Follow — from a quick-command HUD or by pointing and
 clicking. Supply points keep them equipped, boats carry them across water, and radio reports tell
 you when they make contact, lose men, need ammunition, or reach their objective.
 
@@ -82,7 +82,14 @@ guaranteed response time.
 ## Features
 
 - **8 factions** with distinct uniforms and colours; deploy friendly or hostile squads.
-- **Combat AI** that takes cover, reacts to suppression, avoids friendly fire and shares contacts.
+- **Combat AI** that plans how each squad fights: bounding overwatch, flanks, assaults by halves
+  under covering fire, smoke-covered retreats, and scouts sent to look at a shot from out of sight.
+  Squads take cover, react to suppression, avoid friendly fire and share contacts.
+- **Spotting takes time**, by distance, light, weather, cover and experience; men grow wary after a
+  contact and look around.
+- **Joint operations** — several squads on one point attack it together, each from its own sector,
+  and call off a beaten attack.
+- **Soldiers with a record** — each one has a persistent name and experience, and earns his rank.
 - **Ground and water transport** — squads drive, crew mounted guns, plan routes around terrain and
   cross water by boat. Amphibious vehicles travel between land and water.
 - **Drone operators** attack with kamikaze drones; other NPCs shoot down or take cover from them.
@@ -161,7 +168,7 @@ disbanding one moves the rest up into the freed numbers.
 | Order | What it means | Who can be given it |
 |---|---|---|
 | **Defend** | Hold near the objective, don't chase far | Everyone except tank crews |
-| **Patrol** | Roam within 40 blocks of the objective, or walk the assigned route | Infantry |
+| **Patrol** | Roam round the objective (30 to 50 blocks, by squad size), or walk the assigned route | Infantry |
 | **Attack** | Advance on the objective; AH-6 circles it for its bench gunners | Everyone except tank crews |
 | **Move** | Travel to the objective, then hold or land | Infantry, tank crews, helicopters |
 | **Barrage** | Shell a 40-block area around the objective instead of one point | Mortar crews |
@@ -241,11 +248,14 @@ before it had logistics support may need to be broken and placed again.
 - Every NPC has one medical kit and uses it on itself when wounded in cover; Supply replenishes it.
 - Machine gunners carry a launcher on the side for anything riding a vehicle; infantry stays the
   machine gun's job.
-- NPCs throw grenades at covered enemies or when pinned, checking reach, obstacles and nearby allies.
+- NPCs throw grenades at covered enemies or when pinned, one thrower per squad at a time, checking
+  reach, obstacles, vehicle hulls and nearby allies. Passengers don't throw.
+- NPCs open wooden doors and ladder or scaffolding trapdoors, and climb ladders and scaffolding.
+- Mobs that hunt players hunt NPCs too, and NPCs fight back.
 - Mortar crews only shell what their own side has actually seen. Out of reach of the target, they
   break the mortar down, carry it closer and set it back up.
 - A killed NPC drops the weapon in its hands with a 3.75% chance (with only its loaded magazine), each
-  piece of armour with a 1.25% chance, a box of ammunition for its gun with an 18.75% chance, and one of
+  piece of armour with a 1.25% chance, a box of ammunition for its gun with a 28.125% chance, and one of
   the grenades it had left with a 1.25% chance, whoever killed it.
   Ammunition without a box item, such as heavy rounds and rockets, drops as individual items.
 
