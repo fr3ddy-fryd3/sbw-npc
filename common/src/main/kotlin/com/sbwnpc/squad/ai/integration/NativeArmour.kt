@@ -167,12 +167,17 @@ internal class ArmourState {
     }
 }
 
+private fun launcherRounds(npc: NpcEntity): Int {
+    val launcher = if (AntiArmourKit.isLauncher(npc.mainHandItem)) npc.mainHandItem else npc.antiArmourWeapon
+    return if (AntiArmourKit.isLauncher(launcher)) Ports.guns.roundsLeft(launcher) else 0
+}
+
 /** A physical unit of the HTN's armour manoeuvre: search/walk, aim/fire, return or bounded hold. */
 internal class NativeArmour(private val unit: ArmourUnit, npc: NpcEntity, private val state: ArmourState) : CoverAction(npc) {
     private var completed = false
     private var target: Vec3? = null
     private var started = 0
-    private var lastShot = -1
+    private var launcherRounds = 0
     private var peek: CoverPeekSearch? = null
     private val origin = npc.position()
     private val walking = ArmourWalk(npc, state, ::done, ::timedOut)
@@ -181,7 +186,7 @@ internal class NativeArmour(private val unit: ArmourUnit, npc: NpcEntity, privat
         state.runningOwner = this
         state.running = unit.step
         started = npc.tickCount
-        lastShot = npc.lastShotTick
+        if (unit.step == ArmourStep.FIRE && unit.launcher) launcherRounds = launcherRounds(npc)
         if (unit.step == ArmourStep.SORTIE) {
             if (state.cover == null && state.hidden(npc, npc.position())) state.cover = npc.blockPosition()
             state.sortieLauncher = unit.launcher
@@ -276,8 +281,8 @@ internal class NativeArmour(private val unit: ArmourUnit, npc: NpcEntity, privat
         val enemy = targetEnemy() ?: return done(now)
         npc.target = enemy.first
         if (unit.launcher) AntiArmourKit.wield(npc, launcher = true)
-        val firedLauncher = unit.launcher && (npc.lastShotTick != lastShot || !AntiArmourKit.loaded(npc))
-        if (firedLauncher || npc.tickCount - started >= FIRE_TICKS) return done(now)
+        val rocketSpent = unit.launcher && launcherRounds(npc) < launcherRounds
+        if (rocketSpent || npc.tickCount - started >= FIRE_TICKS) return done(now)
         return ActionUpdate.Running
     }
 
