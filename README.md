@@ -100,8 +100,9 @@ guaranteed response time.
 | **Supply Point** (`sbwnpc:supply`) | Same tab — or `/give @s sbwnpc:supply` | Automatically resupplies friendly NPCs within 8 blocks; right-click for a player kit or respawn point. |
 | **Quick-command HUD** | Key `Z`, rebindable under controls category *SBW NPC Squads* | Pick a squad and an order without opening a menu. |
 
-On first use the tool asks you to pick a faction once. That is only your own default — you can
-still deploy any of the eight afterwards, including hostile ones to fight against.
+On first use the tool asks you to pick a faction once. In survival you recruit and deploy only that
+faction, by the tool and by a Barracks. In creative you can deploy any of the eight, including
+hostile ones to fight against, and set which faction a Supply serves.
 
 ## Using the tool
 
