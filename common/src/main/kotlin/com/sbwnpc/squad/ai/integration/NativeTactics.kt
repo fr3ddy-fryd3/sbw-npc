@@ -873,9 +873,9 @@ object NativeTactics {
         /** Launch paths stay hidden from known armour even before exposure starts a cover response. */
         fun armourSafe(npc: NpcEntity, feet: Vec3): Boolean {
             val state = armour[npc.uuid]
-            if (state?.contact != null && !state.hidden(npc, feet)) return false
+            if (state?.commitment != null && !state.hidden(npc, feet)) return false
             val contacts = npc.squadId?.let(::combatView)?.contacts.orEmpty()
-            return contacts.none { it.knownArmourTo(npc, level, level.gameTime) && DetectionSightline.visible(level, it.eye, feet.add(0.0, npc.eyeHeight.toDouble(), 0.0), npc) }
+            return contacts.none { level.gameTime - it.seenAt < ArmourResponse.MEMORY_TICKS && it.knownArmourTo(npc, level, level.gameTime) && DetectionSightline.visible(level, it.eye, feet.add(0.0, npc.eyeHeight.toDouble(), 0.0), npc) }
         }
 
         private fun coverOf(npc: NpcEntity) = cover.getOrPut(npc.uuid, ::CoverState)

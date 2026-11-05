@@ -6,13 +6,15 @@ import com.sbwnpc.squad.entity.NpcEntity
 object ArmourFireSafety {
     /** A stored fire bearing through known armour is not a blind-fire or grenade destination. */
     fun bearingContainsArmour(npc: NpcEntity, aim: net.minecraft.world.phys.Vec3): Boolean {
-        val bearing = aim.subtract(npc.position()).multiply(1.0, 0.0, 1.0).normalize()
+        val segment = aim.subtract(npc.position()).multiply(1.0, 0.0, 1.0)
+        val distance = segment.length()
+        val bearing = segment.normalize()
         val now = npc.level().gameTime
         return npc.currentSquad()?.tactics?.contacts?.values.orEmpty().any { contact ->
             if (!contact.armoured || contact.airborne || !SquadKnowledge.known(contact.seenAt, contact.firstSeenAt, now, npc.uuid in contact.seenBy)) return@any false
             val delta = contact.position.subtract(npc.position()).multiply(1.0, 0.0, 1.0)
             val along = delta.dot(bearing)
-            along > 0.0 && delta.subtract(bearing.scale(along)).length() <= ARMOUR_BEARING_WIDTH + along * ARMOUR_BEARING_ERROR
+            along > 0.0 && along <= distance + ARMOUR_BEARING_WIDTH && delta.subtract(bearing.scale(along)).length() <= ARMOUR_BEARING_WIDTH + along * ARMOUR_BEARING_ERROR
         }
     }
 

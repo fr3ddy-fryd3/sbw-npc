@@ -73,6 +73,7 @@ object Grenades {
         return when {
             reason == GrenadeReason.NONE -> Verdict.Rejected("no_grenade_due")
             reason == GrenadeReason.SUPPRESSION -> Verdict.Allowed
+            facts.value(ArmourFacts.COMMITMENT) != null || facts.value(ArmourFacts.RETURN_DUE) == true || (facts.value(ArmourFacts.CONTACT) != null && facts.value(ArmourFacts.HIDDEN) != true) -> Verdict.Rejected("armour_motion_first")
             underFire is Verdict.Unknown -> underFire
             underFire == Verdict.Allowed -> Verdict.Rejected("under_fire_first")
             else -> Verdict.Allowed

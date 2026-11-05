@@ -6,6 +6,7 @@ import com.sbwnpc.squad.ai.planning.ActionUpdate
 import com.sbwnpc.squad.ai.planning.FactSnapshot
 import com.sbwnpc.squad.ai.tactics.GrenadeFacts
 import com.sbwnpc.squad.ai.tactics.GrenadeReason
+import com.sbwnpc.squad.combat.ArmourFireSafety
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.GrenadeThrower
@@ -47,8 +48,8 @@ internal class GrenadeChoice(private val level: ServerLevel) {
     fun observe(facts: FactSnapshot, npc: NpcEntity, now: Long): FactSnapshot {
         val hand = hands.getOrPut(npc.uuid) { Hand(npc) }
         val aim = aims.aim(npc, hand, now)
-        hand.aim = aim
-        val reason = aim?.takeIf { rationFree(npc, now) }?.reason ?: GrenadeReason.NONE
+        hand.aim = aim?.takeUnless { ArmourFireSafety.bearingContainsArmour(npc, it.point) }
+        val reason = hand.aim?.takeIf { rationFree(npc, now) }?.reason ?: GrenadeReason.NONE
         return facts.observe(GrenadeFacts.DUE, reason).observe(GrenadeFacts.THROWN, hand.thrown)
     }
 
@@ -85,6 +86,8 @@ internal class GrenadeChoice(private val level: ServerLevel) {
             val target = npc.target?.takeIf { it.isAlive }
             val point = if (aim.reason == GrenadeReason.GRENADIER && target != null) target.boundingBox.center else aim.point
             val velocity = if (aim.reason == GrenadeReason.GRENADIER && target != null) target.deltaMovement else aim.velocity
+            if (target != null && VehicleTargeting.isGroundArmour(target)) return refused("armour_target")
+            if (ArmourFireSafety.bearingContainsArmour(npc, point)) return refused("armour_in_throw")
             npc.navigation.stop()
             if (!GrenadeThrower.throwAt(npc, level, point, aim.kind, velocity)) return refused("throw_blocked")
             hand.thrown++
@@ -158,7 +161,7 @@ private class GrenadeAims(private val level: ServerLevel) {
     /** The grenadier's hand throw at the target he sees, leading it. */
     private fun grenadierAim(npc: NpcEntity, now: Long): Aim? {
         if (npc.holdsAny(NpcActivity.COVER, NpcActivity.EVADE)) return null
-        val target = npc.target?.takeIf { it.isAlive && !VehicleTargeting.isAircrew(it) } ?: return null
+        val target = npc.target?.takeIf { it.isAlive && !VehicleTargeting.isAircrew(it) && !VehicleTargeting.isGroundArmour(it) } ?: return null
         if (npc.distanceTo(target) !in GrenadeThrower.MIN_RANGE..GrenadeThrower.MAX_RANGE) return null
         if (!DetectionSightline.canSee(npc, target) || !npc.sensing.hasLineOfSight(target)) return null
         val point = target.boundingBox.center
@@ -184,7 +187,7 @@ private class GrenadeAims(private val level: ServerLevel) {
      */
     private fun flushPoint(npc: NpcEntity): Vec3? {
         // Out of sight up in a helicopter is not something a grenade flushes out.
-        val target = npc.target?.takeIf { it.isAlive && !VehicleTargeting.isAircrew(it) } ?: return null
+        val target = npc.target?.takeIf { it.isAlive && !VehicleTargeting.isAircrew(it) && !VehicleTargeting.isGroundArmour(it) } ?: return null
         val since = npc.blockedSightSince ?: return null
         if (npc.tickCount - since < BLOCKED_TICKS) return null
         return knownPosition(npc, target)
@@ -194,7 +197,7 @@ private class GrenadeAims(private val level: ServerLevel) {
     private fun suppressionPoint(npc: NpcEntity): Vec3? {
         if (!npc.isSuppressed()) return null
         // Pinned down from the air: the fire comes from somewhere a grenade can't go.
-        val target = npc.target?.takeIf { !VehicleTargeting.isAircrew(it) } ?: return null
+        val target = npc.target?.takeIf { !VehicleTargeting.isAircrew(it) && !VehicleTargeting.isGroundArmour(it) } ?: return null
         val from = knownPosition(npc, target) ?: return null
         return from.takeIf { it.y - npc.y <= AIR_THREAT_HEIGHT }
     }
@@ -216,7 +219,7 @@ private class GrenadeAims(private val level: ServerLevel) {
         hand.nextClusterScanTick = npc.tickCount + CLUSTER_SCAN_TICKS
         val reach = GrenadeThrower.MAX_RANGE + CLUSTER_RADIUS
         val enemies = level.getEntitiesOfClass(LivingEntity::class.java, npc.boundingBox.inflate(reach, BUNCH_HEIGHT, reach)) {
-            it.isAlive && it !== npc && npc.isEnemy(it) && !VehicleTargeting.isAircrew(it) && noticed(npc, hand, it)
+            it.isAlive && it !== npc && npc.isEnemy(it) && !VehicleTargeting.isAircrew(it) && !VehicleTargeting.isGroundArmour(it) && noticed(npc, hand, it)
         }
         hand.noticing.endScan(level.gameTime)
         if (enemies.size < CLUSTER_SIZE) return null

@@ -34,7 +34,10 @@ internal class ArmourState {
     private var hiddenNow = false
     var cover: BlockPos? = null
     var sortie: CoverPeekSearch.Result? = null
-    var step: ArmourStep? = null
+    var commitment: ArmourCommitment? = null
+    var returnDue = false
+    private var sortieFailedAt = Long.MIN_VALUE
+    private var sortieAttempts = 0
     var cycle = 0
     var coverFailed = false
     var escapeFailed = false
@@ -48,25 +51,36 @@ internal class ArmourState {
             clear(npc)
             orderStamp = order
         }
-        if (checkedAt == Long.MIN_VALUE || now - checkedAt >= OBSERVE_TICKS) {
+        if (checkedAt != now) {
             checkedAt = now
             refresh(npc, view, now)
             hiddenNow = contact != null && hidden(npc, npc.position())
             sheltered = cover?.let { CoverState.on(npc, it) && hidden(npc, npc.position()) } == true
         }
         if (contact == null) return facts
-        val loaded = AntiArmourKit.loaded(npc)
+        expireFailures(now)
+        return observedFacts(facts, npc, now)
+    }
+
+    private fun expireFailures(now: Long) {
         if (failedAt != Long.MIN_VALUE && now - failedAt >= RETRY_TICKS) {
             coverFailed = false
             escapeFailed = false
             failedAt = Long.MIN_VALUE
         }
+    }
+
+    private fun observedFacts(facts: FactSnapshot, npc: NpcEntity, now: Long): FactSnapshot {
+        val loaded = AntiArmourKit.loaded(npc)
         var result = facts.observe(ArmourFacts.LOADED, loaded)
             .observe(ArmourFacts.SORTIE_READY, sortie != null).observe(ArmourFacts.SORTIE_LAUNCHER, sortieLauncher).observe(ArmourFacts.HIDDEN, hiddenNow)
             .observe(ArmourFacts.CYCLE, cycle).observe(ArmourFacts.COVER_FAILED, coverFailed)
             .observe(ArmourFacts.ESCAPE_FAILED, escapeFailed).observe(ArmourFacts.SHELTERED, sheltered)
-        running?.let { result = result.observe(ArmourFacts.RUNNING, it) }
-        step?.let { result = result.observe(ArmourFacts.STEP, it) }
+        val relevant = now - seenAt < RECENT_TICKS
+        result = result.observe(ArmourFacts.EXPOSED, relevant && !hiddenNow)
+        contact?.let { result = result.observe(ArmourFacts.RELEVANT, it) }
+        commitment?.let { result = result.observe(ArmourFacts.COMMITMENT, it) }
+        result = result.observe(ArmourFacts.RETURN_DUE, returnDue).observe(ArmourFacts.SORTIE_ALLOWED, sortieFailedAt == Long.MIN_VALUE || now - sortieFailedAt >= RETRY_TICKS * minOf(MAX_RETRY_MULTIPLIER, sortieAttempts))
         contact?.let { result = result.observe(ArmourFacts.CONTACT, it) }
         return result
     }
@@ -74,13 +88,15 @@ internal class ArmourState {
     private fun refresh(npc: NpcEntity, view: TacticalSnapshot?, now: Long) {
         val level = npc.level() as ServerLevel
         val current = contact?.let { level.getEntity(it.id) as? LivingEntity }
-        if (current != null && !valid(npc, current)) clear(npc)
+        if (current != null && !valid(npc, current)) {
+            if (commitment != null) returnDue = true else clear(npc)
+        }
         val known = view?.contacts.orEmpty().filter { it.knownArmourTo(npc, level, now) }
         val observed = known.filter { now - it.seenAt < RECENT_TICKS }
             .sortedBy { if (it.id == contact?.id) -1.0 else it.position.distanceToSqr(npc.position()) }
             .firstOrNull { DetectionSightline.visible(level, it.eye, npc.eyePosition, npc) }
         if (observed != null) {
-            if (changedSource(observed)) {
+            if (observed.id != contact?.id || sourceMoved(observed.position, sourceAnchor)) {
                 clear(npc)
                 sourceAnchor = observed.position
                 source = observed.position
@@ -91,27 +107,43 @@ internal class ArmourState {
                 source = observed.position
                 eye = observed.eye
             }
-            exposedAt = maxOf(exposedAt, observed.seenAt)
+            exposedAt = now
         }
-        if (contact != null && now - exposedAt >= ArmourResponse.MEMORY_TICKS) clear(npc)
+        if (contact != null && now - exposedAt >= ArmourResponse.MEMORY_TICKS) {
+            if (commitment != null) returnDue = true else clear(npc)
+        }
     }
-
-    private fun changedSource(observed: TacticalContact): Boolean = observed.id != contact?.id || observed.position.subtract(sourceAnchor).horizontalDistanceSqr() > FireSector.GRID * FireSector.GRID
 
     private fun valid(npc: NpcEntity, target: LivingEntity) = target.isAlive && npc.isEnemy(target) && VehicleTargeting.isGroundArmour(target)
 
-    /** Vehicle hulls are not allowed to hide their own gun's source ray. */
-    fun hidden(npc: NpcEntity, feet: Vec3): Boolean = !DetectionSightline.visible(npc.level() as ServerLevel, eye, feet.add(0.0, npc.eyeHeight.toDouble(), 0.0), npc)
+    /** The source hull cannot hide its gun; other hulls are physical shelter like terrain. */
+    fun hidden(npc: NpcEntity, feet: Vec3): Boolean {
+        val level = npc.level() as ServerLevel
+        val target = feet.add(0.0, npc.eyeHeight.toDouble(), 0.0)
+        val sourceEntity = contact?.let { level.getEntity(it.id) }
+        val hulls = Sightline.vehicleHulls(level, net.minecraft.world.phys.AABB(eye, target).inflate(2.0), npc, sourceEntity)
+        return Sightline.crosses(hulls, eye, target) || !DetectionSightline.visible(level, eye, target, npc)
+    }
 
     fun failed(now: Long, escape: Boolean) {
         if (escape) escapeFailed = true else coverFailed = true
         failedAt = now
     }
 
-    fun complete(completed: ArmourStep) {
+    /** Records an exhausted physical sortie search, keyed to the retained source. */
+    fun sortieFailed(now: Long) {
+        sortieFailedAt = now
+        sortieAttempts++
+        returnDue = true
+    }
+
+    fun complete(completed: ArmourStep, evidenceCycle: Int) {
         running = null
-        step = completed
-        cycle++
+        if (completed == ArmourStep.RETURN) {
+            returnDue = false
+            commitment = null
+        }
+        cycle = maxOf(cycle, evidenceCycle + 1)
     }
 
     private fun clear(npc: NpcEntity) {
@@ -122,7 +154,10 @@ internal class ArmourState {
         contact = null
         cover = null
         sortie = null
-        step = null
+        returnDue = false
+        commitment = null
+        sortieFailedAt = Long.MIN_VALUE
+        sortieAttempts = 0
         coverFailed = false
         escapeFailed = false
         sheltered = false
@@ -132,7 +167,7 @@ internal class ArmourState {
     }
 
     private companion object {
-        const val OBSERVE_TICKS = 10L
+        const val MAX_RETRY_MULTIPLIER = 4
         const val RECENT_TICKS = 40L
         const val RETRY_TICKS = 200L
     }
@@ -154,8 +189,10 @@ internal class NativeArmour(private val unit: ArmourUnit, npc: NpcEntity, privat
         started = npc.tickCount
         lastShot = npc.lastShotTick
         if (unit.step == ArmourStep.SORTIE) {
+            if (state.cover == null && state.hidden(npc, npc.position())) state.cover = npc.blockPosition()
             state.sortieLauncher = unit.launcher
             state.sortie = null
+            if (state.commitment == null) state.commitment = ArmourCommitment(unit.contact, unit.cycle)
         }
         restoreClaims()
         return tick(now)
@@ -192,7 +229,10 @@ internal class NativeArmour(private val unit: ArmourUnit, npc: NpcEntity, privat
 
     private fun sortie(now: Long): ActionUpdate {
         target?.let { return walking.walk(it, now, requireHidden = !unit.launcher) }
-        val enemy = targetEnemy() ?: return done(now)
+        val enemy = targetEnemy() ?: run {
+            state.sortieFailed(now)
+            return done(now)
+        }
         if (unit.launcher) {
             npc.target = enemy.first
             AntiArmourKit.wield(npc, launcher = true)
@@ -202,7 +242,14 @@ internal class NativeArmour(private val unit: ArmourUnit, npc: NpcEntity, privat
             ArmourResponse.lateralOrBack(origin.point(), state.source.point(), point.point()) && (unit.launcher || state.hidden(npc, point))
         }.also { peek = it }
         val found = search.find(npc, npc.level() as ServerLevel, enemy.second, enemy.first)
-        if (found == null) return if (search.exhausted) done(now) else ActionUpdate.Running
+        if (found == null) {
+            return if (search.exhausted) {
+                state.sortieFailed(now)
+                done(now)
+            } else {
+                ActionUpdate.Running
+            }
+        }
         state.sortie = found
         target = found.point
         npc.navigation.moveTo(found.path, 1.0)
@@ -226,6 +273,7 @@ internal class NativeArmour(private val unit: ArmourUnit, npc: NpcEntity, privat
 
     private fun fire(now: Long): ActionUpdate {
         npc.navigation.stop()
+        if (state.sortie == null || !AntiArmourKit.loaded(npc)) return done(now)
         if (!unit.launcher && !state.hidden(npc, npc.position())) {
             claim.take(NpcActivity.COVER)
             claim.drop(NpcActivity.PEEK)
@@ -250,7 +298,10 @@ internal class NativeArmour(private val unit: ArmourUnit, npc: NpcEntity, privat
                 state.sheltered = false
             }
 
-            ArmourStep.SORTIE -> state.sortie = null
+            ArmourStep.SORTIE -> {
+                state.sortie = null
+                state.sortieFailed(now)
+            }
 
             else -> Unit
         }
@@ -260,7 +311,7 @@ internal class NativeArmour(private val unit: ArmourUnit, npc: NpcEntity, privat
     private fun done(now: Long): ActionUpdate {
         npc.navigation.stop()
         completed = true
-        state.complete(unit.step)
+        state.complete(unit.step, unit.cycle)
         return finish.now("armour_${unit.step.name.lowercase()}", now)
     }
 
@@ -401,3 +452,5 @@ internal fun TacticalContact.knownArmourTo(npc: NpcEntity, level: ServerLevel, n
     val live = level.getEntity(id) as? LivingEntity ?: return false
     return live.isAlive && npc.isEnemy(live) && VehicleTargeting.isGroundArmour(live)
 }
+
+private fun sourceMoved(observed: Vec3, anchor: Vec3) = observed.subtract(anchor).horizontalDistanceSqr() > FireSector.GRID * FireSector.GRID

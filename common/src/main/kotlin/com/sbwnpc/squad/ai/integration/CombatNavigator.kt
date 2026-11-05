@@ -19,6 +19,8 @@ import net.minecraft.world.phys.Vec3
  * A* is not paid twice for the same spot.
  */
 class CombatNavigator {
+    /** The current plan constrains destinations and every path node with the same predicate. */
+    var permits: (Vec3) -> Boolean = { true }
     private val retry = CombatPathRetry()
     private var selected: Path? = null
 
@@ -41,12 +43,13 @@ class CombatNavigator {
     /** Whether standing at [point] keeps the enemy clearance from [target] and the squad's safe distance. */
     fun safePosition(entity: NpcEntity, target: LivingEntity, point: Vec3): Boolean {
         val view = entity.currentSquad()?.tactics?.snapshot
-        return CombatPositionSafety.permits(entity.position(), point, target.position(), CombatPositionSafety.clearance(entity.npcClass)) &&
+        return permits(point) && CombatPositionSafety.permits(entity.position(), point, target.position(), CombatPositionSafety.clearance(entity.npcClass)) &&
             (view == null || TacticalPositions.safeDistance(entity, view, point))
     }
 
     /** Whether walking [path] keeps the enemy clearance from [target] all the way. */
     fun safePath(entity: NpcEntity, target: LivingEntity, path: Path): Boolean {
+        if ((1 until path.nodeCount).any { !permits(path.getNodePos(it).let { p -> Vec3.atBottomCenterOf(p) }) }) return false
         val view = entity.currentSquad()?.tactics?.snapshot
         if (view != null && !TacticalPositions.safePath(entity, view, path)) return false
         return CombatPositionSafety.permitsPath(entity.position(), path, listOf(target.position()), CombatPositionSafety.clearance(entity.npcClass))

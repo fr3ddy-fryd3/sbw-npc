@@ -199,7 +199,7 @@ internal class NativeCoverMove(private val move: CoverMove, npc: NpcEntity, priv
         target?.let { return walk(it, now) }
         if ((npc.navigation as? VehicleAwareNavigation)?.canPlan == false) return ActionUpdate.Running
         // Already hidden where he stands: no walk, and the dwell starts here.
-        if (!move.fallBack && CoverSearch.usable(npc, level, from, npc.blockPosition())) return arrived(npc.blockPosition(), now)
+        if (!move.fallBack && CoverSearch.usable(npc, level, from, npc.blockPosition()) && armourSafe(npc.position())) return arrived(npc.blockPosition(), now)
         return search(level, from, now)
     }
 
@@ -208,13 +208,14 @@ internal class NativeCoverMove(private val move: CoverMove, npc: NpcEntity, priv
         val found = if (move.fallBack) {
             CoverMechanics.fallbackAwayFrom(npc, from, failed)
         } else {
-            (TickBudget.attempt(npc, TickBudget.Work.COVER) { CoverSearch.find(npc, level, from, failed) } ?: return ActionUpdate.Running).value
+            (TickBudget.attempt(npc, TickBudget.Work.COVER) { CoverSearch.find(npc, level, from, failed, CoverSearch.Filter(sheltered = { armourSafe(it) })) } ?: return ActionUpdate.Running).value
         }
         if (found == null || failed.size >= MAX_UNREACHABLE) return fail(now, if (found == null) "no_cover" else "cover_unreachable")
         if (!TacticalBudget.path(npc)) return ActionUpdate.Running
         val point = Vec3.atBottomCenterOf(found)
         val path = TacticalPositions.pathToPosition(npc, point)
-        if ((!move.fallBack && !CoverSearch.usable(npc, level, from, found)) || !TacticalPositions.reaches(path, point)) {
+        val unsafeCover = !move.fallBack && !CoverSearch.usable(npc, level, from, found)
+        if (!armourSafe(point) || unsafeCover || !TacticalPositions.reaches(path, point)) {
             DebugFlags.log(LogGroup.DIG, "{} cover point {} rejected: path end {} canReach={}", npc.uuid, found, path?.endNode, path?.canReach())
             failed += found
             return ActionUpdate.Running
@@ -226,8 +227,10 @@ internal class NativeCoverMove(private val move: CoverMove, npc: NpcEntity, priv
         return ActionUpdate.Running
     }
 
+    private fun armourSafe(point: Vec3) = move.armour == null || NativeTactics.armourSheltered(npc, point)
+
     private fun walk(to: BlockPos, now: Long): ActionUpdate {
-        if (CoverState.on(npc, to)) return arrived(to, now)
+        if (CoverState.on(npc, to) && armourSafe(npc.position())) return arrived(to, now)
         if (!npc.navigation.isDone || (npc.navigation as? VehicleAwareNavigation)?.canPlan == false) return ActionUpdate.Running
         // The path ends a block short of a target that close; the last step is walked directly.
         if (npc.position().closerThan(to.center, CoverState.ARRIVAL + 1.0) && stepping++ < STEP_TICKS) {
@@ -280,7 +283,7 @@ internal class NativeCoverCycle(private val cycle: CoverCycle, npc: NpcEntity, p
     private var until = 0
     private var peekAt: Vec3? = null
     private var blind = false
-    private val points = PeekPoints(npc)
+    private val points = PeekPoints(npc, cycle.armour)
 
     override fun start(now: Long): ActionUpdate {
         claim.take(NpcActivity.COVER)
@@ -403,7 +406,7 @@ internal class NativeCoverCycle(private val cycle: CoverCycle, npc: NpcEntity, p
 }
 
 /** Where a peek from cover goes: a search spread over ticks ([CoverPeekSearch]) and what it aims at. */
-private class PeekPoints(private val npc: NpcEntity) {
+private class PeekPoints(private val npc: NpcEntity, private val armour: com.sbwnpc.squad.ai.tactics.ArmourContact?) {
     private var search: CoverPeekSearch? = null
 
     /** A search is under way and has more points to try. */
@@ -420,7 +423,7 @@ private class PeekPoints(private val npc: NpcEntity) {
     }
 
     fun find(level: ServerLevel, cover: BlockPos, aim: Vec3, target: LivingEntity?, blind: Boolean): CoverPeekSearch.Result? {
-        val current = search?.takeIf { it.matches(cover, aim, target, blind) } ?: CoverPeekSearch(cover, aim, target?.uuid, blind).also { search = it }
+        val current = search?.takeIf { it.matches(cover, aim, target, blind) } ?: CoverPeekSearch(cover, aim, target?.uuid, blind, permitted = { armour == null || NativeTactics.armourSheltered(npc, it) }).also { search = it }
         val result = current.find(npc, level, aim, target)
         if (result != null || current.exhausted) search = null
         return result
