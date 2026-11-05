@@ -117,13 +117,7 @@ internal class ArmourState {
     private fun valid(npc: NpcEntity, target: LivingEntity) = target.isAlive && npc.isEnemy(target) && VehicleTargeting.isGroundArmour(target)
 
     /** The source hull cannot hide its gun; other hulls are physical shelter like terrain. */
-    fun hidden(npc: NpcEntity, feet: Vec3): Boolean {
-        val level = npc.level() as ServerLevel
-        val target = feet.add(0.0, npc.eyeHeight.toDouble(), 0.0)
-        val sourceEntity = contact?.let { level.getEntity(it.id) }
-        val hulls = Sightline.vehicleHulls(level, net.minecraft.world.phys.AABB(eye, target).inflate(2.0), npc, sourceEntity)
-        return Sightline.crosses(hulls, eye, target) || !DetectionSightline.visible(level, eye, target, npc)
-    }
+    fun hidden(npc: NpcEntity, feet: Vec3): Boolean = armourShelter(npc, eye, contact?.id, feet)
 
     fun failed(now: Long, escape: Boolean) {
         if (escape) escapeFailed = true else coverFailed = true
@@ -316,6 +310,7 @@ internal class NativeArmour(private val unit: ArmourUnit, npc: NpcEntity, privat
     }
 
     override fun release(paused: Boolean) {
+        if (state.commitment?.contact == unit.contact && (unit.step == ArmourStep.SORTIE || unit.step == ArmourStep.FIRE)) state.returnDue = true
         npc.navigation.stop()
         if (state.runningOwner === this) {
             state.running = null
@@ -454,3 +449,11 @@ internal fun TacticalContact.knownArmourTo(npc: NpcEntity, level: ServerLevel, n
 }
 
 private fun sourceMoved(observed: Vec3, anchor: Vec3) = observed.subtract(anchor).horizontalDistanceSqr() > FireSector.GRID * FireSector.GRID
+
+/** Shared physical shelter geometry for response, ordinary posts and launch columns. */
+internal fun armourShelter(npc: NpcEntity, source: Vec3, sourceId: java.util.UUID?, feet: Vec3): Boolean {
+    val level = npc.level() as ServerLevel
+    val target = feet.add(0.0, npc.eyeHeight.toDouble(), 0.0)
+    val hulls = Sightline.vehicleHulls(level, net.minecraft.world.phys.AABB(source, target).inflate(2.0), npc, sourceId?.let(level::getEntity))
+    return Sightline.crosses(hulls, source, target) || !DetectionSightline.visible(level, source, target, npc)
+}
