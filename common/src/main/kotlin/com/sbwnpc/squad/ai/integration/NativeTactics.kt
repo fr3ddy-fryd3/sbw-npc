@@ -875,7 +875,7 @@ object NativeTactics {
             val state = armour[npc.uuid]
             if (state?.commitment != null && !state.hidden(npc, feet)) return false
             val contacts = npc.squadId?.let(::combatView)?.contacts.orEmpty()
-            return contacts.none { level.gameTime - it.seenAt < ArmourResponse.MEMORY_TICKS && it.knownArmourTo(npc, level, level.gameTime) && DetectionSightline.visible(level, it.eye, feet.add(0.0, npc.eyeHeight.toDouble(), 0.0), npc) }
+            return contacts.none { it.knownArmourTo(npc, level, level.gameTime) && DetectionSightline.visible(level, it.eye, feet.add(0.0, npc.eyeHeight.toDouble(), 0.0), npc) }
         }
 
         private fun coverOf(npc: NpcEntity) = cover.getOrPut(npc.uuid, ::CoverState)

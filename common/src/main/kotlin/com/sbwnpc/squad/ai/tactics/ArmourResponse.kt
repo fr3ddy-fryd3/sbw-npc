@@ -39,6 +39,12 @@ object ArmourResponse {
     val TASK = TaskKey("npc.answer_armour", PositionIntent::class.java)
     val ACTION = ActionKey("npc.armour_unit", ArmourUnit::class.java)
     private val UNIT = TaskKey("npc.armour_unit", ArmourUnit::class.java)
+
+    /**
+     * How long the response keeps its own source after the last clean line, so an accepted outing
+     * still knows what it is out against. This is not a second perception window: shared contacts
+     * expire on the squad's own 200-tick knowledge, and only the active response reads this record.
+     */
     const val MEMORY_TICKS = 400L
 
     /** A flying drone and an existing foxhole keep their contracts; otherwise armour takes precedence. */
