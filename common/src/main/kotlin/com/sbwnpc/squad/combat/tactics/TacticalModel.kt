@@ -75,6 +75,14 @@ data class TacticalSnapshot(
     val regrouping: Boolean? = null,
     val suppressionWithdrawal: Boolean = false,
     val hasPatrolRoute: Boolean = false,
+    /**
+     * A member has a live enemy the squad sees as his target and can reach it with the ammunition
+     * in his hand, within
+     * [TacticalSnapshotCollector.CLOSE_CONTACT_RANGE]. Unlike [contacts], it leaves out what others
+     * only reported: a retreat that bounded on reported targets went back two hundred blocks twelve
+     * at a time (#253).
+     */
+    val closeContact: Boolean = false,
 ) {
     val visible get() = contacts.filter { now - it.seenAt < 40 }
     val fighting get() = members.filter { it.ready && it.health >= 0.3 && (!offensive || it.primaryAmmo) }

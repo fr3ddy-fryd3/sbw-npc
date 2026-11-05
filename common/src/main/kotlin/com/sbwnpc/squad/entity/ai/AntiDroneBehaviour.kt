@@ -81,7 +81,7 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean =
         startCheck.check(entity) {
-            eligible(entity) && alarm(entity, level)?.let { it.seen || !isShooter(entity) || entity.tickCount >= searchAgainTick } == true
+            eligible(entity) && MandatoryRules.may(MandatoryRule.ANTI_DRONE, entity) && alarm(entity, level)?.let { it.seen || !isShooter(entity) || entity.tickCount >= searchAgainTick } == true
         }
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean {
@@ -208,6 +208,8 @@ class AntiDroneBehaviour : ExtendedBehaviour<NpcEntity>() {
 
     override fun tick(entity: NpcEntity) {
         val level = entity.level() as? ServerLevel ?: return
+        // A live grenade outranks a drone (#257): he runs from it, and takes the drone up again after.
+        if (!MandatoryRules.may(MandatoryRule.ANTI_DRONE, entity)) return
         val alarm = alarm(entity, level) ?: return
         val drone = alarm.drone
         val dist = entity.distanceTo(drone).toDouble()

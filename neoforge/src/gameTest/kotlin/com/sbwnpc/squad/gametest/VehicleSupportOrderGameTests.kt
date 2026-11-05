@@ -92,4 +92,38 @@ object VehicleSupportOrderGameTests {
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1200, batch = "support-move")
     fun freeVehicleGunnerYieldsToMoveWithoutResumingSupport(helper: GameTestHelper) = supportYieldsToOrder(helper, SquadOrder.MOVE)
+
+    /** A squad standing on its MOVE point in a fight mans the gun beside it (in-game 03.11 and 04.11). */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 600, batch = "support-at-move-point")
+    fun squadOnItsMovePointMansTheGunBesideIt(helper: GameTestHelper) = manTheGun(helper, "at-move-point")
+
+    private fun manTheGun(helper: GameTestHelper, name: String) {
+        val scene = CombatIdleGameTests.Scene(helper, "support-$name")
+        val manager = SquadManager.get(helper.level)
+        val man = scene.spawn(Vec3(20.5, 1.0, 20.5))
+        // A lookout on a pillar, out of the gun's reach so the gun is the man's.
+        for (y in 1..4) helper.setBlock(BlockPos(18, y, 62), net.minecraft.world.level.block.Blocks.STONE)
+        val lookout = scene.spawn(Vec3(18.5, 5.0, 62.5))
+        val gun = park(helper, Vec3(20.5, 1.0, 24.5))
+        val enemy = scene.enemy(Vec3(60.5, 1.0, 20.5)).apply {
+            isNoAi = true
+            getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH)!!.baseValue = 50000.0
+            health = maxHealth
+        }
+        val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(man.uuid, lookout.uuid))
+        manager.issueOrderAt(helper.level, squad.id, SquadOrder.MOVE, man.blockPosition())
+        manager.setFocus(squad.id, enemy.uuid)
+        scene.onClose = {
+            manager.deleteSquad(helper.level, squad.id)
+            gun.discard()
+            enemy.discard()
+        }
+        helper.onEachTick {
+            if (man.vehicle === gun) {
+                scene.result("PASS", "tick=${helper.tick}")
+                helper.succeed()
+            }
+        }
+    }
 }

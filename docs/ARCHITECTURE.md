@@ -168,7 +168,7 @@ comments above the task lists in `NpcEntity`.
 - **Fire control**: `FriendlyFireGuard` (models the firing cone, not a zero-width ray),
   `FireAllocation` (spreads fire across several enemies), `FiringSpots`, `CombatPosition`,
   `VehicleTargeting`, `TankWeaponSelection`, `GrenadeThrower` and `GrenadeHazard`.
-- **Squad tactics**: `SquadFormation`, `Withdrawal` (bounding overwatch on Retreat), suppression.
+- **Squad tactics**: `SquadFormation`, `RetreatSmoke` (the smoke screen on Retreat; the bounds are the squad plan's `BOUND_OVERWATCH`), suppression.
 - **Budgets**: `TickBudget` caps the expensive terrain raycasts per server tick, because a whole
   squad tends to search for cover or firing spots on the same tick.
 
@@ -180,7 +180,7 @@ Ground squads in a fight are planned by an HTN controller, not by the behaviours
   runtime, utility scoring); `ai/coordination` holds joint operations and the hand-over of
   subtasks; `ai/tactics` holds the domain: `TacticalDomain`, attack phases (`AttackPhase`,
   `AttackProgress`), members' duties (`OperationTactics`), the front (`OperationFront`) and the
-  operation's losses (`OperationLosses`). All of it is pure and unit-tested.
+  attack's combat strength (`CombatStrength`). All of it is pure and unit-tested.
 - `common/.../ai/integration/NativeTactics` gathers squad snapshots, runs the planning agents of
   each operation, squad, team and NPC, and hands every NPC a `PositionIntent`;
   `NativePositionAction` carries one out with the services in `combat/tactics`.

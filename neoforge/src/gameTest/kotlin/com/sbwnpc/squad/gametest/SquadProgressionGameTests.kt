@@ -109,7 +109,7 @@ object SquadProgressionGameTests {
             }
             val npc = restored!!
             helper.assertTrue(npc.squadId == destination.id && npc.name.string == identity && npc.npcRank == sleeping.npcRank, "Late load restored the removed squad or lost identity")
-            helper.assertTrue(abs(npc.experience - xp - 10.0) < 1e-6 && Ports.guns.roundsLeft(npc.mainHandItem) == rounds, "Late load lost XP or reset ammunition")
+            helper.assertTrue(abs(npc.experience - xp - 10.0 * com.sbwnpc.squad.config.SquadConfig.experienceMultiplier(npc.npcClass)) < 1e-6 && Ports.guns.roundsLeft(npc.mainHandItem) == rounds, "Late load lost XP or reset ammunition")
             listOf(moved, npc, receiver).forEach { it.isNoAi = false }
         }
         helper.onEachTick {

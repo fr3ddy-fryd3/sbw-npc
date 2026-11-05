@@ -34,8 +34,8 @@ class OperationTacticsTest {
         assertEquals(movers.toSet(), roles.assault.keys)
         roles.assault.values.forEach {
             assertTrue(hypot(it.x - defender.x, it.z - defender.z) >= OperationTactics.ASSAULT_STANDOFF - 1.0E-6, "slot $it is beside the defender")
-            // Still near enough the point to count as occupying it.
-            assertTrue(hypot(it.x - objective.x, it.z - objective.z) <= 24.0, "slot $it is off the point")
+            // Still at the point the attack is for.
+            assertTrue(AttackPhase.OBJECTIVE_RADIUS >= hypot(it.x - objective.x, it.z - objective.z), "slot $it is off the point")
         }
     }
 
@@ -76,6 +76,20 @@ class OperationTacticsTest {
         assertEquals(setOf(id(1)), roles.assault.keys)
     }
 
+    @Test fun `a covered closing rush waits for the cover, an uncovered one goes from cover to cover, the cover holds`() {
+        val intents = (1..3).map { PositionIntent(AgentId(AgentLevel.NPC, id(it)), CombatDuty.MOVE, Point3(40.0, 64.0, 100.0 + it), Point3(20.0, 64.0, 100.0), objective) }
+        val mission = SquadMission(AgentId(AgentLevel.SQUAD, id(100)), listOf(TeamMission(AgentId(AgentLevel.TEAM, id(101)), intents)))
+        val post = ClosingPost(Point3(70.0, 64.0, 100.0), objective)
+        val roles = AttackRoles(closing = mapOf(id(1) to post, id(2) to post), covers = mapOf(id(1) to setOf(id(3))), holding = setOf(id(3)))
+        val (covered, alone, holder) = OperationTactics.apply(mission, roles).teams.single().members
+        assertEquals(setOf(id(3)), covered.coveredBy)
+        assertFalse(covered.requireCover)
+        assertTrue(alone.coveredBy.isEmpty())
+        assertTrue(alone.requireCover)
+        assertEquals(CombatDuty.FIRE, holder.duty)
+        assertEquals(holder.origin, holder.anchor)
+    }
+
     @Test fun `the rear guard joins an assault`() {
         val rear = PositionIntent(AgentId(AgentLevel.NPC, id(1)), CombatDuty.REAR_GUARD, Point3(40.0, 64.0, 100.0), Point3(20.0, 64.0, 100.0), objective)
         val mission = SquadMission(AgentId(AgentLevel.SQUAD, id(100)), listOf(TeamMission(AgentId(AgentLevel.TEAM, id(101)), listOf(rear))))
@@ -108,7 +122,7 @@ class OperationTacticsTest {
         // A clearing man fires at the enemy from a post short of him, never from the enemy's spot.
         assertEquals(CombatDuty.FIRE, applied[1].duty)
         assertEquals(target, applied[1].focus)
-        assertTrue(kotlin.math.hypot(applied[1].anchor.x - target.x, applied[1].anchor.z - target.z) >= OperationTactics.CLOSE_DISTANCE)
+        assertTrue(kotlin.math.hypot(applied[1].anchor.x - target.x, applied[1].anchor.z - target.z) >= OperationTactics.ASSAULT_STANDOFF)
         assertTrue(applied[1].assault)
         assertEquals(intent(3), applied[2])
         assertSame(mission, OperationTactics.apply(mission, AttackRoles.NONE))

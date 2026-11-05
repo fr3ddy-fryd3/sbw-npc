@@ -259,7 +259,7 @@ object FactionLogisticsGameTests {
             if (group.members.size == 32) {
                 helper.assertTrue(helper.tick - firstReplacement >= interval - 1, "Second casualty skipped its interval")
                 helper.assertTrue(group.members.containsAll(survivors) && group.members.none { it in dead }, "Replacement resurrected the dead or lost survivors")
-                helper.assertTrue(veteran!!.experience == 37.0, "Deploy or replacement reset veteran experience")
+                helper.assertTrue(veteran!!.experience == 37.0 * SquadConfig.experienceMultiplier(veteran!!.npcClass), "Deploy or replacement reset veteran experience")
                 val recruits = group.members.filter { it !in survivors }.map { helper.level.getEntity(it) as NpcEntity }
                 helper.assertTrue(recruits.map { it.npcClass }.toSet() == setOf(NpcClass.SHOTGUNNER, NpcClass.RIFLEMAN), "Casualty replacements lost the shotgunner's roster slot")
                 helper.assertTrue(recruits.all { it.spawnFaction == SquadFaction.COW && it.experience == 0.0 && it.npcRank == NpcRank.RECRUIT }, "Automatic replacements changed faction or inherited the dead's XP")

@@ -23,11 +23,8 @@ class BlindReturnFireBehaviour : ExtendedBehaviour<NpcEntity>() {
     }
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
     private fun eligible(entity: NpcEntity): Boolean {
-        if (entity.busyWithRole() || entity.vehicle != null ||
-            entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.HEAL, NpcActivity.RESUPPLY)
-        ) {
-            return false
-        }
+        if (entity.busyWithRole() || entity.vehicle != null || entity.holds(NpcActivity.COVER)) return false
+        if (!MandatoryRules.may(MandatoryRule.BLIND_RETURN_FIRE, entity)) return false
         val now = entity.level().gameTime
         val target = entity.target
         if (target?.let(com.sbwnpc.squad.combat.VehicleTargeting::isGroundArmour) == true) return false
@@ -70,7 +67,6 @@ class BlindReturnFireBehaviour : ExtendedBehaviour<NpcEntity>() {
             if (incoming) com.sbwnpc.squad.combat.IncomingFire.laneEnd(entity.eyePosition, aim) else aim,
             entity,
             hulls,
-            spread,
         )
         val allyBlocked = !FriendlyFireGuard.hasClearLineOfFire(entity, aim, spread)
         if (terrainBlocked || allyBlocked) {

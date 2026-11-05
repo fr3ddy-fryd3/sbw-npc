@@ -2,6 +2,7 @@ package com.sbwnpc.squad.gametest
 
 import com.atsuishio.superbwarfare.entity.projectile.ProjectileEntity
 import com.atsuishio.superbwarfare.init.ModDamageTypes
+import com.sbwnpc.squad.ai.tactics.UnverifiedContacts
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.SquadManager
@@ -217,7 +218,9 @@ object AllyDeathGameTests {
             val reports = Files.createDirectories(Path.of(System.getProperty("sbwnpc.gameTestReports")))
             Files.writeString(reports.resolve("ally-death-$name.txt"), lines.joinToString("\n") + "\n")
             helper.assertTrue(allies.all { it.wary() }, "An ally stopped being wary within 10 seconds")
-            helper.assertTrue(allies.all { it.target != null || it.position().distanceTo(start.getValue(it)) < 4.0 }, "A wary ally with nothing to fight wandered off")
+            // A named killer's direction may send the squad's pair of scouts to look; nobody else goes.
+            val moved = allies.count { it.target == null && it.position().distanceTo(start.getValue(it)) >= 4.0 }
+            helper.assertTrue(moved <= if (killer) UnverifiedContacts.SCOUTS else 0, "A wary ally with nothing to fight wandered off: $moved moved")
             manager.deleteSquad(helper.level, squad.id)
             (men + shooter).forEach { it.discard() }
             helper.succeed()

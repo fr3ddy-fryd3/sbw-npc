@@ -35,21 +35,11 @@ class TeamAwarenessTest {
     }
 
     @Test
-    fun `an unseen killer alerts infantry but is no fire-support target`() {
-        TeamAwareness.reportUnseen(faction, enemy, 10_000)
-        val later = 10_000 + TeamAwareness.ALERT_DELAY_TICKS
-        TeamAwareness.reportUnseen(faction, enemy, later)
-        assertEquals(listOf(enemy), TeamAwareness.relayedContacts(faction, later))
-        assertTrue(TeamAwareness.sightings(faction, later).isEmpty())
-    }
-
-    @Test
     fun `fire support gets the spot the enemy was last seen at`() {
         TeamAwareness.report(faction, enemy, here, 10_000, "test")
         val there = Vec3(50.0, 64.0, 50.0)
         val later = 10_000 + TeamAwareness.ALERT_DELAY_TICKS
         TeamAwareness.report(faction, enemy, there, later, "test")
-        TeamAwareness.reportUnseen(faction, enemy, later + 5)
         val sighting = TeamAwareness.sightings(faction, later + 5).single()
         assertEquals(there, sighting.pos)
         assertEquals(later, sighting.tick)

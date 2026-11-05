@@ -37,10 +37,16 @@ internal class NativePositionAction(
     private val task = TacticalTask(
         when (intent.duty) {
             CombatDuty.FIRE -> if (AntiArmourKit.loaded(npc) && snapshot()?.contacts.orEmpty().any { it.armoured }) TacticalJob.ANTI_ARMOUR else TacticalJob.COVER
+
             CombatDuty.MOVE -> TacticalJob.ADVANCE
+
             CombatDuty.SEARCH -> TacticalJob.SEARCH
-            CombatDuty.REAR_GUARD -> TacticalJob.RESERVE
+
+            // Neither keeps him firing at the front: a post kept back, with no lane required.
+            CombatDuty.REAR_GUARD, CombatDuty.TAKE_COVER -> TacticalJob.RESERVE
+
             CombatDuty.OBSERVE -> if (intent.minimumHeight != null) TacticalJob.OVERWATCH else TacticalJob.OBSERVE
+
             CombatDuty.FOLLOW_ORDER -> TacticalJob.WAIT
         },
         DryGround.near(npc.level() as ServerLevel, intent.anchor.native(), npc.position()),

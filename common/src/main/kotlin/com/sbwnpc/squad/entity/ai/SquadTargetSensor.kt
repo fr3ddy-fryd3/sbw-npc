@@ -184,8 +184,11 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
             val orderedTarget = squadFocusTarget(mob, level)
             if (orderedTarget != null) return orderedTarget
         }
+        // Who hit him is known only up close. Farther, the hit turns him towards the fire and he has
+        // to spot the shooter: taken at once, a man hit at 60–120 blocks had the shooter's exact
+        // place within a second (in-game 03.11).
         val attacker = mob.lastHurtByMob
-        val hostileAttacker = attacker?.takeIf { it.isAlive && SquadTeams.isHostile(mob, it) }
+        val hostileAttacker = attacker?.takeIf { it.isAlive && SquadTeams.isHostile(mob, it) && mob.distanceToSqr(it) <= CLOSE_RETALIATION * CLOSE_RETALIATION }
         val assignment = SquadTactics.task(mob)
         if (assignment?.job == TacticalJob.RESERVE) {
             if (hostileAttacker != null && mob.incomingFire.pending(level.gameTime) && FiringOpportunity.assess(mob, hostileAttacker) == TacticalTargetSelection.Opportunity.SHOOTABLE) return hostileAttacker
@@ -380,6 +383,9 @@ class SquadTargetSensor : ExtendedSensor<NpcEntity>() {
     companion object {
         /** A mount or an airframe turns all round; the man in it looks as if half-way to the edge of a cone. */
         private const val GUNNER_OFF_AXIS = 0.5
+
+        /** How near the man who hit him has to be for a man to know him without spotting him. */
+        private const val CLOSE_RETALIATION = 8.0
 
         private const val SCAN_RATE_MIN = 15
         private const val SCAN_RATE_JITTER = 11 // 15..25 ticks, mean 20 — same average as before

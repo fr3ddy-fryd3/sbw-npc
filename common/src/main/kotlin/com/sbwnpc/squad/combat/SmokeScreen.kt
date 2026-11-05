@@ -7,12 +7,14 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.util.Mth
 import net.minecraft.world.level.levelgen.Heightmap
 import net.minecraft.world.phys.Vec3
+import kotlin.math.abs
+import kotlin.math.hypot
 
 /**
  * The smoke a squad throws between itself and the enemy as it starts to fall back.
  *
  * A quarter of the squad throws, rounded down but at least one man. The throwers are given by
- * [Withdrawal]: the half that is holding while the other bounds, so the runners are screened by
+ * [RetreatSmoke]: the half that is holding while the other bounds, so the runners are screened by
  * men who stay to cover them, or anyone left when nobody holds. The grenades go down side by side
  * across the line to the enemy, in front of the thrower nearest it, so they make one wide screen
  * and not one small cloud (#115). A man whose throw is not possible (a wall, a squadmate in
@@ -69,32 +71,52 @@ object SmokeScreen {
     }
 
     /**
-     * Throws up to [count] grenades of the screen from [holding] towards [enemy], each point by the
-     * nearest man who can make it; how many went.
+     * One grenade's place on a screen: [far] on the screen's line, and [near] the same place at half
+     * the distance, tried when no arc reaches the far one. On a hillside the far one was often below
+     * a drop that no arc from up the slope came down on.
      */
-    fun throwFrom(level: ServerLevel, holding: List<NpcEntity>, enemy: Vec3, count: Int): Int {
+    data class Spot(val far: Vec3, val near: Vec3)
+
+    /**
+     * The places of [count] more grenades of a screen towards [enemy], laid in front of the man of
+     * [holding] nearest it; empty when none of them can throw or the enemy gives no direction. From
+     * the middle of a squad strung out over fifty blocks the screen fell where nobody could throw
+     * that far. A place within a cloud's width of a grenade [thrown] earlier is passed over for the
+     * next one along the line: laid round whoever throws next, the screen put a late grenade where an
+     * early one already smoked, while places kept from the first laying were left behind by the
+     * men falling back.
+     */
+    fun lay(level: ServerLevel, holding: List<NpcEntity>, enemy: Vec3, count: Int, thrown: List<Vec3>): List<Spot> {
+        val centre = throwers(holding).minByOrNull { it.position().distanceToSqr(enemy) }?.position() ?: return emptyList()
+        val line = count + 2 * thrown.size
+        val far = screenPoints(centre, enemy, line).map { onGround(level, it) }
+        val near = screenPoints(centre, enemy, line, SCREEN_DISTANCE / 2).map { onGround(level, it) }
+        val middle = (line - 1) / 2.0
+        return far.zip(near, ::Spot).withIndex()
+            .filter { (_, spot) -> thrown.none { flat(it, spot.far) < SCREEN_SPACING } }
+            .sortedBy { (index, _) -> abs(index - middle) }
+            .take(count)
+            .map { it.value }
+    }
+
+    private fun flat(a: Vec3, b: Vec3) = hypot(a.x - b.x, a.z - b.z)
+
+    /** Throws a grenade at each of [spots] that one of [holding] can make, a man each; the points thrown at. */
+    fun throwAt(level: ServerLevel, holding: List<NpcEntity>, spots: List<Spot>): List<Vec3> {
         val free = throwers(holding).toMutableList()
-        if (free.isEmpty()) return 0
-        // In front of the man nearest the enemy: from the middle of a squad strung out over fifty
-        // blocks the screen fell where nobody could throw that far.
-        val centre = free.minBy { it.position().distanceToSqr(enemy) }.position()
-        var thrown = 0
-        // Each grenade's own place on the screen, and the same place nearer in: on a hillside the
-        // far one was often below a drop that no arc from up the slope came down on.
-        val far = screenPoints(centre, enemy, count).map { onGround(level, it) }
-        val near = screenPoints(centre, enemy, count, SCREEN_DISTANCE / 2).map { onGround(level, it) }
-        for ((farPoint, nearPoint) in far.zip(near)) {
-            val choice = listOf(farPoint, nearPoint).firstNotNullOfOrNull { point -> throwerFor(level, free, point)?.let { point to it } }
+        val thrown = mutableListOf<Vec3>()
+        for (spot in spots) {
+            val choice = listOf(spot.far, spot.near).firstNotNullOfOrNull { point -> throwerFor(level, free, point)?.let { point to it } }
             if (choice == null) {
-                DebugFlags.log(LogGroup.RETREAT, "no throw for smoke at {}: {} men free, nearest {} blocks off", farPoint, free.size, free.minOfOrNull { it.position().distanceTo(farPoint) }?.toInt())
+                DebugFlags.log(LogGroup.RETREAT, "no throw for smoke at {}: {} men free, nearest {} blocks off", spot.far, free.size, free.minOfOrNull { it.position().distanceTo(spot.far) }?.toInt())
                 continue
             }
             val (point, thrower) = choice
             Ports.grenades.throwSmoke(thrower, level, point)
             thrower.smokeLeft--
             free -= thrower
-            thrown++
-            DebugFlags.log(LogGroup.RETREAT, "{} threw smoke at {} towards {} from {}", thrower.uuid, point, enemy, thrower.position())
+            thrown += point
+            DebugFlags.log(LogGroup.RETREAT, "{} threw smoke at {} from {}", thrower.uuid, point, thrower.position())
         }
         return thrown
     }

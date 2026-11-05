@@ -23,7 +23,10 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
  * Empty NPCs go to a known friendly Supply, even far away. Without Supply they seek nearby
  * cover or make a bounded withdrawal; a relayed target cannot make them flee indefinitely.
  */
-class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
+class OutOfAmmoBehaviour :
+    ExtendedBehaviour<NpcEntity>(),
+    MandatoryRuleOwner {
+    override val rule = MandatoryRule.OUT_OF_AMMO
 
     init {
         noTimeout()
@@ -47,7 +50,7 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
         return !gun.hasAmmo()
     }
 
-    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = empty(entity)
+    override fun checkExtraStartConditions(level: ServerLevel, entity: NpcEntity): Boolean = empty(entity) && MandatoryRules.may(MandatoryRule.OUT_OF_AMMO, entity)
 
     override fun shouldKeepRunning(entity: NpcEntity): Boolean = empty(entity)
 
@@ -62,16 +65,17 @@ class OutOfAmmoBehaviour : ExtendedBehaviour<NpcEntity>() {
     override fun tick(entity: NpcEntity) {
         val target = entity.target ?: return
         beginEpisode(entity)
-        if (entity.holdsAny(NpcActivity.COVER, NpcActivity.EVADE, NpcActivity.PEEK, NpcActivity.HEAL)) return
+        // A rule above his (#257) or his cover has him for now; his run goes on after.
+        if (entity.holdsAny(NpcActivity.COVER, NpcActivity.PEEK) || !MandatoryRules.may(MandatoryRule.OUT_OF_AMMO, entity)) return
         // A fully empty NPC can return to a known Supply even outside the ordinary search radius.
+        // Ordered back with nothing to fire, he has no cover to give his squad's bounds: he runs
+        // straight to his place at the rally point (owner, #253). The claim keeps his feet from
+        // his plan, which would otherwise count him into a bounding half.
         entity.retreatPoint()?.let { rally ->
-            entity.release(NpcActivity.RESUPPLY, this)
-            val squad = entity.currentSquad()!!
-            val point = com.sbwnpc.squad.combat.Withdrawal.positionFor(entity, squad, rally)
-            trace(entity, "ordered_retreat", point ?: entity.position())
-            if (point == null) {
-                entity.navigation.stop()
-            } else if (entity.tickCount >= nextStepTick || entity.navigation.isDone) {
+            entity.claim(NpcActivity.RESUPPLY, this)
+            val point = com.sbwnpc.squad.combat.SquadAreas.rallySlot(entity, rally)
+            trace(entity, "ordered_retreat", point)
+            if (entity.tickCount >= nextStepTick || entity.navigation.isDone) {
                 nextStepTick = entity.tickCount + REPATH_TICKS
                 entity.navigateTo(point, SPEED)
                 ownedPath = entity.navigation.path

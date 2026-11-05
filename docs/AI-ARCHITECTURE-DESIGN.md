@@ -23,7 +23,7 @@ entity, economy, army spawning and territorial policy are not implemented here.
 | [Commander AI](#commander-ai-army-resources-and-territory) | **Not implemented** (#12). |
 | [Teams for subtasks](#teams-for-subtasks) | **Implemented** (`TaskTeamAllocator`, up to six by default, keeping teams through changes of strength). A team chooses by utility whether its movers rush together or in pairs (`TeamRushes`). |
 | [Completing an area ATTACK](#proposal-completing-an-area-attack) | **Implemented** (`AreaControlClock`: occupation, inspection and 600 safe ticks, i.e. 30 s), plus attack phases deploy/assault/clear (`AttackPhase`). |
-| [Risk and withdrawal](#proposal-risk-and-withdrawal) | **Implemented with other thresholds**: the operation reviews its plan at 30% losses and withdraws at 60% (`OperationLosses`); a squad's own strategy withdraws at 40% under fire without a way to carry on (`SquadStrategy`). Squads with a barracks fighting on instead of withdrawing: not implemented yet (#57). |
+| [Risk and withdrawal](#proposal-risk-and-withdrawal) | **Implemented with other thresholds**: the operation reviews its plan at 30% of its strength lost and withdraws at 60%, counting the dry with the dead and measured from the strength the attack started with; a remnant sent in fights on (`CombatStrength`, #238); a squad's own strategy withdraws at 40% under fire without a way to carry on (`SquadStrategy`). Squads with a barracks fighting on instead of withdrawing: not implemented yet (#57). |
 | [Choosing strategies and plans](#proposal-choosing-strategies-and-plans) | **Partly**: the HTN core and utility scoring exist; utility is used for the squad's strategy only, not for the operation or the Commander ([UTILITY-DESIGN.md](UTILITY-DESIGN.md)). |
 | [Performance](#performance-150-visible-600-active) | **Partly measured**: a 600-NPC movement scene measures server cost; client FPS with 150 in view is not measured (#11). |
 
@@ -280,7 +280,10 @@ A late reinforcement is "on its way" with a conditional link to the operation. I
 approach and local reactions and gets the information it is allowed, but it does not count as an
 arrived member and gives no cover by assignment alone. On reaching a safe entry area near the goal
 and confirming it can fight, it joins; it need not walk straight into the enemy's point. The entry
-area is an explicit operation parameter and is checked physically.
+area is an explicit operation parameter and is checked physically. An attack's area is a ring of
+80 blocks round its objective, entered from any side: a reinforcement from the far side encircles
+the enemy. On its way it makes for a point 48 blocks short of the objective on its own line, never
+the objective itself. A held point (defence, patrol) is joined at the point.
 
 Adding a member opens new capacity and roles while keeping untouched tasks. Changing its order
 removes the link. A completed or cancelled operation does not accept members: a late order gets its

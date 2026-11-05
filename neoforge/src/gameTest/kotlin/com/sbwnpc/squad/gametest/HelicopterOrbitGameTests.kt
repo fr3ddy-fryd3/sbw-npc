@@ -44,6 +44,65 @@ import kotlin.math.atan2
 
 @PrefixGameTestTemplate(false)
 object HelicopterOrbitGameTests {
+    /**
+     * A transport's free seats are held for its pilot's squad (#255): a rifleman of another squad
+     * on an attack does not board a grounded transport whose every free seat a man of the pilot's
+     * squad, standing off it within 60 blocks, still has to come for. With one seat more than they
+     * need ([spare]) that seat is open to him, and he boards.
+     */
+    private fun heldSeats(helper: GameTestHelper, name: String, spare: Boolean) {
+        StructureUtils.removeBarriers(helper.bounds, helper.level)
+        for (x in 0..191) for (z in 0..191) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+        val manager = SquadManager.get(helper.level)
+        val heli = Ports.vehicles.create(helper.level, HelicopterModel.AH_6)!!
+        val pad = helper.absoluteVec(Vec3(28.5, 1.0, 100.5))
+        heli.moveTo(pad.x, pad.y, pad.z, -90f, 0f)
+        helper.level.addFreshEntity(heli)
+        Ports.vehicles.fuelAndArm(heli, HelicopterModel.AH_6)
+        SquadTeams.assign(heli, SquadFaction.PIG)
+        val pilot = AttackDeploymentGameTests.spawn(helper, Vec3(28.5, 1.0, 102.5), SquadFaction.PIG, role = NpcClass.HELICOPTER_PILOT).also { it.assignedVehicleId = heli.uuid }
+        helper.assertTrue(pilot.startRiding(heli, true) && Ports.vehicles.seatOf(heli, pilot) == 0, "The pilot did not take his seat")
+        val free = Ports.vehicles.seatCount(heli) - 1
+        val waiting = (0 until (free - if (spare) 1 else 0)).map { AttackDeploymentGameTests.spawn(helper, Vec3(28.5 + it * 2, 1.0, 140.5), SquadFaction.PIG) }
+        val own = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, (listOf(pilot) + waiting).map { it.uuid })
+        manager.issueOrderAt(helper.level, own.id, SquadOrder.DEFEND, waiting.firstOrNull()?.blockPosition() ?: pilot.blockPosition())
+        val stranger = AttackDeploymentGameTests.spawn(helper, Vec3(24.5, 1.0, 100.5), SquadFaction.PIG)
+        val other = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(stranger.uuid))
+        manager.setOrder(other.id, SquadOrder.ATTACK)
+        manager.setObjective(helper.level, other.id, helper.absolutePos(BlockPos(170, 1, 100)))
+        val report = Path.of(System.getProperty("sbwnpc.gameTestReports"), "$name.txt")
+        Files.createDirectories(report.parent)
+        AmmunitionTacticsGameTests.cleanup(helper) {
+            manager.deleteSquad(helper.level, own.id)
+            manager.deleteSquad(helper.level, other.id)
+            (listOf(pilot, stranger) + waiting).forEach { it.discard() }
+            heli.discard()
+        }
+        helper.onEachTick {
+            val now = helper.tick
+            if (now % 50L == 0L) Files.writeString(report, "tick=$now free=$free waiting=${waiting.size} aboard=${stranger.vehicle === heli} at=${helper.relativeVec(stranger.position())}\n")
+            if (spare && stranger.vehicle === heli) {
+                Files.writeString(report, "result=PASS tick=$now boarded the open seat\n")
+                helper.succeed()
+            }
+            if (!spare) {
+                helper.assertTrue(stranger.vehicle !== heli, "A man of another squad took a seat held for the pilot's squad")
+                if (now >= HELD_CHECK_TICK) {
+                    Files.writeString(report, "result=PASS tick=$now\n")
+                    helper.succeed()
+                }
+            }
+        }
+    }
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 700, batch = "heli-seat-hold")
+    fun anotherSquadsManLeavesTransportSeatsHeldForThePilotsSquad(helper: GameTestHelper) = heldSeats(helper, "heli-seat-hold", spare = false)
+
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 700, batch = "heli-seat-hold-spare")
+    fun anotherSquadsManTakesATransportSeatBeyondWhatThePilotsSquadNeeds(helper: GameTestHelper) = heldSeats(helper, "heli-seat-hold-spare", spare = true)
+
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 1800, batch = "transport-empty-attack")
     fun transportCompletesEmptyAttackWithMoveAndLanding(helper: GameTestHelper) = emptyAttack(helper, HelicopterModel.AH_6)
@@ -738,4 +797,7 @@ object HelicopterOrbitGameTests {
         while (v < -PI) v += 2 * PI
         return v
     }
+
+    /** Long enough for a man wanting a lift beside a grounded transport to have boarded it (the open-seat scene does well within it). */
+    private const val HELD_CHECK_TICK = 600L
 }

@@ -46,7 +46,7 @@ internal class CoverPeekSearch(private val cover: BlockPos, private val aim: Vec
                 }
                 val eye = candidate.add(0.0, entity.eyeHeight.toDouble(), 0.0)
                 val lane = if (blind) IncomingFire.laneEnd(eye, aim) else aim
-                if (Sightline.blockedBy(level, eye, lane, entity, hulls, spread) ||
+                if (Sightline.blockedBy(level, eye, lane, entity, hulls) ||
                     !FriendlyFireGuard.assess(entity, aim, spread, aim, 0.0, eye).lineClear
                 ) {
                     cursor++

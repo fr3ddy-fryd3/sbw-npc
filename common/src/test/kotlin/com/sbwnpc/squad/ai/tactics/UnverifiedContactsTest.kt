@@ -29,22 +29,33 @@ class UnverifiedContactsTest {
         assertNull(UnverifiedContacts.scoutTarget(point, listOf(far)))
     }
 
+    @Test fun `an enemy seen comes before a noise heard, and a noise before the attack's objective`() {
+        val anchor = Point3(0.0, 64.0, 0.0)
+        val enemy = Point3(10.0, 64.0, 0.0)
+        val noise = Point3(30.0, 64.0, 0.0)
+        val attack = Point3(50.0, 64.0, 0.0)
+        assertEquals(enemy, UnverifiedContacts.inspectTarget(busy = false, { anchor }, listOf(enemy), noise, attack))
+        assertEquals(noise, UnverifiedContacts.inspectTarget(busy = false, { anchor }, emptyList(), noise, attack))
+        assertEquals(attack, UnverifiedContacts.inspectTarget(busy = false, { anchor }, emptyList(), null, attack))
+        assertNull(UnverifiedContacts.inspectTarget(busy = true, { anchor }, emptyList(), noise, attack))
+    }
+
     @Test fun `nothing is inspected in a fight or on a reinforcement's march`() {
         val anchor = Point3(0.0, 64.0, 0.0)
         val remembered = listOf(Point3(10.0, 64.0, 0.0))
         val attack = Point3(50.0, 64.0, 0.0)
         val unasked = { error("the anchor is not needed in a fight or on the march") }
-        assertNull(UnverifiedContacts.inspectTarget(inContact = true, marching = false, unasked, remembered, attack))
-        assertNull(UnverifiedContacts.inspectTarget(inContact = false, marching = true, unasked, remembered, attack))
-        assertEquals(remembered.first(), UnverifiedContacts.inspectTarget(inContact = false, marching = false, { anchor }, remembered, attack))
+        assertNull(UnverifiedContacts.inspectTarget(busy = true, unasked, remembered, null, attack))
+        assertNull(UnverifiedContacts.inspectTarget(busy = true, unasked, remembered, null, attack))
+        assertEquals(remembered.first(), UnverifiedContacts.inspectTarget(busy = false, { anchor }, remembered, null, attack))
     }
 
     @Test fun `with no remembered position in reach the scouts check the attacked objective`() {
         val anchor = Point3(0.0, 64.0, 0.0)
         val far = listOf(Point3(100.0, 64.0, 0.0))
         val attack = Point3(50.0, 64.0, 0.0)
-        assertEquals(attack, UnverifiedContacts.inspectTarget(inContact = false, marching = false, { anchor }, far, attack))
-        assertNull(UnverifiedContacts.inspectTarget(inContact = false, marching = false, { anchor }, far, null))
+        assertEquals(attack, UnverifiedContacts.inspectTarget(busy = false, { anchor }, far, null, attack))
+        assertNull(UnverifiedContacts.inspectTarget(busy = false, { anchor }, far, null, null))
     }
 
     @Test fun `remembered positions are measured from the area, then the order's objective, then the men`() {

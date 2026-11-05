@@ -31,8 +31,10 @@ import net.tslat.smartbrainlib.api.core.behaviour.ExtendedBehaviour
  *    otherwise wander around home in an area sized for the squad.
  *  - ATTACK: advance on home at a run. Taking the point turns the squad to DEFEND —
  *    [com.sbwnpc.squad.squad.OrderArrival].
- *  - RETREAT: fall back to the point, bounding under fire ([com.sbwnpc.squad.combat.Withdrawal]).
- *  - MOVE: walk calmly to the objective and hold the assigned infantry-grid slot.
+ *  - RETREAT: run to his place at the point. A man his squad's plan moves gets there by its
+ *    tasks instead, by bounds under fire (#253); this is the run for the rest.
+ *  - MOVE: run to the objective, walking the last [MOVE_WALK_DISTANCE] blocks, and hold the
+ *    assigned infantry-grid slot.
  *
  * Destination points go through [SquadFormation.slotTarget] instead of the bare anchor — every
  * member walking toward the literal same coordinate was what actually caused the pileup/"snake"
@@ -67,7 +69,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
     private var defendPostHome: Vec3? = null
 
     // No memory gate needed — eligibility is purely squad/order/target state, same as the old goal's
-    // canUse(). Unlike GunAttackBehaviour/SeekCoverBehaviour/InvestigateBehaviour, nothing here is
+    // canUse(). Unlike GunAttackBehaviour/SeekCoverBehaviour, nothing here is
     // driven by a SmartBrainLib memory.
     override fun getMemoryRequirements(): List<Pair<MemoryModuleType<*>, MemoryStatus>> = emptyList()
 
@@ -78,11 +80,6 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         // errand. A dug-in mob in particular would otherwise be marched off toward its DEFEND/PATROL
         // slot, right out of its own hole, as soon as its target died or broke LOS for a moment.
         if (!entity.mayFor(NpcActivity.ORDER, Cap.FEET)) return false
-        // During a distant FOLLOW_ORDER, GunAttack already yields movement to this executor.
-        // A heard battle must not disable it too and strand the squad at its first path's end.
-        if (entity.isAlert() && !SquadTransit.marching(entity)) {
-            if (entity.retreatPoint() == null && !com.sbwnpc.squad.combat.tactics.SquadTactics.hasTask(entity)) return false
-        }
         // homeCenter() is null outside a squad too.
         return entity.homeCenter() != null
     }
@@ -184,17 +181,7 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
 
             SquadOrder.FOLLOW -> tickFollow(entity, squad, home)
 
-            // Nobody in sight: just get there at a run. Under fire GunAttackBehaviour takes over
-            // and makes it a fighting withdrawal.
-            SquadOrder.RETREAT -> {
-                // A squadmate is in a fight: this one's half may be the one holding to cover it.
-                val bound = com.sbwnpc.squad.combat.Withdrawal.positionFor(entity, squad, home)
-                if (bound == null) {
-                    entity.navigation.stop()
-                } else {
-                    moveToSlot(entity, bound, RUN_SPEED_MODIFIER)
-                }
-            }
+            SquadOrder.RETREAT -> moveToSlot(entity, com.sbwnpc.squad.combat.SquadAreas.rallySlot(entity, home), RUN_SPEED_MODIFIER)
         }
     }
 
@@ -261,7 +248,9 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         }
 
         val slot = SquadFormation.moveSlotTarget(entity, home, heading)
-        moveToSlot(entity, slot)
+        // A march runs and only the last stretch is walked (owner, 2.11): walked the whole way, a
+        // move took so long it was of no use.
+        moveToSlot(entity, slot, if (entity.position().distanceTo(slot) > MOVE_WALK_DISTANCE) RUN_SPEED_MODIFIER else WALK_SPEED_MODIFIER)
     }
 
     /** [fallIn]: this is the squad forming up, and a member still far from its place runs to it.
@@ -477,8 +466,12 @@ class SquadOrderBehaviour : ExtendedBehaviour<NpcEntity>() {
         private const val DEFEND_RUN_DISTANCE = 80.0
         private const val MOVE_RALLY_TIMEOUT_TICKS = 100L
 
-        // Navigation modifiers multiply each role's MOVEMENT_SPEED. MOVE/PATROL and nearby
-        // defenders walk; ATTACK/RETREAT and defenders beyond DEFEND_RUN_DISTANCE run at combat pace.
+        /** A marching man this near his slot at the objective walks the rest. */
+        private const val MOVE_WALK_DISTANCE = 16.0
+
+        // Navigation modifiers multiply each role's MOVEMENT_SPEED. PATROL, nearby defenders and
+        // the end of a MOVE walk; ATTACK/RETREAT, a MOVE's march and defenders beyond
+        // DEFEND_RUN_DISTANCE run at combat pace.
         // internal (not private) — NpcEntity.registerGoals() reuses this for vanilla idle wandering.
         internal const val WALK_SPEED_MODIFIER = 0.6
         private const val RUN_SPEED_MODIFIER = 1.0
