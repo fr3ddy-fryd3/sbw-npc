@@ -416,72 +416,48 @@ object FactionLogisticsGameTests {
 
     private fun deployedNear(helper: GameTestHelper, x: Double): List<NpcEntity> = helper.level.getEntitiesOfClass(NpcEntity::class.java, AABB(helper.absoluteVec(Vec3(x, 1.0, 64.5)), helper.absoluteVec(Vec3(x, 1.0, 64.5))).inflate(3.0, 3.0, 8.0))
 
-    /** Plain right-click on air or a far block deploys at the spot looked at, up to 64 blocks away (#208). */
+    /**
+     * Deploying with the squad tool (#208). The column that marks the spot shows for the tool in
+     * Recruit mode, and not while sneaking, in Command mode or with nothing in hand. Sneaking opens
+     * the config instead of deploying, and ground past 64 blocks is out of range. Plain right-click
+     * deploys at the spot looked at 40 blocks away, beyond arm's reach; and with a wall in the way,
+     * in front of the wall, not on the ground behind it.
+     */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 40, batch = "deploy-reach")
     fun rightClickDeploysAtTheSpotLookedAtBeyondArmsReach(helper: GameTestHelper) {
         val player = deployer(helper, "deploy-far", 40.0)
-        cleanup(helper) { deployedNear(helper, 43.5).forEach { it.discard() } }
-        helper.runAtTickTime(5) {
-            player.mainHandItem.use(helper.level, player, InteractionHand.MAIN_HAND)
-            val deployed = deployedNear(helper, 43.5)
-            helper.assertTrue(deployed.size == 1, "Right-click at ground 40 blocks away deployed ${deployed.size} men near the spot")
-            deployed.forEach { it.discard() }
-            helper.succeed()
-        }
-    }
-
-    /** Sneaking opens the config instead, and ground past 64 blocks is out of range (#208). */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 40, batch = "deploy-reach")
-    fun sneakingOrAimingBeyond64BlocksDeploysNothing(helper: GameTestHelper) {
-        val player = deployer(helper, "deploy-none", 40.0)
-        cleanup(helper) { deployedNear(helper, 43.5).forEach { it.discard() } }
-        helper.runAtTickTime(5) {
-            player.isShiftKeyDown = true
-            player.mainHandItem.use(helper.level, player, InteractionHand.MAIN_HAND)
-            helper.assertTrue(deployedNear(helper, 43.5).isEmpty(), "Sneak + right-click deployed instead of opening the config")
-            player.isShiftKeyDown = false
-            player.xRot = Math.toDegrees(Math.atan2(player.eyeHeight.toDouble(), 90.0)).toFloat()
-            player.mainHandItem.use(helper.level, player, InteractionHand.MAIN_HAND)
-            helper.assertTrue(deployedNear(helper, 93.5).isEmpty(), "Ground 90 blocks away is out of the 64-block range")
-            helper.succeed()
-        }
-    }
-
-    /** The line of sight is required: a wall in the way takes the squad, not the ground behind it (#208). */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 40, batch = "deploy-reach")
-    fun deploymentStopsAtACoverInTheLineOfSight(helper: GameTestHelper) {
-        val player = deployer(helper, "deploy-wall", 40.0)
-        for (z in 56 until 72) for (y in 1..6) helper.setBlock(BlockPos(25, y, z), Blocks.STONE)
-        cleanup(helper) {
-            deployedNear(helper, 43.5).forEach { it.discard() }
-            deployedNear(helper, 24.5).forEach { it.discard() }
-        }
-        helper.runAtTickTime(5) {
-            player.mainHandItem.use(helper.level, player, InteractionHand.MAIN_HAND)
-            helper.assertTrue(deployedNear(helper, 43.5).isEmpty(), "He was deployed behind the wall")
-            helper.assertTrue(deployedNear(helper, 24.5).size == 1, "He was not deployed in front of the wall")
-            deployedNear(helper, 24.5).forEach { it.discard() }
-            helper.succeed()
-        }
-    }
-
-    /** The column that marks the deploy spot shows for the tool in Recruit mode, and not while sneaking or in Command mode (#208). */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 40, batch = "deploy-reach")
-    fun deployPreviewShowsOnlyForTheToolInRecruitMode(helper: GameTestHelper) {
-        val player = deployer(helper, "deploy-preview", 40.0)
+        val lookingAt40 = player.xRot
+        cleanup(helper) { listOf(43.5, 24.5).forEach { x -> deployedNear(helper, x).forEach { it.discard() } } }
         helper.runAtTickTime(5) {
             helper.assertTrue(DeployPreview.shows(player), "No preview for the tool in Recruit mode")
             player.isShiftKeyDown = true
             helper.assertTrue(!DeployPreview.shows(player), "Preview shown while sneaking, which opens the config instead")
+            player.mainHandItem.use(helper.level, player, InteractionHand.MAIN_HAND)
+            helper.assertTrue(deployedNear(helper, 43.5).isEmpty(), "Sneak + right-click deployed instead of opening the config")
             player.isShiftKeyDown = false
             StackData.update(player.mainHandItem) { it.putInt(SquadToolItem.KEY_MODE, SquadToolItem.MODE_COMMAND) }
             helper.assertTrue(!DeployPreview.shows(player), "Preview shown in Command mode")
+            val tool = player.mainHandItem
             player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY)
             helper.assertTrue(!DeployPreview.shows(player), "Preview shown with nothing in hand")
+            player.setItemInHand(InteractionHand.MAIN_HAND, tool)
+            StackData.update(tool) { it.putInt(SquadToolItem.KEY_MODE, SquadToolItem.MODE_RECRUIT) }
+
+            player.xRot = Math.toDegrees(Math.atan2(player.eyeHeight.toDouble(), 90.0)).toFloat()
+            player.mainHandItem.use(helper.level, player, InteractionHand.MAIN_HAND)
+            helper.assertTrue(deployedNear(helper, 93.5).isEmpty(), "Ground 90 blocks away is out of the 64-block range")
+
+            player.xRot = lookingAt40
+            player.mainHandItem.use(helper.level, player, InteractionHand.MAIN_HAND)
+            val deployed = deployedNear(helper, 43.5)
+            helper.assertTrue(deployed.size == 1, "Right-click at ground 40 blocks away deployed ${deployed.size} men near the spot")
+            deployed.forEach { it.discard() }
+
+            for (z in 56 until 72) for (y in 1..6) helper.setBlock(BlockPos(25, y, z), Blocks.STONE)
+            player.mainHandItem.use(helper.level, player, InteractionHand.MAIN_HAND)
+            helper.assertTrue(deployedNear(helper, 43.5).isEmpty(), "He was deployed behind the wall")
+            helper.assertTrue(deployedNear(helper, 24.5).size == 1, "He was not deployed in front of the wall")
             helper.succeed()
         }
     }
