@@ -112,18 +112,21 @@ object PlannedEngageGameTests {
 
     /**
      * A DEFEND order mid-engage replans him: the engage he had under MOVE gives way to his defence,
-     * and he stays inside his defend area round the objective instead of closing on the enemy.
+     * and he stays inside his defend area round the objective instead of closing on the enemy,
+     * still firing at him from there.
      */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 500, batch = "planned-engage-replaced")
     fun defendOrderKeepsHimInsideHisArea(helper: GameTestHelper) {
         val contact = Contact(helper, "planned-engage-replaced", 90.0)
         var home: Vec3? = null
+        var orderedAt = 0
         helper.onEachTick {
             contact.tick()
             if (helper.tick == 200L) {
                 helper.assertTrue(contact.chose("engage"), "His plan never engaged: ${contact.choices()}")
                 home = contact.man.position()
+                orderedAt = contact.man.tickCount
                 contact.manager.setOrder(contact.squad.id, SquadOrder.DEFEND)
                 contact.manager.setObjective(helper.level, contact.squad.id, contact.man.blockPosition())
             }
@@ -131,6 +134,7 @@ object PlannedEngageGameTests {
             val radius = CombatPosition.defendRadius(contact.man.npcClass, contact.squad.members.size)
             helper.assertTrue(contact.man.position().distanceTo(at) <= radius + LEASH_SLACK, "He left his defend area: ${"%.1f".format(contact.man.position().distanceTo(at))} > $radius")
             if (helper.tick >= 400L) {
+                helper.assertTrue(contact.man.lastShotTick > orderedAt, "He stopped fighting once told to defend")
                 contact.scene.result("PASS", "choices=${contact.choices()}")
                 helper.succeed()
             }
@@ -214,8 +218,9 @@ object PlannedEngageGameTests {
     }
 
     /**
-     * An LAV parked across his line of fire: his plan looks for a spot clear of it, and looks
-     * again at most once per rest while the hull stays, not every tick he walks.
+     * An LAV parked across his line of fire: his plan looks for a spot clear of it, fires again
+     * from there, and looks again at most once per rest while the hull stays, not every tick he
+     * walks.
      */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "planned-engage-hull")
@@ -223,6 +228,8 @@ object PlannedEngageGameTests {
         val contact = Contact(helper, "planned-engage-hull", 15.0)
         var parkedAt: Long? = null
         var parkedGameTime = 0L
+        var parkedOwnTick = 0
+        var searched: Int? = null
         var lav: Entity? = null
         contact.scene.onClose.let { close ->
             contact.scene.onClose = {
@@ -240,12 +247,17 @@ object PlannedEngageGameTests {
                 }
                 parkedAt = helper.tick
                 parkedGameTime = helper.level.gameTime
+                parkedOwnTick = contact.man.tickCount
             }
             val since = parkedAt ?: return@onEachTick
-            if (helper.tick - since >= HULL_TICKS) {
+            if (helper.tick - since == HULL_TICKS) {
                 val searches = DecisionTrace.decisionsOf(contact.man.uuid).count { it.event == "plan" && it.tick >= parkedGameTime && "*research_spot" in it.detail }
                 helper.assertTrue(searches in 1..MAX_SEARCHES, "He searched $searches times in $HULL_TICKS ticks behind a hull")
-                contact.scene.result("PASS", "searches=$searches")
+                searched = searches
+            }
+            // The scene times out if he never finds a clear lane and fires from it.
+            if (searched != null && contact.man.lastShotTick > parkedOwnTick) {
+                contact.scene.result("PASS", "searches=$searched firedAfter=${helper.tick - since}")
                 helper.succeed()
             }
         }
