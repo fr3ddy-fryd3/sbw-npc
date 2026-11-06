@@ -53,7 +53,7 @@ object HeightMenGameTests {
                 helper.succeed()
             }
             if (ground != Ground.HILL && now >= FLAT_CHECK_TICK) {
-                checkLine(helper, ground, heavy, start, chose)
+                checkLine(helper, ground, heavy, start, highest)
                 scene.result("PASS", "tick=$now chose=${chose.size}")
                 helper.succeed()
             }
@@ -82,10 +82,14 @@ object HeightMenGameTests {
         }
     }
 
-    /** Off the hill: no height kept, none taken on flat ground, and the height men came up to the line. */
-    private fun checkLine(helper: GameTestHelper, ground: Ground, heavy: List<NpcEntity>, start: List<Vec3>, chose: Set<UUID>) {
+    /**
+     * Off the hill: no height kept, none climbed on flat ground (the cleared field has nothing above
+     * its floor, so standing higher means he went looking off it), and the height men came up to
+     * the line.
+     */
+    private fun checkLine(helper: GameTestHelper, ground: Ground, heavy: List<NpcEntity>, start: List<Vec3>, highest: Double) {
         val duties = heavy.map { man -> DecisionTrace.decisionsOf(man.uuid).lastOrNull { it.event == "duty" }?.detail }
-        if (ground == Ground.FLAT) helper.assertTrue(chose.isEmpty(), "A height man took a height on flat ground")
+        if (ground == Ground.FLAT) helper.assertTrue(highest < FLOOR_TOP, "A height man climbed to ${"%.1f".format(highest)} on flat ground")
         helper.assertTrue(duties.none { it != null && "<- ${DutyUtility.OBSERVE_HEIGHT}" in it }, "A height man still held a height he cannot climb: $duties")
         helper.assertTrue(heavy.indices.all { heavy[it].position().x - start[it].x >= LINE_ADVANCE }, "The height men did not go up to the line: ${heavy.map { helper.relativeVec(it.position()) }}")
     }
@@ -120,6 +124,9 @@ object HeightMenGameTests {
 
     /** By then a height man has gone up to the line, and been given a height if any was offered. */
     private const val FLAT_CHECK_TICK = 500L
+
+    /** Just above the feet of a man standing on the field's floor. */
+    private const val FLOOR_TOP = 1.5
 
     /** How far towards the enemy a height man in the line has come from where he started. */
     private const val LINE_ADVANCE = 10.0

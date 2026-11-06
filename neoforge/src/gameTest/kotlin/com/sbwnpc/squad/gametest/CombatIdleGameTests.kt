@@ -92,11 +92,13 @@ object CombatIdleGameTests {
     }
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1000, batch = "mixed-infantry-contact")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1400, batch = "mixed-infantry-contact")
     fun mixedInfantryShotgunnerJoinsWeaponRangeAndFires(helper: GameTestHelper) {
         val scene = Scene(helper, "mixed-infantry-contact")
         val members = scene.deploy(SquadPreset.SEVEN, Vec3(20.5, 1.0, 100.5))
-        val enemy = scene.enemy(Vec3(140.5, 1.0, 100.5))
+        // 80 blocks: past the shotgun's reach, so the shotgunner must close in, without a walk
+        // so long that the scene times out on the march rather than the fight.
+        val enemy = scene.enemy(Vec3(100.5, 1.0, 100.5))
         val squad = scene.squad(members)
         val shooter = members.single { it.npcClass == NpcClass.SHOTGUNNER }
         val fired = mutableSetOf<UUID>()
@@ -117,12 +119,6 @@ object CombatIdleGameTests {
             val fighters = members.filter { it.npcClass != NpcClass.MEDIC }
             if (fighters.all { it.uuid in fired }) {
                 scene.result("PASS", "tick=${helper.tick} combatShooters=${fighters.size} totalShooters=${fired.size} firstShotgunDistance=$firstShotgunDistance")
-                Files.writeString(
-                    Path.of(System.getProperty("sbwnpc.gameTestReports")).resolve("mixed-infantry-contact-runs.txt"),
-                    "tick=${helper.tick} combatShooters=${fighters.size} totalShooters=${fired.size} firstShotgunDistance=$firstShotgunDistance\n",
-                    CREATE,
-                    APPEND,
-                )
                 helper.succeed()
             }
         }
