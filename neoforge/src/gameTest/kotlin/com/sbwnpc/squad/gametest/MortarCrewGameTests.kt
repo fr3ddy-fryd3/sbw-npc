@@ -232,12 +232,16 @@ object MortarCrewGameTests {
         }
     }
 
-    /** An enemy at arm's length: the operator fights him off through his engage, his crew duty set aside (#258). */
+    /**
+     * An enemy at arm's length: the operator fights him off through his engage, his crew duty set
+     * aside (#258), and really shoots him.
+     */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 600, batch = "mortar-self-defence")
     fun mortarmanDefendsHimselfAtArmsLength(helper: GameTestHelper) {
         val scene = scene(helper)
         var enemy: NpcEntity? = null
+        var engaged = false
         cleanup(helper) {
             scene.close()
             enemy?.discard()
@@ -251,8 +255,12 @@ object MortarCrewGameTests {
             val running = NativeTactics.reports(man).values.filter { it.status == ExecutionStatus.RUNNING }.map { it.ticket.identity }
             if (running.any(Engage::isUnit)) {
                 helper.assertTrue(running.none { it.startsWith("crew:") }, "His crew duty still runs beside his engage: $running")
-                helper.succeed()
+                engaged = true
             }
+            val foe = enemy!!
+            // He has to fight the man off, not hand him back to the tube once the engage starts.
+            val fought = man.lastShotTick >= 0 || foe.health < foe.maxHealth || !foe.isAlive
+            if (engaged && fought) helper.succeed()
         }
     }
 

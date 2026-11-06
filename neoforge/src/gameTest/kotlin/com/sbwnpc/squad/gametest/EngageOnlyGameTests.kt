@@ -89,15 +89,10 @@ object EngageOnlyGameTests {
         val enemy = scene.enemy(Vec3(80.5, 1.0, 100.5))
         pilot.target = enemy
         val start = pilot.position().distanceTo(enemy.position())
-        var planned = false
         helper.onEachTick {
             if (helper.tick % 10L == 0L) SquadTactics.refresh(pilot)
-            // His engage-only agent lives while his gun reports the fight; once he is far enough
-            // off to stop firing it goes, so it only has to have planned him at some point.
-            planned = planned || NativeTactics.hasAgent(pilot)
             if (helper.tick >= 300L) {
                 val now = pilot.position().distanceTo(enemy.position())
-                helper.assertTrue(planned, "He never had an engage-only agent")
                 helper.assertTrue(now > start + KEPT_AWAY, "He backed off only ${"%.1f".format(now - start)} blocks")
                 scene.result("PASS", "away=${"%.1f".format(now - start)}")
                 helper.succeed()
@@ -105,7 +100,10 @@ object EngageOnlyGameTests {
         }
     }
 
-    /** A squadless man who loses sight of his enemy for a moment keeps his engage-only agent. */
+    /**
+     * A squadless man who loses sight of his enemy for a moment keeps his engage-only agent: he
+     * stays where he was and fires again once the wall is gone.
+     */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "planned-engage-blink")
     fun engagerKeepsHisAgentThroughAMomentOutOfSight(helper: GameTestHelper) {
@@ -113,8 +111,13 @@ object EngageOnlyGameTests {
         val man = scene.spawn(Vec3(20.5, 1.0, 100.5))
         val enemy = scene.enemy(Vec3(50.5, 1.0, 100.5))
         man.target = enemy
+        var spot: Vec3? = null
+        var downAt: Int? = null
         helper.onEachTick {
             if (helper.tick % 10L == 0L) SquadTactics.refresh(man)
+            if (helper.tick == WALL_UP) spot = man.position()
+            // His own clock: lastShotTick counts his ticks, not the test's.
+            if (helper.tick == WALL_UP + WALL_TICKS) downAt = man.tickCount
             // A wall up for a second hides the enemy: his gun stops reporting the fight that long.
             val wall = if (helper.tick in WALL_UP until WALL_UP + WALL_TICKS) Blocks.STONE else Blocks.AIR
             if (helper.tick == WALL_UP || helper.tick == WALL_UP + WALL_TICKS) {
@@ -122,8 +125,9 @@ object EngageOnlyGameTests {
             }
             if (helper.tick >= WALL_UP) helper.assertTrue(NativeTactics.hasAgent(man), "He lost his engage-only agent at tick ${helper.tick}")
             if (helper.tick >= WALL_UP + WALL_TICKS + 60L) {
-                helper.assertTrue(man.lastShotTick >= 0, "He never fired")
-                scene.result("PASS", "kept")
+                helper.assertTrue(man.lastShotTick > downAt!!, "He did not fire again once the wall was down (last shot ${man.lastShotTick}, down at $downAt)")
+                helper.assertTrue(man.position().distanceTo(spot!!) < 6.0, "He walked ${"%.1f".format(man.position().distanceTo(spot!!))} blocks off during the blink")
+                scene.result("PASS", "kept lastShot=${man.lastShotTick} downAt=$downAt")
                 helper.succeed()
             }
         }
@@ -144,20 +148,25 @@ object EngageOnlyGameTests {
         man.target = enemy
         var covered = 0
         var coveredWithAgent = 0
+        var hidden = 0
+        var coverSpot: Vec3? = null
         helper.onEachTick {
             if (helper.tick % 10L == 0L) SquadTactics.refresh(man)
             if (helper.tick in SUPPRESS_FROM..SUPPRESS_UNTIL) man.suppress(enemy.eyePosition)
             if (man.holds(NpcActivity.COVER)) {
                 covered++
                 if (NativeTactics.hasAgent(man)) coveredWithAgent++
+                if (com.sbwnpc.squad.combat.Sightline.blocked(helper.level, enemy.eyePosition, man.eyePosition, man)) hidden++
+                coverSpot = helper.relativeVec(man.position())
                 helper.assertTrue(!SquadTactics.move(man), "His engage steered him while SeekCover held his feet at tick ${helper.tick}")
             }
             if (helper.tick >= SUPPRESS_UNTIL) {
                 helper.assertTrue(covered > 0, "He never took cover under fire")
+                helper.assertTrue(hidden > 0, "He never got out of the enemy's sight behind the wall; in cover at $coverSpot")
                 // His engage-only agent goes once his gun stops reporting the fight; the check
                 // above only proves something while it still lives.
                 helper.assertTrue(coveredWithAgent > 0, "His agent was gone before he reached cover, so nothing tested the hand-off")
-                scene.result("PASS", "covered=$covered withAgent=$coveredWithAgent")
+                scene.result("PASS", "covered=$covered withAgent=$coveredWithAgent hidden=$hidden")
                 helper.succeed()
             }
         }

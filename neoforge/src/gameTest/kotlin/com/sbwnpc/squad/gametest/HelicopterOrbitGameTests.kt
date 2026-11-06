@@ -584,16 +584,29 @@ object HelicopterOrbitGameTests {
         }
         scene.onClose = { second.discard() }
         var held = 0
+        val track = ArrayList<Vec3>()
         var laid: net.minecraft.world.entity.LivingEntity? = null
         helper.onEachTick {
             scene.tick()
             // His sight comes and goes as the aircraft turns: the man he last laid on is the target.
-            scene.crew[1].target?.let { laid = it }
+            scene.crew[1].target?.let {
+                // A new man laid on starts a new ring.
+                if (it !== laid) held = 0
+                laid = it
+            }
             val target = laid
             val ring = target?.let { scene.heli.position().subtract(it.position()).horizontalDistance() }
             held = if (scene.airborne && ring != null && ring in 12.0..30.0) held + 1 else 0
+            if (held == 0) track.clear() else track += scene.heli.position()
             if (held >= 100) {
-                scene.result("target=${target!!.uuid} ring=$ring pilotTarget=${scene.crew[0].target?.uuid}")
+                // The two men stand 25 apart, so a ring round the other one can pass for this one's:
+                // the middle of the flight must lie nearer the laid man.
+                val centre = track.reduce(Vec3::add).scale(1.0 / track.size)
+                val other = listOfNotNull(scene.enemy, second).first { it !== target }
+                val toLaid = centre.subtract(target!!.position()).horizontalDistance()
+                val toOther = centre.subtract(other.position()).horizontalDistance()
+                helper.assertTrue(toLaid < toOther, "The gunship circled the other man: centre ${"%.0f".format(toLaid)} from the laid one, ${"%.0f".format(toOther)} from the other")
+                scene.result("target=${target.uuid} ring=$ring centreToLaid=$toLaid centreToOther=$toOther")
                 helper.succeed()
             }
         }

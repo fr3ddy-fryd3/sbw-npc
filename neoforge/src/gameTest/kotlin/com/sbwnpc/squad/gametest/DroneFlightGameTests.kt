@@ -82,17 +82,23 @@ object DroneFlightGameTests {
         }
     }
 
-    /** A roof wider than the short search leaves drones untouched and releases the operator between tries. */
+    /**
+     * A roof wider than the short search leaves drones untouched and releases the operator between
+     * tries: he does look for open sky, and gives up without spending a drone.
+     */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "drone-launch-closed")
     fun operatorWithNoNearbyOpenSkyKeepsDronesAndReleasesMovement(helper: GameTestHelper) {
         val roof = RoofLaunchScene(helper, "drone-launch-closed", 20)
         var freeTicks = 0
+        var searched = false
         helper.onEachTick {
             roof.report()
             helper.assertTrue(roof.operator.dronesLeft == 10, "Searching without open sky consumed a drone")
+            searched = searched || roof.operator.holds(NpcActivity.DRONE)
             if (helper.tick >= 100 && !roof.operator.holds(NpcActivity.DRONE)) freeTicks++
             if (helper.tick >= 300) {
+                helper.assertTrue(searched, "He never looked for open sky, so nothing was released")
                 helper.assertTrue(freeTicks >= 50, "A failed launch search kept the operator's movement indefinitely")
                 roof.scene.result("PASS", "tick=${helper.tick} freeTicks=$freeTicks")
                 helper.succeed()
@@ -302,6 +308,7 @@ object DroneFlightGameTests {
         val strike = StrikeScene(helper, "drone-strike-next")
         val first = strike.scene.enemy(Vec3(150.5, 1.0, 100.5))
         var second: NpcEntity? = null
+        var lastSeen: Vec3? = null
         helper.onEachTick {
             val next = second
             if (next == null) {
@@ -316,9 +323,15 @@ object DroneFlightGameTests {
             }
             strike.report(next)
             val drone = strike.drone()
-            helper.assertTrue(drone != null || strike.operator.dronesLeft == 9, "The drone went home instead of taking the next target")
+            // Gone before it got there: it ended somewhere, and only near the second target is
+            // that the strike rather than a drone flown home, timed out or crashed on the way.
+            if (drone == null) {
+                val end = lastSeen?.distanceTo(next.position())
+                helper.assertTrue(end != null && end <= 20.0, "The drone ended ${end?.let { "%.0f".format(it) }} blocks from the next target, not on it")
+            }
+            lastSeen = drone?.position() ?: lastSeen
             if (drone == null || drone.position().distanceTo(next.position()) <= 20.0) {
-                strike.scene.result("PASS", "tick=${helper.tick} drone=${drone?.position()} left=${strike.operator.dronesLeft}")
+                strike.scene.result("PASS", "tick=${helper.tick} drone=${drone?.position()} last=$lastSeen left=${strike.operator.dronesLeft}")
                 helper.succeed()
             }
         }
