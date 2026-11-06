@@ -1,6 +1,7 @@
 package com.sbwnpc.squad.gametest
 
 import com.mojang.authlib.GameProfile
+import com.sbwnpc.squad.ai.diagnostics.DecisionTrace
 import com.sbwnpc.squad.combat.DebugFlags
 import com.sbwnpc.squad.combat.LogGroup
 import com.sbwnpc.squad.combat.OffscreenFire
@@ -250,7 +251,26 @@ object AttackDeploymentGameTests {
         }
     }
 
-    /** No return fire: isolate natural detection, attack deployment and weapon participation. */
+    /** The decision trace (#193) explains every man of the attacking squad, and the choices it made. */
+    private fun assertDecisionTrace(helper: GameTestHelper, squad: com.sbwnpc.squad.squad.Squad, men: Int) {
+        val file = java.nio.file.Path.of(System.getProperty("sbwnpc.gameTestReports"), "decision-trace", DecisionTrace.FILE)
+        val sections = com.sbwnpc.squad.ai.integration.NativeTactics.traceSections()
+        DecisionTrace.dump(file, helper.level.server.tickCount.toLong(), sections)
+        val section = sections.single { it.title.endsWith(squad.id.toString()) }
+        helper.assertTrue(section.header.first().startsWith("order=ATTACK"), "Header has no order: ${section.header}")
+        helper.assertTrue(section.members.size == men, "Not every man has a chain: ${section.members.size} of $men")
+        section.members.forEach { line ->
+            helper.assertTrue(!line.contains("duty=null") && !line.contains("<- null") && line.contains("action=["), "A chain misses its duty, rule or action: $line")
+        }
+        helper.assertTrue(section.decisions.any { it.event == "duty" }, "No duty decisions recorded")
+        helper.assertTrue(section.decisions.any { it.event == "plan" }, "No plan choice with its options recorded")
+        helper.assertTrue(java.nio.file.Files.readString(file).contains("== ${squad.name}"), "The dump file has no section for the squad")
+    }
+
+    /**
+     * No return fire: isolate natural detection, attack deployment and weapon participation. Midway,
+     * the decision trace must explain every man.
+     */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 900)
     fun attackDeploysAndFiresOnOpenGround(helper: GameTestHelper) {
@@ -311,6 +331,7 @@ object AttackDeploymentGameTests {
         helper.onEachTick {
             trace.sample()
         }
+        helper.runAtTickTime(400) { assertDecisionTrace(helper, squad, attackers.size) }
         helper.runAtTickTime(899) {
             try {
                 trace.finish()

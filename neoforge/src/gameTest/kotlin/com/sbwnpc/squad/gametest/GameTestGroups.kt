@@ -21,7 +21,6 @@ internal object GameTestGroups {
         ),
         "orders" to listOf(
             HtnTacticsGameTests::class.java,
-            DecisionTraceGameTests::class.java,
             SquadManoeuvreGameTests::class.java,
             SquadAreaGameTests::class.java,
             FollowOrderGameTests::class.java,
