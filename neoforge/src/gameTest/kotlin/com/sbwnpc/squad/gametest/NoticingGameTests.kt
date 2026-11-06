@@ -28,6 +28,13 @@ object NoticingGameTests {
     private const val DAY_TIME = 6000L
     private const val NIGHT_TIME = 18000L
 
+    /**
+     * How long a negative scene watches. The slowest notice the table allows for any of these
+     * enemies, were it in reach, is about seven seconds (100 blocks in the black band), so ten
+     * prove "never" as well as the old twenty-five did.
+     */
+    private const val NEVER_TICKS = 200L
+
     /** A veteran operator launches out to 133 blocks and sees 144 by day: an enemy 100 off is noticed in about a second and a half, and the drone goes up. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 500, batch = "notice-operator-day")
@@ -35,7 +42,7 @@ object NoticingGameTests {
 
     /** At night the dark reaches 51 blocks for him: the same enemy is never noticed, and no drone goes up on him. */
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 600, batch = "notice-operator-night")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 300, batch = "notice-operator-night")
     fun droneOperatorDoesNotLaunchAtAnEnemyTooFarForTheDark(helper: GameTestHelper) = operator(helper, "notice-operator-night", NIGHT_TIME, expectLaunch = false)
 
     private fun operator(helper: GameTestHelper, name: String, time: Long, expectLaunch: Boolean) {
@@ -66,8 +73,8 @@ object NoticingGameTests {
                 }
             } else {
                 helper.assertFalse(launched, "Launched at an enemy 100 blocks off in the dark at tick ${helper.tick}")
-                if (helper.tick >= 500) {
-                    scene.result("PASS", "no launch in 500 ticks")
+                if (helper.tick >= NEVER_TICKS) {
+                    scene.result("PASS", "no launch in $NEVER_TICKS ticks")
                     helper.succeed()
                 }
             }
@@ -80,7 +87,7 @@ object NoticingGameTests {
      * noticed in it.
      */
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 600, batch = "notice-rain-night")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 300, batch = "notice-rain-night")
     fun enemyJustInsideTheDarkRangeIsNotNoticedInRainAtNight(helper: GameTestHelper) {
         val scene = CombatIdleGameTests.Scene(helper, "notice-rain-night")
         val manager = SquadManager.get(helper.level)
@@ -105,7 +112,7 @@ object NoticingGameTests {
             val weather = com.sbwnpc.squad.combat.Noticing.weatherAt(helper.level, enemy.blockPosition())
             if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} weather=$weather target=${shooter.target?.uuid}")
             helper.assertFalse(shooter.target?.uuid == enemy.uuid, "Noticed an enemy 32 blocks off at night in $weather at tick ${helper.tick}")
-            if (helper.tick >= 500) {
+            if (helper.tick >= NEVER_TICKS) {
                 helper.assertTrue(weather != com.sbwnpc.squad.combat.SpottingTime.Weather.CLEAR, "The scene never had rain")
                 scene.result("PASS", "weather=$weather")
                 helper.succeed()
@@ -119,15 +126,15 @@ object NoticingGameTests {
      * and one 24 blocks off is.
      */
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 600, batch = "notice-crew-night-far")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 300, batch = "notice-crew-night-far")
     fun passengerDoesNotNoticeAnEnemyTooFarForTheDark(helper: GameTestHelper) = crew(helper, "notice-crew-night-far", gun = false, enemyDistance = 60.0, expectNoticed = false)
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 600, batch = "notice-gunner-night-far")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 300, batch = "notice-gunner-night-far")
     fun gunnerDoesNotNoticeAnEnemyTooFarForTheDark(helper: GameTestHelper) = crew(helper, "notice-gunner-night-far", gun = true, enemyDistance = 60.0, expectNoticed = false)
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 600, batch = "notice-crew-night-near")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 300, batch = "notice-crew-night-near")
     fun passengerNoticesAnEnemyInsideTheDarkRange(helper: GameTestHelper) = crew(helper, "notice-crew-night-near", gun = false, enemyDistance = 24.0, expectNoticed = true)
 
     private fun crew(helper: GameTestHelper, name: String, gun: Boolean, enemyDistance: Double, expectNoticed: Boolean) {
@@ -179,8 +186,8 @@ object NoticingGameTests {
                 }
             } else {
                 helper.assertFalse(noticed, "Noticed an enemy ${enemyDistance.toInt()} blocks off at night from the vehicle at tick ${helper.tick}")
-                if (helper.tick >= 500) {
-                    scene.result("PASS", "not noticed in 500 ticks")
+                if (helper.tick >= NEVER_TICKS) {
+                    scene.result("PASS", "not noticed in $NEVER_TICKS ticks")
                     helper.succeed()
                 }
             }

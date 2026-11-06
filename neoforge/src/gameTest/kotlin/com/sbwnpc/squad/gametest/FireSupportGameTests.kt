@@ -14,9 +14,6 @@ import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
-import net.minecraft.gametest.framework.GameTestInfo
-import net.minecraft.gametest.framework.GameTestListener
-import net.minecraft.gametest.framework.GameTestRunner
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.phys.Vec3
@@ -61,16 +58,10 @@ object FireSupportGameTests {
         val infantry = (0 until 8).map { AttackDeploymentGameTests.spawn(helper, Vec3(10.5 + it % 4 * 2, 1.0, 40.5 + it / 4 * 2), SquadFaction.PIG) }
         created += infantry
         val rifles = manager.create(helper.level, UUID(92, 1), SquadFaction.PIG, infantry.map { it.uuid })
-        helper.testInfo.addListener(object : GameTestListener {
-            override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
-            override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
-            override fun testFailed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
-            override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) = cleanup()
-            private fun cleanup() {
-                listOf(escort, alone, rifles).forEach { manager.deleteSquad(helper.level, it.id) }
-                created.forEach(Entity::discard)
-            }
-        })
+        AmmunitionTacticsGameTests.cleanup(helper) {
+            listOf(escort, alone, rifles).forEach { manager.deleteSquad(helper.level, it.id) }
+            created.forEach(Entity::discard)
+        }
         helper.runAtTickTime(40) {
             helper.assertTrue(manager.isTankSquad(escort) && manager.isTankSquad(alone), "Fixture tanks are not tank squads")
             val front = helper.absolutePos(BlockPos(150, 1, 36))
@@ -102,7 +93,10 @@ object FireSupportGameTests {
 
     /**
      * A mortar sent with infantry shells the area round the objective while the infantry is on its
-     * way, and stops shelling the area once the infantry has arrived.
+     * way, and once the infantry stands 12 blocks from the objective it drops nothing near them: the
+     * shells can land up to the crew's scatter from the aim and kill within their blast beyond
+     * that. In-game 16.10 a group attack's mortar shelled its own infantry. The shells before the
+     * arrival prove the crew is firing at all, so the hold is not a broken crew.
      */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", skyAccess = true, timeoutTicks = 1600, batch = "fire-support-mortar")
@@ -120,30 +114,16 @@ object FireSupportGameTests {
         val mortars = manager.create(helper.level, UUID(92, 2), SquadFaction.PIG, crew.map { it.uuid })
         val infantry = (0 until 4).map { AttackDeploymentGameTests.spawn(helper, Vec3(10.5 + it * 2, 1.0, 90.5), SquadFaction.PIG).apply { isNoAi = true } }
         val rifles = manager.create(helper.level, UUID(92, 2), SquadFaction.PIG, infantry.map { it.uuid })
-        val shells = mutableListOf<Long>()
-        val flying = LinkedHashMap<MortarShellEntity, Vec3>()
+        val tracker = ShellTracker(helper, crew)
         val landings = mutableListOf<Double>()
-        val listener = Consumer<EntityJoinLevelEvent> { event ->
-            val shell = event.entity as? MortarShellEntity ?: return@Consumer
-            if (event.level === helper.level && shell.owner?.uuid in crew.map { it.uuid }) {
-                shells += helper.tick
-                flying[shell] = shell.position()
-            }
+        val nearInfantry = mutableListOf<Double>()
+        AmmunitionTacticsGameTests.cleanup(helper) {
+            tracker.close()
+            listOf(mortars, rifles).forEach { manager.deleteSquad(helper.level, it.id) }
+            crew.forEach { MortarClaims.release(it.uuid) }
+            MortarClaims.releaseMortar(tube.uuid)
+            (crew + infantry + tube).forEach(Entity::discard)
         }
-        NeoForge.EVENT_BUS.addListener(listener)
-        helper.testInfo.addListener(object : GameTestListener {
-            override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
-            override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
-            override fun testFailed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
-            override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) = cleanup()
-            private fun cleanup() {
-                NeoForge.EVENT_BUS.unregister(listener)
-                listOf(mortars, rifles).forEach { manager.deleteSquad(helper.level, it.id) }
-                crew.forEach { MortarClaims.release(it.uuid) }
-                MortarClaims.releaseMortar(tube.uuid)
-                (crew + infantry + tube).forEach(Entity::discard)
-            }
-        })
         val objective = helper.absolutePos(BlockPos(105, 1, 64))
         helper.runAtTickTime(20) {
             GroupOrders.apply(helper.level, manager, listOf(mortars.id, rifles.id), com.sbwnpc.squad.squad.SquadOrder.ATTACK, objective.x, objective.z)
@@ -151,98 +131,56 @@ object FireSupportGameTests {
         }
         var arrivedAt: Long? = null
         helper.onEachTick {
-            // Where each shell came down: its last position before it was removed.
-            val tracked = flying.entries.iterator()
-            while (tracked.hasNext()) {
-                val entry = tracked.next()
-                if (entry.key.isRemoved) {
-                    if (arrivedAt == null) landings += Math.hypot(entry.value.x - objective.center.x, entry.value.z - objective.center.z)
-                    tracked.remove()
-                } else {
-                    entry.setValue(entry.key.position())
-                }
+            for ((launch, at) in tracker.landed()) {
+                if (arrivedAt == null) landings += Math.hypot(at.x - objective.center.x, at.z - objective.center.z)
+                // Shells already in the air at the arrival were aimed before it.
+                if (arrivedAt != null && launch > arrivedAt!! + 20) nearInfantry += infantry.minOf { Math.hypot(at.x - it.x, at.z - it.z) }
             }
             if (arrivedAt == null && landings.size >= 4) {
                 // Aimed at the point, shells land within the crew's scatter (at most 10 blocks);
                 // shelling the 40-block area puts some well beyond it.
                 helper.assertTrue(landings.max() >= 18.0, "Mortar shelled the point, not the area: landings=$landings")
-                // The infantry gets there: the area fire lifts.
-                infantry.forEachIndexed { i, npc -> npc.teleportTo(objective.x + 20.5 + i * 2, objective.y.toDouble(), objective.z + 0.5) }
+                // The infantry gets there, inside the scatter and blast of a shell aimed at the point.
+                infantry.forEachIndexed { i, npc -> npc.teleportTo(objective.x + 12.5, objective.y.toDouble(), objective.z - 1.5 + i * 2) }
                 arrivedAt = helper.tick
             }
             val arrived = arrivedAt ?: return@onEachTick
             if (helper.tick == arrived + 5) helper.assertTrue(!FireSupport.infantryApproaching(helper.level, mortars), "Arrived infantry still counted as approaching")
             if (helper.tick >= arrived + 300) {
-                val after = shells.count { it > arrived + 20 }
-                Files.writeString(report.resolve("fire-support-mortar.txt"), "result=PASS shells=$shells landings=${landings.map { it.toInt() }} arrivedAt=$arrived afterArrival=$after\n")
+                val after = tracker.launches.count { it > arrived + 20 }
+                Files.writeString(report.resolve("fire-support-mortar.txt"), "shells=${tracker.launches} landings=${landings.map { it.toInt() }} arrivedAt=$arrived afterArrival=$after nearInfantry=${nearInfantry.map { it.toInt() }}\n")
+                // A shell's blast reaches 8 blocks.
+                helper.assertTrue(nearInfantry.none { it <= 9.0 }, "Mortar shells landed on its own infantry: $nearInfantry")
                 helper.succeed()
             }
         }
     }
 
-    /**
-     * Infantry standing 12 blocks from the objective the mortar is told to hit: the shells can
-     * land up to the crew's scatter from the aim and kill within their blast beyond that, so the
-     * crew holds fire. In-game 16.10 a group attack's mortar shelled its own infantry.
-     */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", skyAccess = true, timeoutTicks = 1200, batch = "fire-support-mortar-safety")
-    fun mortarHoldsFireOnInfantryAtItsObjective(helper: GameTestHelper) {
-        for (x in 0..159) for (z in 0..127) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
-        val report = Path.of(System.getProperty("sbwnpc.gameTestReports"))
-        Files.createDirectories(report)
-        val manager = SquadManager.get(helper.level)
-        val tube = Ports.mortars.create(helper.level, -90f)
-        val pos = helper.absoluteVec(Vec3(24.5, 1.0, 64.5))
-        tube.moveTo(pos.x, pos.y, pos.z, -90f, 0f)
-        helper.level.addFreshEntity(tube)
-        SquadTeams.assign(tube, SquadFaction.PIG)
-        val crew = listOf(Vec3(22.5, 1.0, 64.5), Vec3(24.5, 1.0, 66.3)).map { AttackDeploymentGameTests.spawn(helper, it, SquadFaction.PIG, role = NpcClass.MORTAR) }
-        val mortars = manager.create(helper.level, UUID(93, 2), SquadFaction.PIG, crew.map { it.uuid })
-        val objective = helper.absolutePos(BlockPos(105, 1, 64))
-        val infantry = (0 until 4).map { AttackDeploymentGameTests.spawn(helper, Vec3(105.5 + 12.0, 1.0, 62.5 + it * 2), SquadFaction.PIG).apply { isNoAi = true } }
-        val rifles = manager.create(helper.level, UUID(93, 2), SquadFaction.PIG, infantry.map { it.uuid })
-        val flying = LinkedHashMap<MortarShellEntity, Vec3>()
-        val landings = mutableListOf<Double>()
-        val listener = Consumer<EntityJoinLevelEvent> { event ->
+    /** The crew's shells: when each was fired, and where each came down (its last position before removal). */
+    private class ShellTracker(private val helper: GameTestHelper, crew: List<NpcEntity>) {
+        val launches = mutableListOf<Long>()
+        private val flying = LinkedHashMap<MortarShellEntity, Pair<Long, Vec3>>()
+        private val owners = crew.map { it.uuid }.toSet()
+        private val listener = Consumer<EntityJoinLevelEvent> { event ->
             val shell = event.entity as? MortarShellEntity ?: return@Consumer
-            if (event.level === helper.level && shell.owner?.uuid in crew.map { it.uuid }) flying[shell] = shell.position()
-        }
-        NeoForge.EVENT_BUS.addListener(listener)
-        helper.testInfo.addListener(object : GameTestListener {
-            override fun testStructureLoaded(testInfo: GameTestInfo) = Unit
-            override fun testPassed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
-            override fun testFailed(test: GameTestInfo, runner: GameTestRunner) = cleanup()
-            override fun testAddedForRerun(oldTest: GameTestInfo, newTest: GameTestInfo, runner: GameTestRunner) = cleanup()
-            private fun cleanup() {
-                NeoForge.EVENT_BUS.unregister(listener)
-                listOf(mortars, rifles).forEach { manager.deleteSquad(helper.level, it.id) }
-                crew.forEach { MortarClaims.release(it.uuid) }
-                MortarClaims.releaseMortar(tube.uuid)
-                (crew + infantry + tube).forEach(Entity::discard)
-            }
-        })
-        helper.runAtTickTime(20) {
-            GroupOrders.apply(helper.level, manager, listOf(mortars.id, rifles.id), com.sbwnpc.squad.squad.SquadOrder.ATTACK, objective.x, objective.z)
-            helper.assertTrue(!FireSupport.infantryApproaching(helper.level, mortars), "Infantry at the objective counted as still approaching")
-        }
-        helper.onEachTick {
-            val tracked = flying.entries.iterator()
-            while (tracked.hasNext()) {
-                val entry = tracked.next()
-                if (entry.key.isRemoved) {
-                    landings += infantry.minOf { Math.hypot(entry.value.x - it.x, entry.value.z - it.z) }
-                    tracked.remove()
-                } else {
-                    entry.setValue(entry.key.position())
-                }
-            }
-            if (helper.tick >= 900) {
-                Files.writeString(report.resolve("fire-support-mortar-safety.txt"), "landingsFromInfantry=${landings.map { it.toInt() }}\n")
-                // A shell's blast reaches 8 blocks.
-                helper.assertTrue(landings.none { it <= 9.0 }, "Mortar shells landed on its own infantry: $landings")
-                helper.succeed()
+            if (event.level === helper.level && shell.owner?.uuid in owners) {
+                launches += helper.tick
+                flying[shell] = helper.tick to shell.position()
             }
         }
+
+        init {
+            NeoForge.EVENT_BUS.addListener(listener)
+        }
+
+        /** Shells that came down since the last call, as launch tick and landing point. */
+        fun landed(): List<Pair<Long, Vec3>> {
+            val down = flying.filterKeys { it.isRemoved }.values.toList()
+            flying.keys.removeIf { it.isRemoved }
+            flying.replaceAll { shell, (launch, _) -> launch to shell.position() }
+            return down
+        }
+
+        fun close() = NeoForge.EVENT_BUS.unregister(listener)
     }
 }
