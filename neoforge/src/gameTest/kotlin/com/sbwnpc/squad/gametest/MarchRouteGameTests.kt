@@ -12,6 +12,9 @@ import java.util.UUID
 
 @PrefixGameTestTemplate(false)
 object MarchRouteGameTests {
+    /** By when most of a marching squad must be on its way. */
+    private const val FIRST_STEP_TICKS = 100L
+
     /**
      * A squad of 32 sent 170 blocks walks one long route there (#145). Keyed by each man's own place
      * round the objective, it ran a long search for every cluster of places, 6 to 8 a squad, and in
@@ -28,7 +31,13 @@ object MarchRouteGameTests {
         val objective = helper.absolutePos(BlockPos(88, 1, 190))
         manager.issueOrderAt(helper.level, squad.id, SquadOrder.MOVE, objective)
         val center = Vec3.atBottomCenterOf(objective)
+        val starts = men.associateWith { it.position() }
         helper.onEachTick {
+            // What the player saw in #145 was the squad standing still: most must be walking soon.
+            if (helper.tick == FIRST_STEP_TICKS) {
+                val walking = men.count { it.position().distanceTo(starts.getValue(it)) >= 2.0 }
+                helper.assertTrue(walking >= men.size / 2, "Only $walking of ${men.size} men had set off after ${FIRST_STEP_TICKS / 20} s")
+            }
             val searches = SquadMarch.searchesStarted(squad.id)
             val near = men.count { it.isAlive && it.position().distanceTo(center) <= 32.0 }
             if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} searches=$searches near=$near/${men.size}")

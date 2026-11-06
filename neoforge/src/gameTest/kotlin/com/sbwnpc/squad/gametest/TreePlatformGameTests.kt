@@ -38,7 +38,7 @@ object TreePlatformGameTests {
      * treetops round it cost the sentries 24 s of search before they took it.
      */
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 2400, batch = "tree-platform")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 700, batch = "tree-platform")
     fun sentryClimbsScaffoldingOntoTreePlatform(helper: GameTestHelper) {
         val scene = CombatIdleGameTests.Scene(helper, "tree-platform")
         val trunk = BlockPos(60, 1, 60)
@@ -58,6 +58,8 @@ object TreePlatformGameTests {
                 val where = sentries.joinToString(" ") { npc -> "${npc.npcClass}=${helper.relativeVec(npc.position()).let { "%.0f,%.0f,%.0f".format(it.x, it.y, it.z) }}" }
                 scene.result("RUNNING", "tick=${helper.tick} $where")
             }
+            // Green runs take about 170 ticks; the leaves-as-floors search added some 480.
+            helper.assertTrue(helper.tick <= PLATFORM_DEADLINE, "No sentry held the platform within $PLATFORM_DEADLINE ticks")
             if (up != null) {
                 scene.result("PASS", "tick=${helper.tick} sentry=${up.npcClass}")
                 helper.succeed()
@@ -76,6 +78,9 @@ object TreePlatformGameTests {
         return task.job == TacticalJob.OVERWATCH && helper.relativeVec(post).y >= PLATFORM_FLOOR &&
             FiringPostArrival.reached(npc.position(), post) && npc.onGround()
     }
+
+    /** By when a sentry must hold the platform: well past a green run, short of the old search's 24 s. */
+    private const val PLATFORM_DEADLINE = 600L
 
     /** Just under the feet of a man standing on the platform's slabs. */
     private const val PLATFORM_FLOOR = 9.5

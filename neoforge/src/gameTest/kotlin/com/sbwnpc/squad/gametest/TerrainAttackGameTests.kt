@@ -45,6 +45,9 @@ object TerrainAttackGameTests {
     /** Least distance between the four obstructed shooters, so one berm leaves the others' lanes open. */
     private const val SHOOTER_SPACING = 10.0
 
+    /** Where the ridge (x 34 to 78) reaches its full six-block height. */
+    private const val RIDGE_TOP_X = 49.0
+
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1200, batch = "terrain-return-fire")
     fun attackPastRidgeUnderFire(helper: GameTestHelper) = ridge(helper, returnFire = true)
@@ -149,6 +152,8 @@ object TerrainAttackGameTests {
         }
         val shooters = HashSet<UUID>()
         val advanced = HashSet<UUID>()
+        // On the ridge, its flat top: the foot at x 34..42 is a few steps from the start line.
+        val advanceLine = if (sustained) 42.0 else RIDGE_TOP_X
         var enemyRounds = 0
         val obstructed = HashSet<UUID>()
         val resumedFire = HashSet<UUID>()
@@ -268,7 +273,7 @@ object TerrainAttackGameTests {
                     // The attack axis is +X. Lateral movement and initial deployment do not count.
                     if (first != null && npc.x - first.x >= 12.0) continued += npc.uuid
                 }
-                if (p.x >= 42.0 && npc.onGround()) advanced.add(npc.uuid)
+                if (p.x >= advanceLine && npc.onGround()) advanced.add(npc.uuid)
                 val trackedPost = villageCover || (brokenPosts && npc.uuid in obstructed)
                 val settled = trackedPost && helper.tick >= 450 && (!brokenPosts || (obstructedAt >= 0 && helper.tick >= obstructedAt + 150))
                 if (settled && npc.isAlive && Ports.guns.inHand(npc)?.hasAmmo() == true) {
@@ -328,7 +333,7 @@ object TerrainAttackGameTests {
                     Files.writeString(directory.resolve("$name.txt"), "longestBlindIdle=${longestIdle.values.maxOrNull() ?: 0}\n", APPEND)
                     helper.assertTrue(longestIdle.values.none { it >= 200 }, "A village attacker stayed blind and idle for ten seconds; see $name.csv")
                 } else {
-                    helper.assertTrue(advanced.size >= if (returnFire) 12 else 24, "Attack failed to advance past the ridge; see $name.csv")
+                    helper.assertTrue(advanced.size >= 24, "Attack failed to advance onto the ridge top; see $name.csv")
                 }
                 helper.assertTrue(
                     shooters.size >= if (villageCover) {
