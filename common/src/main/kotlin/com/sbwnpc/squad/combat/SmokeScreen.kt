@@ -123,7 +123,7 @@ object SmokeScreen {
 
     /**
      * The nearest of [free] who can land a grenade on [point]; a smoke grenade flies like the hand
-     * grenades, so their arc check judges it. No lobs: the smoke throw is always the ordinary one.
+     * grenades, so their flight check judges it. No lobs: the smoke throw is always the ordinary one.
      */
     private fun throwerFor(level: ServerLevel, free: List<NpcEntity>, point: Vec3): NpcEntity? =
         free.sortedBy { it.position().distanceToSqr(point) }.firstOrNull {

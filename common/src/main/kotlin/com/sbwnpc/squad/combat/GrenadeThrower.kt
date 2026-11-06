@@ -43,7 +43,10 @@ object GrenadeThrower {
     }
 
     /** [thrower] still carries a [kind], and it is safe round the aim and reaches clear. */
-    private fun canThrow(thrower: NpcEntity, level: ServerLevel, target: Vec3, targetVelocity: Vec3, kind: GrenadeKind): Boolean = thrower.grenadesLeft(kind) > 0 && isSafeToThrow(thrower, target, kind) && reachesClear(thrower, level, target, targetVelocity, kind)
+    private fun canThrow(thrower: NpcEntity, level: ServerLevel, target: Vec3, targetVelocity: Vec3, kind: GrenadeKind): Boolean {
+        if (thrower.grenadesLeft(kind) <= 0 || !isSafeToThrow(thrower, target, kind)) return false
+        return reachesClear(thrower, level, target, targetVelocity, kind)
+    }
 
     /**
      * Whether the grenade flies clear and spares [thrower]'s side where it really strikes: a throw
@@ -53,10 +56,15 @@ object GrenadeThrower {
     private fun reachesClear(thrower: NpcEntity, level: ServerLevel, target: Vec3, targetVelocity: Vec3, kind: GrenadeKind): Boolean {
         val landing = Ports.grenades.landing(thrower, level, target, targetVelocity, kind, NEAR_TARGET, lobs = true) ?: return false
         val blast = Ports.grenades.blastRadius(kind) + if (kind == GrenadeKind.OFFENSIVE) ROLL_MARGIN else 0.0
-        return FriendlyFireGuard.hasClearBlastRadius(thrower, landing, blast)
+        // The ally check leaves the thrower out, and a strike on a hull or a bounce can come back short.
+        return thrower.position().distanceTo(landing) > blast + SELF_MARGIN && FriendlyFireGuard.hasClearBlastRadius(thrower, landing, blast)
     }
 
-    /** How far an M67 may roll after its first strike before the fuse runs out. */
+    /**
+     * How far an M67 may roll after its first strike before the fuse runs out: an estimate, not
+     * worked out from SBW's bounce damping. It holds an M67 back from allies up to 8 blocks from
+     * where it strikes, not 6.
+     */
     private const val ROLL_MARGIN = 2.0
 
     /** An RGO touching down this close to its point has done what it was thrown for. */

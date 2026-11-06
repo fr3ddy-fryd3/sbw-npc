@@ -337,6 +337,32 @@ object HostileMobCombatGameTests {
     }
 
     /**
+     * An M67 rolls on after it strikes, so an ally just outside its blast round the target, past the
+     * enemy, holds it back; an RGO, which bursts where it strikes, is still thrown.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 100, batch = "grenade-roll-margin")
+    fun rollingGrenadeIsHeldBackFromAnAllyPastTheEnemy(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "grenade-roll-margin")
+        val man = scene.spawn(Vec3(36.5, 1.0, 41.5)).also {
+            it.isNoAi = true
+            it.rgnLeft = 2
+            it.rgoLeft = 0
+        }
+        val enemy = scene.enemy(Vec3(46.5, 1.0, 41.5))
+        val behind = 46.5 + Ports.grenades.blastRadius(GrenadeKind.OFFENSIVE) + 1.0
+        scene.spawn(Vec3(behind, 1.0, 41.5)).also { it.isNoAi = true }
+        helper.runAfterDelay(1) {
+            helper.assertTrue(GrenadeThrower.isSafeToThrow(man, enemy.boundingBox.center, GrenadeKind.OFFENSIVE), "The ally is inside the blast round the aim point")
+            helper.assertTrue(GrenadeThrower.pick(man, helper.level, enemy.boundingBox.center) == null, "An M67 was thrown with an ally where it rolls")
+            man.rgoLeft = 2
+            helper.assertTrue(GrenadeThrower.pick(man, helper.level, enemy.boundingBox.center) == GrenadeKind.DEFENSIVE, "No RGO was thrown")
+            scene.result("PASS", "ally at x=$behind")
+            helper.succeed()
+        }
+    }
+
+    /**
      * No grenade is thrown where its own blast reaches the thrower, and one is in the open further
      * off. In-game 25.10 a man threw an M67 (6-block blast) at a zombie five blocks away and killed
      * himself and a medic.
