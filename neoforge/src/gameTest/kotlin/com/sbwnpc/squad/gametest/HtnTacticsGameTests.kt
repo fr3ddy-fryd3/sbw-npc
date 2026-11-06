@@ -34,6 +34,10 @@ object HtnTacticsGameTests {
     private const val LANTERN_LIGHT = 12
     private const val LIGHT_SETTLE_TICKS = 5L
     private const val TICKS_PER_SECOND = 20.0
+
+    /** How long the original attack is watched after a reinforcement leaves it, and how far it may sway back meanwhile. */
+    private const val AFTER_LEAVE_TICKS = 100L
+    private const val FALL_BACK_SLACK = 4.0
     private const val SPOTTING_SLACK_TICKS = 40L
 
     @JvmStatic
@@ -205,7 +209,7 @@ object HtnTacticsGameTests {
         var firedOn = false
         var phase: com.sbwnpc.squad.ai.tactics.AttackPhase? = null
         var phaseSince = 0L
-        var retainedTickets = emptyMap<UUID, com.sbwnpc.squad.ai.planning.ExecutionTicket>()
+        var distanceAtLeave = 0.0
         helper.onEachTick {
             if (helper.tick == 400L) {
                 reinforcement = (0 until 4).map { scene.spawn(Vec3(5.5, 1.0, 98.5 + it * 4)) }
@@ -251,16 +255,20 @@ object HtnTacticsGameTests {
             // reinforcement's departure is measured.
             if (joinedAt != null && leftAt == null && helper.tick - joinedAt!! >= 100 && helper.tick - phaseSince >= 60) {
                 helper.assertTrue(group.all { helper.relativeVec(it.position()).x >= 17.5 }, "A reinforcement support member stayed near its distant spawn: ${group.map { helper.relativeVec(it.position()) to NativeTactics.reports(it) }}")
-                retainedTickets = groups.flatten().mapNotNull { actor -> NativeTactics.reports(actor)["position"]?.ticket?.let { actor.uuid to it } }.toMap()
+                distanceAtLeave = groups.flatten().filter { it.isAlive }.map { it.position().distanceTo(target.center) }.average()
                 manager.issueOrderAt(helper.level, squads.last().id, SquadOrder.MOVE, BlockPos.containing(npc.position().add(-20.0, 0.0, 0.0)))
                 leftAt = helper.tick
             }
-            if (leftAt != null && helper.tick - leftAt!! >= 20) {
+            if (leftAt != null && helper.tick - leftAt!! == 20L) {
                 helper.assertTrue(NativeTactics.operation(npc)?.id != NativeTactics.operation(original)?.id, "Separate command did not remove the reinforcement")
                 helper.assertTrue(NativeTactics.operation(original)?.members?.size == 2, "Separate command disrupted original operation")
-                val kept = groups.flatten().count { actor -> retainedTickets[actor.uuid] != null && NativeTactics.reports(actor)["position"]?.ticket == retainedTickets[actor.uuid] }
-                helper.assertTrue(kept >= 8, "Removing reinforcement rebuilt most unrelated NPC executions: $kept/16 phase=$phase since=$phaseSince left=$leftAt")
-                scene.result("PASS", "pending=$pendingObserved issued=$issuedAt joined=$joinedAt left=$leftAt unaffectedExecutions=$kept")
+            }
+            // The attackers it left carry on with their attack: still ordered to, and not falling back.
+            if (leftAt != null && helper.tick - leftAt!! >= AFTER_LEAVE_TICKS) {
+                val distance = groups.flatten().filter { it.isAlive }.map { it.position().distanceTo(target.center) }.average()
+                helper.assertTrue(squads.take(2).all { it.order == SquadOrder.ATTACK }, "The reinforcement's departure ended the original attack: ${squads.map { it.order }}")
+                helper.assertTrue(distance <= distanceAtLeave + FALL_BACK_SLACK, "The original attackers fell back after the reinforcement left: ${"%.1f".format(distanceAtLeave)} -> ${"%.1f".format(distance)}")
+                scene.result("PASS", "pending=$pendingObserved issued=$issuedAt joined=$joinedAt left=$leftAt distance=${"%.1f".format(distanceAtLeave)}->${"%.1f".format(distance)}")
                 helper.succeed()
             }
         }
