@@ -139,56 +139,6 @@ object HtnTacticsGameTests {
     }
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1300, batch = "htn-armed")
-    fun htnJointAttackAgainstArmedDefenders(helper: GameTestHelper) {
-        val scene = CombatIdleGameTests.Scene(helper, "htn-armed")
-        val manager = SquadManager.get(helper.level)
-        val groups = (0..1).map { group -> (0 until 8).map { index -> scene.spawn(Vec3(28.5 + index / 4 * 4, 1.0, 72.5 + group * 32 + index % 4 * 4)) } }
-        val defenders = (0 until 8).map { index -> scene.spawn(Vec3(128.5 + index / 4 * 4, 1.0, 80.5 + index % 4 * 8), faction = com.sbwnpc.squad.npc.SquadFaction.COW) }
-        val squads = groups.map { group -> manager.create(helper.level, UUID(90, 4), requireNotNull(group.first().spawnFaction), group.map { it.uuid }) }
-        val defence = manager.create(helper.level, UUID(91, 4), requireNotNull(defenders.first().spawnFaction), defenders.map { it.uuid })
-        val all = groups.flatten() + defenders
-        val attackerIds = groups.flatten().mapTo(HashSet()) { it.uuid }
-        val defenderIds = defenders.mapTo(HashSet()) { it.uuid }
-        val origins = groups.flatten().associate { it.uuid to it.position() }
-        val shots = HashSet<UUID>()
-        var friendlyHits = 0
-        val rounds = Consumer<EntityJoinLevelEvent> { event ->
-            val round = event.entity as? Projectile ?: return@Consumer
-            val owner = round.owner?.uuid ?: return@Consumer
-            if (event.level === helper.level && Ports.guns.isRound(round)) shots += owner
-        }
-        val damage = Consumer<LivingDamageEvent.Post> { event ->
-            val victim = event.entity.uuid
-            val shooter = event.source.entity?.uuid
-            if (event.newDamage > 0 && ((victim in attackerIds && shooter in attackerIds) || (victim in defenderIds && shooter in defenderIds))) friendlyHits++
-        }
-        NeoForge.EVENT_BUS.addListener(rounds)
-        NeoForge.EVENT_BUS.addListener(damage)
-        scene.onClose = {
-            NeoForge.EVENT_BUS.unregister(rounds)
-            NeoForge.EVENT_BUS.unregister(damage)
-            (squads + defence).forEach { manager.deleteSquad(helper.level, it.id) }
-        }
-        val target = helper.absolutePos(BlockPos(130, 1, 92))
-        manager.issueOrderAt(helper.level, defence.id, SquadOrder.DEFEND, target)
-        GroupOrders.apply(helper.level, manager, squads.map { it.id }, SquadOrder.ATTACK, target.x, target.z)
-        helper.onEachTick {
-            if (helper.tick % 100L != 0L) return@onEachTick
-            val attackShots = shots.count { it in attackerIds }
-            val defenceShots = shots.count { it in defenderIds }
-            val moved = groups.flatten().count { it.position().distanceTo(origins.getValue(it.uuid)) >= 8 }
-            scene.result("RUNNING", "tick=${helper.tick} attackerShooters=$attackShots defenderShooters=$defenceShots moved=$moved alive=${all.count { it.isAlive }} friendlyHits=$friendlyHits")
-            if (helper.tick >= 600 && attackShots >= 8 && defenceShots >= 4 && moved >= 8) {
-                helper.assertTrue(groups.all { group -> group.count { it.uuid in shots } >= 3 }, "One attacking squad did not engage")
-                helper.assertTrue(friendlyHits == 0, "Armed HTN battle caused friendly damage")
-                scene.result("PASS", "tick=${helper.tick} attackerShooters=$attackShots defenderShooters=$defenceShots moved=$moved alive=${all.count { it.isAlive }} friendlyHits=$friendlyHits")
-                helper.succeed()
-            }
-        }
-    }
-
-    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1500, batch = "htn-blocked")
     fun htnBlockedSquadDoesNotStopOtherAttackers(helper: GameTestHelper) {
         val scene = CombatIdleGameTests.Scene(helper, "htn-blocked")
@@ -439,7 +389,8 @@ object HtnTacticsGameTests {
      * A pond lies between the attackers and a defended point: the firing line laid out at range
      * falls on the water and the straight way in crosses it. In-game 16.10 the same, with a lake,
      * left an attack of 23 against 7 standing on the shore; here the posts move to the bank and
-     * the assault walks round the water to take the point.
+     * the assault walks round the water to take the point. The defenders are armed: both sides
+     * fire, each attacking squad engages, and nobody hits his own side.
      */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 4800, batch = "htn-pond")
@@ -454,7 +405,9 @@ object HtnTacticsGameTests {
         val defenders = (0 until 8).map { index -> scene.spawn(Vec3(128.5 + index / 4 * 4, 1.0, 80.5 + index % 4 * 8), faction = com.sbwnpc.squad.npc.SquadFaction.COW) }
         val squads = groups.map { group -> manager.create(helper.level, UUID(90, 15), requireNotNull(group.first().spawnFaction), group.map { it.uuid }) }
         val defence = manager.create(helper.level, UUID(91, 15), requireNotNull(defenders.first().spawnFaction), defenders.map { it.uuid })
+        val fire = BattleFire(groups.flatten(), defenders)
         scene.onClose = {
+            fire.close()
             (squads + defence).forEach { manager.deleteSquad(helper.level, it.id) }
             ground.forEach { (pos, state) -> helper.setBlock(pos, state) }
         }
@@ -472,7 +425,11 @@ object HtnTacticsGameTests {
             }
             if (squads.all { it.order == SquadOrder.DEFEND }) {
                 helper.assertTrue(squads.all { it.commandReason == "occupied_and_inspected_area" }, "Attack ended without taking the objective: ${squads.map { it.commandReason }}")
-                scene.result("PASS", "tick=${helper.tick} attackers=${attackers.size} defenders=${defenders.count { it.isAlive }} enteredAt=$enteredAt")
+                // Armed defenders fought back and both squads fought, without a round into their own side.
+                helper.assertTrue(fire.shooters(defenders) >= 4, "The defence never fought back: ${fire.shooters(defenders)} shooters")
+                helper.assertTrue(groups.all { fire.shooters(it) >= 3 }, "One attacking squad did not engage: ${groups.map { fire.shooters(it) }}")
+                helper.assertTrue(fire.friendlyHits == 0, "The battle caused ${fire.friendlyHits} friendly hits")
+                scene.result("PASS", "tick=${helper.tick} attackers=${attackers.size} defenders=${defenders.count { it.isAlive }} enteredAt=$enteredAt shooters=${groups.map { fire.shooters(it) }}/${fire.shooters(defenders)}")
                 helper.succeed()
             }
         }
@@ -583,6 +540,35 @@ object HtnTacticsGameTests {
                 scene.result("PASS", "tick=${helper.tick} moved=$moved actualShooters=${shooters.size} recent=${groups.map { group -> group.count { it.firedRecently(100) } }} width=$width rear=$rear watchingRear=$watchingRear htn=$htn friendlyHits=$friendlyHits")
                 helper.succeed()
             }
+        }
+    }
+
+    /** Who fired a real round in a battle between [attackers] and [defenders], and damage either side did to itself. */
+    private class BattleFire(attackers: List<NpcEntity>, defenders: List<NpcEntity>) {
+        private val shot = HashSet<UUID>()
+        var friendlyHits = 0
+            private set
+        private val sides = listOf(attackers.mapTo(HashSet()) { it.uuid }, defenders.mapTo(HashSet()) { it.uuid })
+        private val rounds = Consumer<EntityJoinLevelEvent> { event ->
+            val round = event.entity as? Projectile ?: return@Consumer
+            val owner = round.owner?.uuid ?: return@Consumer
+            if (Ports.guns.isRound(round)) shot += owner
+        }
+        private val damage = Consumer<LivingDamageEvent.Post> { event ->
+            val shooter = event.source.entity?.uuid
+            if (event.newDamage > 0 && sides.any { event.entity.uuid in it && shooter in it }) friendlyHits++
+        }
+
+        init {
+            NeoForge.EVENT_BUS.addListener(rounds)
+            NeoForge.EVENT_BUS.addListener(damage)
+        }
+
+        fun shooters(men: List<NpcEntity>) = men.count { it.uuid in shot }
+
+        fun close() {
+            NeoForge.EVENT_BUS.unregister(rounds)
+            NeoForge.EVENT_BUS.unregister(damage)
         }
     }
 }
