@@ -135,7 +135,7 @@ object SidearmGameTests {
             if (event.level === helper.level && round.owner === shooter && Ports.guns.isRound(round)) {
                 helper.assertTrue(WeaponReach.inRange(shooter, shooter.eyePosition, enemy.eyePosition), "Shotgun fired beyond effective range")
                 rounds++
-                if (shooter.distanceTo(enemy) < 42.0) closeShots++
+                if (attack && shooter.distanceTo(enemy) <= NpcClass.SHOTGUNNER.maxFireDistance) closeShots++
             }
         }
         val pacer = CombatTickPacer()
@@ -159,7 +159,7 @@ object SidearmGameTests {
         }
         helper.onEachTick {
             if (attack && closeShots >= 24) {
-                helper.assertTrue(shooter.distanceTo(enemy) >= 15.0, "Shotgunner ran into its enemy")
+                helper.assertTrue(shooter.distanceTo(enemy) >= NpcClass.SHOTGUNNER.combatClearance - 1.0, "Shotgunner ran into its enemy")
                 helper.succeed()
             }
         }
@@ -434,6 +434,11 @@ object SidearmGameTests {
     fun emptyKitHoldsWithoutSupplyOrEndlessWithdrawal(helper: GameTestHelper) {
         floor(helper, 160, 128)
         val npc = AttackDeploymentGameTests.spawn(helper, Vec3(65.5, 1.0, 64.5), SquadFaction.PIG)
+        // Facing the enemy: the empty-ammo withdrawal starts only on a target, and a man looking
+        // away never noticed one, so the scene timed out with nothing to check.
+        npc.moveTo(npc.x, npc.y, npc.z, -90f, 0f)
+        npc.yHeadRot = -90f
+        npc.yBodyRot = -90f
         val origin = npc.position()
         for (stack in listOf(npc.mainHandItem, npc.sidearmWeapon)) {
             ammunition(stack, 0, 0)
