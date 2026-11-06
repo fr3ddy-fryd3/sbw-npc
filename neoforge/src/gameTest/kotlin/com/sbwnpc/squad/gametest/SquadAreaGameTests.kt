@@ -96,8 +96,12 @@ object SquadAreaGameTests {
         }
     }
 
+    /**
+     * A defended area walled off from its men is replaced by one they can reach, under the native
+     * search limit, apart from its neighbour; then the men are let walk and most of them get into it.
+     */
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "operation_arena", skyAccess = true, timeoutTicks = 240, batch = "area-blocked")
+    @GameTest(templateNamespace = "sbwnpc", template = "operation_arena", skyAccess = true, timeoutTicks = 900, batch = "area-blocked")
     fun unreachableAreaIsReplacedWithBoundedNativeValidation(helper: GameTestHelper) {
         val fixture = Fixture(helper, "area-blocked")
         val groups = List(2) { fixture.group(16, SquadOrder.DEFEND, Vec3(176.5, 1.0, 192.5)) }
@@ -106,33 +110,36 @@ object SquadAreaGameTests {
         var original: Vec3? = null
         var settled = 0
         var searches = 0
+        var walkingFrom: Long? = null
         fixture.afterClose = { groups.flatMap { it.second }.forEach { (it.navigation as VehicleAwareNavigation).pathWorkObserver = null } }
         helper.runAtTickTime(40) {
-            shifted = groups.single { it.second.first().homeCenter() != it.second.first().orderCenter() }.second
+            shifted = wallOffShiftedGroup(helper, groups) { searches++ }
             original = shifted!!.first().homeCenter()
-            for (y in 1..5) for (z in 0..383) helper.setBlock(BlockPos(230, y, z), Blocks.STONE)
-            shifted!!.forEachIndexed { index, npc ->
-                val point = helper.absoluteVec(Vec3(218.5 + index % 4, 1.0, 184.5 + index / 4))
-                npc.moveTo(point.x, point.y, point.z, 0f, 0f)
-                (npc.navigation as VehicleAwareNavigation).pathWorkObserver = { _, _, native -> if (native) searches++ }
-            }
         }
         helper.onEachTick {
             val members = shifted ?: return@onEachTick
-            // NoAI disables normal grounding as well as locomotion. This component scene
-            // places actors on a solid floor and exercises native validation, not movement.
-            members.forEach { it.setOnGround(true) }
+            // NoAI disables normal grounding as well as locomotion: while the area is validated
+            // the men stand on a solid floor, and walk only once it is chosen.
+            if (walkingFrom == null) members.forEach { it.setOnGround(true) }
             val home = requireNotNull(members.first().homeCenter())
-            if (helper.tick % 20L == 0L) fixture.scene.result("CHECK", "tick=${helper.tick} home=${helper.relativeVec(home)} original=${original?.let(helper::relativeVec)} searches=$searches actor=${helper.relativeVec(members.first().position())} onGround=${members.first().onGround()} canPlan=${(members.first().navigation as VehicleAwareNavigation).canPlan}")
+            if (helper.tick % 20L == 0L) fixture.scene.result("CHECK", "tick=${helper.tick} home=${helper.relativeVec(home)} original=${helper.relativeVec(original!!)} searches=$searches actor=${helper.relativeVec(members.first().position())} onGround=${members.first().onGround()} canPlan=${(members.first().navigation as VehicleAwareNavigation).canPlan}")
             if (home == original || helper.relativeVec(home).x >= 230) return@onEachTick
-            if (helper.tick % 20L == 0L) settled++
-            if (settled >= 3) {
-                helper.assertTrue(searches in 1..8, "Area validation did not obey its native-search limit: $searches")
-                val other = groups.single { it.second !== members }.second.first().homeCenter()!!
-                helper.assertTrue(other.distanceTo(home) >= 68.0, "Replacement area overlaps its neighbor")
-                fixture.scene.result("PASS", "previous=${helper.relativeVec(original!!)} reachableReplacement=${helper.relativeVec(home)} nativeSearches=$searches")
+            val from = walkingFrom
+            if (from == null) {
+                if (helper.tick % 20L == 0L) settled++
+                if (settled < 3) return@onEachTick
+                assertReplacement(helper, searches, home, groups.single { it.second !== members }.second)
+                // Validation alone could pick a point that only looks reachable: the men walk to it.
+                members.forEach { it.isNoAi = false }
+                walkingFrom = helper.tick
+                return@onEachTick
+            }
+            val inside = insideArea(members, home)
+            if (inside >= members.size * 3 / 4) {
+                fixture.scene.result("PASS", "previous=${helper.relativeVec(original!!)} replacement=${helper.relativeVec(home)} nativeSearches=$searches inside=$inside/${members.size} walked=${helper.tick - from}")
                 helper.succeed()
             }
+            helper.assertTrue(helper.tick - from < WALK_TICKS, "Only $inside of ${members.size} men reached the replacement area at ${helper.relativeVec(home)}")
         }
     }
 
@@ -271,6 +278,39 @@ object SquadAreaGameTests {
     /** Men of a 32-man defence inside its area that settle it early, and the least by the deadline. */
     private const val OCCUPIED = 24
     private const val OCCUPIED_BY_DEADLINE = 20
+
+    /**
+     * Walls off the area of the group whose area was shifted off its order point, puts its men on
+     * this side of the wall and counts their native path searches with [onSearch].
+     */
+    private fun wallOffShiftedGroup(helper: GameTestHelper, groups: List<Pair<Squad, List<NpcEntity>>>, onSearch: () -> Unit): List<NpcEntity> {
+        val shifted = groups.single { it.second.first().homeCenter() != it.second.first().orderCenter() }.second
+        for (y in 1..5) for (z in 0..383) helper.setBlock(BlockPos(230, y, z), Blocks.STONE)
+        shifted.forEachIndexed { index, npc ->
+            val point = helper.absoluteVec(Vec3(218.5 + index % 4, 1.0, 184.5 + index / 4))
+            npc.moveTo(point.x, point.y, point.z, 0f, 0f)
+            (npc.navigation as VehicleAwareNavigation).pathWorkObserver = { _, _, native -> if (native) onSearch() }
+        }
+        return shifted
+    }
+
+    /** The replacement obeyed the native search limit and keeps clear of [neighbour]'s area. */
+    private fun assertReplacement(helper: GameTestHelper, searches: Int, home: Vec3, neighbour: List<NpcEntity>) {
+        helper.assertTrue(searches in 1..8, "Area validation did not obey its native-search limit: $searches")
+        helper.assertTrue(neighbour.first().homeCenter()!!.distanceTo(home) >= 68.0, "Replacement area overlaps its neighbor")
+    }
+
+    /** How many of [members] stand in the area round [home]. */
+    private fun insideArea(members: List<NpcEntity>, home: Vec3): Int {
+        val radius = CombatPosition.defendRadius(members.first().npcClass, members.size) + AREA_SLACK
+        return members.count { Math.hypot(it.x - home.x, it.z - home.z) <= radius }
+    }
+
+    /** A man counts inside his area with a step of slack at its edge. */
+    private const val AREA_SLACK = 3.0
+
+    /** Ticks the men get to walk into the replacement area: it lies within a few dozen blocks. */
+    private const val WALK_TICKS = 600L
 
     private class Fixture(val helper: GameTestHelper, name: String) {
         val scene = CombatIdleGameTests.Scene(helper, name, depth = 384, recordTrace = name in setOf("area-patrol", "area-blocked"))
