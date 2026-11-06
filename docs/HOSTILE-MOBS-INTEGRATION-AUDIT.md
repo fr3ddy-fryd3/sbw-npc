@@ -70,12 +70,11 @@ as complete.
 
 ## Executable checks
 
-`HostileMobApiGameTests` pins the relevant native contracts in the real server runtime: ordinary
-combat conditions versus the player-only query, the actual enderman player predicate, spider
-brightness gating, and unprovoked/tamed/mod-allied neutrality. All four passed in report
-`mob-api-contracts`: the NPC satisfies native combat conditions at 4 blocks but the query selects
-the actual player at 8 blocks; the original enderman predicate throws `ClassCastException`; the
-spider rejects daylight and acquires at night; neutral, owner-pet and mod-alliance checks pass.
+`HostileMobApiGameTests` pins the native contracts the mod builds on, in the real server runtime:
+the original spider goal keeps its brightness condition (a spider ignores a squad NPC by day and
+targets it at night), neutral markers do not override tamed or mod-allied mobs, and an unprovoked
+monster counts as a threat only within engage range. The enderman finding above is a reading of the
+vanilla source; no scene probes the predicate, since no mod code runs in it.
 
 ```bash
 ./gradlew runGameTestServer \
