@@ -35,7 +35,6 @@ import net.neoforged.neoforge.gametest.PrefixGameTestTemplate
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption.APPEND
-import java.nio.file.StandardOpenOption.CREATE
 import java.util.UUID
 import java.util.function.Consumer
 

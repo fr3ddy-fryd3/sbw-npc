@@ -31,7 +31,7 @@ object NoticingGameTests {
     /**
      * How long a negative scene watches. The slowest notice the table allows for any of these
      * enemies, were it in reach, is about seven seconds (100 blocks in the black band), so ten
-     * prove "never" as well as the old twenty-five did.
+     * are enough to prove "never".
      */
     private const val NEVER_TICKS = 200L
 

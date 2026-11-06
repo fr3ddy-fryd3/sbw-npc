@@ -135,10 +135,10 @@ object VehicleSupportOrderGameTests {
     /** A repeated MOVE is still a new command and releases the old station. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1000, batch = "support-repeat-move")
-    fun gunnerYieldsToNewMoveAtSamePoint(helper: GameTestHelper) = supportYieldsToChangedAssignment(helper, changeSquad = false)
+    fun gunnerYieldsToNewMoveAtSamePoint(helper: GameTestHelper) = supportYieldsToRepeatedMove(helper)
 
-    private fun supportYieldsToChangedAssignment(helper: GameTestHelper, changeSquad: Boolean) {
-        val scene = CombatIdleGameTests.Scene(helper, "support-change-${if (changeSquad) "squad" else "order"}")
+    private fun supportYieldsToRepeatedMove(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "support-change-order")
         val manager = SquadManager.get(helper.level)
         val man = scene.spawn(Vec3(20.5, 1.0, 20.5)).apply { isInvulnerable = true }
         val gun = park(helper, Vec3(20.5, 1.0, 24.5))
@@ -150,22 +150,15 @@ object VehicleSupportOrderGameTests {
         val destination = man.blockPosition()
         manager.issueOrderAt(helper.level, squad.id, SquadOrder.MOVE, destination)
         manager.setFocus(squad.id, enemy.uuid)
-        var otherSquad: UUID? = null
         scene.onClose = {
             manager.deleteSquad(helper.level, squad.id)
-            otherSquad?.let { manager.deleteSquad(helper.level, it) }
             gun.discard()
             enemy.discard()
         }
         var changedAt: Long? = null
         helper.onEachTick {
             if (changedAt == null && man.vehicle === gun) {
-                if (changeSquad) {
-                    manager.removeMemberEverywhere(man.uuid)
-                    otherSquad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(man.uuid)).id
-                } else {
-                    manager.issueOrderAt(helper.level, squad.id, SquadOrder.MOVE, destination)
-                }
+                manager.issueOrderAt(helper.level, squad.id, SquadOrder.MOVE, destination)
                 changedAt = helper.tick
             }
             val since = changedAt?.let { helper.tick - it } ?: return@onEachTick

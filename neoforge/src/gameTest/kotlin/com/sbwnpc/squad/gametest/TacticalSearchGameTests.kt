@@ -2,21 +2,17 @@ package com.sbwnpc.squad.gametest
 
 import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.Sightline
-import com.sbwnpc.squad.combat.TickBudget
 import com.sbwnpc.squad.combat.tactics.*
 import com.sbwnpc.squad.combat.tactics.PositionPaths
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import com.sbwnpc.squad.gametest.CombatIdleGameTests.Scene
 import com.sbwnpc.squad.mixin.PathNavigationAccessor
-import com.sbwnpc.squad.npc.NpcClass
-import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.util.Terrain
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
-import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.SnowLayerBlock
 import net.minecraft.world.phys.Vec3

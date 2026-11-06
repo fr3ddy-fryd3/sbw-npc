@@ -4,7 +4,6 @@ import com.sbwnpc.squad.combat.CombatPosition
 import com.sbwnpc.squad.combat.SquadAreas
 import com.sbwnpc.squad.combat.SquadFormation
 import com.sbwnpc.squad.entity.NpcEntity
-import com.sbwnpc.squad.entity.ai.SquadTargetSensor
 import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import com.sbwnpc.squad.npc.NpcClass
 import com.sbwnpc.squad.squad.Squad

@@ -11,7 +11,6 @@ import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.EntityType
 import net.minecraft.world.entity.Mob
 import net.minecraft.world.entity.NeutralMob
-import net.minecraft.world.entity.ai.targeting.TargetingConditions
 import net.minecraft.world.entity.monster.Enemy
 import net.minecraft.world.entity.monster.Zombie
 import net.minecraft.world.level.GameType

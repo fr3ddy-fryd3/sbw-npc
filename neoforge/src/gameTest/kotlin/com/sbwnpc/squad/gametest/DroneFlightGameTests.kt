@@ -32,11 +32,10 @@ object DroneFlightGameTests {
     /** How long after the launch the operator is kept under fire and must stay at his monitor. */
     private const val UNDER_FIRE_TICKS = 60L
 
-    /** A defensive post under broad cover, with a distant strike target confirmed by a spotter. */
-
     // Ticks he gets to cover most of the 8 blocks to his cover.
     private const val COVER_WALK_TICKS = 40L
 
+    /** A defensive post under broad cover, with a distant strike target confirmed by a spotter. */
     private class RoofLaunchScene(val helper: GameTestHelper, name: String, radius: Int) {
         val scene = CombatIdleGameTests.Scene(helper, name)
         val operator = scene.spawn(Vec3(20.5, 1.0, 100.5), NpcClass.DRONE_OPERATOR)

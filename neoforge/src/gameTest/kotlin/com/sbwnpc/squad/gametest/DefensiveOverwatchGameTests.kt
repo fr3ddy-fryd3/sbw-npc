@@ -76,7 +76,7 @@ object DefensiveOverwatchGameTests {
 
     private fun reserved(held: Vec3) = FiringSpots.nearby(held, 1.0, UUID(0, 0)).any { holds(it, held) }
 
-    private fun occupy(helper: GameTestHelper, order: SquadOrder, contact: Boolean = false, ladder: Boolean = true, fall: Boolean = false) {
+    private fun occupy(helper: GameTestHelper, order: SquadOrder, contact: Boolean = false, ladder: Boolean = true) {
         for (x in 0..175) for (z in 0..95) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
         for (y in 1..10) {
             helper.setBlock(BlockPos(72, y, 64), Blocks.STONE)
@@ -109,8 +109,6 @@ object DefensiveOverwatchGameTests {
             "-fire"
         } else if (!ladder) {
             "-unreachable"
-        } else if (fall) {
-            "-fall"
         } else {
             ""
         }}"
@@ -123,13 +121,9 @@ object DefensiveOverwatchGameTests {
         var heldPost: Vec3? = null
         var roundsFromTower = 0
         var contactSince = Long.MAX_VALUE
-        var displacedAt: Long? = null
-        var landedAt: Long? = null
-        var returnedSince: Long? = null
         var released: Pair<Long, List<Vec3>>? = null
         val oldGroups = DebugFlags.enabledGroups
         if (contact) DebugFlags.enabledGroups = oldGroups + setOf(LogGroup.ORDER, LogGroup.FIRE)
-        if (fall) DebugFlags.enabledGroups = oldGroups + LogGroup.ORDER
         if (!ladder) DebugFlags.enabledGroups = oldGroups + setOf(LogGroup.ORDER, LogGroup.PATH)
         val witness = if (contact) {
             FakePlayerFactory.get(helper.level, GameProfile(UUID.randomUUID(), "tower-observer")).apply {
@@ -207,25 +201,6 @@ object DefensiveOverwatchGameTests {
                 helper.assertTrue(helper.tick - since < 40, "Released support posts remained reserved: ${occupied.filter { FiringSpots.nearby(it, 1.0, UUID(0, 0)).isNotEmpty() }}")
                 return@onEachTick
             }
-            if (displacedAt != null) {
-                val sentry = holder!!
-                val point = heldPost!!
-                helper.assertTrue(sentry.isAlive, "Sentry died during the controlled fall")
-                val task = assignments[sentry]
-                helper.assertTrue(holds(task?.position, point) && task!!.job == TacticalJob.OVERWATCH && !task.localFireRecovery, "Fall lost the assigned tower post: task=${task?.job} post=${task?.position} recovery=${task?.localFireRecovery}")
-                helper.assertTrue(reserved(point), "Fall released the reserved tower slot")
-                if (sentry.onGround() && helper.relativeVec(sentry.position()).y < 3.0 && landedAt == null) landedAt = helper.tick
-                if (landedAt != null && FiringPostArrival.reached(sentry.position(), point) && sentry.onGround()) {
-                    if (returnedSince == null) returnedSince = helper.tick
-                    if (helper.tick - returnedSince!! >= 100) {
-                        Files.writeString(report.resolve("$name-result.txt"), "displacedAt=$displacedAt\nlandedAt=$landedAt\nreturnedAt=$returnedSince\npostRetained=true\nreservationRetained=true\n")
-                        helper.succeed()
-                    }
-                } else {
-                    returnedSince = null
-                }
-                return@onEachTick
-            }
             if (enemy != null) {
                 if (helper.tick % 20L == 0L) Files.writeString(report.resolve("$name-sight.txt"), "tick=${helper.tick}\nposition=${helper.relativeVec(holder!!.position())}\npose=${holder!!.pose} eye=${holder!!.eyeHeight}\nyaw=${holder!!.yHeadRot} look=${holder!!.lookAngle}\nenemy=${helper.relativeVec(enemy!!.position())} alive=${enemy!!.isAlive}\nvisible=${DetectionSightline.trace(holder!!, enemy!!)}\ntarget=${holder!!.target?.uuid}\nfireReady=${assignments[holder]?.let { TacticalPositions.firingReady(holder!!, it.task(), holder!!.position()) }}\n")
                 val task = assignments[holder]
@@ -249,14 +224,6 @@ object DefensiveOverwatchGameTests {
                     helper.assertTrue(posts.all { (npc, _) -> kotlin.math.abs(npc.xRot) <= 12f }, "Settled observers look up with nothing to watch: ${posts.map { it.first.xRot }}")
                     val occupied = posts.map { it.second }
                     for (a in occupied.indices) for (b in 0 until a) helper.assertTrue(occupied[a].distanceTo(occupied[b]) >= FiringSpots.MIN_SPACING, "Support posts overlap")
-                    if (fall) {
-                        holder = high.single().first
-                        heldPost = high.single().second
-                        displacedAt = helper.tick
-                        // A physical shove through the ladder opening; no teleport or return path injection.
-                        holder!!.push(-1.2, 0.15, 0.0)
-                        return@onEachTick
-                    }
                     if (contact) {
                         holder = high.single().first
                         contactSince = helper.tick

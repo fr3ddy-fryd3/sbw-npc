@@ -161,9 +161,9 @@ object RoofedOverwatchGameTests {
     private enum class Departure { MARCH, RETREAT, SUPPLY }
 
     /** Only orders and real gun ammunition change; the brain owns every path and physical step. */
-    private fun departure(helper: GameTestHelper, order: SquadOrder, mode: Departure, onlySupport: NpcClass? = null, scaffolding: Boolean = false) {
+    private fun departure(helper: GameTestHelper, order: SquadOrder, mode: Departure, onlySupport: NpcClass? = null) {
         val report = Path.of(System.getProperty("sbwnpc.gameTestReports"))
-        val name = "${if (scaffolding) "scaffold" else "roofed"}-exit-$order-$mode-${onlySupport ?: "mixed"}"
+        val name = "roofed-exit-$order-$mode-${onlySupport ?: "mixed"}"
         val trace = StringBuilder("tick,x,y,z,ladder,ground,collision,dy,nextX,nextY,nextZ,done,health,ammo,resupplying\n")
         // A retreat ends in DEFEND at its point, and a tower within the post search's reach of that
         // point is a fair post for it (#166). So the retreat goes past that reach, where the sentry
@@ -175,7 +175,7 @@ object RoofedOverwatchGameTests {
         var descended = false
         var supplied = false
         var returnSince: Long? = null
-        occupy(helper, order, onlySupport = onlySupport, scaffolding = scaffolding, onOccupied = { npc, post ->
+        occupy(helper, order, onlySupport = onlySupport, onOccupied = { npc, post ->
             sentry = npc
             previousPost = post
             departureTick = helper.tick

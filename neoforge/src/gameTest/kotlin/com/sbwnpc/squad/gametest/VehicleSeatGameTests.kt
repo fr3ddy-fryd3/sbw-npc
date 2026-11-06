@@ -7,7 +7,6 @@ import com.sbwnpc.squad.entity.ai.VehicleTransportBehaviour
 import com.sbwnpc.squad.entity.ai.VehicleTransportClaims
 import com.sbwnpc.squad.integration.sbw.emptyVehicleCargo
 import com.sbwnpc.squad.integration.sbw.overheatVehicleGun
-import com.sbwnpc.squad.npc.NpcRank
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.npc.TransportVehicle
 import com.sbwnpc.squad.squad.SquadManager

@@ -58,7 +58,6 @@ object TreePlatformGameTests {
                 val where = sentries.joinToString(" ") { npc -> "${npc.npcClass}=${helper.relativeVec(npc.position()).let { "%.0f,%.0f,%.0f".format(it.x, it.y, it.z) }}" }
                 scene.result("RUNNING", "tick=${helper.tick} $where")
             }
-            // Green runs take about 170 ticks; the leaves-as-floors search added some 480.
             helper.assertTrue(helper.tick <= PLATFORM_DEADLINE, "No sentry held the platform within $PLATFORM_DEADLINE ticks")
             if (up != null) {
                 scene.result("PASS", "tick=${helper.tick} sentry=${up.npcClass}")
@@ -79,7 +78,7 @@ object TreePlatformGameTests {
             FiringPostArrival.reached(npc.position(), post) && npc.onGround()
     }
 
-    /** By when a sentry must hold the platform: well past a green run, short of the old search's 24 s. */
+    /** By when a sentry must hold the platform: a sound search takes about 170 ticks, one that treats leaves as floors some 650. */
     private const val PLATFORM_DEADLINE = 600L
 
     /** Just under the feet of a man standing on the platform's slabs. */

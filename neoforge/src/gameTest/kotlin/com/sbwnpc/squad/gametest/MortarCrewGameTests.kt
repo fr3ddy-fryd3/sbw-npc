@@ -264,6 +264,8 @@ object MortarCrewGameTests {
         val scene = Scene.create(helper)
         var enemy: NpcEntity? = null
         var engaged = false
+        // Shots before the enemy came are not his defence.
+        val shotBefore = HashMap<NpcEntity, Int>()
         cleanup(helper) {
             scene.close()
             enemy?.discard()
@@ -272,6 +274,7 @@ object MortarCrewGameTests {
             if (enemy == null && MortarClaims.activeCrew(scene.mortar) == 2) {
                 val operator = scene.crew.first { it.uuid == MortarClaims.operator(scene.mortar.uuid) }
                 enemy = AttackDeploymentGameTests.spawn(helper, helper.relativeVec(operator.position()).add(4.0, 0.0, 0.0), SquadFaction.COW).also { operator.target = it }
+                scene.crew.forEach { shotBefore[it] = it.lastShotTick }
             }
             val man = enemy?.let { foe -> scene.crew.firstOrNull { it.target === foe } } ?: return@onEachTick
             val running = NativeTactics.reports(man).values.filter { it.status == ExecutionStatus.RUNNING }.map { it.ticket.identity }
@@ -281,7 +284,7 @@ object MortarCrewGameTests {
             }
             val foe = enemy!!
             // He has to fight the man off, not hand him back to the tube once the engage starts.
-            val fought = man.lastShotTick >= 0 || foe.health < foe.maxHealth || !foe.isAlive
+            val fought = man.lastShotTick > shotBefore.getValue(man) || foe.health < foe.maxHealth || !foe.isAlive
             if (engaged && fought) helper.succeed()
         }
     }
