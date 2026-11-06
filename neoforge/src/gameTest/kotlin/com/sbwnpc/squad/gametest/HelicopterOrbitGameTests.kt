@@ -515,7 +515,9 @@ object HelicopterOrbitGameTests {
                 if (Helicopters.isGrounded(helper.level, scene.heli)) landed = true
                 helper.assertTrue(landed || scene.squad.order == SquadOrder.RETREAT, "Arrival changed RETREAT to ${scene.squad.order} while the transport was still airborne")
             }
-            if (retreatAt != null && Helicopters.isGrounded(helper.level, scene.heli) && scene.heli.position().subtract(scene.pad).horizontalDistance() < 10.0 && scene.crew.drop(1).all { !it.isPassenger }) {
+            val pilot = scene.crew.first()
+            val atPad = Helicopters.isGrounded(helper.level, scene.heli) && com.sbwnpc.squad.combat.SquadFormation.reachedPoint(pilot, pilot.homeCenter()!!, scene.crew.size)
+            if (retreatAt != null && atPad && scene.crew.drop(1).all { !it.isPassenger }) {
                 scene.result("movingSince=$movingSince enemyTravel=${enemy.position().distanceTo(enemyOrigin!!)} sweep=$swept retreat=$retreatAt landing=${helper.tick}")
                 helper.succeed()
             }

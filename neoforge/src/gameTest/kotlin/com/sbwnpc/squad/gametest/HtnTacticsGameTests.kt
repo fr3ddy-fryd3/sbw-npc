@@ -2,6 +2,7 @@ package com.sbwnpc.squad.gametest
 
 import com.sbwnpc.squad.ai.integration.NativeTactics
 import com.sbwnpc.squad.ai.tactics.AttackPhase
+import com.sbwnpc.squad.combat.SpottingTime
 import com.sbwnpc.squad.combat.tactics.TacticalJob
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
@@ -32,6 +33,8 @@ object HtnTacticsGameTests {
     /** The light a lantern two blocks off gives the spot it lights: the BRIGHT band. */
     private const val LANTERN_LIGHT = 12
     private const val LIGHT_SETTLE_TICKS = 5L
+    private const val TICKS_PER_SECOND = 20.0
+    private const val SPOTTING_SLACK_TICKS = 40L
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1600, batch = "htn-compact")
@@ -361,11 +364,11 @@ object HtnTacticsGameTests {
      */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 500, batch = "spot-day")
-    fun enemyAtSeventyBlocksIsNoticedByDayAfterAMoment(helper: GameTestHelper) = spotting(helper, "spot-day", Lighting.DAY, distance = 70.0, expectNoticed = 8L..200L)
+    fun enemyAtSeventyBlocksIsNoticedByDayAfterAMoment(helper: GameTestHelper) = spotting(helper, "spot-day", Lighting.DAY, distance = 70.0)
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 700, batch = "spot-night-far")
-    fun enemyAtTheEdgeOfRangeIsNoticedLongAfterAtNight(helper: GameTestHelper) = spotting(helper, "spot-night-far", Lighting.NIGHT, distance = 35.0, expectNoticed = 30L..300L)
+    fun enemyAtTheEdgeOfRangeIsNoticedLongAfterAtNight(helper: GameTestHelper) = spotting(helper, "spot-night-far", Lighting.NIGHT, distance = 35.0)
 
     /**
      * A lantern by the enemy at night lights him as by day. 70 blocks is twice a regular's reach in
@@ -373,16 +376,16 @@ object HtnTacticsGameTests {
      */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 500, batch = "spot-night-lantern")
-    fun enemyByALanternIsNoticedAtNightAsByDay(helper: GameTestHelper) = spotting(helper, "spot-night-lantern", Lighting.LANTERN, distance = 70.0, expectNoticed = 8L..80L)
+    fun enemyByALanternIsNoticedAtNightAsByDay(helper: GameTestHelper) = spotting(helper, "spot-night-lantern", Lighting.LANTERN, distance = 70.0)
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 700, batch = "spot-night-near")
-    fun enemyInsideTheDarkRangeTakesSecondsToNoticeAtNight(helper: GameTestHelper) = spotting(helper, "spot-night-near", Lighting.NIGHT, distance = 20.0, expectNoticed = 15L..250L)
+    fun enemyInsideTheDarkRangeTakesSecondsToNoticeAtNight(helper: GameTestHelper) = spotting(helper, "spot-night-near", Lighting.NIGHT, distance = 20.0)
 
     /** The light the spotting scenes are played in: a lantern by the enemy at night in the last. */
     private enum class Lighting(val time: Long, val lantern: Boolean) { DAY(DAY_TIME, false), NIGHT(NIGHT_TIME, false), LANTERN(NIGHT_TIME, true) }
 
-    private fun spotting(helper: GameTestHelper, name: String, lighting: Lighting, distance: Double, expectNoticed: LongRange?) {
+    private fun spotting(helper: GameTestHelper, name: String, lighting: Lighting, distance: Double) {
         val lantern = lighting.lantern
         val scene = CombatIdleGameTests.Scene(helper, name)
         val manager = SquadManager.get(helper.level)
@@ -413,12 +416,19 @@ object HtnTacticsGameTests {
             }
             if (noticedAt == null && shooter.target?.uuid == enemy.uuid) noticedAt = helper.tick
             if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} light=${helper.level.getMaxLocalRawBrightness(enemy.blockPosition())} noticedAt=$noticedAt")
-            if (expectNoticed == null) {
+            // The window follows the spotting table, so retuning it moves the scene with it; the
+            // slack covers the sensor's scan interval and the brain's reaction to a new target.
+            val light = helper.level.getMaxLocalRawBrightness(enemy.blockPosition())
+            val eyes = SpottingTime.Observer.of(shooter.npcRank, shooter.npcClass)
+            val seconds = SpottingTime.seconds(eyes, SpottingTime.Target(distance, light))
+            if (seconds == null) {
                 helper.assertTrue(noticedAt == null, "Noticed an enemy beyond the dark range at tick $noticedAt")
                 if (helper.tick >= 400) helper.succeed()
             } else {
+                val expected = (seconds * TICKS_PER_SECOND).toLong()
+                val window = expected / 2..expected * 3 / 2 + SPOTTING_SLACK_TICKS
                 noticedAt?.let {
-                    helper.assertTrue(it in expectNoticed, "Noticed at tick $it, expected within $expectNoticed")
+                    helper.assertTrue(it in window, "Noticed at tick $it, the table gives $expected (window $window, light $light)")
                     helper.succeed()
                 }
             }

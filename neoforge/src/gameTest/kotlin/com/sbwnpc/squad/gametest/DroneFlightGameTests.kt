@@ -169,9 +169,16 @@ object DroneFlightGameTests {
         val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(operator.uuid))
         manager.setOrder(squad.id, SquadOrder.ATTACK)
         manager.setObjective(helper.level, squad.id, helper.absolutePos(BlockPos(150, 1, 100)))
+        // A drone strikes only an enemy known near the ATTACK point (9f8d4b5), never the bare point.
+        val target = AttackDeploymentGameTests.spawn(helper, Vec3(150.5, 1.0, 100.5), SquadFaction.COW).apply {
+            isNoAi = true
+            getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH)!!.baseValue = 50000.0
+            health = maxHealth
+        }
         val heights = mutableListOf<Double>()
         val trace = StringBuilder("tick,x,height,vy\n")
         helper.onEachTick {
+            TeamAwareness.report(SquadFaction.PIG, target.uuid, target.position(), helper.level.gameTime, "strike-test spotter")
             // The operator's is the only drone in the arena.
             val drone = helper.level.getEntities(operator, operator.boundingBox.inflate(200.0)) { Ports.drones.isDrone(it) }.firstOrNull()
                 ?: return@onEachTick
@@ -209,8 +216,15 @@ object DroneFlightGameTests {
         val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, listOf(operator.uuid))
         manager.setOrder(squad.id, SquadOrder.ATTACK)
         manager.setObjective(helper.level, squad.id, helper.absolutePos(BlockPos(120, 1, 100)))
+        // A drone strikes only an enemy known near the ATTACK point (9f8d4b5), never the bare point.
+        val target = AttackDeploymentGameTests.spawn(helper, Vec3(120.5, 1.0, 100.5), SquadFaction.COW).apply {
+            isNoAi = true
+            getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MAX_HEALTH)!!.baseValue = 50000.0
+            health = maxHealth
+        }
         var launchedAt: Vec3? = null
         helper.onEachTick {
+            TeamAwareness.report(SquadFaction.PIG, target.uuid, target.position(), helper.level.gameTime, "strike-test spotter")
             helper.assertTrue(operator.isAlive, "The operator died by tick ${helper.tick}, drone launched at $launchedAt")
             val drone = helper.level.getEntities(operator, operator.boundingBox.inflate(200.0)) { Ports.drones.isDrone(it) }.firstOrNull()
                 ?: return@onEachTick

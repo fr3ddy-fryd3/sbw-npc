@@ -42,6 +42,9 @@ import java.util.function.Consumer
 /** A few exposed scouts see the enemy, while the ridge blocks most of an already spread line. */
 @PrefixGameTestTemplate(false)
 object TerrainAttackGameTests {
+    /** Least distance between the four obstructed shooters, so one berm leaves the others' lanes open. */
+    private const val SHOOTER_SPACING = 10.0
+
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1200, batch = "terrain-return-fire")
     fun attackPastRidgeUnderFire(helper: GameTestHelper) = ridge(helper, returnFire = true)
@@ -149,6 +152,7 @@ object TerrainAttackGameTests {
         var enemyRounds = 0
         val obstructed = HashSet<UUID>()
         val resumedFire = HashSet<UUID>()
+        var obstructedAt = -1L
         val idleTicks = HashMap<UUID, Int>()
         val longestIdle = HashMap<UUID, Int>()
         val previous = HashMap<UUID, Vec3>()
@@ -160,7 +164,7 @@ object TerrainAttackGameTests {
                 val owner = round.owner?.uuid
                 if (members.any { it.uuid == owner }) {
                     shooters.add(owner!!)
-                    if (owner in obstructed && helper.tick > 400) resumedFire.add(owner)
+                    if (owner in obstructed && obstructedAt >= 0 && helper.tick > obstructedAt + 100) resumedFire.add(owner)
                 }
                 if (enemies.any { it.uuid == owner }) enemyRounds++
             }
@@ -196,7 +200,11 @@ object TerrainAttackGameTests {
             }
         }
         if (brokenPosts) {
-            helper.runAtTickTime(300) {
+            // The four shooters are taken when four stand firing far enough apart, not at a fixed
+            // tick: the plan settles its fire posts at its own pace, and the first shots come near
+            // tick 560. The line is about 40 blocks wide, so the spacing only has to keep each
+            // seven-block berm off its neighbours' lanes.
+            fun obstruct(): Boolean {
                 val covering = ArrayList<com.sbwnpc.squad.entity.NpcEntity>()
                 fun berm(npc: com.sbwnpc.squad.entity.NpcEntity): List<BlockPos> {
                     val p = helper.relativeVec(npc.position())
@@ -222,10 +230,10 @@ object TerrainAttackGameTests {
                 }.sortedBy { helper.relativeVec(it.position()).z }
                 for (npc in candidates) {
                     val closesShot = berm(npc).any { AABB(helper.absolutePos(it)).clip(npc.eyePosition, npc.target!!.eyePosition).isPresent }
-                    if (closesShot && covering.all { it.position().subtract(npc.position()).horizontalDistance() >= 24.0 }) covering.add(npc)
+                    if (closesShot && covering.all { it.position().subtract(npc.position()).horizontalDistance() >= SHOOTER_SPACING }) covering.add(npc)
                     if (covering.size == 4) break
                 }
-                helper.assertTrue(covering.size == 4, "Scene needs four working cover posts before obstruction")
+                if (covering.size < 4) return false
                 for (npc in covering) {
                     val p = helper.relativeVec(npc.position())
                     val target = helper.relativeVec(npc.target!!.position())
@@ -240,6 +248,12 @@ object TerrainAttackGameTests {
                     },
                     "Berms did not block the selected shooters",
                 )
+                return true
+            }
+            helper.onEachTick {
+                if (obstructedAt >= 0 || helper.tick % 20L != 0L || helper.tick < 200) return@onEachTick
+                helper.assertTrue(helper.tick <= 800, "Scene needs four working cover posts before obstruction")
+                if (obstruct()) obstructedAt = helper.tick
             }
         }
         helper.onEachTick {
@@ -256,7 +270,8 @@ object TerrainAttackGameTests {
                 }
                 if (p.x >= 42.0 && npc.onGround()) advanced.add(npc.uuid)
                 val trackedPost = villageCover || (brokenPosts && npc.uuid in obstructed)
-                if (trackedPost && helper.tick >= 450 && npc.isAlive && Ports.guns.inHand(npc)?.hasAmmo() == true) {
+                val settled = trackedPost && helper.tick >= 450 && (!brokenPosts || (obstructedAt >= 0 && helper.tick >= obstructedAt + 150))
+                if (settled && npc.isAlive && Ports.guns.inHand(npc)?.hasAmmo() == true) {
                     val last = previous.getOrPut(npc.uuid) { npc.position() }
                     val target = npc.target
                     val blind = target == null || !DetectionSightline.canSee(npc, target) || Sightline.blocked(helper.level, npc.eyePosition, target.eyePosition, npc)
