@@ -3,6 +3,7 @@ package com.sbwnpc.squad.gametest
 import com.mojang.authlib.GameProfile
 import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.PlayerFactionRegistry
+import com.sbwnpc.squad.squad.SquadManager
 import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
@@ -10,11 +11,9 @@ import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.EntityType
 import net.minecraft.world.entity.Mob
 import net.minecraft.world.entity.NeutralMob
-import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal
 import net.minecraft.world.entity.ai.targeting.TargetingConditions
 import net.minecraft.world.entity.monster.Enemy
 import net.minecraft.world.entity.monster.Zombie
-import net.minecraft.world.entity.player.Player
 import net.minecraft.world.level.GameType
 import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.common.util.FakePlayer
@@ -62,34 +61,45 @@ object HostileMobApiGameTests {
             }
     }
 
-    private fun playerGoal(mob: Mob): NearestAttackableTargetGoal<*> {
-        val type = NearestAttackableTargetGoal::class.java.getDeclaredField("targetType").apply { isAccessible = true }
-        return mob.targetSelector.availableGoals.map { it.goal }.filterIsInstance<NearestAttackableTargetGoal<*>>()
-            .single { type.get(it) == Player::class.java }
-    }
-
-    /** The original spider goal refuses daylight but can acquire a valid target in darkness. */
+    /**
+     * A spider hunts a squad man only in the dark: its daylight gate runs before the search that
+     * finds NPCs (#135). The man is its only quarry, so the night catch proves the search reaches
+     * him and the day refusal is the gate, not a man it could not find.
+     */
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 100, batch = "mob-api-spider-light")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 300, batch = "mob-api-spider-light")
     fun originalSpiderGoalRetainsItsBrightnessCondition(helper: GameTestHelper) {
         val probe = ApiScene(helper, "mob-api-spider-light")
-        val spider = probe.mob(EntityType.SPIDER, Vec3(44.5, 1.0, 40.5))
-        probe.player(Vec3(48.5, 1.0, 40.5))
-        val goal = playerGoal(spider)
-        helper.level.dayTime = 6000L
-        helper.runAtTickTime(5) {
-            helper.assertTrue(spider.lightLevelDependentMagicValue >= 0.5f, "The daylight fixture was not bright")
-            helper.assertTrue((0 until 20).none { goal.canUse() }, "The original spider player goal ignored daylight")
-            helper.level.dayTime = 18000L
+        // He must not shoot the spider first: a hurt spider hunts its attacker by day too.
+        probe.npc.isNoAi = true
+        // Mobs hunt only squad men: a loose man is no one's soldier.
+        val manager = SquadManager.get(helper.level)
+        val squad = manager.create(helper.level, UUID.randomUUID(), requireNotNull(probe.npc.spawnFaction), listOf(probe.npc.uuid))
+        val close = probe.scene.onClose
+        probe.scene.onClose = {
+            manager.deleteSquad(helper.level, squad.id)
+            close()
         }
-        helper.runAtTickTime(10) {
-            helper.assertTrue(spider.lightLevelDependentMagicValue < 0.5f, "The night fixture was not dark")
-            spider.random.setSeed(135L)
-            helper.assertTrue((0 until 100).any { goal.canUse() }, "The original spider goal could not acquire a valid player in darkness")
-            probe.scene.result("PASS", "daylightRejected=true nightAcquired=true")
-            helper.succeed()
+        val spider = probe.mob(EntityType.SPIDER, Vec3(44.5, 1.0, 40.5))
+        spider.isNoAi = false
+        helper.level.dayTime = 6000L
+        helper.onEachTick {
+            if (helper.tick < SPIDER_DAY_TICKS) {
+                helper.assertTrue(spider.lightLevelDependentMagicValue >= 0.5f, "The daylight fixture was not bright")
+                helper.assertTrue(spider.target == null, "The spider hunted the man in daylight at tick ${helper.tick}")
+                return@onEachTick
+            }
+            if (helper.tick == SPIDER_DAY_TICKS) helper.level.dayTime = 18000L
+            if (spider.target === probe.npc) {
+                helper.assertTrue(spider.lightLevelDependentMagicValue < 0.5f, "The night fixture was not dark")
+                probe.scene.result("PASS", "daylightRefused=$SPIDER_DAY_TICKS nightCaughtAt=${helper.tick}")
+                helper.succeed()
+            }
         }
     }
+
+    /** Ticks of daylight the spider is watched in: a goal that hunts at all picks a man 4 blocks off within a few seconds. */
+    private const val SPIDER_DAY_TICKS = 100L
 
     /** Enemy/NeutralMob markers do not replace actual neutral, tame-owner and mod-alliance decisions. */
     @JvmStatic
