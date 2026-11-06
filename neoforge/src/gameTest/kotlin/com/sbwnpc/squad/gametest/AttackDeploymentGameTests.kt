@@ -85,10 +85,10 @@ object AttackDeploymentGameTests {
         })
         manager.setOrder(squad.id, SquadOrder.ATTACK)
         manager.setObjective(helper.level, squad.id, enemy.blockPosition())
-        var reported = false
+        var reportedAt: Long? = null
         var approachedAt: Long? = null
         helper.onEachTick {
-            if (scouts.any { it.target === enemy }) reported = true
+            if (reportedAt == null && scouts.any { it.target === enemy }) reportedAt = helper.tick
             if (helper.tick % 20L == 0L) {
                 rear.forEach { npc ->
                     val task = com.sbwnpc.squad.ai.integration.NativeTactics.assignment(npc)
@@ -98,10 +98,11 @@ object AttackDeploymentGameTests {
                 }
                 java.nio.file.Files.writeString(report.resolve("rear-contact.csv"), trace)
             }
-            if (reported && rear.all { it.position().subtract(enemy.position()).horizontalDistance() <= 80.0 } && approachedAt == null) approachedAt = helper.tick
+            if (reportedAt != null && rear.all { it.position().subtract(enemy.position()).horizontalDistance() <= 80.0 } && approachedAt == null) approachedAt = helper.tick
             if (approachedAt != null && rounds.size == rear.size) {
-                java.nio.file.Files.writeString(report.resolve("rear-contact-result.txt"), "approached=$approachedAt\nallFired=${helper.tick}\nshooters=${rounds.size}/${rear.size}\n")
-                helper.assertTrue(approachedAt!! <= 700, "Rear took more than 35 seconds to close a 140-block contact on open ground")
+                java.nio.file.Files.writeString(report.resolve("rear-contact-result.txt"), "reported=$reportedAt\napproached=$approachedAt\nallFired=${helper.tick}\nshooters=${rounds.size}/${rear.size}\n")
+                // The pace counts from the scouts' report: before it the rear has nothing to march to.
+                helper.assertTrue(approachedAt!! - reportedAt!! <= 700, "Rear took more than 35 seconds after the report to close a 140-block contact on open ground")
                 helper.succeed()
             }
         }

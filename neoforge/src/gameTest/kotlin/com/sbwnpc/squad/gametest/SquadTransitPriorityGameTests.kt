@@ -21,6 +21,9 @@ import java.util.UUID
 /** Ordinary transit must respect the same role, treatment, cover and seat owners in Core. */
 @PrefixGameTestTemplate(false)
 object SquadTransitPriorityGameTests {
+    /** A claim held this long is the man's choice of vehicle, not a passing candidate. */
+    private const val CLAIM_HELD_TICKS = 20L
+
     /** A nearby enemy still belongs to combat, even while the objective is far enough to ride. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 160, batch = "transit-close-contact")
@@ -127,10 +130,15 @@ object SquadTransitPriorityGameTests {
         }
         helper.assertTrue(driver.startRiding(squads, true), "Could not seat the squad's driver")
         manager.issueOrderAt(helper.level, squad.id, SquadOrder.ATTACK, helper.absolutePos(BlockPos(220, 1, 20)))
+        // The choice is the claim: the driver may set off before a man 25 blocks away walks up, so
+        // waiting for the boarding itself timed the scene out on the ride, not on the choice.
+        var claimedSince: Long? = null
         helper.onEachTick {
             helper.assertTrue(VehicleTransportClaims.vehicleOf(straggler.uuid) != nearer.uuid && straggler.vehicle !== nearer, "The man left behind took a nearer free vehicle over his squad's")
-            if (straggler.vehicle === squads) {
-                scene.result("PASS", "tick=${helper.tick} boarded his squad's vehicle")
+            claimedSince = if (VehicleTransportClaims.vehicleOf(straggler.uuid) == squads.uuid) claimedSince ?: helper.tick else null
+            val held = claimedSince?.let { helper.tick - it >= CLAIM_HELD_TICKS } == true
+            if (straggler.vehicle === squads || held) {
+                scene.result("PASS", "tick=${helper.tick} boarded=${straggler.vehicle === squads} claimedSince=$claimedSince")
                 helper.succeed()
             }
         }
