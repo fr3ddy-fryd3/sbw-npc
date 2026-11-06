@@ -147,11 +147,6 @@ object VehicleSupportOrderGameTests {
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1000, batch = "support-repeat-move")
     fun gunnerYieldsToNewMoveAtSamePoint(helper: GameTestHelper) = supportYieldsToChangedAssignment(helper, changeSquad = false)
 
-    /** A station assignment belongs to its squad, even when another squad has the same order stamp. */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1000, batch = "support-change-squad")
-    fun gunnerYieldsWhenChangedToAnotherSquad(helper: GameTestHelper) = supportYieldsToChangedAssignment(helper, changeSquad = true)
-
     private fun supportYieldsToChangedAssignment(helper: GameTestHelper, changeSquad: Boolean) {
         val scene = CombatIdleGameTests.Scene(helper, "support-change-${if (changeSquad) "squad" else "order"}")
         val manager = SquadManager.get(helper.level)

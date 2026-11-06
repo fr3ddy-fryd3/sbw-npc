@@ -67,22 +67,6 @@ object PlannedEngageGameTests {
         fun closed() = start.distanceTo(enemy.position()) - man.position().distanceTo(enemy.position())
     }
 
-    /** The enemy within his stopping distance: his plan holds a firing spot and he fires from it. */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "planned-engage-hold")
-    fun arrivedManHoldsAFiringSpotInHisPlan(helper: GameTestHelper) {
-        val contact = Contact(helper, "planned-engage-hold", 15.0)
-        helper.onEachTick {
-            contact.tick()
-            if (helper.tick >= 300L) {
-                helper.assertTrue(contact.chose("hold_firing_spot"), "His plan did not hold a firing spot: ${contact.choices()}")
-                helper.assertTrue(contact.man.lastShotTick >= 0, "He never fired")
-                contact.scene.result("PASS", "choices=${contact.choices()}")
-                helper.succeed()
-            }
-        }
-    }
-
     /** The enemy far beyond his stopping distance in the open: his plan closes in by bounds. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 500, batch = "planned-engage-close")

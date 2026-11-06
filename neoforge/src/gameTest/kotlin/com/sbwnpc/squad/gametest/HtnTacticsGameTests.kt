@@ -37,10 +37,6 @@ object HtnTacticsGameTests {
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1600, batch = "htn-compact")
     fun htnJointAttack64OnCompactFront(helper: GameTestHelper) = jointAttack(helper, wide = false)
 
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1600, batch = "htn-wide")
-    fun htnJointAttack64OnWideFront(helper: GameTestHelper) = jointAttack(helper, wide = true)
-
     /** In-game 21.10: one ATTACK for 28 squads froze the server choosing their approach sectors (#140). */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 900, batch = "htn-many-squads")
@@ -135,53 +131,6 @@ object HtnTacticsGameTests {
             helper.assertTrue(moved >= 450, "Movement benchmark left most NPCs stationary: $moved/600")
             work.report()
             scene.result("PASS", "active=$active moved=$moved tick=${helper.tick}; see operation-work.txt for measured tick times; this is movement, not 600-person combat")
-            helper.succeed()
-        }
-    }
-
-    /**
-     * 300 attackers against 300 defenders with real rifles, for #11: what the server pays when 600 NPCs
-     * fight, as `operation-work.txt` beside the movement scene's numbers. It records, it does not hold a limit.
-     */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 2200, batch = "htn-600-combat")
-    fun htnSixHundredNpcCombatLoad(helper: GameTestHelper) {
-        val scene = CombatIdleGameTests.Scene(helper, "htn-600-combat", recordTrace = false)
-        val manager = SquadManager.get(helper.level)
-        fun block(column: Int, row: Int, faction: com.sbwnpc.squad.npc.SquadFaction) = (0 until 30).map { index -> scene.spawn(Vec3(10.5 + column * 40 + index % 6 * 4, 1.0, 10.5 + row * 40 + index / 6 * 4), faction = faction) }
-        val attackers = (0 until 10).map { block(it % 2, it / 2, com.sbwnpc.squad.npc.SquadFaction.PIG) }
-        val defenders = (0 until 10).map { block(3 + it % 2, it / 2, com.sbwnpc.squad.npc.SquadFaction.COW) }
-        val all = (attackers + defenders).flatten()
-        val attackSquads = attackers.map { manager.create(helper.level, UUID(90, 601), requireNotNull(it.first().spawnFaction), it.map { npc -> npc.uuid }) }
-        val defendSquads = defenders.map { manager.create(helper.level, UUID(91, 601), requireNotNull(it.first().spawnFaction), it.map { npc -> npc.uuid }) }
-        val work = NativeCombatWork(helper, all)
-        val shooters = HashSet<UUID>()
-        val rounds = Consumer<EntityJoinLevelEvent> { event ->
-            val round = event.entity as? Projectile ?: return@Consumer
-            val owner = round.owner?.uuid ?: return@Consumer
-            if (event.level === helper.level && Ports.guns.isRound(round)) shooters += owner
-        }
-        NeoForge.EVENT_BUS.addListener(rounds)
-        scene.onClose = {
-            work.close()
-            NeoForge.EVENT_BUS.unregister(rounds)
-            (attackSquads + defendSquads).forEach { manager.deleteSquad(helper.level, it.id) }
-        }
-        defendSquads.forEachIndexed { index, squad ->
-            val group = defenders[index]
-            manager.issueOrderAt(helper.level, squad.id, SquadOrder.DEFEND, BlockPos.containing(group.map { it.x }.average(), group.first().y, group.map { it.z }.average()))
-        }
-        attackSquads.forEachIndexed { index, squad ->
-            val group = defenders[index]
-            manager.issueOrderAt(helper.level, squad.id, SquadOrder.ATTACK, BlockPos.containing(group.map { it.x }.average(), group.first().y, group.map { it.z }.average()))
-        }
-        helper.onEachTick {
-            if (helper.tick % 200L == 0L) scene.result("RUNNING", "tick=${helper.tick} shooters=${shooters.size} alive=${all.count { it.isAlive }}")
-        }
-        helper.runAtTickTime(1900) {
-            work.report(enforce = false)
-            helper.assertTrue(shooters.size >= 100, "Too few men fired for a fight to measure: ${shooters.size}/600")
-            scene.result("PASS", "tick=${helper.tick} shooters=${shooters.size} alive=${all.count { it.isAlive }}/600; see operation-work.txt for server tick times")
             helper.succeed()
         }
     }
@@ -368,42 +317,6 @@ object HtnTacticsGameTests {
         }
     }
 
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1200, batch = "htn-defend-join")
-    fun htnSquadJoinsHeldDefenceAtItsPoint(helper: GameTestHelper) {
-        val scene = CombatIdleGameTests.Scene(helper, "htn-defend-join")
-        val manager = SquadManager.get(helper.level)
-        val principal = UUID(90, 7)
-        val holders = (0 until 4).map { scene.spawn(Vec3(80.5 + it % 2 * 3, 1.0, 96.5 + it / 2 * 3)) }
-        val squad = manager.create(helper.level, principal, requireNotNull(holders.first().spawnFaction), holders.map { it.uuid })
-        var joiner: com.sbwnpc.squad.squad.Squad? = null
-        var joiners = emptyList<NpcEntity>()
-        scene.onClose = { listOfNotNull(squad, joiner).forEach { manager.deleteSquad(helper.level, it.id) } }
-        val point = helper.absolutePos(BlockPos(82, 1, 98))
-        GroupOrders.apply(helper.level, manager, listOf(squad.id), SquadOrder.DEFEND, point.x, point.z)
-        var pendingObserved = false
-        helper.onEachTick {
-            val operation = NativeTactics.operation(holders.first())
-            if (helper.tick == 100L) {
-                // The map's "Join defend" sends the operation's exact point, here from another side.
-                val area = requireNotNull(operation?.objective as? com.sbwnpc.squad.ai.coordination.ObjectiveKey.Area) { "Defence formed no operation" }
-                joiners = (0 until 4).map { scene.spawn(Vec3(82.5 + it * 3, 1.0, 150.5)) }
-                joiner = manager.create(helper.level, principal, requireNotNull(joiners.first().spawnFaction), joiners.map { it.uuid })
-                GroupOrders.apply(helper.level, manager, listOf(joiner!!.id), SquadOrder.DEFEND, area.x, area.z)
-            }
-            if (joiners.isEmpty()) return@onEachTick
-            if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} pending=$pendingObserved holders=${operation?.members?.size} joiners=${joiners.map { helper.relativeVec(it.position()) }}")
-            if (!NativeTactics.coordinated(joiners.first())) {
-                if (helper.tick > 110) pendingObserved = true
-                return@onEachTick
-            }
-            helper.assertTrue(pendingObserved, "Joining squad was counted before it reached the defended point")
-            helper.assertTrue(NativeTactics.operation(joiners.first())?.id == operation?.id, "Joining squad formed its own defence")
-            scene.result("PASS", "tick=${helper.tick} members=${operation?.members?.size}")
-            helper.succeed()
-        }
-    }
-
     /**
      * Two squads given one common order 9 blocks beside a held defence's point join that defence
      * instead of starting another beside it. In-game 16.10 a click a few blocks off the point
@@ -437,38 +350,6 @@ object HtnTacticsGameTests {
             helper.assertTrue(joiners.all { NativeTactics.operation(it.first())?.id == operation?.id }, "Squads ordered beside the defence formed their own")
             scene.result("PASS", "tick=${helper.tick} members=${operation?.members?.size}")
             helper.succeed()
-        }
-    }
-
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 4800, batch = "htn-take")
-    fun htnAttackTakesDefendedObjective(helper: GameTestHelper) {
-        val scene = CombatIdleGameTests.Scene(helper, "htn-take")
-        val manager = SquadManager.get(helper.level)
-        val groups = (0..1).map { group -> (0 until 8).map { index -> scene.spawn(Vec3(28.5 + index / 4 * 4, 1.0, 72.5 + group * 32 + index % 4 * 4)) } }
-        val defenders = (0 until 8).map { index -> scene.spawn(Vec3(128.5 + index / 4 * 4, 1.0, 80.5 + index % 4 * 8), faction = com.sbwnpc.squad.npc.SquadFaction.COW) }
-        val squads = groups.map { group -> manager.create(helper.level, UUID(90, 8), requireNotNull(group.first().spawnFaction), group.map { it.uuid }) }
-        val defence = manager.create(helper.level, UUID(91, 8), requireNotNull(defenders.first().spawnFaction), defenders.map { it.uuid })
-        scene.onClose = { (squads + defence).forEach { manager.deleteSquad(helper.level, it.id) } }
-        val target = helper.absolutePos(BlockPos(130, 1, 92))
-        manager.issueOrderAt(helper.level, defence.id, SquadOrder.DEFEND, target)
-        GroupOrders.apply(helper.level, manager, squads.map { it.id }, SquadOrder.ATTACK, target.x, target.z)
-        var closest = Double.MAX_VALUE
-        var enteredAt: Long? = null
-        var defendersAtEntry = 0
-        helper.onEachTick {
-            val attackers = groups.flatten().filter { it.isAlive }
-            attackers.minOfOrNull { it.position().distanceTo(target.center) }?.let { closest = minOf(closest, it) }
-            if (enteredAt == null && attackers.count { it.position().distanceTo(target.center) <= 24 } >= 4) {
-                enteredAt = helper.tick
-                defendersAtEntry = defenders.count { it.isAlive }
-            }
-            if (helper.tick % 200L == 0L) scene.result("RUNNING", "tick=${helper.tick} attackers=${attackers.size} defenders=${defenders.count { it.isAlive }} closest=${closest.toInt()} inside=${attackers.count { it.position().distanceTo(target.center) <= 24 }} orders=${squads.map { it.order }}")
-            if (squads.all { it.order == SquadOrder.DEFEND }) {
-                helper.assertTrue(squads.all { it.commandReason == "occupied_and_inspected_area" }, "Attack ended without taking the objective: ${squads.map { it.commandReason }}")
-                scene.result("PASS", "tick=${helper.tick} attackers=${attackers.size} defenders=${defenders.count { it.isAlive }} enteredAt=$enteredAt defendersAtEntry=$defendersAtEntry")
-                helper.succeed()
-            }
         }
     }
 

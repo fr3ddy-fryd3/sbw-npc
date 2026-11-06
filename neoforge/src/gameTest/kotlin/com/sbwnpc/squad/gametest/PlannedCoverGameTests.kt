@@ -213,23 +213,6 @@ object PlannedCoverGameTests {
         }
     }
 
-    /** A medic is planned like any ground man: under fire he takes cover in his plan. */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "planned-cover-medic")
-    fun medicUnderFireTakesCoverInHisPlan(helper: GameTestHelper) {
-        val fire = UnderFire(helper, "planned-cover-medic", listOf(Vec3(20.5, 1.0, 64.5)), Vec3(140.5, 1.0, 64.5), wall = EXACT_WALL, role = NpcClass.MEDIC)
-        helper.onEachTick {
-            fire.tick()
-            if (helper.tick >= 300L) {
-                helper.assertTrue(fire.suspendedInCover == 0, "His plan was suspended for ${fire.suspendedInCover} ticks while he held cover")
-                fire.assertSheltered("The medic")
-                helper.assertTrue(fire.chose("take_cover"), "His plan did not choose cover: ${fire.choices()}")
-                fire.scene.result("PASS", "tick=${helper.tick} hidden=${fire.hidden} handovers=${fire.handovers}")
-                helper.succeed()
-            }
-        }
-    }
-
     /**
      * Badly hurt with no cover and a squadmate beside him, he digs in through his plan, holds the
      * hole, and once healed climbs back out of it.

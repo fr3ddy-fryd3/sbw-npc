@@ -79,7 +79,7 @@ spider rejects daylight and acquires at night; neutral, owner-pet and mod-allian
 
 ```bash
 ./gradlew runGameTestServer \
-  -PgameTestFilter=ordinaryCombatConditionsDoNotWidenPlayerQueries,endermanPlayerPredicateIsNotNpcSafe,originalSpiderGoalRetainsItsBrightnessCondition,neutralMarkersDoNotOverrideTameOrModAlliances \
+  -PgameTestFilter=originalSpiderGoalRetainsItsBrightnessCondition,neutralMarkersDoNotOverrideTameOrModAlliances \
   -PgameTestReportName=mob-api-contracts
 ```
 

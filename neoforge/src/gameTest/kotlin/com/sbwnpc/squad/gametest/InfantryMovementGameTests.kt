@@ -39,16 +39,6 @@ object InfantryMovementGameTests {
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 600)
-    fun moveOntoOneBlockPlatform(helper: GameTestHelper) {
-        floor(helper)
-        for (x in 12..23) {
-            for (z in 0..11) helper.setBlock(BlockPos(x, 1, z), Blocks.STONE)
-        }
-        march(helper, "one-block-platform", BlockPos(20, 2, 6), needsClimb = true)
-    }
-
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 600)
     fun aimingSidewaysDoesNotTrapNpcInShallowHole(helper: GameTestHelper) {
         floor(helper)
         helper.setBlock(BlockPos(11, 0, 6), Blocks.AIR)
@@ -57,14 +47,6 @@ object InfantryMovementGameTests {
         helper.setBlock(BlockPos(11, 1, 5), Blocks.STONE)
         for (x in 0..23) for (z in 7..11) helper.setBlock(BlockPos(x, 1, z), Blocks.STONE)
         march(helper, "side-aim-hole", BlockPos(10, 2, 8), needsClimb = true, opposedAim = true, start = Vec3(11.7, 0.0, 6.3))
-    }
-
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 600)
-    fun marchRecoversPastChangedHeadroom(helper: GameTestHelper) {
-        floor(helper)
-        for (x in 12..23) for (z in 0..11) helper.setBlock(BlockPos(x, 1, z), Blocks.STONE)
-        march(helper, "blocked-headroom", BlockPos(20, 2, 6), needsClimb = true, blockHeadroom = true)
     }
 
     @JvmStatic

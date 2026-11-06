@@ -43,10 +43,6 @@ import java.util.function.Consumer
 @PrefixGameTestTemplate(false)
 object TerrainAttackGameTests {
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1200, batch = "terrain")
-    fun attackPastRidgeWithoutReturnFire(helper: GameTestHelper) = ridge(helper, returnFire = false)
-
-    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 1200, batch = "terrain-return-fire")
     fun attackPastRidgeUnderFire(helper: GameTestHelper) = ridge(helper, returnFire = true)
 

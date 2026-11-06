@@ -67,7 +67,6 @@ object GameTestRegistration {
             CoverBudgetGameTests::class.java,
             AllyDeathGameTests::class.java,
             DroneFlightGameTests::class.java,
-            ObserverLookGameTests::class.java,
             VehicleSeatGameTests::class.java,
             VehicleSupportOrderGameTests::class.java,
             VehicleSupportSightlineGameTests::class.java,

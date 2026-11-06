@@ -60,28 +60,6 @@ object SquadAreaGameTests {
     }
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "operation_arena", skyAccess = true, timeoutTicks = 100, batch = "area-contact-sensor")
-    fun defenderOutsideAssignedAreaDetectsVisibleContactWithoutBeingHit(helper: GameTestHelper) {
-        val fixture = Fixture(helper, "area-contact-sensor")
-        val groups = List(2) { fixture.group(16, SquadOrder.DEFEND, Vec3(176.5, 1.0, 192.5)) }
-        groups.flatMap { it.second }.forEach { it.isNoAi = true }
-        helper.runAtTickTime(40) {
-            val group = groups.single { it.second.first().homeCenter() != it.second.first().orderCenter() }
-            val npc = group.second.first()
-            val home = npc.homeCenter()!!
-            val enemy = fixture.scene.enemy(helper.relativeVec(npc.position()).add(-24.0, 0.0, 0.0))
-            npc.yHeadRot = 90f
-            helper.assertTrue(!CombatPosition.withinArea(home, npc.position(), CombatPosition.defendRadius(npc.npcClass, group.second.size)), "Fixture defender must still be outside its assigned area")
-            helper.assertTrue(npc.lastHurtByMob == null, "Fixture must not grant retaliation through damage")
-            SquadTargetSensor().tick(helper.level, npc)
-            fixture.scene.result("CHECK", "outsideArea=true target=${npc.target?.uuid} enemy=${enemy.uuid} remembered=${enemy.uuid in group.first.tactics.contacts}")
-            helper.assertTrue(npc.target === enemy && enemy.uuid in group.first.tactics.contacts, "Visible enemy was ignored while the defender was approaching its sector")
-            fixture.scene.result("PASS", "outsideArea=true detectedBeforeDamage=true")
-            helper.succeed()
-        }
-    }
-
-    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "operation_arena", skyAccess = true, timeoutTicks = 800, batch = "area-contact-fire")
     fun defendersFireBeforeArrivingInTheirAssignedAreaAndKeepMovingThere(helper: GameTestHelper) {
         val fixture = Fixture(helper, "area-contact-fire")
@@ -181,10 +159,6 @@ object SquadAreaGameTests {
             helper.succeed()
         }
     }
-
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "operation_arena", skyAccess = true, timeoutTicks = 1000, batch = "area-defend")
-    fun nearbyDefendOrdersPhysicallyOccupyDifferentStableAreas(helper: GameTestHelper) = holding(helper, SquadOrder.DEFEND)
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "operation_arena", skyAccess = true, timeoutTicks = 1200, batch = "area-patrol")

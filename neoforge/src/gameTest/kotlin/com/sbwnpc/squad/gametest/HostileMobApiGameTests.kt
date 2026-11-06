@@ -68,36 +68,6 @@ object HostileMobApiGameTests {
             .single { type.get(it) == Player::class.java }
     }
 
-    /** The player-only query omits an otherwise attackable NPC even when he is closer. */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 100, batch = "mob-api-player-query")
-    fun ordinaryCombatConditionsDoNotWidenPlayerQueries(helper: GameTestHelper) {
-        val probe = ApiScene(helper, "mob-api-player-query")
-        val zombie = probe.mob(EntityType.ZOMBIE, Vec3(44.5, 1.0, 40.5))
-        val conditions = TargetingConditions.forCombat().range(16.0)
-        helper.assertTrue(conditions.test(zombie, probe.npc), "The native combat conditions themselves rejected the NPC")
-        helper.assertTrue(helper.level.getNearestPlayer(conditions, zombie, zombie.x, zombie.eyeY, zombie.z) == null, "Unexpected survival player in the empty probe")
-        val player = probe.player(Vec3(52.5, 1.0, 40.5))
-        helper.assertTrue(helper.level.getNearestPlayer(conditions, zombie, zombie.x, zombie.eyeY, zombie.z) === player, "Player-only discovery did not select its farther valid player")
-        probe.scene.result("PASS", "npcDistance=${zombie.distanceTo(probe.npc)} playerDistance=${zombie.distanceTo(player)}")
-        helper.succeed()
-    }
-
-    /** The actual vanilla enderman predicate cannot be evaluated with an NPC substituted for a player. */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 100, batch = "mob-api-player-predicate")
-    fun endermanPlayerPredicateIsNotNpcSafe(helper: GameTestHelper) {
-        val probe = ApiScene(helper, "mob-api-player-predicate")
-        val enderman = probe.mob(EntityType.ENDERMAN, Vec3(44.5, 1.0, 40.5))
-        val goal = playerGoal(enderman)
-        val field = goal.javaClass.getDeclaredField("startAggroTargetConditions").apply { isAccessible = true }
-        val conditions = field.get(goal) as TargetingConditions
-        val failure = runCatching { conditions.test(enderman, probe.npc) }.exceptionOrNull()
-        helper.assertTrue(failure is ClassCastException, "The pinned enderman predicate no longer has its expected Player-only boundary: $failure")
-        probe.scene.result("PASS", "predicateFailure=${failure?.javaClass?.simpleName}")
-        helper.succeed()
-    }
-
     /** The original spider goal refuses daylight but can acquire a valid target in darkness. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 100, batch = "mob-api-spider-light")

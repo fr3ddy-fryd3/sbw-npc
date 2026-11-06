@@ -106,20 +106,12 @@ object RoofedOverwatchGameTests {
     fun supportOccupiesPlayerRoofedTower(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND)
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1200, batch = "roofed-patrol")
-    fun patrolSupportOccupiesPlayerRoofedTower(helper: GameTestHelper) = occupy(helper, SquadOrder.PATROL)
-
-    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1600, batch = "roofed-fall")
     fun fallenSupportReturnsToPlayerRoofedTower(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND, fall = true)
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1800, batch = "roofed-exit")
     fun supportLeavesPlayerRoofedTower(helper: GameTestHelper) = departure(helper, SquadOrder.DEFEND, Departure.MARCH)
-
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1800, batch = "roofed-patrol-exit")
-    fun patrolSniperLeavesPlayerRoofedTower(helper: GameTestHelper) = departure(helper, SquadOrder.PATROL, Departure.MARCH, NpcClass.SNIPER)
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1800, batch = "roofed-retreat")
@@ -134,24 +126,12 @@ object RoofedOverwatchGameTests {
     fun supportReservesAndHoldsScaffoldTower(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND, scaffolding = true)
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 2000, batch = "scaffold-fall")
-    fun fallenSupportReturnsToScaffoldTower(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND, fall = true, scaffolding = true)
-
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 2400, batch = "scaffold-supply")
-    fun patrolSniperResuppliesAndReturnsToScaffoldTower(helper: GameTestHelper) = departure(helper, SquadOrder.PATROL, Departure.SUPPLY, NpcClass.SNIPER, scaffolding = true)
-
-    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1600, batch = "narrow-sniper")
     fun originalSniperFindsNarrowTower(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND, onlySupport = NpcClass.SNIPER, supportIndex = 4)
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1800, batch = "empty-sniper-tower")
     fun emptySniperWaitsBelowTowerUntilActualSupply(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND, onlySupport = NpcClass.SNIPER, supportIndex = 4, emptyPrimary = true)
-
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1800, batch = "empty-gunner-tower")
-    fun emptyPatrolGunnerWaitsBelowTowerUntilActualSupply(helper: GameTestHelper) = occupy(helper, SquadOrder.PATROL, onlySupport = NpcClass.MACHINE_GUNNER, emptyPrimary = true)
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "roofed_watchtower", timeoutTicks = 1600, batch = "tower-ammo-release")

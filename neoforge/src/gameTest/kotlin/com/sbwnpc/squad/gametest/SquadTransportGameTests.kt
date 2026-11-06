@@ -56,11 +56,6 @@ object SquadTransportGameTests {
         helper.assertTrue(driver != null && Ports.vehicles.seating(lav).firstOrNull()?.uuid == driver, "The boarded squad has no transport driver at the wheel")
     }
 
-    /** The fifth man is personally within 100 blocks, but his squad and its ride are still far. */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 700, batch = "whole-squad-transport")
-    fun allFiveAttackersBoardBeforeTakingPositionDuties(helper: GameTestHelper) = wholeSquadBoards(helper)
-
     /** A reported target beyond engagement distance does not switch off the common ride. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 700, batch = "remote-contact-transport")

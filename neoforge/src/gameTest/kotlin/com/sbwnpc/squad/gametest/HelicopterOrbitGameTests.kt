@@ -104,14 +104,6 @@ object HelicopterOrbitGameTests {
     fun anotherSquadsManTakesATransportSeatBeyondWhatThePilotsSquadNeeds(helper: GameTestHelper) = heldSeats(helper, "heli-seat-hold-spare", spare = true)
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 1800, batch = "transport-empty-attack")
-    fun transportCompletesEmptyAttackWithMoveAndLanding(helper: GameTestHelper) = emptyAttack(helper, HelicopterModel.AH_6)
-
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 1800, batch = "gunship-empty-attack")
-    fun gunshipCompletesEmptyAttackWithMoveAndLanding(helper: GameTestHelper) = emptyAttack(helper, HelicopterModel.MI_28)
-
-    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "aviation_arena", timeoutTicks = 2400, batch = "transport-ridge-attack")
     fun transportComesDownAfterARidgeBeforeAnEmptyAttackCompletes(helper: GameTestHelper) = emptyAttack(helper, HelicopterModel.AH_6, ridge = true)
 

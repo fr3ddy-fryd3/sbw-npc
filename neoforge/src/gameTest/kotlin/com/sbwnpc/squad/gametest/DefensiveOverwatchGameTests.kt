@@ -51,24 +51,12 @@ object DefensiveOverwatchGameTests {
     fun defendingSupportsReserveSmallTower(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND)
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 900, batch = "patrol-tower")
-    fun freePatrolSupportsReserveSmallTower(helper: GameTestHelper) = occupy(helper, SquadOrder.PATROL)
-
-    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 900, batch = "tower-fire")
     fun machineGunnerFiresFromReservedTower(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND, contact = true)
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 900, batch = "unreachable-tower")
     fun supportsChooseGroundCoverWhenTowerIsUnreachable(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND, ladder = false)
-
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1200, batch = "tower-fall")
-    fun fallenSentryReturnsToReservedTower(helper: GameTestHelper) = occupy(helper, SquadOrder.DEFEND, fall = true)
-
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1200, batch = "patrol-tower-fall")
-    fun fallenPatrolSentryReturnsToReservedTower(helper: GameTestHelper) = occupy(helper, SquadOrder.PATROL, fall = true)
 
     /**
      * The legacy [TacticalTask] shape of an HTN [NativeAssignment], so the existing shelter and

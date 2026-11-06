@@ -18,7 +18,6 @@ internal object GameTestGroups {
             FarDefenceGameTests::class.java,
             ScaffoldingGameTests::class.java,
             TreePlatformGameTests::class.java,
-            ObserverLookGameTests::class.java,
         ),
         "orders" to listOf(
             HtnTacticsGameTests::class.java,

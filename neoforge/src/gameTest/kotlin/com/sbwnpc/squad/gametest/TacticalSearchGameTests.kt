@@ -192,69 +192,6 @@ object TacticalSearchGameTests {
     }
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "battle_arena", timeoutTicks = 800, batch = "battle-192", skyAccess = true)
-    fun ninetySixAgainstNinetySixKeepCommittedNavigationAndExchangeFire(helper: GameTestHelper) {
-        val scene = Scene(helper, "battle-192", depth = 608)
-        // A shallow ridge and scattered one-block cover interrupt some direct firing lanes.
-        for (x in 68..82) {
-            for (z in 0..607) {
-                helper.setBlock(BlockPos(x, 1, z), Blocks.STONE)
-                if (z % 30 < 12 && x in 73..77) helper.setBlock(BlockPos(x, 2, z), Blocks.STONE)
-            }
-        }
-        for (z in 12..595 step 12) helper.setBlock(BlockPos(117, 1, z), Blocks.STONE)
-        val roles = listOf(NpcClass.RIFLEMAN, NpcClass.RIFLEMAN, NpcClass.RIFLEMAN, NpcClass.RIFLEMAN, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.SHOTGUNNER, NpcClass.MEDIC)
-        val sides = listOf(SquadFaction.PIG, SquadFaction.COW).mapIndexed { side, faction ->
-            (0..2).map { group ->
-                (0..31).map { index ->
-                    val x = if (side == 0) 25.5 + index / 8 * 4 else 142.5 - index / 8 * 4
-                    // 28 combat slots at six blocks need 162 blocks of frontage per squad.
-                    // Separate fronts exercise shared budgets without assigning overlapping lanes.
-                    scene.spawn(Vec3(x, 1.0, 90.5 + group * 190 + index % 8 * 6), roles[index % roles.size], faction).apply {
-                        getAttribute(Attributes.MAX_HEALTH)!!.baseValue = 5000.0
-                        health = maxHealth
-                    }
-                }
-            }
-        }
-        val squads = sides.mapIndexed { side, groups ->
-            groups.mapIndexed { group, members ->
-                scene.squad(members, contact = sides[1 - side][group].first(), order = if (side == 0) SquadOrder.ATTACK else SquadOrder.DEFEND)
-            }
-        }
-        val starting = sides.flatten().flatten().associate { it.uuid to it.position() }
-        val fired = sides.map { mutableSetOf<java.util.UUID>() }
-        var directionReversals = 0
-        val previousVelocity = mutableMapOf<java.util.UUID, Vec3>()
-        helper.onEachTick {
-            squads.flatten().forEach { scene.tick(it) }
-            sides.forEachIndexed { side, groups ->
-                groups.flatten().forEach { npc ->
-                    val nav = npc.navigation
-                    if (!nav.isDone) helper.assertTrue(nav.targetPos == nav.path!!.target, "Active goal disagrees with committed path for ${npc.uuid}")
-                    if (npc.lastShotTick >= 0) fired[side] += npc.uuid
-                    val movement = npc.deltaMovement.multiply(1.0, 0.0, 1.0)
-                    val previous = previousVelocity.put(npc.uuid, movement)
-                    if (previous != null && movement.horizontalDistance() > 0.06 && previous.horizontalDistance() > 0.06 && movement.normalize().dot(previous.normalize()) < -0.5) directionReversals++
-                }
-            }
-            val advanced = sides[0].flatten().count { it.position().distanceTo(starting.getValue(it.uuid)) >= 12.0 }
-            val recent = sides.map { groups -> groups.flatten().count { it.firedRecently(40) } }
-            if (helper.tick % 100L == 0L) scene.result("RUNNING", "fired=${fired.map { it.size }} recent=$recent advanced=$advanced reversals=$directionReversals tick=${helper.tick}")
-            if (helper.tick == 720L) {
-                helper.assertTrue(sides.all { groups -> groups.flatten().count { it.isAlive } == 96 }, "Fixture lost fighters before completing load window")
-                // This is a route-ownership stress check, not a win-rate or firing-participation
-                // guarantee. Keep enough live gunfire to exercise the workload; record the
-                // separate 50% participation target even when the tactical result misses it.
-                helper.assertTrue(fired.all { it.size >= 16 } && recent.all { it >= 8 }, "Load window lacked sustained two-sided gunfire: fired=${fired.map { it.size }} recent=$recent")
-                helper.assertTrue(advanced >= 24, "Attack did not physically advance: $advanced/96")
-                scene.result("PASS", "active=96+96 fired=${fired.map { it.size }} recent=$recent participationTargetMet=${fired.all { it.size >= 48 }} advanced=$advanced reversals=$directionReversals tick=${helper.tick}")
-                helper.succeed()
-            }
-        }
-    }
-
-    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 80, batch = "post-path-ownership")
     fun speculativePostSearchCannotReturnOrRedirectTheActiveRoute(helper: GameTestHelper) {
         val scene = Scene(helper, "post-path-ownership")

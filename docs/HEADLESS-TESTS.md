@@ -71,7 +71,7 @@ Domains for `--group`, to run what a change touches (a class may sit in several)
 
 | Group | Scenes about |
 |---|---|
-| `overwatch` | Towers, sentries, far defence, scaffolding, observers' gaze |
+| `overwatch` | Towers, sentries, far defence, scaffolding |
 | `orders` | Attack, defend, patrol, follow, withdrawal, manoeuvres, areas, the HTN |
 | `posts` | Searching firing posts and cover, firing lines, target memory |
 | `movement` | Infantry marches, ladders, routes |
@@ -109,7 +109,7 @@ To check the bench can fail at all:
 ```
 
 This switches off the AI of the NPC on the flat route only. Expected: `moveAcrossFlatGround` fails its
-progress check, the platform scene passes, and Gradle reports a failure.
+progress check and Gradle reports a failure.
 
 ## Output
 
