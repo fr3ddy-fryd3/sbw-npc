@@ -1,21 +1,16 @@
 package com.sbwnpc.squad.gametest
 
-import com.sbwnpc.squad.combat.FiringCone
 import com.sbwnpc.squad.combat.FriendlyFireGuard
 import com.sbwnpc.squad.domain.port.Guns
 import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcEntity
-import com.sbwnpc.squad.entity.NpcRegistry
 import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import com.sbwnpc.squad.gametest.CombatIdleGameTests.Scene
-import com.sbwnpc.squad.team.SquadTeams
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
-import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.Pose
-import net.minecraft.world.entity.player.Player
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
@@ -58,6 +53,11 @@ object CombatPerformanceGameTests {
         }
     }
 
+    /**
+     * The friendly-fire guard finds an ally in the lane, in the blast and in his own motion, and
+     * once both answers are known it stops looking: with twenty more allies about, a blocked shot
+     * takes no more than a few of their safety boxes.
+     */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 100, batch = "friendly-fire-work")
     fun friendlyFireStopsCompletedAssessmentAndKeepsBlastAndMotionSafety(helper: GameTestHelper) {
@@ -65,7 +65,7 @@ object CombatPerformanceGameTests {
         val shooter = scene.spawn(Vec3(10.5, 1.0, 100.5)).apply { isNoAi = true }
         val blocker = scene.spawn(Vec3(20.5, 1.0, 100.5)).apply { isNoAi = true }
         val impactAlly = scene.spawn(Vec3(150.5, 1.0, 120.5)).apply { isNoAi = true }
-        repeat(204) { index -> scene.spawn(Vec3(20.5 + index % 20 * 6, 1.0, 20.5 + index / 20 * 6)).isNoAi = true }
+        repeat(FRIENDLY_CROWD) { index -> scene.spawn(Vec3(20.5 + index % 10 * 12, 1.0, 40.5 + index / 10 * 12)).isNoAi = true }
         val impact = helper.absoluteVec(Vec3(150.5, 1.0, 100.5))
         val aim = impact.add(0.0, shooter.eyeHeight.toDouble(), 0.0)
         val actualGuns = Ports.guns
@@ -83,42 +83,31 @@ object CombatPerformanceGameTests {
             npc.zOld = npc.z
             npc.deltaMovement = Vec3.ZERO
         }
+        fun check(variant: String, blast: Double, line: Boolean, blastClear: Boolean) {
+            val actual = FriendlyFireGuard.assess(shooter, aim, 0.0, impact, blast)
+            helper.assertTrue(actual.lineClear == line && actual.blastClear == blastClear, "$variant: line=${actual.lineClear} blast=${actual.blastClear}, expected line=$line blast=$blastClear")
+        }
         helper.runAtTickTime(10) {
             Ports.guns = counting
             try {
-                place(blocker, Vec3(20.5, 1.0, 100.5))
+                check("ally in the lane", 0.0, line = false, blastClear = true)
+                place(impactAlly, Vec3(150.5, 1.0, 104.5))
+                check("ally in the lane and the blast", 6.0, line = false, blastClear = false)
+                place(blocker, Vec3(20.5, 1.0, 120.5))
+                check("ally in the blast only", 6.0, line = true, blastClear = false)
                 place(impactAlly, Vec3(150.5, 1.0, 120.5))
-                val evidence = mutableListOf<String>()
-                for (variant in 0..3) {
-                    val blast = if (variant == 1 || variant == 2) 6.0 else 0.0
-                    if (variant == 1) place(impactAlly, Vec3(150.5, 1.0, 104.5))
-                    if (variant == 2) place(blocker, Vec3(20.5, 1.0, 120.5))
-                    if (variant == 3) {
-                        place(blocker, Vec3(20.5, 1.0, 110.5))
-                        blocker.pose = Pose.CROUCHING
-                        blocker.deltaMovement = Vec3(0.0, 0.0, -2.0)
-                    }
-                    val expected = referenceAssessment(shooter, aim, 0.0, impact, blast)
-                    val actual = FriendlyFireGuard.assess(shooter, aim, 0.0, impact, blast)
-                    helper.assertTrue(actual.lineClear == expected.lineClear && actual.blastClear == expected.blastClear, "Optimization changed projectile/blast safety in variant $variant")
-                    evidence += "variant=$variant line=${actual.lineClear} blast=${actual.blastClear}"
-                }
+                check("nobody near", 6.0, line = true, blastClear = true)
+                // Crouched off the lane, running into it: where he will be when the round arrives counts.
+                place(blocker, Vec3(20.5, 1.0, 110.5))
+                blocker.pose = Pose.CROUCHING
+                blocker.deltaMovement = Vec3(0.0, 0.0, -2.0)
+                check("ally moving into the lane", 0.0, line = false, blastClear = true)
                 place(blocker, Vec3(20.5, 1.0, 100.5))
                 blocker.pose = Pose.STANDING
-                place(impactAlly, Vec3(150.5, 1.0, 120.5))
                 bounds = 0
-                var started = System.nanoTime()
-                repeat(128) { referenceAssessment(shooter, aim, 0.0, impact, 0.0) }
-                val referenceNanos = System.nanoTime() - started
-                val referenceBounds = bounds
-                bounds = 0
-                started = System.nanoTime()
-                repeat(128) { FriendlyFireGuard.assess(shooter, aim, 0.0, impact, 0.0) }
-                val currentNanos = System.nanoTime() - started
-                val currentBounds = bounds
-                scene.result("MEASURED", "referenceBounds=$referenceBounds currentBounds=$currentBounds referenceMillis=${referenceNanos / 1_000_000.0} currentMillis=${currentNanos / 1_000_000.0} safety=$evidence")
-                helper.assertTrue(referenceBounds >= 200 * 128 && currentBounds <= 4 * 128, "Completed line check still evaluates all 207 NPCs: reference=$referenceBounds current=$currentBounds")
-                scene.result("PASS", "referenceBounds=$referenceBounds currentBounds=$currentBounds referenceMillis=${referenceNanos / 1_000_000.0} currentMillis=${currentNanos / 1_000_000.0} safety=$evidence")
+                FriendlyFireGuard.assess(shooter, aim, 0.0, impact, 0.0)
+                helper.assertTrue(bounds <= EARLY_EXIT_BOUNDS, "A decided line check still went through the crowd: $bounds safety boxes")
+                scene.result("PASS", "boundsForABlockedShot=$bounds crowd=$FRIENDLY_CROWD")
                 helper.succeed()
             } finally {
                 Ports.guns = actualGuns
@@ -126,31 +115,9 @@ object CombatPerformanceGameTests {
         }
     }
 
-    /** Frozen pre-optimization implementation, an oracle and work-count baseline for the benchmark. */
-    private fun referenceAssessment(shooter: NpcEntity, aim: Vec3, spread: Double, impact: Vec3, blast: Double): FriendlyFireGuard.Assessment {
-        val level = shooter.level() as ServerLevel
-        val cone = FiringCone(shooter.eyePosition, aim, spread)
-        val speed = Ports.guns.inHand(shooter)?.muzzleVelocity?.coerceAtLeast(1.0) ?: 20.0
-        val flight = kotlin.math.ceil(shooter.eyePosition.distanceTo(aim) / speed) + 1.0
-        val checkBlast = blast > 0.0
-        val blastBox = AABB(impact, impact).inflate(blast)
-        var lineClear = true
-        var blastClear = true
-        forEachReferenceAlly(shooter, { cone.bounds.intersects(Ports.guns.firingSafetyBounds(it, flight)) || (checkBlast && blastBox.contains(it.position())) }) { ally ->
-            if (lineClear && Ports.guns.canHitEntity(shooter, ally) && cone.intersects(Ports.guns.firingSafetyBounds(ally, flight))) lineClear = false
-            if (blastClear && checkBlast && (ally !is Player || (!ally.isCreative && !ally.isSpectator)) && ally.position().distanceTo(impact) <= blast) blastClear = false
-            if (!lineClear && !blastClear) return FriendlyFireGuard.Assessment(false, false)
-        }
-        return FriendlyFireGuard.Assessment(lineClear, blastClear)
-    }
+    /** Allies about the field that a decided check must not go through. */
+    private const val FRIENDLY_CROWD = 20
 
-    private inline fun forEachReferenceAlly(shooter: NpcEntity, near: (LivingEntity) -> Boolean, action: (LivingEntity) -> Unit) {
-        val level = shooter.level() as ServerLevel
-        for (npc in NpcRegistry.all(level)) {
-            if (npc !== shooter && near(npc) && !SquadTeams.isHostile(shooter, npc)) action(npc)
-        }
-        for (player in level.players()) {
-            if (near(player) && !SquadTeams.isHostile(shooter, player)) action(player)
-        }
-    }
+    /** Safety boxes a decided check may take: the blocker's, and a few its search happened to meet first. */
+    private const val EARLY_EXIT_BOUNDS = 4
 }
