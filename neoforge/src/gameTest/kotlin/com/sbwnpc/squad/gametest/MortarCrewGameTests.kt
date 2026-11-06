@@ -180,8 +180,7 @@ object MortarCrewGameTests {
             helper.assertTrue(tube.uuid != scene.mortar.uuid && tube.position().distanceTo(point) <= 8.0, "Mortar did not physically redeploy at the new objective")
             helper.assertTrue(tube.persistentData.getLong("sbwnpcLastMortarShot") == lastShot, "Relocation reset the accepted-shot timer")
             helper.assertTrue(deployedIds.size == 1, "Tube repeatedly packed and redeployed around the arrival threshold")
-            helper.assertTrue(scene.crew.all { it.assignedMortarId == tube.uuid }, "Second soldier lost redeployed tube")
-            helper.assertTrue(scene.crew.sumOf { it.mortarShellsLeft } + (if (Ports.mortars.hasShell(tube)) 1 else 0) == expected, "Packing lost or duplicated shells")
+            scene.assertCrewKept(tube, expected)
             if (MortarClaims.activeCrew(tube) == 2) {
                 report("mortar-relocation.txt", "result=PASS tick=${helper.tick} tube=${helper.relativeVec(tube.position())}")
                 helper.succeed()
@@ -349,6 +348,13 @@ object MortarCrewGameTests {
             }
             MortarClaims.releaseMortar(mortar.uuid)
             mortar.discard()
+        }
+
+        /** Both men stayed on the redeployed [tube], with as many shells between them and it as before the move. */
+        fun assertCrewKept(tube: Entity, expected: Int?) {
+            helper.assertTrue(crew.all { it.assignedMortarId == tube.uuid }, "Second soldier lost redeployed tube")
+            val shells = crew.sumOf { it.mortarShellsLeft } + (if (Ports.mortars.hasShell(tube)) 1 else 0)
+            helper.assertTrue(shells == expected, "Packing lost or duplicated shells")
         }
 
         companion object {
