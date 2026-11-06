@@ -26,6 +26,9 @@ import java.util.UUID
  */
 @PrefixGameTestTemplate(false)
 object ArmourCoverGameTests {
+    /** Where the armour moves to: west of the wall, on his own side of it, so the wall's east face is the cover left. */
+    private val MOVED_ARMOUR = Vec3(4.5, 1.0, 40.5)
+
     private const val DAY_TIME = 6000L
 
     /**
@@ -370,23 +373,36 @@ object ArmourCoverGameTests {
         }
     }
 
-    /** A fresh sighting of a tank well to the side invalidates the old source and its physical unit. */
+    /**
+     * A fresh sighting of a tank well to the side invalidates the old source and its physical unit:
+     * from its new bearing the old cover leaves him in its sight, and he moves until it does not.
+     */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 600, batch = "armour-moved-source")
     fun movedArmourReplansCoverFromItsNewObservedSource(helper: GameTestHelper) {
         val front = Front(helper, "armour-moved-source", wall = true, roles = listOf(NpcClass.RIFLEMAN), infantry = false)
         val man = front.men.single()
         var hiddenAfterMove = 0
+        var exposedByMove = false
+        var spot: Vec3? = null
         helper.onEachTick {
             if (helper.tick == 10L) com.sbwnpc.squad.combat.tactics.SquadTactics.observe(man, front.crew)
             if (helper.tick == 100L) {
-                val point = helper.absoluteVec(Vec3(60.5, 1.0, 90.5))
+                spot = helper.relativeVec(man.position())
+                helper.assertTrue(!front.exposed(man), "He was not in cover before the armour moved")
+                val point = helper.absoluteVec(MOVED_ARMOUR)
                 front.lav.moveTo(point.x, point.y, point.z)
+            }
+            // A tick on, when the crew has followed its vehicle: on his side of the wall, the cover
+            // he holds no longer covers him.
+            if (helper.tick == 102L) {
+                exposedByMove = front.exposed(man)
+                helper.assertTrue(exposedByMove, "The moved armour still cannot see him at $spot, so nothing tests the replan")
             }
             if (helper.tick == 110L) com.sbwnpc.squad.combat.tactics.SquadTactics.observe(man, front.crew)
             if (helper.tick > 150L && !front.exposed(man)) hiddenAfterMove++
             if (helper.tick >= 400L) {
-                helper.assertTrue(hiddenAfterMove >= 40, "He stayed exposed to the moved armour: hidden=$hiddenAfterMove")
+                helper.assertTrue(hiddenAfterMove >= 40, "He stayed exposed to the moved armour: hidden=$hiddenAfterMove, now at ${helper.relativeVec(man.position())}")
                 front.scene.result("PASS", "source invalidated and cover replanned")
                 helper.succeed()
             }
