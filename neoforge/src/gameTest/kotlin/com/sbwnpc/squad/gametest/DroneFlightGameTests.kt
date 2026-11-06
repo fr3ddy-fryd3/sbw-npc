@@ -33,6 +33,10 @@ object DroneFlightGameTests {
     private const val UNDER_FIRE_TICKS = 60L
 
     /** A defensive post under broad cover, with a distant strike target confirmed by a spotter. */
+
+    // Ticks he gets to cover most of the 8 blocks to his cover.
+    private const val COVER_WALK_TICKS = 40L
+
     private class RoofLaunchScene(val helper: GameTestHelper, name: String, radius: Int) {
         val scene = CombatIdleGameTests.Scene(helper, name)
         val operator = scene.spawn(Vec3(20.5, 1.0, 100.5), NpcClass.DRONE_OPERATOR)
@@ -128,28 +132,32 @@ object DroneFlightGameTests {
         }
     }
 
-    /** An emergency cover path replacing the return route stays owned by cover on later flight ticks. */
+    /** An operator whose drone is up and who must take cover walks to it, and the drone stays up. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "drone-launch-cover")
     fun coverInterruptingLaunchReturnKeepsItsOwnPath(helper: GameTestHelper) {
         val roof = RoofLaunchScene(helper, "drone-launch-cover", 6)
         val coverOwner = Any()
-        var coverPath: net.minecraft.world.level.pathfinder.Path? = null
+        var cover: Vec3? = null
+        var startGap = 0.0
         var interruptedAt: Long? = null
         helper.onEachTick {
             roof.report()
             if (interruptedAt == null && roof.drone() != null) {
                 roof.operator.claim(NpcActivity.COVER, coverOwner)
-                val cover = roof.operator.position().add(8.0, 0.0, 0.0)
-                roof.operator.navigation.moveTo(cover.x, cover.y, cover.z, 1.0)
-                coverPath = roof.operator.navigation.path
-                helper.assertTrue(coverPath != null, "The fixture could not establish its cover path")
+                val point = roof.operator.position().add(8.0, 0.0, 0.0)
+                roof.operator.navigation.moveTo(point.x, point.y, point.z, 1.0)
+                helper.assertTrue(roof.operator.navigation.path != null, "The fixture could not establish its cover path")
+                cover = point
+                startGap = roof.operator.position().distanceTo(point)
                 interruptedAt = helper.tick
             }
             val since = interruptedAt?.let { helper.tick - it } ?: return@onEachTick
-            helper.assertTrue(roof.operator.navigation.path === coverPath, "The drone flight stopped cover's replacement path")
-            if (since >= 5) {
-                roof.scene.result("PASS", "interruptedAt=$interruptedAt finishedAt=${helper.tick}")
+            if (since >= COVER_WALK_TICKS) {
+                val gap = roof.operator.position().distanceTo(cover!!)
+                helper.assertTrue(gap < startGap - 4.0, "He did not walk to cover: ${"%.1f".format(startGap)} -> ${"%.1f".format(gap)}")
+                helper.assertTrue(roof.drone() != null, "The drone came down when he went for cover")
+                roof.scene.result("PASS", "interruptedAt=$interruptedAt gap=${"%.1f".format(startGap)}->${"%.1f".format(gap)}")
                 helper.succeed()
             }
         }
