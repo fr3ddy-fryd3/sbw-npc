@@ -57,7 +57,7 @@ object GrenadeThrower {
         ) {
             return false
         }
-        Ports.grenades.throwAt(thrower, level, target, targetVelocity, kind)
+        if (!Ports.grenades.throwAt(thrower, level, target, targetVelocity, kind, NEAR_TARGET)) return false
         thrower.spendGrenade(kind)
         DebugFlags.log(LogGroup.GRENADE, "{} threw {} at {} ({} blocks, blast {})", thrower.uuid, kind, target, thrower.position().distanceTo(target), Ports.grenades.blastRadius(kind))
         return true

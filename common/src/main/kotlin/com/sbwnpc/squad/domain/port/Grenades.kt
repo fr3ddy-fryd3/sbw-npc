@@ -17,7 +17,7 @@ interface Grenades {
     fun blastRadius(kind: GrenadeKind): Double
 
     /** Throws a [kind] hand grenade to land on [target], leading it by [targetVelocity]. */
-    fun throwAt(thrower: LivingEntity, level: ServerLevel, target: Vec3, targetVelocity: Vec3 = Vec3.ZERO, kind: GrenadeKind = GrenadeKind.OFFENSIVE)
+    fun throwAt(thrower: LivingEntity, level: ServerLevel, target: Vec3, targetVelocity: Vec3, kind: GrenadeKind, nearTarget: Double): Boolean
 
     /**
      * Whether a [kind] grenade thrown at [target] flies clear all the way: nothing it would touch —
