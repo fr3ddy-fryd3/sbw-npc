@@ -114,6 +114,13 @@ object NoticingGameTests {
             helper.assertFalse(shooter.target?.uuid == enemy.uuid, "Noticed an enemy 32 blocks off at night in $weather at tick ${helper.tick}")
             if (helper.tick >= NEVER_TICKS) {
                 helper.assertTrue(weather != com.sbwnpc.squad.combat.SpottingTime.Weather.CLEAR, "The scene never had rain")
+                // The control: in clear weather the same man, in the same light, is noticed. So it is
+                // the rain the man in the world obeyed, not a light or distance that hides him anyway.
+                val eyes = SpottingTime.Observer.of(shooter.npcRank, shooter.npcClass)
+                val light = helper.level.getMaxLocalRawBrightness(enemy.blockPosition())
+                val distance = shooter.position().distanceTo(enemy.position())
+                helper.assertTrue(SpottingTime.seconds(eyes, SpottingTime.Target(distance, light)) != null, "Even in clear weather he would not be noticed at light $light")
+                helper.assertTrue(SpottingTime.seconds(eyes, SpottingTime.Target(distance, light, weather = weather)) == null, "In $weather the table notices him too, so the scene proves nothing")
                 scene.result("PASS", "weather=$weather")
                 helper.succeed()
             }
