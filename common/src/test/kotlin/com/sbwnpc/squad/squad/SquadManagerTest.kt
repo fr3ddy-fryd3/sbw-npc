@@ -88,6 +88,19 @@ class SquadManagerTest {
         )
 
     @Test
+    fun `a withdrawal is a retreat order with the command failed for its reason`() {
+        // The vehicle gunner, the march and every other behaviour see only the order, so a
+        // withdrawal frees a support gun exactly as the retreat scene shows an order does.
+        val squad = garrison(listOf(RIFLEMAN))
+        val mgr = manager(squad)
+        mgr.withdraw(squad.id, "losses")
+        val after = mgr.get(squad.id)!!
+        assertEquals(SquadOrder.RETREAT, after.order)
+        assertEquals(com.sbwnpc.squad.ai.tactics.CommandOutcome.FAILED, after.commandOutcome)
+        assertEquals("losses", after.commandReason)
+    }
+
+    @Test
     fun `an attack keeps its base through repeated attack orders and loses it on any other order`() {
         val source = garrison(listOf(RIFLEMAN))
         var mgr = manager(source)

@@ -33,8 +33,8 @@ private fun assertSupportReleased(helper: GameTestHelper, gun: Entity, man: NpcE
 /** A free vehicle's gun must not keep a man from a new movement or withdrawal order. */
 @PrefixGameTestTemplate(false)
 object VehicleSupportOrderGameTests {
-    private fun supportYieldsToOrder(helper: GameTestHelper, order: SquadOrder, withdrawal: Boolean = false) {
-        val scene = CombatIdleGameTests.Scene(helper, "support-${if (withdrawal) "withdrawal" else order.name.lowercase()}")
+    private fun supportYieldsToOrder(helper: GameTestHelper, order: SquadOrder) {
+        val scene = CombatIdleGameTests.Scene(helper, "support-${order.name.lowercase()}")
         val manager = SquadManager.get(helper.level)
         val man = scene.spawn(Vec3(20.5, 1.0, 20.5))
         val gun = park(helper, Vec3(24.5, 1.0, 20.5))
@@ -54,12 +54,7 @@ object VehicleSupportOrderGameTests {
                 helper.assertTrue(Ports.vehicles.hasWeaponAt(gun, man), "The man boarded an unarmed seat")
                 gun.deltaMovement = Vec3(0.4, 0.0, 0.0)
                 val destination = helper.absolutePos(BlockPos(140, 1, 20))
-                if (withdrawal) {
-                    manager.setObjective(helper.level, squad.id, destination)
-                    manager.withdraw(squad.id, "gametest_losses")
-                } else {
-                    manager.issueOrderAt(helper.level, squad.id, order, destination)
-                }
+                manager.issueOrderAt(helper.level, squad.id, order, destination)
                 orderedAt = helper.tick
             }
             val since = orderedAt?.let { helper.tick - it } ?: return@onEachTick
@@ -82,11 +77,6 @@ object VehicleSupportOrderGameTests {
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1200, batch = "support-retreat")
     fun freeVehicleGunnerYieldsToRetreatWithoutResumingSupport(helper: GameTestHelper) = supportYieldsToOrder(helper, SquadOrder.RETREAT)
-
-    /** Loss-driven withdrawal uses the same order contract as an explicit retreat. */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 1200, batch = "support-withdrawal")
-    fun freeVehicleGunnerLeavesWhenSquadWithdraws(helper: GameTestHelper) = supportYieldsToOrder(helper, SquadOrder.RETREAT, withdrawal = true)
 
     /** An explicit MOVE takes the man away from his temporary weapon station. */
     @JvmStatic
