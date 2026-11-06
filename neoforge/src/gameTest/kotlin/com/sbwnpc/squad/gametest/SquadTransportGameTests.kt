@@ -24,6 +24,9 @@ import java.util.UUID
 /** A distant ATTACK travels as a squad before the operation hands out position work. */
 @PrefixGameTestTemplate(false)
 object SquadTransportGameTests {
+    /** How near the DEFEND point the replaced order's men count as there: a five-man squad's spread round it. */
+    private const val DEFEND_REACHED = 12.0
+
     /** Observes physical march while far; after transit the reinforcement makes for its march point ([entry]). */
     internal fun reinforcementMarch(helper: GameTestHelper, group: List<NpcEntity>, squad: Squad, entry: Point3, elapsed: Long): Boolean {
         val transit = SquadTransit.distant(squad, helper.level)
@@ -121,8 +124,10 @@ object SquadTransportGameTests {
             if (replacedAt >= 0) {
                 val x = helper.relativeVec(lav.position()).x
                 helper.assertTrue(x < boardedX + 15.0, "The ride drove on towards the replaced order's objective: x=$x, boarded at $boardedX, tick ${helper.tick}")
-                if (helper.tick >= replacedAt + 500) {
-                    scene.result("PASS", "boardedAt=$replacedAt boardedX=$boardedX x=$x")
+                // And the new order is carried out: the men end at the DEFEND point, not idle in a parked ride.
+                val there = men.all { it.vehicle == null && helper.relativeVec(it.position()).subtract(8.5, 1.0, 20.5).horizontalDistance() <= DEFEND_REACHED }
+                if (there) {
+                    scene.result("PASS", "boardedAt=$replacedAt boardedX=$boardedX x=$x arrived=${helper.tick}")
                     helper.succeed()
                 }
             }

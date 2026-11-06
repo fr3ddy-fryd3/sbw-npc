@@ -46,7 +46,14 @@ object ScaffoldingGameTests {
         val npc = AttackDeploymentGameTests.spawn(helper, Vec3(4.5, 1.0, 6.5), SquadFaction.PIG).apply { isNoAi = true }
         helper.runAtTickTime(10) {
             npc.setOnGround(true)
-            val path = (npc.navigation as VehicleAwareNavigation).createPositionPath(helper.absolutePos(BlockPos(11, 7, 6)))
+            val navigation = npc.navigation as VehicleAwareNavigation
+            val goal = helper.absolutePos(BlockPos(11, 7, 6))
+            // Control: with the shaft through a hole in the roof he gets up, so a refusal below is
+            // the roof's doing, not a broken start or a still man.
+            helper.setBlock(BlockPos(11, 6, 6), Blocks.SCAFFOLDING)
+            helper.assertTrue(navigation.createPositionPath(goal)?.canReach() == true, "Control: no route up a shaft through the roof")
+            helper.setBlock(BlockPos(11, 6, 6), Blocks.STONE)
+            val path = navigation.createPositionPath(goal)
             helper.assertTrue(path?.canReach() != true, "Scaffold clearance bypassed a solid roof")
             npc.discard()
             helper.succeed()
