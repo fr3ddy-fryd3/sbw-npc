@@ -74,20 +74,13 @@ object CombatIdleGameTests {
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 40, batch = "infantry-presets")
     fun infantryPresetsDeployShotgunnersWithoutLosingSupport(helper: GameTestHelper) {
         val scene = Scene(helper, "infantry-presets")
-        val expected = listOf(
-            SquadPreset.FIVE to listOf(3, 1, 0, 0, 1),
-            SquadPreset.SEVEN to listOf(3, 1, 1, 1, 1),
-            SquadPreset.SIXTEEN to listOf(9, 1, 2, 2, 2),
-            SquadPreset.THIRTY_TWO to listOf(18, 2, 4, 4, 4),
-        )
-        val roles = listOf(NpcClass.RIFLEMAN, NpcClass.SHOTGUNNER, NpcClass.SNIPER, NpcClass.MACHINE_GUNNER, NpcClass.MEDIC)
-        for ((index, entry) in expected.withIndex()) {
-            val members = scene.deploy(entry.first, Vec3(30.5 + index * 35, 1.0, 100.5))
-            helper.assertTrue(roles.map { role -> members.count { it.npcClass == role } } == entry.second, "Deployment changed the support/shotgun roster of ${entry.first}")
-            helper.assertTrue(members.size == entry.second.sum() && members.all { it.npcRank == NpcRank.RECRUIT }, "Preset lost strength or spawned veterans")
-            helper.assertTrue(members.filter { it.npcClass == NpcClass.SHOTGUNNER }.all { Ports.guns.roundsLeft(it.primaryGun()) == 64 && !it.sidearmWeapon.isEmpty }, "Deployed shotgunner has no primary ammo or backup pistol")
-        }
-        scene.result("PASS", "sizes=5,7,16,32 shotgunners=1,1,1,2")
+        // The rosters themselves are SquadPresetTest; this is the deployment honouring one, with a kit.
+        val preset = SquadPreset.SEVEN
+        val members = scene.deploy(preset, Vec3(30.5, 1.0, 100.5))
+        helper.assertTrue(members.map { it.npcClass }.sorted() == preset.composition.sorted(), "Deployment changed the roster of $preset")
+        helper.assertTrue(members.all { it.npcRank == NpcRank.RECRUIT }, "Preset spawned veterans")
+        helper.assertTrue(members.filter { it.npcClass == NpcClass.SHOTGUNNER }.all { Ports.guns.roundsLeft(it.primaryGun()) == 64 && !it.sidearmWeapon.isEmpty }, "Deployed shotgunner has no primary ammo or backup pistol")
+        scene.result("PASS", "preset=$preset size=${members.size}")
         helper.succeed()
     }
 

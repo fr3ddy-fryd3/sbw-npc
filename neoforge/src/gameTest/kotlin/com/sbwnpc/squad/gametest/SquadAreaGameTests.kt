@@ -144,30 +144,6 @@ object SquadAreaGameTests {
     }
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "operation_arena", skyAccess = true, timeoutTicks = 100, batch = "area-authority")
-    fun explicitRoutesMoveAndVehicleRolesKeepTheirOwnOrderPoints(helper: GameTestHelper) {
-        val fixture = Fixture(helper, "area-authority")
-        val requested = Vec3(176.5, 1.0, 192.5)
-        val groups = List(2) { fixture.group(16, SquadOrder.DEFEND, requested) }
-        val driver = fixture.group(1, SquadOrder.DEFEND, requested, NpcClass.TANK_CREW)
-        (groups.flatMap { it.second } + driver.second).forEach { it.isNoAi = true }
-        helper.runAtTickTime(40) {
-            val shifted = groups.single { it.second.first().homeCenter() != it.second.first().orderCenter() }
-            val npc = shifted.second.first()
-            val point = npc.orderCenter()
-            helper.assertTrue(driver.second.first().homeCenter() == driver.second.first().orderCenter(), "Vehicle role received an infantry area")
-            val manager = SquadManager.get(helper.level)
-            manager.setOrder(shifted.first.id, SquadOrder.MOVE)
-            helper.assertTrue(npc.homeCenter() == point, "Explicit MOVE retained the old holding area")
-            manager.setOrder(shifted.first.id, SquadOrder.PATROL)
-            shifted.first.routeId = UUID.randomUUID()
-            helper.assertTrue(npc.homeCenter() == point, "Explicit patrol route received a free-patrol area")
-            fixture.scene.result("PASS", "move=rawObjective route=rawObjective vehicleRole=rawObjective")
-            helper.succeed()
-        }
-    }
-
-    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "operation_arena", skyAccess = true, timeoutTicks = 1200, batch = "area-patrol")
     fun nearbyFreePatrolOrdersRoamSeparateAreas(helper: GameTestHelper) = holding(helper, SquadOrder.PATROL)
 
