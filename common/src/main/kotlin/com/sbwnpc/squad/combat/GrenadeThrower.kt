@@ -38,10 +38,26 @@ object GrenadeThrower {
         val first = thrower.grenadeToThrow() ?: return null
         val second = if (first == GrenadeKind.DEFENSIVE) GrenadeKind.OFFENSIVE else GrenadeKind.DEFENSIVE
         return listOf(first, second).firstOrNull { kind ->
-            thrower.grenadesLeft(kind) > 0 && isSafeToThrow(thrower, target, kind) &&
-                Ports.grenades.arcClear(thrower, level, target, targetVelocity, kind, NEAR_TARGET)
+            canThrow(thrower, level, target, targetVelocity, kind)
         }
     }
+
+    /** [thrower] still carries a [kind], and it is safe round the aim and reaches clear. */
+    private fun canThrow(thrower: NpcEntity, level: ServerLevel, target: Vec3, targetVelocity: Vec3, kind: GrenadeKind): Boolean = thrower.grenadesLeft(kind) > 0 && isSafeToThrow(thrower, target, kind) && reachesClear(thrower, level, target, targetVelocity, kind)
+
+    /**
+     * Whether the grenade flies clear and spares [thrower]'s side where it really strikes: a throw
+     * that passes its target can land past it, among the men behind. An M67 rolls on after its first
+     * strike, so its blast is widened by [ROLL_MARGIN]. Allies are taken where they stand now.
+     */
+    private fun reachesClear(thrower: NpcEntity, level: ServerLevel, target: Vec3, targetVelocity: Vec3, kind: GrenadeKind): Boolean {
+        val landing = Ports.grenades.landing(thrower, level, target, targetVelocity, kind, NEAR_TARGET, lobs = true) ?: return false
+        val blast = Ports.grenades.blastRadius(kind) + if (kind == GrenadeKind.OFFENSIVE) ROLL_MARGIN else 0.0
+        return FriendlyFireGuard.hasClearBlastRadius(thrower, landing, blast)
+    }
+
+    /** How far an M67 may roll after its first strike before the fuse runs out. */
+    private const val ROLL_MARGIN = 2.0
 
     /** An RGO touching down this close to its point has done what it was thrown for. */
     private const val NEAR_TARGET = 2.5
@@ -51,12 +67,7 @@ object GrenadeThrower {
 
     /** Rechecks reach at release: a moving target may have left range since [pick]. */
     fun throwAt(thrower: NpcEntity, level: ServerLevel, target: Vec3, kind: GrenadeKind, targetVelocity: Vec3 = Vec3.ZERO): Boolean {
-        if (thrower.grenadesLeft(kind) <= 0 || !inRange(thrower.position(), target) ||
-            !isSafeToThrow(thrower, target, kind) ||
-            !Ports.grenades.arcClear(thrower, level, target, targetVelocity, kind, NEAR_TARGET)
-        ) {
-            return false
-        }
+        if (!inRange(thrower.position(), target) || !canThrow(thrower, level, target, targetVelocity, kind)) return false
         if (!Ports.grenades.throwAt(thrower, level, target, targetVelocity, kind, NEAR_TARGET)) return false
         thrower.spendGrenade(kind)
         DebugFlags.log(LogGroup.GRENADE, "{} threw {} at {} ({} blocks, blast {})", thrower.uuid, kind, target, thrower.position().distanceTo(target), Ports.grenades.blastRadius(kind))

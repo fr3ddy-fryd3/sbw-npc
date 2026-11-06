@@ -111,7 +111,7 @@ object HostileMobCombatGameTests {
                 val contact = squad.tactics.contacts[enemy.uuid]
                 val details = men.joinToString { man ->
                     val point = contact?.position ?: enemy.position()
-                    "tick=${man.tickCount} blocked=${man.blockedSightSince} safe=${GrenadeThrower.isSafeToThrow(man, point, GrenadeKind.OFFENSIVE)} arc=${Ports.grenades.arcClear(man, helper.level, point, Vec3.ZERO, GrenadeKind.OFFENSIVE, 2.5)} pos=${helper.relativeVec(man.position())} contactAge=${contact?.let { c -> helper.level.gameTime - c.seenAt }}"
+                    "tick=${man.tickCount} blocked=${man.blockedSightSince} safe=${GrenadeThrower.isSafeToThrow(man, point, GrenadeKind.OFFENSIVE)} landing=${Ports.grenades.landing(man, helper.level, point, Vec3.ZERO, GrenadeKind.OFFENSIVE, 2.5, lobs = true)} pos=${helper.relativeVec(man.position())} contactAge=${contact?.let { c -> helper.level.gameTime - c.seenAt }}"
                 }
                 helper.fail("Grenade did not reach hidden infantry: thrownHidden=$thrownHidden projectile=${projectile?.let { helper.relativeVec(it.position()) }} $details")
             }
@@ -286,6 +286,52 @@ object HostileMobCombatGameTests {
             val hulls = Sightline.vehicleHulls(helper.level, man.boundingBox.minmax(zombie.boundingBox).inflate(8.0), man, zombie)
             helper.assertTrue(hulls.any { it == lav.boundingBox }, "The LAV the zombie leans on is out of the fire check")
             scene.result("PASS", "hulls=${hulls.size}")
+            helper.succeed()
+        }
+    }
+
+    /**
+     * A lob over a ridge counts only where it lands: aimed above the target, it used to count on
+     * passing within 2.5 blocks in mid-air and fly on, an RGO lobbed 2 high at 8 blocks landing at 15.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 100, batch = "grenade-ridge-landing")
+    fun ridgeLobLandsAtItsTarget(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "grenade-ridge-landing")
+        for (x in 33..40) for (z in 36..46) for (y in 1..2) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
+        for (z in 36..46) for (y in 1..3) helper.setBlock(BlockPos(44, y, z), Blocks.STONE)
+        val man = scene.spawn(Vec3(37.5, 3.0, 41.5)).also { it.isNoAi = true }
+        val enemy = scene.enemy(Vec3(49.5, 1.0, 41.5))
+        helper.runAfterDelay(1) {
+            val landings = GrenadeKind.entries.associateWith { Ports.grenades.landing(man, helper.level, enemy.position(), Vec3.ZERO, it, 2.5, lobs = true) }
+            helper.assertTrue(landings.values.any { it != null }, "No lob reaches the target over the ridge")
+            landings.forEach { (kind, at) ->
+                if (at != null) helper.assertTrue(at.distanceTo(enemy.position()) <= 2.5, "$kind lob lands ${at.distanceTo(enemy.position())} blocks from the target")
+            }
+            scene.result("PASS", landings.entries.joinToString { "${it.key}=${it.value?.distanceTo(enemy.position())}" })
+            helper.succeed()
+        }
+    }
+
+    /**
+     * An RGO goes off on the enemy's body, so an ally standing past the enemy, outside the blast
+     * round him, does not stop the throw.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 100, batch = "grenade-ally-behind")
+    fun impactGrenadeIsThrownWithAnAllyBehindTheEnemy(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "grenade-ally-behind")
+        val man = scene.spawn(Vec3(36.5, 1.0, 41.5)).also {
+            it.isNoAi = true
+            it.rgnLeft = 0
+            it.rgoLeft = 2
+        }
+        val enemy = scene.enemy(Vec3(46.5, 1.0, 41.5))
+        val behind = 46.5 + Ports.grenades.blastRadius(GrenadeKind.DEFENSIVE) + 1.5
+        scene.spawn(Vec3(behind, 1.0, 41.5)).also { it.isNoAi = true }
+        helper.runAfterDelay(1) {
+            helper.assertTrue(GrenadeThrower.pick(man, helper.level, enemy.boundingBox.center) == GrenadeKind.DEFENSIVE, "No RGO was thrown with an ally behind the enemy")
+            scene.result("PASS", "ally at x=$behind")
             helper.succeed()
         }
     }

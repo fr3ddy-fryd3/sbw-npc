@@ -45,23 +45,30 @@ object SbwGrenades : Grenades {
             GrenadeKind.DEFENSIVE -> ExplosionConfig.RGO_GRENADE_EXPLOSION_RADIUS.get().toDouble()
         }
 
-    override fun arcClear(
+    override fun landing(
         thrower: LivingEntity,
         level: ServerLevel,
         target: Vec3,
         targetVelocity: Vec3,
         kind: GrenadeKind,
         nearTarget: Double,
-    ): Boolean = clearVelocity(thrower, level, target, targetVelocity, kind, nearTarget) != null
+        lobs: Boolean,
+    ): Vec3? = clearThrow(thrower, level, target, targetVelocity, kind, nearTarget, lobs)?.landing
 
-    /** Tries SBW's ordinary throw first, then higher trajectories over nearby cover. */
+    /** A throw that reaches its target: the velocity to give the grenade and where it first strikes. */
+    private class Throw(val velocity: Vec3, val landing: Vec3)
+
+    private class Flown(val verdict: Flight, val landing: Vec3? = null)
+
+    /** Tries SBW's ordinary throw first, then, with [lobs], higher trajectories over nearby cover. */
     @Suppress("LongParameterList")
-    private fun clearVelocity(thrower: LivingEntity, level: ServerLevel, target: Vec3, targetVelocity: Vec3, kind: GrenadeKind, nearTarget: Double): Vec3? {
+    private fun clearThrow(thrower: LivingEntity, level: ServerLevel, target: Vec3, targetVelocity: Vec3, kind: GrenadeKind, nearTarget: Double, lobs: Boolean): Throw? {
         val from = Vec3(thrower.x, thrower.eyeY - 0.1, thrower.z)
-        for (height in 0..MAX_AIM_HEIGHT) {
+        for (height in 0..(if (lobs) MAX_AIM_HEIGHT else 0)) {
             val velocity = throwVelocity(from, target.add(0.0, height.toDouble(), 0.0), targetVelocity) ?: continue
-            when (flightClear(thrower, level, target, targetVelocity, kind, nearTarget, from, velocity)) {
-                Flight.CLEAR -> return velocity
+            val flown = fly(thrower, level, target, targetVelocity, kind, nearTarget, from, velocity, height > 0)
+            when (flown.verdict) {
+                Flight.CLEAR -> return Throw(velocity, flown.landing ?: return null)
                 Flight.HULL -> return null
                 Flight.BLOCKED -> Unit
             }
@@ -69,8 +76,14 @@ object SbwGrenades : Grenades {
         return null
     }
 
-    @Suppress("LongParameterList")
-    private fun flightClear(
+    /**
+     * Flies the grenade to its first strike. The ordinary throw counts once it passes near the
+     * target, as it always has. A lob is aimed above the target and flies on past it, so only a
+     * strike near the target counts: an RGO lobbed 2 blocks high at 8 blocks would land at 15.
+     * The strike is reported either way, for the friendly blast check at the real burst point.
+     */
+    @Suppress("LongParameterList", "CyclomaticComplexMethod", "ReturnCount")
+    private fun fly(
         thrower: LivingEntity,
         level: ServerLevel,
         target: Vec3,
@@ -79,37 +92,53 @@ object SbwGrenades : Grenades {
         nearTarget: Double,
         from: Vec3,
         initialVelocity: Vec3,
-    ): Flight {
+        lob: Boolean,
+    ): Flown {
         // SBW's bouncing grenade applies drag before moving; its impact grenade does not.
         var pos = from
         var velocity = initialVelocity
         val nearSqr = nearTarget * nearTarget
+        var passedNear = false
         repeat(MAX_FLIGHT_TICKS) { tick ->
             if (kind == GrenadeKind.OFFENSIVE) velocity = velocity.add(0.0, -GRAVITY, 0.0).scale(AIR_DRAG)
             val predictedTarget = target.add(targetVelocity.scale((tick + 1).toDouble()))
             val next = pos.add(velocity)
+            fun struck(at: Vec3, hull: Boolean): Flown =
+                when {
+                    passedNear || at.distanceToSqr(predictedTarget) <= nearSqr -> Flown(Flight.CLEAR, at)
+                    hull -> Flown(Flight.HULL)
+                    else -> Flown(Flight.BLOCKED)
+                }
             val hit = level.clip(net.minecraft.world.level.ClipContext(pos, next, net.minecraft.world.level.ClipContext.Block.COLLIDER, net.minecraft.world.level.ClipContext.Fluid.NONE, thrower))
-            if (hit.type != net.minecraft.world.phys.HitResult.Type.MISS) return if (hit.location.distanceToSqr(predictedTarget) <= nearSqr) Flight.CLEAR else Flight.BLOCKED
+            val block = hit.location.takeIf { hit.type != net.minecraft.world.phys.HitResult.Type.MISS }
             // A hull stops a grenade like a wall; it used to fly on through, and one meant for a
             // zombie past a squad's LAV could drop at the thrower's feet (in-game 25.10).
             val hull = level.getEntitiesOfClass(VehicleEntity::class.java, net.minecraft.world.phys.AABB(pos, next).inflate(1.0)) { it !== thrower.rootVehicle }
                 .mapNotNull { it.boundingBox.clip(pos, next).orElse(null) }
                 .minByOrNull { it.distanceToSqr(pos) }
-            if (hull != null) return if (hull.distanceToSqr(predictedTarget) <= nearSqr) Flight.CLEAR else Flight.HULL
-            val bystander = level.getEntities(thrower, net.minecraft.world.phys.AABB(pos, next).inflate(0.3)) {
-                it is LivingEntity && it.isAlive && !it.isSpectator && it.vehicle !== thrower &&
-                    it.boundingBox.inflate(0.3).clip(pos, next).isPresent && !com.sbwnpc.squad.team.SquadTeams.isHostile(thrower, it)
+            val bodies = level.getEntities(thrower, net.minecraft.world.phys.AABB(pos, next).inflate(0.3)) {
+                it is LivingEntity && it.isAlive && !it.isSpectator && it.vehicle !== thrower
+            }.mapNotNull { body -> body.boundingBox.inflate(0.3).clip(pos, next).orElse(null)?.let { body to it } }
+            val ally = bodies.filter { !com.sbwnpc.squad.team.SquadTeams.isHostile(thrower, it.first) }.minOfOrNull { it.second.distanceToSqr(pos) }
+            // An RGO goes off on the enemy's body; an M67 bounces off and keeps its fuse.
+            val enemy = if (kind == GrenadeKind.DEFENSIVE) {
+                bodies.filter { com.sbwnpc.squad.team.SquadTeams.isHostile(thrower, it.first) }.map { it.second }.minByOrNull { it.distanceToSqr(pos) }
+            } else {
+                null
             }
-            if (bystander.isNotEmpty()) return Flight.BLOCKED
-            if (next.distanceToSqr(predictedTarget) <= nearSqr) return Flight.CLEAR
+            val first = listOfNotNull(block?.let { it to false }, hull?.let { it to true }, enemy?.let { it to false })
+                .minByOrNull { it.first.distanceToSqr(pos) }
+            if (ally != null && (first == null || ally <= first.first.distanceToSqr(pos))) return Flown(Flight.BLOCKED)
+            if (first != null) return struck(first.first, first.second)
+            if (!lob && next.distanceToSqr(predictedTarget) <= nearSqr) passedNear = true
             pos = next
             if (kind == GrenadeKind.DEFENSIVE) velocity = velocity.add(0.0, -GRAVITY, 0.0)
         }
-        return Flight.BLOCKED
+        return if (passedNear) Flown(Flight.CLEAR, pos) else Flown(Flight.BLOCKED)
     }
 
     override fun throwAt(thrower: LivingEntity, level: ServerLevel, target: Vec3, targetVelocity: Vec3, kind: GrenadeKind, nearTarget: Double): Boolean {
-        val velocity = clearVelocity(thrower, level, target, targetVelocity, kind, nearTarget) ?: return false
+        val velocity = clearThrow(thrower, level, target, targetVelocity, kind, nearTarget, lobs = true)?.velocity ?: return false
         val grenade = when (kind) {
             GrenadeKind.OFFENSIVE -> HandGrenadeEntity(thrower, level)
             GrenadeKind.DEFENSIVE -> RgoGrenadeEntity(thrower, level)
