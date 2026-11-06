@@ -67,17 +67,26 @@ object PlannedEngageGameTests {
         fun closed() = start.distanceTo(enemy.position()) - man.position().distanceTo(enemy.position())
     }
 
-    /** The enemy far beyond his stopping distance in the open: his plan closes in by bounds. */
+    /**
+     * The enemy far beyond his stopping distance in the open: the fresh target gets his opening
+     * burst before he moves, then his plan closes in by bounds.
+     */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 500, batch = "planned-engage-close")
     fun arrivedManClosesInByBoundsInHisPlan(helper: GameTestHelper) {
         val contact = Contact(helper, "planned-engage-close", 90.0)
+        var movedAt: Long? = null
+        var firedAt: Long? = null
         helper.onEachTick {
             contact.tick()
+            if (firedAt == null && contact.man.lastShotTick >= 0) firedAt = helper.tick
+            if (movedAt == null && contact.closed() > 1.0) movedAt = helper.tick
             if (helper.tick >= 400L) {
+                helper.assertTrue(contact.chose("open_fire"), "His plan made no opening fire: ${contact.choices()}")
+                helper.assertTrue(firedAt != null && firedAt!! <= (movedAt ?: Long.MAX_VALUE), "He moved at $movedAt before his first shot at $firedAt")
                 helper.assertTrue(contact.chose("close_in"), "His plan did not close in: ${contact.choices()}")
                 helper.assertTrue(contact.closed() > CLOSED, "He closed only ${"%.1f".format(contact.closed())} blocks")
-                contact.scene.result("PASS", "closed=${"%.1f".format(contact.closed())} choices=${contact.choices()}")
+                contact.scene.result("PASS", "fired=$firedAt moved=$movedAt closed=${"%.1f".format(contact.closed())} choices=${contact.choices()}")
                 helper.succeed()
             }
         }
@@ -144,27 +153,6 @@ object PlannedEngageGameTests {
             if (helper.tick >= 300L) {
                 helper.assertTrue(FiringSpots.nearby(at, 0.0, contact.mate.uuid).isEmpty(), "His firing spot is still claimed after his death")
                 contact.scene.result("PASS", "released")
-                helper.succeed()
-            }
-        }
-    }
-
-    /** A fresh far target gets his opening burst before his plan moves him towards it. */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "planned-engage-opening")
-    fun openingBurstComesBeforeHeMoves(helper: GameTestHelper) {
-        val contact = Contact(helper, "planned-engage-opening", 90.0)
-        var movedAt: Long? = null
-        var firedAt: Long? = null
-        helper.onEachTick {
-            contact.tick()
-            if (firedAt == null && contact.man.lastShotTick >= 0) firedAt = helper.tick
-            if (movedAt == null && contact.closed() > 1.0) movedAt = helper.tick
-            if (helper.tick >= 300L) {
-                helper.assertTrue(contact.chose("open_fire"), "His plan made no opening fire: ${contact.choices()}")
-                val fired = firedAt
-                helper.assertTrue(fired != null && fired <= (movedAt ?: Long.MAX_VALUE), "He moved at $movedAt before his first shot at $firedAt")
-                contact.scene.result("PASS", "fired=$firedAt moved=$movedAt choices=${contact.choices()}")
                 helper.succeed()
             }
         }

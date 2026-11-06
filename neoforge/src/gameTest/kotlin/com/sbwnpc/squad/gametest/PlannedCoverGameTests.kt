@@ -146,7 +146,10 @@ object PlannedCoverGameTests {
         }
     }
 
-    /** Under fire from a shooter he sees, he peeks and fires from cover again and again, and holds fire while ducking. */
+    /**
+     * Under fire from a shooter he sees, he peeks and fires from cover again and again, and holds
+     * fire while ducking; and the continuous fire does not make his plan restart every round.
+     */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 800, batch = "planned-cover-peek")
     fun pinnedRiflemanPeeksRepeatedlyUnderContinuousFire(helper: GameTestHelper) {
@@ -155,6 +158,14 @@ object PlannedCoverGameTests {
         var peeking = false
         var shotsWhileDucking = 0
         var lastShot = fire.man.lastShotTick
+        var plans = 0
+        require(NativeTactics.planResultObserver == null)
+        NativeTactics.planResultObserver = { level -> if (level == AgentLevel.NPC) plans++ }
+        val close = fire.scene.onClose
+        fire.scene.onClose = {
+            NativeTactics.planResultObserver = null
+            close()
+        }
         helper.onEachTick {
             fire.tick()
             val nowPeeking = fire.man.holds(NpcActivity.PEEK)
@@ -171,7 +182,9 @@ object PlannedCoverGameTests {
                 helper.assertTrue(fire.man.lastShotTick >= 0, "He never fired")
                 helper.assertTrue(shotsWhileDucking == 0, "He fired $shotsWhileDucking times while ducking")
                 helper.assertTrue(fire.chose("take_cover"), "His plan did not choose cover: ${fire.choices()}")
-                fire.scene.result("PASS", "peeks=$peeks")
+                // One man, so every NPC-level result is his.
+                helper.assertTrue(plans <= MAX_PLANS, "His plan was searched $plans times in 700 ticks of fire, more than $MAX_PLANS")
+                fire.scene.result("PASS", "peeks=$peeks plans=$plans")
                 helper.succeed()
             }
         }
@@ -270,30 +283,6 @@ object PlannedCoverGameTests {
         }
     }
 
-    /** Continuous fire from one shooter must not make his plan restart every round. */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 800, batch = "planned-cover-churn")
-    fun coverPlanDoesNotChurn(helper: GameTestHelper) {
-        val fire = UnderFire(helper, "planned-cover-churn", listOf(Vec3(20.5, 1.0, 57.5)), Vec3(60.5, 1.0, 50.5), wall = WALL)
-        var plans = 0
-        require(NativeTactics.planResultObserver == null)
-        NativeTactics.planResultObserver = { level -> if (level == AgentLevel.NPC) plans++ }
-        val close = fire.scene.onClose
-        fire.scene.onClose = {
-            NativeTactics.planResultObserver = null
-            close()
-        }
-        helper.onEachTick {
-            fire.tick()
-            if (helper.tick >= 620L) {
-                // One man, so every NPC-level result is his; 600 ticks of fire.
-                fire.scene.result("PASS", "plans=$plans")
-                helper.assertTrue(plans <= MAX_PLANS, "His plan was searched $plans times in 600 ticks of fire, more than $MAX_PLANS")
-                helper.succeed()
-            }
-        }
-    }
-
     /** A role the planner does not cover keeps the cover behaviour until #256. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 300, batch = "planned-cover-unplanned")
@@ -340,7 +329,8 @@ object PlannedCoverGameTests {
     internal val EXACT_WALL = 52..62
 
     /**
-     * Twice the most plans [coverPlanDoesNotChurn] searched in its first green runs (10 and 9, 30.10):
+     * Twice the most plans a pinned man searched in 600 ticks of fire in the first green runs (10 and 9,
+     * 30.10), with room for the 700 ticks [pinnedRiflemanPeeksRepeatedlyUnderContinuousFire] watches:
      * every finished cover cycle replans him by design (`COVER_CYCLES`), so it is not zero. Far more
      * means he replans on noise.
      */

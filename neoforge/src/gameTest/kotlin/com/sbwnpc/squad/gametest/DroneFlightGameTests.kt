@@ -29,6 +29,9 @@ private fun atShelter(operator: NpcEntity, shelter: Vec3?): Boolean = shelter !=
 
 @PrefixGameTestTemplate(false)
 object DroneFlightGameTests {
+    /** How long after the launch the operator is kept under fire and must stay at his monitor. */
+    private const val UNDER_FIRE_TICKS = 60L
+
     /** A defensive post under broad cover, with a distant strike target confirmed by a spotter. */
     private class RoofLaunchScene(val helper: GameTestHelper, name: String, radius: Int) {
         val scene = CombatIdleGameTests.Scene(helper, name)
@@ -260,6 +263,7 @@ object DroneFlightGameTests {
     /**
      * An operator launches, strikes and has his drone come to an end in the same team as his
      * riflemen: the strike is his own plan's method, not a move out of his team and back (#259).
+     * Fire on him after the launch keeps him at the monitor and the drone flying (#259).
      */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 900, batch = "drone-strike-team")
@@ -278,7 +282,11 @@ object DroneFlightGameTests {
             if (now != null && theirs.all { it != null }) helper.assertTrue(theirs.all { it == now }, "The operator's team $now left his riflemen's $theirs at tick ${helper.tick}, launched at $launchedAt")
             val drone = strike.drone()
             if (drone != null && launchedAt == null) launchedAt = helper.tick
-            if (launchedAt != null && drone == null && helper.tick - launchedAt!! > 20) {
+            launchedAt?.let { helper.tick - it }?.takeIf { it <= UNDER_FIRE_TICKS }?.let { since ->
+                if (since % 10 == 0L) strike.operator.suppress(strike.operator.position().add(-30.0, 1.6, 0.0))
+                helper.assertTrue(drone != null && strike.operator.holds(NpcActivity.DRONE), "Fire took the operator off his drone $since ticks after launch")
+            }
+            if (launchedAt != null && drone == null && helper.tick - launchedAt!! > UNDER_FIRE_TICKS) {
                 helper.assertTrue(team != null, "The operator was never planned in a team")
                 strike.scene.result("PASS", "launchedAt=$launchedAt endedAt=${helper.tick} team=$team")
                 helper.succeed()
@@ -326,27 +334,6 @@ object DroneFlightGameTests {
             strike.report(target)
             if (strike.drone() != null) {
                 strike.scene.result("PASS", "tick=${helper.tick}")
-                helper.succeed()
-            }
-        }
-    }
-
-    /** Under fire with his drone up, the operator stays at the monitor and the drone flies on (#259). */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 900, batch = "drone-strike-fire")
-    fun operatorUnderFireKeepsFlyingHisDrone(helper: GameTestHelper) {
-        val strike = StrikeScene(helper, "drone-strike-fire")
-        val target = strike.scene.enemy(Vec3(150.5, 1.0, 100.5))
-        var launchedAt: Long? = null
-        helper.onEachTick {
-            strike.report(target)
-            val drone = strike.drone()
-            if (drone != null && launchedAt == null) launchedAt = helper.tick
-            val since = launchedAt?.let { helper.tick - it } ?: return@onEachTick
-            if (since % 10 == 0L) strike.operator.suppress(strike.operator.position().add(-30.0, 1.6, 0.0))
-            if (since <= 60) helper.assertTrue(drone != null && strike.operator.holds(NpcActivity.DRONE), "Fire took the operator off his drone $since ticks after launch")
-            if (since > 60) {
-                strike.scene.result("PASS", "launchedAt=$launchedAt tick=${helper.tick}")
                 helper.succeed()
             }
         }
