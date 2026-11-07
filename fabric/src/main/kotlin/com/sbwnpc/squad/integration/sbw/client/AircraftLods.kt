@@ -40,14 +40,13 @@ object AircraftLods {
                 loadVariants(path)?.let { generated[path] = it }
             }
         }
-        ModIdentity.LOGGER.info("NPC aircraft LODs: simplified {} of {} vehicle models", generated.size, models.size)
     }
 
     @JvmStatic
     fun augment(entity: VehicleEntity, original: List<VehicleModelEntry>): List<VehicleModelEntry> {
         if (!AircraftVisibility.isAircraft(entity)) return original
-        if (original.isEmpty()) return trace(entity, original, original)
-        return trace(entity, original, entries.getOrPut(entity) {
+        if (original.isEmpty()) return original
+        return entries.getOrPut(entity) {
             val resourceModels = VehicleResource.compute(entity).getModels()
             val mainPath = resourceModels.firstOrNull { it.distance == 0 }?.model ?: return@getOrPut original
             val result = original.toMutableList()
@@ -75,17 +74,7 @@ object AircraftLods {
                 result += original.first().copy(instance = VehicleModelInstance(mesh), lodDistance = if (index == 0) 128 else 256)
             }
             result.sortedBy { it.lodDistance }
-        })
-    }
-
-    private val traced = HashSet<Any>()
-
-    /** Logs once per vehicle type what its model list became, to show whether this mod's LODs reached it. */
-    private fun trace(entity: VehicleEntity, original: List<VehicleModelEntry>, result: List<VehicleModelEntry>): List<VehicleModelEntry> {
-        if (traced.add(entity.type)) {
-            ModIdentity.LOGGER.info("NPC aircraft LODs for {}: native {} -> {}", entity.type, original.map { it.lodDistance }, result.map { it.lodDistance })
         }
-        return result
     }
 
     @JvmStatic
@@ -93,26 +82,10 @@ object AircraftLods {
         val scale = AircraftVisibility.lodScale(RenderSystem.getProjectionMatrix().m11(), Minecraft.getInstance().options.fov().get())
         val matrix = stack.last().pose()
         val distanceSq = (matrix.m30() * matrix.m30() + matrix.m31() * matrix.m31() + matrix.m32() * matrix.m32()) * scale * scale
-        val chosen = highestLod(models) {
+        return highestLod(models) {
             distanceSq >= it.lodDistance.toDouble() * it.lodDistance &&
                 RenderDistanceHelper.shouldRenderLOD(entity, stack, it.lodDistance.toDouble())
         }
-        traceSelect(entity, models, chosen, distanceSq, scale)
-        return chosen
-    }
-
-    private const val SELECT_TRACE_MS = 3000L
-    private val lastSelectTrace = HashMap<Int, Long>()
-
-    /** Logs what [select] picked at most every 3s per aircraft: scaled distance, candidates and the choice. */
-    private fun traceSelect(entity: VehicleEntity, models: List<VehicleModelEntry>, chosen: VehicleModelEntry?, distanceSq: Double, scale: Double) {
-        val now = System.currentTimeMillis()
-        if (now - (lastSelectTrace[entity.id] ?: 0L) < SELECT_TRACE_MS) return
-        lastSelectTrace[entity.id] = now
-        ModIdentity.LOGGER.info(
-            "NPC aircraft LOD select {} id={}: distance={} scale={} models={} chosen={} sameAsFirst={}",
-            entity.type, entity.id, Math.sqrt(distanceSq).toInt(), scale, models.map { it.lodDistance }, chosen?.lodDistance, chosen === models.firstOrNull(),
-        )
     }
 
     internal inline fun highestLod(models: List<VehicleModelEntry>, allowed: (VehicleModelEntry) -> Boolean): VehicleModelEntry? {
