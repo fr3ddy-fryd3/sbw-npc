@@ -242,6 +242,10 @@ object RealTerrainBattleGameTests {
             private set
         var tightWithin = 0
             private set
+
+        /** Tight pairs of one squad with one man [STACKED] blocks or more above the other: a ledge or floor, counted apart. */
+        var stackedWithin = 0
+            private set
         var tightBetween = 0
             private set
         var samples = 0
@@ -256,6 +260,10 @@ object RealTerrainBattleGameTests {
                     // A medic walks up to the wounded on purpose: his pairs are no shared post.
                     for (other in a.drop(j + 1).filter { man.npcClass != NpcClass.MEDIC && it.npcClass != NpcClass.MEDIC }) {
                         val d = man.position().subtract(other.position()).horizontalDistance()
+                        if (d < TIGHT && kotlin.math.abs(man.y - other.y) >= STACKED) {
+                            stackedWithin++
+                            continue
+                        }
                         nearestWithin = minOf(nearestWithin, d)
                         if (d < TIGHT) {
                             tightWithin++
@@ -276,6 +284,9 @@ object RealTerrainBattleGameTests {
 
             /** Nearer than this (2 blocks) two standing men share one post. */
             const val TIGHT = 2.0
+
+            /** One man on a ledge or floor above the other: not a shared post, left to the spacing rule, which measures in space. */
+            const val STACKED = 2.0
         }
     }
 
@@ -302,7 +313,7 @@ object RealTerrainBattleGameTests {
             appendLine("taken=$taken")
             appendLine("fireGates=${metrics.fireGates.entries.sortedByDescending { it.value }.joinToString { "${it.key}=${it.value}" }}")
             appendLine("friendlyShare=${"%.2f".format(metrics.share("FRIENDLY_OR_VEHICLE"))} readyShare=${"%.2f".format(metrics.share("READY"))}")
-            appendLine("postSpacing nearestWithin=${"%.2f".format(fought.spacing.nearestWithin)} nearestBetween=${"%.2f".format(fought.spacing.nearestBetween)} tightPairsWithin=${fought.spacing.tightWithin} tightPairsBetween=${fought.spacing.tightBetween} standingSamples=${fought.spacing.samples}")
+            appendLine("postSpacing nearestWithin=${"%.2f".format(fought.spacing.nearestWithin)} nearestBetween=${"%.2f".format(fought.spacing.nearestBetween)} tightPairsWithin=${fought.spacing.tightWithin} stackedPairsWithin=${fought.spacing.stackedWithin} tightPairsBetween=${fought.spacing.tightBetween} standingSamples=${fought.spacing.samples}")
             appendLine("pointBlankShare=${"%.3f".format(fought.closeness.share())} pointBlankSamples=${fought.closeness.pointBlank} nearestToDefender=${"%.1f".format(fought.closeness.nearest)}")
             appendLine("intermediateReachedPerManMinute=${"%.2f".format(churn)} exhaustedPerManMinute=${"%.2f".format(metrics.exhaustedSearches / manMinutes)}")
         }
