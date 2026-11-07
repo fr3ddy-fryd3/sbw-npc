@@ -258,24 +258,28 @@ object RealTerrainBattleGameTests {
                 for ((j, man) in a.withIndex()) {
                     samples++
                     // A medic walks up to the wounded on purpose: his pairs are no shared post.
-                    for (other in a.drop(j + 1).filter { man.npcClass != NpcClass.MEDIC && it.npcClass != NpcClass.MEDIC }) {
-                        val d = man.position().subtract(other.position()).horizontalDistance()
-                        if (d < TIGHT && kotlin.math.abs(man.y - other.y) >= STACKED) {
-                            stackedWithin++
-                            continue
-                        }
-                        nearestWithin = minOf(nearestWithin, d)
-                        if (d < TIGHT) {
-                            tightWithin++
-                            LOGGER.info("[battle-spacing] squad={} d={} a={} {} at {} b={} {} at {}", i, "%.2f".format(d), man.uuid, man.npcClass, man.blockPosition().toShortString(), other.uuid, other.npcClass, other.blockPosition().toShortString())
-                        }
-                    }
-                    for (other in standing.drop(i + 1).flatten()) {
-                        val d = man.position().subtract(other.position()).horizontalDistance()
-                        nearestBetween = minOf(nearestBetween, d)
-                        if (d < TIGHT) tightBetween++
-                    }
+                    a.drop(j + 1).filter { man.npcClass != NpcClass.MEDIC && it.npcClass != NpcClass.MEDIC }.forEach { within(i, man, it) }
+                    standing.drop(i + 1).flatten().forEach { between(man, it) }
                 }
+            }
+        }
+
+        private fun between(man: NpcEntity, other: NpcEntity) {
+            val d = man.position().subtract(other.position()).horizontalDistance()
+            nearestBetween = minOf(nearestBetween, d)
+            if (d < TIGHT) tightBetween++
+        }
+
+        private fun within(squad: Int, man: NpcEntity, other: NpcEntity) {
+            val d = man.position().subtract(other.position()).horizontalDistance()
+            if (d < TIGHT && kotlin.math.abs(man.y - other.y) >= STACKED) {
+                stackedWithin++
+                return
+            }
+            nearestWithin = minOf(nearestWithin, d)
+            if (d < TIGHT) {
+                tightWithin++
+                LOGGER.info("[battle-spacing] squad={} d={} a={} {} at {} b={} {} at {}", squad, "%.2f".format(d), man.uuid, man.npcClass, man.blockPosition().toShortString(), other.uuid, other.npcClass, other.blockPosition().toShortString())
             }
         }
 
