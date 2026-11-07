@@ -134,6 +134,34 @@ object EngageOnlyGameTests {
     }
 
     /**
+     * A wall that stays in his lane is no blink: the look after the grace finds the spot still
+     * without a shot, and he leaves it for another.
+     */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "planned-engage-lasting-wall")
+    fun engagerLeavesASpotWallLongerThanAMoment(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "planned-engage-lasting-wall")
+        val man = scene.spawn(Vec3(20.5, 1.0, 100.5))
+        val enemy = scene.enemy(Vec3(50.5, 1.0, 100.5))
+        man.target = enemy
+        var spot: Vec3? = null
+        helper.onEachTick {
+            if (helper.tick % 10L == 0L) SquadTactics.refresh(man)
+            if (helper.tick == WALL_UP) {
+                spot = man.position()
+                for (y in 1..3) for (z in 98..103) helper.setBlock(BlockPos(35, y, z), Blocks.STONE)
+            }
+            val off = spot?.let { man.position().distanceTo(it) } ?: 0.0
+            if (off >= LEFT_SPOT) {
+                scene.result("PASS", "left after ${helper.tick - WALL_UP} ticks")
+                helper.succeed()
+            }
+            // The longest hold (60 + 40 ticks), the grace (30) and a few steps.
+            helper.assertTrue(helper.tick < WALL_UP + LASTING_WALL_LIMIT, "He stayed behind the wall ${helper.tick - WALL_UP} ticks, ${"%.1f".format(off)} blocks off his spot")
+        }
+    }
+
+    /**
      * A squadless man suppressed with a wall nearby: SeekCover, an immediate reaction outside his
      * plan, takes his feet. While it holds them no engage unit of his runs, so the two never steer
      * him at once, and he reaches the wall.
@@ -184,6 +212,12 @@ object EngageOnlyGameTests {
     /** The tick the wall goes up, once he is fighting, and how long it stays: under ENGAGER_TICKS (40) of not reporting. */
     private const val WALL_UP = 120L
     private const val WALL_TICKS = 20L
+
+    /** How far he has walked off the spot the wall went up in front of when he has left it. */
+    private const val LEFT_SPOT = 2.0
+
+    /** How long after the wall went up he may still stand on his spot. */
+    private const val LASTING_WALL_LIMIT = 170L
 
     /** He is suppressed from once he fights until the scene ends. */
     private const val SUPPRESS_FROM = 60L
