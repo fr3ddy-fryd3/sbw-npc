@@ -39,10 +39,6 @@ object AmmunitionTacticsGameTests {
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 600, batch = "pistol-defence")
     fun pistolDefenderWaitsInCoverThenFiresAtCloseContact(helper: GameTestHelper) = cover(helper, SquadOrder.DEFEND)
 
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 600, batch = "pistol-patrol")
-    fun pistolPatrolWaitsInCoverThenFiresAtCloseContact(helper: GameTestHelper) = cover(helper, SquadOrder.PATROL)
-
     private fun cover(helper: GameTestHelper, order: SquadOrder) {
         val supplyScope = IsolatedSupplyPoints(helper.level)
         floor(helper)

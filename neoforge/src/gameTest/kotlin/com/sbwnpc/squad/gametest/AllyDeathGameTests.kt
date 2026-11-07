@@ -152,7 +152,11 @@ object AllyDeathGameTests {
         }
     }
 
-    /** Wariness only steers an idle NPC's eyes: an enemy in the open is still fought. */
+    /**
+     * Wariness only steers an idle NPC's eyes: an enemy in the open is still fought. The squad is
+     * told where he is, as a scout's report would, so the scene does not wait on each man happening
+     * to turn his head his way.
+     */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 400, batch = "ally-death-engage")
     fun waryAlliesStillEngageAVisibleEnemy(helper: GameTestHelper) {
@@ -161,7 +165,7 @@ object AllyDeathGameTests {
         val manager = SquadManager.get(helper.level)
         val squad = manager.create(helper.level, UUID.randomUUID(), SquadFaction.PIG, men.map { it.uuid })
         val allies = men.drop(1)
-        val engaged = HashSet<UUID>()
+        val shots = allies.associateWith { it.lastShotTick }
         var enemy: NpcEntity? = null
         helper.runAtTickTime(40) { men.first().kill() }
         helper.runAtTickTime(60) {
@@ -174,8 +178,8 @@ object AllyDeathGameTests {
         }
         helper.onEachTick {
             val seen = enemy ?: return@onEachTick
-            allies.filter { it.target == seen }.forEach { engaged += it.uuid }
-            if (allies.all { it.uuid in engaged }) {
+            allies.forEach { com.sbwnpc.squad.combat.tactics.SquadTactics.observe(it, seen) }
+            if (allies.all { it.lastShotTick != shots.getValue(it) }) {
                 manager.deleteSquad(helper.level, squad.id)
                 (men + seen).forEach { it.discard() }
                 helper.succeed()

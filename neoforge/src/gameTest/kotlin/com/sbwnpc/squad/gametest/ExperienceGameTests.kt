@@ -181,9 +181,10 @@ object ExperienceGameTests {
         }
     }
 
+    /** A medic earns experience for treating combat wounds only, and no more than the per-patient battle cap. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 40, batch = "experience-medical")
-    fun combatTreatmentPromotionAndIdentityPreserveTheKit(helper: GameTestHelper) {
+    fun combatTreatmentEarnsMedicExperienceUpToTheBattleCap(helper: GameTestHelper) {
         val medic = npc(helper, 3.5, SquadFaction.PIG, NpcClass.MEDIC)
         val patient = npc(helper, 7.5, SquadFaction.PIG)
         val enemy = npc(helper, 15.5, SquadFaction.COW)
@@ -215,6 +216,17 @@ object ExperienceGameTests {
                 ExperienceAwards.treated(medic, patient, beforeTreatment, eligible)
             }
             near(helper, medic.experience, 50.0 * rate(NpcClass.MEDIC), "Repeated treatment exceeded the per-patient battle cap")
+            helper.succeed()
+        }
+    }
+
+    /** A promotion keeps the soldier's wounds, kit and custom health; a save keeps all of it, and an old save keeps his rank. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "movement_arena", timeoutTicks = 40, batch = "experience-medical")
+    fun promotionAndReloadPreserveTheKitAndIdentity(helper: GameTestHelper) {
+        val medic = npc(helper, 3.5, SquadFaction.PIG, NpcClass.MEDIC)
+        cleanup(helper) { medic.discard() }
+        helper.runAtTickTime(5) {
             val gun = medic.mainHandItem
             val pistol = medic.sidearmWeapon
             Ports.guns.inHand(medic)!!.spendShot()

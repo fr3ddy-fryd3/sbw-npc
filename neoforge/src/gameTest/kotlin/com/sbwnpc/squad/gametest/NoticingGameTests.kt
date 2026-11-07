@@ -28,6 +28,13 @@ object NoticingGameTests {
     private const val DAY_TIME = 6000L
     private const val NIGHT_TIME = 18000L
 
+    /**
+     * How long a negative scene watches. The slowest notice the table allows for any of these
+     * enemies, were it in reach, is about seven seconds (100 blocks in the black band), so ten
+     * are enough to prove "never".
+     */
+    private const val NEVER_TICKS = 200L
+
     /** A veteran operator launches out to 133 blocks and sees 144 by day: an enemy 100 off is noticed in about a second and a half, and the drone goes up. */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 500, batch = "notice-operator-day")
@@ -35,7 +42,7 @@ object NoticingGameTests {
 
     /** At night the dark reaches 51 blocks for him: the same enemy is never noticed, and no drone goes up on him. */
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 600, batch = "notice-operator-night")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 300, batch = "notice-operator-night")
     fun droneOperatorDoesNotLaunchAtAnEnemyTooFarForTheDark(helper: GameTestHelper) = operator(helper, "notice-operator-night", NIGHT_TIME, expectLaunch = false)
 
     private fun operator(helper: GameTestHelper, name: String, time: Long, expectLaunch: Boolean) {
@@ -66,8 +73,8 @@ object NoticingGameTests {
                 }
             } else {
                 helper.assertFalse(launched, "Launched at an enemy 100 blocks off in the dark at tick ${helper.tick}")
-                if (helper.tick >= 500) {
-                    scene.result("PASS", "no launch in 500 ticks")
+                if (helper.tick >= NEVER_TICKS) {
+                    scene.result("PASS", "no launch in $NEVER_TICKS ticks")
                     helper.succeed()
                 }
             }
@@ -80,7 +87,7 @@ object NoticingGameTests {
      * noticed in it.
      */
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 600, batch = "notice-rain-night")
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 300, batch = "notice-rain-night")
     fun enemyJustInsideTheDarkRangeIsNotNoticedInRainAtNight(helper: GameTestHelper) {
         val scene = CombatIdleGameTests.Scene(helper, "notice-rain-night")
         val manager = SquadManager.get(helper.level)
@@ -105,8 +112,15 @@ object NoticingGameTests {
             val weather = com.sbwnpc.squad.combat.Noticing.weatherAt(helper.level, enemy.blockPosition())
             if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} weather=$weather target=${shooter.target?.uuid}")
             helper.assertFalse(shooter.target?.uuid == enemy.uuid, "Noticed an enemy 32 blocks off at night in $weather at tick ${helper.tick}")
-            if (helper.tick >= 500) {
+            if (helper.tick >= NEVER_TICKS) {
                 helper.assertTrue(weather != com.sbwnpc.squad.combat.SpottingTime.Weather.CLEAR, "The scene never had rain")
+                // The control: in clear weather the same man, in the same light, is noticed. So it is
+                // the rain the man in the world obeyed, not a light or distance that hides him anyway.
+                val eyes = SpottingTime.Observer.of(shooter.npcRank, shooter.npcClass)
+                val light = helper.level.getMaxLocalRawBrightness(enemy.blockPosition())
+                val distance = shooter.position().distanceTo(enemy.position())
+                helper.assertTrue(SpottingTime.seconds(eyes, SpottingTime.Target(distance, light)) != null, "Even in clear weather he would not be noticed at light $light")
+                helper.assertTrue(SpottingTime.seconds(eyes, SpottingTime.Target(distance, light, weather = weather)) == null, "In $weather the table notices him too, so the scene proves nothing")
                 scene.result("PASS", "weather=$weather")
                 helper.succeed()
             }
@@ -114,24 +128,14 @@ object NoticingGameTests {
     }
 
     /**
-     * A regular sees 36 blocks in the dark, in a vehicle as on foot (#245). From a parked LAV's
-     * passenger seat and from its gun alike, an enemy 60 blocks off is never noticed at night,
-     * and one 24 blocks off is.
+     * A regular's reach in the dark is the same in a vehicle as on foot (#245). From a parked LAV's
+     * gun and its passenger seat alike, an enemy 60 blocks off is never noticed at night; then one
+     * 24 blocks off is, by both men.
      */
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 600, batch = "notice-crew-night-far")
-    fun passengerDoesNotNoticeAnEnemyTooFarForTheDark(helper: GameTestHelper) = crew(helper, "notice-crew-night-far", gun = false, enemyDistance = 60.0, expectNoticed = false)
-
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 600, batch = "notice-gunner-night-far")
-    fun gunnerDoesNotNoticeAnEnemyTooFarForTheDark(helper: GameTestHelper) = crew(helper, "notice-gunner-night-far", gun = true, enemyDistance = 60.0, expectNoticed = false)
-
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 600, batch = "notice-crew-night-near")
-    fun passengerNoticesAnEnemyInsideTheDarkRange(helper: GameTestHelper) = crew(helper, "notice-crew-night-near", gun = false, enemyDistance = 24.0, expectNoticed = true)
-
-    private fun crew(helper: GameTestHelper, name: String, gun: Boolean, enemyDistance: Double, expectNoticed: Boolean) {
-        val scene = CombatIdleGameTests.Scene(helper, name)
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 500, batch = "notice-crew-night")
+    fun crewNoticeOnlyAnEnemyInsideTheDarkRange(helper: GameTestHelper) {
+        val scene = CombatIdleGameTests.Scene(helper, "notice-crew-night")
         val manager = SquadManager.get(helper.level)
         val oldTime = helper.level.dayTime
         helper.level.setDayTime(NIGHT_TIME)
@@ -147,42 +151,51 @@ object NoticingGameTests {
         val passenger = scene.spawn(Vec3(18.5, 1.0, 62.5))
         helper.assertTrue(gunner.startRiding(lav, true) && Ports.vehicles.hasWeaponAt(lav, gunner), "The gunner could not take the gun")
         helper.assertTrue(passenger.startRiding(lav, true) && !Ports.vehicles.hasWeaponAt(lav, passenger), "The passenger needs an unarmed seat")
-        val crewman = if (gun) gunner else passenger
-        val other = if (gun) passenger else gunner
-        // Only his sensor runs: with the brain on, the transport behaviour got him out on arrival or
-        // for the fight before the test could watch him; and a squadmate's contact would be noticed
-        // at once (SquadKnowledge).
-        listOf(gunner, passenger).forEach { it.isNoAi = true }
-        val sensor = SquadTargetSensor()
-        listOf(gunner, passenger).forEach { it.npcRank = NpcRank.REGULAR }
-        val enemy = scene.enemy(Vec3(20.5 + enemyDistance, 1.0, 60.5))
-        val squad = manager.create(helper.level, UUID(90, if (gun) 33L else 32L), requireNotNull(crewman.spawnFaction), listOf(crewman.uuid, other.uuid))
+        val crew = listOf(gunner, passenger)
+        // Only their sensors run: with the brain on, the transport behaviour got them out on arrival
+        // or for the fight before the test could watch; and one man's contact would be the other's
+        // at once (SquadKnowledge), so each sensor runs on its own and the squad shares nothing new.
+        crew.forEach {
+            it.isNoAi = true
+            it.npcRank = NpcRank.REGULAR
+        }
+        // A sensor per man: one instance keeps one scan clock and one noticing state, so the
+        // second man's scan was skipped and his progress mixed with the first's.
+        val sensors = crew.associateWith { SquadTargetSensor() }
+        val far = scene.enemy(Vec3(80.5, 1.0, 60.5))
+        var near: NpcEntity? = null
+        val squad = manager.create(helper.level, UUID(90, 32), requireNotNull(gunner.spawnFaction), crew.map { it.uuid })
         manager.setOrder(squad.id, SquadOrder.DEFEND)
-        manager.setObjective(helper.level, squad.id, crewman.blockPosition())
+        manager.setObjective(helper.level, squad.id, gunner.blockPosition())
         scene.onClose = {
             manager.deleteSquad(helper.level, squad.id)
-            listOf(gunner, passenger).forEach { it.stopRiding() }
+            crew.forEach { it.stopRiding() }
             lav.discard()
             helper.level.setDayTime(oldTime)
         }
         helper.onEachTick {
-            crewman.yHeadRot = -90f
-            sensor.tick(helper.level, crewman)
-            helper.assertTrue(crewman.vehicle === lav, "The crewman left the vehicle at tick ${helper.tick}")
-            val noticed = crewman.target?.uuid == enemy.uuid
-            assertInView(helper, crewman, enemy, gun)
-            if (helper.tick % 100L == 0L) scene.result("RUNNING", "tick=${helper.tick} noticed=$noticed light=${helper.level.getMaxLocalRawBrightness(enemy.blockPosition())}")
-            if (expectNoticed) {
-                if (noticed) {
-                    scene.result("PASS", "tick=${helper.tick}")
-                    helper.succeed()
+            crew.forEach {
+                it.yHeadRot = -90f
+                sensors.getValue(it).tick(helper.level, it)
+                helper.assertTrue(it.vehicle === lav, "A crewman left the vehicle at tick ${helper.tick}")
+            }
+            val enemy = near
+            if (enemy == null) {
+                crew.forEach { man ->
+                    assertInView(helper, man, far, man === gunner)
+                    helper.assertFalse(man.target?.uuid == far.uuid, "Noticed an enemy 60 blocks off at night from the vehicle at tick ${helper.tick}")
                 }
-            } else {
-                helper.assertFalse(noticed, "Noticed an enemy ${enemyDistance.toInt()} blocks off at night from the vehicle at tick ${helper.tick}")
-                if (helper.tick >= 500) {
-                    scene.result("PASS", "not noticed in 500 ticks")
-                    helper.succeed()
+                if (helper.tick >= NEVER_TICKS) {
+                    far.discard()
+                    near = scene.enemy(Vec3(44.5, 1.0, 60.5))
                 }
+                return@onEachTick
+            }
+            crew.forEach { assertInView(helper, it, enemy, it === gunner) }
+            if (helper.tick % 20L == 0L) scene.result("RUNNING", "tick=${helper.tick} gunner=${gunner.target?.uuid == enemy.uuid}/${gunner.target?.uuid} passenger=${passenger.target?.uuid == enemy.uuid}/${passenger.target?.uuid} far=${far.uuid}")
+            if (crew.all { it.target?.uuid == enemy.uuid }) {
+                scene.result("PASS", "nearNoticedAt=${helper.tick}")
+                helper.succeed()
             }
         }
     }

@@ -67,33 +67,26 @@ object PlannedEngageGameTests {
         fun closed() = start.distanceTo(enemy.position()) - man.position().distanceTo(enemy.position())
     }
 
-    /** The enemy within his stopping distance: his plan holds a firing spot and he fires from it. */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "planned-engage-hold")
-    fun arrivedManHoldsAFiringSpotInHisPlan(helper: GameTestHelper) {
-        val contact = Contact(helper, "planned-engage-hold", 15.0)
-        helper.onEachTick {
-            contact.tick()
-            if (helper.tick >= 300L) {
-                helper.assertTrue(contact.chose("hold_firing_spot"), "His plan did not hold a firing spot: ${contact.choices()}")
-                helper.assertTrue(contact.man.lastShotTick >= 0, "He never fired")
-                contact.scene.result("PASS", "choices=${contact.choices()}")
-                helper.succeed()
-            }
-        }
-    }
-
-    /** The enemy far beyond his stopping distance in the open: his plan closes in by bounds. */
+    /**
+     * The enemy far beyond his stopping distance in the open: the fresh target gets his opening
+     * burst before he moves, then his plan closes in by bounds.
+     */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 500, batch = "planned-engage-close")
     fun arrivedManClosesInByBoundsInHisPlan(helper: GameTestHelper) {
         val contact = Contact(helper, "planned-engage-close", 90.0)
+        var movedAt: Long? = null
+        var firedAt: Long? = null
         helper.onEachTick {
             contact.tick()
+            if (firedAt == null && contact.man.lastShotTick >= 0) firedAt = helper.tick
+            if (movedAt == null && contact.closed() > 1.0) movedAt = helper.tick
             if (helper.tick >= 400L) {
+                helper.assertTrue(contact.chose("open_fire"), "His plan made no opening fire: ${contact.choices()}")
+                helper.assertTrue(firedAt != null && firedAt!! <= (movedAt ?: Long.MAX_VALUE), "He moved at $movedAt before his first shot at $firedAt")
                 helper.assertTrue(contact.chose("close_in"), "His plan did not close in: ${contact.choices()}")
                 helper.assertTrue(contact.closed() > CLOSED, "He closed only ${"%.1f".format(contact.closed())} blocks")
-                contact.scene.result("PASS", "closed=${"%.1f".format(contact.closed())} choices=${contact.choices()}")
+                contact.scene.result("PASS", "fired=$firedAt moved=$movedAt closed=${"%.1f".format(contact.closed())} choices=${contact.choices()}")
                 helper.succeed()
             }
         }
@@ -119,18 +112,21 @@ object PlannedEngageGameTests {
 
     /**
      * A DEFEND order mid-engage replans him: the engage he had under MOVE gives way to his defence,
-     * and he stays inside his defend area round the objective instead of closing on the enemy.
+     * and he stays inside his defend area round the objective instead of closing on the enemy,
+     * still firing at him from there.
      */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 500, batch = "planned-engage-replaced")
     fun defendOrderKeepsHimInsideHisArea(helper: GameTestHelper) {
         val contact = Contact(helper, "planned-engage-replaced", 90.0)
         var home: Vec3? = null
+        var orderedAt = 0
         helper.onEachTick {
             contact.tick()
             if (helper.tick == 200L) {
                 helper.assertTrue(contact.chose("engage"), "His plan never engaged: ${contact.choices()}")
                 home = contact.man.position()
+                orderedAt = contact.man.tickCount
                 contact.manager.setOrder(contact.squad.id, SquadOrder.DEFEND)
                 contact.manager.setObjective(helper.level, contact.squad.id, contact.man.blockPosition())
             }
@@ -138,6 +134,7 @@ object PlannedEngageGameTests {
             val radius = CombatPosition.defendRadius(contact.man.npcClass, contact.squad.members.size)
             helper.assertTrue(contact.man.position().distanceTo(at) <= radius + LEASH_SLACK, "He left his defend area: ${"%.1f".format(contact.man.position().distanceTo(at))} > $radius")
             if (helper.tick >= 400L) {
+                helper.assertTrue(contact.man.lastShotTick > orderedAt, "He stopped fighting once told to defend")
                 contact.scene.result("PASS", "choices=${contact.choices()}")
                 helper.succeed()
             }
@@ -160,27 +157,6 @@ object PlannedEngageGameTests {
             if (helper.tick >= 300L) {
                 helper.assertTrue(FiringSpots.nearby(at, 0.0, contact.mate.uuid).isEmpty(), "His firing spot is still claimed after his death")
                 contact.scene.result("PASS", "released")
-                helper.succeed()
-            }
-        }
-    }
-
-    /** A fresh far target gets his opening burst before his plan moves him towards it. */
-    @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "planned-engage-opening")
-    fun openingBurstComesBeforeHeMoves(helper: GameTestHelper) {
-        val contact = Contact(helper, "planned-engage-opening", 90.0)
-        var movedAt: Long? = null
-        var firedAt: Long? = null
-        helper.onEachTick {
-            contact.tick()
-            if (firedAt == null && contact.man.lastShotTick >= 0) firedAt = helper.tick
-            if (movedAt == null && contact.closed() > 1.0) movedAt = helper.tick
-            if (helper.tick >= 300L) {
-                helper.assertTrue(contact.chose("open_fire"), "His plan made no opening fire: ${contact.choices()}")
-                val fired = firedAt
-                helper.assertTrue(fired != null && fired <= (movedAt ?: Long.MAX_VALUE), "He moved at $movedAt before his first shot at $firedAt")
-                contact.scene.result("PASS", "fired=$firedAt moved=$movedAt choices=${contact.choices()}")
                 helper.succeed()
             }
         }
@@ -242,8 +218,9 @@ object PlannedEngageGameTests {
     }
 
     /**
-     * An LAV parked across his line of fire: his plan looks for a spot clear of it, and looks
-     * again at most once per rest while the hull stays, not every tick he walks.
+     * An LAV parked across his line of fire: his plan looks for a spot clear of it, fires again
+     * from there, and looks again at most once per rest while the hull stays, not every tick he
+     * walks.
      */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", skyAccess = true, timeoutTicks = 400, batch = "planned-engage-hull")
@@ -251,6 +228,8 @@ object PlannedEngageGameTests {
         val contact = Contact(helper, "planned-engage-hull", 15.0)
         var parkedAt: Long? = null
         var parkedGameTime = 0L
+        var parkedOwnTick = 0
+        var searched: Int? = null
         var lav: Entity? = null
         contact.scene.onClose.let { close ->
             contact.scene.onClose = {
@@ -268,12 +247,17 @@ object PlannedEngageGameTests {
                 }
                 parkedAt = helper.tick
                 parkedGameTime = helper.level.gameTime
+                parkedOwnTick = contact.man.tickCount
             }
             val since = parkedAt ?: return@onEachTick
-            if (helper.tick - since >= HULL_TICKS) {
+            if (helper.tick - since == HULL_TICKS) {
                 val searches = DecisionTrace.decisionsOf(contact.man.uuid).count { it.event == "plan" && it.tick >= parkedGameTime && "*research_spot" in it.detail }
                 helper.assertTrue(searches in 1..MAX_SEARCHES, "He searched $searches times in $HULL_TICKS ticks behind a hull")
-                contact.scene.result("PASS", "searches=$searches")
+                searched = searches
+            }
+            // The scene times out if he never finds a clear lane and fires from it.
+            if (searched != null && contact.man.lastShotTick > parkedOwnTick) {
+                contact.scene.result("PASS", "searches=$searched firedAfter=${helper.tick - since}")
                 helper.succeed()
             }
         }

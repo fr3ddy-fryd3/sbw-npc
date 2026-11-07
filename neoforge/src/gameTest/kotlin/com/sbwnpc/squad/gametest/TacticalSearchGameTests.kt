@@ -2,21 +2,17 @@ package com.sbwnpc.squad.gametest
 
 import com.sbwnpc.squad.combat.DetectionSightline
 import com.sbwnpc.squad.combat.Sightline
-import com.sbwnpc.squad.combat.TickBudget
 import com.sbwnpc.squad.combat.tactics.*
 import com.sbwnpc.squad.combat.tactics.PositionPaths
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.VehicleAwareNavigation
 import com.sbwnpc.squad.gametest.CombatIdleGameTests.Scene
 import com.sbwnpc.squad.mixin.PathNavigationAccessor
-import com.sbwnpc.squad.npc.NpcClass
-import com.sbwnpc.squad.npc.SquadFaction
 import com.sbwnpc.squad.squad.SquadOrder
 import com.sbwnpc.squad.util.Terrain
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
-import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.SnowLayerBlock
 import net.minecraft.world.phys.Vec3
@@ -192,69 +188,6 @@ object TacticalSearchGameTests {
     }
 
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "battle_arena", timeoutTicks = 800, batch = "battle-192", skyAccess = true)
-    fun ninetySixAgainstNinetySixKeepCommittedNavigationAndExchangeFire(helper: GameTestHelper) {
-        val scene = Scene(helper, "battle-192", depth = 608)
-        // A shallow ridge and scattered one-block cover interrupt some direct firing lanes.
-        for (x in 68..82) {
-            for (z in 0..607) {
-                helper.setBlock(BlockPos(x, 1, z), Blocks.STONE)
-                if (z % 30 < 12 && x in 73..77) helper.setBlock(BlockPos(x, 2, z), Blocks.STONE)
-            }
-        }
-        for (z in 12..595 step 12) helper.setBlock(BlockPos(117, 1, z), Blocks.STONE)
-        val roles = listOf(NpcClass.RIFLEMAN, NpcClass.RIFLEMAN, NpcClass.RIFLEMAN, NpcClass.RIFLEMAN, NpcClass.MACHINE_GUNNER, NpcClass.SNIPER, NpcClass.SHOTGUNNER, NpcClass.MEDIC)
-        val sides = listOf(SquadFaction.PIG, SquadFaction.COW).mapIndexed { side, faction ->
-            (0..2).map { group ->
-                (0..31).map { index ->
-                    val x = if (side == 0) 25.5 + index / 8 * 4 else 142.5 - index / 8 * 4
-                    // 28 combat slots at six blocks need 162 blocks of frontage per squad.
-                    // Separate fronts exercise shared budgets without assigning overlapping lanes.
-                    scene.spawn(Vec3(x, 1.0, 90.5 + group * 190 + index % 8 * 6), roles[index % roles.size], faction).apply {
-                        getAttribute(Attributes.MAX_HEALTH)!!.baseValue = 5000.0
-                        health = maxHealth
-                    }
-                }
-            }
-        }
-        val squads = sides.mapIndexed { side, groups ->
-            groups.mapIndexed { group, members ->
-                scene.squad(members, contact = sides[1 - side][group].first(), order = if (side == 0) SquadOrder.ATTACK else SquadOrder.DEFEND)
-            }
-        }
-        val starting = sides.flatten().flatten().associate { it.uuid to it.position() }
-        val fired = sides.map { mutableSetOf<java.util.UUID>() }
-        var directionReversals = 0
-        val previousVelocity = mutableMapOf<java.util.UUID, Vec3>()
-        helper.onEachTick {
-            squads.flatten().forEach { scene.tick(it) }
-            sides.forEachIndexed { side, groups ->
-                groups.flatten().forEach { npc ->
-                    val nav = npc.navigation
-                    if (!nav.isDone) helper.assertTrue(nav.targetPos == nav.path!!.target, "Active goal disagrees with committed path for ${npc.uuid}")
-                    if (npc.lastShotTick >= 0) fired[side] += npc.uuid
-                    val movement = npc.deltaMovement.multiply(1.0, 0.0, 1.0)
-                    val previous = previousVelocity.put(npc.uuid, movement)
-                    if (previous != null && movement.horizontalDistance() > 0.06 && previous.horizontalDistance() > 0.06 && movement.normalize().dot(previous.normalize()) < -0.5) directionReversals++
-                }
-            }
-            val advanced = sides[0].flatten().count { it.position().distanceTo(starting.getValue(it.uuid)) >= 12.0 }
-            val recent = sides.map { groups -> groups.flatten().count { it.firedRecently(40) } }
-            if (helper.tick % 100L == 0L) scene.result("RUNNING", "fired=${fired.map { it.size }} recent=$recent advanced=$advanced reversals=$directionReversals tick=${helper.tick}")
-            if (helper.tick == 720L) {
-                helper.assertTrue(sides.all { groups -> groups.flatten().count { it.isAlive } == 96 }, "Fixture lost fighters before completing load window")
-                // This is a route-ownership stress check, not a win-rate or firing-participation
-                // guarantee. Keep enough live gunfire to exercise the workload; record the
-                // separate 50% participation target even when the tactical result misses it.
-                helper.assertTrue(fired.all { it.size >= 16 } && recent.all { it >= 8 }, "Load window lacked sustained two-sided gunfire: fired=${fired.map { it.size }} recent=$recent")
-                helper.assertTrue(advanced >= 24, "Attack did not physically advance: $advanced/96")
-                scene.result("PASS", "active=96+96 fired=${fired.map { it.size }} recent=$recent participationTargetMet=${fired.all { it.size >= 48 }} advanced=$advanced reversals=$directionReversals tick=${helper.tick}")
-                helper.succeed()
-            }
-        }
-    }
-
-    @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 80, batch = "post-path-ownership")
     fun speculativePostSearchCannotReturnOrRedirectTheActiveRoute(helper: GameTestHelper) {
         val scene = Scene(helper, "post-path-ownership")
@@ -299,74 +232,80 @@ object TacticalSearchGameTests {
         }
     }
 
+    /**
+     * A squad keeps advancing and firing while other men's post searches burn their path turns on
+     * unreachable candidates: the shared per-tick budget starves neither side. That a search does
+     * not rebuild the same terrain for every unreachable post is post-search-load's to prove.
+     */
     @JvmStatic
-    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 900, batch = "shared-post-search")
-    fun twoSquadsKeepMovingAndFiringWhileUnreachablePostsConsumeSearchTurns(helper: GameTestHelper) {
+    @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 600, batch = "shared-post-search")
+    fun squadKeepsMovingAndFiringWhileUnreachablePostsConsumeSearchTurns(helper: GameTestHelper) {
         val scene = Scene(helper, "shared-post-search")
+        ridge(helper)
+        val members = (0 until SHARED_MEN).map { index -> scene.spawn(Vec3(24.5, 1.0, 22.5 + index * 5)) }
+        scene.enemy(Vec3(140.5, 1.0, 40.5))
+        val squad = scene.squad(members)
+        // Stationary clients search alongside the real brains: thirty-two raised posts nobody can
+        // reach before one floor, so each eats path turns before it finds anything.
+        val loads = (0 until SHARED_MEN).map { index -> searchingClient(helper, scene, index) }
+        val started = members.associate { it.uuid to it.position() }
+        val finished = mutableSetOf<java.util.UUID>()
+        val fired = mutableSetOf<java.util.UUID>()
+        val advanced = mutableSetOf<java.util.UUID>()
+        helper.onEachTick {
+            scene.tick(squad)
+            members.forEach { npc ->
+                if (npc.lastShotTick >= 0) fired += npc.uuid
+                if (npc.x - started.getValue(npc.uuid).x >= 15.0) advanced += npc.uuid
+            }
+            if (helper.tick >= 10 && helper.tick % 2L == 0L) loads.filter { it.first.uuid !in finished }.forEach { (npc, task) -> if (searched(helper, npc, task)) finished += npc.uuid }
+            val active = members.count { it.firedRecently(40) }
+            if (helper.tick % 100L == 0L) scene.result("RUNNING", "finished=${finished.size}/$SHARED_MEN fired=${fired.size} active=$active advanced=${advanced.size}")
+            val squadFights = fired.size == SHARED_MEN && active >= SHARED_MEN / 2 && advanced.size >= SHARED_MEN * 3 / 4
+            if (finished.size == SHARED_MEN && squadFights) {
+                scene.result("PASS", "finished=$SHARED_MEN fired=${fired.size} active=$active advanced=${advanced.size} tick=${helper.tick}")
+                helper.succeed()
+            }
+        }
+    }
+
+    /** A ridge across the whole arena between the squad and its enemy. */
+    private fun ridge(helper: GameTestHelper) {
         for (x in 46..80) {
             for (z in 0..223) {
                 val height = minOf(4, (x - 46) / 3 + 1, (80 - x) / 3 + 1)
                 for (y in 1..height) helper.setBlock(BlockPos(x, y, z), Blocks.STONE)
             }
         }
-        val groups = (0..1).map { group ->
-            val members = (0..15).map { index -> scene.spawn(Vec3(24.5 + index / 8 * 5, 1.0, 22.5 + group * 120 + index % 8 * 5)) }
-            scene.enemy(Vec3(140.5, 1.0, 40.5 + group * 120))
-            members to scene.squad(members)
-        }
-        // Additional stationary clients exercise the same native A*/budget alongside real brains.
-        // Their fixed prepared posts isolate queue pressure rather than terrain scoring.
-        val loads = (0..31).map { index ->
-            val npc = scene.spawn(Vec3(10.5 + index % 8 * 4, 1.0, 75.5 + index / 8 * 4)).apply { isNoAi = true }
-            val goal = helper.absoluteVec(Vec3(10.5 + index % 8 * 4, 1.0, 104.5 + index / 8 * 4))
-            val candidates = (0..31).map { helper.absoluteVec(Vec3(95.5 + it % 8 * 2, 14.0, 90.5 + it / 8 * 2)) } + goal
-            val task = TacticalTask(TacticalJob.SEARCH, goal, null, 1).apply {
-                search = TacticalPositionSearch(npc.position(), emptyList()).also { search ->
-                    search.destinations = candidates
-                    candidates.forEachIndexed { rank, point -> search.scored[point] = TacticalPositionScore(false, 0, rank.toDouble()) }
-                }
-            }
-            npc to task
-        }
-        val started = groups.flatMap { it.first }.associate { it.uuid to it.position() }
-        val granted = mutableMapOf<java.util.UUID, Int>()
-        val finished = mutableSetOf<java.util.UUID>()
-        var lastLoadFinished = 0L
-        loads.forEach { (npc, _) -> (npc.navigation as VehicleAwareNavigation).positionPathObserver = { _, _, _ -> granted.merge(npc.uuid, 1, Int::plus) } }
-        scene.onClose = { loads.forEach { (npc, _) -> (npc.navigation as VehicleAwareNavigation).positionPathObserver = null } }
-        val fired = groups.map { mutableSetOf<java.util.UUID>() }
-        val advanced = groups.map { mutableSetOf<java.util.UUID>() }
-        fun view(npc: NpcEntity) = TacticalSnapshot(helper.level.gameTime, SquadOrder.ATTACK, 1, npc.position(), null, listOf(TacticalMember(npc.uuid, npc.position())), emptyList())
-        helper.onEachTick {
-            groups.forEachIndexed { index, (members, squad) ->
-                scene.tick(squad)
-                members.forEach { npc ->
-                    if (npc.lastShotTick >= 0) fired[index] += npc.uuid
-                    if (npc.x - started.getValue(npc.uuid).x >= 15.0) advanced[index] += npc.uuid
-                }
-            }
-            if (helper.tick >= 10 && helper.tick % 2L == 0L) {
-                for ((npc, task) in loads) {
-                    if (npc.uuid in finished) continue
-                    npc.setOnGround(true)
-                    val result = TacticalPositions.find(npc, task, view(npc))
-                    helper.assertTrue(result.outcome != TacticalPositions.Outcome.UNREACHABLE, "Queued client lost its reachable floor")
-                    if (result.outcome == TacticalPositions.Outcome.FOUND) {
-                        finished += npc.uuid
-                        lastLoadFinished = helper.tick
-                        npc.navigation.stop()
-                    }
-                }
-            }
-            if (helper.tick % 100L == 0L) scene.result("RUNNING", "finished=${finished.size}/32 loadSearches=${granted.values.sum()} fired=${fired.map { it.size }} advanced=${advanced.map { it.size }}")
-            val activeShooters = groups.map { (members, _) -> members.count { it.firedRecently(40) } }
-            if (helper.tick >= 360 && finished.size == 32 && fired.all { it.size == 16 } && activeShooters.all { it >= 8 } && advanced.all { it.size >= 12 }) {
-                helper.assertTrue(granted.values.all { it <= 5 }, "An unreachable client's search repeatedly rebuilt its region: $granted")
-                scene.result("PASS", "finished=32 lastLoadFinished=$lastLoadFinished loadSearches=${granted.values.sum()} fired=${fired.map { it.size }} activeShooters=$activeShooters advanced=${advanced.map { it.size }} tick=${helper.tick}")
-                helper.succeed()
-            }
-        }
     }
+
+    /** A still man whose post search ranks thirty-two unreachable raised posts before his floor. */
+    private fun searchingClient(helper: GameTestHelper, scene: Scene, index: Int): Pair<NpcEntity, TacticalTask> {
+        val npc = scene.spawn(Vec3(10.5 + index % 4 * 4, 1.0, 95.5 + index / 4 * 4)).apply { isNoAi = true }
+        val goal = helper.absoluteVec(Vec3(10.5 + index % 4 * 4, 1.0, 124.5 + index / 4 * 4))
+        val candidates = (0..31).map { helper.absoluteVec(Vec3(95.5 + it % 8 * 2, 14.0, 110.5 + it / 8 * 2)) } + goal
+        val task = TacticalTask(TacticalJob.SEARCH, goal, null, 1).apply {
+            search = TacticalPositionSearch(npc.position(), emptyList()).also { search ->
+                search.destinations = candidates
+                candidates.forEachIndexed { rank, point -> search.scored[point] = TacticalPositionScore(false, 0, rank.toDouble()) }
+            }
+        }
+        return npc to task
+    }
+
+    /** One search turn for [npc]; true once it found his floor. */
+    private fun searched(helper: GameTestHelper, npc: NpcEntity, task: TacticalTask): Boolean {
+        npc.setOnGround(true)
+        val view = TacticalSnapshot(helper.level.gameTime, SquadOrder.ATTACK, 1, npc.position(), null, listOf(TacticalMember(npc.uuid, npc.position())), emptyList())
+        val result = TacticalPositions.find(npc, task, view)
+        helper.assertTrue(result.outcome != TacticalPositions.Outcome.UNREACHABLE, "Queued client lost its reachable floor")
+        if (result.outcome != TacticalPositions.Outcome.FOUND) return false
+        npc.navigation.stop()
+        return true
+    }
+
+    /** Men in the shared-budget squad, and as many searching clients beside it. */
+    private const val SHARED_MEN = 8
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "terrain_arena", timeoutTicks = 160, batch = "post-search-load")

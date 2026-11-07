@@ -11,6 +11,7 @@ import com.sbwnpc.squad.domain.port.Ports
 import com.sbwnpc.squad.entity.NpcActivity
 import com.sbwnpc.squad.entity.NpcEntity
 import com.sbwnpc.squad.entity.ai.MortarClaims
+import com.sbwnpc.squad.entity.ai.MortarDeployment
 import com.sbwnpc.squad.init.ModBlocks
 import com.sbwnpc.squad.init.ModEntities
 import com.sbwnpc.squad.npc.NpcClass
@@ -43,7 +44,7 @@ object MortarCrewGameTests {
     fun mortarGunnerLoadsAloneAtThirdCadence(helper: GameTestHelper) = cadence(helper, MortarClaims.Role.LOADER)
 
     private fun cadence(helper: GameTestHelper, lost: MortarClaims.Role) {
-        val scene = scene(helper)
+        val scene = Scene.create(helper)
         val shots = mutableListOf<Long>()
         val owners = mutableListOf<UUID?>()
         var survivor: NpcEntity? = null
@@ -90,7 +91,7 @@ object MortarCrewGameTests {
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 1500, batch = "mortar-shell-supply")
     fun mortarCrewReturnsFromSupplyToItsAssignedTube(helper: GameTestHelper) {
-        val scene = scene(helper)
+        val scene = Scene.create(helper)
         val point = BlockPos(5, 1, 20)
         helper.setBlock(point, ModBlocks.SUPPLY.get())
         (helper.getBlockEntity(point) as SupplyBlockEntity).faction = SquadFaction.PIG
@@ -138,10 +139,15 @@ object MortarCrewGameTests {
         }
     }
 
+    /**
+     * Ordered to a new point 30 blocks off, the crew packs its tube, carries it and sets it up
+     * there once: no shell lost or duplicated in the packing, the shot timer kept, both men on the
+     * new tube.
+     */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 1500, batch = "mortar-relocation")
-    fun mortarRelocatesWithoutLosingLoadedShellAndSaveState(helper: GameTestHelper) {
-        val scene = scene(helper)
+    fun mortarRelocatesWithoutLosingItsShellsOrTimer(helper: GameTestHelper) {
+        val scene = Scene.create(helper)
         var expected: Int? = null
         var lastShot: Long? = null
         val deployedIds = HashSet<UUID>()
@@ -151,7 +157,9 @@ object MortarCrewGameTests {
         NeoForge.EVENT_BUS.addListener(spawnListener)
         var carrying = false
         var deployed: Entity? = null
+        val point = helper.absoluteVec(Vec3(55.5, 1.0, 64.5))
         cleanup(helper) {
+            NeoForge.EVENT_BUS.unregister(spawnListener)
             scene.close()
             deployed?.discard()
         }
@@ -160,41 +168,55 @@ object MortarCrewGameTests {
                 expected = scene.crew.sumOf { it.mortarShellsLeft } + 1
                 lastShot = scene.mortar.persistentData.getLong("sbwnpcLastMortarShot")
                 scene.manager.setOrder(scene.squad.id, SquadOrder.DEFEND)
-                scene.manager.setObjective(helper.level, scene.squad.id, helper.absolutePos(BlockPos(55, 1, 64)))
+                scene.manager.setObjective(helper.level, scene.squad.id, BlockPos.containing(point))
             }
-            scene.crew.firstOrNull { it.holds(NpcActivity.CARRYING_MORTAR) }?.let { npc ->
-                carrying = true
-                val tag = CompoundTag()
-                npc.saveWithoutId(tag)
-                val loaded = ModEntities.NPC.get().create(helper.level)!!
-                loaded.load(tag)
-                helper.assertTrue(loaded.holds(NpcActivity.CARRYING_MORTAR) && loaded.assignedMortarId == npc.assignedMortarId && loaded.packedMortarState == npc.packedMortarState, "Carrier save lost tube state")
-                for ((name, ordinal) in listOf("MORTAR_OPERATOR" to 5, "MORTAR_LOADER" to 6)) {
-                    tag.putString("NpcClass", name)
-                    tag.putInt("MortarShells", 0)
-                    loaded.load(tag)
-                    helper.assertTrue(loaded.mortarShellsLeft == (if (name == "MORTAR_OPERATOR") NpcEntity.MORTAR_SHELLS else 0), "Legacy migration reset a spent loader or stranded an unequipped operator")
-                    helper.assertTrue(loaded.npcClass == NpcClass.MORTAR && NpcClass.byOrdinal(ordinal) == NpcClass.MORTAR, "Legacy crew did not migrate")
-                }
-                helper.assertTrue(NpcClass.TANK_CREW.ordinal == 7 && NpcClass.DRONE_OPERATOR.ordinal == 10 && NpcClass.selectable.none { it.name == "MORTAR_OPERATOR" || it.name == "MORTAR_LOADER" }, "Role migration shifted unrelated IDs or exposed legacy types")
+            carrying = carrying || scene.crew.any { it.holds(NpcActivity.CARRYING_MORTAR) }
+            if (helper.tick % 100L == 0L) {
+                report("mortar-relocation.txt", "result=RUNNING tick=${helper.tick} ordered=${expected != null} carrying=$carrying crew=${scene.crew.map { "${helper.relativeVec(it.position())} carry=${it.holds(NpcActivity.CARRYING_MORTAR)} tube=${it.assignedMortarId} shells=${it.mortarShellsLeft}" }} tubes=${deployedIds.size}")
             }
-            if (carrying && scene.crew.none { it.holds(NpcActivity.CARRYING_MORTAR) }) {
-                deployed = scene.crew.first().assignedMortarId?.let(helper.level::getEntity)
-                val tube = deployed ?: return@onEachTick
-                helper.assertTrue(tube.uuid != scene.mortar.uuid && tube.position().distanceTo(helper.absoluteVec(Vec3(55.5, 1.0, 64.5))) <= 8.0, "Mortar did not physically redeploy at the new objective")
-                helper.assertTrue(tube.persistentData.getLong("sbwnpcLastMortarShot") == lastShot, "Relocation reset the accepted-shot timer")
-                helper.assertTrue(deployedIds.size == 1, "Tube repeatedly packed and redeployed around the arrival threshold")
-                helper.assertTrue(scene.crew.all { it.assignedMortarId == tube.uuid }, "Second soldier lost redeployed tube")
-                helper.assertTrue(scene.crew.sumOf { it.mortarShellsLeft } + (if (Ports.mortars.hasShell(tube)) 1 else 0) == expected, "Packing lost or duplicated shells")
-                if (MortarClaims.activeCrew(tube) == 2) helper.succeed()
+            if (!carrying || scene.crew.any { it.holds(NpcActivity.CARRYING_MORTAR) }) return@onEachTick
+            deployed = scene.crew.first().assignedMortarId?.let(helper.level::getEntity)
+            val tube = deployed ?: return@onEachTick
+            helper.assertTrue(tube.uuid != scene.mortar.uuid && tube.position().distanceTo(point) <= 8.0, "Mortar did not physically redeploy at the new objective")
+            helper.assertTrue(tube.persistentData.getLong("sbwnpcLastMortarShot") == lastShot, "Relocation reset the accepted-shot timer")
+            helper.assertTrue(deployedIds.size == 1, "Tube repeatedly packed and redeployed around the arrival threshold")
+            scene.assertCrewKept(tube, expected)
+            if (MortarClaims.activeCrew(tube) == 2) {
+                report("mortar-relocation.txt", "result=PASS tick=${helper.tick} tube=${helper.relativeVec(tube.position())}")
+                helper.succeed()
             }
         }
+    }
+
+    /** A carrier's save keeps the tube he carries; a save from before the crew roles merged loads them as mortarmen. */
+    @JvmStatic
+    @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 40, batch = "mortar-carrier-save")
+    fun mortarCarrierSaveKeepsTheTubeAndLegacyCrewMigrates(helper: GameTestHelper) {
+        val carrier = AttackDeploymentGameTests.spawn(helper, Vec3(20.5, 1.0, 64.5), SquadFaction.PIG, role = NpcClass.MORTAR)
+        cleanup(helper) { carrier.discard() }
+        carrier.claim(NpcActivity.CARRYING_MORTAR, MortarDeployment)
+        carrier.assignedMortarId = UUID.randomUUID()
+        carrier.packedMortarState = CompoundTag().apply { putInt("probe", 7) }
+        val tag = CompoundTag()
+        carrier.saveWithoutId(tag)
+        val loaded = ModEntities.NPC.get().create(helper.level)!!
+        loaded.load(tag)
+        helper.assertTrue(loaded.holds(NpcActivity.CARRYING_MORTAR) && loaded.assignedMortarId == carrier.assignedMortarId && loaded.packedMortarState == carrier.packedMortarState, "Carrier save lost tube state")
+        for (name in listOf("MORTAR_OPERATOR", "MORTAR_LOADER")) {
+            tag.putString("NpcClass", name)
+            tag.putInt("MortarShells", 0)
+            loaded.load(tag)
+            helper.assertTrue(loaded.npcClass == NpcClass.MORTAR, "Legacy $name did not migrate")
+            // An operator was saved without the loader's shells; a spent loader stays spent.
+            helper.assertTrue(loaded.mortarShellsLeft == (if (name == "MORTAR_OPERATOR") NpcEntity.MORTAR_SHELLS else 0), "Legacy migration reset a spent loader or stranded an unequipped operator")
+        }
+        helper.succeed()
     }
 
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 600, batch = "mortar-two-tubes")
     fun twoMortarsKeepIndependentCrewsAndTimers(helper: GameTestHelper) {
-        val scene = scene(helper)
+        val scene = Scene.create(helper)
         val second = Ports.mortars.create(helper.level, -90f)
         val pos = helper.absoluteVec(Vec3(24.5, 1.0, 84.5))
         second.moveTo(pos.x, pos.y, pos.z, -90f, 0f)
@@ -232,12 +254,18 @@ object MortarCrewGameTests {
         }
     }
 
-    /** An enemy at arm's length: the operator fights him off through his engage, his crew duty set aside (#258). */
+    /**
+     * An enemy at arm's length: the operator fights him off through his engage, his crew duty set
+     * aside (#258), and really shoots him.
+     */
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 600, batch = "mortar-self-defence")
     fun mortarmanDefendsHimselfAtArmsLength(helper: GameTestHelper) {
-        val scene = scene(helper)
+        val scene = Scene.create(helper)
         var enemy: NpcEntity? = null
+        var engaged = false
+        // Shots before the enemy came are not his defence.
+        val shotBefore = HashMap<NpcEntity, Int>()
         cleanup(helper) {
             scene.close()
             enemy?.discard()
@@ -246,13 +274,18 @@ object MortarCrewGameTests {
             if (enemy == null && MortarClaims.activeCrew(scene.mortar) == 2) {
                 val operator = scene.crew.first { it.uuid == MortarClaims.operator(scene.mortar.uuid) }
                 enemy = AttackDeploymentGameTests.spawn(helper, helper.relativeVec(operator.position()).add(4.0, 0.0, 0.0), SquadFaction.COW).also { operator.target = it }
+                scene.crew.forEach { shotBefore[it] = it.lastShotTick }
             }
             val man = enemy?.let { foe -> scene.crew.firstOrNull { it.target === foe } } ?: return@onEachTick
             val running = NativeTactics.reports(man).values.filter { it.status == ExecutionStatus.RUNNING }.map { it.ticket.identity }
             if (running.any(Engage::isUnit)) {
                 helper.assertTrue(running.none { it.startsWith("crew:") }, "His crew duty still runs beside his engage: $running")
-                helper.succeed()
+                engaged = true
             }
+            val foe = enemy!!
+            // He has to fight the man off, not hand him back to the tube once the engage starts.
+            val fought = man.lastShotTick > shotBefore.getValue(man) || foe.health < foe.maxHealth || !foe.isAlive
+            if (engaged && fought) helper.succeed()
         }
     }
 
@@ -285,7 +318,7 @@ object MortarCrewGameTests {
     @JvmStatic
     @GameTest(templateNamespace = "sbwnpc", template = "attack_arena", timeoutTicks = 500, batch = "mortar-defend-agents")
     fun mortarOnlyDefendSquadKeepsItsPlan(helper: GameTestHelper) {
-        val scene = scene(helper)
+        val scene = Scene.create(helper)
         scene.manager.setOrder(scene.squad.id, SquadOrder.DEFEND)
         scene.manager.setObjective(helper.level, scene.squad.id, BlockPos.containing(scene.mortar.position()))
         val tickets = scene.crew.associateWith { HashSet<Any>() }
@@ -319,23 +352,34 @@ object MortarCrewGameTests {
             MortarClaims.releaseMortar(mortar.uuid)
             mortar.discard()
         }
-    }
-    private fun scene(helper: GameTestHelper): Scene {
-        for (x in 0..159) for (z in 0..127) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
-        DebugFlags.enabledGroups = setOf(LogGroup.FIRE_SUPPORT, LogGroup.ORDER)
-        val tube = Ports.mortars.create(helper.level, -90f)
-        val pos = helper.absoluteVec(Vec3(24.5, 1.0, 64.5))
-        tube.moveTo(pos.x, pos.y, pos.z, -90f, 0f)
-        helper.level.addFreshEntity(tube)
-        SquadTeams.assign(tube, SquadFaction.PIG)
-        val crew = listOf(Vec3(22.5, 1.0, 64.5), Vec3(24.5, 1.0, 66.3)).map {
-            AttackDeploymentGameTests.spawn(helper, it, SquadFaction.PIG, role = NpcClass.MORTAR)
-        }.toMutableList()
-        val scene = Scene(helper, tube, crew)
-        scene.manager.setOrder(scene.squad.id, SquadOrder.ATTACK)
-        scene.manager.setObjective(helper.level, scene.squad.id, helper.absolutePos(BlockPos(105, 1, 64)))
-        helper.assertTrue(Ports.mortars.canReach(tube, scene.squad.objective!!), "Mortar fixture is outside real ballistic limits")
-        return scene
+
+        /** Both men stayed on the redeployed [tube], with as many shells between them and it as before the move. */
+        fun assertCrewKept(tube: Entity, expected: Int?) {
+            helper.assertTrue(crew.all { it.assignedMortarId == tube.uuid }, "Second soldier lost redeployed tube")
+            val shells = crew.sumOf { it.mortarShellsLeft } + (if (Ports.mortars.hasShell(tube)) 1 else 0)
+            helper.assertTrue(shells == expected, "Packing lost or duplicated shells")
+        }
+
+        companion object {
+            /** One tube and its two-man crew on a stone field, ordered to shell a point 80 blocks east. */
+            fun create(helper: GameTestHelper): Scene {
+                for (x in 0..159) for (z in 0..127) helper.setBlock(BlockPos(x, 0, z), Blocks.STONE)
+                DebugFlags.enabledGroups = setOf(LogGroup.FIRE_SUPPORT, LogGroup.ORDER)
+                val tube = Ports.mortars.create(helper.level, -90f)
+                val pos = helper.absoluteVec(Vec3(24.5, 1.0, 64.5))
+                tube.moveTo(pos.x, pos.y, pos.z, -90f, 0f)
+                helper.level.addFreshEntity(tube)
+                SquadTeams.assign(tube, SquadFaction.PIG)
+                val crew = listOf(Vec3(22.5, 1.0, 64.5), Vec3(24.5, 1.0, 66.3)).map {
+                    AttackDeploymentGameTests.spawn(helper, it, SquadFaction.PIG, role = NpcClass.MORTAR)
+                }.toMutableList()
+                val scene = Scene(helper, tube, crew)
+                scene.manager.setOrder(scene.squad.id, SquadOrder.ATTACK)
+                scene.manager.setObjective(helper.level, scene.squad.id, helper.absolutePos(BlockPos(105, 1, 64)))
+                helper.assertTrue(Ports.mortars.canReach(tube, scene.squad.objective!!), "Mortar fixture is outside real ballistic limits")
+                return scene
+            }
+        }
     }
 }
 
